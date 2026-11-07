@@ -1250,6 +1250,10 @@ export const createHiddenEditorManager = (
         editorSession.type === "canonical"
           ? input.handleTextInput(pmView, from, to, text)
           : false,
+      handleKeyPress: (pmView, event) =>
+        editorSession.type === "canonical" &&
+        !deps.getReadOnly() &&
+        input.handleKeyPress(pmView, event),
       handlePaste: (pmView, _event, slice) => {
         if (editorSession.type !== "canonical") return false;
         if (deps.getReadOnly()) {

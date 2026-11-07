@@ -1,15 +1,24 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { documentShape } from "../../packages/core/src/__tests__/documentShapes";
+import {
+  documentShape,
+  shapeArrayBuffer,
+} from "../../packages/core/src/__tests__/documentShapes";
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
+import { parseDocx } from "../../packages/core/src/docx/parser";
+import { toProseDoc } from "../../packages/core/src/prosemirror/conversion/toProseDoc";
 import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../test/property-testing";
-import type { BrowserDragTarget } from "./browserDragTarget";
+import {
+  type BrowserDragTarget,
+  crossParagraphDragRange,
+} from "./browserDragTarget";
 import {
   BROWSER_INPUT_ACTION_DISPOSITIONS,
+  BROWSER_PARAGRAPH_DRAG_SHAPES,
   BROWSER_SHAPE_TARGETS,
   BROWSER_TRACE_FIXED_SEEDS,
   browserImeActionArbitrary,
@@ -40,6 +49,7 @@ test("browser traces replay deterministically and exercise the declared shapes a
     "redo",
     "historyBurst",
     "selectionDrag",
+    "selectAll",
   ]) {
     expect(kinds.has(kind)).toBe(true);
   }
@@ -55,7 +65,7 @@ test("browser traces replay deterministically and exercise the declared shapes a
       action.kind === "historyBurst"
     )
       expect(BROWSER_INPUT_ACTION_DISPOSITIONS[action.kind]).toBe("history");
-    else if (action.kind === "selectionDrag")
+    else if (action.kind === "selectionDrag" || action.kind === "selectAll")
       expect(BROWSER_INPUT_ACTION_DISPOSITIONS[action.kind]).toBe("selection");
     else expect(BROWSER_INPUT_ACTION_DISPOSITIONS[action.kind]).toBe("edit");
   }
@@ -65,11 +75,15 @@ test("browser traces replay deterministically and exercise the declared shapes a
     note: "footnote",
     field: "field",
     inlineObject: "image",
-  } as const satisfies Record<BrowserDragTarget, string>;
+  } as const satisfies Record<Exclude<BrowserDragTarget, "paragraphs">, string>;
+  const shapesWithParagraphDrags = new Set<string>();
   for (const { shape, actions } of traces) {
     const fixture = documentShape(shape);
     for (const action of actions) {
-      if (action.kind === "selectionDrag") {
+      if (action.kind === "selectionDrag" && action.target === "paragraphs") {
+        expect(BROWSER_PARAGRAPH_DRAG_SHAPES.has(shape)).toBe(true);
+        shapesWithParagraphDrags.add(shape);
+      } else if (action.kind === "selectionDrag") {
         expect(action.target).toBe(BROWSER_SHAPE_TARGETS[shape]);
         if (action.target === "list") {
           expect(
@@ -85,6 +99,33 @@ test("browser traces replay deterministically and exercise the declared shapes a
       if (action.kind === "dragCellDelete")
         expect(fixture.features).toContain("table");
     }
+  }
+  expect(shapesWithParagraphDrags).toEqual(
+    new Set(BROWSER_PARAGRAPH_DRAG_SHAPES),
+  );
+});
+
+test("a paragraphs drag is offered exactly for shapes with two adjacent text paragraphs", async () => {
+  for (const shape of Object.keys(BROWSER_SHAPE_TARGETS)) {
+    // oxlint-disable-next-line no-await-in-loop -- one fixture at a time
+    const doc = toProseDoc(
+      // oxlint-disable-next-line no-await-in-loop -- one fixture at a time
+      await parseDocx(await shapeArrayBuffer(shape), {
+        preloadFonts: false,
+        detectVariables: false,
+      }),
+    );
+    const range = crossParagraphDragRange(doc);
+    expect([shape, range !== null]).toEqual([
+      shape,
+      BROWSER_PARAGRAPH_DRAG_SHAPES.has(shape as never),
+    ]);
+    if (range === null) continue;
+    const $from = doc.resolve(range.from);
+    const $to = doc.resolve(range.to);
+    expect($from.parent.isTextblock && $to.parent.isTextblock).toBe(true);
+    expect($from.sameParent($to)).toBe(false);
+    expect($to.index(0)).toBe($from.index(0) + 1);
   }
 });
 

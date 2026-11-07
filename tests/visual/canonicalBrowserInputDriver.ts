@@ -65,6 +65,9 @@ export const driveCanonicalBrowserInput = async (
       );
       await page.keyboard.press(`${MODIFIER}+v`);
       return;
+    case "selectAll":
+      await page.keyboard.press(`${MODIFIER}+a`);
+      return;
     case "dragCellDelete":
     case "selectionDrag":
       throw new TypeError("Structural selections require a structural seed");

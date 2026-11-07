@@ -782,6 +782,84 @@ export const CANONICAL_JOIN_BESIDE_DELETION_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+type CanonicalRegression = {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** ProseMirror types over a selection across paragraphs from keypress, with no beforeinput. */
+export const CANONICAL_TYPING_OVER_LIST_ITEMS_SEED_431 = {
+  authority: "canonical",
+  seed: 431,
+  path: "14:2:3:2:2:1:1",
+  fingerprint: "d80b63ac597ad07a",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      { kind: "typing", text: "alpha" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+export const CANONICAL_TYPING_OVER_LIST_ITEMS_AFTER_TYPING_SEED_431 = {
+  authority: "canonical",
+  seed: 431,
+  path: "14",
+  fingerprint: "1d751358bf327e40",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "typing", text: "shall alpha" },
+      { kind: "selectionDrag", target: "list" },
+      { kind: "typing", text: "é 東京 東京" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+export const CANONICAL_TYPING_ACROSS_PARAGRAPHS = {
+  authority: "canonical",
+  seed: 0,
+  path: "paragraphs",
+  fingerprint: "typing-across-paragraphs",
+  trace: {
+    shape: "plain-markdown",
+    actions: [
+      { kind: "selectionDrag", target: "paragraphs" },
+      { kind: "typing", text: "shall" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+export const CANONICAL_TYPING_OVER_EVERYTHING = {
+  authority: "canonical",
+  seed: 0,
+  path: "selectAll",
+  fingerprint: "typing-over-select-all",
+  trace: {
+    shape: "plain-markdown",
+    actions: [{ kind: "selectAll" }, { kind: "typing", text: "shall" }],
+  },
+} satisfies CanonicalRegression;
+
+/** Typing over selected cells refuses with the session's own reason, leaving them as they were. */
+export const CANONICAL_TYPING_OVER_CELLS = {
+  authority: "canonical",
+  seed: 0,
+  path: "cells",
+  fingerprint: "typing-over-selected-cells",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "selectionDrag", target: "table" },
+      { kind: "typing", text: "shall" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 const SELECT_ALL = "ControlOrMeta+a";
 const SELECT_DOWN = "Shift+ArrowDown";
 
@@ -865,4 +943,9 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_RESTARTED_AFTER_TYPING,
   CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
   CANONICAL_JOIN_BESIDE_DELETION_SEED_29,
+  CANONICAL_TYPING_OVER_LIST_ITEMS_SEED_431,
+  CANONICAL_TYPING_OVER_LIST_ITEMS_AFTER_TYPING_SEED_431,
+  CANONICAL_TYPING_ACROSS_PARAGRAPHS,
+  CANONICAL_TYPING_OVER_EVERYTHING,
+  CANONICAL_TYPING_OVER_CELLS,
 ];
