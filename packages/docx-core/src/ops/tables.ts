@@ -91,6 +91,8 @@ const validStructure = (blocks: readonly BlockContent[]): boolean =>
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -327,6 +329,8 @@ const commitBlocks = ({
         case "preservedBlock":
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":

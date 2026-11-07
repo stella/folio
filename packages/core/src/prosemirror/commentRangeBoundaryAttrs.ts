@@ -16,6 +16,15 @@ type CommentRangeBoundaryAttrs = {
 
 const attrsCache = new WeakMap<PMNode, CommentRangeBoundaryAttrs>();
 
+/**
+ * Whether a node is a comment range boundary, inside a paragraph or between
+ * blocks. Both carry the same marker, so every reader asks this rather than
+ * naming one of them.
+ */
+export const isCommentRangeBoundaryNode = (node: PMNode): boolean =>
+  node.type.name === "commentRangeBoundary" ||
+  node.type.name === "blockCommentRangeBoundary";
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -48,10 +57,10 @@ export const readCommentRangeBoundaryAttrs = (
   node: PMNode,
 ): ReadProseMirrorAttrsResult<CommentRangeBoundaryAttrs> => {
   const issues: ProseMirrorAttrIssue[] = [];
-  if (node.type.name !== "commentRangeBoundary") {
+  if (!isCommentRangeBoundaryNode(node)) {
     issues.push({
       path: "commentRangeBoundary.type.name",
-      message: `Expected commentRangeBoundary, got ${node.type.name}.`,
+      message: `Expected commentRangeBoundary or blockCommentRangeBoundary, got ${node.type.name}.`,
     });
   }
   const marker = readCommentRangeBoundaryMarker(node.attrs["marker"]);

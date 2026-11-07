@@ -165,6 +165,8 @@ const collectBlocks = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":

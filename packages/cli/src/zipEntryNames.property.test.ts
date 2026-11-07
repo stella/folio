@@ -54,10 +54,29 @@ describe("folio suggest --in-place preserves corpus ZIP entry names", () => {
         );
 
         const reviewer = await FolioDocxReviewer.fromBuffer(source);
-        // snapshot() includes blank paragraphs, so even the empty document is edited.
-        const anchor = reviewer
-          .snapshot()
-          .blocks.find(({ kind }) => kind !== "diagnostic");
+        // snapshot() includes blank paragraphs, so even the empty document is
+        // edited. A content control's lock refuses an insertion inside it, so
+        // the anchor is the first paragraph a new one may follow.
+        let anchor: { id: string } | undefined;
+        for (const block of reviewer.snapshot().blocks) {
+          if (block.kind === "diagnostic") continue;
+          const probe = await FolioDocxReviewer.fromBuffer(source);
+          const { skipped } = probe.applyOperations(
+            [
+              {
+                id: "probe",
+                type: "insertAfterBlock",
+                blockId: block.id,
+                text: INSERTED_TEXT,
+              },
+            ],
+            { undefinedReferences: "refuse", mode: "tracked-changes" },
+          );
+          if (skipped.every(({ reason }) => reason !== "contentControlLock")) {
+            anchor = block;
+            break;
+          }
+        }
         if (anchor === undefined)
           panic("Corpus fixture has no editable paragraph", { name });
         const file = path.join(dir, name);

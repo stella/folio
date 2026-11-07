@@ -39,7 +39,10 @@ import {
   expectRunPropertyChangeMarkAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../attrs";
-import { readCommentRangeBoundaryAttrs } from "../commentRangeBoundaryAttrs";
+import {
+  isCommentRangeBoundaryNode,
+  readCommentRangeBoundaryAttrs,
+} from "../commentRangeBoundaryAttrs";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
@@ -1052,7 +1055,7 @@ function resolveChangeUnguarded(
             carriers.push({ position, size: node.nodeSize });
             return false;
           }
-          if (node.type.name === "commentRangeBoundary") {
+          if (isCommentRangeBoundaryNode(node)) {
             const attrs = readCommentRangeBoundaryAttrs(node);
             if (attrs.ok && doomed.has(attrs.value.marker.id)) {
               carriers.push({ position, size: node.nodeSize });

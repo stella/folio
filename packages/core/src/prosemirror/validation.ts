@@ -444,6 +444,7 @@ const validateNodeAttrs = (
       return;
 
     case "commentRangeBoundary":
+    case "blockCommentRangeBoundary":
       appendAttrIssues(path, readCommentRangeBoundaryAttrs(node), issues);
       return;
 

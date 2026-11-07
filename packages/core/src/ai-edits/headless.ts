@@ -3530,8 +3530,10 @@ export class FolioDocxReviewer {
         this.withResolvedOverrides(kept, snapshot.resolvedOverrides),
       );
     }
+    // A save writes the normalized document and undoes nothing.
     const normalized = normalizeListModelRendering(
       reconcileDocumentPartRelationships(document),
+      { inverse: "omit" },
     ).document;
     visitDocxParagraphs(
       {
