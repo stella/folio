@@ -219,10 +219,10 @@ import {
 import { separateRevisionStretches } from "./revisionStretches";
 import {
   collectNoteReferenceLabels,
+  hashFolioAIBlockContent,
   hashFolioAIBlockStructuralBoundaries,
   hashFolioAIBlockText,
   isHiddenTableRow,
-  normalizeFolioAIBlockText,
 } from "./snapshot";
 import {
   isEmptyTableCell,
@@ -2075,7 +2075,7 @@ const collectLiveBlocksByHash = (doc: PMNode) => {
       fieldResults: "text",
       noteReferences,
     }).text;
-    const hash = hashFolioAIBlockText(normalizeFolioAIBlockText(cleanText));
+    const hash = hashFolioAIBlockContent(cleanText);
     const bucket = byHash.get(hash) ?? [];
     bucket.push({ from: pos, to: pos + node.nodeSize, node });
     byHash.set(hash, bucket);
@@ -9603,9 +9603,7 @@ const resolveStableBlock = ({
     noteReferences,
   });
   const currentText = cleanBlock.text;
-  const currentTextHash = hashFolioAIBlockText(
-    normalizeFolioAIBlockText(currentText),
-  );
+  const currentTextHash = hashFolioAIBlockContent(currentText);
   const structuralBoundaryHash =
     hashFolioAIBlockStructuralBoundaries(cleanBlock);
   if (

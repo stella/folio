@@ -35,6 +35,7 @@ import {
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
   collectNoteReferenceLabels,
+  hashFolioAIBlockContent,
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
 import type {
@@ -705,7 +706,7 @@ export class CanonicalPublicOperations {
       fieldResults: "text",
       noteReferences: collectNoteReferenceLabels(state.doc),
     });
-    const hash = hashFolioAIBlockText(clean.text);
+    const hash = hashFolioAIBlockContent(clean.text);
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
     if (hash !== anchor.textHash) return refusal("changedBlock");
