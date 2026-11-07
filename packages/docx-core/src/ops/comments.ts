@@ -168,8 +168,18 @@ const storyAnchors = (
           if (previous === undefined) waiting.push(block);
           else anchors.push(boundary(block, previous.blockId, previous.end));
           break;
-        default:
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           break;
+        default: {
+          const unhandled: never = block;
+          return unhandled;
+        }
       }
     }
   };
@@ -254,8 +264,18 @@ const storyCoverageNodes = (
         case "commentRangeEnd":
           out.push({ node: block });
           break;
-        default:
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
           break;
+        default: {
+          const unhandled: never = block;
+          return unhandled;
+        }
       }
     }
   };

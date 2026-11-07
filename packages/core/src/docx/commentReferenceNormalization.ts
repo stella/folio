@@ -83,29 +83,38 @@ export const normalizeCommentReferences = ({
   };
 
   const normalizeBlock = (block: BlockContent): void => {
-    // A range may open or close between blocks; it pairs with the marker
-    // inside a paragraph across the block edge.
-    if (
-      block.type === "commentRangeStart" ||
-      block.type === "commentRangeEnd"
-    ) {
-      if (validCommentIds.has(block.id)) {
-        rangeMarkers.push({ id: block.id, type: block.type });
+    switch (block.type) {
+      // A range may open or close between blocks; it pairs with the marker
+      // inside a paragraph across the block edge.
+      case "commentRangeStart":
+      case "commentRangeEnd":
+        if (validCommentIds.has(block.id)) {
+          rangeMarkers.push({ id: block.id, type: block.type });
+        }
+        return;
+      case "paragraph":
+        normalizeParagraph(block);
+        return;
+      case "table":
+        normalizeTable(block);
+        return;
+      case "blockSdt":
+      case "blockCustomXml":
+        normalizeBlocks(block.content);
+        return;
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        return;
+      default: {
+        const unhandled: never = block;
+        return unhandled;
       }
-      return;
     }
-    if (block.type === "paragraph") {
-      normalizeParagraph(block);
-      return;
-    }
-    if (block.type === "table") {
-      normalizeTable(block);
-      return;
-    }
-    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
-      return;
-    }
-    normalizeBlocks(block.content);
   };
 
   const normalizeBlocks = (blocks: BlockContent[]): void => {

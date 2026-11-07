@@ -69,24 +69,40 @@ export const visitCommentMarkers = (
   };
 
   const visitBlock = (block: BlockContent): void => {
-    if (block.type === "paragraph") {
-      visitParagraph(block);
-      return;
-    }
-    if (block.type === "table") {
-      for (const row of block.rows) {
-        for (const cell of row.cells) {
-          visitBlocks(cell.content);
+    switch (block.type) {
+      case "paragraph":
+        visitParagraph(block);
+        return;
+      case "table":
+        for (const row of block.rows) {
+          for (const cell of row.cells) {
+            visitBlocks(cell.content);
+          }
         }
+        return;
+      case "blockSdt":
+      case "blockCustomXml":
+        visitBlocks(block.content);
+        return;
+      // Reported by `visitBlocks`, which has the array a caller splices.
+      case "commentRangeStart":
+      case "commentRangeEnd":
+        return;
+      // Captured bytes hold no comment boundary folio read, and a bookmark or
+      // move marker anchors none.
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        return;
+      default: {
+        const unhandled: never = block;
+        return unhandled;
       }
-      return;
     }
-    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
-      // Captured bytes hold no comment boundary folio read, and a bookmark
-      // marker anchors none. Only wrappers with parsed children recurse.
-      return;
-    }
-    visitBlocks(block.content);
   };
 
   const visitBlocks = (nested: readonly BlockContent[]): void => {
