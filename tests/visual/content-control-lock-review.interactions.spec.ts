@@ -92,8 +92,8 @@ test("React: the toolbar and context menu refuse a change a lock holds", async (
   await showReviewButtons();
   await expect(accept).toBeDisabled();
   await expect(reject).toBeDisabled();
-  await accept.hover({ force: true });
-  await expect(page.getByText(HELD).first()).toBeVisible();
+  await expect(accept).toHaveAttribute("title", HELD);
+  await expect(reject).toHaveAttribute("title", HELD);
 
   await insertion(page, "heldword").click({ button: "right" });
   const menuAccept = page.getByRole("menuitem", { name: "Accept Change" });
