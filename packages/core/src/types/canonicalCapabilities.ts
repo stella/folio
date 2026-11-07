@@ -35,7 +35,9 @@ export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
  * Rules a document states for itself. A refusal under one is the correct
  * outcome and stays after the cutover; it is never a gap to retire.
  */
-export const CANONICAL_RULE = {
+export const CANONICAL_RULE: {
+  readonly contentControlLock: "contentControlLock";
+} = {
   contentControlLock: "contentControlLock",
 } as const;
 
@@ -43,7 +45,9 @@ export type CanonicalRule =
   (typeof CANONICAL_RULE)[keyof typeof CANONICAL_RULE];
 
 /** The editor message, in the folio catalog, a host shows for a refusal under each rule. */
-export const CANONICAL_RULE_MESSAGE_KEYS = {
+export const CANONICAL_RULE_MESSAGE_KEYS: {
+  readonly contentControlLock: "editor.contentLocked";
+} = {
   contentControlLock: "editor.contentLocked",
 } as const satisfies Record<CanonicalRule, string>;
 
