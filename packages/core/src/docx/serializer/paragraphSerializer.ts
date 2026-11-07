@@ -82,8 +82,8 @@ import {
 } from "../xmlParser";
 import { writeGroupTextBoxesBack } from "./groupTextBoxWriteBack";
 import {
-  markupRangeAttributes,
   serializeBookmarkMarker,
+  serializeCommentRangeMarker,
   serializeMoveRangeMarker,
 } from "./markupRangeAttributes";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
@@ -1381,9 +1381,8 @@ function serializeParagraphContent(
     case "inlineSdt":
       return serializeInlineSdt(content, spelling);
     case "commentRangeStart":
-      return `<w:commentRangeStart ${markupRangeAttributes(content).join(" ")}/>`;
     case "commentRangeEnd":
-      return `<w:commentRangeEnd ${markupRangeAttributes(content).join(" ")}/>`;
+      return serializeCommentRangeMarker(content);
     case "commentReference":
       return serializeCommentReferenceRun(content.id);
     case "insertion":

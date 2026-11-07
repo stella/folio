@@ -166,10 +166,12 @@ function blockHasMeaningfulContent(block: TableCellBlock): boolean {
     return true;
   }
   // A delimiter is not content, but a cell holding one is not empty either:
-  // pruning it would take the bookmark or the move range with it.
+  // pruning it would take the bookmark, comment or move range with it.
   if (
     block.type === "bookmarkStart" ||
     block.type === "bookmarkEnd" ||
+    block.type === "commentRangeStart" ||
+    block.type === "commentRangeEnd" ||
     block.type === "moveFromRangeStart" ||
     block.type === "moveFromRangeEnd" ||
     block.type === "moveToRangeStart" ||

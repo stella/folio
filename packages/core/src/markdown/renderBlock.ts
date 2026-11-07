@@ -88,6 +88,8 @@ export function renderBlocks(
       // A delimiter, with no text to render.
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":

@@ -212,6 +212,8 @@ export const buildPageBreakRunSourceDescendantIndex = (
         // Neither holds a run a page break could be indexed against.
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":

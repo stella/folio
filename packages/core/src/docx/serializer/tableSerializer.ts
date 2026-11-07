@@ -67,6 +67,7 @@ import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBorder } from "./borderSerializer";
 import {
   serializeBookmarkMarker,
+  serializeCommentRangeMarker,
   serializeMoveRangeMarker,
 } from "./markupRangeAttributes";
 import { serializeSdtWrapper } from "./sdtPropertiesSerializer";
@@ -1239,6 +1240,9 @@ export function serializeCellContent(
       case "moveToRangeStart":
       case "moveToRangeEnd":
         return serializeMoveRangeMarker(block);
+      case "commentRangeStart":
+      case "commentRangeEnd":
+        return serializeCommentRangeMarker(block);
       default: {
         const unreachable: never = block;
         return unreachable;

@@ -42,13 +42,15 @@ export const completeCommentReferences = (
   const lastRangeEnds = new Map<number, LastRangeEnd>();
   const referencedIds = new Set<number>();
 
-  visitCommentMarkers(blocks, ({ content, index, item }) => {
+  visitCommentMarkers(blocks, (slot) => {
+    const { item } = slot;
     if (item.type === "commentReference") {
       referencedIds.add(item.id);
       return;
     }
-    if (item.type === "commentRangeEnd") {
-      lastRangeEnds.set(item.id, { content, index });
+    // A reference is a run, so it follows the last end inside a paragraph.
+    if (item.type === "commentRangeEnd" && slot.level === "inline") {
+      lastRangeEnds.set(item.id, { content: slot.content, index: slot.index });
     }
   });
 

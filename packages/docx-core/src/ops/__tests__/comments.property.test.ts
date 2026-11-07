@@ -994,3 +994,52 @@ test("a loaded root comment without source anchors is accepted, preserved and re
   const undone = applyDocumentOps(created.document, created.inverse).unwrap();
   expect(undone.document).toStrictEqual(document);
 });
+
+test("a comment whose range opens between blocks is read, and kept from edits that would reach that block", () => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          paragraph("00000001", "alpha"),
+          { type: "commentRangeStart", id: 300 },
+          {
+            type: "paragraph",
+            paraId: "00000002",
+            content: [
+              { type: "run", content: [{ type: "text", text: "omega" }] },
+              { type: "commentRangeEnd", id: 300 },
+              { type: "commentReference", id: 300 },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  setDocumentBodyComments(document.package.document, [
+    comment(300, "00000030", "between"),
+  ]);
+  // The start between blocks pairs with the end inside the paragraph.
+  expect(commentDocumentIssue(document, "all")).toBeUndefined();
+  for (const op of [
+    { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id: 300, scope: "thread" },
+    {
+      type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      comment: comment(301, "00000031", "reply"),
+      anchor: { kind: "reply", parentId: 300 },
+    },
+  ] satisfies CommentOp[]) {
+    const result = applyDocumentOp(document, op);
+    expect(result.isErr()).toBe(true);
+    expect(result.isErr() ? result.error.message : "").toContain(
+      "between blocks",
+    );
+  }
+  // Content and resolution touch no anchor, so they still apply.
+  expect(
+    applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+      id: 300,
+      status: "resolved",
+    }).isOk(),
+  ).toBe(true);
+});

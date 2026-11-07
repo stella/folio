@@ -33,6 +33,7 @@ import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import {
   serializeBookmarkMarker,
+  serializeCommentRangeMarker,
   serializeMoveRangeMarker,
 } from "./markupRangeAttributes";
 import { serializeParagraph } from "./paragraphSerializer";
@@ -109,6 +110,9 @@ function serializeBlock(block: BlockContent): string {
     case "moveToRangeStart":
     case "moveToRangeEnd":
       return serializeMoveRangeMarker(block);
+    case "commentRangeStart":
+    case "commentRangeEnd":
+      return serializeCommentRangeMarker(block);
     default: {
       const unreachable: never = block;
       return unreachable;
