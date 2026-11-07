@@ -3,7 +3,11 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
-import { inlineLeafSpans, paragraphLogicalText } from "@stll/docx-core/ops";
+import {
+  defaultInsertionGap,
+  inlineLeafSpans,
+  paragraphLogicalText,
+} from "@stll/docx-core/ops";
 
 import {
   assertProperty,
@@ -133,13 +137,16 @@ const checkGeometry = (ranges: readonly Interval[], units: readonly Unit[]) => {
         ordinal += 1;
       }
     }
+    // Typed text takes the seam after the ranges that end here and before
+    // those that start here; the seam's editor position stands for that gap.
+    const insertionOrdinal = ordinal;
     for (const [index, range] of ranges.entries()) {
       if (range.from < range.to && range.from === offset) {
         content.push({ type: "commentRangeStart", id: index + 1 });
         ordinal += 1;
       }
     }
-    const gaps = [{ position, zeroWidthBefore: ordinal }];
+    const gaps = [{ position, zeroWidthBefore: insertionOrdinal }];
     for (const [index, range] of ranges.entries()) {
       if (range.from === offset && range.to === offset) {
         content.push(
@@ -201,7 +208,11 @@ const checkGeometry = (ranges: readonly Interval[], units: readonly Unit[]) => {
         .filter(({ after }) => after.offset === offset)
         .map(({ after }) => after.zeroWidthBefore),
     );
-    expect(gaps.at(-1)?.zeroWidthBefore).toBe(sourceOrdinal);
+    expect(gaps[0]?.zeroWidthBefore).toBe(
+      defaultInsertionGap(content, offset).zeroWidthBefore,
+    );
+    if (gaps.length > 1)
+      expect(gaps.at(-1)?.zeroWidthBefore).toBe(sourceOrdinal);
   }
   expect(createCanonicalSession(document).isOk()).toBe(true);
   expect(document).toEqual(unchanged);
