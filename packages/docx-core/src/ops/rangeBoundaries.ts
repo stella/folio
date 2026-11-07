@@ -370,6 +370,9 @@ export const insertsInvertedRange = ({
         case "blockCustomXml":
           visitBlocks(block.content);
           break;
+        // A comment's range orders nothing here, between blocks or inside one.
+        case "commentRangeStart":
+        case "commentRangeEnd":
         case "preservedBlock":
           break;
         default: {

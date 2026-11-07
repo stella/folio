@@ -72,6 +72,8 @@ import type {
   BlockSdt,
   BookmarkEnd,
   BookmarkStart,
+  CommentRangeEnd,
+  CommentRangeStart,
   ComplexField,
   Deletion,
   Document,
@@ -141,6 +143,7 @@ import {
   type MarkFactory,
   textFormattingToMarks,
 } from "../extensions/marks/markUtils";
+import { BLOCK_COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/BlockCommentRangeBoundaryExtension";
 import { BLOCK_MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/BlockMoveRangeBoundaryExtension";
 import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/CommentRangeBoundaryExtension";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
@@ -562,7 +565,9 @@ export const collectPairedBookmarkIds = (
         case "bookmarkEnd":
           countBoundary(block.id, "end");
           break;
-        // A move's range is no bookmark: nothing here pairs it.
+        // A move's or a comment's range is no bookmark: nothing here pairs it.
+        case "commentRangeStart":
+        case "commentRangeEnd":
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":
@@ -664,6 +669,15 @@ export function toProseDoc(
         case "bookmarkEnd":
           out.push(convertBlockBookmarkBoundary(block));
           break;
+        case "commentRangeStart":
+        case "commentRangeEnd":
+          out.push(
+            convertBlockCommentRangeBoundary(
+              block,
+              conversionContext.openCommentIds,
+            ),
+          );
+          break;
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":
@@ -748,6 +762,20 @@ function convertBlockBookmarkBoundary(
     "blockBookmarkBoundary",
     bookmarkBoundaryAttrsFromMarker(block),
   );
+}
+
+/**
+ * A comment range marker standing between blocks, kept between the same two.
+ * It opens or closes the comment for the text that follows, as the same
+ * marker inside a paragraph does, so the comment's mark covers that text.
+ */
+function convertBlockCommentRangeBoundary(
+  block: CommentRangeStart | CommentRangeEnd,
+  openCommentIds: Set<number>,
+): PMNode {
+  if (block.type === "commentRangeStart") openCommentIds.add(block.id);
+  else openCommentIds.delete(block.id);
+  return schema.node(BLOCK_COMMENT_RANGE_BOUNDARY_NODE_NAME, { marker: block });
 }
 
 /** A move range marker standing between blocks, kept between the same two. */
@@ -2903,6 +2931,12 @@ function convertTableCell({
         case "bookmarkStart":
         case "bookmarkEnd":
           nodes.push(convertBlockBookmarkBoundary(block));
+          break;
+        case "commentRangeStart":
+        case "commentRangeEnd":
+          nodes.push(
+            convertBlockCommentRangeBoundary(block, context.openCommentIds),
+          );
           break;
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
@@ -5889,6 +5923,15 @@ function convertTextBox(
         case "bookmarkEnd":
           nodes.push(convertBlockBookmarkBoundary(block));
           break;
+        case "commentRangeStart":
+        case "commentRangeEnd":
+          nodes.push(
+            convertBlockCommentRangeBoundary(
+              block,
+              textBoxContext.openCommentIds,
+            ),
+          );
+          break;
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":
@@ -6154,6 +6197,15 @@ export function headerFooterToProseDoc(
         case "bookmarkStart":
         case "bookmarkEnd":
           out.push(convertBlockBookmarkBoundary(block));
+          break;
+        case "commentRangeStart":
+        case "commentRangeEnd":
+          out.push(
+            convertBlockCommentRangeBoundary(
+              block,
+              conversionContext.openCommentIds,
+            ),
+          );
           break;
         case "moveFromRangeStart":
         case "moveFromRangeEnd":

@@ -270,33 +270,47 @@ const withoutOrphanBlockMarkers = (
     if (nextBlock !== block) {
       changed = true;
     }
-    next.push(nextBlock);
+    if (nextBlock !== null) next.push(nextBlock);
   }
 
   return changed ? next : null;
 };
 
+/**
+ * A block with its orphaned comment markers gone, or `null` when the block is
+ * itself one: a comment range marker between blocks for a comment the save no
+ * longer holds.
+ */
 const withoutOrphanBlockMarker = (
   block: BlockContent,
   validCommentIds: ReadonlySet<number>,
-): BlockContent => {
-  if (block.type === "paragraph") {
-    return withoutOrphanParagraphMarkers(block, validCommentIds);
+): BlockContent | null => {
+  switch (block.type) {
+    case "paragraph":
+      return withoutOrphanParagraphMarkers(block, validCommentIds);
+    case "table":
+      return withoutOrphanTableMarkers(block, validCommentIds);
+    case "blockSdt":
+    case "blockCustomXml": {
+      const content = withoutOrphanBlockMarkers(block.content, validCommentIds);
+      return content ? { ...block, content } : block;
+    }
+    case "commentRangeStart":
+    case "commentRangeEnd":
+      return validCommentIds.has(block.id) ? block : null;
+    case "preservedBlock":
+    case "bookmarkStart":
+    case "bookmarkEnd":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
+      return block;
+    default: {
+      const unhandled: never = block;
+      return unhandled;
+    }
   }
-
-  if (block.type === "table") {
-    return withoutOrphanTableMarkers(block, validCommentIds);
-  }
-
-  if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
-    return block;
-  }
-
-  const content = withoutOrphanBlockMarkers(block.content, validCommentIds);
-  if (!content) {
-    return block;
-  }
-  return { ...block, content };
 };
 
 const withoutOrphanTableMarkers = (
@@ -360,37 +374,14 @@ const withoutOrphanTableCellBlockMarkers = (
   let changed = false;
   const next: TableCellBlock[] = [];
   for (const block of blocks) {
-    const nextBlock = withoutOrphanTableCellBlockMarker(block, validCommentIds);
+    const nextBlock = withoutOrphanBlockMarker(block, validCommentIds);
     if (nextBlock !== block) {
       changed = true;
     }
-    next.push(nextBlock);
+    if (nextBlock !== null) next.push(nextBlock);
   }
 
   return changed ? next : null;
-};
-
-const withoutOrphanTableCellBlockMarker = (
-  block: TableCellBlock,
-  validCommentIds: ReadonlySet<number>,
-): TableCellBlock => {
-  if (block.type === "paragraph") {
-    return withoutOrphanParagraphMarkers(block, validCommentIds);
-  }
-
-  if (block.type === "table") {
-    return withoutOrphanTableMarkers(block, validCommentIds);
-  }
-
-  if (block.type === "blockSdt" || block.type === "blockCustomXml") {
-    const content = withoutOrphanTableCellBlockMarkers(
-      block.content,
-      validCommentIds,
-    );
-    return content ? { ...block, content } : block;
-  }
-
-  return block;
 };
 
 const withoutOrphanParagraphMarkers = (

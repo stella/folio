@@ -14,6 +14,8 @@ import type {
   BookmarkEnd,
   BookmarkRangeMarker,
   BookmarkStart,
+  CommentRangeEnd,
+  CommentRangeStart,
   MarkupRangeMarker,
   MoveFromRangeEnd,
   MoveFromRangeStart,
@@ -113,3 +115,11 @@ export const serializeMoveRangeMarker = (
     }
   }
 };
+
+/**
+ * One comment range marker, wherever it stands: a paragraph child or a block,
+ * so the serializers share one writer as they do for bookmarks and moves.
+ */
+export const serializeCommentRangeMarker = (
+  marker: CommentRangeStart | CommentRangeEnd,
+): string => `<w:${marker.type} ${markupRangeAttributes(marker).join(" ")}/>`;

@@ -70,6 +70,11 @@ export const MARKDOWN_BLOCK_BOUNDARY_FIXTURES = {
     marker: null,
   },
   moveToRangeEnd: { block: { type: "moveToRangeEnd", id: 3 }, marker: null },
+  commentRangeStart: {
+    block: { type: "commentRangeStart", id: 4 },
+    marker: null,
+  },
+  commentRangeEnd: { block: { type: "commentRangeEnd", id: 4 }, marker: null },
 } as const satisfies BoundaryFixtures;
 
 // @ts-expect-error a boundary census missing any block kind must fail

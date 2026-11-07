@@ -70,6 +70,8 @@ const collectResolvedBlockTexts = (
       // A delimiter, not content: it puts no text on the page.
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
