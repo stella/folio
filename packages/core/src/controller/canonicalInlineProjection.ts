@@ -22,6 +22,7 @@ import {
 import { readCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
 import { HYPHEN_TEXT_CARRIERS } from "../prosemirror/conversion/hyphenTextCarriers";
 import { COMMENT_RANGE_BOUNDARY_NODE_NAME } from "../prosemirror/extensions/nodes/CommentRangeBoundaryExtension";
+import { RENDERED_PAGE_BREAK_NODE_NAME } from "../prosemirror/extensions/nodes/RenderedPageBreakExtension";
 import { readMoveRangeBoundaryAttrs } from "../prosemirror/moveRangeBoundaryAttrs";
 import { readRangeAnchorAttrs } from "../prosemirror/rangeAnchorAttrs";
 import { PRESERVED_XML_LEVELS } from "../prosemirror/schema/nodes";
@@ -34,8 +35,7 @@ import type {
 } from "../types/document";
 
 type SourceKind = ParagraphContent["type"] | RunContent["type"];
-type SourcePolicy =
-  "container" | "leaf" | "text" | "rawField" | "control" | "layout";
+type SourcePolicy = "container" | "leaf" | "text" | "rawField" | "control";
 export const CANONICAL_SOURCE_INLINE_POLICIES: {
   readonly run: "container";
   readonly hyperlink: "container";
@@ -69,7 +69,7 @@ export const CANONICAL_SOURCE_INLINE_POLICIES: {
   readonly instrText: "rawField";
   readonly softHyphen: "leaf";
   readonly noBreakHyphen: "leaf";
-  readonly renderedPageBreak: "layout";
+  readonly renderedPageBreak: "leaf";
   readonly preservedXml: "leaf";
   readonly drawing: "leaf";
   readonly shape: "leaf";
@@ -106,7 +106,7 @@ export const CANONICAL_SOURCE_INLINE_POLICIES: {
   instrText: "rawField",
   softHyphen: "leaf",
   noBreakHyphen: "leaf",
-  renderedPageBreak: "layout",
+  renderedPageBreak: "leaf",
   preservedXml: "leaf",
   drawing: "leaf",
   shape: "leaf",
@@ -133,7 +133,7 @@ export const CANONICAL_NATIVE_INLINE_POLICIES: {
   readonly tab: "unit";
   readonly textBoxAnchor: "unit";
   readonly commentReference: "unit";
-  readonly renderedPageBreak: "refused";
+  readonly renderedPageBreak: "markers";
   readonly sdt: "refused";
 } = {
   text: "text",
@@ -154,7 +154,7 @@ export const CANONICAL_NATIVE_INLINE_POLICIES: {
   tab: "unit",
   textBoxAnchor: "unit",
   commentReference: "unit",
-  renderedPageBreak: "refused",
+  renderedPageBreak: "markers",
   sdt: "refused",
 } as const satisfies Record<
   keyof typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS | "sdt",
@@ -191,8 +191,6 @@ export const canonicalInlineSourceIssue = (
       case "rawField":
         if (context === "fieldPayload") break;
         return "Canonical editing cannot preserve unstructured field instructions; a structured field is required.";
-      case "layout":
-        return "Canonical editing cannot preserve cached rendered page-break positions.";
       case "text":
         if (
           item.type === "text" &&
@@ -334,6 +332,15 @@ export const canonicalNativeCells = (
             to,
             node,
           });
+        } else if (node.type.name === RENDERED_PAGE_BREAK_NODE_NAME) {
+          // A cached pagination boundary: a zero-width leaf in its run.
+          cells.push({
+            type: "zeroWidth",
+            sources: [{ type: "renderedPageBreak" }],
+            from,
+            to,
+            node,
+          });
         } else if (node.type.name === "moveRangeBoundary") {
           const attrs = readMoveRangeBoundaryAttrs(node);
           if (!attrs.ok) {
@@ -447,6 +454,8 @@ const sameSourceMarker = (
       return right.type === left.type && left.id === right.id;
     case "noteMarker":
       return right.type === "noteMarker" && left.kind === right.kind;
+    case "renderedPageBreak":
+      return right.type === "renderedPageBreak";
     case "preservedInline":
       return (
         right.type === "preservedInline" &&
