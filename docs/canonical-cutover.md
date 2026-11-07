@@ -39,7 +39,7 @@ Session branch counts are held per file in `scripts/canonical-cutover-baseline.j
 
 Derived from the extension command registry. Entries lack a structural proof that every factory return path attaches a canonical descriptor; this conservative census is not a runtime support policy. CI requires the committed list to match the census and rejects new entries against the PR-base source census.
 
-### command-descriptors (35)
+### command-descriptors (17)
 
 - `packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#redo`
 - `packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#undo`
@@ -47,7 +47,6 @@ Derived from the extension command registry. Entries lack a structural proof tha
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addColumnRight`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addRowAbove`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addRowBelow`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#applyTableStyle`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#autoFitContents`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#deleteColumn`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#deleteRow`
@@ -55,24 +54,7 @@ Derived from the extension command registry. Entries lack a structural proof tha
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#distributeColumns`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#insertTable`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#mergeCells`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#removeTableBorders`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectColumn`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectRow`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectTable`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setAllTableBorders`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellBorder`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellFillColor`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellMargins`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellTextDirection`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setCellVerticalAlign`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setInsideTableBorders`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setOutsideTableBorders`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setRowHeight`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableBorderColor`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableBorderPreset`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableBorderWidth`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableBorders`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#setTableProperties`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#splitCell`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#toggleHeaderRow`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#toggleNoWrap`
