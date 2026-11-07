@@ -43,6 +43,7 @@ export { marksToTextFormatting } from "../runFormattingFromMarks";
 
 import type { PresetLineDashVal } from "@stll/docx-core/model";
 
+import { joinBookmarkRangesAcrossParagraphs } from "../../docx/bookmarkRangeJoin";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
 import { buildSections } from "../../docx/documentParser";
@@ -1048,6 +1049,7 @@ export function fromProseDoc(
   // Match the reader's empty-styles resolver when the source has no styles part.
   const blocks = extractBlocks(pmDoc, "resolve", createStyleEngine(styles));
   joinCommentRangesAcrossParagraphs(blocks);
+  joinBookmarkRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (tokenSources) {
@@ -7410,6 +7412,7 @@ export function proseDocToBlocks(
     styles ? createStyleEngine(styles) : null,
   );
   joinCommentRangesAcrossParagraphs(blocks);
+  joinBookmarkRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (baseContent) {
