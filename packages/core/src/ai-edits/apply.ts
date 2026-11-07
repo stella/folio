@@ -5329,9 +5329,8 @@ const applyFolioAIEditOperationsInternal = ({
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
   const batchClaims = new BatchClaims();
-  let lockedControlsRead: LockedControlSpan[] | undefined;
-  const lockedControls = (): LockedControlSpan[] =>
-    (lockedControlsRead ??= lockedControlSpans(view.state.doc));
+  const lockedControls = (): readonly LockedControlSpan[] =>
+    lockedControlSpans(view.state.doc);
   const removedBlocksBy = new Map<
     string,
     { id: string; type: FolioAIEditOperation["type"] }

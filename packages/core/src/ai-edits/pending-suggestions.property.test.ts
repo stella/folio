@@ -98,7 +98,7 @@ describe("host-persisted pending suggestions", () => {
               { status: "restaged", suggestionId: "proposal-1" },
             ]);
             expect(projection(reopened)).toEqual(before);
-            expect(reopened.acceptAll()).toBe(0);
+            expect(reopened.acceptAll().resolved).toBe(0);
             expect(reopened.exportPendingSuggestions()).toEqual(records);
           },
         ),

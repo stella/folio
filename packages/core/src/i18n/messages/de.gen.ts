@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "Wasserzeichen"
     },
     "trackedChanges": {
+      "heldByLock": "Ein gesperrtes Inhaltssteuerelement verhindert, dass diese Änderung angenommen oder abgelehnt wird.",
       "replaced": "Ersetzt",
       "unknown": "Unbekannt",
       "with": "durch"

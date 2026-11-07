@@ -208,7 +208,7 @@ test("undefined inserted references stay dangling or are cleared before binding 
             expect(new Uint8Array(base)).toEqual(baseBytes);
             expect(new Uint8Array(revised)).toEqual(revisedBytes);
             const accepting = await FolioDocxReviewer.fromBuffer(result.buffer);
-            expect(accepting.acceptAll()).toBeGreaterThan(0);
+            expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
             const acceptedBuffer = await accepting.toBuffer();
             const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
             expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual(
@@ -245,7 +245,7 @@ test("undefined inserted references stay dangling or are cleared before binding 
               }
             }
             const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
-            expect(rejecting.rejectAll()).toBeGreaterThan(0);
+            expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
             const rejected = await FolioDocxReviewer.fromBuffer(
               await rejecting.toBuffer(),
             );

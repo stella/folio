@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "Vodoznak"
     },
     "trackedChanges": {
+      "heldByLock": "Uzamčený ovládací prvek obsahu brání přijetí nebo odmítnutí této změny.",
       "replaced": "Nahrazeno",
       "unknown": "Neznámý",
       "with": "za"

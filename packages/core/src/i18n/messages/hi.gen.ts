@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "वॉटरमार्क"
     },
     "trackedChanges": {
+      "heldByLock": "एक लॉक किया गया सामग्री नियंत्रण इस परिवर्तन को स्वीकार या अस्वीकार करने से रोकता है।",
       "replaced": "बदला गया",
       "unknown": "अज्ञात",
       "with": "से"

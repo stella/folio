@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "Ūdenszīme"
     },
     "trackedChanges": {
+      "heldByLock": "Bloķēta satura vadīkla neļauj pieņemt vai noraidīt šīs izmaiņas.",
       "replaced": "Aizstāts",
       "unknown": "Nezināms",
       "with": "ar"

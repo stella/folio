@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "Filigran"
     },
     "trackedChanges": {
+      "heldByLock": "Kilitli bir içerik denetimi bu değişikliğin kabul edilmesini veya reddedilmesini engelliyor.",
       "replaced": "Değiştirildi",
       "unknown": "Bilinmiyor",
       "with": "yerine"

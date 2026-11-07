@@ -80,7 +80,7 @@ test("retiring a replaced comment anchor also retires its newly created reply", 
       .at(0)
       ?.replies.map(({ text }) => text),
   ).toEqual(["Session reply."]);
-  expect(reviewer.rejectAll()).toBeGreaterThan(0);
+  expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
   await expectSavedThreads(reviewer);
   const reopened = await openReviewer(await reviewer.toBuffer());
   expect(reviewer.getComments()).toEqual([]);
@@ -150,7 +150,7 @@ test("retiring a body thread preserves unrelated body, note and source-unanchore
   await expectSavedThreads(reviewer);
   expect(reviewer.replyTo(0, { text: "Session reply." })).not.toBeNull();
   await expectSavedThreads(reviewer);
-  expect(reviewer.rejectAll()).toBeGreaterThan(0);
+  expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
   const comments = await expectSavedThreads(reviewer);
   expect(
     comments.map(({ id }) => id).sort((left, right) => left - right),

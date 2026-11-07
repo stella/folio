@@ -26,14 +26,36 @@
       <div v-if="expanded" class="tc-card__actions">
         <button
           class="tc-card__icon-btn"
-          :title="t('acceptChange')"
+          :title="
+            change.heldByLock?.accept
+              ? t('trackedChanges.heldByLock')
+              : t('acceptChange')
+          "
+          :aria-label="t('acceptChange')"
+          :aria-description="
+            change.heldByLock?.accept
+              ? t('trackedChanges.heldByLock')
+              : undefined
+          "
+          :disabled="change.heldByLock?.accept === true"
           @click.stop="onAccept"
         >
           <MaterialSymbol name="check" :size="20" />
         </button>
         <button
           class="tc-card__icon-btn"
-          :title="t('rejectChange')"
+          :title="
+            change.heldByLock?.reject
+              ? t('trackedChanges.heldByLock')
+              : t('rejectChange')
+          "
+          :aria-label="t('rejectChange')"
+          :aria-description="
+            change.heldByLock?.reject
+              ? t('trackedChanges.heldByLock')
+              : undefined
+          "
+          :disabled="change.heldByLock?.reject === true"
           @click.stop="onReject"
         >
           <MaterialSymbol name="close" :size="20" />
@@ -241,10 +263,12 @@ function allRevisionIds(): number[] {
 }
 
 function onAccept() {
+  if (props.change.heldByLock?.accept) return;
   for (const id of allRevisionIds()) emit("accept-by-id", id);
 }
 
 function onReject() {
+  if (props.change.heldByLock?.reject) return;
   for (const id of allRevisionIds()) emit("reject-by-id", id);
 }
 </script>
@@ -299,8 +323,12 @@ function onReject() {
   display: flex;
   border-radius: 50%;
 }
-.tc-card__icon-btn:hover {
+.tc-card__icon-btn:hover:not(:disabled) {
   background: var(--doc-shadow-subtle);
+}
+.tc-card__icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 .tc-card__body {
   font-size: 13px;

@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "علامة مائية"
     },
     "trackedChanges": {
+      "heldByLock": "يمنع عنصر تحكم محتوى مقفل قبول هذا التغيير أو رفضه.",
       "replaced": "تم الاستبدال",
       "unknown": "غير معروف",
       "with": "بـ"

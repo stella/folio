@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "水印"
     },
     "trackedChanges": {
+      "heldByLock": "已锁定的内容控件阻止接受或拒绝此修订。",
       "replaced": "已替换",
       "unknown": "未知",
       "with": "替换为"

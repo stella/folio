@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "Vízjel"
     },
     "trackedChanges": {
+      "heldByLock": "Egy zárolt tartalomvezérlő megakadályozza a módosítás elfogadását vagy elutasítását.",
       "replaced": "Lecserélve",
       "unknown": "Ismeretlen",
       "with": "erre:"

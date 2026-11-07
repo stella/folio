@@ -602,7 +602,7 @@ describe("resolving random tracked work", () => {
         }
 
         if (mode === "suggested") {
-          expect(reviewer.acceptAll()).toBe(0);
+          expect(reviewer.acceptAll().resolved).toBe(0);
           expect(read(reviewer)).toEqual(pending);
           expect(read(await reopen(reviewer))).toEqual(original);
           return;

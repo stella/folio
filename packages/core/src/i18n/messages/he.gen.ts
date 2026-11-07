@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "סימן מים"
     },
     "trackedChanges": {
+      "heldByLock": "פקד תוכן נעול מונע קבלה או דחייה של שינוי זה.",
       "replaced": "הוחלף",
       "unknown": "לא ידוע",
       "with": "ב-"

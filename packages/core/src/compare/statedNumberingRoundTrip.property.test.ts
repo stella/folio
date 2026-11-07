@@ -299,7 +299,7 @@ test("accept and reject preserve authored numbering independently from rendered 
         const accepting = await FolioDocxReviewer.fromBuffer(
           compared.value.buffer,
         );
-        expect(accepting.acceptAll()).toBeGreaterThan(0);
+        expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
         const acceptedProjection = await paragraphProjection(
           await accepting.toBuffer(),
         );
@@ -308,7 +308,7 @@ test("accept and reject preserve authored numbering independently from rendered 
         const rejecting = await FolioDocxReviewer.fromBuffer(
           compared.value.buffer,
         );
-        expect(rejecting.rejectAll()).toBeGreaterThan(0);
+        expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
         const rejectedProjection = await paragraphProjection(
           await rejecting.toBuffer(),
         );
@@ -402,7 +402,7 @@ test("accept and reject preserve style-only numbering across colliding definitio
         const accepting = await FolioDocxReviewer.fromBuffer(
           compared.value.buffer,
         );
-        expect(accepting.acceptAll()).toBeGreaterThan(0);
+        expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
         const acceptedBuffer = await accepting.toBuffer();
         const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
         const acceptedProjection = await paragraphProjection(acceptedBuffer);
@@ -420,7 +420,7 @@ test("accept and reject preserve style-only numbering across colliding definitio
         const rejecting = await FolioDocxReviewer.fromBuffer(
           compared.value.buffer,
         );
-        expect(rejecting.rejectAll()).toBeGreaterThan(0);
+        expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
         const rejectedBuffer = await rejecting.toBuffer();
         const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
         const rejectedProjection = await paragraphProjection(rejectedBuffer);
@@ -504,7 +504,7 @@ test("compare and redline preserve inserted style-only numbering across collisio
 
         for (const buffer of [compared.value.buffer, redline.buffer]) {
           const accepting = await FolioDocxReviewer.fromBuffer(buffer);
-          expect(accepting.acceptAll()).toBeGreaterThan(0);
+          expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
           const acceptedBuffer = await accepting.toBuffer();
           const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
           expect(accepted.snapshot().blocks.map((block) => block.text)).toEqual(
@@ -522,7 +522,7 @@ test("compare and redline preserve inserted style-only numbering across collisio
           );
 
           const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
-          expect(rejecting.rejectAll()).toBeGreaterThan(0);
+          expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
           const rejectedBuffer = await rejecting.toBuffer();
           const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
           expect(rejected.snapshot().blocks.map((block) => block.text)).toEqual(
@@ -596,7 +596,7 @@ test("redline preserves insertion resources between unchanged anchors with dupli
       const redline = await generateRedlineDocx(baseBuffer, targetBuffer);
       expect(redline.skipped).toEqual([]);
       const accepting = await FolioDocxReviewer.fromBuffer(redline.buffer);
-      expect(accepting.acceptAll()).toBeGreaterThan(0);
+      expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
       const acceptedBuffer = await accepting.toBuffer();
       const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
       expect(accepted.snapshot().blocks.map((block) => block.text)).toEqual([
@@ -625,7 +625,7 @@ test("redline preserves insertion resources between unchanged anchors with dupli
         ),
       ).toEqual(anchorProjections);
       const rejecting = await FolioDocxReviewer.fromBuffer(redline.buffer);
-      expect(rejecting.rejectAll()).toBeGreaterThan(0);
+      expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
       const rejectedBuffer = await rejecting.toBuffer();
       const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
       expect(rejected.snapshot().blocks.map((block) => block.text)).toEqual([

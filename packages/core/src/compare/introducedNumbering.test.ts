@@ -274,14 +274,14 @@ test("imports target-only numbering for an introduced list and preserves rejecti
   expect(result.value.verification).toEqual({ status: "verified" });
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(accepting).at(1)?.listReference).toEqual({
     numId: 5,
     level: 0,
   });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(rejecting).map(({ text }) => text)).toEqual([
     "Anchor paragraph.",
   ]);
@@ -300,7 +300,7 @@ test("preserves an absent authored list level on a retained paragraph", async ()
   expect(result.value.verification).toEqual({ status: "verified" });
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
   );
@@ -324,7 +324,7 @@ test("preserves an absent authored list level on a retained paragraph", async ()
   });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
   );
@@ -360,7 +360,7 @@ test("preserves an absent list level when restyling a retained paragraph into a 
   expect(result.value.verification).toEqual({ status: "verified" });
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
   );
@@ -385,7 +385,7 @@ test("preserves an absent list level when restyling a retained paragraph into a 
   });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
   );
@@ -414,7 +414,7 @@ test("preserves a style-sourced introduced list instance without materializing l
   expect(result.value.verification).toEqual({ status: "verified" });
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
   );
@@ -451,7 +451,7 @@ test("preserves a style-sourced introduced list instance without materializing l
   });
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(rejecting).map(({ text }) => text)).toEqual([
     "Independently numbered anchor.",
   ]);
@@ -470,7 +470,7 @@ test("rebinds a colliding target numbering definition through a tracked paragrap
   expect(result.value.verification).toEqual({ status: "verified" });
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(accepting).at(0)?.listReference).toEqual({
     numId: 6,
     level: 0,
@@ -482,7 +482,7 @@ test("rebinds a colliding target numbering definition through a tracked paragrap
   ).toBe("lowerRoman");
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   expect(paragraphBlocksOf(rejecting).at(0)?.listReference).toEqual({
     numId: 5,
     level: 0,
@@ -507,7 +507,7 @@ test("rebinds a colliding marker-typography change even when its label is unchan
   expect(result.value.verification).toEqual({ status: "verified" });
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const acceptedNumbering = accepting.toDocument().package.numbering;
   const acceptedNum = acceptedNumbering?.nums.find(({ numId }) => numId === 6);
   expect(
@@ -517,7 +517,7 @@ test("rebinds a colliding marker-typography change even when its label is unchan
   ).toBe(true);
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejectedNumbering = rejecting.toDocument().package.numbering;
   const rejectedNum = rejectedNumbering?.nums.find(({ numId }) => numId === 5);
   expect(
@@ -540,7 +540,7 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
   expect(result.value.verification).toEqual({ status: "verified" });
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
   );
@@ -563,7 +563,7 @@ test("rebinds a colliding numbering definition in an inserted table row", async 
   ).toBe("lowerRoman");
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
   );

@@ -635,6 +635,7 @@ type Messages = {
       "watermark": "Watermark";
     };
     "trackedChanges": {
+      "heldByLock": "A locked content control prevents accepting or rejecting this change.";
       "replaced": "Replaced";
       "unknown": "Unknown";
       "with": "with";

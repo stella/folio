@@ -168,7 +168,7 @@ test.each(CASES)(
       review,
     );
     if (mode === "tracked-changes") {
-      expect(reviewer.acceptAll()).toBeGreaterThan(0);
+      expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
       assertContent(reviewer, "settled");
       assertContent(
         await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()),

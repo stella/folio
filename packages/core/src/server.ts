@@ -132,6 +132,8 @@ export {
   type FolioReviewChange,
   type FolioReviewChangeFilter,
   type FolioReviewChangeKind,
+  type FolioReviewResolution,
+  type FolioReviewResolutionSkip,
   type FolioReviewComment,
   type FolioReviewCommentFilter,
   type FolioReviewCommentReply,

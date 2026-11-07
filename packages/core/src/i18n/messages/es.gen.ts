@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "Marca de agua"
     },
     "trackedChanges": {
+      "heldByLock": "Un control de contenido bloqueado impide aceptar o rechazar este cambio.",
       "replaced": "Reemplazado",
       "unknown": "Desconocido",
       "with": "por"

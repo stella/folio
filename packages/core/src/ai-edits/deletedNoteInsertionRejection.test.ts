@@ -131,7 +131,7 @@ for (const noteType of ["footnote", "endnote"] as const) {
               text,
             })),
           ).toEqual(before.map(({ kind, text }) => ({ kind, text })));
-          expect(reviewer.rejectAll()).toBeGreaterThan(0);
+          expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
           expect(shape(reviewer, story)).toEqual(before);
           const reopened = await FolioDocxReviewer.fromBuffer(
             await reviewer.toBuffer(),

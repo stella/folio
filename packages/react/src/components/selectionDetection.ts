@@ -2,6 +2,7 @@ import { NodeSelection } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 
 import {
+  changeResolutionLockViolation,
   findChangeAtPosition,
   findParagraphBoundaryChangeAtPosition,
 } from "@stll/folio-core/prosemirror/commands/comments";
@@ -91,6 +92,7 @@ export function detectActiveTrackedChange(
         date: (mark.attrs["date"] as string) || null,
         from: range.from,
         to: range.to,
+        heldByLock: heldByLock(state, range),
       };
     }
     childOffset += child.nodeSize;
@@ -106,5 +108,17 @@ export function detectActiveTrackedChange(
     date: paragraphChange.date || null,
     from: paragraphChange.from,
     to: paragraphChange.to,
+    heldByLock: heldByLock(state, paragraphChange),
   };
 }
+
+/** What the content-control locks say about resolving the changes in `range`. */
+export const heldByLock = (
+  state: EditorState,
+  range: { from: number; to: number },
+): ActiveTrackedChangeInfo["heldByLock"] => ({
+  accept:
+    changeResolutionLockViolation(state, { ...range, mode: "accept" }) !== null,
+  reject:
+    changeResolutionLockViolation(state, { ...range, mode: "reject" }) !== null,
+});

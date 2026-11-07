@@ -636,6 +636,7 @@ export const messages: FolioMessages = {
       "watermark": "Znak wodny"
     },
     "trackedChanges": {
+      "heldByLock": "Zablokowana kontrolka zawartości uniemożliwia zaakceptowanie lub odrzucenie tej zmiany.",
       "replaced": "Zamieniono",
       "unknown": "Nieznane",
       "with": "na"
