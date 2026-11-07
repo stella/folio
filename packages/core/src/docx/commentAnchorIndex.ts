@@ -361,7 +361,11 @@ export const removeCommentMarkers = (
   const rebuildBlocks = (content: BlockContent[]): BlockContent[] =>
     rebuildArray(content, rebuildBlock);
 
-  return rebuildBlocks(blocks.slice());
+  // The walk keyed markers between blocks by this very array, so it is
+  // rebuilt itself rather than a copy of it.
+  // SAFETY: rebuildArray never writes through the array it reads.
+  const rebuilt = rebuildBlocks(blocks as BlockContent[]);
+  return rebuilt === blocks ? blocks.slice() : rebuilt;
 };
 
 /**

@@ -18,6 +18,7 @@ import {
   saveCanonicalHarnessDocument,
 } from "../../../../test/canonicalEditorHarness";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { removeCommentMarkers } from "./commentAnchorIndex";
 import { parseDocx } from "./parser";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -191,6 +192,29 @@ describe("a comment range that opens between blocks", () => {
       expect(xml).toContain("Closing words!");
     } finally {
       driver.dispose();
+    }
+  });
+
+  test("a retired comment takes its markers between blocks with it", async () => {
+    for (const commented of [BESIDE_A_CONTROL, BETWEEN_PARAGRAPHS]) {
+      const parsed = await parseDocx(await commentedPackage(commented), {
+        preloadFonts: false,
+      });
+      const kept = removeCommentMarkers(
+        parsed.package.document.content,
+        new Set([1]),
+      );
+      const kinds: string[] = [];
+      const walk = (blocks: readonly (typeof kept)[number][]) => {
+        for (const block of blocks) {
+          kinds.push(block.type);
+          if (block.type === "paragraph")
+            kinds.push(...block.content.map(({ type }) => type));
+          if (block.type === "blockSdt") walk(block.content);
+        }
+      };
+      walk(kept);
+      expect(kinds.filter((kind) => kind.startsWith("comment"))).toEqual([]);
     }
   });
 });
