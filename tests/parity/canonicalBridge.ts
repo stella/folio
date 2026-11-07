@@ -241,10 +241,11 @@ export const buildCanonicalBridge = (
   executeNamedCommand: (name: string, args: readonly unknown[]) => {
     const editor = getRef()?.getEditor();
     if (!editor) return false;
+    const execute = editor.executeCommand.bind(editor);
     const create = singletonManager.requireCommand(name as never) as (
       ...commandArgs: readonly unknown[]
-    ) => Parameters<typeof editor.executeCommand>[0];
-    return editor.executeCommand(create(...args));
+    ) => Parameters<typeof execute>[0];
+    return execute(create(...args));
   },
   executeHyperlink: (action: CanonicalHyperlinkAction) => {
     const editor = getRef()?.getEditor();
