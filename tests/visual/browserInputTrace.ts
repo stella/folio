@@ -174,7 +174,6 @@ export const commonActionArbitraries: readonly fc.Arbitrary<BrowserInputAction>[
         maxLength: 6,
       }),
     }),
-    fc.constant({ kind: "selectAll" } as const),
   ];
 
 /** A shape declares only targets it actually contains; text-only fixtures omit drags. */
@@ -217,7 +216,11 @@ export const browserInputTraceArbitrary = (
   maxActions = 6,
 ): fc.Arbitrary<BrowserInputTrace> =>
   shapeArbitrary.chain((shape) => {
-    const actions = [...commonActionArbitraries];
+    // Added here, not to the common actions, which seed/path history replays sample.
+    const actions = [
+      ...commonActionArbitraries,
+      fc.constant({ kind: "selectAll" } as const),
+    ];
     const target = BROWSER_SHAPE_TARGETS[shape];
     if (target !== null)
       actions.push(fc.constant({ kind: "selectionDrag", target } as const));
