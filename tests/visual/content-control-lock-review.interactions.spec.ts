@@ -119,6 +119,8 @@ test("Vue: a change card's buttons refuse a change a lock holds", async ({
   await openEditor(page, VUE_ADAPTER, FIXTURE);
   await ensureLiveView(page);
 
+  // The sidebar opens by itself only for comment threads.
+  await page.getByTestId("toolbar-comments-toggle").click();
   const cards = page.locator(".tc-card");
   await expect(cards).toHaveCount(2, { timeout: 30_000 });
 
