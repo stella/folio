@@ -577,6 +577,12 @@ const unsupportedSeedReason = (
           continue;
         // Opaque markup the session keeps as it found it and never edits inside.
         if (block.type === "preservedBlock") continue;
+        // A block content control holds its own block list, as a cell does.
+        if (block.type === "blockSdt") {
+          const issue = collect(block.content);
+          if (issue !== null) return issue;
+          continue;
+        }
         if (block.type !== "table")
           return "Canonical sessions currently require paragraphs, tables and supported inline atoms.";
         for (const row of block.rows) {
@@ -666,6 +672,10 @@ const project = ({
         if (insideSkippedContinuation) continuationSources.add(block);
         if (block.paraId !== undefined)
           sources.set(block.paraId, { source: block, container: blocks });
+        continue;
+      }
+      if (block.type === "blockSdt") {
+        collectSources(block.content, insideSkippedContinuation);
         continue;
       }
       if (block.type !== "table") continue;
