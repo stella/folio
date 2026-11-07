@@ -1621,6 +1621,9 @@ function extractBlocks(
     } else if (node.type.name === "blockMoveRangeBoundary") {
       blocks.push({ ...expectMoveRangeBoundaryAttrs(node) });
       previousStandaloneTextBox = null;
+    } else if (node.type.name === "blockCommentRangeBoundary") {
+      blocks.push({ ...expectCommentRangeBoundaryAttrs(node).marker });
+      previousStandaloneTextBox = null;
     }
   });
 
@@ -6925,6 +6928,9 @@ function convertPMTableCell(
     } else if (contentNode.type.name === "blockMoveRangeBoundary") {
       content.push({ ...expectMoveRangeBoundaryAttrs(contentNode) });
       previousStandaloneTextBox = null;
+    } else if (contentNode.type.name === "blockCommentRangeBoundary") {
+      content.push({ ...expectCommentRangeBoundaryAttrs(contentNode).marker });
+      previousStandaloneTextBox = null;
     }
   });
 
@@ -7205,6 +7211,9 @@ function convertPMTextBox(
         break;
       case "blockMoveRangeBoundary":
         childBlocks.push({ ...expectMoveRangeBoundaryAttrs(child) });
+        break;
+      case "blockCommentRangeBoundary":
+        childBlocks.push({ ...expectCommentRangeBoundaryAttrs(child).marker });
         break;
       default:
         break;

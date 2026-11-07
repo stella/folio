@@ -116,7 +116,7 @@ export const TextBoxExtension: (
   nodeSpec: {
     group: "block",
     content:
-      "(paragraph | table | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary | blockMoveRangeBoundary)+",
+      "(paragraph | table | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary | blockMoveRangeBoundary | blockCommentRangeBoundary)+",
     isolating: true,
     draggable: true,
     attrs: {

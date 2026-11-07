@@ -203,6 +203,8 @@ function renderGfmCell(
           break;
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":
@@ -351,6 +353,8 @@ function renderHtmlCell(
           break;
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":

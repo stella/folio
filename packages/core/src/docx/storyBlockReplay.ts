@@ -31,6 +31,8 @@ const BLOCK_ELEMENT_NAMES = {
   preservedBlock: null,
   bookmarkStart: "bookmarkStart",
   bookmarkEnd: "bookmarkEnd",
+  commentRangeStart: "commentRangeStart",
+  commentRangeEnd: "commentRangeEnd",
   moveFromRangeStart: "moveFromRangeStart",
   moveFromRangeEnd: "moveFromRangeEnd",
   moveToRangeStart: "moveToRangeStart",
@@ -617,6 +619,8 @@ const replayNestedBlock = ({
     case "preservedBlock":
     case "bookmarkStart":
     case "bookmarkEnd":
+    case "commentRangeStart":
+    case "commentRangeEnd":
     case "moveFromRangeStart":
     case "moveFromRangeEnd":
     case "moveToRangeStart":
