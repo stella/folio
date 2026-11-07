@@ -563,10 +563,16 @@ const unsupportedSeedReason = (
           paragraphs.push(block);
           continue;
         }
-        // A comment range may open or close between blocks; it holds no text.
+        // Range markers may open or close between blocks; they hold no text.
         if (
           block.type === "commentRangeStart" ||
-          block.type === "commentRangeEnd"
+          block.type === "commentRangeEnd" ||
+          block.type === "bookmarkStart" ||
+          block.type === "bookmarkEnd" ||
+          block.type === "moveFromRangeStart" ||
+          block.type === "moveFromRangeEnd" ||
+          block.type === "moveToRangeStart" ||
+          block.type === "moveToRangeEnd"
         )
           continue;
         if (block.type !== "table")
