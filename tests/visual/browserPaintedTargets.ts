@@ -4,7 +4,10 @@ import {
   clickToPositionDom,
   getCaretPositionFromDom,
 } from "../../packages/core/src/layout-bridge/dom/clickToPositionDom";
-import type { BrowserDragTarget } from "./browserDragTarget";
+import {
+  type BrowserDragTarget,
+  crossParagraphDragRange,
+} from "./browserDragTarget";
 import { resolvePainterTarget } from "./painterTargetCommit";
 
 type PaintedTargetEditor = {
@@ -79,63 +82,87 @@ export const resolvePaintedDragTarget = (
     read: () => {
       const view = ref.getEditorRef()?.getView();
       if (!view) throw new Error("browser editor unavailable");
-      const targets: {
-        pos: number;
-        size: number;
-        type: "paragraph" | "inline";
-      }[] = [];
-      const targetName = {
-        list: "paragraph",
-        note: "footnoteRef",
-        field: "field",
-        inlineObject: "image",
-      }[wanted];
-      view.state.doc.descendants((node, pos) => {
-        const matches =
-          node.type.name === targetName &&
-          (wanted !== "list" ||
-            (node.attrs["numPr"] !== null &&
-              node.attrs["numPr"] !== undefined));
-        if (targets.length >= 2) return false;
-        if (
-          matches ||
-          (wanted === "note" &&
-            node.marks.some((mark) => mark.type.name === targetName))
-        ) {
-          targets.push({
-            pos,
-            size: node.nodeSize,
-            type: node.type.name === "paragraph" ? "paragraph" : "inline",
-          });
+      const planned = (): {
+        from: number;
+        to: number;
+        targetFrom: number;
+        targetTo: number;
+        targetType: "paragraph" | "inline";
+      } | null => {
+        if (wanted === "paragraphs") {
+          const range = crossParagraphDragRange(view.state.doc);
+          return (
+            range && {
+              ...range,
+              targetFrom: range.from,
+              targetTo: range.to,
+              targetType: "paragraph",
+            }
+          );
         }
-        return true;
-      });
-      const first = targets.at(0);
-      if (!first) return { type: "absent" } as const;
-      const last = targets.at(1) ?? first;
-      // Paragraph node boundaries are not caret positions. Start inside the
-      // paragraph, or in text before an atom so image mousedown can drag text.
-      const rawFrom =
-        first.type === "paragraph" ? first.pos + 1 : first.pos - 1;
-      const rawTo =
-        last.type === "paragraph"
-          ? last.pos + Math.min(2, last.size - 1)
-          : last.pos + last.size + 2;
-      const from = Math.max(view.state.doc.resolve(first.pos).start(), rawFrom);
-      const to = Math.min(
-        view.state.doc.content.size - 1,
-        last.type === "paragraph"
-          ? last.pos + last.size - 1
-          : view.state.doc.resolve(last.pos).end(),
-        rawTo,
-      );
-      const positions = {
-        from,
-        to,
-        targetFrom: first.pos,
-        targetTo: first.pos + first.size,
-        targetType: first.type,
+        const targets: {
+          pos: number;
+          size: number;
+          type: "paragraph" | "inline";
+        }[] = [];
+        const targetName = {
+          list: "paragraph",
+          note: "footnoteRef",
+          field: "field",
+          inlineObject: "image",
+        }[wanted];
+        view.state.doc.descendants((node, pos) => {
+          const matches =
+            node.type.name === targetName &&
+            (wanted !== "list" ||
+              (node.attrs["numPr"] !== null &&
+                node.attrs["numPr"] !== undefined));
+          if (targets.length >= 2) return false;
+          if (
+            matches ||
+            (wanted === "note" &&
+              node.marks.some((mark) => mark.type.name === targetName))
+          ) {
+            targets.push({
+              pos,
+              size: node.nodeSize,
+              type: node.type.name === "paragraph" ? "paragraph" : "inline",
+            });
+          }
+          return true;
+        });
+        const first = targets.at(0);
+        if (!first) return null;
+        const last = targets.at(1) ?? first;
+        // Paragraph node boundaries are not caret positions. Start inside the
+        // paragraph, or in text before an atom so image mousedown can drag text.
+        const rawFrom =
+          first.type === "paragraph" ? first.pos + 1 : first.pos - 1;
+        const rawTo =
+          last.type === "paragraph"
+            ? last.pos + Math.min(2, last.size - 1)
+            : last.pos + last.size + 2;
+        const from = Math.max(
+          view.state.doc.resolve(first.pos).start(),
+          rawFrom,
+        );
+        const to = Math.min(
+          view.state.doc.content.size - 1,
+          last.type === "paragraph"
+            ? last.pos + last.size - 1
+            : view.state.doc.resolve(last.pos).end(),
+          rawTo,
+        );
+        return {
+          from,
+          to,
+          targetFrom: first.pos,
+          targetTo: first.pos + first.size,
+          targetType: first.type,
+        };
       };
+      const positions = planned();
+      if (!positions) return { type: "absent" } as const;
       const coordinate = (position: number) => {
         const caret = getCaretPositionFromDom(
           document.body,

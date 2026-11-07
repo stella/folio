@@ -51,8 +51,7 @@ const refusalExpected = ({
 }: CanonicalInlineShapeFixture<ParagraphContent | RunContent>) =>
   item.type === "inlineSdt" ||
   item.type === "fieldChar" ||
-  item.type === "instrText" ||
-  item.type === "renderedPageBreak";
+  item.type === "instrText";
 
 const checkShape = (
   fixture: CanonicalInlineShapeFixture<ParagraphContent | RunContent>,

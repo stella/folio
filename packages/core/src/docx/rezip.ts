@@ -590,12 +590,12 @@ async function transformPackagingFile(
   compressionLevel: number,
 ): Promise<void> {
   const file = zip.entry(path);
-  if (!file) {
+  if (!file && !path.endsWith(".rels")) {
     return;
   }
-  const xml = await file
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
+  const xml = file
+    ? await file.bytes().then((bytes) => decodeText(bytes, { ignoreBOM: true }))
+    : await readRelsOrStub(zip, path);
   const next = transform(xml);
   if (next !== xml) {
     zip.set(path, next, { level: compressionLevel });
@@ -735,7 +735,12 @@ function collectDocxParts(doc: Document, zip: ZipArchive): DocxPart[] {
   return parts;
 }
 
-async function readRelsOrStub(
+/**
+ * A relationships part to add to. A package need not have one for a part that
+ * has no relationships yet, so a missing part reads as an empty one: adding to
+ * it must create it, never skip the relationship it was asked for.
+ */
+export async function readRelsOrStub(
   zip: ZipArchive,
   relsPath: string,
 ): Promise<string> {
@@ -2299,14 +2304,7 @@ async function ensureCommentsRelationship(
   compressionLevel: number,
 ): Promise<void> {
   const relsPath = "word/_rels/document.xml.rels";
-  const relsFile = zip.entry(relsPath);
-  if (!relsFile) {
-    return;
-  }
-
-  let relsXml = await relsFile
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
+  let relsXml = await readRelsOrStub(zip, relsPath);
   if (relsXml.toLowerCase().includes("comments.xml")) {
     return;
   }
@@ -2453,15 +2451,7 @@ export async function addRelationship(
 
   // Read existing relationships
   const relsPath = "word/_rels/document.xml.rels";
-  const relsFile = zip.entry(relsPath);
-
-  if (!relsFile) {
-    panic("document.xml.rels not found in DOCX");
-  }
-
-  const relsXml = await relsFile
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
+  const relsXml = await readRelsOrStub(zip, relsPath);
 
   // Generate new rId
   const newRId = `rId${findMaxRId(relsXml) + 1}`;

@@ -42,6 +42,7 @@ import {
   hasUnmaterializedInlineResources,
   planAddedStyles,
   publishCanonicalImageResources,
+  readRelsOrStub,
   updateCoreProperties,
   withoutAttachedTemplate,
 } from "./rezip";
@@ -282,14 +283,7 @@ async function ensureCommentsExtendedPackaging(
 
   const relsPath = "word/_rels/document.xml.rels";
   const relsXml =
-    updates.get(relsPath) ??
-    (await zip
-      .entry(relsPath)
-      ?.bytes()
-      .then((bytes) => decodeText(bytes, { ignoreBOM: true })));
-  if (relsXml === undefined) {
-    return false;
-  }
+    updates.get(relsPath) ?? (await readRelsOrStub(zip, relsPath));
   const nextRels = addCommentsExtendedRelationship(relsXml);
   if (nextRels !== relsXml) {
     updates.set(relsPath, nextRels);
@@ -694,21 +688,16 @@ export async function attemptSelectiveSave(
 
       // Ensure word/_rels/document.xml.rels has a Relationship for comments.xml
       const relsPath = "word/_rels/document.xml.rels";
-      const relsFile = zip.entry(relsPath);
-      if (relsFile) {
-        const relsXml = await relsFile
-          .bytes()
-          .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
-        if (!relsXml.toLowerCase().includes("comments.xml")) {
-          const maxId = findMaxRId(relsXml);
-          updates.set(
-            relsPath,
-            relsXml.replace(
-              "</Relationships>",
-              `<Relationship Id="rId${maxId + 1}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
-            ),
-          );
-        }
+      const relsXml = await readRelsOrStub(zip, relsPath);
+      if (!relsXml.toLowerCase().includes("comments.xml")) {
+        const maxId = findMaxRId(relsXml);
+        updates.set(
+          relsPath,
+          relsXml.replace(
+            "</Relationships>",
+            `<Relationship Id="rId${maxId + 1}" Type="${RELATIONSHIP_TYPES.comments}" Target="${commentsPartPath.slice("word/".length)}"/></Relationships>`,
+          ),
+        );
       }
     }
 

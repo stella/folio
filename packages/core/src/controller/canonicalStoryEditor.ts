@@ -134,6 +134,8 @@ export const createCanonicalStoryEditor = ({
         to: number,
         text: string,
       ): boolean => enabled() && boundary.handleTextInput(view, from, to, text),
+      handleKeyPress: (view: EditorView, event: KeyboardEvent): boolean =>
+        enabled() && boundary.handleKeyPress(view, event),
       handleDOMEvents: {
         keydown: (view: EditorView, event: KeyboardEvent): boolean =>
           enabled() && boundary.handleDOMEvents.keydown(view, event),

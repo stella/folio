@@ -1333,3 +1333,84 @@ describe("canonical input boundary", () => {
     expect(inputs).toEqual([]);
   });
 });
+
+describe("typing ProseMirror takes from keypress", () => {
+  const twoParagraphs = (anchor: number, head: number) => {
+    const inputs: CanonicalReplacement[] = [];
+    const refusals: string[] = [];
+    const boundary = createCanonicalInputBoundary({
+      replace: (input) => inputs.push(input),
+      refuse: (reason) => refusals.push(reason),
+      undo: () => true,
+      redo: () => true,
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, schema.text("alpha")),
+      schema.node("paragraph", null, schema.text("beta")),
+    ]);
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const view = new EditorView(mount, {
+      state: EditorState.create({
+        doc,
+        selection: TextSelection.create(doc, anchor, head),
+      }),
+      handleTextInput: boundary.handleTextInput,
+      handleKeyDown: boundary.handleKeyDown,
+      handleKeyPress: boundary.handleKeyPress,
+      handleDOMEvents: boundary.handleDOMEvents,
+      dispatchTransaction(transaction) {
+        if (transaction.docChanged) {
+          if (!boundary.commitNativeProposal(view, transaction))
+            boundary.refuseNativeMutation(view);
+          view.updateState(view.state);
+          return;
+        }
+        view.updateState(view.state.apply(transaction));
+      },
+    });
+    views.push(view);
+    const press = (key: string) => {
+      const event = new KeyboardEvent("keypress", {
+        key,
+        bubbles: true,
+        cancelable: true,
+      });
+      // The test DOM leaves charCode at 0, which ProseMirror reads as no character.
+      Object.defineProperty(event, "charCode", { value: key.charCodeAt(0) });
+      view.dom.dispatchEvent(event);
+      return event;
+    };
+    return { view, inputs, refusals, press, doc };
+  };
+
+  test("a key over a selection across paragraphs replaces it as typing", () => {
+    // From after "a" in the first paragraph to after "be" in the second.
+    const { view, inputs, refusals, press, doc } = twoParagraphs(2, 10);
+    expect(
+      view.state.selection.$from.sameParent(view.state.selection.$to),
+    ).toBe(false);
+    const event = press("x");
+    expect(inputs).toEqual([
+      { from: 2, to: 10, text: "x", semantic: "typing" },
+    ]);
+    expect(refusals).toEqual([]);
+    expect(event.defaultPrevented).toBe(true);
+    // The boundary classifies; only the session changes the document.
+    expect(view.state.doc.eq(doc)).toBe(true);
+  });
+
+  test("a key inside one paragraph is left to beforeinput", () => {
+    const { inputs, refusals, press } = twoParagraphs(2, 4);
+    const event = press("x");
+    expect(inputs).toEqual([]);
+    expect(refusals).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  test("Enter over a selection across paragraphs is not typing", () => {
+    const { inputs, press } = twoParagraphs(2, 10);
+    press("\r");
+    expect(inputs).toEqual([]);
+  });
+});

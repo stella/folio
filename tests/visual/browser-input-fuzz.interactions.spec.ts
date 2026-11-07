@@ -41,6 +41,7 @@ import {
   PINNED_BROWSER_INPUT_TAG,
 } from "./browserInputRegressions";
 import {
+  BROWSER_PARAGRAPH_DRAG_SHAPES,
   BROWSER_PASTE_PAYLOADS,
   BROWSER_SHAPE_TARGETS,
   type BrowserInputAction,
@@ -401,6 +402,9 @@ const drive = async (page: Page, action: BrowserInputAction) => {
       // An earlier action can remove the target, in one mode and not the other.
       // Such a trace states no edit to compare.
       fc.pre(await selectTarget(page, action.target));
+      return;
+    case "selectAll":
+      await page.keyboard.press(`${MODIFIER}+a`);
       return;
     default: {
       const unreachable: never = action;
@@ -777,10 +781,25 @@ const browserDragShapes = Object.keys(BROWSER_SHAPE_TARGETS).filter(
   (shape): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
     isBrowserShape(shape) && BROWSER_SHAPE_TARGETS[shape] !== null,
 );
-for (const shape of browserDragShapes) {
-  const target = BROWSER_SHAPE_TARGETS[shape];
-  if (target === null)
-    throw new Error(`browser drag shape ${shape} has no target`);
+// A drag across paragraphs, in list, note and right-to-left paint.
+const paragraphDragShapes = [
+  "plain-markdown",
+  "single-decimal-list",
+  "notes",
+  "rtl-cjk",
+] as const satisfies readonly (keyof typeof BROWSER_SHAPE_TARGETS)[];
+const paintedDrags = [
+  ...browserDragShapes.map(
+    (dragShape) => [dragShape, BROWSER_SHAPE_TARGETS[dragShape]] as const,
+  ),
+  ...paragraphDragShapes.map((dragShape) => [dragShape, "paragraphs"] as const),
+];
+for (const [shape, target] of paintedDrags) {
+  if (
+    target === null ||
+    (target === "paragraphs" && !BROWSER_PARAGRAPH_DRAG_SHAPES.has(shape))
+  )
+    throw new Error(`browser drag shape ${shape} has no ${target} target`);
   for (const suggesting of [false, true]) {
     test(`painted ${target} drag in ${shape} after paste selects its planned range (${suggesting ? "suggesting" : "editing"})`, async ({
       page,

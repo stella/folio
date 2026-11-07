@@ -224,7 +224,112 @@ const accept = (state: EditorState, commit: CanonicalCommit) => {
   return nextState;
 };
 
+const cellParagraph = (paraId: string, text: string): Paragraph => ({
+  type: "paragraph",
+  paraId,
+  content: [{ type: "run", content: [{ type: "text", text }] }],
+});
+const gridCell = (paraId: string, text: string) => ({
+  type: "tableCell" as const,
+  content: [cellParagraph(paraId, text)],
+});
+
+/** Rows that stop short of the grid: one ends early, one starts late. */
+const omittedGridSeed = (): Document => ({
+  package: {
+    document: {
+      content: [
+        {
+          type: "table",
+          rows: [
+            {
+              type: "tableRow",
+              formatting: { gridAfter: 1 },
+              cells: [gridCell("21000000", "A")],
+            },
+            {
+              type: "tableRow",
+              formatting: { gridBefore: 1 },
+              cells: [gridCell("22000000", "D")],
+            },
+            {
+              type: "tableRow",
+              cells: [gridCell("23000000", "E"), gridCell("24000000", "F")],
+            },
+          ],
+        },
+        cellParagraph("25000000", "after"),
+      ],
+    },
+  },
+});
+
+const textEnd = (state: EditorState, text: string) => {
+  let end: number | undefined;
+  state.doc.descendants((node, position) => {
+    if (end !== undefined) return false;
+    if (node.isText && node.text === text) end = position + text.length;
+    return true;
+  });
+  return end ?? panic(`No text ${text}`);
+};
+
 describe("canonical session", () => {
+  test("rows that stop short of the grid open, their cells edit and save, and the filler takes no input", async () => {
+    const session = createCanonicalSession(omittedGridSeed()).unwrap();
+    let state = stateFor(session);
+    const fillers = () => {
+      const found: number[] = [];
+      state.doc.descendants((node, position) => {
+        if (node.attrs["_omittedGridSlot"] != null) found.push(position);
+        return true;
+      });
+      return found;
+    };
+    expect(fillers()).toHaveLength(2);
+    for (const text of ["A", "D", "F"]) {
+      const at = textEnd(state, text);
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, at)),
+      );
+      state = accept(
+        state,
+        session.prepareReplace(state, { from: at, to: at, text: "x" }).unwrap(),
+      );
+    }
+    // The filler's empty paragraph is no source paragraph: input there refuses.
+    const before = session.document;
+    for (const filler of fillers()) {
+      const inside = filler + 2;
+      expect(state.doc.resolve(inside).parent.type.name).toBe("paragraph");
+      const caret = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, inside)),
+      );
+      expect(
+        session
+          .prepareReplace(caret, { from: inside, to: inside, text: "y" })
+          .isErr(),
+      ).toBe(true);
+    }
+    expect(session.document).toBe(before);
+    const saved = await serializeCanonicalSave({
+      snapshot: session.captureSaveSnapshot(),
+      options: { mode: "full" },
+    });
+    const reopened = await parseDocx(saved.buffer, { preloadFonts: false });
+    const table = reopened.package.document.content.find(
+      (block) => block.type === "table",
+    );
+    if (table?.type !== "table") panic("The table did not survive the save.");
+    expect(
+      table.rows.map(({ formatting }) => formatting?.gridBefore ?? 0),
+    ).toEqual([0, 1, 0]);
+    expect(
+      table.rows.map(({ formatting }) => formatting?.gridAfter ?? 0),
+    ).toEqual([1, 0, 0]);
+    expect(toProseDoc(reopened).textContent).toBe("AxDxEFxafter");
+  });
+
   test("cell-edge joins never cross table containers", () => {
     const session = createCanonicalSession(tableSeed()).unwrap();
     const initial = session.document;
@@ -548,8 +653,12 @@ describe("canonical session", () => {
           content.push({
             type: "paragraph",
             paraId: "34567891",
+            // An unstructured field character: refused in a story the session edits.
             content: [
-              { type: "run", content: [{ type: "renderedPageBreak" }] },
+              {
+                type: "run",
+                content: [{ type: "fieldChar", charType: "begin" }],
+              },
             ],
           });
           expect(createCanonicalSession(document).isOk()).toBe(
@@ -1585,21 +1694,6 @@ describe("canonical session", () => {
           headers: new Map([
             ["rId1", { type: "header", hdrFtrType: "default", content: [] }],
           ]),
-        },
-      },
-      {
-        package: {
-          document: {
-            content: [
-              {
-                type: "paragraph",
-                paraId: "12345678",
-                content: [
-                  { type: "run", content: [{ type: "renderedPageBreak" }] },
-                ],
-              },
-            ],
-          },
         },
       },
       seed("bad\ud800"),

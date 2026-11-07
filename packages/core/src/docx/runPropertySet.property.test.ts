@@ -285,6 +285,28 @@ describe("a run property set survives a rebuild", () => {
     expect(childAt(saved, "b")).toBeLessThan(childAt(saved, "bdr"));
   });
 
+  test("a run effect stays after the base properties when an edit adds one after its neighbour", () => {
+    const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
+    const run = parseRun(
+      parseOne(
+        `<w:r xmlns:w="${W}" xmlns:w14="${W14}"><w:rPr><w:sz w:val="20"/><w14:ligatures w14:val="none"/>${SAMPLES.rPrChange}</w:rPr><w:t>x</w:t></w:r>`,
+      ),
+      null,
+      null,
+    );
+    const underlined: Run = {
+      ...run,
+      formatting: { ...run.formatting, underline: { style: "single" } },
+    };
+    const saved = propertiesOf(serializeRun(underlined));
+    const effect = saved.indexOf("<w14:ligatures");
+
+    expect(effect).toBeGreaterThan(-1);
+    expect(childAt(saved, "sz")).toBeLessThan(childAt(saved, "u"));
+    expect(childAt(saved, "u")).toBeLessThan(effect);
+    expect(effect).toBeLessThan(childAt(saved, "rPrChange"));
+  });
+
   test("a leading foreign child whose local name matches a property stays leading", () => {
     const foreign = '<x:b xmlns:x="urn:example:vendor" x:kind="annotation"/>';
     const saved = rebuildRun(`${foreign}<w:b/>`);
