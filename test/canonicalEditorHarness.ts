@@ -163,8 +163,8 @@ export const createCanonicalEditorHarness = (
         (candidate) => candidate.gap === gap && candidate.message === message,
       );
       refusals.push({
-        ground,
         gap,
+        ...(ground.rule === undefined ? {} : { rule: ground.rule }),
         message,
         expectation:
           row && gap === row.gap && message === row.message
@@ -207,7 +207,10 @@ export const createCanonicalEditorHarness = (
     dispose();
     if (refusal)
       throw new CanonicalSessionRefusalError({
-        ground: refusal.ground,
+        ground:
+          refusal.rule === undefined
+            ? { gap: refusal.gap ?? CANONICAL_GAP.dispatch }
+            : { rule: refusal.rule },
         message: refusal.message,
       });
     panic("The canonical conformance controller did not create its view.");
