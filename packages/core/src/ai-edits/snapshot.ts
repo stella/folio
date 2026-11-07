@@ -451,6 +451,14 @@ export const hashFolioAIBlockText = (text: string): string => {
   return `h${hash.toString(36)}`;
 };
 
+/**
+ * The identity of a block's text: what a snapshot anchor records, and what an
+ * engine compares an anchor or a precondition against. Whitespace runs collapse
+ * and the ends trim, so a block reads the same however its spaces were typed.
+ */
+export const hashFolioAIBlockContent = (text: string): string =>
+  hashFolioAIBlockText(normalizeFolioAIBlockText(text));
+
 const EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES: readonly FolioAIBlockStructuralBoundary[] =
   Object.freeze([]);
 const EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARY_HASH = hashFolioAIBlockText(
@@ -940,7 +948,7 @@ const createFolioAIEditSnapshotInternal = (
     const structuralBoundaryHash =
       hashFolioAIBlockStructuralBoundaryProjection(structuralBoundaries);
     const normalizedText = normalizeFolioAIBlockText(text);
-    const textHash = hashFolioAIBlockText(normalizedText);
+    const textHash = hashFolioAIBlockContent(text);
     hashCounts.set(textHash, (hashCounts.get(textHash) ?? 0) + 1);
 
     // Use the paragraph's Word `w14:paraId` (allocated by

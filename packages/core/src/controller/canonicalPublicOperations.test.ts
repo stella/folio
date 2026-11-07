@@ -533,3 +533,43 @@ test.each(["splitBlock", "mergeBlockWithNext"] as const)(
     expect(editor.session.canUndo).toBe(false);
   },
 );
+
+test("a block's spacing does not make its unchanged text read as changed", () => {
+  const spaced = fc.tuple(
+    fc.constantFrom("", " ", "  "),
+    fc.constantFrom(" ", "  ", "   "),
+    fc.constantFrom("", " ", "  "),
+  );
+  assertProperty(
+    fc.property(
+      spaced,
+      fc.constantFrom("direct", "tracked-changes" as const),
+      ([lead, gap, trail], mode) => {
+        const editor = setup(`${lead}alpha${gap}beta${trail}`);
+        const anchor = editor.snapshot().anchors["12345678"];
+        if (!anchor) throw new Error("the paragraph has no anchor");
+        const result = editor.apply(
+          [
+            {
+              id: "replace",
+              type: "replaceInBlock",
+              blockId: "12345678",
+              find: "beta",
+              replace: "gamma",
+              // A host passes back the hash the snapshot gave it.
+              precondition: { blockTextHash: anchor.textHash },
+            },
+          ],
+          { mode },
+        );
+        expect(result.skipped).toEqual([]);
+        expect(result.applied.map(({ id }) => id)).toEqual(["replace"]);
+      },
+    ),
+    {
+      numRuns: 40,
+      seed: 20261107,
+      id: "a block's spacing does not make its unchanged text read as changed",
+    },
+  );
+});
