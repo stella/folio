@@ -569,6 +569,8 @@ const unsupportedSeedReason = (
           block.type === "commentRangeEnd"
         )
           continue;
+        // Opaque markup the session keeps as it found it and never edits inside.
+        if (block.type === "preservedBlock") continue;
         if (block.type !== "table")
           return "Canonical sessions currently require paragraphs, tables and supported inline atoms.";
         for (const row of block.rows) {
