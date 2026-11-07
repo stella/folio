@@ -1,6 +1,8 @@
 import { expect, type Page, test, type TestInfo } from "@playwright/test";
 import fc from "fast-check";
 
+import { ZipArchive } from "@stll/docx-core/zip";
+
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
@@ -1018,5 +1020,188 @@ for (const seed of config.seeds) {
         await checkCanonicalTrace({ page, source, baseline, trace });
       },
     });
+  });
+}
+
+const ZZ_TRACES = [
+  [
+    "2300",
+    "prosemirror",
+    {
+      shape: "tables",
+      actions: [
+        {
+          kind: "pasteWordHtml",
+          plain: "Opening\nClosing",
+          html: '<html xmlns:o="urn:schemas-microsoft-com:office:office"><body><!--StartFragment--><p class="MsoNormal" style="margin:0;font-size:11pt">Opening<o:p></o:p></p><p class="MsoNormal" style="margin-top:0">Closing<o:p>&nbsp;</o:p></p><!--EndFragment--></body></html>',
+        },
+        { kind: "dragCellDelete" },
+        { kind: "dragCellDelete" },
+        { kind: "pastePlain", plain: "東京 مرحبا 東京", html: "" },
+        { kind: "undo" },
+        {
+          kind: "historyBurst",
+          keys: ["redo", "undo", "undo", "undo", "redo", "undo"],
+        },
+      ],
+    },
+  ],
+  [
+    "2302",
+    "prosemirror",
+    {
+      shape: "notes",
+      actions: [
+        {
+          kind: "pasteHtml",
+          plain: "First bold\nSecond",
+          html: "<p>First <strong>bold</strong></p><p>Second</p>",
+        },
+        {
+          kind: "pasteTable",
+          plain: "Left\tRight",
+          html: "<table><tbody><tr><td>Left</td><td>Right</td></tr></tbody></table>",
+        },
+        { kind: "selectionDrag", target: "note" },
+        {
+          kind: "pasteListHtml",
+          plain: "Alpha\nNested\nOmega",
+          html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+        },
+        { kind: "backspace" },
+        {
+          kind: "pasteMultiBlock",
+          plain: "Title\nBody",
+          html: "<p>Title</p><p>Body</p>",
+        },
+      ],
+    },
+  ],
+  [
+    "2358",
+    "canonical",
+    {
+      shape: "notes",
+      actions: [
+        { kind: "selectionDrag", target: "note" },
+        {
+          kind: "pasteListHtml",
+          plain: "Alpha\nNested\nOmega",
+          html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+        },
+        { kind: "backspace" },
+        {
+          kind: "pasteMultiBlock",
+          plain: "Title\nBody",
+          html: "<p>Title</p><p>Body</p>",
+        },
+      ],
+    },
+  ],
+  [
+    "2359",
+    "canonical",
+    {
+      shape: "tables",
+      actions: [
+        { kind: "dragCellDelete" },
+        {
+          kind: "pasteListHtml",
+          plain: "Alpha\nNested\nOmega",
+          html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+        },
+        { kind: "selectionDrag", target: "table" },
+      ],
+    },
+  ],
+] as const;
+
+const zzXml = async (buffer: ArrayBuffer) => {
+  const zip = await ZipArchive.read(buffer);
+  const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
+  const textOf = (part: string) =>
+    [...part.matchAll(/<w:(?:t|delText)(?: [^>]*)?>([^<]*)</gu)]
+      .map((m) => m[1])
+      .join("");
+  const ins = [...xml.matchAll(/<w:ins [^>]*>(.*?)<\/w:ins>/gsu)].map((m) =>
+    textOf(m[1] ?? ""),
+  );
+  const del = [...xml.matchAll(/<w:del [^>]*>(.*?)<\/w:del>/gsu)].map((m) =>
+    textOf(m[1] ?? ""),
+  );
+  const paras = [...xml.matchAll(/<w:p[ >].*?<\/w:p>/gsu)].map((m) =>
+    textOf(m[0]),
+  );
+  return { ins, del, paras: paras.slice(0, 12) };
+};
+
+const zzText = (blocks: readonly { text: string; kind: string }[]) =>
+  blocks.slice(0, 14).map(({ kind, text }) => `${kind[0]}:${text}`);
+
+for (const [issue, authority, trace] of ZZ_TRACES) {
+  test(`zz triage ${issue}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    const source = await shapeArrayBuffer(trace.shape);
+    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+    const out: Record<string, unknown> = { issue, baseline: zzText(baseline) };
+    for (const suggesting of [false, true]) {
+      const loaded = await load({
+        page,
+        bytes: source,
+        baseline,
+        suggesting,
+        authority,
+      });
+      if (loaded.type === "activationRefused") {
+        out[`refused${suggesting}`] = loaded.row;
+        continue;
+      }
+      const steps: unknown[] = [];
+      for (const action of trace.actions) {
+        await driveWithAuthority({ page, action: action as never, authority });
+        await page.waitForTimeout(150);
+        steps.push([action.kind, zzText(await liveBlocks(page))]);
+      }
+      await page.waitForTimeout(350);
+      const buffer = await save(page);
+      out[suggesting ? "suggested" : "edited"] = {
+        steps,
+        xml: await zzXml(buffer),
+      };
+      if (suggesting) {
+        const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+        out["changes"] = reviewer
+          .getChanges()
+          .map((c) => ({
+            id: c.id,
+            type: c.type,
+            text: (c as { text?: string }).text,
+          }));
+        const a = await FolioDocxReviewer.fromBuffer(buffer);
+        a.acceptAll();
+        out["acceptedHeadless"] = zzText(
+          project(await reopenSaved(await a.toBuffer())),
+        );
+        const r = await FolioDocxReviewer.fromBuffer(buffer);
+        r.rejectAll();
+        out["rejectedHeadless"] = zzText(
+          project(await reopenSaved(await r.toBuffer())),
+        );
+        if (authority === "canonical") {
+          try {
+            const accepted = await resolveCanonicalSaved({
+              page,
+              source: buffer,
+              revisionIds: reviewer.getChanges().map(({ id }) => id),
+              decision: "accept",
+            });
+            out["acceptedCanonical"] = zzText(project(accepted));
+          } catch (error) {
+            out["acceptedCanonical"] = String(error).slice(0, 300);
+          }
+        }
+      }
+    }
+    console.log(`ZZLAB ${JSON.stringify(out)}`);
   });
 }
