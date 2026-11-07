@@ -776,7 +776,11 @@ export const createHiddenEditorManager = (
     if (described.isErr()) {
       if (!(described.error instanceof HyperlinkRemovalRefusal))
         throw described.error;
-      refuse(described.error.message, { gap: CANONICAL_GAP.commands });
+      const refusal = new CanonicalSessionRefusalError({
+        ground: { gap: CANONICAL_GAP.commands },
+        message: described.error.message,
+      });
+      refuse(refusal.message, refusal.ground);
       return false;
     }
     const intents = described.value;

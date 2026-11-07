@@ -164,22 +164,22 @@ describe("canonical cutover guard", () => {
         fc.boolean(),
         (name, bracket) => {
           const relay =
-            "const forward = (message: string, gap: CanonicalGap = CANONICAL_GAP.dispatch) => {};";
+            "const forward = (message: string, ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch }) => {};";
           const error = bracket ? `${name}["error"]` : `${name}.error`;
           const message = bracket ? `${error}["message"]` : `${error}.message`;
-          const gap = bracket ? `${error}["gap"]` : `${error}.gap`;
-          expect(failuresOf(`${relay} forward(${message}, ${gap});`)).toEqual(
-            [],
-          );
+          const ground = bracket ? `${error}["ground"]` : `${error}.ground`;
+          expect(
+            failuresOf(`${relay} forward(${message}, ${ground});`),
+          ).toEqual([]);
           for (const argument of [
             "",
-            ", CANONICAL_GAP.dispatch",
-            ", other.error.gap",
+            ", { gap: CANONICAL_GAP.dispatch }",
+            ", other.error.ground",
           ])
             expect(
               failuresOf(`${relay} forward(${message}${argument});`),
             ).toContain(
-              "packages/react/src/fixture.tsx: canonical error relay must forward the original gap id",
+              "packages/react/src/fixture.tsx: canonical error relay must forward the original ground",
             );
         },
       ),
