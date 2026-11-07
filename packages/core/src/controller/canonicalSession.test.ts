@@ -548,8 +548,12 @@ describe("canonical session", () => {
           content.push({
             type: "paragraph",
             paraId: "34567891",
+            // An unstructured field character: refused in a story the session edits.
             content: [
-              { type: "run", content: [{ type: "renderedPageBreak" }] },
+              {
+                type: "run",
+                content: [{ type: "fieldChar", charType: "begin" }],
+              },
             ],
           });
           expect(createCanonicalSession(document).isOk()).toBe(
@@ -1585,21 +1589,6 @@ describe("canonical session", () => {
           headers: new Map([
             ["rId1", { type: "header", hdrFtrType: "default", content: [] }],
           ]),
-        },
-      },
-      {
-        package: {
-          document: {
-            content: [
-              {
-                type: "paragraph",
-                paraId: "12345678",
-                content: [
-                  { type: "run", content: [{ type: "renderedPageBreak" }] },
-                ],
-              },
-            ],
-          },
         },
       },
       seed("bad\ud800"),
