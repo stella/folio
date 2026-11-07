@@ -30,12 +30,14 @@ import {
   type InlineNode,
   isCommentAnchor,
   isEmptyRecord,
+  isParagraphContent,
   type LeafSpan,
   leafSpans,
   mergeAlike,
   rebuildNode,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
+import { isRangeBoundary } from "./offsets";
 import { applyFormattingPatch } from "./patch";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
@@ -283,7 +285,7 @@ const storyCoverageNodes = (
   return out;
 };
 
-/** Range coverage in source order; comment anchors themselves are only carriers. */
+/** Range coverage in source order; comment anchors and range boundaries are only carriers. */
 const coveredCommentIds = (document: Document): Set<number> => {
   const covered = new Set<number>();
   for (const story of documentStories(document)) {
@@ -300,7 +302,13 @@ const coveredCommentIds = (document: Document): Set<number> => {
           open.delete(node.id);
           continue;
         }
-        if (isCommentAnchor(node)) continue;
+        // A bookmark or other range boundary inside the range marks a position,
+        // not content: a range left holding only those covers nothing.
+        if (
+          isCommentAnchor(node) ||
+          (isParagraphContent(node) && isRangeBoundary(node))
+        )
+          continue;
         for (const id of open) covered.add(id);
       }
     }
