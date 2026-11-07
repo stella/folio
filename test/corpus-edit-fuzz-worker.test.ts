@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { createFolioAITextRangeHandle } from "@stll/folio-core/server";
 
 import {
+  mergedTableDocument,
   openReviewer,
   plainDocument,
 } from "./consumer-scenarios/support/documents.ts";
@@ -13,7 +14,11 @@ import {
   withLiveMintedIds,
   withoutMintedIds,
 } from "./consumer-scenarios/support/oracle.ts";
-import { assertSavedOutcome, compareSdk } from "./corpus-edit-fuzz-worker.ts";
+import {
+  assertSavedOutcome,
+  compareSdk,
+  runSteps,
+} from "./corpus-edit-fuzz-worker.ts";
 
 test("saved-only comment loss fails the edit outcome check", async () => {
   const original = await plainDocument();
@@ -231,5 +236,29 @@ test("an authored id that changes is a change", () => {
   assert.notEqual(
     withoutMintedIds(saved, before),
     withoutMintedIds(before, before),
+  );
+});
+
+test("an oracle gap is recorded and the steps after it are still checked", async () => {
+  const original = await mergedTableDocument();
+  const reviewer = await openReviewer(original);
+  const cells = reviewer
+    .getContent()
+    .filter((block) => block.table !== undefined);
+  const first = cells.at(0);
+  const last = cells.at(-1);
+  assert.ok(first && last && first.id !== last.id);
+  // A row in a merged table is one the oracle does not model.
+  const steps = [first, last].map(({ id }) => ({
+    mode: "direct" as const,
+    operation: { type: "deleteTableRow" as const, blockId: id },
+  }));
+  const found = await runSteps(original, steps, null);
+  assert.deepEqual(
+    found.map(({ class: kind, operations }) => [kind, operations.length]),
+    [
+      ["oracle-gap", 1],
+      ["oracle-gap", 2],
+    ],
   );
 });
