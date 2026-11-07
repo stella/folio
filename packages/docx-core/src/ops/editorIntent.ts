@@ -590,14 +590,28 @@ export const physicalPositionAtEditorOffset = (
 
 // A zero-width ordinal belongs to one offset. At a new text offset, the
 // projection resolves the available gap instead of reusing the insertion gap.
-const replacementCaret = (at: TextPosition, text: string): TextPosition => ({
-  story: at.story,
-  blockId: at.blockId,
-  offset: at.offset + text.length,
-  ...(text.length === 0 && at.zeroWidthBefore !== undefined
-    ? { zeroWidthBefore: at.zeroWidthBefore }
-    : {}),
-});
+/**
+ * The caret after typing `text` at `at`: directly after the typed text, before
+ * any zero-width marker that follows it, so the next keystroke continues the
+ * same run instead of landing on the far side of a comment, bookmark or
+ * permission boundary.
+ */
+const replacementCaret = (at: TextPosition, text: string): TextPosition =>
+  text.length > 0
+    ? {
+        story: at.story,
+        blockId: at.blockId,
+        offset: at.offset + text.length,
+        zeroWidthBefore: 0,
+      }
+    : {
+        story: at.story,
+        blockId: at.blockId,
+        offset: at.offset,
+        ...(at.zeroWidthBefore === undefined
+          ? {}
+          : { zeroWidthBefore: at.zeroWidthBefore }),
+      };
 
 const paragraphAt = (document: Document, at: TextPosition) =>
   storyParagraphs(storyBody(document, at.story)).find(

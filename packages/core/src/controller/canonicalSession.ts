@@ -332,7 +332,7 @@ class CanonicalProjection {
     paragraph.node.forEach((node, start) => {
       if (
         node.marks.some((mark) => mark.type.name === "deletion") &&
-        destination >= paragraph.start + start &&
+        destination > paragraph.start + start &&
         destination < paragraph.start + start + node.nodeSize
       )
         destination = paragraph.start + start + node.nodeSize;
