@@ -47,10 +47,24 @@ import {
 
 type CanonicalListNormalization = { document: Document; inverse: DocumentOp[] };
 
+type ListNormalizationOptions = {
+  /**
+   * Whether to build the operations that undo the normalization. Only an edit
+   * session needs them, and they name paragraphs by identity; a save that only
+   * writes the normalized document must work on a package whose paragraphs
+   * carry none.
+   */
+  inverse?: "record" | "omit";
+};
+
 export const normalizeListModelRendering = (
   document: Document,
+  { inverse: inverseMode = "record" }: ListNormalizationOptions = {},
 ): CanonicalListNormalization => {
   const inverse: DocumentOp[] = [];
+  const recordInverse = (operation: () => DocumentOp): void => {
+    if (inverseMode === "record") inverse.unshift(operation());
+  };
   const styles = createStyleResolver(document.package.styles);
   const numbering =
     document.package.numbering === undefined
@@ -103,7 +117,7 @@ export const normalizeListModelRendering = (
         canonicalJson(next.formatting?.numPrFromStyle) !==
         canonicalJson(formatting?.numPrFromStyle)
       ) {
-        inverse.unshift({
+        recordInverse(() => ({
           type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
           story,
           blockId:
@@ -114,7 +128,7 @@ export const normalizeListModelRendering = (
             formatting === undefined
               ? EMPTY_PROPERTY_SETS.OMIT
               : EMPTY_PROPERTY_SETS.KEEP,
-        });
+        }));
       }
       const numPr = effectiveParagraphNumberingReference(
         paragraphNumberingSourcesFromBoundary({
@@ -173,7 +187,7 @@ export const normalizeListModelRendering = (
         canonicalJson(paragraphIndentationFromFormatting(next.formatting)) !==
         canonicalJson(paragraphIndentationFromFormatting(formatting))
       ) {
-        inverse.unshift({
+        recordInverse(() => ({
           type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
           story,
           blockId:
@@ -191,7 +205,7 @@ export const normalizeListModelRendering = (
             formatting === undefined
               ? EMPTY_PROPERTY_SETS.OMIT
               : EMPTY_PROPERTY_SETS.KEEP,
-        });
+        }));
       }
       if (rendering === null) delete next.listRendering;
       else {
