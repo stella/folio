@@ -27,8 +27,10 @@
 import type { PreservedChild, PreservedMarkup } from "@stll/docx-core/model";
 import {
   SEQUENCE_CHILDREN,
+  type SequenceChild,
   type SequenceContainer,
 } from "@stll/docx-core/schema";
+import { OOXML_NS } from "@stll/docx-utils";
 
 import {
   type DeclaredChild,
@@ -467,20 +469,49 @@ const sequenceOrdinals = (
   return ordinals;
 };
 
+/**
+ * Where a container's schema puts the children of its extension namespaces.
+ *
+ * The neighbour rule cannot hold for these: an edit that adds a declared
+ * property after the source's last one would land it behind the extension
+ * child, out of the order the extended schema requires. `CT_RPr` appends the
+ * `w14` run effects (`w14:ligatures`, `w14:textFill` and the rest) after
+ * every base property and before `w:rPrChange`, so they take the place of the
+ * declared child before that record.
+ */
+const EXTENSION_PLACEMENT: {
+  readonly [Container in SequenceContainer]?: {
+    readonly namespaces: ReadonlySet<string>;
+    readonly after: SequenceChild<Container>;
+  };
+} = {
+  "run-properties": { namespaces: new Set([OOXML_NS.w14]), after: "oMath" },
+};
+
 const computeSequencePositions = (
   container: SequenceContainer,
   element: XmlElement,
 ): Map<XmlElement, number> => {
   const ordinals = sequenceOrdinals(container);
+  const extension = EXTENSION_PLACEMENT[container];
+  const extensionAt =
+    extension === undefined ? -1 : (ordinals.get(extension.after) ?? -1);
   const positions = new Map<XmlElement, number>();
   let previous = -1;
   for (const child of getChildElements(element)) {
     const namespace = getNamespaceUri(child);
     const isDeclaredNamespace =
       namespace === undefined || WORDPROCESSINGML_NAMESPACE_URIS.has(namespace);
-    const at = isDeclaredNamespace
-      ? (ordinals.get(getLocalName(child.name)) ?? -1)
-      : -1;
+    const isExtension =
+      namespace !== undefined &&
+      extension?.namespaces.has(namespace) === true &&
+      extensionAt !== -1;
+    let at = -1;
+    if (isDeclaredNamespace) {
+      at = ordinals.get(getLocalName(child.name)) ?? -1;
+    } else if (isExtension) {
+      at = extensionAt;
+    }
     if (at !== -1) {
       previous = at;
     }
