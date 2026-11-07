@@ -633,6 +633,14 @@ export type FolioAIResolvedEditOperation =
 export type FolioAIEditApplyMode = "direct" | "tracked-changes" | "suggested";
 
 export type FolioAIEditSkipReason =
+  /**
+   * A content control's `w:lock` forbids the change: it reaches inside a
+   * control whose content is locked (`contentLocked`, `sdtContentLocked`), or
+   * removes one that may not be removed (`sdtLocked`, `sdtContentLocked`),
+   * also by deleting the paragraph or text that holds it. Nothing was
+   * applied; `message` names the lock.
+   */
+  | "contentControlLock"
   | "missingBlock"
   | "changedBlock"
   | "ambiguousFind"
