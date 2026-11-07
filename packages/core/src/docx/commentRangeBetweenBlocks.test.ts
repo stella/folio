@@ -18,8 +18,11 @@ import {
   saveCanonicalHarnessDocument,
 } from "../../../../test/canonicalEditorHarness";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { removeCommentMarkers } from "./commentAnchorIndex";
 import { parseDocx } from "./parser";
+import { repackDocx } from "./rezip";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
@@ -215,6 +218,31 @@ describe("a comment range that opens between blocks", () => {
       };
       walk(kept);
       expect(kinds.filter((kind) => kind.startsWith("comment"))).toEqual([]);
+    }
+  });
+
+  // The editor drops a deleted comment from its list and the save drops what
+  // the comment no longer owns. A marker between blocks left behind made the
+  // range unbalanced and the save refused the document.
+  test("a save after its comment is deleted writes no marker", async () => {
+    for (const commented of [BESIDE_A_CONTROL, BETWEEN_PARAGRAPHS]) {
+      const parsed = await parseDocx(await commentedPackage(commented), {
+        preloadFonts: false,
+      });
+      const withoutComment = {
+        ...parsed,
+        package: {
+          ...parsed.package,
+          document: { ...parsed.package.document, comments: [] },
+        },
+      };
+      const saved = await repackDocx(
+        fromProseDoc(toProseDoc(parsed), withoutComment, {
+          stylesheetSource: { type: "package" },
+        }),
+        { updateModifiedDate: false },
+      );
+      expect(await markersOf(saved)).toEqual([]);
     }
   });
 });

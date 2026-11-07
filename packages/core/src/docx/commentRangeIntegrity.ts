@@ -266,6 +266,10 @@ const withoutOrphanBlockMarkers = (
   let changed = false;
   const next: BlockContent[] = [];
   for (const block of blocks) {
+    if (isOrphanBlockMarker(block, validCommentIds)) {
+      changed = true;
+      continue;
+    }
     const nextBlock = withoutOrphanBlockMarker(block, validCommentIds);
     if (nextBlock !== block) {
       changed = true;
@@ -360,6 +364,10 @@ const withoutOrphanTableCellBlockMarkers = (
   let changed = false;
   const next: TableCellBlock[] = [];
   for (const block of blocks) {
+    if (isOrphanBlockMarker(block, validCommentIds)) {
+      changed = true;
+      continue;
+    }
     const nextBlock = withoutOrphanTableCellBlockMarker(block, validCommentIds);
     if (nextBlock !== block) {
       changed = true;
@@ -412,6 +420,14 @@ const withoutOrphanParagraphMarkers = (
   }
   return cloneParagraphWithPropertySource(paragraph, { content });
 };
+
+/** A comment range marker between blocks for a comment the save no longer holds. */
+const isOrphanBlockMarker = (
+  block: BlockContent,
+  validCommentIds: ReadonlySet<number>,
+): boolean =>
+  (block.type === "commentRangeStart" || block.type === "commentRangeEnd") &&
+  !validCommentIds.has(block.id);
 
 const isCommentMarker = (content: ParagraphContent): content is CommentMarker =>
   content.type === "commentRangeStart" ||
