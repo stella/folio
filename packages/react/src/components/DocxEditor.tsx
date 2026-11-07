@@ -5048,9 +5048,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                 : t("acceptChange")
             }
             ariaLabel={t("acceptChange")}
-            {...(state.activeTrackedChange?.heldByLock.accept && {
-              "aria-description": t("trackedChanges.heldByLock"),
-            })}
           >
             <CheckIcon size={16} />
           </ToolbarButton>
@@ -5067,9 +5064,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                 : t("rejectChange")
             }
             ariaLabel={t("rejectChange")}
-            {...(state.activeTrackedChange?.heldByLock.reject && {
-              "aria-description": t("trackedChanges.heldByLock"),
-            })}
           >
             <XIcon size={16} />
           </ToolbarButton>

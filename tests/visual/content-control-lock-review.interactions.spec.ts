@@ -92,7 +92,6 @@ test("React: the toolbar and context menu refuse a change a lock holds", async (
   await showReviewButtons();
   await expect(accept).toBeDisabled();
   await expect(reject).toBeDisabled();
-  await expect(accept).toHaveAttribute("aria-description", HELD);
   await accept.hover({ force: true });
   await expect(page.getByText(HELD).first()).toBeVisible();
 
