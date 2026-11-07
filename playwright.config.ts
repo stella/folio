@@ -50,8 +50,7 @@ const managedConfig = defineConfig({
     {
       name: "browser-input-pinned",
       use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
-      testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u,
-      grep: new RegExp(PINNED_BROWSER_INPUT_TAG, "u"),
+      testMatch: /comment-range-between-blocks\.interactions\.spec\.ts/u,
       workers: 1,
     },
     {
