@@ -57,6 +57,7 @@ import {
   mergeTableCellAttrs,
   mergeTableRowAttrs,
 } from "../../attrs";
+import { withCanonicalTableAttributeCommand } from "../../canonicalTableCommands";
 import { mintRevisionId } from "../../plugins/revisionIds";
 import { makeRevisionInfo } from "../../plugins/suggestionMode";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
@@ -3292,41 +3293,58 @@ export const TablePluginExtension: (
           side: "top" | "bottom" | "left" | "right" | "all",
           spec: TableCellBorderCommandSpec | null,
           clearOthers?: boolean,
-        ) => setCellBorder(side, spec, clearOthers),
+        ) =>
+          withCanonicalTableAttributeCommand(
+            setCellBorder(side, spec, clearOthers),
+          ),
         setTableBorders: (
           preset: BorderPreset,
           borderSpec?: TableBorderCommandSpec,
-        ) => setTableBorders(preset, borderSpec),
+        ) =>
+          withCanonicalTableAttributeCommand(
+            setTableBorders(preset, borderSpec),
+          ),
         setTableBorderPreset: (preset: TableBorderPreset) =>
-          setTableBorderPreset(preset),
+          withCanonicalTableAttributeCommand(setTableBorderPreset(preset)),
         setCellVerticalAlign: (align: "top" | "center" | "bottom") =>
-          setCellVerticalAlign(align),
+          withCanonicalTableAttributeCommand(setCellVerticalAlign(align)),
         setCellMargins: (margins: TableCellMarginsCommand) =>
-          setCellMargins(margins),
+          withCanonicalTableAttributeCommand(setCellMargins(margins)),
         setCellTextDirection: (direction: string | null) =>
-          setCellTextDirection(direction),
-        toggleNoWrap: () => toggleNoWrap(),
+          withCanonicalTableAttributeCommand(setCellTextDirection(direction)),
+        toggleNoWrap: () => withCanonicalTableAttributeCommand(toggleNoWrap()),
         setRowHeight: (
           height: number | null,
           rule?: "auto" | "atLeast" | "exact",
-        ) => setRowHeight(height, rule),
-        toggleHeaderRow: () => toggleHeaderRow(),
+        ) => withCanonicalTableAttributeCommand(setRowHeight(height, rule)),
+        toggleHeaderRow: () =>
+          withCanonicalTableAttributeCommand(toggleHeaderRow()),
         distributeColumns: () => distributeColumns(),
         autoFitContents: () => autoFitContents(),
         setTableProperties: (props: TablePropertiesCommand) =>
-          setTableProperties(props),
+          withCanonicalTableAttributeCommand(setTableProperties(props)),
         applyTableStyle: (styleData: TableStyleCommand) =>
-          applyTableStyle(styleData),
-        setCellFillColor: (color: string | null) => setCellFillColor(color),
-        setTableBorderColor: (color: string) => setTableBorderColor(color),
-        setTableBorderWidth: (size: number) => setTableBorderWidth(size),
-        removeTableBorders: () => setTableBorders("none"),
+          withCanonicalTableAttributeCommand(applyTableStyle(styleData)),
+        setCellFillColor: (color: string | null) =>
+          withCanonicalTableAttributeCommand(setCellFillColor(color)),
+        setTableBorderColor: (color: string) =>
+          withCanonicalTableAttributeCommand(setTableBorderColor(color)),
+        setTableBorderWidth: (size: number) =>
+          withCanonicalTableAttributeCommand(setTableBorderWidth(size)),
+        removeTableBorders: () =>
+          withCanonicalTableAttributeCommand(setTableBorders("none")),
         setAllTableBorders: (borderSpec?: TableBorderCommandSpec) =>
-          setTableBorders("all", borderSpec),
+          withCanonicalTableAttributeCommand(
+            setTableBorders("all", borderSpec),
+          ),
         setOutsideTableBorders: (borderSpec?: TableBorderCommandSpec) =>
-          setTableBorders("outside", borderSpec),
+          withCanonicalTableAttributeCommand(
+            setTableBorders("outside", borderSpec),
+          ),
         setInsideTableBorders: (borderSpec?: TableBorderCommandSpec) =>
-          setTableBorders("inside", borderSpec),
+          withCanonicalTableAttributeCommand(
+            setTableBorders("inside", borderSpec),
+          ),
       },
     };
   },
