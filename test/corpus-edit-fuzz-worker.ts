@@ -440,6 +440,7 @@ export const runEditWorker = async (
     }
   }
   let attempts = 0;
+  const seen = new Set<string>();
   for (const mode of ["direct", "tracked-changes"] as const) {
     const random = createRandom(
       seed ^ (mode === "direct" ? 0x1234abcd : 0x5678ef01),
@@ -467,7 +468,16 @@ export const runEditWorker = async (
     if (steps.length > 0) {
       for (const found of await runSteps(original, steps, originalSdk)) {
         // oxlint-disable-next-line no-await-in-loop -- each finding shrinks against the same original
-        failures.push(await shrink(original, found, originalSdk));
+        const shrunk = await shrink(original, found, originalSdk);
+        // Two findings of one run can shrink to the same case; it is one case.
+        const key = JSON.stringify([
+          shrunk.signature,
+          shrunk.expected,
+          shrunk.operations,
+        ]);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        failures.push(shrunk);
       }
     }
   }

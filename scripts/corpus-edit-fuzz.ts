@@ -7,6 +7,7 @@ import type {
   EditWorkerResult,
 } from "../test/corpus-edit-fuzz-contract.ts";
 import {
+  baselineOf,
   compareBaseline,
   type EditBaseline,
   type EditReport,
@@ -46,19 +47,15 @@ const messageOf = (error: unknown): string =>
 
 const check = async (reports: readonly EditReport[]): Promise<void> => {
   const baseline = JSON.parse(await Bun.file(BASELINE).text()) as EditBaseline;
-  const {
-    introduced,
-    missing,
-    duplicates,
-    unexpectedIncomplete,
-    recoveredIncomplete,
-  } = compareBaseline(reports, baseline);
+  const { introduced, missing, duplicates, crashed } = compareBaseline(
+    reports,
+    baseline,
+  );
   if (
     introduced.length ||
     missing.length ||
     duplicates.length ||
-    unexpectedIncomplete.length ||
-    recoveredIncomplete.length
+    crashed.length
   ) {
     const describe = (name: string, values: readonly unknown[]): string =>
       `${name} ${values.length}: ${JSON.stringify(values.slice(0, 5))}`;
@@ -67,12 +64,28 @@ const check = async (reports: readonly EditReport[]): Promise<void> => {
         describe("introduced", introduced),
         describe("missing", missing),
         describe("duplicates", duplicates),
-        describe("unexpected incomplete", unexpectedIncomplete),
-        describe("recovered incomplete", recoveredIncomplete),
+        describe("crashed", crashed),
       ].join("; ")}\n`,
     );
     process.exitCode = 1;
   }
+};
+
+/** Timed-out documents, slowest first: the run reports them, the ratchet does not. */
+const timeoutLines = (reports: readonly EditReport[]): string[] => {
+  const timeouts = reports
+    .flatMap(({ incomplete }) => incomplete)
+    .filter(({ reason }) => reason === "timeout")
+    .toSorted((left, right) => right.durationMs - left.durationMs);
+  return timeouts.length === 0
+    ? []
+    : [
+        "### Timed out",
+        ...timeouts.map(
+          ({ document, durationMs }) =>
+            `- ${document}: ${(durationMs / 1000).toFixed(1)} s`,
+        ),
+      ];
 };
 
 const main = async (): Promise<void> => {
@@ -129,6 +142,17 @@ const main = async (): Promise<void> => {
     if (observed?.signature !== selected.signature) process.exitCode = 1;
     return;
   }
+  if (process.argv[2] === "baseline") {
+    const files = process.argv.slice(3);
+    if (files.length === 0) throw new Error("baseline requires report files");
+    const reports = await Promise.all(
+      files.map(
+        async (file) => JSON.parse(await Bun.file(file).text()) as EditReport,
+      ),
+    );
+    await writeJsonFile(BASELINE, baselineOf(reports));
+    return;
+  }
   if (process.argv[2] === "check") {
     const files = process.argv.slice(3);
     if (files.length === 0) throw new Error("check requires report files");
@@ -152,6 +176,7 @@ const main = async (): Promise<void> => {
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([kind, count]) => `- ${kind}: ${count}`),
       `Baseline failure identities: ${(JSON.parse(await Bun.file(BASELINE).text()) as EditBaseline).identities.length}`,
+      ...timeoutLines(reports),
       "### Minimal replay cases",
       ...cases
         .slice(0, 3)
@@ -233,7 +258,7 @@ const main = async (): Promise<void> => {
     );
   }
   const report: EditReport = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     lockDigest: tierScopedLockDigest(fullLock, [1]),
     shard,
     sample: limit ?? null,
@@ -250,6 +275,7 @@ const main = async (): Promise<void> => {
         `corpus cache is missing ${entry.id}; run bun run corpus:fetch`,
       );
     const seed = seedOf(entry.sha256);
+    const started = performance.now();
     // oxlint-disable-next-line no-await-in-loop -- each document has its own child process and deadline
     const child = Bun.spawnSync(
       [
@@ -277,6 +303,7 @@ const main = async (): Promise<void> => {
         detail: child.exitedDueToTimeout
           ? `${timeout}ms deadline`
           : `stderr SHA-256 ${createHash("sha256").update(child.stderr).digest("hex")}`,
+        durationMs: Math.round(performance.now() - started),
       });
       continue;
     } else {
@@ -314,6 +341,7 @@ const main = async (): Promise<void> => {
     ...Object.entries(report.counts)
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([kind, count]) => `- ${kind}: ${count}`),
+    ...timeoutLines([report]),
     "### Minimal replay cases",
     ...report.cases
       .slice(0, 3)
