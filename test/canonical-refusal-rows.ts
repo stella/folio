@@ -4,12 +4,17 @@ import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
 } from "../packages/core/src/types/canonicalCapabilities";
-import type { CanonicalGap } from "../packages/core/src/types/canonicalCapabilities";
+import type {
+  CanonicalGap,
+  CanonicalRefusalGround,
+} from "../packages/core/src/types/canonicalCapabilities";
 import type { Document } from "../packages/core/src/types/document";
 import type { BrowserInputAction } from "../tests/visual/browserInputTrace";
 
 export type HarnessRefusal = {
-  gap: CanonicalGap;
+  ground: CanonicalRefusalGround;
+  /** The ledger gap, absent for a rule refusal, which no row declares. */
+  gap: CanonicalGap | undefined;
   message: string;
   expectation: "declared" | "unexpected";
   row?: string;

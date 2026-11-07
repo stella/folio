@@ -76,7 +76,7 @@ const checkShape = (
     if (activated.isErr()) {
       expect(activated.error).toBeInstanceOf(CanonicalSessionError);
       expect(activated.error.reason).toBe("refused");
-      expect(activated.error.gap).toBe(CANONICAL_GAP.dispatch);
+      expect(activated.error.ground.gap).toBe(CANONICAL_GAP.dispatch);
       expect(activated.error.message).not.toBe(
         "The projection changed paragraph structure.",
       );

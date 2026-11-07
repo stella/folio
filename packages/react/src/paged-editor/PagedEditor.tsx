@@ -223,7 +223,7 @@ import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findPa
 import { resolveHeaderFooterSelectionGeometry } from "@stll/folio-core/render-dom/HeaderFooterSelectionOverlay";
 import {
   CANONICAL_GAP,
-  type CanonicalGap,
+  type CanonicalRefusalGround,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Footnote } from "@stll/folio-core/types/content";
@@ -1653,9 +1653,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       onError,
     ]);
     const handleSessionRefusal = useCallback(
-      (message: string, gap: CanonicalGap, error?: Error) => {
+      (message: string, ground: CanonicalRefusalGround, error?: Error) => {
         onErrorRef.current?.(
-          error ?? new CanonicalSessionRefusalError({ gap, message }),
+          error ?? new CanonicalSessionRefusalError({ ground, message }),
         );
       },
       [],

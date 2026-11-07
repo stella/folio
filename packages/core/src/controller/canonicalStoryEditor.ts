@@ -9,7 +9,7 @@ import type { OpStory } from "@stll/docx-core/ops";
 
 import {
   CANONICAL_GAP,
-  type CanonicalGap,
+  type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import { createCanonicalInputBoundary } from "./canonicalInput";
 import { CanonicalSessionError } from "./canonicalSession";
@@ -21,7 +21,8 @@ type CanonicalStoryEditorOptions = {
   getApi: () => HiddenEditorApi | null;
   enabled: () => boolean;
   onSelectionChange: () => void;
-  onRefusal: ((reason: string, gap: CanonicalGap) => void) | undefined;
+  onRefusal:
+    ((reason: string, ground: CanonicalRefusalGround) => void) | undefined;
 };
 
 /** Secondary views compile classified native input into the shared Document journal. */
@@ -34,10 +35,11 @@ export const createCanonicalStoryEditor = ({
   onSelectionChange,
 }: CanonicalStoryEditorOptions) => {
   const refuse = (reason: string) => {
-    const gap = CANONICAL_GAP.dispatch;
+    const ground = { gap: CANONICAL_GAP.dispatch };
     const message = reason;
-    if (onRefusal) onRefusal(message, gap);
-    else throw new CanonicalSessionError({ gap, message, reason: "refused" });
+    if (onRefusal) onRefusal(message, ground);
+    else
+      throw new CanonicalSessionError({ ground, message, reason: "refused" });
   };
   const history = (direction: "undo" | "redo") => {
     const view = getView();

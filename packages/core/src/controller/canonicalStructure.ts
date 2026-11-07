@@ -57,7 +57,7 @@ const currentSectionEndpoint = (paragraph: Paragraph) => {
 const refuse = (message: string) =>
   Result.err(
     new CanonicalSessionError({
-      gap: CANONICAL_GAP.commands,
+      ground: { gap: CANONICAL_GAP.commands },
       message,
       reason: "refused",
     }),
@@ -66,7 +66,7 @@ const refuse = (message: string) =>
 const noChange = (message: string) =>
   Result.err(
     new CanonicalSessionError({
-      gap: CANONICAL_GAP.commands,
+      ground: { gap: CANONICAL_GAP.commands },
       message,
       reason: "noChange",
     }),

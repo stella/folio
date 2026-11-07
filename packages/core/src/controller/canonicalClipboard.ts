@@ -53,7 +53,7 @@ import {
 const refuse = (message: string) =>
   Result.err(
     new CanonicalSessionError({
-      gap: CANONICAL_GAP.dispatch,
+      ground: { gap: CANONICAL_GAP.dispatch },
       message,
       reason: "refused",
     }),
@@ -344,7 +344,7 @@ export const canonicalClipboardStoryPartRefusal = (
   });
   if (!requiresStory) return undefined;
   return new CanonicalSessionError({
-    gap: CANONICAL_GAP.dispatch,
+    ground: { gap: CANONICAL_GAP.dispatch },
     reason: "refused",
     message:
       "Clipboard comments and note references require importing their source story parts.",
@@ -382,7 +382,7 @@ export const prepareCanonicalPaste = ({
   if (slice.content.size === 0)
     return Result.err(
       new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
+        ground: { gap: CANONICAL_GAP.dispatch },
         message: "The clipboard contains no content.",
         reason: "noChange",
       }),
@@ -418,7 +418,7 @@ export const prepareCanonicalPaste = ({
       ),
     catch: (cause) =>
       new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
+        ground: { gap: CANONICAL_GAP.dispatch },
         reason: "refused",
         message: `Clipboard normalization failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
@@ -534,7 +534,7 @@ export const prepareCanonicalPaste = ({
       try: () => parseXml(xml, OOXML_NAMESPACE_SCOPE),
       catch: () =>
         new CanonicalSessionError({
-          gap: CANONICAL_GAP.dispatch,
+          ground: { gap: CANONICAL_GAP.dispatch },
           reason: "refused",
           message: "The clipboard hyperlink metadata is malformed.",
         }),
@@ -713,7 +713,7 @@ export const prepareCanonicalPaste = ({
             try: () => base64ToBytes(payload),
             catch: () =>
               new CanonicalSessionError({
-                gap: CANONICAL_GAP.dispatch,
+                ground: { gap: CANONICAL_GAP.dispatch },
                 message: "The clipboard image data is malformed.",
                 reason: "refused",
               }),

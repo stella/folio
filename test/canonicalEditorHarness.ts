@@ -156,11 +156,14 @@ export const createCanonicalEditorHarness = (
     onEditorViewReady: () => {},
     onEditorViewDestroy: () => {},
     onRemoteSelectionsChange: () => {},
-    onSessionRefusal: (message, gap) => {
+    onSessionRefusal: (message, ground) => {
+      // A rule refusal never matches a ledger row, so it reads as unexpected.
+      const { gap } = ground;
       const row = expectedRows.find(
         (candidate) => candidate.gap === gap && candidate.message === message,
       );
       refusals.push({
+        ground,
         gap,
         message,
         expectation:
@@ -202,7 +205,11 @@ export const createCanonicalEditorHarness = (
       }
     }
     dispose();
-    if (refusal) throw new CanonicalSessionRefusalError(refusal);
+    if (refusal)
+      throw new CanonicalSessionRefusalError({
+        ground: refusal.ground,
+        message: refusal.message,
+      });
     panic("The canonical conformance controller did not create its view.");
   }
   if (activationRow) {

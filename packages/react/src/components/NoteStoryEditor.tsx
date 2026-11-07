@@ -23,7 +23,7 @@ import {
   type NoteStoryKey,
 } from "@stll/folio-core/controller/noteEditorManager";
 import { setSuggestionMode } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
-import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
   Document,
   StyleDefinitions,
@@ -43,7 +43,11 @@ export type NoteStoryEditorProps = {
   document: Document | null;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
+  onSessionRefusal?: (
+    reason: string,
+    ground: CanonicalRefusalGround,
+    error?: Error,
+  ) => void;
   onActiveChange: (story: NoteStoryKey | null) => void;
   onDocumentChange: (document: Document) => void;
   onStoryChange: (
@@ -148,8 +152,8 @@ const NoteStoryEditorComponent = forwardRef<
         getTheme: () => themeRef.current,
         getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
         getExperimentalSession: () => sessionRef.current,
-        onSessionRefusal: (reason, gap, error) =>
-          refusalRef.current?.(reason, gap, error),
+        onSessionRefusal: (reason, ground, error) =>
+          refusalRef.current?.(reason, ground, error),
         onTransaction: ({ docChanged, selectionChanged, view }) => {
           if (docChanged) {
             const current =

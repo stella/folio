@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "See muutmisseanss võeti mujal üle.",
     "editor": {
       "accessibleName": "Dokumendiredaktor",
+      "contentLocked": "See dokumendi osa on lukustatud.",
       "editing": "Redigeerimine",
       "editingDescription": "Redigeerige dokumenti otse",
       "outlineDepthAll": "Kõik tasemed",

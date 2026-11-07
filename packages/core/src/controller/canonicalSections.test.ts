@@ -12,6 +12,7 @@ import {
 import {
   CANONICAL_GAP,
   type CanonicalGap,
+  type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type { Document, Paragraph, SectionProperties } from "../types/document";
 import { createCanonicalSectionPropertiesOperation } from "./canonicalOperations";
@@ -228,7 +229,7 @@ const managerDeps = ({
   source: Document;
   readOnly: () => boolean;
   sessionKind: "canonical" | "default";
-  onRefusal: (message: string, gap: CanonicalGap) => void;
+  onRefusal: (message: string, ground: CanonicalRefusalGround) => void;
   onDestroy?: () => void;
 }) =>
   ({
@@ -272,14 +273,14 @@ test("manager section patches refuse read-only and composition without changing 
             notePresence: "present",
           });
           let readOnly = false;
-          const refused: CanonicalGap[] = [];
+          const refused: (CanonicalGap | undefined)[] = [];
           const manager = createHiddenEditorManager(
             managerDeps({
               host,
               source,
               readOnly: () => readOnly,
               sessionKind: "canonical",
-              onRefusal: (_message, gap) => refused.push(gap),
+              onRefusal: (_message, ground) => refused.push(ground.gap),
             }),
           );
           try {
@@ -364,7 +365,7 @@ test("section API refuses teardown reentry with one typed refusal and no model m
   const host = document.createElement("div");
   document.body.append(host);
   let invokeDuringDestroy: (() => void) | undefined;
-  const refused: CanonicalGap[] = [];
+  const refused: (CanonicalGap | undefined)[] = [];
   const manager = createHiddenEditorManager(
     managerDeps({
       host,
@@ -375,7 +376,7 @@ test("section API refuses teardown reentry with one typed refusal and no model m
       }),
       readOnly: () => false,
       sessionKind: "canonical",
-      onRefusal: (_message, gap) => refused.push(gap),
+      onRefusal: (_message, ground) => refused.push(ground.gap),
       onDestroy: () => invokeDuringDestroy?.(),
     }),
   );

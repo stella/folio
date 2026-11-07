@@ -621,7 +621,7 @@ export function useDocxEditor(
   const refuseCanonicalModelEdit = (gap: CanonicalGap, message: string) => {
     if (!isCanonicalSession()) return false;
     const error = new CanonicalSessionRefusalError({
-      gap,
+      ground: { gap },
       message: canonicalRefusalMessage(gap, message),
     });
     onError?.(error);
@@ -726,9 +726,9 @@ export function useDocxEditor(
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
     getExperimentalSession: () => toValue(experimentalSession),
-    onSessionRefusal: (message, gap, error) => {
+    onSessionRefusal: (message, ground, error) => {
       parseError.value = message;
-      onError?.(error ?? new CanonicalSessionRefusalError({ gap, message }));
+      onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
     getStyles: () => docModel.value?.package.styles ?? null,
     getTheme: () => docModel.value?.package.theme ?? null,
@@ -755,9 +755,9 @@ export function useDocxEditor(
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
     getExperimentalSession: () => toValue(experimentalSession),
-    onSessionRefusal: (message, gap, error) => {
+    onSessionRefusal: (message, ground, error) => {
       parseError.value = message;
-      onError?.(error ?? new CanonicalSessionRefusalError({ gap, message }));
+      onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
     getStyles: () => docModel.value?.package.styles ?? null,
     getTheme: () => docModel.value?.package.theme ?? null,
@@ -984,8 +984,8 @@ export function useDocxEditor(
     getExperimentalSession: () => toValue(experimentalSession),
     getEditingMode: () => toValue(editorMode) ?? "editing",
     getSuggestionAuthor,
-    onSessionRefusal: (message, gap, error) => {
-      onError?.(error ?? new CanonicalSessionRefusalError({ gap, message }));
+    onSessionRefusal: (message, ground, error) => {
+      onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
     getDocumentIdentity: () => String(loadSequence),
     getDocumentContext: () => docModel.value,
