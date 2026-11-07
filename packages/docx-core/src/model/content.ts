@@ -2859,6 +2859,8 @@ export type BlockContent =
   | PreservedBlock
   | BookmarkStart
   | BookmarkEnd
+  | CommentRangeStart
+  | CommentRangeEnd
   | MoveFromRangeStart
   | MoveFromRangeEnd
   | MoveToRangeStart

@@ -154,3 +154,41 @@ export const BLOCK_MOVE_RANGE_MARKER_HANDLERS: BlockMoveRangeMarkerHandlers = {
     });
   },
 };
+
+type BlockCommentRangeMarkerHandler = (
+  child: XmlElement,
+  walk: { modelled: BlockContent[] },
+) => void;
+
+/**
+ * A comment's range markers between blocks, as every block container reads
+ * them: beside a content control (`w:displacedByCustomXml`) or between two
+ * paragraphs. Typed blocks, as move range and bookmark markers are, so every
+ * reader that pairs a comment's start with its end sees both halves.
+ */
+type BlockCommentRangeMarkerHandlers = {
+  readonly commentRangeStart: BlockCommentRangeMarkerHandler;
+  readonly commentRangeEnd: BlockCommentRangeMarkerHandler;
+};
+
+export const BLOCK_COMMENT_RANGE_MARKER_HANDLERS: BlockCommentRangeMarkerHandlers =
+  {
+    commentRangeStart: (
+      child: XmlElement,
+      { modelled }: { modelled: BlockContent[] },
+    ): void => {
+      modelled.push({
+        type: "commentRangeStart",
+        ...parseMarkupRangeMarker(child),
+      });
+    },
+    commentRangeEnd: (
+      child: XmlElement,
+      { modelled }: { modelled: BlockContent[] },
+    ): void => {
+      modelled.push({
+        type: "commentRangeEnd",
+        ...parseMarkupRangeMarker(child),
+      });
+    },
+  };

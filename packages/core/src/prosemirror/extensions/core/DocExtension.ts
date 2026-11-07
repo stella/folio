@@ -19,6 +19,6 @@ export const DocExtension: (
       _doNotUseIndentAsNumberingTabStop: { default: false },
     },
     content:
-      "(paragraph | horizontalRule | pageBreak | table | textBox | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary | blockMoveRangeBoundary)+",
+      "(paragraph | horizontalRule | pageBreak | table | textBox | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary | blockMoveRangeBoundary | blockCommentRangeBoundary)+",
   },
 });

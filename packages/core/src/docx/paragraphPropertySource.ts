@@ -908,6 +908,8 @@ const tableCellBlockTraversalByType = {
   blockCustomXml: "blockSdt",
   bookmarkEnd: "leaf",
   bookmarkStart: "leaf",
+  commentRangeEnd: "leaf",
+  commentRangeStart: "leaf",
   moveFromRangeEnd: "leaf",
   moveFromRangeStart: "leaf",
   moveToRangeEnd: "leaf",
@@ -1415,6 +1417,8 @@ type TableCellLeafBlockType = {
 const TABLE_CELL_LEAF_BLOCK_FIELDS = {
   bookmarkStart: { id: "number", name: "string" },
   bookmarkEnd: { id: "number" },
+  commentRangeStart: { id: "number" },
+  commentRangeEnd: { id: "number" },
   moveFromRangeStart: { id: "number", name: "string", author: "string" },
   moveFromRangeEnd: { id: "number" },
   moveToRangeStart: { id: "number", name: "string", author: "string" },

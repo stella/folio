@@ -48,10 +48,13 @@ export const readCommentRangeBoundaryAttrs = (
   node: PMNode,
 ): ReadProseMirrorAttrsResult<CommentRangeBoundaryAttrs> => {
   const issues: ProseMirrorAttrIssue[] = [];
-  if (node.type.name !== "commentRangeBoundary") {
+  if (
+    node.type.name !== "commentRangeBoundary" &&
+    node.type.name !== "blockCommentRangeBoundary"
+  ) {
     issues.push({
       path: "commentRangeBoundary.type.name",
-      message: `Expected commentRangeBoundary, got ${node.type.name}.`,
+      message: `Expected commentRangeBoundary or blockCommentRangeBoundary, got ${node.type.name}.`,
     });
   }
   const marker = readCommentRangeBoundaryMarker(node.attrs["marker"]);

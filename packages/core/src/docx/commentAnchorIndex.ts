@@ -22,17 +22,35 @@ import type {
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { visitInlineContentSlots } from "./paragraphTraversal";
 
-export type CommentMarkerSlot = {
+type CommentMarker = Extract<
+  ParagraphContent,
+  | { type: "commentRangeStart" }
+  | { type: "commentRangeEnd" }
+  | { type: "commentReference" }
+>;
+
+/** A marker inside a paragraph, in the inline-content array it sits in. */
+export type InlineCommentMarkerSlot = {
+  level: "inline";
   /** The inline-content array the marker sits in, so a caller can splice it. */
   content: ParagraphContent[];
   index: number;
+  item: CommentMarker;
+};
+
+/** A range marker between blocks, in the block array it sits in. */
+export type BlockCommentMarkerSlot = {
+  level: "block";
+  content: BlockContent[];
+  index: number;
   item: Extract<
-    ParagraphContent,
-    | { type: "commentRangeStart" }
-    | { type: "commentRangeEnd" }
-    | { type: "commentReference" }
+    BlockContent,
+    { type: "commentRangeStart" } | { type: "commentRangeEnd" }
   >;
 };
+
+export type CommentMarkerSlot =
+  InlineCommentMarkerSlot | BlockCommentMarkerSlot;
 
 export const visitCommentMarkers = (
   blocks: readonly BlockContent[],
@@ -45,7 +63,7 @@ export const visitCommentMarkers = (
         item.type === "commentRangeEnd" ||
         item.type === "commentReference"
       ) {
-        visit({ content, index, item });
+        visit({ level: "inline", content, index, item });
       }
     });
   };
@@ -72,7 +90,22 @@ export const visitCommentMarkers = (
   };
 
   const visitBlocks = (nested: readonly BlockContent[]): void => {
-    for (const block of nested) {
+    for (const [index, block] of nested.entries()) {
+      // A range may open or close between blocks: the marker is the story's
+      // as much as one inside a paragraph is.
+      if (
+        block.type === "commentRangeStart" ||
+        block.type === "commentRangeEnd"
+      ) {
+        // SAFETY: the walk never writes through `content`; callers splice it.
+        visit({
+          level: "block",
+          content: nested as BlockContent[],
+          index,
+          item: block,
+        });
+        continue;
+      }
       visitBlock(block);
     }
   };
@@ -316,6 +349,8 @@ export const removeCommentMarkers = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":

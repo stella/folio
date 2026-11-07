@@ -31,7 +31,10 @@ import {
   computeListMarker,
   type PreviousListState,
 } from "./listMarkerComputation";
-import { BLOCK_MOVE_RANGE_MARKER_HANDLERS } from "./markupRangeMarker";
+import {
+  BLOCK_COMMENT_RANGE_MARKER_HANDLERS,
+  BLOCK_MOVE_RANGE_MARKER_HANDLERS,
+} from "./markupRangeMarker";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
@@ -199,8 +202,18 @@ const parseBlockCustomXml = (
 
 export const BLOCK_CONTENT_HANDLERS: {
   readonly altChunk: "capture";
-  readonly commentRangeEnd: "capture";
-  readonly commentRangeStart: "capture";
+  readonly commentRangeEnd: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly commentRangeStart: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
   readonly customXmlDelRangeEnd: "capture";
   readonly customXmlDelRangeStart: "capture";
   readonly customXmlInsRangeEnd: "capture";
@@ -391,10 +404,9 @@ export const BLOCK_CONTENT_HANDLERS: {
     modelled.push(parseBookmarkEnd(child));
   },
   ...BLOCK_MOVE_RANGE_MARKER_HANDLERS,
+  ...BLOCK_COMMENT_RANGE_MARKER_HANDLERS,
   ...BLOCK_CHILD_OWNERS,
   altChunk: CAPTURE,
-  commentRangeEnd: CAPTURE,
-  commentRangeStart: CAPTURE,
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,

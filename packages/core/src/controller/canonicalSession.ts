@@ -67,6 +67,7 @@ import {
   canonicalContentPosition,
   canonicalSelectionRange,
 } from "../prosemirror/canonicalSelectionRange";
+import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
 import {
   collectPairedBookmarkIds,
   footnoteToProseDoc,
@@ -562,6 +563,12 @@ const unsupportedSeedReason = (
           paragraphs.push(block);
           continue;
         }
+        // A comment range may open or close between blocks; it holds no text.
+        if (
+          block.type === "commentRangeStart" ||
+          block.type === "commentRangeEnd"
+        )
+          continue;
         if (block.type !== "table")
           return "Canonical sessions currently require paragraphs, tables and supported inline atoms.";
         for (const row of block.rows) {
@@ -676,6 +683,14 @@ const project = ({
   let failure: CanonicalSessionError | undefined;
   converted.value.descendants((node, offset) => {
     if (failure !== undefined) return;
+    // A range opened between blocks covers the paragraphs after it.
+    if (node.type.name === "blockCommentRangeBoundary") {
+      const { marker } = expectCommentRangeBoundaryAttrs(node);
+      if (marker.type === "commentRangeStart")
+        commentContext.openIds.add(marker.id);
+      else commentContext.openIds.delete(marker.id);
+      return;
+    }
     if (node.type.name !== "paragraph") return;
     const paraId = node.attrs["paraId"];
     const located =
