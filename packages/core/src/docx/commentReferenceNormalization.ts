@@ -13,6 +13,14 @@ import type {
 } from "../types/document";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 import { visitInlineContentSlots } from "./paragraphTraversal";
+import {
+  findAttributeByNamespaceUri,
+  getLocalName,
+  getNamespaceUri,
+  OOXML_NAMESPACE_SCOPE,
+  parseXml,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+} from "./xmlParser";
 
 /** The codes this normalisation is reported under, owned here, not at the caller. */
 export const DANGLING_COMMENT_REFERENCE_WARNING: "dangling-comment-reference" =
@@ -94,6 +102,7 @@ export const normalizeCommentReferences = ({
   };
 
   const normalizeBlocks = (blocks: BlockContent[]): void => {
+    moveCommentBoundariesIntoText(blocks);
     for (const block of blocks) {
       normalizeBlock(block);
     }
@@ -193,3 +202,106 @@ const isCommentRangeMarker = (
   ParagraphContent,
   { type: "commentRangeStart" } | { type: "commentRangeEnd" }
 > => content.type === "commentRangeStart" || content.type === "commentRangeEnd";
+
+type CapturedCommentBoundary = {
+  type: "commentRangeStart" | "commentRangeEnd";
+  id: number;
+};
+
+/** The comment range boundary a captured block is, if it is one. */
+const capturedCommentBoundary = (
+  block: BlockContent,
+): CapturedCommentBoundary | null => {
+  if (
+    block.type !== "preservedBlock" ||
+    !/^<[^>]*commentRange(?:Start|End)\b/u.test(block.xml)
+  )
+    return null;
+  let element;
+  try {
+    // Captured bytes rely on the part's bindings, so they are read under them.
+    element = parseXml(block.xml, OOXML_NAMESPACE_SCOPE).elements?.find(
+      (child) => child.type === "element",
+    );
+  } catch {
+    return null;
+  }
+  if (
+    !element ||
+    !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
+  )
+    return null;
+  const name = getLocalName(element.name ?? "");
+  const id = Number(
+    findAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id")
+      ?.value,
+  );
+  if (
+    (name !== "commentRangeStart" && name !== "commentRangeEnd") ||
+    !Number.isSafeInteger(id)
+  )
+    return null;
+  return { type: name, id };
+};
+
+/** The first or last paragraph a block holds, looking inside its wrappers. */
+const edgeParagraph = (
+  block: BlockContent | undefined,
+  edge: "first" | "last",
+): Paragraph | undefined => {
+  if (!block) return undefined;
+  if (block.type === "paragraph") return block;
+  let children: readonly BlockContent[] | undefined;
+  if (block.type === "blockSdt" || block.type === "blockCustomXml") {
+    children = block.content;
+  } else if (block.type === "table") {
+    const cell =
+      edge === "first"
+        ? block.rows.at(0)?.cells.at(0)
+        : block.rows.at(-1)?.cells.at(-1);
+    children = cell?.content;
+  }
+  if (!children) return undefined;
+  const ordered = edge === "first" ? children : children.toReversed();
+  for (const child of ordered) {
+    const found = edgeParagraph(child, edge);
+    if (found) return found;
+  }
+  return undefined;
+};
+
+/**
+ * A comment range boundary written between blocks, beside a content control
+ * (`w:displacedByCustomXml`) say, opens or closes the range at the text next
+ * to it. The reader keeps it as captured bytes, which every comment reader
+ * then misses: the range looks unbalanced and the comment turned into a point
+ * comment. A start goes to the front of the next paragraph and an end to the
+ * back of the one before, which bounds the same text, so the range is one
+ * that every reader sees.
+ */
+const moveCommentBoundariesIntoText = (blocks: BlockContent[]): void => {
+  for (let index = 0; index < blocks.length; index++) {
+    const block = blocks[index];
+    const boundary = block ? capturedCommentBoundary(block) : null;
+    if (!boundary) continue;
+    const marker = { type: boundary.type, id: boundary.id } as const;
+    if (boundary.type === "commentRangeStart") {
+      const next = blocks
+        .slice(index + 1)
+        .map((candidate) => edgeParagraph(candidate, "first"))
+        .find((paragraph) => paragraph !== undefined);
+      if (!next) continue;
+      next.content.unshift(marker);
+    } else {
+      const previous = blocks
+        .slice(0, index)
+        .toReversed()
+        .map((candidate) => edgeParagraph(candidate, "last"))
+        .find((paragraph) => paragraph !== undefined);
+      if (!previous) continue;
+      previous.content.push(marker);
+    }
+    blocks.splice(index, 1);
+    index -= 1;
+  }
+};
