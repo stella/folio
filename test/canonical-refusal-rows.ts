@@ -90,7 +90,7 @@ const SELECTED_CELL_REFUSALS = {
     {
       id: "selected-cells-typing",
       gap: CANONICAL_GAP.dispatch,
-      message: "Unclassified native text is unavailable in this session.",
+      message: "Replacing a cell selection requires a per-cell replacement.",
     },
   ],
   enter: [
@@ -128,6 +128,7 @@ const SELECTED_CELL_REFUSALS = {
   redo: [],
   historyBurst: [],
   selectionDrag: [],
+  selectAll: [],
 } as const satisfies Record<
   BrowserInputAction["kind"],
   readonly HarnessRefusalRow[]

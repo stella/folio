@@ -15,7 +15,10 @@ import {
   paragraphPropertySourceBelongsToDocument,
   paragraphPropertySourceTokenMatchesContract,
 } from "../../packages/core/src/docx/paragraphPropertySource";
-import type { BrowserDragTarget } from "../visual/browserDragTarget";
+import {
+  type BrowserDragTarget,
+  crossParagraphDragRange,
+} from "../visual/browserDragTarget";
 import { waitForCanonicalLoadOwner } from "./canonicalLoadOwner";
 import { canonicalTextSelection } from "./canonicalTextSelection";
 
@@ -148,6 +151,17 @@ export const buildCanonicalBridge = (
   selectStructuralTarget: (target: BrowserDragTarget) => {
     const view = getRef()?.getEditor()?.getView();
     if (!view) return null;
+    if (target === "paragraphs") {
+      const range = crossParagraphDragRange(view.state.doc);
+      if (!range) return null;
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, range.from, range.to),
+        ),
+      );
+      view.focus();
+      return view.state.selection.toJSON();
+    }
     const targets: {
       pos: number;
       size: number;

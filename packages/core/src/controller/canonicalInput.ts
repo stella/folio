@@ -93,6 +93,7 @@ export const createCanonicalInputBoundary = (
     text: string,
   ) => boolean;
   handleKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
+  handleKeyPress: (view: EditorView, event: KeyboardEvent) => boolean;
   handleDOMEvents: {
     keydown: (view: EditorView, event: KeyboardEvent) => boolean;
     compositionstart: (view: EditorView) => boolean;
@@ -231,6 +232,30 @@ export const createCanonicalInputBoundary = (
         return true;
       }
       refuseNativeMutation(view);
+      return true;
+    },
+    /**
+     * ProseMirror types a key over a selection that is not text inside one
+     * paragraph (one across paragraphs, a whole document, cells, a node) itself
+     * from keypress, cancelling it, so no beforeinput ever classifies that
+     * text. It is the same typing a beforeinput carries, at the same selection.
+     */
+    handleKeyPress: (view: EditorView, event: KeyboardEvent): boolean => {
+      if (composition.active || composition.pendingFinal) return false;
+      const { selection } = view.state;
+      if (
+        selection instanceof TextSelection &&
+        selection.$from.sameParent(selection.$to)
+      )
+        return false;
+      const text = String.fromCharCode(event.charCode);
+      if (/[\r\n]/u.test(text)) return false;
+      options.replace({
+        from: selection.from,
+        to: selection.to,
+        text,
+        semantic: "typing",
+      });
       return true;
     },
     handleKeyDown: (view: EditorView, event: KeyboardEvent): boolean => {
