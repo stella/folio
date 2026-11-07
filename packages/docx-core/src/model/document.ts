@@ -14,6 +14,22 @@
 
 export { getSingularRunPropertyChange } from "./runPropertyReview";
 export {
+  CONTENT_CONTROL_LOCK,
+  contentControlLockAllows,
+  firstLockedControlViolation,
+  lockedControlMessage,
+  lockedControlViolation,
+  locksContent,
+  locksControl,
+} from "./contentControlLock";
+export type {
+  ContentControlChange,
+  ContentControlLock,
+  LockedControlSpan,
+  LockedControlTouch,
+  LockedControlViolation,
+} from "./contentControlLock";
+export {
   finalizeParagraphFormatting,
   isCanonicallyEmptyParagraphFormatting,
   setDocumentBodyComments,

@@ -199,6 +199,13 @@ export const withComparisonNoteReferenceEdits = <T>(apply: () => T): T => {
 export const noteReferenceEditsAllowed = (): boolean =>
   comparisonEditsNoteReferences;
 
+/**
+ * @internal Whether the running apply belongs to a comparison. Its operations
+ * describe differences two documents already hold, so the content-control
+ * locks, which guard editing a document, do not refuse them.
+ */
+export const comparisonApplying = (): boolean => comparisonEditsNoteReferences;
+
 const NOTE_MARKER_PATTERN = /\[\^e?[1-9]\d*\]/gu;
 const markerCount = (text: string): number =>
   text.match(NOTE_MARKER_PATTERN)?.length ?? 0;

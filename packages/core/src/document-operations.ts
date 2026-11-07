@@ -2154,6 +2154,7 @@ const recoveryByReason = {
   invalidResult: "refreshDocument",
   pendingDeletion: "resolveTrackedChange",
   pendingParagraphMarkDeletion: "resolveTrackedChange",
+  contentControlLock: "changeTarget",
 } as const satisfies Record<
   FolioAIEditSkippedOperation["reason"],
   FolioDocumentOperationRecovery
@@ -2181,6 +2182,8 @@ export const getFolioDocumentOperationIssues = (
         reason !== "pendingRunPropertyChange" &&
         reason !== "pendingDeletion" &&
         reason !== "pendingParagraphMarkDeletion" &&
+        // A lock refuses the same change to the same control every time.
+        reason !== "contentControlLock" &&
         // The same values never fit the same target; only a changed operation
         // can succeed.
         reason !== "payloadDoesNotFit" &&
