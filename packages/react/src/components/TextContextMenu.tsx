@@ -418,6 +418,9 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
     if (item.dividerAfter !== undefined) {
       menuItem.dividerAfter = item.dividerAfter;
     }
+    if (item.disabledReason !== undefined) {
+      menuItem.disabledReason = item.disabledReason;
+    }
     return menuItem;
   });
 
