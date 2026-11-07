@@ -10,10 +10,19 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { EditorState } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { parseDocx } from "../docx/parser";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
+import {
+  acceptChange,
+  changeResolutionLockViolation,
+  findChangeAtPosition,
+  rejectChange,
+} from "../prosemirror/commands/comments";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { FolioDocxReviewer } from "./headless";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -182,4 +191,40 @@ describe("resolving tracked changes in a locked content control", () => {
           ).toBe(true);
         });
       }
+});
+
+describe("the change at a caret inside a locked inline control", () => {
+  test("is found whole, and the editor commands refuse it", async () => {
+    const fixture = FIXTURES[0];
+    if (fixture === undefined) throw new Error("expected the inline fixture");
+    const document = await parseDocx(
+      await createDocx(fixture.body("contentLocked")),
+      { preloadFonts: false },
+    );
+    const state = EditorState.create({ doc: toProseDoc(document) });
+    let caret = -1;
+    state.doc.descendants((node, position) => {
+      if (node.isText && node.text === " added") caret = position + 2;
+    });
+    expect(caret).toBeGreaterThan(0);
+    const range = findChangeAtPosition(state, caret, caret);
+    expect(range.to - range.from).toBe(" added".length);
+    for (const mode of ["accept", "reject"] as const) {
+      expect(changeResolutionLockViolation(state, { ...range, mode })).toEqual({
+        lock: "contentLocked",
+        change: "editContent",
+      });
+      const command = (mode === "accept" ? acceptChange : rejectChange)(
+        range.from,
+        range.to,
+      );
+      let dispatched = false;
+      expect(
+        command(state, () => {
+          dispatched = true;
+        }),
+      ).toBe(false);
+      expect(dispatched).toBe(false);
+    }
+  });
 });

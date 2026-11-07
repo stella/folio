@@ -3677,10 +3677,11 @@ export function findChangeAtPosition(
     return { from, to };
   }
 
-  // Resolve the position and check marks at cursor
+  // Resolve the position and check marks at cursor. The parent may be an
+  // inline container, such as a content control, holding the text.
   const $pos = state.doc.resolve(from);
   const node = $pos.parent;
-  if (!node.isTextblock) {
+  if (!node.inlineContent) {
     return { from, to };
   }
 
