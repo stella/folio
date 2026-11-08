@@ -2,6 +2,7 @@ import { NodeSelection } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 
 import {
+  changeResolutionLockViolation,
   findChangeAtPosition,
   findParagraphBoundaryChangeAtPosition,
 } from "@stll/folio-core/prosemirror/commands/comments";
@@ -66,20 +67,10 @@ export function detectActiveTrackedChange(
 ): ActiveTrackedChangeInfo | null {
   const { from } = state.selection;
   const $pos = state.doc.resolve(from);
-  const node = $pos.parent;
-  if (!node.isTextblock) {
-    return null;
-  }
-
-  let childOffset = 0;
-  for (let index = 0; index < node.childCount; index += 1) {
-    const child = node.child(index);
-    const childStart = $pos.start() + childOffset;
-    const childEnd = childStart + child.nodeSize;
-    if (from < childStart || from > childEnd || !child.isText) {
-      childOffset += child.nodeSize;
-      continue;
-    }
+  // The text on either side of the caret, also inside an inline container
+  // such as a content control, the character before it first.
+  for (const child of [$pos.nodeBefore, $pos.nodeAfter]) {
+    if (!child?.isText) continue;
     for (const mark of child.marks) {
       if (mark.type.name !== "insertion" && mark.type.name !== "deletion") {
         continue;
@@ -91,9 +82,9 @@ export function detectActiveTrackedChange(
         date: (mark.attrs["date"] as string) || null,
         from: range.from,
         to: range.to,
+        heldByLock: heldByLock(state, range),
       };
     }
-    childOffset += child.nodeSize;
   }
 
   const paragraphChange = findParagraphBoundaryChangeAtPosition(state, from);
@@ -106,5 +97,17 @@ export function detectActiveTrackedChange(
     date: paragraphChange.date || null,
     from: paragraphChange.from,
     to: paragraphChange.to,
+    heldByLock: heldByLock(state, paragraphChange),
   };
 }
+
+/** What the content-control locks say about resolving the changes in `range`. */
+export const heldByLock = (
+  state: EditorState,
+  range: { from: number; to: number },
+): ActiveTrackedChangeInfo["heldByLock"] => ({
+  accept:
+    changeResolutionLockViolation(state, { ...range, mode: "accept" }) !== null,
+  reject:
+    changeResolutionLockViolation(state, { ...range, mode: "reject" }) !== null,
+});

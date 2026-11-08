@@ -328,14 +328,17 @@ const resolveChanges = async ({
 
   let resolved: number | readonly string[];
   if (all === true) {
-    const count =
+    const resolution =
       action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+    const count = resolution.resolved;
     if (count === 0) {
       return Result.err(
         cliError({
           code: FOLIO_CLI_ERROR_CODES.operationRejected,
           message:
-            "The document has no pending tracked changes; nothing was written.",
+            resolution.skipped.length > 0
+              ? "Every pending tracked change is held by a locked content control; nothing was written."
+              : "The document has no pending tracked changes; nothing was written.",
         }),
       );
     }

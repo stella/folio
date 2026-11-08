@@ -111,7 +111,7 @@ const rejectInserted = async (survivors: readonly ParagraphContent[]) => {
       [reviewComment(COMMENT_ID)],
     ),
   );
-  expect(reviewer.rejectAll()).toBeGreaterThan(0);
+  expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
   return reviewer.getComments().some(({ id }) => id === COMMENT_ID);
 };
 
@@ -169,7 +169,7 @@ describe("accepted deletion comment anchors", () => {
     } satisfies Document;
     const reviewer = await openReviewer(await createDocx(document));
 
-    expect(reviewer.acceptAll()).toBeGreaterThan(0);
+    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
     expect(reviewer.getComments().some(({ id }) => id === COMMENT_ID)).toBe(
       false,
     );
@@ -289,7 +289,7 @@ describe("rejected insertion comment anchors", () => {
     );
     expect(commented.skipped).toEqual([]);
 
-    expect(reviewer.rejectAll()).toBeGreaterThan(0);
+    expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
     expect(reviewer.getComments()).toEqual([]);
     expect(
       (await openReviewer(await reviewer.toBuffer())).getComments(),
@@ -328,7 +328,7 @@ describe("rejected insertion comment anchors", () => {
     );
     expect(commented.skipped).toEqual([]);
 
-    expect(reviewer.rejectAll()).toBeGreaterThan(0);
+    expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
     expect(
       reviewer
         .getComments()

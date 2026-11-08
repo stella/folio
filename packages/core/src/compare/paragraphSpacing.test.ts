@@ -343,7 +343,7 @@ const expectCompareRoundTrip = async ({
 
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expectDirectSpacing(accepting, after.directSpacing);
-  expect(accepting.acceptAll()).toBe(1);
+  expect(accepting.acceptAll().resolved).toBe(1);
   expectDirectSpacing(accepting, after.directSpacing);
   const accepted = await accepting.toBuffer();
   const acceptedXml = firstParagraphXml(await mainDocumentXml(accepted));
@@ -358,7 +358,7 @@ const expectCompareRoundTrip = async ({
 
   const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   expectDirectSpacing(rejecting, after.directSpacing);
-  expect(rejecting.rejectAll()).toBe(1);
+  expect(rejecting.rejectAll().resolved).toBe(1);
   expectDirectSpacing(rejecting, before.directSpacing);
   const rejected = await rejecting.toBuffer();
   const rejectedXml = firstParagraphXml(await mainDocumentXml(rejected));
@@ -429,7 +429,7 @@ describe("paragraph spacing comparison", () => {
       throw result.error;
     }
     const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(rejecting.rejectAll()).toBeGreaterThan(0);
+    expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
     const rejectedBuffer = await rejecting.toBuffer();
 
     expect(directSpacingXml(await mainDocumentXml(rejectedBuffer))).toBe("");
@@ -518,7 +518,7 @@ describe("paragraph spacing comparison", () => {
     });
 
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(accepting.acceptAll()).toBe(1);
+    expect(accepting.acceptAll().resolved).toBe(1);
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
     );
@@ -528,7 +528,7 @@ describe("paragraph spacing comparison", () => {
     });
 
     const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(rejecting.rejectAll()).toBe(1);
+    expect(rejecting.rejectAll().resolved).toBe(1);
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
     );
@@ -633,7 +633,7 @@ describe("paragraph spacing comparison", () => {
         expectParagraphBlock(pending.snapshot().blocks.at(0)).directSpacing,
       ).toEqual(directSpacing);
 
-      expect(pending.acceptAll()).toBeGreaterThan(0);
+      expect(pending.acceptAll().resolved).toBeGreaterThan(0);
       const acceptedBuffer = await pending.toBuffer();
       const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
       expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([
@@ -646,7 +646,7 @@ describe("paragraph spacing comparison", () => {
       );
 
       const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-      expect(rejecting.rejectAll()).toBeGreaterThan(0);
+      expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
       const rejected = await FolioDocxReviewer.fromBuffer(
         await rejecting.toBuffer(),
       );
@@ -696,7 +696,7 @@ describe("paragraph spacing comparison", () => {
       );
 
       const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-      expect(accepting.acceptAll()).toBeGreaterThan(0);
+      expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
       const accepted = await accepting.toBuffer();
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
       expect(
@@ -705,7 +705,7 @@ describe("paragraph spacing comparison", () => {
       expectDirectSpacing(reopenedAccepted, directSpacing, 1);
 
       const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-      expect(rejecting.rejectAll()).toBeGreaterThan(0);
+      expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
       const rejected = await rejecting.toBuffer();
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
       expect(
@@ -816,14 +816,14 @@ describe("paragraph spacing comparison", () => {
     });
 
     const accepting = await FolioDocxReviewer.fromBuffer(stillPending);
-    expect(accepting.acceptAll()).toBe(1);
+    expect(accepting.acceptAll().resolved).toBe(1);
     expectDirectSpacing(
       await FolioDocxReviewer.fromBuffer(await accepting.toBuffer()),
       firstTarget,
     );
 
     const rejecting = await FolioDocxReviewer.fromBuffer(stillPending);
-    expect(rejecting.rejectAll()).toBe(1);
+    expect(rejecting.rejectAll().resolved).toBe(1);
     expectDirectSpacing(
       await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer()),
       originalSpacing,
@@ -922,7 +922,7 @@ describe("paragraph spacing comparison", () => {
     });
 
     const accepting = await FolioDocxReviewer.fromBuffer(pending);
-    expect(accepting.acceptAll()).toBeGreaterThan(0);
+    expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
     );
@@ -933,7 +933,7 @@ describe("paragraph spacing comparison", () => {
     expectDirectSpacing(accepted, firstTarget, 1);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    expect(rejecting.rejectAll()).toBeGreaterThan(0);
+    expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
     );
@@ -1007,7 +1007,7 @@ describe("paragraph spacing comparison", () => {
     );
 
     const accepting = await FolioDocxReviewer.fromBuffer(pending);
-    expect(accepting.acceptAll()).toBeGreaterThan(0);
+    expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
     );
@@ -1019,7 +1019,7 @@ describe("paragraph spacing comparison", () => {
     expectDirectSpacing(accepted, FULL_SPACING, 1);
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
-    expect(rejecting.rejectAll()).toBeGreaterThan(0);
+    expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
     );

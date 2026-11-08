@@ -206,8 +206,9 @@ const expectReviewedProjection = async (
   expected: readonly ReturnType<typeof projectedBlocks>[number][],
 ): Promise<void> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
-  const revisionCount =
-    action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+  const revisionCount = (
+    action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll()
+  ).resolved;
   expect(revisionCount).toBeGreaterThan(0);
   expect(reviewer.getChanges()).toEqual([]);
   expect(projectedBlocks(reviewer)).toEqual(expected);

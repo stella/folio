@@ -74,7 +74,7 @@ describe("final section property comparison", () => {
     expect(pendingXml).toContain("<w:sectPrChange");
 
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(accepting.acceptAll()).toBe(1);
+    expect(accepting.acceptAll().resolved).toBe(1);
     const acceptedReopened = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
     );
@@ -83,7 +83,7 @@ describe("final section property comparison", () => {
     );
 
     const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(rejecting.rejectAll()).toBe(1);
+    expect(rejecting.rejectAll().resolved).toBe(1);
     const rejectedReopened = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
     );
@@ -239,7 +239,7 @@ test("Folio-exact header removal restores references on reject and removes retir
   });
   const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
   const pendingSave = accepting.toBuffer();
-  expect(accepting.acceptAll()).toBe(1);
+  expect(accepting.acceptAll().resolved).toBe(1);
   expect(accepting.listStories()).toHaveLength(1);
   const acceptedBuffer = await accepting.toBuffer();
   const acceptedZip = await ZipArchive.read(acceptedBuffer);
@@ -254,7 +254,7 @@ test("Folio-exact header removal restores references on reject and removes retir
   );
   expect(accepted.listStories()).toHaveLength(1);
   const rejecting = await FolioDocxReviewer.fromBuffer(await pendingSave);
-  expect(rejecting.rejectAll()).toBe(1);
+  expect(rejecting.rejectAll().resolved).toBe(1);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
   );

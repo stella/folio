@@ -637,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "Filigrane"
     },
     "trackedChanges": {
+      "heldByLock": "Un contrôle de contenu verrouillé empêche d’accepter ou de refuser cette modification.",
       "replaced": "Remplacé",
       "unknown": "Inconnu",
       "with": "par"

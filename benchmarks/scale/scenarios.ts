@@ -166,7 +166,7 @@ const prepareAcceptAll = async (size: number): Promise<Operation> => {
     await bytesFor(trackedChangeDocument, size),
   );
   return () => {
-    const count = reviewer.acceptAll();
+    const count = reviewer.acceptAll().resolved;
     if (count !== size)
       throw new Error(`Expected ${size} accepted changes, got ${count}`);
   };

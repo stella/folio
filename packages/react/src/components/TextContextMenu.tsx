@@ -73,6 +73,8 @@ export type TextContextMenuItem = {
   shortcut?: string;
   /** Whether the item is disabled */
   disabled?: boolean;
+  /** Why a disabled item is disabled, shown on hover and announced with it. */
+  disabledReason?: string;
   /** Whether to show divider after this item */
   dividerAfter?: boolean;
   /** Icon override (host-provided entries pass their own lucide icon). */
@@ -288,6 +290,11 @@ const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
         disabled={item.disabled}
         role="menuitem"
         aria-disabled={item.disabled}
+        {...(item.disabled &&
+          item.disabledReason !== undefined && {
+            title: item.disabledReason,
+            "aria-description": item.disabledReason,
+          })}
         style={{
           display: "flex",
           alignItems: "center",
@@ -410,6 +417,9 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
     }
     if (item.dividerAfter !== undefined) {
       menuItem.dividerAfter = item.dividerAfter;
+    }
+    if (item.disabledReason !== undefined) {
+      menuItem.disabledReason = item.disabledReason;
     }
     return menuItem;
   });

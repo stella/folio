@@ -71,7 +71,8 @@ const resolveTracked = async (
 ): Promise<TableReading> => {
   const reopened = await open(await reviewer.toBuffer());
   expect(
-    resolution === "accept" ? reopened.acceptAll() : reopened.rejectAll(),
+    (resolution === "accept" ? reopened.acceptAll() : reopened.rejectAll())
+      .resolved,
   ).toBeGreaterThan(0);
   return readReviewerTables(reopened);
 };

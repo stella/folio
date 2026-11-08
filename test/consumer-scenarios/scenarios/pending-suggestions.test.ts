@@ -56,7 +56,7 @@ test("pending suggestions round-trip through the packed public API", async () =>
     reopened.getContent().map(({ text }) => text),
     proposed,
   );
-  assert.equal(reopened.acceptAll(), 0);
+  assert.equal(reopened.acceptAll().resolved, 0);
   assert.deepEqual(
     reopened.getContent().map(({ text }) => text),
     proposed,

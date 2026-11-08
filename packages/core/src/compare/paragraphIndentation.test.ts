@@ -60,13 +60,13 @@ describe("paragraph indentation comparison", () => {
     expect(pending).toContain('<w:ind w:left="720"/>');
 
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(accepting.acceptAll()).toBe(1);
+    expect(accepting.acceptAll().resolved).toBe(1);
     const accepted = await mainDocumentXml(await accepting.toBuffer());
     expect(accepted).not.toContain("<w:pPrChange");
     expect(accepted).toContain('<w:ind w:left="1440"/>');
 
     const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(rejecting.rejectAll()).toBe(1);
+    expect(rejecting.rejectAll().resolved).toBe(1);
     const rejected = await mainDocumentXml(await rejecting.toBuffer());
     expect(rejected).not.toContain("<w:pPrChange");
     expect(rejected).toContain('<w:ind w:left="720"/>');

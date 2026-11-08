@@ -641,6 +641,7 @@ export const CATALOGS = {
         "watermark": "Watermark"
       },
       "trackedChanges": {
+        "heldByLock": "A locked content control prevents accepting or rejecting this change.",
         "replaced": "Replaced",
         "unknown": "Unknown",
         "with": "with"
@@ -1304,6 +1305,7 @@ export const CATALOGS = {
         "watermark": "Wasserzeichen"
       },
       "trackedChanges": {
+        "heldByLock": "Ein gesperrtes Inhaltssteuerelement verhindert, dass diese Änderung angenommen oder abgelehnt wird.",
         "replaced": "Ersetzt",
         "unknown": "Unbekannt",
         "with": "durch"
@@ -1967,6 +1969,7 @@ export const CATALOGS = {
         "watermark": "Filigrane"
       },
       "trackedChanges": {
+        "heldByLock": "Un contrôle de contenu verrouillé empêche d’accepter ou de refuser cette modification.",
         "replaced": "Remplacé",
         "unknown": "Inconnu",
         "with": "par"
@@ -2630,6 +2633,7 @@ export const CATALOGS = {
         "watermark": "Marca de agua"
       },
       "trackedChanges": {
+        "heldByLock": "Un control de contenido bloqueado impide aceptar o rechazar este cambio.",
         "replaced": "Reemplazado",
         "unknown": "Desconocido",
         "with": "por"
@@ -3293,6 +3297,7 @@ export const CATALOGS = {
         "watermark": "Vodoznak"
       },
       "trackedChanges": {
+        "heldByLock": "Uzamčený ovládací prvek obsahu brání přijetí nebo odmítnutí této změny.",
         "replaced": "Nahrazeno",
         "unknown": "Neznámý",
         "with": "za"
@@ -3956,6 +3961,7 @@ export const CATALOGS = {
         "watermark": "علامة مائية"
       },
       "trackedChanges": {
+        "heldByLock": "يمنع عنصر تحكم محتوى مقفل قبول هذا التغيير أو رفضه.",
         "replaced": "تم الاستبدال",
         "unknown": "غير معروف",
         "with": "بـ"
@@ -4619,6 +4625,7 @@ export const CATALOGS = {
         "watermark": "Vesimärk"
       },
       "trackedChanges": {
+        "heldByLock": "Lukustatud sisujuhtelement ei luba seda muudatust vastu võtta ega tagasi lükata.",
         "replaced": "Asendatud",
         "unknown": "Tundmatu",
         "with": "väärtusega"
@@ -5282,6 +5289,7 @@ export const CATALOGS = {
         "watermark": "סימן מים"
       },
       "trackedChanges": {
+        "heldByLock": "פקד תוכן נעול מונע קבלה או דחייה של שינוי זה.",
         "replaced": "הוחלף",
         "unknown": "לא ידוע",
         "with": "ב-"
@@ -5945,6 +5953,7 @@ export const CATALOGS = {
         "watermark": "वॉटरमार्क"
       },
       "trackedChanges": {
+        "heldByLock": "एक लॉक किया गया सामग्री नियंत्रण इस परिवर्तन को स्वीकार या अस्वीकार करने से रोकता है।",
         "replaced": "बदला गया",
         "unknown": "अज्ञात",
         "with": "से"
@@ -6608,6 +6617,7 @@ export const CATALOGS = {
         "watermark": "Vízjel"
       },
       "trackedChanges": {
+        "heldByLock": "Egy zárolt tartalomvezérlő megakadályozza a módosítás elfogadását vagy elutasítását.",
         "replaced": "Lecserélve",
         "unknown": "Ismeretlen",
         "with": "erre:"
@@ -7271,6 +7281,7 @@ export const CATALOGS = {
         "watermark": "Vandens ženklas"
       },
       "trackedChanges": {
+        "heldByLock": "Užrakintas turinio valdiklis neleidžia priimti ar atmesti šio pakeitimo.",
         "replaced": "Pakeista",
         "unknown": "Nežinoma",
         "with": "į"
@@ -7934,6 +7945,7 @@ export const CATALOGS = {
         "watermark": "Ūdenszīme"
       },
       "trackedChanges": {
+        "heldByLock": "Bloķēta satura vadīkla neļauj pieņemt vai noraidīt šīs izmaiņas.",
         "replaced": "Aizstāts",
         "unknown": "Nezināms",
         "with": "ar"
@@ -8597,6 +8609,7 @@ export const CATALOGS = {
         "watermark": "Znak wodny"
       },
       "trackedChanges": {
+        "heldByLock": "Zablokowana kontrolka zawartości uniemożliwia zaakceptowanie lub odrzucenie tej zmiany.",
         "replaced": "Zamieniono",
         "unknown": "Nieznane",
         "with": "na"
@@ -9260,6 +9273,7 @@ export const CATALOGS = {
         "watermark": "Marca-d'água"
       },
       "trackedChanges": {
+        "heldByLock": "Um controle de conteúdo bloqueado impede que esta alteração seja aceita ou rejeitada.",
         "replaced": "Substituído",
         "unknown": "Desconhecido",
         "with": "por"
@@ -9923,6 +9937,7 @@ export const CATALOGS = {
         "watermark": "Vodotlač"
       },
       "trackedChanges": {
+        "heldByLock": "Uzamknutý ovládací prvok obsahu bráni prijatiu alebo odmietnutiu tejto zmeny.",
         "replaced": "Nahradené",
         "unknown": "Neznáme",
         "with": "za"
@@ -10586,6 +10601,7 @@ export const CATALOGS = {
         "watermark": "Filigran"
       },
       "trackedChanges": {
+        "heldByLock": "Kilitli bir içerik denetimi bu değişikliğin kabul edilmesini veya reddedilmesini engelliyor.",
         "replaced": "Değiştirildi",
         "unknown": "Bilinmiyor",
         "with": "yerine"
@@ -11249,6 +11265,7 @@ export const CATALOGS = {
         "watermark": "水印"
       },
       "trackedChanges": {
+        "heldByLock": "已锁定的内容控件阻止接受或拒绝此修订。",
         "replaced": "已替换",
         "unknown": "未知",
         "with": "替换为"

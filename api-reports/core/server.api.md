@@ -1285,9 +1285,9 @@ export type FolioDocxPreparedXmlReplacement = {
     readonly encoding: "utf-8";
 };
 
-// @public
+// @public (undocumented)
 export class FolioDocxReviewer {
-    acceptAll(): number;
+    acceptAll(): FolioReviewResolution;
     acceptChange(target: FolioReviewChange | number): boolean;
     acceptSuggestion(suggestionId: string, options?: {
         author?: string;
@@ -1310,7 +1310,7 @@ export class FolioDocxReviewer {
     readNumberingDefinitions(): FolioNumberingLevel[];
     readReviewedStory(options?: FolioReadReviewedStoryOptions): FolioReviewedStory | null;
     readStory(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
-    rejectAll(): number;
+    rejectAll(): FolioReviewResolution;
     rejectChange(target: FolioReviewChange | number): boolean;
     rejectSuggestion(suggestionId: string): boolean;
     replyTo(target: FolioReviewComment | number, input: FolioReviewReplyInput): FolioReviewCommentReply | null;
@@ -1558,6 +1558,19 @@ export type FolioReviewReplyInput = {
     author?: string;
     initials?: string;
     date?: string;
+};
+
+// @public
+export type FolioReviewResolution = {
+    resolved: number;
+    skipped: FolioReviewResolutionSkip[];
+};
+
+// @public
+export type FolioReviewResolutionSkip = {
+    id: number;
+    reason: "contentControlLock";
+    message: string;
 };
 
 // @public

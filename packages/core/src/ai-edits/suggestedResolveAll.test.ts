@@ -102,9 +102,9 @@ describe("resolving every suggestion headlessly", () => {
       "First clause.",
       "Signed in two copies.",
     ]);
-    expect(reviewer.acceptAll()).toBe(0);
+    expect(reviewer.acceptAll().resolved).toBe(0);
     expect(reviewer.acceptSuggestion("delete")).toBe(true);
-    expect(reviewer.acceptAll()).toBeGreaterThan(0);
+    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
     expect(await savedTexts(reviewer)).toEqual(["Signed in two copies."]);
   });
 
@@ -155,7 +155,7 @@ describe("resolving every suggestion headlessly", () => {
   test("acceptAll leaves suggested edits staged and out of the saved package", async () => {
     const reviewer = await suggest();
     const before = reviewer.getChanges();
-    expect(reviewer.acceptAll()).toBe(0);
+    expect(reviewer.acceptAll().resolved).toBe(0);
     expect(reviewer.getChanges()).toEqual(before);
     expect(reviewer.getContent().map(({ text }) => text)).toEqual([
       "First clause.",
@@ -170,7 +170,7 @@ describe("resolving every suggestion headlessly", () => {
 
   test("explicit acceptance after bulk acceptance persists the suggestion", async () => {
     const reviewer = await suggest();
-    expect(reviewer.acceptAll()).toBe(0);
+    expect(reviewer.acceptAll().resolved).toBe(0);
     expect(reviewer.acceptSuggestion("insert")).toBe(true);
     expect(reviewer.acceptSuggestion("replace")).toBe(true);
     expect(await savedTexts(reviewer)).toEqual([
@@ -226,7 +226,7 @@ describe("resolving every suggestion headlessly", () => {
     );
     expect(suggested.applied).toHaveLength(1);
 
-    expect(reviewer.acceptAll()).toBe(2);
+    expect(reviewer.acceptAll().resolved).toBe(2);
     expect(reviewer.getChanges()).toHaveLength(2);
     expect(await savedTexts(reviewer)).toEqual([
       "Opening clause.",
@@ -399,7 +399,7 @@ describe("resolving every suggestion headlessly", () => {
         { undefinedReferences: "refuse" },
       ).applied,
     ).toHaveLength(1);
-    expect(reviewer.acceptAll()).toBe(2);
+    expect(reviewer.acceptAll().resolved).toBe(2);
     const records = JSON.parse(
       JSON.stringify(reviewer.exportPendingSuggestions()),
     );
@@ -468,7 +468,7 @@ describe("resolving every suggestion headlessly", () => {
     expect(comment.applied).toHaveLength(1);
     const commentId = comment.applied.at(0)?.commentId;
     expect(commentId).toBeDefined();
-    expect(reviewer.acceptAll()).toBeGreaterThan(0);
+    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
     expect(reviewer.exportPendingSuggestions().at(0)?.commentId).toBe(
       commentId,
     );
@@ -482,7 +482,7 @@ describe("resolving every suggestion headlessly", () => {
     expect(reopened.loadPendingSuggestions(records)).toEqual([
       { status: "restaged", suggestionId: "pending-comment" },
     ]);
-    expect(reopened.acceptAll()).toBe(0);
+    expect(reopened.acceptAll().resolved).toBe(0);
   });
 
   test("bulk acceptance drops a proposal whose anchor was merged away", async () => {
@@ -521,7 +521,7 @@ describe("resolving every suggestion headlessly", () => {
         { undefinedReferences: "refuse" },
       ).applied,
     ).toHaveLength(1);
-    expect(reviewer.acceptAll()).toBeGreaterThan(0);
+    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
     expect(reviewer.exportPendingSuggestions()).toEqual([]);
   });
 

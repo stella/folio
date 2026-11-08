@@ -71,7 +71,7 @@ export const runEditOperationScript = async (
     throw new Error(`${script.id}: ${JSON.stringify(result)}`);
   }
   if ("resolution" in script && script.resolution === "acceptAll") {
-    if (reviewer.acceptAll() === 0) {
+    if (reviewer.acceptAll().resolved === 0) {
       throw new Error(`${script.id}: no change to accept`);
     }
   }

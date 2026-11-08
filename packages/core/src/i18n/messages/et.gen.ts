@@ -637,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "Vesimärk"
     },
     "trackedChanges": {
+      "heldByLock": "Lukustatud sisujuhtelement ei luba seda muudatust vastu võtta ega tagasi lükata.",
       "replaced": "Asendatud",
       "unknown": "Tundmatu",
       "with": "väärtusega"

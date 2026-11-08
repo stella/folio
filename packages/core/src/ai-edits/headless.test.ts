@@ -3404,7 +3404,7 @@ describe("headless docx review discovery + resolve", () => {
       { undefinedReferences: "refuse" },
     );
     expect(accepting.getChanges().length).toBeGreaterThanOrEqual(4);
-    expect(accepting.acceptAll()).toBeGreaterThanOrEqual(4);
+    expect(accepting.acceptAll().resolved).toBeGreaterThanOrEqual(4);
     const acceptedXml = await partText(
       await accepting.toBuffer(),
       "word/document.xml",
@@ -3438,7 +3438,7 @@ describe("headless docx review discovery + resolve", () => {
       ],
       { undefinedReferences: "refuse" },
     );
-    expect(rejecting.rejectAll()).toBeGreaterThanOrEqual(4);
+    expect(rejecting.rejectAll().resolved).toBeGreaterThanOrEqual(4);
     const rejectedXml = await partText(
       await rejecting.toBuffer(),
       "word/document.xml",

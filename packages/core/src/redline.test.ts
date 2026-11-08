@@ -1399,7 +1399,7 @@ test("the current text-redline contract flattens new carriers and imports their 
     expect(result.skipped).toEqual([]);
     expect(result.unprocessedStories).toEqual([]);
     const accepting = await FolioDocxReviewer.fromBuffer(result.buffer);
-    expect(accepting.acceptAll()).toBeGreaterThan(0);
+    expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
     const accepted = await FolioDocxReviewer.fromBuffer(
       await accepting.toBuffer(),
     );
@@ -1434,7 +1434,7 @@ test("the current text-redline contract flattens new carriers and imports their 
       accepted.toDocument().package.document.content.map(({ type }) => type),
     ).toEqual(["paragraph", "paragraph", "paragraph"]);
     const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
-    expect(rejecting.rejectAll()).toBeGreaterThan(0);
+    expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
     const rejected = await FolioDocxReviewer.fromBuffer(
       await rejecting.toBuffer(),
     );

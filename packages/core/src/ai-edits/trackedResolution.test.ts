@@ -767,7 +767,7 @@ describe("resolving suggested paragraphs", () => {
 
     const staged = texts(reviewer);
     expect(staged.filter((text) => text !== "")).toEqual(texts(direct));
-    expect(reviewer.acceptAll()).toBe(0);
+    expect(reviewer.acceptAll().resolved).toBe(0);
     expect(texts(reviewer)).toEqual(staged);
     expect(texts(await reopen(reviewer))).toEqual(ORIGINAL);
   });
@@ -796,7 +796,7 @@ describe("resolving suggested paragraphs", () => {
       "",
       "Last.",
     ]);
-    expect(reviewer.acceptAll()).toBe(0);
+    expect(reviewer.acceptAll().resolved).toBe(0);
     expect(texts(reviewer)).toEqual(staged);
     expect(texts(await reopen(reviewer))).toEqual(ORIGINAL);
   });

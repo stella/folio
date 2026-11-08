@@ -525,7 +525,9 @@ function areActiveTrackedChangesEqual(
     a.author === b.author &&
     a.date === b.date &&
     a.from === b.from &&
-    a.to === b.to
+    a.to === b.to &&
+    a.heldByLock.accept === b.heldByLock.accept &&
+    a.heldByLock.reject === b.heldByLock.reject
   );
 }
 
@@ -3254,12 +3256,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         );
       }
       if (contextMenu.cursorInTrackedChange) {
+        // The change at the selection, which the actions resolve.
+        const held = state.activeTrackedChange?.heldByLock ?? {
+          accept: false,
+          reject: false,
+        };
+        const reason = t("trackedChanges.heldByLock");
         items.push(
-          { action: "acceptChange", label: t("acceptChange") },
+          {
+            action: "acceptChange",
+            label: t("acceptChange"),
+            ...(held.accept && { disabled: true, disabledReason: reason }),
+          },
           {
             action: "rejectChange",
             label: t("rejectChange"),
             dividerAfter: true,
+            ...(held.reject && { disabled: true, disabledReason: reason }),
           },
         );
       }
@@ -3294,6 +3307,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       contextMenu.listNumbering,
       customContextMenuItems,
       readOnly,
+      state.activeTrackedChange?.heldByLock,
       t,
     ]);
 
@@ -5026,16 +5040,32 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           )}
           <ToolbarButton
             onClick={handleAcceptActiveChange}
-            disabled={readOnly || !state.activeTrackedChange}
-            title={t("acceptChange")}
+            disabled={
+              readOnly ||
+              !state.activeTrackedChange ||
+              state.activeTrackedChange.heldByLock.accept
+            }
+            title={
+              state.activeTrackedChange?.heldByLock.accept
+                ? t("trackedChanges.heldByLock")
+                : t("acceptChange")
+            }
             ariaLabel={t("acceptChange")}
           >
             <CheckIcon size={16} />
           </ToolbarButton>
           <ToolbarButton
             onClick={handleRejectActiveChange}
-            disabled={readOnly || !state.activeTrackedChange}
-            title={t("rejectChange")}
+            disabled={
+              readOnly ||
+              !state.activeTrackedChange ||
+              state.activeTrackedChange.heldByLock.reject
+            }
+            title={
+              state.activeTrackedChange?.heldByLock.reject
+                ? t("trackedChanges.heldByLock")
+                : t("rejectChange")
+            }
             ariaLabel={t("rejectChange")}
           >
             <XIcon size={16} />
