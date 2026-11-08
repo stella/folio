@@ -169,6 +169,27 @@ const requireSpinCount = (
   return spinCount;
 };
 
+/**
+ * Agile decryption here is AES-CBC only, whose block is always 16 bytes.
+ * The block size also sizes the padded verifier and segment IVs, so any
+ * other declared value is refused while parsing.
+ */
+const AES_BLOCK_BYTES = 16;
+
+const requireAesBlockSize = (
+  attrs: Record<string, string>,
+  element: string,
+): number => {
+  const blockSize = requireInt(attrs, "blockSize", element);
+  if (blockSize !== AES_BLOCK_BYTES) {
+    throw new DocxEncryptionError({
+      code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
+      message: `EncryptionInfo <${element}> attribute "blockSize" must be ${AES_BLOCK_BYTES}: ${blockSize}`,
+    });
+  }
+  return blockSize;
+};
+
 const parseAgileXml = (xmlBytes: Uint8Array): AgileKeyMaterial => {
   const xml = decodeText(xmlBytes, { encoding: "utf-8" });
   const keyDataTag = findElement(xml, "keyData");
@@ -191,14 +212,14 @@ const parseAgileXml = (xmlBytes: Uint8Array): AgileKeyMaterial => {
     packageKeyBits: requireInt(keyData, "keyBits", "keyData"),
     packageHash: requireAttr(keyData, "hashAlgorithm", "keyData"),
     packageHashBytes: requireInt(keyData, "hashSize", "keyData"),
-    cipherBlockBytes: requireInt(keyData, "blockSize", "keyData"),
+    cipherBlockBytes: requireAesBlockSize(keyData, "keyData"),
     cipherName: requireAttr(keyData, "cipherAlgorithm", "keyData"),
     cipherMode: requireAttr(keyData, "cipherChaining", "keyData"),
     passwordIterations: requireSpinCount(encryptedKey, "encryptedKey"),
     passwordSalt: requireBase64(encryptedKey, "saltValue", "encryptedKey"),
     passwordHash: requireAttr(encryptedKey, "hashAlgorithm", "encryptedKey"),
     passwordKeyBits: requireInt(encryptedKey, "keyBits", "encryptedKey"),
-    passwordBlockBytes: requireInt(encryptedKey, "blockSize", "encryptedKey"),
+    passwordBlockBytes: requireAesBlockSize(encryptedKey, "encryptedKey"),
     encryptedVerifierInput: requireBase64(
       encryptedKey,
       "encryptedVerifierHashInput",
