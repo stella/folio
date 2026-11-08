@@ -19,6 +19,7 @@ import {
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import { createFolioContentAlignmentWorkSession } from "./content-alignment";
 import {
   createInsertedResourceProjection,
   rebindInsertedResourceBlocks,
@@ -83,7 +84,11 @@ test("inserted resource rebinding preserves full-source identities across duplic
     if (identity === "positional")
       expect(insertedBlock?.idStability).toBe("positional");
 
-    const projection = createInsertedResourceProjection({ base, revised });
+    const projection = createInsertedResourceProjection({
+      base,
+      revised,
+      alignmentSession: createFolioContentAlignmentWorkSession(),
+    });
     expect(projection.revisedBlockIds).toEqual([insertedBlock?.id]);
     expect(projection.snapshot.blocks).toHaveLength(1);
     expect(sourceDocumentOf(projection.snapshot).firstChild).toBe(insertion);
@@ -175,6 +180,7 @@ test("inserted nested carriers project and rebind every paragraph exactly once",
             const projection = createInsertedResourceProjection({
               base,
               revised,
+              alignmentSession: createFolioContentAlignmentWorkSession(),
             });
             expect(projection.snapshot.blocks).toHaveLength(expectedCount);
             expect(projection.revisedBlockIds).toEqual(
