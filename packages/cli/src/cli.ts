@@ -509,6 +509,7 @@ const execute = async ({
     ...(flushWaitMs.value !== undefined && { flushWaitMs: flushWaitMs.value }),
     sourcePrecondition: waived ? "waived" : "required",
     destination: destination.value,
+    scope: { type: "unrestricted" },
     author: author.value,
     date: date.value,
     repack: values["allow-repack"] === true ? "allow" : "refuse",

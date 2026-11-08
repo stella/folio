@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { acquireHarnessDom } from "../../../../../test/harnessDom";
 import { LayoutPainter } from "../../layout-painter";
+import { parseFontFamilyList } from "../../utils/fontResolver";
 import { UNDERLINE_STROKES } from "../build/strokes";
 import { underlineThicknessPx } from "../build/textDecorations";
 import { releaseDisplayPageResources } from "../pageResourceOwnership";
@@ -395,6 +396,26 @@ describe("renderDisplayListToDom", () => {
         page.children.length,
         `no element painted for ${kind}`,
       ).toBeGreaterThan(0);
+    }
+  });
+
+  test("a font-family stack reads back as exactly the authored family names", () => {
+    const families = [
+      'Plain "Quoted" Face',
+      'Trailing\\", background-image: url(x), "',
+      "Back\\slash",
+      "Two\nLines\r\fFace",
+    ];
+    for (const family of families) {
+      const span = renderPrimitives(
+        [PRIMITIVE_SAMPLES.glyphRun],
+        [{ ...FONT, family, fallbacks: ["Arial"] }],
+      ).children.at(0);
+      expect(parseFontFamilyList(span?.style.fontFamily ?? "")).toEqual([
+        family,
+        "Arial",
+        "serif",
+      ]);
     }
   });
 

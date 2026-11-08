@@ -4642,9 +4642,11 @@ function createEmptyHyperlink(
 function getCommentMarkIds(marks: readonly Mark[]): Set<number> {
   const commentIds = new Set<number>();
   for (const mark of marks) {
-    if (mark.type.name === "comment") {
-      commentIds.add(expectCommentMarkAttrs(mark).commentId);
-    }
+    if (mark.type.name !== "comment") continue;
+    const attrs = expectCommentMarkAttrs(mark);
+    // A point comment only shows on its neighbouring text: it saves as the
+    // bare reference it was, not as a range over that text.
+    if (attrs.point !== true) commentIds.add(attrs.commentId);
   }
   return commentIds;
 }

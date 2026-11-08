@@ -43,6 +43,7 @@ import {
 } from "./journal";
 import { diffPackages, nextRevisionIdSeed } from "./package-parts";
 import type { FolioFileToolSpec, ResolveChangeAction } from "./registry";
+import { checkInScope, type WriteScope } from "./roots";
 import {
   inspectPath,
   readSidecarFile,
@@ -56,6 +57,8 @@ export type { WriteDestination } from "./transaction";
 /** Everything about a write that is not the tool's own arguments. */
 export type WriteOptions = {
   destination: WriteDestination;
+  /** Where the source and destination must resolve, checked again at commit. */
+  scope: WriteScope;
   /** Already resolved: a write never proceeds without one. */
   author: string;
   /** The transaction's one UTC timestamp. */
@@ -783,6 +786,10 @@ export const executeWriteTool = async (
   });
   if (target.isErr()) return Result.err(target.error);
   const { sourcePath, sourceIdentity, destinationPath } = target.value;
+  for (const resolved of [sourcePath, destinationPath]) {
+    const inScope = checkInScope(options.scope, resolved);
+    if (inScope.isErr()) return Result.err(inScope.error);
+  }
   const journalPath = journalPathFor(destinationPath, options.journalPath);
   const inPlace = destinationPath === sourcePath;
 
@@ -923,6 +930,7 @@ export const executeWriteTool = async (
       txId,
       destinationPath,
       destination: options.destination,
+      scope: options.scope,
       sourcePath,
       sourceIdentity: expectedIdentity,
       fromVersion: source.value.fileVersion,

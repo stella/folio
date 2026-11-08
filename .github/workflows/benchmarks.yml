@@ -50,6 +50,9 @@ jobs:
 
   benchmarks:
     name: Benchmarks
+    # Results upload under the repository's CodSpeed identity, so only main
+    # publishes them. Scale complexity above runs on any ref.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     # Least privilege: read the checkout, and mint an OIDC token for CodSpeed.
     permissions:

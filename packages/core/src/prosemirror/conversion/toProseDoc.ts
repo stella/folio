@@ -1431,7 +1431,10 @@ function applyCommentMarks(nodes: PMNode[], commentIds: Set<number>): PMNode[] {
 }
 
 function anchorPointComment(nodes: PMNode[], commentId: number): void {
-  const commentMark = schema.marks["comment"]?.create({ commentId });
+  const commentMark = schema.marks["comment"]?.create({
+    commentId,
+    point: true,
+  });
   if (!commentMark) {
     return;
   }
@@ -4108,7 +4111,7 @@ const RUN_FORMATTING_INFERENCE = {
   italic: "ordinary-toggle",
   italicCs: "structural",
   underline: "underline",
-  strike: "visible-boolean",
+  strike: "strike",
   doubleStrike: "double-strike",
   vertAlign: "visible-value",
   smallCaps: "visible-boolean",
@@ -4144,6 +4147,7 @@ const RUN_FORMATTING_INFERENCE = {
 } as const satisfies Record<
   keyof TextFormatting,
   | "color"
+  | "strike"
   | "double-strike"
   | "font-family"
   | "font-size"
@@ -4294,6 +4298,21 @@ const canReconstructAuthoredRunFormatting = ({
           Reflect.get(directValue, "color") === undefined &&
           sameFormattingValue(directValue, effectiveValue) &&
           !sameFormattingValue(directValue, inheritedValue)
+        ) {
+          continue;
+        }
+        return false;
+      case "strike":
+        // A double strike paints over a single one: the marks then show no
+        // single strike to rebuild from, whoever states the double.
+        if (directValue === false) {
+          continue;
+        }
+        if (
+          directValue === true &&
+          inheritedFormatting?.strike !== true &&
+          inheritedFormatting?.doubleStrike !== true &&
+          effectiveFormatting?.doubleStrike !== true
         ) {
           continue;
         }

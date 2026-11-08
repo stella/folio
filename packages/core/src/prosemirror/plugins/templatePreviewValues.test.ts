@@ -637,3 +637,26 @@ describe("templatePreviewValues: directive tag lines", () => {
     );
   });
 });
+
+describe("preview values read only the host's own keys", () => {
+  test.each(["constructor", "toString", "hasOwnProperty", "__proto__"])(
+    "a {{%s}} marker stays authored text when the host set no such key",
+    (name) => {
+      const state = makeState(docOf(`Dear {{${name}}}, {{safe}}`), {
+        mode: "plain",
+        values: { safe: "marker" },
+      });
+      expect(getEntries(state).map(({ expr }) => expr)).toEqual(["safe"]);
+    },
+  );
+
+  test("a value that is neither text nor runs is not projected", () => {
+    const values: Record<string, unknown> = { safe: "marker", odd: 7 };
+    const state = makeState(docOf("{{odd}} {{safe}}"), {
+      mode: "plain",
+      // SAFETY: models an untyped host handing over a malformed value.
+      values: values as TemplatePreviewValues["values"],
+    });
+    expect(getEntries(state).map(({ expr }) => expr)).toEqual(["safe"]);
+  });
+});

@@ -181,6 +181,7 @@ export function useCommentLifecycle(
       return true;
     }
 
+    if (options.readOnly.value) return false;
     const comment = options.createComment(text);
     if (
       !applyCommentMarkRange(view, range, comment.id, { replacePending: true })

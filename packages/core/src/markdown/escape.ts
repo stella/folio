@@ -116,3 +116,31 @@ export function escapeLinkUrl(url: string): string {
 export function escapeAltText(text: string): string {
   return text.replace(/(?<ch>[\\[\]])/gu, "\\$<ch>").replace(/\r?\n/gu, " ");
 }
+
+/**
+ * A plain paragraph whose visible text begins with markdown block syntax (e.g.
+ * `# Not a heading`, `- value`, `1. value`, `> quote`) would be reclassified as
+ * a heading/list/blockquote on re-parse, even though Word carries no matching
+ * style/list metadata. Escape the leading marker so literal text round-trips.
+ */
+export function escapeLeadingBlockMarker(text: string): string {
+  // Escape at the start of every line (`m` flag), not just the paragraph: an
+  // inline break (soft break / page break) can put block syntax at the start of
+  // a later line. Only horizontal whitespace `[ \t]` leads the marker so the
+  // anchor doesn't cross the newline.
+  return text
+    .replace(/^(?<ws>[ \t]*)(?<marker>[#>=])/gmu, "$<ws>\\$<marker>")
+    .replace(/^(?<ws>[ \t]*)(?<marker>[-+*])(?=[ \t]|$)/gmu, "$<ws>\\$<marker>")
+    .replace(/^(?<ws>[ \t]*)-(?=[- \t]*$)/gmu, "$<ws>\\-")
+    .replace(
+      /^(?<ws>[ \t]*)(?<num>\d{1,9})(?<marker>[.)])(?<after>[ \t])/gmu,
+      "$<ws>$<num>\\$<marker>$<after>",
+    );
+}
+
+/**
+ * Text that is not Markdown (a `text/plain` alternative-format chunk) as a
+ * Markdown block that reads back as the same literal text.
+ */
+export const escapePlainTextBlock = (text: string): string =>
+  escapeLeadingBlockMarker(escapeInline(text));

@@ -36,6 +36,7 @@ import type {
 import { createEmptyDocument } from "../utils/createDocument";
 import {
   applyFolioAIEditsToBuffer,
+  FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT,
   FolioDocumentStoryNotFoundError,
   FolioDocxReviewer,
   getFolioDocxComparisonAccess,
@@ -3224,6 +3225,57 @@ const insertionChange = (reviewer: FolioDocxReviewer): FolioReviewChange => {
   }
   return change;
 };
+
+describe("headless document-operation undo history", () => {
+  test("keeps the latest batches up to its limit, each undoable in turn", async () => {
+    const document = createEmptyDocument();
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        paraId: "21000020",
+        content: [{ type: "run", content: [{ type: "text", text: "v0" }] }],
+      },
+    ];
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createDocx(document),
+    );
+    const blockId = findBlock(reviewer.snapshot().blocks, "v0").id;
+    const handles = [];
+    for (let step = 0; step <= FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT; step++) {
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: `step-${step}`,
+              type: "replaceInBlock",
+              blockId,
+              find: `v${step}`,
+              replace: `v${step + 1}`,
+            },
+          ],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      if (result.undoHandle === null)
+        throw new Error("expected an undo handle");
+      handles.push(result.undoHandle);
+    }
+
+    const oldest = handles.shift();
+    for (const handle of handles.toReversed()) {
+      expect(reviewer.undoDocumentOperations(handle).status).toBe("undone");
+    }
+    expect(reviewer.getContentAsText()).toContain("v1");
+    if (oldest === undefined) throw new Error("expected the first handle");
+    expect(reviewer.undoDocumentOperations(oldest)).toEqual({
+      status: "rejected",
+      undoHandle: oldest,
+      reason: "unknownHandle",
+    });
+  });
+});
 
 describe("headless docx review discovery + resolve", () => {
   test("serialization mismatch errors never retain document text", async () => {
