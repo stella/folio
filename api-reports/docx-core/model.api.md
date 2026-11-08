@@ -587,7 +587,7 @@ export type Hyperlink = {
     target?: string;
     history?: boolean;
     docLocation?: string;
-    children: (Run | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | CommentReference | InlineWrapper | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | PreservedInline)[];
+    children: (Run | ComplexField | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | CommentReference | InlineWrapper | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | PreservedInline)[];
 };
 
 // @public
