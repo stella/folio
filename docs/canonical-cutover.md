@@ -39,14 +39,11 @@ Session branch counts are held per file in `scripts/canonical-cutover-baseline.j
 
 Derived from the extension command registry. Entries lack a structural proof that every factory return path attaches a canonical descriptor; this conservative census is not a runtime support policy. CI requires the committed list to match the census and rejects new entries against the PR-base source census.
 
-### command-descriptors (11)
+### command-descriptors (8)
 
 - `packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#redo`
 - `packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#undo`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addRowAbove`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addRowBelow`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#autoFitContents`
-- `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#deleteRow`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#deleteTable`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#insertTable`
 - `packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectColumn`

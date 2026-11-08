@@ -2,10 +2,7 @@
   "command-descriptors": [
     "packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#redo",
     "packages/core/src/prosemirror/extensions/core/HistoryExtension.ts#undo",
-    "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addRowAbove",
-    "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#addRowBelow",
     "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#autoFitContents",
-    "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#deleteRow",
     "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#deleteTable",
     "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#insertTable",
     "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectColumn",

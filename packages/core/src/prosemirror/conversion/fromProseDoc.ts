@@ -6997,6 +6997,10 @@ function convertPMTableCell(
 export const standaloneTableCellFromProseMirror = (node: PMNode): TableCell =>
   convertPMTableCell(node);
 
+/** A table node's rows as the save writes them, vertical merges included. */
+export const standaloneTableRowsFromProseMirror = (node: PMNode): TableRow[] =>
+  convertPMTableRows(node);
+
 /**
  * Convert ProseMirror table cell attrs to TableCellFormatting
  * Borders are stored as full BorderSpec objects — no conversion needed.

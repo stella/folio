@@ -445,6 +445,19 @@ export const prepareCanonicalCommands = (
         }
         break;
       }
+      case "editTableRow": {
+        const at = session.projection.addressAt(command.at);
+        if (at.isErr()) return at;
+        intents.push({
+          type: "tableRow",
+          operation: {
+            ...command.edit,
+            story: at.value.story,
+            blockId: at.value.blockId,
+          },
+        });
+        break;
+      }
       case "editTable": {
         // The engine records a column deletion by narrowing the grid while the
         // deleted cells stay, so the pending table has more cell columns than

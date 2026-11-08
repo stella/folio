@@ -64,6 +64,7 @@ export {
   physicalPositionAtEditorOffset,
   type EditorIntent,
   type TableIntentOperation,
+  type TableRowIntentOperation,
   type EditorIntentMode,
 } from "./editorIntent";
 export {

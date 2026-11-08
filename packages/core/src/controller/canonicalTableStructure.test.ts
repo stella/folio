@@ -120,6 +120,30 @@ type Case = {
 
 const CASES: readonly Case[] = [
   {
+    name: "insert a row above",
+    command: "addRowAbove",
+    selection: { type: "caret", in: "D" },
+    tracked: true,
+  },
+  {
+    name: "insert a row below",
+    command: "addRowBelow",
+    selection: { type: "caret", in: "BC" },
+    tracked: true,
+  },
+  {
+    name: "delete a row",
+    command: "deleteRow",
+    selection: { type: "caret", in: "A" },
+    tracked: true,
+  },
+  {
+    name: "delete the rows a selection covers",
+    command: "deleteRow",
+    selection: { type: "cells", from: "A", to: "D" },
+    tracked: true,
+  },
+  {
     name: "insert a column left",
     command: "addColumnLeft",
     selection: { type: "caret", in: "E" },
@@ -177,7 +201,7 @@ const shapeOf = (document: Document) => {
   const table = document.package.document.content.find(
     (block) => block.type === "table",
   );
-  if (table?.type !== "table") return panic("No table.");
+  if (table?.type !== "table") return null;
   return {
     grid: table.columnWidths,
     width: table.formatting?.width,
@@ -271,7 +295,7 @@ describe("table structure commands in the canonical session", () => {
       }
       expect(prepared.value.publish().isOk()).toBe(true);
       expect(JSON.stringify(session.document.package.document)).toMatch(
-        /"insertion"|"deletion"|PropertyChange|propertyChange|cellIns|cellDel|tcPrChange|tblGridChange/u,
+        /"insertion"|"deletion"|PropertyChange|propertyChange|tableRowInsertion|tableRowDeletion|tcPrChange|tblGridChange/u,
       );
     });
 });
