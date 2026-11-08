@@ -81,10 +81,10 @@ jobs:
           path: base
           persist-credentials: false
 
-      - uses: ./base/.github/actions/setup-bun
+      - uses: ./base/.github/actions/bun
         if: steps.logs.outputs.found == 'true'
         with:
-          bun-version-file: "base/package.json"
+          package-json: "base/package.json"
           binary-cache: read-only
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -136,9 +136,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
           binary-cache: read-only
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -199,10 +199,10 @@ jobs:
             echo "No exploration finding in the merge group."
           fi
 
-      - uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/bun
         if: steps.records.outputs.found == 'true'
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
           binary-cache: read-only
 
       - name: Install the filer

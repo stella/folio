@@ -91,7 +91,7 @@ const publishingJobNames = (workflow: unknown) => {
 };
 
 /** The repository's own Bun setup, at the root checkout or a nested one. */
-const LOCAL_BUN_SETUP = /^\.\/(?:[\w.-]+\/)*\.github\/actions\/setup-bun$/u;
+const LOCAL_BUN_SETUP = /^\.\/(?:[\w.-]+\/)*\.github\/actions\/bun$/u;
 const isLocalBunSetup = (uses: unknown): uses is string =>
   typeof uses === "string" && LOCAL_BUN_SETUP.test(uses);
 const localInput = (step: Record<string, unknown>, name: string) =>
@@ -186,7 +186,7 @@ const cacheProblems = (workflow: unknown): string[] => {
 };
 
 const raw = { uses: "oven-sh/setup-bun@fixture" };
-const BUN_SETUP_ACTION = ".github/actions/setup-bun/action.yml";
+const BUN_SETUP_ACTION = ".github/actions/bun/action.yml";
 const cached = { uses: "stella/.github/actions/setup-bun-cached@fixture" };
 
 test("ordinary jobs use the cache owner and preserve protected runtime setup", () => {
@@ -226,10 +226,10 @@ test("ordinary jobs use the cache owner and preserve protected runtime setup", (
 
 test("the repository's Bun setup restores read-only in protected jobs and keeps their install policy", () => {
   const local = (inputs: Record<string, string>) => ({
-    uses: "./.github/actions/setup-bun",
+    uses: "./.github/actions/bun",
     with: inputs,
   });
-  const nested = { ...local({}), uses: "./base/.github/actions/setup-bun" };
+  const nested = { ...local({}), uses: "./base/.github/actions/bun" };
   // Ordinary jobs: either install policy, and the binary cache read-write.
   for (const step of [local({}), local({ "install-cache": "actions" })])
     expect(cacheProblems({ jobs: { fixture: { steps: [step] } } })).toEqual([]);

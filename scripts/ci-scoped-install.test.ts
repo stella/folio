@@ -50,7 +50,7 @@ const checkScopedJobs = (jobs: Record<string, JobSteps>) => {
       expect(step.uses ?? "").not.toContain("setup-bun-cached");
       if (step.uses?.startsWith("oven-sh/setup-bun@"))
         expect(step.with?.["no-cache"]).toBe(true);
-      if (step.uses === "./.github/actions/setup-bun")
+      if (step.uses === "./.github/actions/bun")
         expect(step.with?.["install-cache"] ?? "none").toBe("none");
     }
   }
@@ -134,7 +134,7 @@ describe("scoped CI environments", () => {
         { uses: "stella/.github/actions/setup-bun-cached@fixture" },
         { uses: "oven-sh/setup-bun@fixture", with: { "no-cache": false } },
         {
-          uses: "./.github/actions/setup-bun",
+          uses: "./.github/actions/bun",
           with: { "install-cache": "actions" },
         },
       ]) {

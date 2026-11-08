@@ -17,9 +17,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
           install-cache: actions
 
       - run: bun install --frozen-lockfile
@@ -38,9 +38,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
 
       - run: bun scripts/ci-scoped-install.ts typecheck-budget
 

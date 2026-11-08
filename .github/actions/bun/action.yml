@@ -3,11 +3,12 @@ description: >-
   Installs the Bun version the repository pins, from an Actions cache keyed by
   runner OS, architecture and version. Bun is downloaded only on a miss, from
   the release host or else the npm registry, each checked against its
-  published digest, and that download is saved for the next job. Optionally
-  restores and saves the Bun install cache keyed on bun.lock.
+  published digest, and that download is saved for the next job. Linux x64
+  runners only. Optionally restores and saves the Bun install cache keyed on
+  bun.lock.
 
 inputs:
-  bun-version-file:
+  package-json:
     description: >-
       The package.json whose packageManager field pins Bun, as
       `bun@<major>.<minor>.<patch>`.
@@ -63,7 +64,7 @@ runs:
       id: version
       shell: bash
       env:
-        VERSION_FILE: ${{ inputs.bun-version-file }}
+        VERSION_FILE: ${{ inputs.package-json }}
       run: |
         version=$(jq -r '.packageManager // ""' "$VERSION_FILE" | sed -n 's/^bun@\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$/\1/p')
         if [ -z "$version" ]; then
@@ -86,12 +87,16 @@ runs:
     # registry publishes for it. Either way a passing outage of one host does
     # not fail the job.
     - name: Download Bun
-      if: steps.binary.outputs.cache-hit != 'true' && runner.os == 'Linux' && runner.arch == 'X64'
+      if: steps.binary.outputs.cache-hit != 'true'
       shell: bash
       env:
         VERSION: ${{ steps.version.outputs.version }}
       run: |
         set -euo pipefail
+        if [ "$RUNNER_OS" != "Linux" ] || [ "$RUNNER_ARCH" != "X64" ]; then
+          echo "::error::This action installs Bun on Linux x64 runners; this one is $RUNNER_OS $RUNNER_ARCH"
+          exit 1
+        fi
         dir=$(mktemp -d)
         binary=""
         fail() {
@@ -145,23 +150,20 @@ runs:
         install -m 0755 "$binary" "$HOME/.bun/bin/bun"
         rm -rf "$dir"
 
-    # With an exact version and a Bun at ~/.bun/bin, restored or downloaded
-    # above, setup-bun finds that installation and makes no network request;
-    # it downloads only where the step above does not run. Its own executable
-    # cache stays off: this action owns it.
-    - name: Install Bun
-      id: setup-bun
-      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-      with:
-        bun-version: ${{ steps.version.outputs.version }}
-        no-cache: true
+    # The path is the fixed directory this action installs into, not a value
+    # a workflow's trigger can set.
+    - name: Put Bun on the path
+      shell: bash
+      run: | # zizmor: ignore[github-env]
+        ln -sf bun "$HOME/.bun/bin/bunx"
+        echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
     - name: Check the installed version
       shell: bash
       env:
         EXPECTED: ${{ steps.version.outputs.version }}
       run: |
-        actual=$(bun --version)
+        actual=$("$HOME/.bun/bin/bun" --version)
         if [ "$actual" != "$EXPECTED" ]; then
           echo "::error::Bun $actual is installed; the repository pins $EXPECTED"
           exit 1
