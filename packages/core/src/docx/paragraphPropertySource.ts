@@ -679,8 +679,11 @@ export const paragraphPropertySourceState = (
   paragraphPropertySourceCandidates.get(paragraph),
   paragraphPropertySourceTransferIds.get(paragraph),
   paragraphSourceRecordKinds.get(paragraph),
-  paragraphPropertyCaptures.get(paragraph),
-  indentationProjections.get(paragraph),
+  // Captures and indentation projections are kept by a handle the paragraph
+  // carries, replaced in place when a projection is restored or assigned.
+  captureForParagraph(paragraph),
+  indentationProjectionFor(paragraph),
+  assignedIndentationProjections.has(paragraph),
   decodedTableCellParagraphSourcePayloads.get(paragraph),
   ...(paragraph.formatting === undefined
     ? []

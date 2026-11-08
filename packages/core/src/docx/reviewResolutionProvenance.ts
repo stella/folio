@@ -52,14 +52,13 @@ const PARAGRAPH_MARK_FIELDS = {
   kind: { type: "ooxml" },
   info: { type: "ooxml" },
   resolutionJoin: { type: "private", attribute: "resolutionJoin" },
-  // Which paragraph rejecting an inserted mark keeps lives in memory only:
-  // a reopened file joins as any rejected mark does.
-  survivor: { type: "memory" },
+  // Which paragraph rejecting an inserted mark keeps. Its own attribute, not
+  // a field of another: a reader that does not know it drops only the
+  // marker, and joins the paragraphs as any rejected mark.
+  survivor: { type: "private", attribute: "rejectionSurvivor" },
 } as const satisfies Record<
   keyof ParagraphMarkChange,
-  | { type: "ooxml" }
-  | { type: "private"; attribute: string }
-  | { type: "memory" }
+  { type: "ooxml" } | { type: "private"; attribute: string }
 >;
 
 const DEFERRED_REMOVAL_FIELDS = {
@@ -180,6 +179,43 @@ type ParseAttributeOptions<Value> = {
   attribute: string;
   valid: (value: unknown) => value is Value;
 };
+
+/** Why a provenance attribute's text cannot be read, or the value it holds. */
+type DecodedProvenance =
+  | { status: "read"; value: unknown }
+  | { status: "dropped"; reason: "invalid" | "unsupportedVersion" };
+
+const decodeProvenance = (
+  encoded: string,
+  valid: (value: unknown) => boolean,
+): DecodedProvenance => {
+  if (encoded.length > MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH)
+    return { status: "dropped", reason: "invalid" };
+  const parsed = Result.try({
+    try: (): unknown => JSON.parse(encoded),
+    catch: () => undefined,
+  });
+  if (parsed.isErr()) return { status: "dropped", reason: "invalid" };
+  const decoded = parsed.value;
+  if (
+    !record(decoded) ||
+    Object.keys(decoded).some((key) => key !== "version" && key !== "value")
+  )
+    return { status: "dropped", reason: "invalid" };
+  if (decoded["version"] !== VERSION)
+    return { status: "dropped", reason: "unsupportedVersion" };
+  const value = decoded["value"];
+  if (!valid(value)) return { status: "dropped", reason: "invalid" };
+  return { status: "read", value };
+};
+
+/**
+ * Read one provenance attribute. Provenance is advisory, ignorable metadata:
+ * a value folio cannot read (another version, a field it does not know, a
+ * malformed value) is dropped and the revisions it would annotate are read
+ * as they are; {@link reviewProvenanceIssues} reports what was dropped.
+ * What folio writes is validated strictly before it is written.
+ */
 const parseAttribute = <Value>({
   node,
   attribute,
@@ -187,28 +223,9 @@ const parseAttribute = <Value>({
 }: ParseAttributeOptions<Value>): Value | undefined => {
   const encoded = getAttributeByNamespaceUri(node, NAMESPACES, attribute);
   if (encoded === null) return undefined;
-  const failed = (reason: "invalid" | "unsupportedVersion" = "invalid") =>
-    new ReviewResolutionProvenanceError({
-      attribute,
-      message: `Invalid or unsupported ${attribute} review provenance.`,
-      reason,
-    });
-  if (encoded.length > MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH) throw failed();
-  const parsed = Result.try({
-    try: (): unknown => JSON.parse(encoded),
-    catch: () => failed(),
-  });
-  if (parsed.isErr()) throw parsed.error;
-  const decoded = parsed.value;
-  if (
-    !record(decoded) ||
-    Object.keys(decoded).some((key) => key !== "version" && key !== "value")
-  )
-    throw failed();
-  const value = decoded["value"];
-  if (!valid(value)) throw failed();
-  if (decoded["version"] !== VERSION) throw failed("unsupportedVersion");
-  return value;
+  const decoded = decodeProvenance(encoded, valid);
+  // SAFETY: `valid` narrowed the value before it was read
+  return decoded.status === "read" ? (decoded.value as Value) : undefined;
 };
 
 type SerializeAttributeOptions = {
@@ -292,19 +309,43 @@ export const serializeCopyOriginAncestors = (
     valid: isCopyOriginAncestors,
   });
 
-/** Null carries an owned undefined depth; a missing attribute carries no field. */
+const isParagraphMarkSurvivor = (
+  value: unknown,
+): value is NonNullable<ParagraphMarkChange["survivor"]> => value === "first";
+
+/**
+ * A paragraph mark's private review provenance: its rejection join depth
+ * (null carries an owned undefined depth) and the paragraph rejecting it
+ * keeps. A missing attribute carries no field.
+ */
 export const parseParagraphMarkResolutionJoin = (
   node: XmlElement,
-): Pick<ParagraphMarkChange, "resolutionJoin"> => {
+): Pick<ParagraphMarkChange, "resolutionJoin" | "survivor"> => {
   const value = parseAttribute({
     node,
     attribute: PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute,
     valid: isEncodedParagraphMarkResolutionJoin,
   });
-  return value === undefined
-    ? {}
-    : { resolutionJoin: value === null ? undefined : value };
+  const survivor = parseAttribute({
+    node,
+    attribute: PARAGRAPH_MARK_FIELDS.survivor.attribute,
+    valid: isParagraphMarkSurvivor,
+  });
+  return {
+    ...(value === undefined
+      ? {}
+      : { resolutionJoin: value === null ? undefined : value }),
+    ...(survivor === undefined ? {} : { survivor }),
+  };
 };
+
+const paragraphMarkSurvivorOptions = (
+  mark: ParagraphMarkChange,
+): SerializeAttributeOptions => ({
+  attribute: PARAGRAPH_MARK_FIELDS.survivor.attribute,
+  value: mark.survivor,
+  valid: isParagraphMarkSurvivor,
+});
 
 const paragraphMarkResolutionJoinOptions = (
   mark: ParagraphMarkChange,
@@ -318,17 +359,24 @@ const paragraphMarkResolutionJoinOptions = (
 
 export const serializeParagraphMarkResolutionJoin = (
   mark: ParagraphMarkChange,
-): string => serializeAttribute(paragraphMarkResolutionJoinOptions(mark));
+): string =>
+  serializeAttribute(paragraphMarkResolutionJoinOptions(mark)) +
+  serializeAttribute(paragraphMarkSurvivorOptions(mark));
 
-/** Captured paragraph properties compose the same envelope into a parsed XML element. */
+/** Captured paragraph properties compose the same envelopes into a parsed XML element. */
 export const paragraphMarkResolutionJoinAttributes = (
   mark: ParagraphMarkChange,
 ): Record<string, string> => {
-  const options = paragraphMarkResolutionJoinOptions(mark);
-  const encoded = encodeAttribute(options);
-  return encoded === undefined
-    ? {}
-    : { [`folio:${options.attribute}`]: encoded };
+  const attributes: Record<string, string> = {};
+  for (const options of [
+    paragraphMarkResolutionJoinOptions(mark),
+    paragraphMarkSurvivorOptions(mark),
+  ]) {
+    const encoded = encodeAttribute(options);
+    if (encoded !== undefined)
+      attributes[`folio:${options.attribute}`] = encoded;
+  }
+  return attributes;
 };
 
 /**
@@ -382,3 +430,30 @@ export const serializeSplitResolutionPiece = (
     value,
     valid: isSplitResolutionPiece,
   });
+
+/** Every provenance attribute folio reads, with the shape its value must have. */
+const PROVENANCE_VALUE_SHAPES: Readonly<
+  Record<string, (value: unknown) => boolean>
+> = {
+  resolutionJoins: isResolutionJoins,
+  boundaryJoins: isBoundaryJoins,
+  [PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute]:
+    isEncodedParagraphMarkResolutionJoin,
+  copyOriginAncestors: isCopyOriginAncestors,
+  splitResolutionJoins: isSplitResolutionPiece,
+  [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
+};
+
+/**
+ * Why the reader drops a provenance attribute's value, or `undefined` when it
+ * reads it (or does not read that attribute at all).
+ */
+export const reviewProvenanceIssue = (
+  attribute: string,
+  encoded: string,
+): "invalid" | "unsupportedVersion" | undefined => {
+  const shape = PROVENANCE_VALUE_SHAPES[attribute];
+  if (shape === undefined) return undefined;
+  const decoded = decodeProvenance(encoded, shape);
+  return decoded.status === "dropped" ? decoded.reason : undefined;
+};

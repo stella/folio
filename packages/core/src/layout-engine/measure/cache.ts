@@ -380,28 +380,50 @@ type DocumentFontContextRef = (
   facts: DocumentFontFacts | undefined,
 ) => number | undefined;
 
+/**
+ * The fields of a run that say where it stands in the editor document. A
+ * measurement never reads them (a field reads its resolved value by
+ * position, and a paragraph with fields is not cached while values are
+ * resolved), so an edit that shifts the paragraphs after it leaves their
+ * measurements cached.
+ */
+type RunPositionField = "pmStart" | "pmEnd";
+
+/** A cache input naming no position: one that names a position does not compile. */
+const positionFree = <T extends object>(
+  input: T & { [field in RunPositionField]?: never },
+): T => input;
+
 const runMeasureCacheInput = (
   run: Run,
   fontContextRef: FontContextRef,
   documentFontContextRef: DocumentFontContextRef,
-) => {
+): object => {
   switch (run.kind) {
     case "text":
     case "tab":
     case "renderedPageBreak":
     case "field":
     case "math": {
-      const { embeddedFontFamilyMap, documentFontFacts, ...formatting } = run;
-      return {
+      const {
+        embeddedFontFamilyMap,
+        documentFontFacts,
+        pmStart: _pmStart,
+        pmEnd: _pmEnd,
+        ...formatting
+      } = run;
+      return positionFree({
         ...formatting,
         embeddedFontFamilies: fontContextRef(embeddedFontFamilyMap),
         documentFontFacts: documentFontContextRef(documentFontFacts),
-      };
+      });
     }
-    case "lineBreak":
-      return run;
+    case "lineBreak": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...lineBreak } = run;
+      return positionFree(lineBreak);
+    }
     case "image":
-      return imageMeasureCacheInput(run);
+      return positionFree(imageMeasureCacheInput(run));
     default: {
       const exhaustive: never = run;
       return exhaustive;

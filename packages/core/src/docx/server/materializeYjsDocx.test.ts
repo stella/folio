@@ -578,7 +578,9 @@ describe("materializeYjsDocx", () => {
         }
         expect(error.code).toBe("source_mismatch");
         if (!(error.cause instanceof ParagraphPropertySourceValidationError)) {
-          throw new Error("Expected a paragraph source validation cause");
+          throw new Error("Expected a paragraph source validation cause", {
+            cause: error,
+          });
         }
         expect(error.cause.code).toBe(expectedCode);
       }
@@ -616,7 +618,9 @@ describe("materializeYjsDocx", () => {
         }
         expect(error.code).toBe("source_mismatch");
         if (!(error.cause instanceof ParagraphPropertySourceValidationError)) {
-          throw new Error("Expected a paragraph source validation cause");
+          throw new Error("Expected a paragraph source validation cause", {
+            cause: error,
+          });
         }
         expect(error.cause.code).toBe("invalid_token");
         expect(error.cause.classification).toBe(classification);

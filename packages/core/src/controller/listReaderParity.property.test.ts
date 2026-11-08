@@ -62,7 +62,7 @@ const PRODUCER_READERS = {
   "packages/core/src/docx/listMarkerComputation.ts::computeListMarker":
     "parser",
   "packages/core/src/docx/blockContentParser.ts::p": "parser",
-  "packages/core/src/docx/listModelNormalization.ts::normalizeBody":
+  "packages/core/src/docx/listModelNormalization.ts::normalizeBlock":
     "canonical",
   "packages/core/src/prosemirror/listLabels.ts::listLabelAttrsFromRendering":
     "model",
@@ -74,6 +74,8 @@ const PRODUCER_READERS = {
   "packages/core/src/ai-edits/snapshot.ts::createFolioAIEditSnapshotInternal":
     "snapshot",
   "packages/core/src/layout-bridge/convert/paragraphAttrs.ts::convertParagraphAttrs":
+    "layout",
+  "packages/core/src/layout-bridge/convert/paragraphConversion.ts::paragraphListMarker":
     "layout",
   "packages/core/src/prosemirror/numberedRefFields.ts::numberTargetForParagraph":
     "refs",
