@@ -4,18 +4,24 @@
  * does. Along a chain of edits that share blocks, its verdict equals one walk
  * of every story.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import type { BlockContent, Paragraph } from "@stll/docx-core/model";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { table } from "../docx/server/build";
 import type { Document } from "../types/document";
 import {
   unsupportedSeedReason,
   unsupportedSeedReasonWholeDocument,
 } from "./canonicalSeedContent";
+
+// Synchronous generated edit chains use a 15-second base budget.
+setDefaultTimeout(propertyTestTimeout(15_000));
 
 // A tab in a text node is one of the inline contents the session refuses.
 const texts = fc.constantFrom("a", "b", "c\td");
