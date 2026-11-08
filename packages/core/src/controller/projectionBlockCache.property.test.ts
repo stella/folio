@@ -34,8 +34,15 @@ import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import {
+  InlineProjectionCache,
+  projectCanonicalInline,
+} from "./canonicalInlineProjection";
+import {
+  type CanonicalProjection,
   type CanonicalSession,
   createCanonicalSession,
+  newStoryProjectionCaches,
+  projectCanonicalStory,
 } from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 
@@ -96,14 +103,14 @@ const crossingMarkersPackage = async (): Promise<Uint8Array> => {
   at(1).splice(1, 0, { type: "commentRangeStart", id: 1 });
   at(5).push(
     { type: "commentRangeEnd", id: 1 },
-    { type: "run", content: [{ type: "commentReference", id: 1 }] },
+    { type: "commentReference", id: 1 },
   );
   at(2).splice(0, 0, { type: "bookmarkStart", id: 7, name: "Span" });
   at(6).push({ type: "bookmarkEnd", id: 7 });
   at(3).push({ type: "run", content: [{ type: "footnoteRef", id: 1 }] });
   at(4).push({ type: "run", content: [{ type: "footnoteRef", id: 2 }] });
   document.package.document.content = paragraphs;
-  document.package.comments = [
+  document.package.document.comments = [
     {
       id: 1,
       anchorKind: "range",
@@ -300,6 +307,40 @@ const projections = (document: Document, cache: ProjectionBlockCache) => {
   };
 };
 
+/**
+ * Each paragraph's address in a projection: where it starts, its text, and
+ * the source gaps of its editor positions, with whether it still names the
+ * same source records.
+ */
+const addressesOf = (
+  projection: CanonicalProjection,
+  records: CanonicalProjection = projection,
+) => {
+  const addresses: unknown[] = [];
+  projection.doc.descendants((node) => {
+    const paraId: unknown = node.attrs["paraId"];
+    if (node.type.name !== "paragraph" || typeof paraId !== "string")
+      return true;
+    const address = projection.paragraph(paraId);
+    const other = records.paragraph(paraId);
+    addresses.push(
+      address === undefined
+        ? { paraId }
+        : {
+            paraId,
+            start: address.start,
+            text: address.text,
+            boundaries: address.boundaries,
+            seams: address.seams,
+            sameSource: address.source === other?.source,
+            sameContainer: address.container === other?.container,
+          },
+    );
+    return true;
+  });
+  return addresses;
+};
+
 /** Every source parsed as a canonical session loads it. */
 const parsedSources = async () =>
   Promise.all(
@@ -341,6 +382,15 @@ describe("a projection reusing converted blocks", () => {
             expect(withoutSalt(session.projection.doc.toJSON())).toEqual(
               withoutSalt(full.toJSON()),
             );
+            // Its addresses, built from the paragraphs' kept gaps, against
+            // every paragraph's gaps computed afresh.
+            const fresh = projectCanonicalStory({
+              document: session.document,
+              styles: session.document.package.styles,
+            }).unwrap();
+            expect(addressesOf(session.projection, fresh)).toEqual(
+              addressesOf(fresh),
+            );
           }
         },
       ),
@@ -367,10 +417,7 @@ const MARKERS = [
     type: "run" as const,
     content: [{ type: "footnoteRef" as const, id: 1 }],
   }),
-  () => ({
-    type: "run" as const,
-    content: [{ type: "commentReference" as const, id: 1 }],
-  }),
+  () => ({ type: "commentReference" as const, id: 1 }),
 ] as const;
 
 const modelEditArbitrary = fc.record({
@@ -451,6 +498,7 @@ describe("a projection reusing converted blocks across story versions", () => {
         fc.array(modelEditArbitrary, { minLength: 1, maxLength: 16 }),
         ({ document }, edits) => {
           const cache = new ProjectionBlockCache();
+          const caches = newStoryProjectionCaches();
           let version = document;
           for (const edit of [undefined, ...edits]) {
             if (edit !== undefined) version = editModel(version, edit);
@@ -458,6 +506,22 @@ describe("a projection reusing converted blocks across story versions", () => {
             if (full === undefined) continue;
             const cached = toProseDoc(version, { blockCache: cache });
             expect(cached.toJSON()).toEqual(full.toJSON());
+            // The story's addresses, each paragraph's gaps kept from the
+            // versions before, against every paragraph's gaps afresh.
+            const fresh = projectCanonicalStory({
+              document: version,
+              styles: version.package.styles,
+            });
+            const kept = projectCanonicalStory({
+              document: version,
+              styles: version.package.styles,
+              caches,
+            });
+            expect(kept.isOk()).toBe(fresh.isOk());
+            if (fresh.isOk() && kept.isOk())
+              expect(addressesOf(kept.value, fresh.value)).toEqual(
+                addressesOf(fresh.value),
+              );
           }
         },
       ),
@@ -513,7 +577,183 @@ describe("a projection reusing converted blocks through a list suggestion", () =
               expect(withoutSalt(reviewer.projection.doc.toJSON())).toEqual(
                 withoutSalt(full.toJSON()),
               );
+              const fresh = projectCanonicalStory({
+                document: reviewer.document,
+                styles: reviewer.document.package.styles,
+              }).unwrap();
+              expect(addressesOf(reviewer.projection, fresh)).toEqual(
+                addressesOf(fresh),
+              );
             }
           }
     });
+});
+
+type InlineArgs = Parameters<typeof projectCanonicalInline>[0];
+
+/** An inline cache that also keeps every input a projection gave it. */
+class CapturingInlineCache extends InlineProjectionCache {
+  readonly calls: InlineArgs[] = [];
+  override project(args: InlineArgs) {
+    const context = args.commentContext;
+    this.calls.push(
+      context === undefined
+        ? args
+        : {
+            ...args,
+            commentContext: { ...context, openIds: new Set(context.openIds) },
+          },
+    );
+    return super.project(args);
+  }
+}
+
+const PERTURBATIONS = [
+  "none",
+  "bookmark",
+  "ranged",
+  "point",
+  "open",
+  "reorder",
+  "node",
+] as const;
+
+/** One membership with one id's answer turned around. */
+const toggled = (
+  base: Pick<ReadonlySet<number>, "has">,
+  id: number,
+): Pick<ReadonlySet<number>, "has"> => ({
+  has: (value) => (value === id ? !base.has(value) : base.has(value)),
+});
+
+/** A paragraph's real inputs with one story fact, or its editor node, changed. */
+const perturbed = (
+  args: InlineArgs,
+  kind: (typeof PERTURBATIONS)[number],
+  id: number,
+  otherNode: InlineArgs["paragraph"],
+): InlineArgs => {
+  const context = args.commentContext;
+  switch (kind) {
+    case "none":
+      return args;
+    case "bookmark":
+      return {
+        ...args,
+        pairedBookmarkIds: toggled(args.pairedBookmarkIds, id),
+      };
+    case "node":
+      return { ...args, paragraph: otherNode };
+    default:
+      break;
+  }
+  if (context === undefined) return args;
+  switch (kind) {
+    case "ranged":
+      return {
+        ...args,
+        commentContext: {
+          ...context,
+          rangedIds: toggled(context.rangedIds, id),
+        },
+      };
+    case "point":
+      return {
+        ...args,
+        commentContext: { ...context, pointIds: toggled(context.pointIds, id) },
+      };
+    case "open": {
+      const openIds = new Set(context.openIds);
+      if (!openIds.delete(id)) openIds.add(id);
+      return { ...args, commentContext: { ...context, openIds } };
+    }
+    case "reorder":
+      return {
+        ...args,
+        commentContext: {
+          ...context,
+          openIds: new Set([...context.openIds].reverse()),
+        },
+      };
+    default:
+      return kind satisfies never;
+  }
+};
+
+/** Every number a paragraph's records or its editor node name as an id. */
+const idsNamedBy = (args: InlineArgs): number[] => [
+  ...new Set(
+    [
+      ...`${JSON.stringify(args.source)}${JSON.stringify(args.paragraph.toJSON())}`.matchAll(
+        /"(?:id|commentId)":(\d+)/gu,
+      ),
+    ].map(([, id]) => Number(id)),
+  ),
+];
+
+describe("a paragraph projection reusing its kept gaps", () => {
+  test("equals the paragraph's gaps computed afresh under changed story facts", async () => {
+    const sources = await parsedSources();
+    const captured = sources.map(({ document }) => {
+      const inline = new CapturingInlineCache();
+      projectCanonicalStory({
+        document,
+        styles: document.package.styles,
+        caches: { blocks: new ProjectionBlockCache(), inline },
+      }).unwrap();
+      return inline.calls;
+    });
+    await assertProperty(
+      fc.property(
+        fc.nat({ max: sources.length - 1 }),
+        fc.array(
+          fc.record({
+            call: fc.nat(),
+            // Two together reach a fact one alone leaves unread: a comment
+            // no longer ranged in the story is read as a point comment.
+            kinds: fc.array(fc.constantFrom(...PERTURBATIONS), {
+              minLength: 1,
+              maxLength: 2,
+            }),
+            id: fc.nat(),
+            other: fc.nat(),
+          }),
+          { minLength: 1, maxLength: 24 },
+        ),
+        (sourceIndex, steps) => {
+          const calls = captured[sourceIndex] ?? [];
+          if (calls.length === 0) return;
+          const cache = new InlineProjectionCache();
+          for (const step of steps) {
+            const real = calls[step.call % calls.length];
+            const other = calls[step.other % calls.length];
+            if (real === undefined || other === undefined) continue;
+            const ids = idsNamedBy(real);
+            const id =
+              ids.length === 0 ? step.id % 4 : ids[step.id % ids.length];
+            // The paragraph as the story projected it, with one fact changed,
+            // then another, and back: none may take another's kept gaps.
+            const chain = [real];
+            for (const kind of step.kinds)
+              chain.push(
+                perturbed(chain.at(-1) ?? real, kind, id ?? 0, other.paragraph),
+              );
+            for (const input of [...chain, ...chain.toReversed()]) {
+              const fresh = projectCanonicalInline(input);
+              const kept = cache.project(input);
+              expect(kept.isOk()).toBe(fresh.isOk());
+              if (fresh.isOk() && kept.isOk())
+                expect(kept.value).toEqual(fresh.value);
+              else if (fresh.isErr() && kept.isErr())
+                expect(kept.error.message).toBe(fresh.error.message);
+            }
+          }
+        },
+      ),
+      {
+        id: "inline projection cache equals fresh paragraph projection under changed story facts",
+        numRuns: 400,
+      },
+    );
+  });
 });
