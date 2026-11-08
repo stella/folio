@@ -87,6 +87,7 @@ import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import {
+  type BlockInsertionPoint,
   type DeleteRangeOp,
   type DeleteRowOp,
   type DeleteTableOp,
@@ -104,6 +105,7 @@ import {
   type RunPropsPatch,
   SECTION_BOUNDARY_POLICIES,
   SPLIT_HALVES,
+  type SplitHalf,
   type TableEditOp,
   type TableIntentOperation,
   type TextPosition,
@@ -159,6 +161,17 @@ export type EditorIntent =
   | { type: "table"; operation: TableIntentOperation }
   | { type: "tableRow"; operation: TableRowIntentOperation }
   | { type: "tableBlock"; operation: TableBlockIntentOperation }
+  | {
+      /**
+       * Whole paragraphs beside a paragraph, which keeps its identity: the
+       * compiler gives each a fresh id, and a suggestion records each as
+       * inserted.
+       */
+      type: "insertParagraphs";
+      story: OpStory;
+      at: BlockInsertionPoint;
+      paragraphs: readonly Paragraph[];
+    }
   | {
       type: "replaceFragment";
       from: TextPosition;
@@ -222,6 +235,11 @@ export type EditorIntent =
       story: OpStory;
       blockId: string;
       nextBlockId: string;
+      /**
+       * Which paragraph's identity a direct join keeps, by default the
+       * second's; a tracked join always keeps the second.
+       */
+      survivor?: SplitHalf;
     };
 
 /** Revision metadata and every fresh identity are supplied before compilation. */
@@ -253,6 +271,14 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
         story: intent.operation.story,
         fromId: intent.operation.blockId,
         toId: intent.operation.blockId,
+        fromOffset: 0,
+        toOffset: 0,
+      };
+    case "insertParagraphs":
+      return {
+        story: intent.story,
+        fromId: intent.at.blockId,
+        toId: intent.at.blockId,
         fromOffset: 0,
         toOffset: 0,
       };
@@ -408,6 +434,16 @@ export const createEditorIntentIdAllocator = () => {
       }
       return ids;
     };
+    if (intent.type === "insertParagraphs") {
+      // Each paragraph's mark and content wrappers, the anchor's mark, and
+      // the property change the paragraph that takes over that mark records.
+      demand = 3;
+      for (const paragraph of intent.paragraphs) {
+        demand += PARAGRAPH_REVISION_DEMAND;
+        for (const span of leafSpans(paragraph.content))
+          demand += leafRevisionDemand(span.ancestors.length);
+      }
+    }
     if (intent.type === "tableBlock") {
       const op = intent.operation;
       // An inserted table records each row and each of its paragraphs, and
@@ -1067,20 +1103,25 @@ const joinParagraphPropertyAlignment = ({
     firstGroup.text.length === 0
       ? followingGroup.paragraphs.at(-1)
       : firstGroup.paragraphs.at(-1);
+  // A direct join may keep the first paragraph; a tracked one keeps the second.
+  const survivorId =
+    revision === undefined && intent.survivor === "first"
+      ? firstGroup.blockId
+      : followingGroup.blockId;
   const survivor = paragraphAt(current, {
     story: intent.story,
-    blockId: followingGroup.blockId,
+    blockId: survivorId,
     offset: 0,
   });
   if (!survivor)
-    panic("A valid canonical join must retain its following group survivor.");
+    panic("A valid canonical join must retain its surviving group.");
   const desired = paragraphPropertiesOf(source?.formatting);
   const existing = paragraphPropertiesOf(survivor.formatting);
   if (structurallyEqual(existing, desired)) return undefined;
   return {
     type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
     story: intent.story,
-    blockId: followingGroup.blockId,
+    blockId: survivorId,
     patch: Object.fromEntries([
       ...Object.keys(existing ?? {}).map((key) => [key, null]),
       ...Object.entries(desired ?? {}),
@@ -2082,6 +2123,40 @@ export const compileEditorIntent = (
       selection = { story: op.story, blockId, offset: 0 };
       break;
     }
+    case "insertParagraphs": {
+      const fresh = freshParagraphIds({
+        document,
+        reserved: mode.reservedBlockIds,
+        count: intent.paragraphs.length,
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      });
+      if (fresh.isErr()) return Result.err(fresh.error);
+      const blocks = intent.paragraphs.map((paragraph, index) => ({
+        ...paragraph,
+        paraId: fresh.value[index] ?? panic("A fresh paragraph id is missing."),
+      }));
+      const first = blocks[0];
+      if (first === undefined)
+        return Result.err(
+          new DocumentOpRefusal({
+            reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
+            message: "No paragraphs to insert.",
+            opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+          }),
+        );
+      return Result.ok({
+        ops: [
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+            story: intent.story,
+            at: intent.at,
+            blocks,
+            ...tracked,
+          },
+        ],
+        selection: { story: intent.story, blockId: first.paraId, offset: 0 },
+      });
+    }
     case "tableBlock": {
       if (intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE) {
         const { story, blockId, table } = intent.operation;
@@ -2847,6 +2922,9 @@ export const compileEditorIntent = (
         blockId: intent.blockId,
         nextBlockId: intent.nextBlockId,
         sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
+        ...(mode.type === "editing" && intent.survivor !== undefined
+          ? { survivor: intent.survivor }
+          : {}),
         ...(ownInsertedMark ? {} : tracked),
       } as const;
       if (mode.type === "suggesting") {

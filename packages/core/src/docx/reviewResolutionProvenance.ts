@@ -52,9 +52,14 @@ const PARAGRAPH_MARK_FIELDS = {
   kind: { type: "ooxml" },
   info: { type: "ooxml" },
   resolutionJoin: { type: "private", attribute: "resolutionJoin" },
+  // Which paragraph rejecting an inserted mark keeps lives in memory only:
+  // a reopened file joins as any rejected mark does.
+  survivor: { type: "memory" },
 } as const satisfies Record<
   keyof ParagraphMarkChange,
-  { type: "ooxml" } | { type: "private"; attribute: string }
+  | { type: "ooxml" }
+  | { type: "private"; attribute: string }
+  | { type: "memory" }
 >;
 
 const DEFERRED_REMOVAL_FIELDS = {

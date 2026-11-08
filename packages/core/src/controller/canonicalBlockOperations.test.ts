@@ -208,34 +208,6 @@ const viaCanonicalEngine = async (
 const REFUSED: Record<string, string> = {
   "deleteBlock before a table, tracked-changes":
     "Canonical tracked deletion of a paragraph before a table is unavailable.",
-  "deleteBlock ending the body, direct":
-    "Canonical direct deletion of the paragraph that ends its block list is unavailable.",
-  "deleteBlock before a table, direct":
-    "Canonical direct deletion of the paragraph that ends its block list is unavailable.",
-  "insertAfterBlock ending the body, direct":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock ending the body, tracked-changes":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock before a table, direct":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock before a table, tracked-changes":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock blank ending the body, direct":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock blank ending the body, tracked-changes":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock blank before a table, direct":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock blank before a table, tracked-changes":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock without inheritance ending the body, direct":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock without inheritance ending the body, tracked-changes":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock without inheritance before a table, direct":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-  "insertAfterBlock without inheritance before a table, tracked-changes":
-    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
 };
 
 const OPERATIONS = {
@@ -320,9 +292,10 @@ describe("block-level public operations match the default engine", () => {
           const expected = await outcomes(
             await viaDefaultEngine(source, operation, mode),
           );
-          expect(
-            await outcomes(await viaCanonicalEngine(source, operation, mode)),
-          ).toEqual(expected);
+          const actual = await outcomes(
+            await viaCanonicalEngine(source, operation, mode),
+          );
+          expect(actual).toEqual(expected);
           if (mode !== "tracked-changes") return;
           // Suggested, the edit saves as nothing until it is resolved:
           // rejecting gives the source back, accepting the tracked edit.

@@ -1199,6 +1199,7 @@ export type ParagraphMarkChange = {
     kind: ParagraphMarkChangeKind;
     info: TrackedChangeInfo;
     resolutionJoin?: number | undefined;
+    survivor?: "first" | undefined;
 };
 
 // @public
