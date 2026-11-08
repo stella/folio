@@ -1184,7 +1184,6 @@ function stripSuggestedInlineMarks(
       baseParagraphFormatting,
       inheritedFormatting,
       paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle,
       styleResolver,
     } = readFormattingContext();
     const previousFormatting = expectRunPropertyChangeMarkAttrs(
@@ -1207,7 +1206,6 @@ function stripSuggestedInlineMarks(
         baseParagraphFormatting,
         paragraphFormatting: inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
       },
       ...(previousFormatting !== undefined
         ? { directFormatting: previousFormatting }
@@ -1433,8 +1431,6 @@ function mapSuggestionStrippedNode(
             inheritedFormatting: paragraphStyleContext.paragraphFormatting,
             paragraphMarkFormatting:
               paragraphStyleContext.paragraphMarkFormatting,
-            paragraphMarkPrecedesStyle:
-              paragraphStyleContext.paragraphMarkPrecedesStyle,
             styleResolver,
           };
           return resolvedChildContext;
@@ -1476,7 +1472,6 @@ function stripSuggestedProvenance(
       baseParagraphFormatting: undefined,
       inheritedFormatting: undefined,
       paragraphMarkFormatting: undefined,
-      paragraphMarkPrecedesStyle: false,
       styleResolver,
     })) ?? doc
   );
@@ -2331,8 +2326,6 @@ function convertPMParagraph(
       baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
       inheritedFormatting: paragraphStyleContext.paragraphFormatting,
       paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle:
-        paragraphStyleContext.paragraphMarkPrecedesStyle,
       styleResolver,
     },
   );
@@ -3042,7 +3035,6 @@ type RunFormattingContext = {
   baseParagraphFormatting: TextFormatting | undefined;
   inheritedFormatting: TextFormatting | undefined;
   paragraphMarkFormatting: TextFormatting | undefined;
-  paragraphMarkPrecedesStyle: boolean;
   styleResolver: RunStyleResolver | null;
 };
 
@@ -3396,8 +3388,6 @@ function extractParagraphContent(
       baseParagraphFormatting: paragraphStyleContext?.baseParagraphFormatting,
       inheritedFormatting: paragraphStyleContext?.paragraphFormatting,
       paragraphMarkFormatting: paragraphStyleContext?.paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle:
-        paragraphStyleContext?.paragraphMarkPrecedesStyle ?? false,
       styleResolver: null,
     } satisfies RunFormattingContext);
   const sortedEmptyHyperlinks = (emptyHyperlinks ?? [])
@@ -4120,7 +4110,6 @@ function extractParagraphContent(
                 formattingContext.baseParagraphFormatting ??
                 formattingContext.inheritedFormatting,
               paragraphMarkFormatting: undefined,
-              paragraphMarkPrecedesStyle: false,
             }
           : formattingContext;
       const revisionAncestors = enclosingInsertionAncestors({
@@ -4540,14 +4529,12 @@ function createTrackedChangeRun({
   marks,
   node,
   paragraphMarkFormatting,
-  paragraphMarkPrecedesStyle,
   styleResolver,
 }: CreateTrackedChangeRunOptions): Run | null {
   const formattingContext = {
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
   };
   const noteRefMark = marks.find((mark) => mark.type.name === "footnoteRef");
@@ -4749,7 +4736,6 @@ function addNodeToHyperlink({
   inheritedFormatting,
   node,
   paragraphMarkFormatting,
-  paragraphMarkPrecedesStyle,
   sourceRunOwners,
   styleResolver,
 }: AddNodeToHyperlinkOptions): void {
@@ -4763,7 +4749,6 @@ function addNodeToHyperlink({
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
   };
   const nonLinkMarks = node.marks.filter(
@@ -4789,7 +4774,6 @@ function addNodeToHyperlink({
         baseParagraphFormatting,
         inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
         styleResolver,
       }),
     );
@@ -4802,7 +4786,6 @@ function addNodeToHyperlink({
       inheritedFormatting,
       marks: nonLinkMarks,
       paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle,
       styleResolver,
       text: node.text,
     });
@@ -4823,7 +4806,6 @@ function addNodeToHyperlink({
         baseParagraphFormatting,
         inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
         styleResolver,
       }),
     );
@@ -4841,7 +4823,6 @@ function addNodeToHyperlink({
             baseParagraphFormatting,
             inheritedFormatting,
             paragraphMarkFormatting,
-            paragraphMarkPrecedesStyle,
             styleResolver,
           }),
     );
@@ -4854,7 +4835,6 @@ function addNodeToHyperlink({
         baseParagraphFormatting,
         inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
         styleResolver,
       }),
     );
@@ -4879,7 +4859,6 @@ function addNodeToHyperlink({
         baseParagraphFormatting,
         inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
         styleResolver,
       }),
     );
@@ -4997,7 +4976,6 @@ function createRunFromText({
   inheritedFormatting,
   marks,
   paragraphMarkFormatting,
-  paragraphMarkPrecedesStyle,
   styleResolver,
   text,
 }: CreateRunFromTextOptions): Run {
@@ -5005,7 +4983,6 @@ function createRunFromText({
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
   });
   const run: Run = { type: "run", content: textLeafRunContent(text, marks) };
@@ -5270,7 +5247,6 @@ function createPageBreakCarrierRun({
   inheritedFormatting,
   marks,
   paragraphMarkFormatting,
-  paragraphMarkPrecedesStyle,
   styleResolver,
 }: CreatePageBreakCarrierRunOptions): Run {
   const run: Run = {
@@ -5287,7 +5263,6 @@ function createPageBreakCarrierRun({
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
   });
   if (formatting) {
@@ -5416,7 +5391,6 @@ function createFieldFromNode(
     inheritedFormatting,
     marks,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
     textBoxAnchorMarkers,
   }: CreateFieldFromNodeOptions,
@@ -5428,7 +5402,6 @@ function createFieldFromNode(
           baseParagraphFormatting,
           inheritedFormatting,
           paragraphMarkFormatting,
-          paragraphMarkPrecedesStyle,
           styleResolver,
         })
       : undefined;
@@ -5436,7 +5409,6 @@ function createFieldFromNode(
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle: paragraphMarkPrecedesStyle ?? false,
     styleResolver: styleResolver ?? null,
   };
   const extractedContent = extractParagraphContent(

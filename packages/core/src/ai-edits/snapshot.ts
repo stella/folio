@@ -1321,8 +1321,6 @@ const getPreviewRuns = ({
         baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
         inheritedFormatting: paragraphStyleContext.paragraphFormatting,
         paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle:
-          paragraphStyleContext.paragraphMarkPrecedesStyle,
         styleResolver,
       });
       directFormatting = getDirectPreviewRunStyle(
