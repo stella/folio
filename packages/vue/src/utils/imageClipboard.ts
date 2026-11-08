@@ -18,7 +18,6 @@ import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { makeRevisionInfo } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
-import { sanitizeImageSrc } from "@stll/folio-core/utils/sanitizeImageSrc";
 import { encodeUtf8, readBlobText } from "@stll/folio-core/utils/textEncoding";
 
 /**
@@ -149,9 +148,8 @@ export async function pasteFromClipboard(view: EditorView): Promise<void> {
         const htmlBlob = await item.getType("text/html");
         const html = await readBlobText(htmlBlob);
         const match = /<img[^>]+src="(?<src>[^"]+)"[^>]*>/iu.exec(html);
-        // Only bytes the page already holds: a network source would be fetched.
-        const src = sanitizeImageSrc(match?.groups?.["src"]);
-        if (src !== undefined) {
+        const src = match?.groups?.["src"];
+        if (src) {
           const widthMatch = /data-width="(?<w>\d+)"/u.exec(html)?.groups?.[
             "w"
           ];

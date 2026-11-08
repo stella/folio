@@ -50,13 +50,19 @@ export function replaceTextRangesInDocument(
   ranges: readonly ReplaceRange[],
   text: string,
 ): ReplaceRangesResult {
-  const newDoc = cloneDocumentWithParagraphPropertySources(doc);
+  let newDoc: Document;
+  try {
+    newDoc = cloneDocumentWithParagraphPropertySources(doc);
+  } catch {
+    return { document: doc, replacedCount: 0, failedCount: ranges.length };
+  }
   let replacedCount = 0;
   let failedCount = 0;
   for (const range of ranges) {
     try {
-      replaceRangeInPlace(newDoc.package.document, range, text);
-      replacedCount++;
+      if (replaceRangeInPlace(newDoc.package.document, range, text))
+        replacedCount++;
+      else failedCount++;
     } catch {
       failedCount++;
     }
@@ -69,11 +75,11 @@ const replaceRangeInPlace = (
   { start, end }: ReplaceRange,
   text: string,
   formatting?: TextFormatting,
-): void => {
+): boolean => {
   if (start.paragraphIndex === end.paragraphIndex) {
     const paragraph = getParagraphByIndex(body, start.paragraphIndex);
     if (!paragraph) {
-      return;
+      return false;
     }
 
     replaceTextInParagraph({
@@ -86,7 +92,7 @@ const replaceRangeInPlace = (
   } else {
     const startParagraph = getParagraphByIndex(body, start.paragraphIndex);
     if (!startParagraph) {
-      return;
+      return false;
     }
     const startText = getFindParagraphText(startParagraph);
 
@@ -110,6 +116,7 @@ const replaceRangeInPlace = (
       }
     }
   }
+  return true;
 };
 
 // ---------------------------------------------------------------------------
