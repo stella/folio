@@ -22,7 +22,7 @@ import {
   getProseParagraphPropertySourceToken,
   joinProseParagraphsWithRightPropertySource,
   markParagraphPropertySourceTransfers,
-  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
+  PARAGRAPH_SOURCE_JOIN_RULES,
 } from "../docx/paragraphPropertySource";
 import { paragraphJoinAfter } from "./commands/paragraphBookmarkJoin";
 import { JOINED_RUNS_RESTYLED_META } from "./extensions/features/JoinedRunStyleExtension";
@@ -108,7 +108,7 @@ const JOINED_PARAGRAPH_ATTRS = {
   paraId: "next",
   textId: "next",
   idStability: "next",
-  [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: "next",
+  ...PARAGRAPH_SOURCE_JOIN_RULES,
   reviewCarrier: "next",
   // The mark's paragraph properties.
   alignment: "next",
@@ -228,7 +228,7 @@ const JOINED_PARAGRAPH_ATTRS = {
     stillWhollySuggested(sides) ? sides.next.attrs["_suggestedInsert"] : null,
 } as const satisfies Record<
   | keyof ParagraphAttrs
-  | typeof PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR
+  | keyof typeof PARAGRAPH_SOURCE_JOIN_RULES
   | "idStability"
   | "_detachedWatermarkHost",
   JoinedAttrRule

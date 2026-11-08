@@ -287,6 +287,13 @@ type DocumentParagraphPropertySourceBinding = Readonly<{
 }>;
 
 export const PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR = "_docxParagraphSourceToken";
+/**
+ * Where a paragraph-mark join takes the source attributes from: the next
+ * paragraph, whose mark stays. The joins then record the source transfer.
+ */
+export const PARAGRAPH_SOURCE_JOIN_RULES = {
+  [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: "next",
+} as const;
 export const PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR =
   "_docxParagraphSourceContract";
 /** Durable identity nested inside opaque collapsed-cell ProseMirror attrs; stripped on restore. */
