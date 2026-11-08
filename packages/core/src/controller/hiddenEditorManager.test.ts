@@ -1905,11 +1905,11 @@ const secondaryParagraph = (paraId: string): Paragraph => ({
 });
 
 test.each([
-  { atomic: true, dryRun: false, status: "rejected" },
+  { atomic: true, dryRun: false, status: "committed" },
   { atomic: false, dryRun: false, status: "committed" },
   { atomic: true, dryRun: true, status: "previewed" },
 ] as const)(
-  "canonical public secondary story refusals preserve state (%j)",
+  "canonical public operations edit each secondary story and undo it (%j)",
   ({ atomic, dryRun, status }) => {
     GlobalRegistrator.register();
     const exercised = new Set<string>();
@@ -1998,23 +1998,32 @@ test.each([
             },
           });
           expect(result?.status).toBe(status);
-          expect(result?.applied).toEqual([]);
-          expect(result?.skipped).toMatchObject(
-            [0, 1].map((index) => ({
-              id: `replace-${index}`,
-              reason: "unsupportedBlock",
-              canonicalRefusal: { gap: CANONICAL_GAP.publicSecondaryStories },
-            })),
-          );
-          expect(result?.undoHandle).toBeNull();
-          expect(view.state).toBe(bodyState);
+          expect(result?.skipped).toEqual([]);
+          const storyText = () =>
+            manager.api.getCanonicalStoryProjection(story)?.textContent;
+          if (dryRun) {
+            expect(result?.undoHandle).toBeNull();
+            expect(view.state).toBe(bodyState);
+            expect(
+              manager.api.getCanonicalStoryProjection(story)?.eq(projection),
+            ).toBe(true);
+            assertExactModel(manager.api.getCanonicalDocument(), before);
+            continue;
+          }
+          // Both paragraphs of the story changed; the body is untouched.
+          expect(result?.applied.map(({ id }) => id)).toEqual([
+            "replace-0",
+            "replace-1",
+          ]);
+          expect(storyText()).toBe("ChangedChanged");
+          expect(view.state.doc.textContent).toBe(bodyState.doc.textContent);
+          // Undo restores the story as it was read.
+          const handle = result?.undoHandle ?? panic("Missing undo handle");
           expect(
-            manager.api.getCanonicalStoryProjection(story)?.eq(projection),
-          ).toBe(true);
+            manager.api.undoCanonicalDocumentOperations(handle)?.status,
+          ).toBe("undone");
+          expect(storyText()).toBe(projection.textContent);
           assertExactModel(manager.api.getCanonicalDocument(), before);
-          assertExactModel(manager.api.getDocument(), before);
-          expect(manager.api.canUndo()).toBe(false);
-          expect(manager.api.canRedo()).toBe(false);
         } finally {
           manager.destroyView();
           host.remove();

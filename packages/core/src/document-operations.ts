@@ -2600,7 +2600,6 @@ export const applyFolioDocumentOperationsInPackage = ({
     // canonical-gap: publicOps.unsupportedInline
     // canonical-gap: publicOps.tableStructure
     // canonical-gap: publicOps.pendingParagraphMarkProperties
-    // canonical-gap: publicOps.secondaryStories
     // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperationsInPackage({
       ...common,
