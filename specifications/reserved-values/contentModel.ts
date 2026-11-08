@@ -1266,6 +1266,7 @@ export const PARAGRAPH_MARK_CHANGE_RESERVED = {
   kind: NO_RESERVED_VALUE,
   info: NO_RESERVED_VALUE,
   resolutionJoin: NO_RESERVED_VALUE,
+  survivor: NO_RESERVED_VALUE,
 } satisfies Record<keyof ParagraphMarkChange, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphMarkChangeReserved = ExhaustiveFields<
