@@ -75,6 +75,8 @@ const PRODUCER_READERS = {
     "snapshot",
   "packages/core/src/layout-bridge/convert/paragraphAttrs.ts::convertParagraphAttrs":
     "layout",
+  "packages/core/src/layout-bridge/convert/paragraphConversion.ts::paragraphListMarker":
+    "layout",
   "packages/core/src/prosemirror/numberedRefFields.ts::numberTargetForParagraph":
     "refs",
 } as const;
