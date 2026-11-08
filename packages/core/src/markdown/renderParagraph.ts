@@ -15,7 +15,7 @@
 import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
 import { countParagraphList } from "./countParagraphList";
-import { inlineBreaksToHtml } from "./escape";
+import { escapeLeadingBlockMarker, inlineBreaksToHtml } from "./escape";
 import { renderParagraphInline } from "./renderRuns";
 import type { RenderContext } from "./types";
 
@@ -109,27 +109,6 @@ function markdownHeadingLevel(
     },
     ctx.builtInStyles,
   );
-}
-
-/**
- * A plain paragraph whose visible text begins with markdown block syntax (e.g.
- * `# Not a heading`, `- value`, `1. value`, `> quote`) would be reclassified as
- * a heading/list/blockquote on re-parse, even though Word carries no matching
- * style/list metadata. Escape the leading marker so literal text round-trips.
- */
-function escapeLeadingBlockMarker(text: string): string {
-  // Escape at the start of every line (`m` flag), not just the paragraph: an
-  // inline break (soft break / page break) can put block syntax at the start of
-  // a later line. Only horizontal whitespace `[ \t]` leads the marker so the
-  // anchor doesn't cross the newline.
-  return text
-    .replace(/^(?<ws>[ \t]*)(?<marker>[#>=])/gmu, "$<ws>\\$<marker>")
-    .replace(/^(?<ws>[ \t]*)(?<marker>[-+*])(?=[ \t]|$)/gmu, "$<ws>\\$<marker>")
-    .replace(/^(?<ws>[ \t]*)-(?=[- \t]*$)/gmu, "$<ws>\\-")
-    .replace(
-      /^(?<ws>[ \t]*)(?<num>\d{1,9})(?<marker>[.)])(?<after>[ \t])/gmu,
-      "$<ws>$<num>\\$<marker>$<after>",
-    );
 }
 
 /**
