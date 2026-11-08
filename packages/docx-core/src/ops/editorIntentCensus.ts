@@ -1,6 +1,6 @@
 import { panic } from "better-result";
 
-import type { Document, Paragraph } from "../model/document";
+import type { BlockContent, Document } from "../model/document";
 import { type ParagraphLocation, type storyParagraphs } from "./blocks";
 import {
   countKeys,
@@ -78,24 +78,25 @@ type CensusVersion = {
   census: ReturnType<typeof censusOf>;
 };
 
-/** Cache immutable versions and update plain main stories without walking unchanged leaves. */
+/** Cache immutable versions and update a main story without walking the blocks an edit left. */
 export const createCensusReader = () => {
   const versions = new WeakMap<Document, CensusVersion>();
-  const paragraphKeys = new WeakMap<
-    Paragraph,
+  const blockKeys = new WeakMap<
+    BlockContent,
     { identities: string[]; paragraphs: string[] }
   >();
   let latest: CensusVersion | undefined;
-  const keysOf = (paragraph: Paragraph) => {
-    let keys = paragraphKeys.get(paragraph);
+  // A body block's ids are its own: a table's row and cell controls are
+  // counted within that table, and nothing outside a block changes what it
+  // holds, so a block counts the same wherever it stands.
+  const keysOf = (block: BlockContent) => {
+    let keys = blockKeys.get(block);
     if (keys === undefined) {
       keys = {
-        identities: identityKeysIn(paragraph).concat(
-          reservedIdentityKeysIn(paragraph),
-        ),
-        paragraphs: paragraphIdsIn(paragraph).map(idKey),
+        identities: identityKeysIn(block).concat(reservedIdentityKeysIn(block)),
+        paragraphs: paragraphIdsIn(block).map(idKey),
       };
-      paragraphKeys.set(paragraph, keys);
+      blockKeys.set(block, keys);
     }
     return keys;
   };
@@ -120,8 +121,6 @@ export const createCensusReader = () => {
     if (
       before !== undefined &&
       oldContent !== undefined &&
-      oldContent.every((block) => block.type === "paragraph") &&
-      content.every((block) => block.type === "paragraph") &&
       sameFieldsExcept(
         before.document.package,
         document.package,
@@ -135,14 +134,14 @@ export const createCensusReader = () => {
     ) {
       identities = new Map(before.identities);
       paragraphs = new Map(before.paragraphs);
-      const changed = new Map<Paragraph, number>();
-      for (const paragraph of oldContent)
-        changed.set(paragraph, (changed.get(paragraph) ?? 0) - 1);
-      for (const paragraph of content)
-        changed.set(paragraph, (changed.get(paragraph) ?? 0) + 1);
-      for (const [paragraph, delta] of changed) {
+      const changed = new Map<BlockContent, number>();
+      for (const block of oldContent)
+        changed.set(block, (changed.get(block) ?? 0) - 1);
+      for (const block of content)
+        changed.set(block, (changed.get(block) ?? 0) + 1);
+      for (const [block, delta] of changed) {
         if (delta === 0) continue;
-        const keys = keysOf(paragraph);
+        const keys = keysOf(block);
         adjustCounts({ counts: identities, keys: keys.identities, delta });
         adjustCounts({ counts: paragraphs, keys: keys.paragraphs, delta });
       }

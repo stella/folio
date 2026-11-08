@@ -5,7 +5,6 @@ import { AllSelection, NodeSelection } from "prosemirror-state";
 import {
   canonicalConformanceRefusalRows,
   declareCanonicalRefusalCases,
-  STORY_PROJECTION_REFUSAL_CASES,
 } from "../../../../test/canonical-conformance-refusals";
 import {
   harnessRefusalProblems,
@@ -302,7 +301,6 @@ const REVIEW_HYPERLINK_COMMANDS = [
 const REVIEW_HYPERLINK_CASES = (
   [
     { shape: "comments", mode: "suggesting" },
-    { shape: "tracked-changes", mode: "editing" },
     { shape: "tracked-changes", mode: "suggesting" },
   ] as const
 ).flatMap(({ shape, mode }) =>
@@ -362,6 +360,55 @@ test.each(
     }
   },
 );
+// The fixture's focus holds no link, so only setting and inserting change it.
+test.each(
+  REVIEW_HYPERLINK_COMMANDS.filter((command) => command.id !== "remove"),
+)(
+  "$id hyperlink over tracked changes applies and keeps every revision",
+  async (command) => {
+    const shape = "tracked-changes";
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer(shape)),
+    );
+    const driver = createCanonicalEditorHarness(source, "editing");
+    try {
+      const placed = placeSelection(
+        driver.state,
+        documentShape(shape).focus,
+        command.placement,
+      );
+      if (!placed) throw new TypeError("Review fixture lost selection");
+      driver.dispatch(driver.state.tr.setSelection(placed.selection));
+      // The revisions by author and kind: a cut change keeps its author on
+      // both halves, so the set is what the session must not lose.
+      const revisions = (): string[] => {
+        const seen = new Set<string>();
+        driver.state.doc.descendants((node) => {
+          for (const mark of node.marks)
+            if (mark.type.name === "insertion" || mark.type.name === "deletion")
+              seen.add(`${mark.type.name}:${String(mark.attrs["author"])}`);
+          return true;
+        });
+        return [...seen].sort();
+      };
+      const before = revisions();
+      expect(before.length).toBeGreaterThan(0);
+      driver.expectRefusals(
+        canonicalConformanceRefusalRows({
+          shape,
+          mode: "editing",
+          operation: command.operation,
+          placement: command.placement,
+        }),
+      );
+      expect(driver.execute(command.create())).toBe(true);
+      expect(driver.refusals).toEqual([]);
+      expect(revisions()).toEqual(before);
+    } finally {
+      driver.dispose();
+    }
+  },
+);
 test.each(REVIEW_HYPERLINK_CASES)(
   "$shape $command.id hyperlink refusal preserves the complete session in $mode",
   async ({ shape, mode, command }) => {
@@ -394,9 +441,7 @@ test.each(REVIEW_HYPERLINK_CASES)(
           row: CANONICAL_GAP.trackedHyperlinkResolution,
           expectation: "declared",
           message:
-            mode === "suggesting"
-              ? "Hyperlink and TOC suggestions require serializable wrapper review provenance."
-              : "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
+            "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
         },
       ]);
       assertExactModel(driver.snapshot(), before);
@@ -442,60 +487,6 @@ test.each(
       expect(driver.refusals).toEqual([]);
       assertExactModel(driver.snapshot(), before);
       expect(driver.state).toBe(state);
-    } finally {
-      driver.dispose();
-    }
-  },
-);
-test.each(STORY_PROJECTION_REFUSAL_CASES)(
-  "$shape $operation/$placement projection refusal is exact and atomic in $mode",
-  async ({ shape, mode, operation, placement }) => {
-    const source = await parseShapeDocument(
-      new Uint8Array(await shapeArrayBuffer(shape)),
-    );
-    const driver = createCanonicalEditorHarness(source, mode);
-    try {
-      const placed = placeSelection(
-        driver.state,
-        documentShape(shape).focus,
-        placement,
-      );
-      if (!placed) throw new TypeError("Story refusal fixture lost selection");
-      driver.dispatch(driver.state.tr.setSelection(placed.selection));
-      const before = driver.snapshot();
-      const state = driver.state;
-      driver.expectRefusals(
-        canonicalConformanceRefusalRows({ shape, mode, operation, placement }),
-      );
-      if (operation === "paste:copied-blocks") {
-        const selected = placeSelection(
-          driver.state,
-          documentShape(shape).focus,
-          "paragraph",
-        );
-        if (!selected)
-          throw new TypeError("Copied field fixture lost its paragraph");
-        driver.paste(
-          driver.state.doc.slice(
-            selected.selection.from,
-            selected.selection.to,
-          ),
-        );
-      } else if (operation === "host:cut") driver.cut();
-      else driver.pressKey(operation === "key:Enter" ? "Enter" : "Delete");
-      expect(driver.refusals).toEqual([
-        {
-          gap: CANONICAL_GAP.storyContentProjection,
-          row: CANONICAL_GAP.storyContentProjection,
-          expectation: "declared",
-          message:
-            "The operations produce unsupported canonical story content.",
-        },
-      ]);
-      assertExactModel(driver.snapshot(), before);
-      expect(driver.state).toBe(state);
-      expect(driver.history.canUndo()).toBe(false);
-      expect(driver.history.canRedo()).toBe(false);
     } finally {
       driver.dispose();
     }
