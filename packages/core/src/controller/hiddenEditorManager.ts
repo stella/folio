@@ -36,6 +36,8 @@ import {
   type CreateCommentOp,
   freshCommentId,
   OP_STORIES,
+  type OpStory,
+  sameStory,
 } from "@stll/docx-core/ops";
 
 import {
@@ -1613,8 +1615,15 @@ export const createHiddenEditorManager = (
     syncHiddenEditorAccessibility(view, readOnly);
   };
 
+  /**
+   * Publishes a commit to a secondary story: the body view takes the body
+   * projection the commit carries, and the story's open editor, if one is
+   * open, takes the story projection. With no story editor open, the commit
+   * is staged against the story's projection as it stood before the edit.
+   * Every path that edits a secondary story, editor or API, publishes here.
+   */
   const publishStoryCommit = (
-    storyView: EditorView,
+    storyView: EditorView | null,
     commit: CanonicalCommit,
   ): boolean => {
     if (!view || editorSession.type !== "canonical") return false;
@@ -1661,7 +1670,12 @@ export const createHiddenEditorManager = (
       return false;
     }
     const staged = publishCanonicalProjection({
-      state: storyView.state,
+      state:
+        storyView?.state ??
+        PMEditorState.create({
+          schema: view.state.schema,
+          doc: commit.transaction.before,
+        }),
       commit,
       session,
     });
@@ -1669,7 +1683,7 @@ export const createHiddenEditorManager = (
       refuse(staged.error.message, staged.error.ground);
       return false;
     }
-    storyView.updateState(staged.value.state);
+    storyView?.updateState(staged.value.state);
     view.updateState(bodyStaged.value.state);
     deps.onTransaction({
       transactions: staged.value.transactions,
@@ -1679,6 +1693,11 @@ export const createHiddenEditorManager = (
     deps.onSelectionChange(view.state);
     return true;
   };
+
+  /** The secondary-story editors a host has open, by story. */
+  const storyViews: { story: OpStory; view: EditorView }[] = [];
+  const storyViewFor = (story: OpStory): EditorView | undefined =>
+    storyViews.find((entry) => sameStory(entry.story, story))?.view;
 
   let publicOperations: {
     session: CanonicalSession;
@@ -1690,11 +1709,26 @@ export const createHiddenEditorManager = (
     if (publicOperations?.session === session) return publicOperations.executor;
     const executor = new CanonicalPublicOperations({
       session,
-      getState: (story) =>
-        story === OP_STORIES.MAIN && !deps.getReadOnly() && !isDestroying
-          ? (view?.state ?? null)
-          : null,
-      publish: publishCommit,
+      getState: (story) => {
+        if (!view || deps.getReadOnly() || isDestroying) return null;
+        if (story === OP_STORIES.MAIN) return view.state;
+        // An open story editor's state, or the story's projection when none is open.
+        const open = storyViewFor(story);
+        if (open !== undefined) return open.state;
+        const projected = session.projectStory(story);
+        return projected.isErr()
+          ? null
+          : PMEditorState.create({
+              schema: view.state.schema,
+              doc: projected.value.doc,
+            });
+      },
+      publish: (commit) => {
+        const story = commit.selection.anchor.story;
+        return story === OP_STORIES.MAIN
+          ? publishCommit(commit)
+          : publishStoryCommit(storyViewFor(story) ?? null, commit);
+      },
     });
     publicOperations = { session, executor };
     return executor;
@@ -1955,6 +1989,14 @@ export const createHiddenEditorManager = (
         return anchor.isOk() && head.isOk()
           ? { anchor: anchor.value, head: head.value }
           : null;
+      },
+      registerCanonicalStoryView: ({ story, view: storyView }) => {
+        const entry = { story, view: storyView };
+        storyViews.push(entry);
+        return () => {
+          const index = storyViews.indexOf(entry);
+          if (index >= 0) storyViews.splice(index, 1);
+        };
       },
       applyCanonicalStoryHistory: ({ view: storyView, story, direction }) => {
         if (story === OP_STORIES.MAIN && storyView === view)
