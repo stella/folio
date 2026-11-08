@@ -614,6 +614,137 @@ describe("paragraph identities across undo", () => {
       });
 });
 
+describe("an insertion beside the paragraph the batch deletes", () => {
+  // Both apply, as in the default engine, in either order, as a move when
+  // both halves name one.
+  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const moveId of [undefined, "move"] as const)
+      for (const reversed of [false, true])
+        for (const [shape, body] of Object.entries(BODIES))
+          for (const mode of ["direct", "tracked-changes"] as const)
+            test(`${type}${moveId === undefined ? "" : " as a move"}${reversed ? " listed first" : ""} ${shape}, ${mode}`, async () => {
+              const source = await packageOf(body);
+              const halves = [
+                {
+                  id: "from",
+                  type: "deleteBlock",
+                  blockId: "10000002",
+                  ...(moveId === undefined ? {} : { moveId }),
+                },
+                {
+                  id: "to",
+                  type,
+                  blockId: "10000002",
+                  text: "Moved",
+                  ...(moveId === undefined ? {} : { moveId }),
+                },
+              ] as const satisfies readonly FolioDocumentOperation[];
+              const operations = reversed ? [...halves].reverse() : halves;
+              const run = await canonicalRun(source, operations, mode);
+              // Beside a paragraph that ends the body, or directly before a
+              // table, the insertion is still refused, and says so.
+              if (
+                shape === "ending the body" ||
+                (shape === "before a table" && mode === "direct")
+              ) {
+                expect(run.skipped.map(({ reason }) => reason)).toEqual([
+                  "overlappingOperation",
+                ]);
+                return;
+              }
+              expect(run.skipped).toEqual([]);
+              expect(
+                await outcomes(
+                  await viaCanonicalEngine(source, operations, mode),
+                ),
+              ).toEqual(
+                await outcomes(
+                  await viaDefaultEngine(source, operations, mode),
+                ),
+              );
+            });
+});
+
+describe("a move whose source a content lock keeps", () => {
+  // The source half is refused; the destination applies as a plain
+  // insertion, reported unpaired, never as half a move.
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`inserts the destination plainly, ${mode}`, async () => {
+      const source = await packageOf([
+        `<w:sdt><w:sdtPr><w:lock w:val="contentLocked"/></w:sdtPr><w:sdtContent>${paragraph("10000001", "Alpha")}</w:sdtContent></w:sdt>`,
+        paragraph("10000002", "Beta"),
+        paragraph("10000003", "Gamma"),
+      ]);
+      const document = await parseDocx(source.slice(0), {
+        preloadFonts: false,
+        detectVariables: false,
+      });
+      const session = createCanonicalSession(
+        document,
+        document.package.styles,
+      ).unwrap();
+      let state = EditorState.create({ schema, doc: session.projection.doc });
+      const executor = new CanonicalPublicOperations({
+        session,
+        getState: () => state,
+        publish: (commit: CanonicalCommit) => {
+          const published = publishCanonicalProjection({
+            state,
+            commit,
+            session,
+          });
+          if (published.isErr()) return false;
+          state = published.value.state;
+          return true;
+        },
+      });
+      const result = executor.apply({
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        batch: {
+          version: 1,
+          mode,
+          operations: [
+            {
+              id: "from",
+              type: "deleteBlock",
+              blockId: "10000001",
+              moveId: "move",
+            },
+            {
+              id: "to",
+              type: "insertAfterBlock",
+              blockId: "10000003",
+              text: "Alpha",
+              moveId: "move",
+            },
+          ],
+        },
+        undefinedReferences: "refuse",
+      });
+      expect(result.applied.map(({ id }) => id)).toEqual(["to"]);
+      expect(result.skipped.map(({ id }) => id)).toEqual(["from"]);
+      expect(result.normalizations).toContainEqual({
+        id: "to",
+        code: "unpairedMove",
+        moveId: "move",
+      });
+      const saved = (
+        await serializeCanonicalSave({
+          snapshot: session.captureSaveSnapshot(),
+        })
+      ).buffer;
+      const xml =
+        (await (
+          await ZipArchive.read(saved)
+        )
+          .entry("word/document.xml")
+          ?.text()) ?? "";
+      expect(xml).not.toContain("w:moveTo");
+      expect(xml).not.toContain("w:moveFrom");
+      expect(xml).toContain("Alpha");
+    });
+});
+
 describe("a block move matches the default engine", () => {
   /** The source paragraph moved after the anchor, both halves naming one move. */
   const move = (destination: "insertAfterBlock" | "insertBeforeBlock") =>

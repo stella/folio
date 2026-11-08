@@ -170,6 +170,11 @@ type ResolvedOperation = {
   normalizations: readonly FolioAIEditNormalization[];
   from: number;
   to: number;
+  /**
+   * A deletion of the whole paragraph by its identity, with a block after
+   * it: an insertion beside that paragraph keeps its own anchor.
+   */
+  removesParagraphBeforeBlock?: true;
 } & (
   | { type: "plain"; operation: FolioDocumentOperation }
   | {
@@ -517,6 +522,42 @@ const resolveBlockInsertion = ({
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
 
+/**
+ * Whether one of two resolved operations inserts beside the paragraph the
+ * other deletes by identity: they touch only at that paragraph's edge, and
+ * both apply, as in the default engine. A deletion of a paragraph that ends
+ * its container still refuses the insertion beside it.
+ */
+const besideItsDeletion = (
+  left: Pick<ResolvedOperation, "operation" | "removesParagraphBeforeBlock">,
+  right: Pick<ResolvedOperation, "operation" | "removesParagraphBeforeBlock">,
+): boolean => {
+  const pair = (
+    { operation: insertion }: typeof left,
+    { operation: deletion, removesParagraphBeforeBlock }: typeof left,
+  ) =>
+    (insertion.type === "insertAfterBlock" ||
+      insertion.type === "insertBeforeBlock") &&
+    deletion.type === "deleteBlock" &&
+    removesParagraphBeforeBlock === true &&
+    insertion.blockId === deletion.blockId;
+  return pair(left, right) || pair(right, left);
+};
+
+/** A block operation without the move it names: a plain insertion or deletion. */
+const withoutMove = (
+  operation: FolioDocumentOperation,
+): FolioDocumentOperation => {
+  if (
+    operation.type !== "deleteBlock" &&
+    operation.type !== "insertAfterBlock" &&
+    operation.type !== "insertBeforeBlock"
+  )
+    return operation;
+  const { moveId: _moveId, ...plain } = operation;
+  return plain;
+};
+
 /** The move a block operation names, if it is a half of one. */
 const blockMoveId = (operation: FolioDocumentOperation): string | undefined =>
   operation.type === "deleteBlock" ||
@@ -845,14 +886,16 @@ export class CanonicalPublicOperations {
       }
       if (
         resolved.some(
-          ({ from, to }) =>
-            (compiled.value.from < to && compiled.value.to > from) ||
-            (from === to &&
-              compiled.value.from <= from &&
-              compiled.value.to >= from) ||
-            (compiled.value.from === compiled.value.to &&
-              compiled.value.from >= from &&
-              compiled.value.from <= to),
+          (earlier) =>
+            !besideItsDeletion(earlier, compiled.value) &&
+            ((compiled.value.from < earlier.to &&
+              compiled.value.to > earlier.from) ||
+              (earlier.from === earlier.to &&
+                compiled.value.from <= earlier.from &&
+                compiled.value.to >= earlier.from) ||
+              (compiled.value.from === compiled.value.to &&
+                compiled.value.from >= earlier.from &&
+                compiled.value.from <= earlier.to)),
         )
       ) {
         skip(operation.id, "overlappingOperation");
@@ -893,6 +936,7 @@ export class CanonicalPublicOperations {
       !unpairable.has(moveId) &&
       moveSides.get(moveId)?.from === 1 &&
       moveSides.get(moveId)?.to === 1;
+    const pairedMoves = new Set<string>();
     for (const [index, item] of resolved.entries()) {
       const moveId = blockMoveId(item.operation);
       if (moveId === undefined) continue;
@@ -904,6 +948,7 @@ export class CanonicalPublicOperations {
         });
         continue;
       }
+      pairedMoves.add(moveId);
       const intents: EditorIntent[] = [];
       for (const intent of item.intents)
         intents.push(
@@ -921,8 +966,13 @@ export class CanonicalPublicOperations {
     }
     if (!state || projected.isErr() || session.isComposing)
       return result([], null);
-    // Descending read positions keep independent snapshot coordinates valid.
-    resolved.sort((left, right) => right.from - left.from);
+    // Descending read positions keep independent snapshot coordinates valid;
+    // at one position an insertion goes first, beside a paragraph the batch
+    // then deletes.
+    resolved.sort(
+      (left, right) =>
+        right.from - left.from || left.to - left.from - (right.to - right.from),
+    );
     let document = session.document;
     const ops: DocumentOp[] = [];
     const appliedById = new Map<
@@ -1142,6 +1192,47 @@ export class CanonicalPublicOperations {
         ...(suggestionId === undefined ? {} : { suggestionId }),
       });
     }
+    // A move half that did not apply leaves the other a plain insertion or
+    // deletion, reported unpaired: the batch applies again without the move.
+    const applyingHalves = new Map<string, number>();
+    for (const { operation } of resolved) {
+      const moveId = blockMoveId(operation);
+      if (moveId !== undefined && appliedById.has(operation.id))
+        applyingHalves.set(moveId, (applyingHalves.get(moveId) ?? 0) + 1);
+    }
+    const orphaned = new Set(
+      [...pairedMoves].filter((moveId) => applyingHalves.get(moveId) === 1),
+    );
+    if (orphaned.size > 0) {
+      const orphanedMove = (operation: FolioDocumentOperation) => {
+        const moveId = blockMoveId(operation);
+        return moveId !== undefined && orphaned.has(moveId);
+      };
+      const plain = this.apply({
+        ...options,
+        batch: {
+          ...batch,
+          operations: batch.operations.map((operation) =>
+            orphanedMove(operation) ? withoutMove(operation) : operation,
+          ),
+        },
+      });
+      const appliedIds = new Set(plain.applied.map(({ id }) => id));
+      return {
+        ...plain,
+        normalizations: [
+          ...(plain.normalizations ?? []),
+          ...batch.operations.flatMap((operation) => {
+            const moveId = blockMoveId(operation);
+            return moveId !== undefined &&
+              orphaned.has(moveId) &&
+              appliedIds.has(operation.id)
+              ? [{ id: operation.id, code: "unpairedMove" as const, moveId }]
+              : [];
+          }),
+        ],
+      };
+    }
     if (batch.atomic && skipped.length > 0) {
       for (const { id } of appliedById.values())
         skip(id, "atomicBatchRejected");
@@ -1306,6 +1397,7 @@ export class CanonicalPublicOperations {
         normalizations: [],
         from: paragraph.start,
         to: end,
+        ...(after === null ? {} : { removesParagraphBeforeBlock: true }),
       });
     }
     let range: { from: number; to: number } | undefined;
