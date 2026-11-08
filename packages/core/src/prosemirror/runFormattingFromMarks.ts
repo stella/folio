@@ -38,11 +38,9 @@ import {
   hasAuthoredRunFormattingProvenance,
 } from "./runFormattingProvenance";
 import {
-  isParagraphMarkSuppressionEligible,
   paragraphFormattingForRun,
   resolveEffectiveRunStyleFormatting,
   type RunStyleResolver,
-  suppressParagraphMarkFormatting,
 } from "./runStyleFormatting";
 import type { RunFormattingOverrideAttrs } from "./schema/marks";
 
@@ -52,7 +50,6 @@ import type { RunFormattingOverrideAttrs } from "./schema/marks";
 export type MarksToTextFormattingOptions = {
   baseParagraphFormatting?: DeepReadonly<TextFormatting> | undefined;
   inheritedFormatting?: DeepReadonly<TextFormatting> | undefined;
-  paragraphMarkFormatting?: DeepReadonly<TextFormatting> | undefined;
   styleResolver?: RunStyleResolver | null | undefined;
 };
 
@@ -473,7 +470,6 @@ const fontFamilyDifference = (
 
 type ReconcileAuthoredFormattingOptions = {
   authoredFormatting: TextFormatting;
-  carrierlessContext: "ordinary" | "paragraph-mark";
   currentOverrideAttrs: RunFormattingOverrideAttrs | undefined;
   inheritedFormatting: DeepReadonly<TextFormatting> | undefined;
   observedFormatting: TextFormatting;
@@ -634,14 +630,12 @@ const reconcileOverrideSignals = (
  */
 const reconcileAuthoredFormatting = ({
   authoredFormatting,
-  carrierlessContext,
   currentOverrideAttrs,
   inheritedFormatting,
   observedFormatting,
 }: ReconcileAuthoredFormattingOptions): TextFormatting => {
   const hasAuthoredFormatting = Object.keys(authoredFormatting).length > 0;
   if (
-    carrierlessContext === "ordinary" &&
     currentOverrideAttrs === undefined &&
     !hasAuthoredFormatting &&
     hasOnlyCarrierlessVisualFormatting(observedFormatting)
@@ -709,33 +703,6 @@ const reconcileAuthoredFormatting = ({
     );
   }
   return reconciled;
-};
-
-const formattingAuthorshipCost = (formatting: TextFormatting): number => {
-  let cost = 0;
-  const visit = (value: unknown): void => {
-    if (value === undefined) {
-      return;
-    }
-    if (value === null || typeof value !== "object") {
-      cost++;
-      return;
-    }
-    const entries = Object.entries(value);
-    if (entries.length === 0) {
-      cost++;
-      return;
-    }
-    for (const [, nested] of entries) {
-      visit(nested);
-    }
-  };
-  for (const [property, value] of Object.entries(formatting)) {
-    if (property !== "styleId") {
-      visit(value);
-    }
-  }
-  return cost;
 };
 
 export function marksToTextFormatting(
@@ -984,11 +951,9 @@ export function marksToTextFormatting(
   const runContext = {
     baseParagraphFormatting: options?.baseParagraphFormatting,
     paragraphFormatting: options?.inheritedFormatting,
-    paragraphMarkFormatting: options?.paragraphMarkFormatting,
   };
   const paragraphFormatting = paragraphFormattingForRun({
     context: runContext,
-    directFormatting: authoredFormatting,
     marks,
   });
   const inheritedFormatting = resolveEffectiveRunStyleFormatting({
@@ -998,49 +963,12 @@ export function marksToTextFormatting(
       ? { styleResolver: options.styleResolver }
       : {}),
   });
-  let reconciled = reconcileAuthoredFormatting({
+  const reconciled = reconcileAuthoredFormatting({
     authoredFormatting,
-    carrierlessContext:
-      options?.paragraphMarkFormatting === undefined
-        ? "ordinary"
-        : "paragraph-mark",
     currentOverrideAttrs,
     inheritedFormatting,
     observedFormatting: formatting,
   });
-  if (
-    runFormattingOverrideMark === undefined &&
-    characterStyleId === undefined &&
-    options?.paragraphMarkFormatting !== undefined
-  ) {
-    const suppressedParagraphFormatting = suppressParagraphMarkFormatting({
-      baseFormatting: options.baseParagraphFormatting,
-      directFormatting: authoredFormatting,
-      paragraphMarkFormatting: options.paragraphMarkFormatting,
-    });
-    const suppressedInheritedFormatting = resolveEffectiveRunStyleFormatting({
-      marks,
-      paragraphFormatting: suppressedParagraphFormatting,
-      ...(options.styleResolver !== undefined
-        ? { styleResolver: options.styleResolver }
-        : {}),
-    });
-    const suppressed = reconcileAuthoredFormatting({
-      authoredFormatting,
-      carrierlessContext: "paragraph-mark",
-      currentOverrideAttrs,
-      inheritedFormatting: suppressedInheritedFormatting,
-      observedFormatting: formatting,
-    });
-    // The reader must see a stated run property to apply this suppression context.
-    if (
-      isParagraphMarkSuppressionEligible(suppressed) &&
-      formattingAuthorshipCost(suppressed) <
-        formattingAuthorshipCost(reconciled)
-    ) {
-      reconciled = suppressed;
-    }
-  }
   return {
     ...reconciled,
     ...(characterStyleId !== undefined ? { styleId: characterStyleId } : {}),
