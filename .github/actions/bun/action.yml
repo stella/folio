@@ -72,6 +72,9 @@ runs:
           exit 1
         fi
         echo "version=$version" >> "$GITHUB_OUTPUT"
+        # The install cache follows the lockfile beside the pinning manifest,
+        # in the checkout that manifest belongs to.
+        echo "lockfile=$(dirname "$VERSION_FILE")/bun.lock" >> "$GITHUB_OUTPUT"
 
     - name: Restore Bun
       id: binary
@@ -184,7 +187,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.bun/install/cache
-        key: bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles('bun.lock') }}
+        key: bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles(steps.version.outputs.lockfile) }}
         restore-keys: |
           bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-
 
@@ -193,6 +196,6 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.bun/install/cache
-        key: bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles('bun.lock') }}
+        key: bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles(steps.version.outputs.lockfile) }}
         restore-keys: |
           bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-
