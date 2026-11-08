@@ -34,6 +34,10 @@ export const runBrowserImeLifecycle = async (
   await driver.finish(action.completion);
 };
 export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
+  // Lab variant: the host's own focus, which refreshes the IME anchor.
+  await page.evaluate(() =>
+    globalThis.__folioPlayground?.getEditorRef()?.focus(),
+  );
   const lifecycle = await page.evaluateHandle(() => {
     const editor = document.activeElement;
     if (
