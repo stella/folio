@@ -643,6 +643,7 @@ const resolveStructure = ({
       const joinedAttrs = joinedParagraphAttrs(
         paragraph,
         chain.node,
+        bookmarks.size,
         context.mode === "reject" &&
           markWasAdded &&
           rejectionKeepsIdentity(paragraph),
