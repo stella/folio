@@ -63,6 +63,27 @@ const packageOf = async (body: readonly string[]) => {
       '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:spacing w:before="480"/><w:outlineLvl w:val="0"/></w:pPr></w:style></w:styles>',
     ),
   );
+  // One decimal list, numId 1, for numbering operations to name.
+  zip.set(
+    "word/numbering.xml",
+    `${HEAD}<w:numbering xmlns:w="${W}"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2)"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`,
+  );
+  const rels = (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? "";
+  zip.set(
+    "word/_rels/document.xml.rels",
+    rels.replace(
+      "</Relationships>",
+      '<Relationship Id="rId90" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>',
+    ),
+  );
+  const types = (await zip.entry("[Content_Types].xml")?.text()) ?? "";
+  zip.set(
+    "[Content_Types].xml",
+    types.replace(
+      "</Types>",
+      '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>',
+    ),
+  );
   zip.set(
     "word/document.xml",
     `${HEAD}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${body.join("")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
@@ -100,6 +121,7 @@ const blocksOf = async (bytes: ArrayBuffer) => {
               : [],
           ),
           styleId: block.formatting?.styleId,
+          numPr: block.formatting?.numPr,
           outlineLevel: block.formatting?.outlineLevel,
           alignment: block.formatting?.alignment,
           indentLeft: block.formatting?.indentLeft,
@@ -308,6 +330,32 @@ const OPERATIONS = {
     blockId: "10000002",
     text: "Commented\nSecond line",
     comment: { text: "Why this clause" },
+  },
+  "insertAfterBlock numbered": {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "Item",
+    numbering: { kind: "reference", numId: 1, ilvl: 1 },
+  },
+  "insertBeforeBlock numbering cancelled": {
+    id: "op",
+    type: "insertBeforeBlock",
+    blockId: "10000002",
+    text: "Plain",
+    numbering: { kind: "none" },
+  },
+  "setBlockParagraphProperties numbered": {
+    id: "op",
+    type: "setBlockParagraphProperties",
+    blockId: "10000002",
+    properties: { numbering: { kind: "reference", numId: 1, ilvl: 0 } },
+  },
+  "setBlockParagraphProperties numbering level": {
+    id: "op",
+    type: "setBlockParagraphProperties",
+    blockId: "10000002",
+    properties: { numbering: { kind: "levelOnly", ilvl: 1 } },
   },
   "setBlockParagraphProperties alignment": {
     id: "op",

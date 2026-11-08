@@ -228,6 +228,10 @@ const statedParagraphPatch = (
     patch["outlineLevel"] = properties.outlineLevel;
   if (properties.alignment !== undefined)
     patch["alignment"] = properties.alignment;
+  // Stated numbering as given; inheriting removes the stated value.
+  const { numbering } = properties;
+  if (numbering !== undefined && numbering.kind !== "newList")
+    patch["numPr"] = numbering.kind === "inherit" ? null : numbering;
   const { spacing, indentation } = properties;
   if (spacing !== undefined)
     for (const field of SPACING_FIELDS)
@@ -258,10 +262,10 @@ const resolveParagraphProperties = ({
   projection,
   refusal,
 }: ResolveParagraphPropertiesOptions) => {
-  if (operation.properties.numbering !== undefined)
+  if (operation.properties.numbering?.kind === "newList")
     return refusal(
       "unsupportedBlock",
-      "Canonical paragraph numbering changes are unavailable.",
+      "Canonical paragraphs cannot start a new list yet.",
     );
   const patch = statedParagraphPatch(operation.properties);
   if (Object.keys(patch).length === 0) return refusal("emptyOperation");
@@ -312,16 +316,18 @@ const resolveBlockInsertion = ({
   story,
   refusal,
 }: ResolveBlockInsertionOptions) => {
-  const unavailable = (
-    [
-      ["numbering", "paragraph numbering"],
-      ["moveId", "tracked moves"],
-    ] as const
-  ).find(([key]) => operation[key] !== undefined);
+  const unavailable = ([["moveId", "tracked moves"]] as const).find(
+    ([key]) => operation[key] !== undefined,
+  );
   if (unavailable !== undefined)
     return refusal(
       "unsupportedBlock",
       `Canonical block insertion with ${unavailable[1]} is unavailable.`,
+    );
+  if (operation.numbering?.kind === "newList")
+    return refusal(
+      "unsupportedBlock",
+      "Canonical inserted paragraphs cannot start a new list yet.",
     );
   const { text } = operation;
   if (stripInlineEmphasisMarkers(text) !== text)
@@ -364,6 +370,9 @@ const resolveBlockInsertion = ({
       ...(operation.indentation === undefined
         ? {}
         : { indentation: operation.indentation }),
+      ...(operation.numbering === undefined
+        ? {}
+        : { numbering: operation.numbering }),
     }),
   ))
     if (value === null) Reflect.deleteProperty(formatting, key);
