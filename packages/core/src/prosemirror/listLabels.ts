@@ -280,19 +280,31 @@ export const createListLabelCounter = (
     });
     const countedNumbering =
       effectiveParagraphNumberingReference(countedSources);
+    // The view a revision selects names no list when its formatting states
+    // no numbering: no rendering is read from it then.
     const revisionSelectedRendering =
       counterInput._propertyChanges?.length &&
       counterAttrs !== counterInput &&
-      numbering === null
+      numbering === null &&
+      countedNumbering !== undefined
         ? listRenderingFromAttrs({
             attrs: counterAttrs,
             numId: countedNumbering?.numId ?? 1,
           })
         : undefined;
+    // Without the package's numbering, a revision's view is read from its own
+    // formatting alone: the current paragraph's rendering is no fallback for
+    // the view a struck or restored paragraph counts in.
+    const revisionSelected =
+      counterInput._propertyChanges?.length &&
+      counterAttrs !== counterInput &&
+      numbering === null;
     const countedList = resolveParagraphList(
       countedSources,
       numbering,
-      revisionSelectedRendering ?? projectedRendering,
+      revisionSelected
+        ? revisionSelectedRendering
+        : (revisionSelectedRendering ?? projectedRendering),
     );
     switch (countedList.kind) {
       case "none":
