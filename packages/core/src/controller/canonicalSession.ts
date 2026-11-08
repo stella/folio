@@ -1513,11 +1513,37 @@ class CanonicalSession {
     if (end.isErr()) return end;
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
+    // Just inside a content control's edge, the editor position, not the
+    // source gap, says the text belongs to the control.
+    const innerEdge = (position: number, side: "start" | "end") => {
+      const resolved = state.doc.resolve(position);
+      return (
+        resolved.parent.type.name === "sdt" &&
+        resolved.parentOffset ===
+          (side === "start" ? 0 : resolved.parent.content.size)
+      );
+    };
+    const inside = {
+      ...(innerEdge(inputFrom, "start") ? { start: true } : {}),
+      ...(innerEdge(inputTo, "end") ? { end: true } : {}),
+    };
+    // A suggestion over a control's whole text would be recorded as the
+    // control's deletion, which accepting would remove with its text.
+    if (
+      this.mode.type === "suggesting" &&
+      inside.start === true &&
+      inside.end === true &&
+      state.doc.resolve(inputFrom).parent === state.doc.resolve(inputTo).parent
+    )
+      return refuse(
+        "A suggestion over a content control's whole text is unavailable in this session.",
+      );
     const intent = {
       type: "replaceText",
       from: start.value,
       to: end.value,
       text,
+      ...(Object.keys(inside).length === 0 ? {} : { inside }),
       ...(state.storedMarks === null
         ? {}
         : {

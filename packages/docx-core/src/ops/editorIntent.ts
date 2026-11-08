@@ -91,6 +91,7 @@ import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   EMPTY_PROPERTY_SETS,
+  type InlineSlice,
   type InsertContentOp,
   type InsertRowOp,
   type NewIds,
@@ -153,6 +154,12 @@ export type EditorIntent =
       text: string;
       runProps?: TextFormatting;
       runPropsPatch?: RunPropsPatch;
+      /**
+       * Whether the caret at each end stood just inside the edge of an inline
+       * container (a content control) that opens at `from` or closes at
+       * `to`, where the source gap alone cannot tell inside from outside.
+       */
+      inside?: { start?: boolean; end?: boolean };
     }
   | {
       type: "formatRun";
@@ -2323,6 +2330,46 @@ export const compileEditorIntent = (
               },
             ]
       ) satisfies ParagraphContent[];
+      const insertionOnly =
+        idKey(from.blockId) === idKey(to.blockId) &&
+        from.offset === to.offset &&
+        (from.zeroWidthBefore ?? 0) === (to.zeroWidthBefore ?? 0);
+      // A tracked insertion inside a hyperlink has no review record the
+      // editor can project yet, so suggested text still goes beside a link.
+      const continuing =
+        insertionOnly && text !== ""
+          ? continuedSlice(
+              continuation(paragraph.content, from, to, {
+                hyperlinks: false,
+                ...(intent.inside === undefined
+                  ? {}
+                  : { inside: intent.inside }),
+              }),
+              content,
+            )
+          : undefined;
+      if (mode.type === "suggesting" && continuing !== undefined) {
+        // Typed inside a hyperlink, content control or wrapper: the tracked
+        // insertion goes inside it too, rather than cutting it in two.
+        const at = {
+          ...from,
+          zeroWidthBefore:
+            from.zeroWidthBefore ??
+            defaultInsertionGap(paragraph.content, from.offset).zeroWidthBefore,
+        };
+        ops = [
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+            at,
+            slice: continuing,
+            seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
+            revision: mode.revision,
+            ...(mode.newIds === undefined ? {} : { newIds: mode.newIds }),
+          },
+        ];
+        selection = replacementCaret(at, text);
+        break;
+      }
       if (mode.type === "suggesting") {
         const planned = planTrackedReplace(document, {
           sourceContainerPolicy: "join",
@@ -2341,7 +2388,32 @@ export const compileEditorIntent = (
           },
         });
         if (planned.isErr()) return Result.err(planned.error);
-        ops = planned.value;
+        // The typed text goes in before the tracked deletion, inside the
+        // content controls and wrappers it continues there.
+        const resumed =
+          idKey(from.blockId) === idKey(to.blockId) && text !== ""
+            ? continuation(paragraph.content, from, from, {
+                hyperlinks: false,
+                ...(intent.inside?.start === true
+                  ? { inside: { start: true } }
+                  : {}),
+              })
+            : undefined;
+        ops = [];
+        for (const op of planned.value) {
+          if (
+            resumed === undefined ||
+            op.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT ||
+            idKey(op.at.blockId) !== idKey(from.blockId) ||
+            op.slice.openStart !== 0 ||
+            op.slice.openEnd !== 0
+          ) {
+            ops.push(op);
+            continue;
+          }
+          const slice = continuedSlice(resumed, op.slice.content);
+          ops.push(slice === undefined ? op : { ...op, slice });
+        }
         selection = { ...from, offset: from.offset + text.length };
         for (const op of ops) {
           if (
@@ -2469,7 +2541,16 @@ export const compileEditorIntent = (
         ops.push({
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           at,
-          slice: { openStart: 0, openEnd: 0, content },
+          slice: (idKey(from.blockId) === idKey(to.blockId)
+            ? continuedSlice(
+                continuation(paragraph.content, from, to, {
+                  ...(intent.inside === undefined
+                    ? {}
+                    : { inside: intent.inside }),
+                }),
+                content,
+              )
+            : undefined) ?? { openStart: 0, openEnd: 0, content },
           ...allocationFields,
         });
       selection = replacementCaret(at, text);
@@ -2832,4 +2913,108 @@ const withFreshParagraphIds = (
       content: blocks(cell.content),
     })),
   };
+};
+
+/** Containers typed text continues when it lands between their own leaves. */
+const CONTINUED_CONTAINERS: ReadonlySet<string> = new Set([
+  "hyperlink",
+  "inlineSdt",
+  "inlineWrapper",
+]);
+
+type Continuation = {
+  containers: readonly InlineNode[];
+  openStart: number;
+  openEnd: number;
+};
+
+/**
+ * What text typed over the range from `from` to `to` continues: every
+ * hyperlink, content control and wrapper that holds the leaves on both sides,
+ * so typing within one extends it rather than cutting it in two. At an edge
+ * only one side is inside, and the text stays outside, as a mark that does not
+ * extend past its end, unless the caret stood just inside that edge.
+ */
+const continuation = (
+  items: readonly ParagraphContent[],
+  from: Pick<TextPosition, "offset" | "zeroWidthBefore">,
+  to: Pick<TextPosition, "offset" | "zeroWidthBefore">,
+  {
+    hyperlinks = true,
+    inside = {},
+  }: {
+    hyperlinks?: boolean;
+    inside?: { start?: boolean; end?: boolean };
+  } = {},
+): Continuation => {
+  const spans = leafSpans(items);
+  const start = {
+    offset: from.offset,
+    zeroWidthBefore: from.zeroWidthBefore ?? 0,
+  };
+  const end = { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 };
+  // A leaf the range falls inside stands on both of its sides. A caret just
+  // inside a container's edge stands with the leaf inside it.
+  const outerLeft = spans.findLast(
+    ({ before }) => compareGaps(before, start) < 0,
+  );
+  const outerRight = spans.find(({ after }) => compareGaps(after, end) > 0);
+  const left = inside.start
+    ? spans.find(({ after }) => compareGaps(after, start) > 0)
+    : outerLeft;
+  const right = inside.end
+    ? spans.findLast(({ before }) => compareGaps(before, end) < 0)
+    : outerRight;
+  const containers: InlineNode[] = [];
+  for (const [depth, ancestor] of (left?.ancestors ?? []).entries()) {
+    if (
+      right?.ancestors[depth] !== ancestor ||
+      !CONTINUED_CONTAINERS.has(ancestor.type) ||
+      (!hyperlinks && ancestor.type === "hyperlink")
+    )
+      break;
+    containers.push(ancestor);
+  }
+  // Each open end merges with the containers the source holds on that side;
+  // at a container's own edge that side has none to meet.
+  const continued = (side: (typeof spans)[number] | undefined) => {
+    let depth = 0;
+    while (
+      depth < containers.length &&
+      side?.ancestors[depth] === containers[depth]
+    )
+      depth += 1;
+    return depth;
+  };
+  return {
+    containers,
+    openStart: continued(outerLeft),
+    openEnd: continued(outerRight),
+  };
+};
+
+/** `content` inside copies of the continued containers; `undefined` when there are none. */
+const continuedSlice = (
+  { containers, openStart, openEnd }: Continuation,
+  content: readonly ParagraphContent[],
+): InlineSlice | undefined => {
+  if (containers.length === 0) return undefined;
+  let wrapped: ParagraphContent[] = content.slice();
+  for (const container of containers.toReversed()) {
+    switch (container.type) {
+      case "hyperlink":
+        // The nesting copies the source's own, which the hyperlink held.
+        wrapped = [
+          { ...container, children: wrapped as typeof container.children },
+        ];
+        break;
+      case "inlineSdt":
+      case "inlineWrapper":
+        wrapped = [{ ...container, content: wrapped }];
+        break;
+      default:
+        return undefined;
+    }
+  }
+  return { openStart, openEnd, content: wrapped };
 };
