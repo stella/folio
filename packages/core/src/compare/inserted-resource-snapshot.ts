@@ -7,23 +7,31 @@ import {
   styleResolverOf,
 } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
-import { alignFolioBlocks } from "../version-comparison";
+import { alignFolioBlocksInSession } from "../version-comparison";
+import type { FolioContentAlignmentWorkSession } from "./content-alignment";
 
 type CreateInsertedResourceProjectionOptions = {
   base: FolioAIEditSnapshot;
   revised: FolioAIEditSnapshot;
+  /** The comparison's alignment allowance; the projection's work is charged to it. */
+  alignmentSession: FolioContentAlignmentWorkSession;
 };
 
 /** Select resource nodes with their identities from the full revised snapshot. */
 export const createInsertedResourceProjection = ({
   base,
   revised,
+  alignmentSession,
 }: CreateInsertedResourceProjectionOptions): {
   snapshot: FolioAIEditSnapshot;
   revisedBlockIds: string[];
 } => {
   const document = sourceDocumentOf(revised);
-  const insertions = alignFolioBlocks(base.blocks, revised.blocks)
+  const insertions = alignFolioBlocksInSession({
+    baseBlocks: base.blocks,
+    revisedBlocks: revised.blocks,
+    workSession: alignmentSession,
+  })
     .flatMap((event) => {
       if (event.type === "pair" || event.type === "baseOnly") return [];
       const anchor =
