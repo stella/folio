@@ -932,6 +932,27 @@ export const BROWSER_TABLE_CUT_PASTE_SEED_1794032767 = {
   trace: BrowserInputTrace;
 };
 
+/** A list pasted over words running to a paragraph's end, while suggesting. */
+export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
+  seed: 29,
+  path: "15:2",
+  fingerprint: "8d01cc728c151a9c",
+  trace: {
+    shape: "notes",
+    actions: [
+      { kind: "selectionDrag", target: "note" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "backspace" },
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -971,4 +992,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_TYPING_ACROSS_PARAGRAPHS,
   CANONICAL_TYPING_OVER_EVERYTHING,
   CANONICAL_TYPING_OVER_CELLS,
+  BROWSER_NOTES_LIST_PASTE_SEED_29,
 ];
