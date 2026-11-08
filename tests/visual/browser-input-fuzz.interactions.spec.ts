@@ -1,5 +1,6 @@
 import { expect, type Page, test, type TestInfo } from "@playwright/test";
 import fc from "fast-check";
+import { writeFileSync } from "node:fs";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
@@ -515,6 +516,14 @@ const runMode = async ({
   const painted = await page.locator(".layout-page-content").allTextContents();
   const buffer = await save(page);
   const reopened = await reopenSaved(buffer);
+  writeFileSync(
+    test.info().outputPath(`saved-${String(suggesting)}.docx`),
+    new Uint8Array(buffer),
+  );
+  writeFileSync(
+    test.info().outputPath(`live-${String(suggesting)}.json`),
+    JSON.stringify(live),
+  );
   expect(
     projectLive(project(reopened)),
     "the saved package reads as the live editor did",
