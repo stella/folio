@@ -3427,11 +3427,47 @@ export const withLiveMintedIds = (
 };
 
 /** Capture what the oracle needs before an apply. */
+/** The reviewer reads a capture repeats, each answered once while nothing edits it. */
+const READS = new Set<PropertyKey>([
+  "toDocument",
+  "getContent",
+  "getComments",
+  "snapshot",
+  "snapshotStory",
+  "listStories",
+  "readNumberingDefinitions",
+  "exportPendingSuggestions",
+  "toBuffer",
+]);
+
+/**
+ * The reviewer as one capture reads it. A capture only reads, and each read
+ * converts the whole document again; on a long list-heavy file that made one
+ * capture take seconds. Results are kept per method and arguments for the
+ * capture's own lifetime, so the edit that follows reads afresh.
+ */
+const readOnce = (reviewer: Reviewer): Reviewer => {
+  const cache = new Map<string, unknown>();
+  return new Proxy(reviewer, {
+    get(read, key, receiver) {
+      const value: unknown = Reflect.get(read, key, receiver);
+      if (!READS.has(key) || typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        const cacheKey = `${String(key)}:${JSON.stringify(args)}`;
+        if (!cache.has(cacheKey))
+          cache.set(cacheKey, Reflect.apply(value, read, args));
+        return cache.get(cacheKey);
+      };
+    },
+  });
+};
+
 export const capture = async (
-  reviewer: Reviewer,
+  editable: Reviewer,
   mode: Mode,
   { story = MAIN, step = "fresh" }: CaptureOptions = {},
 ): Promise<Pre> => {
+  const reviewer = readOnce(editable);
   const live = liveState(reviewer, story);
   const liveComments = commentsOf(reviewer);
   const context = { story, step, targets: featureIndex(reviewer, story) };
