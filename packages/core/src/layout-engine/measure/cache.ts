@@ -380,26 +380,46 @@ type DocumentFontContextRef = (
   facts: DocumentFontFacts | undefined,
 ) => number | undefined;
 
+/**
+ * The fields of a run that say where it stands in the editor document. A
+ * measurement never reads them (a field reads its resolved value by
+ * position, and a paragraph with fields is not cached while values are
+ * resolved), so an edit that shifts the paragraphs after it leaves their
+ * measurements cached.
+ */
+type RunPositionField = "pmStart" | "pmEnd";
+
+/** A cache input naming no position: a type with one does not compile here. */
+type PositionFree<T> = T & { [field in RunPositionField]?: never };
+
 const runMeasureCacheInput = (
   run: Run,
   fontContextRef: FontContextRef,
   documentFontContextRef: DocumentFontContextRef,
-) => {
+): PositionFree<object> => {
   switch (run.kind) {
     case "text":
     case "tab":
     case "renderedPageBreak":
     case "field":
     case "math": {
-      const { embeddedFontFamilyMap, documentFontFacts, ...formatting } = run;
+      const {
+        embeddedFontFamilyMap,
+        documentFontFacts,
+        pmStart: _pmStart,
+        pmEnd: _pmEnd,
+        ...formatting
+      } = run;
       return {
         ...formatting,
         embeddedFontFamilies: fontContextRef(embeddedFontFamilyMap),
         documentFontFacts: documentFontContextRef(documentFontFacts),
       };
     }
-    case "lineBreak":
-      return run;
+    case "lineBreak": {
+      const { pmStart: _pmStart, pmEnd: _pmEnd, ...lineBreak } = run;
+      return lineBreak;
+    }
     case "image":
       return imageMeasureCacheInput(run);
     default: {
