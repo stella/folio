@@ -1,0 +1,159 @@
+name: Setup Bun
+description: >-
+  Installs the Bun version the repository pins, from an Actions cache keyed by
+  runner OS, architecture and version. Bun is downloaded only on a miss, with
+  retries and a checksum check, and that download is saved for the next job. Optionally restores and saves the
+  Bun install cache keyed on bun.lock.
+
+inputs:
+  bun-version-file:
+    description: >-
+      The package.json whose packageManager field pins Bun, as
+      `bun@<major>.<minor>.<patch>`.
+    required: false
+    default: package.json
+  binary-cache:
+    description: >-
+      read-write saves a downloaded Bun for later jobs; read-only restores a
+      saved one and never writes, for jobs whose cache writes other runs read
+      with more trust (workflow_run, pull_request_target, publishing jobs).
+    required: false
+    default: read-write
+  install-cache:
+    description: >-
+      actions moves ~/.bun/install/cache through the Actions cache; none
+      leaves it alone, for jobs with their own download policy.
+    required: false
+    default: none
+  save:
+    description: Save the install cache after the job; false restores only.
+    required: false
+    default: "true"
+
+outputs:
+  bun-version:
+    description: The Bun version installed.
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check inputs
+      shell: bash
+      env:
+        BINARY_CACHE: ${{ inputs.binary-cache }}
+        INSTALL_CACHE: ${{ inputs.install-cache }}
+        SAVE: ${{ inputs.save }}
+      run: |
+        case "$BINARY_CACHE" in read-write|read-only) ;; *)
+          echo "::error::binary-cache must be read-write or read-only, got '$BINARY_CACHE'"
+          exit 1 ;;
+        esac
+        case "$INSTALL_CACHE" in actions|none) ;; *)
+          echo "::error::install-cache must be actions or none, got '$INSTALL_CACHE'"
+          exit 1 ;;
+        esac
+        case "$SAVE" in true|false) ;; *)
+          echo "::error::save must be true or false, got '$SAVE'"
+          exit 1 ;;
+        esac
+
+    - name: Read the pinned Bun version
+      id: version
+      shell: bash
+      env:
+        VERSION_FILE: ${{ inputs.bun-version-file }}
+      run: |
+        version=$(jq -r '.packageManager // ""' "$VERSION_FILE" | sed -n 's/^bun@\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$/\1/p')
+        if [ -z "$version" ]; then
+          echo "::error file=$VERSION_FILE::packageManager must pin an exact Bun version, as bun@<major>.<minor>.<patch>"
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Bun
+      id: binary
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/bin
+        key: bun-binary-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+
+    # A miss on the runners CI uses fetches the release archive with retries
+    # and checks it against the release's checksums, so a passing outage of
+    # the download host does not fail the job.
+    - name: Download Bun
+      if: steps.binary.outputs.cache-hit != 'true' && runner.os == 'Linux' && runner.arch == 'X64'
+      shell: bash
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        set -euo pipefail
+        base="https://github.com/oven-sh/bun/releases/download/bun-v${VERSION}"
+        dir=$(mktemp -d)
+        fetch() {
+          curl --fail --silent --show-error --location --retry 8 \
+            --retry-all-errors --retry-delay 5 --retry-max-time 300 \
+            --output "$dir/$1" "$base/$1"
+        }
+        fetch bun-linux-x64.zip
+        fetch SHASUMS256.txt
+        expected=$(awk '{ name = $2; sub(/^\*/, "", name) } name == "bun-linux-x64.zip" { print $1 }' "$dir/SHASUMS256.txt")
+        if [ -z "$expected" ]; then
+          echo "::error::SHASUMS256.txt for Bun $VERSION lists no bun-linux-x64.zip"
+          exit 1
+        fi
+        echo "$expected  $dir/bun-linux-x64.zip" | sha256sum --check --quiet
+        unzip -q "$dir/bun-linux-x64.zip" -d "$dir"
+        mkdir -p "$HOME/.bun/bin"
+        install -m 0755 "$dir/bun-linux-x64/bun" "$HOME/.bun/bin/bun"
+        rm -rf "$dir"
+
+    # With an exact version and a Bun at ~/.bun/bin, restored or downloaded
+    # above, setup-bun finds that installation and makes no network request;
+    # it downloads only where the step above does not run. Its own executable
+    # cache stays off: this action owns it.
+    - name: Install Bun
+      id: setup-bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version: ${{ steps.version.outputs.version }}
+        no-cache: true
+
+    - name: Check the installed version
+      shell: bash
+      env:
+        EXPECTED: ${{ steps.version.outputs.version }}
+      run: |
+        actual=$(bun --version)
+        if [ "$actual" != "$EXPECTED" ]; then
+          echo "::error::Bun $actual is installed; the repository pins $EXPECTED"
+          exit 1
+        fi
+
+    - name: Save Bun
+      if: steps.binary.outputs.cache-hit != 'true' && inputs.binary-cache == 'read-write'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/bin
+        key: bun-binary-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+
+    - name: Restore Bun install cache
+      # Caches downloaded package tarballs (~/.bun/install/cache), not
+      # node_modules, so `bun ci` still resolves against the frozen lockfile
+      # and only skips re-downloading unchanged packages.
+      if: inputs.install-cache == 'actions' && inputs.save != 'false'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/install/cache
+        key: bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-
+
+    - name: Restore Bun install cache without saving
+      if: inputs.install-cache == 'actions' && inputs.save == 'false'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/install/cache
+        key: bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-
