@@ -535,6 +535,11 @@ class CanonicalProjection {
     return this.paragraphsById.get(blockId);
   }
 
+  /** The paragraph whose node starts at `before`. */
+  paragraphStartingAt(before: number): ParagraphAddress | undefined {
+    return this.paragraphs.find(({ start }) => start === before + 1);
+  }
+
   nextParagraphInContainer(blockId: string): ParagraphAddress | undefined {
     const index = this.paragraphs.findIndex(
       (paragraph) => paragraph.blockId === blockId,
@@ -1467,6 +1472,10 @@ class CanonicalSession {
   }
   get selection(): CanonicalSelection | null {
     return this.currentSelection;
+  }
+  /** Every paragraph identity this session has read or minted, live or retired. */
+  get reservedBlockIds(): ReadonlySet<string> {
+    return this.allocatedBlockIds;
   }
   get version(): number {
     return this.currentVersion;

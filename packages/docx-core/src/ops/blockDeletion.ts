@@ -1,7 +1,13 @@
 /** Whole-paragraph deletion within one block list, including its final paragraph. */
 import { Result } from "better-result";
 
-import type { Document, Paragraph, ParagraphContent } from "../model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  ParagraphContent,
+  Table,
+} from "../model/document";
 import {
   blockListAt,
   sameBlockList,
@@ -85,6 +91,64 @@ const DIRECT_DELETION_STAMP: RevisionStamp = {
   author: "",
   date: "",
 };
+
+/** The paragraph a table offers a mark running into it, and the tables on its path. */
+export type TableRunInTarget = {
+  receiver: Paragraph;
+  tables: readonly Table[];
+};
+
+/**
+ * The paragraph that receives `paragraph`'s content when its mark runs into
+ * the following `table`: the first paragraph of its first cell, through
+ * nested tables, where no pending row or cell change stands in the way.
+ */
+export const paragraphTableRunInTarget = (
+  paragraph: Paragraph,
+  table: Table,
+): TableRunInTarget | undefined => {
+  if (paragraph.sectionProperties !== undefined) return undefined;
+  const tables: Table[] = [];
+  let current = table;
+  for (;;) {
+    const row = current.rows.at(0);
+    const cell = row?.cells.at(0);
+    if (!row || !cell) return undefined;
+    if (
+      row.structuralChange?.type === "tableRowInsertion" ||
+      row.structuralChange?.type === "tableRowDeletion" ||
+      cell.structuralChange !== undefined
+    ) {
+      return undefined;
+    }
+    tables.push(current);
+    const target = cell.content.at(0);
+    if (target?.type === "paragraph")
+      return target.sectionProperties === undefined
+        ? { receiver: target, tables }
+        : undefined;
+    if (target?.type !== "table") return undefined;
+    current = target;
+  }
+};
+
+/**
+ * Whether the mark of `paragraph`, which `table` follows in `blocks`, can be
+ * resolved away: the block list goes on ending with a paragraph, and the
+ * table has a paragraph to receive what runs in. A tracked deletion before a
+ * table is admitted only where this holds, so each decision on it resolves.
+ */
+export const markBeforeTableResolves = ({
+  blocks,
+  paragraph,
+  table,
+}: {
+  blocks: readonly BlockContent[];
+  paragraph: Paragraph;
+  table: Table;
+}): boolean =>
+  blocks.at(-1)?.type === "paragraph" &&
+  paragraphTableRunInTarget(paragraph, table) !== undefined;
 
 type BlockDeletionOptions = {
   document: Document;
@@ -225,12 +289,16 @@ export const deleteBlocks = ({
   const following = list[last.index + 1];
   const terminal = last.index === list.length - 1;
   // Tracked, a paragraph a table follows loses its words and its own mark,
-  // as the default editor records it; accepting removes it, which needs the
-  // list to go on ending with a paragraph.
+  // as the default editor records it; accepting removes it, which needs what
+  // resolving that mark needs.
   const trackedBeforeTable =
     op.revision !== undefined &&
     following?.type === "table" &&
-    list.at(-1)?.type === "paragraph";
+    markBeforeTableResolves({
+      blocks: list,
+      paragraph: last.paragraph,
+      table: following,
+    });
   if (following?.type !== "paragraph" && !terminal && !trackedBeforeTable) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,

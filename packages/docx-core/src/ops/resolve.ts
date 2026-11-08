@@ -27,7 +27,12 @@ import type {
   Table,
 } from "../model/document";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
-import { paragraphMarkOutcome } from "./blockDeletion";
+import {
+  markBeforeTableResolves,
+  paragraphMarkOutcome,
+  paragraphTableRunInTarget,
+  type TableRunInTarget,
+} from "./blockDeletion";
 import {
   blockListAt,
   endsItsContainer,
@@ -113,40 +118,6 @@ const precedingSectionOwner = (
     JSON.stringify(paragraph.sectionProperties)
     ? "same"
     : "occupied";
-};
-
-type TableRunInTarget = {
-  receiver: Paragraph;
-  tables: readonly Table[];
-};
-
-const paragraphTableRunInTarget = (
-  paragraph: Paragraph,
-  table: Table,
-): TableRunInTarget | undefined => {
-  if (paragraph.sectionProperties !== undefined) return undefined;
-  const tables: Table[] = [];
-  let current = table;
-  for (;;) {
-    const row = current.rows.at(0);
-    const cell = row?.cells.at(0);
-    if (!row || !cell) return undefined;
-    if (
-      row.structuralChange?.type === "tableRowInsertion" ||
-      row.structuralChange?.type === "tableRowDeletion" ||
-      cell.structuralChange !== undefined
-    ) {
-      return undefined;
-    }
-    tables.push(current);
-    const target = cell.content.at(0);
-    if (target?.type === "paragraph")
-      return target.sectionProperties === undefined
-        ? { receiver: target, tables }
-        : undefined;
-    if (target?.type !== "table") return undefined;
-    current = target;
-  }
 };
 
 const runParagraphIntoTable = (
@@ -2267,7 +2238,7 @@ const joinOps = (
       remains.comments.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
-      (blocks.at(-1)?.type === "paragraph" && tableTarget !== undefined),
+      markBeforeTableResolves({ blocks, paragraph, table: next }),
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),

@@ -272,6 +272,116 @@ test("insertion validates identities, review conflicts and section boundaries", 
   );
 });
 
+test.each([
+  ["no paragraph follows", [] as BlockContent[]],
+  ["a paragraph follows", [makeParagraph("00000004", "after")]],
+] as const)(
+  "tracked insertion before a range boundary between blocks resolves each record alone (%s)",
+  (_, after) => {
+    const anchor: Paragraph = {
+      ...makeParagraph("00000001", "kept"),
+      content: [
+        { type: "bookmarkStart", id: 1, name: "_Ref1" },
+        { type: "run", content: [{ type: "text", text: "kept" }] },
+      ],
+    };
+    const document = documentOf([
+      anchor,
+      { type: "bookmarkEnd", id: 1 },
+      ...after,
+    ]);
+    const applied = apply(document, {
+      ...insertion([
+        makeParagraph("00000002", "first"),
+        makeParagraph("00000003", "second"),
+      ]),
+      at: { type: "after", blockId: "00000001" },
+    });
+    // The boundary stays after the paragraph that holds the anchor's mark.
+    expect(
+      applied.document.package.document.content.map((block) =>
+        block.type === "paragraph" ? "paragraph" : block.type,
+      ),
+    ).toEqual([
+      "paragraph",
+      "paragraph",
+      "paragraph",
+      "bookmarkEnd",
+      ...after.map(() => "paragraph"),
+    ]);
+    expect(resolve(applied, REVISION_DECISIONS.REJECT).document).toEqual(
+      document,
+    );
+    const accepted = resolve(applied, REVISION_DECISIONS.ACCEPT).document;
+    expect(
+      storyParagraphs(accepted.package.document).map(({ paragraph }) =>
+        paragraph.content
+          .flatMap((node) => (node.type === "run" ? node.content : []))
+          .map((leaf) => (leaf.type === "text" ? leaf.text : ""))
+          .join(""),
+      ),
+    ).toEqual(["kept", "first", "second", ...after.map(() => "after")]);
+    for (const id of applied.revisions)
+      for (const decision of Object.values(REVISION_DECISIONS)) {
+        const alone = applyDocumentOp(applied.document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [id],
+          decision,
+        });
+        if (alone.isErr()) throw alone.error;
+      }
+    expect(undo(applied)).toEqual(document);
+  },
+);
+
+test("tracked insertion after a final paragraph keeps the anchor's own records and ids", () => {
+  const plain = makeParagraph("00000001", "kept");
+  const anchor: Paragraph = {
+    ...plain,
+    content: [
+      { type: "run", content: [{ type: "text", text: "kept" }] },
+      {
+        type: "insertion",
+        info: { id: 5, author: "Other", date: "2026-01-01T00:00:00Z" },
+        content: [{ type: "run", content: [{ type: "text", text: " more" }] }],
+      },
+      {
+        type: "inlineSdt",
+        properties: { sdtType: "richText", id: 42, tag: "clause" },
+        content: [{ type: "run", content: [{ type: "text", text: " field" }] }],
+      },
+    ],
+  };
+  const op: InsertBlocksOp = {
+    ...insertion([makeParagraph("00000002", "new")]),
+    at: { type: "after", blockId: "00000001" },
+  };
+  const demand = (document: Document) => {
+    const counted = revisionIdDemand(document, op);
+    if (counted.isErr()) throw counted.error;
+    return counted.value;
+  };
+  const document = documentOf([anchor]);
+  // The anchor's own records take no new ids.
+  expect(demand(document)).toBe(demand(documentOf([plain])));
+  const applied = apply(document, {
+    ...op,
+    newIds: {
+      revision: Array.from(
+        { length: demand(document) },
+        (_, index) => 101 + index,
+      ),
+    },
+  });
+  const [first] = applied.document.package.document.content;
+  expect(first?.type === "paragraph" && first.content).toEqual(anchor.content);
+  expect(resolve(applied, REVISION_DECISIONS.REJECT).document).toEqual(
+    document,
+  );
+  expect(undo(applied)).toEqual(document);
+});
+
 test.each(["body", "cell"] as const)(
   "rejecting only the anchor's mark after a final paragraph keeps every later paragraph's pending review (%s)",
   (container) => {

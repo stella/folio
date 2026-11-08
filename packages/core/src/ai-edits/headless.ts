@@ -69,6 +69,7 @@ import { normalizeListModelRendering } from "../docx/listModelNormalization";
 import {
   createNumberingIdAllocator,
   type NumberingIdsInUse,
+  numberingNumIdsTaken,
 } from "../docx/numberingIds";
 import { getCachedNumberingMap } from "../docx/numberingParser";
 import { visitDocxParagraphs } from "../docx/paragraphTraversal";
@@ -1572,7 +1573,10 @@ export class FolioDocxReviewer {
       target.abstractNums.map((entry) => [entry.abstractNumId, entry]),
     );
     const levelsByNumId = referencedNumberingLevelsByNumId({ references });
-    const existingNumIds = [...nums.keys(), ...targetNums.keys()];
+    const existingNumIds = [
+      ...numberingNumIdsTaken(current),
+      ...numberingNumIdsTaken(target),
+    ];
     const numberingIds = createNumberingIdAllocator("num", existingNumIds);
     const remapped = new Map<number, number>();
     for (const numId of levelsByNumId.keys()) {
