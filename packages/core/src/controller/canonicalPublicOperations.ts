@@ -5,7 +5,7 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
-import { Mark } from "prosemirror-model";
+import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
 import {
@@ -77,6 +77,7 @@ import {
 import { lockViolationBetween } from "./canonicalLockGuard";
 import {
   type CanonicalCommit,
+  type CanonicalProjection,
   type CanonicalSession,
 } from "./canonicalSession";
 
@@ -95,7 +96,7 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   readonly setBlockParagraphProperties: "publicOps.unsupportedInline";
   readonly insertAfterBlock: "publicOps.unsupportedInline";
   readonly insertBeforeBlock: "publicOps.unsupportedInline";
-  readonly deleteBlock: "publicOps.unsupportedInline";
+  readonly deleteBlock: "compile";
   readonly commentOnBlock: "compile";
   readonly commentOnRange: "compile";
   readonly insertTable: "publicOps.tableStructure";
@@ -117,7 +118,7 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   setBlockParagraphProperties: CANONICAL_GAP.publicUnsupportedInline,
   insertAfterBlock: CANONICAL_GAP.publicUnsupportedInline,
   insertBeforeBlock: CANONICAL_GAP.publicUnsupportedInline,
-  deleteBlock: CANONICAL_GAP.publicUnsupportedInline,
+  deleteBlock: "compile",
   commentOnBlock: "compile",
   commentOnRange: "compile",
   insertTable: CANONICAL_GAP.publicTableStructure,
@@ -177,6 +178,18 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
     >;
   }
   return { type: "plain", operation } as const;
+};
+
+type ResolveBlockDeletionOptions = {
+  operation: Extract<FolioDocumentOperation, { type: "deleteBlock" }>;
+  paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
+  projection: CanonicalProjection;
+  doc: PMNode;
+  tracked: boolean;
+  refusal: (
+    reason: FolioAIEditSkipReason,
+    message?: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
 };
 
 type CanonicalPublicOperationsOptions = {
@@ -271,6 +284,8 @@ type ResolveCanonicalPublicOperationOptions = {
   state: EditorState;
   story: OpStory;
   diff: ReturnType<typeof wordDiffSessionFromOptions>["diff"];
+  /** Whether the batch records its edits as revisions. */
+  tracked: boolean;
 };
 
 const canonicalPublicStory = (story: FolioDocumentOperationStory): OpStory => {
@@ -437,7 +452,14 @@ export class CanonicalPublicOperations {
         skip(operation.id, "unsupportedBlock");
         continue;
       }
-      const compiled = this.resolve({ operation, options, state, story, diff });
+      const compiled = this.resolve({
+        operation,
+        options,
+        state,
+        story,
+        diff,
+        tracked: batch.mode !== "direct",
+      });
       if (compiled.isErr()) {
         if (compiled.error.reason === "unsupportedBlock")
           refusals.set(operation.id, {
@@ -702,12 +724,84 @@ export class CanonicalPublicOperations {
     return { status: "undone", undoHandle: handle };
   }
 
+  /**
+   * A whole paragraph removed as the editor removes a selection of it with
+   * its paragraph mark: from its start to the start of the paragraph after
+   * it, or, for the paragraph that ends its block list, from the end of the
+   * paragraph before it, whose mark then ends the list. Tracked, the text and
+   * the mark are marked deleted.
+   */
+  private resolveBlockDeletion({
+    operation,
+    paragraph,
+    projection,
+    doc,
+    tracked,
+    refusal,
+  }: ResolveBlockDeletionOptions) {
+    if (operation.comment !== undefined)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical comments on a deleted block are unavailable.",
+      );
+    if (operation.moveId !== undefined)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical tracked moves are unavailable.",
+      );
+    const end = paragraph.start + paragraph.node.content.size;
+    const after = doc.resolve(end + 1).nodeAfter;
+    const before = doc.resolve(paragraph.start - 1).nodeBefore;
+    const neighbour = (node: PMNode | null) => {
+      const id: unknown = node?.attrs["paraId"];
+      return node?.type.name === "paragraph" && typeof id === "string"
+        ? projection.paragraph(id)
+        : undefined;
+    };
+    const next = neighbour(after);
+    const previous = neighbour(before);
+    // Before a table, tracked, the paragraph's own mark is the one deleted;
+    // a text range can only delete the mark before it.
+    if (tracked && next === undefined && after !== null)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical tracked deletion of a paragraph before a table is unavailable.",
+      );
+    let range: { from: number; to: number } | undefined;
+    if (next !== undefined) range = { from: paragraph.start, to: next.start };
+    else if (previous !== undefined)
+      range = {
+        from: previous.start + previous.node.content.size,
+        to: end,
+      };
+    if (range === undefined)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical deletion of the only paragraph in its container is unavailable.",
+      );
+    const from = projection.addressAt(range.from);
+    const to = projection.addressAt(range.to);
+    if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+    const intents: EditorIntent[] = [
+      { type: "replaceText", from: from.value, to: to.value, text: "" },
+    ];
+    return Result.ok({
+      type: "plain" as const,
+      operation,
+      intents,
+      normalizations: [],
+      from: Math.min(range.from, paragraph.start),
+      to: Math.max(range.to, end),
+    });
+  }
+
   private resolve({
     operation,
     options,
     state,
     story,
     diff,
+    tracked,
   }: ResolveCanonicalPublicOperationOptions) {
     const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
       Result.err(
@@ -725,6 +819,7 @@ export class CanonicalPublicOperations {
       case "mergeBlockWithNext":
       case "commentOnRange":
       case "commentOnBlock":
+      case "deleteBlock":
         break;
       default:
         return refusal(
@@ -758,6 +853,15 @@ export class CanonicalPublicOperations {
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
     if (hash !== anchor.textHash) return refusal("changedBlock");
+    if (operation.type === "deleteBlock")
+      return this.resolveBlockDeletion({
+        operation,
+        paragraph,
+        projection: projection.value,
+        doc: state.doc,
+        tracked,
+        refusal,
+      });
     let start = 0;
     let end = clean.text.length;
     let text = "";
