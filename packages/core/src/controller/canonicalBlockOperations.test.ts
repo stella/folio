@@ -205,6 +205,25 @@ const viaDefaultEngine = async (
  * The canonical session's saved package after the batch; a suggested batch
  * is resolved as `suggestion` says before the save.
  */
+/** The default engine's package after a suggested batch it then resolves. */
+const viaDefaultSuggested = async (
+  source: ArrayBuffer,
+  operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
+  resolution: Suggestion,
+) => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+  const result = reviewer.applyOperations(batchOf(operation), {
+    mode: "suggested",
+    undefinedReferences: "refuse",
+  });
+  expect(result.skipped).toEqual([]);
+  for (const { id } of batchOf(operation))
+    if (resolution === "accept")
+      expect(reviewer.acceptSuggestion(id)).toBe(true);
+    else expect(reviewer.rejectSuggestion(id)).toBe(true);
+  return await reviewer.toBuffer();
+};
+
 const canonicalRun = async (
   source: ArrayBuffer,
   operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
@@ -405,6 +424,12 @@ const OPERATIONS = {
     type: "mergeBlockWithNext",
     blockId: "10000001",
   },
+  splitBlock: {
+    id: "op",
+    type: "splitBlock",
+    blockId: "10000002",
+    offset: 2,
+  },
   "mergeBlockWithNext separated": {
     id: "op",
     type: "mergeBlockWithNext",
@@ -513,6 +538,17 @@ describe("block-level public operations match the default engine", () => {
                 "suggested",
                 "accept",
               ),
+            ),
+          ).toEqual(expected);
+          // The default engine's suggestion resolves the same way.
+          expect(
+            await blocksOf(
+              await viaDefaultSuggested(source, operation, "reject"),
+            ),
+          ).toEqual(await blocksOf(source));
+          expect(
+            await outcomes(
+              await viaDefaultSuggested(source, operation, "accept"),
             ),
           ).toEqual(expected);
         });

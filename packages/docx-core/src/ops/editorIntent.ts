@@ -116,6 +116,12 @@ type SplitParagraphIntent = {
   type: "splitParagraph";
   at: TextPosition;
   to?: TextPosition;
+  /**
+   * Which half takes the new identity: by default the first, as typing a
+   * break moves the text before it to a paragraph of its own; the second
+   * keeps the paragraph's identity on the text before the split.
+   */
+  newHalf?: SplitHalf;
 };
 export type { TableIntentOperation } from "./types";
 
@@ -2865,7 +2871,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at: intent.at,
           newBlockId: intent.newBlockId,
-          newHalf: SPLIT_HALVES.FIRST,
+          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
           newParagraph: splitParagraphFields(document, intent.at),
           ...tracked,
         } as const;
@@ -2909,7 +2915,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at,
           newBlockId: intent.newBlockId,
-          newHalf: SPLIT_HALVES.FIRST,
+          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
           newParagraph: splitParagraphFields(plan.document(), at),
           newIds: mode.newIds,
           revision: mode.revision,
@@ -2937,7 +2943,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at: deletion.value.selection,
           newBlockId: intent.newBlockId,
-          newHalf: SPLIT_HALVES.FIRST,
+          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
           newParagraph: splitParagraphFields(
             deleted.value.document,
             deletion.value.selection,

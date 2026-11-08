@@ -1998,8 +1998,19 @@ const joinOps = (
     let survivor: Paragraph;
     // The anchor of an insertion whose last paragraph took over the anchor's
     // mark comes back as it was: its identity, its fields, the joined words.
-    if (paragraph.pPrMark?.survivor === "first")
+    if (paragraph.pPrMark?.survivor === "first") {
+      // Its identity and own fields, with the mark the paragraph after it
+      // holds: that mark's section break, change and property changes.
       survivor = { ...first, content: mergedContent };
+      for (const field of [
+        "pPrMark",
+        "sectionProperties",
+        "propertyChanges",
+      ] as const) {
+        if (next[field] === undefined) Reflect.deleteProperty(survivor, field);
+        else Object.assign(survivor, { [field]: next[field] });
+      }
+    }
     // An unchanged follower that receives nothing keeps its identity.
     else if (!receivesSection && structurallyEqual(mergedContent, next.content))
       survivor = next;

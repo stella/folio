@@ -539,6 +539,9 @@ const compilePublicIntents = ({
             type: "splitParagraph",
             at: sourceIntent.at,
             ...(sourceIntent.to === undefined ? {} : { to: sourceIntent.to }),
+            ...(sourceIntent.newHalf === undefined
+              ? {}
+              : { newHalf: sourceIntent.newHalf }),
             newBlockId: ids.newBlockId,
           } as const)
         : sourceIntent;
@@ -1578,10 +1581,13 @@ export class CanonicalPublicOperations {
     let intent: EditorIntent;
     switch (operation.type) {
       case "splitBlock":
+        // The first half keeps the paragraph's identity, as the default
+        // engine's split does.
         intent = {
           type: "splitParagraph",
           at: from.value,
           to: to.value,
+          newHalf: "second",
           newBlockId: createEditorIntentIdAllocator()(
             this.options.session.document,
             {

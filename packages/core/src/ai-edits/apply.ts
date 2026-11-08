@@ -538,6 +538,8 @@ export const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
   "deleteTableRow",
   "insertTableColumn",
   "deleteTableColumn",
+  "splitBlock",
+  "mergeBlockWithNext",
 ]);
 
 /** Operations that only add marks: they move no position of the document. */
