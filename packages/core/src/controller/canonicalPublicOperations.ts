@@ -1476,10 +1476,10 @@ export class CanonicalPublicOperations {
           return refusal("staleRange");
         break;
       case "mergeBlockWithNext":
-        if (operation.mergedParagraphProperties || operation.separator)
+        if (/[\t\r\n]/u.test(operation.separator ?? ""))
           return refusal(
             "unsupportedBlock",
-            "Canonical public join properties and separators are unavailable.",
+            "Canonical public join separators require plain text.",
           );
         start = clean.text.length;
         end = start;
@@ -1569,11 +1569,14 @@ export class CanonicalPublicOperations {
       case "mergeBlockWithNext": {
         const next = projection.value.nextParagraphInContainer(blockId);
         if (next === undefined) return refusal("missingBlock");
+        // The merged paragraph keeps the first one's identity, as the
+        // default engine's merge does.
         intent = {
           type: "joinParagraphs",
           story,
           blockId,
           nextBlockId: next.blockId,
+          survivor: "first",
         };
         break;
       }
@@ -1737,6 +1740,50 @@ export class CanonicalPublicOperations {
             ? {}
             : { runPropsPatch: intent.runPropsPatch }),
         });
+      }
+    } else if (
+      operation.type === "mergeBlockWithNext" &&
+      intent.type === "joinParagraphs"
+    ) {
+      // The separator goes in at the first paragraph's end, before the join.
+      const separator = operation.separator ?? "";
+      if (separator !== "") {
+        const at = projection.value.addressAt(
+          paragraph.start + paragraph.node.content.size,
+        );
+        if (at.isErr()) return refusal("unsupportedBlock");
+        intents.push({
+          type: "replaceText",
+          from: at.value,
+          to: at.value,
+          text: separator,
+        });
+      }
+      intents.push(intent);
+      // The merged paragraph's properties: on the first paragraph a direct
+      // join keeps, on the second, whose mark a tracked join leaves.
+      const properties = operation.mergedParagraphProperties;
+      if (properties !== undefined) {
+        const stated = statedNumbering(properties.numbering, mintList);
+        const patch = statedParagraphPatch({
+          ...properties,
+          ...(stated.numbering === undefined
+            ? {}
+            : { numbering: stated.numbering }),
+        });
+        if (Object.keys(patch).length > 0)
+          intents.push({
+            type: "formatParagraph",
+            at: {
+              story,
+              blockId: tracked ? intent.nextBlockId : intent.blockId,
+              offset: 0,
+            },
+            patch,
+            ...(stated.newList === undefined
+              ? {}
+              : { newList: stated.newList }),
+          });
       }
     } else intents.push(intent);
     const structural =
