@@ -87,18 +87,13 @@ const selectedCellPasteRow: HarnessRefusalRow = {
 };
 
 /**
- * Text input over a cell selection needs a per-cell operation the session does
- * not have yet. Each of these leaves the document as it was, and deleting
- * selected cells is supported, so it stays strict.
+ * Input over a cell selection other than typing and deletion needs a per-cell
+ * operation the session does not have yet. Each of these leaves the document
+ * as it was.
  */
 const SELECTED_CELL_REFUSALS = {
-  typing: [
-    {
-      id: "selected-cells-typing",
-      gap: CANONICAL_GAP.dispatch,
-      message: "Replacing a cell selection requires a per-cell replacement.",
-    },
-  ],
+  // Typing clears every selected cell and writes into the first.
+  typing: [],
   enter: [
     {
       id: "selected-cells-enter",

@@ -1538,11 +1538,10 @@ class CanonicalSession {
         return refuse(
           "A replacement range cannot partially address a cell selection.",
         );
-      if (text.length > 0)
-        return refuse(
-          "Replacing a cell selection requires a per-cell replacement.",
-        );
+      // Typing over selected cells clears each of them and writes the text
+      // into the first, as the editor does.
       const intents: EditorIntent[] = [];
+      let first = true;
       for (const range of canonicalCellSelectionRanges(state.selection)) {
         const edges = projection.rangeEdgesAt(range.from, range.to);
         const cellFrom = projection.inputAddressAt(range.from, edges.start);
@@ -1553,8 +1552,9 @@ class CanonicalSession {
           type: "replaceText",
           from: cellFrom.value,
           to: cellTo.value,
-          text: "",
+          text: first ? text : "",
         });
+        first = false;
       }
       return this.prepareIntents(state, { intents, semantic });
     }
