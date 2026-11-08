@@ -11,6 +11,7 @@ import type { EditorState } from "prosemirror-state";
 import {
   CONTENT_CONTROL_LOCK,
   lockedControlMessage,
+  paragraphNumberingReference,
 } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
@@ -21,6 +22,7 @@ import {
   type EditorIntent,
   findStoryBody,
   freshCommentId,
+  type NewListInstance,
   OP_STORIES,
   type OpStory,
   paragraphLength,
@@ -41,6 +43,10 @@ import {
 } from "../ai-edits/clean-text";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
+  createBatchListMinter,
+  type MintedList,
+} from "../ai-edits/newListNumbering";
+import {
   collectNoteReferenceLabels,
   hashFolioAIBlockContent,
   hashFolioAIBlockText,
@@ -50,10 +56,13 @@ import type {
   FolioAIEditNormalization,
   FolioAIEditSkippedOperation,
   FolioAIEditSkipReason,
+  FolioAIListKind,
+  FolioAIListNumbering,
   FolioAIParagraphIndentation,
   FolioAIParagraphSpacing,
 } from "../ai-edits/types";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
+import type { FolioContentStatedNumbering } from "../compare/content-types";
 import {
   type ApplyFolioDocumentOperationsOptions,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -244,6 +253,7 @@ const statedParagraphPatch = (
 };
 
 type ResolveParagraphPropertiesOptions = {
+  mintList: (format: FolioAIListKind) => MintedList;
   operation: Extract<
     FolioDocumentOperation,
     { type: "setBlockParagraphProperties" }
@@ -260,19 +270,25 @@ const resolveParagraphProperties = ({
   operation,
   paragraph,
   projection,
+  mintList,
   refusal,
 }: ResolveParagraphPropertiesOptions) => {
-  if (operation.properties.numbering?.kind === "newList")
-    return refusal(
-      "unsupportedBlock",
-      "Canonical paragraphs cannot start a new list yet.",
-    );
-  const patch = statedParagraphPatch(operation.properties);
+  const requested = operation.properties.numbering;
+  const stated = statedNumbering(requested, mintList);
+  const patch = statedParagraphPatch({
+    ...operation.properties,
+    ...(stated.numbering === undefined ? {} : { numbering: stated.numbering }),
+  });
   if (Object.keys(patch).length === 0) return refusal("emptyOperation");
   const at = projection.addressAt(paragraph.start);
   if (at.isErr()) return refusal("unsupportedBlock");
   const intents: EditorIntent[] = [
-    { type: "formatParagraph", at: at.value, patch },
+    {
+      type: "formatParagraph",
+      at: at.value,
+      patch,
+      ...(stated.newList === undefined ? {} : { newList: stated.newList }),
+    },
   ];
   return Result.ok({
     type: "plain" as const,
@@ -296,6 +312,7 @@ const isBlockInsertion = (
   operation.type === "insertBeforeBlock";
 
 type ResolveBlockInsertionOptions = {
+  mintList: (format: FolioAIListKind) => MintedList;
   operation: BlockInsertion;
   paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
   story: OpStory;
@@ -314,13 +331,11 @@ const resolveBlockInsertion = ({
   operation,
   paragraph,
   story,
+  mintList,
   refusal,
 }: ResolveBlockInsertionOptions) => {
-  if (operation.numbering?.kind === "newList")
-    return refusal(
-      "unsupportedBlock",
-      "Canonical inserted paragraphs cannot start a new list yet.",
-    );
+  const requested = operation.numbering;
+  const stated = statedNumbering(requested, mintList);
   const { text } = operation;
   if (stripInlineEmphasisMarkers(text) !== text)
     return refusal(
@@ -362,9 +377,9 @@ const resolveBlockInsertion = ({
       ...(operation.indentation === undefined
         ? {}
         : { indentation: operation.indentation }),
-      ...(operation.numbering === undefined
+      ...(stated.numbering === undefined
         ? {}
-        : { numbering: operation.numbering }),
+        : { numbering: stated.numbering }),
     }),
   ))
     if (value === null) Reflect.deleteProperty(formatting, key);
@@ -416,6 +431,7 @@ const resolveBlockInsertion = ({
         blockId: paragraph.blockId,
       },
       paragraphs,
+      ...(stated.newList === undefined ? {} : { newList: stated.newList }),
     },
   ];
   const position =
@@ -581,6 +597,28 @@ type ResolveCanonicalPublicOperationOptions = {
   diff: ReturnType<typeof wordDiffSessionFromOptions>["diff"];
   /** Whether the batch records its edits as revisions. */
   tracked: boolean;
+  /** A new list of one kind for this operation, minted after the batch's earlier ones. */
+  mintList: (format: FolioAIListKind) => MintedList;
+};
+
+/**
+ * The stated numbering a request names, minting its new list once for the
+ * operation, as the default engine allocates one instance per operation.
+ */
+const statedNumbering = (
+  numbering: FolioAIListNumbering | undefined,
+  mint: (format: FolioAIListKind) => MintedList,
+): { numbering?: FolioContentStatedNumbering; newList?: NewListInstance } => {
+  if (numbering === undefined) return {};
+  if (numbering.kind !== "newList") return { numbering };
+  const minted = mint(numbering.format);
+  return {
+    numbering: paragraphNumberingReference({
+      numId: minted.numId,
+      ilvl: numbering.level ?? 0,
+    }),
+    newList: minted.newList,
+  };
 };
 
 const canonicalPublicStory = (story: FolioDocumentOperationStory): OpStory => {
@@ -650,6 +688,7 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
     const resolved: ResolvedOperation[] = [];
+    const mintList = createBatchListMinter(() => session.document);
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
     if (!session.isComposing && options.revisionStamp === undefined) {
@@ -754,6 +793,7 @@ export class CanonicalPublicOperations {
         story,
         diff,
         tracked: batch.mode !== "direct",
+        mintList,
       });
       if (compiled.isErr()) {
         if (compiled.error.reason === "unsupportedBlock")
@@ -1302,6 +1342,7 @@ export class CanonicalPublicOperations {
     story,
     diff,
     tracked,
+    mintList,
   }: ResolveCanonicalPublicOperationOptions) {
     const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
       Result.err(
@@ -1357,12 +1398,19 @@ export class CanonicalPublicOperations {
       return refusal("preconditionFailed");
     if (hash !== anchor.textHash) return refusal("changedBlock");
     if (isBlockInsertion(operation))
-      return resolveBlockInsertion({ operation, paragraph, story, refusal });
+      return resolveBlockInsertion({
+        operation,
+        paragraph,
+        story,
+        mintList,
+        refusal,
+      });
     if (operation.type === "setBlockParagraphProperties")
       return resolveParagraphProperties({
         operation,
         paragraph,
         projection: projection.value,
+        mintList,
         refusal,
       });
     if (operation.type === "deleteBlock")

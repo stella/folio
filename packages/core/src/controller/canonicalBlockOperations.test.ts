@@ -7,6 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { FolioDocumentOperation } from "../ai-edits";
@@ -148,7 +149,23 @@ const outcomes = async (bytes: ArrayBuffer) => {
       .getComments()
       .map(({ anchoredText, text }) => ({ anchoredText, text }));
   };
+  const numbering = (
+    await parseDocx(bytes.slice(0), {
+      preloadFonts: false,
+      detectVariables: false,
+    })
+  ).package.numbering;
   return {
+    lists: {
+      nums: numbering?.nums.map(({ numId, abstractNumId }) => [
+        numId,
+        abstractNumId,
+      ]),
+      formats: numbering?.abstractNums.map(({ abstractNumId, levels }) => [
+        abstractNumId,
+        levels.map(({ numFmt }) => numFmt),
+      ]),
+    },
     pending: await blocksOf(bytes),
     accepted: await resolved("accept"),
     rejected: await resolved("reject"),
@@ -345,7 +362,7 @@ const OPERATIONS = {
     type: "insertAfterBlock",
     blockId: "10000002",
     text: "Item",
-    numbering: { kind: "reference", numId: 1, ilvl: 1 },
+    numbering: paragraphNumberingReference({ numId: 1, ilvl: 1 }),
   },
   "insertBeforeBlock numbering cancelled": {
     id: "op",
@@ -358,13 +375,29 @@ const OPERATIONS = {
     id: "op",
     type: "setBlockParagraphProperties",
     blockId: "10000002",
-    properties: { numbering: { kind: "reference", numId: 1, ilvl: 0 } },
+    properties: {
+      numbering: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+    },
   },
   "setBlockParagraphProperties numbering level": {
     id: "op",
     type: "setBlockParagraphProperties",
     blockId: "10000002",
     properties: { numbering: { kind: "levelOnly", ilvl: 1 } },
+  },
+  "insertAfterBlock new list": {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "First\nSecond",
+    numbering: { kind: "newList", format: "numbered" },
+    formattingScope: "allParagraphs",
+  },
+  "setBlockParagraphProperties new list": {
+    id: "op",
+    type: "setBlockParagraphProperties",
+    blockId: "10000002",
+    properties: { numbering: { kind: "newList", format: "bullet", level: 1 } },
   },
   "setBlockParagraphProperties alignment": {
     id: "op",
