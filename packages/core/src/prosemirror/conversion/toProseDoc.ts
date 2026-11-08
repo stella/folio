@@ -1499,6 +1499,27 @@ const withTrackedRunMark = (
   return node;
 };
 
+/** A revision's info as the review surface reads it: a suggestion's says so. */
+const suggestedRevisionInfo = <Info extends { suggestionId?: string }>(
+  info: Info,
+): Info | (Info & { provenance: "suggested" }) =>
+  info.suggestionId === undefined ? info : { ...info, provenance: "suggested" };
+
+/**
+ * The mark a run's property changes ride. Changes that all belong to one
+ * pending suggestion show as that suggestion, as tracked text does.
+ */
+const runPropertyChangeMark = (changes: readonly RunPropertyChange[]): Mark => {
+  const suggestionIds = new Set(changes.map(({ info }) => info.suggestionId));
+  const [suggestionId] = suggestionIds;
+  return schema.mark("runPropertyChange", {
+    changes: [...changes],
+    ...(suggestionIds.size === 1 && suggestionId !== undefined
+      ? { provenance: "suggested", suggestionId }
+      : {}),
+  });
+};
+
 /**
  * Convert tracked change (insertion or deletion) content to PM nodes with
  * an insertion/deletion mark applied.
@@ -1846,7 +1867,12 @@ function paragraphFormattingToAttrs(
   // through into PM attrs.
   if (paragraph.propertyChanges && paragraph.propertyChanges.length > 0) {
     attrs._propertyChanges = paragraph.propertyChanges.map(
-      ({ previousFormatting, ...change }) => {
+      ({ previousFormatting, ...modelChange }) => {
+        // A change of a pending suggestion shows as that suggestion.
+        const change = {
+          ...modelChange,
+          info: suggestedRevisionInfo(modelChange.info),
+        };
         // Attr and model carry the same union now; the numbering still crosses
         // through the codec, which is what keeps the two slots from trading
         // shapes the next time one of them moves.
@@ -1880,7 +1906,13 @@ function paragraphFormattingToAttrs(
     attrs._preservedAttributes = paragraph.preservedAttributes;
   }
   if (paragraph.pPrMark) {
-    attrs.pPrMark = paragraph.pPrMark;
+    attrs.pPrMark =
+      paragraph.pPrMark.info.suggestionId === undefined
+        ? paragraph.pPrMark
+        : {
+            ...paragraph.pPrMark,
+            info: suggestedRevisionInfo(paragraph.pPrMark.info),
+          };
   }
 
   // Helper: assign a value only when defined
@@ -3267,9 +3299,7 @@ function convertField(
     resultPropertyChanges &&
     resultPropertyChanges.length > 0
   ) {
-    marks.push(
-      schema.mark("runPropertyChange", { changes: [...resultPropertyChanges] }),
-    );
+    marks.push(runPropertyChangeMark(resultPropertyChanges));
   }
   const fieldNode = schema.node(
     createStructuredField ? "structuredField" : "field",
@@ -3667,9 +3697,7 @@ function convertRun(
     createMark: runScope.createMark,
   });
   if (run.propertyChanges && run.propertyChanges.length > 0) {
-    marks.push(
-      schema.mark("runPropertyChange", { changes: [...run.propertyChanges] }),
-    );
+    marks.push(runPropertyChangeMark(run.propertyChanges));
   }
   const identity = runIdentityMark(run, runScope.nextRunIdentityId);
   if (identity) {
@@ -5257,11 +5285,7 @@ function convertHyperlink(
           createMark: runScope.createMark,
         });
         if (child.propertyChanges && child.propertyChanges.length > 0) {
-          runMarks.push(
-            schema.mark("runPropertyChange", {
-              changes: [...child.propertyChanges],
-            }),
-          );
+          runMarks.push(runPropertyChangeMark(child.propertyChanges));
         }
         const identity = runIdentityMark(child, runScope.nextRunIdentityId);
         if (identity) {

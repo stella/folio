@@ -53,4 +53,59 @@ describe("pending suggestions in the canonical projection", () => {
       { revisionId: 3, provenance: "user" },
     ]);
   });
+
+  test("a suggested run or paragraph formatting change shows as its suggestion", () => {
+    const session = createCanonicalSession({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "10000000",
+              formatting: { alignment: "center" },
+              propertyChanges: [
+                {
+                  type: "paragraphPropertyChange",
+                  info: info(5, "s2"),
+                  previousFormatting: {},
+                },
+              ],
+              content: [
+                {
+                  type: "run",
+                  formatting: { bold: true },
+                  propertyChanges: [
+                    {
+                      type: "runPropertyChange",
+                      info: info(4, "s1"),
+                      previousFormatting: {},
+                    },
+                  ],
+                  content: [{ type: "text", text: "Hello" }],
+                },
+                {
+                  type: "run",
+                  formatting: { italic: true },
+                  propertyChanges: [
+                    {
+                      type: "runPropertyChange",
+                      info: info(6),
+                      previousFormatting: {},
+                    },
+                  ],
+                  content: [{ type: "text", text: " world" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    }).unwrap();
+    const state = EditorState.create({ schema, doc: session.projection.doc });
+    expect(
+      getSuggestions(state)
+        .map(({ suggestionId }) => suggestionId)
+        .sort(),
+    ).toEqual(["s1", "s2"]);
+  });
 });
