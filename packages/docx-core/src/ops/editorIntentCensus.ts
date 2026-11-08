@@ -9,6 +9,7 @@ import {
   idKey,
   packageIdentityKeys,
   packageParagraphIds,
+  packageReservedIdentityKeys,
   paragraphIdsIn,
   reservedIdentityKeysIn,
 } from "./ids";
@@ -148,7 +149,7 @@ export const createCensusReader = () => {
     } else {
       identities = countKeys(
         packageIdentityKeys(document.package).concat(
-          reservedIdentityKeysIn(document.package),
+          packageReservedIdentityKeys(document.package),
         ),
       );
       paragraphs = countKeys(packageParagraphIds(document.package).map(idKey));
