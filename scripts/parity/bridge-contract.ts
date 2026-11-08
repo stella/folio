@@ -108,6 +108,17 @@ export type FolioParityBridge = {
   loadDocx: (bytes: number[]) => Promise<void>;
   /** Serialize to DOCX through the public ref and return the package. */
   saveDocx: () => Promise<number[]>;
+  /**
+   * Suggest a paragraph after the first block holding `after`, with a comment
+   * on it; returns the suggestion id, or null.
+   */
+  suggestCommentedInsertion: (
+    after: string,
+    text: string,
+    comment: string,
+  ) => string | null;
+  /** Reject one suggestion through the public ref. */
+  rejectSuggestion: (suggestionId: string) => boolean;
   /** Whether the live editor has edits not yet serialized by save(). */
   hasPendingChanges: () => boolean;
   /**

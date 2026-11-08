@@ -1290,7 +1290,6 @@ const commentLifecycle = useCommentLifecycle({
   pagesContainer: pagesRef,
   readOnly,
   createComment: commentManagement.createComment,
-  pushComment: commentManagement.pushComment,
   sessionKind: () =>
     canonicalAuthoritySession.value ? "canonical" : "prosemirror",
   createCanonicalComment: (text, range) => {
