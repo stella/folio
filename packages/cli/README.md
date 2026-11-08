@@ -176,10 +176,12 @@ recovery left it.
 A process on the same machine that can rename directories inside the
 document's directory while a write runs can still race it: names are
 resolved, then re-checked (the handle's device and inode against the checked
-path, and the directory's real path just before the rename), but not held
-open across the whole transaction. The tool caller cannot exploit this; it
-matters only against another local actor with write access to the
-directory.
+path, the directory's real path against the MCP server's roots when the
+transaction starts, and that real path again just before the rename), but not
+held open across the whole transaction. `folio render` re-checks its output
+directory, temporary file, and destination the same way before its rename.
+The tool caller cannot exploit this; it matters only against another local
+actor with write access to the directory.
 
 ## Rendering and preview
 
