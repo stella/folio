@@ -116,6 +116,12 @@ export const reconcileRunFormattingMarks = ({
         directFormatting: authoredFormatting,
         paragraphMarkFormatting: context.paragraphMarkFormatting,
         suppressedFormatting: paragraphFormatting,
+        characterStyleFormatting:
+          authoredFormatting.styleId === undefined
+            ? undefined
+            : (styleResolver?.getRunStyleOwnProperties(
+                authoredFormatting.styleId,
+              ) ?? undefined),
       })
     : undefined;
   const overrideFormatting = mergeTextFormatting(
