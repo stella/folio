@@ -1006,6 +1006,7 @@ export type RevisionStamp = {
     author: string;
     date: string;
     initials?: string;
+    suggestionId?: string;
 };
 
 // @public
@@ -1303,6 +1304,9 @@ export const withBodyContent: (body: DocumentBody, content: BlockContent[]) => D
 
 // @public
 export const withoutCommentThreads: (comments: readonly Comment_2[], removedRootIds: ReadonlySet<number>) => Comment_2[];
+
+// @public
+export const withoutPendingSuggestions: (document: Document_2) => Result<Document_2, DocumentOpRefusal>;
 
 // @public
 export type ZeroWidthItem = keyof typeof ZERO_WIDTH_ITEMS_HOLD_CONTENT;
