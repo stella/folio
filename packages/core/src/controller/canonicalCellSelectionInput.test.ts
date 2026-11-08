@@ -99,3 +99,30 @@ for (const mode of ["editing", "suggesting"] as const)
     expect(table).toMatch(/"insertion".*"text":"Z"/u);
     expect(table.match(/"deletion"/gu)).toHaveLength(2);
   });
+
+test("a tab over selected cells clears them and puts the tab in the first", () => {
+  const session = createCanonicalSession(tableDocument()).unwrap();
+  let state = EditorState.create({ schema, doc: session.projection.doc });
+  const cells: number[] = [];
+  state.doc.descendants((node, position) => {
+    if (node.type.name === "tableCell") cells.push(position);
+    return true;
+  });
+  const [anchor, head] = cells;
+  if (anchor === undefined || head === undefined) return panic("No cells.");
+  state = state.apply(
+    state.tr.setSelection(CellSelection.create(state.doc, anchor, head)),
+  );
+  const commit = session
+    .prepareCellSelectionStructure(state, (at) => ({
+      type: "insertAtom",
+      from: at,
+      to: at,
+      atom: { type: "tab" },
+    }))
+    .unwrap();
+  expect(commit.publish().isOk()).toBe(true);
+  expect(texts(session.document)).toEqual(["", ""]);
+  const table = JSON.stringify(session.document.package.document.content[0]);
+  expect(table.match(/"type":"tab"/gu)).toHaveLength(1);
+});

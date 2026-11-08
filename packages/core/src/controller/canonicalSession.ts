@@ -1676,6 +1676,45 @@ class CanonicalSession {
     });
   }
 
+  /**
+   * A structural edit over selected cells: each selected cell is cleared and
+   * the edit happens at the start of the first, as the editor's own command
+   * does over a cell selection. One commit, so one undo step.
+   */
+  prepareCellSelectionStructure(
+    state: EditorState,
+    structure: (at: TextPosition) => EditorIntent,
+  ): Result<CanonicalCommit, CanonicalSessionError> {
+    if (!(state.selection instanceof CellSelection))
+      return refuse("The structural edit needs a cell selection.");
+    const projected = this.projectStory(OP_STORIES.MAIN);
+    if (projected.isErr()) return projected;
+    const projection = projected.value;
+    const intents: EditorIntent[] = [];
+    let first: TextPosition | undefined;
+    for (const range of canonicalCellSelectionRanges(state.selection)) {
+      const edges = projection.rangeEdgesAt(range.from, range.to);
+      const cellFrom = projection.inputAddressAt(range.from, edges.start);
+      if (cellFrom.isErr()) return cellFrom;
+      const cellTo = projection.inputAddressAt(range.to, edges.end);
+      if (cellTo.isErr()) return cellTo;
+      first ??= cellFrom.value;
+      if (
+        cellFrom.value.blockId !== cellTo.value.blockId ||
+        cellFrom.value.offset !== cellTo.value.offset
+      )
+        intents.push({
+          type: "replaceText",
+          from: cellFrom.value,
+          to: cellTo.value,
+          text: "",
+        });
+    }
+    if (first === undefined) return refuse("The cell selection is empty.");
+    intents.push(structure({ ...first, offset: 0, zeroWidthBefore: 0 }));
+    return this.prepareIntents(state, { intents, semantic: "structure" });
+  }
+
   prepareIntent(
     state: EditorState,
     intent: EditorIntent,
