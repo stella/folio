@@ -161,9 +161,9 @@ const buildInitialState = (
         doc: document,
         schema,
         plugins: [
+          createDocumentNumberingPlugin(numbering),
           ...manager.getPlugins(),
           createDocumentStylesPlugin(styles),
-          createDocumentNumberingPlugin(numbering),
         ],
       }),
     ),
@@ -424,8 +424,8 @@ export const createHeaderFooterEditorManager = (
           ? EditorState.create({
               doc: canonicalProjection,
               plugins: [
-                createDocumentStyleContextPlugin(styles),
                 createDocumentNumberingPlugin(numbering),
+                createDocumentStyleContextPlugin(styles),
               ],
             })
           : buildInitialState(headerFooter, styles, theme, numbering, manager),
