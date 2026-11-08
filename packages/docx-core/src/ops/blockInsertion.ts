@@ -88,7 +88,11 @@ export const insertBlocks = ({
   // new paragraph holds the mark the anchor had, with the anchor's paragraph
   // properties as its prior ones. Rejecting removes the new text and the
   // anchor's mark, which leaves the anchor as it was; accepting leaves both.
-  const takesOverMark = op.revision !== undefined && !before;
+  // Before a table the new paragraph's own mark can be the inserted one, as
+  // the default editor records it; only at the end of the list is there no
+  // mark after the anchor's for it to take.
+  const takesOverMark =
+    op.revision !== undefined && !before && following === undefined;
   if (
     takesOverMark &&
     (location.paragraph.pPrMark !== undefined ||
@@ -212,7 +216,11 @@ export const insertBlocks = ({
     ? [
         {
           ...location.paragraph,
-          pPrMark: { kind: "ins", info: stampInfo(revision) },
+          pPrMark: {
+            kind: "ins",
+            info: stampInfo(revision),
+            survivor: "first",
+          },
         },
       ]
     : [];

@@ -1994,17 +1994,23 @@ const joinOps = (
     ends.set(nextId, emptiedEndsOf(merged, emptied));
     const mergedContent = asParagraphContent(merged);
     const receivesSection = outcome.sectionDestination === "following";
+    const { pPrMark: _rejectedMark, ...first } = paragraph;
+    let survivor: Paragraph;
+    // The anchor of an insertion whose last paragraph took over the anchor's
+    // mark comes back as it was: its identity, its fields, the joined words.
+    if (paragraph.pPrMark?.survivor === "first")
+      survivor = { ...first, content: mergedContent };
     // An unchanged follower that receives nothing keeps its identity.
-    const survivor: Paragraph =
-      !receivesSection && structurallyEqual(mergedContent, next.content)
-        ? next
-        : {
-            ...next,
-            content: mergedContent,
-            ...(receivesSection
-              ? { sectionProperties: paragraph.sectionProperties }
-              : {}),
-          };
+    else if (!receivesSection && structurallyEqual(mergedContent, next.content))
+      survivor = next;
+    else
+      survivor = {
+        ...next,
+        content: mergedContent,
+        ...(receivesSection
+          ? { sectionProperties: paragraph.sectionProperties }
+          : {}),
+      };
     const transfersToPrevious =
       outcome.sectionDestination === "preceding" &&
       previous?.type === "paragraph";

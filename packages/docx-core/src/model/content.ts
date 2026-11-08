@@ -2373,6 +2373,13 @@ export type ParagraphMarkChange = {
   info: TrackedChangeInfo;
   /** Exact source-cut depth for rejection; absent in ordinary imported revisions. */
   resolutionJoin?: number | undefined;
+  /**
+   * Which paragraph rejecting this inserted mark keeps: `"first"` when the
+   * paragraph after it took over the mark this one had, so this one is the
+   * paragraph that was there before. In memory only, never written to a file:
+   * a reopened file joins as any rejected mark does.
+   */
+  survivor?: "first" | undefined;
 };
 
 export const REVIEW_CARRIERS = {
