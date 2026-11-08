@@ -443,7 +443,11 @@ export const withCanonicalTableDeletion = (command: Command): Command =>
 export const withCanonicalTableInsertion = (command: Command): Command =>
   withCanonicalCommand(command, (state) => {
     const { $from } = state.selection;
-    if ($from.parent.type.name !== "paragraph") return undefined;
+    // The paragraph holding the caret, even from inside an inline content
+    // control: the command places the table after it.
+    let depth = $from.depth;
+    while (depth > 0 && $from.node(depth).type.name !== "paragraph") depth -= 1;
+    if (depth === 0) return undefined;
     let transaction: Transaction | undefined;
     if (
       !command(state, (dispatched) => {
@@ -453,7 +457,7 @@ export const withCanonicalTableInsertion = (command: Command): Command =>
     )
       return undefined;
     const inserted = transaction.doc.nodeAt(
-      transaction.mapping.map($from.after(), -1),
+      transaction.mapping.map($from.after(depth), -1),
     );
     if (inserted === null || inserted.type.name !== "table") return undefined;
     const formatting = tableAttrsToFormatting(expectTableAttrs(inserted));
@@ -472,7 +476,7 @@ export const withCanonicalTableInsertion = (command: Command): Command =>
     return [
       {
         type: "editTableBlock",
-        at: $from.start(),
+        at: $from.start(depth),
         edit: { type: DOCUMENT_OP_TYPES.INSERT_TABLE, table },
       },
     ];

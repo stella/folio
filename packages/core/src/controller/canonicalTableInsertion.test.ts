@@ -109,3 +109,76 @@ describe("insert table in the canonical session", () => {
       expect(session.document).toEqual(before);
     });
 });
+
+describe("insert table with the caret in an inline content control", () => {
+  test("places the table after the control's paragraph, as the editor does", async () => {
+    const document = await parseDocx(
+      (
+        await prepareCanonicalDocxInput(
+          await createDocx({
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Before " }],
+                      },
+                      {
+                        type: "inlineSdt",
+                        properties: { sdtType: "richText", id: 7 },
+                        content: [
+                          {
+                            type: "run",
+                            content: [{ type: "text", text: "Clause" }],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    type: "paragraph",
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "After" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          }),
+        )
+      ).unwrap(),
+      { preloadFonts: false, detectVariables: false },
+    );
+    const session = createCanonicalSession(document).unwrap();
+    let state = EditorState.create({ schema, doc: session.projection.doc });
+    let inside: number | undefined;
+    state.doc.descendants((node, position) => {
+      if (node.isText && node.text === "Clause") inside = position + 3;
+      return inside === undefined;
+    });
+    if (inside === undefined) return panic("No control text.");
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, inside)),
+    );
+    let edited = state;
+    insertTable()(state, (transaction) => {
+      edited = state.apply(transaction);
+    });
+    const expected = shapeOf(
+      fromProseDoc(edited.doc, session.document, {
+        stylesheetSource: { type: "package" },
+      }),
+    );
+    const intents = getCanonicalCommandIntents(insertTable(), state);
+    if (intents === undefined) return panic("insertTable has no lowering.");
+    const commit = prepareCanonicalCommands(session, state, intents).unwrap();
+    expect(commit.publish().isOk()).toBe(true);
+    expect(shapeOf(session.document)).toEqual(expected);
+  });
+});
