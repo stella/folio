@@ -59,6 +59,12 @@ const bookmark = (id: number, inner: string) =>
 /** A cross-reference showing the list number of the paragraph holding bookmark `id`. */
 const numberReference = (id: number, shown: string) =>
   `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> REF _Ref${id} \\r \\h </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${text(shown)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+/** The same cross-reference, its number formatted apart from the space after it. */
+const structuredNumberReference = (id: number, shown: string) =>
+  `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> REF _Ref${id} \\r \\h </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>${shown}</w:t></w:r>${text(" ")}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+/** A paragraph in a text frame beside the text. */
+const framed = (inner: string) =>
+  `<w:p><w:pPr><w:framePr w:w="2400" w:hSpace="180" w:wrap="around" w:vAnchor="text" w:hAnchor="margin" w:x="200" w:y="100"/></w:pPr>${inner}</w:p>`;
 const anchoredTextBox = (id: number, value: string) =>
   `<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="1" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="2000000" cy="600000"/><wp:wrapSquare wrapText="bothSides"/><wp:docPr id="${id}" name="Box ${id}"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:cNvSpPr txBox="1"/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="600000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr><wps:txbx><w:txbxContent><w:p>${text(value)}</w:p></w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`;
 
@@ -82,6 +88,11 @@ const referencesPackage = async (): Promise<Uint8Array> => {
     paragraph(text("Gamma"), true),
     paragraph(text("Also ") + numberReference(1, "1") + text(" here")),
     paragraph(text("Delta ") + anchoredTextBox(2, "Second"), true),
+    paragraph(
+      text("Then ") + structuredNumberReference(2, "2") + text("again"),
+    ),
+    framed(text("Framed one")),
+    framed(text("Framed two")),
     paragraph(text("Tail.")),
   ].join("");
   zip.set(
@@ -216,6 +227,9 @@ const flowOptions = (
     ),
   ),
   automaticHyphenation: { enabled: true },
+  // Built afresh for every run, as a layout run builds them.
+  justificationCompatibility: { type: "legacy" },
+  tableIndentCompatibility: { type: "legacy" },
 });
 
 /** Counts the blocks it hands out, so the property cannot pass by never reusing one. */
@@ -267,5 +281,40 @@ describe("paragraph block cache", () => {
       { id: "paragraph-block-cache-equals-full-conversion", numRuns: 60 },
     );
     expect(reused).toBeGreaterThan(0);
+  });
+
+  test("a cross-reference formatted in parts shows the number the list gives now", async () => {
+    const document = await parseShapeDocument(await referencesPackage());
+    const view = new HeadlessEditorView(
+      createHarnessState(document, "editing"),
+    );
+    const cache = new CountingCache();
+    const options = { showCommentHighlights: true, alternate: "One" };
+    const convert = () => {
+      const constants = flowOptions(document, options);
+      const kept = toFlowBlocks(view.state.doc, {
+        ...constants,
+        paragraphBlocks: cache,
+      });
+      expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+    };
+    convert();
+    // A new list item before "Beta" renumbers it; the paragraphs referring to
+    // it are unchanged nodes.
+    let alphaEnd = 0;
+    view.state.doc.descendants((node, position) => {
+      if (node.isTextblock && node.textContent === "Alpha")
+        alphaEnd = position + node.nodeSize - 1;
+      return alphaEnd === 0;
+    });
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, alphaEnd),
+      ),
+    );
+    view.pressKey("Enter");
+    view.typeText("Inserted");
+    convert();
+    expect(cache.reused).toBeGreaterThan(0);
   });
 });

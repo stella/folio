@@ -13,6 +13,10 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { documentFontFactsCacheIdentity } from "../../fonts/documentFontFacts";
 import type { ParagraphBlock, Run } from "../../layout-engine/types";
+import {
+  getParagraphFrame,
+  setParagraphFrame,
+} from "../../utils/paragraphFrame";
 import type {
   FlowConversionOptions,
   ListCounterOptionKey,
@@ -106,9 +110,12 @@ const CONVERSION_CONSTANTS: {
   lineBreakRules: (left, right) =>
     sameFields(left.lineBreakRules, right.lineBreakRules),
   justificationCompatibility: (left, right) =>
-    left.justificationCompatibility === right.justificationCompatibility,
+    sameFields(
+      left.justificationCompatibility,
+      right.justificationCompatibility,
+    ),
   tableIndentCompatibility: (left, right) =>
-    left.tableIndentCompatibility === right.tableIndentCompatibility,
+    sameFields(left.tableIndentCompatibility, right.tableIndentCompatibility),
   forceAnchorLayoutInCell: (left, right) =>
     left.forceAnchorLayoutInCell === right.forceAnchorLayoutInCell,
   automaticHyphenation: (left, right) =>
@@ -149,14 +156,20 @@ const movedBlock = (
   block: ParagraphBlock,
   delta: number,
   id: ParagraphBlock["id"],
-): ParagraphBlock => ({
-  ...block,
-  id,
-  runs: block.runs.map((run) => movedRun(run, delta)),
-  attrs: { ...block.attrs },
-  ...(block.pmStart === undefined ? {} : { pmStart: block.pmStart + delta }),
-  ...(block.pmEnd === undefined ? {} : { pmEnd: block.pmEnd + delta }),
-});
+): ParagraphBlock => {
+  const moved: ParagraphBlock = {
+    ...block,
+    id,
+    runs: block.runs.map((run) => movedRun(run, delta)),
+    attrs: { ...block.attrs },
+    ...(block.pmStart === undefined ? {} : { pmStart: block.pmStart + delta }),
+    ...(block.pmEnd === undefined ? {} : { pmEnd: block.pmEnd + delta }),
+  };
+  // A text frame is kept beside the block, not on it: the copy carries it too.
+  const frame = getParagraphFrame(block);
+  if (frame !== undefined) setParagraphFrame(moved, frame);
+  return moved;
+};
 
 /**
  * Whether converting `node` reads anything besides itself, the constants and
@@ -167,7 +180,11 @@ const readsOtherBlocks = (node: PMNode): boolean => {
   let reads = false;
   node.descendants((child) => {
     if (reads) return false;
-    if (child.type.name === "field" || child.type.name === "textBoxAnchor") {
+    if (
+      child.type.name === "field" ||
+      child.type.name === "structuredField" ||
+      child.type.name === "textBoxAnchor"
+    ) {
       reads = true;
       return false;
     }
