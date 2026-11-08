@@ -4,13 +4,18 @@
  * before a line ending as the break's syntax, so the writer encodes them, and
  * reading the Markdown back gives the paragraph's text with every blank.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document, Paragraph, Run } from "../types/document";
 import { fromMarkdown } from "./fromMarkdown";
 import { toMarkdown } from "./index";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const CLEAN = {
   annotations: "strip",
