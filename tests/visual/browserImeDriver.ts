@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import type { BrowserInputAction } from "./browserInputTrace";
+import type {} from "./browserTestBridge";
 
 type BrowserImeAction = Extract<BrowserInputAction, { kind: "imeReplacement" }>;
 type ImeLifecycleDriver = {
@@ -42,6 +43,66 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
       throw new TypeError("Native IME requires a focused editor");
     let phase: "active" | "ended" = "active";
     const controller = new AbortController();
+    const started = performance.now();
+    const diag: string[] = [];
+    const describe = (node: Node | null) => {
+      if (!node) return "null";
+      const element = node instanceof Element ? node : node.parentElement;
+      const owner = element?.closest(".ProseMirror");
+      return `${node.nodeName}${owner === editor ? "@editor" : owner ? "@other" : ""}${node.isConnected ? "" : "!detached"}:${JSON.stringify((node.textContent ?? "").slice(0, 40))}`;
+    };
+    const selectionText = () => {
+      const selection = document.getSelection();
+      return selection
+        ? `${describe(selection.anchorNode)}+${selection.anchorOffset}`
+        : "none";
+    };
+    const note = (entry: string) => {
+      const view = globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.getEditorRef()
+        ?.getView();
+      diag.push(
+        `${Math.round(performance.now() - started)} ${entry} pm[composing=${view?.composing} same=${view?.dom === editor} sel=${view?.state.selection.from}-${view?.state.selection.to}]`,
+      );
+    };
+    for (const type of [
+      "compositionstart",
+      "compositionupdate",
+      "compositionend",
+      "beforeinput",
+      "input",
+      "focusin",
+      "focusout",
+    ])
+      document.addEventListener(
+        type,
+        (event) => {
+          const data =
+            event instanceof CompositionEvent || event instanceof InputEvent
+              ? JSON.stringify(event.data)
+              : "";
+          const inputType = event instanceof InputEvent ? event.inputType : "";
+          note(
+            `${type} ${inputType} ${data} trusted=${event.isTrusted} target=${describe(event.target as Node)} active=${describe(document.activeElement)} sel=${selectionText()}`,
+          );
+        },
+        { capture: true, signal: controller.signal },
+      );
+    const observer = new MutationObserver((records) => {
+      for (const record of records)
+        note(
+          `mutation ${record.type} target=${describe(record.target)} +${record.addedNodes.length} -${record.removedNodes.length} removed=${[...record.removedNodes].map(describe).join("|")}`,
+        );
+    });
+    observer.observe(editor, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["class", "contenteditable"],
+    });
+    controller.signal.addEventListener("abort", () => observer.disconnect());
     editor.addEventListener(
       "compositionend",
       (event) => {
@@ -54,6 +115,8 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
     return {
       editor,
       controller,
+      diag,
+      note,
       get phase() {
         return phase;
       },
@@ -64,6 +127,10 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
     await runBrowserImeLifecycle(
       {
         update: async (text) => {
+          await lifecycle.evaluate(
+            ({ note }, value) => note(`STEP update ${JSON.stringify(value)}`),
+            text,
+          );
           // CDP offsets count UTF-16 code units, including surrogate pairs.
           await cdp.send("Input.imeSetComposition", {
             text,
@@ -72,6 +139,10 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
           });
         },
         commit: async (text) => {
+          await lifecycle.evaluate(
+            ({ note }, value) => note(`STEP commit ${JSON.stringify(value)}`),
+            text,
+          );
           await cdp.send("Input.insertText", { text });
         },
         cancel: async () => {
@@ -98,6 +169,10 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
       action,
     );
   } finally {
+    const diag = await lifecycle.evaluate(({ diag }) => diag.slice());
+    console.log(
+      `IME-DIAG ${JSON.stringify(action.updates)}\n${diag.join("\n")}`,
+    );
     await lifecycle.evaluate(({ controller }) => controller.abort());
     await lifecycle.dispose();
     await cdp.detach();
