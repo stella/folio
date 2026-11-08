@@ -3338,15 +3338,16 @@ async function materializeNewNotePart({
   compressionLevel,
 }: MaterializeNewNotePartOptions): Promise<void> {
   const contentTypesFile = findNotePartEntry(newZip, "[content_types].xml");
-  const relationshipsFile = findNotePartEntry(
-    newZip,
-    "word/_rels/document.xml.rels",
-  );
-  if (!contentTypesFile || !relationshipsFile) {
+  if (!contentTypesFile) {
     throw new DocxPackageFidelityError(
-      `Cannot create ${partPath}: the DOCX package is missing content types or document relationships`,
+      `Cannot create ${partPath}: the DOCX package is missing content types`,
     );
   }
+  // A document that refers to no other part may have no relationships part;
+  // the first part it gains starts one, as every other writer does.
+  const relationshipsPath =
+    findNotePartEntry(newZip, "word/_rels/document.xml.rels")?.path ??
+    "word/_rels/document.xml.rels";
 
   const compressionOptions = { level: compressionLevel };
   const contentTypesXml = await contentTypesFile
@@ -3365,14 +3366,12 @@ async function materializeNewNotePart({
     );
   }
 
-  const relationshipsXml = await relationshipsFile
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
+  const relationshipsXml = await readRelsOrStub(newZip, relationshipsPath);
   if (!relationshipsXml.includes(relationshipType)) {
     const relationshipId = `rId${findMaxRId(relationshipsXml) + 1}`;
     const target = partPath.slice("word/".length);
     newZip.set(
-      relationshipsFile.path,
+      relationshipsPath,
       relationshipsXml.replace(
         "</Relationships>",
         () =>
