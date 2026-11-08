@@ -910,6 +910,28 @@ const BROWSER_MODIFIED_BACKSPACE_TRACES = (
   trace: BrowserInputTrace;
 }[];
 
+/** A list pasted after cutting a block of table cells, while suggesting. */
+export const BROWSER_TABLE_CUT_PASTE_SEED_1794032767 = {
+  seed: 1794032767,
+  path: "13",
+  fingerprint: "407e8612a9687fad",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+      { kind: "dragCellDelete" },
+      { kind: "cut" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "selectionDrag", target: "table" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -917,6 +939,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
+  BROWSER_TABLE_CUT_PASTE_SEED_1794032767,
   BROWSER_CANCELLED_COMPOSITION_SEED_1793946574,
   BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
   BROWSER_RTL_COMPOSITION_SEED_1793914965,

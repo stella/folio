@@ -64,6 +64,7 @@ import {
   copyParagraphPropertySource,
   restoreParagraphIndentationProjection,
 } from "../docx/paragraphPropertySource";
+import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
 import {
@@ -500,6 +501,11 @@ class CanonicalProjection {
     return Result.ok({ type, anchor: anchor.value, head: head.value });
   }
 
+  /** The first paragraph the projection addresses, in document order. */
+  get firstParagraph(): ParagraphAddress | undefined {
+    return this.paragraphs.at(0);
+  }
+
   paragraph(blockId: string): ParagraphAddress | undefined {
     return this.paragraphsById.get(blockId);
   }
@@ -695,6 +701,22 @@ type ProjectStoryOptions = {
   story?: OpStory;
 };
 
+/** Whether a paragraph anchors a text box, which converts to a block of its own. */
+const holdsTextBox = (paragraph: Paragraph): boolean => {
+  let found = false;
+  visitInlineContentSlots(paragraph, ({ item }) => {
+    if (
+      item.type === "run" &&
+      item.content.some(
+        (content) =>
+          content.type === "shape" && content.shape.textBody !== undefined,
+      )
+    )
+      found = true;
+  });
+  return found;
+};
+
 const project = ({
   document,
   styles,
@@ -781,21 +803,66 @@ const project = ({
   collectSources(body.content);
   const paragraphs: ParagraphAddress[] = [];
   const projectedSources = new Set<Paragraph>();
+  // A paragraph holding only text boxes projects as the boxes alone; the first
+  // box of its group stands where the paragraph was.
+  const orderedSources = [...allSources];
+  const sourceOrder = new Map(
+    orderedSources.map((source, index) => [source, index]),
+  );
+  const textBoxHosts = new Set<Paragraph>();
+  let nextSource = 0;
+  const claimTextBoxHost = (): boolean => {
+    let index = nextSource;
+    while (
+      index < orderedSources.length &&
+      continuationSources.has(orderedSources[index] ?? panic("No source"))
+    )
+      index += 1;
+    const host = orderedSources[index];
+    if (host === undefined || !holdsTextBox(host)) return false;
+    textBoxHosts.add(host);
+    nextSource = index + 1;
+    // The host carries no address, but a range it opens or closes still
+    // covers the paragraphs after it.
+    visitCommentMarkers([host], ({ item }) => {
+      if (item.type === "commentRangeStart")
+        commentContext.openIds.add(item.id);
+      if (item.type === "commentRangeEnd")
+        commentContext.openIds.delete(item.id);
+    });
+    return true;
+  };
   let failure: CanonicalSessionError | undefined;
   converted.value.descendants((node, offset, parent) => {
-    if (failure !== undefined) return;
+    if (failure !== undefined) return false;
+    // A text box's paragraphs belong to its shape, not to this story. The
+    // session holds no address in them, so input there refuses and the box
+    // keeps its source as it was.
+    if (node.type.name === "textBox") {
+      if (
+        node.attrs["_docxPlacement"] === "standalone" &&
+        node.attrs["_docxHostParagraph"] != null &&
+        !claimTextBoxHost()
+      )
+        failure = new CanonicalSessionError({
+          ground: { gap: CANONICAL_GAP.storyContentProjection },
+          reason: "refused",
+          message: "The projection changed paragraph structure.",
+        });
+      return false;
+    }
     // A range opened between blocks covers the paragraphs after it.
     if (node.type.name === "blockCommentRangeBoundary") {
       const { marker } = expectCommentRangeBoundaryAttrs(node);
       if (marker.type === "commentRangeStart")
         commentContext.openIds.add(marker.id);
       else commentContext.openIds.delete(marker.id);
-      return;
+      return false;
     }
-    if (node.type.name !== "paragraph") return;
+    if (node.type.name !== "paragraph") return true;
     // A row's w:gridBefore and w:gridAfter render as filler cells whose empty
     // paragraph has no source; there is nothing in them to edit.
-    if (parent?.attrs["_omittedGridSlot"] != null) return;
+    if (parent?.attrs["_omittedGridSlot"] != null) return false;
     const paraId = node.attrs["paraId"];
     const located =
       typeof paraId === "string" ? sources.get(paraId) : undefined;
@@ -805,7 +872,7 @@ const project = ({
         reason: "refused",
         message: "The projection changed paragraph structure.",
       });
-      return;
+      return false;
     }
     const { source, container } = located;
     if (projectedSources.has(source)) {
@@ -814,9 +881,10 @@ const project = ({
         reason: "refused",
         message: "The projection changed paragraph structure.",
       });
-      return;
+      return false;
     }
     projectedSources.add(source);
+    nextSource = (sourceOrder.get(source) ?? panic("Unordered source")) + 1;
     const inline = projectCanonicalInline({
       source,
       paragraph: node,
@@ -829,7 +897,7 @@ const project = ({
         reason: "refused",
         message: inline.error.message,
       });
-      return;
+      return false;
     }
     paragraphs.push({
       blockId: paraId,
@@ -845,11 +913,16 @@ const project = ({
       if (item.type === "commentRangeEnd")
         commentContext.openIds.delete(item.id);
     });
+    return false;
   });
   if (failure !== undefined) return Result.err(failure);
   if (
-    projectedSources.size + continuationSources.size !== allSources.size ||
-    [...projectedSources].some((source) => continuationSources.has(source))
+    projectedSources.size + continuationSources.size + textBoxHosts.size !==
+      allSources.size ||
+    [...projectedSources].some(
+      (source) => continuationSources.has(source) || textBoxHosts.has(source),
+    ) ||
+    [...textBoxHosts].some((source) => continuationSources.has(source))
   ) {
     return refuse("The projection changed paragraph structure.");
   }
@@ -1171,11 +1244,6 @@ class CanonicalSession {
     return structuredClone(survivingComments(this.currentDocument));
   }
 
-  /** Whether edits are recorded as suggestions. */
-  get suggesting(): boolean {
-    return this.mode.type === "suggesting";
-  }
-
   setMode(mode: CanonicalSessionMode): void {
     if (
       this.mode.type !== mode.type ||
@@ -1470,11 +1538,10 @@ class CanonicalSession {
         return refuse(
           "A replacement range cannot partially address a cell selection.",
         );
-      if (text.length > 0)
-        return refuse(
-          "Replacing a cell selection requires a per-cell replacement.",
-        );
+      // Typing over selected cells clears each of them and writes the text
+      // into the first, as the editor does.
       const intents: EditorIntent[] = [];
+      let first = true;
       for (const range of canonicalCellSelectionRanges(state.selection)) {
         const edges = projection.rangeEdgesAt(range.from, range.to);
         const cellFrom = projection.inputAddressAt(range.from, edges.start);
@@ -1485,8 +1552,9 @@ class CanonicalSession {
           type: "replaceText",
           from: cellFrom.value,
           to: cellTo.value,
-          text: "",
+          text: first ? text : "",
         });
+        first = false;
       }
       return this.prepareIntents(state, { intents, semantic });
     }
@@ -1513,11 +1581,40 @@ class CanonicalSession {
     if (end.isErr()) return end;
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
+    // Just inside a content control's edge, the editor position, not the
+    // source gap, says the text belongs to the control.
+    const innerEdge = (position: number, side: "start" | "end") => {
+      const resolved = state.doc.resolve(position);
+      return (
+        resolved.parent.type.name === "sdt" &&
+        resolved.parentOffset ===
+          (side === "start" ? 0 : resolved.parent.content.size)
+      );
+    };
+    const inside = {
+      ...(innerEdge(inputFrom, "start") ? { start: true } : {}),
+      ...(innerEdge(inputTo, "end") ? { end: true } : {}),
+    };
+    // Replacing text inside a content control would cut the control in two
+    // around the new text: the tracked record of a replacement has no seam
+    // bookkeeping for a slice inside a container yet. Typing at a caret and
+    // deleting stay supported.
+    const inControl = (position: number) =>
+      state.doc.resolve(position).parent.type.name === "sdt";
+    if (
+      inputFrom !== inputTo &&
+      text.length > 0 &&
+      (inControl(inputFrom) || inControl(inputTo))
+    )
+      return refuse(
+        "Replacing text inside a content control is unavailable in this session.",
+      );
     const intent = {
       type: "replaceText",
       from: start.value,
       to: end.value,
       text,
+      ...(Object.keys(inside).length === 0 ? {} : { inside }),
       ...(state.storedMarks === null
         ? {}
         : {
@@ -1606,6 +1703,52 @@ class CanonicalSession {
         this.undone.length = 0;
       },
     });
+  }
+
+  /**
+   * A structural edit over selected cells: each selected cell is cleared and
+   * the edit happens at the start of the first, as the editor's own command
+   * does over a cell selection. One commit, so one undo step.
+   */
+  prepareCellSelectionStructure(
+    state: EditorState,
+    structure: (at: TextPosition) => EditorIntent,
+    {
+      resourceOps = [],
+      semantic = "structure",
+    }: {
+      resourceOps?: readonly DocumentOp[];
+      semantic?: CanonicalInputSemantic;
+    } = {},
+  ): Result<CanonicalCommit, CanonicalSessionError> {
+    if (!(state.selection instanceof CellSelection))
+      return refuse("The structural edit needs a cell selection.");
+    const projected = this.projectStory(OP_STORIES.MAIN);
+    if (projected.isErr()) return projected;
+    const projection = projected.value;
+    const intents: EditorIntent[] = [];
+    let first: TextPosition | undefined;
+    for (const range of canonicalCellSelectionRanges(state.selection)) {
+      const edges = projection.rangeEdgesAt(range.from, range.to);
+      const cellFrom = projection.inputAddressAt(range.from, edges.start);
+      if (cellFrom.isErr()) return cellFrom;
+      const cellTo = projection.inputAddressAt(range.to, edges.end);
+      if (cellTo.isErr()) return cellTo;
+      first ??= cellFrom.value;
+      if (
+        cellFrom.value.blockId !== cellTo.value.blockId ||
+        cellFrom.value.offset !== cellTo.value.offset
+      )
+        intents.push({
+          type: "replaceText",
+          from: cellFrom.value,
+          to: cellTo.value,
+          text: "",
+        });
+    }
+    if (first === undefined) return refuse("The cell selection is empty.");
+    intents.push(structure({ ...first, offset: 0, zeroWidthBefore: 0 }));
+    return this.prepareIntents(state, { intents, resourceOps, semantic });
   }
 
   prepareIntent(
@@ -1912,16 +2055,16 @@ class CanonicalSession {
     const surviving = projected.value.paragraph(
       preSelection.value.head.blockId,
     );
-    const first = applied.value.document.package.document.content.at(0);
-    if (first?.type !== "paragraph" || first.paraId === undefined)
-      return refuse("Resolution left no paragraph.");
+    // The first paragraph may sit inside a table that opens the story.
+    const first = projected.value.firstParagraph;
+    if (first === undefined) return refuse("Resolution left no paragraph.");
     let offset = surviving
       ? Math.min(preSelection.value.head.offset, surviving.text.length)
       : 0;
     if (surviving && splitsSurrogatePair(surviving.text, offset)) offset -= 1;
     const caret = {
       story: OP_STORIES.MAIN,
-      blockId: surviving?.blockId ?? first.paraId,
+      blockId: surviving?.blockId ?? first.blockId,
       offset,
     };
     const prepared = this.prepareJournalledOps({

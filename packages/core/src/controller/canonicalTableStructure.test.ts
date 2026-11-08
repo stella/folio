@@ -159,7 +159,7 @@ const CASES: readonly Case[] = [
     name: "delete a column",
     command: "deleteColumn",
     selection: { type: "caret", in: "D" },
-    tracked: false,
+    tracked: true,
   },
   {
     name: "delete two columns",
@@ -295,7 +295,7 @@ describe("table structure commands in the canonical session", () => {
       }
       expect(prepared.value.publish().isOk()).toBe(true);
       expect(JSON.stringify(session.document.package.document)).toMatch(
-        /"insertion"|"deletion"|PropertyChange|propertyChange|tableRowInsertion|tableRowDeletion|tcPrChange|tblGridChange/u,
+        /"insertion"|"deletion"|PropertyChange|propertyChange|tableRowInsertion|tableRowDeletion|tableCellDeletion|tableCellInsertion|tcPrChange|tblGridChange/u,
       );
     });
 });
