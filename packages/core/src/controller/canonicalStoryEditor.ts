@@ -107,6 +107,8 @@ export const createCanonicalStoryEditor = ({
     dispatch: (transaction: Transaction): boolean => {
       if (!enabled()) return false;
       const view = getView();
+      // Public operations on this story work through the editor in use.
+      getApi()?.noteCanonicalStoryView({ story, view });
       if (transaction.docChanged) {
         if (boundary.acceptComposition(view, transaction)) return true;
         if (!boundary.commitNativeProposal(view, transaction))
