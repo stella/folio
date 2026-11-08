@@ -94,8 +94,8 @@ import {
   isParaId,
   packageIdentityKeys,
   packageParagraphIds,
+  packageReservedIdentityKeys,
   paragraphIdsIn,
-  reservedIdentityKeysIn,
   slotKey,
 } from "./ids";
 import {
@@ -529,7 +529,7 @@ const withFreshIds = ({
     after,
     newIds: newIds ?? {},
     usedElsewhere: () => identitiesOutside(document, before),
-    reserved: new Set(reservedIdentityKeysIn(document.package)),
+    reserved: new Set(packageReservedIdentityKeys(document.package)),
     ...(inserted === undefined ? {} : { inserted }),
   });
   switch (freshened.kind) {
