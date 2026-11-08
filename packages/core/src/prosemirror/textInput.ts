@@ -3,6 +3,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import {
   AllSelection,
   Plugin,
+  PluginKey,
   Selection,
   TextSelection,
 } from "prosemirror-state";
@@ -71,6 +72,83 @@ export const formattingMarksBesideLockedControl = ({
   );
 };
 
+const isCommentMark = (mark: Mark): boolean => mark.type.name === "comment";
+
+/**
+ * The comment marks every character of `[from, to]` carries: the comments
+ * whose text typing over the range replaces. Anchors without text (comment
+ * references, range boundaries) do not decide it.
+ */
+export const commentMarksCovering = (
+  doc: ProseMirrorNode,
+  from: number,
+  to: number,
+): readonly Mark[] => {
+  let covering: readonly Mark[] | null = null;
+  doc.nodesBetween(from, to, (node) => {
+    if (!node.isText) return true;
+    const comments = node.marks.filter(isCommentMark);
+    covering =
+      covering === null
+        ? comments
+        : covering.filter((mark) => mark.isInSet(comments));
+    return false;
+  });
+  return covering ?? [];
+};
+
+/**
+ * Where typing over a commented range left the caret, still inside the
+ * comments it typed into. A comment mark does not extend at its end, so the
+ * caret right after the typed text would otherwise type outside them.
+ */
+type TypingInComments = { comments: readonly Mark[]; at: number };
+
+const typingInCommentsKey = new PluginKey<TypingInComments | null>(
+  "folioTypingInComments",
+);
+
+/**
+ * Keep typed text inside the comments it belongs to.
+ *
+ * Typing over a range keeps the comments that cover all of it on the typed
+ * text, and the caret stays inside them: the next characters typed at the
+ * caret join them, until the caret moves. Without this the text typed over a
+ * comment's whole range lands outside it, and the comment loses its text.
+ */
+export const keepTypedTextInComments = ({
+  state,
+  tr,
+  replaced,
+  typed,
+}: {
+  /** The state the typing started from. */
+  state: EditorState;
+  tr: Transaction;
+  /** The range the typing replaced, in `state.doc`. */
+  replaced: { from: number; to: number };
+  /** The typed text, in `tr.doc`. */
+  typed: { from: number; to: number };
+}): void => {
+  if (typed.from >= typed.to) return;
+  const carried = (() => {
+    if (replaced.from < replaced.to)
+      return commentMarksCovering(state.doc, replaced.from, replaced.to);
+    const typing = typingInCommentsKey.getState(state);
+    if (!typing || typing.at !== replaced.from) return [];
+    // Only comments the text before the caret still carries: one deleted
+    // since must not come back.
+    const before = state.doc.resolve(replaced.from).nodeBefore?.marks ?? [];
+    return typing.comments.filter((mark) => mark.isInSet(before));
+  })();
+  if (carried.length === 0) return;
+  // Added in one order, so every typed character holds the same mark set
+  // and the text stays one run.
+  for (const mark of carried) tr.removeMark(typed.from, typed.to, mark);
+  for (const mark of carried) tr.addMark(typed.from, typed.to, mark);
+  tr.setMeta(typingInCommentsKey, { comments: carried, at: typed.to });
+};
+
 export const dispatchEditorTextInput = <
   TView extends TextInputDispatchTarget<TView>,
 >(
@@ -103,9 +181,15 @@ export const dispatchEditorTextInput = <
       // Typing over a selection leaves the caret after the typed text;
       // `insertText` puts it at the selection's mapped end, which for a node
       // selection (an image, a field) is before the text.
-      return typesOverSelection
-        ? tr.setSelection(TextSelection.create(tr.doc, from + text.length))
-        : tr;
+      if (typesOverSelection)
+        tr.setSelection(TextSelection.create(tr.doc, from + text.length));
+      keepTypedTextInComments({
+        state: view.state,
+        tr,
+        replaced: { from, to },
+        typed: { from, to: from + text.length },
+      });
+      return tr;
     }
     // Select-all spans the block boundaries around the content: typing
     // replaces the text inside them, formatted as the first character it
@@ -218,7 +302,22 @@ export const createTextInputPlugin = (): Plugin => {
   // native through the end-of-composition microtask, just like suggestion mode.
   // Key by view because a plugin can be shared by multiple editor states/views.
   const compositions = new WeakMap<EditorView, Event>();
-  return new Plugin({
+  return new Plugin<TypingInComments | null>({
+    key: typingInCommentsKey,
+    state: {
+      init: () => null,
+      apply: (tr, value) => {
+        const typed: TypingInComments | null | undefined =
+          tr.getMeta(typingInCommentsKey);
+        if (typed !== undefined) return typed;
+        if (!value) return null;
+        // Kept only while the caret stays where the typing left it.
+        const at = tr.mapping.map(value.at);
+        return tr.selection.empty && tr.selection.from === at
+          ? { comments: value.comments, at }
+          : null;
+      },
+    },
     props: {
       handleDOMEvents: {
         compositionstart(view, event) {

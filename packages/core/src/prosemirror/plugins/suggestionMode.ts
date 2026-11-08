@@ -69,6 +69,7 @@ import {
   afterNativeCompositionFlush,
   formattingMarksBesideLockedControl,
   handleEditorBeforeInput,
+  keepTypedTextInComments,
 } from "../textInput";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { getDocumentNumbering } from "./documentNumbering";
@@ -1211,6 +1212,14 @@ function applySuggestionInsert(
     // node selection is before the typed text.
     tr.setSelection(TextSelection.create(tr.doc, typedTo));
   }
+  // The typed text joins the comments of the text it replaces: accepting
+  // the replacement must not leave them covering nothing.
+  keepTypedTextInComments({
+    state: view.state,
+    tr,
+    replaced: selectsAll ? { from: to, to } : { from, to },
+    typed: { from: typedFrom, to: typedTo },
+  });
 
   view.dispatch(tr.scrollIntoView());
   return true;
