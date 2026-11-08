@@ -1036,6 +1036,12 @@ export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION
 export const revisionIdDemand: (document: Document_2, op: DocumentOp) => Result<number, DocumentOpRefusal>;
 
 // @public
+export const revisionSpan: (items: readonly InlineNode[], revisionIds: ReadonlySet<number>) => {
+    from: number;
+    to: number;
+} | undefined;
+
+// @public
 export type RevisionStamp = {
     id: number;
     author: string;
@@ -1276,6 +1282,9 @@ export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
 
 // @public
+export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];
+
+// @public
 export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];
 
 // @public
@@ -1328,7 +1337,7 @@ export type UpdateCommentContentOp = {
     type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
     id: number;
     content: readonly Paragraph[];
-    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date">>;
+    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date" | "suggestionId">>;
 };
 
 // @public

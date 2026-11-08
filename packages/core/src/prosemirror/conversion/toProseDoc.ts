@@ -1129,8 +1129,8 @@ const withSuggestedCommentMarks = (
       mark.attrs["suggestionId"] === suggestionId
     )
       continue;
-    marks = mark.type
-      .create({ ...mark.attrs, suggestionId })
+    marks = node.type.schema
+      .mark(mark.type, { ...mark.attrs, suggestionId })
       .addToSet(mark.removeFromSet(marks));
   }
   if (node.childCount === 0)
