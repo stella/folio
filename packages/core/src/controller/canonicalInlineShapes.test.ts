@@ -49,9 +49,7 @@ const fixturesFor = (text: string) => [
 const refusalExpected = ({
   item,
 }: CanonicalInlineShapeFixture<ParagraphContent | RunContent>) =>
-  item.type === "inlineSdt" ||
-  item.type === "fieldChar" ||
-  item.type === "instrText";
+  item.type === "fieldChar" || item.type === "instrText";
 
 const checkShape = (
   fixture: CanonicalInlineShapeFixture<ParagraphContent | RunContent>,
@@ -125,7 +123,15 @@ const checkShape = (
         const address = projection.addressAt(position).unwrap();
         expect(address.offset).toBe(offset);
         expect(address.zeroWidthBefore ?? 0).toBe(gap.zeroWidthBefore);
-        expect(projection.positionAt(address).unwrap()).toBe(position);
+        // A content control's edge is two editor positions, outside and
+        // inside, for one source gap; the address names either of them.
+        const paragraphStart = start;
+        const twins = gaps
+          .filter(
+            ({ zeroWidthBefore }) => zeroWidthBefore === gap.zeroWidthBefore,
+          )
+          .map((twin) => paragraphStart + twin.position);
+        expect(twins).toContain(projection.positionAt(address).unwrap());
       }
     }
     start += native.nodeSize;
