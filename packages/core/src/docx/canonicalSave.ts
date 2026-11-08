@@ -20,6 +20,7 @@ import type { SaveDiagnostic } from "./saveDiagnostics";
 import type { FolioSelectiveSaveFlags } from "./selectiveSaveFlags";
 import { resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
 import type { TripwireResult } from "./selectiveSaveTripwire";
+import { withoutUnusedSessionLists } from "./sessionListPruning";
 
 const CanonicalSaveDiagnosticErrorBase: TaggedErrorClass<"CanonicalSaveDiagnosticError"> =
   TaggedError("CanonicalSaveDiagnosticError");
@@ -55,7 +56,9 @@ export const serializeCanonicalSave = async ({
   // ordinary tracked change.
   const withoutSuggestions = withoutPendingSuggestions(snapshot.document);
   if (withoutSuggestions.isErr()) throw withoutSuggestions.error;
-  const document = withoutUnreferencedNotes(withoutSuggestions.value);
+  const document = withoutUnusedSessionLists(
+    withoutUnreferencedNotes(withoutSuggestions.value),
+  );
   // Package-resource operations conservatively retain structural save work through undo.
   const replacementPart =
     snapshot.structure === "changed"
