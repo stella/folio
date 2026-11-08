@@ -27,6 +27,7 @@ import {
   paragraphLength,
   type ParagraphPropsPatch,
   pendingSuggestionIdsIn,
+  revisionSpan,
   type RunPropsPatch,
   storyParagraphs,
   type TextPosition,
@@ -950,6 +951,9 @@ export class CanonicalPublicOperations {
         case "commented": {
           const { comment } = resolvedOperation;
           const id = freshCommentId(nextDocument);
+          // A suggested operation's comment is proposed with it: pending,
+          // never saved, accepted and rejected with the suggestion.
+          const proposedBy = suggestionId === undefined ? {} : { suggestionId };
           if (comment.inserted === true) {
             // The comment covers every paragraph the operation inserted.
             const known = new Set(
@@ -989,6 +993,7 @@ export class CanonicalPublicOperations {
                           nextDocument,
                           comment.text,
                         ),
+                        ...proposedBy,
                       },
                       anchor: {
                         kind: "range",
@@ -1046,13 +1051,34 @@ export class CanonicalPublicOperations {
             );
             continue;
           }
-          const to = {
-            ...comment.to,
-            offset:
-              comment.to.offset +
-              paragraphLength(after) -
-              paragraphLength(before),
-          };
+          // A tracked edit's comment covers what the edit changed, from its
+          // first revision to its last, as the default engine anchors it.
+          const changed =
+            batch.mode === "direct"
+              ? undefined
+              : revisionSpan(after.content, new Set(compiled.value.revisions));
+          const from =
+            changed === undefined
+              ? comment.from
+              : {
+                  story: comment.from.story,
+                  blockId: comment.from.blockId,
+                  offset: changed.from,
+                };
+          const to =
+            changed === undefined
+              ? {
+                  ...comment.to,
+                  offset:
+                    comment.to.offset +
+                    paragraphLength(after) -
+                    paragraphLength(before),
+                }
+              : {
+                  story: comment.from.story,
+                  blockId: comment.from.blockId,
+                  offset: changed.to,
+                };
           const commented = compileCanonicalComments({
             document: nextDocument,
             command: {
@@ -1063,11 +1089,12 @@ export class CanonicalPublicOperations {
                 date,
                 done: false,
                 content: canonicalCommentBody(nextDocument, comment.text),
+                ...proposedBy,
               },
               anchor:
-                to.offset === comment.from.offset
-                  ? { kind: "point", at: comment.from }
-                  : { kind: "range", from: comment.from, to },
+                to.offset === from.offset
+                  ? { kind: "point", at: from }
+                  : { kind: "range", from, to },
             },
           });
           if (commented.isErr()) {

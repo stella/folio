@@ -44,6 +44,7 @@ import {
   packageParagraphIds,
   paragraphIdsIn,
   sameStory,
+  suggestedCommentIds,
   suggestionRevisionInfos,
   survivingComments,
   type TextPosition,
@@ -2021,7 +2022,13 @@ class CanonicalSession {
     {
       revisionIds,
       resolution,
-    }: { revisionIds: readonly number[]; resolution: "accept" | "reject" },
+      before = [],
+    }: {
+      revisionIds: readonly number[];
+      resolution: "accept" | "reject";
+      /** Operations applied ahead of the resolution, in the same commit. */
+      before?: readonly DocumentOp[];
+    },
   ): Result<CanonicalCommit, CanonicalSessionError> {
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
@@ -2050,7 +2057,11 @@ class CanonicalSession {
     });
     if (firstHeld !== null && lockHeld.length === revisionIds.length)
       return lockRefusal(firstHeld);
-    const ops = resolve(revisionIds.filter((id) => !lockHeld.includes(id)));
+    const resolved = revisionIds.filter((id) => !lockHeld.includes(id));
+    const ops = [
+      ...before,
+      ...(resolved.length === 0 ? [] : resolve(resolved)),
+    ];
     // Resolution can retire the selected paragraph; choose a valid result anchor before staging.
     const applied = applyDocumentOps(this.currentDocument, ops);
     if (applied.isErr()) return refuse(applied.error.message);
@@ -2087,9 +2098,10 @@ class CanonicalSession {
 
   /**
    * Accept or reject one pending suggestion. Rejecting it rejects its
-   * revisions. Accepting it adopts them as ordinary tracked changes by
-   * `author`, keeping their ids, as the editor does: the change then waits
-   * for review like any other.
+   * revisions and removes the comments it proposes. Accepting it adopts its
+   * revisions as ordinary tracked changes by `author`, keeping their ids, as
+   * the editor does: the change then waits for review like any other. Its
+   * comments stay as ordinary comments.
    */
   prepareSuggestion(
     state: EditorState,
@@ -2110,26 +2122,43 @@ class CanonicalSession {
       OP_STORIES.MAIN,
       suggestionId,
     );
-    if (infos.length === 0)
+    const commentIds = suggestedCommentIds(this.currentDocument, suggestionId);
+    if (infos.length === 0 && commentIds.length === 0)
       return noChange(`No pending suggestion ${suggestionId}.`);
     if (resolution === "reject")
       return this.prepareResolve(state, {
         revisionIds: infos.map(({ id }) => id),
         resolution: "reject",
+        // The comments go first, while the text they cover is still there.
+        before: commentIds.map((id) => ({
+          type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+          id,
+          scope: "thread",
+        })),
       });
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
     const selection = this.projection.selectionAt(state);
     if (selection.isErr()) return selection;
+    const comments = this.currentDocument.package.document.comments ?? [];
+    const ops: DocumentOp[] = [];
+    if (infos.length > 0)
+      ops.push({
+        type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+        story: OP_STORIES.MAIN,
+        infos: infos.map(({ id }) => ({ id, author, date })),
+      });
+    for (const comment of comments)
+      if (commentIds.includes(comment.id))
+        ops.push({
+          type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+          id: comment.id,
+          content: comment.content,
+          patch: { suggestionId: null },
+        });
     return this.prepareJournalledOps({
       state,
-      ops: [
-        {
-          type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
-          story: OP_STORIES.MAIN,
-          infos: infos.map(({ id }) => ({ id, author, date })),
-        },
-      ],
+      ops,
       postSelection: selection.value,
     });
   }

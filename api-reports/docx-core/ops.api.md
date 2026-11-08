@@ -259,6 +259,7 @@ export type DeleteBlocksOp = {
     story: OpStory;
     blockIds: readonly string[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
@@ -462,6 +463,18 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "tableBlock";
     operation: TableBlockIntentOperation;
 } | {
+    type: "insertParagraphs";
+    story: OpStory;
+    at: BlockInsertionPoint;
+    paragraphs: readonly Paragraph[];
+    move?: true;
+    newList?: NewListInstance;
+} | {
+    type: "deleteParagraphs";
+    story: OpStory;
+    blockIds: readonly string[];
+    move?: true;
+} | {
     type: "replaceFragment";
     from: TextPosition;
     to: TextPosition;
@@ -496,6 +509,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "formatParagraph";
     at: TextPosition;
     patch: ParagraphPropsPatch;
+    newList?: NewListInstance;
 } | {
     type: "setList";
     items: readonly {
@@ -524,6 +538,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     story: OpStory;
     blockId: string;
     nextBlockId: string;
+    survivor?: SplitHalf;
 };
 
 // @public
@@ -605,6 +620,7 @@ export type InsertBlocksOp = {
     at: BlockInsertionPoint;
     blocks: readonly Paragraph[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
@@ -721,6 +737,12 @@ export function mergeRunContent(content1: RunContent[], content2: RunContent[]):
 export type NewIds = {
     revision?: readonly number[];
     control?: readonly number[];
+};
+
+// @public
+export type NewListInstance = {
+    num: NumberingInstance;
+    abstractNum?: AbstractNumbering;
 };
 
 // @public
@@ -1008,6 +1030,12 @@ export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION
 export const revisionIdDemand: (document: Document_2, op: DocumentOp) => Result<number, DocumentOpRefusal>;
 
 // @public
+export const revisionSpan: (items: readonly InlineNode[], revisionIds: ReadonlySet<number>) => {
+    from: number;
+    to: number;
+} | undefined;
+
+// @public
 export type RevisionStamp = {
     id: number;
     author: string;
@@ -1245,6 +1273,12 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
+export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
+
+// @public
+export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];
+
+// @public
 export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];
 
 // @public
@@ -1295,7 +1329,7 @@ export type UpdateCommentContentOp = {
     type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
     id: number;
     content: readonly Paragraph[];
-    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date">>;
+    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date" | "suggestionId">>;
 };
 
 // @public

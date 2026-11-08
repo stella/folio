@@ -33,6 +33,7 @@ export {
 export { captureDocumentOp } from "./wire";
 export {
   pendingSuggestionIdsIn,
+  suggestedCommentIds,
   suggestionRevisionInfos,
   withoutPendingSuggestions,
 } from "./suggestions";
@@ -41,6 +42,7 @@ export {
   defaultInsertionGap,
   inlineLeafSpans,
   isCommentAnchorCarrierType,
+  revisionSpan,
   zeroWidthLeavesAt,
 } from "./leaves";
 export { mapTocBookmarkPosition } from "./tocIntent";

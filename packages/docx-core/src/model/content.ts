@@ -1545,6 +1545,12 @@ export type Comment = {
   /** Whether the comment is resolved/done */
   done?: boolean;
   /**
+   * The pending suggestion that proposed this comment. In memory only, never
+   * written to a file: a save leaves a proposed comment out, accepting its
+   * suggestion clears this, and rejecting it removes the comment.
+   */
+  suggestionId?: string;
+  /**
    * Body markup `content` cannot hold: a table, an equation, a content
    * control, a bookmark or range marker, a tracked-change wrapper. The
    * schema lets a comment body hold everything a document body can, and a

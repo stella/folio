@@ -2514,6 +2514,7 @@ export const readCommentMarkAttrs = (
 
   requiredNumber(attrs, "commentId", "comment.attrs.commentId", issues);
   optionalBoolean(attrs, "point", "comment.attrs.point", issues);
+  optionalString(attrs, "suggestionId", "comment.attrs.suggestionId", issues);
 
   return attrsResult(attrs, issues);
 };

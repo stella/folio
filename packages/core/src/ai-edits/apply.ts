@@ -519,8 +519,8 @@ export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
  * Operation types applied in `"suggested"` mode. Every produced revision — an
  * inline mark, a whole-node `_suggestedInsert` marker, or a suggested
  * `trIns`/`trDel`/`cellMarker` — is stripped from serialized DOCX until
- * accepted. Cell merge/split (not row/column ops) and comment ops stay
- * `unsupportedMode`.
+ * accepted, and so is every comment one proposes. Cell merge/split (not
+ * row/column ops) stay `unsupportedMode`.
  */
 export const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
   FolioAIEditOperation["type"]
@@ -540,6 +540,8 @@ export const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
   "deleteTableColumn",
   "splitBlock",
   "mergeBlockWithNext",
+  "commentOnRange",
+  "commentOnBlock",
 ]);
 
 /** Operations that only add marks: they move no position of the document. */
@@ -6080,11 +6082,6 @@ const applyFolioAIEditOperationsInternal = ({
       item.commentText !== undefined
         ? reserveProvisionalCommentId()
         : undefined;
-    const commentMark =
-      provisionalCommentId !== undefined && commentType
-        ? commentType.create({ commentId: provisionalCommentId })
-        : null;
-
     // Snapshot the transaction's step count so we can detect when an
     // operation produced zero document changes and report it as a
     // skipped no-op instead of a phantom "applied" entry. This caught
@@ -6103,7 +6100,7 @@ const applyFolioAIEditOperationsInternal = ({
     // `SUGGESTED_SUPPORTED_OPERATION_TYPES`). Every revision they produce — an
     // inline mark, a whole-node `_suggestedInsert` marker, or a suggested
     // `trIns`/`trDel`/`cellMarker` — is removed by the serialization strip.
-    // Operations outside the allowlist (comment ops, cell merge/split) report
+    // Operations outside the allowlist (cell merge/split) report
     // `unsupportedMode` so no unstrippable suggested state can be produced.
     if (
       isSuggested &&
@@ -6119,6 +6116,15 @@ const applyFolioAIEditOperationsInternal = ({
     const suggestionId: string | null = isSuggested
       ? (item.operation.suggestionId ?? item.operation.id)
       : null;
+    // A suggested operation's comment is proposed with it: pending, never
+    // saved, accepted and rejected with the suggestion.
+    const commentMark =
+      provisionalCommentId !== undefined && commentType
+        ? commentType.create({
+            commentId: provisionalCommentId,
+            ...(suggestionId !== null ? { suggestionId } : {}),
+          })
+        : null;
 
     // Fields merged into every node-attr revision (trIns/trDel/cellMarker) and
     // whole-node `_suggestedInsert` marker this operation produces.

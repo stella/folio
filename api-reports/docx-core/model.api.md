@@ -143,6 +143,7 @@ type Comment_2 = {
     annotationReferenceFormatting?: TextFormatting;
     parentId?: number;
     done?: boolean;
+    suggestionId?: string;
     preserved?: PreservedMarkup;
 };
 export { Comment_2 as Comment }
@@ -1199,6 +1200,7 @@ export type ParagraphMarkChange = {
     kind: ParagraphMarkChangeKind;
     info: TrackedChangeInfo;
     resolutionJoin?: number | undefined;
+    survivor?: "first" | undefined;
 };
 
 // @public
