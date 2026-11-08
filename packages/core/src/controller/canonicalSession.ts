@@ -1527,16 +1527,19 @@ class CanonicalSession {
       ...(innerEdge(inputFrom, "start") ? { start: true } : {}),
       ...(innerEdge(inputTo, "end") ? { end: true } : {}),
     };
-    // A suggestion over a control's whole text would be recorded as the
-    // control's deletion, which accepting would remove with its text.
+    // Replacing text inside a content control would cut the control in two
+    // around the new text: the tracked record of a replacement has no seam
+    // bookkeeping for a slice inside a container yet. Typing at a caret and
+    // deleting stay supported.
+    const inControl = (position: number) =>
+      state.doc.resolve(position).parent.type.name === "sdt";
     if (
-      this.mode.type === "suggesting" &&
-      inside.start === true &&
-      inside.end === true &&
-      state.doc.resolve(inputFrom).parent === state.doc.resolve(inputTo).parent
+      inputFrom !== inputTo &&
+      text.length > 0 &&
+      (inControl(inputFrom) || inControl(inputTo))
     )
       return refuse(
-        "A suggestion over a content control's whole text is unavailable in this session.",
+        "Replacing text inside a content control is unavailable in this session.",
       );
     const intent = {
       type: "replaceText",

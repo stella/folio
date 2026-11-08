@@ -2334,13 +2334,10 @@ export const compileEditorIntent = (
         idKey(from.blockId) === idKey(to.blockId) &&
         from.offset === to.offset &&
         (from.zeroWidthBefore ?? 0) === (to.zeroWidthBefore ?? 0);
-      // A tracked insertion inside a hyperlink has no review record the
-      // editor can project yet, so suggested text still goes beside a link.
       const continuing =
         insertionOnly && text !== ""
           ? continuedSlice(
               continuation(paragraph.content, from, to, {
-                hyperlinks: false,
                 ...(intent.inside === undefined
                   ? {}
                   : { inside: intent.inside }),
@@ -2388,32 +2385,7 @@ export const compileEditorIntent = (
           },
         });
         if (planned.isErr()) return Result.err(planned.error);
-        // The typed text goes in before the tracked deletion, inside the
-        // content controls and wrappers it continues there.
-        const resumed =
-          idKey(from.blockId) === idKey(to.blockId) && text !== ""
-            ? continuation(paragraph.content, from, from, {
-                hyperlinks: false,
-                ...(intent.inside?.start === true
-                  ? { inside: { start: true } }
-                  : {}),
-              })
-            : undefined;
-        ops = [];
-        for (const op of planned.value) {
-          if (
-            resumed === undefined ||
-            op.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT ||
-            idKey(op.at.blockId) !== idKey(from.blockId) ||
-            op.slice.openStart !== 0 ||
-            op.slice.openEnd !== 0
-          ) {
-            ops.push(op);
-            continue;
-          }
-          const slice = continuedSlice(resumed, op.slice.content);
-          ops.push(slice === undefined ? op : { ...op, slice });
-        }
+        ops = planned.value;
         selection = { ...from, offset: from.offset + text.length };
         for (const op of ops) {
           if (
@@ -2541,7 +2513,9 @@ export const compileEditorIntent = (
         ops.push({
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           at,
-          slice: (idKey(from.blockId) === idKey(to.blockId)
+          // Only a pure insertion continues its containers; a replacement's
+          // tracked counterpart records its seams for a top-level slice.
+          slice: (insertionOnly
             ? continuedSlice(
                 continuation(paragraph.content, from, to, {
                   ...(intent.inside === undefined
@@ -2917,7 +2891,6 @@ const withFreshParagraphIds = (
 
 /** Containers typed text continues when it lands between their own leaves. */
 const CONTINUED_CONTAINERS: ReadonlySet<string> = new Set([
-  "hyperlink",
   "inlineSdt",
   "inlineWrapper",
 ]);
@@ -2930,7 +2903,7 @@ type Continuation = {
 
 /**
  * What text typed over the range from `from` to `to` continues: every
- * hyperlink, content control and wrapper that holds the leaves on both sides,
+ * content control and wrapper that holds the leaves on both sides,
  * so typing within one extends it rather than cutting it in two. At an edge
  * only one side is inside, and the text stays outside, as a mark that does not
  * extend past its end, unless the caret stood just inside that edge.
@@ -2939,13 +2912,7 @@ const continuation = (
   items: readonly ParagraphContent[],
   from: Pick<TextPosition, "offset" | "zeroWidthBefore">,
   to: Pick<TextPosition, "offset" | "zeroWidthBefore">,
-  {
-    hyperlinks = true,
-    inside = {},
-  }: {
-    hyperlinks?: boolean;
-    inside?: { start?: boolean; end?: boolean };
-  } = {},
+  { inside = {} }: { inside?: { start?: boolean; end?: boolean } } = {},
 ): Continuation => {
   const spans = leafSpans(items);
   const start = {
@@ -2969,8 +2936,7 @@ const continuation = (
   for (const [depth, ancestor] of (left?.ancestors ?? []).entries()) {
     if (
       right?.ancestors[depth] !== ancestor ||
-      !CONTINUED_CONTAINERS.has(ancestor.type) ||
-      (!hyperlinks && ancestor.type === "hyperlink")
+      !CONTINUED_CONTAINERS.has(ancestor.type)
     )
       break;
     containers.push(ancestor);
@@ -3002,12 +2968,6 @@ const continuedSlice = (
   let wrapped: ParagraphContent[] = content.slice();
   for (const container of containers.toReversed()) {
     switch (container.type) {
-      case "hyperlink":
-        // The nesting copies the source's own, which the hyperlink held.
-        wrapped = [
-          { ...container, children: wrapped as typeof container.children },
-        ];
-        break;
       case "inlineSdt":
       case "inlineWrapper":
         wrapped = [{ ...container, content: wrapped }];

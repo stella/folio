@@ -220,37 +220,36 @@ describe("inline content controls in the canonical session", () => {
   });
 
   for (const mode of ["editing", "suggesting"] as const)
-    test(`replacing all of the control's text in ${mode} mode keeps the new text in it, and a suggestion refuses`, async () => {
-      const current = await session(undefined, mode);
-      let state = stateFor(current);
-      const { open, close } = edges(state);
-      state = select(state, open + 1, close - 1);
-      const replaced = current.prepareReplace(state, {
-        from: open + 1,
-        to: close - 1,
-        text: "New",
-      });
-      if (mode === "suggesting") {
-        // Recorded as the control's deletion, accepting would remove it.
-        expect(replaced.isErr()).toBe(true);
-        return;
+    test(`replacing text inside the control refuses in ${mode} mode and changes nothing`, async () => {
+      for (const whole of [true, false]) {
+        const current = await session(undefined, mode);
+        const before = current.document;
+        let state = stateFor(current);
+        const { open, close } = edges(state);
+        const from = whole ? open + 1 : at(state, "Clause", 1);
+        const to = whole ? close - 1 : at(state, "Clause", 4);
+        state = select(state, from, to);
+        expect(
+          current.prepareReplace(state, { from, to, text: "New" }).isErr(),
+        ).toBe(true);
+        expect(current.document).toBe(before);
       }
-      state = accept(state, replaced.unwrap());
-      expect(parts(current)).toBe("Before [New] after");
     });
 
-  test("a suggested replacement of part of the control's text stays inside it", async () => {
-    const current = await session(undefined, "suggesting");
-    let state = stateFor(current);
-    const from = at(state, "Clause", 1);
-    const to = at(state, "Clause", 4);
-    state = select(state, from, to);
-    state = accept(
-      state,
-      current.prepareReplace(state, { from, to, text: "Z" }).unwrap(),
-    );
-    expect(parts(current)).toBe("Before [CZlause] after");
-  });
+  for (const mode of ["editing", "suggesting"] as const)
+    test(`deleting text inside the control in ${mode} mode keeps the control`, async () => {
+      const current = await session(undefined, mode);
+      let state = stateFor(current);
+      const from = at(state, "Clause", 1);
+      const to = at(state, "Clause", 4);
+      state = select(state, from, to);
+      state = accept(
+        state,
+        current.prepareReplace(state, { from, to, text: "" }).unwrap(),
+      );
+      expect(parts(current).startsWith("Before [C")).toBe(true);
+      expect(parts(current).split("[")).toHaveLength(2);
+    });
 
   for (const lock of ["contentLocked", "sdtContentLocked"] as const)
     test(`${lock}: typing inside refuses as the document's rule`, async () => {
