@@ -174,12 +174,18 @@ export type EditorIntent =
       story: OpStory;
       at: BlockInsertionPoint;
       paragraphs: readonly Paragraph[];
+      /** A suggestion records the paragraphs as a move's destination. */
+      move?: true;
+      /** A list instance the paragraphs' numbering names, created first. */
+      newList?: NewListInstance;
     }
   | {
       /** Whole adjacent paragraphs removed with their marks. */
       type: "deleteParagraphs";
       story: OpStory;
       blockIds: readonly string[];
+      /** A suggestion records the paragraphs as a move's source. */
+      move?: true;
     }
   | {
       type: "replaceFragment";
@@ -218,7 +224,13 @@ export type EditorIntent =
       to: TextPosition;
       patch: RunPropsPatch;
     }
-  | { type: "formatParagraph"; at: TextPosition; patch: ParagraphPropsPatch }
+  | {
+      type: "formatParagraph";
+      at: TextPosition;
+      patch: ParagraphPropsPatch;
+      /** A list instance the patch's numbering names, created first. */
+      newList?: NewListInstance;
+    }
   | {
       type: "setList";
       items: readonly { at: TextPosition; ilvl: number }[];
@@ -250,6 +262,25 @@ export type EditorIntent =
        */
       survivor?: SplitHalf;
     };
+
+/** A numbering instance, with its abstract definition, an edit creates. */
+export type NewListInstance = {
+  num: NumberingInstance;
+  abstractNum?: AbstractNumbering;
+};
+
+const newListOps = (newList: NewListInstance | undefined): DocumentOp[] =>
+  newList === undefined
+    ? []
+    : [
+        {
+          type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
+          num: newList.num,
+          ...(newList.abstractNum === undefined
+            ? {}
+            : { abstractNum: newList.abstractNum }),
+        },
+      ];
 
 /** Revision metadata and every fresh identity are supplied before compilation. */
 export type EditorIntentMode = {
@@ -2142,6 +2173,9 @@ export const compileEditorIntent = (
             story: intent.story,
             blockIds: intent.blockIds,
             ...tracked,
+            ...(mode.type === "suggesting" && intent.move === true
+              ? { move: true as const }
+              : {}),
           },
         ],
         selection: { story: intent.story, blockId: first, offset: 0 },
@@ -2170,12 +2204,16 @@ export const compileEditorIntent = (
         );
       return Result.ok({
         ops: [
+          ...newListOps(intent.newList),
           {
             type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
             story: intent.story,
             at: intent.at,
             blocks,
             ...tracked,
+            ...(mode.type === "suggesting" && intent.move === true
+              ? { move: true as const }
+              : {}),
           },
         ],
         selection: { story: intent.story, blockId: first.paraId, offset: 0 },
@@ -2430,6 +2468,7 @@ export const compileEditorIntent = (
         }
         ops = plan.ops;
       }
+      ops = [...newListOps(intent.newList), ...ops];
       selection = intent.at;
       break;
     }

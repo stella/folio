@@ -27,7 +27,7 @@ import {
 import { directionIsRtl } from "../../prosemirror/paragraphDirection";
 import { displayOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
-import type { FlowConversionOptions } from "./flowConversionShared";
+import type { CounterFreeFlowConversionOptions } from "./flowConversionShared";
 import {
   buildImageRun,
   constrainImageToPage,
@@ -115,7 +115,7 @@ const mergeProjectedInlineMarks = (
 export function paragraphToRuns(
   node: PMNode,
   startPos: number,
-  _options: FlowConversionOptions,
+  _options: CounterFreeFlowConversionOptions,
   pageBreaks?: PageBreakRunProjection[],
 ): Run[] {
   const runs: Run[] = [];
