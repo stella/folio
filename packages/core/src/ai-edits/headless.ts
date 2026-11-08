@@ -1767,11 +1767,15 @@ export class FolioDocxReviewer {
   readNumberingDefinitions(
     story: FolioEditableDocumentStoryHandle = MAIN_STORY,
   ): FolioNumberingLevel[] | null {
-    const state = this.getEditableStoryState(story);
-    if (!state) return null;
+    // A read retains no state for a story nothing edits.
+    const doc =
+      story.type === "main"
+        ? this.state.doc
+        : this.readSecondaryStoryDoc(story);
+    if (!doc) return null;
     // Including the lists operations started, which only their paragraphs define so far.
     return numberingLevelsOf(
-      completeNumberingForDoc(this.baseDocument.package.numbering, state.doc),
+      completeNumberingForDoc(this.baseDocument.package.numbering, doc),
     ).toSorted(
       (left, right) => left.numId - right.numId || left.level - right.level,
     );
