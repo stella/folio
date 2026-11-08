@@ -243,6 +243,34 @@ describe("block content controls in the canonical session", () => {
     expect(record).toContain('"insertion"');
   });
 
+  test("a list paragraph inside a control opens, edits and keeps its numbering", async () => {
+    const document = controlDocument();
+    const block = document.package.document.content[1];
+    if (block?.type !== "blockSdt") return panic("No control.");
+    const first = block.content[0];
+    if (first?.type !== "paragraph") return panic("No clause.");
+    block.content[0] = {
+      ...first,
+      formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+    };
+    const current = createCanonicalSession(document).unwrap();
+    let state = stateFor(current);
+    const end = at(state, "First clause");
+    state = select(state, end);
+    state = accept(
+      state,
+      current.prepareReplace(state, { from: end, to: end, text: "s" }).unwrap(),
+    );
+    const edited = control(current.document).content[0];
+    if (edited?.type !== "paragraph") return panic("No clause.");
+    expect(texts([edited])).toEqual(["First clauses"]);
+    expect(edited.formatting?.numPr).toEqual({
+      kind: "reference",
+      numId: 1,
+      ilvl: 0,
+    });
+  });
+
   describe("locks", () => {
     for (const lock of ["contentLocked", "sdtContentLocked"] as const)
       test(`${lock}: typing inside refuses as the document's rule and changes nothing`, async () => {

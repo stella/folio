@@ -1703,7 +1703,7 @@ describe("canonical session", () => {
       expect(createCanonicalSession(document).isErr()).toBe(true);
   });
 
-  test("activation refuses list paragraphs inside a block SDT before normalization", () => {
+  test("activation refuses list paragraphs inside an unsupported block before normalization", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
       paraId: "34567890",
@@ -1713,9 +1713,12 @@ describe("canonical session", () => {
       ],
     };
     const document = seed("Body");
+    // Custom XML around blocks has no canonical projection yet; refusing it
+    // must leave the list paragraph inside it unnormalized.
     document.package.document.content.push({
-      type: "blockSdt",
-      properties: { sdtType: "richText" },
+      type: "blockCustomXml",
+      openingXml: '<w:customXml w:element="clause">',
+      closingXml: "</w:customXml>",
       content: [paragraph],
     });
     const original = structuredClone(document);
