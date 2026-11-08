@@ -522,7 +522,7 @@ export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
  * accepted. Cell merge/split (not row/column ops) and comment ops stay
  * `unsupportedMode`.
  */
-const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
+export const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
   FolioAIEditOperation["type"]
 > = new Set([
   "replaceInBlock",
