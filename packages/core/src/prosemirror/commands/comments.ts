@@ -15,11 +15,11 @@ import { TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
 
 import {
+  type LockedControlViolation,
   PARAGRAPH_MARK_CHANGE_KINDS,
   type ParagraphMarkChangeKind,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
-import type { LockedControlViolation } from "@stll/docx-core/model";
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";

@@ -8,6 +8,7 @@
  * state alone. Set before any module builds the singleton schema.
  */
 
+// oxlint-disable-next-line import/no-empty-named-blocks -- loads the module's `declare global` without running it
 import type {} from "../packages/core/src/prosemirror/plugins/transactionInvariants";
 
 globalThis.__folioTransactionInvariants = { enabled: true };

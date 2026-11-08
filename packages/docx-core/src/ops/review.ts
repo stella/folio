@@ -588,11 +588,12 @@ const wrapList = (
       case "refuse":
         state.refusal = DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION;
         return undefined;
-      case "keep":
+      case "keep": {
         const retained = retainSameStampCopyOwner(node);
         if (retained === undefined) return undefined;
         entries.push({ node: retained, covered: false });
         break;
+      }
       case "descend": {
         const end: Cursor = { ...cursor };
         cursor.position = start.position;

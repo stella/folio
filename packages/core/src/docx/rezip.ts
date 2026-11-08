@@ -21,9 +21,9 @@ import {
 } from "@stll/docx-core/xml";
 import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
-import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
   consumeTrackedSectionEndpointRemoval,
+  type RemovedSectionReference,
   type TrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
 import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";

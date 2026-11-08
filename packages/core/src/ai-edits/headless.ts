@@ -83,8 +83,8 @@ import {
   getHeaderFooterText,
 } from "../docx/storyPlainText";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
-import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
+  type RemovedSectionReference,
   type TrackedSectionEndpointRemoval,
   withTrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
