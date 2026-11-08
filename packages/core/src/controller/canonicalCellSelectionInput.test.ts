@@ -126,3 +126,38 @@ test("a tab over selected cells clears them and puts the tab in the first", () =
   const table = JSON.stringify(session.document.package.document.content[0]);
   expect(table.match(/"type":"tab"/gu)).toHaveLength(1);
 });
+
+test("a paragraph break over selected cells clears them and splits the first", () => {
+  const session = createCanonicalSession(tableDocument()).unwrap();
+  let state = EditorState.create({ schema, doc: session.projection.doc });
+  const cells: number[] = [];
+  state.doc.descendants((node, position) => {
+    if (node.type.name === "tableCell") cells.push(position);
+    return true;
+  });
+  const [anchor, head] = cells;
+  if (anchor === undefined || head === undefined) return panic("No cells.");
+  state = state.apply(
+    state.tr.setSelection(CellSelection.create(state.doc, anchor, head)),
+  );
+  const commit = session
+    .prepareCellSelectionStructure(state, (at) => ({
+      type: "replaceFragment",
+      from: at,
+      to: at,
+      paragraphs: [
+        { type: "paragraph", content: [] },
+        { type: "paragraph", content: [] },
+      ],
+      openStart: 1,
+      openEnd: 1,
+    }))
+    .unwrap();
+  expect(commit.publish().isOk()).toBe(true);
+  const table = session.document.package.document.content[0];
+  if (table?.type !== "table") return panic("No table.");
+  expect(table.rows[0]?.cells.map((each) => each.content.length)).toEqual([
+    2, 1,
+  ]);
+  expect(texts(session.document)).toEqual(["", ""]);
+});

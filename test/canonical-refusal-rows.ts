@@ -94,13 +94,8 @@ const selectedCellPasteRow: HarnessRefusalRow = {
 const SELECTED_CELL_REFUSALS = {
   // Typing clears every selected cell and writes into the first.
   typing: [],
-  enter: [
-    {
-      id: "selected-cells-enter",
-      gap: CANONICAL_GAP.dispatch,
-      message: "The input is outside a plain paragraph.",
-    },
-  ],
+  // Enter clears every selected cell and breaks the first one's paragraph.
+  enter: [],
   imeReplacement: [
     {
       id: "selected-cells-composition",

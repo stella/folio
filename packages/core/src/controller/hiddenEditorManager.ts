@@ -872,22 +872,39 @@ export const createHiddenEditorManager = (
       const state = view.state;
       if (
         state.selection instanceof CellSelection &&
-        (type === "tab" || type === "lineBreak" || type === "pageBreak")
+        (type === "split" ||
+          type === "tab" ||
+          type === "lineBreak" ||
+          type === "pageBreak")
       ) {
-        const overCells = session.prepareCellSelectionStructure(
-          state,
-          (at) => ({
-            type: "insertAtom",
-            from: at,
-            to: at,
-            atom:
-              type === "tab"
-                ? { type: "tab" }
-                : {
-                    type: "break",
-                    breakType: type === "pageBreak" ? "page" : "textWrapping",
-                  },
-          }),
+        const overCells = session.prepareCellSelectionStructure(state, (at) =>
+          type === "split"
+            ? {
+                // A paragraph break: two empty paragraphs whose open ends
+                // join the halves of the first cell's paragraph.
+                type: "replaceFragment",
+                from: at,
+                to: at,
+                paragraphs: [
+                  { type: "paragraph", content: [] },
+                  { type: "paragraph", content: [] },
+                ],
+                openStart: 1,
+                openEnd: 1,
+              }
+            : {
+                type: "insertAtom",
+                from: at,
+                to: at,
+                atom:
+                  type === "tab"
+                    ? { type: "tab" }
+                    : {
+                        type: "break",
+                        breakType:
+                          type === "pageBreak" ? "page" : "textWrapping",
+                      },
+              },
         );
         if (overCells.isErr()) {
           if (overCells.error.reason !== "noChange")
