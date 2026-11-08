@@ -39,7 +39,7 @@ import type {
 } from "../types/document";
 
 type SourceKind = ParagraphContent["type"] | RunContent["type"];
-type SourcePolicy = "container" | "leaf" | "text" | "rawField" | "control";
+type SourcePolicy = "container" | "leaf" | "text" | "rawField";
 export const CANONICAL_SOURCE_INLINE_POLICIES: {
   readonly run: "container";
   readonly hyperlink: "container";
@@ -48,7 +48,7 @@ export const CANONICAL_SOURCE_INLINE_POLICIES: {
   readonly moveFrom: "container";
   readonly moveTo: "container";
   readonly inlineWrapper: "container";
-  readonly inlineSdt: "control";
+  readonly inlineSdt: "container";
   readonly simpleField: "leaf";
   readonly complexField: "leaf";
   readonly mathEquation: "leaf";
@@ -85,7 +85,7 @@ export const CANONICAL_SOURCE_INLINE_POLICIES: {
   moveFrom: "container",
   moveTo: "container",
   inlineWrapper: "container",
-  inlineSdt: "control",
+  inlineSdt: "container",
   simpleField: "leaf",
   complexField: "leaf",
   mathEquation: "leaf",
@@ -117,7 +117,13 @@ export const CANONICAL_SOURCE_INLINE_POLICIES: {
 } as const satisfies Record<SourceKind, SourcePolicy>;
 
 type NativePolicy =
-  "text" | "unit" | "markers" | "noteMarker" | "capture" | "refused";
+  | "text"
+  | "unit"
+  | "markers"
+  | "noteMarker"
+  | "capture"
+  | "control"
+  | "refused";
 export const CANONICAL_NATIVE_INLINE_POLICIES: {
   readonly text: "text";
   readonly bookmarkBoundary: "markers";
@@ -138,7 +144,7 @@ export const CANONICAL_NATIVE_INLINE_POLICIES: {
   readonly textBoxAnchor: "unit";
   readonly commentReference: "unit";
   readonly renderedPageBreak: "markers";
-  readonly sdt: "refused";
+  readonly sdt: "control";
 } = {
   text: "text",
   bookmarkBoundary: "markers",
@@ -159,7 +165,7 @@ export const CANONICAL_NATIVE_INLINE_POLICIES: {
   textBoxAnchor: "unit",
   commentReference: "unit",
   renderedPageBreak: "markers",
-  sdt: "refused",
+  sdt: "control",
 } as const satisfies Record<
   keyof typeof TRACKED_RUN_INLINE_ATOM_DISPOSITIONS | "sdt",
   NativePolicy
@@ -185,13 +191,6 @@ export const canonicalInlineSourceIssue = (
   for (const item of items) {
     const policy = CANONICAL_SOURCE_INLINE_POLICIES[item.type];
     switch (policy) {
-      case "control":
-        if (context === "fieldPayload" && item.type === "inlineSdt") {
-          const issue = canonicalInlineSourceIssue(item.content, context);
-          if (issue !== null) return issue;
-          break;
-        }
-        return "Canonical editing cannot preserve inline content-control boundary positions.";
       case "rawField":
         if (context === "fieldPayload") break;
         return "Canonical editing cannot preserve unstructured field instructions; a structured field is required.";
@@ -241,6 +240,7 @@ const sourceContainerChildren = (item: ParagraphContent | RunContent) => {
     case "moveFrom":
     case "moveTo":
     case "inlineWrapper":
+    case "inlineSdt":
       return item.content;
     default:
       return panic(
@@ -274,7 +274,7 @@ export const canonicalNativeCells = (
 ): Result<NativeCell[], InlineProjectionError> => {
   const cells: NativeCell[] = [];
   let issue: string | undefined;
-  paragraph.forEach((node, from) => {
+  const visit = (node: PMNode, from: number): void => {
     if (issue !== undefined) return;
     const to = from + node.nodeSize;
     const policy = nativePolicies.get(node.type.name);
@@ -427,6 +427,19 @@ export const canonicalNativeCells = (
         else cells.push({ type: "unit", from, to, node });
         return;
       }
+      case "control":
+        // An inline content control's edges are editor positions with no
+        // source leaf: each stands for the gap at that edge of its content.
+        cells.push({
+          type: "zeroWidth",
+          sources: [],
+          from,
+          to: from + 1,
+          node,
+        });
+        node.forEach((child, offset) => visit(child, from + 1 + offset));
+        cells.push({ type: "zeroWidth", sources: [], from: to - 1, to, node });
+        return;
       case "refused":
         issue = `Canonical editing cannot preserve ${node.type.name} boundary positions.`;
         return;
@@ -436,7 +449,8 @@ export const canonicalNativeCells = (
       default:
         policy satisfies never;
     }
-  });
+  };
+  paragraph.forEach((node, from) => visit(node, from));
   return issue === undefined ? Result.ok(cells) : refuse(issue);
 };
 
@@ -751,6 +765,19 @@ export const projectCanonicalInline = ({
   addGap(0, { offset: 0, zeroWidthBefore: 0 });
   for (const cell of native.value) {
     consumeErasedLeaves(cell.from);
+    if (cell.type === "zeroWidth" && cell.sources.length === 0) {
+      // A control edge: both of its editor positions name the current gap.
+      if (consumed !== 0)
+        return refuse(
+          "Canonical editing cannot place a content control edge inside text.",
+        );
+      const next = spans.at(index);
+      const gap = next?.before ??
+        spans.at(index - 1)?.after ?? { offset: 0, zeroWidthBefore: 0 };
+      addGap(cell.from, gap);
+      addGap(cell.to, gap);
+      continue;
+    }
     let span = spans.at(index);
     if (!span)
       return refuse(

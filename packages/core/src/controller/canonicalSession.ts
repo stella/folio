@@ -1581,11 +1581,40 @@ class CanonicalSession {
     if (end.isErr()) return end;
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
+    // Just inside a content control's edge, the editor position, not the
+    // source gap, says the text belongs to the control.
+    const innerEdge = (position: number, side: "start" | "end") => {
+      const resolved = state.doc.resolve(position);
+      return (
+        resolved.parent.type.name === "sdt" &&
+        resolved.parentOffset ===
+          (side === "start" ? 0 : resolved.parent.content.size)
+      );
+    };
+    const inside = {
+      ...(innerEdge(inputFrom, "start") ? { start: true } : {}),
+      ...(innerEdge(inputTo, "end") ? { end: true } : {}),
+    };
+    // Replacing text inside a content control would cut the control in two
+    // around the new text: the tracked record of a replacement has no seam
+    // bookkeeping for a slice inside a container yet. Typing at a caret and
+    // deleting stay supported.
+    const inControl = (position: number) =>
+      state.doc.resolve(position).parent.type.name === "sdt";
+    if (
+      inputFrom !== inputTo &&
+      text.length > 0 &&
+      (inControl(inputFrom) || inControl(inputTo))
+    )
+      return refuse(
+        "Replacing text inside a content control is unavailable in this session.",
+      );
     const intent = {
       type: "replaceText",
       from: start.value,
       to: end.value,
       text,
+      ...(Object.keys(inside).length === 0 ? {} : { inside }),
       ...(state.storedMarks === null
         ? {}
         : {
