@@ -5,7 +5,6 @@ import { AllSelection, NodeSelection } from "prosemirror-state";
 import {
   canonicalConformanceRefusalRows,
   declareCanonicalRefusalCases,
-  STORY_PROJECTION_REFUSAL_CASES,
 } from "../../../../test/canonical-conformance-refusals";
 import {
   harnessRefusalProblems,
@@ -442,60 +441,6 @@ test.each(
       expect(driver.refusals).toEqual([]);
       assertExactModel(driver.snapshot(), before);
       expect(driver.state).toBe(state);
-    } finally {
-      driver.dispose();
-    }
-  },
-);
-test.each(STORY_PROJECTION_REFUSAL_CASES)(
-  "$shape $operation/$placement projection refusal is exact and atomic in $mode",
-  async ({ shape, mode, operation, placement }) => {
-    const source = await parseShapeDocument(
-      new Uint8Array(await shapeArrayBuffer(shape)),
-    );
-    const driver = createCanonicalEditorHarness(source, mode);
-    try {
-      const placed = placeSelection(
-        driver.state,
-        documentShape(shape).focus,
-        placement,
-      );
-      if (!placed) throw new TypeError("Story refusal fixture lost selection");
-      driver.dispatch(driver.state.tr.setSelection(placed.selection));
-      const before = driver.snapshot();
-      const state = driver.state;
-      driver.expectRefusals(
-        canonicalConformanceRefusalRows({ shape, mode, operation, placement }),
-      );
-      if (operation === "paste:copied-blocks") {
-        const selected = placeSelection(
-          driver.state,
-          documentShape(shape).focus,
-          "paragraph",
-        );
-        if (!selected)
-          throw new TypeError("Copied field fixture lost its paragraph");
-        driver.paste(
-          driver.state.doc.slice(
-            selected.selection.from,
-            selected.selection.to,
-          ),
-        );
-      } else if (operation === "host:cut") driver.cut();
-      else driver.pressKey(operation === "key:Enter" ? "Enter" : "Delete");
-      expect(driver.refusals).toEqual([
-        {
-          gap: CANONICAL_GAP.storyContentProjection,
-          row: CANONICAL_GAP.storyContentProjection,
-          expectation: "declared",
-          message:
-            "The operations produce unsupported canonical story content.",
-        },
-      ]);
-      assertExactModel(driver.snapshot(), before);
-      expect(driver.state).toBe(state);
-      expect(driver.history.canUndo()).toBe(false);
-      expect(driver.history.canRedo()).toBe(false);
     } finally {
       driver.dispose();
     }

@@ -265,8 +265,8 @@ export const compileHyperlinkIntent = (
       after: asParagraphContent(after),
     });
   }
-  // The serializer rejects resolutionJoins repartitioned across hyperlink wrappers.
-  // Preserve exact review provenance by refusing before any operation is published.
+  // Applying or removing a link compiles to direct content operations, which
+  // have no tracked form; refuse before any operation is published.
   if (mode.type === "suggesting")
     return refuse(
       "Hyperlink suggestions require serializable wrapper review provenance.",
