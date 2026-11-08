@@ -739,7 +739,7 @@ const project = ({
         !claimTextBoxHost()
       )
         failure = new CanonicalSessionError({
-          gap: CANONICAL_GAP.storyContentProjection,
+          ground: { gap: CANONICAL_GAP.storyContentProjection },
           reason: "refused",
           message: "The projection changed paragraph structure.",
         });
