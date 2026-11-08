@@ -423,12 +423,25 @@ export const commentDocumentIssue = (
   const anchors = anchorsIn(document);
   if (anchors.some(({ node }) => !byId.has(anchorId(node) ?? -1)))
     return "A comment anchor has no definition.";
+  // Each comment's anchors in document order, with their place in it: one
+  // pass over the anchors rather than one per comment.
+  const ownById = new Map<number, { anchor: StoryAnchorSpan; at: number }[]>();
+  for (const [at, anchor] of anchors.entries()) {
+    const id = anchorId(anchor.node) ?? -1;
+    const own = ownById.get(id);
+    if (own === undefined) ownById.set(id, [{ anchor, at }]);
+    else own.push({ anchor, at });
+  }
   for (const comment of comments) {
-    const own = anchors.filter(({ node }) => anchorId(node) === comment.id);
-    const starts = own.filter(({ node }) => node.type === "commentRangeStart");
-    const ends = own.filter(({ node }) => node.type === "commentRangeEnd");
+    const own = ownById.get(comment.id) ?? [];
+    const starts = own.filter(
+      ({ anchor }) => anchor.node.type === "commentRangeStart",
+    );
+    const ends = own.filter(
+      ({ anchor }) => anchor.node.type === "commentRangeEnd",
+    );
     const references = own.filter(
-      ({ node }) => node.type === "commentReference",
+      ({ anchor }) => anchor.node.type === "commentReference",
     );
     const start = starts.at(0);
     const end = ends.at(0);
@@ -441,8 +454,7 @@ export const commentDocumentIssue = (
     if (
       start &&
       end &&
-      (!sameStory(start.story, end.story) ||
-        anchors.indexOf(start) > anchors.indexOf(end))
+      (!sameStory(start.anchor.story, end.anchor.story) || start.at > end.at)
     )
       return "Comment range boundaries must be ordered in one story.";
     const parent =
