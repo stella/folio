@@ -148,9 +148,14 @@ export const canonicalConformanceRefusalRows = (
   )
     return [REFUSAL_ROWS.cellSelectionPlacement];
   // The caret's cell paragraph ends its block list: a tracked paragraph
-  // insertion needs a paragraph after it.
+  // insertion needs a paragraph after it. A selection of the whole document,
+  // or of cells, puts the table ahead of a paragraph instead: the story's
+  // first, or the one after the table.
   if (key.operation === "command:insertTable")
-    return key.mode === "suggesting" && key.shape === "tables"
+    return key.mode === "suggesting" &&
+      key.shape === "tables" &&
+      key.placement !== "document" &&
+      key.placement !== "cross-paragraph"
       ? [REFUSAL_ROWS.trackedTableInsertionAtEnd]
       : [];
   // The fixture table's merged cells have no tracked row deletion record.
