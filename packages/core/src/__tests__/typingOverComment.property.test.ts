@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import type { EditorState } from "prosemirror-state";
-import { TextSelection } from "prosemirror-state";
+import { AllSelection, TextSelection } from "prosemirror-state";
 
 import {
   assertProperty,
@@ -201,6 +201,92 @@ describe("typing over the text a comment covers", () => {
     },
     propertyTestTimeout(60_000),
   );
+
+  test("typing over a select-all of a document the comment covers keeps it on the typed text", () => {
+    const layout: Layout = {
+      before: "",
+      target: "Please remit funds.",
+      after: "",
+      overlapping: false,
+    };
+    for (const mode of ["editing", "suggesting"] as const) {
+      const base = documentFor(layout);
+      const state = createHarnessState(base, mode);
+      const view = new HeadlessEditorView(
+        state.apply(state.tr.setSelection(new AllSelection(state.doc))),
+      );
+      view.typeText("New");
+      const result =
+        mode === "editing"
+          ? view.state
+          : resolveAllChanges(view.state, "accept");
+      expect([mode, commentedText(result).get(1)]).toEqual([mode, "New"]);
+      expect(savedCommentedText(result, base).get(1)).toBe("New");
+    }
+  });
+
+  test("typing over a comment's text and content it does not cover leaves the comment off the typed text", () => {
+    const base: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "commentRangeStart", id: 1 },
+                run("Covered"),
+                { type: "commentRangeEnd", id: 1 },
+                { type: "commentReference", id: 1 },
+                { type: "run", content: [{ type: "tab" }] },
+                run("tail"),
+              ],
+            },
+          ],
+          comments: [comment(1)],
+        },
+      },
+    };
+    for (const mode of ["editing", "suggesting"] as const) {
+      const state = createHarnessState(base, mode);
+      let from = -1;
+      let tab = -1;
+      state.doc.descendants((node, position) => {
+        if (node.isText && node.text === "Covered") from = position;
+        if (node.type.name === "tab") tab = position;
+        return true;
+      });
+      expect(from).toBeGreaterThan(0);
+      expect(tab).toBeGreaterThan(from);
+      const view = new HeadlessEditorView(
+        state.apply(
+          state.tr.setSelection(TextSelection.create(state.doc, from, tab + 1)),
+        ),
+      );
+      view.typeText("New");
+      const result =
+        mode === "editing"
+          ? view.state
+          : resolveAllChanges(view.state, "accept");
+      expect(commentedText(result).get(1)).toBeUndefined();
+    }
+  });
+
+  test("text a composition commits at the caret joins the comment the typing is in", () => {
+    const layout: Layout = {
+      before: "Lead ",
+      target: "Please remit funds.",
+      after: " tail",
+      overlapping: false,
+    };
+    const { base, state } = typeOverComment(layout, "editing", "Al");
+    const view = new HeadlessEditorView(state);
+    // The browser commits composed text into the document directly, without
+    // the input handlers.
+    view.dispatch(view.state.tr.insertText("pha", view.state.selection.from));
+    view.typeText("!");
+    expect(commentedText(view.state).get(1)).toBe("Alpha!");
+    expect(savedCommentedText(view.state, base).get(1)).toBe("Alpha!");
+  });
 
   test("moving the caret ends typing inside the comment", () => {
     const layout: Layout = {

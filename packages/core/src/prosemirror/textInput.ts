@@ -6,10 +6,12 @@ import {
   Selection,
   TextSelection,
 } from "prosemirror-state";
+import { Mapping } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import { createPluginKeyOwner } from "./pluginKeyOwner";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
+import { isZeroWidthAnchor } from "./zeroWidthAnchors";
 
 type TextInputHandler<TView> = (
   view: TView,
@@ -75,9 +77,18 @@ export const formattingMarksBesideLockedControl = ({
 const isCommentMark = (mark: Mark): boolean => mark.type.name === "comment";
 
 /**
- * The comment marks every character of `[from, to]` carries: the comments
- * whose text typing over the range replaces. Anchors without text (comment
- * references, range boundaries) do not decide it.
+ * Whether `node` is content a comment can cover: text, or an inline leaf that
+ * shows something (an image, a field, a tab). Anchors that only hold a
+ * position (comment references, range and bookmark boundaries) are not.
+ */
+const isCoverableContent = (node: ProseMirrorNode): boolean =>
+  node.isText ||
+  (node.isInline && (node.isLeaf || node.isAtom) && !isZeroWidthAnchor(node));
+
+/**
+ * The comment marks every piece of content in `[from, to]` carries: the
+ * comments whose content typing over the range replaces. Anchors without
+ * content (comment references, range boundaries) do not decide it.
  */
 export const commentMarksCovering = (
   doc: ProseMirrorNode,
@@ -86,7 +97,7 @@ export const commentMarksCovering = (
 ): readonly Mark[] => {
   let covering: readonly Mark[] | null = null;
   doc.nodesBetween(from, to, (node) => {
-    if (!node.isText) return true;
+    if (!isCoverableContent(node)) return true;
     const comments = node.marks.filter(isCommentMark);
     covering =
       covering === null
@@ -208,9 +219,14 @@ export const dispatchEditorTextInput = <
     ) {
       tr.setNodeMarkup($typed.before(), undefined, last.attrs);
     }
-    return tr.setSelection(
-      TextSelection.create(tr.doc, start.from + text.length),
-    );
+    tr.setSelection(TextSelection.create(tr.doc, start.from + text.length));
+    keepTypedTextInComments({
+      state: view.state,
+      tr,
+      replaced: { from: start.from, to: end.to },
+      typed: { from: start.from, to: start.from + text.length },
+    });
+    return tr;
   };
   const handled = view.someProp("handleTextInput", (handler) =>
     handler(view, from, to, text, defaultTransaction),
@@ -312,12 +328,52 @@ export const createTextInputPlugin = (): Plugin => {
         );
         if (typed !== undefined) return typed;
         if (!value) return null;
-        // Kept only while the caret stays where the typing left it.
-        const at = tr.mapping.map(value.at);
+        // Kept only while the caret stays where the typing left it. Anything
+        // put in at that point (a restored reference) goes after it.
+        const at = tr.mapping.map(value.at, -1);
         return tr.selection.empty && tr.selection.from === at
           ? { comments: value.comments, at }
           : null;
       },
+    },
+    // Text entered at that caret by a route other than the input handlers
+    // (a composition the browser commits, a native insertion) joins the same
+    // comments, as typed characters do.
+    appendTransaction: (transactions, oldState, newState) => {
+      const typing = typingInCommentsOwner.getState(oldState);
+      if (
+        !typing ||
+        !transactions.some((tr) => tr.docChanged) ||
+        transactions.some(
+          (tr) => tr.getMeta(typingInCommentsOwner.key) !== undefined,
+        )
+      )
+        return null;
+      const mapping = new Mapping();
+      for (const tr of transactions) mapping.appendMapping(tr.mapping);
+      const from = mapping.map(typing.at, -1);
+      const to = mapping.map(typing.at, 1);
+      const { selection, doc } = newState;
+      if (from >= to || !selection.empty || selection.from !== to) return null;
+      const $from = doc.resolve(from);
+      if (!$from.parent.inlineContent || !$from.sameParent(doc.resolve(to)))
+        return null;
+      let textOnly = true;
+      doc.nodesBetween(from, to, (node) => {
+        if (node.isInline && !node.isText) textOnly = false;
+        return textOnly;
+      });
+      if (!textOnly) return null;
+      const before = oldState.doc.resolve(typing.at).nodeBefore?.marks ?? [];
+      const carried = typing.comments.filter((mark) => mark.isInSet(before));
+      if (carried.length === 0) return null;
+      const tr = newState.tr;
+      for (const mark of carried) tr.removeMark(from, to, mark);
+      for (const mark of carried) tr.addMark(from, to, mark);
+      return tr.setMeta(typingInCommentsOwner.key, {
+        comments: carried,
+        at: to,
+      });
     },
     props: {
       handleDOMEvents: {

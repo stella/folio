@@ -1217,7 +1217,7 @@ function applySuggestionInsert(
   keepTypedTextInComments({
     state: view.state,
     tr,
-    replaced: selectsAll ? { from: to, to } : { from, to },
+    replaced: { from, to },
     typed: { from: typedFrom, to: typedTo },
   });
 
