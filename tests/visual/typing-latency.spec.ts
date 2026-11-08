@@ -1,0 +1,283 @@
+import { type Page, test } from "@playwright/test";
+/**
+ * Typing latency in long documents, report-only.
+ *
+ * Opens generated documents in the playground, types at a caret in the middle
+ * of the document (track changes on; `FOLIO_TYPING_LATENCY_MODE=editing` turns
+ * them off), and logs one JSON line per run, for each engine and painter:
+ *
+ * - `inputMs`: main-thread time the browser spent in the key's input events
+ *   (keydown, keypress, beforeinput), where the editor commits the edit. Read
+ *   from the Event Timing API, so it holds no time spent waiting.
+ * - `frameMs`: from keydown to the end of the first task after the next
+ *   animation frame, so the work the edit schedules (layout, paint) counts.
+ * - `measuredBlocksPerKey` and `layoutsPerKey`: what layout did per key, read
+ *   through the layout instrumentation hook.
+ *
+ * It asserts nothing: the numbers depend on the machine. Run it with
+ * `bunx playwright test --project=typing-latency`, add `--headed` for a
+ * headed browser, and set `FOLIO_TYPING_LATENCY_PROFILE=<dir>` to also write a
+ * CPU profile of the measured keys for each run.
+ */
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { createDocx } from "../../packages/core/src/docx/rezip";
+import { fromMarkdown } from "../../packages/core/src/markdown/fromMarkdown";
+
+const WARM_KEYS = 5;
+const MEASURED_KEYS = Number(process.env["FOLIO_TYPING_LATENCY_KEYS"] ?? 30);
+const PAUSE_MS = 150;
+const PROFILE_DIRECTORY = process.env["FOLIO_TYPING_LATENCY_PROFILE"];
+const MODE =
+  process.env["FOLIO_TYPING_LATENCY_MODE"] === "editing"
+    ? "editing"
+    : "suggesting";
+
+const WORDS =
+  "the supplier shall deliver goods services under this agreement subject to terms conditions warranty liability indemnity confidential information party notice period".split(
+    " ",
+  );
+
+/** A contract of numbered articles, clauses, short lists and fee tables. */
+const contract = (articles: number): string => {
+  let seed = 7;
+  const random = () => {
+    seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+    return seed / 2 ** 31;
+  };
+  const sentence = (length: number) =>
+    Array.from(
+      { length },
+      () => WORDS[Math.floor(random() * WORDS.length)] ?? "the",
+    ).join(" ");
+  const lines = ["# Services Agreement", ""];
+  for (let article = 1; article <= articles; article += 1) {
+    lines.push(`## ${article}. ${sentence(3)}`, "");
+    for (let clause = 1; clause <= 8; clause += 1) {
+      lines.push(
+        `${article}.${clause} **${sentence(2)}** ${sentence(40)}. ${sentence(25)}.`,
+        "",
+      );
+      if (clause % 3 === 0) {
+        for (let item = 1; item <= 4; item += 1)
+          lines.push(`${item}. ${sentence(18)};`);
+        lines.push("");
+      }
+    }
+    if (article % 10 === 0) {
+      lines.push("| Item | Fee | Term |", "|---|---|---|");
+      for (let row = 0; row < 12; row += 1)
+        lines.push(`| ${sentence(3)} | ${row * 100} | ${sentence(2)} |`);
+      lines.push("");
+    }
+  }
+  return lines.join("\n");
+};
+
+/** One numbered list of short items. */
+const numberedList = (items: number): string =>
+  Array.from({ length: items }, (_, index) => `1. Item ${index + 1}`).join(
+    "\n",
+  );
+
+/** Plain paragraphs only. */
+const plainParagraphs = (paragraphs: number): string =>
+  Array.from(
+    { length: paragraphs },
+    (_, index) => `Paragraph ${index + 1} holds a sentence of plain text.`,
+  ).join("\n\n");
+
+const DOCUMENTS = {
+  "plain paragraphs, 1,500": () => plainParagraphs(1500),
+  "contract, 40 articles": () => contract(40),
+  "contract, 100 articles": () => contract(100),
+  "numbered list, 3,500 items": () => numberedList(3500),
+} as const;
+
+const ENGINES = ["default", "canonical"] as const;
+const PAINTERS = ["stock", "display-list"] as const;
+
+test.use({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
+
+const load = async (page: Page, bytes: number[]) => {
+  await page.evaluate(async (data) => {
+    const ref = globalThis.__folioPlayground?.getEditorRef();
+    if (!ref) throw new TypeError("The playground editor is not ready.");
+    await ref.loadDocumentBuffer(new Uint8Array(data));
+    // The default engine creates its editor view on first use.
+    ref.ensureEditorView();
+  }, bytes);
+  await page.waitForFunction(
+    () =>
+      (globalThis.__folioPlayground?.getEditorRef()?.getEditor()?.getView()
+        ?.state.doc.childCount ?? 0) > 500,
+    undefined,
+    { timeout: 120_000 },
+  );
+  // Let the first layout of every page finish before typing.
+  await page.waitForTimeout(5000);
+};
+
+/** Put the caret inside a paragraph in the middle and start recording. */
+const prepare = (page: Page) =>
+  page.evaluate(() => {
+    const editor = globalThis.__folioPlayground?.getEditorRef()?.getEditor();
+    const view = editor?.getView();
+    if (!editor || !view) throw new TypeError("No editor view.");
+    const paragraphs: number[] = [];
+    view.state.doc.descendants((node, position) => {
+      if (node.type.name === "paragraph" && node.textContent.length > 4)
+        paragraphs.push(position);
+      return true;
+    });
+    const middle = paragraphs[Math.floor(paragraphs.length / 2)];
+    if (middle === undefined) throw new TypeError("No paragraph to type in.");
+    editor.setSelection(middle + 3, middle + 3);
+    editor.focus();
+    const record = { input: new Map<number, number>(), frames: [] as number[] };
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries() as PerformanceEventTiming[]) {
+        if (entry.interactionId === 0) continue;
+        record.input.set(
+          entry.interactionId,
+          (record.input.get(entry.interactionId) ?? 0) +
+            entry.processingEnd -
+            entry.processingStart,
+        );
+      }
+    }).observe({ type: "event", durationThreshold: 16 });
+    window.addEventListener(
+      "keydown",
+      () => {
+        const start = performance.now();
+        requestAnimationFrame(() => {
+          const channel = new MessageChannel();
+          channel.port1.onmessage = () =>
+            record.frames.push(performance.now() - start);
+          channel.port2.postMessage(undefined);
+        });
+      },
+      { capture: true },
+    );
+    (globalThis as { __typingLatency?: typeof record }).__typingLatency =
+      record;
+  });
+
+const readLayoutCounts = (page: Page) =>
+  page.evaluate(
+    () =>
+      (
+        globalThis as {
+          __typingLayoutCounts?: { measuredBlocks: number; layouts: number };
+        }
+      ).__typingLayoutCounts ?? { measuredBlocks: 0, layouts: 0 },
+  );
+
+const median = (values: readonly number[]): number | null => {
+  const sorted = values.toSorted((left, right) => left - right);
+  return sorted.length === 0 ? null : (sorted[sorted.length >> 1] ?? null);
+};
+
+for (const [name, markdown] of Object.entries(DOCUMENTS)) {
+  for (const engine of ENGINES) {
+    for (const painter of PAINTERS) {
+      test(`typing latency: ${name}, ${engine} engine, ${painter} painter`, async ({
+        page,
+      }) => {
+        test.setTimeout(300_000);
+        const bytes = [
+          ...new Uint8Array(await createDocx(fromMarkdown(markdown()))),
+        ];
+        const query = new URLSearchParams({ mode: MODE });
+        if (engine === "canonical") query.set("session", "canonical");
+        if (painter === "display-list") query.set("pageRenderer", painter);
+        // Counts what each layout pass measured, through the layout
+        // instrumentation hook the editor already calls.
+        await page.addInitScript(() => {
+          const counts = { measuredBlocks: 0, layouts: 0 };
+          (
+            globalThis as { __typingLayoutCounts?: typeof counts }
+          ).__typingLayoutCounts = counts;
+          globalThis.__folioLayoutInstrumentation = {
+            onLayoutComplete: () => {
+              counts.layouts += 1;
+            },
+            onMeasureBlock: () => {
+              counts.measuredBlocks += 1;
+            },
+          };
+        });
+        await page.goto(`/?${query.toString()}`);
+        await page.waitForSelector(".layout-page");
+        await load(page, bytes);
+        await prepare(page);
+        for (let key = 0; key < WARM_KEYS; key += 1) {
+          await page.keyboard.press("x");
+          await page.waitForTimeout(PAUSE_MS);
+        }
+        const cdp =
+          PROFILE_DIRECTORY === undefined
+            ? undefined
+            : await page.context().newCDPSession(page);
+        if (cdp) {
+          await cdp.send("Profiler.enable");
+          await cdp.send("Profiler.setSamplingInterval", { interval: 200 });
+          await cdp.send("Profiler.start");
+        }
+        const skip = await page.evaluate(
+          () =>
+            (globalThis as { __typingLatency?: { frames: number[] } })
+              .__typingLatency?.frames.length ?? 0,
+        );
+        const countsBefore = await readLayoutCounts(page);
+        for (let key = 0; key < MEASURED_KEYS; key += 1) {
+          await page.keyboard.press("x");
+          await page.waitForTimeout(PAUSE_MS);
+        }
+        if (cdp && PROFILE_DIRECTORY !== undefined) {
+          const { profile } = await cdp.send("Profiler.stop");
+          mkdirSync(PROFILE_DIRECTORY, { recursive: true });
+          writeFileSync(
+            join(
+              PROFILE_DIRECTORY,
+              `${name.replaceAll(/[^a-z0-9]+/gu, "-")}-${engine}-${painter}.cpuprofile`,
+            ),
+            JSON.stringify(profile),
+          );
+        }
+        const measured = await page.evaluate((from) => {
+          const record = (
+            globalThis as {
+              __typingLatency?: {
+                input: Map<number, number>;
+                frames: number[];
+              };
+            }
+          ).__typingLatency;
+          return {
+            input: [...(record?.input.values() ?? [])].slice(from),
+            frames: record?.frames.slice(from) ?? [],
+          };
+        }, skip);
+        const countsAfter = await readLayoutCounts(page);
+        console.info(
+          `typing latency ${JSON.stringify({
+            document: name,
+            engine,
+            painter,
+            mode: MODE,
+            keys: measured.frames.length,
+            inputMs: median(measured.input),
+            frameMs: median(measured.frames),
+            layoutsPerKey:
+              (countsAfter.layouts - countsBefore.layouts) / MEASURED_KEYS,
+            measuredBlocksPerKey:
+              (countsAfter.measuredBlocks - countsBefore.measuredBlocks) /
+              MEASURED_KEYS,
+          })}`,
+        );
+      });
+    }
+  }
+}
