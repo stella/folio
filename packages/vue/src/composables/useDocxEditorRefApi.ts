@@ -503,6 +503,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         })),
       };
     }
+    const activeSuggestionIds = new Set(
+      getSuggestions(view.state).map((s) => s.suggestionId),
+    );
     const canonical = opts.editor.applyCanonicalDocumentOperations({
       undefinedReferences,
       snapshot,
@@ -513,10 +516,20 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       },
       author: operationAuthor,
     });
-    if (canonical) return canonical;
-    const activeSuggestionIds = new Set(
-      getSuggestions(view.state).map((s) => s.suggestionId),
-    );
+    if (canonical) {
+      // A canonical session's suggestions are pending suggestions the host
+      // can export and restore like any other.
+      if (mode === "suggested" && canonical.status === "committed")
+        pendingSuggestionRegistry.recordApplied({
+          snapshot,
+          story: { type: "main" },
+          operations,
+          applied: canonical.applied,
+          author: operationAuthor,
+          activeSuggestionIds,
+        });
+      return canonical;
+    }
     // Through the document-operation applier, like the batch path, so a
     // result the save-time check refuses never reaches the editor.
     const { applied, skipped } = applyWithStagedOperationComments({
@@ -637,13 +650,29 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           undoHandle: null,
         };
       }
+      const activeBeforeCanonical = new Set(
+        getSuggestions(view.state).map((s) => s.suggestionId),
+      );
       const canonical = opts.editor.applyCanonicalDocumentOperations({
         undefinedReferences,
         snapshot,
         batch,
         author: operationAuthor,
       });
-      if (canonical) return canonical;
+      if (canonical) {
+        // A canonical session's suggestions are pending suggestions the host
+        // can export and restore like any other.
+        if (batch.mode === "suggested" && canonical.status === "committed")
+          pendingSuggestionRegistry.recordApplied({
+            snapshot,
+            story: { type: "main" },
+            operations: batch.operations,
+            applied: canonical.applied,
+            author: operationAuthor,
+            activeSuggestionIds: activeBeforeCanonical,
+          });
+        return canonical;
+      }
       const existingUndoEntry = documentOperationUndoEntries.at(-1);
       if (
         existingUndoEntry &&

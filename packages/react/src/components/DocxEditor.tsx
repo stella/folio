@@ -3990,6 +3990,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             };
           }
 
+          // Suggestions already pending before the batch, as the default
+          // path reads them, so the registry records only the new ones.
+          const activeBeforeCanonical = new Set(
+            getSuggestions(view.state).map((s) => s.suggestionId),
+          );
           const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations(
             {
               undefinedReferences,
@@ -3998,7 +4003,20 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               author: operationAuthor,
             },
           );
-          if (canonical) return canonical;
+          if (canonical) {
+            // A canonical session's suggestions are pending suggestions the
+            // host can export and restore like any other.
+            if (batch.mode === "suggested" && canonical.status === "committed")
+              pendingSuggestionRegistryRef.current.recordApplied({
+                snapshot,
+                story: { type: "main" },
+                operations: batch.operations,
+                applied: canonical.applied,
+                author: operationAuthor,
+                activeSuggestionIds: activeBeforeCanonical,
+              });
+            return canonical;
+          }
           const existingUndoEntry =
             documentOperationUndoEntriesRef.current.at(-1);
           if (
@@ -4141,6 +4159,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             };
           }
 
+          const activeSuggestionIds = new Set(
+            getSuggestions(view.state).map((s) => s.suggestionId),
+          );
           const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations(
             {
               undefinedReferences,
@@ -4153,12 +4174,22 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               author: operationAuthor,
             },
           );
-          if (canonical) return canonical;
+          if (canonical) {
+            // A canonical session's suggestions are pending suggestions the
+            // host can export and restore like any other.
+            if (mode === "suggested" && canonical.status === "committed")
+              pendingSuggestionRegistryRef.current.recordApplied({
+                snapshot,
+                story: { type: "main" },
+                operations,
+                applied: canonical.applied,
+                author: operationAuthor,
+                activeSuggestionIds,
+              });
+            return canonical;
+          }
 
           const createdComments: Comment[] = [];
-          const activeSuggestionIds = new Set(
-            getSuggestions(view.state).map((s) => s.suggestionId),
-          );
           const { applied, skipped } = applyFolioDocumentOperations({
             undefinedReferences,
             view,
