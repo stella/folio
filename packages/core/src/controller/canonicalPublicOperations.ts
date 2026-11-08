@@ -28,6 +28,7 @@ import {
   type ParagraphPropsPatch,
   pendingSuggestionIdsIn,
   type RunPropsPatch,
+  storyParagraphs,
   type TextPosition,
 } from "@stll/docx-core/ops";
 
@@ -1019,21 +1020,19 @@ export class CanonicalPublicOperations {
             commentId = id.value;
             break;
           }
-          const before = findStoryBody(document, story)?.content.find(
-            (block) =>
-              block.type === "paragraph" &&
-              block.paraId === comment.from.blockId,
-          );
-          const after = findStoryBody(nextDocument, story)?.content.find(
-            (block) =>
-              block.type === "paragraph" &&
-              block.paraId === comment.from.blockId,
-          );
-          if (
-            id.isErr() ||
-            before?.type !== "paragraph" ||
-            after?.type !== "paragraph"
-          ) {
+          // The anchor paragraph at any depth: in a table cell or a content
+          // control as much as in the story's own block list.
+          const anchorIn = (current: Document) => {
+            const body = findStoryBody(current, story);
+            return body === undefined
+              ? undefined
+              : storyParagraphs(body).find(
+                  ({ paragraph }) => paragraph.paraId === comment.from.blockId,
+                )?.paragraph;
+          };
+          const before = anchorIn(document);
+          const after = anchorIn(nextDocument);
+          if (id.isErr() || before === undefined || after === undefined) {
             refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
             skip(
               operation.id,

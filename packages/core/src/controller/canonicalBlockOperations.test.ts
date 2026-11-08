@@ -590,3 +590,35 @@ describe("a block move matches the default engine", () => {
           expect(xml).toContain("<w:moveTo ");
         });
 });
+
+describe("a comment on an edit in a table cell matches the default engine", () => {
+  const operation = {
+    id: "op",
+    type: "replaceInBlock",
+    blockId: "10000004",
+    find: "Cell",
+    replace: "Box",
+    comment: { text: "Inside the table" },
+  } as const satisfies FolioDocumentOperation;
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(mode, async () => {
+      const source = await packageOf(BODIES["before a table"]);
+      const expected = await outcomes(
+        await viaDefaultEngine(source, operation, mode),
+      );
+      expect(expected.comments.pending).toHaveLength(1);
+      const actual = await outcomes(
+        await viaCanonicalEngine(source, operation, mode),
+      );
+      // Pending, the engines order the struck and the new words of a tracked
+      // replacement differently (its own scoreboard item); everything else,
+      // and the comment once the change is accepted, is the same.
+      if (mode === "tracked-changes") {
+        expect(actual.comments.pending).toHaveLength(1);
+        expect({ ...actual, comments: actual.comments.accepted }).toEqual({
+          ...expected,
+          comments: expected.comments.accepted,
+        });
+      } else expect(actual).toEqual(expected);
+    });
+});
