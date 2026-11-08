@@ -193,15 +193,32 @@ export const buildStructuralDocumentPatch = ({
   // such as empty tags and attribute order. Unmodeled table bytes stay in source.
   const sourceBody = parseDocumentBody(originalXml);
   const currentBody = parseDocumentBody(serializedXml);
-  const barriers = (body: typeof sourceBody) => ({
-    blocks: body.content.filter((block) => block.type !== "paragraph"),
-    finalSectionProperties: body.finalSectionProperties,
-    background: body.background,
-  });
+  const barriers = (body: typeof sourceBody) =>
+    body.content.filter((block) => block.type !== "paragraph");
+  const sourceBarriers = barriers(sourceBody);
+  const currentBarriers = barriers(currentBody);
   if (
-    canonicalJson(barriers(sourceBody)) !== canonicalJson(barriers(currentBody))
+    sourceBarriers.length !== currentBarriers.length ||
+    canonicalJson({
+      finalSectionProperties: sourceBody.finalSectionProperties,
+      background: sourceBody.background,
+    }) !==
+      canonicalJson({
+        finalSectionProperties: currentBody.finalSectionProperties,
+        background: currentBody.background,
+      })
   )
     return null;
+  // A table whose content changed is written whole from the serialized part;
+  // every other table keeps its source bytes, including what the model does
+  // not represent.
+  const changedTables = new Set<number>();
+  for (const [index, block] of sourceBarriers.entries()) {
+    const next = currentBarriers[index];
+    if (canonicalJson(block) === canonicalJson(next)) continue;
+    if (block.type !== "table" || next?.type !== "table") return null;
+    changedTables.add(index);
+  }
 
   const indexBlocks = (blocks: readonly BodyBlock[]) => {
     let barrier = 0;
@@ -214,6 +231,8 @@ export const buildStructuralDocumentPatch = ({
     }
     return indexed;
   };
+  const barrierOf = (key: string) =>
+    key.startsWith("barrier:") ? Number(key.slice("barrier:".length)) : -1;
   const before = indexBlocks(source.blocks);
   const after = indexBlocks(current.blocks);
   const survivingBefore = [...before.keys()].filter((key) => after.has(key));
@@ -246,7 +265,7 @@ export const buildStructuralDocumentPatch = ({
     }
     const id = paraIdAttribute(block.element)?.toUpperCase();
     const replacement =
-      id !== undefined && changed.has(id)
+      (id !== undefined && changed.has(id)) || changedTables.has(barrierOf(key))
         ? fragmentFor(block)
         : originalXml.slice(original.start, original.end);
     if (replacement === null) return null;

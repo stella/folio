@@ -246,6 +246,9 @@ describe("table structure commands in the canonical session", () => {
       expect(
         shapeOf(await parseDocx(saved.buffer, { preloadFonts: false })),
       ).toEqual(expected);
+      // The save splices the table rather than falling back to a full write;
+      // removing the whole table still takes the full write.
+      if (expected !== null) expect(saved.diagnostics).toEqual([]);
       const undone = session.prepareUndo(afterState).unwrap();
       expect(undone.publish().isOk()).toBe(true);
       expect(session.document).toEqual(before);
