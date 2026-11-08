@@ -111,66 +111,58 @@ const countedInFull = (document: Document) => {
 };
 
 describe("the id census of a shared document", () => {
-  for (const [name, documents] of [
-    ["any document", documentArbitrary],
-    ["a review document", reviewDocumentArbitrary],
-  ] as const)
-    test(`equals a census walking every record over a run of edits, ${name}`, async () => {
-      await assertProperty(
-        fc.property(
-          documents,
-          fc.boolean(),
-          fc.array(
-            fc.record({
-              seed: opSeedArbitrary,
-              tracked: fc.boolean(),
-              story: fc.nat(),
-              // Typing into one of the stacked rows, whose control the census
-              // counts once across both.
-              row: fc.constantFrom(undefined, 0, 1),
-            }),
-            { minLength: 1, maxLength: 12 },
-          ),
-          (generated, stacked, edits) => {
-            let document = stacked
-              ? withStackedRowControl(generated)
-              : generated;
-            expect(counted(document)).toEqual(countedInFull(document));
-            edits.forEach(
-              ({ seed, tracked, story: storyIndex, row }, index) => {
-                const stories = documentStories(document);
-                const story =
-                  stories[storyIndex % stories.length] ?? OP_STORIES.MAIN;
-                const target =
-                  stacked && row !== undefined
-                    ? STACKED_ROW_PARAGRAPHS[row]
-                    : undefined;
-                const drawn = (): DocumentOp =>
-                  tracked && story === OP_STORIES.MAIN
-                    ? trackedOpFor(document, seed, index)
-                    : opForStory({ document, seed, story });
-                const op: DocumentOp =
-                  target === undefined
-                    ? drawn()
-                    : {
-                        type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                        at: {
-                          story: OP_STORIES.MAIN,
-                          blockId: target,
-                          offset: 0,
-                        },
-                        text: "x",
-                        runProps: INHERIT_RUN_PROPS,
-                      };
-                const applied = applyDocumentOp(document, op);
-                if (applied.isErr()) return;
-                document = applied.value.document;
-                expect(counted(document)).toEqual(countedInFull(document));
-              },
-            );
-          },
+  test("equals a census walking every record over a run of edits", async () => {
+    await assertProperty(
+      fc.property(
+        fc.oneof(documentArbitrary, reviewDocumentArbitrary),
+        fc.boolean(),
+        fc.array(
+          fc.record({
+            seed: opSeedArbitrary,
+            tracked: fc.boolean(),
+            story: fc.nat(),
+            // Typing into one of the stacked rows, whose control the census
+            // counts once across both.
+            row: fc.constantFrom(undefined, 0, 1),
+          }),
+          { minLength: 1, maxLength: 12 },
         ),
-        { id: `identity census shares records soundly, ${name}`, numRuns: 120 },
-      );
-    });
+        (generated, stacked, edits) => {
+          let document = stacked ? withStackedRowControl(generated) : generated;
+          expect(counted(document)).toEqual(countedInFull(document));
+          edits.forEach(({ seed, tracked, story: storyIndex, row }, index) => {
+            const stories = documentStories(document);
+            const story =
+              stories[storyIndex % stories.length] ?? OP_STORIES.MAIN;
+            const target =
+              stacked && row !== undefined
+                ? STACKED_ROW_PARAGRAPHS[row]
+                : undefined;
+            const drawn = (): DocumentOp =>
+              tracked && story === OP_STORIES.MAIN
+                ? trackedOpFor(document, seed, index)
+                : opForStory({ document, seed, story });
+            const op: DocumentOp =
+              target === undefined
+                ? drawn()
+                : {
+                    type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                    at: {
+                      story: OP_STORIES.MAIN,
+                      blockId: target,
+                      offset: 0,
+                    },
+                    text: "x",
+                    runProps: INHERIT_RUN_PROPS,
+                  };
+            const applied = applyDocumentOp(document, op);
+            if (applied.isErr()) return;
+            document = applied.value.document;
+            expect(counted(document)).toEqual(countedInFull(document));
+          });
+        },
+      ),
+      { id: "identity census shares records soundly", numRuns: 200 },
+    );
+  });
 });
