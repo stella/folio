@@ -31,6 +31,49 @@ export const CANONICAL_GAP = {
 
 export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
 
+/**
+ * Rules a document states for itself. A refusal under one is the correct
+ * outcome and stays after the cutover; it is never a gap to retire.
+ */
+export const CANONICAL_RULE: {
+  readonly contentControlLock: "contentControlLock";
+} = {
+  contentControlLock: "contentControlLock",
+} as const;
+
+export type CanonicalRule =
+  (typeof CANONICAL_RULE)[keyof typeof CANONICAL_RULE];
+
+/** The editor message, in the folio catalog, a host shows for a refusal under each rule. */
+export const CANONICAL_RULE_MESSAGE_KEYS: {
+  readonly contentControlLock: "editor.contentLocked";
+} = {
+  contentControlLock: "editor.contentLocked",
+} as const satisfies Record<CanonicalRule, string>;
+
+/**
+ * What a host shows for a refusal: the editor's own message for a rule the
+ * document states, which a host translates, and the session's for a gap.
+ */
+export const canonicalRefusalNotice = (
+  ground: CanonicalRefusalGround,
+  message: string,
+  translate: (
+    key: (typeof CANONICAL_RULE_MESSAGE_KEYS)[CanonicalRule],
+  ) => string,
+): string =>
+  ground.rule === undefined
+    ? message
+    : translate(CANONICAL_RULE_MESSAGE_KEYS[ground.rule]);
+
+/**
+ * The ground for a refusal: a capability the session does not have yet, or a
+ * rule the document states. A host tells "not supported yet" from "not
+ * allowed" by which one is present.
+ */
+export type CanonicalRefusalGround =
+  { gap: CanonicalGap; rule?: never } | { rule: CanonicalRule; gap?: never };
+
 type CanonicalCapability = {
   kind: "routing" | "refusal" | "mutation-source";
   adapters: readonly ("react" | "vue")[];

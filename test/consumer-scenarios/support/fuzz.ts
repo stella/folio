@@ -605,7 +605,10 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<StepEffect> => {
         accept ? "accept" : "reject",
       );
       done(
-        String(accept ? flow.reviewer.acceptAll() : flow.reviewer.rejectAll()),
+        String(
+          (accept ? flow.reviewer.acceptAll() : flow.reviewer.rejectAll())
+            .resolved,
+        ),
       );
       await assertResolvedTo(
         flow.reviewer,

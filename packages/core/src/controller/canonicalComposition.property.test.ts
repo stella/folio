@@ -74,7 +74,7 @@ const createLateFinalRig = (
     refuse: (message) =>
       refusals.push(
         new CanonicalSessionError({
-          gap: CANONICAL_GAP.dispatch,
+          ground: { gap: CANONICAL_GAP.dispatch },
           message,
           reason: "refused",
         }),

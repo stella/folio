@@ -345,6 +345,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.",
       "editor": {
         "accessibleName": "Document editor",
+        "contentLocked": "This part of the document is locked.",
         "editing": "Editing",
         "editingDescription": "Edit the document directly",
         "outlineDepthAll": "All levels",
@@ -640,6 +641,7 @@ export const CATALOGS = {
         "watermark": "Watermark"
       },
       "trackedChanges": {
+        "heldByLock": "A locked content control prevents accepting or rejecting this change.",
         "replaced": "Replaced",
         "unknown": "Unknown",
         "with": "with"
@@ -1007,6 +1009,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Diese Bearbeitungssitzung wurde an anderer Stelle übernommen.",
       "editor": {
         "accessibleName": "Dokumenteditor",
+        "contentLocked": "Dieser Teil des Dokuments ist gesperrt.",
         "editing": "Bearbeiten",
         "editingDescription": "Dokument direkt bearbeiten",
         "outlineDepthAll": "Alle Ebenen",
@@ -1302,6 +1305,7 @@ export const CATALOGS = {
         "watermark": "Wasserzeichen"
       },
       "trackedChanges": {
+        "heldByLock": "Ein gesperrtes Inhaltssteuerelement verhindert, dass diese Änderung angenommen oder abgelehnt wird.",
         "replaced": "Ersetzt",
         "unknown": "Unbekannt",
         "with": "durch"
@@ -1669,6 +1673,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Cette session de modification a été reprise ailleurs.",
       "editor": {
         "accessibleName": "Éditeur de documents",
+        "contentLocked": "Cette partie du document est verrouillée.",
         "editing": "Modification",
         "editingDescription": "Modifier directement le document",
         "outlineDepthAll": "Tous les niveaux",
@@ -1964,6 +1969,7 @@ export const CATALOGS = {
         "watermark": "Filigrane"
       },
       "trackedChanges": {
+        "heldByLock": "Un contrôle de contenu verrouillé empêche d’accepter ou de refuser cette modification.",
         "replaced": "Remplacé",
         "unknown": "Inconnu",
         "with": "par"
@@ -2331,6 +2337,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Esta sesión de edición se tomó en otro lugar.",
       "editor": {
         "accessibleName": "Editor de documentos",
+        "contentLocked": "Esta parte del documento está bloqueada.",
         "editing": "Edición",
         "editingDescription": "Editar el documento directamente",
         "outlineDepthAll": "Todos los niveles",
@@ -2626,6 +2633,7 @@ export const CATALOGS = {
         "watermark": "Marca de agua"
       },
       "trackedChanges": {
+        "heldByLock": "Un control de contenido bloqueado impide aceptar o rechazar este cambio.",
         "replaced": "Reemplazado",
         "unknown": "Desconocido",
         "with": "por"
@@ -2993,6 +3001,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Tento dokument byl otevřen k úpravám v jiné kartě, okně nebo zařízení, takže byla tato relace ukončena. Neuložené místní změny zůstávají zachovány — otevřete dokument znovu a pokračujte.",
       "editor": {
         "accessibleName": "Editor dokumentů",
+        "contentLocked": "Tato část dokumentu je uzamčená.",
         "editing": "Úpravy",
         "editingDescription": "Upravovat dokument přímo",
         "outlineDepthAll": "Vše",
@@ -3288,6 +3297,7 @@ export const CATALOGS = {
         "watermark": "Vodoznak"
       },
       "trackedChanges": {
+        "heldByLock": "Uzamčený ovládací prvek obsahu brání přijetí nebo odmítnutí této změny.",
         "replaced": "Nahrazeno",
         "unknown": "Neznámý",
         "with": "za"
@@ -3655,6 +3665,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "فتح علامة تبويب أو نافذة أو جهاز آخر هذا المستند للتعديل، لذا تم تحرير هذه الجلسة. تم الحفاظ على التغييرات المحلية غير المحفوظة؛ أعد فتح المستند للمتابعة.",
       "editor": {
         "accessibleName": "محرر المستندات",
+        "contentLocked": "هذا الجزء من المستند مقفل.",
         "editing": "تحرير",
         "editingDescription": "تحرير المستند مباشرةً",
         "outlineDepthAll": "كل المستويات",
@@ -3950,6 +3961,7 @@ export const CATALOGS = {
         "watermark": "علامة مائية"
       },
       "trackedChanges": {
+        "heldByLock": "يمنع عنصر تحكم محتوى مقفل قبول هذا التغيير أو رفضه.",
         "replaced": "تم الاستبدال",
         "unknown": "غير معروف",
         "with": "بـ"
@@ -4317,6 +4329,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "See muutmisseanss võeti mujal üle.",
       "editor": {
         "accessibleName": "Dokumendiredaktor",
+        "contentLocked": "See dokumendi osa on lukustatud.",
         "editing": "Redigeerimine",
         "editingDescription": "Redigeerige dokumenti otse",
         "outlineDepthAll": "Kõik tasemed",
@@ -4612,6 +4625,7 @@ export const CATALOGS = {
         "watermark": "Vesimärk"
       },
       "trackedChanges": {
+        "heldByLock": "Lukustatud sisujuhtelement ei luba seda muudatust vastu võtta ega tagasi lükata.",
         "replaced": "Asendatud",
         "unknown": "Tundmatu",
         "with": "väärtusega"
@@ -4979,6 +4993,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "כרטיסייה, חלון או מכשיר אחר פתחו מסמך זה לעריכה, ולכן הפעלה זו שוחררה. שינויים מקומיים שלא נשמרו נשמרו — פתח מחדש את המסמך כדי להמשיך.",
       "editor": {
         "accessibleName": "עורך מסמכים",
+        "contentLocked": "חלק זה של המסמך נעול.",
         "editing": "עריכה",
         "editingDescription": "ערוך את המסמך ישירות",
         "outlineDepthAll": "כל הרמות",
@@ -5274,6 +5289,7 @@ export const CATALOGS = {
         "watermark": "סימן מים"
       },
       "trackedChanges": {
+        "heldByLock": "פקד תוכן נעול מונע קבלה או דחייה של שינוי זה.",
         "replaced": "הוחלף",
         "unknown": "לא ידוע",
         "with": "ב-"
@@ -5641,6 +5657,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "किसी अन्य टैब, विंडो या डिवाइस ने इस दस्तावेज़ को संपादन के लिए खोला, इसलिए यह सत्र बंद कर दिया गया। सहेजे नहीं गए स्थानीय परिवर्तन सुरक्षित हैं — जारी रखने के लिए दस्तावेज़ फिर से खोलें।",
       "editor": {
         "accessibleName": "दस्तावेज़ संपादक",
+        "contentLocked": "दस्तावेज़ का यह हिस्सा लॉक है।",
         "editing": "संपादन",
         "editingDescription": "दस्तावेज़ को सीधे संपादित करें",
         "outlineDepthAll": "सभी स्तर",
@@ -5936,6 +5953,7 @@ export const CATALOGS = {
         "watermark": "वॉटरमार्क"
       },
       "trackedChanges": {
+        "heldByLock": "एक लॉक किया गया सामग्री नियंत्रण इस परिवर्तन को स्वीकार या अस्वीकार करने से रोकता है।",
         "replaced": "बदला गया",
         "unknown": "अज्ञात",
         "with": "से"
@@ -6303,6 +6321,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Ezt a szerkesztési munkamenetet máshol vették át.",
       "editor": {
         "accessibleName": "Dokumentumszerkesztő",
+        "contentLocked": "A dokumentum ezen része zárolva van.",
         "editing": "Szerkesztés",
         "editingDescription": "A dokumentum közvetlen szerkesztése",
         "outlineDepthAll": "Minden szint",
@@ -6598,6 +6617,7 @@ export const CATALOGS = {
         "watermark": "Vízjel"
       },
       "trackedChanges": {
+        "heldByLock": "Egy zárolt tartalomvezérlő megakadályozza a módosítás elfogadását vagy elutasítását.",
         "replaced": "Lecserélve",
         "unknown": "Ismeretlen",
         "with": "erre:"
@@ -6965,6 +6985,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Ši redagavimo sesija buvo perimta kitur.",
       "editor": {
         "accessibleName": "Dokumentų redaktorius",
+        "contentLocked": "Ši dokumento dalis užrakinta.",
         "editing": "Redagavimas",
         "editingDescription": "Redaguokite dokumentą tiesiogiai",
         "outlineDepthAll": "Visi lygiai",
@@ -7260,6 +7281,7 @@ export const CATALOGS = {
         "watermark": "Vandens ženklas"
       },
       "trackedChanges": {
+        "heldByLock": "Užrakintas turinio valdiklis neleidžia priimti ar atmesti šio pakeitimo.",
         "replaced": "Pakeista",
         "unknown": "Nežinoma",
         "with": "į"
@@ -7627,6 +7649,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Šo rediģēšanas sesiju pārņēma citur.",
       "editor": {
         "accessibleName": "Dokumentu redaktors",
+        "contentLocked": "Šī dokumenta daļa ir bloķēta.",
         "editing": "Rediģēšana",
         "editingDescription": "Rediģējiet dokumentu tieši",
         "outlineDepthAll": "Visi līmeņi",
@@ -7922,6 +7945,7 @@ export const CATALOGS = {
         "watermark": "Ūdenszīme"
       },
       "trackedChanges": {
+        "heldByLock": "Bloķēta satura vadīkla neļauj pieņemt vai noraidīt šīs izmaiņas.",
         "replaced": "Aizstāts",
         "unknown": "Nezināms",
         "with": "ar"
@@ -8289,6 +8313,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Ta sesja edycji została przejęta gdzie indziej.",
       "editor": {
         "accessibleName": "Edytor dokumentów",
+        "contentLocked": "Ta część dokumentu jest zablokowana.",
         "editing": "Edytowanie",
         "editingDescription": "Edytuj dokument bezpośrednio",
         "outlineDepthAll": "Wszystkie poziomy",
@@ -8584,6 +8609,7 @@ export const CATALOGS = {
         "watermark": "Znak wodny"
       },
       "trackedChanges": {
+        "heldByLock": "Zablokowana kontrolka zawartości uniemożliwia zaakceptowanie lub odrzucenie tej zmiany.",
         "replaced": "Zamieniono",
         "unknown": "Nieznane",
         "with": "na"
@@ -8951,6 +8977,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Esta sessão de edição foi assumida em outro lugar.",
       "editor": {
         "accessibleName": "Editor de documentos",
+        "contentLocked": "Esta parte do documento está bloqueada.",
         "editing": "Editando",
         "editingDescription": "Edite o documento diretamente",
         "outlineDepthAll": "Todos os níveis",
@@ -9246,6 +9273,7 @@ export const CATALOGS = {
         "watermark": "Marca-d'água"
       },
       "trackedChanges": {
+        "heldByLock": "Um controle de conteúdo bloqueado impede que esta alteração seja aceita ou rejeitada.",
         "replaced": "Substituído",
         "unknown": "Desconhecido",
         "with": "por"
@@ -9613,6 +9641,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Túto reláciu úprav prevzalo iné okno.",
       "editor": {
         "accessibleName": "Editor dokumentov",
+        "contentLocked": "Táto časť dokumentu je uzamknutá.",
         "editing": "Úpravy",
         "editingDescription": "Upravujte dokument priamo",
         "outlineDepthAll": "Všetky úrovne",
@@ -9908,6 +9937,7 @@ export const CATALOGS = {
         "watermark": "Vodotlač"
       },
       "trackedChanges": {
+        "heldByLock": "Uzamknutý ovládací prvok obsahu bráni prijatiu alebo odmietnutiu tejto zmeny.",
         "replaced": "Nahradené",
         "unknown": "Neznáme",
         "with": "za"
@@ -10275,6 +10305,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Başka bir sekme, pencere veya cihaz bu belgeyi düzenlemek için açtığından bu oturum sonlandırıldı. Kaydedilmemiş yerel değişiklikler korunur; devam etmek için belgeyi yeniden açın.",
       "editor": {
         "accessibleName": "Belge düzenleyici",
+        "contentLocked": "Belgenin bu bölümü kilitli.",
         "editing": "Düzenleme",
         "editingDescription": "Belgeyi doğrudan düzenleyin",
         "outlineDepthAll": "Tüm düzeyler",
@@ -10570,6 +10601,7 @@ export const CATALOGS = {
         "watermark": "Filigran"
       },
       "trackedChanges": {
+        "heldByLock": "Kilitli bir içerik denetimi bu değişikliğin kabul edilmesini veya reddedilmesini engelliyor.",
         "replaced": "Değiştirildi",
         "unknown": "Bilinmiyor",
         "with": "yerine"
@@ -10937,6 +10969,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "另一个标签页、窗口或设备已打开此文档进行编辑，因此本会话已释放。未保存的本地更改会保留，请重新打开文档以继续。",
       "editor": {
         "accessibleName": "文档编辑器",
+        "contentLocked": "文档的这一部分已锁定。",
         "editing": "编辑",
         "editingDescription": "直接编辑文档",
         "outlineDepthAll": "所有级别",
@@ -11232,6 +11265,7 @@ export const CATALOGS = {
         "watermark": "水印"
       },
       "trackedChanges": {
+        "heldByLock": "已锁定的内容控件阻止接受或拒绝此修订。",
         "replaced": "已替换",
         "unknown": "未知",
         "with": "替换为"

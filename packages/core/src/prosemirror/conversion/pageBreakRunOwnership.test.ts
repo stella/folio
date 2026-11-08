@@ -846,7 +846,8 @@ describe("page-break run ownership", () => {
       for (const decision of ["accept", "reject"] as const) {
         const reviewer = await FolioDocxReviewer.fromBuffer(pending);
         expect(
-          decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll(),
+          (decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll())
+            .resolved,
         ).toBe(2);
         const resolved = await reviewer.toBuffer();
         const reopened = await FolioDocxReviewer.fromBuffer(resolved);

@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Ši redagavimo sesija buvo perimta kitur.",
     "editor": {
       "accessibleName": "Dokumentų redaktorius",
+      "contentLocked": "Ši dokumento dalis užrakinta.",
       "editing": "Redagavimas",
       "editingDescription": "Redaguokite dokumentą tiesiogiai",
       "outlineDepthAll": "Visi lygiai",
@@ -636,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "Vandens ženklas"
     },
     "trackedChanges": {
+      "heldByLock": "Užrakintas turinio valdiklis neleidžia priimti ar atmesti šio pakeitimo.",
       "replaced": "Pakeista",
       "unknown": "Nežinoma",
       "with": "į"

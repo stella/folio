@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "另一个标签页、窗口或设备已打开此文档进行编辑，因此本会话已释放。未保存的本地更改会保留，请重新打开文档以继续。",
     "editor": {
       "accessibleName": "文档编辑器",
+      "contentLocked": "文档的这一部分已锁定。",
       "editing": "编辑",
       "editingDescription": "直接编辑文档",
       "outlineDepthAll": "所有级别",
@@ -636,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "水印"
     },
     "trackedChanges": {
+      "heldByLock": "已锁定的内容控件阻止接受或拒绝此修订。",
       "replaced": "已替换",
       "unknown": "未知",
       "with": "替换为"

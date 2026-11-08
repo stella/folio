@@ -117,6 +117,27 @@ export type FolioReviewChange = {
   blockId: string | null;
 };
 
+/** A tracked change an accept-all or reject-all left pending, and why. */
+export type FolioReviewResolutionSkip = {
+  /** The change's revision id, as {@link FolioReviewChange.id}. */
+  id: number;
+  /**
+   * `contentControlLock`: resolving it would change the content of a content
+   * control whose `w:lock` is `contentLocked` or `sdtContentLocked`, or remove
+   * one whose lock is `sdtLocked` or `sdtContentLocked`.
+   */
+  reason: "contentControlLock";
+  message: string;
+};
+
+/** What an accept-all or reject-all did. */
+export type FolioReviewResolution = {
+  /** The ordinary tracked changes it resolved. */
+  resolved: number;
+  /** The changes it left pending, each as it was. */
+  skipped: FolioReviewResolutionSkip[];
+};
+
 /** A comment anchor (the ranged text a comment marks) discovered in the body. */
 export type FolioCommentAnchor = {
   commentId: number;

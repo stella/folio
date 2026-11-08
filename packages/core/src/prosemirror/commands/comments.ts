@@ -19,6 +19,7 @@ import {
   type ParagraphMarkChangeKind,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
+import type { LockedControlViolation } from "@stll/docx-core/model";
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
@@ -71,6 +72,10 @@ import {
   revisionLayerRemovesContent,
   type RevisionSelection,
 } from "../keptRangeBoundaries";
+import {
+  lockedControlSpans,
+  lockedControlViolationOfTransform,
+} from "../lockedControls";
 import { resolveStateStory } from "../markupViewProjection";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
@@ -113,7 +118,10 @@ import {
   retainedTrackedRevisionMark,
   trackedRevisionPathOf,
 } from "../trackedRevisionPath";
-import { extractTrackedChanges } from "../utils/extractTrackedChanges";
+import {
+  extractTrackedChanges,
+  type TrackedChangeEntry,
+} from "../utils/extractTrackedChanges";
 import { paragraphContentOf } from "../zeroWidthAnchors";
 import {
   hasSerializableParagraphPropertyChange,
@@ -209,7 +217,7 @@ type RemovedRange = {
 const keptIn = (range: RemovedRange): PMNode[] =>
   range.removals.flatMap(({ kept }) => kept);
 
-function resolveChange(
+function resolveChangeUnguarded(
   from: number,
   to: number,
   mode: "accept" | "reject",
@@ -1771,6 +1779,99 @@ export function findParagraphBoundaryChangeAtPosition(
   return null;
 }
 
+/** The transaction `command` would dispatch on `state`, or `null` when it would not apply. */
+const attemptedTransaction = (
+  command: Command,
+  state: EditorState,
+  view?: Parameters<Command>[2],
+): Transaction | null => {
+  let attempted: Transaction | null = null;
+  const applies = command(
+    state,
+    (transaction) => {
+      attempted = transaction;
+    },
+    view,
+  );
+  return applies ? attempted : null;
+};
+
+/**
+ * `command`, refused when what it would do breaks a content control's lock
+ * (`lockedControlViolationOfTransform`). A document without a locked control
+ * runs it as it is.
+ */
+const honouringContentControlLocks =
+  (command: Command): Command =>
+  (state, dispatch, view) => {
+    if (lockedControlSpans(state.doc).length === 0)
+      return command(state, dispatch, view);
+    const attempted = attemptedTransaction(command, state, view);
+    if (attempted === null) return false;
+    if (lockedControlViolationOfTransform(attempted) !== null) return false;
+    dispatch?.(attempted);
+    return true;
+  };
+
+function resolveChange(
+  from: number,
+  to: number,
+  mode: "accept" | "reject",
+  revisionIds?: readonly number[],
+): Command {
+  return honouringContentControlLocks(
+    resolveChangeUnguarded(from, to, mode, revisionIds),
+  );
+}
+
+/**
+ * What the content-control locks say about resolving the tracked changes
+ * between `from` and `to` (only those of `revisionIds`, when given): `null`
+ * when they allow it or there is nothing there to resolve. A revision whose
+ * resolution would change a content-locked control's content, or remove a
+ * control locked against removal, stays pending.
+ */
+export const changeResolutionLockViolation = (
+  state: EditorState,
+  {
+    from,
+    to,
+    mode,
+    revisionIds,
+  }: {
+    from: number;
+    to: number;
+    mode: "accept" | "reject";
+    revisionIds?: readonly number[];
+  },
+): LockedControlViolation | null => {
+  if (lockedControlSpans(state.doc).length === 0) return null;
+  const attempted = attemptedTransaction(
+    resolveChangeUnguarded(from, to, mode, revisionIds),
+    state,
+  );
+  return attempted === null
+    ? null
+    : lockedControlViolationOfTransform(attempted);
+};
+
+/** {@link changeResolutionLockViolation} for the revisions `revisionIds`, wherever they are. */
+export const revisionResolutionLockViolation = (
+  state: EditorState,
+  revisionIds: number | readonly number[],
+  mode: "accept" | "reject",
+): LockedControlViolation | null => {
+  const range = findAIEditRevisionRange(state, revisionIds);
+  return range === null
+    ? null
+    : changeResolutionLockViolation(state, {
+        ...range,
+        mode,
+        revisionIds:
+          typeof revisionIds === "number" ? [revisionIds] : revisionIds,
+      });
+};
+
 /**
  * Accept a tracked change at the given range.
  * - Insertion: remove mark, keep text
@@ -1833,12 +1934,12 @@ const resolveAllChanges =
  * suggestions are present because this command cannot restage them.
  */
 export function acceptAllChanges(): Command {
-  const resolve = resolveAllChanges("accept");
-  return (state, dispatch) => {
+  const resolve = resolveAllChangesHonouringLocks("accept");
+  return (state, dispatch, view) => {
     // This generic command has no host operation queue to replay. A mixed
     // story must use the headless reviewer's acceptAll path instead.
     if (getSuggestions(state).length > 0) return false;
-    return resolve(state, dispatch);
+    return resolve(state, dispatch, view);
   };
 }
 
@@ -1846,8 +1947,77 @@ export function acceptAllChanges(): Command {
  * Reject all tracked changes in the document.
  */
 export function rejectAllChanges(): Command {
-  return resolveAllChanges("reject");
+  return resolveAllChangesHonouringLocks("reject");
 }
+
+/**
+ * The revisions of `state` that a content control's lock keeps from being
+ * resolved in `mode`, each with the lock's verdict: see
+ * {@link changeResolutionLockViolation}. Empty without a locked control.
+ */
+export const lockHeldRevisions = (
+  state: EditorState,
+  mode: "accept" | "reject",
+): Map<number, LockedControlViolation> => {
+  const held = new Map<number, LockedControlViolation>();
+  if (lockedControlSpans(state.doc).length === 0) return held;
+  for (const id of new Set(
+    extractTrackedChanges(state).entries.flatMap(trackedChangeEntryRevisionIds),
+  )) {
+    const violation = revisionResolutionLockViolation(state, id, mode);
+    if (violation !== null) held.set(id, violation);
+  }
+  return held;
+};
+
+/** Every revision id one sidebar entry stands for. */
+export const trackedChangeEntryRevisionIds = (
+  entry: TrackedChangeEntry,
+): number[] => [
+  ...new Set([
+    entry.revisionId,
+    ...(entry.insertionRevisionId === undefined
+      ? []
+      : [entry.insertionRevisionId]),
+    ...(entry.coalescedRevisionIds ?? []),
+  ]),
+];
+
+/**
+ * Resolve every tracked change a content control's lock allows. Without a
+ * change the locks hold, the whole story resolves in one pass, as before;
+ * otherwise each other change resolves on its own, in an editor view (a
+ * transaction each), and the held ones stay pending as they are. Without a
+ * view nothing resolves when any change is held.
+ */
+const resolveAllChangesHonouringLocks =
+  (mode: ResolveMode): Command =>
+  (state, dispatch, view) => {
+    const resolveAll = resolveAllChanges(mode);
+    if (lockedControlSpans(state.doc).length === 0)
+      return resolveAll(state, dispatch, view);
+    const attempted = attemptedTransaction(resolveAll, state, view);
+    if (attempted === null) return false;
+    if (lockedControlViolationOfTransform(attempted) === null) {
+      dispatch?.(attempted);
+      return true;
+    }
+    if (!dispatch) return true;
+    if (!view) return false;
+    const held = lockHeldRevisions(state, mode);
+    const ids = new Set(
+      extractTrackedChanges(state).entries.flatMap(
+        trackedChangeEntryRevisionIds,
+      ),
+    );
+    for (const id of [...ids].toReversed()) {
+      if (held.has(id)) continue;
+      const resolveOne =
+        mode === "accept" ? acceptAIEditRevision(id) : rejectAIEditRevision(id);
+      resolveOne(view.state, view.dispatch, view);
+    }
+    return true;
+  };
 
 /**
  * Resolve a complete state synchronously for a headless reader or writer.
@@ -3305,7 +3475,7 @@ export function rejectSuggestion(suggestionId: string): Command {
       const ranges = mergeSegments(entry.segments);
       const from = ranges[0]?.from ?? 0;
       const to = ranges.at(-1)?.to ?? from;
-      resolveChange(from, to, "reject", [...entry.revisionIds])(
+      resolveChangeUnguarded(from, to, "reject", [...entry.revisionIds])(
         state,
         (resolved) => {
           tr = resolved;
@@ -3384,12 +3554,11 @@ export function rejectAllSuggestions(): Command {
     // so whole-node inserts can be dropped from the same transaction below.
     let tr: Transaction | null = null;
     if (revisionIds.size > 0) {
-      resolveChange(0, state.doc.content.size, "reject", [...revisionIds])(
-        state,
-        (resolved) => {
-          tr = resolved;
-        },
-      );
+      resolveChangeUnguarded(0, state.doc.content.size, "reject", [
+        ...revisionIds,
+      ])(state, (resolved) => {
+        tr = resolved;
+      });
     }
     const workingTr: Transaction = tr ?? state.tr;
 
@@ -3508,10 +3677,11 @@ export function findChangeAtPosition(
     return { from, to };
   }
 
-  // Resolve the position and check marks at cursor
+  // Resolve the position and check marks at cursor. The parent may be an
+  // inline container, such as a content control, holding the text.
   const $pos = state.doc.resolve(from);
   const node = $pos.parent;
-  if (!node.isTextblock) {
+  if (!node.inlineContent) {
     return { from, to };
   }
 

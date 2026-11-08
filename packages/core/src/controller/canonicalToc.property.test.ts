@@ -322,7 +322,7 @@ test("TOC suggesting retains the named expected refusal without publishing headi
         expect(prepared.isErr()).toBe(true);
         if (prepared.isOk())
           return panic("Expected TOC refusal stopped reproducing");
-        expect(prepared.error.gap).toBe(
+        expect(prepared.error.ground.gap).toBe(
           CANONICAL_GAP.trackedHyperlinkResolution,
         );
         expect(session.document).toBe(before);

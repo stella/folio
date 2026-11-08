@@ -317,7 +317,7 @@ test.each([1, 2, 3, 4, 5, 6])(
             replayed = result.doc;
           }
           expect(replayed.eq(resolved.resolved)).toBe(true);
-          expect(tracked.acceptAll()).toBeGreaterThan(0);
+          expect(tracked.acceptAll().resolved).toBeGreaterThan(0);
         } else {
           expect(tracked.getChanges().length).toBeGreaterThan(0);
           // The removed mark and the properties it carries onto the paragraph

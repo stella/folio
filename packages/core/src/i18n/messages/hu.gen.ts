@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Ezt a szerkesztési munkamenetet máshol vették át.",
     "editor": {
       "accessibleName": "Dokumentumszerkesztő",
+      "contentLocked": "A dokumentum ezen része zárolva van.",
       "editing": "Szerkesztés",
       "editingDescription": "A dokumentum közvetlen szerkesztése",
       "outlineDepthAll": "Minden szint",
@@ -636,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "Vízjel"
     },
     "trackedChanges": {
+      "heldByLock": "Egy zárolt tartalomvezérlő megakadályozza a módosítás elfogadását vagy elutasítását.",
       "replaced": "Lecserélve",
       "unknown": "Ismeretlen",
       "with": "erre:"

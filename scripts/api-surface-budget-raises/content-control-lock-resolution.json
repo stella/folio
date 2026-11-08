@@ -1,0 +1,10 @@
+{
+  "core": {
+    "reportBytes": 1300,
+    "reportLines": 40
+  },
+  "vue": {
+    "reportBytes": 600,
+    "reportLines": 20
+  }
+}

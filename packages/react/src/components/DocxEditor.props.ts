@@ -98,6 +98,12 @@ export type ActiveTrackedChangeInfo = {
   date: string | null;
   from: number;
   to: number;
+  /**
+   * Whether a content control's lock keeps the change from being accepted or
+   * rejected: resolving it would change a content-locked control's content,
+   * or remove a control locked against removal.
+   */
+  heldByLock: { accept: boolean; reject: boolean };
 };
 
 export type DocxEditorProps = {

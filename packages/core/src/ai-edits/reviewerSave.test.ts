@@ -107,7 +107,7 @@ describe("FolioDocxReviewer.save", () => {
       await createDocx(document),
     );
 
-    expect(reviewer.rejectAll()).toBe(1);
+    expect(reviewer.rejectAll().resolved).toBe(1);
     const beforeSave = reviewer.getComments();
     expect(beforeSave).toEqual([]);
 

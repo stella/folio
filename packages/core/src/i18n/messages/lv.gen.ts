@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Šo rediģēšanas sesiju pārņēma citur.",
     "editor": {
       "accessibleName": "Dokumentu redaktors",
+      "contentLocked": "Šī dokumenta daļa ir bloķēta.",
       "editing": "Rediģēšana",
       "editingDescription": "Rediģējiet dokumentu tieši",
       "outlineDepthAll": "Visi līmeņi",
@@ -636,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "Ūdenszīme"
     },
     "trackedChanges": {
+      "heldByLock": "Bloķēta satura vadīkla neļauj pieņemt vai noraidīt šīs izmaiņas.",
       "replaced": "Aizstāts",
       "unknown": "Nezināms",
       "with": "ar"

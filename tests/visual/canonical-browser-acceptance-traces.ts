@@ -92,12 +92,12 @@ type AcceptanceSourceShape =
   (typeof canonicalBrowserAcceptances)[number]["trace"]["shape"];
 type SourceRefusal = Pick<
   CanonicalSessionError,
-  "name" | "gap" | "reason" | "message"
+  "name" | "ground" | "reason" | "message"
 >;
 
 const unsupportedInlineSource = {
   name: "CanonicalSessionError",
-  gap: CANONICAL_GAP.dispatch,
+  ground: { gap: CANONICAL_GAP.dispatch },
   reason: "refused",
   message:
     "Canonical sessions currently require plain paragraphs and supported inline atoms.",
@@ -105,7 +105,7 @@ const unsupportedInlineSource = {
 
 const unexpectedTableRefusal = {
   name: "CanonicalSessionError",
-  gap: CANONICAL_GAP.dispatch,
+  ground: { gap: CANONICAL_GAP.dispatch },
   reason: "refused",
   message: "Canonical table acceptance unexpectedly refused.",
 } as const satisfies SourceRefusal;

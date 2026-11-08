@@ -46,7 +46,7 @@ import { runsToClipboardContent } from '@stll/folio-core/utils/clipboard';
 import { ShallowRef } from 'vue';
 import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
-import { TrackedChangeEntry } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
+import { TrackedChangeEntry as TrackedChangeEntry_2 } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
 import { TrackedChangesResult } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
 import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
 
@@ -88,7 +88,13 @@ export const provideColorMode: (colorMode?: MaybeRefOrGetter<ColorMode>) => void
 
 export { runsToClipboardContent }
 
-export { TrackedChangeEntry }
+// @public
+export type TrackedChangeEntry = TrackedChangeEntry_2 & {
+    heldByLock?: {
+        accept: boolean;
+        reject: boolean;
+    };
+};
 
 export { TrackedChangesResult }
 
@@ -325,7 +331,9 @@ export type UseTableSelectionReturn = {
 };
 
 // @public
-export function useTrackedChanges(view: Ref<EditorView | null>, stateTick: Ref<number>): ComputedRef<TrackedChangesResult>;
+export function useTrackedChanges(view: Ref<EditorView | null>, stateTick: Ref<number>): ComputedRef<TrackedChangesResult & {
+entries: TrackedChangeEntry[];
+}>;
 
 // @public (undocumented)
 export function useVisualLineNavigation(pagesContainer: Ref<HTMLElement | null>): UseVisualLineNavigationReturn;

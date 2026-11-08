@@ -206,6 +206,18 @@ export type ConditionalFormatStyle = {
 };
 
 // @public
+export const CONTENT_CONTROL_LOCK: "contentControlLock";
+
+// @public
+export type ContentControlChange = "editContent" | "removeControl";
+
+// @public (undocumented)
+export type ContentControlLock = NonNullable<SdtProperties["lock"]>;
+
+// @public
+export const contentControlLockAllows: (lock: ContentControlLock | null | undefined, change: ContentControlChange) => boolean;
+
+// @public
 export const COUNTER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter", "ordinal", "cardinalText", "ordinalText", "hex", "chicago", "ideographDigital", "japaneseCounting", "aiueo", "iroha", "decimalFullWidth", "decimalHalfWidth", "japaneseLegal", "japaneseDigitalTenThousand", "decimalEnclosedCircle", "decimalFullWidth2", "aiueoFullWidth", "irohaFullWidth", "decimalZero", "bullet", "ganada", "chosung", "decimalEnclosedFullstop", "decimalEnclosedParen", "decimalEnclosedCircleChinese", "ideographEnclosedCircle", "ideographTraditional", "ideographZodiac", "ideographZodiacTraditional", "taiwaneseCounting", "ideographLegalTraditional", "taiwaneseCountingThousand", "taiwaneseDigital", "chineseCounting", "chineseLegalSimplified", "chineseCountingThousand", "koreanDigital", "koreanCounting", "koreanLegal", "koreanDigital2", "vietnameseCounting", "russianLower", "russianUpper", "none", "numberInDash", "hebrew1", "hebrew2", "arabicAlpha", "arabicAbjad", "hindiVowels", "hindiConsonants", "hindiNumbers", "hindiCounting", "thaiLetters", "thaiNumbers", "thaiCounting", "bahtText", "dollarText", "custom", "decimalZero3", "decimalZero4", "decimalZero5"];
 
 // @public (undocumented)
@@ -442,6 +454,9 @@ export type FieldType = "PAGE" | "NUMPAGES" | "NUMWORDS" | "NUMCHARS" | "DATE" |
 
 // @public
 export const finalizeParagraphFormatting: (formatting: ParagraphFormatting | undefined) => ParagraphFormatting | undefined;
+
+// @public
+export const firstLockedControlViolation: (controls: Iterable<LockedControlSpan>, touches: readonly LockedControlTouch[]) => LockedControlViolation | null;
 
 // @public
 export type FloatingTableProperties = {
@@ -865,6 +880,40 @@ export type ListRendering = {
     implicitChildLevelAdvances?: number;
     markerSecondSlotOffsetTwips?: number;
 };
+
+// @public
+export const lockedControlMessage: (input: LockedControlViolation) => string;
+
+// @public
+export type LockedControlSpan = {
+    lock: ContentControlLock;
+    from: number;
+    to: number;
+    contentFrom: number;
+    contentTo: number;
+};
+
+// @public
+export type LockedControlTouch = {
+    from: number;
+    to: number;
+    effect: "remove" | "edit";
+};
+
+// @public
+export type LockedControlViolation = {
+    lock: ContentControlLock;
+    change: ContentControlChange;
+};
+
+// @public
+export const lockedControlViolation: (control: LockedControlSpan, touch: LockedControlTouch) => LockedControlViolation | null;
+
+// @public
+export const locksContent: (lock: ContentControlLock | null | undefined) => lock is "contentLocked" | "sdtContentLocked";
+
+// @public
+export const locksControl: (lock: ContentControlLock | null | undefined) => lock is "sdtLocked" | "sdtContentLocked";
 
 // @public
 export type MarkupRangeMarker = {

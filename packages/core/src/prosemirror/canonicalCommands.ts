@@ -16,10 +16,25 @@ import type {
   TextEffect,
   UnderlineStyle,
 } from "../types/document";
+import type {
+  TableCellFormatting,
+  TableFormatting,
+  TableRowFormatting,
+} from "../types/formatting";
 import { canonicalSelectionRanges } from "./canonicalSelectionRange";
+
+/** One table, row or cell, addressed by a position inside its first paragraph. */
+export type CanonicalTableFormatTarget =
+  | { scope: "table"; at: number; patch: FormattingPatch<TableFormatting> }
+  | { scope: "row"; at: number; patch: FormattingPatch<TableRowFormatting> }
+  | { scope: "cell"; at: number; patch: FormattingPatch<TableCellFormatting> };
 
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
+  | {
+      type: "formatTable";
+      targets: readonly CanonicalTableFormatTarget[];
+    }
   | { type: "generateTOC"; at: number; title: string }
   | {
       type: "setHyperlink";

@@ -369,7 +369,7 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
                 panic(prepared.error.message);
               expect(["refused", "noChange"]).toContain(prepared.error.reason);
               if (mode.type === "suggesting" && intents.length > 0) {
-                expect(prepared.error.gap).toBe(
+                expect(prepared.error.ground.gap).toBe(
                   CANONICAL_GAP.trackedHyperlinkResolution,
                 );
               }

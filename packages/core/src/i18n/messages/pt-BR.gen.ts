@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Esta sessão de edição foi assumida em outro lugar.",
     "editor": {
       "accessibleName": "Editor de documentos",
+      "contentLocked": "Esta parte do documento está bloqueada.",
       "editing": "Editando",
       "editingDescription": "Edite o documento diretamente",
       "outlineDepthAll": "Todos os níveis",
@@ -636,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "Marca-d'água"
     },
     "trackedChanges": {
+      "heldByLock": "Um controle de conteúdo bloqueado impede que esta alteração seja aceita ou rejeitada.",
       "replaced": "Substituído",
       "unknown": "Desconhecido",
       "with": "por"

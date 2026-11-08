@@ -177,7 +177,11 @@ test.each([
       "prepareCanonicalCommands",
     ).mockImplementation(() =>
       Result.err(
-        new CanonicalSessionError({ gap, message, reason: "refused" }),
+        new CanonicalSessionError({
+          ground: { gap },
+          message,
+          reason: "refused",
+        }),
       ),
     );
     try {

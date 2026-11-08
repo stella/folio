@@ -945,6 +945,8 @@ const COMPARE_SKIP_DISPOSITION = {
   missingNumbering: "fatal",
   invalidResult: "fatal",
   pendingDeletion: "unwritable",
+  // A comparison's operations are not held to the locks (`comparisonApplying`).
+  contentControlLock: "fatal",
 } as const satisfies Record<FolioAIEditSkipReason, "fatal" | "unwritable">;
 
 export const getCompareSkipDisposition = (

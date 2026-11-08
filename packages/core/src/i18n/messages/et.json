@@ -337,6 +337,7 @@
     "editSessionTakenOver": "See muutmisseanss võeti mujal üle.",
     "editor": {
       "accessibleName": "Dokumendiredaktor",
+      "contentLocked": "See dokumendi osa on lukustatud.",
       "editing": "Redigeerimine",
       "editingDescription": "Redigeerige dokumenti otse",
       "outlineDepthAll": "Kõik tasemed",
@@ -632,6 +633,7 @@
       "watermark": "Vesimärk"
     },
     "trackedChanges": {
+      "heldByLock": "Lukustatud sisujuhtelement ei luba seda muudatust vastu võtta ega tagasi lükata.",
       "replaced": "Asendatud",
       "unknown": "Tundmatu",
       "with": "väärtusega"

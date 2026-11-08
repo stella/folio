@@ -692,6 +692,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "documentVersionMismatch") {
     return "the document changed after these edits were proposed; re-read it and regenerate the edits against the current version.";
   }
+  if (reason === "contentControlLock") {
+    return "the edit reaches inside a content control whose content is locked, or removes a control that is locked against removal (also by deleting the paragraph or text that holds it); nothing was applied. Leave that control as it is: edit only the text around it, or tell the user the document locks it.";
+  }
   if (reason === "protectedReference") {
     return "the edit would change or remove a footnote/endnote reference (a `[^1]` / `[^e1]` marker), or write a marker as text; a reference is not text. Keep every marker your `find` covers in the replacement, in order, or match only the words beside it.";
   }

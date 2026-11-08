@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Cette session de modification a été reprise ailleurs.",
     "editor": {
       "accessibleName": "Éditeur de documents",
+      "contentLocked": "Cette partie du document est verrouillée.",
       "editing": "Modification",
       "editingDescription": "Modifier directement le document",
       "outlineDepthAll": "Tous les niveaux",
@@ -636,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "Filigrane"
     },
     "trackedChanges": {
+      "heldByLock": "Un contrôle de contenu verrouillé empêche d’accepter ou de refuser cette modification.",
       "replaced": "Remplacé",
       "unknown": "Inconnu",
       "with": "par"

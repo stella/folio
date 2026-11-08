@@ -4,7 +4,10 @@ import { EditorState } from "prosemirror-state";
 import type { Command, Plugin, Transaction } from "prosemirror-state";
 
 import {
+  CONTENT_CONTROL_LOCK,
   finalizeParagraphFormatting,
+  lockedControlMessage,
+  type LockedControlViolation,
   numberingLevelEntries,
   REVIEW_CARRIERS,
   setDocumentBodyComments,
@@ -102,6 +105,7 @@ import {
   rejectAllSuggestions,
   rejectSuggestion,
   resolveAllChangesInHeadlessState,
+  revisionResolutionLockViolation,
   suggestionIdOfRevision,
 } from "../prosemirror/commands/comments";
 import { sectionRejectProperties } from "../prosemirror/commands/propertyChangeScope";
@@ -129,6 +133,7 @@ import {
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
+import { lockedControlSpans } from "../prosemirror/lockedControls";
 import {
   deleteNoteWithReference,
   noteDeletionRevisions,
@@ -192,6 +197,8 @@ import {
 import {
   type FolioReviewChange,
   type FolioReviewChangeKind,
+  type FolioReviewResolution,
+  type FolioReviewResolutionSkip,
   getCommentAnchorsFromDoc,
   getTrackedChangeGroupIdsFromDoc,
   getTrackedChangesFromDoc,
@@ -977,7 +984,12 @@ const formatStorySnapshotForLLM = (
 // can produce the same `FolioReviewChange[]` from its own doc; the reviewer
 // delegates to `getTrackedChangesFromDoc` and re-exports the types here so its
 // public surface is unchanged.
-export type { FolioReviewChange, FolioReviewChangeKind } from "./read";
+export type {
+  FolioReviewChange,
+  FolioReviewChangeKind,
+  FolioReviewResolution,
+  FolioReviewResolutionSkip,
+} from "./read";
 
 /** Filter for {@link FolioDocxReviewer.getChanges}. */
 export type FolioReviewChangeFilter = {
@@ -1110,6 +1122,26 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
  * const reviewed = await reviewer.toBuffer();
  * ```
  */
+/**
+ * The changes of a story, by revision id, that a content control's lock keeps
+ * from being resolved in `mode`: every physical revision of one change is
+ * resolved together, so the change is held when resolving them would break a
+ * lock. Empty without a locked control.
+ */
+const lockHeldChanges = (
+  state: EditorState,
+  mode: "accept" | "reject",
+): Map<number, LockedControlViolation> => {
+  const held = new Map<number, LockedControlViolation>();
+  if (lockedControlSpans(state.doc).length === 0) return held;
+  for (const { id } of getTrackedChangesFromDoc(state.doc)) {
+    const ids = getTrackedChangeGroupIdsFromDoc(state.doc, id);
+    const violation = revisionResolutionLockViolation(state, ids, mode);
+    if (violation !== null) held.set(id, violation);
+  }
+  return held;
+};
+
 export class FolioDocxReviewer {
   /** Default author for tracked changes and comments. */
   readonly author: string;
@@ -2715,7 +2747,10 @@ export class FolioDocxReviewer {
    * redline. Pass a {@link FolioReviewChange} from {@link getChanges} or its
    * revision id. Reuses the editor's own accept command headlessly, so the
    * resolved state persists on {@link toBuffer}. Returns `false` when the
-   * revision is no longer present (already resolved, or never existed).
+   * revision is no longer present (already resolved, or never existed), or
+   * when a content control's lock holds it: accepting would change a
+   * content-locked control's content or remove a control locked against
+   * removal. A held change stays pending as it is.
    */
   acceptChange(target: FolioReviewChange | number): boolean {
     return this.resolveWithSectionReferenceHistory(() =>
@@ -2728,6 +2763,8 @@ export class FolioDocxReviewer {
   private acceptChangeInternal(target: FolioReviewChange | number): boolean {
     const id = revisionIdOf(target);
     const ids = getTrackedChangeGroupIdsFromDoc(this.state.doc, id);
+    if (revisionResolutionLockViolation(this.state, ids, "accept") !== null)
+      return false;
     // A suggested change first becomes an ordinary tracked change: a
     // suggested paragraph insert is flagged on its node, which accepting the
     // revision marks alone leaves behind, and a save drops a flagged node.
@@ -2763,6 +2800,8 @@ export class FolioDocxReviewer {
   private rejectChangeInternal(target: FolioReviewChange | number): boolean {
     const id = revisionIdOf(target);
     const ids = getTrackedChangeGroupIdsFromDoc(this.state.doc, id);
+    if (revisionResolutionLockViolation(this.state, ids, "reject") !== null)
+      return false;
     // A suggestion is rejected whole, node flags included.
     const suggestionId = suggestionIdOfRevision(this.state, id);
     if (
@@ -2839,22 +2878,28 @@ export class FolioDocxReviewer {
    * Every story, not just the body: a revision in a header or a footnote is
    * one a reviewer meant to resolve, and leaving it behind means an accepted
    * document still carries a redline nobody can see from the body.
+   *
+   * A change a content control's lock holds (see {@link acceptChange}) stays
+   * pending as it is and is listed in `skipped`; `resolved` counts the
+   * ordinary changes resolved.
    */
-  acceptAll(): number {
-    return this.resolveWithSectionReferenceHistory(
-      () =>
-        this.resolveEveryStory("accept") +
-        this.resolveEveryFinalSectionChange("accept"),
-    );
+  acceptAll(): FolioReviewResolution {
+    return this.resolveAll("accept");
   }
 
   /** Reject every tracked change in the package. See {@link acceptAll}. */
-  rejectAll(): number {
-    return this.resolveWithSectionReferenceHistory(
-      () =>
-        this.resolveEveryStory("reject") +
-        this.resolveEveryFinalSectionChange("reject"),
-    );
+  rejectAll(): FolioReviewResolution {
+    return this.resolveAll("reject");
+  }
+
+  private resolveAll(mode: "accept" | "reject"): FolioReviewResolution {
+    return this.resolveWithSectionReferenceHistory(() => {
+      const skipped: FolioReviewResolutionSkip[] = [];
+      const resolved =
+        this.resolveEveryStory(mode, skipped) +
+        this.resolveEveryFinalSectionChange(mode);
+      return { resolved, skipped };
+    });
   }
 
   private resolveWithSectionReferenceHistory<T>(resolve: () => T): T {
@@ -2913,9 +2958,12 @@ export class FolioDocxReviewer {
     return propertyChanges?.length ?? 0;
   }
 
-  private resolveEveryStory(mode: "accept" | "reject"): number {
+  private resolveEveryStory(
+    mode: "accept" | "reject",
+    skipped: FolioReviewResolutionSkip[],
+  ): number {
     return this.withNotesFollowingReferences(() =>
-      this.resolveEveryStoryOnce(mode),
+      this.resolveEveryStoryOnce(mode, skipped),
     );
   }
 
@@ -3022,7 +3070,10 @@ export class FolioDocxReviewer {
     return keys;
   }
 
-  private resolveEveryStoryOnce(mode: "accept" | "reject"): number {
+  private resolveEveryStoryOnce(
+    mode: "accept" | "reject",
+    skipped: FolioReviewResolutionSkip[],
+  ): number {
     let count = 0;
     const resolvedStories: {
       handle: FolioEditableDocumentStoryHandle;
@@ -3033,6 +3084,16 @@ export class FolioDocxReviewer {
     for (const handle of this.listStoryHandlesInternal()) {
       const state = this.getEditableStoryState(handle);
       if (!state) {
+        continue;
+      }
+      const held = lockHeldChanges(state, mode);
+      if (held.size > 0) {
+        count += this.resolveStoryAroundHeldChanges(
+          handle,
+          mode,
+          held,
+          skipped,
+        );
         continue;
       }
       const ordinaryCount = getTrackedChangesFromDoc(state.doc).filter(
@@ -3073,6 +3134,41 @@ export class FolioDocxReviewer {
       for (const refresh of refreshes) refresh(activeSuggestionIds);
     }
     return count;
+  }
+
+  /**
+   * Resolve each change of a story a content control's lock does not hold, on
+   * its own: the one-pass resolver takes the whole story or nothing. The held
+   * changes stay pending as they are and are reported in `skipped`.
+   */
+  private resolveStoryAroundHeldChanges(
+    handle: FolioEditableDocumentStoryHandle,
+    mode: "accept" | "reject",
+    held: ReadonlyMap<number, LockedControlViolation>,
+    skipped: FolioReviewResolutionSkip[],
+  ): number {
+    for (const [id, violation] of held)
+      skipped.push({
+        id,
+        reason: CONTENT_CONTROL_LOCK,
+        message: lockedControlMessage(violation),
+      });
+    const state = this.getEditableStoryState(handle);
+    if (!state) return 0;
+    let resolved = 0;
+    for (const { id } of getTrackedChangesFromDoc(state.doc).toReversed()) {
+      if (held.has(id)) continue;
+      const current = this.getEditableStoryState(handle);
+      if (!current) break;
+      const ids = getTrackedChangeGroupIdsFromDoc(current.doc, id);
+      if (ids.length === 0) continue;
+      const resolveOne =
+        mode === "accept"
+          ? acceptAIEditRevision(ids)
+          : rejectAIEditRevision(ids);
+      if (this.runStoryCommand(resolveOne, handle)) resolved += 1;
+    }
+    return resolved;
   }
 
   private acceptOrdinaryChangesWithSuggestions(

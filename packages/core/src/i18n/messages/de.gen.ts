@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Diese Bearbeitungssitzung wurde an anderer Stelle übernommen.",
     "editor": {
       "accessibleName": "Dokumenteditor",
+      "contentLocked": "Dieser Teil des Dokuments ist gesperrt.",
       "editing": "Bearbeiten",
       "editingDescription": "Dokument direkt bearbeiten",
       "outlineDepthAll": "Alle Ebenen",
@@ -636,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "Wasserzeichen"
     },
     "trackedChanges": {
+      "heldByLock": "Ein gesperrtes Inhaltssteuerelement verhindert, dass diese Änderung angenommen oder abgelehnt wird.",
       "replaced": "Ersetzt",
       "unknown": "Unbekannt",
       "with": "durch"

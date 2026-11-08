@@ -86,7 +86,7 @@ import {
 } from "../prosemirror/yjsDocumentMetadata";
 import {
   CANONICAL_GAP,
-  type CanonicalGap,
+  type CanonicalRefusalGround,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type { Document, StyleDefinitions } from "../types/document";
@@ -118,8 +118,9 @@ import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
 const CanonicalSessionRefusalErrorBase: TaggedErrorClass<"CanonicalSessionRefusalError"> =
   TaggedError("CanonicalSessionRefusalError");
 
+/** A refused input, with whether the session lacks the capability or the document forbids it. */
 export class CanonicalSessionRefusalError extends CanonicalSessionRefusalErrorBase<{
-  gap: CanonicalGap;
+  ground: CanonicalRefusalGround;
   message: string;
 }> {}
 
@@ -513,7 +514,11 @@ export type HiddenEditorManagerDeps = {
   getExperimentalSession?: () => "canonical" | undefined;
   getEditingMode?: () => EditorMode;
   getSuggestionAuthor?: () => string;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
+  onSessionRefusal?: (
+    reason: string,
+    ground: CanonicalRefusalGround,
+    error?: Error,
+  ) => void;
   /**
    * Identity of the loaded document as tracked by the adapter's loader: the
    * same value across internal edits (so typing does not trigger an external
@@ -618,11 +623,11 @@ export const createHiddenEditorManager = (
   };
   const refuse = (
     reason: string,
-    gap: CanonicalGap = CANONICAL_GAP.dispatch,
+    ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch },
   ): void => {
     const message = reason;
-    if (deps.onSessionRefusal) deps.onSessionRefusal(message, gap);
-    else throw new CanonicalSessionRefusalError({ gap, message });
+    if (deps.onSessionRefusal) deps.onSessionRefusal(message, ground);
+    else throw new CanonicalSessionRefusalError({ ground, message });
   };
   const seedSession = (document: Document | null): boolean => {
     if (
@@ -646,7 +651,7 @@ export const createHiddenEditorManager = (
         ? "Canonical sessions do not support collaboration."
         : "Canonical sessions require a loaded Document.";
       editorSession = { type: "refused", reason, documentIdentity };
-      refuse(reason, CANONICAL_GAP.collaboration);
+      refuse(reason, { gap: CANONICAL_GAP.collaboration });
       return false;
     }
     const result = createCanonicalSession(document, deps.getStyles());
@@ -656,7 +661,7 @@ export const createHiddenEditorManager = (
         reason: result.error.message,
         documentIdentity,
       };
-      refuse(result.error.message, result.error.gap);
+      refuse(result.error.message, result.error.ground);
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
@@ -720,7 +725,7 @@ export const createHiddenEditorManager = (
       session,
     });
     if (result.isErr()) {
-      reportRefusal(result.error.message, result.error.gap);
+      reportRefusal(result.error.message, result.error.ground);
       return false;
     }
     const staged = result.value;
@@ -745,7 +750,7 @@ export const createHiddenEditorManager = (
         : session.prepareRedo(view.state);
     if (prepared.isErr()) {
       if (prepared.error.reason !== "noChange")
-        refuse(prepared.error.message, prepared.error.gap);
+        refuse(prepared.error.message, prepared.error.ground);
       return false;
     }
     return publishCommit(prepared.value);
@@ -772,10 +777,10 @@ export const createHiddenEditorManager = (
       if (!(described.error instanceof HyperlinkRemovalRefusal))
         throw described.error;
       const refusal = new CanonicalSessionRefusalError({
-        gap: CANONICAL_GAP.commands,
+        ground: { gap: CANONICAL_GAP.commands },
         message: described.error.message,
       });
-      refuse(refusal.message, refusal.gap);
+      refuse(refusal.message, refusal.ground);
       return false;
     }
     const intents = described.value;
@@ -808,7 +813,7 @@ export const createHiddenEditorManager = (
     );
     if (prepared.isErr()) {
       if (prepared.error.reason !== "noChange")
-        refuse(prepared.error.message, prepared.error.gap);
+        refuse(prepared.error.message, prepared.error.ground);
       return false;
     }
     return publishCommit(prepared.value);
@@ -848,10 +853,9 @@ export const createHiddenEditorManager = (
         }
       }
       if (command === undefined) {
-        refuse(
-          "The formatting command is unavailable.",
-          CANONICAL_GAP.commands,
-        );
+        refuse("The formatting command is unavailable.", {
+          gap: CANONICAL_GAP.commands,
+        });
         return;
       }
       const handled = executeCanonicalCommand(command);
@@ -866,7 +870,7 @@ export const createHiddenEditorManager = (
       const state = view.state;
       const selection = session.projection.selectionAt(state);
       if (selection.isErr()) {
-        refuse(selection.error.message, selection.error.gap);
+        refuse(selection.error.message, selection.error.ground);
         return;
       }
       let prepared;
@@ -939,11 +943,11 @@ export const createHiddenEditorManager = (
           const from = session.projection.addressAt(state.selection.from);
           const to = session.projection.addressAt(state.selection.to);
           if (from.isErr()) {
-            refuse(from.error.message, from.error.gap);
+            refuse(from.error.message, from.error.ground);
             return;
           }
           if (to.isErr()) {
-            refuse(to.error.message, to.error.gap);
+            refuse(to.error.message, to.error.ground);
             return;
           }
           prepared = session.prepareIntent(state, {
@@ -967,7 +971,7 @@ export const createHiddenEditorManager = (
       }
       if (prepared.isErr()) {
         if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
         return;
       }
       publishCommit(prepared.value);
@@ -986,7 +990,7 @@ export const createHiddenEditorManager = (
         return false;
       const begun = editorSession.session.beginComposition();
       if (begun.isErr()) {
-        refuse(begun.error.message, begun.error.gap);
+        refuse(begun.error.message, begun.error.ground);
         return false;
       }
       return true;
@@ -1031,7 +1035,7 @@ export const createHiddenEditorManager = (
         semantic: "replacement",
       });
       if (prepared.isErr()) {
-        refuse(prepared.error.message, prepared.error.gap);
+        refuse(prepared.error.message, prepared.error.ground);
         return true;
       }
       const copied = Result.try({
@@ -1044,11 +1048,11 @@ export const createHiddenEditorManager = (
         },
         catch: () =>
           new CanonicalSessionRefusalError({
-            gap: CANONICAL_GAP.dispatch,
+            ground: { gap: CANONICAL_GAP.dispatch },
             message: "The clipboard could not receive the cut content.",
           }),
       });
-      if (copied.isErr()) refuse(copied.error.message, copied.error.gap);
+      if (copied.isErr()) refuse(copied.error.message, copied.error.ground);
       else publishCommit(prepared.value);
       return true;
     },
@@ -1067,7 +1071,7 @@ export const createHiddenEditorManager = (
         rule ?? editorSession.session.prepareReplace(view.state, intent);
       if (prepared.isErr()) {
         if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
         return;
       }
       const session = editorSession.session;
@@ -1182,7 +1186,7 @@ export const createHiddenEditorManager = (
         if (noteIssue)
           deps.onSessionRefusal?.(
             noteIssue.message,
-            CANONICAL_GAP.dispatch,
+            { gap: CANONICAL_GAP.dispatch },
             noteIssue,
           );
         if (
@@ -1268,7 +1272,7 @@ export const createHiddenEditorManager = (
         });
         if (prepared.isErr()) {
           if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.gap);
+            refuse(prepared.error.message, prepared.error.ground);
         } else publishCommit(prepared.value);
         return true;
       },
@@ -1316,7 +1320,7 @@ export const createHiddenEditorManager = (
         });
         if (prepared.isErr()) {
           if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.gap);
+            refuse(prepared.error.message, prepared.error.ground);
         } else publishCommit(prepared.value);
         return true;
       },
@@ -1410,7 +1414,7 @@ export const createHiddenEditorManager = (
         });
         if (prepared.isErr()) {
           if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.gap);
+            refuse(prepared.error.message, prepared.error.ground);
           return false;
         }
         return publishCommit(prepared.value);
@@ -1605,7 +1609,7 @@ export const createHiddenEditorManager = (
       session,
     });
     if (staged.isErr()) {
-      refuse(staged.error.message, staged.error.gap);
+      refuse(staged.error.message, staged.error.ground);
       return false;
     }
     storyView.updateState(staged.value.state);
@@ -1684,7 +1688,7 @@ export const createHiddenEditorManager = (
       });
       if (prepared.isErr()) {
         if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
         return false;
       }
       return publishCommit(prepared.value);
@@ -1707,7 +1711,7 @@ export const createHiddenEditorManager = (
       applyCanonicalSectionProperties: (patch) => {
         ensureView();
         const fail = (message: string) => {
-          refuse(message, CANONICAL_GAP.sectionProperties);
+          refuse(message, { gap: CANONICAL_GAP.sectionProperties });
           return {
             status: "refused",
             gap: CANONICAL_GAP.sectionProperties,
@@ -1747,7 +1751,8 @@ export const createHiddenEditorManager = (
           retry: "afterComposition" | "never" = "never",
         ) => {
           // A deferral the adapters retry after composition is not a user-facing refusal.
-          if (retry === "never") refuse(message, CANONICAL_GAP.comments);
+          if (retry === "never")
+            refuse(message, { gap: CANONICAL_GAP.comments });
           return {
             status: "refused",
             gap: CANONICAL_GAP.comments,
@@ -1885,7 +1890,7 @@ export const createHiddenEditorManager = (
             ? session.prepareUndo(storyView.state, story)
             : session.prepareRedo(storyView.state, story);
         if (prepared.isErr()) {
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
           return false;
         }
         return publishStoryCommit(storyView, prepared.value);
@@ -1899,7 +1904,7 @@ export const createHiddenEditorManager = (
           ops,
         );
         if (prepared.isErr()) {
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
           return false;
         }
         return publishCommit(prepared.value);
@@ -1919,7 +1924,7 @@ export const createHiddenEditorManager = (
           return null;
         const result = editorSession.session.projectStory(story);
         if (result.isErr()) {
-          refuse(result.error.message, result.error.gap);
+          refuse(result.error.message, result.error.ground);
           return null;
         }
         return result.value.doc;
@@ -1934,7 +1939,7 @@ export const createHiddenEditorManager = (
           story,
         });
         if (prepared.isErr()) {
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
           return false;
         }
         return publishStoryCommit(storyView, prepared.value);

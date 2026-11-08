@@ -237,6 +237,16 @@ export const buildCanonicalBridge = (
     editor.focus();
     return true;
   },
+  /** Run a registered editor command by name, as a toolbar control does. */
+  executeNamedCommand: (name: string, args: readonly unknown[]) => {
+    const editor = getRef()?.getEditor();
+    if (!editor) return false;
+    const execute = editor.executeCommand.bind(editor);
+    const create = singletonManager.requireCommand(name as never) as (
+      ...commandArgs: readonly unknown[]
+    ) => Parameters<typeof execute>[0];
+    return execute(create(...args));
+  },
   executeHyperlink: (action: CanonicalHyperlinkAction) => {
     const editor = getRef()?.getEditor();
     if (!editor) return false;

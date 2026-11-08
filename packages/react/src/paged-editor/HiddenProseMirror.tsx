@@ -45,7 +45,7 @@ import {
   type HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
-import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
   Document,
   StyleDefinitions,
@@ -79,7 +79,11 @@ export type HiddenProseMirrorProps = {
   experimentalSession?: "canonical";
   suggestionModeActive?: boolean;
   suggestionAuthor?: string;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
+  onSessionRefusal?: (
+    reason: string,
+    ground: CanonicalRefusalGround,
+    error?: Error,
+  ) => void;
   /**
    * Identity of the loaded document (same across internal edits, distinct per
    * load); a change means an external load and resets the editor state.
@@ -307,8 +311,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getEditingMode: () =>
           suggestionModeActiveRef.current ? "suggesting" : "editing",
         getSuggestionAuthor: () => suggestionAuthorRef.current,
-        onSessionRefusal: (reason, gap, error) =>
-          onSessionRefusalRef.current?.(reason, gap, error),
+        onSessionRefusal: (reason, ground, error) =>
+          onSessionRefusalRef.current?.(reason, ground, error),
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,
         onTransaction: (update) => onTransactionRef.current?.(update),

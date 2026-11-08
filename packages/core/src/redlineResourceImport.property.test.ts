@@ -185,7 +185,7 @@ test("a failing insertion style closure refuses the whole redline without changi
               const accepting = await FolioDocxReviewer.fromBuffer(
                 outcome.value.buffer,
               );
-              expect(accepting.acceptAll()).toBeGreaterThan(0);
+              expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
               const accepted = await FolioDocxReviewer.fromBuffer(
                 await accepting.toBuffer(),
               );
@@ -210,7 +210,7 @@ test("a failing insertion style closure refuses the whole redline without changi
               const rejecting = await FolioDocxReviewer.fromBuffer(
                 outcome.value.buffer,
               );
-              expect(rejecting.rejectAll()).toBeGreaterThan(0);
+              expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
               const rejected = await FolioDocxReviewer.fromBuffer(
                 await rejecting.toBuffer(),
               );
@@ -224,8 +224,8 @@ test("a failing insertion style closure refuses the whole redline without changi
             expect(
               reopened.snapshot().blocks.map((block) => block.text),
             ).toEqual(originalTexts);
-            expect(reopened.acceptAll()).toBe(0);
-            expect(reopened.rejectAll()).toBe(0);
+            expect(reopened.acceptAll().resolved).toBe(0);
+            expect(reopened.rejectAll().resolved).toBe(0);
           }
         }
       }),
@@ -316,7 +316,7 @@ test("unstyled redline insertions preserve differing default paragraph styles in
             const accepting = await FolioDocxReviewer.fromBuffer(
               outcome.buffer,
             );
-            expect(accepting.acceptAll()).toBeGreaterThan(0);
+            expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
             const accepted = await FolioDocxReviewer.fromBuffer(
               await accepting.toBuffer(),
             );
@@ -330,7 +330,7 @@ test("unstyled redline insertions preserve differing default paragraph styles in
             const rejecting = await FolioDocxReviewer.fromBuffer(
               outcome.buffer,
             );
-            expect(rejecting.rejectAll()).toBeGreaterThan(0);
+            expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
             const rejected = await FolioDocxReviewer.fromBuffer(
               await rejecting.toBuffer(),
             );

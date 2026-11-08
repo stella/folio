@@ -235,6 +235,7 @@ import {
   CANONICAL_GAP,
   type CanonicalGap,
   canonicalRefusalMessage,
+  canonicalRefusalNotice,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "@stll/folio-core/types/canonicalComments";
@@ -524,7 +525,9 @@ function areActiveTrackedChangesEqual(
     a.author === b.author &&
     a.date === b.date &&
     a.from === b.from &&
-    a.to === b.to
+    a.to === b.to &&
+    a.heldByLock.accept === b.heldByLock.accept &&
+    a.heldByLock.reject === b.heldByLock.reject
   );
 }
 
@@ -891,7 +894,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         )
           return false;
         const error = new CanonicalSessionRefusalError({
-          gap,
+          ground: { gap },
           message: canonicalRefusalMessage(gap, message),
         });
         toast(error.message);
@@ -3253,12 +3256,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         );
       }
       if (contextMenu.cursorInTrackedChange) {
+        // The change at the selection, which the actions resolve.
+        const held = state.activeTrackedChange?.heldByLock ?? {
+          accept: false,
+          reject: false,
+        };
+        const reason = t("trackedChanges.heldByLock");
         items.push(
-          { action: "acceptChange", label: t("acceptChange") },
+          {
+            action: "acceptChange",
+            label: t("acceptChange"),
+            ...(held.accept && { disabled: true, disabledReason: reason }),
+          },
           {
             action: "rejectChange",
             label: t("rejectChange"),
             dividerAfter: true,
+            ...(held.reject && { disabled: true, disabledReason: reason }),
           },
         );
       }
@@ -3293,6 +3307,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       contextMenu.listNumbering,
       customContextMenuItems,
       readOnly,
+      state.activeTrackedChange?.heldByLock,
       t,
     ]);
 
@@ -3860,10 +3875,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // Handle error from editor
     const handleEditorError = useCallback(
       (error: Error) => {
-        if (CanonicalSessionRefusalError.is(error)) toast(error.message);
+        if (CanonicalSessionRefusalError.is(error))
+          // A rule the document states reads as the editor's own message.
+          toast(canonicalRefusalNotice(error.ground, error.message, t));
         onError?.(error);
       },
-      [onError],
+      [onError, t],
     );
 
     // Expose ref methods
@@ -5023,16 +5040,32 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           )}
           <ToolbarButton
             onClick={handleAcceptActiveChange}
-            disabled={readOnly || !state.activeTrackedChange}
-            title={t("acceptChange")}
+            disabled={
+              readOnly ||
+              !state.activeTrackedChange ||
+              state.activeTrackedChange.heldByLock.accept
+            }
+            title={
+              state.activeTrackedChange?.heldByLock.accept
+                ? t("trackedChanges.heldByLock")
+                : t("acceptChange")
+            }
             ariaLabel={t("acceptChange")}
           >
             <CheckIcon size={16} />
           </ToolbarButton>
           <ToolbarButton
             onClick={handleRejectActiveChange}
-            disabled={readOnly || !state.activeTrackedChange}
-            title={t("rejectChange")}
+            disabled={
+              readOnly ||
+              !state.activeTrackedChange ||
+              state.activeTrackedChange.heldByLock.reject
+            }
+            title={
+              state.activeTrackedChange?.heldByLock.reject
+                ? t("trackedChanges.heldByLock")
+                : t("rejectChange")
+            }
             ariaLabel={t("rejectChange")}
           >
             <XIcon size={16} />

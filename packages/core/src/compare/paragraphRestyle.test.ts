@@ -46,7 +46,7 @@ const expectVerifiedRestyle = async (
   expect(compared.value.changes.map(({ kind }) => kind)).toEqual(kinds);
 
   const accepting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
-  expect(accepting.acceptAll()).toBeGreaterThan(0);
+  expect(accepting.acceptAll().resolved).toBeGreaterThan(0);
   const accepted = await FolioDocxReviewer.fromBuffer(
     await accepting.toBuffer(),
   );
@@ -54,7 +54,7 @@ const expectVerifiedRestyle = async (
   expect(restyleProjection(accepted)).toEqual(restyleProjection(expected));
 
   const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
-  expect(rejecting.rejectAll()).toBeGreaterThan(0);
+  expect(rejecting.rejectAll().resolved).toBeGreaterThan(0);
   const rejected = await FolioDocxReviewer.fromBuffer(
     await rejecting.toBuffer(),
   );

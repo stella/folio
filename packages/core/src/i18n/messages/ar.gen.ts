@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "فتح علامة تبويب أو نافذة أو جهاز آخر هذا المستند للتعديل، لذا تم تحرير هذه الجلسة. تم الحفاظ على التغييرات المحلية غير المحفوظة؛ أعد فتح المستند للمتابعة.",
     "editor": {
       "accessibleName": "محرر المستندات",
+      "contentLocked": "هذا الجزء من المستند مقفل.",
       "editing": "تحرير",
       "editingDescription": "تحرير المستند مباشرةً",
       "outlineDepthAll": "كل المستويات",
@@ -636,6 +637,7 @@ export const messages: FolioMessages = {
       "watermark": "علامة مائية"
     },
     "trackedChanges": {
+      "heldByLock": "يمنع عنصر تحكم محتوى مقفل قبول هذا التغيير أو رفضه.",
       "replaced": "تم الاستبدال",
       "unknown": "غير معروف",
       "with": "بـ"
