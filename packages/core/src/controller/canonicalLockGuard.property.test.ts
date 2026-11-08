@@ -5,18 +5,24 @@
  * one walk of the whole document, and its verdict on each edit equals the
  * verdict on fresh copies, which share no object with anything read before.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import type { BlockContent, Paragraph } from "@stll/docx-core/model";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import type { Document } from "../types/document";
 import {
   controlsOf,
   controlsOfWholeDocument,
   lockViolationBetween,
 } from "./canonicalLockGuard";
+
+// Synchronous generated edit chains use a 15-second base budget.
+setDefaultTimeout(propertyTestTimeout(15_000));
 
 type Lock = "sdtLocked" | "contentLocked" | "sdtContentLocked" | "unlocked";
 
