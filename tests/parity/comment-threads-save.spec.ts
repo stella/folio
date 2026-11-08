@@ -266,6 +266,10 @@ forEachAdapter(
       .locator(CARD[adapter.name])
       .filter({ hasText: "Suggested wording note" });
     await expect(suggested).toHaveCount(1);
+    // A pending suggestion's comment is held back with it.
+    const pending = await savedComments(await save(page));
+    expect(pending.comments).not.toContain("Suggested wording note");
+    expect(pending.comments).toContain("Second thread");
 
     await page.evaluate(
       (id) => window.__folioParity?.rejectSuggestion(id ?? ""),
