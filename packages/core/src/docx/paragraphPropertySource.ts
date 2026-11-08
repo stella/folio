@@ -666,6 +666,30 @@ export const copyDocumentParagraphPropertySourceContract = (
   }
 };
 
+/**
+ * Every fact this module keeps for a paragraph outside its fields, by
+ * identity. A conversion of the paragraph may read any of them, so a
+ * converted paragraph is reused only while they are the ones it was
+ * converted with.
+ */
+export const paragraphPropertySourceState = (
+  paragraph: Paragraph,
+): readonly unknown[] => [
+  paragraphPropertySourceTokens.get(paragraph),
+  paragraphPropertySourceCandidates.get(paragraph),
+  paragraphPropertySourceTransferIds.get(paragraph),
+  paragraphSourceRecordKinds.get(paragraph),
+  paragraphPropertyCaptures.get(paragraph),
+  indentationProjections.get(paragraph),
+  decodedTableCellParagraphSourcePayloads.get(paragraph),
+  ...(paragraph.formatting === undefined
+    ? []
+    : [
+        paragraphPropertyCaptures.get(paragraph.formatting),
+        indentationProjections.get(paragraph.formatting),
+      ]),
+];
+
 export const getParagraphPropertySourceToken = (
   paragraph: Paragraph,
 ): string | undefined => paragraphPropertySourceTokens.get(paragraph);

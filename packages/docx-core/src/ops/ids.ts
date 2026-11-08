@@ -231,97 +231,200 @@ const controlIdOf = (
 };
 
 /**
- * Every revision and content-control id in a value, as slot keys: tracked
- * changes and property changes by their `info`, content controls by their
- * properties.
+ * The ids each record and list contributes, by the context it was walked in.
+ *
+ * A record's contribution depends only on its own fields, the field holding
+ * it and its owner's type, so it is the same wherever an unchanged record is
+ * shared: an edit replaces the records on the path to what it changed and
+ * keeps the rest, and a census of the new version walks only those. A record
+ * a census counts against others (a control stacked in a table's order is
+ * counted once per table) is not shareable: it, and every record holding it,
+ * are walked anew.
  */
-export const identityKeysIn = (value: unknown): string[] => {
-  const out: string[] = [];
+const NO_KEYS: readonly string[] = Object.freeze([]);
+
+type Census = { keys: readonly string[]; shareable: boolean };
+type CensusContext = VisitContext & {
+  stacked: Map<object | undefined, Map<number, Record<string, unknown>[]>>;
+};
+type OwnKeys = (
+  entries: readonly [string, unknown][],
+  context: CensusContext,
+) => Census;
+
+const contextKey = ({ heldBy, ownerType }: VisitContext): string =>
+  `${heldBy ?? ""}\u0000${ownerType ?? ""}`;
+
+const joined = (parts: readonly (readonly string[])[]): readonly string[] => {
+  const filled = parts.filter((part) => part.length > 0);
+  if (filled.length === 0) return NO_KEYS;
+  if (filled.length === 1) return filled[0] ?? NO_KEYS;
+  return filled.flat();
+};
+
+const subtreeCensus = (
+  ownKeys: OwnKeys,
+  sharing: "shared" | "full" = "shared",
+): ((value: unknown) => string[]) => {
+  const known = new WeakMap<object, Map<string, readonly string[]>>();
+  const remembered = (value: object, key: string, census: Census): Census => {
+    if (!census.shareable || sharing === "full") return census;
+    const keys =
+      census.keys.length === 0 ? NO_KEYS : Object.freeze([...census.keys]);
+    let byContext = known.get(value);
+    if (byContext === undefined) {
+      byContext = new Map();
+      known.set(value, byContext);
+    }
+    byContext.set(key, keys);
+    return { keys, shareable: true };
+  };
+  const censusOf = (value: unknown, context: CensusContext): Census => {
+    if (typeof value !== "object" || value === null)
+      return { keys: NO_KEYS, shareable: true };
+    const isList = Array.isArray(value) || value instanceof Map;
+    if (!isList && !isPlainRecord(value))
+      return { keys: NO_KEYS, shareable: true };
+    const key = contextKey(context);
+    const cached = known.get(value)?.get(key);
+    if (cached !== undefined) return { keys: cached, shareable: true };
+    if (isList) {
+      const items = Array.isArray(value) ? value : [...value.values()];
+      const parts = items.map((item) => censusOf(item, context));
+      return remembered(value, key, {
+        keys: joined(parts.map((part) => part.keys)),
+        shareable: parts.every((part) => part.shareable),
+      });
+    }
+    const entries = Object.entries(value);
+    const own = ownKeys(entries, context);
+    let shareable = own.shareable;
+    const type = fieldOf(entries, "type");
+    const ownerType = typeof type === "string" ? type : undefined;
+    const table = type === "table" ? value : context.table;
+    const parts: (readonly string[])[] = [own.keys];
+    for (const [heldBy, child] of entries) {
+      const census = censusOf(child, {
+        heldBy,
+        ownerType,
+        table,
+        stacked: context.stacked,
+      });
+      parts.push(census.keys);
+      if (!census.shareable) shareable = false;
+    }
+    return remembered(value, key, { keys: joined(parts), shareable });
+  };
+  return (value) => [
+    ...censusOf(value, {
+      heldBy: undefined,
+      ownerType: undefined,
+      stacked: new Map(),
+    }).keys,
+  ];
+};
+
+const ownIdentityKeys: OwnKeys = (entries, context) => {
+  const { heldBy, ownerType, table } = context;
+  const keys: string[] = [];
+  let shareable = true;
+  const revision = revisionIdOf(entries, heldBy);
+  if (revision !== undefined)
+    keys.push(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision }));
+  const control = controlIdOf(entries, { heldBy, ownerType });
+  if (control === undefined) return { keys, shareable };
   // A row- or cell-level content control holding several rows or cells is
   // recorded on each of them (`TableRow.contentControls`), and again in each
   // one's wrapper order (`carrierStack`): equal records there are one
   // control. A different record with the same id is a second one.
   // Only within one table: equal records in two tables are two controls.
-  const stacked = new Map<
-    object | undefined,
-    Map<number, Record<string, unknown>[]>
-  >();
-  walk({
-    value,
-    visit: (entries, { heldBy, ownerType, table }) => {
-      const revision = revisionIdOf(entries, heldBy);
-      if (revision !== undefined) {
-        out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision }));
-      }
-      const control = controlIdOf(entries, { heldBy, ownerType });
-      if (control === undefined) return;
-      // A table wrapper's mixed-order record (`carrierStack`) restates the
-      // same control the stack holds.
-      if (
-        heldBy === CONTENT_CONTROL_STACK ||
-        (heldBy === "properties" && ownerType === "sdt")
-      ) {
-        const record = Object.fromEntries(entries);
-        const inTable =
-          stacked.get(table) ?? new Map<number, Record<string, unknown>[]>();
-        stacked.set(table, inTable);
-        const seen = inTable.get(control) ?? [];
-        if (seen.some((other) => structurallyEqual(other, record))) return;
-        seen.push(record);
-        inTable.set(control, seen);
-      }
-      out.push(slotKey({ space: IDENTITY_SPACES.CONTROL, id: control }));
-    },
-  });
-  return out;
+  if (
+    heldBy === CONTENT_CONTROL_STACK ||
+    (heldBy === "properties" && ownerType === "sdt")
+  ) {
+    shareable = false;
+    const record = Object.fromEntries(entries);
+    const inTable =
+      context.stacked.get(table) ??
+      new Map<number, Record<string, unknown>[]>();
+    context.stacked.set(table, inTable);
+    const seen = inTable.get(control) ?? [];
+    if (seen.some((other) => structurallyEqual(other, record)))
+      return { keys, shareable };
+    seen.push(record);
+    inTable.set(control, seen);
+  }
+  keys.push(slotKey({ space: IDENTITY_SPACES.CONTROL, id: control }));
+  return { keys, shareable };
 };
+
+/**
+ * Every revision and content-control id in a value, as slot keys: tracked
+ * changes and property changes by their `info`, content controls by their
+ * properties. Every record is read anew: the value may belong to a caller
+ * who changes it between calls.
+ */
+export const identityKeysIn: (value: unknown) => string[] = subtreeCensus(
+  ownIdentityKeys,
+  "full",
+);
+
+/**
+ * {@link identityKeysIn} reusing what it counted in records an earlier
+ * census met. Only for packages, which no operation changes (see
+ * {@link censusOnce}).
+ */
+const sharedIdentityKeysIn = subtreeCensus(ownIdentityKeys);
 
 /** The field holding the stack of content controls a table row or cell sits inside. */
 const CONTENT_CONTROL_STACK = "contentControls";
 
-/** Pending cut references reserve IDs without becoming physical model identities. */
-export const reservedIdentityKeysIn = (value: unknown): string[] => {
-  const out: string[] = [];
-  walk({
-    value,
-    visit: (entries, { heldBy }) => {
-      if (heldBy === "deferredRemove") {
-        const blockers = fieldOf(entries, "blockers");
-        if (Array.isArray(blockers)) {
-          for (const id of blockers) {
-            if (typeof id === "number")
-              out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
-          }
-        }
-        return;
+const ownReservedKeys: OwnKeys = (entries, { heldBy }) => {
+  const keys: string[] = [];
+  if (heldBy === "deferredRemove") {
+    const blockers = fieldOf(entries, "blockers");
+    if (Array.isArray(blockers)) {
+      for (const id of blockers) {
+        if (typeof id === "number")
+          keys.push(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
       }
-      if (heldBy !== "retainedAfter") return;
-      for (const field of ["source", "target"]) {
-        const slots = fieldOf(entries, field);
-        if (!Array.isArray(slots)) continue;
-        for (const slot of slots) {
-          if (
-            typeof slot !== "object" ||
-            slot === null ||
-            !("space" in slot) ||
-            !("id" in slot)
-          )
-            continue;
-          if (
-            (slot.space === IDENTITY_SPACES.REVISION ||
-              slot.space === IDENTITY_SPACES.CONTROL) &&
-            typeof slot.id === "number"
-          ) {
-            out.push(slotKey({ space: slot.space, id: slot.id }));
-          }
-        }
+    }
+    return { keys, shareable: true };
+  }
+  if (heldBy !== "retainedAfter") return { keys, shareable: true };
+  for (const field of ["source", "target"]) {
+    const slots = fieldOf(entries, field);
+    if (!Array.isArray(slots)) continue;
+    for (const slot of slots) {
+      if (
+        typeof slot !== "object" ||
+        slot === null ||
+        !("space" in slot) ||
+        !("id" in slot)
+      )
+        continue;
+      if (
+        (slot.space === IDENTITY_SPACES.REVISION ||
+          slot.space === IDENTITY_SPACES.CONTROL) &&
+        typeof slot.id === "number"
+      ) {
+        keys.push(slotKey({ space: slot.space, id: slot.id }));
       }
-    },
-  });
-  return out;
+    }
+  }
+  return { keys, shareable: true };
 };
 
-/** Every revision and content-control id of a package, each story walked once. */
+/**
+ * Pending cut references reserve IDs without becoming physical model
+ * identities. Every record is read anew, as {@link identityKeysIn} does.
+ */
+export const reservedIdentityKeysIn: (value: unknown) => string[] =
+  subtreeCensus(ownReservedKeys, "full");
+
+/** {@link reservedIdentityKeysIn} reusing earlier counts; only for packages. */
+const sharedReservedIdentityKeysIn = subtreeCensus(ownReservedKeys);
+
 /**
  * A census of a package, once per package object. Operations never change a
  * package they are given: each returns a new one, sharing what it left as it
@@ -342,9 +445,9 @@ const censusOnce = (
 
 /** Every revision and content-control id of a package, each story walked once. */
 export const packageIdentityKeys: (pkg: DocxPackage) => readonly string[] =
-  censusOnce((pkg) => identityKeysIn(storiesOf(pkg)));
+  censusOnce((pkg) => sharedIdentityKeysIn(storiesOf(pkg)));
 
 /** The ids a package's pending cut references reserve. */
 export const packageReservedIdentityKeys: (
   pkg: DocxPackage,
-) => readonly string[] = censusOnce((pkg) => reservedIdentityKeysIn(pkg));
+) => readonly string[] = censusOnce((pkg) => sharedReservedIdentityKeysIn(pkg));

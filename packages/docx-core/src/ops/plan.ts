@@ -465,13 +465,46 @@ type TrackedPlanOptions = {
   document: Document;
   revision: RevisionStamp;
   newIds: NewIds | undefined;
+  /**
+   * Count every piece's new ids before applying it, as planning did before
+   * it applied a piece with none first. Only its reference in tests.
+   */
+  countEveryPiece?: boolean;
 };
+
+/** The story a planned piece edits. */
+const storyOf = (input: PlannedReviewOp): OpStory => {
+  switch (input.type) {
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return input.from.story;
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+      return input.at.story;
+    case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+    case DOCUMENT_OP_TYPES.REPLACE_INLINE:
+      return input.story;
+    default: {
+      const unreachable: never = input;
+      return unreachable;
+    }
+  }
+};
+
+/** Whether an operation, its unused ids trimmed, still names a new id. */
+const takesNewIds = (op: DocumentOp): boolean =>
+  "newIds" in op &&
+  op.newIds !== undefined &&
+  ((op.newIds.revision?.length ?? 0) > 0 ||
+    (op.newIds.control?.length ?? 0) > 0);
 
 /** Shared allocation and simulation for all pieces of one planned edit. */
 export const createTrackedPlan = ({
   document,
   revision,
   newIds,
+  countEveryPiece = false,
 }: TrackedPlanOptions): {
   append: (input: PlannedReviewOp) => Result<void, DocumentOpRefusal>;
   document: () => Document;
@@ -510,40 +543,47 @@ export const createTrackedPlan = ({
       }
       op = { ...input, revision: { ...revision, id: stampId } };
     }
-    const demand = revisionIdDemand(current, op);
-    if (demand.isErr()) return Result.err(demand.error);
-    const ids = take(demand.value);
-    if (ids === undefined) return outOfIds();
     const controls = usedIds(current, IDENTITY_SPACES.CONTROL);
-    op = withNewIds(op, {
-      revision: ids,
-      control: (newIds?.control ?? []).filter((id) => !controls.has(id)),
-    });
-    const applied = applyDocumentOp(current, op);
+    const control = (newIds?.control ?? []).filter((id) => !controls.has(id));
+    const story = storyOf(input);
+    // Most edits take no new id: applied with none, the edit is planned as
+    // it is. It took none when it used none of the content-control ids
+    // either, so counting would have found it needs none.
+    const unallocated = withNewIds(op, { revision: [], control });
+    const attempt = countEveryPiece
+      ? undefined
+      : applyDocumentOp(current, unallocated);
+    let applied: Result<AppliedDocumentOp, DocumentOpRefusal> | undefined;
+    let trimmed: DocumentOp | undefined;
+    if (attempt?.isOk() === true) {
+      trimmed = trimAppliedNewIds({
+        before: current,
+        op: unallocated,
+        applied: attempt.value,
+        story,
+      });
+      if (!takesNewIds(trimmed)) applied = attempt;
+    }
+    if (applied === undefined) {
+      trimmed = undefined;
+      const demand = revisionIdDemand(current, op);
+      if (demand.isErr()) return Result.err(demand.error);
+      const ids = take(demand.value);
+      if (ids === undefined) return outOfIds();
+      op = withNewIds(op, { revision: ids, control });
+      applied = applyDocumentOp(current, op);
+    } else {
+      op = unallocated;
+    }
     if (applied.isErr()) return Result.err(applied.error);
     stampUsed ||=
       stampOf(input) !== undefined && applied.value.revisions.length > 0;
     const before = current;
     current = applied.value.document;
-    const story = (() => {
-      switch (input.type) {
-        case DOCUMENT_OP_TYPES.DELETE_RANGE:
-        case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
-          return input.from.story;
-        case DOCUMENT_OP_TYPES.INSERT_CONTENT:
-        case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
-          return input.at.story;
-        case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
-        case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
-        case DOCUMENT_OP_TYPES.REPLACE_INLINE:
-          return input.story;
-        default: {
-          const unreachable: never = input;
-          return unreachable;
-        }
-      }
-    })();
-    ops.push(trimAppliedNewIds({ before, op, applied: applied.value, story }));
+    ops.push(
+      trimmed ??
+        trimAppliedNewIds({ before, op, applied: applied.value, story }),
+    );
     return Result.ok(undefined);
   };
   return { append, document: (): Document => current, ops };

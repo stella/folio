@@ -15,12 +15,6 @@ const REFUSAL_ROWS = {
     message:
       "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
   },
-  hyperlinkReview: {
-    id: CANONICAL_GAP.trackedHyperlinkResolution,
-    gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message:
-      "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
-  },
   cellSelectionPlacement: {
     id: CANONICAL_GAP.commands,
     gap: CANONICAL_GAP.commands,
@@ -37,11 +31,6 @@ const REFUSAL_ROWS = {
     gap: CANONICAL_GAP.dispatch,
     message:
       "Tracked insertion requires a following paragraph in the same block list.",
-  },
-  fieldProjection: {
-    id: CANONICAL_GAP.storyContentProjection,
-    gap: CANONICAL_GAP.storyContentProjection,
-    message: "The operations produce unsupported canonical story content.",
   },
 } as const satisfies Record<string, HarnessRefusalRow>;
 
@@ -85,46 +74,6 @@ export const canonicalRefusalCaseId = ({
   mode,
 }: RefusalCase) => `${shape} › ${operation} @ ${placement} [${mode}]`;
 
-export const STORY_PROJECTION_REFUSAL_CASES = [
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "key:Enter",
-    placement: "paragraph",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "paste:copied-blocks",
-    placement: "caret-end",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "key:Delete",
-    placement: "cross-paragraph",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "host:cut",
-    placement: "paragraph",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "host:cut",
-    placement: "cross-paragraph",
-  },
-] as const satisfies readonly RefusalCase[];
-
-const STORY_PROJECTION_ROWS = {
-  "fields-links-bookmarks": REFUSAL_ROWS.fieldProjection,
-} as const satisfies Record<
-  (typeof STORY_PROJECTION_REFUSAL_CASES)[number]["shape"],
-  HarnessRefusalRow
->;
-
 // The fixture source/heading collector assertion binds this applicability set.
 export const TOC_HEADING_SHAPES = [
   "style-numbered-headings",
@@ -140,11 +89,6 @@ export const canonicalConformanceRefusalRows = (
       operations.some((operation) => operation === key.operation),
   );
   if (commandContract) return commandContract.rows;
-  const projection = STORY_PROJECTION_REFUSAL_CASES.find(
-    (candidate) =>
-      canonicalRefusalCaseId(candidate) === canonicalRefusalCaseId(key),
-  );
-  if (projection) return [STORY_PROJECTION_ROWS[projection.shape]];
   if (
     key.shape === "tables" &&
     key.placement === "cross-paragraph" &&
@@ -154,9 +98,14 @@ export const canonicalConformanceRefusalRows = (
   )
     return [REFUSAL_ROWS.cellSelectionPlacement];
   // The caret's cell paragraph ends its block list: a tracked paragraph
-  // insertion needs a paragraph after it.
+  // insertion needs a paragraph after it. A selection of the whole document,
+  // or of cells, puts the table ahead of a paragraph instead: the story's
+  // first, or the one after the table.
   if (key.operation === "command:insertTable")
-    return key.mode === "suggesting" && key.shape === "tables"
+    return key.mode === "suggesting" &&
+      key.shape === "tables" &&
+      key.placement !== "document" &&
+      key.placement !== "cross-paragraph"
       ? [REFUSAL_ROWS.trackedTableInsertionAtEnd]
       : [];
   // The fixture table's merged cells have no tracked row deletion record.
@@ -186,7 +135,6 @@ export const canonicalConformanceRefusalRows = (
   // there is nothing to refuse.
   if (key.shape === "tables" && key.placement === "cross-paragraph") return [];
   if (key.mode === "suggesting") return [REFUSAL_ROWS.hyperlinkSuggestion];
-  if (key.shape === "tracked-changes") return [REFUSAL_ROWS.hyperlinkReview];
   return [];
 };
 

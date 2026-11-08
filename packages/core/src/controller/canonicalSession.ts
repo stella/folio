@@ -78,6 +78,7 @@ import {
   collectPairedBookmarkIds,
   footnoteToProseDoc,
   headerFooterToProseDoc,
+  ProjectionBlockCache,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
@@ -316,6 +317,20 @@ class CanonicalProjection {
     this.paragraphsById = new Map(
       paragraphs.map((paragraph) => [paragraph.blockId, paragraph]),
     );
+  }
+
+  /**
+   * The same projection held as `doc`, a document equal to this one's. A
+   * commit's transaction ends on a document equal to the projection it staged,
+   * sharing the blocks it left; holding that document lets the next commit see
+   * the state it was given is the projection without comparing every node.
+   */
+  heldAs(doc: PMNode): CanonicalProjection {
+    return new CanonicalProjection({
+      doc,
+      paragraphs: this.paragraphs,
+      story: this.story,
+    });
   }
 
   addressAt(
@@ -702,6 +717,8 @@ type ProjectStoryOptions = {
   document: Document;
   styles: StyleDefinitions | null | undefined;
   story?: OpStory;
+  /** The main story's converted blocks, kept by its session. */
+  blockCache?: ProjectionBlockCache;
 };
 
 /** Whether a paragraph anchors a text box, which converts to a block of its own. */
@@ -724,6 +741,7 @@ const project = ({
   document,
   styles,
   story = OP_STORIES.MAIN,
+  blockCache,
 }: ProjectStoryOptions): Result<CanonicalProjection, CanonicalSessionError> => {
   const body = findStoryBody(document, story);
   if (!body) return refuse("The canonical story no longer exists.");
@@ -738,7 +756,11 @@ const project = ({
   };
   const converted = Result.try({
     try: () => {
-      if (story === OP_STORIES.MAIN) return toProseDoc(document, options);
+      if (story === OP_STORIES.MAIN)
+        return toProseDoc(
+          document,
+          blockCache === undefined ? options : { ...options, blockCache },
+        );
       if (story.kind === "header" || story.kind === "footer")
         return headerFooterToProseDoc(body.content, options);
       return footnoteToProseDoc(body.content, options);
@@ -1171,6 +1193,7 @@ type CanonicalSessionSeedOptions = {
   document: Document;
   projection: CanonicalProjection;
   styles: StyleDefinitions | null | undefined;
+  blockCache: ProjectionBlockCache;
 };
 
 type CanonicalReplaceTextInput = {
@@ -1232,8 +1255,16 @@ class CanonicalSession {
   };
   private readonly undone: UndoneJournalEntry[] = [];
   private readonly styles: StyleDefinitions | null | undefined;
+  /** The main story's converted blocks, reused by every projection of it. */
+  private readonly blockCache: ProjectionBlockCache;
 
-  constructor({ document, projection, styles }: CanonicalSessionSeedOptions) {
+  constructor({
+    document,
+    projection,
+    styles,
+    blockCache,
+  }: CanonicalSessionSeedOptions) {
+    this.blockCache = blockCache;
     this.currentDocument = document;
     this.currentProjection = projection;
     this.sourceBlockIds = new Set(packageParagraphIds(document.package));
@@ -1507,7 +1538,7 @@ class CanonicalSession {
   ): Result<void, CanonicalSessionError> {
     if (this.isComposing)
       return refuse("Composition must finish before committing another edit.");
-    if (!state.doc.eq(projection.doc)) {
+    if (state.doc !== projection.doc && !state.doc.eq(projection.doc)) {
       return refuse("The input uses a stale canonical projection.");
     }
     return Result.ok(undefined);
@@ -2055,6 +2086,7 @@ class CanonicalSession {
     const projected = project({
       document: applied.value.document,
       styles: this.styles,
+      blockCache: this.blockCache,
     });
     if (projected.isErr()) return projected;
     const surviving = projected.value.paragraph(
@@ -2149,6 +2181,7 @@ class CanonicalSession {
     const projected = project({
       document: this.currentDocument,
       styles: this.styles,
+      blockCache: this.blockCache,
       story,
     });
     if (projected.isOk())
@@ -2425,6 +2458,7 @@ class CanonicalSession {
     const projected = project({
       document: applied.value.document,
       styles: this.styles,
+      blockCache: this.blockCache,
       story: projectedStory,
     });
     if (projected.isErr()) return projected;
@@ -2434,6 +2468,7 @@ class CanonicalSession {
         return project({
           document: applied.value.document,
           styles: this.styles,
+          blockCache: this.blockCache,
         });
       return Result.ok(this.currentProjection);
     })();
@@ -2497,6 +2532,10 @@ class CanonicalSession {
           "Canonical history cannot restore the selected inline atom.",
         );
     }
+    // The transaction now ends on a document equal to the projection.
+    const held = projected.value.heldAs(transaction.doc);
+    const heldBody =
+      bodyProjection.value === projected.value ? held : bodyProjection.value;
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",
       origin,
@@ -2514,8 +2553,8 @@ class CanonicalSession {
     return Result.ok({
       transaction,
       document: applied.value.document,
-      projection: projected.value,
-      bodyProjection: bodyProjection.value,
+      projection: held,
+      bodyProjection: heldBody,
       selection,
       touched: applied.value.touched,
       version: baseVersion + 1,
@@ -2551,12 +2590,12 @@ class CanonicalSession {
           this.storyProjections.set(storyProjectionKey(projectedStory), {
             content: body.content,
             theme: applied.value.document.package.theme,
-            projection: projected.value,
+            projection: held,
           });
         }
         this.currentSelection = selection;
         this.currentDocument = applied.value.document;
-        this.currentProjection = bodyProjection.value;
+        this.currentProjection = heldBody;
         // Save changes are cumulative against originalBuffer, including undo/redo.
         // They are published with the model, never with a staged projection.
         for (const ids of [
@@ -2603,13 +2642,15 @@ export const createCanonicalSession = (
   if (validated.isErr()) return refuse(validated.error.message);
   const normalized = normalizeCanonicalListRendering(identified).document;
   preservePropertySources({ target: normalized, source: owned });
-  const projected = project({ document: normalized, styles });
+  const blockCache = new ProjectionBlockCache();
+  const projected = project({ document: normalized, styles, blockCache });
   if (projected.isErr()) return projected;
   return Result.ok(
     new CanonicalSession({
       document: normalized,
       projection: projected.value,
       styles,
+      blockCache,
     }),
   );
 };
