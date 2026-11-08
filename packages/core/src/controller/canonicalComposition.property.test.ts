@@ -1613,6 +1613,59 @@ test("reading the DOM back may change only what the DOM cannot carry", () => {
   }
 });
 
+test("a reread may rebuild a mark from what its rendering carries, and no more", () => {
+  const { fontFamily } = canonicalSchema.marks;
+  if (!fontFamily) throw new TypeError("Missing a mark type");
+  // A family set for every script renders once; a reread names it for the
+  // first script only.
+  const family = fontFamily.create({ ascii: "Arial", hAnsi: "Arial" });
+  const reread = fontFamily.create({ ascii: "Arial" });
+  const doc = canonicalSchema.node("doc", null, [
+    canonicalSchema.node("paragraph", null, [
+      canonicalSchema.text("東京", [family]),
+      canonicalSchema.text("Intro"),
+    ]),
+  ]);
+  const baseline = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, 3),
+  });
+  const rewrite = (
+    state: EditorState,
+    marks: readonly Mark[],
+    composedMarks: readonly Mark[],
+  ) =>
+    state.tr.replaceWith(1, 3, [
+      canonicalSchema.text("東京", marks),
+      canonicalSchema.text("alpha", composedMarks),
+    ]);
+
+  for (const [name, marks, composedMarks] of [
+    ["composed text", [family], [reread]],
+    ["untouched and composed text", [reread], [reread]],
+  ] as const) {
+    const accepted = compose(baseline, (state) =>
+      rewrite(state, marks, composedMarks),
+    );
+    expect(accepted.refusals, name).toEqual([]);
+    expect(accepted.inputs, name).toEqual([{ from: 3, to: 3, text: "alpha" }]);
+  }
+
+  // A family the rendering does carry is a real change.
+  const other = fontFamily.create({ ascii: "Courier" });
+  for (const [name, marks, composedMarks] of [
+    ["another family on composed text", [family], [other]],
+    ["another family on untouched text", [other], [family]],
+  ] as const) {
+    const refused = compose(baseline, (state) =>
+      rewrite(state, marks, composedMarks),
+    );
+    expect(refused.inputs, name).toEqual([]);
+    expect(refused.refusals, name).toHaveLength(1);
+    expect(refused.state.doc.eq(baseline.doc), name).toBe(true);
+  }
+});
+
 test("a composition across paragraphs may keep the last paragraph's element", () => {
   const paragraph = (paraId: string, text: string, alignment?: string) =>
     canonicalSchema.node(
