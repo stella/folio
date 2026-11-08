@@ -9,7 +9,7 @@
  * renders selection rectangles in container-relative coordinates.
  */
 
-import React, { useMemo } from "react";
+import React, { type Ref, useMemo } from "react";
 
 import {
   type CaretPosition,
@@ -53,6 +53,8 @@ export type SelectionOverlayProps = {
    * cursor while the local caret is briefly cleared during typing.
    */
   markCaretRect?: boolean;
+  /** The overlay element, for hiding it without a render. */
+  overlayRef?: Ref<HTMLDivElement>;
 };
 
 // =============================================================================
@@ -174,13 +176,14 @@ export const SelectionOverlay: React.FC<SelectionOverlayProps> = ({
   caretWidth = DEFAULT_CARET_WIDTH,
   blinkInterval = DEFAULT_BLINK_INTERVAL,
   markCaretRect = false,
+  overlayRef,
 }) => {
   // Determine if we have a range selection or collapsed selection
   const hasRangeSelection = selectionRects.length > 0;
   const hasCollapsedSelection = caretPosition !== null && !hasRangeSelection;
 
   return (
-    <div style={overlayStyles} data-testid="selection-overlay">
+    <div ref={overlayRef} style={overlayStyles} data-testid="selection-overlay">
       {/* Render selection rectangles for range selection */}
       {hasRangeSelection &&
         selectionRects.map((rect, index) => (
