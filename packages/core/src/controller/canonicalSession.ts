@@ -64,6 +64,7 @@ import {
   copyParagraphPropertySource,
   restoreParagraphIndentationProjection,
 } from "../docx/paragraphPropertySource";
+import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
 import {
@@ -695,6 +696,22 @@ type ProjectStoryOptions = {
   story?: OpStory;
 };
 
+/** Whether a paragraph anchors a text box, which converts to a block of its own. */
+const holdsTextBox = (paragraph: Paragraph): boolean => {
+  let found = false;
+  visitInlineContentSlots(paragraph, ({ item }) => {
+    if (
+      item.type === "run" &&
+      item.content.some(
+        (content) =>
+          content.type === "shape" && content.shape.textBody !== undefined,
+      )
+    )
+      found = true;
+  });
+  return found;
+};
+
 const project = ({
   document,
   styles,
@@ -781,21 +798,66 @@ const project = ({
   collectSources(body.content);
   const paragraphs: ParagraphAddress[] = [];
   const projectedSources = new Set<Paragraph>();
+  // A paragraph holding only text boxes projects as the boxes alone; the first
+  // box of its group stands where the paragraph was.
+  const orderedSources = [...allSources];
+  const sourceOrder = new Map(
+    orderedSources.map((source, index) => [source, index]),
+  );
+  const textBoxHosts = new Set<Paragraph>();
+  let nextSource = 0;
+  const claimTextBoxHost = (): boolean => {
+    let index = nextSource;
+    while (
+      index < orderedSources.length &&
+      continuationSources.has(orderedSources[index] ?? panic("No source"))
+    )
+      index += 1;
+    const host = orderedSources[index];
+    if (host === undefined || !holdsTextBox(host)) return false;
+    textBoxHosts.add(host);
+    nextSource = index + 1;
+    // The host carries no address, but a range it opens or closes still
+    // covers the paragraphs after it.
+    visitCommentMarkers([host], ({ item }) => {
+      if (item.type === "commentRangeStart")
+        commentContext.openIds.add(item.id);
+      if (item.type === "commentRangeEnd")
+        commentContext.openIds.delete(item.id);
+    });
+    return true;
+  };
   let failure: CanonicalSessionError | undefined;
   converted.value.descendants((node, offset, parent) => {
-    if (failure !== undefined) return;
+    if (failure !== undefined) return false;
+    // A text box's paragraphs belong to its shape, not to this story. The
+    // session holds no address in them, so input there refuses and the box
+    // keeps its source as it was.
+    if (node.type.name === "textBox") {
+      if (
+        node.attrs["_docxPlacement"] === "standalone" &&
+        node.attrs["_docxHostParagraph"] != null &&
+        !claimTextBoxHost()
+      )
+        failure = new CanonicalSessionError({
+          ground: { gap: CANONICAL_GAP.storyContentProjection },
+          reason: "refused",
+          message: "The projection changed paragraph structure.",
+        });
+      return false;
+    }
     // A range opened between blocks covers the paragraphs after it.
     if (node.type.name === "blockCommentRangeBoundary") {
       const { marker } = expectCommentRangeBoundaryAttrs(node);
       if (marker.type === "commentRangeStart")
         commentContext.openIds.add(marker.id);
       else commentContext.openIds.delete(marker.id);
-      return;
+      return false;
     }
-    if (node.type.name !== "paragraph") return;
+    if (node.type.name !== "paragraph") return true;
     // A row's w:gridBefore and w:gridAfter render as filler cells whose empty
     // paragraph has no source; there is nothing in them to edit.
-    if (parent?.attrs["_omittedGridSlot"] != null) return;
+    if (parent?.attrs["_omittedGridSlot"] != null) return false;
     const paraId = node.attrs["paraId"];
     const located =
       typeof paraId === "string" ? sources.get(paraId) : undefined;
@@ -805,7 +867,7 @@ const project = ({
         reason: "refused",
         message: "The projection changed paragraph structure.",
       });
-      return;
+      return false;
     }
     const { source, container } = located;
     if (projectedSources.has(source)) {
@@ -814,9 +876,10 @@ const project = ({
         reason: "refused",
         message: "The projection changed paragraph structure.",
       });
-      return;
+      return false;
     }
     projectedSources.add(source);
+    nextSource = (sourceOrder.get(source) ?? panic("Unordered source")) + 1;
     const inline = projectCanonicalInline({
       source,
       paragraph: node,
@@ -829,7 +892,7 @@ const project = ({
         reason: "refused",
         message: inline.error.message,
       });
-      return;
+      return false;
     }
     paragraphs.push({
       blockId: paraId,
@@ -845,11 +908,16 @@ const project = ({
       if (item.type === "commentRangeEnd")
         commentContext.openIds.delete(item.id);
     });
+    return false;
   });
   if (failure !== undefined) return Result.err(failure);
   if (
-    projectedSources.size + continuationSources.size !== allSources.size ||
-    [...projectedSources].some((source) => continuationSources.has(source))
+    projectedSources.size + continuationSources.size + textBoxHosts.size !==
+      allSources.size ||
+    [...projectedSources].some(
+      (source) => continuationSources.has(source) || textBoxHosts.has(source),
+    ) ||
+    [...textBoxHosts].some((source) => continuationSources.has(source))
   ) {
     return refuse("The projection changed paragraph structure.");
   }
