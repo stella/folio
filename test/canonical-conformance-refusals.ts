@@ -15,12 +15,6 @@ const REFUSAL_ROWS = {
     message:
       "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
   },
-  hyperlinkReview: {
-    id: CANONICAL_GAP.trackedHyperlinkResolution,
-    gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message:
-      "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
-  },
   cellSelectionPlacement: {
     id: CANONICAL_GAP.commands,
     gap: CANONICAL_GAP.commands,
@@ -186,7 +180,6 @@ export const canonicalConformanceRefusalRows = (
   // there is nothing to refuse.
   if (key.shape === "tables" && key.placement === "cross-paragraph") return [];
   if (key.mode === "suggesting") return [REFUSAL_ROWS.hyperlinkSuggestion];
-  if (key.shape === "tracked-changes") return [REFUSAL_ROWS.hyperlinkReview];
   return [];
 };
 

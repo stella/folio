@@ -302,7 +302,6 @@ const REVIEW_HYPERLINK_COMMANDS = [
 const REVIEW_HYPERLINK_CASES = (
   [
     { shape: "comments", mode: "suggesting" },
-    { shape: "tracked-changes", mode: "editing" },
     { shape: "tracked-changes", mode: "suggesting" },
   ] as const
 ).flatMap(({ shape, mode }) =>
@@ -362,6 +361,55 @@ test.each(
     }
   },
 );
+// The fixture's focus holds no link, so only setting and inserting change it.
+test.each(
+  REVIEW_HYPERLINK_COMMANDS.filter((command) => command.id !== "remove"),
+)(
+  "$id hyperlink over tracked changes applies and keeps every revision",
+  async (command) => {
+    const shape = "tracked-changes";
+    const source = await parseShapeDocument(
+      new Uint8Array(await shapeArrayBuffer(shape)),
+    );
+    const driver = createCanonicalEditorHarness(source, "editing");
+    try {
+      const placed = placeSelection(
+        driver.state,
+        documentShape(shape).focus,
+        command.placement,
+      );
+      if (!placed) throw new TypeError("Review fixture lost selection");
+      driver.dispatch(driver.state.tr.setSelection(placed.selection));
+      // The revisions by author and kind: a cut change keeps its author on
+      // both halves, so the set is what the session must not lose.
+      const revisions = (): string[] => {
+        const seen = new Set<string>();
+        driver.state.doc.descendants((node) => {
+          for (const mark of node.marks)
+            if (mark.type.name === "insertion" || mark.type.name === "deletion")
+              seen.add(`${mark.type.name}:${String(mark.attrs["author"])}`);
+          return true;
+        });
+        return [...seen].sort();
+      };
+      const before = revisions();
+      expect(before.length).toBeGreaterThan(0);
+      driver.expectRefusals(
+        canonicalConformanceRefusalRows({
+          shape,
+          mode: "editing",
+          operation: command.operation,
+          placement: command.placement,
+        }),
+      );
+      expect(driver.execute(command.create())).toBe(true);
+      expect(driver.refusals).toEqual([]);
+      expect(revisions()).toEqual(before);
+    } finally {
+      driver.dispose();
+    }
+  },
+);
 test.each(REVIEW_HYPERLINK_CASES)(
   "$shape $command.id hyperlink refusal preserves the complete session in $mode",
   async ({ shape, mode, command }) => {
@@ -394,9 +442,7 @@ test.each(REVIEW_HYPERLINK_CASES)(
           row: CANONICAL_GAP.trackedHyperlinkResolution,
           expectation: "declared",
           message:
-            mode === "suggesting"
-              ? "Hyperlink and TOC suggestions require serializable wrapper review provenance."
-              : "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
+            "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
         },
       ]);
       assertExactModel(driver.snapshot(), before);
