@@ -28,49 +28,45 @@ import {
 setDefaultTimeout(propertyTestTimeout(240_000));
 
 describe("the notes a shared document references", () => {
-  for (const [name, documents] of [
-    ["any document", documentArbitrary],
-    ["a review document", reviewDocumentArbitrary],
-  ] as const)
-    test(`equal a read of every paragraph over a run of edits, ${name}`, async () => {
-      await assertProperty(
-        fc.property(
-          documents,
-          fc.array(
-            fc.record({
-              seed: opSeedArbitrary,
-              tracked: fc.boolean(),
-              story: fc.nat(),
-            }),
-            { minLength: 1, maxLength: 12 },
-          ),
-          (generated, edits) => {
-            let document = generated;
+  test("equal a read of every paragraph over a run of edits", async () => {
+    await assertProperty(
+      fc.property(
+        fc.oneof(documentArbitrary, reviewDocumentArbitrary),
+        fc.array(
+          fc.record({
+            seed: opSeedArbitrary,
+            tracked: fc.boolean(),
+            story: fc.nat(),
+          }),
+          { minLength: 1, maxLength: 12 },
+        ),
+        (generated, edits) => {
+          let document = generated;
+          expect([...referencedNoteKeys(document)]).toEqual([
+            ...referencedNoteKeysInFull(document),
+          ]);
+          edits.forEach(({ seed, tracked, story: storyIndex }, index) => {
+            const stories = documentStories(document);
+            const story =
+              stories[storyIndex % stories.length] ?? OP_STORIES.MAIN;
+            const applied = applyDocumentOp(
+              document,
+              tracked && story === OP_STORIES.MAIN
+                ? trackedOpFor(document, seed, index)
+                : opForStory({ document, seed, story }),
+            );
+            if (applied.isErr()) return;
+            document = applied.value.document;
             expect([...referencedNoteKeys(document)]).toEqual([
               ...referencedNoteKeysInFull(document),
             ]);
-            edits.forEach(({ seed, tracked, story: storyIndex }, index) => {
-              const stories = documentStories(document);
-              const story =
-                stories[storyIndex % stories.length] ?? OP_STORIES.MAIN;
-              const applied = applyDocumentOp(
-                document,
-                tracked && story === OP_STORIES.MAIN
-                  ? trackedOpFor(document, seed, index)
-                  : opForStory({ document, seed, story }),
-              );
-              if (applied.isErr()) return;
-              document = applied.value.document;
-              expect([...referencedNoteKeys(document)]).toEqual([
-                ...referencedNoteKeysInFull(document),
-              ]);
-            });
-          },
-        ),
-        {
-          id: `note reference reads share records soundly, ${name}`,
-          numRuns: 120,
+          });
         },
-      );
-    });
+      ),
+      {
+        id: "note reference reads share records soundly",
+        numRuns: 200,
+      },
+    );
+  });
 });
