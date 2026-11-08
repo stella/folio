@@ -44,6 +44,7 @@ const DATE = "2026-01-02T03:04:05Z";
 
 const options = (overrides: Partial<WriteOptions> = {}): WriteOptions => ({
   destination: { type: "inPlace" },
+  scope: { type: "unrestricted" },
   author: "Reviewer",
   date: DATE,
   repack: "refuse",

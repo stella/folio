@@ -177,7 +177,9 @@ const isDiscardRecord = (line: string, txId: string): boolean => {
 
 /**
  * The committed transaction with `txId`, if the journal has one and recovery
- * did not discard it. Torn or foreign lines (a crash mid-append) are skipped.
+ * did not discard it. A discard cancels the commits before it, so a retry
+ * that commits after a discard is the transaction's receipt. Torn or foreign
+ * lines (a crash mid-append) are skipped.
  * A journal (or `.folio`) that is a symlink or hard link is refused.
  */
 export const findCommit = async (
@@ -205,7 +207,10 @@ export const findCommit = async (
   let found: CommittedTransaction | undefined;
   for (const line of decodeText(bytes.value).split("\n")) {
     if (!line.includes(txId)) continue;
-    if (isDiscardRecord(line, txId)) return Result.ok(undefined);
+    if (isDiscardRecord(line, txId)) {
+      found = undefined;
+      continue;
+    }
     const commit = parseCommit(line);
     if (commit?.txId === txId) found ??= commit;
   }

@@ -79,6 +79,7 @@ const write = async (
     { path: file, fileVersion, args },
     {
       destination: { type: "inPlace" },
+      scope: { type: "unrestricted" },
       author: "Agent",
       date: "2026-01-02T03:04:05Z",
       repack: "refuse",
