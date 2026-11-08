@@ -178,26 +178,29 @@ const describeBookmark = (id: number, name: string | null): string =>
 
 // A node that carries a bookmark boundary itself: a boundary node, a
 // paragraph's unpaired bookmarks, or a table's or row's positioned markers.
-// Any such attr counts, even one the pass would not read, so a subtree the
-// pass skips never holds a boundary.
+// Attrs that do not read count too, so a subtree the pass skips never holds
+// a boundary.
 const carriesBookmarkBoundary = (node: PMNode): boolean => {
   switch (node.type.name) {
     case "bookmarkBoundary":
     case "blockBookmarkBoundary":
       return true;
-    case "paragraph":
-      return isNonEmptyArray(node.attrs["bookmarks"]);
-    case "table":
-    case "tableRow":
-      return isNonEmptyArray(node.attrs["_bookmarks"]);
+    case "paragraph": {
+      const attrs = readParagraphAttrs(node);
+      return !attrs.ok || (attrs.value.bookmarks?.length ?? 0) > 0;
+    }
+    case "table": {
+      const attrs = readTableAttrs(node);
+      return !attrs.ok || (attrs.value._bookmarks?.length ?? 0) > 0;
+    }
+    case "tableRow": {
+      const attrs = readTableRowAttrs(node);
+      return !attrs.ok || (attrs.value._bookmarks?.length ?? 0) > 0;
+    }
     default:
       return false;
   }
 };
-const isNonEmptyArray = (value: unknown): boolean =>
-  Array.isArray(value)
-    ? value.length > 0
-    : value !== null && value !== undefined;
 
 // Nodes are immutable and an edit shares every subtree it does not touch, so
 // whether a subtree holds a boundary is decided once per node. The pairing
