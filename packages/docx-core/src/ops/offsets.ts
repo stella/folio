@@ -343,6 +343,9 @@ const TRACKED_CHILD_TYPES = {
   bookmarkEnd: true,
   commentRangeStart: true,
   commentRangeEnd: true,
+  // The model lifts a w:commentReference out of its w:r carrier; the record
+  // stays in the tracked change that holds that carrier.
+  commentReference: true,
   moveFromRangeStart: true,
   moveFromRangeEnd: true,
   moveToRangeStart: true,
@@ -357,10 +360,7 @@ const TRACKED_CHILD_TYPES = {
   deletion: true,
   moveFrom: true,
   moveTo: true,
-} as const satisfies Record<
-  Exclude<TrackedRunContent["type"], "commentReference">,
-  true
->;
+} as const satisfies Record<TrackedRunContent["type"], true>;
 
 const INLINE_SDT_CHILD_TYPES = {
   run: true,
@@ -393,8 +393,7 @@ export const isHyperlinkChild = (
 /** Whether a tracked change (`w:ins`, `w:del`, a move) can hold the record. */
 export const isTrackedChild = (
   item: ParagraphContent,
-): item is Exclude<TrackedRunContent, { type: "commentReference" }> =>
-  Object.hasOwn(TRACKED_CHILD_TYPES, item.type);
+): item is TrackedRunContent => Object.hasOwn(TRACKED_CHILD_TYPES, item.type);
 
 const isInlineSdtChild = (item: ParagraphContent): item is InlineSdtChild =>
   Object.hasOwn(INLINE_SDT_CHILD_TYPES, item.type);
