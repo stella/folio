@@ -65,6 +65,11 @@ const isListItem = (value: unknown): value is ContentControlListItem => {
   );
 };
 
+/**
+ * The picker's choices: one per stored value, the first item that has it. A
+ * pick is applied by value, and the value names its first item, so a later
+ * item sharing that value would show one label and write another.
+ */
 export const parseContentControlListItems = (
   raw: string | undefined,
 ): ContentControlListItem[] => {
@@ -80,7 +85,14 @@ export const parseContentControlListItems = (
   if (!Array.isArray(parsed)) {
     return [];
   }
-  return parsed.filter(isListItem);
+  const values = new Set<string>();
+  const items: ContentControlListItem[] = [];
+  for (const item of parsed) {
+    if (!isListItem(item) || values.has(item.value)) continue;
+    values.add(item.value);
+    items.push(item);
+  }
+  return items;
 };
 
 const pickerPosition = (
