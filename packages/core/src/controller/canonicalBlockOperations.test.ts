@@ -493,6 +493,38 @@ describe("block-level public operations match the default engine", () => {
       }
 });
 
+describe("inline line breaks", () => {
+  // CRLF and a lone CR are each one line break, as LF is. The default engine
+  // keeps a carriage return as a text character, which saves as no break.
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`CRLF and CR insert one line break each, ${mode}`, async () => {
+      const source = await packageOf(BODIES["ending the body"]);
+      const inline = (text: string) =>
+        ({
+          id: "op",
+          type: "insertAfterBlock",
+          blockId: "10000002",
+          text,
+          lineBreakMode: "inline",
+        }) as const satisfies FolioDocumentOperation;
+      const run = await canonicalRun(
+        source,
+        inline("Name\r\nNext\rLast"),
+        mode,
+      );
+      expect(run.skipped).toEqual([]);
+      expect(
+        await outcomes(
+          await viaCanonicalEngine(source, inline("Name\r\nNext\rLast"), mode),
+        ),
+      ).toEqual(
+        await outcomes(
+          await viaDefaultEngine(source, inline("Name\nNext\nLast"), mode),
+        ),
+      );
+    });
+});
+
 describe("a block move matches the default engine", () => {
   /** The source paragraph moved after the anchor, both halves naming one move. */
   const move = (destination: "insertAfterBlock" | "insertBeforeBlock") =>

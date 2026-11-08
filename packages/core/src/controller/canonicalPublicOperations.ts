@@ -342,7 +342,7 @@ const resolveBlockInsertion = ({
       "Canonical public emphasis replacements are unavailable.",
     );
   const inline = operation.lineBreakMode === "inline";
-  if (/\[\^(?:e)?\d+\]/u.test(text) || (inline && text.includes("\r")))
+  if (/\[\^(?:e)?\d+\]/u.test(text))
     return refusal(
       "unsupportedBlock",
       "Canonical block insertion requires plain text.",
@@ -481,11 +481,14 @@ const blockMoveId = (operation: FolioDocumentOperation): string | undefined =>
     ? operation.moveId
     : undefined;
 
-/** A line's text with each tab and line break as the element it is. */
+/**
+ * A line's text with each tab and line break as the element it is; CRLF, CR
+ * and LF are each one line break.
+ */
 const inlineText = (line: string): Run["content"] =>
-  line.split(/([\t\n])/u).flatMap((part): Run["content"] => {
+  line.split(/(\t|\r\n|\r|\n)/u).flatMap((part): Run["content"] => {
     if (part === "\t") return [{ type: "tab" }];
-    if (part === "\n") return [{ type: "break" }];
+    if (LINE_BREAK_PATTERN.test(part)) return [{ type: "break" }];
     return part === "" ? [] : [{ type: "text", text: part }];
   });
 
