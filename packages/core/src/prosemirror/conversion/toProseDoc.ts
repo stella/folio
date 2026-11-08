@@ -38,6 +38,7 @@ import {
   createProseParagraphWithPropertySource,
   getDocumentParagraphPropertySourceContract,
   paragraphFormattingWithAuthoredIndentation,
+  paragraphPropertySourceState,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   proseParagraphAttrsWithoutPropertySource,
   recreateProseNodeWithParagraphPropertySource,
@@ -249,6 +250,19 @@ export type ToProseDocOptions = {
    * already use. Absent means nobody is listening, not that nothing happened.
    */
   warn?: ParseContext["warn"];
+  /**
+   * Blocks converted by earlier projections of the same story, reused where
+   * nothing a block's conversion read has changed. See
+   * {@link createProjectionBlockCache}.
+   */
+  blockCache?: ProjectionBlockCache;
+  /**
+   * The salt of minted text-box anchor ids. Each conversion draws its own;
+   * a block cache keeps one for every projection it serves, and a caller
+   * comparing a cached projection with a fresh one gives the fresh one the
+   * cache's salt.
+   */
+  textBoxGroupSalt?: string;
 };
 
 /** Records that a page break is projected less than exactly. */
@@ -295,11 +309,18 @@ type TrackedRunFormattingResolvers = {
  * span carrying a guessed/copied id could collide with and hijack a real
  * text box anchored in a completely different document.
  */
-const createTextBoxGroupIdFactory = (): (() => string) => {
-  const salt = Math.random().toString(36).slice(2, 10);
-  let index = 0;
-  return () => `${salt}:${index++}`;
-};
+const newTextBoxGroupSalt = (): string =>
+  Math.random().toString(36).slice(2, 10);
+
+/** Text-box group ids under one salt, counted from `counter`. */
+const textBoxGroupIdsFrom =
+  (salt: string, counter: { value: number }): (() => string) =>
+  () =>
+    `${salt}:${counter.value++}`;
+
+const createTextBoxGroupIdFactory = (
+  salt: string = newTextBoxGroupSalt(),
+): (() => string) => textBoxGroupIdsFrom(salt, { value: 0 });
 
 type HyperlinkInstanceIndexAllocator = () => number;
 type RunIdentityIdAllocator = () => number;
@@ -595,6 +616,276 @@ export const collectPairedBookmarkIds = (
 };
 
 /**
+ * What each field of the conversion context depends on: the package alone,
+ * or the story before the block being converted. A block's conversion reads
+ * the package fields freely; it reads the story fields only through a
+ * recorder, so a converted block is reused only where every story fact it
+ * read still holds. Total over the context: a field added to it does not
+ * compile until it is placed in one half or the other.
+ */
+const CONVERSION_CONTEXT_DEPENDENCY = {
+  listRenderings: "package",
+  numbering: "package",
+  theme: "package",
+  pageBreakRunSourceDescendants: "package",
+  warnPageBreakProjection: "package",
+  createMark: "package",
+  nextTextBoxGroupId: "story",
+  nextHyperlinkInstanceIndex: "story",
+  nextNoteReferenceOccurrenceId: "story",
+  pairedBookmarkIds: "story",
+  storyRangedCommentIds: "story",
+  openCommentIds: "story",
+} as const satisfies Record<keyof TableConversionContext, "package" | "story">;
+
+type ContextDependency = typeof CONVERSION_CONTEXT_DEPENDENCY;
+type PackageContextField = {
+  [K in keyof ContextDependency]: ContextDependency[K] extends "package"
+    ? K
+    : never;
+}[keyof ContextDependency];
+type StoryContextField = Exclude<
+  keyof TableConversionContext,
+  PackageContextField
+>;
+/** The conversion context a block may read without recording. */
+type PackageConversionContext = Pick<
+  TableConversionContext,
+  PackageContextField
+>;
+/** The story facts a block's conversion reads, each through its recorder. */
+type StoryConversionContext = Pick<TableConversionContext, StoryContextField>;
+
+/** Whether a story holds an id: all a block's conversion asks of a story id set. */
+type IdMembership = Pick<ReadonlySet<number>, "has">;
+
+/** A membership whose answers a block's conversion read, recorded to check later. */
+class RecordedMembership implements IdMembership {
+  readonly answers = new Map<number, boolean>();
+  private readonly source: IdMembership;
+  constructor(source: IdMembership) {
+    this.source = source;
+  }
+  has(value: number): boolean {
+    const answer = this.source.has(value);
+    this.answers.set(value, answer);
+    return answer;
+  }
+}
+
+/** One story counter, as the conversion advances it. */
+type StoryCounter = { value: number };
+
+/** The story state a block conversion starts from and advances. */
+type StoryState = {
+  textBoxGroups: StoryCounter;
+  hyperlinks: StoryCounter;
+  noteOccurrences: StoryCounter;
+  pairedBookmarkIds: IdMembership;
+  storyRangedCommentIds: IdMembership;
+  openCommentIds: Set<number>;
+};
+
+type SetReads = { answers: ReadonlyMap<number, boolean> };
+
+/** Every story fact one block's conversion read, and how far it advanced the story. */
+type StoryReads = {
+  textBoxGroups: { start: number; taken: number; used: boolean };
+  hyperlinks: { start: number; taken: number };
+  noteOccurrences: { start: number; taken: number };
+  pairedBookmarkIds: SetReads;
+  storyRangedCommentIds: SetReads;
+  openCommentIds: { start: readonly number[]; end: readonly number[] };
+};
+
+const sameIds = (left: readonly number[], right: readonly number[]) =>
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
+
+const setReadsHold = (reads: SetReads, set: IdMembership): boolean => {
+  for (const [value, answer] of reads.answers)
+    if (set.has(value) !== answer) return false;
+  return true;
+};
+
+const storyReadsHold = (reads: StoryReads, state: StoryState): boolean =>
+  (!reads.textBoxGroups.used ||
+    reads.textBoxGroups.start === state.textBoxGroups.value) &&
+  (reads.hyperlinks.taken === 0 ||
+    reads.hyperlinks.start === state.hyperlinks.value) &&
+  (reads.noteOccurrences.taken === 0 ||
+    reads.noteOccurrences.start === state.noteOccurrences.value) &&
+  setReadsHold(reads.pairedBookmarkIds, state.pairedBookmarkIds) &&
+  setReadsHold(reads.storyRangedCommentIds, state.storyRangedCommentIds) &&
+  // In the set's own order: comment marks are added in it.
+  sameIds(reads.openCommentIds.start, [...state.openCommentIds]);
+
+/** Advance the story past a block whose reads hold, as converting it would. */
+const advanceStory = (reads: StoryReads, state: StoryState): void => {
+  state.textBoxGroups.value += reads.textBoxGroups.taken;
+  state.hyperlinks.value += reads.hyperlinks.taken;
+  state.noteOccurrences.value += reads.noteOccurrences.taken;
+  state.openCommentIds.clear();
+  for (const id of reads.openCommentIds.end) state.openCommentIds.add(id);
+};
+
+const setReadsOf = (set: RecordedMembership): SetReads => ({
+  answers: set.answers,
+});
+
+type CachedBlock = {
+  nodes: readonly PMNode[];
+  reads: StoryReads;
+  /** The paragraph's facts kept outside its fields, as converted. */
+  sourceState: readonly unknown[];
+};
+
+const sameState = (left: readonly unknown[], right: readonly unknown[]) =>
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
+
+type ProjectionPackageInputs = {
+  styles: StyleDefinitions | undefined;
+  theme: Theme | null;
+  numbering: NumberingDefinitions | undefined;
+  warn: ParseContext["warn"] | undefined;
+};
+
+/**
+ * Converted blocks kept across projections of one story.
+ *
+ * A block is the same object in the next document when an edit left it, so
+ * its nodes can be reused where the story facts its conversion read are the
+ * same: the counters it drew from, the comments open at its start, and the
+ * bookmark and comment ids it asked about. The package inputs (styles,
+ * theme, numbering) are part of the cache: a projection over other ones
+ * starts the cache over.
+ */
+export class ProjectionBlockCache {
+  readonly salt: string = newTextBoxGroupSalt();
+  private inputs: ProjectionPackageInputs | undefined;
+  private context:
+    (PackageConversionContext & { styleResolver: StyleEngine }) | undefined;
+  private blocks = new WeakMap<Paragraph, CachedBlock>();
+
+  /** The package context for these inputs, the cache started over if they changed. */
+  packageContext(
+    inputs: ProjectionPackageInputs,
+  ): PackageConversionContext & { styleResolver: StyleEngine } {
+    const current = this.inputs;
+    if (
+      this.context !== undefined &&
+      current !== undefined &&
+      current.styles === inputs.styles &&
+      current.theme === inputs.theme &&
+      current.numbering === inputs.numbering &&
+      current.warn === inputs.warn
+    )
+      return this.context;
+    this.inputs = inputs;
+    this.blocks = new WeakMap();
+    this.context = {
+      styleResolver: createStyleEngine(inputs.styles),
+      listRenderings: new Map<string, ResolvedListRendering>(),
+      numbering:
+        inputs.numbering === undefined
+          ? undefined
+          : getCachedNumberingMap(inputs.numbering),
+      theme: inputs.theme,
+      // Answers per queried object, so one index serves every projection.
+      pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex([]),
+      warnPageBreakProjection: pageBreakProjectionWarn(inputs.warn),
+      createMark: createMarkInterner(schema),
+    };
+    return this.context;
+  }
+
+  /**
+   * The nodes of `paragraph` from the story state it starts at, reused when
+   * every story fact its last conversion read still holds, else converted.
+   */
+  paragraph(
+    paragraph: Paragraph,
+    state: StoryState,
+    convert: (context: TableConversionContext, groupId: string) => PMNode[],
+  ): readonly PMNode[] {
+    const known = this.blocks.get(paragraph);
+    const sourceState = paragraphPropertySourceState(paragraph);
+    if (
+      known !== undefined &&
+      sameState(known.sourceState, sourceState) &&
+      storyReadsHold(known.reads, state)
+    ) {
+      advanceStory(known.reads, state);
+      return known.nodes;
+    }
+    const context =
+      this.context ?? panic("A block cache converts after its package context");
+    const textBoxGroups = { start: state.textBoxGroups.value, taken: 0 };
+    const hyperlinks = { start: state.hyperlinks.value, taken: 0 };
+    const noteOccurrences = { start: state.noteOccurrences.value, taken: 0 };
+    const pairedBookmarkIds = new RecordedMembership(state.pairedBookmarkIds);
+    const storyRangedCommentIds = new RecordedMembership(
+      state.storyRangedCommentIds,
+    );
+    const openStart = [...state.openCommentIds];
+    const story: StoryConversionContext = {
+      nextTextBoxGroupId: () => {
+        textBoxGroups.taken += 1;
+        return `${this.salt}:${state.textBoxGroups.value++}`;
+      },
+      nextHyperlinkInstanceIndex: () => {
+        hyperlinks.taken += 1;
+        return state.hyperlinks.value++;
+      },
+      nextNoteReferenceOccurrenceId: () => {
+        noteOccurrences.taken += 1;
+        return `source-note:${state.noteOccurrences.value++}`;
+      },
+      pairedBookmarkIds,
+      storyRangedCommentIds,
+      openCommentIds: state.openCommentIds,
+    };
+    const blockContext: TableConversionContext = {
+      listRenderings: context.listRenderings,
+      numbering: context.numbering,
+      theme: context.theme,
+      pageBreakRunSourceDescendants: context.pageBreakRunSourceDescendants,
+      warnPageBreakProjection: context.warnPageBreakProjection,
+      createMark: context.createMark,
+      ...story,
+    };
+    const nodes = convert(blockContext, story.nextTextBoxGroupId());
+    // A minted text-box id carries the salt; a block holding none of them
+    // reads the same wherever its group number falls.
+    const saltMark = `"${this.salt}:`;
+    const reads: StoryReads = {
+      textBoxGroups: {
+        ...textBoxGroups,
+        used: nodes.some((node) =>
+          JSON.stringify(node.toJSON()).includes(saltMark),
+        ),
+      },
+      hyperlinks,
+      noteOccurrences,
+      pairedBookmarkIds: setReadsOf(pairedBookmarkIds),
+      storyRangedCommentIds: setReadsOf(storyRangedCommentIds),
+      openCommentIds: {
+        start: openStart,
+        end: [...state.openCommentIds],
+      },
+    };
+    // As the conversion left them: it may record facts of its own.
+    this.blocks.set(paragraph, {
+      nodes,
+      reads,
+      sourceState: paragraphPropertySourceState(paragraph),
+    });
+    return nodes;
+  }
+}
+
+/**
  * Convert a Document to a ProseMirror document
  *
  * @param document - The Document to convert
@@ -612,32 +903,49 @@ export function toProseDoc(
   // The save-side `w:rStyle` reconciliation relies on this: without it, an
   // unexpanded run would look like the user stripped the style's formatting
   // (eigenpal/docx-editor#833).
-  const styleResolver = createStyleEngine(
-    options?.styles ?? document.package.styles,
-  );
-  const theme = options?.theme ?? document.package.theme ?? null;
-  const nextTextBoxGroupId = createTextBoxGroupIdFactory();
-  const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const nextNoteReferenceOccurrenceId =
-    createNoteReferenceOccurrenceAllocator();
-  const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
-  const conversionContext = {
-    listRenderings: new Map<string, ResolvedListRendering>(),
-    numbering:
-      document.package.numbering === undefined
-        ? undefined
-        : getCachedNumberingMap(document.package.numbering),
-    theme,
-    nextTextBoxGroupId,
-    nextHyperlinkInstanceIndex,
-    nextNoteReferenceOccurrenceId,
-    pairedBookmarkIds,
-    pageBreakRunSourceDescendants:
-      buildPageBreakRunSourceDescendantIndex(paragraphs),
+  const cache = options?.blockCache;
+  const packageInputs: ProjectionPackageInputs = {
+    styles: options?.styles ?? document.package.styles,
+    theme: options?.theme ?? document.package.theme ?? null,
+    numbering: document.package.numbering,
+    warn: options?.warn,
+  };
+  const shared = cache?.packageContext(packageInputs);
+  shared?.pageBreakRunSourceDescendants.include(paragraphs);
+  const styleResolver =
+    shared?.styleResolver ?? createStyleEngine(packageInputs.styles);
+  const salt =
+    cache?.salt ?? options?.textBoxGroupSalt ?? newTextBoxGroupSalt();
+  const story: StoryState = {
+    textBoxGroups: { value: 0 },
+    hyperlinks: { value: 0 },
+    noteOccurrences: { value: 0 },
+    pairedBookmarkIds: collectPairedBookmarkIds(paragraphs),
     storyRangedCommentIds: rangedCommentIds(paragraphs),
     openCommentIds: new Set<number>(),
-    warnPageBreakProjection: pageBreakProjectionWarn(options?.warn),
-    createMark: createMarkInterner(schema),
+  };
+  const conversionContext: TableConversionContext = {
+    listRenderings:
+      shared?.listRenderings ?? new Map<string, ResolvedListRendering>(),
+    numbering:
+      shared?.numbering ??
+      (packageInputs.numbering === undefined
+        ? undefined
+        : getCachedNumberingMap(packageInputs.numbering)),
+    theme: shared?.theme ?? packageInputs.theme,
+    nextTextBoxGroupId: textBoxGroupIdsFrom(salt, story.textBoxGroups),
+    nextHyperlinkInstanceIndex: () => story.hyperlinks.value++,
+    nextNoteReferenceOccurrenceId: () =>
+      `source-note:${story.noteOccurrences.value++}`,
+    pairedBookmarkIds: story.pairedBookmarkIds,
+    pageBreakRunSourceDescendants:
+      shared?.pageBreakRunSourceDescendants ??
+      buildPageBreakRunSourceDescendantIndex(paragraphs),
+    storyRangedCommentIds: story.storyRangedCommentIds,
+    openCommentIds: story.openCommentIds,
+    warnPageBreakProjection:
+      shared?.warnPageBreakProjection ?? pageBreakProjectionWarn(options?.warn),
+    createMark: shared?.createMark ?? createMarkInterner(schema),
   };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -646,10 +954,17 @@ export function toProseDoc(
       switch (block.type) {
         case "paragraph":
           out.push(
-            ...convertParagraphWithTextBoxes(block, styleResolver, {
-              textBoxGroupId: nextTextBoxGroupId(),
-              context: conversionContext,
-            }),
+            ...(cache === undefined
+              ? convertParagraphWithTextBoxes(block, styleResolver, {
+                  textBoxGroupId: conversionContext.nextTextBoxGroupId(),
+                  context: conversionContext,
+                })
+              : cache.paragraph(block, story, (context, textBoxGroupId) =>
+                  convertParagraphWithTextBoxes(block, styleResolver, {
+                    textBoxGroupId,
+                    context,
+                  }),
+                )),
           );
           break;
         case "table":
@@ -2213,10 +2528,10 @@ type TableConversionContext = {
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
   nextNoteReferenceOccurrenceId: () => string;
-  pairedBookmarkIds: ReadonlySet<number>;
+  pairedBookmarkIds: IdMembership;
   pageBreakRunSourceDescendants: PageBreakRunSourceDescendantIndex;
   /** Comments the story opens a range for, for the point-comment question. */
-  storyRangedCommentIds: ReadonlySet<number>;
+  storyRangedCommentIds: IdMembership;
   warnPageBreakProjection: PageBreakProjectionWarn;
   /** Shares one mark instance per distinct run formatting across the conversion. */
   createMark: MarkFactory;
