@@ -3,6 +3,7 @@ import { Result } from "better-result";
 import type { Document, TrackedChangeInfo } from "../model/document";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
+import { transferParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
@@ -93,7 +94,12 @@ export const setRevisionInfo = (
         entries.push([key, next]);
       }
       if (changed) {
-        out = Object.fromEntries(entries);
+        // A spread keeps the record's private bindings (its enumerable
+        // symbol fields), and the snapshot a paragraph is bound to follows it.
+        const copy: Record<string, unknown> = { ...value };
+        for (const [key, field] of entries) copy[key] = field;
+        transferParagraphPropertySnapshot({ source: value, target: copy });
+        out = copy;
         if (
           value["type"] === "paragraph" &&
           typeof value["paraId"] === "string"
