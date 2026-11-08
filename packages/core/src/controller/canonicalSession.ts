@@ -1684,6 +1684,13 @@ class CanonicalSession {
   prepareCellSelectionStructure(
     state: EditorState,
     structure: (at: TextPosition) => EditorIntent,
+    {
+      resourceOps = [],
+      semantic = "structure",
+    }: {
+      resourceOps?: readonly DocumentOp[];
+      semantic?: CanonicalInputSemantic;
+    } = {},
   ): Result<CanonicalCommit, CanonicalSessionError> {
     if (!(state.selection instanceof CellSelection))
       return refuse("The structural edit needs a cell selection.");
@@ -1712,7 +1719,7 @@ class CanonicalSession {
     }
     if (first === undefined) return refuse("The cell selection is empty.");
     intents.push(structure({ ...first, offset: 0, zeroWidthBefore: 0 }));
-    return this.prepareIntents(state, { intents, semantic: "structure" });
+    return this.prepareIntents(state, { intents, resourceOps, semantic });
   }
 
   prepareIntent(

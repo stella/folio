@@ -80,12 +80,6 @@ const clipboardTableRows: readonly HarnessRefusalRow[] = [
   },
 ];
 
-const selectedCellPasteRow: HarnessRefusalRow = {
-  id: "selected-cells-paste",
-  gap: CANONICAL_GAP.dispatch,
-  message: "Pasting over selected cells requires a per-cell paste operation.",
-};
-
 /**
  * Input over a cell selection other than typing and deletion needs a per-cell
  * operation the session does not have yet. Each of these leaves the document
@@ -110,11 +104,12 @@ const SELECTED_CELL_REFUSALS = {
       message: "Unclassified native text is unavailable in this session.",
     },
   ],
-  pastePlain: [selectedCellPasteRow],
-  pasteHtml: [selectedCellPasteRow],
-  pasteWordHtml: [selectedCellPasteRow],
-  pasteListHtml: [selectedCellPasteRow],
-  pasteMultiBlock: [selectedCellPasteRow],
+  // A paste clears every selected cell and lands in the first.
+  pastePlain: [],
+  pasteHtml: [],
+  pasteWordHtml: [],
+  pasteListHtml: [],
+  pasteMultiBlock: [],
   pasteTable: clipboardTableRows,
   backspace: [],
   delete: [],
