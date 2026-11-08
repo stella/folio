@@ -1,6 +1,7 @@
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import { scanStreamingXmlElements } from "@stll/docx-core/xml";
 
+import { sliceText } from "../utils/sliceText";
 import type { ParseContext } from "./parseContext";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import { reviewProvenanceIssue } from "./reviewResolutionProvenance";
@@ -38,7 +39,7 @@ export const diagnoseReviewProvenance = (
           ...(element.name === undefined ? {} : { element: element.name }),
           value:
             encoded.length > QUOTED_VALUE_LIMIT
-              ? `${encoded.slice(0, QUOTED_VALUE_LIMIT)}...`
+              ? `${sliceText({ text: encoded, units: "codeUnits", end: QUOTED_VALUE_LIMIT })}...`
               : encoded,
           detail:
             issue === "unsupportedVersion"
