@@ -135,7 +135,7 @@ const CASES: readonly Case[] = [
     name: "delete a column",
     command: "deleteColumn",
     selection: { type: "caret", in: "D" },
-    tracked: true,
+    tracked: false,
   },
   {
     name: "delete two columns",

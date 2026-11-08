@@ -1077,6 +1077,11 @@ class CanonicalSession {
     return structuredClone(survivingComments(this.currentDocument));
   }
 
+  /** Whether edits are recorded as suggestions. */
+  get suggesting(): boolean {
+    return this.mode.type === "suggesting";
+  }
+
   setMode(mode: CanonicalSessionMode): void {
     if (
       this.mode.type !== mode.type ||
