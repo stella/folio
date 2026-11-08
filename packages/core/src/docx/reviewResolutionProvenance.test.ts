@@ -336,6 +336,38 @@ test("paragraph cut provenance validates private envelopes and typed projection 
   }
 });
 
+test("the paragraph a rejected mark keeps has its own private attribute", () => {
+  const mark = {
+    kind: "ins",
+    info: { id: 3, author: "Reviewer" },
+    resolutionJoin: 0,
+    survivor: "first",
+  } as const;
+  const written = serializeParagraphMarkResolutionJoin(mark);
+  // Its own attribute beside the join depth, never a field inside it.
+  expect(written).toContain("folio:rejectionSurvivor=");
+  expect(written).toContain("folio:resolutionJoin=");
+  const node = element(
+    `<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${written}/>`,
+  );
+  expect(parseParagraphMarkResolutionJoin(node)).toEqual({
+    resolutionJoin: 0,
+    survivor: "first",
+  });
+  // An unreadable value drops only the marker, and says so.
+  for (const encoded of [
+    JSON.stringify({ version: 1, value: "second" }),
+    JSON.stringify({ version: 2, value: "first" }),
+    "first",
+  ]) {
+    const dropped = element(
+      `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:rejectionSurvivor="${escapeXmlAttribute(encoded)}"/>`,
+    );
+    expect(parseParagraphMarkResolutionJoin(dropped)).toEqual({});
+    expect(reviewProvenanceIssue("rejectionSurvivor", encoded)).toBeDefined();
+  }
+});
+
 test("copy-origin ancestry uses the bounded versioned private envelope", () => {
   const encoded = serializeCopyOriginAncestors([0, 2, 4]);
   expect(encoded).toBe(JSON.stringify({ version: 1, value: [0, 2, 4] }));

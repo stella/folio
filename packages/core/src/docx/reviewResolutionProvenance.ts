@@ -52,14 +52,13 @@ const PARAGRAPH_MARK_FIELDS = {
   kind: { type: "ooxml" },
   info: { type: "ooxml" },
   resolutionJoin: { type: "private", attribute: "resolutionJoin" },
-  // Which paragraph rejecting an inserted mark keeps lives in memory only:
-  // a reopened file joins as any rejected mark does.
-  survivor: { type: "memory" },
+  // Which paragraph rejecting an inserted mark keeps. Its own attribute, not
+  // a field of another: a reader that does not know it drops only the
+  // marker, and joins the paragraphs as any rejected mark.
+  survivor: { type: "private", attribute: "rejectionSurvivor" },
 } as const satisfies Record<
   keyof ParagraphMarkChange,
-  | { type: "ooxml" }
-  | { type: "private"; attribute: string }
-  | { type: "memory" }
+  { type: "ooxml" } | { type: "private"; attribute: string }
 >;
 
 const DEFERRED_REMOVAL_FIELDS = {
@@ -310,19 +309,43 @@ export const serializeCopyOriginAncestors = (
     valid: isCopyOriginAncestors,
   });
 
-/** Null carries an owned undefined depth; a missing attribute carries no field. */
+const isParagraphMarkSurvivor = (
+  value: unknown,
+): value is NonNullable<ParagraphMarkChange["survivor"]> => value === "first";
+
+/**
+ * A paragraph mark's private review provenance: its rejection join depth
+ * (null carries an owned undefined depth) and the paragraph rejecting it
+ * keeps. A missing attribute carries no field.
+ */
 export const parseParagraphMarkResolutionJoin = (
   node: XmlElement,
-): Pick<ParagraphMarkChange, "resolutionJoin"> => {
+): Pick<ParagraphMarkChange, "resolutionJoin" | "survivor"> => {
   const value = parseAttribute({
     node,
     attribute: PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute,
     valid: isEncodedParagraphMarkResolutionJoin,
   });
-  return value === undefined
-    ? {}
-    : { resolutionJoin: value === null ? undefined : value };
+  const survivor = parseAttribute({
+    node,
+    attribute: PARAGRAPH_MARK_FIELDS.survivor.attribute,
+    valid: isParagraphMarkSurvivor,
+  });
+  return {
+    ...(value === undefined
+      ? {}
+      : { resolutionJoin: value === null ? undefined : value }),
+    ...(survivor === undefined ? {} : { survivor }),
+  };
 };
+
+const paragraphMarkSurvivorOptions = (
+  mark: ParagraphMarkChange,
+): SerializeAttributeOptions => ({
+  attribute: PARAGRAPH_MARK_FIELDS.survivor.attribute,
+  value: mark.survivor,
+  valid: isParagraphMarkSurvivor,
+});
 
 const paragraphMarkResolutionJoinOptions = (
   mark: ParagraphMarkChange,
@@ -336,17 +359,24 @@ const paragraphMarkResolutionJoinOptions = (
 
 export const serializeParagraphMarkResolutionJoin = (
   mark: ParagraphMarkChange,
-): string => serializeAttribute(paragraphMarkResolutionJoinOptions(mark));
+): string =>
+  serializeAttribute(paragraphMarkResolutionJoinOptions(mark)) +
+  serializeAttribute(paragraphMarkSurvivorOptions(mark));
 
-/** Captured paragraph properties compose the same envelope into a parsed XML element. */
+/** Captured paragraph properties compose the same envelopes into a parsed XML element. */
 export const paragraphMarkResolutionJoinAttributes = (
   mark: ParagraphMarkChange,
 ): Record<string, string> => {
-  const options = paragraphMarkResolutionJoinOptions(mark);
-  const encoded = encodeAttribute(options);
-  return encoded === undefined
-    ? {}
-    : { [`folio:${options.attribute}`]: encoded };
+  const attributes: Record<string, string> = {};
+  for (const options of [
+    paragraphMarkResolutionJoinOptions(mark),
+    paragraphMarkSurvivorOptions(mark),
+  ]) {
+    const encoded = encodeAttribute(options);
+    if (encoded !== undefined)
+      attributes[`folio:${options.attribute}`] = encoded;
+  }
+  return attributes;
 };
 
 /**
@@ -411,6 +441,7 @@ const PROVENANCE_VALUE_SHAPES: Readonly<
     isEncodedParagraphMarkResolutionJoin,
   copyOriginAncestors: isCopyOriginAncestors,
   splitResolutionJoins: isSplitResolutionPiece,
+  [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
 };
 
 /**
