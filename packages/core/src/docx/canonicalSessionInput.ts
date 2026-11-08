@@ -12,6 +12,7 @@ import {
   DOCX_CONTAINER_TYPES,
 } from "./encryption/containerFormat";
 import { ensureParaIds } from "./ensureParaIds";
+import { ensureUniqueControlIds } from "./ensureUniqueControlIds";
 
 const CanonicalDocxInputErrorBase: TaggedErrorClass<"CanonicalDocxInputError"> =
   TaggedError("CanonicalDocxInputError");
@@ -21,7 +22,11 @@ export class CanonicalDocxInputError extends CanonicalDocxInputErrorBase<{
   cause?: unknown;
 }> {}
 
-/** Canonical seeding supports plaintext packages; refuse encryption before ZIP normalization. */
+/**
+ * Canonical seeding supports plaintext packages; refuse encryption before ZIP
+ * normalization. A package that repeats a paragraph or content control id is
+ * given unique ones, every paragraph and control kept.
+ */
 export const prepareCanonicalDocxInput = async (
   input: DocxInput,
 ): Promise<
@@ -46,7 +51,11 @@ export const prepareCanonicalDocxInput = async (
     );
   }
   return Result.tryPromise({
-    try: async () => (await ensureParaIds(bytes.value)).docx,
+    // Paragraph ids and content control ids, each unique in the package as
+    // the model holds them.
+    try: async () =>
+      (await ensureUniqueControlIds((await ensureParaIds(bytes.value)).docx))
+        .docx,
     catch: (cause) =>
       new CanonicalDocxInputError({
         message:
