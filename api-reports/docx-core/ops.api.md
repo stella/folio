@@ -468,6 +468,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     at: BlockInsertionPoint;
     paragraphs: readonly Paragraph[];
     move?: true;
+    newList?: NewListInstance;
 } | {
     type: "deleteParagraphs";
     story: OpStory;
@@ -508,6 +509,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "formatParagraph";
     at: TextPosition;
     patch: ParagraphPropsPatch;
+    newList?: NewListInstance;
 } | {
     type: "setList";
     items: readonly {
@@ -735,6 +737,12 @@ export function mergeRunContent(content1: RunContent[], content2: RunContent[]):
 export type NewIds = {
     revision?: readonly number[];
     control?: readonly number[];
+};
+
+// @public
+export type NewListInstance = {
+    num: NumberingInstance;
+    abstractNum?: AbstractNumbering;
 };
 
 // @public
