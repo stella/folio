@@ -202,6 +202,7 @@ import {
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
 import {
   clearPendingComment,
+  commentIdsNamedIn,
   commentRecordsOf,
   commentThreadIds,
   commitCommentThread,
@@ -1891,7 +1892,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       // ones it was loaded with.
       // Uncontrolled, the list mirrors the editor's records; controlled, it
       // is the host's accepted value.
-      return withHostCommentThreads(doc, commentsRef.current);
+      const editorDoc = pagedEditorRef.current?.getView()?.state.doc;
+      return withHostCommentThreads(doc, commentsRef.current, {
+        anchoredInEditor: editorDoc ? commentIdsNamedIn(editorDoc) : null,
+      });
     }, [commentsRef, experimentalSession]);
 
     const applyCanonicalComment = useCallback(

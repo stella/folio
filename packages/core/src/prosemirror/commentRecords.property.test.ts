@@ -73,6 +73,7 @@ const saved = (state: EditorState, base: Document) => {
   const document = withHostCommentThreads(
     fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
     records,
+    { anchoredInEditor: commentIdsNamedIn(state.doc) },
   );
   return {
     comments: JSON.stringify(document.package.document.comments ?? []),

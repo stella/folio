@@ -9,8 +9,9 @@
  */
 
 import type { Comment } from "../types/content";
-import type { Document } from "../types/document";
+import type { BlockContent, Document } from "../types/document";
 import { setDocumentBodyComments } from "./canonicalModel";
+import { visitCommentMarkers } from "./commentAnchorIndex";
 
 export function getCommentParentId(
   comment: Comment,
@@ -61,6 +62,36 @@ export function pruneOrphanedComments(
   return comments.filter((comment) => keptIds.has(comment.id));
 }
 
+/** The comment ids the saved stories of `document` anchor. */
+const commentIdsAnchoredIn = (document: Document): Set<number> => {
+  const ids = new Set<number>();
+  const visit = (blocks: readonly BlockContent[]) =>
+    visitCommentMarkers(blocks, ({ item }) => {
+      ids.add(item.id);
+    });
+  const { package: pkg } = document;
+  visit(pkg.document.content);
+  for (const story of [
+    ...(pkg.headers?.values() ?? []),
+    ...(pkg.footers?.values() ?? []),
+    ...(pkg.footnotes ?? []),
+    ...(pkg.endnotes ?? []),
+  ])
+    visit(story.content);
+  return ids;
+};
+
+export type HostCommentThreadsOptions = {
+  /**
+   * The comment ids the editor's own document anchors, or `null` when the
+   * host has no editor document. A thread anchored there that the document
+   * being saved leaves out (a comment a pending suggestion proposes, which
+   * the save holds back with the suggestion) is left out with its replies:
+   * a saved thread without its anchor is a stray card on reopening.
+   */
+  anchoredInEditor: ReadonlySet<number> | null;
+};
+
 /**
  * `document` with its body's comment threads replaced by the host's. The body
  * and package are copied, so the document passed in is left as it was.
@@ -68,8 +99,23 @@ export function pruneOrphanedComments(
 export function withHostCommentThreads(
   document: Document,
   comments: readonly Comment[],
+  { anchoredInEditor }: HostCommentThreadsOptions,
 ): Document {
   const body = { ...document.package.document };
-  setDocumentBodyComments(body, pruneOrphanedComments(comments));
+  const kept = (() => {
+    if (anchoredInEditor === null || anchoredInEditor.size === 0)
+      return comments;
+    const saved = commentIdsAnchoredIn(document);
+    const heldBack = new Set(
+      comments
+        .filter(({ id }) => anchoredInEditor.has(id) && !saved.has(id))
+        .map(({ id }) => id),
+    );
+    return heldBack.size === 0
+      ? comments
+      : comments.filter(({ id }) => !heldBack.has(id));
+  })();
+  // Replies under a thread left out lose their parent, and pruning drops them.
+  setDocumentBodyComments(body, pruneOrphanedComments(kept));
   return { ...document, package: { ...document.package, document: body } };
 }
