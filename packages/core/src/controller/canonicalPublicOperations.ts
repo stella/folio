@@ -921,23 +921,22 @@ export class CanonicalPublicOperations {
           const { comment } = resolvedOperation;
           const id = freshCommentId(nextDocument);
           if (comment.inserted === true) {
-            // The comment covers every paragraph the operation inserted.
+            // The comment covers every paragraph the operation inserted, at
+            // any depth: in a content control or a table cell as much as in
+            // the story's own block list.
+            const paragraphsIn = (current: Document) => {
+              const body = findStoryBody(current, story);
+              return body === undefined
+                ? []
+                : storyParagraphs(body).map(({ paragraph }) => paragraph);
+            };
             const known = new Set(
-              (findStoryBody(document, story)?.content ?? []).flatMap(
-                (block) =>
-                  block.type === "paragraph" && block.paraId !== undefined
-                    ? [block.paraId]
-                    : [],
+              paragraphsIn(document).flatMap(({ paraId }) =>
+                paraId === undefined ? [] : [paraId],
               ),
             );
-            const added = (
-              findStoryBody(nextDocument, story)?.content ?? []
-            ).flatMap((block) =>
-              block.type === "paragraph" &&
-              block.paraId !== undefined &&
-              !known.has(block.paraId)
-                ? [block]
-                : [],
+            const added = paragraphsIn(nextDocument).filter(
+              ({ paraId }) => paraId !== undefined && !known.has(paraId),
             );
             const firstAdded = added.at(0);
             const lastAdded = added.at(-1);
