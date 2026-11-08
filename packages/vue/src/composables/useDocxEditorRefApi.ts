@@ -953,9 +953,16 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const appliedAs =
         getSuggestions(view.state).find((s) => s.suggestionId === suggestionId)
           ?.appliedAs ?? null;
-      const accepted = acceptSuggestion(suggestionId, {
-        author: options?.author ?? opts.author(),
-      })(view.state, view.dispatch);
+      // A canonical session journals the acceptance itself.
+      const accepted = opts.editor.getCanonicalDocument()
+        ? opts.editor.resolveCanonicalSuggestion(
+            suggestionId,
+            "accept",
+            options?.author ?? opts.author(),
+          )
+        : acceptSuggestion(suggestionId, {
+            author: options?.author ?? opts.author(),
+          })(view.state, view.dispatch);
       return { accepted, appliedAs: accepted ? appliedAs : null };
     },
     rejectSuggestion: (suggestionId) => {
@@ -963,6 +970,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!view) {
         return false;
       }
+      if (opts.editor.getCanonicalDocument())
+        return opts.editor.resolveCanonicalSuggestion(
+          suggestionId,
+          "reject",
+          opts.author(),
+        );
       return rejectSuggestion(suggestionId)(view.state, view.dispatch);
     },
     scrollToSuggestion: (suggestionId) => {

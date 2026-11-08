@@ -126,6 +126,11 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       deps.getEditorApi()?.resolveCanonicalRevisions(revisionIds, resolution) ??
       false,
 
+    resolveCanonicalSuggestion: (suggestionId, resolution, author) =>
+      deps
+        .getEditorApi()
+        ?.resolveCanonicalSuggestion(suggestionId, resolution, author) ?? false,
+
     focus: () => deps.getEditorApi()?.focus(),
 
     blur: () => deps.getEditorApi()?.blur(),

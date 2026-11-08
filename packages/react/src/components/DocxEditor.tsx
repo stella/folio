@@ -4507,9 +4507,17 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             getSuggestions(view.state).find(
               (s) => s.suggestionId === suggestionId,
             )?.appliedAs ?? null;
-          const accepted = acceptSuggestion(suggestionId, {
-            author: options?.author ?? author,
-          })(view.state, view.dispatch);
+          // A canonical session journals the acceptance itself.
+          const editor = pagedEditorRef.current?.getEditor();
+          const accepted = editor?.getCanonicalDocument()
+            ? editor.resolveCanonicalSuggestion(
+                suggestionId,
+                "accept",
+                options?.author ?? author,
+              )
+            : acceptSuggestion(suggestionId, {
+                author: options?.author ?? author,
+              })(view.state, view.dispatch);
           return { accepted, appliedAs: accepted ? appliedAs : null };
         },
         rejectSuggestion: (suggestionId) => {
@@ -4517,6 +4525,13 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           if (!view) {
             return false;
           }
+          const editor = pagedEditorRef.current?.getEditor();
+          if (editor?.getCanonicalDocument())
+            return editor.resolveCanonicalSuggestion(
+              suggestionId,
+              "reject",
+              author,
+            );
           return rejectSuggestion(suggestionId)(view.state, view.dispatch);
         },
         scrollToSuggestion: (suggestionId) => {
