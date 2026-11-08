@@ -1289,7 +1289,6 @@ const replacementPreservesOutsideContent = ({
   return before.every(preserved) && after.every(preserved);
 };
 
-/** Compile one batch; the caller applies it atomically and journals its exact inverse. */
 /**
  * Where the caret lands once whole paragraphs go directly: at the start of the
  * paragraph that follows them, or, when they end their container, in the
@@ -1324,6 +1323,7 @@ const directDeletionCaret = (
   };
 };
 
+/** Compile one batch; the caller applies it atomically and journals its exact inverse. */
 export const compileEditorIntent = (
   document: Document,
   { intent, mode, firstBlockId }: CompileEditorIntentOptions,
