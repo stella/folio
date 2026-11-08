@@ -1,0 +1,201 @@
+name: Setup Bun
+description: >-
+  Installs the Bun version the repository pins, from an Actions cache keyed by
+  runner OS, architecture and version. Bun is downloaded only on a miss, from
+  the release host or else the npm registry, each checked against its
+  published digest, and that download is saved for the next job. Linux x64
+  runners only. Optionally restores and saves the Bun install cache keyed on
+  bun.lock.
+
+inputs:
+  package-json:
+    description: >-
+      The package.json whose packageManager field pins Bun, as
+      `bun@<major>.<minor>.<patch>`.
+    required: false
+    default: package.json
+  binary-cache:
+    description: >-
+      read-write saves a downloaded Bun for later jobs; read-only restores a
+      saved one and never writes, for jobs whose cache writes other runs read
+      with more trust (workflow_run, pull_request_target, publishing jobs).
+    required: false
+    default: read-write
+  install-cache:
+    description: >-
+      actions moves ~/.bun/install/cache through the Actions cache; none
+      leaves it alone, for jobs with their own download policy.
+    required: false
+    default: none
+  save:
+    description: Save the install cache after the job; false restores only.
+    required: false
+    default: "true"
+
+outputs:
+  bun-version:
+    description: The Bun version installed.
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check inputs
+      shell: bash
+      env:
+        BINARY_CACHE: ${{ inputs.binary-cache }}
+        INSTALL_CACHE: ${{ inputs.install-cache }}
+        SAVE: ${{ inputs.save }}
+      run: |
+        case "$BINARY_CACHE" in read-write|read-only) ;; *)
+          echo "::error::binary-cache must be read-write or read-only, got '$BINARY_CACHE'"
+          exit 1 ;;
+        esac
+        case "$INSTALL_CACHE" in actions|none) ;; *)
+          echo "::error::install-cache must be actions or none, got '$INSTALL_CACHE'"
+          exit 1 ;;
+        esac
+        case "$SAVE" in true|false) ;; *)
+          echo "::error::save must be true or false, got '$SAVE'"
+          exit 1 ;;
+        esac
+
+    - name: Read the pinned Bun version
+      id: version
+      shell: bash
+      env:
+        VERSION_FILE: ${{ inputs.package-json }}
+      run: |
+        version=$(jq -r '.packageManager // ""' "$VERSION_FILE" | sed -n 's/^bun@\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$/\1/p')
+        if [ -z "$version" ]; then
+          echo "::error file=$VERSION_FILE::packageManager must pin an exact Bun version, as bun@<major>.<minor>.<patch>"
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        # The install cache follows the lockfile beside the pinning manifest,
+        # in the checkout that manifest belongs to.
+        echo "lockfile=$(dirname "$VERSION_FILE")/bun.lock" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Bun
+      id: binary
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/bin
+        key: bun-binary-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+
+    # A miss on the runners CI uses fetches the release archive with retries
+    # and checks it against the release's SHA-256 checksums. When the release
+    # host does not answer, the same build comes from the npm registry's
+    # @oven/bun-linux-x64 package, checked against the sha512 integrity the
+    # registry publishes for it. Either way a passing outage of one host does
+    # not fail the job.
+    - name: Download Bun
+      if: steps.binary.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        set -euo pipefail
+        if [ "$RUNNER_OS" != "Linux" ] || [ "$RUNNER_ARCH" != "X64" ]; then
+          echo "::error::This action installs Bun on Linux x64 runners; this one is $RUNNER_OS $RUNNER_ARCH"
+          exit 1
+        fi
+        dir=$(mktemp -d)
+        binary=""
+        fail() {
+          echo "::error::$1"
+          exit 1
+        }
+        fetch() {
+          curl --fail --silent --show-error --location --retry "$3" \
+            --retry-all-errors --retry-delay 5 --retry-max-time "$4" \
+            --output "$2" "$1"
+        }
+        # Returns 1 when the release host does not answer; a download that
+        # does not match its checksum fails the step.
+        from_release() {
+          local base="https://github.com/oven-sh/bun/releases/download/bun-v${VERSION}"
+          fetch "$base/bun-linux-x64.zip" "$dir/bun-linux-x64.zip" 3 60 || return 1
+          fetch "$base/SHASUMS256.txt" "$dir/SHASUMS256.txt" 3 60 || return 1
+          local expected
+          expected=$(awk '{ name = $2; sub(/^\*/, "", name) } name == "bun-linux-x64.zip" { print $1 }' "$dir/SHASUMS256.txt")
+          [ -n "$expected" ] || fail "SHASUMS256.txt for Bun $VERSION lists no bun-linux-x64.zip"
+          echo "$expected  $dir/bun-linux-x64.zip" | sha256sum --check --quiet ||
+            fail "bun-linux-x64.zip for Bun $VERSION does not match SHASUMS256.txt"
+          unzip -q "$dir/bun-linux-x64.zip" -d "$dir" || fail "bun-linux-x64.zip does not unpack"
+          binary="$dir/bun-linux-x64/bun"
+        }
+        from_registry() {
+          local metadata="$dir/metadata.json" tarball integrity actual
+          fetch "https://registry.npmjs.org/@oven/bun-linux-x64/${VERSION}" "$metadata" 8 300 ||
+            fail "Neither the release host nor the npm registry served Bun $VERSION"
+          tarball=$(jq -r '.dist.tarball // ""' "$metadata")
+          integrity=$(jq -r '.dist.integrity // ""' "$metadata")
+          case "$tarball" in https://registry.npmjs.org/*) ;; *)
+            fail "The registry lists no tarball for @oven/bun-linux-x64@$VERSION" ;;
+          esac
+          case "$integrity" in sha512-*) ;; *)
+            fail "The registry lists no sha512 integrity for @oven/bun-linux-x64@$VERSION" ;;
+          esac
+          fetch "$tarball" "$dir/bun.tgz" 8 300 ||
+            fail "The npm registry did not serve @oven/bun-linux-x64@$VERSION"
+          actual="sha512-$(openssl dgst -sha512 -binary "$dir/bun.tgz" | base64 -w0)"
+          [ "$actual" = "$integrity" ] ||
+            fail "@oven/bun-linux-x64@$VERSION does not match its registry integrity"
+          tar -xzf "$dir/bun.tgz" -C "$dir" package/bin/bun || fail "The registry tarball holds no package/bin/bun"
+          binary="$dir/package/bin/bun"
+        }
+        if ! from_release; then
+          echo "::warning::The Bun release host did not answer; installing @oven/bun-linux-x64@$VERSION from the npm registry"
+          from_registry
+        fi
+        mkdir -p "$HOME/.bun/bin"
+        install -m 0755 "$binary" "$HOME/.bun/bin/bun"
+        rm -rf "$dir"
+
+    # The path is the fixed directory this action installs into, not a value
+    # a workflow's trigger can set.
+    - name: Put Bun on the path
+      shell: bash
+      run: | # zizmor: ignore[github-env]
+        ln -sf bun "$HOME/.bun/bin/bunx"
+        echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+    - name: Check the installed version
+      shell: bash
+      env:
+        EXPECTED: ${{ steps.version.outputs.version }}
+      run: |
+        actual=$("$HOME/.bun/bin/bun" --version)
+        if [ "$actual" != "$EXPECTED" ]; then
+          echo "::error::Bun $actual is installed; the repository pins $EXPECTED"
+          exit 1
+        fi
+
+    - name: Save Bun
+      if: steps.binary.outputs.cache-hit != 'true' && inputs.binary-cache == 'read-write'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/bin
+        key: bun-binary-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+
+    - name: Restore Bun install cache
+      # Caches downloaded package tarballs (~/.bun/install/cache), not
+      # node_modules, so `bun ci` still resolves against the frozen lockfile
+      # and only skips re-downloading unchanged packages.
+      if: inputs.install-cache == 'actions' && inputs.save != 'false'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/install/cache
+        key: bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles(steps.version.outputs.lockfile) }}
+        restore-keys: |
+          bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-
+
+    - name: Restore Bun install cache without saving
+      if: inputs.install-cache == 'actions' && inputs.save == 'false'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.bun/install/cache
+        key: bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-${{ hashFiles(steps.version.outputs.lockfile) }}
+        restore-keys: |
+          bun-install-${{ runner.os }}-${{ steps.version.outputs.version }}-
