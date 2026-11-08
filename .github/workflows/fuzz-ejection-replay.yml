@@ -81,7 +81,15 @@ jobs:
           path: base
           persist-credentials: false
 
-      - uses: ./base/.github/actions/bun
+      # The Bun setup action comes from this workflow's own commit, as the
+      # workflow does; the version it installs from the pinned main commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: workflow-source
+          sparse-checkout: .github/actions
+          persist-credentials: false
+
+      - uses: ./workflow-source/.github/actions/bun
         if: steps.logs.outputs.found == 'true'
         with:
           package-json: "base/package.json"
