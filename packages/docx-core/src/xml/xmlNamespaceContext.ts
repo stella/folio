@@ -10,6 +10,33 @@ import type { XmlElement, XmlNamespaceScope } from "./xmlElement";
 export const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
 
 /**
+ * The OOXML namespaces a WordprocessingML package binds, by their customary
+ * prefix. The same table as `OOXML_NS` in `@stll/docx-utils`, so code reading
+ * either agrees on every URI.
+ */
+export const OOXML_NS = {
+  w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+  a: "http://schemas.openxmlformats.org/drawingml/2006/main",
+  r: "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+  wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+  wp14: "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
+  wps: "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+  wpc: "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas",
+  wpg: "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
+  pic: "http://schemas.openxmlformats.org/drawingml/2006/picture",
+  m: "http://schemas.openxmlformats.org/officeDocument/2006/math",
+  mc: "http://schemas.openxmlformats.org/markup-compatibility/2006",
+  v: "urn:schemas-microsoft-com:vml",
+  o: "urn:schemas-microsoft-com:office:office",
+  w14: "http://schemas.microsoft.com/office/word/2010/wordml",
+  w15: "http://schemas.microsoft.com/office/word/2012/wordml",
+  ct: "http://schemas.openxmlformats.org/package/2006/content-types",
+  pr: "http://schemas.openxmlformats.org/package/2006/relationships",
+} as const;
+
+export type OoxmlPrefix = keyof typeof OOXML_NS;
+
+/**
  * Reserved by the XML Namespaces recommendation (§3): every document binds
  * this prefix to this URI whether or not it declares `xmlns:xml`, and no
  * document may bind it to anything else. A source that omits the declaration
