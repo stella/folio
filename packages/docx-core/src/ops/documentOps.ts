@@ -13,6 +13,7 @@ export {
   storyBody,
   findStoryBody,
   documentStories,
+  replaceStoryBody,
   sameStory,
 } from "./stories";
 /**
