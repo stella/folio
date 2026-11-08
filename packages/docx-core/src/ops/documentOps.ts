@@ -47,7 +47,10 @@ export {
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
-export { registerParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
+export {
+  paragraphPropertySnapshotToken,
+  registerParagraphPropertySnapshot,
+} from "./paragraphPropertySnapshot";
 export {
   applyDocumentOpEnvelope,
   applyDocumentOp,
@@ -69,6 +72,7 @@ export {
   editorPositionAtPhysicalPosition,
   physicalPositionAtEditorOffset,
   type EditorIntent,
+  type NewListInstance,
   type TableIntentOperation,
   type TableRowIntentOperation,
   type TableBlockIntentOperation,

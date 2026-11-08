@@ -398,6 +398,7 @@ const operationFields = {
     blocks: array(paragraph),
     newIds,
     revision,
+    move: optional(literal(true)),
   } satisfies OperationFields<"insertBlocks">,
   deleteBlocks: {
     type: literal("deleteBlocks"),
@@ -405,6 +406,7 @@ const operationFields = {
     blockIds: array(blockId),
     newIds,
     revision,
+    move: optional(literal(true)),
   } satisfies OperationFields<"deleteBlocks">,
   resolveRevision: {
     type: literal("resolveRevision"),

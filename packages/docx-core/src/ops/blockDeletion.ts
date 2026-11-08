@@ -13,6 +13,7 @@ import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
 import { asParagraphContent, type InlineNode } from "./leaves";
+import { asMoveHalf } from "./moves";
 import {
   isRangeBoundary,
   type ParagraphContentVerdict,
@@ -223,7 +224,14 @@ export const deleteBlocks = ({
   const list = blockListAt(body.content, first.list);
   const following = list[last.index + 1];
   const terminal = last.index === list.length - 1;
-  if (following?.type !== "paragraph" && !terminal) {
+  // Tracked, a paragraph a table follows loses its words and its own mark,
+  // as the default editor records it; accepting removes it, which needs the
+  // list to go on ending with a paragraph.
+  const trackedBeforeTable =
+    op.revision !== undefined &&
+    following?.type === "table" &&
+    list.at(-1)?.type === "paragraph";
+  if (following?.type !== "paragraph" && !terminal && !trackedBeforeTable) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "Deletion requires a following paragraph or a container-final paragraph.",
@@ -382,12 +390,22 @@ export const deleteBlocks = ({
           "The selected paragraph content cannot be tracked.",
         );
       if (form.kind === "deleted")
-        next = { ...paragraph, content: form.content };
+        next = {
+          ...paragraph,
+          content:
+            op.move === true
+              ? asMoveHalf(form.content, op.revision.id, "from")
+              : form.content,
+        };
     }
     if (!terminal || paragraph !== last.paragraph) {
       next = {
         ...next,
-        pPrMark: { kind: "del", info: stampInfo(op.revision) },
+        // A move's source marks its paragraph moved from, not deleted.
+        pPrMark: {
+          kind: op.move === true ? "moveFrom" : "del",
+          info: stampInfo(op.revision),
+        },
       };
     } else if (!sameParagraphProperties(next.formatting, survivor.formatting)) {
       const review = reviewFieldsOf(next);

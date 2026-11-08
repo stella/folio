@@ -83,8 +83,8 @@ import {
   getHeaderFooterText,
 } from "../docx/storyPlainText";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
-import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
+  type RemovedSectionReference,
   type TrackedSectionEndpointRemoval,
   withTrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
@@ -936,9 +936,9 @@ const createHeadlessPlugins = (
   styles: Document["package"]["styles"],
   numbering: NumberingDefinitions | null | undefined,
 ): Plugin[] => [
+  createDocumentNumberingPlugin(numbering),
   ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
   createDocumentStylesPlugin(styles),
-  createDocumentNumberingPlugin(numbering),
 ];
 
 const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>
@@ -1754,14 +1754,28 @@ export class FolioDocxReviewer {
    * renumbered — which is right for an insertion that renumbers the items
    * below it, and wrong for a list whose FORMAT changed. Sorted so two
    * packages can be compared entry by entry.
+   *
+   * Read for one story (the main one by default): a header, footer or note
+   * starts its lists against the package alone, so the lists it started are
+   * defined in its own reading, as its labels are, and in no other story's.
    */
-  readNumberingDefinitions(): FolioNumberingLevel[] {
+  readNumberingDefinitions(): FolioNumberingLevel[];
+  /** `null` when the document has no such story. */
+  readNumberingDefinitions(
+    story: FolioEditableDocumentStoryHandle,
+  ): FolioNumberingLevel[] | null;
+  readNumberingDefinitions(
+    story: FolioEditableDocumentStoryHandle = MAIN_STORY,
+  ): FolioNumberingLevel[] | null {
+    // A read retains no state for a story nothing edits.
+    const doc =
+      story.type === "main"
+        ? this.state.doc
+        : this.readSecondaryStoryDoc(story);
+    if (!doc) return null;
     // Including the lists operations started, which only their paragraphs define so far.
     return numberingLevelsOf(
-      completeNumberingForDoc(
-        this.baseDocument.package.numbering,
-        this.state.doc,
-      ),
+      completeNumberingForDoc(this.baseDocument.package.numbering, doc),
     ).toSorted(
       (left, right) => left.numId - right.numId || left.level - right.level,
     );

@@ -5,12 +5,13 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
-import { Mark } from "prosemirror-model";
+import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
 import {
   CONTENT_CONTROL_LOCK,
   lockedControlMessage,
+  paragraphNumberingReference,
 } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
@@ -21,9 +22,11 @@ import {
   type EditorIntent,
   findStoryBody,
   freshCommentId,
+  type NewListInstance,
   OP_STORIES,
   type OpStory,
   paragraphLength,
+  type ParagraphPropsPatch,
   pendingSuggestionIdsIn,
   type RunPropsPatch,
   type TextPosition,
@@ -40,16 +43,26 @@ import {
 } from "../ai-edits/clean-text";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
+  createBatchListMinter,
+  type MintedList,
+} from "../ai-edits/newListNumbering";
+import {
   collectNoteReferenceLabels,
   hashFolioAIBlockContent,
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
 import type {
+  FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
   FolioAIEditSkippedOperation,
   FolioAIEditSkipReason,
+  FolioAIListKind,
+  FolioAIListNumbering,
+  FolioAIParagraphIndentation,
+  FolioAIParagraphSpacing,
 } from "../ai-edits/types";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
+import type { FolioContentStatedNumbering } from "../compare/content-types";
 import {
   type ApplyFolioDocumentOperationsOptions,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -69,7 +82,12 @@ import {
   CANONICAL_GAP,
   type CanonicalGap,
 } from "../types/canonicalCapabilities";
-import type { Document } from "../types/document";
+import type {
+  Document,
+  Paragraph,
+  ParagraphFormatting,
+  Run,
+} from "../types/document";
 import {
   canonicalCommentBody,
   compileCanonicalComments,
@@ -77,6 +95,7 @@ import {
 import { lockViolationBetween } from "./canonicalLockGuard";
 import {
   type CanonicalCommit,
+  type CanonicalProjection,
   type CanonicalSession,
 } from "./canonicalSession";
 
@@ -92,10 +111,10 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   readonly splitBlock: "compile";
   readonly formatRange: "compile";
   readonly mergeBlockWithNext: "compile";
-  readonly setBlockParagraphProperties: "publicOps.unsupportedInline";
-  readonly insertAfterBlock: "publicOps.unsupportedInline";
-  readonly insertBeforeBlock: "publicOps.unsupportedInline";
-  readonly deleteBlock: "publicOps.unsupportedInline";
+  readonly setBlockParagraphProperties: "compile";
+  readonly insertAfterBlock: "compile";
+  readonly insertBeforeBlock: "compile";
+  readonly deleteBlock: "compile";
   readonly commentOnBlock: "compile";
   readonly commentOnRange: "compile";
   readonly insertTable: "publicOps.tableStructure";
@@ -114,10 +133,10 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   splitBlock: "compile",
   formatRange: "compile",
   mergeBlockWithNext: "compile",
-  setBlockParagraphProperties: CANONICAL_GAP.publicUnsupportedInline,
-  insertAfterBlock: CANONICAL_GAP.publicUnsupportedInline,
-  insertBeforeBlock: CANONICAL_GAP.publicUnsupportedInline,
-  deleteBlock: CANONICAL_GAP.publicUnsupportedInline,
+  setBlockParagraphProperties: "compile",
+  insertAfterBlock: "compile",
+  insertBeforeBlock: "compile",
+  deleteBlock: "compile",
   commentOnBlock: "compile",
   commentOnRange: "compile",
   insertTable: CANONICAL_GAP.publicTableStructure,
@@ -155,7 +174,16 @@ type ResolvedOperation = {
   | {
       type: "commented";
       operation: CommentOperation;
-      comment: { text: string; from: TextPosition; to: TextPosition };
+      comment: {
+        text: string;
+        from: TextPosition;
+        to: TextPosition;
+        /**
+         * The comment covers the paragraphs the operation inserts, whose
+         * identities the compiler gives: its range is read after compiling.
+         */
+        inserted?: true;
+      };
     }
 );
 
@@ -177,6 +205,302 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
     >;
   }
   return { type: "plain", operation } as const;
+};
+
+const SPACING_FIELDS = [
+  "spaceBefore",
+  "spaceAfter",
+  "lineSpacing",
+  "lineSpacingRule",
+  "beforeAutospacing",
+  "afterAutospacing",
+] as const satisfies readonly (keyof FolioAIParagraphSpacing)[];
+const INDENTATION_FIELDS = [
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+  "hangingIndent",
+] as const satisfies readonly (keyof FolioAIParagraphIndentation)[];
+
+/**
+ * The stated paragraph properties an operation writes: each given property
+ * as it says, a spacing or indentation object as the whole direct child, so
+ * an attribute it leaves out is removed, and `null` clears a property back
+ * to what the style gives.
+ */
+const statedParagraphPatch = (
+  properties: FolioAIBlockParagraphProperties,
+): ParagraphPropsPatch => {
+  const patch: Record<string, unknown> = {};
+  if (properties.styleId !== undefined) patch["styleId"] = properties.styleId;
+  if (properties.outlineLevel !== undefined)
+    patch["outlineLevel"] = properties.outlineLevel;
+  if (properties.alignment !== undefined)
+    patch["alignment"] = properties.alignment;
+  // Stated numbering as given; inheriting removes the stated value.
+  const { numbering } = properties;
+  if (numbering !== undefined && numbering.kind !== "newList")
+    patch["numPr"] = numbering.kind === "inherit" ? null : numbering;
+  const { spacing, indentation } = properties;
+  if (spacing !== undefined)
+    for (const field of SPACING_FIELDS)
+      patch[field] = spacing === null ? null : (spacing[field] ?? null);
+  if (indentation !== undefined)
+    for (const field of INDENTATION_FIELDS)
+      patch[field] = indentation === null ? null : (indentation[field] ?? null);
+  // Every key is a ParagraphFormatting field set to its value or null.
+  return patch as ParagraphPropsPatch;
+};
+
+type ResolveParagraphPropertiesOptions = {
+  mintList: (format: FolioAIListKind) => MintedList;
+  operation: Extract<
+    FolioDocumentOperation,
+    { type: "setBlockParagraphProperties" }
+  >;
+  paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
+  projection: CanonicalProjection;
+  refusal: (
+    reason: FolioAIEditSkipReason,
+    message?: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
+};
+
+const resolveParagraphProperties = ({
+  operation,
+  paragraph,
+  projection,
+  mintList,
+  refusal,
+}: ResolveParagraphPropertiesOptions) => {
+  const requested = operation.properties.numbering;
+  const stated = statedNumbering(requested, mintList);
+  const patch = statedParagraphPatch({
+    ...operation.properties,
+    ...(stated.numbering === undefined ? {} : { numbering: stated.numbering }),
+  });
+  if (Object.keys(patch).length === 0) return refusal("emptyOperation");
+  const at = projection.addressAt(paragraph.start);
+  if (at.isErr()) return refusal("unsupportedBlock");
+  const intents: EditorIntent[] = [
+    {
+      type: "formatParagraph",
+      at: at.value,
+      patch,
+      ...(stated.newList === undefined ? {} : { newList: stated.newList }),
+    },
+  ];
+  return Result.ok({
+    type: "plain" as const,
+    operation,
+    intents,
+    normalizations: [],
+    from: paragraph.start,
+    to: paragraph.start + paragraph.node.content.size,
+  });
+};
+
+type BlockInsertion = Extract<
+  FolioDocumentOperation,
+  { type: "insertAfterBlock" | "insertBeforeBlock" }
+>;
+
+const isBlockInsertion = (
+  operation: FolioDocumentOperation,
+): operation is BlockInsertion =>
+  operation.type === "insertAfterBlock" ||
+  operation.type === "insertBeforeBlock";
+
+type ResolveBlockInsertionOptions = {
+  mintList: (format: FolioAIListKind) => MintedList;
+  operation: BlockInsertion;
+  paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
+  story: OpStory;
+  refusal: (
+    reason: FolioAIEditSkipReason,
+    message?: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
+};
+
+/**
+ * One new paragraph beside the anchor, as the default engine writes it: the
+ * anchor's stated paragraph properties unless `inheritFormatting` is false,
+ * with the operation's own on top, holding the text as one plain run.
+ */
+const resolveBlockInsertion = ({
+  operation,
+  paragraph,
+  story,
+  mintList,
+  refusal,
+}: ResolveBlockInsertionOptions) => {
+  const requested = operation.numbering;
+  const stated = statedNumbering(requested, mintList);
+  const { text } = operation;
+  if (stripInlineEmphasisMarkers(text) !== text)
+    return refusal(
+      "unsupportedBlock",
+      "Canonical public emphasis replacements are unavailable.",
+    );
+  const inline = operation.lineBreakMode === "inline";
+  if (/\[\^(?:e)?\d+\]/u.test(text) || (inline && text.includes("\r")))
+    return refusal(
+      "unsupportedBlock",
+      "Canonical block insertion requires plain text.",
+    );
+  // Each line its own paragraph, blank lines dropped, as the default engine
+  // splits them; inline, line breaks stay in the one paragraph. A tab is a
+  // tab element either way.
+  const split = !inline && LINE_BREAK_PATTERN.test(text);
+  const lines = split
+    ? text.split(LINE_BREAK_PATTERN).filter((line) => line.trim().length > 0)
+    : [text];
+  const texts = lines.length === 0 ? [""] : lines;
+  const formatting: Record<string, unknown> =
+    operation.inheritFormatting === false
+      ? {}
+      : { ...paragraph.source.formatting };
+  for (const [key, value] of Object.entries(
+    statedParagraphPatch({
+      ...(operation.styleId === undefined
+        ? {}
+        : { styleId: operation.styleId }),
+      ...(operation.outlineLevel === undefined
+        ? {}
+        : { outlineLevel: operation.outlineLevel }),
+      ...(operation.alignment === undefined
+        ? {}
+        : { alignment: operation.alignment }),
+      ...(operation.spacing === undefined
+        ? {}
+        : { spacing: operation.spacing }),
+      ...(operation.indentation === undefined
+        ? {}
+        : { indentation: operation.indentation }),
+      ...(stated.numbering === undefined
+        ? {}
+        : { numbering: stated.numbering }),
+    }),
+  ))
+    if (value === null) Reflect.deleteProperty(formatting, key);
+    else formatting[key] = value;
+  const everyParagraph = operation.formattingScope === "allParagraphs";
+  const paragraphs = texts.map((line, index): Paragraph => {
+    // The first paragraph takes the operation's formatting; later ones are
+    // body paragraphs unless the scope formats every paragraph alike.
+    const own: Record<string, unknown> =
+      index === 0 || everyParagraph ? { ...formatting } : {};
+    if (index === 0 && operation.pageBreakBefore === true)
+      own["pageBreakBefore"] = true;
+    // An authored page break stands in for the first paragraph's text.
+    const pageBreak = index === 0 ? operation.hardPageBreak : undefined;
+    let content: Paragraph["content"] = [];
+    if (pageBreak !== undefined)
+      content = [
+        {
+          type: "run",
+          content: [
+            {
+              type: "break",
+              breakType: "page",
+              ...(pageBreak.clear === undefined
+                ? {}
+                : { clear: pageBreak.clear }),
+            },
+          ],
+        },
+      ];
+    else if (line !== "")
+      content = [{ type: "run", content: inlineText(line) }];
+    return {
+      type: "paragraph",
+      content,
+      // The anchor's properties with the operation's set or cleared over them.
+      ...(Object.keys(own).length === 0
+        ? {}
+        : { formatting: own as ParagraphFormatting }),
+    };
+  });
+  // The anchor keeps its identity; the new paragraph takes a fresh one.
+  const intents: EditorIntent[] = [
+    {
+      type: "insertParagraphs",
+      story,
+      at: {
+        type: operation.type === "insertAfterBlock" ? "after" : "before",
+        blockId: paragraph.blockId,
+      },
+      paragraphs,
+      ...(stated.newList === undefined ? {} : { newList: stated.newList }),
+    },
+  ];
+  const position =
+    operation.type === "insertAfterBlock"
+      ? paragraph.start + paragraph.node.content.size
+      : paragraph.start;
+  // A comment covers the inserted text, so an insertion with no text has
+  // nothing for it to cover, as the default engine finds.
+  if (
+    operation.comment !== undefined &&
+    texts.every((line) => line.length === 0)
+  )
+    return refusal("unsupportedBlock");
+  const normalizations: FolioAIEditNormalization[] = split
+    ? [
+        {
+          id: operation.id,
+          code: "splitMultilineText",
+          paragraphCount: texts.length,
+        },
+      ]
+    : [];
+  const resolved = { intents, normalizations, from: position, to: position };
+  if (operation.comment === undefined)
+    return Result.ok({ type: "plain" as const, operation, ...resolved });
+  // Where the inserted paragraphs are is known once they are compiled.
+  const anchor = { story, blockId: paragraph.blockId, offset: 0 };
+  return Result.ok({
+    type: "commented" as const,
+    operation,
+    comment: {
+      text: operation.comment.text,
+      from: anchor,
+      to: anchor,
+      inserted: true as const,
+    },
+    ...resolved,
+  });
+};
+
+const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
+
+/** The move a block operation names, if it is a half of one. */
+const blockMoveId = (operation: FolioDocumentOperation): string | undefined =>
+  operation.type === "deleteBlock" ||
+  operation.type === "insertAfterBlock" ||
+  operation.type === "insertBeforeBlock"
+    ? operation.moveId
+    : undefined;
+
+/** A line's text with each tab and line break as the element it is. */
+const inlineText = (line: string): Run["content"] =>
+  line.split(/([\t\n])/u).flatMap((part): Run["content"] => {
+    if (part === "\t") return [{ type: "tab" }];
+    if (part === "\n") return [{ type: "break" }];
+    return part === "" ? [] : [{ type: "text", text: part }];
+  });
+
+type ResolveBlockDeletionOptions = {
+  operation: Extract<FolioDocumentOperation, { type: "deleteBlock" }>;
+  paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
+  projection: CanonicalProjection;
+  projectionStory: OpStory;
+  doc: PMNode;
+  tracked: boolean;
+  refusal: (
+    reason: FolioAIEditSkipReason,
+    message?: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
 };
 
 type CanonicalPublicOperationsOptions = {
@@ -271,6 +595,30 @@ type ResolveCanonicalPublicOperationOptions = {
   state: EditorState;
   story: OpStory;
   diff: ReturnType<typeof wordDiffSessionFromOptions>["diff"];
+  /** Whether the batch records its edits as revisions. */
+  tracked: boolean;
+  /** A new list of one kind for this operation, minted after the batch's earlier ones. */
+  mintList: (format: FolioAIListKind) => MintedList;
+};
+
+/**
+ * The stated numbering a request names, minting its new list once for the
+ * operation, as the default engine allocates one instance per operation.
+ */
+const statedNumbering = (
+  numbering: FolioAIListNumbering | undefined,
+  mint: (format: FolioAIListKind) => MintedList,
+): { numbering?: FolioContentStatedNumbering; newList?: NewListInstance } => {
+  if (numbering === undefined) return {};
+  if (numbering.kind !== "newList") return { numbering };
+  const minted = mint(numbering.format);
+  return {
+    numbering: paragraphNumberingReference({
+      numId: minted.numId,
+      ilvl: numbering.level ?? 0,
+    }),
+    newList: minted.newList,
+  };
 };
 
 const canonicalPublicStory = (story: FolioDocumentOperationStory): OpStory => {
@@ -340,6 +688,7 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
     const resolved: ResolvedOperation[] = [];
+    const mintList = createBatchListMinter(() => session.document);
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
     if (!session.isComposing && options.revisionStamp === undefined) {
@@ -437,7 +786,15 @@ export class CanonicalPublicOperations {
         skip(operation.id, "unsupportedBlock");
         continue;
       }
-      const compiled = this.resolve({ operation, options, state, story, diff });
+      const compiled = this.resolve({
+        operation,
+        options,
+        state,
+        story,
+        diff,
+        tracked: batch.mode !== "direct",
+        mintList,
+      });
       if (compiled.isErr()) {
         if (compiled.error.reason === "unsupportedBlock")
           refusals.set(operation.id, {
@@ -462,6 +819,60 @@ export class CanonicalPublicOperations {
         continue;
       }
       resolved.push(compiled.value);
+    }
+    // A move id names one relocation, a move only when it reaches exactly one
+    // source and one destination, as the default engine pairs them; an
+    // unpaired id records a plain insertion or deletion and is reported.
+    const moveSides = new Map<string, { from: number; to: number }>();
+    for (const { operation } of resolved) {
+      const moveId = blockMoveId(operation);
+      if (moveId === undefined) continue;
+      const sides = moveSides.get(moveId) ?? { from: 0, to: 0 };
+      if (operation.type === "deleteBlock") sides.from += 1;
+      else sides.to += 1;
+      moveSides.set(moveId, sides);
+    }
+    // A suggested destination before its own source would cut the move.
+    const unpairable = new Set(
+      batch.mode === "suggested"
+        ? resolved.flatMap(({ operation }) =>
+            operation.type === "insertBeforeBlock" &&
+            operation.moveId !== undefined &&
+            resolved.some(
+              (candidate) =>
+                candidate.operation.type === "deleteBlock" &&
+                candidate.operation.moveId === operation.moveId &&
+                candidate.operation.blockId === operation.blockId,
+            )
+              ? [operation.moveId]
+              : [],
+          )
+        : [],
+    );
+    const paired = (moveId: string) =>
+      !unpairable.has(moveId) &&
+      moveSides.get(moveId)?.from === 1 &&
+      moveSides.get(moveId)?.to === 1;
+    for (const [index, item] of resolved.entries()) {
+      const moveId = blockMoveId(item.operation);
+      if (moveId === undefined) continue;
+      if (!paired(moveId)) {
+        normalizations.push({
+          id: item.operation.id,
+          code: "unpairedMove",
+          moveId,
+        });
+        continue;
+      }
+      const intents: EditorIntent[] = [];
+      for (const intent of item.intents)
+        intents.push(
+          intent.type === "insertParagraphs" ||
+            intent.type === "deleteParagraphs"
+            ? Object.assign({}, intent, { move: true as const })
+            : intent,
+        );
+      resolved[index] = { ...item, intents };
     }
     if (batch.atomic && skipped.length > 0) {
       for (const { operation } of resolved)
@@ -520,6 +931,79 @@ export class CanonicalPublicOperations {
         case "commented": {
           const { comment } = resolvedOperation;
           const id = freshCommentId(nextDocument);
+          if (comment.inserted === true) {
+            // The comment covers every paragraph the operation inserted.
+            const known = new Set(
+              (findStoryBody(document, story)?.content ?? []).flatMap(
+                (block) =>
+                  block.type === "paragraph" && block.paraId !== undefined
+                    ? [block.paraId]
+                    : [],
+              ),
+            );
+            const added = (
+              findStoryBody(nextDocument, story)?.content ?? []
+            ).flatMap((block) =>
+              block.type === "paragraph" &&
+              block.paraId !== undefined &&
+              !known.has(block.paraId)
+                ? [block]
+                : [],
+            );
+            const firstAdded = added.at(0);
+            const lastAdded = added.at(-1);
+            const commented =
+              id.isErr() ||
+              firstAdded?.paraId === undefined ||
+              lastAdded?.paraId === undefined
+                ? undefined
+                : compileCanonicalComments({
+                    document: nextDocument,
+                    command: {
+                      type: "create",
+                      comment: {
+                        id: id.value,
+                        author: options.author ?? "AI",
+                        date,
+                        done: false,
+                        content: canonicalCommentBody(
+                          nextDocument,
+                          comment.text,
+                        ),
+                      },
+                      anchor: {
+                        kind: "range",
+                        from: {
+                          story,
+                          blockId: firstAdded.paraId,
+                          offset: 0,
+                        },
+                        to: {
+                          story,
+                          blockId: lastAdded.paraId,
+                          offset: paragraphLength(lastAdded),
+                        },
+                      },
+                    },
+                  });
+            if (commented === undefined || commented.isErr() || id.isErr()) {
+              refusals.set(operation.id, {
+                gap: CANONICAL_GAP.publicComments,
+              });
+              skip(
+                operation.id,
+                "unsupportedBlock",
+                commented?.isErr() === true
+                  ? commented.error.message
+                  : "The inserted paragraphs cannot carry the comment.",
+              );
+              continue;
+            }
+            nextDocument = commented.value.document;
+            operationOps.push(...commented.value.ops);
+            commentId = id.value;
+            break;
+          }
           const before = findStoryBody(document, story)?.content.find(
             (block) =>
               block.type === "paragraph" &&
@@ -702,12 +1186,163 @@ export class CanonicalPublicOperations {
     return { status: "undone", undoHandle: handle };
   }
 
+  /**
+   * A whole paragraph removed as the editor removes a selection of it with
+   * its paragraph mark: from its start to the start of the paragraph after
+   * it, or, for the paragraph that ends its block list, from the end of the
+   * paragraph before it, whose mark then ends the list. Tracked, the text and
+   * the mark are marked deleted.
+   */
+  private resolveBlockDeletion({
+    operation,
+    paragraph,
+    projection,
+    projectionStory,
+    doc,
+    tracked,
+    refusal,
+  }: ResolveBlockDeletionOptions) {
+    // A direct deletion leaves no text for a comment to cover, as the default
+    // engine finds; a tracked one covers the deleted words.
+    if (operation.comment !== undefined && !tracked)
+      return refusal("unsupportedBlock");
+    const end = paragraph.start + paragraph.node.content.size;
+    const after = doc.resolve(end + 1).nodeAfter;
+    const before = doc.resolve(paragraph.start - 1).nodeBefore;
+    const neighbour = (node: PMNode | null) => {
+      const id: unknown = node?.attrs["paraId"];
+      return node?.type.name === "paragraph" && typeof id === "string"
+        ? projection.paragraph(id)
+        : undefined;
+    };
+    const next = neighbour(after);
+    const previous = neighbour(before);
+    // A tracked deletion's comment covers the deleted paragraph's words.
+    const commentFrom = projection.addressAt(paragraph.start);
+    const commentTo = projection.addressAt(end);
+    if (commentFrom.isErr() || commentTo.isErr())
+      return refusal("unsupportedBlock");
+    const tracking = (
+      resolved: Omit<
+        Extract<ResolvedOperation, { type: "plain" }>,
+        "type" | "operation"
+      >,
+    ): Result<ResolvedOperation, CanonicalPublicOperationResolutionError> =>
+      Result.ok(
+        operation.comment === undefined
+          ? { type: "plain", operation, ...resolved }
+          : {
+              type: "commented",
+              operation,
+              comment: {
+                text: operation.comment.text,
+                from: commentFrom.value,
+                to: commentTo.value,
+              },
+              ...resolved,
+            },
+      );
+    // Before a table, tracked, the paragraph's own mark is the one deleted,
+    // which a text range cannot say: the block deletion records it, as it
+    // records a move's source, which the batch pairs before compiling.
+    // So does a deletion the paragraph after it survives, by identity: an
+    // insertion before that paragraph in the same batch leaves it in place.
+    if (
+      next !== undefined ||
+      (tracked && (after !== null || operation.moveId !== undefined))
+    ) {
+      const intents: EditorIntent[] = [
+        {
+          type: "deleteParagraphs",
+          story: projectionStory,
+          blockIds: [paragraph.blockId],
+        },
+      ];
+      return tracking({
+        intents,
+        normalizations: [],
+        from: paragraph.start,
+        to: end,
+      });
+    }
+    let range: { from: number; to: number } | undefined;
+    // Removed directly, a paragraph no paragraph follows loses its words and
+    // then joins the paragraph before it, which keeps its own identity and
+    // properties; with none before it, it only loses its words.
+    if (!tracked) {
+      const own = (
+        from: number,
+        to: number,
+      ): Result<EditorIntent[], CanonicalPublicOperationResolutionError> => {
+        const start = projection.addressAt(from);
+        const stop = projection.addressAt(to);
+        return start.isErr() || stop.isErr()
+          ? refusal("unsupportedBlock")
+          : Result.ok(
+              from === to
+                ? []
+                : [
+                    {
+                      type: "replaceText",
+                      from: start.value,
+                      to: stop.value,
+                      text: "",
+                    },
+                  ],
+            );
+      };
+      const cleared = own(paragraph.start, end);
+      if (cleared.isErr()) return cleared;
+      const intents: EditorIntent[] = [...cleared.value];
+      if (previous !== undefined)
+        intents.push({
+          type: "joinParagraphs",
+          story: projectionStory,
+          blockId: previous.blockId,
+          nextBlockId: paragraph.blockId,
+          survivor: "first",
+        });
+      if (intents.length === 0) return refusal("noopOperation");
+      return Result.ok({
+        type: "plain" as const,
+        operation,
+        intents,
+        normalizations: [],
+        from: previous === undefined ? paragraph.start : previous.start,
+        to: end,
+      });
+    } else if (previous !== undefined)
+      range = {
+        from: previous.start + previous.node.content.size,
+        to: end,
+      };
+    if (range === undefined)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical deletion of the only paragraph in its container is unavailable.",
+      );
+    const from = projection.addressAt(range.from);
+    const to = projection.addressAt(range.to);
+    if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+    const intents: EditorIntent[] = [
+      { type: "replaceText", from: from.value, to: to.value, text: "" },
+    ];
+    return tracking({
+      intents,
+      normalizations: [],
+      from: Math.min(range.from, paragraph.start),
+      to: Math.max(range.to, end),
+    });
+  }
+
   private resolve({
     operation,
     options,
     state,
     story,
     diff,
+    tracked,
+    mintList,
   }: ResolveCanonicalPublicOperationOptions) {
     const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
       Result.err(
@@ -725,6 +1360,10 @@ export class CanonicalPublicOperations {
       case "mergeBlockWithNext":
       case "commentOnRange":
       case "commentOnBlock":
+      case "deleteBlock":
+      case "setBlockParagraphProperties":
+      case "insertAfterBlock":
+      case "insertBeforeBlock":
         break;
       default:
         return refusal(
@@ -758,6 +1397,32 @@ export class CanonicalPublicOperations {
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
     if (hash !== anchor.textHash) return refusal("changedBlock");
+    if (isBlockInsertion(operation))
+      return resolveBlockInsertion({
+        operation,
+        paragraph,
+        story,
+        mintList,
+        refusal,
+      });
+    if (operation.type === "setBlockParagraphProperties")
+      return resolveParagraphProperties({
+        operation,
+        paragraph,
+        projection: projection.value,
+        mintList,
+        refusal,
+      });
+    if (operation.type === "deleteBlock")
+      return this.resolveBlockDeletion({
+        operation,
+        paragraph,
+        projection: projection.value,
+        projectionStory: story,
+        doc: state.doc,
+        tracked,
+        refusal,
+      });
     let start = 0;
     let end = clean.text.length;
     let text = "";
@@ -1054,16 +1719,25 @@ export class CanonicalPublicOperations {
               code: "uniformReplacementFormatting",
             });
         }
+        // A replaced range ends just after its last character, before what
+        // the clean text skips there (a comment's reference mark, struck
+        // text), since the new text follows the struck words.
+        const lastCharacter =
+          change.end > change.start ? clean.offsets[change.end - 1] : undefined;
+        const changeEnd =
+          lastCharacter === undefined
+            ? gap.to
+            : Math.max(gap.from, Math.min(gap.to, lastCharacter + 1));
         // A replaced range takes the editor's selection rule: its edges stay
         // inside the markers beside them, so replacing exactly the words a
         // comment covers keeps the comment on the new text, pending and
         // accepted. An insertion at a point takes the caret's gap.
         const edges =
-          gap.from < gap.to
-            ? projection.value.rangeEdgesAt(gap.from, gap.to)
+          gap.from < changeEnd
+            ? projection.value.rangeEdgesAt(gap.from, changeEnd)
             : undefined;
         const changeFrom = projection.value.addressAt(gap.from, edges?.start);
-        const changeTo = projection.value.addressAt(gap.to, edges?.end);
+        const changeTo = projection.value.addressAt(changeEnd, edges?.end);
         if (changeFrom.isErr() || changeTo.isErr())
           return refusal("unsupportedBlock");
         intents.push({

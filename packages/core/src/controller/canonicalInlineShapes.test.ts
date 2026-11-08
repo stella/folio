@@ -39,12 +39,12 @@ import {
 setDefaultTimeout(propertyTestTimeout(60_000));
 
 const fixturesFor = (text: string) => [
-  ...Object.values(CANONICAL_PARAGRAPH_SHAPE_FACTORIES)
-    .map((factory) => factory(text))
-    .flat(),
-  ...Object.values(CANONICAL_RUN_SHAPE_FACTORIES)
-    .map((factory) => factory(text))
-    .flat(),
+  ...Object.values(CANONICAL_PARAGRAPH_SHAPE_FACTORIES).flatMap((factory) =>
+    factory(text),
+  ),
+  ...Object.values(CANONICAL_RUN_SHAPE_FACTORIES).flatMap((factory) =>
+    factory(text),
+  ),
 ];
 const refusalExpected = ({
   item,

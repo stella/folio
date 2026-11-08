@@ -1199,6 +1199,7 @@ export type ParagraphMarkChange = {
     kind: ParagraphMarkChangeKind;
     info: TrackedChangeInfo;
     resolutionJoin?: number | undefined;
+    survivor?: "first" | undefined;
 };
 
 // @public
@@ -1282,6 +1283,7 @@ export const PARSE_WARNING_CODES: {
     readonly altChunkUnsupported: "alt-chunk-unsupported";
     readonly revisionCarrierOpaque: "revision-carrier-opaque";
     readonly nestedRowOpaque: "nested-row-opaque";
+    readonly reviewProvenanceDropped: "review-provenance-dropped";
 };
 
 // @public (undocumented)

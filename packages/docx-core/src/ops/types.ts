@@ -642,9 +642,10 @@ export type BlockInsertionPoint =
  * Insert paragraphs beside an existing paragraph, with pre-minted ids.
  * Section-bearing paragraphs are refused. With `revision`, each inserted
  * paragraph receives an inserted mark and its content an insertion wrapper.
- * Tracked insertion requires a following paragraph in the same block list;
- * terminal insertion and insertion immediately before non-paragraph blocks
- * are refused as `untrackable`.
+ * A tracked insertion after a paragraph no paragraph follows marks the
+ * anchor's mark as the inserted one and gives the last new paragraph the
+ * anchor's former mark; it is refused as `untrackable` when the anchor's mark
+ * carries review records.
  * Incoming revision and content-control identities are refused in tracked
  * mode rather than nesting reviews or rewriting supplied identities.
  */
@@ -654,6 +655,8 @@ export type InsertBlocksOp = {
   at: BlockInsertionPoint;
   blocks: readonly Paragraph[];
   revision?: RevisionStamp;
+  /** With `revision`, the insertion is the destination of a move: `w:moveTo`. */
+  move?: true;
   newIds?: NewIds;
 };
 
@@ -675,6 +678,8 @@ export type DeleteBlocksOp = {
   story: OpStory;
   blockIds: readonly string[];
   revision?: RevisionStamp;
+  /** With `revision`, the deletion is the source of a move: `w:moveFrom`. */
+  move?: true;
   newIds?: NewIds;
 };
 

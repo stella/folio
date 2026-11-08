@@ -72,6 +72,7 @@ import {
   parseHyperlinkShell,
 } from "./hyperlinkParser";
 import {
+  EVERY_PARAGRAPH_CONTENT_IS_TRACKED_CHILD,
   isHyperlinkContent,
   isInlineSdtContent,
   isSimpleFieldContent,
@@ -115,13 +116,15 @@ import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
   parseParagraphMarkResolutionJoin,
   parseResolutionJoins,
-  ReviewResolutionProvenanceError,
+  parseSplitResolutionPiece,
+  type SplitResolutionPiece,
 } from "./reviewResolutionProvenance";
 import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
+import { splitPieces, tagSplitPiece } from "./splitRevisionPieces";
 import { hasAttributeAnySpelling } from "./strictNames";
 import type { StyleMap } from "./styleParser";
 import { scanRunForTextBoxDrawings } from "./textBoxParser";
@@ -493,9 +496,25 @@ type PushTrackedChangeWrapperParams = {
   resolutionJoins?: TrackedRunChange["resolutionJoins"];
   content: readonly TrackedRunChange["content"][number][];
   preserveEmpty?: boolean;
+  /** Which piece of a change written as several elements this one is. */
+  split?: SplitResolutionPiece | undefined;
 };
 
-function pushTrackedChangeWrapper({
+function pushTrackedChangeWrapper(
+  params: PushTrackedChangeWrapperParams,
+): void {
+  const before = params.contents.length;
+  pushTrackedChangeWrapperRecord(params);
+  const pushed = params.contents.at(-1);
+  if (
+    params.split !== undefined &&
+    params.contents.length > before &&
+    pushed !== undefined
+  )
+    splitPieces.set(pushed, params.split);
+}
+
+function pushTrackedChangeWrapperRecord({
   contents,
   type,
   info,
@@ -547,6 +566,7 @@ type PushTrackedChangeSegmentsParams = {
   info: TrackedChangeInfo;
   resolutionJoins?: TrackedRunChange["resolutionJoins"];
   parsedContent: readonly ParagraphContent[];
+  split?: SplitResolutionPiece | undefined;
 };
 
 function pushTrackedChangeSegments({
@@ -555,56 +575,30 @@ function pushTrackedChangeSegments({
   info,
   resolutionJoins,
   parsedContent,
+  split,
 }: PushTrackedChangeSegmentsParams): void {
-  if (
-    resolutionJoins !== undefined &&
-    parsedContent.some((item) => !isTrackedChangeWrapperChild(item))
-  ) {
-    throw new ReviewResolutionProvenanceError({
-      attribute: "resolutionJoins",
-      reason: "invalid",
-      message:
-        "Tracked-resolution provenance cannot bind a fragmented imported wrapper.",
-    });
+  // A tracked change is read whole: every paragraph content kind is a tracked
+  // change child, which the build asserts, so its joins always have the one
+  // wrapper they describe.
+  const content: TrackedRunChange["content"] = [];
+  for (const item of parsedContent) {
+    if (
+      !EVERY_PARAGRAPH_CONTENT_IS_TRACKED_CHILD ||
+      !isTrackedChangeWrapperChild(item)
+    )
+      panic(
+        `A ${item.type} is not a tracked change child; the invariant that every paragraph content kind is one broke.`,
+      );
+    content.push(item);
   }
-  if (!parsedContent.some(isTrackedChangeWrapperChild)) {
-    pushTrackedChangeWrapper({
-      contents,
-      type,
-      info,
-      resolutionJoins,
-      content: [],
-      preserveEmpty: true,
-    });
-    contents.push(...parsedContent);
-    return;
-  }
-
-  const segment: TrackedRunChange["content"] = [];
-
-  for (const content of parsedContent) {
-    if (isTrackedChangeWrapperChild(content)) {
-      segment.push(content);
-      continue;
-    }
-
-    pushTrackedChangeWrapper({
-      contents,
-      type,
-      info,
-      resolutionJoins,
-      content: segment,
-    });
-    segment.length = 0;
-    contents.push(content);
-  }
-
   pushTrackedChangeWrapper({
     contents,
     type,
     info,
     resolutionJoins,
-    content: segment,
+    content,
+    preserveEmpty: true,
+    ...(split === undefined ? {} : { split }),
   });
 }
 
@@ -761,12 +755,17 @@ const linkedRevisionContent = (
       case "insertion":
       case "deletion":
       case "moveFrom":
-      case "moveTo":
-        content.push({
+      case "moveTo": {
+        const relinked = {
           ...item,
           content: linkedRevisionContent(item.content, linkOver),
-        });
+        };
+        // The rebuilt wrapper is still the piece the element said it was.
+        const split = splitPieces.get(item);
+        if (split !== undefined) splitPieces.set(relinked, split);
+        content.push(relinked);
         break;
+      }
       case "inlineSdt":
         return panic(
           "An SDT under a hyperlink must retain its opaque source span",
@@ -799,11 +798,16 @@ const hoistRevision =
       "hyperlink",
     );
     const content = linkedRevisionContent(wrapped, linkOver);
+    const split = parseSplitResolutionPiece(child);
+    // A change written whole inside the link carries its joins itself.
+    const resolutionJoins = parseResolutionJoins(child);
     items.push({
       type: "hoistedRevision",
       wrapper,
       info: parseTrackedChangeInfo(child),
       content,
+      ...(split === undefined ? {} : { split }),
+      ...(resolutionJoins === undefined ? {} : { resolutionJoins }),
     });
   };
 
@@ -967,6 +971,8 @@ function parseHyperlinkParagraphContents(
       info: item.info,
       content: item.content,
       preserveEmpty: true,
+      split: item.split,
+      resolutionJoins: item.resolutionJoins,
     });
   }
   flushPlain();
@@ -988,6 +994,8 @@ type HoistedRevision = {
   wrapper: TrackedChangeWrapperType;
   info: TrackedChangeInfo;
   content: readonly TrackedRunChange["content"][number][];
+  split?: SplitResolutionPiece;
+  resolutionJoins?: TrackedRunChange["resolutionJoins"];
 };
 
 /**
@@ -1696,24 +1704,25 @@ const paragraphInlineWrapper =
       contents,
     },
   ) => {
-    contents.push(
-      inlineWrapperOf(
-        element,
+    const wrapper = inlineWrapperOf(
+      element,
+      child,
+      parseParagraphContents(
         child,
-        parseParagraphContents(
-          child,
-          styles,
-          theme,
-          null,
-          rels,
-          media,
-          previews,
-          trackedContext,
-          mergeXmlnsDeclarations(inScopeXmlns, child),
-          inlineScope,
-        ),
+        styles,
+        theme,
+        null,
+        rels,
+        media,
+        previews,
+        trackedContext,
+        mergeXmlnsDeclarations(inScopeXmlns, child),
+        inlineScope,
       ),
     );
+    // A wrapper the serializer split around a lifted link.
+    tagSplitPiece(child, wrapper);
+    contents.push(wrapper);
   };
 
 const PARAGRAPH_CONTENT_UNDECLARED = {
@@ -1786,6 +1795,7 @@ const trackedParagraphRevision =
     },
   ) => {
     const resolutionJoins = parseResolutionJoins(child);
+    const split = parseSplitResolutionPiece(child);
     const parsedContent = parseParagraphContents(
       child,
       styles,
@@ -1804,6 +1814,7 @@ const trackedParagraphRevision =
       info: parseTrackedChangeInfo(child),
       resolutionJoins,
       parsedContent,
+      split,
     });
   };
 
@@ -2439,8 +2450,126 @@ function parseParagraphContents(
   // editor and in the saved part, and inside a tracked-change wrapper that
   // position is what decides whether accepting the change takes the markup
   // with it.
-  return withPreservedChildren(contents, preserved, preservedInlineCapture);
+  return joinSplitRevisionPieces(
+    withPreservedChildren(contents, preserved, preservedInlineCapture),
+  );
 }
+
+/**
+ * Put back together each change the serializer wrote as several elements
+ * around a hyperlink: its pieces, read as neighbouring wrappers of one kind
+ * and author, become the one change again, under the first piece's id and
+ * with the joins it carried. Pieces that do not line up stay as they were
+ * read, without the joins, which no one piece could own.
+ */
+const joinSplitRevisionPieces = (
+  source: ParagraphContent[],
+): ParagraphContent[] => {
+  const contents = source.map(sinkLiftedLink);
+  if (!contents.some((item) => splitPieces.has(item))) return source;
+  const out: ParagraphContent[] = [];
+  for (let index = 0; index < contents.length; index += 1) {
+    const first = contents[index];
+    if (first === undefined) continue;
+    const split = splitPieces.get(first);
+    if (split?.piece !== 0 || !isSplittable(first)) {
+      out.push(first);
+      continue;
+    }
+    const pieces = contents.slice(index, index + split.pieces);
+    const lined =
+      pieces.length === split.pieces &&
+      pieces.every((piece, ordinal) => {
+        const own = splitPieces.get(piece);
+        return (
+          own?.piece === ordinal &&
+          own.pieces === split.pieces &&
+          isSplittable(piece) &&
+          samePieceOwner(first, piece)
+        );
+      });
+    if (!lined) {
+      out.push(first);
+      continue;
+    }
+    const joined: ParagraphContent[] = [];
+    for (const piece of pieces)
+      if (isSplittable(piece)) joined.push(...piece.content);
+    if (first.type === "inlineWrapper") {
+      out.push({ ...first, content: joinSplitRevisionPieces(joined) });
+      index += split.pieces - 1;
+      continue;
+    }
+    // A change nested in this one was split with it: its pieces are
+    // neighbours now.
+    const content = joinSplitRevisionPieces(joined).filter(
+      isTrackedChangeWrapperChild,
+    );
+    const { resolutionJoins: _pieceJoins, ...rest } = first;
+    out.push({
+      ...rest,
+      content,
+      ...(split.joins === undefined ? {} : { resolutionJoins: split.joins }),
+    });
+    index += split.pieces - 1;
+  }
+  return out;
+};
+
+/**
+ * A lifted link the parser read around the pieces it holds, put back below
+ * them: the serializer writes the link outermost and every split piece inside
+ * it, so the piece a wrapper or change was split into sits under the link
+ * the change originally held.
+ */
+const sinkLiftedLink = (item: ParagraphContent): ParagraphContent => {
+  if (item.type !== "hyperlink") return item;
+  const [only, ...rest] = item.children;
+  if (only === undefined || rest.length > 0 || !splitPieces.has(only))
+    return item;
+  if (!isSplittable(only)) return item;
+  const sunk = {
+    ...only,
+    content: [
+      sinkLiftedLink({
+        ...item,
+        children: [...only.content] as Hyperlink["children"],
+      }),
+    ],
+  };
+  // SAFETY: the piece was tagged above
+  splitPieces.set(sunk, splitPieces.get(only)!);
+  return sunk as ParagraphContent;
+};
+
+/** What the serializer splits around a lifted link: changes and transparent wrappers. */
+const isSplittable = (
+  item: ParagraphContent,
+): item is TrackedRunChange | InlineWrapper =>
+  isTrackedRunChange(item) || item.type === "inlineWrapper";
+
+/** Whether two pieces came from one element: the same record, its content aside. */
+const samePieceOwner = (
+  first: TrackedRunChange | InlineWrapper,
+  piece: TrackedRunChange | InlineWrapper,
+): boolean => {
+  if (first.type !== piece.type) return false;
+  if (first.type === "inlineWrapper" || piece.type === "inlineWrapper") {
+    const { content: _first, ...firstOwner } = first;
+    const { content: _piece, ...pieceOwner } = piece;
+    return JSON.stringify(firstOwner) === JSON.stringify(pieceOwner);
+  }
+  return (
+    first.info.author === piece.info.author &&
+    first.info.date === piece.info.date
+  );
+};
+
+const isTrackedRunChange = (item: ParagraphContent): item is TrackedRunChange =>
+  item.type === "insertion" ||
+  item.type === "deletion" ||
+  item.type === "moveFrom" ||
+  item.type === "moveTo";
 
 function getCommentReferenceId(runElement: XmlElement): number | null {
   const commentReference = findChild(runElement, "w", "commentReference");
