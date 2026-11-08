@@ -479,6 +479,10 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     text: string;
     runProps?: TextFormatting;
     runPropsPatch?: RunPropsPatch;
+    inside?: {
+        start?: boolean;
+        end?: boolean;
+    };
 } | {
     type: "formatRun";
     from: TextPosition;
