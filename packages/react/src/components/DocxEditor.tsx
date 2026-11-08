@@ -3990,6 +3990,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             };
           }
 
+          // Suggestions already pending before the batch, as the default
+          // path reads them, so the registry records only the new ones.
+          const activeBeforeCanonical = new Set(
+            getSuggestions(view.state).map((s) => s.suggestionId),
+          );
           const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations(
             {
               undefinedReferences,
@@ -3998,7 +4003,20 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               author: operationAuthor,
             },
           );
-          if (canonical) return canonical;
+          if (canonical) {
+            // A canonical session's suggestions are pending suggestions the
+            // host can export and restore like any other.
+            if (batch.mode === "suggested" && canonical.status === "committed")
+              pendingSuggestionRegistryRef.current.recordApplied({
+                snapshot,
+                story: { type: "main" },
+                operations: batch.operations,
+                applied: canonical.applied,
+                author: operationAuthor,
+                activeSuggestionIds: activeBeforeCanonical,
+              });
+            return canonical;
+          }
           const existingUndoEntry =
             documentOperationUndoEntriesRef.current.at(-1);
           if (
@@ -4141,6 +4159,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             };
           }
 
+          const activeSuggestionIds = new Set(
+            getSuggestions(view.state).map((s) => s.suggestionId),
+          );
           const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations(
             {
               undefinedReferences,
@@ -4153,12 +4174,22 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               author: operationAuthor,
             },
           );
-          if (canonical) return canonical;
+          if (canonical) {
+            // A canonical session's suggestions are pending suggestions the
+            // host can export and restore like any other.
+            if (mode === "suggested" && canonical.status === "committed")
+              pendingSuggestionRegistryRef.current.recordApplied({
+                snapshot,
+                story: { type: "main" },
+                operations,
+                applied: canonical.applied,
+                author: operationAuthor,
+                activeSuggestionIds,
+              });
+            return canonical;
+          }
 
           const createdComments: Comment[] = [];
-          const activeSuggestionIds = new Set(
-            getSuggestions(view.state).map((s) => s.suggestionId),
-          );
           const { applied, skipped } = applyFolioDocumentOperations({
             undefinedReferences,
             view,
@@ -4507,9 +4538,17 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             getSuggestions(view.state).find(
               (s) => s.suggestionId === suggestionId,
             )?.appliedAs ?? null;
-          const accepted = acceptSuggestion(suggestionId, {
-            author: options?.author ?? author,
-          })(view.state, view.dispatch);
+          // A canonical session journals the acceptance itself.
+          const editor = pagedEditorRef.current?.getEditor();
+          const accepted = editor?.getCanonicalDocument()
+            ? editor.resolveCanonicalSuggestion(
+                suggestionId,
+                "accept",
+                options?.author ?? author,
+              )
+            : acceptSuggestion(suggestionId, {
+                author: options?.author ?? author,
+              })(view.state, view.dispatch);
           return { accepted, appliedAs: accepted ? appliedAs : null };
         },
         rejectSuggestion: (suggestionId) => {
@@ -4517,6 +4556,13 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           if (!view) {
             return false;
           }
+          const editor = pagedEditorRef.current?.getEditor();
+          if (editor?.getCanonicalDocument())
+            return editor.resolveCanonicalSuggestion(
+              suggestionId,
+              "reject",
+              author,
+            );
           return rejectSuggestion(suggestionId)(view.state, view.dispatch);
         },
         scrollToSuggestion: (suggestionId) => {
@@ -5154,13 +5200,22 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           null
         )
           return;
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         updateComments((previous) =>
           previous.map((comment) =>
             comment.id === id ? { ...comment, done: true } : comment,
           ),
         );
       },
-      [applyCanonicalComment, updateComments],
+      [
+        applyCanonicalComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
+        updateComments,
+      ],
     );
     const handleCommentDelete = useCallback(
       (id: number) => {
@@ -5168,6 +5223,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (result !== null) {
           if (result.status === "applied" && activeCommentId === id)
             setActiveCommentId(null);
+          return;
+        }
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
           return;
         }
         updateComments((previous) =>
@@ -5182,6 +5241,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       [
         activeCommentId,
         applyCanonicalComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
         setActiveCommentId,
         updateComments,
       ],
@@ -5197,12 +5258,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           }) !== null
         )
           return;
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         updateComments((previous) => [
           ...previous,
           createComment(text, author, id),
         ]);
       },
-      [applyCanonicalComment, author, createComment, updateComments],
+      [
+        applyCanonicalComment,
+        author,
+        createComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
+        updateComments,
+      ],
     );
     const handleAddComment = useCallback(
       (addText: string) => {
@@ -5237,6 +5309,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           setCommentSelectionRange(null);
           setAddCommentYPosition(null);
           return true;
+        }
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return false;
         }
         const comment = createComment(addText, author);
         const marked = applyCommentMarkRange(
@@ -5276,6 +5352,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         applyCanonicalComment,
         commentSelectionRange,
         createComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
         setActiveCommentId,
         setAddCommentYPosition,
         setCommentSelectionRange,
@@ -5296,12 +5374,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           }) !== null
         )
           return;
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         updateComments((previous) => [
           ...previous,
           createComment(text, author, revisionId),
         ]);
       },
-      [applyCanonicalComment, author, createComment, updateComments],
+      [
+        applyCanonicalComment,
+        author,
+        createComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
+        updateComments,
+      ],
     );
     const handleCancelAddComment = useCallback(() => {
       const view = pagedEditorRef.current?.getView();

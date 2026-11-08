@@ -56,11 +56,25 @@ export function applySuggestions(options: ApplyOptions): ApplyResult {
     return { applied, stale };
   }
 
-  resolved.sort((a, b) => b.from - a.from);
+  // Applied last to first, so each edit leaves the positions before it
+  // intact. A range reaching into one already taken would be applied at
+  // coordinates the earlier edit moved: it is reported stale instead.
+  // At one start, the wider range first: an insertion there then lands
+  // before the replaced text instead of overlapping it.
+  resolved.sort((a, b) => b.from - a.from || b.to - a.to);
+  const accepted: typeof resolved = [];
+  for (const entry of resolved) {
+    const following = accepted.at(-1);
+    if (following !== undefined && entry.to > following.from) {
+      stale.push(entry.suggestion.id);
+      continue;
+    }
+    accepted.push(entry);
+  }
 
   const tr = view.state.tr;
   if (mode === "direct") {
-    for (const { suggestion, from, to } of resolved) {
+    for (const { suggestion, from, to } of accepted) {
       tr.insertText(suggestion.suggestedText, from, to);
       applied.push(suggestion.id);
     }
@@ -70,13 +84,13 @@ export function applySuggestions(options: ApplyOptions): ApplyResult {
     if (!insertionType || !deletionType) {
       return {
         applied,
-        stale: [...stale, ...resolved.map((r) => r.suggestion.id)],
+        stale: [...stale, ...accepted.map((r) => r.suggestion.id)],
       };
     }
     const date = new Date().toISOString();
     seedRevisionIdsFromDoc(view.state.doc);
 
-    for (const { suggestion, from, to } of resolved) {
+    for (const { suggestion, from, to } of accepted) {
       const revisionId = mintRevisionId();
       const attrs = { revisionId, author, date };
 

@@ -94,8 +94,8 @@ import {
   isParaId,
   packageIdentityKeys,
   packageParagraphIds,
+  packageReservedIdentityKeys,
   paragraphIdsIn,
-  reservedIdentityKeysIn,
   slotKey,
 } from "./ids";
 import {
@@ -167,6 +167,7 @@ import {
   type WrapKind,
   wrapTracked,
 } from "./review";
+import { setRevisionInfo } from "./revisionInfo";
 import { documentStories, findStoryBody, sameStory } from "./stories";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
 import { tableEditBoundaryRefusal } from "./tableEditBoundary";
@@ -529,7 +530,7 @@ const withFreshIds = ({
     after,
     newIds: newIds ?? {},
     usedElsewhere: () => identitiesOutside(document, before),
-    reserved: new Set(reservedIdentityKeysIn(document.package)),
+    reserved: new Set(packageReservedIdentityKeys(document.package)),
     ...(inserted === undefined ? {} : { inserted }),
   });
   switch (freshened.kind) {
@@ -2854,6 +2855,8 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
       return replaceInline(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return resolveRevision(document, op, applyDocumentOps);
+    case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
+      return setRevisionInfo(document, op);
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
@@ -2959,6 +2962,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
+    case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return undefined;
     default: {
       const unreachable: never = op;

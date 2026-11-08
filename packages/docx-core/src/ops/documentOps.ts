@@ -31,7 +31,11 @@ export {
   type WellFormedRangePlan,
 } from "./rangeBoundaries";
 export { captureDocumentOp } from "./wire";
-export { withoutPendingSuggestions } from "./suggestions";
+export {
+  pendingSuggestionIdsIn,
+  suggestionRevisionInfos,
+  withoutPendingSuggestions,
+} from "./suggestions";
 export {
   compareGaps,
   defaultInsertionGap,

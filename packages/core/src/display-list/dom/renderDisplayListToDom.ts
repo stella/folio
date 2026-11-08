@@ -36,6 +36,7 @@ import { panic } from "better-result";
 
 import { writeCommentAnchorIds } from "../../render-dom/commentAnchorAttributes";
 import { bytesToDataUrl } from "../../utils/base64";
+import { cssString } from "../../utils/cssString";
 import { imageLuminanceFilter } from "../../utils/imageLuminance";
 import { applyTextAdvanceGaps } from "../../utils/textAdvanceGapsDom";
 import { anchorTargetAttrs } from "../../utils/urlSecurity";
@@ -123,9 +124,6 @@ const px = (value: number) => `${value}px`;
 const cssColor = ({ r, g, b, a }: DisplayColor) =>
   a === 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${a})`;
 
-const quoteFontFamily = (family: string) =>
-  `"${family.replaceAll('"', '\\"')}"`;
-
 /**
  * An embedded face wins over any installed face of the same name by being
  * named first, under the id its `@font-face` rule was registered with.
@@ -143,11 +141,11 @@ const fontFamilyStack = ({
   generic,
   embedded,
 }: DisplayFontFace) => {
-  const names = [family, ...fallbacks].map(quoteFontFamily).join(", ");
+  const names = [family, ...fallbacks].map(cssString).join(", ");
   const resolved = `${names}, ${generic}`;
   return embedded === undefined
     ? resolved
-    : `${quoteFontFamily(embedded.id)}, ${resolved}`;
+    : `${cssString(embedded.id)}, ${resolved}`;
 };
 
 const resolveFont = (
@@ -210,7 +208,7 @@ const fontFaceRule = (
   embedded: DisplayEmbeddedFont,
   src: string,
 ) =>
-  `@font-face { font-family: ${quoteFontFamily(embedded.id)}; src: url("${src}"); font-weight: ${face.weight}; font-style: ${face.italic ? "italic" : "normal"}; }`;
+  `@font-face { font-family: ${cssString(embedded.id)}; src: url("${src}"); font-weight: ${face.weight}; font-style: ${face.italic ? "italic" : "normal"}; }`;
 
 /**
  * `@font-face` rules for the faces whose bytes travel with the list. Resolved

@@ -37,8 +37,8 @@ const FOOTNOTE_SEPARATORS =
   '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
 
 // The normal note carries the in-note `w:footnoteRef` auto-number mark that
-// real Word documents emit and that the model does NOT represent, so the
-// byte-exact assertions below confirm an unedited note keeps that mark.
+// authored documents emit; the byte-exact assertions below confirm an unedited
+// note keeps it.
 const footnotesXml = `${XML_DECLARATION}
 <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">${FOOTNOTE_SEPARATORS}<w:footnote w:id="1"><w:p w14:paraId="${FOOTNOTE_PARA_ID}"><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve">${ORIGINAL_FOOTNOTE_TEXT}</w:t></w:r></w:p></w:footnote></w:footnotes>`;
 
@@ -550,5 +550,89 @@ describe("footnote / endnote body write path (full repack)", () => {
       ORIGINAL_ENDNOTE_TEXT,
       "Added endnote",
     ]);
+  });
+});
+
+/** The note's content as it reads after a save, without paragraph ids. */
+const readNoteContent = (note: Footnote | Endnote | undefined) =>
+  JSON.parse(
+    JSON.stringify(note?.content ?? [], (key, value: unknown) =>
+      key === "paraId" || key === "textId" ? undefined : value,
+    ),
+  ) as unknown;
+
+describe("a note's reference mark on save", () => {
+  for (const kind of ["footnote", "endnote"] as const)
+    for (const shape of ["nothing", "text only", "mark only"] as const)
+      for (const path of ["full repack", "selective save"] as const)
+        test(`an existing ${kind} left with ${shape} reads as the model after a ${path}`, async () => {
+          const buffer = await createNotesFixture();
+          const doc = await parseDocx(buffer, { preloadFonts: false });
+          const notes =
+            kind === "footnote" ? doc.package.footnotes : doc.package.endnotes;
+          const note = notes?.[0];
+          const paragraph = note?.content[0];
+          if (!note || paragraph?.type !== "paragraph")
+            throw new Error("expected a parsed note paragraph");
+          const [mark, text] = paragraph.content;
+          if (mark?.type !== "run" || text?.type !== "run")
+            throw new Error("expected the note's mark and text runs");
+          const left = {
+            nothing: [],
+            "text only": [text],
+            "mark only": [mark],
+          };
+          paragraph.content = left[shape];
+          const expected = readNoteContent(note);
+          const saved =
+            path === "full repack"
+              ? await repackDocx(doc)
+              : await attemptSelectiveSave(doc, buffer, {
+                  changedParaIds: new Set([
+                    kind === "footnote" ? FOOTNOTE_PARA_ID : ENDNOTE_PARA_ID,
+                  ]),
+                  structuralChange: false,
+                  hasUntrackedChanges: false,
+                });
+          if (!saved) throw new Error(`the ${path} declined`);
+          const reopened = await parseDocx(saved, { preloadFonts: false });
+          const reopenedNotes =
+            kind === "footnote"
+              ? reopened.package.footnotes
+              : reopened.package.endnotes;
+          expect(readNoteContent(reopenedNotes?.[0])).toEqual(expected);
+        });
+
+  test("a note new to the package is given its mark", async () => {
+    const doc = await parseDocx(await createNotesFixture(), {
+      preloadFonts: false,
+    });
+    doc.package.footnotes = [
+      ...(doc.package.footnotes ?? []),
+      {
+        type: "footnote",
+        id: 2,
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "run", content: [{ type: "text", text: "New" }] },
+            ],
+          },
+        ],
+      },
+    ];
+    const reopened = await parseDocx(await repackDocx(doc), {
+      preloadFonts: false,
+    });
+    const added = reopened.package.footnotes?.find(({ id }) => id === 2);
+    const paragraph = added?.content[0];
+    if (paragraph?.type !== "paragraph")
+      throw new Error("expected the new note paragraph");
+    expect(
+      paragraph.content
+        .flatMap((item) => (item.type === "run" ? item.content : []))
+        .filter((item) => item.type === "noteMarker"),
+    ).toEqual([{ type: "noteMarker", kind: "footnote" }]);
   });
 });

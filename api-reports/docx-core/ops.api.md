@@ -386,6 +386,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
     readonly REPLACE_INLINE: "replaceInline";
     readonly RESOLVE_REVISION: "resolveRevision";
+    readonly SET_REVISION_INFO: "setRevisionInfo";
     readonly INSERT_TABLE: "insertTable";
     readonly DELETE_TABLE: "deleteTable";
     readonly SET_CONTAINER_BLOCKS: "setContainerBlocks";
@@ -418,7 +419,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
+export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | SetRevisionInfoOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -883,6 +884,9 @@ export const paragraphVisibleText: (paragraph: Paragraph) => string;
 export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRejection>;
 
 // @public
+export const pendingSuggestionIdsIn: (document: Document_2) => Set<string>;
+
+// @public
 export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: number) => number;
 
 // @public
@@ -1241,6 +1245,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
+export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];
+
+// @public
 export const survivingComments: (document: Document_2, projectedRootIds?: ReadonlySet<number>) => Comment_2[];
 
 // @public
@@ -1249,6 +1256,8 @@ export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds
     story: OpStory;
     blockId: string;
     table: Table;
+    side?: "after" | "before";
+    separated?: boolean;
 };
 
 // @public (undocumented)

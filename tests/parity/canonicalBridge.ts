@@ -1,7 +1,13 @@
 import { TextSelection } from "prosemirror-state";
 
 import type { Document } from "@stll/folio-core";
+import type { FolioAIEditSnapshot } from "@stll/folio-core/ai-edits/types";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationBatch,
+  type FolioDocumentOperationResult,
+} from "@stll/folio-core/document-operations";
 import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import { singletonManager } from "@stll/folio-core/prosemirror/schema";
@@ -49,6 +55,19 @@ type CanonicalPlaygroundRef = {
   ensureEditorView: () => void;
   loadDocumentBuffer: (buffer: Uint8Array) => Promise<void>;
   save: () => Promise<ArrayBuffer | null>;
+  createAIEditSnapshot: () => FolioAIEditSnapshot | null;
+  applyDocumentOperations: (options: {
+    undefinedReferences: "refuse";
+    snapshot: FolioAIEditSnapshot;
+    batch: FolioDocumentOperationBatch;
+  }) => FolioDocumentOperationResult;
+  getSuggestions: () => readonly { suggestionId: string }[];
+  exportPendingSuggestions: () => readonly unknown[];
+  acceptSuggestion: (
+    suggestionId: string,
+    options?: { author?: string },
+  ) => { accepted: boolean };
+  rejectSuggestion: (suggestionId: string) => boolean;
 };
 
 export type CanonicalHyperlinkAction =
@@ -254,6 +273,46 @@ export const buildCanonicalBridge = (
   ) =>
     getRef()?.getEditor()?.resolveCanonicalRevisions(revisionIds, resolution) ??
     false,
+  /** Suggest replacing `find` with `replace` in a block, as a host's batch would. */
+  suggestReplace: (
+    id: string,
+    blockId: string,
+    find: string,
+    replace: string,
+  ) => {
+    const ref = getRef();
+    const snapshot = ref?.createAIEditSnapshot();
+    if (!ref || !snapshot) return null;
+    const result = ref.applyDocumentOperations({
+      undefinedReferences: "refuse",
+      snapshot,
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [{ id, type: "replaceInBlock", blockId, find, replace }],
+      },
+    });
+    return {
+      applied: result.applied.map(({ suggestionId }) => suggestionId ?? null),
+      skipped: result.skipped.map(({ reason }) => reason),
+    };
+  },
+  suggestionIds: () =>
+    getRef()
+      ?.getSuggestions()
+      .map(({ suggestionId }) => suggestionId) ?? null,
+  pendingSuggestionCount: () =>
+    getRef()?.exportPendingSuggestions().length ?? null,
+  resolveSuggestion: (
+    suggestionId: string,
+    resolution: "accept" | "reject",
+  ) => {
+    const ref = getRef();
+    if (!ref) return false;
+    return resolution === "accept"
+      ? ref.acceptSuggestion(suggestionId, { author: "Adopter" }).accepted
+      : ref.rejectSuggestion(suggestionId);
+  },
   select: (from: number, to = from) => {
     const editor = getRef()?.getEditor();
     if (!editor?.getView()) return false;

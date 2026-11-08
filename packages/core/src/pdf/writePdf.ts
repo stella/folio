@@ -31,7 +31,11 @@ import {
   type PdfSubstitution,
   prepareFonts,
 } from "./fonts";
-import { decodeImage, type PdfImageSamples } from "./images";
+import {
+  decodeImage,
+  MAX_PDF_DOCUMENT_PNG_PIXELS,
+  type PdfImageSamples,
+} from "./images";
 import {
   createPdfDocument,
   pdfArray,
@@ -556,6 +560,7 @@ export const writePdf = async (
   }
 
   const imageRefs = new Map<number, PdfRef>();
+  let remainingPngPixels = MAX_PDF_DOCUMENT_PNG_PIXELS;
   for (const imageIndex of [...usage.value.imageIndices].sort(
     (left, right) => left - right,
   )) {
@@ -567,7 +572,7 @@ export const writePdf = async (
         }),
       );
     }
-    const decoded = decodeImage(source);
+    const decoded = decodeImage(source, remainingPngPixels);
     if (decoded.isErr()) {
       return Result.err(
         new WritePdfError({
@@ -575,6 +580,9 @@ export const writePdf = async (
           cause: decoded.error,
         }),
       );
+    }
+    if (source.format === "png") {
+      remainingPngPixels -= decoded.value.widthPx * decoded.value.heightPx;
     }
     imageRefs.set(imageIndex, buildImageObject(document, decoded.value));
   }

@@ -73,6 +73,15 @@ export type HiddenEditorApi = {
     revisionIds: readonly number[],
     resolution: "accept" | "reject",
   ) => boolean;
+  /**
+   * Accept a pending suggestion as ordinary tracked changes by `author`, or
+   * reject it, as one journalled change.
+   */
+  resolveCanonicalSuggestion: (
+    suggestionId: string,
+    resolution: "accept" | "reject",
+    author: string,
+  ) => boolean;
   updateCanonicalInputLifecycle: (
     action: "beginComposition" | "endComposition" | "breakUndoGroup",
   ) => boolean;
@@ -136,6 +145,7 @@ export type HiddenEditorApiDeps = {
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
   resolveCanonicalRevisions?: HiddenEditorApi["resolveCanonicalRevisions"];
+  resolveCanonicalSuggestion?: HiddenEditorApi["resolveCanonicalSuggestion"];
   executeCanonicalCommand?: (command: Command) => boolean | undefined;
   getCanonicalHistory?: () => Pick<
     HiddenEditorApi,
@@ -223,6 +233,11 @@ export const createHiddenEditorApi = (
     resolveCanonicalRevisions: (revisionIds, resolution) =>
       !deps.isDestroying() &&
       (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
+
+    resolveCanonicalSuggestion: (suggestionId, resolution, author) =>
+      !deps.isDestroying() &&
+      (deps.resolveCanonicalSuggestion?.(suggestionId, resolution, author) ??
+        false),
 
     getCanonicalComments: () => deps.getCanonicalComments?.() ?? null,
     getCanonicalCommittedVersion: () =>
