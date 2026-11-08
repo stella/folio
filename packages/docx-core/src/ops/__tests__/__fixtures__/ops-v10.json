@@ -1542,6 +1542,35 @@
   {
     "schema": 10,
     "op": {
+      "type": "setRevisionInfo",
+      "story": "main",
+      "infos": [
+        {
+          "id": 80,
+          "author": "Adopter",
+          "date": "2026-02-02T00:00:00Z"
+        }
+      ]
+    }
+  },
+  {
+    "schema": 10,
+    "op": {
+      "type": "setRevisionInfo",
+      "story": "main",
+      "infos": [
+        {
+          "id": 80,
+          "author": "Reviewer",
+          "date": "2026-02-03T04:05:06Z",
+          "initials": "R"
+        }
+      ]
+    }
+  },
+  {
+    "schema": 10,
+    "op": {
       "type": "insertText",
       "at": {
         "story": "main",
@@ -3337,9 +3366,8 @@
             "kind": "ins",
             "info": {
               "id": 80,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
+              "author": "Adopter",
+              "date": "2026-02-02T00:00:00Z"
             }
           }
         }
@@ -3353,9 +3381,8 @@
             "kind": "ins",
             "info": {
               "id": 80,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
+              "author": "Adopter",
+              "date": "2026-02-02T00:00:00Z"
             }
           }
         }
@@ -3376,9 +3403,8 @@
             "kind": "ins",
             "info": {
               "id": 80,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
+              "author": "Adopter",
+              "date": "2026-02-02T00:00:00Z"
             }
           }
         }
@@ -3392,9 +3418,8 @@
             "kind": "ins",
             "info": {
               "id": 80,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
+              "author": "Adopter",
+              "date": "2026-02-02T00:00:00Z"
             }
           }
         }
