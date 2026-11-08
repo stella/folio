@@ -162,6 +162,8 @@ export type EditorIntent =
       paragraphs: readonly Paragraph[];
       /** A suggestion records the paragraphs as a move's destination. */
       move?: true;
+      /** A list instance the paragraphs' numbering names, created first. */
+      newList?: NewListInstance;
     }
   | {
       /** Whole adjacent paragraphs removed with their marks. */
@@ -208,7 +210,13 @@ export type EditorIntent =
       to: TextPosition;
       patch: RunPropsPatch;
     }
-  | { type: "formatParagraph"; at: TextPosition; patch: ParagraphPropsPatch }
+  | {
+      type: "formatParagraph";
+      at: TextPosition;
+      patch: ParagraphPropsPatch;
+      /** A list instance the patch's numbering names, created first. */
+      newList?: NewListInstance;
+    }
   | {
       type: "setList";
       items: readonly { at: TextPosition; ilvl: number }[];
@@ -240,6 +248,25 @@ export type EditorIntent =
        */
       survivor?: SplitHalf;
     };
+
+/** A numbering instance, with its abstract definition, an edit creates. */
+export type NewListInstance = {
+  num: NumberingInstance;
+  abstractNum?: AbstractNumbering;
+};
+
+const newListOps = (newList: NewListInstance | undefined): DocumentOp[] =>
+  newList === undefined
+    ? []
+    : [
+        {
+          type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
+          num: newList.num,
+          ...(newList.abstractNum === undefined
+            ? {}
+            : { abstractNum: newList.abstractNum }),
+        },
+      ];
 
 /** Revision metadata and every fresh identity are supplied before compilation. */
 export type EditorIntentMode = {
@@ -2176,6 +2203,7 @@ export const compileEditorIntent = (
         );
       return Result.ok({
         ops: [
+          ...newListOps(intent.newList),
           {
             type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
             story: intent.story,
@@ -2421,6 +2449,7 @@ export const compileEditorIntent = (
         }
         ops = plan.ops;
       }
+      ops = [...newListOps(intent.newList), ...ops];
       selection = intent.at;
       break;
     }

@@ -68,6 +68,7 @@ export {
   editorPositionAtPhysicalPosition,
   physicalPositionAtEditorOffset,
   type EditorIntent,
+  type NewListInstance,
   type TableIntentOperation,
   type TableRowIntentOperation,
   type TableBlockIntentOperation,
