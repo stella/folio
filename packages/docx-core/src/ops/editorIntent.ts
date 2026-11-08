@@ -82,6 +82,7 @@ import {
   paragraphPropertiesOf,
   reviewFieldsOf,
 } from "./review";
+import { groupedDeletionStamp, ownInsertionSlice } from "./revisionGrouping";
 import { runsMergeable } from "./runMerge";
 import { identitySlots } from "./slots";
 import { tableEditParagraphDemand } from "./tableEdits";
@@ -2620,17 +2621,79 @@ export const compileEditorIntent = (
         idKey(from.blockId) === idKey(to.blockId) &&
         from.offset === to.offset &&
         (from.zeroWidthBefore ?? 0) === (to.zeroWidthBefore ?? 0);
-      const continuing =
+      const continued =
         insertionOnly && text !== ""
-          ? continuedSlice(
-              continuation(paragraph.content, from, to, {
-                ...(intent.inside === undefined
-                  ? {}
-                  : { inside: intent.inside }),
-              }),
-              content,
-            )
+          ? continuation(paragraph.content, from, to, {
+              ...(intent.inside === undefined ? {} : { inside: intent.inside }),
+            })
           : undefined;
+      const continuing =
+        continued === undefined
+          ? undefined
+          : continuedSlice(continued, content);
+      if (mode.type === "suggesting" && continued !== undefined) {
+        // Typed beside the author's own pending insertion: the text goes
+        // into it, so consecutive typing reads as one change.
+        const at = {
+          ...from,
+          zeroWidthBefore:
+            from.zeroWidthBefore ??
+            defaultInsertionGap(paragraph.content, from.offset).zeroWidthBefore,
+        };
+        const slice = ownInsertionSlice({
+          items: paragraph.content,
+          gap: { offset: at.offset, zeroWidthBefore: at.zeroWidthBefore },
+          continued: continued.containers,
+          author: mode.revision.author,
+          content,
+        });
+        if (slice !== undefined) {
+          const insert: InsertContentOp = {
+            type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+            at,
+            slice,
+            ...(mode.newIds === undefined ? {} : { newIds: mode.newIds }),
+          };
+          const applied = applyDocumentOp(document, insert);
+          if (applied.isErr()) return Result.err(applied.error);
+          // Only the ids a cut record took stay with the insertion.
+          ops = [
+            trimAppliedNewIds({
+              before: document,
+              op: insert,
+              applied: applied.value,
+              story: at.story,
+            }),
+          ];
+          // The typed run joins the alike runs of the insertion it meets.
+          let current = applied.value.document;
+          for (const seam of [
+            { offset: at.offset + text.length, zeroWidthBefore: 0 },
+            { offset: at.offset, zeroWidthBefore: at.zeroWidthBefore },
+          ]) {
+            const typedInto = paragraphAt(current, at);
+            if (typedInto === undefined)
+              panic("A typed paragraph must exist at its seam.");
+            const depth = runSeamDepth({
+              paragraph: typedInto,
+              at: seam,
+              policy: RUN_SEAM_POLICIES.plain,
+            });
+            if (depth === 0) continue;
+            const join = {
+              type: DOCUMENT_OP_TYPES.JOIN_INLINE,
+              at: { ...at, ...seam },
+              depth,
+            } as const;
+            const joined = applyDocumentOp(current, join);
+            if (joined.isErr()) return Result.err(joined.error);
+            ops.push(join);
+            current = joined.value.document;
+          }
+          selection = replacementCaret(at, text);
+          break;
+        }
+      }
       if (mode.type === "suggesting" && continuing !== undefined) {
         // Typed inside a hyperlink, content control or wrapper: the tracked
         // insertion goes inside it too, rather than cutting it in two.
@@ -2658,7 +2721,30 @@ export const compileEditorIntent = (
           sourceContainerPolicy: "join",
           from,
           to,
-          revision: mode.revision,
+          // A deletion beside the author's own pending one continues it.
+          revision:
+            text === ""
+              ? groupedDeletionStamp({
+                  start: {
+                    items: paragraph.content,
+                    gap: {
+                      offset: from.offset,
+                      zeroWidthBefore:
+                        from.zeroWidthBefore ??
+                        zeroWidthLeavesAt(paragraph.content, from.offset)
+                          .length,
+                    },
+                  },
+                  end: {
+                    items: (paragraphAt(document, to) ?? paragraph).content,
+                    gap: {
+                      offset: to.offset,
+                      zeroWidthBefore: to.zeroWidthBefore ?? 0,
+                    },
+                  },
+                  stamp: mode.revision,
+                })
+              : mode.revision,
           newIds: mode.newIds,
           seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
           replacement: {
