@@ -63,9 +63,6 @@ const currentSectionEndpoint = (paragraph: Paragraph) => {
   return { type: "omitted" } as const;
 };
 
-export const TRACKED_COLUMN_DELETION_REFUSAL =
-  "A suggested column deletion is unavailable in this session.";
-
 const refuse = (message: string) =>
   Result.err(
     new CanonicalSessionError({
@@ -519,14 +516,6 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "editTable": {
-        // The engine records a column deletion by narrowing the grid while the
-        // deleted cells stay, so the pending table has more cell columns than
-        // grid columns.
-        if (
-          command.edit.type === DOCUMENT_OP_TYPES.DELETE_COLUMN &&
-          session.suggesting
-        )
-          return refuse(TRACKED_COLUMN_DELETION_REFUSAL);
         const at = session.projection.addressAt(command.at);
         if (at.isErr()) return at;
         intents.push({
