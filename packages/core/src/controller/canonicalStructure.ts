@@ -398,6 +398,50 @@ export const prepareCanonicalCommands = (
         intents.push({ ...command, from: from.value, to: to.value });
         break;
       }
+      case "formatTable": {
+        for (const target of command.targets) {
+          const at = session.projection.addressAt(target.at);
+          if (at.isErr()) return at;
+          const address = { story: at.value.story, blockId: at.value.blockId };
+          switch (target.scope) {
+            case "table":
+              intents.push({
+                type: "table",
+                operation: {
+                  type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+                  ...address,
+                  patch: target.patch,
+                },
+              });
+              break;
+            case "row":
+              intents.push({
+                type: "table",
+                operation: {
+                  type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+                  ...address,
+                  patch: target.patch,
+                },
+              });
+              break;
+            case "cell":
+              intents.push({
+                type: "table",
+                operation: {
+                  type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+                  ...address,
+                  patch: target.patch,
+                },
+              });
+              break;
+            default: {
+              const unreachable: never = target;
+              return unreachable;
+            }
+          }
+        }
+        break;
+      }
       case "insertBreak": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;

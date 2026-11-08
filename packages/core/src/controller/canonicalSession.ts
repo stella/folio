@@ -179,6 +179,12 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SPLIT_CELL:
     case DOCUMENT_OP_TYPES.SET_TABLE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
+    // Table, row and cell properties and the grid sit outside every paragraph,
+    // so a save that splices changed paragraphs cannot carry them.
+    case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
+    case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
+    case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
+    case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
       return true;
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
@@ -200,10 +206,6 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
-    case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
-    case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
-    case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
-    case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
