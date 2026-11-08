@@ -3,12 +3,12 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import {
   AllSelection,
   Plugin,
-  PluginKey,
   Selection,
   TextSelection,
 } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { createPluginKeyOwner } from "./pluginKeyOwner";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 
 type TextInputHandler<TView> = (
@@ -104,8 +104,8 @@ export const commentMarksCovering = (
  */
 type TypingInComments = { comments: readonly Mark[]; at: number };
 
-const typingInCommentsKey = new PluginKey<TypingInComments | null>(
-  "folioTypingInComments",
+const typingInCommentsOwner = createPluginKeyOwner<TypingInComments | null>(
+  "typingInComments",
 );
 
 /**
@@ -134,7 +134,7 @@ export const keepTypedTextInComments = ({
   const carried = (() => {
     if (replaced.from < replaced.to)
       return commentMarksCovering(state.doc, replaced.from, replaced.to);
-    const typing = typingInCommentsKey.getState(state);
+    const typing = typingInCommentsOwner.getState(state);
     if (!typing || typing.at !== replaced.from) return [];
     // Only comments the text before the caret still carries: one deleted
     // since must not come back.
@@ -146,7 +146,7 @@ export const keepTypedTextInComments = ({
   // and the text stays one run.
   for (const mark of carried) tr.removeMark(typed.from, typed.to, mark);
   for (const mark of carried) tr.addMark(typed.from, typed.to, mark);
-  tr.setMeta(typingInCommentsKey, { comments: carried, at: typed.to });
+  tr.setMeta(typingInCommentsOwner.key, { comments: carried, at: typed.to });
 };
 
 export const dispatchEditorTextInput = <
@@ -303,12 +303,13 @@ export const createTextInputPlugin = (): Plugin => {
   // Key by view because a plugin can be shared by multiple editor states/views.
   const compositions = new WeakMap<EditorView, Event>();
   return new Plugin<TypingInComments | null>({
-    key: typingInCommentsKey,
+    key: typingInCommentsOwner.createKey(),
     state: {
       init: () => null,
       apply: (tr, value) => {
-        const typed: TypingInComments | null | undefined =
-          tr.getMeta(typingInCommentsKey);
+        const typed: TypingInComments | null | undefined = tr.getMeta(
+          typingInCommentsOwner.key,
+        );
         if (typed !== undefined) return typed;
         if (!value) return null;
         // Kept only while the caret stays where the typing left it.
