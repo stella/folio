@@ -275,6 +275,22 @@ const hasReview = (table: Table) =>
       ),
   );
 
+/** A review other than a pending cell deletion. */
+const hasReviewBesidesCellDeletions = (table: Table) =>
+  table.formatting?.gridChange !== undefined ||
+  table.propertyChanges !== undefined ||
+  table.rows.some(
+    (row) =>
+      row.structuralChange !== undefined ||
+      row.propertyChanges !== undefined ||
+      row.cells.some(
+        (cell) =>
+          (cell.structuralChange !== undefined &&
+            cell.structuralChange.type !== "tableCellDeletion") ||
+          cell.propertyChanges !== undefined,
+      ),
+  );
+
 /** Multiple physical review records always get distinct, explicitly supplied ids. */
 const stampsFor = (
   op: TableEditOp,
@@ -343,7 +359,12 @@ const columnEdit = ({
       message:
         "Indexed table markup must be relocated before changing columns.",
     });
-  if (hasReview(table))
+  // Another suggested column deletion may join pending ones: each keeps its
+  // own cells and grid entry until it is resolved.
+  const suggestedDeletion = !insert && op.revision !== undefined;
+  if (
+    suggestedDeletion ? hasReviewBesidesCellDeletions(table) : hasReview(table)
+  )
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -494,6 +515,15 @@ const columnEdit = ({
             reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
             message:
               "Resolve dependent anchors and review records before removing this cell.",
+          });
+        if (
+          trackedDeletion &&
+          entry.cell.structuralChange?.type === "tableCellDeletion"
+        )
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+            message: "The column's cells are already suggested for deletion.",
           });
         if (trackedDeletion && entry.end - entry.start > 1)
           return refuse({

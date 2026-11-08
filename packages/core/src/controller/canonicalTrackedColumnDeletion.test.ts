@@ -171,4 +171,30 @@ describe("a suggested column deletion in the canonical session", () => {
       ).unwrap();
       expect(await tableXml(await canonicalSave(reopened))).toBe(expected);
     });
+
+  for (const decision of ["accept", "reject"] as const)
+    test(`two suggested column deletions ${decision}ed together save as the ${decision === "accept" ? "direct deletions" : "source"}`, async () => {
+      const direct = await canonicalSession();
+      deleteColumn(direct, "B");
+      deleteColumn(direct, "C");
+      const untouched = await canonicalSession();
+      const expected = await tableXml(
+        await canonicalSave(decision === "accept" ? direct : untouched),
+      );
+      const session = await canonicalSession();
+      session.setMode({ type: "suggesting", author: "Reviewer" });
+      deleteColumn(session, "B");
+      const state = deleteColumn(session, "C");
+      const ids = [
+        ...JSON.stringify(session.document.package.document.content).matchAll(
+          /"tableCellDeletion","info":\{"id":(\d+)/gu,
+        ),
+      ].map(([, id]) => Number(id));
+      expect(ids).toHaveLength(4);
+      const resolved = session
+        .prepareResolve(state, { revisionIds: ids, resolution: decision })
+        .unwrap();
+      expect(resolved.publish().isOk()).toBe(true);
+      expect(await tableXml(await canonicalSave(session))).toBe(expected);
+    });
 });
