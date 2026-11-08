@@ -186,47 +186,46 @@ const historyStep = (
 };
 
 describe("comment records", () => {
-  for (const mode of ["editing", "suggesting"] as const) {
-    test(
-      `undo after any comment edit restores the saved comments exactly (${mode})`,
-      () => {
-        assertProperty(
-          fc.property(
-            fc.array(opArbitrary, { minLength: 1, maxLength: 8 }),
-            (ops) => {
-              const base = commentedDocument();
-              let state = stateFor(base, mode);
-              for (const op of ops) {
-                const next = applyOp(state, op);
-                if (!next) continue;
-                if (op.type !== "type") {
-                  const before = saved(state, base);
-                  const after = saved(next, base);
-                  const undone = historyStep(next, undo);
-                  expect(undone).not.toBeNull();
-                  if (!undone) return;
-                  expect(saved(undone, base)).toEqual(before);
-                  const redone = historyStep(undone, redo);
-                  expect(redone).not.toBeNull();
-                  if (!redone) return;
-                  expect(saved(redone, base)).toEqual(after);
-                  state = redone;
-                } else {
-                  state = next;
-                }
+  test(
+    "undo after any comment edit restores the saved comments exactly",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.constantFrom("editing" as const, "suggesting" as const),
+          fc.array(opArbitrary, { minLength: 1, maxLength: 8 }),
+          (mode, ops) => {
+            const base = commentedDocument();
+            let state = stateFor(base, mode);
+            for (const op of ops) {
+              const next = applyOp(state, op);
+              if (!next) continue;
+              if (op.type === "type") {
+                state = next;
+                continue;
               }
-            },
-          ),
-          {
-            seed: 4_412_208,
-            numRuns: 60,
-            id: `undo after any comment edit restores the saved comments exactly (${mode})`,
+              const before = saved(state, base);
+              const after = saved(next, base);
+              const undone = historyStep(next, undo);
+              expect(undone).not.toBeNull();
+              if (!undone) return;
+              expect(saved(undone, base)).toEqual(before);
+              const redone = historyStep(undone, redo);
+              expect(redone).not.toBeNull();
+              if (!redone) return;
+              expect(saved(redone, base)).toEqual(after);
+              state = redone;
+            }
           },
-        );
-      },
-      propertyTestTimeout(60_000),
-    );
-  }
+        ),
+        {
+          seed: 4_412_208,
+          numRuns: 120,
+          id: "undo after any comment edit restores the saved comments exactly",
+        },
+      );
+    },
+    propertyTestTimeout(60_000),
+  );
 
   test("deleting a thread removes its replies and anchors, and undo brings all back", () => {
     const base = commentedDocument();

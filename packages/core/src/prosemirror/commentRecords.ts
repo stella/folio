@@ -22,7 +22,6 @@ import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import {
   type EditorState,
   Plugin,
-  PluginKey,
   Selection,
   type Transaction,
 } from "prosemirror-state";
@@ -38,6 +37,7 @@ import {
 import { readCommentReferenceAttrs } from "./commentReferenceAttrs";
 import { COMMENT_REFERENCE_NODE_NAME } from "./commentReferenceIntegrity";
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
+import { createPluginKeyOwner } from "./pluginKeyOwner";
 import { SUGGESTION_BYPASS_META } from "./plugins/suggestionMode";
 import { readRangeAnchorAttrs } from "./rangeAnchorAttrs";
 
@@ -118,10 +118,10 @@ type CommentRecordsPluginState = {
   origin: CommentRecordsOrigin;
 };
 
-export const commentRecordsKey: PluginKey<CommentRecordsPluginState> =
-  new PluginKey<CommentRecordsPluginState>("folioCommentRecords");
+const commentRecordsOwner =
+  createPluginKeyOwner<CommentRecordsPluginState>("commentRecords");
 
-const SYNC_META = "folioCommentRecordsSync";
+const SYNC_META = `${commentRecordsOwner.key}.sync`;
 
 /**
  * Told the records after every change; `null` when the view's state stops
@@ -142,7 +142,7 @@ export function createCommentRecordsPlugin(
   initial: CommentRecords,
 ): Plugin<CommentRecordsPluginState> {
   return new Plugin<CommentRecordsPluginState>({
-    key: commentRecordsKey,
+    key: commentRecordsOwner.createKey(),
     state: {
       init: () => ({ records: initial, origin: "sync" }),
       apply: (transaction, value) => {
@@ -159,7 +159,7 @@ export function createCommentRecordsPlugin(
     },
     view: (created) => {
       // A view given a new document's state builds this plugin's view anew.
-      const current = commentRecordsKey.getState(created.state);
+      const current = commentRecordsOwner.getState(created.state);
       if (current) {
         for (const listener of listeners.get(created) ?? []) {
           listener(current.records, "sync");
@@ -167,8 +167,8 @@ export function createCommentRecordsPlugin(
       }
       return {
         update: (view, previous) => {
-          const next = commentRecordsKey.getState(view.state);
-          if (!next || next === commentRecordsKey.getState(previous)) return;
+          const next = commentRecordsOwner.getState(view.state);
+          if (!next || next === commentRecordsOwner.getState(previous)) return;
           for (const listener of listeners.get(view) ?? []) {
             listener(next.records, next.origin);
           }
@@ -185,7 +185,7 @@ export function createCommentRecordsPlugin(
 
 /** The session's comment records, or `null` when the state holds none. */
 export function commentRecordsOf(state: EditorState): CommentRecords | null {
-  return commentRecordsKey.getState(state)?.records ?? null;
+  return commentRecordsOwner.getState(state)?.records ?? null;
 }
 
 /**
