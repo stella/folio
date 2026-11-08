@@ -36,8 +36,6 @@ import {
   type CreateCommentOp,
   freshCommentId,
   OP_STORIES,
-  type OpStory,
-  sameStory,
 } from "@stll/docx-core/ops";
 
 import {
@@ -1694,11 +1692,6 @@ export const createHiddenEditorManager = (
     return true;
   };
 
-  /** The secondary-story editors a host has open, by story. */
-  const storyViews: { story: OpStory; view: EditorView }[] = [];
-  const storyViewFor = (story: OpStory): EditorView | undefined =>
-    storyViews.find((entry) => sameStory(entry.story, story))?.view;
-
   let publicOperations: {
     session: CanonicalSession;
     executor: CanonicalPublicOperations;
@@ -1712,9 +1705,8 @@ export const createHiddenEditorManager = (
       getState: (story) => {
         if (!view || deps.getReadOnly() || isDestroying) return null;
         if (story === OP_STORIES.MAIN) return view.state;
-        // An open story editor's state, or the story's projection when none is open.
-        const open = storyViewFor(story);
-        if (open !== undefined) return open.state;
+        // The story's projection; a host's open story editor follows the
+        // session's committed story, as it does after its own edits.
         const projected = session.projectStory(story);
         return projected.isErr()
           ? null
@@ -1727,7 +1719,7 @@ export const createHiddenEditorManager = (
         const story = commit.selection.anchor.story;
         return story === OP_STORIES.MAIN
           ? publishCommit(commit)
-          : publishStoryCommit(storyViewFor(story) ?? null, commit);
+          : publishStoryCommit(null, commit);
       },
     });
     publicOperations = { session, executor };
@@ -1989,14 +1981,6 @@ export const createHiddenEditorManager = (
         return anchor.isOk() && head.isOk()
           ? { anchor: anchor.value, head: head.value }
           : null;
-      },
-      registerCanonicalStoryView: ({ story, view: storyView }) => {
-        const entry = { story, view: storyView };
-        storyViews.push(entry);
-        return () => {
-          const index = storyViews.indexOf(entry);
-          if (index >= 0) storyViews.splice(index, 1);
-        };
       },
       applyCanonicalStoryHistory: ({ view: storyView, story, direction }) => {
         if (story === OP_STORIES.MAIN && storyView === view)

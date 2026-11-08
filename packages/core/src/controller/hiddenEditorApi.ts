@@ -88,15 +88,6 @@ export type HiddenEditorApi = {
   applyCanonicalStoryHistory: (
     options: CanonicalStoryHistoryOptions,
   ) => boolean;
-  /**
-   * Tell the session a secondary story's editor is open, so a commit to that
-   * story from anywhere (the API included) updates it. Returns the call that
-   * closes it; a host makes it when the editor goes away.
-   */
-  registerCanonicalStoryView: (options: {
-    story: OpStory;
-    view: EditorView;
-  }) => () => void;
   applyCanonicalOperations: (ops: readonly DocumentOp[]) => boolean;
   applyCanonicalComment: (
     request: CanonicalCommentRequest,
@@ -169,7 +160,6 @@ export type HiddenEditorApiDeps = {
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
     | "applyCanonicalStoryHistory"
-    | "registerCanonicalStoryView"
     | "getCanonicalStorySelection"
     | "applyCanonicalDocumentOperations"
     | "undoCanonicalDocumentOperations"
@@ -278,9 +268,6 @@ export const createHiddenEditorApi = (
       deps.canonicalOperations?.updateCanonicalInputLifecycle(action) ?? false,
     applyCanonicalStoryHistory: (options) =>
       deps.canonicalOperations?.applyCanonicalStoryHistory(options) ?? false,
-    registerCanonicalStoryView: (options) =>
-      deps.canonicalOperations?.registerCanonicalStoryView(options) ??
-      (() => undefined),
     applyCanonicalComment: (request) =>
       deps.canonicalOperations?.applyCanonicalComment(request) ?? null,
     applyCanonicalSectionProperties: (patch) =>
