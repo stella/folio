@@ -174,24 +174,70 @@ test("direct insertion after a final paragraph is exactly reversible", () => {
   });
 });
 
-test("tracked insertion refuses terminal positions and non-paragraph boundaries", () => {
-  const op = {
-    ...insertion([makeParagraph("00000002", "new")]),
-    at: { type: "after", blockId: "00000001" },
-  } as const;
-  for (const document of [
-    documentOf([makeParagraph("00000001", "kept")]),
-    documentOf([
-      makeParagraph("00000001", "kept"),
+test.each([
+  ["at the end of the list", [] as BlockContent[]],
+  [
+    "before a table",
+    [
       inCell([makeParagraph("00000003", "cell")]),
-    ]),
-  ]) {
-    const result = applyDocumentOp(document, op);
-    expect(result.isErr() && result.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      makeParagraph("00000004", "after"),
+    ],
+  ],
+] as const)(
+  "tracked insertion %s accepts to both paragraphs and rejects to the source exactly",
+  (_, after) => {
+    const anchor = Object.assign({}, makeParagraph("00000001", "kept"), {
+      formatting: { alignment: "center" as const },
+    });
+    const document = documentOf([anchor, ...after]);
+    const inserted = Object.assign({}, makeParagraph("00000002", "new"), {
+      formatting: { alignment: "right" as const },
+    });
+    const applied = apply(document, {
+      ...insertion([inserted]),
+      at: { type: "after", blockId: "00000001" },
+    });
+    const [first, second] = applied.document.package.document.content;
+    if (after.length === 0) {
+      // The anchor's mark is the inserted one; the new paragraph holds the
+      // mark the anchor had, with the anchor's properties as its prior ones.
+      expect(first?.type === "paragraph" && first.pPrMark?.kind).toBe("ins");
+      expect(second?.type === "paragraph" && second.pPrMark).toBeUndefined();
+      expect(
+        second?.type === "paragraph" &&
+          second.propertyChanges?.map(
+            ({ previousFormatting }) => previousFormatting,
+          ),
+      ).toEqual([{ alignment: "center" }]);
+    } else {
+      expect(first?.type === "paragraph" && first.pPrMark).toBeUndefined();
+      expect(second?.type === "paragraph" && second.pPrMark?.kind).toBe("ins");
+    }
+    expect(resolve(applied, REVISION_DECISIONS.REJECT).document).toEqual(
+      document,
     );
-  }
-});
+    const accepted = resolve(
+      applied,
+      REVISION_DECISIONS.ACCEPT,
+    ).document.package.document.content.slice(0, 2);
+    expect(
+      accepted.map((block) =>
+        block.type === "paragraph"
+          ? [
+              block.paraId,
+              block.formatting,
+              block.pPrMark,
+              block.propertyChanges,
+            ]
+          : block.type,
+      ),
+    ).toEqual([
+      ["00000001", { alignment: "center" }, undefined, undefined],
+      [expect.any(String), { alignment: "right" }, undefined, undefined],
+    ]);
+    expect(undo(applied)).toEqual(document);
+  },
+);
 
 test("insertion validates identities, review conflicts and section boundaries", () => {
   const collision = applyDocumentOp(

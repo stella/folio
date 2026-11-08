@@ -284,8 +284,7 @@ const isBlockInsertion = (
 type ResolveBlockInsertionOptions = {
   operation: BlockInsertion;
   paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
-  projection: CanonicalProjection;
-  doc: PMNode;
+  story: OpStory;
   refusal: (
     reason: FolioAIEditSkipReason,
     message?: string,
@@ -300,8 +299,7 @@ type ResolveBlockInsertionOptions = {
 const resolveBlockInsertion = ({
   operation,
   paragraph,
-  projection,
-  doc,
+  story,
   refusal,
 }: ResolveBlockInsertionOptions) => {
   const unavailable = (
@@ -365,39 +363,22 @@ const resolveBlockInsertion = ({
       ? {}
       : { formatting: formatting as ParagraphFormatting }),
   };
-  // A paragraph keeps its identity with its mark, so the new paragraph goes
-  // in at the start of the paragraph it precedes: the anchor itself, or, for
-  // an insertion after it, the paragraph after it in the same block list.
-  let target: typeof paragraph | undefined = paragraph;
-  if (operation.type === "insertAfterBlock") {
-    const after = doc.resolve(
-      paragraph.start + paragraph.node.content.size + 1,
-    ).nodeAfter;
-    const id: unknown = after?.attrs["paraId"];
-    target =
-      after?.type.name === "paragraph" && typeof id === "string"
-        ? projection.paragraph(id)
-        : undefined;
-  }
-  if (target === undefined)
-    return refusal(
-      "unsupportedBlock",
-      "Canonical insertion after a paragraph no paragraph follows is unavailable.",
-    );
-  const position = target.start;
-  const at = projection.addressAt(position);
-  if (at.isErr()) return refusal("unsupportedBlock");
+  // The anchor keeps its identity; the new paragraph takes a fresh one.
   const intents: EditorIntent[] = [
     {
-      type: "replaceFragment",
-      from: at.value,
-      to: at.value,
-      // The open empty edge joins the paragraph after, which keeps its mark.
-      paragraphs: [inserted, { type: "paragraph", content: [] }],
-      openStart: 0,
-      openEnd: 1,
+      type: "insertParagraphs",
+      story,
+      at: {
+        type: operation.type === "insertAfterBlock" ? "after" : "before",
+        blockId: paragraph.blockId,
+      },
+      paragraphs: [inserted],
     },
   ];
+  const position =
+    operation.type === "insertAfterBlock"
+      ? paragraph.start + paragraph.node.content.size
+      : paragraph.start;
   return Result.ok({
     type: "plain" as const,
     operation,
@@ -412,6 +393,7 @@ type ResolveBlockDeletionOptions = {
   operation: Extract<FolioDocumentOperation, { type: "deleteBlock" }>;
   paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
   projection: CanonicalProjection;
+  projectionStory: OpStory;
   doc: PMNode;
   tracked: boolean;
   refusal: (
@@ -963,6 +945,7 @@ export class CanonicalPublicOperations {
     operation,
     paragraph,
     projection,
+    projectionStory,
     doc,
     tracked,
     refusal,
@@ -997,15 +980,52 @@ export class CanonicalPublicOperations {
       );
     let range: { from: number; to: number } | undefined;
     if (next !== undefined) range = { from: paragraph.start, to: next.start };
-    // Removed directly, the paragraph that ends its block list would leave
-    // its own identity on the paragraph before it, whose words it takes: the
-    // session's join keeps the surviving mark's paragraph.
-    else if (!tracked && previous !== undefined)
-      return refusal(
-        "unsupportedBlock",
-        "Canonical direct deletion of the paragraph that ends its block list is unavailable.",
-      );
-    else if (previous !== undefined)
+    // Removed directly, a paragraph no paragraph follows loses its words and
+    // then joins the paragraph before it, which keeps its own identity and
+    // properties; with none before it, it only loses its words.
+    else if (!tracked) {
+      const own = (
+        from: number,
+        to: number,
+      ): Result<EditorIntent[], CanonicalPublicOperationResolutionError> => {
+        const start = projection.addressAt(from);
+        const stop = projection.addressAt(to);
+        return start.isErr() || stop.isErr()
+          ? refusal("unsupportedBlock")
+          : Result.ok(
+              from === to
+                ? []
+                : [
+                    {
+                      type: "replaceText",
+                      from: start.value,
+                      to: stop.value,
+                      text: "",
+                    },
+                  ],
+            );
+      };
+      const cleared = own(paragraph.start, end);
+      if (cleared.isErr()) return cleared;
+      const intents: EditorIntent[] = [...cleared.value];
+      if (previous !== undefined)
+        intents.push({
+          type: "joinParagraphs",
+          story: projectionStory,
+          blockId: previous.blockId,
+          nextBlockId: paragraph.blockId,
+          survivor: "first",
+        });
+      if (intents.length === 0) return refusal("noopOperation");
+      return Result.ok({
+        type: "plain" as const,
+        operation,
+        intents,
+        normalizations: [],
+        from: previous === undefined ? paragraph.start : previous.start,
+        to: end,
+      });
+    } else if (previous !== undefined)
       range = {
         from: previous.start + previous.node.content.size,
         to: end,
@@ -1093,13 +1113,7 @@ export class CanonicalPublicOperations {
       return refusal("preconditionFailed");
     if (hash !== anchor.textHash) return refusal("changedBlock");
     if (isBlockInsertion(operation))
-      return resolveBlockInsertion({
-        operation,
-        paragraph,
-        projection: projection.value,
-        doc: state.doc,
-        refusal,
-      });
+      return resolveBlockInsertion({ operation, paragraph, story, refusal });
     if (operation.type === "setBlockParagraphProperties")
       return resolveParagraphProperties({
         operation,
@@ -1112,6 +1126,7 @@ export class CanonicalPublicOperations {
         operation,
         paragraph,
         projection: projection.value,
+        projectionStory: story,
         doc: state.doc,
         tracked,
         refusal,

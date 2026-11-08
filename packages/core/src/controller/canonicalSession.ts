@@ -1000,6 +1000,7 @@ const intentStory = (intent: EditorIntent): OpStory => {
       return first?.at.story ?? panic("A list intent requires a paragraph.");
     }
     case "joinParagraphs":
+    case "insertParagraphs":
       return intent.story;
     case "table":
     case "tableRow":
@@ -1404,6 +1405,7 @@ class CanonicalSession {
       case "table":
       case "tableRow":
       case "tableBlock":
+      case "insertParagraphs":
         return true;
       case "generateTOC":
       case "setList":

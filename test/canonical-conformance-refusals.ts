@@ -26,12 +26,6 @@ const REFUSAL_ROWS = {
     gap: CANONICAL_GAP.dispatch,
     message: "The rows contain an unsupported tracked structure.",
   },
-  trackedTableInsertionAtEnd: {
-    id: CANONICAL_GAP.dispatch,
-    gap: CANONICAL_GAP.dispatch,
-    message:
-      "Tracked insertion requires a following paragraph in the same block list.",
-  },
 } as const satisfies Record<string, HarnessRefusalRow>;
 
 // Explicit unsupported cases; a controller descriptor/planner verdict must
@@ -97,17 +91,6 @@ export const canonicalConformanceRefusalRows = (
       key.operation === "command:insertEndnote")
   )
     return [REFUSAL_ROWS.cellSelectionPlacement];
-  // The caret's cell paragraph ends its block list: a tracked paragraph
-  // insertion needs a paragraph after it. A selection of the whole document,
-  // or of cells, puts the table ahead of a paragraph instead: the story's
-  // first, or the one after the table.
-  if (key.operation === "command:insertTable")
-    return key.mode === "suggesting" &&
-      key.shape === "tables" &&
-      key.placement !== "document" &&
-      key.placement !== "cross-paragraph"
-      ? [REFUSAL_ROWS.trackedTableInsertionAtEnd]
-      : [];
   // The fixture table's merged cells have no tracked row deletion record.
   if (key.operation === "command:deleteTable")
     return key.mode === "suggesting" && key.shape === "tables"
