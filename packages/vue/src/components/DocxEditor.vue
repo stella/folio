@@ -2023,7 +2023,7 @@ const { exposed } = useDocxEditorRefApi({
   // list is what the sidebar shows and what saving writes.
   getDocument: () => {
     const document = getDocument();
-    if (!document || props.experimentalSession === "canonical") return document;
+    if (!document || canonicalAuthoritySession.value) return document;
     return withHostCommentThreads(document, savedComments());
   },
   getActiveView: () => activeEditorView.value,
