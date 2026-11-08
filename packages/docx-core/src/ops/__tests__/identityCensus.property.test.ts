@@ -44,7 +44,7 @@ setDefaultTimeout(propertyTestTimeout(240_000));
 
 const STACKED_ROW_PARAGRAPHS = ["7AAAAAA1", "7AAAAAA2"] as const;
 
-/** One content control over two rows, recorded on each row as Word writes it. */
+/** One content control over two rows, recorded on each row. */
 const withStackedRowControl = (document: Document): Document => {
   const control = { sdtType: "richText" as const, id: 4242, tag: "rows" };
   const row = (paraId: string) => ({
