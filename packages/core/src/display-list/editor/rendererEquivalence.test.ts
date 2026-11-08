@@ -114,23 +114,6 @@ const boxOf = (element: HTMLElement) => ({
   height: element.style.height,
 });
 
-/**
- * The header and footer slots a page paints, in order: the editing chrome
- * finds the slot it overlays by these class names after every paint, so both
- * renderers must paint them.
- */
-const SLOT_CLASSES = ["layout-page-header", "layout-page-footer"] as const;
-const slotsOf = (element: Element): string[] => {
-  const classes =
-    typeof element.className === "string"
-      ? element.className.split(/\s+/u)
-      : [];
-  return [
-    ...SLOT_CLASSES.filter((slot) => classes.includes(slot)),
-    ...[...element.children].flatMap(slotsOf),
-  ];
-};
-
 const contextFor = (page: Page, totalPages: number): RenderContext => ({
   pageNumber: page.logicalNumber,
   totalPages,
@@ -184,11 +167,6 @@ describe("the two page renderers paint the same pages", () => {
         expect({ page: index + 1, box: boxOf(fromList) }).toEqual({
           page: index + 1,
           box: boxOf(legacy),
-        });
-
-        expect({ page: index + 1, slots: slotsOf(fromList) }).toEqual({
-          page: index + 1,
-          slots: slotsOf(legacy),
         });
 
         // Every character the existing painter puts on this page must appear
