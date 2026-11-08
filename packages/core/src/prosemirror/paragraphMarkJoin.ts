@@ -43,13 +43,24 @@ import {
 export const joinedParagraphAttrs = (
   paragraph: PMNode,
   next: PMNode,
+  keepIdentity = false,
 ): PMNode["attrs"] => {
   const sessions: unknown = next.attrs["_preservedAttributes"];
-  return typeof sessions === "object" &&
+  const attrs =
+    typeof sessions === "object" &&
     sessions !== null &&
     sessions === paragraph.attrs["_preservedAttributes"]
-    ? { ...next.attrs, _preservedAttributes: null }
-    : next.attrs;
+      ? { ...next.attrs, _preservedAttributes: null }
+      : next.attrs;
+  // The paragraph whose mark goes was there before the paragraph after it:
+  // the joined paragraph is it again, with the mark the next one holds.
+  return keepIdentity
+    ? {
+        ...attrs,
+        paraId: paragraph.attrs["paraId"],
+        textId: paragraph.attrs["textId"],
+      }
+    : attrs;
 };
 
 type JoinAtParagraphMarkOptions = {
@@ -59,6 +70,11 @@ type JoinAtParagraphMarkOptions = {
   paragraph: PMNode;
   /** The paragraph directly after it, which the join runs into. */
   next: PMNode;
+  /**
+   * The joined paragraph keeps this paragraph's identity, not the next one's:
+   * rejecting a split's inserted mark gives the split paragraph back.
+   */
+  keepIdentity?: boolean;
   /**
    * Re-reads the moved runs' inherited formatting in the next paragraph's
    * style. Without one, the editor's join restyler does it when the
@@ -73,6 +89,7 @@ export const joinAtParagraphMark = ({
   paragraph,
   next,
   styleResolver,
+  keepIdentity = false,
 }: JoinAtParagraphMarkOptions): void => {
   const boundary = paragraphPos + paragraph.nodeSize;
   const join = paragraphJoinAfter(tr.doc, boundary);
@@ -85,7 +102,7 @@ export const joinAtParagraphMark = ({
     tr.setNodeMarkup(
       paragraphPos,
       undefined,
-      joinedParagraphAttrs(paragraph, next),
+      joinedParagraphAttrs(paragraph, next, keepIdentity),
     );
     markParagraphPropertySourceTransfers(tr, [
       {
@@ -95,7 +112,7 @@ export const joinAtParagraphMark = ({
     ]);
   } else {
     joinProseParagraphsWithRightPropertySource({
-      attrs: joinedParagraphAttrs(paragraph, next),
+      attrs: joinedParagraphAttrs(paragraph, next, keepIdentity),
       pos: boundary,
       transaction: tr,
     });

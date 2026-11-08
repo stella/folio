@@ -757,21 +757,25 @@ describe("suggested operations in the canonical session", () => {
 
   test("operations a suggestion cannot carry skip as unsupported in this mode", () => {
     const editor = setup();
+    const commented =
+      createFolioAITextRangeHandle({
+        text: "alpha beta",
+        blockId: "12345678",
+        startOffset: 0,
+        endOffset: 5,
+      }) ?? panic("Missing range");
     const result = editor.apply(
       [
         {
-          id: "split",
-          type: "splitBlock",
-          blockId: "12345678",
-          offset: 5,
-          separator: " ",
+          id: "comment",
+          type: "commentOnRange",
+          range: commented,
+          comment: { text: "note" },
         },
-        { id: "merge", type: "mergeBlockWithNext", blockId: "12345678" },
       ],
       { mode: "suggested" },
     );
     expect(result.skipped.map(({ reason }) => reason)).toEqual([
-      "unsupportedMode",
       "unsupportedMode",
     ]);
   });

@@ -987,6 +987,13 @@ function resolveChangeUnguarded(
             next:
               destination?.type.name === "paragraph" ? destination : nextNode,
             styleResolver,
+            // A rejected added mark ended a split: the paragraph still holding
+            // words was there first, and keeps its identity. One that holds
+            // none was all inserted, and the paragraph after it keeps its own.
+            keepIdentity:
+              mode === "reject" &&
+              op.markWasAdded &&
+              paragraphContentOf(paragraph),
           });
           joinSeams.push({
             position: mappedPos + 1 + paragraph.content.size,
