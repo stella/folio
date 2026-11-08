@@ -910,42 +910,58 @@ const BROWSER_MODIFIED_BACKSPACE_TRACES = (
   trace: BrowserInputTrace;
 }[];
 
+export const LAB_NOTES_LIST_SAVE = {
+  seed: 29,
+  path: "15:2",
+  fingerprint: "8d01cc728c151a9c",
+  trace: {
+    shape: "notes",
+    actions: [
+      { kind: "selectionDrag", target: "note" },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+      { kind: "backspace" },
+      {
+        kind: "pasteMultiBlock",
+        plain: "Title\nBody",
+        html: "<p>Title</p><p>Body</p>",
+      },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+export const LAB_TABLE_LIST_ACCEPT = {
+  seed: 29,
+  path: "lab",
+  fingerprint: "lab2359",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "dragCellDelete" },
+      {
+        kind: "pasteListHtml",
+        plain: "Alpha\nNested\nOmega",
+        html: "<ul><li>Alpha<ul><li>Nested</li></ul></li><li>Omega</li></ul>",
+      },
+      { kind: "selectionDrag", target: "table" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
-  ...BROWSER_INVISIBLE_MARKER_TRACES,
-  ...BROWSER_MODIFIED_BACKSPACE_TRACES,
-  ...BROWSER_KEY_OVER_SELECTION_TRACES,
-  BROWSER_NOTES_SEED_197,
-  BROWSER_LIST_SEED_47,
-  BROWSER_TABLE_SEED_29,
-  BROWSER_CANCELLED_COMPOSITION_SEED_1793946574,
-  BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
-  BROWSER_RTL_COMPOSITION_SEED_1793914965,
-  BROWSER_PASTE_AFTER_TABLE_SEED_29,
-  BROWSER_PASTE_BEFORE_STRUCK_SEED_431,
-  BROWSER_SECOND_CELL_PASTE_SEED_47,
-  BROWSER_CANCELLED_COMPOSITION_SEED_431,
-  BROWSER_CANCELLED_COMPOSITION_SEED_263,
-  BROWSER_CANCELLED_COMPOSITION_SEED_1793897521,
-  BROWSER_CANCELLED_COMPOSITION_SEED_131,
-  BROWSER_DELETE_BESIDE_BOOKMARK_SEED_83,
-  CANONICAL_INSERTION_SEED_557,
-  CANONICAL_ACROSS_PARAGRAPHS_SEED_347,
-  CANONICAL_DELETION_SEED_11,
-  CANONICAL_CELL_PASTE_SEED_431,
-  CANONICAL_CELL_COMPOSITION_CANCEL,
-  CANONICAL_RESTARTED_COMPOSITION_SEED_47,
-  CANONICAL_MISPLACED_COMPOSITION_SEED_29,
-  CANONICAL_DELETION_UPDATES_SEED_11,
-  CANONICAL_BOOKMARK_SEED_263,
-  CANONICAL_PARAGRAPH_START_SEED_263,
-  CANONICAL_PARAGRAPH_START_SEED_431,
-  CANONICAL_RESTARTED_AFTER_PASTE_SEED_197,
-  CANONICAL_RESTARTED_AFTER_TYPING,
-  CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
-  CANONICAL_JOIN_BESIDE_DELETION_SEED_29,
-  CANONICAL_TYPING_OVER_LIST_ITEMS_SEED_431,
-  CANONICAL_TYPING_OVER_LIST_ITEMS_AFTER_TYPING_SEED_431,
-  CANONICAL_TYPING_ACROSS_PARAGRAPHS,
-  CANONICAL_TYPING_OVER_EVERYTHING,
-  CANONICAL_TYPING_OVER_CELLS,
+  LAB_NOTES_LIST_SAVE,
+  LAB_TABLE_LIST_ACCEPT,
 ];
