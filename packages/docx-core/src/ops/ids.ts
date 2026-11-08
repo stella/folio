@@ -361,16 +361,20 @@ const ownIdentityKeys: OwnKeys = (entries, context) => {
 /**
  * Every revision and content-control id in a value, as slot keys: tracked
  * changes and property changes by their `info`, content controls by their
- * properties.
+ * properties. Every record is read anew: the value may belong to a caller
+ * who changes it between calls.
  */
-export const identityKeysIn: (value: unknown) => string[] =
-  subtreeCensus(ownIdentityKeys);
-
-/** {@link identityKeysIn} walking every record, sharing nothing: its reference. */
-export const identityKeysInFull: (value: unknown) => string[] = subtreeCensus(
+export const identityKeysIn: (value: unknown) => string[] = subtreeCensus(
   ownIdentityKeys,
   "full",
 );
+
+/**
+ * {@link identityKeysIn} reusing what it counted in records an earlier
+ * census met. Only for packages, which no operation changes (see
+ * {@link censusOnce}).
+ */
+const sharedIdentityKeysIn = subtreeCensus(ownIdentityKeys);
 
 /** The field holding the stack of content controls a table row or cell sits inside. */
 const CONTENT_CONTROL_STACK = "contentControls";
@@ -411,13 +415,15 @@ const ownReservedKeys: OwnKeys = (entries, { heldBy }) => {
   return { keys, shareable: true };
 };
 
-/** Pending cut references reserve IDs without becoming physical model identities. */
+/**
+ * Pending cut references reserve IDs without becoming physical model
+ * identities. Every record is read anew, as {@link identityKeysIn} does.
+ */
 export const reservedIdentityKeysIn: (value: unknown) => string[] =
-  subtreeCensus(ownReservedKeys);
-
-/** {@link reservedIdentityKeysIn} walking every record, sharing nothing: its reference. */
-export const reservedIdentityKeysInFull: (value: unknown) => string[] =
   subtreeCensus(ownReservedKeys, "full");
+
+/** {@link reservedIdentityKeysIn} reusing earlier counts; only for packages. */
+const sharedReservedIdentityKeysIn = subtreeCensus(ownReservedKeys);
 
 /**
  * A census of a package, once per package object. Operations never change a
@@ -439,9 +445,9 @@ const censusOnce = (
 
 /** Every revision and content-control id of a package, each story walked once. */
 export const packageIdentityKeys: (pkg: DocxPackage) => readonly string[] =
-  censusOnce((pkg) => identityKeysIn(storiesOf(pkg)));
+  censusOnce((pkg) => sharedIdentityKeysIn(storiesOf(pkg)));
 
 /** The ids a package's pending cut references reserve. */
 export const packageReservedIdentityKeys: (
   pkg: DocxPackage,
-) => readonly string[] = censusOnce((pkg) => reservedIdentityKeysIn(pkg));
+) => readonly string[] = censusOnce((pkg) => sharedReservedIdentityKeysIn(pkg));

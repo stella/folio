@@ -19,11 +19,9 @@ import type { Document } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import {
   identityKeysIn,
-  identityKeysInFull,
   packageIdentityKeys,
   packageReservedIdentityKeys,
   reservedIdentityKeysIn,
-  reservedIdentityKeysInFull,
 } from "../ids";
 import { documentStories } from "../stories";
 import {
@@ -87,10 +85,8 @@ const withStackedRowControl = (document: Document): Document => {
   };
 };
 
-/** The census as edits read it, reusing what earlier versions counted. */
+/** The package census as edits read it, reusing what earlier versions counted. */
 const counted = (document: Document) => ({
-  identities: identityKeysIn(document),
-  reserved: reservedIdentityKeysIn(document),
   package: [...packageIdentityKeys(document.package)],
   packageReserved: [...packageReservedIdentityKeys(document.package)],
 });
@@ -102,11 +98,9 @@ const countedInFull = (document: Document) => {
     document: { ...document.package.document, sections: undefined },
   };
   return {
-    identities: identityKeysInFull(document),
-    reserved: reservedIdentityKeysInFull(document),
-    package: identityKeysInFull(stories),
+    package: identityKeysIn(stories),
     // Reserved ids are read off the whole package, its section view included.
-    packageReserved: reservedIdentityKeysInFull(document.package),
+    packageReserved: reservedIdentityKeysIn(document.package),
   };
 };
 
@@ -164,5 +158,26 @@ describe("the id census of a shared document", () => {
       ),
       { id: "identity census shares records soundly", numRuns: 200 },
     );
+  });
+
+  test("reads content a caller changes between two censuses as it is now", () => {
+    const content: Record<string, unknown>[] = [
+      { type: "run", content: [{ type: "text", text: "pending" }] },
+    ];
+    const paragraph = { type: "paragraph", content };
+    expect(identityKeysIn(paragraph)).toEqual([]);
+    expect(reservedIdentityKeysIn(paragraph)).toEqual([]);
+    content.push({
+      type: "insertion",
+      info: { id: 41, author: "Reviewer" },
+      content: [],
+      resolutionJoins: {
+        retainedAfter: [
+          { source: [{ space: "revision", id: 42 }], target: [] },
+        ],
+      },
+    });
+    expect(identityKeysIn(paragraph)).toEqual(["revision:41"]);
+    expect(reservedIdentityKeysIn(paragraph)).toEqual(["revision:42"]);
   });
 });
