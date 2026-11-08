@@ -427,7 +427,13 @@ const trackedContent = (
 ): TrackedRunContent[] | undefined => {
   const out: TrackedRunContent[] = [];
   for (const node of nodes) {
-    if (!isParagraphContent(node) || !isTrackedChild(node)) {
+    // A point comment reference already inside a tracked change stays there,
+    // but a new tracked change does not take one in.
+    if (
+      !isParagraphContent(node) ||
+      !isTrackedChild(node) ||
+      node.type === "commentReference"
+    ) {
       state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
       return undefined;
     }
