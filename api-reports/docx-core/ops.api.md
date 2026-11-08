@@ -462,6 +462,11 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "tableBlock";
     operation: TableBlockIntentOperation;
 } | {
+    type: "insertParagraphs";
+    story: OpStory;
+    at: BlockInsertionPoint;
+    paragraphs: readonly Paragraph[];
+} | {
     type: "replaceFragment";
     from: TextPosition;
     to: TextPosition;
@@ -524,6 +529,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     story: OpStory;
     blockId: string;
     nextBlockId: string;
+    survivor?: SplitHalf;
 };
 
 // @public
@@ -1256,6 +1262,8 @@ export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds
     story: OpStory;
     blockId: string;
     table: Table;
+    side?: "after" | "before";
+    separated?: boolean;
 };
 
 // @public (undocumented)
