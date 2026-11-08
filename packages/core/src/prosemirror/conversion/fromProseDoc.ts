@@ -4311,6 +4311,27 @@ function extractParagraphContent(
 
     const fieldUnderLink =
       node.type.name === "field" || node.type.name === "structuredField";
+    if (linkMark && fieldUnderLink) {
+      // A complex field the link holds whole, such as a table of contents
+      // entry's page number, goes back inside the link. A simple field has no
+      // place in a link and stands beside it.
+      const field = createFieldFromNode(node, {
+        ...formattingContext,
+        marks: node.marks,
+        textBoxAnchorMarkers,
+      });
+      if (field.type === "complexField") {
+        const linkKey = getLinkKey(linkMark);
+        if (!currentHyperlink || currentHyperlinkKey !== linkKey) {
+          flushCurrentInline();
+          currentHyperlink = createIndexedHyperlink(linkMark);
+          currentHyperlinkKey = linkKey;
+        }
+        currentHyperlink.children.push(field);
+        syncStructuredCommentExit(node, offset);
+        return;
+      }
+    }
     if (linkMark && !fieldUnderLink) {
       // Start or continue hyperlink
       const linkKey = getLinkKey(linkMark);

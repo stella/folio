@@ -326,7 +326,11 @@ function inspectHyperlink(
         ...context,
         path: `${path}.content`,
       });
+      continue;
     }
+    // A field the link holds is inspected as it is outside a link.
+    if (child.type === "complexField")
+      inspectParagraphContent([child], { ...context, path });
   }
 }
 

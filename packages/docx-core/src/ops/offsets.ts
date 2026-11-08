@@ -334,6 +334,7 @@ const HYPERLINK_CHILD_TYPES = {
   moveToRangeEnd: true,
   inlineWrapper: true,
   preservedInline: true,
+  complexField: true,
 } as const satisfies Record<HyperlinkChild["type"], true>;
 
 const TRACKED_CHILD_TYPES = {

@@ -452,9 +452,8 @@ export const collectPairedBookmarkIds = (
         // A transparent wrapper the link was authored around; the bookmarks
         // and runs inside it are the link's own.
         case "inlineWrapper":
-          for (const wrapped of child.content) {
-            visitParagraphContent(wrapped);
-          }
+        case "complexField":
+          visitParagraphContent(child);
           break;
         default: {
           const unsupported: never = child;
@@ -5265,6 +5264,24 @@ function convertHyperlink(
             }),
           );
         }
+        break;
+      }
+      // A field the link holds whole: the field atom carries the link mark,
+      // as the runs beside it do. Its result is runs only, so it opens no
+      // link of its own.
+      case "complexField": {
+        const fieldNode = convertField(child, {
+          getInheritedRunFormatting,
+          styleResolver,
+          nextHyperlinkInstanceIndex: () =>
+            panic("A complex field result holds no hyperlink."),
+          runScope,
+          textBoxAnchors,
+          openCommentIds,
+        });
+        if (fieldNode)
+          childNodes.push(fieldNode.mark(linkMark.addToSet(fieldNode.marks)));
+        commentsAlreadyApplied = true;
         break;
       }
       // `Hyperlink["children"]` holds the four above and the wrapper the lift

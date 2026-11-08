@@ -967,6 +967,12 @@ const validateHyperlinkChild = (
     validateParagraphContent(child, path, ctx);
     return;
   }
+  // A field the link holds whole, such as a table of contents entry's page
+  // number: its code and result pair their own markers.
+  if (child.type === "complexField") {
+    validateParagraphContent(child, path, ctx);
+    return;
+  }
   const unsupported: never = child;
   panic(`Unsupported hyperlink child: ${JSON.stringify(unsupported)}`);
 };

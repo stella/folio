@@ -344,9 +344,14 @@ export type Hyperlink = {
    * run-level `w:customXml`, so an author may write `w:hyperlink > w:bdo`.
    * That is the parse leg only: the editor carries a wrapper as a mark and the
    * save leg writes the canonical order, wrapper outside the link.
+   *
+   * A complex field whose `begin` and `end` both sit inside the link is one
+   * child: a table of contents links each entry's page number, a
+   * `PAGEREF`, together with its heading text.
    */
   children: (
     | Run
+    | ComplexField
     | BookmarkStart
     | BookmarkEnd
     | CommentRangeStart

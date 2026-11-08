@@ -816,6 +816,60 @@ const HYPERLINK_REVISION_HOISTING_HANDLERS = {
 } as const satisfies ChildHandlers<"w:hyperlink", HyperlinkRevisionWalk>;
 
 /**
+ * A link holding a complex field, read with the paragraph's field scan so a
+ * field whose `begin` and `end` are both inside the link is one child.
+ *
+ * A table of contents entry is one link over the heading text,
+ * a tab and the `PAGEREF` page number. The link reads its runs one at a time,
+ * which would leave the page number's field characters as loose runs. A field
+ * the link does not close stays as the loose runs it was read as, and so does
+ * the whole link when the scan returns anything a link cannot hold.
+ */
+const linkWithFields = (
+  node: XmlElement,
+  children: readonly XmlElement[],
+  rels: RelationshipMap | null,
+  styles: StyleMap | null,
+  theme: Theme | null,
+  media: Map<string, MediaFile> | null,
+  rootXmlns: Record<string, string>,
+  previews: PreviewLedger,
+): Hyperlink | undefined => {
+  if (
+    !children.some(
+      (child) =>
+        getLocalName(child.name) === "r" &&
+        findWordprocessingChild(child, "fldChar") !== undefined,
+    )
+  )
+    return undefined;
+  const contents = parseParagraphContents(
+    node,
+    styles,
+    theme,
+    null,
+    rels,
+    media,
+    previews,
+    "default",
+    rootXmlns,
+    "hyperlink",
+  );
+  const linked: Hyperlink["children"][number][] = [];
+  for (const item of contents) if (isHyperlinkContent(item)) linked.push(item);
+  if (
+    linked.length !== contents.length ||
+    !linked.some(({ type }) => type === "complexField")
+  ) {
+    // The link is read the plain way instead: what this read built spends no
+    // preview allowance.
+    previews.release(contents);
+    return undefined;
+  }
+  return { ...parseHyperlinkShell(node, rels), children: linked };
+};
+
+/**
  * A `w:hyperlink` as paragraph content, with any revision wrapper it holds
  * hoisted around it.
  *
@@ -839,6 +893,17 @@ function parseHyperlinkParagraphContents(
       HYPERLINK_REVISION_WRAPPERS.has(getLocalName(child.name)),
     )
   ) {
+    const linkedFields = linkWithFields(
+      node,
+      children,
+      rels,
+      styles,
+      theme,
+      media,
+      rootXmlns,
+      previews,
+    );
+    if (linkedFields !== undefined) return [linkedFields];
     return [
       parseHyperlink(node, rels, styles, theme, media, rootXmlns, previews),
     ];
@@ -2859,6 +2924,9 @@ const getHyperlinkText = (hyperlink: Hyperlink): string =>
         // A transparent wrapper puts its content on the line, unchanged.
         case "inlineWrapper":
           return child.content.map(getParagraphContentText).join("");
+        // A field reads as its cached result, as it does outside a link.
+        case "complexField":
+          return getParagraphContentText(child);
         default: {
           const unsupported: never = child;
           return panic(
