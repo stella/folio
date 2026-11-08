@@ -116,7 +116,7 @@ type ParagraphPosition = {
   paragraph: Paragraph;
 };
 
-/** List structure is local to the block container that owns each paragraph. */
+/** Each selected paragraph with the block container that owns it. A list may run through several containers, such as table cells, as the editor applies it. */
 const paragraphPositions = (
   session: CanonicalSession,
   paragraphs: readonly Paragraph[],
@@ -135,9 +135,6 @@ const paragraphPositions = (
       );
     positions.push({ container: address.container, index, paragraph });
   }
-  const container = positions.at(0)?.container;
-  if (positions.some((position) => position.container !== container))
-    return refuse("A list command cannot span multiple block containers.");
   return Result.ok(positions);
 };
 
