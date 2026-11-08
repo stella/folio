@@ -2,16 +2,19 @@ import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import type { BlockContent, Document, Paragraph } from "../types/document";
+import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import {
   type CanonicalCommit,
   type CanonicalSession,
   createCanonicalSession,
+  publishCanonicalProjection,
 } from "./canonicalSession";
 
 const paragraph = (paraId: string, text: string): Paragraph => ({
@@ -87,11 +90,13 @@ const controlDocument = (lock?: Lock, pending = false): Document => ({
   },
 });
 
-const session = async () =>
+const session = async (lock?: Lock, pending = false) =>
   createCanonicalSession(
     await parseDocx(
       (
-        await prepareCanonicalDocxInput(await createDocx(controlDocument()))
+        await prepareCanonicalDocxInput(
+          await createDocx(controlDocument(lock, pending)),
+        )
       ).unwrap(),
       { preloadFonts: false, detectVariables: false },
     ),
@@ -311,6 +316,59 @@ describe("block content controls in the canonical session", () => {
       expect(alone.isErr()).toBe(true);
       if (alone.isErr())
         expect(alone.error.ground).toEqual({ rule: "contentControlLock" });
+    });
+
+    test("a public batch skips the operation a lock refuses and applies the rest", async () => {
+      const current = await session("contentLocked");
+      let state = stateFor(current);
+      const executor = new CanonicalPublicOperations({
+        session: current,
+        getState: () => state,
+        publish: (commit) => {
+          const published = publishCanonicalProjection({
+            state,
+            commit,
+            session: current,
+          });
+          if (published.isErr()) return false;
+          state = published.value.state;
+          return true;
+        },
+      });
+      const result = executor.apply({
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        batch: {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "inside",
+              type: "replaceInBlock",
+              blockId: "20000000",
+              find: "First",
+              replace: "Only",
+            },
+            {
+              id: "outside",
+              type: "replaceInBlock",
+              blockId: "30000000",
+              find: "After",
+              replace: "Later",
+            },
+          ],
+        },
+      });
+      expect(result.applied.map(({ id }) => id)).toEqual(["outside"]);
+      expect(result.skipped.map(({ id, reason }) => [id, reason])).toEqual([
+        ["inside", "contentControlLock"],
+      ]);
+      expect(texts(control(current.document).content)).toEqual([
+        "First clause",
+        "Second clause",
+      ]);
+      expect(texts(current.document.package.document.content)).toContain(
+        "Later",
+      );
     });
   });
 });

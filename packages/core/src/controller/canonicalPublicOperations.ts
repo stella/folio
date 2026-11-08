@@ -9,6 +9,10 @@ import { Mark } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
 import {
+  CONTENT_CONTROL_LOCK,
+  lockedControlMessage,
+} from "@stll/docx-core/model";
+import {
   applyDocumentOps,
   compileEditorIntent,
   createEditorIntentIdAllocator,
@@ -67,6 +71,7 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
+import { lockViolationBetween } from "./canonicalLockGuard";
 import {
   type CanonicalCommit,
   type CanonicalSession,
@@ -550,6 +555,17 @@ export class CanonicalPublicOperations {
       }
       if (operationOps.length === 0) {
         skip(operation.id, "noopOperation");
+        continue;
+      }
+      // An operation a content-control lock refuses is skipped on its own,
+      // as the document's rule; the rest of the batch still applies.
+      const locked = lockViolationBetween(document, nextDocument);
+      if (locked !== null) {
+        skip(
+          operation.id,
+          CONTENT_CONTROL_LOCK,
+          `Refused: ${lockedControlMessage(locked)}`,
+        );
         continue;
       }
       normalizations.push(...adjustments);
