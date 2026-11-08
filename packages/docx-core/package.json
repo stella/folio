@@ -56,7 +56,6 @@
     "prepack": "bun run build"
   },
   "dependencies": {
-    "@stll/docx-utils": "^0.2.0",
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
     "marked": "^18.1.2"
