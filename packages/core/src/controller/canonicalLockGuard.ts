@@ -43,8 +43,12 @@ const signatureOf = (content: unknown): string =>
     return value;
   });
 
-const storyKey = (story: OpStory) =>
-  story === "main" ? "main" : `${story.kind}:${story.id}`;
+const storyKey = (story: OpStory) => {
+  if (story === "main") return "main";
+  return "rId" in story
+    ? `${story.kind}:${story.rId}`
+    : `${story.kind}:${String(story.id)}`;
+};
 
 /**
  * Every content control in the document, keyed by its story and `w:id`, or by

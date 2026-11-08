@@ -337,6 +337,7 @@ describe("block content controls in the canonical session", () => {
       });
       const result = executor.apply({
         snapshot: createFolioAIEditSnapshot(state.doc),
+        undefinedReferences: "refuse",
         batch: {
           version: 1,
           mode: "direct",
