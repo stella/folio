@@ -22,7 +22,12 @@ import {
   paragraphNumberingReference,
 } from "../model/paragraphNumbering";
 import { applyDocumentOp, applyDocumentOps } from "./apply";
-import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
+import {
+  blockListAt,
+  sameBlockList,
+  storyBody,
+  storyParagraphs,
+} from "./blocks";
 import { createCensusReader } from "./editorIntentCensus";
 import { structurallyEqual } from "./equality";
 import { resolveGap } from "./gaps";
@@ -1285,6 +1290,40 @@ const replacementPreservesOutsideContent = ({
 };
 
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
+/**
+ * Where the caret lands once whole paragraphs go directly: at the start of the
+ * paragraph that follows them, or, when they end their container, in the
+ * final paragraph that stays, where its predecessor's content ends.
+ */
+const directDeletionCaret = (
+  document: Document,
+  { story, blockIds }: { story: OpStory; blockIds: readonly string[] },
+): TextPosition => {
+  const located = storyParagraphs(storyBody(document, story));
+  const indexOf = (id: string | undefined) =>
+    located.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(id ?? ""),
+    );
+  const first = located[indexOf(blockIds[0])];
+  const last = located[indexOf(blockIds.at(-1))];
+  // A deletion naming no paragraph is refused when it applies.
+  if (first === undefined || last === undefined)
+    return { story, blockId: blockIds[0] ?? "", offset: 0 };
+  const list = blockListAt(storyBody(document, story).content, last.list);
+  const following = list[last.index + 1];
+  if (following?.type === "paragraph" && following.paraId !== undefined)
+    return { story, blockId: following.paraId, offset: 0 };
+  const preceding = list[first.index - 1];
+  return {
+    story,
+    blockId: last.paragraph.paraId ?? "",
+    offset:
+      last.index === list.length - 1 && preceding?.type === "paragraph"
+        ? paragraphLength(preceding)
+        : 0,
+  };
+};
+
 export const compileEditorIntent = (
   document: Document,
   { intent, mode, firstBlockId }: CompileEditorIntentOptions,
@@ -2182,7 +2221,10 @@ export const compileEditorIntent = (
               : {}),
           },
         ],
-        selection: { story: intent.story, blockId: first, offset: 0 },
+        selection:
+          mode.type === "editing"
+            ? directDeletionCaret(document, intent)
+            : { story: intent.story, blockId: first, offset: 0 },
       });
     }
     case "insertParagraphs": {
@@ -3150,7 +3192,12 @@ export const compileEditorIntent = (
       ) {
         offset = paragraphLength(paragraph);
       }
-      selection = { story: intent.story, blockId: intent.nextBlockId, offset };
+      // A direct join may keep the first paragraph; a tracked one keeps the second.
+      const survivorId =
+        mode.type === "editing" && intent.survivor === "first"
+          ? intent.blockId
+          : intent.nextBlockId;
+      selection = { story: intent.story, blockId: survivorId, offset };
       break;
     }
     default: {
@@ -3259,6 +3306,8 @@ export const compileEditorIntent = (
       current = joined.value.document;
     }
     ops = compact;
+    if (paragraphAt(current, selection) === undefined)
+      panic("A direct edit's caret must name a paragraph the edit keeps.");
   }
   if (mode.type === "suggesting" && cutsBesideRemoval(document, ops)) {
     // A tracked edit that cuts a record whose first piece only holds content
