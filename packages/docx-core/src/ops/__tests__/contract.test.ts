@@ -219,6 +219,36 @@ describe("the seed contract", () => {
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID);
   });
 
+  test("counts equal cell-level controls in two tables as two controls", () => {
+    const control = { sdtType: "plainText" as const, id: 15, alias: "Company" };
+    const table = (paraId: string) => ({
+      type: "table" as const,
+      rows: [
+        {
+          type: "tableRow" as const,
+          cells: [
+            {
+              type: "tableCell" as const,
+              content: [paragraph(paraId, "a")],
+              contentControls: [{ ...control }],
+              carrierStack: [
+                { type: "sdt" as const, properties: { ...control } },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const document: Document = {
+      package: {
+        document: { content: [table("00000001"), table("00000002")] },
+      },
+    };
+    expect(reasonOf(document, typing("00000001"))).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID,
+    );
+  });
+
   test("refuses a section view out of step with the body", () => {
     const document: Document = {
       package: {

@@ -24,6 +24,8 @@ const isPlainRecord = (value: object): boolean => {
 type VisitContext = {
   heldBy: string | undefined;
   ownerType: string | undefined;
+  /** The innermost table the record sits in. */
+  table?: object | undefined;
 };
 type Visit = (
   entries: readonly [string, unknown][],
@@ -50,8 +52,9 @@ const walk = ({
   visit(entries, context);
   const type = fieldOf(entries, "type");
   const ownerType = typeof type === "string" ? type : undefined;
+  const table = type === "table" ? value : context.table;
   for (const [heldBy, field] of entries)
-    walk({ value: field, visit, context: { heldBy, ownerType } });
+    walk({ value: field, visit, context: { heldBy, ownerType, table } });
 };
 
 /** The package's stories, each once: the body without its derived section view. */
@@ -238,10 +241,14 @@ export const identityKeysIn = (value: unknown): string[] => {
   // recorded on each of them (`TableRow.contentControls`), and again in each
   // one's wrapper order (`carrierStack`): equal records there are one
   // control. A different record with the same id is a second one.
-  const stacked = new Map<number, Record<string, unknown>[]>();
+  // Only within one table: equal records in two tables are two controls.
+  const stacked = new Map<
+    object | undefined,
+    Map<number, Record<string, unknown>[]>
+  >();
   walk({
     value,
-    visit: (entries, { heldBy, ownerType }) => {
+    visit: (entries, { heldBy, ownerType, table }) => {
       const revision = revisionIdOf(entries, heldBy);
       if (revision !== undefined) {
         out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision }));
@@ -255,10 +262,13 @@ export const identityKeysIn = (value: unknown): string[] => {
         (heldBy === "properties" && ownerType === "sdt")
       ) {
         const record = Object.fromEntries(entries);
-        const seen = stacked.get(control) ?? [];
+        const inTable =
+          stacked.get(table) ?? new Map<number, Record<string, unknown>[]>();
+        stacked.set(table, inTable);
+        const seen = inTable.get(control) ?? [];
         if (seen.some((other) => structurallyEqual(other, record))) return;
         seen.push(record);
-        stacked.set(control, seen);
+        inTable.set(control, seen);
       }
       out.push(slotKey({ space: IDENTITY_SPACES.CONTROL, id: control }));
     },
