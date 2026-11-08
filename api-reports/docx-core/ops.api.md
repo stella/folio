@@ -1273,6 +1273,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
+export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
+
+// @public
 export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];
 
 // @public
