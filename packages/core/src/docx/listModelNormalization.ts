@@ -48,7 +48,9 @@ import {
   assignParagraphIndentationProjection,
   cloneParagraphWithPropertySource,
   paragraphFormattingWithAuthoredIndentation,
-  paragraphPropertySourceState,
+  type ParagraphPropertySourceStamp,
+  paragraphPropertySourceStamp,
+  paragraphPropertySourceStampMatches,
   sameParagraphIndentationProjection,
 } from "./paragraphPropertySource";
 
@@ -67,8 +69,8 @@ type BlockRecord = {
   input: BlockContent;
   /** Normalizing it returned it unchanged and recorded no inverse. */
   settled: boolean;
-  /** The paragraph's facts kept outside its fields, as normalizing left them. */
-  sourceState: readonly unknown[] | undefined;
+  /** Where the paragraph's facts kept outside its fields stood after normalizing. */
+  sourceStamp: ParagraphPropertySourceStamp | undefined;
   /** The snapshot registration normalizing left for the paragraph. */
   snapshotToken: object | undefined;
 };
@@ -81,27 +83,23 @@ type StoryRun = {
 
 const CHECKPOINT_SPACING = 32;
 
-const sameState = (left: readonly unknown[], right: readonly unknown[]) =>
-  left.length === right.length &&
-  left.every((value, index) => value === right[index]);
-
 const recordOf = (input: BlockContent, settled: boolean): BlockRecord =>
   input.type === "paragraph"
     ? {
         input,
         settled,
-        sourceState: paragraphPropertySourceState(input),
+        sourceStamp: paragraphPropertySourceStamp(input),
         snapshotToken: paragraphPropertySnapshotToken(input),
       }
-    : { input, settled, sourceState: undefined, snapshotToken: undefined };
+    : { input, settled, sourceStamp: undefined, snapshotToken: undefined };
 
 /** Whether normalizing `block` again would leave it, its facts and its registration as they are. */
 const stillSettled = (block: BlockContent, record: BlockRecord): boolean =>
   record.settled &&
   block === record.input &&
   (block.type !== "paragraph" ||
-    (record.sourceState !== undefined &&
-      sameState(record.sourceState, paragraphPropertySourceState(block)) &&
+    (record.sourceStamp !== undefined &&
+      paragraphPropertySourceStampMatches(block, record.sourceStamp) &&
       paragraphPropertySnapshotToken(block) === record.snapshotToken));
 
 const storyKey = (story: OpStory): string => {

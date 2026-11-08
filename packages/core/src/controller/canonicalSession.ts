@@ -27,7 +27,6 @@ import {
   applyDocumentOp,
   applyDocumentOps,
   combineEdits,
-  commentDocumentIssue,
   compileEditorIntent,
   createEditorIntentIdAllocator,
   DOCUMENT_OP_REFUSAL_REASONS,
@@ -99,7 +98,6 @@ import type {
 } from "../types/document";
 import {
   type CanonicalInlineGap,
-  canonicalInlineSourceIssue,
   canonicalNativeCells,
   type CanonicalSeamExtent,
   InlineProjectionCache,
@@ -107,6 +105,7 @@ import {
 } from "./canonicalInlineProjection";
 import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 import { lockViolationBetween } from "./canonicalLockGuard";
+import { unsupportedSeedReason } from "./canonicalSeedContent";
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import {
   type CanonicalSourceRestore,
@@ -536,6 +535,11 @@ class CanonicalProjection {
     return this.paragraphsById.get(blockId);
   }
 
+  /** The paragraph whose node starts at `before`. */
+  paragraphStartingAt(before: number): ParagraphAddress | undefined {
+    return this.paragraphs.find(({ start }) => start === before + 1);
+  }
+
   nextParagraphInContainer(blockId: string): ParagraphAddress | undefined {
     const index = this.paragraphs.findIndex(
       (paragraph) => paragraph.blockId === blockId,
@@ -647,78 +651,6 @@ const preservePropertySources = ({
     }
   }
   copyDocumentParagraphPropertySourceContract(target, source);
-};
-
-const unsupportedSeedReason = (
-  document: Document,
-  stories = documentStories(document),
-): string | null => {
-  const commentIssue = commentDocumentIssue(document, "all");
-  if (commentIssue !== undefined) return commentIssue;
-  for (const story of stories) {
-    const body = findStoryBody(document, story);
-    if (
-      story !== OP_STORIES.MAIN &&
-      (story.kind === "footnote" || story.kind === "endnote")
-    ) {
-      const notes =
-        story.kind === "footnote"
-          ? document.package.footnotes
-          : document.package.endnotes;
-      const note = notes?.find(({ id }) => id === story.id);
-      if (note?.noteType !== undefined && note.noteType !== "normal") continue;
-    }
-    const content = body?.content;
-    if (!content || content.length === 0)
-      return "Canonical sessions require a nonempty paragraph story.";
-    const paragraphs: Paragraph[] = [];
-    const collect = (blocks: readonly BlockContent[]): string | null => {
-      for (const block of blocks) {
-        if (block.type === "paragraph") {
-          paragraphs.push(block);
-          continue;
-        }
-        // Range markers may open or close between blocks; they hold no text.
-        if (
-          block.type === "commentRangeStart" ||
-          block.type === "commentRangeEnd" ||
-          block.type === "bookmarkStart" ||
-          block.type === "bookmarkEnd" ||
-          block.type === "moveFromRangeStart" ||
-          block.type === "moveFromRangeEnd" ||
-          block.type === "moveToRangeStart" ||
-          block.type === "moveToRangeEnd"
-        )
-          continue;
-        // Opaque markup the session keeps as it found it and never edits inside.
-        if (block.type === "preservedBlock") continue;
-        // A block content control holds its own block list, as a cell does.
-        if (block.type === "blockSdt") {
-          const issue = collect(block.content);
-          if (issue !== null) return issue;
-          continue;
-        }
-        if (block.type !== "table")
-          return "Canonical sessions currently require paragraphs, tables and supported inline atoms.";
-        for (const row of block.rows) {
-          for (const cell of row.cells) {
-            const issue = collect(cell.content);
-            if (issue !== null) return issue;
-          }
-        }
-      }
-      return null;
-    };
-    const blockIssue = collect(content);
-    if (blockIssue !== null) return blockIssue;
-    for (const paragraph of paragraphs) {
-      if (paragraph.reviewCarrier !== undefined)
-        return "Canonical sessions currently require plain paragraphs and supported inline atoms.";
-      const issue = canonicalInlineSourceIssue(paragraph.content);
-      if (issue !== null) return issue;
-    }
-  }
-  return null;
 };
 
 /** A session's projection pieces, reused by every projection of its stories. */
@@ -1540,6 +1472,10 @@ class CanonicalSession {
   }
   get selection(): CanonicalSelection | null {
     return this.currentSelection;
+  }
+  /** Every paragraph identity this session has read or minted, live or retired. */
+  get reservedBlockIds(): ReadonlySet<string> {
+    return this.allocatedBlockIds;
   }
   get version(): number {
     return this.currentVersion;

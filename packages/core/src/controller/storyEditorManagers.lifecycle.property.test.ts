@@ -82,6 +82,7 @@ const harness = () => {
         frozen || unavailable ? null : session.projectStory(story).unwrap().doc,
       getCanonicalStorySelection: () => null,
       replaceCanonicalStoryText: () => false,
+      noteCanonicalStoryView: () => {},
       applyCanonicalStoryHistory: () => false,
     },
   });

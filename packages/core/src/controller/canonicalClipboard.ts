@@ -10,7 +10,10 @@ import {
 } from "@stll/docx-core/model";
 import { type DocumentOp, packageResourcesOpOf } from "@stll/docx-core/ops";
 
-import { createNumberingIdAllocator } from "../docx/numberingIds";
+import {
+  createNumberingIdAllocator,
+  numberingNumIdsTaken,
+} from "../docx/numberingIds";
 import { copyParagraphIndentationProjection } from "../docx/paragraphPropertySource";
 import {
   visitInlineContentSlots,
@@ -205,7 +208,7 @@ const importNumbering = ({
   }
   const numAllocator = createNumberingIdAllocator(
     "num",
-    (destination?.nums ?? []).map(({ numId }) => numId),
+    numberingNumIdsTaken(destination),
   );
   const abstractAllocator = createNumberingIdAllocator(
     "abstract",
