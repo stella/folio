@@ -1640,8 +1640,15 @@ export const createHiddenEditorManager = (
     syncHiddenEditorAccessibility(view, readOnly);
   };
 
+  /**
+   * Publishes a commit to a secondary story: the body view takes the body
+   * projection the commit carries, and the story's open editor, if one is
+   * open, takes the story projection. With no story editor open, the commit
+   * is staged against the story's projection as it stood before the edit.
+   * Every path that edits a secondary story, editor or API, publishes here.
+   */
   const publishStoryCommit = (
-    storyView: EditorView,
+    storyView: EditorView | null,
     commit: CanonicalCommit,
   ): boolean => {
     if (!view || editorSession.type !== "canonical") return false;
@@ -1688,7 +1695,12 @@ export const createHiddenEditorManager = (
       return false;
     }
     const staged = publishCanonicalProjection({
-      state: storyView.state,
+      state:
+        storyView?.state ??
+        PMEditorState.create({
+          schema: view.state.schema,
+          doc: commit.transaction.before,
+        }),
       commit,
       session,
     });
@@ -1696,7 +1708,7 @@ export const createHiddenEditorManager = (
       refuse(staged.error.message, staged.error.ground);
       return false;
     }
-    storyView.updateState(staged.value.state);
+    storyView?.updateState(staged.value.state);
     view.updateState(bodyStaged.value.state);
     deps.onTransaction({
       transactions: staged.value.transactions,
@@ -1717,11 +1729,25 @@ export const createHiddenEditorManager = (
     if (publicOperations?.session === session) return publicOperations.executor;
     const executor = new CanonicalPublicOperations({
       session,
-      getState: (story) =>
-        story === OP_STORIES.MAIN && !deps.getReadOnly() && !isDestroying
-          ? (view?.state ?? null)
-          : null,
-      publish: publishCommit,
+      getState: (story) => {
+        if (!view || deps.getReadOnly() || isDestroying) return null;
+        if (story === OP_STORIES.MAIN) return view.state;
+        // The story's projection; a host's open story editor follows the
+        // session's committed story, as it does after its own edits.
+        const projected = session.projectStory(story);
+        return projected.isErr()
+          ? null
+          : PMEditorState.create({
+              schema: view.state.schema,
+              doc: projected.value.doc,
+            });
+      },
+      publish: (commit) => {
+        const story = commit.selection.anchor.story;
+        return story === OP_STORIES.MAIN
+          ? publishCommit(commit)
+          : publishStoryCommit(null, commit);
+      },
     });
     publicOperations = { session, executor };
     return executor;

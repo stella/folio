@@ -996,6 +996,9 @@ export type ReplaceInlineOp = {
     content: readonly ParagraphContent[];
 };
 
+// @public (undocumented)
+export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
+
 // @public
 export type ResolveRevisionOp = {
     type: typeof DOCUMENT_OP_TYPES.RESOLVE_REVISION;

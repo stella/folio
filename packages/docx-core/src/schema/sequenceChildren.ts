@@ -19,10 +19,9 @@
 
 import { TaggedError, type TaggedErrorClass } from "better-result";
 
-import { OOXML_NS } from "@stll/docx-utils";
-
 import type { PreservedMarkup } from "../model/preservedMarkup";
 import { readXml, type XmlElement } from "../xml/streamingXmlParser";
+import { OOXML_NS } from "../xml/xmlNamespaceContext";
 import {
   SEQUENCE_CHILDREN,
   type SequenceChild,

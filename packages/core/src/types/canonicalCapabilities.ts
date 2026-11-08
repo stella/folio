@@ -25,7 +25,6 @@ export const CANONICAL_GAP = {
   publicPendingParagraphMarkProperties:
     "publicOps.pendingParagraphMarkProperties",
   publicHeadlessSession: "publicOps.headlessSession",
-  publicSecondaryStories: "publicOps.secondaryStories",
 } as const;
 
 export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
@@ -228,13 +227,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.";
   };
-  readonly "publicOps.secondaryStories": {
-    readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public secondary-story batches refuse until canonical story routing is available.";
-  };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
     readonly defaultSessionMutation: "pm-headless-reviewer";
@@ -400,14 +392,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.",
-  },
-  [CANONICAL_GAP.publicSecondaryStories]: {
-    owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Public secondary-story batches refuse until canonical story routing is available.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",

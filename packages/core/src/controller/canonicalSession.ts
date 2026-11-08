@@ -108,6 +108,12 @@ import {
 import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 import { lockViolationBetween } from "./canonicalLockGuard";
 import { restoreCanonicalSelection } from "./canonicalSelection";
+import {
+  type CanonicalSourceRestore,
+  canonicalSourceRestores,
+  normalizeCanonicalSource,
+  withUneditedSourceRestored,
+} from "./canonicalSourceNormalization";
 import { mapTocSelection } from "./canonicalTocSelection";
 
 const CanonicalSessionErrorBase: TaggedErrorClass<"CanonicalSessionError"> =
@@ -1218,6 +1224,8 @@ type CanonicalSessionSeedOptions = {
   document: Document;
   projection: CanonicalProjection;
   styles: StyleDefinitions | null | undefined;
+  /** Stories the session reads in its own spelling, given back as read while unedited. */
+  sourceRestores?: readonly CanonicalSourceRestore[];
   caches: StoryProjectionCaches;
 };
 
@@ -1280,6 +1288,7 @@ class CanonicalSession {
   };
   private readonly undone: UndoneJournalEntry[] = [];
   private readonly styles: StyleDefinitions | null | undefined;
+  private readonly sourceRestores: readonly CanonicalSourceRestore[];
   /** What earlier projections converted, reused by every later one. */
   private readonly caches: StoryProjectionCaches;
 
@@ -1287,8 +1296,10 @@ class CanonicalSession {
     document,
     projection,
     styles,
+    sourceRestores = [],
     caches,
   }: CanonicalSessionSeedOptions) {
+    this.sourceRestores = sourceRestores;
     this.caches = caches;
     this.currentDocument = document;
     this.currentProjection = projection;
@@ -1492,7 +1503,10 @@ class CanonicalSession {
       ].map((blockId) => blockId.toUpperCase()),
     );
     return {
-      document: cloneDocumentWithParagraphPropertySources(this.currentDocument),
+      document: withUneditedSourceRestored(
+        cloneDocumentWithParagraphPropertySources(this.currentDocument),
+        this.sourceRestores,
+      ),
       version: this.currentVersion,
       changedBlockIds: [...this.saveTouched].filter((blockId) =>
         retainedBlockIdKeys.has(blockId.toUpperCase()),
@@ -2664,10 +2678,11 @@ export const createCanonicalSession = (
   document: Document,
   styles?: StyleDefinitions | null,
 ): Result<CanonicalSession, CanonicalSessionError> => {
-  const unsupported = unsupportedSeedReason(document);
-  if (unsupported !== null) return refuse(unsupported);
   const owned = cloneDocumentWithParagraphPropertySources(document);
-  const identified = normalizeForOps(owned);
+  const source = normalizeCanonicalSource(owned);
+  const unsupported = unsupportedSeedReason(source.document);
+  if (unsupported !== null) return refuse(unsupported);
+  const identified = normalizeForOps(source.document);
   preservePropertySources({ target: identified, source: owned });
   const validated = validateOpsDocument(identified);
   if (validated.isErr()) return refuse(validated.error.message);
@@ -2684,6 +2699,7 @@ export const createCanonicalSession = (
       document: normalized,
       projection: projected.value,
       styles,
+      sourceRestores: canonicalSourceRestores(normalized, source.normalized),
       caches,
     }),
   );
