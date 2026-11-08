@@ -48,6 +48,10 @@ export type UseCommentManagementOptions = {
   canonicalTick?: Ref<number>;
   /** Re-run layout after a mutation that changed marks in the document. */
   reLayout: () => void;
+  /** Whether the editor is read-only; user comment edits are then refused. */
+  readOnly: () => boolean;
+  /** Report a refused edit to the host. */
+  onReadOnlyEditAttempt: () => void;
 };
 
 export type UseCommentManagementReturn = {
@@ -247,6 +251,13 @@ export function useCommentManagement(
     setComments(bodyComments && bodyComments.length > 0 ? bodyComments : []);
   }
 
+  /** The legacy session has no read-only gate of its own for comment state. */
+  function refuseReadOnly(): boolean {
+    if (!options.readOnly()) return false;
+    options.onReadOnlyEditAttempt();
+    return true;
+  }
+
   function handleReply(parentId: number, text: string): void {
     const result = options.editor?.applyCanonicalComment({
       type: "create",
@@ -255,6 +266,7 @@ export function useCommentManagement(
       anchor: { kind: "reply", parentId },
     });
     if (result !== null && result !== undefined) return;
+    if (refuseReadOnly()) return;
     pushComment(createComment(text, parentId));
   }
 
@@ -265,6 +277,7 @@ export function useCommentManagement(
       status: "resolved",
     });
     if (result !== null && result !== undefined) return;
+    if (refuseReadOnly()) return;
     markCommentsDirty();
     setComments(
       comments.value.map((c) =>
@@ -280,6 +293,7 @@ export function useCommentManagement(
       status: "open",
     });
     if (result !== null && result !== undefined) return;
+    if (refuseReadOnly()) return;
     markCommentsDirty();
     setComments(
       comments.value.map((c) =>
@@ -294,6 +308,7 @@ export function useCommentManagement(
       id: commentId,
     });
     if (result !== null && result !== undefined) return;
+    if (refuseReadOnly()) return;
     // Drop the comment and any direct replies threaded under it (matches React's
     // onCommentDelete). The orphaned comment mark left in the doc is pruned at
     // save time.
@@ -313,6 +328,7 @@ export function useCommentManagement(
       anchor: { kind: "revision", story: "main", revisionId },
     });
     if (result !== null && result !== undefined) return;
+    if (refuseReadOnly()) return;
     pushComment(createComment(text, revisionId));
   }
 

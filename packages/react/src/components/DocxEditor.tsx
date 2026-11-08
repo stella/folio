@@ -5154,13 +5154,22 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           null
         )
           return;
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         updateComments((previous) =>
           previous.map((comment) =>
             comment.id === id ? { ...comment, done: true } : comment,
           ),
         );
       },
-      [applyCanonicalComment, updateComments],
+      [
+        applyCanonicalComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
+        updateComments,
+      ],
     );
     const handleCommentDelete = useCallback(
       (id: number) => {
@@ -5168,6 +5177,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (result !== null) {
           if (result.status === "applied" && activeCommentId === id)
             setActiveCommentId(null);
+          return;
+        }
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
           return;
         }
         updateComments((previous) =>
@@ -5182,6 +5195,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       [
         activeCommentId,
         applyCanonicalComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
         setActiveCommentId,
         updateComments,
       ],
@@ -5197,12 +5212,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           }) !== null
         )
           return;
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         updateComments((previous) => [
           ...previous,
           createComment(text, author, id),
         ]);
       },
-      [applyCanonicalComment, author, createComment, updateComments],
+      [
+        applyCanonicalComment,
+        author,
+        createComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
+        updateComments,
+      ],
     );
     const handleAddComment = useCallback(
       (addText: string) => {
@@ -5237,6 +5263,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           setCommentSelectionRange(null);
           setAddCommentYPosition(null);
           return true;
+        }
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return false;
         }
         const comment = createComment(addText, author);
         const marked = applyCommentMarkRange(
@@ -5276,6 +5306,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         applyCanonicalComment,
         commentSelectionRange,
         createComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
         setActiveCommentId,
         setAddCommentYPosition,
         setCommentSelectionRange,
@@ -5296,12 +5328,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           }) !== null
         )
           return;
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         updateComments((previous) => [
           ...previous,
           createComment(text, author, revisionId),
         ]);
       },
-      [applyCanonicalComment, author, createComment, updateComments],
+      [
+        applyCanonicalComment,
+        author,
+        createComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
+        updateComments,
+      ],
     );
     const handleCancelAddComment = useCallback(() => {
       const view = pagedEditorRef.current?.getView();
