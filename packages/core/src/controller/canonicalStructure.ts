@@ -25,15 +25,24 @@ import {
   numberingLevelUsesBulletMarker,
 } from "../docx/numberingParser";
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
+import { visitDocxParagraphs } from "../docx/paragraphTraversal";
 import type { CanonicalCommandIntent } from "../prosemirror/canonicalCommands";
 import { listRequestsForMarker } from "../prosemirror/listAutoformatMarkers";
-import type { ListRequest } from "../prosemirror/listNumbering";
+import {
+  type ListRequest,
+  unusedListInstanceFor,
+} from "../prosemirror/listNumbering";
 import {
   effectiveParagraphNumbering,
   paragraphNumberingSourcesFromBoundary,
 } from "../prosemirror/numberingAttr";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import type { BlockContent, ListLevel, Paragraph } from "../types/document";
+import type {
+  BlockContent,
+  Document,
+  ListLevel,
+  Paragraph,
+} from "../types/document";
 import { collectHeadings } from "../utils/headingCollector";
 import {
   type CanonicalCommit,
@@ -138,6 +147,51 @@ const paragraphPositions = (
   return Result.ok(positions);
 };
 
+/** Content a paragraph keeps no trace of once its pending changes are accepted. */
+const GONE_ON_ACCEPT: ReadonlySet<string> = new Set([
+  "deletion",
+  "moveFrom",
+  "bookmarkStart",
+  "bookmarkEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
+]);
+
+/** A paragraph accepting removes: its mark and every character are going. */
+const goesOnAccept = (paragraph: Paragraph): boolean =>
+  (paragraph.pPrMark?.kind === "del" ||
+    paragraph.pPrMark?.kind === "moveFrom") &&
+  paragraph.content.every(({ type }) => GONE_ON_ACCEPT.has(type));
+
+/**
+ * Every list instance a paragraph of the main story refers to once its pending
+ * changes are accepted: directly, through its style, or in a pending property
+ * change. A paragraph on its way out refers to nothing, so typing a list
+ * marker over a struck list takes the instance editing would.
+ */
+const referencedNumIds = (document: Document): Set<number> => {
+  const referenced = new Set<number>();
+  visitDocxParagraphs(
+    { documentBody: document.package.document },
+    (paragraph) => {
+      if (goesOnAccept(paragraph)) return;
+      for (const numPr of [
+        paragraph.formatting?.numPr,
+        paragraph.formatting?.numPrFromStyle,
+      ])
+        if (numPr?.kind === "reference") referenced.add(numPr.numId);
+      for (const change of paragraph.propertyChanges ?? [])
+        if (change.previousFormatting?.numPr?.kind === "reference")
+          referenced.add(change.previousFormatting.numPr.numId);
+    },
+  );
+  return referenced;
+};
+
 const numberingIntent = (
   session: CanonicalSession,
   positions: readonly ParagraphPosition[],
@@ -154,8 +208,10 @@ const numberingIntent = (
     container.at(last + 1),
   ];
   const neighbor = neighbors.find((item) => {
+    // A paragraph on its way out is no neighbour once the change is accepted.
     if (
       item?.type !== "paragraph" ||
+      goesOnAccept(item) ||
       item.formatting?.numPr?.kind !== "reference" ||
       item.formatting.numPrFromStyle !== undefined
     )
@@ -178,12 +234,19 @@ const numberingIntent = (
   let numId: number;
   let ilvl = 0;
   let target: Extract<EditorIntent, { type: "setList" }>["target"];
+  const unused =
+    map === undefined
+      ? undefined
+      : unusedListInstanceFor(map, referencedNumIds(session.document), request);
   if (
     neighbor?.type === "paragraph" &&
     neighbor.formatting?.numPr?.kind === "reference"
   ) {
     numId = neighbor.formatting.numPr.numId;
     ilvl = neighbor.formatting.numPr.ilvl ?? 0;
+    target = { type: "existing", numId };
+  } else if (unused !== undefined) {
+    numId = unused;
     target = { type: "existing", numId };
   } else {
     numId =
