@@ -57,13 +57,23 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
         ? `${describe(selection.anchorNode)}+${selection.anchorOffset}`
         : "none";
     };
+    const geometry = () => {
+      const host = editor.parentElement;
+      const rect = editor.getBoundingClientRect();
+      const selection = document.getSelection();
+      const caret =
+        selection && selection.rangeCount > 0
+          ? selection.getRangeAt(0).getBoundingClientRect()
+          : null;
+      return `geom[host=${host?.style.transform ?? ""} editor=${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.width)}x${Math.round(rect.height)} caret=${caret ? `${Math.round(caret.left)},${Math.round(caret.top)},${Math.round(caret.height)}` : "none"}]`;
+    };
     const note = (entry: string) => {
       const view = globalThis.__folioPlayground
         ?.getEditorRef()
         ?.getEditorRef()
         ?.getView();
       diag.push(
-        `${Math.round(performance.now() - started)} ${entry} pm[composing=${view?.composing} same=${view?.dom === editor} sel=${view?.state.selection.from}-${view?.state.selection.to}]`,
+        `${Math.round(performance.now() - started)} ${entry} ${geometry()} pm[composing=${view?.composing} same=${view?.dom === editor} sel=${view?.state.selection.from}-${view?.state.selection.to}]`,
       );
     };
     for (const type of [
