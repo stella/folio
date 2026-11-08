@@ -941,6 +941,8 @@ type SourceOccurrence = {
   node: InlineNode;
   owner: SourceOwner | undefined;
   lifted?: true;
+  /** Content of an added revision this resolution accepts: new, not source. */
+  payload?: true;
 };
 
 /** `node` in the place of `occurrence`, from the same source and as lifted. */
@@ -951,6 +953,7 @@ const occurrenceOf = (
   node,
   owner: occurrence?.owner,
   ...(occurrence?.lifted === true && { lifted: true as const }),
+  ...(occurrence?.payload === true && { payload: true as const }),
 });
 
 const sourceOwnerRoot = (owner: SourceOwner): SourceOwner => {
@@ -1042,12 +1045,14 @@ const resolveList = (
     node: InlineNode,
     index: number,
     lifted = false,
+    payload = false,
   ): void => {
     out.push({
       node,
       owner:
         sourceOwners.at(index) ?? panic("A source occurrence has an owner."),
       ...(lifted && { lifted: true as const }),
+      ...(payload && { payload: true as const }),
     });
   };
   const appendUnowned = (items: readonly InlineNode[]): void => {
@@ -1057,6 +1062,8 @@ const resolveList = (
     if (depth > 0)
       exactSeams.set(index, Math.max(exactSeams.get(index) ?? 0, depth));
   };
+  /** Seams a removed revision recorded between the source pieces around it. */
+  const removalSeams = new Set<number>();
   const recordSourceSeam = (index: number, depth: number): void => {
     recordExactSeam(index, depth);
     if (depth > 0)
@@ -1127,15 +1134,19 @@ const resolveList = (
           out.splice(
             0,
             out.length,
-            ...prepared.slice(0, prefixLength).map((next, prefixIndex) => ({
-              node: next,
-              owner: (
+            ...prepared.slice(0, prefixLength).map((next, prefixIndex) => {
+              const previous =
                 out.at(prefixIndex) ??
                 panic(
                   "Restoring source identities preserves every output occurrence.",
-                )
-              ).owner,
-            })),
+                );
+              const restoredOccurrence: SourceOccurrence = {
+                node: next,
+                owner: previous.owner,
+              };
+              if (previous.payload === true) restoredOccurrence.payload = true;
+              return restoredOccurrence;
+            }),
           );
           pending.splice(
             index + 1,
@@ -1170,10 +1181,17 @@ const resolveList = (
             after: sourceOwners.at(index + 1),
           });
         if (node.resolutionJoins === undefined) seams.push(out.length);
-        else recordSourceSeam(out.length, node.resolutionJoins.remove);
+        else if ((node.resolutionJoins.plainSides?.length ?? 0) > 0)
+          plainSeams.add(out.length);
+        else {
+          recordSourceSeam(out.length, node.resolutionJoins.remove);
+          if (node.resolutionJoins.remove > 0) removalSeams.add(out.length);
+        }
         continue;
       }
       if (node.resolutionJoins === undefined) seams.push(out.length);
+      else if (node.resolutionJoins.plainSides?.includes("before") === true)
+        plainSeams.add(out.length);
       else recordSourceSeam(out.length, node.resolutionJoins.before);
       const resolved = resolveList(node.content, resolution);
       const content =
@@ -1203,10 +1221,15 @@ const resolveList = (
         plainSeams.add(out.length);
         plainSeams.add(out.length + content.length);
       }
-      for (const child of content) appendSource(child, index, true);
+      const payload =
+        isAddedRevision(node) &&
+        resolution.decision === REVISION_DECISIONS.ACCEPT;
+      for (const child of content) appendSource(child, index, true, payload);
       if (resolved.edges?.last !== undefined)
         recordSourceSeam(out.length, resolved.edges.last);
       if (node.resolutionJoins === undefined) seams.push(out.length);
+      else if (node.resolutionJoins.plainSides?.includes("after") === true)
+        plainSeams.add(out.length);
       else recordSourceSeam(out.length, node.resolutionJoins.after);
       continue;
     }
@@ -1347,6 +1370,37 @@ const resolveList = (
   const lastDepth = sourceEdges.get(out.length);
   if (firstDepth !== undefined) edges.first = firstDepth;
   if (lastDepth !== undefined) edges.last = lastDepth;
+  // Accepted new content stands beside a pending removal: the removal's
+  // seam there no longer joins source pieces. Accepting the removal later
+  // merges plain runs across it, as accepting both at once does, and joins
+  // nothing else.
+  const pendingRemoval = (node: InlineNode | undefined): boolean =>
+    node !== undefined &&
+    (node.type === "deletion" || node.type === "moveFrom") &&
+    !resolution.ids.has(node.info.id) &&
+    node.resolutionJoins !== undefined;
+  const acceptAsPlain = (index: number, facing: "before" | "after"): void => {
+    const occurrence = out[index];
+    const node = occurrence?.node;
+    if (
+      occurrence === undefined ||
+      node === undefined ||
+      !isTrackedWrapper(node) ||
+      node.resolutionJoins === undefined
+    )
+      return;
+    out[index] = occurrenceOf(
+      Object.assign({}, node, {
+        resolutionJoins: Object.assign({}, node.resolutionJoins, {
+          plainSides: [
+            ...new Set([...(node.resolutionJoins.plainSides ?? []), facing]),
+          ],
+        }),
+      }),
+      occurrence,
+    );
+    changed = true;
+  };
   for (const seam of plainSeams) {
     const left = out.at(seam - 1)?.node;
     const right = out.at(seam)?.node;
@@ -1357,6 +1411,8 @@ const resolveList = (
       runsMergeable(left, right)
     )
       seams.push(seam);
+    else if (pendingRemoval(right)) acceptAsPlain(seam, "before");
+    else if (seam > 0 && pendingRemoval(left)) acceptAsPlain(seam - 1, "after");
   }
   const merges = new Set(seams);
   for (const recorded of [
@@ -1448,11 +1504,91 @@ const resolveList = (
         resolution.cutEdges.get(right)?.first ?? 0,
       );
     }
+    // A pending insertion can stand between the recorded seam's source
+    // pieces, as a tracked replacement's payload stands before its deletion.
+    // Keep the seam on that insertion, at any depth, as a split seam is kept
+    // on the insertions between its paragraphs: rejecting it later joins
+    // the pieces it separated, accepting it keeps them apart.
+    // Boundaries floating at the seam are placed with its own join; a
+    // deferred join would place them apart from the pieces they belong in.
+    if (exactDepth !== undefined && exactDepth > 0 && kept === undefined) {
+      const blocking = (index: number): boolean => {
+        const node = out[index]?.node;
+        return (
+          node !== undefined &&
+          isAddedRevision(node) &&
+          isTrackedWrapper(node) &&
+          node.resolutionJoins !== undefined &&
+          !resolution.ids.has(node.info.id)
+        );
+      };
+      let leftEnd = seam - 1;
+      while (leftEnd >= 0 && blocking(leftEnd)) leftEnd -= 1;
+      let rightStart = seam;
+      while (rightStart < out.length && blocking(rightStart)) rightStart += 1;
+      if (
+        (leftEnd !== seam - 1 || rightStart !== seam) &&
+        leftEnd >= 0 &&
+        rightStart < out.length
+      ) {
+        const blockerIndices = [
+          ...Array.from(
+            { length: seam - 1 - leftEnd },
+            (_, offset) => leftEnd + 1 + offset,
+          ),
+          ...Array.from(
+            { length: rightStart - seam },
+            (_, offset) => seam + offset,
+          ),
+        ];
+        const blockers = blockerIndices.flatMap((index) => {
+          const node = out[index]?.node;
+          return node !== undefined && isTrackedWrapper(node)
+            ? [node.info.id]
+            : [];
+        });
+        for (const index of blockerIndices) {
+          const occurrence = out[index];
+          const node = occurrence?.node;
+          if (
+            occurrence === undefined ||
+            node === undefined ||
+            !isTrackedWrapper(node) ||
+            node.resolutionJoins === undefined
+          )
+            panic("A deferring seam blocker is a pending insertion.");
+          const groups = [...(node.resolutionJoins.deferredRemove ?? [])];
+          groups.push({ depth: exactDepth, blockers });
+          out[index] = occurrenceOf(
+            Object.assign({}, node, {
+              resolutionJoins: Object.assign({}, node.resolutionJoins, {
+                deferredRemove: canonicalDeferredGroups(groups),
+              }),
+            }),
+            occurrence,
+          );
+        }
+        continue;
+      }
+    }
     // Later independent edits may make a recorded seam non-alike. Join
     // only the recorded depth and matching fields, preserving those edits.
     let met: InlineNode[];
-    if (merges.has(recorded)) {
-      met = mergeAtSeam(left, right, resolution.emptied);
+    // A removal's seam joins the source pieces either side of it. Accepted
+    // new content standing there is no such piece: it merges with a
+    // neighbour only as far as they are alike, as a direct replacement does.
+    const besidePayload =
+      leftOccurrence?.payload === true || rightOccurrence?.payload === true;
+    if (
+      merges.has(recorded) ||
+      (exactDepth !== undefined && removalSeams.has(recorded) && besidePayload)
+    ) {
+      // Accepted new content merges with a plain neighbour it is alike, and
+      // records no seam on a neighbour's pending review: it is no piece of it.
+      met =
+        besidePayload && alikeDepth(left, right) === 0
+          ? [left, right]
+          : mergeAtSeam(left, right, resolution.emptied);
     } else if (exactDepth === undefined) {
       met = foldAtSeam(left, right, resolution.emptied);
     } else {

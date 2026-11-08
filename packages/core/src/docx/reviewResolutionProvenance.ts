@@ -41,6 +41,7 @@ const JOIN_FIELDS = {
   retainedAfter: true,
   deferredRemove: true,
   acceptance: true,
+  plainSides: true,
 } as const satisfies Record<keyof ResolutionJoins, true>;
 
 const ACCEPTANCE_POLICIES = {
@@ -141,7 +142,8 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
       Object.hasOwn(ACCEPTANCE_POLICIES, value["acceptance"]))) &&
   (value["retainedAfter"] === undefined || retained(value["retainedAfter"])) &&
   (!Object.hasOwn(value, "deferredRemove") ||
-    deferredRemovals(value["deferredRemove"]));
+    deferredRemovals(value["deferredRemove"])) &&
+  (!Object.hasOwn(value, "plainSides") || isBoundaryJoins(value["plainSides"]));
 
 export const isParagraphMarkResolutionJoin = (
   value: unknown,

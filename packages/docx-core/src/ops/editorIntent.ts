@@ -2385,7 +2385,31 @@ export const compileEditorIntent = (
           },
         });
         if (planned.isErr()) return Result.err(planned.error);
-        ops = planned.value;
+        // The typed text goes in before the tracked deletion, inside the
+        // content controls and wrappers the direct replacement continues.
+        const resumed =
+          idKey(from.blockId) === idKey(to.blockId) && text !== ""
+            ? continuation(paragraph.content, from, to, {
+                ...(intent.inside === undefined
+                  ? {}
+                  : { inside: intent.inside }),
+              })
+            : undefined;
+        ops = [];
+        for (const op of planned.value) {
+          if (
+            resumed === undefined ||
+            op.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT ||
+            idKey(op.at.blockId) !== idKey(from.blockId) ||
+            op.slice.openStart !== 0 ||
+            op.slice.openEnd !== 0
+          ) {
+            ops.push(op);
+            continue;
+          }
+          const slice = continuedSlice(resumed, op.slice.content);
+          ops.push(slice === undefined ? op : { ...op, slice });
+        }
         selection = { ...from, offset: from.offset + text.length };
         for (const op of ops) {
           if (
@@ -2513,9 +2537,7 @@ export const compileEditorIntent = (
         ops.push({
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           at,
-          // Only a pure insertion continues its containers; a replacement's
-          // tracked counterpart records its seams for a top-level slice.
-          slice: (insertionOnly
+          slice: (idKey(from.blockId) === idKey(to.blockId)
             ? continuedSlice(
                 continuation(paragraph.content, from, to, {
                   ...(intent.inside === undefined

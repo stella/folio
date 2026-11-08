@@ -1698,6 +1698,11 @@ type TrackedResolutionJoins = {
   after: number;
   /** Exact join depth when the wrapper is removed. */
   remove: number;
+  /**
+   * Sides where the wrapper now meets accepted new content rather than a
+   * source piece: resolving it joins plain runs there and nothing else.
+   */
+  plainSides?: readonly ("before" | "after")[];
   /** A split seam survives only while all intervening insertions await rejection. */
   deferredRemove?: readonly { depth: number; blockers: readonly number[] }[];
   /** Source identities handed to the retained suffix when a deleted prefix goes. */
