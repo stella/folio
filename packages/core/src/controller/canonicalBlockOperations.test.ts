@@ -63,6 +63,27 @@ const packageOf = async (body: readonly string[]) => {
       '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:spacing w:before="480"/><w:outlineLvl w:val="0"/></w:pPr></w:style></w:styles>',
     ),
   );
+  // One decimal list, numId 1, for numbering operations to name.
+  zip.set(
+    "word/numbering.xml",
+    `${HEAD}<w:numbering xmlns:w="${W}"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl><w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2)"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`,
+  );
+  const rels = (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? "";
+  zip.set(
+    "word/_rels/document.xml.rels",
+    rels.replace(
+      "</Relationships>",
+      '<Relationship Id="rId90" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>',
+    ),
+  );
+  const types = (await zip.entry("[Content_Types].xml")?.text()) ?? "";
+  zip.set(
+    "[Content_Types].xml",
+    types.replace(
+      "</Types>",
+      '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>',
+    ),
+  );
   zip.set(
     "word/document.xml",
     `${HEAD}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${body.join("")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
@@ -100,6 +121,7 @@ const blocksOf = async (bytes: ArrayBuffer) => {
               : [],
           ),
           styleId: block.formatting?.styleId,
+          numPr: block.formatting?.numPr,
           outlineLevel: block.formatting?.outlineLevel,
           alignment: block.formatting?.alignment,
           indentLeft: block.formatting?.indentLeft,
@@ -119,10 +141,21 @@ const outcomes = async (bytes: ArrayBuffer) => {
     else reviewer.rejectAll();
     return blocksOf(await reviewer.toBuffer());
   };
+  const commented = async (decision?: "accept") => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+    if (decision === "accept") reviewer.acceptAll();
+    return reviewer
+      .getComments()
+      .map(({ anchoredText, text }) => ({ anchoredText, text }));
+  };
   return {
     pending: await blocksOf(bytes),
     accepted: await resolved("accept"),
     rejected: await resolved("reject"),
+    comments: {
+      pending: await commented(),
+      accepted: await commented("accept"),
+    },
   };
 };
 
@@ -208,9 +241,14 @@ const viaCanonicalEngine = async (
 };
 
 /** Cases the canonical session declares unavailable, with its reason. */
-const REFUSED: Record<string, string> = {
-  "deleteBlock before a table, tracked-changes":
-    "Canonical tracked deletion of a paragraph before a table is unavailable.",
+const REFUSED: Record<string, string> = {};
+
+/** Cases both engines skip, with the reason both give. */
+const SKIPPED_BY_BOTH: Record<string, string> = {
+  // A direct deletion leaves no text for its comment to cover.
+  "deleteBlock commented between two paragraphs, direct": "unsupportedBlock",
+  "deleteBlock commented ending the body, direct": "unsupportedBlock",
+  "deleteBlock commented before a table, direct": "unsupportedBlock",
 };
 
 const OPERATIONS = {
@@ -280,6 +318,45 @@ const OPERATIONS = {
     text: "",
     hardPageBreak: {},
   },
+  "deleteBlock commented": {
+    id: "op",
+    type: "deleteBlock",
+    blockId: "10000002",
+    comment: { text: "Why this goes" },
+  },
+  "insertAfterBlock commented": {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "Commented\nSecond line",
+    comment: { text: "Why this clause" },
+  },
+  "insertAfterBlock numbered": {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "Item",
+    numbering: { kind: "reference", numId: 1, ilvl: 1 },
+  },
+  "insertBeforeBlock numbering cancelled": {
+    id: "op",
+    type: "insertBeforeBlock",
+    blockId: "10000002",
+    text: "Plain",
+    numbering: { kind: "none" },
+  },
+  "setBlockParagraphProperties numbered": {
+    id: "op",
+    type: "setBlockParagraphProperties",
+    blockId: "10000002",
+    properties: { numbering: { kind: "reference", numId: 1, ilvl: 0 } },
+  },
+  "setBlockParagraphProperties numbering level": {
+    id: "op",
+    type: "setBlockParagraphProperties",
+    blockId: "10000002",
+    properties: { numbering: { kind: "levelOnly", ilvl: 1 } },
+  },
   "setBlockParagraphProperties alignment": {
     id: "op",
     type: "setBlockParagraphProperties",
@@ -317,6 +394,24 @@ describe("block-level public operations match the default engine", () => {
         const refused = REFUSED[name];
         test(name, async () => {
           const source = await packageOf(body);
+          const skippedByBoth = SKIPPED_BY_BOTH[name];
+          if (skippedByBoth !== undefined) {
+            const reviewer = await FolioDocxReviewer.fromBuffer(
+              source.slice(0),
+            );
+            const byDefault = reviewer.applyOperations([operation], {
+              mode,
+              undefinedReferences: "refuse",
+            });
+            const { skipped } = await canonicalRun(source, operation, mode);
+            expect(byDefault.skipped.map(({ reason }) => reason)).toEqual([
+              skippedByBoth,
+            ]);
+            expect(skipped.map(({ reason }) => reason)).toEqual([
+              skippedByBoth,
+            ]);
+            return;
+          }
           if (refused !== undefined) {
             const { skipped } = await canonicalRun(source, operation, mode);
             expect(skipped.map(({ message }) => message)).toEqual([refused]);

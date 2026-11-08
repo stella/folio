@@ -173,6 +173,12 @@ export type EditorIntent =
       paragraphs: readonly Paragraph[];
     }
   | {
+      /** Whole adjacent paragraphs removed with their marks. */
+      type: "deleteParagraphs";
+      story: OpStory;
+      blockIds: readonly string[];
+    }
+  | {
       type: "replaceFragment";
       from: TextPosition;
       to: TextPosition;
@@ -281,6 +287,12 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
         toId: intent.at.blockId,
         fromOffset: 0,
         toOffset: 0,
+      };
+    case "deleteParagraphs":
+      return {
+        story: intent.story,
+        fromId: intent.blockIds[0] ?? "",
+        toId: intent.blockIds.at(-1) ?? "",
       };
     case "setHyperlink":
     case "removeHyperlink":
@@ -2122,6 +2134,28 @@ export const compileEditorIntent = (
       ];
       selection = { story: op.story, blockId, offset: 0 };
       break;
+    }
+    case "deleteParagraphs": {
+      const first = intent.blockIds[0];
+      if (first === undefined)
+        return Result.err(
+          new DocumentOpRefusal({
+            reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
+            message: "No paragraphs to delete.",
+            opType: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+          }),
+        );
+      return Result.ok({
+        ops: [
+          {
+            type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+            story: intent.story,
+            blockIds: intent.blockIds,
+            ...tracked,
+          },
+        ],
+        selection: { story: intent.story, blockId: first, offset: 0 },
+      });
     }
     case "insertParagraphs": {
       const fresh = freshParagraphIds({

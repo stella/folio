@@ -1001,6 +1001,7 @@ const intentStory = (intent: EditorIntent): OpStory => {
     }
     case "joinParagraphs":
     case "insertParagraphs":
+    case "deleteParagraphs":
       return intent.story;
     case "table":
     case "tableRow":
@@ -1406,6 +1407,7 @@ class CanonicalSession {
       case "tableRow":
       case "tableBlock":
       case "insertParagraphs":
+      case "deleteParagraphs":
         return true;
       case "generateTOC":
       case "setList":

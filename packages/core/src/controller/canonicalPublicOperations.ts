@@ -165,7 +165,16 @@ type ResolvedOperation = {
   | {
       type: "commented";
       operation: CommentOperation;
-      comment: { text: string; from: TextPosition; to: TextPosition };
+      comment: {
+        text: string;
+        from: TextPosition;
+        to: TextPosition;
+        /**
+         * The comment covers the paragraphs the operation inserts, whose
+         * identities the compiler gives: its range is read after compiling.
+         */
+        inserted?: true;
+      };
     }
 );
 
@@ -219,6 +228,10 @@ const statedParagraphPatch = (
     patch["outlineLevel"] = properties.outlineLevel;
   if (properties.alignment !== undefined)
     patch["alignment"] = properties.alignment;
+  // Stated numbering as given; inheriting removes the stated value.
+  const { numbering } = properties;
+  if (numbering !== undefined && numbering.kind !== "newList")
+    patch["numPr"] = numbering.kind === "inherit" ? null : numbering;
   const { spacing, indentation } = properties;
   if (spacing !== undefined)
     for (const field of SPACING_FIELDS)
@@ -249,10 +262,10 @@ const resolveParagraphProperties = ({
   projection,
   refusal,
 }: ResolveParagraphPropertiesOptions) => {
-  if (operation.properties.numbering !== undefined)
+  if (operation.properties.numbering?.kind === "newList")
     return refusal(
       "unsupportedBlock",
-      "Canonical paragraph numbering changes are unavailable.",
+      "Canonical paragraphs cannot start a new list yet.",
     );
   const patch = statedParagraphPatch(operation.properties);
   if (Object.keys(patch).length === 0) return refusal("emptyOperation");
@@ -303,17 +316,18 @@ const resolveBlockInsertion = ({
   story,
   refusal,
 }: ResolveBlockInsertionOptions) => {
-  const unavailable = (
-    [
-      ["numbering", "paragraph numbering"],
-      ["moveId", "tracked moves"],
-      ["comment", "comments on an inserted block"],
-    ] as const
-  ).find(([key]) => operation[key] !== undefined);
+  const unavailable = ([["moveId", "tracked moves"]] as const).find(
+    ([key]) => operation[key] !== undefined,
+  );
   if (unavailable !== undefined)
     return refusal(
       "unsupportedBlock",
       `Canonical block insertion with ${unavailable[1]} is unavailable.`,
+    );
+  if (operation.numbering?.kind === "newList")
+    return refusal(
+      "unsupportedBlock",
+      "Canonical inserted paragraphs cannot start a new list yet.",
     );
   const { text } = operation;
   if (stripInlineEmphasisMarkers(text) !== text)
@@ -356,6 +370,9 @@ const resolveBlockInsertion = ({
       ...(operation.indentation === undefined
         ? {}
         : { indentation: operation.indentation }),
+      ...(operation.numbering === undefined
+        ? {}
+        : { numbering: operation.numbering }),
     }),
   ))
     if (value === null) Reflect.deleteProperty(formatting, key);
@@ -413,6 +430,13 @@ const resolveBlockInsertion = ({
     operation.type === "insertAfterBlock"
       ? paragraph.start + paragraph.node.content.size
       : paragraph.start;
+  // A comment covers the inserted text, so an insertion with no text has
+  // nothing for it to cover, as the default engine finds.
+  if (
+    operation.comment !== undefined &&
+    texts.every((line) => line.length === 0)
+  )
+    return refusal("unsupportedBlock");
   const normalizations: FolioAIEditNormalization[] = split
     ? [
         {
@@ -422,13 +446,21 @@ const resolveBlockInsertion = ({
         },
       ]
     : [];
+  const resolved = { intents, normalizations, from: position, to: position };
+  if (operation.comment === undefined)
+    return Result.ok({ type: "plain" as const, operation, ...resolved });
+  // Where the inserted paragraphs are is known once they are compiled.
+  const anchor = { story, blockId: paragraph.blockId, offset: 0 };
   return Result.ok({
-    type: "plain" as const,
+    type: "commented" as const,
     operation,
-    intents,
-    normalizations,
-    from: position,
-    to: position,
+    comment: {
+      text: operation.comment.text,
+      from: anchor,
+      to: anchor,
+      inserted: true as const,
+    },
+    ...resolved,
   });
 };
 
@@ -805,6 +837,79 @@ export class CanonicalPublicOperations {
         case "commented": {
           const { comment } = resolvedOperation;
           const id = freshCommentId(nextDocument);
+          if (comment.inserted === true) {
+            // The comment covers every paragraph the operation inserted.
+            const known = new Set(
+              (findStoryBody(document, story)?.content ?? []).flatMap(
+                (block) =>
+                  block.type === "paragraph" && block.paraId !== undefined
+                    ? [block.paraId]
+                    : [],
+              ),
+            );
+            const added = (
+              findStoryBody(nextDocument, story)?.content ?? []
+            ).flatMap((block) =>
+              block.type === "paragraph" &&
+              block.paraId !== undefined &&
+              !known.has(block.paraId)
+                ? [block]
+                : [],
+            );
+            const firstAdded = added.at(0);
+            const lastAdded = added.at(-1);
+            const commented =
+              id.isErr() ||
+              firstAdded?.paraId === undefined ||
+              lastAdded?.paraId === undefined
+                ? undefined
+                : compileCanonicalComments({
+                    document: nextDocument,
+                    command: {
+                      type: "create",
+                      comment: {
+                        id: id.value,
+                        author: options.author ?? "AI",
+                        date,
+                        done: false,
+                        content: canonicalCommentBody(
+                          nextDocument,
+                          comment.text,
+                        ),
+                      },
+                      anchor: {
+                        kind: "range",
+                        from: {
+                          story,
+                          blockId: firstAdded.paraId,
+                          offset: 0,
+                        },
+                        to: {
+                          story,
+                          blockId: lastAdded.paraId,
+                          offset: paragraphLength(lastAdded),
+                        },
+                      },
+                    },
+                  });
+            if (commented === undefined || commented.isErr() || id.isErr()) {
+              refusals.set(operation.id, {
+                gap: CANONICAL_GAP.publicComments,
+              });
+              skip(
+                operation.id,
+                "unsupportedBlock",
+                commented?.isErr() === true
+                  ? commented.error.message
+                  : "The inserted paragraphs cannot carry the comment.",
+              );
+              continue;
+            }
+            nextDocument = commented.value.document;
+            operationOps.push(...commented.value.ops);
+            commentId = id.value;
+            break;
+          }
           const before = findStoryBody(document, story)?.content.find(
             (block) =>
               block.type === "paragraph" &&
@@ -1003,11 +1108,10 @@ export class CanonicalPublicOperations {
     tracked,
     refusal,
   }: ResolveBlockDeletionOptions) {
-    if (operation.comment !== undefined)
-      return refusal(
-        "unsupportedBlock",
-        "Canonical comments on a deleted block are unavailable.",
-      );
+    // A direct deletion leaves no text for a comment to cover, as the default
+    // engine finds; a tracked one covers the deleted words.
+    if (operation.comment !== undefined && !tracked)
+      return refusal("unsupportedBlock");
     if (operation.moveId !== undefined)
       return refusal(
         "unsupportedBlock",
@@ -1024,13 +1128,48 @@ export class CanonicalPublicOperations {
     };
     const next = neighbour(after);
     const previous = neighbour(before);
-    // Before a table, tracked, the paragraph's own mark is the one deleted;
-    // a text range can only delete the mark before it.
-    if (tracked && next === undefined && after !== null)
-      return refusal(
-        "unsupportedBlock",
-        "Canonical tracked deletion of a paragraph before a table is unavailable.",
+    // A tracked deletion's comment covers the deleted paragraph's words.
+    const commentFrom = projection.addressAt(paragraph.start);
+    const commentTo = projection.addressAt(end);
+    if (commentFrom.isErr() || commentTo.isErr())
+      return refusal("unsupportedBlock");
+    const tracking = (
+      resolved: Omit<
+        Extract<ResolvedOperation, { type: "plain" }>,
+        "type" | "operation"
+      >,
+    ): Result<ResolvedOperation, CanonicalPublicOperationResolutionError> =>
+      Result.ok(
+        operation.comment === undefined
+          ? { type: "plain", operation, ...resolved }
+          : {
+              type: "commented",
+              operation,
+              comment: {
+                text: operation.comment.text,
+                from: commentFrom.value,
+                to: commentTo.value,
+              },
+              ...resolved,
+            },
       );
+    // Before a table, tracked, the paragraph's own mark is the one deleted,
+    // which a text range cannot say: the block deletion records it.
+    if (tracked && next === undefined && after !== null) {
+      const intents: EditorIntent[] = [
+        {
+          type: "deleteParagraphs",
+          story: projectionStory,
+          blockIds: [paragraph.blockId],
+        },
+      ];
+      return tracking({
+        intents,
+        normalizations: [],
+        from: paragraph.start,
+        to: end,
+      });
+    }
     let range: { from: number; to: number } | undefined;
     if (next !== undefined) range = { from: paragraph.start, to: next.start };
     // Removed directly, a paragraph no paragraph follows loses its words and
@@ -1094,9 +1233,7 @@ export class CanonicalPublicOperations {
     const intents: EditorIntent[] = [
       { type: "replaceText", from: from.value, to: to.value, text: "" },
     ];
-    return Result.ok({
-      type: "plain" as const,
-      operation,
+    return tracking({
       intents,
       normalizations: [],
       from: Math.min(range.from, paragraph.start),
