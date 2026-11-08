@@ -17,9 +17,10 @@ import { DOCUMENT_SHAPES } from "../../__tests__/documentShapes";
 import { prepareCanonicalDocxInput } from "../../docx/canonicalSessionInput";
 import { mintListInstance } from "../../docx/listNumberingInstances";
 import { NO_NUMBERING_IDS_IN_USE } from "../../docx/numberingIds";
+import { restoreParagraphIndentationProjection } from "../../docx/paragraphPropertySource";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
-import type { Document, Paragraph } from "../../types/document";
+import type { BlockContent, Document, Paragraph } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { type CanonicalSession } from "../canonicalSession";
 import { prepareCanonicalCommands } from "../canonicalStructure";
@@ -291,8 +292,34 @@ export const MARKERS = [
   () => ({ type: "commentReference" as const, id: 1 }),
 ] as const;
 
+/** Every paragraph of a story, in its tables too, in document order. */
+const storyParagraphsOf = (blocks: readonly BlockContent[]): Paragraph[] =>
+  blocks.flatMap((block) => {
+    switch (block.type) {
+      case "paragraph":
+        return [block];
+      case "table":
+        return block.rows.flatMap((row) =>
+          row.cells.flatMap((cell) => storyParagraphsOf(cell.content)),
+        );
+      case "blockSdt":
+      case "blockCustomXml":
+        return storyParagraphsOf(block.content);
+      default:
+        return [];
+    }
+  });
+
 export const modelEditArbitrary = fc.record({
-  kind: fc.constantFrom("touch", "remove", "insert", "repeat", "move"),
+  kind: fc.constantFrom(
+    "touch",
+    "touchCell",
+    "restore",
+    "remove",
+    "insert",
+    "repeat",
+    "move",
+  ),
   at: fc.nat(),
   to: fc.nat(),
   markers: fc.array(fc.nat({ max: MARKERS.length - 1 }), { maxLength: 3 }),
@@ -301,8 +328,11 @@ export type ModelEdit = fc.RecordValue<typeof modelEditArbitrary>;
 
 /**
  * A new version of the story sharing every block the edit leaves, as the
- * operations make one: a block changed, removed, inserted with markers that
- * move what the blocks after it read, repeated, or moved.
+ * operations make one: a block changed, a table's first cell changed,
+ * removed, inserted with markers that move what the blocks after it read,
+ * repeated, or moved. `restore` keeps the version and gives one paragraph,
+ * in a table too, another paragraph's indentation projection in place, as
+ * history restores it.
  */
 export const editModel = (document: Document, edit: ModelEdit): Document => {
   const blocks = [...document.package.document.content];
@@ -319,6 +349,49 @@ export const editModel = (document: Document, edit: ModelEdit): Document => {
       if (block?.type === "paragraph")
         blocks[index] = { ...block, content: [...block.content, ...markers] };
       break;
+    }
+    case "touchCell": {
+      const table = blocks.find(
+        (block, at) => block.type === "table" && at >= index,
+      );
+      const [row, ...rows] = table?.type === "table" ? table.rows : [];
+      const [cell, ...cells] = row?.cells ?? [];
+      const [first, ...rest] = cell?.content ?? [];
+      if (
+        table?.type !== "table" ||
+        row === undefined ||
+        cell === undefined ||
+        first?.type !== "paragraph"
+      )
+        break;
+      blocks[blocks.indexOf(table)] = {
+        ...table,
+        rows: [
+          {
+            ...row,
+            cells: [
+              {
+                ...cell,
+                content: [
+                  { ...first, content: [...first.content, ...markers] },
+                  ...rest,
+                ],
+              },
+              ...cells,
+            ],
+          },
+          ...rows,
+        ],
+      };
+      break;
+    }
+    case "restore": {
+      const paragraphs = storyParagraphsOf(blocks);
+      const target = paragraphs[index % Math.max(1, paragraphs.length)];
+      const source = paragraphs[edit.to % Math.max(1, paragraphs.length)];
+      if (target !== undefined && source !== undefined)
+        restoreParagraphIndentationProjection({ target, source });
+      return document;
     }
     case "remove":
       if (blocks.length > 1) blocks.splice(index, 1);
