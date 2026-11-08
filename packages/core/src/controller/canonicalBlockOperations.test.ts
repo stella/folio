@@ -177,6 +177,32 @@ const outcomes = async (bytes: ArrayBuffer) => {
   };
 };
 
+/**
+ * The canonical session's outcomes against the default engine's. Rejecting a
+ * tracked insertion after a container's final paragraph gives the source back
+ * from the canonical session's file, ids included: it records which paragraph
+ * rejecting the mark keeps. The default engine's file does not, so there the
+ * anchor's words come back under the new paragraph's id. Everything else is
+ * the same.
+ */
+const expectOutcomes = async (
+  actual: Awaited<ReturnType<typeof outcomes>>,
+  expected: Awaited<ReturnType<typeof outcomes>>,
+  source: ArrayBuffer,
+) => {
+  const withoutIds = (blocks: readonly object[]) =>
+    blocks.map((block) => ({ ...block, id: undefined }));
+  if (
+    !Bun.deepEquals(actual.rejected, expected.rejected) &&
+    Bun.deepEquals(actual.rejected, await blocksOf(source)) &&
+    Bun.deepEquals(withoutIds(actual.rejected), withoutIds(expected.rejected))
+  ) {
+    expect({ ...actual, rejected: expected.rejected }).toEqual(expected);
+    return;
+  }
+  expect(actual).toEqual(expected);
+};
+
 type Mode = "direct" | "tracked-changes";
 
 const batchOf = (
@@ -511,7 +537,7 @@ describe("block-level public operations match the default engine", () => {
           const actual = await outcomes(
             await viaCanonicalEngine(source, operation, mode),
           );
-          expect(actual).toEqual(expected);
+          await expectOutcomes(actual, expected, source);
           // Kinds a suggestion cannot carry skip in both engines.
           if (
             mode !== "tracked-changes" ||
@@ -530,7 +556,7 @@ describe("block-level public operations match the default engine", () => {
               ),
             ),
           ).toEqual(await blocksOf(source));
-          expect(
+          await expectOutcomes(
             await outcomes(
               await viaCanonicalEngine(
                 source,
@@ -539,7 +565,9 @@ describe("block-level public operations match the default engine", () => {
                 "accept",
               ),
             ),
-          ).toEqual(expected);
+            expected,
+            source,
+          );
           // The default engine's suggestion resolves the same way.
           expect(
             await blocksOf(
@@ -610,8 +638,10 @@ describe("a block move matches the default engine", () => {
             move(destination),
             mode,
           );
-          expect(await outcomes(byCanonical)).toEqual(
+          await expectOutcomes(
+            await outcomes(byCanonical),
             await outcomes(byDefault),
+            source,
           );
           if (mode === "direct") return;
           expect(await halves(byCanonical)).toEqual(await halves(byDefault));
