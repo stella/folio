@@ -55,7 +55,11 @@ import type {
 import { convertImage } from "./imageConversion";
 import { collectNoteRefs } from "./noteReferences";
 import { splitParagraphAtPageBreaks } from "./pageBreakSplitting";
-import { convertParagraph, drawsParagraphBorder } from "./paragraphConversion";
+import {
+  convertParagraphWithListMarker,
+  drawsParagraphBorder,
+  paragraphListMarker,
+} from "./paragraphConversion";
 import { groupParagraphFrames } from "./paragraphFrames";
 import type { PageBreakRunProjection } from "./paragraphRuns";
 import {
@@ -153,6 +157,9 @@ export function toFlowBlocks(
     }),
   };
 
+  const paragraphBlocks = options.paragraphBlocks;
+  paragraphBlocks?.use(opts);
+
   const blocks: FlowBlock[] = [];
   const offset = 0; // Start at document beginning; kept for clarity.
   void offset;
@@ -190,8 +197,25 @@ export function toFlowBlocks(
     pos: number,
     stripLeadingLineBreak = false,
   ): void => {
+    const listMarker = paragraphListMarker(node, opts);
+    if (!stripLeadingLineBreak) {
+      const kept = paragraphBlocks?.take(node, pos, listMarker, nextBlockId);
+      if (kept) {
+        trackedPush(kept);
+        return;
+      }
+    }
     const pageBreaks: PageBreakRunProjection[] = [];
-    const paragraph = convertParagraph(node, pos, opts, pageBreaks);
+    const paragraph = convertParagraphWithListMarker(
+      node,
+      pos,
+      opts,
+      listMarker,
+      pageBreaks,
+    );
+    if (!stripLeadingLineBreak && pageBreaks.length === 0) {
+      paragraphBlocks?.keep(node, pos, listMarker, paragraph);
+    }
 
     if (stripLeadingLineBreak && paragraph.runs.at(0)?.kind === "lineBreak") {
       paragraph.runs.shift();
@@ -765,14 +789,16 @@ const attachFontResolutionContext = (
           block.attrs.documentFontFacts = options.documentFontFacts;
         }
         if (block.attrs.listMarkerFormatting) {
-          if (options.embeddedFontFamilyMap !== undefined) {
-            block.attrs.listMarkerFormatting.embeddedFontFamilyMap =
-              options.embeddedFontFamilyMap;
-          }
-          if (options.documentFontFacts !== undefined) {
-            block.attrs.listMarkerFormatting.documentFontFacts =
-              options.documentFontFacts;
-          }
+          // A new object: the converted one may be kept for later conversions.
+          block.attrs.listMarkerFormatting = {
+            ...block.attrs.listMarkerFormatting,
+            ...(options.embeddedFontFamilyMap === undefined
+              ? {}
+              : { embeddedFontFamilyMap: options.embeddedFontFamilyMap }),
+            ...(options.documentFontFacts === undefined
+              ? {}
+              : { documentFontFacts: options.documentFontFacts }),
+          };
         }
         break;
       case "table":

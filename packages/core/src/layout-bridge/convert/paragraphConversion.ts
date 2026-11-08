@@ -17,12 +17,19 @@ import type {
 } from "../../layout-engine/types";
 import { expectParagraphAttrs } from "../../prosemirror/attrs";
 import { expectBookmarkBoundaryAttrs } from "../../prosemirror/bookmarkBoundaryAttrs";
+import { advanceVisibleListMarker } from "../../prosemirror/listMarker";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import type { TextFormatting } from "../../types/document";
 import { nextBlockId, twipsToPixels } from "./flowConversionShared";
-import type { FlowConversionOptions } from "./flowConversionShared";
-import { convertParagraphAttrs } from "./paragraphAttrs";
+import type {
+  CounterFreeFlowConversionOptions,
+  FlowConversionOptions,
+} from "./flowConversionShared";
+import {
+  paragraphAttrsWithListMarker,
+  type ParagraphListMarker,
+} from "./paragraphAttrs";
 import {
   resolveParagraphMarkFormatting,
   resolveParagraphMarkOwnFormatting,
@@ -104,18 +111,50 @@ export function drawsParagraphBorder(
   );
 }
 
+/** Convert a paragraph node, advancing the list counters past it. */
 export function convertParagraph(
   node: PMNode,
   startPos: number,
   options: FlowConversionOptions,
   pageBreaks?: PageBreakRunProjection[],
 ): ParagraphBlock {
+  return convertParagraphWithListMarker(
+    node,
+    startPos,
+    options,
+    paragraphListMarker(node, options),
+    pageBreaks,
+  );
+}
+
+/** Advance the list counters past a paragraph and return the marker they give it. */
+export function paragraphListMarker(
+  node: PMNode,
+  options: Pick<FlowConversionOptions, "listCounterStreams">,
+): ParagraphListMarker {
+  return advanceVisibleListMarker(
+    expectParagraphAttrs(node),
+    options.listCounterStreams,
+  ).marker;
+}
+
+/**
+ * Convert a paragraph node given the marker the list counters give it. The
+ * options carry no counter state, so the marker is the only input that
+ * depends on the paragraphs before it.
+ */
+export function convertParagraphWithListMarker(
+  node: PMNode,
+  startPos: number,
+  options: CounterFreeFlowConversionOptions,
+  listMarker: ParagraphListMarker,
+  pageBreaks?: PageBreakRunProjection[],
+): ParagraphBlock {
   const pmAttrs = expectParagraphAttrs(node);
   const runs = paragraphToRuns(node, startPos, options, pageBreaks);
-  const attrs = convertParagraphAttrs(pmAttrs, {
+  const attrs = paragraphAttrsWithListMarker(pmAttrs, listMarker, {
     theme: options.theme,
     fontAlternates: options.fontAlternates,
-    listCounterStreams: options.listCounterStreams,
     defaultTabStopTwips: options.defaultTabStopTwips,
     paragraphMarkFormatting: () =>
       resolveParagraphMarkFormatting(pmAttrs, options.styleResolver),
