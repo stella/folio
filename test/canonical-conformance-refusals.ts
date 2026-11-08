@@ -40,9 +40,6 @@ const COMMAND_REFUSAL_CONTRACTS = {
     operations: [
       "command:insertTable",
       "command:deleteTable",
-      "command:selectTable",
-      "command:selectRow",
-      "command:selectColumn",
       "command:autoFitContents",
       "host:addComment",
       "host:acceptChange",
