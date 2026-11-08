@@ -245,6 +245,7 @@ import { HiddenHeaderFooterPMs } from "../components/HiddenHeaderFooterPMs";
 import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterPMs";
 import { NoteStoryEditor } from "../components/NoteStoryEditor";
 import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
+import { useEqualState } from "../hooks/keepEqual";
 import { containedHandler } from "../utils/contained-handler";
 // Internal components
 import { AISuggestionRectsOverlay } from "./AISuggestionRectsOverlay";
@@ -809,12 +810,12 @@ function HfCaretOverlay({
   };
   zoom: number;
 }) {
-  const [caretProjection, setCaretProjection] = useState<{
+  const [caretProjection, setCaretProjection] = useEqualState<{
     caret: { x: number; y: number; height: number } | null;
     pagesContainer: HTMLDivElement | null;
   }>({ caret: null, pagesContainer: null });
   const { caret, pagesContainer: portalTarget } = caretProjection;
-  const [rangeRects, setRangeRects] = useState<
+  const [rangeRects, setRangeRects] = useEqualState<
     { x: number; y: number; width: number; height: number }[]
   >([]);
 
@@ -889,7 +890,17 @@ function HfCaretOverlay({
     // actually changes; otherwise every handleHfPmTransaction-driven
     // setHfCaretSelection allocates a new object and we'd churn the
     // DOM lookup + getBoundingClientRect chain on every keystroke.
-  }, [rId, kind, from, to, pageNumber, getSurface, zoom]);
+  }, [
+    rId,
+    kind,
+    from,
+    to,
+    pageNumber,
+    getSurface,
+    zoom,
+    setCaretProjection,
+    setRangeRects,
+  ]);
 
   if (!portalTarget) {
     return null;
@@ -1114,7 +1125,7 @@ const RemoteSelectionOverlay = ({
   remoteSelection,
   zoom,
 }: RemoteSelectionOverlayProps) => {
-  const [geometry, setGeometry] = useState<RemoteSelectionGeometry | null>(
+  const [geometry, setGeometry] = useEqualState<RemoteSelectionGeometry | null>(
     null,
   );
 
@@ -1190,6 +1201,7 @@ const RemoteSelectionOverlay = ({
     remoteSelection.anchor,
     remoteSelection.head,
     zoom,
+    setGeometry,
   ]);
 
   if (!geometry) {
@@ -1691,11 +1703,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     );
     const pendingInitialFontReadyLayoutRef = useRef(false);
     const [isFocused, setIsFocused] = useState(false);
-    const [selectionRects, setSelectionRects] = useState<SelectionRect[]>([]);
-    const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(
-      null,
+    const [selectionRects, setSelectionRects] = useEqualState<SelectionRect[]>(
+      [],
     );
-    const [anonymizationRectGroups, setAnonymizationRectGroups] = useState<
+    const [caretPosition, setCaretPosition] =
+      useEqualState<CaretPosition | null>(null);
+    const [anonymizationRectGroups, setAnonymizationRectGroups] = useEqualState<
       AnonymizationRectGroup[]
     >([]);
     // Plain ref to the latest match list so the recompute effect
@@ -1716,22 +1729,22 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     });
     const [autocompleteOverlayRequestGate] = useState(createLatestRequestGate);
     const [autocompleteCaret, setAutocompleteCaret] =
-      useState<AutocompleteCaretRect | null>(null);
-    const [autocompleteText, setAutocompleteText] = useState<string>("");
+      useEqualState<AutocompleteCaretRect | null>(null);
+    const [autocompleteText, setAutocompleteText] = useEqualState<string>("");
     const [autocompleteIsStreaming, setAutocompleteIsStreaming] =
       useState<boolean>(false);
-    const [directiveProjection, setDirectiveProjection] = useState<{
+    const [directiveProjection, setDirectiveProjection] = useEqualState<{
       groups: DirectiveRectGroup[];
       ranges: readonly DirectiveRange[];
     }>({ groups: [], ranges: [] });
     const directiveRectGroups = directiveProjection.groups;
     const [directiveGutter, setDirectiveGutter] =
-      useState<DirectiveGutterGeometry | null>(null);
+      useEqualState<DirectiveGutterGeometry | null>(null);
     // Caret/selection head PM position, kept only while a template document has
     // block directives — drives the innermost-block rail emphasis in the overlay.
-    const [directiveCaretPos, setDirectiveCaretPos] = useState<number | null>(
-      null,
-    );
+    const [directiveCaretPos, setDirectiveCaretPos] = useEqualState<
+      number | null
+    >(null);
     const directivesRef = useRef<readonly DirectiveRange[]>([]);
     const [directivesOverlayRequestGate] = useState(createLatestRequestGate);
     // Template fill preview — the hidden editor's plugin keeps marker↔value
@@ -1751,7 +1764,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     });
     // AI suggestion review — same pattern for the suggestion list and the
     // focused suggestion's in-text diff preview.
-    const [aiSuggestionRectGroups, setAiSuggestionRectGroups] = useState<
+    const [aiSuggestionRectGroups, setAiSuggestionRectGroups] = useEqualState<
       AISuggestionRectGroup[]
     >([]);
     const aiSuggestionsRef = useRef<{
@@ -1769,13 +1782,13 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       from: number;
       to: number;
     } | null>(null);
-    const [passageHighlightRects, setPassageHighlightRects] = useState<
+    const [passageHighlightRects, setPassageHighlightRects] = useEqualState<
       SelectionRect[]
     >([]);
     const [passageHighlightOverlayRequestGate] = useState(
       createLatestRequestGate,
     );
-    const [remoteSelections, setRemoteSelections] = useState<
+    const [remoteSelections, setRemoteSelections] = useEqualState<
       HiddenProseMirrorRemoteSelection[]
     >([]);
     const suppressSelectionOverlayRef = useRef(false);
@@ -1811,7 +1824,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
 
     // Image selection state
     const [selectedImageInfo, setSelectedImageInfo] =
-      useState<ImageSelectionInfo | null>(null);
+      useEqualState<ImageSelectionInfo | null>(null);
     const isImageInteractingRef = useRef(false);
 
     /** Build ImageSelectionInfo from a DOM element with data-pm-start */
@@ -2022,7 +2035,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       cellPmPos: number;
     };
     const [tableInsertButton, setTableInsertButton] =
-      useState<TableInsertButtonState | null>(null);
+      useEqualState<TableInsertButtonState | null>(null);
     const tableInsertHideTimerRef = useRef<ReturnType<
       typeof setTimeout
     > | null>(null);
@@ -2795,6 +2808,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         selectionOverlayRequestGate,
         zoom,
         markupView,
+        setSelectionRects,
+        setCaretPosition,
+        setDirectiveCaretPos,
       ],
       // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
     );
@@ -2952,7 +2968,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         },
         () => undefined,
       );
-    }, [anonymizationOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      anonymizationOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setAnonymizationRectGroups,
+    ]);
 
     // Project the autocomplete suggestion's anchor onto container
     // coordinates so {@link AutocompleteCaretOverlay} can paint the
@@ -3038,7 +3061,15 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         },
         () => undefined,
       );
-    }, [autocompleteOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      autocompleteOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setAutocompleteText,
+      setAutocompleteCaret,
+    ]);
 
     // Project template-directive ranges (kept in sync by the
     // templateDirectives plugin) onto container-space rects. Shares
@@ -3078,7 +3109,15 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           });
         }
       })();
-    }, [directivesOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      directivesOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setDirectiveProjection,
+      setDirectiveGutter,
+    ]);
 
     // Project pending AI suggestions (kept in sync by the
     // aiSuggestionDecorations plugin) onto container-space rects: dotted
@@ -3129,7 +3168,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           })),
         );
       })();
-    }, [aiSuggestionsOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      aiSuggestionsOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setAiSuggestionRectGroups,
+    ]);
 
     // Project the current passage-highlight range (held in a ref, pushed via
     // the ref method) onto container-space rects. Shares the projection pipeline
@@ -3155,7 +3201,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         }
         setPassageHighlightRects(projected.at(0)?.rects ?? []);
       })();
-    }, [passageHighlightOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      passageHighlightOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setPassageHighlightRects,
+    ]);
 
     const setPassageHighlightImpl = useCallback(
       (range: { from: number; to: number } | null) => {
@@ -3167,7 +3220,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         }
         updatePassageHighlightOverlay();
       },
-      [passageHighlightOverlayRequestGate, updatePassageHighlightOverlay],
+      [
+        passageHighlightOverlayRequestGate,
+        updatePassageHighlightOverlay,
+        setPassageHighlightRects,
+      ],
     );
 
     const hideSelectionOverlayDuringInput = useCallback(
@@ -3187,7 +3244,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           updateSelectionOverlay(hiddenPMRef.current?.getState() ?? state);
         }, SELECTION_REVEAL_AFTER_INPUT_DELAY);
       },
-      [selectionOverlayRequestGate, updateSelectionOverlay],
+      [
+        selectionOverlayRequestGate,
+        updateSelectionOverlay,
+        setSelectionRects,
+        setCaretPosition,
+      ],
     );
 
     useEffect(
@@ -3365,6 +3427,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         scheduleLayout,
         scheduleDocumentChangeNotification,
         hideSelectionOverlayDuringInput,
+        setPassageHighlightRects,
         updateSelectionOverlay,
         updateAnonymizationOverlay,
         updateAutocompleteOverlay,
@@ -3393,7 +3456,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
      *      `renderHfFromContentOrPm` on the next layout tick.
      */
     const [hfCaretSelection, setHfCaretSelection] =
-      useState<HfCaretSelection | null>(null);
+      useEqualState<HfCaretSelection | null>(null);
     const [previousHfEditMode, setPreviousHfEditMode] = useState(hfEditMode);
     if (previousHfEditMode !== hfEditMode) {
       setPreviousHfEditMode(hfEditMode);
@@ -3470,6 +3533,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         ensureHiddenEditorView,
         experimentalSession,
         scheduleDocumentChangeNotification,
+        setHfCaretSelection,
       ],
     );
 
@@ -3570,7 +3634,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           }
         });
       },
-      [updateSelectionOverlay, buildImageSelectionInfo, syncCoordinator],
+      [
+        updateSelectionOverlay,
+        buildImageSelectionInfo,
+        syncCoordinator,
+        setSelectionRects,
+        setCaretPosition,
+        setSelectedImageInfo,
+      ],
     );
 
     /**
@@ -4321,6 +4392,10 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         buildImageSelectionInfo,
         findImageElement,
         findCellPosInDoc,
+        setSelectionRects,
+        setCaretPosition,
+        setSelectedImageInfo,
+        setTableInsertButton,
       ],
     );
 
@@ -4885,7 +4960,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           }, TABLE_INSERT_HIDE_DELAY);
         }
       },
-      [readOnly, clearTableInsertTimer, zoom],
+      [readOnly, clearTableInsertTimer, zoom, setTableInsertButton],
     );
 
     /**
@@ -4922,7 +4997,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         setTableInsertButton(null);
         hiddenPMRef.current.focus();
       },
-      [tableInsertButton],
+      [tableInsertButton, setTableInsertButton],
     );
 
     /**

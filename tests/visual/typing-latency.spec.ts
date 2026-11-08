@@ -13,6 +13,12 @@ import { type Page, test } from "@playwright/test";
  *   animation frame, so the work the edit schedules (layout, paint) counts.
  * - `measuredBlocksPerKey` and `layoutsPerKey`: what layout did per key, read
  *   through the layout instrumentation hook.
+ * - `commitsPerKey` (React host): React commits per key that change the
+ *   page, counted through the developer tools hook. Each one with a focused
+ *   editor reads the editor's whole DOM to save the selection, so commits
+ *   cost on their own.
+ *   `FOLIO_TYPING_LATENCY_COMMITS=1` also logs which components' state
+ *   changed in those commits.
  *
  * It asserts nothing: the numbers depend on the machine. Run it with
  * `bunx playwright test --project=typing-latency`, add `--headed` for a
@@ -174,6 +180,24 @@ const readLayoutCounts = (page: Page) =>
       ).__typingLayoutCounts ?? { measuredBlocks: 0, layouts: 0 },
   );
 
+const readCommits = (page: Page) =>
+  page.evaluate(() => {
+    const commits = (
+      globalThis as {
+        __typingCommits?: {
+          count: number;
+          withEffects: number;
+          changed: Record<string, number>;
+        };
+      }
+    ).__typingCommits;
+    return {
+      count: commits?.count ?? 0,
+      withEffects: commits?.withEffects ?? 0,
+      changed: { ...commits?.changed },
+    };
+  });
+
 const median = (values: readonly number[]): number | null => {
   const sorted = values.toSorted((left, right) => left - right);
   return sorted.length === 0 ? null : (sorted[sorted.length >> 1] ?? null);
@@ -195,6 +219,110 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
         // Counts what each layout pass measured, through the layout
         // instrumentation hook the editor already calls.
         await page.addInitScript(() => {
+          const commits = {
+            count: 0,
+            withEffects: 0,
+            changed: {} as Record<string, number>,
+          };
+          (globalThis as { __typingCommits?: typeof commits }).__typingCommits =
+            commits;
+          type Hook = {
+            memoizedState: unknown;
+            queue: unknown;
+            next: Hook | null;
+          };
+          type Fiber = {
+            tag: number;
+            type: unknown;
+            alternate: Fiber | null;
+            memoizedState: unknown;
+            child: Fiber | null;
+            sibling: Fiber | null;
+            flags: number;
+            subtreeFlags: number;
+          };
+          const nameOf = (fiber: Fiber): string => {
+            type Named = {
+              displayName?: string;
+              name?: string;
+              render?: Named;
+              type?: Named;
+            } | null;
+            const type = fiber.type as Named;
+            const inner = type?.render ?? type?.type ?? type;
+            return (
+              type?.displayName ??
+              inner?.displayName ??
+              inner?.name ??
+              type?.name ??
+              "anonymous"
+            );
+          };
+          /** Which fields of a changed state value changed, to name it. */
+          const describeChange = (value: unknown, before: unknown): string => {
+            if (value instanceof Element)
+              return `<${value.tagName} ${value.getAttribute("aria-label") ?? ""}>`;
+            if (value === null || typeof value !== "object")
+              return JSON.stringify(value)?.slice(0, 40) ?? "";
+            if (Array.isArray(value)) return `[${String(value.length)}]`;
+            const fields = Object.keys(value).filter(
+              (field) =>
+                before === null ||
+                typeof before !== "object" ||
+                !Object.is(
+                  Reflect.get(value, field),
+                  Reflect.get(before, field),
+                ),
+            );
+            return `{${fields.slice(0, 6).join(",")}}`;
+          };
+          const collect = (fiber: Fiber | null): void => {
+            for (let current = fiber; current; current = current.sibling) {
+              const previous = current.alternate;
+              // Function components and their forwardRef / memo forms.
+              if (previous && [0, 11, 14, 15].includes(current.tag)) {
+                let hook = current.memoizedState as Hook | null;
+                let old = previous.memoizedState as Hook | null;
+                let index = 0;
+                while (hook && old) {
+                  if (
+                    hook.queue !== null &&
+                    hook.memoizedState !== old.memoizedState
+                  ) {
+                    const shape = describeChange(
+                      hook.memoizedState,
+                      old.memoizedState,
+                    );
+                    const key = `${nameOf(current)}#${String(index)} ${shape ?? ""}`;
+                    commits.changed[key] = (commits.changed[key] ?? 0) + 1;
+                  }
+                  hook = hook.next;
+                  old = old.next;
+                  index += 1;
+                }
+              }
+              collect(current.child);
+            }
+          };
+          (
+            globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: unknown }
+          ).__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+            supportsFiber: true,
+            renderers: new Map(),
+            inject: () => 1,
+            onScheduleFiberRoot: () => undefined,
+            onCommitFiberRoot: (_id: number, root: { current: Fiber }) => {
+              commits.count += 1;
+              // React's before-mutation, mutation, layout and passive masks: a
+              // commit without them skips the selection save.
+              if ((root.current.subtreeFlags | root.current.flags) & 13878)
+                commits.withEffects += 1;
+              collect(root.current);
+            },
+            onCommitFiberUnmount: () => undefined,
+            onPostCommitFiberRoot: () => undefined,
+            checkDCE: () => undefined,
+          };
           const counts = { measuredBlocks: 0, layouts: 0 };
           (
             globalThis as { __typingLayoutCounts?: typeof counts }
@@ -231,6 +359,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
               .__typingLatency?.frames.length ?? 0,
         );
         const countsBefore = await readLayoutCounts(page);
+        const commitsBefore = await readCommits(page);
         for (let key = 0; key < MEASURED_KEYS; key += 1) {
           await page.keyboard.press("x");
           await page.waitForTimeout(PAUSE_MS);
@@ -261,6 +390,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           };
         }, skip);
         const countsAfter = await readLayoutCounts(page);
+        const commitsAfter = await readCommits(page);
         console.info(
           `typing latency ${JSON.stringify({
             document: name,
@@ -275,8 +405,28 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
             measuredBlocksPerKey:
               (countsAfter.measuredBlocks - countsBefore.measuredBlocks) /
               MEASURED_KEYS,
+            commitsPerKey:
+              (commitsAfter.withEffects - commitsBefore.withEffects) /
+              MEASURED_KEYS,
           })}`,
         );
+        if (process.env["FOLIO_TYPING_LATENCY_COMMITS"] === "1")
+          console.info(
+            `typing latency state changes ${JSON.stringify(
+              Object.fromEntries(
+                Object.entries(commitsAfter.changed)
+                  .map(
+                    ([key, count]) =>
+                      [
+                        key,
+                        (count - (commitsBefore.changed[key] ?? 0)) /
+                          MEASURED_KEYS,
+                      ] as const,
+                  )
+                  .filter(([, perKey]) => perKey > 0),
+              ),
+            )}`,
+          );
       });
     }
   }
