@@ -1,0 +1,27 @@
+name: Bun binary cache
+
+# Fills the Actions cache entry every Bun setup restores, on the default
+# branch, where pull request and merge queue runs can read it. Run it after a
+# Bun version change or when the entry has been evicted.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bun-binary-cache
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    name: Warm the Bun binary cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bun
+        with:
+          package-json: package.json
