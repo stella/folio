@@ -1,9 +1,10 @@
 name: Setup Bun
 description: >-
   Installs the Bun version the repository pins, from an Actions cache keyed by
-  runner OS, architecture and version. Bun is downloaded only on a miss, with
-  retries and a checksum check, and that download is saved for the next job. Optionally restores and saves the
-  Bun install cache keyed on bun.lock.
+  runner OS, architecture and version. Bun is downloaded only on a miss, from
+  the release host or else the npm registry, each checked against its
+  published digest, and that download is saved for the next job. Optionally
+  restores and saves the Bun install cache keyed on bun.lock.
 
 inputs:
   bun-version-file:
@@ -79,8 +80,11 @@ runs:
         key: bun-binary-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
 
     # A miss on the runners CI uses fetches the release archive with retries
-    # and checks it against the release's checksums, so a passing outage of
-    # the download host does not fail the job.
+    # and checks it against the release's SHA-256 checksums. When the release
+    # host does not answer, the same build comes from the npm registry's
+    # @oven/bun-linux-x64 package, checked against the sha512 integrity the
+    # registry publishes for it. Either way a passing outage of one host does
+    # not fail the job.
     - name: Download Bun
       if: steps.binary.outputs.cache-hit != 'true' && runner.os == 'Linux' && runner.arch == 'X64'
       shell: bash
@@ -88,24 +92,57 @@ runs:
         VERSION: ${{ steps.version.outputs.version }}
       run: |
         set -euo pipefail
-        base="https://github.com/oven-sh/bun/releases/download/bun-v${VERSION}"
         dir=$(mktemp -d)
-        fetch() {
-          curl --fail --silent --show-error --location --retry 8 \
-            --retry-all-errors --retry-delay 5 --retry-max-time 300 \
-            --output "$dir/$1" "$base/$1"
-        }
-        fetch bun-linux-x64.zip
-        fetch SHASUMS256.txt
-        expected=$(awk '{ name = $2; sub(/^\*/, "", name) } name == "bun-linux-x64.zip" { print $1 }' "$dir/SHASUMS256.txt")
-        if [ -z "$expected" ]; then
-          echo "::error::SHASUMS256.txt for Bun $VERSION lists no bun-linux-x64.zip"
+        binary=""
+        fail() {
+          echo "::error::$1"
           exit 1
+        }
+        fetch() {
+          curl --fail --silent --show-error --location --retry "$3" \
+            --retry-all-errors --retry-delay 5 --retry-max-time "$4" \
+            --output "$2" "$1"
+        }
+        # Returns 1 when the release host does not answer; a download that
+        # does not match its checksum fails the step.
+        from_release() {
+          local base="https://github.com/oven-sh/bun/releases/download/bun-v${VERSION}"
+          fetch "$base/bun-linux-x64.zip" "$dir/bun-linux-x64.zip" 3 60 || return 1
+          fetch "$base/SHASUMS256.txt" "$dir/SHASUMS256.txt" 3 60 || return 1
+          local expected
+          expected=$(awk '{ name = $2; sub(/^\*/, "", name) } name == "bun-linux-x64.zip" { print $1 }' "$dir/SHASUMS256.txt")
+          [ -n "$expected" ] || fail "SHASUMS256.txt for Bun $VERSION lists no bun-linux-x64.zip"
+          echo "$expected  $dir/bun-linux-x64.zip" | sha256sum --check --quiet ||
+            fail "bun-linux-x64.zip for Bun $VERSION does not match SHASUMS256.txt"
+          unzip -q "$dir/bun-linux-x64.zip" -d "$dir" || fail "bun-linux-x64.zip does not unpack"
+          binary="$dir/bun-linux-x64/bun"
+        }
+        from_registry() {
+          local metadata="$dir/metadata.json" tarball integrity actual
+          fetch "https://registry.npmjs.org/@oven/bun-linux-x64/${VERSION}" "$metadata" 8 300 ||
+            fail "Neither the release host nor the npm registry served Bun $VERSION"
+          tarball=$(jq -r '.dist.tarball // ""' "$metadata")
+          integrity=$(jq -r '.dist.integrity // ""' "$metadata")
+          case "$tarball" in https://registry.npmjs.org/*) ;; *)
+            fail "The registry lists no tarball for @oven/bun-linux-x64@$VERSION" ;;
+          esac
+          case "$integrity" in sha512-*) ;; *)
+            fail "The registry lists no sha512 integrity for @oven/bun-linux-x64@$VERSION" ;;
+          esac
+          fetch "$tarball" "$dir/bun.tgz" 8 300 ||
+            fail "The npm registry did not serve @oven/bun-linux-x64@$VERSION"
+          actual="sha512-$(openssl dgst -sha512 -binary "$dir/bun.tgz" | base64 -w0)"
+          [ "$actual" = "$integrity" ] ||
+            fail "@oven/bun-linux-x64@$VERSION does not match its registry integrity"
+          tar -xzf "$dir/bun.tgz" -C "$dir" package/bin/bun || fail "The registry tarball holds no package/bin/bun"
+          binary="$dir/package/bin/bun"
+        }
+        if ! from_release; then
+          echo "::warning::The Bun release host did not answer; installing @oven/bun-linux-x64@$VERSION from the npm registry"
+          from_registry
         fi
-        echo "$expected  $dir/bun-linux-x64.zip" | sha256sum --check --quiet
-        unzip -q "$dir/bun-linux-x64.zip" -d "$dir"
         mkdir -p "$HOME/.bun/bin"
-        install -m 0755 "$dir/bun-linux-x64/bun" "$HOME/.bun/bin/bun"
+        install -m 0755 "$binary" "$HOME/.bun/bin/bun"
         rm -rf "$dir"
 
     # With an exact version and a Bun at ~/.bun/bin, restored or downloaded
