@@ -21,6 +21,12 @@ const REFUSAL_ROWS = {
     message:
       "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
   },
+  cellSelectionPlacement: {
+    id: CANONICAL_GAP.commands,
+    gap: CANONICAL_GAP.commands,
+    message:
+      "A note or table of contents goes at a caret, not over selected cells.",
+  },
   fieldProjection: {
     id: CANONICAL_GAP.storyContentProjection,
     gap: CANONICAL_GAP.storyContentProjection,
@@ -130,6 +136,14 @@ export const canonicalConformanceRefusalRows = (
       canonicalRefusalCaseId(candidate) === canonicalRefusalCaseId(key),
   );
   if (projection) return [STORY_PROJECTION_ROWS[projection.shape]];
+  if (
+    key.shape === "tables" &&
+    key.placement === "cross-paragraph" &&
+    (key.operation === "command:generateTOC" ||
+      key.operation === "command:insertFootnote" ||
+      key.operation === "command:insertEndnote")
+  )
+    return [REFUSAL_ROWS.cellSelectionPlacement];
   if (key.operation === "command:generateTOC")
     return key.mode === "suggesting" &&
       TOC_HEADING_SHAPES.some((shape) => shape === key.shape)
