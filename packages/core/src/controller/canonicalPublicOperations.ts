@@ -316,14 +316,6 @@ const resolveBlockInsertion = ({
   story,
   refusal,
 }: ResolveBlockInsertionOptions) => {
-  const unavailable = ([["moveId", "tracked moves"]] as const).find(
-    ([key]) => operation[key] !== undefined,
-  );
-  if (unavailable !== undefined)
-    return refusal(
-      "unsupportedBlock",
-      `Canonical block insertion with ${unavailable[1]} is unavailable.`,
-    );
   if (operation.numbering?.kind === "newList")
     return refusal(
       "unsupportedBlock",
@@ -465,6 +457,14 @@ const resolveBlockInsertion = ({
 };
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
+
+/** The move a block operation names, if it is a half of one. */
+const blockMoveId = (operation: FolioDocumentOperation): string | undefined =>
+  operation.type === "deleteBlock" ||
+  operation.type === "insertAfterBlock" ||
+  operation.type === "insertBeforeBlock"
+    ? operation.moveId
+    : undefined;
 
 /** A line's text with each tab and line break as the element it is. */
 const inlineText = (line: string): Run["content"] =>
@@ -779,6 +779,60 @@ export class CanonicalPublicOperations {
         continue;
       }
       resolved.push(compiled.value);
+    }
+    // A move id names one relocation, a move only when it reaches exactly one
+    // source and one destination, as the default engine pairs them; an
+    // unpaired id records a plain insertion or deletion and is reported.
+    const moveSides = new Map<string, { from: number; to: number }>();
+    for (const { operation } of resolved) {
+      const moveId = blockMoveId(operation);
+      if (moveId === undefined) continue;
+      const sides = moveSides.get(moveId) ?? { from: 0, to: 0 };
+      if (operation.type === "deleteBlock") sides.from += 1;
+      else sides.to += 1;
+      moveSides.set(moveId, sides);
+    }
+    // A suggested destination before its own source would cut the move.
+    const unpairable = new Set(
+      batch.mode === "suggested"
+        ? resolved.flatMap(({ operation }) =>
+            operation.type === "insertBeforeBlock" &&
+            operation.moveId !== undefined &&
+            resolved.some(
+              (candidate) =>
+                candidate.operation.type === "deleteBlock" &&
+                candidate.operation.moveId === operation.moveId &&
+                candidate.operation.blockId === operation.blockId,
+            )
+              ? [operation.moveId]
+              : [],
+          )
+        : [],
+    );
+    const paired = (moveId: string) =>
+      !unpairable.has(moveId) &&
+      moveSides.get(moveId)?.from === 1 &&
+      moveSides.get(moveId)?.to === 1;
+    for (const [index, item] of resolved.entries()) {
+      const moveId = blockMoveId(item.operation);
+      if (moveId === undefined) continue;
+      if (!paired(moveId)) {
+        normalizations.push({
+          id: item.operation.id,
+          code: "unpairedMove",
+          moveId,
+        });
+        continue;
+      }
+      const intents: EditorIntent[] = [];
+      for (const intent of item.intents)
+        intents.push(
+          intent.type === "insertParagraphs" ||
+            intent.type === "deleteParagraphs"
+            ? Object.assign({}, intent, { move: true as const })
+            : intent,
+        );
+      resolved[index] = { ...item, intents };
     }
     if (batch.atomic && skipped.length > 0) {
       for (const { operation } of resolved)
@@ -1112,11 +1166,6 @@ export class CanonicalPublicOperations {
     // engine finds; a tracked one covers the deleted words.
     if (operation.comment !== undefined && !tracked)
       return refusal("unsupportedBlock");
-    if (operation.moveId !== undefined)
-      return refusal(
-        "unsupportedBlock",
-        "Canonical tracked moves are unavailable.",
-      );
     const end = paragraph.start + paragraph.node.content.size;
     const after = doc.resolve(end + 1).nodeAfter;
     const before = doc.resolve(paragraph.start - 1).nodeBefore;
@@ -1154,8 +1203,14 @@ export class CanonicalPublicOperations {
             },
       );
     // Before a table, tracked, the paragraph's own mark is the one deleted,
-    // which a text range cannot say: the block deletion records it.
-    if (tracked && next === undefined && after !== null) {
+    // which a text range cannot say: the block deletion records it, as it
+    // records a move's source, which the batch pairs before compiling.
+    // So does a deletion the paragraph after it survives, by identity: an
+    // insertion before that paragraph in the same batch leaves it in place.
+    if (
+      next !== undefined ||
+      (tracked && (after !== null || operation.moveId !== undefined))
+    ) {
       const intents: EditorIntent[] = [
         {
           type: "deleteParagraphs",
@@ -1171,11 +1226,10 @@ export class CanonicalPublicOperations {
       });
     }
     let range: { from: number; to: number } | undefined;
-    if (next !== undefined) range = { from: paragraph.start, to: next.start };
     // Removed directly, a paragraph no paragraph follows loses its words and
     // then joins the paragraph before it, which keeps its own identity and
     // properties; with none before it, it only loses its words.
-    else if (!tracked) {
+    if (!tracked) {
       const own = (
         from: number,
         to: number,

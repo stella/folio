@@ -160,12 +160,16 @@ export type EditorIntent =
       story: OpStory;
       at: BlockInsertionPoint;
       paragraphs: readonly Paragraph[];
+      /** A suggestion records the paragraphs as a move's destination. */
+      move?: true;
     }
   | {
       /** Whole adjacent paragraphs removed with their marks. */
       type: "deleteParagraphs";
       story: OpStory;
       blockIds: readonly string[];
+      /** A suggestion records the paragraphs as a move's source. */
+      move?: true;
     }
   | {
       type: "replaceFragment";
@@ -2141,6 +2145,9 @@ export const compileEditorIntent = (
             story: intent.story,
             blockIds: intent.blockIds,
             ...tracked,
+            ...(mode.type === "suggesting" && intent.move === true
+              ? { move: true as const }
+              : {}),
           },
         ],
         selection: { story: intent.story, blockId: first, offset: 0 },
@@ -2175,6 +2182,9 @@ export const compileEditorIntent = (
             at: intent.at,
             blocks,
             ...tracked,
+            ...(mode.type === "suggesting" && intent.move === true
+              ? { move: true as const }
+              : {}),
           },
         ],
         selection: { story: intent.story, blockId: first.paraId, offset: 0 },

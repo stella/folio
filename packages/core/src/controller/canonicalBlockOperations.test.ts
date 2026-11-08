@@ -160,15 +160,22 @@ const outcomes = async (bytes: ArrayBuffer) => {
 };
 
 type Mode = "direct" | "tracked-changes";
+
+const batchOf = (
+  operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
+): FolioDocumentOperation[] =>
+  Array.isArray(operation)
+    ? [...operation]
+    : [operation as FolioDocumentOperation];
 type Suggestion = "accept" | "reject";
 
 const viaDefaultEngine = async (
   source: ArrayBuffer,
-  operation: FolioDocumentOperation,
+  operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
   mode: Mode,
 ) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
-  const result = reviewer.applyOperations([operation], {
+  const result = reviewer.applyOperations(batchOf(operation), {
     mode,
     undefinedReferences: "refuse",
   });
@@ -182,7 +189,7 @@ const viaDefaultEngine = async (
  */
 const canonicalRun = async (
   source: ArrayBuffer,
-  operation: FolioDocumentOperation,
+  operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
   mode: Mode | "suggested",
 ) => {
   const document = await parseDocx(source.slice(0), {
@@ -206,7 +213,7 @@ const canonicalRun = async (
   });
   const result = executor.apply({
     snapshot: createFolioAIEditSnapshot(state.doc),
-    batch: { version: 1, mode, operations: [operation] },
+    batch: { version: 1, mode, operations: batchOf(operation) },
     undefinedReferences: "refuse",
   });
   return { session, state: () => state, skipped: result.skipped };
@@ -214,7 +221,7 @@ const canonicalRun = async (
 
 const viaCanonicalEngine = async (
   source: ArrayBuffer,
-  operation: FolioDocumentOperation,
+  operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
   mode: Mode | "suggested",
   suggestion?: Suggestion,
 ) => {
@@ -222,10 +229,12 @@ const viaCanonicalEngine = async (
   expect(run.skipped).toEqual([]);
   const { session } = run;
   let state = run.state();
-  if (mode === "suggested") {
+  // Each operation of a suggested batch is its own suggestion.
+  for (const { id } of batchOf(operation)) {
+    if (mode !== "suggested") break;
     const commit = session
       .prepareSuggestion(state, {
-        suggestionId: operation.id,
+        suggestionId: id,
         resolution: suggestion ?? "reject",
         author: "Adopter",
         date: "2026-02-02T00:00:00Z",
@@ -449,4 +458,76 @@ describe("block-level public operations match the default engine", () => {
           ).toEqual(expected);
         });
       }
+});
+
+describe("a block move matches the default engine", () => {
+  /** The source paragraph moved after the anchor, both halves naming one move. */
+  const move = (destination: "insertAfterBlock" | "insertBeforeBlock") =>
+    [
+      {
+        id: "from",
+        type: "deleteBlock",
+        blockId: "10000001",
+        moveId: "move",
+      },
+      {
+        id: "to",
+        type: destination,
+        blockId: "10000002",
+        text: "Moved",
+        moveId: "move",
+      },
+    ] as const satisfies readonly FolioDocumentOperation[];
+
+  /** The package with only one half of the move accepted or rejected. */
+  const halves = async (bytes: ArrayBuffer) => {
+    const resolvedHalf = async (
+      kind: "insertion" | "deletion",
+      decision: "accept" | "reject",
+    ) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+      for (const change of reviewer.getChanges())
+        if (change.type === kind)
+          if (decision === "accept") reviewer.acceptChange(change);
+          else reviewer.rejectChange(change);
+      return blocksOf(await reviewer.toBuffer());
+    };
+    return {
+      sourceAccepted: await resolvedHalf("deletion", "accept"),
+      sourceRejected: await resolvedHalf("deletion", "reject"),
+      destinationAccepted: await resolvedHalf("insertion", "accept"),
+      destinationRejected: await resolvedHalf("insertion", "reject"),
+    };
+  };
+
+  for (const destination of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const [shape, body] of Object.entries(BODIES))
+      for (const mode of ["direct", "tracked-changes"] as const)
+        test(`${destination} ${shape}, ${mode}`, async () => {
+          const source = await packageOf(body);
+          const byDefault = await viaDefaultEngine(
+            source,
+            move(destination),
+            mode,
+          );
+          const byCanonical = await viaCanonicalEngine(
+            source,
+            move(destination),
+            mode,
+          );
+          expect(await outcomes(byCanonical)).toEqual(
+            await outcomes(byDefault),
+          );
+          if (mode === "direct") return;
+          expect(await halves(byCanonical)).toEqual(await halves(byDefault));
+          // The saved file marks the halves as a move.
+          const xml =
+            (await (
+              await ZipArchive.read(byCanonical)
+            )
+              .entry("word/document.xml")
+              ?.text()) ?? "";
+          expect(xml).toContain("<w:moveFrom ");
+          expect(xml).toContain("<w:moveTo ");
+        });
 });
