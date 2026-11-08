@@ -104,6 +104,10 @@ export type FolioParityBridge = {
   clearAutocomplete: () => boolean;
   /** Serialize to DOCX and return the byte length (0 on failure). */
   save: () => Promise<number>;
+  /** Open a DOCX package through the public ref, with the editor view ready. */
+  loadDocx: (bytes: number[]) => Promise<void>;
+  /** Serialize to DOCX through the public ref and return the package. */
+  saveDocx: () => Promise<number[]>;
   /** Whether the live editor has edits not yet serialized by save(). */
   hasPendingChanges: () => boolean;
   /**

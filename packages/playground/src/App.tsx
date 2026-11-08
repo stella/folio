@@ -591,6 +591,17 @@ function buildParityBridge(
       return buffer?.byteLength ?? 0;
     },
     hasPendingChanges: () => getRef()?.hasPendingChanges() ?? false,
+    loadDocx: async (bytes) => {
+      const ref = getRef();
+      if (!ref) throw new Error("Loading requires an editor ref");
+      await ref.loadDocumentBuffer(new Uint8Array(bytes));
+      ref.ensureEditorView({ focus: false });
+    },
+    saveDocx: async () => {
+      const saved = await getRef()?.save();
+      if (!saved) throw new Error("The editor did not save");
+      return [...new Uint8Array(saved)];
+    },
     insertTextViaPagedEditorRef: (text) => {
       const pagedRef = getRef()?.getEditorRef();
       const view = pagedRef?.getView();

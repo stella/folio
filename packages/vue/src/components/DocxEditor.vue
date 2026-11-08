@@ -523,6 +523,7 @@ import {
   onMounted,
   ref,
   shallowRef,
+  toRaw,
   type VNodeChild,
   watch,
 } from "vue";
@@ -531,6 +532,7 @@ import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEdit
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import {
   clearAllCaches,
@@ -909,6 +911,10 @@ useKeyboardShortcuts({
 });
 
 // ---- Pipeline -----------------------------------------------------------
+/** The host's comment threads as saving copies them: plain objects, not reactive proxies. */
+const savedComments = () =>
+  commentManagement.comments.value.map((comment) => toRaw(comment));
+
 const {
   editor,
   editorView,
@@ -937,6 +943,8 @@ const {
   reLayout,
   setEmbeddedFontFamilies,
 } = useDocxEditor({
+  // Read at save time; comment management is set up below.
+  comments: () => savedComments(),
   hiddenContainer: hiddenPmRef,
   hiddenHeaderFooterContainer: hiddenHfPmRef,
   noteEditorContainer: notePmRef,
@@ -2011,7 +2019,13 @@ const { exposed } = useDocxEditorRefApi({
     commentManagement.setComments(nextComments);
   },
   focus: () => activeEditorView.value?.focus(),
-  getDocument,
+  // The editor's document carries the threads it was loaded with; the host's
+  // list is what the sidebar shows and what saving writes.
+  getDocument: () => {
+    const document = getDocument();
+    if (!document || props.experimentalSession === "canonical") return document;
+    return withHostCommentThreads(document, savedComments());
+  },
   getActiveView: () => activeEditorView.value,
   getExperimentalSession: () => props.experimentalSession,
   getActiveCanonicalStory: () => {
