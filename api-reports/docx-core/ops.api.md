@@ -259,6 +259,7 @@ export type DeleteBlocksOp = {
     story: OpStory;
     blockIds: readonly string[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
@@ -466,10 +467,12 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     story: OpStory;
     at: BlockInsertionPoint;
     paragraphs: readonly Paragraph[];
+    move?: true;
 } | {
     type: "deleteParagraphs";
     story: OpStory;
     blockIds: readonly string[];
+    move?: true;
 } | {
     type: "replaceFragment";
     from: TextPosition;
@@ -615,6 +618,7 @@ export type InsertBlocksOp = {
     at: BlockInsertionPoint;
     blocks: readonly Paragraph[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
