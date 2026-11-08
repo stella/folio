@@ -524,6 +524,27 @@ const runMode = async ({
     test.info().outputPath(`live-${String(suggesting)}.json`),
     JSON.stringify(live),
   );
+  const liveDoc = await page.evaluate(() => {
+    const view = globalThis.__folioPlayground
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
+    const out: unknown[] = [];
+    view?.state.doc.forEach((node) =>
+      out.push({
+        text: node.textContent,
+        numPr: node.attrs["numPr"],
+        pPrMark: node.attrs["pPrMark"],
+        changes: node.attrs["_propertyChanges"],
+        listMarker: node.attrs["listMarker"],
+      }),
+    );
+    return out;
+  });
+  writeFileSync(
+    test.info().outputPath(`livedoc-${String(suggesting)}.json`),
+    JSON.stringify(liveDoc),
+  );
   expect(
     projectLive(project(reopened)),
     "the saved package reads as the live editor did",
