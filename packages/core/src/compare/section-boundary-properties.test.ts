@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { schema } from "../prosemirror/schema";
-import { compareSectionBoundaryProperties } from "./section-boundary-properties";
+import {
+  compareSectionBoundaryProperties,
+  stageSectionBoundaryProperties,
+} from "./section-boundary-properties";
 
 const paragraph = (text: string, sectionProperties?: Record<string, unknown>) =>
   schema.node(
@@ -132,7 +135,6 @@ const resolve = ({
   );
   return resolved;
 };
-import { stageSectionBoundaryProperties } from "./section-boundary-properties";
 
 test("stages nothing, and reads no accepted projection, for a target without endpoints", () => {
   const deletion = schema.mark("deletion", {

@@ -1055,7 +1055,7 @@ export function markChangedParagraphRanges(
 }
 
 export const ParagraphChangeTrackerExtension: (
-  options?: Partial<{}> | undefined,
+  options?: Partial<Record<never, never>> | undefined,
 ) => Extension = createExtension({
   name: "paragraphChangeTracker",
   defaultOptions: {},

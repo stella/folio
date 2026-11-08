@@ -610,7 +610,7 @@ describe("canonical structural commands", () => {
             schema,
             doc: session.projection.doc,
           });
-          let oracle = ["ab😀cd", "EF"];
+          const oracle = ["ab😀cd", "EF"];
           const history: {
             before: Document;
             after: Document;
