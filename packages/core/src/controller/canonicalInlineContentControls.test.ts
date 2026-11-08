@@ -219,22 +219,90 @@ describe("inline content controls in the canonical session", () => {
     expect(current.document).toEqual(before);
   });
 
-  for (const mode of ["editing", "suggesting"] as const)
-    test(`replacing text inside the control refuses in ${mode} mode and changes nothing`, async () => {
-      for (const whole of [true, false]) {
-        const current = await session(undefined, mode);
-        const before = current.document;
-        let state = stateFor(current);
-        const { open, close } = edges(state);
-        const from = whole ? open + 1 : at(state, "Clause", 1);
-        const to = whole ? close - 1 : at(state, "Clause", 4);
-        state = select(state, from, to);
-        expect(
-          current.prepareReplace(state, { from, to, text: "New" }).isErr(),
-        ).toBe(true);
-        expect(current.document).toBe(before);
+  /** Every tracked change id in the session's main story. */
+  const revisionIds = (current: CanonicalSession): number[] => {
+    const ids: number[] = [];
+    const visit = (items: readonly ParagraphContent[]) => {
+      for (const item of items) {
+        if (
+          item.type === "insertion" ||
+          item.type === "deletion" ||
+          item.type === "moveFrom" ||
+          item.type === "moveTo"
+        )
+          ids.push(item.info.id);
+        if ("content" in item && Array.isArray(item.content))
+          visit(item.content as ParagraphContent[]);
       }
-    });
+    };
+    for (const block of current.document.package.document.content)
+      if (block.type === "paragraph") visit(block.content);
+    return [...new Set(ids)];
+  };
+
+  test("a suggestion over the control's whole text refuses and changes nothing", async () => {
+    const current = await session(undefined, "suggesting");
+    const before = current.document;
+    let state = stateFor(current);
+    const { open, close } = edges(state);
+    state = select(state, open + 1, close - 1);
+    expect(
+      current
+        .prepareReplace(state, { from: open + 1, to: close - 1, text: "New" })
+        .isErr(),
+    ).toBe(true);
+    expect(current.document).toBe(before);
+  });
+
+  test("replacing all of the control's text in editing mode keeps the new text in it", async () => {
+    const current = await session(undefined, "editing");
+    let state = stateFor(current);
+    const { open, close } = edges(state);
+    state = select(state, open + 1, close - 1);
+    accept(
+      state,
+      current
+        .prepareReplace(state, { from: open + 1, to: close - 1, text: "New" })
+        .unwrap(),
+    );
+    expect(parts(current)).toBe("Before [New] after");
+  });
+
+  test(`replacing part of the control's text keeps the new text in it, and a suggestion resolves to the edit or the source`, async () => {
+    const replaced = async (mode: "editing" | "suggesting") => {
+      const current = await session(undefined, mode);
+      let state = stateFor(current);
+      const from = at(state, "Clause", 1);
+      const to = at(state, "Clause", 4);
+      state = select(state, from, to);
+      state = accept(
+        state,
+        current.prepareReplace(state, { from, to, text: "New" }).unwrap(),
+      );
+      return { current, state };
+    };
+    const edited = await replaced("editing");
+    const expected = parts(edited.current);
+    expect(expected.split("[")).toHaveLength(2);
+    expect(expected).toContain("New");
+    const source = parts(await session(undefined, "editing"));
+    for (const resolution of ["accept", "reject"] as const) {
+      const suggested = await replaced("suggesting");
+      expect(parts(suggested.current).split("[")).toHaveLength(2);
+      accept(
+        suggested.state,
+        suggested.current
+          .prepareResolve(suggested.state, {
+            revisionIds: revisionIds(suggested.current),
+            resolution,
+          })
+          .unwrap(),
+      );
+      expect(parts(suggested.current)).toBe(
+        resolution === "accept" ? expected : source,
+      );
+    }
+  });
 
   for (const mode of ["editing", "suggesting"] as const)
     test(`deleting text inside the control in ${mode} mode keeps the control`, async () => {
