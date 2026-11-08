@@ -127,7 +127,7 @@ const typedOver = async (mode: "editing" | "suggesting") => {
         TextSelection.create(harness.state.doc, from, from + 5),
       ),
     );
-    harness.typeText("N");
+    harness.typeText("New");
     expect(harness.refusals).toEqual([]);
     return await saveCanonicalHarnessDocument(harness.snapshot());
   } finally {
@@ -157,7 +157,7 @@ describe("replacing the start of another reviewer's insertion", () => {
     ).toEqual([
       { author: "Earlier", type: "insertion", text: "first" },
       { author: "Conformance", type: "deletion", text: "first" },
-      { author: "Conformance", type: "insertion", text: "N" },
+      { author: "Conformance", type: "insertion", text: "New" },
       { author: "Earlier", type: "insertion", text: " words" },
     ]);
     for (const document of [
