@@ -389,14 +389,16 @@ type DocumentFontContextRef = (
  */
 type RunPositionField = "pmStart" | "pmEnd";
 
-/** A cache input naming no position: a type with one does not compile here. */
-type PositionFree<T> = T & { [field in RunPositionField]?: never };
+/** A cache input naming no position: one that names a position does not compile. */
+const positionFree = <T extends object>(
+  input: T & { [field in RunPositionField]?: never },
+): T => input;
 
 const runMeasureCacheInput = (
   run: Run,
   fontContextRef: FontContextRef,
   documentFontContextRef: DocumentFontContextRef,
-): PositionFree<object> => {
+): object => {
   switch (run.kind) {
     case "text":
     case "tab":
@@ -410,18 +412,18 @@ const runMeasureCacheInput = (
         pmEnd: _pmEnd,
         ...formatting
       } = run;
-      return {
+      return positionFree({
         ...formatting,
         embeddedFontFamilies: fontContextRef(embeddedFontFamilyMap),
         documentFontFacts: documentFontContextRef(documentFontFacts),
-      };
+      });
     }
     case "lineBreak": {
       const { pmStart: _pmStart, pmEnd: _pmEnd, ...lineBreak } = run;
-      return lineBreak;
+      return positionFree(lineBreak);
     }
     case "image":
-      return imageMeasureCacheInput(run);
+      return positionFree(imageMeasureCacheInput(run));
     default: {
       const exhaustive: never = run;
       return exhaustive;
