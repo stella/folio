@@ -36,7 +36,7 @@ import {
   idKey,
   packageIdentityKeys,
   packageParagraphIds,
-  reservedIdentityKeysIn,
+  packageReservedIdentityKeys,
 } from "./ids";
 import { deleteBetween, gapAfterInserted } from "./inline";
 import {
@@ -793,7 +793,7 @@ const modeAfterOps = (
   if (mode.newIds === undefined) return mode;
   const occupied = new Set(
     packageIdentityKeys(document.package).concat(
-      reservedIdentityKeysIn(document.package),
+      packageReservedIdentityKeys(document.package),
     ),
   );
   const revisionIds = mode.newIds.revision?.filter(
@@ -871,7 +871,7 @@ const identifyClipboardParagraphs = ({
   const copy = cloneModel([...paragraphs]);
   const occupied = new Set(
     packageIdentityKeys(document.package).concat(
-      reservedIdentityKeysIn(document.package),
+      packageReservedIdentityKeys(document.package),
     ),
   );
   for (const id of mode.newIds?.revision ?? [])
