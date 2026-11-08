@@ -24,10 +24,12 @@ import {
   OP_STORIES,
   type OpStory,
   paragraphLength,
+  pendingSuggestionIdsIn,
   type RunPropsPatch,
   type TextPosition,
 } from "@stll/docx-core/ops";
 
+import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/apply";
 import {
   splitsGraphemeCluster,
   splitsSurrogatePair,
@@ -60,6 +62,7 @@ import {
   getFolioDocumentOperationIssues,
   getFolioDocumentOperationReceiptsForStory,
   parseFolioDocumentOperationBatch,
+  withDistinctSuggestionIds,
 } from "../document-operations";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import {
@@ -188,6 +191,8 @@ type CompilePublicIntentsOptions = {
   mode: "direct" | "tracked-changes";
   author: string;
   date: string;
+  /** The pending suggestion the records belong to, in suggested mode. */
+  suggestionId?: string | undefined;
   nextRevisionId: number;
   allocate: ReturnType<typeof createEditorIntentIdAllocator>;
 };
@@ -198,6 +203,7 @@ const compilePublicIntents = ({
   mode,
   author,
   date,
+  suggestionId,
   nextRevisionId,
   allocate,
 }: CompilePublicIntentsOptions) => {
@@ -225,7 +231,12 @@ const compilePublicIntents = ({
             }
           : {
               type: "suggesting",
-              revision: { id: firstRevisionId, author, date },
+              revision: {
+                id: firstRevisionId,
+                author,
+                date,
+                ...(suggestionId === undefined ? {} : { suggestionId }),
+              },
               newIds: {
                 control: ids.newIds.control,
                 revision: ids.newIds.revision.map(
@@ -305,8 +316,22 @@ export class CanonicalPublicOperations {
   apply(
     options: CanonicalPublicOperationOptions,
   ): FolioDocumentOperationResult {
-    const batch = parseFolioDocumentOperationBatch(options.batch);
     const { session } = this.options;
+    const parsed = parseFolioDocumentOperationBatch(options.batch);
+    // A suggested operation never folds into a suggestion already pending,
+    // here or in the host's other stories.
+    const batch =
+      parsed.mode !== "suggested" ||
+      options.restagesSuggestions === true ||
+      session.isComposing
+        ? parsed
+        : withDistinctSuggestionIds(
+            parsed,
+            new Set([
+              ...pendingSuggestionIdsIn(session.document),
+              ...(options.pendingSuggestionIds ?? []),
+            ]),
+          );
     const publicStory = options.story ?? "main";
     const story = canonicalPublicStory(publicStory);
     const state = this.options.getState(story);
@@ -381,15 +406,12 @@ export class CanonicalPublicOperations {
         skip(operation.id, "documentNotEditable");
         continue;
       }
-      if (batch.mode === "suggested") {
-        refusals.set(operation.id, {
-          gap: CANONICAL_GAP.publicSuggestedMode,
-        });
-        skip(
-          operation.id,
-          "unsupportedMode",
-          "Canonical pending suggestions are unavailable.",
-        );
+      // The operations a suggestion can carry are the editor's.
+      if (
+        batch.mode === "suggested" &&
+        !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(operation.type)
+      ) {
+        skip(operation.id, "unsupportedMode");
         continue;
       }
       if (
@@ -464,12 +486,21 @@ export class CanonicalPublicOperations {
         intents,
         normalizations: adjustments,
       } = resolvedOperation;
+      // A suggested operation's records are one suggestion: its own id, or the
+      // one it names.
+      const suggestionId =
+        batch.mode === "suggested"
+          ? (("suggestionId" in operation
+              ? operation.suggestionId
+              : undefined) ?? operation.id)
+          : undefined;
       const compiled = compilePublicIntents({
         document,
         intents,
         allocate,
         nextRevisionId,
         mode: batch.mode === "direct" ? "direct" : "tracked-changes",
+        suggestionId,
         author: options.author ?? "AI",
         date,
       });
@@ -581,6 +612,7 @@ export class CanonicalPublicOperations {
         id: operation.id,
         ...(commentId === undefined ? {} : { commentId }),
         ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
+        ...(suggestionId === undefined ? {} : { suggestionId }),
       });
     }
     if (batch.atomic && skipped.length > 0) {

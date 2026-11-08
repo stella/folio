@@ -1757,6 +1757,22 @@ export const createHiddenEditorManager = (
         );
       return published;
     },
+    resolveCanonicalSuggestion: (suggestionId, resolution, author) => {
+      if (!view || deps.getReadOnly() || editorSession.type !== "canonical")
+        return false;
+      const prepared = editorSession.session.prepareSuggestion(view.state, {
+        suggestionId,
+        resolution,
+        author,
+        date: new Date().toISOString(),
+      });
+      if (prepared.isErr()) {
+        if (prepared.error.reason !== "noChange")
+          refuse(prepared.error.message, prepared.error.ground);
+        return false;
+      }
+      return publishCommit(prepared.value);
+    },
     executeCanonicalCommand,
     getCanonicalHistory: () =>
       editorSession.type === "canonical"

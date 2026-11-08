@@ -419,7 +419,6 @@ export const reservedIdentityKeysIn: (value: unknown) => string[] =
 export const reservedIdentityKeysInFull: (value: unknown) => string[] =
   subtreeCensus(ownReservedKeys, "full");
 
-/** Every revision and content-control id of a package, each story walked once. */
 /**
  * A census of a package, once per package object. Operations never change a
  * package they are given: each returns a new one, sharing what it left as it
