@@ -628,6 +628,12 @@ function serializeHyperlinkChild(
     // link it was authored inside.
     case "preservedInline":
       return child.xml;
+    // A field the link holds whole, written inside it as it was read: a
+    // table of contents entry's page number follows the entry's link.
+    case "complexField": {
+      const xml = serializeComplexField(child);
+      return spelling === "deletedText" ? rewriteRunTextAsDeleted(xml) : xml;
+    }
     default: {
       const unwritten: never = child;
       return unwritten;

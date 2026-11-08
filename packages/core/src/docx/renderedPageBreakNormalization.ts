@@ -79,7 +79,11 @@ const scanHyperlink = (
   for (const child of hyperlink.children) {
     // A transparent wrapper is transparent to the detector here too: the first
     // run under one is still the first run of the link.
-    if (child.type !== "run" && child.type !== "inlineWrapper") {
+    if (
+      child.type !== "run" &&
+      child.type !== "inlineWrapper" &&
+      child.type !== "complexField"
+    ) {
       continue;
     }
     const result =

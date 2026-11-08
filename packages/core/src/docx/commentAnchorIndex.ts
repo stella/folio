@@ -325,6 +325,7 @@ export const removeCommentMarkers = (
       case "moveFromRangeEnd":
       case "moveToRangeStart":
       case "moveToRangeEnd":
+      case "complexField":
       case "preservedInline":
         return item;
     }

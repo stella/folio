@@ -658,7 +658,10 @@ export function getHyperlinkRuns(hyperlink: Hyperlink): Run[] {
       }
       if (item.type === "inlineWrapper") {
         collect(item.content);
+        continue;
       }
+      // A field the link holds reads as its cached result.
+      if (item.type === "complexField") runs.push(...item.fieldResult);
     }
   };
   collect(hyperlink.children);

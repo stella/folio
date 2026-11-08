@@ -194,7 +194,7 @@ export const HYPERLINK_CONTENT: {
   readonly inlineWrapper: true;
   readonly preservedInline: true;
   readonly run: true;
-  readonly complexField: false;
+  readonly complexField: true;
   readonly deletion: false;
   readonly hyperlink: false;
   readonly inlineSdt: false;
@@ -216,7 +216,7 @@ export const HYPERLINK_CONTENT: {
   inlineWrapper: true,
   preservedInline: true,
   run: true,
-  complexField: false,
+  complexField: true,
   deletion: false,
   hyperlink: false,
   inlineSdt: false,
