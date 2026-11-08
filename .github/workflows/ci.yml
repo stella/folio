@@ -5,6 +5,9 @@ env:
   HAWK_RUST_TOOLCHAIN: "1.97.1"
   HAWK_VERSION: "0.1.11"
   HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256: "8380db63360ae94f9890d7e426cce00e479d884f516614cea998c85d5f30ab6d"
+  # The crates.io package of the same release, built when the release
+  # archive cannot be downloaded.
+  HAWK_CRATE_SHA256: "584421e8a97b7bbd33f4db455f53d95bc351a893d15f534c30240ac0969c248e"
 
 on:
   push:
@@ -887,23 +890,58 @@ jobs:
       - name: Install pinned Rust toolchain and WebAssembly target
         run: rustup show active-toolchain && rustup target add wasm32-unknown-unknown
 
+      - name: Restore pinned Hawk
+        id: hawk-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/cargo-hawk
+          key: cargo-hawk-${{ runner.os }}-${{ runner.arch }}-${{ env.HAWK_VERSION }}-${{ env.HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256 }}-${{ env.HAWK_CRATE_SHA256 }}
+
+      # The release archive, checked against its pinned digest. When the
+      # release host does not answer, the same release builds from crates.io
+      # against the pinned toolchain, its package checked against its pinned
+      # digest and its dependencies against the lockfile it ships.
       - name: Install pinned Hawk
         shell: bash
+        env:
+          HAWK_CACHE_HIT: ${{ steps.hawk-cache.outputs.cache-hit }}
         run: |
           set -euo pipefail
           expected_hawk_script="cargo +${HAWK_RUST_TOOLCHAIN} hawk check --target-dir target/hawk -D warnings -A hawk::dead_public -A hawk::unnecessary_public"
           jq -e --arg expected "$expected_hawk_script" \
             '.scripts["rust:hawk"] == $expected' package.json >/dev/null
-          archive="$RUNNER_TEMP/cargo-hawk.tar.gz"
-          install_dir="$RUNNER_TEMP/cargo-hawk"
-          curl --proto '=https' --tlsv1.2 --retry 3 -fsSL \
-            -o "$archive" \
-            "https://github.com/astral-sh/hawk/releases/download/${HAWK_VERSION}/cargo-hawk-x86_64-unknown-linux-gnu.tar.gz"
-          echo "${HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256}  ${archive}" | sha256sum --check
-          mkdir -p "$install_dir"
-          tar -xzf "$archive" -C "$install_dir" --strip-components=1
-          echo "$install_dir" >> "$GITHUB_PATH"
+          install_dir="$HOME/.cache/cargo-hawk"
           rustup toolchain install 1.97.1 --profile minimal # cargo-hawk exception tracked in stll-toolchain.json
+          if [ "$HAWK_CACHE_HIT" != "true" ]; then
+            archive="$RUNNER_TEMP/cargo-hawk.tar.gz"
+            mkdir -p "$install_dir"
+            if curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL \
+              -o "$archive" \
+              "https://github.com/astral-sh/hawk/releases/download/${HAWK_VERSION}/cargo-hawk-x86_64-unknown-linux-gnu.tar.gz"; then
+              echo "${HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256}  ${archive}" | sha256sum --check
+              tar -xzf "$archive" -C "$install_dir" --strip-components=1
+            else
+              echo "::warning::The Hawk release host did not answer; building cargo-hawk ${HAWK_VERSION} from crates.io"
+              rustup component add rustc-dev --toolchain 1.97.1 # cargo-hawk exception tracked in stll-toolchain.json
+              build_root="$RUNNER_TEMP/cargo-hawk-build"
+              RUSTC_BOOTSTRAP=1 cargo +1.97.1 install cargo-hawk --version "=${HAWK_VERSION}" --locked --root "$build_root" # cargo-hawk exception tracked in stll-toolchain.json
+              package=$(find "$HOME/.cargo/registry/cache" -name "cargo-hawk-${HAWK_VERSION}.crate" -print -quit)
+              if [ -z "$package" ]; then
+                echo "::error::cargo did not keep the cargo-hawk ${HAWK_VERSION} package it built"
+                exit 1
+              fi
+              echo "${HAWK_CRATE_SHA256}  ${package}" | sha256sum --check
+              cp "$build_root/bin/"* "$install_dir/"
+            fi
+          fi
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Save pinned Hawk
+        if: steps.hawk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/cargo-hawk
+          key: cargo-hawk-${{ runner.os }}-${{ runner.arch }}-${{ env.HAWK_VERSION }}-${{ env.HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256 }}-${{ env.HAWK_CRATE_SHA256 }}
 
       - *source-lint-cache
       - *source-lint-install
