@@ -10,6 +10,7 @@ import {
   type DocumentOp,
   OP_STORIES,
   REVISION_DECISIONS,
+  type RevisionDecision,
 } from "../types";
 
 const paragraph = (paraId: string, text: string): Paragraph => ({
@@ -238,6 +239,45 @@ test("deletion refuses invalid selections, boundaries and paragraph review confl
     const result = applyDocumentOp(document, deletion(ids));
     expect(result.isErr() && result.error.reason).toBe(reason);
   }
+});
+
+test("tracked deletion of a paragraph a table follows marks its own mark, and resolves both ways", () => {
+  const first = paragraph("00000001", "first");
+  const target = paragraph("00000002", "target");
+  const after = paragraph("00000004", "after");
+  const document = documentOf([
+    first,
+    target,
+    cell([paragraph("00000003", "cell")]),
+    after,
+  ]);
+  const applied = applyDocumentOp(document, deletion(["00000002"]));
+  if (applied.isErr()) throw applied.error;
+  const [, deleted] = applied.value.document.package.document.content;
+  expect(deleted?.type === "paragraph" && deleted.pPrMark?.kind).toBe("del");
+  const resolve = (decision: RevisionDecision) => {
+    const resolved = applyDocumentOp(applied.value.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: applied.value.revisions,
+      decision,
+    });
+    if (resolved.isErr()) throw resolved.error;
+    return resolved.value.document.package.document.content.map((block) =>
+      block.type === "paragraph" ? block.paraId : block.type,
+    );
+  };
+  expect(resolve(REVISION_DECISIONS.REJECT)).toEqual([
+    "00000001",
+    "00000002",
+    "table",
+    "00000004",
+  ]);
+  expect(resolve(REVISION_DECISIONS.ACCEPT)).toEqual([
+    "00000001",
+    "table",
+    "00000004",
+  ]);
 });
 
 test("tracked deletion refuses existing inline review and missing physical ids", () => {

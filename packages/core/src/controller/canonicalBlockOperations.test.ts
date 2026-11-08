@@ -208,10 +208,7 @@ const viaCanonicalEngine = async (
 };
 
 /** Cases the canonical session declares unavailable, with its reason. */
-const REFUSED: Record<string, string> = {
-  "deleteBlock before a table, tracked-changes":
-    "Canonical tracked deletion of a paragraph before a table is unavailable.",
-};
+const REFUSED: Record<string, string> = {};
 
 const OPERATIONS = {
   deleteBlock: { id: "op", type: "deleteBlock", blockId: "10000002" },

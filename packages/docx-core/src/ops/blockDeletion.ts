@@ -223,7 +223,14 @@ export const deleteBlocks = ({
   const list = blockListAt(body.content, first.list);
   const following = list[last.index + 1];
   const terminal = last.index === list.length - 1;
-  if (following?.type !== "paragraph" && !terminal) {
+  // Tracked, a paragraph a table follows loses its words and its own mark,
+  // as the default editor records it; accepting removes it, which needs the
+  // list to go on ending with a paragraph.
+  const trackedBeforeTable =
+    op.revision !== undefined &&
+    following?.type === "table" &&
+    list.at(-1)?.type === "paragraph";
+  if (following?.type !== "paragraph" && !terminal && !trackedBeforeTable) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "Deletion requires a following paragraph or a container-final paragraph.",

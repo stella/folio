@@ -1024,13 +1024,25 @@ export class CanonicalPublicOperations {
     };
     const next = neighbour(after);
     const previous = neighbour(before);
-    // Before a table, tracked, the paragraph's own mark is the one deleted;
-    // a text range can only delete the mark before it.
-    if (tracked && next === undefined && after !== null)
-      return refusal(
-        "unsupportedBlock",
-        "Canonical tracked deletion of a paragraph before a table is unavailable.",
-      );
+    // Before a table, tracked, the paragraph's own mark is the one deleted,
+    // which a text range cannot say: the block deletion records it.
+    if (tracked && next === undefined && after !== null) {
+      const intents: EditorIntent[] = [
+        {
+          type: "deleteParagraphs",
+          story: projectionStory,
+          blockIds: [paragraph.blockId],
+        },
+      ];
+      return Result.ok({
+        type: "plain" as const,
+        operation,
+        intents,
+        normalizations: [],
+        from: paragraph.start,
+        to: end,
+      });
+    }
     let range: { from: number; to: number } | undefined;
     if (next !== undefined) range = { from: paragraph.start, to: next.start };
     // Removed directly, a paragraph no paragraph follows loses its words and
