@@ -27,6 +27,17 @@ const REFUSAL_ROWS = {
     message:
       "A note or table of contents goes at a caret, not over selected cells.",
   },
+  trackedTableDeletion: {
+    id: CANONICAL_GAP.dispatch,
+    gap: CANONICAL_GAP.dispatch,
+    message: "The rows contain an unsupported tracked structure.",
+  },
+  trackedTableInsertionAtEnd: {
+    id: CANONICAL_GAP.dispatch,
+    gap: CANONICAL_GAP.dispatch,
+    message:
+      "Tracked insertion requires a following paragraph in the same block list.",
+  },
   fieldProjection: {
     id: CANONICAL_GAP.storyContentProjection,
     gap: CANONICAL_GAP.storyContentProjection,
@@ -39,8 +50,6 @@ const REFUSAL_ROWS = {
 const COMMAND_REFUSAL_CONTRACTS = {
   [CANONICAL_GAP.commands]: {
     operations: [
-      "command:insertTable",
-      "command:deleteTable",
       "command:autoFitContents",
       "host:addComment",
       "host:acceptChange",
@@ -144,6 +153,17 @@ export const canonicalConformanceRefusalRows = (
       key.operation === "command:insertEndnote")
   )
     return [REFUSAL_ROWS.cellSelectionPlacement];
+  // The caret's cell paragraph ends its block list: a tracked paragraph
+  // insertion needs a paragraph after it.
+  if (key.operation === "command:insertTable")
+    return key.mode === "suggesting" && key.shape === "tables"
+      ? [REFUSAL_ROWS.trackedTableInsertionAtEnd]
+      : [];
+  // The fixture table's merged cells have no tracked row deletion record.
+  if (key.operation === "command:deleteTable")
+    return key.mode === "suggesting" && key.shape === "tables"
+      ? [REFUSAL_ROWS.trackedTableDeletion]
+      : [];
   if (key.operation === "command:generateTOC")
     return key.mode === "suggesting" &&
       TOC_HEADING_SHAPES.some((shape) => shape === key.shape)

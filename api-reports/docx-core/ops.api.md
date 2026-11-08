@@ -458,6 +458,9 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "tableRow";
     operation: TableRowIntentOperation;
 } | {
+    type: "tableBlock";
+    operation: TableBlockIntentOperation;
+} | {
     type: "replaceFragment";
     from: TextPosition;
     to: TextPosition;
@@ -1238,6 +1241,14 @@ export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
 export const survivingComments: (document: Document_2, projectedRootIds?: ReadonlySet<number>) => Comment_2[];
+
+// @public
+export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds" | "expected"> | {
+    type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
+    story: OpStory;
+    blockId: string;
+    table: Table;
+};
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;

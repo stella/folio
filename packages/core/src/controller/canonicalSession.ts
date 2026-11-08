@@ -954,6 +954,7 @@ const intentStory = (intent: EditorIntent): OpStory => {
       return intent.story;
     case "table":
     case "tableRow":
+    case "tableBlock":
       return intent.operation.story;
     default: {
       const unreachable: never = intent;
@@ -1344,6 +1345,7 @@ class CanonicalSession {
     switch (intent.type) {
       case "table":
       case "tableRow":
+      case "tableBlock":
         return true;
       case "generateTOC":
       case "setList":

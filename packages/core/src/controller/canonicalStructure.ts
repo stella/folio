@@ -518,6 +518,19 @@ export const prepareCanonicalCommands = (
         }
         break;
       }
+      case "editTableBlock": {
+        const at = session.projection.addressAt(command.at);
+        if (at.isErr()) return at;
+        intents.push({
+          type: "tableBlock",
+          operation: {
+            ...command.edit,
+            story: at.value.story,
+            blockId: at.value.blockId,
+          },
+        });
+        break;
+      }
       case "editTableRow": {
         const at = session.projection.addressAt(command.at);
         if (at.isErr()) return at;

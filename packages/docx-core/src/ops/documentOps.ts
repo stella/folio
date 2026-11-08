@@ -65,6 +65,7 @@ export {
   type EditorIntent,
   type TableIntentOperation,
   type TableRowIntentOperation,
+  type TableBlockIntentOperation,
   type EditorIntentMode,
 } from "./editorIntent";
 export {

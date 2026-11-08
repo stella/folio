@@ -11,6 +11,7 @@ import {
   type Paragraph,
   type ParagraphContent,
   type TabContent,
+  type Table,
   type TableRow,
   type TextFormatting,
 } from "../model/document";
@@ -88,6 +89,7 @@ import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import {
   type DeleteRangeOp,
   type DeleteRowOp,
+  type DeleteTableOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   EMPTY_PROPERTY_SETS,
@@ -124,12 +126,28 @@ export type TableRowIntentOperation =
   | Omit<InsertRowOp, "revision" | "newIds">
   | Omit<DeleteRowOp, "revision" | "newIds">;
 
+/**
+ * A table inserted after the paragraph `blockId`, with an empty paragraph
+ * after it, as the editor inserts one; or the table holding `blockId`,
+ * removed, or in suggesting mode recorded as deleted. An inserted table's
+ * paragraphs take fresh identities from the compiler.
+ */
+export type TableBlockIntentOperation =
+  | Omit<DeleteTableOp, "revision" | "newIds" | "expected">
+  | {
+      type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
+      story: OpStory;
+      blockId: string;
+      table: Table;
+    };
+
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
   | HyperlinkEditorIntent
   | GenerateTOCIntent
   | { type: "table"; operation: TableIntentOperation }
   | { type: "tableRow"; operation: TableRowIntentOperation }
+  | { type: "tableBlock"; operation: TableBlockIntentOperation }
   | {
       type: "replaceFragment";
       from: TextPosition;
@@ -219,6 +237,7 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
   switch (intent.type) {
     case "table":
     case "tableRow":
+    case "tableBlock":
       return {
         story: intent.operation.story,
         fromId: intent.operation.blockId,
@@ -378,6 +397,29 @@ export const createEditorIntentIdAllocator = () => {
       }
       return ids;
     };
+    if (intent.type === "tableBlock") {
+      const op = intent.operation;
+      // An inserted table records each row and each of its paragraphs, and
+      // the empty paragraph after it; a deleted one, each row and paragraph.
+      const table =
+        op.type === DOCUMENT_OP_TYPES.INSERT_TABLE
+          ? op.table
+          : locateTableRow(document, op)
+              .map(({ table: found }) => found)
+              .unwrapOr(undefined);
+      if (table !== undefined) {
+        // Each leaf may start its own deletion record where pending
+        // revisions already cut the text, as a range deletion counts it.
+        demand = 2 + table.rows.length + PARAGRAPH_REVISION_DEMAND;
+        for (const { paragraph } of storyParagraphs({
+          content: [{ type: "table", rows: table.rows }],
+        })) {
+          demand += PARAGRAPH_REVISION_DEMAND;
+          for (const span of leafSpans(paragraph.content))
+            demand += leafRevisionDemand(span.ancestors.length);
+        }
+      }
+    }
     if (intent.type === "table") {
       const op = intent.operation;
       const located = locateTableRow(document, op);
@@ -2027,6 +2069,123 @@ export const compileEditorIntent = (
         }),
       ];
       selection = { story: op.story, blockId, offset: 0 };
+      break;
+    }
+    case "tableBlock": {
+      if (intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE) {
+        const { story, blockId, table } = intent.operation;
+        const fresh = freshParagraphIds({
+          document,
+          reserved: mode.reservedBlockIds,
+          count:
+            storyParagraphs({ content: [{ type: "table", rows: table.rows }] })
+              .length + 1,
+          opType: DOCUMENT_OP_TYPES.INSERT_TABLE,
+        });
+        if (fresh.isErr()) return Result.err(fresh.error);
+        const [paragraphId, ...tableIds] = fresh.value;
+        if (paragraphId === undefined)
+          return panic("A fresh paragraph id is missing.");
+        let next = 0;
+        const rows = table.rows.map((row: TableRow) => {
+          const count = storyParagraphs({
+            content: [{ type: "table", rows: [row] }],
+          }).length;
+          const ids = tableIds.slice(next, next + count);
+          next += count;
+          return withFreshParagraphIds(row, ids);
+        });
+        const after = { type: "after", blockId } as const;
+        const sequence: DocumentOp[] = [
+          // The empty paragraph first, then the table between it and the anchor.
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+            story,
+            at: after,
+            blocks: [{ type: "paragraph", paraId: paragraphId, content: [] }],
+            ...tracked,
+          },
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+            story,
+            at: after,
+            table: { ...table, rows },
+            ...tracked,
+          },
+        ];
+        let current = document;
+        ops = [];
+        // The two operations share one pool of revision ids: each takes the
+        // next ids the one before it left unused.
+        let pool =
+          mode.type === "suggesting"
+            ? [mode.revision.id, ...(mode.newIds?.revision ?? [])]
+            : [];
+        for (const planned of sequence) {
+          const [id, ...rest] = pool;
+          const op =
+            mode.type === "suggesting" && id !== undefined
+              ? {
+                  ...planned,
+                  revision: { ...mode.revision, id },
+                  newIds: {
+                    revision: rest,
+                    control: mode.newIds?.control ?? [],
+                  },
+                }
+              : planned;
+          const applied = applyDocumentOp(current, op);
+          if (applied.isErr()) return Result.err(applied.error);
+          const trimmed = trimAppliedNewIds({
+            before: current,
+            op,
+            applied: applied.value,
+            story,
+          });
+          ops.push(trimmed);
+          const used = new Set(applied.value.revisions ?? []);
+          pool = pool.filter((candidate) => !used.has(candidate));
+          current = applied.value.document;
+        }
+        const first = tableIds.at(0);
+        if (first === undefined)
+          return panic("The inserted table has no paragraph.");
+        selection = { story, blockId: first, offset: 0 };
+        break;
+      }
+      const op = { ...intent.operation, ...tracked };
+      const located = locateTableRow(document, op);
+      if (located.isErr()) return Result.err(located.error);
+      // The caret lands beside the table: after it, or before it at the end
+      // of its block list.
+      const { list } = located.value;
+      const beside = storyParagraphs(storyBody(document, op.story)).filter(
+        ({ list: other, paragraph }) =>
+          sameBlockList(other, list) && paragraph.paraId !== undefined,
+      );
+      const position = beside.findIndex(
+        ({ index }) => index > located.value.index,
+      );
+      const anchor = (beside[position] ?? beside.at(-1))?.paragraph.paraId;
+      if (anchor === undefined)
+        return Result.err(
+          new DocumentOpRefusal({
+            opType: op.type,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            message: "Removing the table leaves no paragraph for the caret.",
+          }),
+        );
+      const applied = applyDocumentOp(document, op);
+      if (applied.isErr()) return Result.err(applied.error);
+      ops = [
+        trimAppliedNewIds({
+          before: document,
+          op,
+          applied: applied.value,
+          story: op.story,
+        }),
+      ];
+      selection = { story: op.story, blockId: anchor, offset: 0 };
       break;
     }
     case "setList": {

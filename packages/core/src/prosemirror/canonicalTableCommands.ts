@@ -2,7 +2,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { isInTable, selectedRect, type TableRect } from "prosemirror-tables";
 
-import type { TableRow } from "@stll/docx-core/model";
+import type { Table, TableRow } from "@stll/docx-core/model";
 import { DOCUMENT_OP_TYPES, type FormattingPatch } from "@stll/docx-core/ops";
 
 import {
@@ -417,3 +417,67 @@ export const withCanonicalRowInsertion = (
 ): Command => withCanonicalTableStructureCommand(command, insertRow(side));
 export const withCanonicalRowDeletion = (command: Command): Command =>
   withCanonicalTableStructureCommand(command, deleteRows);
+
+/** The table the selection is in, addressed by a paragraph of its own. */
+const deleteTable: StructureLowering = (rect) => {
+  const at = tableAnchor(rect);
+  if (at === undefined) return undefined;
+  return [
+    {
+      type: "editTableBlock",
+      at,
+      edit: { type: DOCUMENT_OP_TYPES.DELETE_TABLE },
+    },
+  ];
+};
+
+export const withCanonicalTableDeletion = (command: Command): Command =>
+  withCanonicalTableStructureCommand(command, deleteTable);
+
+/**
+ * Register the insert table command, lowered to a table and an empty
+ * paragraph after the paragraph that holds the caret, as the command places
+ * them. The table is the one the command built, without the revision marks
+ * it put on its rows; in suggesting mode the engine records its own.
+ */
+export const withCanonicalTableInsertion = (command: Command): Command =>
+  withCanonicalCommand(command, (state) => {
+    const { $from } = state.selection;
+    // The paragraph holding the caret, even from inside an inline content
+    // control: the command places the table after it.
+    let depth = $from.depth;
+    while (depth > 0 && $from.node(depth).type.name !== "paragraph") depth -= 1;
+    if (depth === 0) return undefined;
+    let transaction: Transaction | undefined;
+    if (
+      !command(state, (dispatched) => {
+        transaction = dispatched;
+      }) ||
+      transaction === undefined
+    )
+      return undefined;
+    const inserted = transaction.doc.nodeAt(
+      transaction.mapping.map($from.after(depth), -1),
+    );
+    if (inserted === null || inserted.type.name !== "table") return undefined;
+    const formatting = tableAttrsToFormatting(expectTableAttrs(inserted));
+    const columnWidths = expectTableAttrs(inserted).columnWidths;
+    const table: Table = {
+      type: "table",
+      ...(formatting === undefined ? {} : { formatting }),
+      ...(columnWidths === undefined
+        ? {}
+        : { columnWidths: [...columnWidths] }),
+      rows: standaloneTableRowsFromProseMirror(inserted).map(
+        ({ structuralChange: _change, propertyChanges: _changes, ...row }) =>
+          row,
+      ),
+    };
+    return [
+      {
+        type: "editTableBlock",
+        at: $from.start(depth),
+        edit: { type: DOCUMENT_OP_TYPES.INSERT_TABLE, table },
+      },
+    ];
+  });
