@@ -62,6 +62,7 @@ const RAW_STATE: Record<string, Record<string, string>> = {
     setShowOutline: "boolean",
     setPreviousShowOutlineProp: "boolean",
     setBodyViewEpoch: "number",
+    setBodyEditorView: "set when the body editor view mounts",
     setEditorController: "set when an editor mounts",
     setEditorContentElement: "set when the content element mounts",
     setScrollContainer: "set when the scroll container mounts",

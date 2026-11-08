@@ -73,11 +73,11 @@ export const structurallyEqual = (left: unknown, right: unknown): boolean => {
  * is equal to it,
  * so an unchanged write never re-renders or commits.
  */
-export const keepEqual = <T>(previous: T, next: SetStateAction<T>): T => {
+export function keepEqual<T>(previous: T, next: SetStateAction<T>): T {
   const resolved =
     typeof next === "function" ? (next as (previous: T) => T)(previous) : next;
   return structurallyEqual(previous, resolved) ? previous : resolved;
-};
+}
 
 /**
  * `useState` for state the editor host writes while the user types: the
