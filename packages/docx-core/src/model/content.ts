@@ -1723,6 +1723,16 @@ type TrackedResolutionJoins = {
     source: readonly { space: "revision" | "control"; id: number }[];
     target: readonly { space: "revision" | "control"; id: number }[];
   }[];
+  /**
+   * Identities of the record `levels` above this wrapper, handed to the
+   * piece of it that an edit cut off after this wrapper, when removing this
+   * wrapper leaves that record empty. Saved as its own ignorable attribute.
+   */
+  retainedEnclosing?: readonly {
+    levels: number;
+    source: readonly { space: "revision" | "control"; id: number }[];
+    target: readonly { space: "revision" | "control"; id: number }[];
+  }[];
 };
 
 /**

@@ -190,18 +190,24 @@ test.each(["body", "cell"] as const)(
       expect(paragraphs(accepted.document).at(-1)?.formatting).toEqual(
         final.formatting,
       );
-      for (const source of paragraphs(tracked.document).filter(
-        ({ paraId }) => paraId !== "00000003",
-      )) {
-        const selected = source.content.filter(
-          (node) => node.type === "deletion",
-        );
-        expect(
-          selected
-            .flatMap((node) => (node.type === "deletion" ? node.content : []))
-            .map((node) => node.type),
-        ).toEqual(source.paraId === "00000001" || text !== "" ? ["run"] : []);
-      }
+      // Every original unit stays, struck, before what replaces it: the
+      // last source paragraph's struck text precedes the first new paragraph's
+      // content, and its mark keeps its identity after the split.
+      expect(
+        paragraphs(tracked.document).map(({ paraId, content }) => [
+          paraId,
+          paragraphLogicalText({ type: "paragraph", content }),
+          content.flatMap((node) =>
+            node.type === "deletion"
+              ? node.content.map(({ type }) => type)
+              : [],
+          ),
+        ]),
+      ).toEqual([
+        ["00000001", "original", ["run"]],
+        ["00000003", `${text}first new`, text === "" ? [] : ["run"]],
+        ["00000002", "last new", []],
+      ]);
       expect(rejected.document).toStrictEqual(document);
       expectUndo(tracked, document);
       expectUndo(accepted, tracked.document);

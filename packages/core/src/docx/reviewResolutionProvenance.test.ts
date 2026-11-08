@@ -28,12 +28,14 @@ import {
   parseCopyOriginAncestors,
   parseParagraphMarkResolutionJoin,
   parseResolutionJoins,
+  parseSplitResolutionPiece,
   reviewProvenanceIssue,
   ReviewResolutionProvenanceError,
   serializeBoundaryJoins,
   serializeCopyOriginAncestors,
   serializeParagraphMarkResolutionJoin,
   serializeResolutionJoins,
+  serializeSplitResolutionPiece,
 } from "./reviewResolutionProvenance";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializePartElement } from "./serializer/partNamespaces";
@@ -334,6 +336,62 @@ test("paragraph cut provenance validates private envelopes and typed projection 
     const parsed = readParagraphAttrs(node);
     expect(parsed.ok).toBe(false);
   }
+});
+
+test("a cut record's identity handoff has its own private attribute", () => {
+  const joins = {
+    before: 0,
+    after: 2,
+    remove: 0,
+    retainedEnclosing: [
+      {
+        levels: 1,
+        source: [{ space: "revision", id: 7 }],
+        target: [{ space: "revision", id: 2 }],
+      },
+    ],
+  } as const;
+  const written = serializeResolutionJoins(joins);
+  // Its own attribute beside the joins, never a field inside them: a reader
+  // that does not know it keeps the joins and drops only the handoff.
+  expect(written).toContain("folio:retainedEnclosing=");
+  const stored = /folio:resolutionJoins="([^"]*)"/u.exec(written)?.[1] ?? "";
+  expect(stored).not.toContain("retainedEnclosing");
+  const read = (attributes: string) =>
+    parseResolutionJoins(
+      element(
+        `<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${attributes}/>`,
+      ),
+    );
+  expect(read(written)).toEqual(joins);
+  // A split change carries it on its first piece, beside the piece's joins.
+  const piece = serializeSplitResolutionPiece({ piece: 0, pieces: 2, joins });
+  expect(piece).toContain("folio:retainedEnclosing=");
+  expect(
+    parseSplitResolutionPiece(
+      element(`<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${piece}/>`),
+    ),
+  ).toEqual({ piece: 0, pieces: 2, joins });
+  // An unreadable handoff drops only itself, and says so.
+  const { retainedEnclosing: _handoff, ...withoutHandoff } = joins;
+  for (const encoded of [
+    JSON.stringify({
+      version: 1,
+      value: [{ levels: 0, source: [], target: [] }],
+    }),
+    JSON.stringify({ version: 2, value: joins.retainedEnclosing }),
+    "levels",
+  ]) {
+    const attributes = `${serializeResolutionJoins(withoutHandoff)} folio:retainedEnclosing="${escapeXmlAttribute(encoded)}"`;
+    expect(read(attributes)).toEqual(withoutHandoff);
+    expect(reviewProvenanceIssue("retainedEnclosing", encoded)).toBeDefined();
+  }
+  // Inside the joins attribute it is not folio's own writing: dropped.
+  expect(
+    read(
+      ` folio:resolutionJoins="${escapeXmlAttribute(JSON.stringify({ version: 1, value: joins }))}"`,
+    ),
+  ).toBeUndefined();
 });
 
 test("the paragraph a rejected mark keeps has its own private attribute", () => {
