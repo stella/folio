@@ -15,6 +15,7 @@ import {
 } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
+  type BlockInsertionPoint,
   compileEditorIntent,
   createEditorIntentIdAllocator,
   type DocumentOp,
@@ -50,6 +51,7 @@ import {
   hashFolioAIBlockContent,
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
+import { findOutermostTableBoundary } from "../ai-edits/table-targets";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
@@ -314,11 +316,52 @@ type ResolveBlockInsertionOptions = {
   mintList: (format: FolioAIListKind) => MintedList;
   operation: BlockInsertion;
   paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
+  projection: CanonicalProjection;
   story: OpStory;
   refusal: (
     reason: FolioAIEditSkipReason,
     message?: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
+};
+
+/**
+ * Where an insertion beside `paragraph` goes: beside the paragraph, or, for a
+ * paragraph in a table cell, beside the outermost table, as the default
+ * engine places it. The point names the paragraph on the far side of the
+ * table; none stands there when the table starts or ends its container.
+ */
+const blockInsertionPlace = (
+  operation: BlockInsertion,
+  paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>,
+  projection: CanonicalProjection,
+): { at: BlockInsertionPoint; position: number } | undefined => {
+  const side = operation.type === "insertAfterBlock" ? "after" : "before";
+  const table = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
+  if (table === null)
+    return {
+      at: { type: side, blockId: paragraph.blockId },
+      position:
+        side === "after"
+          ? paragraph.start + paragraph.node.content.size
+          : paragraph.start,
+    };
+  const position = table[side];
+  const resolved = projection.doc.resolve(position);
+  const beside = side === "after" ? resolved.nodeAfter : resolved.nodeBefore;
+  if (beside?.type.name !== "paragraph") return undefined;
+  const neighbour = projection.paragraphStartingAt(
+    side === "after" ? position : position - beside.nodeSize,
+  );
+  if (neighbour === undefined) return undefined;
+  // After the table is before the paragraph that follows it, and before it
+  // is after the one it follows.
+  return {
+    at: {
+      type: side === "after" ? "before" : "after",
+      blockId: neighbour.blockId,
+    },
+    position,
+  };
 };
 
 /**
@@ -329,6 +372,7 @@ type ResolveBlockInsertionOptions = {
 const resolveBlockInsertion = ({
   operation,
   paragraph,
+  projection,
   story,
   mintList,
   refusal,
@@ -420,23 +464,23 @@ const resolveBlockInsertion = ({
         : { formatting: own as ParagraphFormatting }),
     };
   });
+  const place = blockInsertionPlace(operation, paragraph, projection);
+  if (place === undefined)
+    return refusal(
+      "unsupportedBlock",
+      "Canonical insertion beside a table needs a paragraph on that side of it.",
+    );
   // The anchor keeps its identity; the new paragraph takes a fresh one.
   const intents: EditorIntent[] = [
     {
       type: "insertParagraphs",
       story,
-      at: {
-        type: operation.type === "insertAfterBlock" ? "after" : "before",
-        blockId: paragraph.blockId,
-      },
+      at: place.at,
       paragraphs,
       ...(stated.newList === undefined ? {} : { newList: stated.newList }),
     },
   ];
-  const position =
-    operation.type === "insertAfterBlock"
-      ? paragraph.start + paragraph.node.content.size
-      : paragraph.start;
+  const { position } = place;
   // A comment covers the inserted text, so an insertion with no text has
   // nothing for it to cover, as the default engine finds.
   if (
@@ -457,7 +501,7 @@ const resolveBlockInsertion = ({
   if (operation.comment === undefined)
     return Result.ok({ type: "plain" as const, operation, ...resolved });
   // Where the inserted paragraphs are is known once they are compiled.
-  const anchor = { story, blockId: paragraph.blockId, offset: 0 };
+  const anchor = { story, blockId: place.at.blockId, offset: 0 };
   return Result.ok({
     type: "commented" as const,
     operation,
@@ -1392,6 +1436,7 @@ export class CanonicalPublicOperations {
       return resolveBlockInsertion({
         operation,
         paragraph,
+        projection: projection.value,
         story,
         mintList,
         refusal,

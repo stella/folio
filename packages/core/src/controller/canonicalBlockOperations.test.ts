@@ -525,6 +525,28 @@ describe("inline line breaks", () => {
     });
 });
 
+describe("an insertion beside a table cell's paragraph", () => {
+  // The default engine places it beside the table, not inside the cell.
+  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const mode of ["direct", "tracked-changes"] as const)
+      test(`${type}, ${mode}`, async () => {
+        const source = await packageOf(BODIES["before a table"]);
+        const operation = {
+          id: "op",
+          type,
+          blockId: "10000004",
+          text: "Beside",
+        } as const satisfies FolioDocumentOperation;
+        const run = await canonicalRun(source, operation, mode);
+        expect(run.skipped).toEqual([]);
+        expect(
+          await outcomes(await viaCanonicalEngine(source, operation, mode)),
+        ).toEqual(
+          await outcomes(await viaDefaultEngine(source, operation, mode)),
+        );
+      });
+});
+
 describe("a block move matches the default engine", () => {
   /** The source paragraph moved after the anchor, both halves naming one move. */
   const move = (destination: "insertAfterBlock" | "insertBeforeBlock") =>

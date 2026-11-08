@@ -536,6 +536,11 @@ class CanonicalProjection {
     return this.paragraphsById.get(blockId);
   }
 
+  /** The paragraph whose node starts at `before`. */
+  paragraphStartingAt(before: number): ParagraphAddress | undefined {
+    return this.paragraphs.find(({ start }) => start === before + 1);
+  }
+
   nextParagraphInContainer(blockId: string): ParagraphAddress | undefined {
     const index = this.paragraphs.findIndex(
       (paragraph) => paragraph.blockId === blockId,
