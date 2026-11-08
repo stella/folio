@@ -936,9 +936,9 @@ const createHeadlessPlugins = (
   styles: Document["package"]["styles"],
   numbering: NumberingDefinitions | null | undefined,
 ): Plugin[] => [
+  createDocumentNumberingPlugin(numbering),
   ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
   createDocumentStylesPlugin(styles),
-  createDocumentNumberingPlugin(numbering),
 ];
 
 const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>

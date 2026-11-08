@@ -157,10 +157,10 @@ const buildInitialState = (
         doc: document,
         schema,
         plugins: [
+          createDocumentNumberingPlugin(numbering),
           ...manager.getPlugins(),
           ...externalPlugins,
           createDocumentStylesPlugin(styles),
-          createDocumentNumberingPlugin(numbering),
         ],
       }),
     ),
@@ -423,8 +423,8 @@ export const createNoteEditorManager = (
           ? EditorState.create({
               doc: canonicalProjection,
               plugins: [
-                createDocumentStyleContextPlugin(styles),
                 createDocumentNumberingPlugin(numbering),
+                createDocumentStyleContextPlugin(styles),
               ],
             })
           : buildInitialState(
