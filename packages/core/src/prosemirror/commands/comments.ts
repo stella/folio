@@ -27,6 +27,7 @@ import { markParagraphPropertySourceTransfers } from "../../docx/paragraphProper
 import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
 import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
+import type { Comment } from "../../types/content";
 import type { RunPropertyChange } from "../../types/document";
 import {
   deleteTextBoxesAnchoredAt,
@@ -2235,6 +2236,21 @@ export function suggestionCommentIds(
   suggestionId: string,
 ): number[] {
   return [...(collectSuggestions(state).get(suggestionId)?.commentIds ?? [])];
+}
+
+/**
+ * A host's comment list without the given comments and their replies: what
+ * it keeps once a rejected suggestion takes its proposed comments away.
+ */
+export function withoutCommentThreads(
+  comments: readonly Comment[],
+  ids: readonly number[],
+): Comment[] {
+  const removed = new Set(ids);
+  return comments.filter(
+    ({ id, parentId }) =>
+      !removed.has(id) && (parentId === undefined || !removed.has(parentId)),
+  );
 }
 
 /**

@@ -349,6 +349,35 @@ export const buildCanonicalBridge = (
       skipped: result.skipped.map(({ reason }) => reason),
     };
   },
+  /** Propose a comment on a block as a suggestion of its own. */
+  suggestBlockComment: (id: string, blockId: string, text: string) => {
+    const ref = getRef();
+    const snapshot = ref?.createAIEditSnapshot();
+    if (!ref || !snapshot) return null;
+    const result = ref.applyDocumentOperations({
+      undefinedReferences: "refuse",
+      snapshot,
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [
+          { id, type: "commentOnBlock", blockId, comment: { text } },
+        ],
+      },
+    });
+    return {
+      applied: result.applied.map(({ suggestionId }) => suggestionId ?? null),
+      skipped: result.skipped.map(({ reason }) => reason),
+    };
+  },
+  /** Load a package in whichever session the page runs. */
+  loadAnySession: async (bytes: number[]) => {
+    const ref = getRef();
+    if (!ref) return false;
+    await ref.loadDocumentBuffer(new Uint8Array(bytes));
+    ref.ensureEditorView();
+    return true;
+  },
   suggestionIds: () =>
     getRef()
       ?.getSuggestions()

@@ -89,6 +89,8 @@ import {
   getSuggestions,
   rejectAIEditRevision,
   rejectSuggestion,
+  suggestionCommentIds,
+  withoutCommentThreads,
 } from "@stll/folio-core/prosemirror/commands/comments";
 import {
   blockSdtAttrsToSdtProperties,
@@ -1005,7 +1007,16 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           "reject",
           opts.author(),
         );
-      return rejectSuggestion(suggestionId)(view.state, view.dispatch);
+      // The comments the suggestion proposed go with it, from the sidebar
+      // as much as from the document.
+      const proposed = suggestionCommentIds(view.state, suggestionId);
+      const rejected = rejectSuggestion(suggestionId)(
+        view.state,
+        view.dispatch,
+      );
+      if (rejected && proposed.length > 0)
+        opts.setComments(withoutCommentThreads(opts.getComments(), proposed));
+      return rejected;
     },
     scrollToSuggestion: (suggestionId) => {
       const view = opts.editorView.value;
