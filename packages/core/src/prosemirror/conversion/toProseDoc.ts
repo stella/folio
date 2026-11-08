@@ -1112,6 +1112,11 @@ function convertParagraph(
         directFormatting: formatting,
         paragraphMarkFormatting: inheritableParagraphRunFormatting,
         suppressedFormatting,
+        characterStyleFormatting:
+          formatting?.styleId === undefined
+            ? undefined
+            : (styleResolver?.getRunStyleOwnProperties(formatting.styleId) ??
+              undefined),
       }) ?? (inheritableParagraphRunFormatting ? {} : undefined);
     return {
       formatting: suppressedFormatting,

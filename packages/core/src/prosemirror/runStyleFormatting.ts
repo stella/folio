@@ -143,12 +143,19 @@ type GetParagraphMarkSuppressionOverridesOptions = {
   directFormatting: TextFormatting | undefined;
   paragraphMarkFormatting: TextFormatting | undefined;
   suppressedFormatting: TextFormatting | undefined;
+  /**
+   * The run's own character style. A property it states is the style's to
+   * give, not the paragraph mark's to take away: the run keeps it as the
+   * style cascade resolves it, with no override saying it is off.
+   */
+  characterStyleFormatting: TextFormatting | undefined;
 };
 
 export const getParagraphMarkSuppressionOverrides = ({
   directFormatting,
   paragraphMarkFormatting,
   suppressedFormatting,
+  characterStyleFormatting,
 }: GetParagraphMarkSuppressionOverridesOptions): TextFormatting | undefined => {
   if (!paragraphMarkFormatting) {
     return undefined;
@@ -158,6 +165,7 @@ export const getParagraphMarkSuppressionOverrides = ({
     if (
       paragraphMarkFormatting[property] !== undefined &&
       directFormatting?.[property] === undefined &&
+      characterStyleFormatting?.[property] === undefined &&
       suppressedFormatting?.[property] === false
     ) {
       Reflect.set(overrides, property, false);
@@ -166,6 +174,7 @@ export const getParagraphMarkSuppressionOverrides = ({
   if (
     paragraphMarkFormatting.underline !== undefined &&
     directFormatting?.underline === undefined &&
+    characterStyleFormatting?.underline === undefined &&
     suppressedFormatting?.underline?.style === "none"
   ) {
     overrides.underline = { style: "none" };
