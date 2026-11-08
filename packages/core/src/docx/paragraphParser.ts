@@ -855,11 +855,16 @@ const linkWithFields = (
     rootXmlns,
     "hyperlink",
   );
-  if (!contents.some(({ type }) => type === "complexField")) return undefined;
   const linked: Hyperlink["children"][number][] = [];
-  for (const item of contents) {
-    if (!isHyperlinkContent(item)) return undefined;
-    linked.push(item);
+  for (const item of contents) if (isHyperlinkContent(item)) linked.push(item);
+  if (
+    linked.length !== contents.length ||
+    !linked.some(({ type }) => type === "complexField")
+  ) {
+    // The link is read the plain way instead: what this read built spends no
+    // preview allowance.
+    previews.release(contents);
+    return undefined;
   }
   return { ...parseHyperlinkShell(node, rels), children: linked };
 };
