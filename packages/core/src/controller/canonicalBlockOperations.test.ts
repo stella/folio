@@ -526,6 +526,41 @@ describe("inline line breaks", () => {
     });
 });
 
+describe("a new list beside a dangling list reference", () => {
+  // A paragraph names list 2, which the package does not define. A new list
+  // takes another id, so that paragraph stays out of it.
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`takes an id no paragraph names, ${mode}`, async () => {
+      const source = await packageOf([
+        paragraph(
+          "10000001",
+          "Dangling",
+          '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>',
+        ),
+        paragraph("10000002", "Beta"),
+      ]);
+      const operation = {
+        id: "op",
+        type: "insertAfterBlock",
+        blockId: "10000002",
+        text: "Item",
+        numbering: { kind: "newList", format: "bullet" },
+      } as const satisfies FolioDocumentOperation;
+      const run = await canonicalRun(source, operation, mode);
+      expect(run.skipped).toEqual([]);
+      const expected = await outcomes(
+        await viaDefaultEngine(source, operation, mode),
+      );
+      const actual = await outcomes(
+        await viaCanonicalEngine(source, operation, mode),
+      );
+      // The paragraph that named list 2 stays out of the new list.
+      for (const state of ["pending", "accepted", "rejected"] as const)
+        expect(actual[state].at(0)?.numPr).toEqual({ kind: "none" });
+      expect(actual).toEqual(expected);
+    });
+});
+
 describe("an insertion beside a table cell's paragraph", () => {
   // The default engine places it beside the table, not inside the cell.
   for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
