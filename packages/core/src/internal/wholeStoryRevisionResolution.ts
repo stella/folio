@@ -30,10 +30,7 @@ import {
   isBlockBoundaryNode,
   paragraphRemainsOf,
 } from "../prosemirror/keptRangeBoundaries";
-import {
-  joinedParagraphAttrs,
-  rejectionKeepsIdentity,
-} from "../prosemirror/paragraphMarkJoin";
+import { joinedParagraphAttrs } from "../prosemirror/paragraphMarkJoin";
 import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
@@ -638,15 +635,7 @@ const resolveStructure = ({
       // is the chain's last one: its identity, properties, mark and section
       // endpoint survive whether this one still has words or not. Its runs
       // are re-read in the survivor's style when the chain is assembled.
-      // A split that kept the identity on its first half gives the paragraph
-      // back under it, as the range resolver does.
-      const joinedAttrs = joinedParagraphAttrs(
-        paragraph,
-        chain.node,
-        context.mode === "reject" &&
-          markWasAdded &&
-          rejectionKeepsIdentity(paragraph),
-      );
+      const joinedAttrs = joinedParagraphAttrs(paragraph, chain.node);
       if (joinedAttrs !== chain.node.attrs) {
         chain.node = rebuild(chain.node, { attrs: joinedAttrs });
       }

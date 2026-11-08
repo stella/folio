@@ -80,10 +80,7 @@ import {
   lockedControlViolationOfTransform,
 } from "../lockedControls";
 import { resolveStateStory } from "../markupViewProjection";
-import {
-  joinAtParagraphMark,
-  rejectionKeepsIdentity,
-} from "../paragraphMarkJoin";
+import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -1003,12 +1000,6 @@ function resolveChangeUnguarded(
             next:
               destination?.type.name === "paragraph" ? destination : nextNode,
             styleResolver,
-            // A split that kept the identity on its first half gives the
-            // paragraph back under it; see `rejectionKeepsIdentity`.
-            keepIdentity:
-              mode === "reject" &&
-              op.markWasAdded &&
-              rejectionKeepsIdentity(paragraph),
           });
           joinSeams.push({
             position: mappedPos + 1 + paragraph.content.size,

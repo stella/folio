@@ -568,7 +568,13 @@ describe("block-level public operations match the default engine", () => {
             expected,
             source,
           );
-          // The default engine's suggestion resolves the same way.
+          // The default engine's suggestion resolves the same way; it
+          // carries no splits or merges.
+          if (
+            operation.type === "splitBlock" ||
+            operation.type === "mergeBlockWithNext"
+          )
+            return;
           expect(
             await blocksOf(
               await viaDefaultSuggested(source, operation, "reject"),
