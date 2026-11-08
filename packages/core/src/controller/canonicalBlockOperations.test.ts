@@ -702,17 +702,6 @@ describe("an insertion beside the paragraph the batch deletes", () => {
               ] as const satisfies readonly FolioDocumentOperation[];
               const operations = reversed ? [...halves].reverse() : halves;
               const run = await canonicalRun(source, operations, mode);
-              // Beside a paragraph that ends the body, or directly before a
-              // table, the insertion is still refused, and says so.
-              if (
-                shape === "ending the body" ||
-                (shape === "before a table" && mode === "direct")
-              ) {
-                expect(run.skipped.map(({ reason }) => reason)).toEqual([
-                  "overlappingOperation",
-                ]);
-                return;
-              }
               expect(run.skipped).toEqual([]);
               expect(
                 await outcomes(
@@ -724,6 +713,34 @@ describe("an insertion beside the paragraph the batch deletes", () => {
                 ),
               );
             });
+});
+
+describe("a deletion beside an insertion the batch refuses", () => {
+  // The deletion resolves on its own, as it would without the insertion.
+  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const mode of ["direct", "tracked-changes"] as const)
+      test(`${type} refused, ${mode}`, async () => {
+        const source = await packageOf(BODIES["ending the body"]);
+        const operations = [
+          { id: "from", type: "deleteBlock", blockId: "10000002" },
+          {
+            id: "to",
+            type,
+            blockId: "10000002",
+            text: "Moved",
+            precondition: { blockTextHash: "stale" },
+          },
+        ] as const satisfies readonly FolioDocumentOperation[];
+        const run = await canonicalRun(source, operations, mode);
+        expect(run.skipped.map(({ id, reason }) => [id, reason])).toEqual([
+          ["to", "preconditionFailed"],
+        ]);
+        expect(
+          await outcomes(await viaCanonicalEngine(source, operations, mode)),
+        ).toEqual(
+          await outcomes(await viaDefaultEngine(source, operations, mode)),
+        );
+      });
 });
 
 describe("a move whose source a content lock keeps", () => {

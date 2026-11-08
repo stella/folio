@@ -176,6 +176,12 @@ type ResolvedOperation = {
    * it: an insertion beside that paragraph keeps its own anchor.
    */
   removesParagraphBeforeBlock?: true;
+  /**
+   * Resolved beside a paragraph no paragraph follows, counting on the
+   * batch's other half there: the deletion of that paragraph, or an
+   * insertion after it. Without that half it resolves again on its own.
+   */
+  besideDeletion?: true;
 } & (
   | { type: "plain"; operation: FolioDocumentOperation }
   | {
@@ -585,6 +591,8 @@ type ResolveBlockDeletionOptions = {
   projectionStory: OpStory;
   doc: PMNode;
   tracked: boolean;
+  /** Whether the batch inserts a paragraph after this one, which then follows it. */
+  gainsFollower: boolean;
   refusal: (
     reason: FolioAIEditSkipReason,
     message?: string,
@@ -692,6 +700,13 @@ type ResolveCanonicalPublicOperationOptions = {
   tracked: boolean;
   /** A new list of one kind for this operation, minted after the batch's earlier ones. */
   mintList: (format: FolioAIListKind) => MintedList;
+  /** The blocks the batch deletes, and those it inserts beside. */
+  besideDeletions: BesideDeletions;
+};
+
+type BesideDeletions = {
+  deleted: ReadonlySet<string>;
+  insertedBeside: ReadonlySet<string>;
 };
 
 /**
@@ -832,6 +847,34 @@ export class CanonicalPublicOperations {
         ...(normalizations.length === 0 ? {} : { normalizations }),
       };
     };
+    const besideDeletions: BesideDeletions = {
+      deleted: new Set(
+        batch.operations.flatMap((operation) =>
+          operation.type === "deleteBlock" ? [operation.blockId] : [],
+        ),
+      ),
+      insertedBeside: new Set(
+        batch.operations.flatMap((operation) =>
+          operation.type === "insertAfterBlock" ||
+          operation.type === "insertBeforeBlock"
+            ? [operation.blockId]
+            : [],
+        ),
+      ),
+    };
+    const overlapsResolved = (candidate: ResolvedOperation) =>
+      resolved.some(
+        (earlier) =>
+          earlier !== candidate &&
+          !besideItsDeletion(earlier, candidate) &&
+          ((candidate.from < earlier.to && candidate.to > earlier.from) ||
+            (earlier.from === earlier.to &&
+              candidate.from <= earlier.from &&
+              candidate.to >= earlier.from) ||
+            (candidate.from === candidate.to &&
+              candidate.from >= earlier.from &&
+              candidate.from <= earlier.to)),
+      );
     for (const operation of batch.operations) {
       if (!state || projected.isErr() || session.isComposing) {
         skip(operation.id, "documentNotEditable");
@@ -876,6 +919,7 @@ export class CanonicalPublicOperations {
         diff,
         tracked: batch.mode !== "direct",
         mintList,
+        besideDeletions,
       });
       if (compiled.isErr()) {
         if (compiled.error.reason === "unsupportedBlock")
@@ -885,24 +929,55 @@ export class CanonicalPublicOperations {
         skip(operation.id, compiled.error.reason, compiled.error.message);
         continue;
       }
-      if (
-        resolved.some(
-          (earlier) =>
-            !besideItsDeletion(earlier, compiled.value) &&
-            ((compiled.value.from < earlier.to &&
-              compiled.value.to > earlier.from) ||
-              (earlier.from === earlier.to &&
-                compiled.value.from <= earlier.from &&
-                compiled.value.to >= earlier.from) ||
-              (compiled.value.from === compiled.value.to &&
-                compiled.value.from >= earlier.from &&
-                compiled.value.from <= earlier.to)),
-        )
-      ) {
+      if (overlapsResolved(compiled.value)) {
         skip(operation.id, "overlappingOperation");
         continue;
       }
       resolved.push(compiled.value);
+    }
+    // An operation resolved beside a deleted paragraph that ends its run
+    // counts on its other half; where that half did not resolve, it resolves
+    // again on its own, against the operations that did.
+    for (const item of [...resolved]) {
+      if (item.besideDeletion !== true || !state) continue;
+      const { operation } = item;
+      if (
+        operation.type !== "deleteBlock" &&
+        operation.type !== "insertAfterBlock" &&
+        operation.type !== "insertBeforeBlock"
+      )
+        continue;
+      const partnered = resolved.some(({ operation: other }) =>
+        operation.type === "deleteBlock"
+          ? (other.type === "insertAfterBlock" ||
+              other.type === "insertBeforeBlock") &&
+            other.blockId === operation.blockId
+          : other.type === "deleteBlock" && other.blockId === operation.blockId,
+      );
+      if (partnered) continue;
+      resolved.splice(resolved.indexOf(item), 1);
+      const alone = this.resolve({
+        operation,
+        options,
+        state,
+        story,
+        diff,
+        tracked: batch.mode !== "direct",
+        mintList,
+        besideDeletions: {
+          deleted: new Set(),
+          insertedBeside: new Set(),
+        },
+      });
+      if (alone.isErr()) {
+        skip(operation.id, alone.error.reason, alone.error.message);
+        continue;
+      }
+      if (overlapsResolved(alone.value)) {
+        skip(operation.id, "overlappingOperation");
+        continue;
+      }
+      resolved.push(alone.value);
     }
     // A move id names one relocation, a move only when it reaches exactly one
     // source and one destination, as the default engine pairs them; an
@@ -1332,6 +1407,7 @@ export class CanonicalPublicOperations {
     projectionStory,
     doc,
     tracked,
+    gainsFollower,
     refusal,
   }: ResolveBlockDeletionOptions) {
     // A direct deletion leaves no text for a comment to cover, as the default
@@ -1379,8 +1455,11 @@ export class CanonicalPublicOperations {
     // records a move's source, which the batch pairs before compiling.
     // So does a deletion the paragraph after it survives, by identity: an
     // insertion before that paragraph in the same batch leaves it in place.
+    // With no paragraph after it, one the batch inserts after it follows it
+    // once that insertion applies, which goes first at one position.
     if (
       next !== undefined ||
+      gainsFollower ||
       (tracked && (after !== null || operation.moveId !== undefined))
     ) {
       const intents: EditorIntent[] = [
@@ -1395,7 +1474,9 @@ export class CanonicalPublicOperations {
         normalizations: [],
         from: paragraph.start,
         to: end,
-        ...(after === null ? {} : { removesParagraphBeforeBlock: true }),
+        ...(after === null && !gainsFollower
+          ? {}
+          : { removesParagraphBeforeBlock: true }),
       });
     }
     let range: { from: number; to: number } | undefined;
@@ -1476,6 +1557,7 @@ export class CanonicalPublicOperations {
     diff,
     tracked,
     mintList,
+    besideDeletions,
   }: ResolveCanonicalPublicOperationOptions) {
     const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
       Result.err(
@@ -1530,15 +1612,31 @@ export class CanonicalPublicOperations {
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
     if (hash !== anchor.textHash) return refusal("changedBlock");
-    if (isBlockInsertion(operation))
-      return resolveBlockInsertion({
-        operation,
+    // A paragraph no paragraph follows, deleted by the same batch: before it
+    // and after it are one place once it is gone, and after it, the deletion
+    // keeps a paragraph to remove it by identity.
+    const followed =
+      state.doc.resolve(paragraph.start + paragraph.node.content.size + 1)
+        .nodeAfter?.type.name === "paragraph";
+    if (isBlockInsertion(operation)) {
+      const besideDeletion =
+        operation.type === "insertBeforeBlock" &&
+        !followed &&
+        besideDeletions.deleted.has(blockId);
+      const inserted = resolveBlockInsertion({
+        operation: besideDeletion
+          ? { ...operation, type: "insertAfterBlock" }
+          : operation,
         paragraph,
         projection: projection.value,
         story,
         mintList,
         refusal,
       });
+      return besideDeletion
+        ? inserted.map((value) => ({ ...value, besideDeletion: true as const }))
+        : inserted;
+    }
     if (operation.type === "setBlockParagraphProperties")
       return resolveParagraphProperties({
         operation,
@@ -1547,16 +1645,23 @@ export class CanonicalPublicOperations {
         mintList,
         refusal,
       });
-    if (operation.type === "deleteBlock")
-      return this.resolveBlockDeletion({
+    if (operation.type === "deleteBlock") {
+      const gainsFollower =
+        !followed && besideDeletions.insertedBeside.has(blockId);
+      const deleted = this.resolveBlockDeletion({
         operation,
         paragraph,
         projection: projection.value,
         projectionStory: story,
         doc: state.doc,
         tracked,
+        gainsFollower,
         refusal,
       });
+      return gainsFollower
+        ? deleted.map((value) => ({ ...value, besideDeletion: true as const }))
+        : deleted;
+    }
     let start = 0;
     let end = clean.text.length;
     let text = "";
