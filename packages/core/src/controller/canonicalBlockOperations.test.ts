@@ -54,6 +54,15 @@ const packageOf = async (body: readonly string[]) => {
   const zip = await ZipArchive.read(
     await (await import("../docx/rezip")).createEmptyDocx(),
   );
+  const styles = (await zip.entry("word/styles.xml")?.text()) ?? "";
+  // A heading style with its own alignment and spacing, for a restyle.
+  zip.set(
+    "word/styles.xml",
+    styles.replace(
+      "</w:styles>",
+      '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:spacing w:before="480"/><w:outlineLvl w:val="0"/></w:pPr></w:style></w:styles>',
+    ),
+  );
   zip.set(
     "word/document.xml",
     `${HEAD}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${body.join("")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
@@ -79,8 +88,20 @@ const blocksOf = async (bytes: ArrayBuffer) => {
                 : [],
             )
             .join(""),
+          // Source paragraphs keep their ids; a new one's is the engine's own.
+          id: block.paraId?.startsWith("1000000") ? block.paraId : "new",
+          pageBreakBefore: block.formatting?.pageBreakBefore,
+          runFormatting: block.content.flatMap((item) =>
+            item.type === "run" && item.formatting !== undefined
+              ? [item.formatting]
+              : [],
+          ),
+          styleId: block.formatting?.styleId,
+          outlineLevel: block.formatting?.outlineLevel,
           alignment: block.formatting?.alignment,
           indentLeft: block.formatting?.indentLeft,
+          indentRight: block.formatting?.indentRight,
+          spaceBefore: block.formatting?.spaceBefore,
           spaceAfter: block.formatting?.spaceAfter,
         }
       : { type: block.type },
@@ -187,10 +208,100 @@ const viaCanonicalEngine = async (
 const REFUSED: Record<string, string> = {
   "deleteBlock before a table, tracked-changes":
     "Canonical tracked deletion of a paragraph before a table is unavailable.",
+  "deleteBlock ending the body, direct":
+    "Canonical direct deletion of the paragraph that ends its block list is unavailable.",
+  "deleteBlock before a table, direct":
+    "Canonical direct deletion of the paragraph that ends its block list is unavailable.",
+  "insertAfterBlock ending the body, direct":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock ending the body, tracked-changes":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock before a table, direct":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock before a table, tracked-changes":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock blank ending the body, direct":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock blank ending the body, tracked-changes":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock blank before a table, direct":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock blank before a table, tracked-changes":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock without inheritance ending the body, direct":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock without inheritance ending the body, tracked-changes":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock without inheritance before a table, direct":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+  "insertAfterBlock without inheritance before a table, tracked-changes":
+    "Canonical insertion after a paragraph no paragraph follows is unavailable.",
 };
 
 const OPERATIONS = {
   deleteBlock: { id: "op", type: "deleteBlock", blockId: "10000002" },
+  insertAfterBlock: {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "Inserted",
+  },
+  insertBeforeBlock: {
+    id: "op",
+    type: "insertBeforeBlock",
+    blockId: "10000002",
+    text: "Inserted",
+  },
+  "insertAfterBlock blank": {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "",
+  },
+  "insertAfterBlock without inheritance": {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "Inserted",
+    inheritFormatting: false,
+  },
+  "insertBeforeBlock restyled": {
+    id: "op",
+    type: "insertBeforeBlock",
+    blockId: "10000002",
+    text: "Inserted",
+    styleId: "Heading1",
+    alignment: null,
+    spacing: { spaceAfter: 60 },
+    pageBreakBefore: true,
+  },
+  "setBlockParagraphProperties alignment": {
+    id: "op",
+    type: "setBlockParagraphProperties",
+    blockId: "10000002",
+    properties: { alignment: "right" },
+  },
+  "setBlockParagraphProperties spacing and cleared indentation": {
+    id: "op",
+    type: "setBlockParagraphProperties",
+    blockId: "10000002",
+    properties: { spacing: { spaceBefore: 120 }, indentation: null },
+  },
+  "setBlockParagraphProperties partial indentation": {
+    id: "op",
+    type: "setBlockParagraphProperties",
+    blockId: "10000002",
+    properties: {
+      indentation: { indentRight: 360 },
+      outlineLevel: { kind: "heading", level: 1 },
+    },
+  },
+  "setBlockParagraphProperties style": {
+    id: "op",
+    type: "setBlockParagraphProperties",
+    blockId: "10000002",
+    properties: { styleId: "Heading1" },
+  },
 } as const satisfies Record<string, FolioDocumentOperation>;
 
 describe("block-level public operations match the default engine", () => {
