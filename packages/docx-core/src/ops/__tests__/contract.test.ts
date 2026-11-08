@@ -182,6 +182,43 @@ describe("the seed contract", () => {
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID);
   });
 
+  test("counts a cell-level control restated in its wrapper order once", () => {
+    const control = { sdtType: "plainText" as const, id: 15, alias: "Company" };
+    const document = (other: typeof control): Document => ({
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      content: [paragraph("00000001", "a")],
+                      contentControls: [control],
+                      carrierStack: [{ type: "sdt", properties: other }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    // The parser records a cell's control in its stack and in its wrapper
+    // order: one control.
+    expect(
+      reasonOf(document({ ...control }), typing("00000001")),
+    ).toBeUndefined();
+    // A different control with the same id is still a second one.
+    expect(
+      reasonOf(document({ ...control, alias: "Other" }), typing("00000001")),
+    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID);
+  });
+
   test("refuses a section view out of step with the body", () => {
     const document: Document = {
       package: {

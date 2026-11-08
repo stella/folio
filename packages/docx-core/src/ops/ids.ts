@@ -235,8 +235,9 @@ const controlIdOf = (
 export const identityKeysIn = (value: unknown): string[] => {
   const out: string[] = [];
   // A row- or cell-level content control holding several rows or cells is
-  // recorded on each of them (`TableRow.contentControls`): equal records there
-  // are one control. A different record with the same id is a second one.
+  // recorded on each of them (`TableRow.contentControls`), and again in each
+  // one's wrapper order (`carrierStack`): equal records there are one
+  // control. A different record with the same id is a second one.
   const stacked = new Map<number, Record<string, unknown>[]>();
   walk({
     value,
@@ -247,7 +248,12 @@ export const identityKeysIn = (value: unknown): string[] => {
       }
       const control = controlIdOf(entries, { heldBy, ownerType });
       if (control === undefined) return;
-      if (heldBy === CONTENT_CONTROL_STACK) {
+      // A table wrapper's mixed-order record (`carrierStack`) restates the
+      // same control the stack holds.
+      if (
+        heldBy === CONTENT_CONTROL_STACK ||
+        (heldBy === "properties" && ownerType === "sdt")
+      ) {
         const record = Object.fromEntries(entries);
         const seen = stacked.get(control) ?? [];
         if (seen.some((other) => structurallyEqual(other, record))) return;
