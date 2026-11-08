@@ -1022,8 +1022,16 @@ export class CanonicalPublicOperations {
               code: "uniformReplacementFormatting",
             });
         }
-        const changeFrom = projection.value.addressAt(gap.from);
-        const changeTo = projection.value.addressAt(gap.to);
+        // A replaced range takes the editor's selection rule: its edges stay
+        // inside the markers beside them, so replacing exactly the words a
+        // comment covers keeps the comment on the new text, pending and
+        // accepted. An insertion at a point takes the caret's gap.
+        const edges =
+          gap.from < gap.to
+            ? projection.value.rangeEdgesAt(gap.from, gap.to)
+            : undefined;
+        const changeFrom = projection.value.addressAt(gap.from, edges?.start);
+        const changeTo = projection.value.addressAt(gap.to, edges?.end);
         if (changeFrom.isErr() || changeTo.isErr())
           return refusal("unsupportedBlock");
         intents.push({
