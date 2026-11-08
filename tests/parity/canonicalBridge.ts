@@ -22,6 +22,20 @@ import {
 import { waitForCanonicalLoadOwner } from "./canonicalLoadOwner";
 import { canonicalTextSelection } from "./canonicalTextSelection";
 
+/**
+ * Each conversion salts the ids it mints for text box groups and anchors, so
+ * two conversions of one document differ only there; compare without them.
+ */
+const MINTED_ID_ATTRS = new Set(["_docxGroupId", "_docxAnchorId", "anchorId"]);
+const withoutMintedIds = (value: unknown): unknown =>
+  JSON.parse(
+    JSON.stringify(value, (key, field: unknown) =>
+      MINTED_ID_ATTRS.has(key) && typeof field === "string"
+        ? field.replace(/^[^:]*:/u, "")
+        : field,
+    ),
+  );
+
 type CanonicalPlaygroundRef = {
   getDocument: () => Document | null;
   getEditor: () => FolioEditor | null;
@@ -135,7 +149,10 @@ export const buildCanonicalBridge = (
       projectionJSON: state?.doc.toJSON() ?? null,
       canonicalProjectionJSON: canonicalProjection?.toJSON() ?? null,
       projectionMatchesCanonical: Boolean(
-        state && canonicalProjection && state.doc.eq(canonicalProjection),
+        state &&
+        canonicalProjection &&
+        JSON.stringify(withoutMintedIds(state.doc.toJSON())) ===
+          JSON.stringify(withoutMintedIds(canonicalProjection.toJSON())),
       ),
       provenance: { valid: provenanceValid, capturedParagraphCount },
       text: state?.doc.textContent ?? null,
