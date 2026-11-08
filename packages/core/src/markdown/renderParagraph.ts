@@ -15,7 +15,7 @@
 import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
 import { countParagraphList } from "./countParagraphList";
-import { inlineBreaksToHtml } from "./escape";
+import { inlineBreaksToHtml, protectBreakBlanks } from "./escape";
 import { renderParagraphInline } from "./renderRuns";
 import type { RenderContext } from "./types";
 
@@ -52,7 +52,10 @@ export function renderParagraphBlock(
 ): RenderedParagraph {
   // Every paragraph advances the list counter, whatever it renders as.
   const { visibleList, label } = countParagraphList(ctx, pkg, para);
-  const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
+  const written = renderParagraphInline(ctx, pkg, para.content, para.paraId);
+  // Whether a block shows any text is read before its blanks are encoded.
+  const blank = written.trim().length === 0;
+  const inline = protectBreakBlanks(written);
   const styleId = para.formatting?.styleId;
 
   const headingLevel = markdownHeadingLevel(ctx, para);
@@ -61,7 +64,7 @@ export function renderParagraphBlock(
     // A numbered heading (`1. Scope`, through its style's `w:numPr` or its
     // own) keeps its number; a bulleted one its glyph, as a heading has no
     // Markdown bullet syntax to borrow.
-    if (!inline || (!inline.trim() && label === undefined)) {
+    if (!inline || (blank && label === undefined)) {
       // Whitespace without a visible list label carries no text block.
       return { type: "paragraph", markdown: "" };
     }
@@ -79,7 +82,7 @@ export function renderParagraphBlock(
   }
 
   if (visibleList && label !== undefined) {
-    return renderListItem(ctx, visibleList, label, inline);
+    return renderListItem(ctx, { list: visibleList, label, inline, blank });
   }
 
   ctx.listIndentWidths = [];
@@ -156,11 +159,17 @@ function listIndentWidth(ctx: RenderContext, level: number): number {
  * 2). `ctx.listIndentWidths` is updated with this item's own marker width so
  * a following, deeper item can indent correctly under it.
  */
+type ListItemText = {
+  list: ListRendering;
+  label: string;
+  inline: string;
+  /** Whether the item shows no text, read before its blanks are encoded. */
+  blank: boolean;
+};
+
 function renderListItem(
   ctx: RenderContext,
-  list: ListRendering,
-  label: string,
-  inline: string,
+  { list, label, inline, blank }: ListItemText,
 ): RenderedParagraph {
   // Custom Word labels are paragraph text in CommonMark, not nesting parents.
   const nativeMarker = list.isBullet || /^\d{1,9}[.)]$/u.test(label);
@@ -182,6 +191,6 @@ function renderListItem(
     markdown,
     // Empty list markers cannot interrupt paragraph text; a nested hyphen
     // instead becomes a Setext underline. Separate every empty item.
-    separation: inline.trim().length === 0 ? "loose" : "tight",
+    separation: blank ? "loose" : "tight",
   };
 }
