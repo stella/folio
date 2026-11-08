@@ -882,6 +882,9 @@ export const paragraphMarkOutcome: (input: {
 } & SectionTransfer);
 
 // @public
+export const paragraphPropertySnapshotToken: (paragraph: Paragraph) => object | undefined;
+
+// @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
 // @public
@@ -992,6 +995,9 @@ export type ReplaceInlineOp = {
     expected: readonly ParagraphContent[];
     content: readonly ParagraphContent[];
 };
+
+// @public (undocumented)
+export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
 
 // @public
 export type ResolveRevisionOp = {

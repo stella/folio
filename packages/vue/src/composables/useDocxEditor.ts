@@ -82,6 +82,7 @@ import {
 } from "@stll/folio-core/docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
@@ -117,6 +118,7 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
+import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
@@ -156,7 +158,7 @@ import {
   canonicalRefusalMessage,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
-import type { Footnote } from "@stll/folio-core/types/content";
+import type { Comment, Footnote } from "@stll/folio-core/types/content";
 import type {
   Document,
   HeaderFooter,
@@ -361,6 +363,12 @@ function describeInvalidHighlightMarks(doc: EditorState["doc"]): string {
 // ============================================================================
 
 export type UseDocxEditorOptions = {
+  /**
+   * The comment threads the host keeps beside the editor. Saving writes them
+   * into the document; without it the saved document keeps the threads it was
+   * loaded with.
+   */
+  comments?: () => readonly Comment[];
   /** Container element that hosts the off-screen ProseMirror editor. */
   hiddenContainer: Ref<HTMLElement | null>;
   /** Optional separate host for persistent header/footer ProseMirror views. */
@@ -537,6 +545,7 @@ export function useDocxEditor(
   options: UseDocxEditorOptions,
 ): UseDocxEditorReturn {
   const {
+    comments,
     hiddenContainer,
     hiddenHeaderFooterContainer,
     noteEditorContainer,
@@ -1420,9 +1429,16 @@ export function useDocxEditor(
     // read from the same snapshot. A later `view.state` read could pick up an
     // edit that landed mid-save and diff against the wrong baseline.
     const state = view.state;
+    // canonical-gap: pm-save-projection
+    const projected = fromProseDoc(state.doc, base, {
+      stylesheetSource: { type: "package" },
+    });
     const updatedDoc = withoutUnreferencedNotes(
-      // canonical-gap: pm-save-projection
-      fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
+      comments
+        ? withHostCommentThreads(projected, comments(), {
+            anchoredInEditor: commentIdsNamedIn(state.doc),
+          })
+        : projected,
     );
 
     const { resolveSelectiveSaveFlags } =

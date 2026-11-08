@@ -29,7 +29,7 @@ const hasPublishToken = (workflow: unknown, job: unknown) => {
       (key) =>
         permissions[key] === "write" ||
         (typeof permissions[key] === "string" &&
-          permissions[key].includes("$" + "{{")),
+          permissions[key].includes("${{")),
     )
   );
 };

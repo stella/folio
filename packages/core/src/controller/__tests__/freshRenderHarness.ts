@@ -44,8 +44,11 @@ import { LayoutSelectionGate } from "../../paged-layout/LayoutSelectionGate";
 import { schema } from "../../prosemirror/schema";
 import type { Document } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
-import { type LayoutOutcome, runLayoutPipeline } from "../layoutPipeline";
-import type { LayoutPipelineDeps } from "../layoutPipeline";
+import {
+  type LayoutOutcome,
+  type LayoutPipelineDeps,
+  runLayoutPipeline,
+} from "../layoutPipeline";
 import type { LayoutRunOptions } from "../layoutRunOptions";
 import { createLayoutScheduler, type SchedulerClock } from "../layoutScheduler";
 import { createLayoutSession, type LayoutSession } from "../layoutSession";
