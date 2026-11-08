@@ -503,10 +503,23 @@ export function handleSuggestionPaste(
     // The caret is at the visible start of this paragraph. Fit the blocks
     // before it, as direct paste does after deleting the prefix; fitting at
     // the physical caret instead splits off a paragraph of only struck runs.
+    // A container's last paragraph never carries a tracked mark, so when only
+    // struck text fills it the pasted paragraphs go after it and take its
+    // place, as pasting over it whole does: accepting leaves only the paste.
+    const rotates =
+      deletedSuffix &&
+      (($from.parent.attrs["pPrMark"] as ParagraphMarkAttr | null | undefined)
+        ?.kind ?? "del") === "del" &&
+      paragraphEndsItsContainer(
+        $from.doc.resolve($from.before()),
+        "paragraph",
+      ) &&
+      slice.content.firstChild?.type === $from.parent.type &&
+      slice.content.lastChild?.type === $from.parent.type;
     const tr = view.state.tr
       .setMeta(SUGGESTION_META, true)
       .setMeta("paste", true);
-    const at = $from.before();
+    const at = rotates ? $from.after() : $from.before();
     tr.replaceRange(at, at, slice);
     const revision = makeMarkAttrs(pluginState);
     const end = tr.mapping.map(at, 1);
@@ -535,6 +548,18 @@ export function handleSuggestionPaste(
       deletionType,
       revision,
     );
+    if (rotates) {
+      const rotation = tr.steps.length;
+      rotateIntoFinalParagraph(view.state, tr, $from.before(), revision);
+      tr.setSelection(
+        TextSelection.near(
+          tr.doc.resolve(tr.mapping.slice(rotation).map(end, -1)),
+          -1,
+        ),
+      );
+      view.dispatch(tr.scrollIntoView());
+      return true;
+    }
     if (
       deletedSuffix &&
       $from.parent.attrs["pPrMark"] == null &&
@@ -1565,6 +1590,7 @@ function handleSuggestionDelete(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
   direction: "backward" | "forward",
+  { cut = false }: { cut?: boolean } = {},
 ): boolean {
   const pluginState = suggestionModeKey.getState(state);
   if (!pluginState?.active) {
@@ -1612,10 +1638,18 @@ function handleSuggestionDelete(
       );
     }
     // Clearing cells preserves the rectangle, as the table deletion command
-    // does, so the next input still acts on those cells. Text deletion instead
-    // collapses the cursor after the marked/retracted content.
-    if (state.selection instanceof CellSelection) {
+    // does, so the next input still acts on those cells. Cutting them leaves
+    // the caret at the end of the last cell, as a direct cut does, so what is
+    // pasted next lands there once. Text deletion instead collapses the
+    // cursor after the marked/retracted content.
+    if (state.selection instanceof CellSelection && !cut) {
       tr.setSelection(state.selection.map(tr.doc, tr.mapping));
+    } else if (state.selection instanceof CellSelection) {
+      const caret = Selection.findFrom(
+        tr.doc.resolve(tr.mapping.map(state.selection.to)),
+        -1,
+      );
+      if (caret) tr.setSelection(caret);
     } else {
       const cursorPos = tr.mapping.map($to.pos);
       tr.setSelection(TextSelection.near(tr.doc.resolve(cursorPos)));
@@ -1709,7 +1743,7 @@ export const deleteSelectionAsSuggestion = (
 ): boolean =>
   state.selection.empty
     ? false
-    : handleSuggestionDelete(state, dispatch, "forward");
+    : handleSuggestionDelete(state, dispatch, "forward", { cut: true });
 
 /**
  * Mark the text committed by an IME composition as a tracked insertion.
@@ -2227,7 +2261,9 @@ export function createSuggestionModePlugin(
           data.setData("text/html", dom.innerHTML);
           data.setData("text/plain", text);
           event.preventDefault();
-          return handleSuggestionDelete(view.state, view.dispatch, "forward");
+          return handleSuggestionDelete(view.state, view.dispatch, "forward", {
+            cut: true,
+          });
         },
         // Remember where the composition starts and suppress the catch-all
         // while it runs. Composed text is marked as an insertion later, on
