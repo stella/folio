@@ -119,10 +119,21 @@ const outcomes = async (bytes: ArrayBuffer) => {
     else reviewer.rejectAll();
     return blocksOf(await reviewer.toBuffer());
   };
+  const commented = async (decision?: "accept") => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+    if (decision === "accept") reviewer.acceptAll();
+    return reviewer
+      .getComments()
+      .map(({ anchoredText, text }) => ({ anchoredText, text }));
+  };
   return {
     pending: await blocksOf(bytes),
     accepted: await resolved("accept"),
     rejected: await resolved("reject"),
+    comments: {
+      pending: await commented(),
+      accepted: await commented("accept"),
+    },
   };
 };
 
@@ -210,6 +221,14 @@ const viaCanonicalEngine = async (
 /** Cases the canonical session declares unavailable, with its reason. */
 const REFUSED: Record<string, string> = {};
 
+/** Cases both engines skip, with the reason both give. */
+const SKIPPED_BY_BOTH: Record<string, string> = {
+  // A direct deletion leaves no text for its comment to cover.
+  "deleteBlock commented between two paragraphs, direct": "unsupportedBlock",
+  "deleteBlock commented ending the body, direct": "unsupportedBlock",
+  "deleteBlock commented before a table, direct": "unsupportedBlock",
+};
+
 const OPERATIONS = {
   deleteBlock: { id: "op", type: "deleteBlock", blockId: "10000002" },
   insertAfterBlock: {
@@ -277,6 +296,19 @@ const OPERATIONS = {
     text: "",
     hardPageBreak: {},
   },
+  "deleteBlock commented": {
+    id: "op",
+    type: "deleteBlock",
+    blockId: "10000002",
+    comment: { text: "Why this goes" },
+  },
+  "insertAfterBlock commented": {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "Commented\nSecond line",
+    comment: { text: "Why this clause" },
+  },
   "setBlockParagraphProperties alignment": {
     id: "op",
     type: "setBlockParagraphProperties",
@@ -314,6 +346,24 @@ describe("block-level public operations match the default engine", () => {
         const refused = REFUSED[name];
         test(name, async () => {
           const source = await packageOf(body);
+          const skippedByBoth = SKIPPED_BY_BOTH[name];
+          if (skippedByBoth !== undefined) {
+            const reviewer = await FolioDocxReviewer.fromBuffer(
+              source.slice(0),
+            );
+            const byDefault = reviewer.applyOperations([operation], {
+              mode,
+              undefinedReferences: "refuse",
+            });
+            const { skipped } = await canonicalRun(source, operation, mode);
+            expect(byDefault.skipped.map(({ reason }) => reason)).toEqual([
+              skippedByBoth,
+            ]);
+            expect(skipped.map(({ reason }) => reason)).toEqual([
+              skippedByBoth,
+            ]);
+            return;
+          }
           if (refused !== undefined) {
             const { skipped } = await canonicalRun(source, operation, mode);
             expect(skipped.map(({ message }) => message)).toEqual([refused]);
