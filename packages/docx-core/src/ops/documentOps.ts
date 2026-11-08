@@ -32,6 +32,7 @@ export {
 } from "./rangeBoundaries";
 export { captureDocumentOp } from "./wire";
 export {
+  pendingSuggestionIdsIn,
   suggestionRevisionInfos,
   withoutPendingSuggestions,
 } from "./suggestions";

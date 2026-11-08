@@ -421,10 +421,6 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
       .skipped.at(0)?.reason,
   ).toBe("preconditionFailed");
   expect(
-    editor.apply([operation], { mode: "suggested" }).issues.at(0)
-      ?.canonicalRefusal?.gap,
-  ).toBe("publicOps.suggestedMode");
-  expect(
     editor.apply([{ ...operation, replace: "**gamma**" }]).issues.at(0)
       ?.canonicalRefusal?.gap,
   ).toBe("publicOps.unsupportedInline");
@@ -572,4 +568,66 @@ test("a block's spacing does not make its unchanged text read as changed", () =>
       id: "a block's spacing does not make its unchanged text read as changed",
     },
   );
+});
+
+test("a suggested operation records one pending suggestion named by its id", () => {
+  const editor = setup();
+  const replace = {
+    id: "replace",
+    type: "replaceInBlock",
+    blockId: "12345678",
+    find: "alpha",
+    replace: "gamma",
+  } as const;
+  const first = editor.apply([replace], { mode: "suggested" });
+  expect(first.applied.map(({ suggestionId }) => suggestionId)).toEqual([
+    "replace",
+  ]);
+  const suggestionIds = new Set<unknown>();
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    const info = record["info"];
+    if (typeof info === "object" && info !== null && "id" in info)
+      suggestionIds.add((info as { suggestionId?: unknown }).suggestionId);
+    for (const child of Object.values(record)) visit(child);
+  };
+  visit(editor.session.document.package.document.content);
+  // Every record the operation made carries its suggestion.
+  expect([...suggestionIds]).toEqual(["replace"]);
+  // The same operation id again is a second suggestion, not part of the first.
+  const second = editor.apply(
+    [{ ...replace, id: "replace", find: "beta", replace: "delta" }],
+    { mode: "suggested" },
+  );
+  expect(second.applied.map(({ suggestionId }) => suggestionId)).toEqual([
+    "replace#2",
+  ]);
+  // Comments are not something a suggestion carries.
+  const range = createFolioAITextRangeHandle({
+    text: editor.snapshot().blocks.at(0)?.text ?? panic("Missing block"),
+    blockId: "12345678",
+    startOffset: 0,
+    endOffset: 1,
+  });
+  if (!range) return panic("Missing range");
+  expect(
+    editor
+      .apply(
+        [
+          {
+            id: "comment",
+            type: "commentOnRange",
+            range,
+            comment: { text: "Why?" },
+          },
+        ],
+        { mode: "suggested" },
+      )
+      .skipped.at(0)?.reason,
+  ).toBe("unsupportedMode");
 });

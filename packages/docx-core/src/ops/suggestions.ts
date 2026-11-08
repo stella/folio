@@ -86,3 +86,27 @@ export const suggestionRevisionInfos = (
   visit(storyBody(document, story).content);
   return [...out.values()];
 };
+
+/** The ids of every pending suggestion in a document, in every story. */
+export const pendingSuggestionIdsIn = (document: Document): Set<string> => {
+  const out = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    const info = record["info"] as { suggestionId?: unknown } | undefined;
+    if (
+      typeof info === "object" &&
+      info !== null &&
+      typeof info.suggestionId === "string"
+    )
+      out.add(info.suggestionId);
+    for (const child of Object.values(record)) visit(child);
+  };
+  for (const story of documentStories(document))
+    visit(storyBody(document, story).content);
+  return out;
+};
