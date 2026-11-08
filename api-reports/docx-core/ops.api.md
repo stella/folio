@@ -996,6 +996,9 @@ export type ReplaceInlineOp = {
     content: readonly ParagraphContent[];
 };
 
+// @public (undocumented)
+export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
+
 // @public
 export type ResolveRevisionOp = {
     type: typeof DOCUMENT_OP_TYPES.RESOLVE_REVISION;
@@ -1268,6 +1271,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 
 // @public (undocumented)
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
+// @public
+export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
 
 // @public
 export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];

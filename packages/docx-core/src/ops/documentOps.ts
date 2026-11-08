@@ -13,6 +13,7 @@ export {
   storyBody,
   findStoryBody,
   documentStories,
+  replaceStoryBody,
   sameStory,
 } from "./stories";
 /**
@@ -22,7 +23,7 @@ export {
  * sequencer apply operations with one implementation.
  */
 
-export { withBodyContent } from "./blocks";
+export { storyParagraphs, withBodyContent } from "./blocks";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {
   type BoundaryOccurrence,

@@ -23,12 +23,12 @@ import {
   findStoryBody,
   freshCommentId,
   type NewListInstance,
-  OP_STORIES,
   type OpStory,
   paragraphLength,
   type ParagraphPropsPatch,
   pendingSuggestionIdsIn,
   type RunPropsPatch,
+  storyParagraphs,
   type TextPosition,
 } from "@stll/docx-core/ops";
 
@@ -740,17 +740,6 @@ export class CanonicalPublicOperations {
       };
     };
     for (const operation of batch.operations) {
-      if (story !== OP_STORIES.MAIN) {
-        refusals.set(operation.id, {
-          gap: CANONICAL_GAP.publicSecondaryStories,
-        });
-        skip(
-          operation.id,
-          "unsupportedBlock",
-          "Canonical public secondary-story routing is unavailable.",
-        );
-        continue;
-      }
       if (!state || projected.isErr() || session.isComposing) {
         skip(operation.id, "documentNotEditable");
         continue;
@@ -932,23 +921,22 @@ export class CanonicalPublicOperations {
           const { comment } = resolvedOperation;
           const id = freshCommentId(nextDocument);
           if (comment.inserted === true) {
-            // The comment covers every paragraph the operation inserted.
+            // The comment covers every paragraph the operation inserted, at
+            // any depth: in a content control or a table cell as much as in
+            // the story's own block list.
+            const paragraphsIn = (current: Document) => {
+              const body = findStoryBody(current, story);
+              return body === undefined
+                ? []
+                : storyParagraphs(body).map(({ paragraph }) => paragraph);
+            };
             const known = new Set(
-              (findStoryBody(document, story)?.content ?? []).flatMap(
-                (block) =>
-                  block.type === "paragraph" && block.paraId !== undefined
-                    ? [block.paraId]
-                    : [],
+              paragraphsIn(document).flatMap(({ paraId }) =>
+                paraId === undefined ? [] : [paraId],
               ),
             );
-            const added = (
-              findStoryBody(nextDocument, story)?.content ?? []
-            ).flatMap((block) =>
-              block.type === "paragraph" &&
-              block.paraId !== undefined &&
-              !known.has(block.paraId)
-                ? [block]
-                : [],
+            const added = paragraphsIn(nextDocument).filter(
+              ({ paraId }) => paraId !== undefined && !known.has(paraId),
             );
             const firstAdded = added.at(0);
             const lastAdded = added.at(-1);
@@ -1004,21 +992,19 @@ export class CanonicalPublicOperations {
             commentId = id.value;
             break;
           }
-          const before = findStoryBody(document, story)?.content.find(
-            (block) =>
-              block.type === "paragraph" &&
-              block.paraId === comment.from.blockId,
-          );
-          const after = findStoryBody(nextDocument, story)?.content.find(
-            (block) =>
-              block.type === "paragraph" &&
-              block.paraId === comment.from.blockId,
-          );
-          if (
-            id.isErr() ||
-            before?.type !== "paragraph" ||
-            after?.type !== "paragraph"
-          ) {
+          // The anchor paragraph at any depth: in a table cell or a content
+          // control as much as in the story's own block list.
+          const anchorIn = (current: Document) => {
+            const body = findStoryBody(current, story);
+            return body === undefined
+              ? undefined
+              : storyParagraphs(body).find(
+                  ({ paragraph }) => paragraph.paraId === comment.from.blockId,
+                )?.paragraph;
+          };
+          const before = anchorIn(document);
+          const after = anchorIn(nextDocument);
+          if (id.isErr() || before === undefined || after === undefined) {
             refusals.set(operation.id, { gap: CANONICAL_GAP.publicComments });
             skip(
               operation.id,
@@ -1488,10 +1474,10 @@ export class CanonicalPublicOperations {
           return refusal("staleRange");
         break;
       case "mergeBlockWithNext":
-        if (operation.mergedParagraphProperties || operation.separator)
+        if (/[\t\r\n]/u.test(operation.separator ?? ""))
           return refusal(
             "unsupportedBlock",
-            "Canonical public join properties and separators are unavailable.",
+            "Canonical public join separators require plain text.",
           );
         start = clean.text.length;
         end = start;
@@ -1581,11 +1567,14 @@ export class CanonicalPublicOperations {
       case "mergeBlockWithNext": {
         const next = projection.value.nextParagraphInContainer(blockId);
         if (next === undefined) return refusal("missingBlock");
+        // The merged paragraph keeps the first one's identity, as the
+        // default engine's merge does.
         intent = {
           type: "joinParagraphs",
           story,
           blockId,
           nextBlockId: next.blockId,
+          survivor: "first",
         };
         break;
       }
@@ -1719,16 +1708,25 @@ export class CanonicalPublicOperations {
               code: "uniformReplacementFormatting",
             });
         }
+        // A replaced range ends just after its last character, before what
+        // the clean text skips there (a comment's reference mark, struck
+        // text), since the new text follows the struck words.
+        const lastCharacter =
+          change.end > change.start ? clean.offsets[change.end - 1] : undefined;
+        const changeEnd =
+          lastCharacter === undefined
+            ? gap.to
+            : Math.max(gap.from, Math.min(gap.to, lastCharacter + 1));
         // A replaced range takes the editor's selection rule: its edges stay
         // inside the markers beside them, so replacing exactly the words a
         // comment covers keeps the comment on the new text, pending and
         // accepted. An insertion at a point takes the caret's gap.
         const edges =
-          gap.from < gap.to
-            ? projection.value.rangeEdgesAt(gap.from, gap.to)
+          gap.from < changeEnd
+            ? projection.value.rangeEdgesAt(gap.from, changeEnd)
             : undefined;
         const changeFrom = projection.value.addressAt(gap.from, edges?.start);
-        const changeTo = projection.value.addressAt(gap.to, edges?.end);
+        const changeTo = projection.value.addressAt(changeEnd, edges?.end);
         if (changeFrom.isErr() || changeTo.isErr())
           return refusal("unsupportedBlock");
         intents.push({
@@ -1740,6 +1738,50 @@ export class CanonicalPublicOperations {
             ? {}
             : { runPropsPatch: intent.runPropsPatch }),
         });
+      }
+    } else if (
+      operation.type === "mergeBlockWithNext" &&
+      intent.type === "joinParagraphs"
+    ) {
+      // The separator goes in at the first paragraph's end, before the join.
+      const separator = operation.separator ?? "";
+      if (separator !== "") {
+        const at = projection.value.addressAt(
+          paragraph.start + paragraph.node.content.size,
+        );
+        if (at.isErr()) return refusal("unsupportedBlock");
+        intents.push({
+          type: "replaceText",
+          from: at.value,
+          to: at.value,
+          text: separator,
+        });
+      }
+      intents.push(intent);
+      // The merged paragraph's properties: on the first paragraph a direct
+      // join keeps, on the second, whose mark a tracked join leaves.
+      const properties = operation.mergedParagraphProperties;
+      if (properties !== undefined) {
+        const stated = statedNumbering(properties.numbering, mintList);
+        const patch = statedParagraphPatch({
+          ...properties,
+          ...(stated.numbering === undefined
+            ? {}
+            : { numbering: stated.numbering }),
+        });
+        if (Object.keys(patch).length > 0)
+          intents.push({
+            type: "formatParagraph",
+            at: {
+              story,
+              blockId: tracked ? intent.nextBlockId : intent.blockId,
+              offset: 0,
+            },
+            patch,
+            ...(stated.newList === undefined
+              ? {}
+              : { newList: stated.newList }),
+          });
       }
     } else intents.push(intent);
     const structural =

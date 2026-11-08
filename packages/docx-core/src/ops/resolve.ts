@@ -74,6 +74,7 @@ import {
   isTrackedWrapper,
   reviewFieldsOf,
   withMarkFormatting,
+  withReviewFields,
 } from "./review";
 import { runsMergeable } from "./runMerge";
 import { identitySlots, withInlineIdentity } from "./slots";
@@ -337,6 +338,12 @@ type Resolution = {
   pairedComments: ReadonlySet<number>;
   /** Boundaries this resolution kept from removed content. */
   relocated: RelocatedBoundaries;
+  /**
+   * Identity handoffs whose retained piece was not beside the removed prefix:
+   * a replacement's new content, or a paragraph break it inserted, stands
+   * between them. They reach that piece later in the same story.
+   */
+  outstanding: RetainedIdentity[];
 };
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
@@ -578,8 +585,12 @@ const restoreRetainedIdentities = ({
   nodes,
   transfers,
   resolution,
-}: RestoreRetainedIdentitiesOptions): InlineNode[] => {
+}: RestoreRetainedIdentitiesOptions): {
+  nodes: InlineNode[];
+  unmatched: RetainedIdentity[];
+} => {
   const references = new Map<string, RetainedIdentity["source"][number]>();
+  const unmatched: RetainedIdentity[] = [];
   let out = [...nodes];
   for (const transfer of transfers) {
     const source = transfer.source.map(
@@ -612,7 +623,10 @@ const restoreRetainedIdentities = ({
       return next;
     };
     out = out.map(restore);
-    if (!matched) continue;
+    if (!matched) {
+      unmatched.push({ ...transfer, source });
+      continue;
+    }
     for (const [index, target] of transfer.target.entries()) {
       const restored = source.at(index);
       if (restored === undefined || restored.space !== target.space)
@@ -636,6 +650,17 @@ const restoreRetainedIdentities = ({
       if (joins.retainedAfter !== undefined) {
         joins.retainedAfter = joins.retainedAfter.map((entry) => ({
           depth: entry.depth,
+          source: entry.source.map(
+            (slot) => references.get(slotKey(slot)) ?? slot,
+          ),
+          target: entry.target.map(
+            (slot) => references.get(slotKey(slot)) ?? slot,
+          ),
+        }));
+      }
+      if (joins.retainedEnclosing !== undefined) {
+        joins.retainedEnclosing = joins.retainedEnclosing.map((entry) => ({
+          levels: entry.levels,
           source: entry.source.map(
             (slot) => references.get(slotKey(slot)) ?? slot,
           ),
@@ -670,8 +695,83 @@ const restoreRetainedIdentities = ({
       ? next
       : rebuildNode(next, children.map(rebase));
   };
-  return out.map(rebase);
+  return { nodes: out.map(rebase), unmatched };
 };
+
+/**
+ * Hand outstanding identities to the pieces they name among `nodes`, content
+ * that follows the removed prefixes in the story. A target id names one
+ * record, so the piece is found wherever the replacement left it.
+ */
+const restoreOutstandingIdentities = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): readonly InlineNode[] => {
+  if (resolution.outstanding.length === 0) return nodes;
+  const restored = restoreRetainedIdentities({
+    nodes,
+    transfers: resolution.outstanding,
+    resolution,
+  });
+  resolution.outstanding = restored.unmatched;
+  return restored.nodes;
+};
+
+const isIdentitySlot = (
+  slot: unknown,
+): slot is RetainedIdentity["source"][number] => {
+  if (
+    typeof slot !== "object" ||
+    slot === null ||
+    !("space" in slot) ||
+    !("id" in slot)
+  )
+    return false;
+  // Revision/control ids allow zero; note-record reserved ids do not apply here.
+  const retainedId = slot.id;
+  return (
+    (slot.space === IDENTITY_SPACES.REVISION ||
+      slot.space === IDENTITY_SPACES.CONTROL) &&
+    typeof retainedId === "number" &&
+    Number.isInteger(retainedId) &&
+    retainedId >= 0 &&
+    retainedId <= MAX_REVISION_ID
+  );
+};
+
+/**
+ * Handoffs to records above a wrapper name paired slots one level up or more;
+ * whether that record holds them is checked where it is resolved.
+ */
+const validEnclosingHandoffs = (handoffs: unknown): boolean =>
+  handoffs === undefined ||
+  (Array.isArray(handoffs) &&
+    handoffs.every((entry: unknown) => {
+      if (
+        typeof entry !== "object" ||
+        entry === null ||
+        !("levels" in entry) ||
+        !("source" in entry) ||
+        !("target" in entry)
+      )
+        return false;
+      const { levels, source, target } = entry;
+      return (
+        typeof levels === "number" &&
+        Number.isInteger(levels) &&
+        levels >= 1 &&
+        levels <= MAX_REVISION_ID &&
+        Array.isArray(source) &&
+        Array.isArray(target) &&
+        source.length > 0 &&
+        source.length === target.length &&
+        source.every(isIdentitySlot) &&
+        target.every(isIdentitySlot) &&
+        new Set(source.map(slotKey)).size === source.length &&
+        new Set(target.map(slotKey)).size === target.length &&
+        source.every((slot, index) => slot.space === target.at(index)?.space)
+      );
+    }));
 
 /** Journal-supplied provenance must name actual source slots at its recorded depth. */
 const validRetainedIdentities = (node: InlineNode): boolean => {
@@ -717,6 +817,7 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
       groupKeys.add(key);
     }
   }
+  if (!validEnclosingHandoffs(joins.retainedEnclosing)) return false;
   if (joins.retainedAfter === undefined) return true;
   if (!Array.isArray(joins.retainedAfter)) return false;
   type AtDepthOptions = {
@@ -841,7 +942,16 @@ const prepareDeferredRemovals = (
 };
 
 type CutEdges = { first?: number; last?: number };
-type ResolvedList = { nodes: InlineNode[]; changed: boolean; edges?: CutEdges };
+/** A handoff waiting for the record `levels` above the list to be emptied. */
+type EnclosingHandoff = { levels: number; transfer: RetainedIdentity };
+
+type ResolvedList = {
+  nodes: InlineNode[];
+  changed: boolean;
+  edges?: CutEdges;
+  /** Handoffs naming records above this list. */
+  enclosing?: EnclosingHandoff[];
+};
 
 /** Comment ids whose complete range belongs to selected content being removed. */
 const removedCommentRangeIds = (
@@ -1082,6 +1192,7 @@ const resolveList = (
     }
   >();
   let changed = false;
+  const enclosing: EnclosingHandoff[] = [];
   for (const [index, node] of pending.entries()) {
     if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
       changed = true;
@@ -1128,9 +1239,10 @@ const resolveList = (
             transfers,
             resolution,
           });
+          resolution.outstanding.push(...restored.unmatched);
           // Restoring source IDs can make a previously unselected blocker
           // selected; recompute deferred facts against those actual identities.
-          const prepared = prepareDeferredRemovals(restored, resolution);
+          const prepared = prepareDeferredRemovals(restored.nodes, resolution);
           out.splice(
             0,
             out.length,
@@ -1154,6 +1266,13 @@ const resolveList = (
             ...prepared.slice(prefixLength),
           );
         }
+        // Removing a prefix that was all a cut record held hands the record's
+        // identities to the piece cut off after it.
+        for (const entry of node.resolutionJoins?.retainedEnclosing ?? [])
+          enclosing.push({
+            levels: entry.levels,
+            transfer: { depth: 0, source: entry.source, target: entry.target },
+          });
         const removalContent =
           resolution.decision === REVISION_DECISIONS.REJECT &&
           isAddedRevision(node)
@@ -1263,6 +1382,35 @@ const resolveList = (
     const children = childNodes(node);
     const inner =
       children === undefined ? undefined : resolveList(children, resolution);
+    for (const handoff of inner?.enclosing ?? []) {
+      if (handoff.levels > 1) {
+        enclosing.push({
+          levels: handoff.levels - 1,
+          transfer: handoff.transfer,
+        });
+        continue;
+      }
+      if (
+        inner !== undefined &&
+        inner.nodes.length === 0 &&
+        (children?.length ?? 0) > 0 &&
+        hasSlots(node, handoff.transfer.source)
+      )
+        resolution.outstanding.push(handoff.transfer);
+    }
+    if (resolution.outstanding.length > 0) {
+      // A prefix removed inside this record hands its identities on to the
+      // pieces after it.
+      const following = restoreOutstandingIdentities(
+        pending.slice(index + 1),
+        resolution,
+      );
+      pending.splice(
+        index + 1,
+        pending.length - index - 1,
+        ...prepareDeferredRemovals(following, resolution),
+      );
+    }
     if (children === undefined || inner === undefined || !inner.changed) {
       appendSource(node, index);
       continue;
@@ -1282,6 +1430,13 @@ const resolveList = (
       // Removing an unselected parent establishes no cut between its neighbours.
       // Fold only fragments this resolution emptied, preserving authored siblings.
       folds.push(out.length);
+      // Accepted new content beside it, as an edit made directly would be,
+      // merges with the plain runs it now meets.
+      if (
+        isTrackedWrapper(node) &&
+        (node.resolutionJoins?.plainSides?.length ?? 0) > 0
+      )
+        plainSeams.add(out.length);
       continue;
     }
     let rebuilt = rebuildNode(node, inner.nodes);
@@ -1376,26 +1531,34 @@ const resolveList = (
   // nothing else.
   const pendingRemoval = (node: InlineNode | undefined): boolean =>
     node !== undefined &&
-    (node.type === "deletion" || node.type === "moveFrom") &&
-    !resolution.ids.has(node.info.id) &&
-    node.resolutionJoins !== undefined;
+    (((node.type === "deletion" || node.type === "moveFrom") &&
+      !resolution.ids.has(node.info.id) &&
+      node.resolutionJoins !== undefined) ||
+      // A cut piece holding only content on its way out goes with it.
+      (isTrackedWrapper(node) &&
+        !resolution.ids.has(node.info.id) &&
+        node.content.length > 0 &&
+        node.content.every((child) => pendingRemoval(child))));
   const acceptAsPlain = (index: number, facing: "before" | "after"): void => {
     const occurrence = out[index];
     const node = occurrence?.node;
     if (
       occurrence === undefined ||
       node === undefined ||
-      !isTrackedWrapper(node) ||
-      node.resolutionJoins === undefined
+      !isTrackedWrapper(node)
     )
       return;
     out[index] = occurrenceOf(
       Object.assign({}, node, {
-        resolutionJoins: Object.assign({}, node.resolutionJoins, {
-          plainSides: [
-            ...new Set([...(node.resolutionJoins.plainSides ?? []), facing]),
-          ],
-        }),
+        resolutionJoins: Object.assign(
+          { before: 0, after: 0, remove: 0 },
+          node.resolutionJoins,
+          {
+            plainSides: [
+              ...new Set([...(node.resolutionJoins?.plainSides ?? []), facing]),
+            ],
+          },
+        ),
       }),
       occurrence,
     );
@@ -1663,7 +1826,12 @@ const resolveList = (
     edges.first = Math.max(edges.first ?? 0, nestedFirst);
   if (nestedLast !== undefined)
     edges.last = Math.max(edges.last ?? 0, nestedLast);
-  return { nodes: out.map(({ node }) => node), changed, edges };
+  return {
+    nodes: out.map(({ node }) => node),
+    changed,
+    edges,
+    ...(enclosing.length === 0 ? {} : { enclosing }),
+  };
 };
 
 /** A paragraph's review fields once its property changes and mark are resolved; `undefined` when unchanged. */
@@ -1989,17 +2157,33 @@ const joinOps = (
         merged = [...seam.left, ...seam.right];
       }
     }
+    const keepsFirst = paragraph.pPrMark?.survivor === "first";
     // A record left as it was keeps its identity through the merge; an emptied
-    // one folded into its neighbour is rebuilt, and is no longer empty.
-    ends.set(nextId, emptiedEndsOf(merged, emptied));
+    // one folded into its neighbour is rebuilt, and is no longer empty. The
+    // joined paragraph is found again under the id it keeps.
+    ends.set(
+      keepsFirst ? idKey(paraId) : nextId,
+      emptiedEndsOf(merged, emptied),
+    );
     const mergedContent = asParagraphContent(merged);
     const receivesSection = outcome.sectionDestination === "following";
-    const { pPrMark: _rejectedMark, ...first } = paragraph;
     let survivor: Paragraph;
-    // The anchor of an insertion whose last paragraph took over the anchor's
-    // mark comes back as it was: its identity, its fields, the joined words.
-    if (paragraph.pPrMark?.survivor === "first")
-      survivor = { ...first, content: mergedContent };
+    if (keepsFirst) {
+      // The anchor of an insertion whose last paragraph took over the
+      // anchor's mark keeps its identity and its own fields, with the joined
+      // words. The mark that stays is the next paragraph's, with the
+      // properties and the reviews still pending on it: where that is the
+      // anchor's former mark, the anchor comes back as it was once those
+      // resolve; where it is another inserted break, rejecting that one
+      // keeps the anchor in turn.
+      const review = reviewFieldsOf(next);
+      if (review.pPrMark !== undefined && markWasAdded(review.pPrMark.kind))
+        review.pPrMark = { ...review.pPrMark, survivor: "first" };
+      survivor = withReviewFields(
+        { ...paragraph, content: mergedContent },
+        review,
+      );
+    }
     // An unchanged follower that receives nothing keeps its identity.
     else if (!receivesSection && structurallyEqual(mergedContent, next.content))
       survivor = next;
@@ -2341,6 +2525,7 @@ export const planRevisionResolution = ({
     cutEdges: new WeakMap(),
     pairedComments: new Set(),
     relocated: noRelocatedBoundaries(),
+    outstanding: [],
   };
   const noteReferences = removedNoteReferences(document, op, ids);
   const paragraphs = storyParagraphs(storyBody(document, op.story));
@@ -2424,8 +2609,13 @@ export const planRevisionResolution = ({
     resolution,
   );
   const resolvedChanged = new Set<string>();
-  for (const { paragraph, content: prepared } of preparedContents) {
+  for (const { paragraph, content: source } of preparedContents) {
     const paraId = paragraph.paraId ?? "";
+    // A replacement's paragraph break can stand between a removed prefix and
+    // the piece that takes its identities: they arrive here.
+    const handed = restoreOutstandingIdentities(source, resolution);
+    const prepared =
+      handed === source ? source : prepareDeferredRemovals(handed, resolution);
     const resolved = resolveList(prepared, resolution);
     resolvedContents.set(
       idKey(paraId),
