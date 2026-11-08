@@ -74,7 +74,6 @@ import {
   isTrackedWrapper,
   reviewFieldsOf,
   withMarkFormatting,
-  withReviewFields,
 } from "./review";
 import { runsMergeable } from "./runMerge";
 import { identitySlots, withInlineIdentity } from "./slots";
@@ -238,6 +237,48 @@ const hasNoteReference = (
       ),
     ),
   );
+
+/**
+ * The paragraph a rejected mark that keeps the first paragraph leaves: the
+ * first paragraph's identity, and everything the mark that stays carries,
+ * which is the next paragraph's. Where that mark is the first paragraph's
+ * former one, the first paragraph comes back as it was once the reviews
+ * pending on it resolve; where it is another break the same edit inserted,
+ * that break says itself which paragraph its rejection keeps.
+ */
+const joinedKeepingFirst = (
+  paragraph: Paragraph,
+  next: Paragraph,
+  content: Paragraph["content"],
+  receivesSection: boolean,
+): Paragraph => {
+  const {
+    paraId: _paraId,
+    textId: _textId,
+    preservedAttributes: _preservedAttributes,
+    renderedPageBreakBefore: _renderedPageBreakBefore,
+    sectionProperties: _sectionProperties,
+    ...marked
+  } = next;
+  // A section the rejected mark ended moves into the joined paragraph;
+  // otherwise the section break is the one the staying mark ends.
+  const sectionProperties = receivesSection
+    ? paragraph.sectionProperties
+    : next.sectionProperties;
+  return {
+    ...marked,
+    content,
+    ...(paragraph.paraId === undefined ? {} : { paraId: paragraph.paraId }),
+    ...(paragraph.textId === undefined ? {} : { textId: paragraph.textId }),
+    ...(paragraph.preservedAttributes === undefined
+      ? {}
+      : { preservedAttributes: paragraph.preservedAttributes }),
+    ...(paragraph.renderedPageBreakBefore === undefined
+      ? {}
+      : { renderedPageBreakBefore: paragraph.renderedPageBreakBefore }),
+    ...(sectionProperties === undefined ? {} : { sectionProperties }),
+  };
+};
 
 /** Whether a mark of this kind recorded a break being added. */
 const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
@@ -2168,22 +2209,13 @@ const joinOps = (
     const mergedContent = asParagraphContent(merged);
     const receivesSection = outcome.sectionDestination === "following";
     let survivor: Paragraph;
-    if (keepsFirst) {
-      // The anchor of an insertion whose last paragraph took over the
-      // anchor's mark keeps its identity and its own fields, with the joined
-      // words. The mark that stays is the next paragraph's, with the
-      // properties and the reviews still pending on it: where that is the
-      // anchor's former mark, the anchor comes back as it was once those
-      // resolve; where it is another inserted break, rejecting that one
-      // keeps the anchor in turn.
-      const review = reviewFieldsOf(next);
-      if (review.pPrMark !== undefined && markWasAdded(review.pPrMark.kind))
-        review.pPrMark = { ...review.pPrMark, survivor: "first" };
-      survivor = withReviewFields(
-        { ...paragraph, content: mergedContent },
-        review,
+    if (keepsFirst)
+      survivor = joinedKeepingFirst(
+        paragraph,
+        next,
+        mergedContent,
+        receivesSection,
       );
-    }
     // An unchanged follower that receives nothing keeps its identity.
     else if (!receivesSection && structurallyEqual(mergedContent, next.content))
       survivor = next;

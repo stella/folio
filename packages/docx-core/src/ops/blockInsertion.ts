@@ -194,7 +194,14 @@ export const insertBlocks = ({
       blocks.push({
         ...paragraph,
         content,
-        pPrMark: { kind: markKind, info: stampInfo(revision) },
+        pPrMark: {
+          kind: markKind,
+          info: stampInfo(revision),
+          // After a final paragraph each new break is rejected into the
+          // paragraph before it, which ends up being the anchor, as the
+          // anchor's own new break is.
+          ...(takesOverMark ? { survivor: "first" as const } : {}),
+        },
       });
       continue;
     }
