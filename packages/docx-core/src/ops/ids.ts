@@ -322,5 +322,29 @@ export const reservedIdentityKeysIn = (value: unknown): string[] => {
 };
 
 /** Every revision and content-control id of a package, each story walked once. */
-export const packageIdentityKeys = (pkg: DocxPackage): string[] =>
-  identityKeysIn(storiesOf(pkg));
+/**
+ * A census of a package, once per package object. Operations never change a
+ * package they are given: each returns a new one, sharing what it left as it
+ * was, so a package's ids are read once however often a plan asks.
+ */
+const censusOnce = (
+  census: (pkg: DocxPackage) => string[],
+): ((pkg: DocxPackage) => readonly string[]) => {
+  const known = new WeakMap<DocxPackage, readonly string[]>();
+  return (pkg) => {
+    const cached = known.get(pkg);
+    if (cached !== undefined) return cached;
+    const keys = Object.freeze(census(pkg));
+    known.set(pkg, keys);
+    return keys;
+  };
+};
+
+/** Every revision and content-control id of a package, each story walked once. */
+export const packageIdentityKeys: (pkg: DocxPackage) => readonly string[] =
+  censusOnce((pkg) => identityKeysIn(storiesOf(pkg)));
+
+/** The ids a package's pending cut references reserve. */
+export const packageReservedIdentityKeys: (
+  pkg: DocxPackage,
+) => readonly string[] = censusOnce((pkg) => reservedIdentityKeysIn(pkg));
