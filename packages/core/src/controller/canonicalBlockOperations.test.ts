@@ -82,9 +82,12 @@ const blocksOf = async (bytes: ArrayBuffer) => {
           text: block.content
             .flatMap((item) =>
               item.type === "run"
-                ? item.content.flatMap((leaf) =>
-                    leaf.type === "text" ? [leaf.text] : [],
-                  )
+                ? item.content.flatMap((leaf) => {
+                    if (leaf.type === "text") return [leaf.text];
+                    if (leaf.type === "tab") return ["\t"];
+                    if (leaf.type !== "break") return [];
+                    return [leaf.breakType === "page" ? "\f" : "\n"];
+                  })
                 : [],
             )
             .join(""),
@@ -246,6 +249,36 @@ const OPERATIONS = {
     alignment: null,
     spacing: { spaceAfter: 60 },
     pageBreakBefore: true,
+  },
+  "insertAfterBlock lines": {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "Heading\n\nFirst\tbody\r\nSecond body\n",
+    alignment: "center",
+  },
+  "insertBeforeBlock lines formatted alike": {
+    id: "op",
+    type: "insertBeforeBlock",
+    blockId: "10000002",
+    text: "One\nTwo",
+    styleId: "Heading1",
+    formattingScope: "allParagraphs",
+    pageBreakBefore: true,
+  },
+  "insertAfterBlock inline breaks": {
+    id: "op",
+    type: "insertAfterBlock",
+    blockId: "10000002",
+    text: "Name\tValue\nNext line",
+    lineBreakMode: "inline",
+  },
+  "insertBeforeBlock page break": {
+    id: "op",
+    type: "insertBeforeBlock",
+    blockId: "10000002",
+    text: "",
+    hardPageBreak: {},
   },
   "setBlockParagraphProperties alignment": {
     id: "op",

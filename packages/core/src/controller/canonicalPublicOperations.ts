@@ -77,6 +77,7 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
+  Run,
 } from "../types/document";
 import {
   canonicalCommentBody,
@@ -306,10 +307,7 @@ const resolveBlockInsertion = ({
     [
       ["numbering", "paragraph numbering"],
       ["moveId", "tracked moves"],
-      ["hardPageBreak", "inserted page breaks"],
       ["comment", "comments on an inserted block"],
-      ["lineBreakMode", "inline line breaks"],
-      ["formattingScope", "formatting scopes"],
     ] as const
   ).find(([key]) => operation[key] !== undefined);
   if (unavailable !== undefined)
@@ -323,11 +321,20 @@ const resolveBlockInsertion = ({
       "unsupportedBlock",
       "Canonical public emphasis replacements are unavailable.",
     );
-  if (/\[\^(?:e)?\d+\]/u.test(text) || /[\t\r\n]/u.test(text))
+  const inline = operation.lineBreakMode === "inline";
+  if (/\[\^(?:e)?\d+\]/u.test(text) || (inline && text.includes("\r")))
     return refusal(
       "unsupportedBlock",
-      "Canonical block insertion requires one paragraph of plain text.",
+      "Canonical block insertion requires plain text.",
     );
+  // Each line its own paragraph, blank lines dropped, as the default engine
+  // splits them; inline, line breaks stay in the one paragraph. A tab is a
+  // tab element either way.
+  const split = !inline && LINE_BREAK_PATTERN.test(text);
+  const lines = split
+    ? text.split(LINE_BREAK_PATTERN).filter((line) => line.trim().length > 0)
+    : [text];
+  const texts = lines.length === 0 ? [""] : lines;
   const formatting: Record<string, unknown> =
     operation.inheritFormatting === false
       ? {}
@@ -353,16 +360,43 @@ const resolveBlockInsertion = ({
   ))
     if (value === null) Reflect.deleteProperty(formatting, key);
     else formatting[key] = value;
-  if (operation.pageBreakBefore === true) formatting["pageBreakBefore"] = true;
-  const inserted: Paragraph = {
-    type: "paragraph",
-    content:
-      text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
-    // The anchor's properties with the operation's set or cleared over them.
-    ...(Object.keys(formatting).length === 0
-      ? {}
-      : { formatting: formatting as ParagraphFormatting }),
-  };
+  const everyParagraph = operation.formattingScope === "allParagraphs";
+  const paragraphs = texts.map((line, index): Paragraph => {
+    // The first paragraph takes the operation's formatting; later ones are
+    // body paragraphs unless the scope formats every paragraph alike.
+    const own: Record<string, unknown> =
+      index === 0 || everyParagraph ? { ...formatting } : {};
+    if (index === 0 && operation.pageBreakBefore === true)
+      own["pageBreakBefore"] = true;
+    // An authored page break stands in for the first paragraph's text.
+    const pageBreak = index === 0 ? operation.hardPageBreak : undefined;
+    let content: Paragraph["content"] = [];
+    if (pageBreak !== undefined)
+      content = [
+        {
+          type: "run",
+          content: [
+            {
+              type: "break",
+              breakType: "page",
+              ...(pageBreak.clear === undefined
+                ? {}
+                : { clear: pageBreak.clear }),
+            },
+          ],
+        },
+      ];
+    else if (line !== "")
+      content = [{ type: "run", content: inlineText(line) }];
+    return {
+      type: "paragraph",
+      content,
+      // The anchor's properties with the operation's set or cleared over them.
+      ...(Object.keys(own).length === 0
+        ? {}
+        : { formatting: own as ParagraphFormatting }),
+    };
+  });
   // The anchor keeps its identity; the new paragraph takes a fresh one.
   const intents: EditorIntent[] = [
     {
@@ -372,22 +406,41 @@ const resolveBlockInsertion = ({
         type: operation.type === "insertAfterBlock" ? "after" : "before",
         blockId: paragraph.blockId,
       },
-      paragraphs: [inserted],
+      paragraphs,
     },
   ];
   const position =
     operation.type === "insertAfterBlock"
       ? paragraph.start + paragraph.node.content.size
       : paragraph.start;
+  const normalizations: FolioAIEditNormalization[] = split
+    ? [
+        {
+          id: operation.id,
+          code: "splitMultilineText",
+          paragraphCount: texts.length,
+        },
+      ]
+    : [];
   return Result.ok({
     type: "plain" as const,
     operation,
     intents,
-    normalizations: [],
+    normalizations,
     from: position,
     to: position,
   });
 };
+
+const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
+
+/** A line's text with each tab and line break as the element it is. */
+const inlineText = (line: string): Run["content"] =>
+  line.split(/([\t\n])/u).flatMap((part): Run["content"] => {
+    if (part === "\t") return [{ type: "tab" }];
+    if (part === "\n") return [{ type: "break" }];
+    return part === "" ? [] : [{ type: "text", text: part }];
+  });
 
 type ResolveBlockDeletionOptions = {
   operation: Extract<FolioDocumentOperation, { type: "deleteBlock" }>;
