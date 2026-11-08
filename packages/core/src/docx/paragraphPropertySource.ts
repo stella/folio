@@ -29,6 +29,75 @@ import { parseParagraphProperties } from "./paragraphProperties";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 import { parseXmlDocument } from "./xmlParser";
 
+/**
+ * A stamp per object, renewed whenever a fact this module keeps for it
+ * changes. Every table read by `paragraphPropertySourceState` writes through
+ * `KeptFacts` or `KeptFlags`, and every handle a paragraph carries is set
+ * through `keepHandle`, so an unchanged stamp means unchanged facts.
+ */
+const factStamps = new WeakMap<object, number>();
+let lastFactStamp = 0;
+
+const renewFacts = (key: object): void => {
+  lastFactStamp += 1;
+  factStamps.set(key, lastFactStamp);
+};
+
+/** A weak table whose writes renew the stamp of the key they change. */
+class KeptFacts<Key extends object, Value> {
+  private readonly table = new WeakMap<Key, Value>();
+
+  get(key: Key): Value | undefined {
+    return this.table.get(key);
+  }
+
+  has(key: Key): boolean {
+    return this.table.has(key);
+  }
+
+  set(key: Key, value: Value): void {
+    if (this.table.has(key) && this.table.get(key) === value) return;
+    this.table.set(key, value);
+    renewFacts(key);
+  }
+}
+
+/** A weak set whose writes renew the stamp of the key they change. */
+class KeptFlags<Key extends object> {
+  private readonly flags = new WeakSet<Key>();
+
+  has(key: Key): boolean {
+    return this.flags.has(key);
+  }
+
+  add(key: Key): void {
+    if (this.flags.has(key)) return;
+    this.flags.add(key);
+    renewFacts(key);
+  }
+
+  delete(key: Key): void {
+    if (this.flags.delete(key)) renewFacts(key);
+  }
+}
+
+/** Set or remove (`undefined`) the handle a paragraph carries under `key`. */
+const keepHandle = (
+  paragraph: Paragraph,
+  key: symbol,
+  descriptor: PropertyDescriptor | undefined,
+): void => {
+  const current = Object.getOwnPropertyDescriptor(paragraph, key);
+  if (descriptor === undefined) {
+    if (current === undefined) return;
+    Reflect.deleteProperty(paragraph, key);
+  } else {
+    if (current !== undefined && current.value === descriptor.value) return;
+    Object.defineProperty(paragraph, key, descriptor);
+  }
+  renewFacts(paragraph);
+};
+
 // The private symbol makes a source factory-only at the type boundary. Keep it
 // enumerable so sanctioned immutable object copies retain the exact fingerprint.
 const paragraphPropertySourceEmissionFingerprint: unique symbol = Symbol(
@@ -63,12 +132,12 @@ type ParagraphIndentationProjection = Readonly<{
   effective: Readonly<IndentationFormatting>;
   authored: Readonly<IndentationFormatting>;
 }>;
-const indentationProjections = new WeakMap<
+const indentationProjections = new KeptFacts<
   object,
   ParagraphIndentationProjection
 >();
 // An explicit clear must not be overwritten when source captures follow a derivation.
-const assignedIndentationProjections = new WeakSet<Paragraph>();
+const assignedIndentationProjections = new KeptFlags<Paragraph>();
 
 const indentationProjectionFor = (paragraph: Paragraph) => {
   const handle: unknown = Object.getOwnPropertyDescriptor(
@@ -120,7 +189,7 @@ export const copyParagraphIndentationProjection = ({
     paragraphIndentationProjection,
   );
   if (descriptor && indentationProjectionFor(source)) {
-    Object.defineProperty(target, paragraphIndentationProjection, descriptor);
+    keepHandle(target, paragraphIndentationProjection, descriptor);
   }
 };
 
@@ -130,7 +199,7 @@ export const restoreParagraphIndentationProjection = ({
   source,
 }: CopyParagraphIndentationProjectionOptions): void => {
   assignedIndentationProjections.delete(target);
-  Reflect.deleteProperty(target, paragraphIndentationProjection);
+  keepHandle(target, paragraphIndentationProjection, undefined);
   copyParagraphIndentationProjection({ target, source });
   assignedIndentationProjections.add(target);
 };
@@ -180,7 +249,7 @@ export const assignParagraphIndentationProjection = ({
     (getParagraphPropertySource(paragraph) === undefined &&
       INDENTATION_FIELDS.every((key) => effective[key] === authored?.[key]))
   ) {
-    Reflect.deleteProperty(paragraph, paragraphIndentationProjection);
+    keepHandle(paragraph, paragraphIndentationProjection, undefined);
     return;
   }
   const handle = Object.freeze({});
@@ -191,7 +260,7 @@ export const assignParagraphIndentationProjection = ({
       authored: Object.freeze(indentationFields(authored)),
     }),
   );
-  Object.defineProperty(paragraph, paragraphIndentationProjection, {
+  keepHandle(paragraph, paragraphIndentationProjection, {
     value: handle,
     enumerable: true,
     configurable: true,
@@ -202,12 +271,12 @@ type ParagraphPropertyCapture = Readonly<{
   source: ParagraphPropertySource;
   owner: Paragraph;
 }>;
-const paragraphPropertyCaptures = new WeakMap<
+const paragraphPropertyCaptures = new KeptFacts<
   object,
   ParagraphPropertyCapture
 >();
 type ParagraphSourceRecordKind = "durable" | "capture-only";
-const paragraphSourceRecordKinds = new WeakMap<
+const paragraphSourceRecordKinds = new KeptFacts<
   Paragraph,
   ParagraphSourceRecordKind
 >();
@@ -234,7 +303,7 @@ const attachParagraphCapture = (
 ): void => {
   const handle = Object.freeze({});
   paragraphPropertyCaptures.set(handle, capture);
-  Object.defineProperty(paragraph, paragraphPropertyCapture, {
+  keepHandle(paragraph, paragraphPropertyCapture, {
     value: handle,
     enumerable: true,
     configurable: true,
@@ -265,9 +334,9 @@ const ownedParagraphPropertySource = (
 };
 
 const proseParagraphSourceOwners = new WeakMap<PMNode, Paragraph>();
-const paragraphPropertySourceCandidates = new WeakMap<Paragraph, Paragraph>();
-const paragraphPropertySourceTransferIds = new WeakMap<Paragraph, string>();
-const paragraphPropertySourceTokens = new WeakMap<Paragraph, string>();
+const paragraphPropertySourceCandidates = new KeptFacts<Paragraph, Paragraph>();
+const paragraphPropertySourceTransferIds = new KeptFacts<Paragraph, string>();
+const paragraphPropertySourceTokens = new KeptFacts<Paragraph, string>();
 const documentParagraphPropertySourceBindingBrand = Symbol(
   "documentParagraphPropertySourceBinding",
 );
@@ -693,6 +762,42 @@ export const paragraphPropertySourceState = (
       ]),
 ];
 
+/**
+ * Where the facts `paragraphPropertySourceState` reads for a paragraph stood:
+ * they are keyed by the paragraph, by its formatting object, and by handles
+ * that are written once, when they are made. Reading it allocates; matching
+ * it against the paragraph does not.
+ */
+export type ParagraphPropertySourceStamp = Readonly<{
+  paragraph: number | undefined;
+  formatting: object | undefined;
+  formattingStamp: number | undefined;
+}>;
+
+export const paragraphPropertySourceStamp = (
+  paragraph: Paragraph,
+): ParagraphPropertySourceStamp => ({
+  paragraph: factStamps.get(paragraph),
+  formatting: paragraph.formatting,
+  formattingStamp:
+    paragraph.formatting === undefined
+      ? undefined
+      : factStamps.get(paragraph.formatting),
+});
+
+/**
+ * Whether no fact kept for the paragraph changed since `stamp` was read: its
+ * `paragraphPropertySourceState` is then the one it was.
+ */
+export const paragraphPropertySourceStampMatches = (
+  paragraph: Paragraph,
+  stamp: ParagraphPropertySourceStamp,
+): boolean =>
+  factStamps.get(paragraph) === stamp.paragraph &&
+  paragraph.formatting === stamp.formatting &&
+  (paragraph.formatting === undefined ||
+    factStamps.get(paragraph.formatting) === stamp.formattingStamp);
+
 export const getParagraphPropertySourceToken = (
   paragraph: Paragraph,
 ): string | undefined => paragraphPropertySourceTokens.get(paragraph);
@@ -747,8 +852,8 @@ export const cloneParagraphWithoutPropertySource = (
   overrides: ParagraphCloneOverrides,
 ): Paragraph => {
   const cloned = { ...paragraph, ...overrides };
-  Reflect.deleteProperty(cloned, paragraphPropertyCapture);
-  Reflect.deleteProperty(cloned, paragraphIndentationProjection);
+  keepHandle(cloned, paragraphPropertyCapture, undefined);
+  keepHandle(cloned, paragraphIndentationProjection, undefined);
   return cloned;
 };
 
@@ -1497,7 +1602,7 @@ const decodedTableCellParagraphSourcePayloadStates = new WeakMap<
   DecodedTableCellParagraphSourcePayload,
   DecodedTableCellParagraphSourcePayloadState
 >();
-const decodedTableCellParagraphSourcePayloads = new WeakMap<
+const decodedTableCellParagraphSourcePayloads = new KeptFacts<
   object,
   DecodedTableCellParagraphSourcePayload
 >();
