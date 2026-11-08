@@ -1,7 +1,8 @@
 import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { AllSelection, EditorState, TextSelection } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
@@ -181,4 +182,107 @@ describe("insert table with the caret in an inline content control", () => {
     expect(commit.publish().isOk()).toBe(true);
     expect(shapeOf(session.document)).toEqual(expected);
   });
+});
+
+describe("insert table from a selection with no caret paragraph", () => {
+  /** A paragraph, a one-cell table, and the paragraph after it. */
+  const withTable = async () =>
+    parseDocx(
+      (
+        await prepareCanonicalDocxInput(
+          await createDocx({
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "Before" }],
+                      },
+                    ],
+                  },
+                  {
+                    type: "table",
+                    rows: [
+                      {
+                        type: "tableRow",
+                        cells: [
+                          {
+                            type: "tableCell",
+                            content: [
+                              {
+                                type: "paragraph",
+                                content: [
+                                  {
+                                    type: "run",
+                                    content: [{ type: "text", text: "A" }],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    type: "paragraph",
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "After" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          }),
+        )
+      ).unwrap(),
+      { preloadFonts: false, detectVariables: false },
+    );
+
+  for (const mode of ["editing", "suggesting"] as const)
+    for (const selection of ["whole document", "selected cells"] as const)
+      test(`over the ${selection} it inserts what the editor would save, in ${mode} mode`, async () => {
+        const session = createCanonicalSession(await withTable()).unwrap();
+        if (mode === "suggesting")
+          session.setMode({ type: "suggesting", author: "Reviewer" });
+        let state = EditorState.create({ schema, doc: session.projection.doc });
+        if (selection === "whole document")
+          state = state.apply(
+            state.tr.setSelection(new AllSelection(state.doc)),
+          );
+        else {
+          let cell = -1;
+          state.doc.descendants((node, position) => {
+            if (cell < 0 && node.type.name === "tableCell") cell = position;
+            return cell < 0;
+          });
+          state = state.apply(
+            state.tr.setSelection(CellSelection.create(state.doc, cell)),
+          );
+        }
+        let edited = state;
+        insertTable()(state, (transaction) => {
+          edited = state.apply(transaction);
+        });
+        const expected = shapeOf(
+          fromProseDoc(edited.doc, session.document, {
+            stylesheetSource: { type: "package" },
+          }),
+        );
+        const intents = getCanonicalCommandIntents(insertTable(), state);
+        if (intents === undefined) return panic("insertTable has no lowering.");
+        const commit = prepareCanonicalCommands(
+          session,
+          state,
+          intents,
+        ).unwrap();
+        expect(commit.publish().isOk()).toBe(true);
+        expect(shapeOf(session.document)).toEqual(expected);
+      });
 });

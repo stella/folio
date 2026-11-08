@@ -43,6 +43,10 @@ import {
 } from "../ai-edits/clean-text";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
+  createBatchListMinter,
+  type MintedList,
+} from "../ai-edits/newListNumbering";
+import {
   collectNoteReferenceLabels,
   hashFolioAIBlockContent,
   hashFolioAIBlockText,
@@ -73,8 +77,6 @@ import {
   parseFolioDocumentOperationBatch,
   withDistinctSuggestionIds,
 } from "../document-operations";
-import { mintListInstance } from "../docx/listNumberingInstances";
-import { NO_NUMBERING_IDS_IN_USE } from "../docx/numberingIds";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import {
   CANONICAL_GAP,
@@ -602,35 +604,6 @@ type ResolveCanonicalPublicOperationOptions = {
   mintList: (format: FolioAIListKind) => MintedList;
 };
 
-type MintedList = { numId: number; newList: NewListInstance };
-
-/**
- * Mints new lists for one batch, each after the ones before it. The document
- * is read at the first mint, so a batch that starts no list never reads it.
- */
-const createListMinter = (document: () => Document) => {
-  let definitions: Document["package"]["numbering"] | null = null;
-  return (format: FolioAIListKind): MintedList => {
-    definitions ??= document().package.numbering;
-    const minted = mintListInstance(
-      definitions,
-      { kind: format },
-      NO_NUMBERING_IDS_IN_USE,
-    );
-    definitions = minted.definitions;
-    const num =
-      minted.definitions.nums.find(({ numId }) => numId === minted.numId) ??
-      panic("A minted list is missing its instance.");
-    const abstractNum = minted.definitions.abstractNums.find(
-      ({ abstractNumId }) => abstractNumId === num.abstractNumId,
-    );
-    return {
-      numId: minted.numId,
-      newList: { num, ...(abstractNum === undefined ? {} : { abstractNum }) },
-    };
-  };
-};
-
 /**
  * The stated numbering a request names, minting its new list once for the
  * operation, as the default engine allocates one instance per operation.
@@ -718,7 +691,7 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
     const resolved: ResolvedOperation[] = [];
-    const mintList = createListMinter(() => session.document);
+    const mintList = createBatchListMinter(() => session.document);
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
     if (!session.isComposing && options.revisionStamp === undefined) {
