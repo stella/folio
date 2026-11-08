@@ -878,6 +878,7 @@ describe("C9: Enter and Delete record paragraph marks", () => {
           kind: "ins",
           info: { id: 1, author: "Reviewer", date: DATE },
           resolutionJoin: 0,
+          survivor: "first",
         },
       },
       paragraph("00000002", [], {
@@ -1136,8 +1137,9 @@ describe("a tracked split's new second half keeps the paragraph mark's run prope
       const [rejected, next] = blocks(
         resolved(split.document, split.revisions, REVISION_DECISIONS.REJECT),
       );
-      // The mark ending the paragraph is the new half's, under its id.
-      expect(rejected).toEqual({ ...original, paraId: "00000002" });
+      // The paragraph comes back under its own id, with the mark the new
+      // half held.
+      expect(rejected).toEqual(original);
       expect(next).toEqual(paragraph("00000009", [run("next")]));
     }
   });
