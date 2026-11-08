@@ -30,6 +30,7 @@ import { directionFromBidi } from "../paragraphDirection";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import {
+  paragraphMarkLendsRuns,
   stripParagraphMarkFormattingForBodyRuns,
   stripParagraphMarkOnlyFormatting,
 } from "../runStyleFormatting";
@@ -93,7 +94,7 @@ export const inheritableParagraphMarkFormatting = ({
   styleId: string | undefined;
   styleResolver: Parameters<typeof resolveRunFormattingWithoutDefaults>[1];
 }): TextFormatting | undefined => {
-  if (styleId !== undefined) return undefined;
+  if (!paragraphMarkLendsRuns(styleId)) return undefined;
   const formatting = resolveRunFormattingWithoutDefaults(
     runProperties,
     styleResolver,

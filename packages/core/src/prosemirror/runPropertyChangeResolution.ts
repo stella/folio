@@ -83,7 +83,6 @@ export const restoreHistoricalRunFormatting = ({
       baseParagraphFormatting: paragraphContext.baseParagraphFormatting,
       paragraphFormatting: paragraphContext.baseParagraphFormatting,
       paragraphMarkFormatting: undefined,
-      paragraphMarkPrecedesStyle: false,
     },
     marks: node.marks,
     ...(styleResolver !== undefined ? { styleResolver } : {}),

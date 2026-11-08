@@ -36,7 +36,6 @@ export const readAuthoredRunFormatting = ({
     baseParagraphFormatting: context.baseParagraphFormatting,
     inheritedFormatting: context.paragraphFormatting,
     paragraphMarkFormatting: context.paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle: context.paragraphMarkPrecedesStyle,
     ...(styleResolver !== undefined ? { styleResolver } : {}),
   });
 

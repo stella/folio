@@ -71,7 +71,6 @@ const EMPTY_PARAGRAPH_RUN_STYLE_CONTEXT: ParagraphRunStyleContext = {
   baseParagraphFormatting: undefined,
   paragraphFormatting: undefined,
   paragraphMarkFormatting: undefined,
-  paragraphMarkPrecedesStyle: false,
 };
 
 type ParagraphRunStyleScope = {

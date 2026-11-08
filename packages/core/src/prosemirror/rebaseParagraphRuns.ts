@@ -22,7 +22,6 @@ export const sameRunStyleContext = (
   source: ParagraphRunStyleContext,
   target: ParagraphRunStyleContext,
 ): boolean =>
-  source.paragraphMarkPrecedesStyle === target.paragraphMarkPrecedesStyle &&
   formattingEquals(
     source.baseParagraphFormatting,
     target.baseParagraphFormatting,
