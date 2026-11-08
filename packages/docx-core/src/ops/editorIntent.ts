@@ -3,6 +3,7 @@ import { panic, Result } from "better-result";
 import { INSERTION_SEAM_POLICIES } from "../model/content";
 import {
   type AbstractNumbering,
+  type BlockContent,
   type BreakContent,
   type Document,
   MAX_REVISION_ID,
@@ -10,6 +11,7 @@ import {
   type Paragraph,
   type ParagraphContent,
   type TabContent,
+  type TableRow,
   type TextFormatting,
 } from "../model/document";
 import { isNumberingLevel } from "../model/numberingLevel";
@@ -85,10 +87,12 @@ import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import {
   type DeleteRangeOp,
+  type DeleteRowOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   EMPTY_PROPERTY_SETS,
   type InsertContentOp,
+  type InsertRowOp,
   type NewIds,
   type OpStory,
   type ParagraphPropsPatch,
@@ -110,11 +114,21 @@ type SplitParagraphIntent = {
 };
 export type { TableIntentOperation } from "./types";
 
+/**
+ * A row inserted into, or deleted from, the table holding `blockId`. An
+ * inserted row's paragraphs take fresh identities from the compiler; the ids
+ * it arrives with are not kept.
+ */
+export type TableRowIntentOperation =
+  | Omit<InsertRowOp, "revision" | "newIds">
+  | Omit<DeleteRowOp, "revision" | "newIds">;
+
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
   | HyperlinkEditorIntent
   | GenerateTOCIntent
   | { type: "table"; operation: TableIntentOperation }
+  | { type: "tableRow"; operation: TableRowIntentOperation }
   | {
       type: "replaceFragment";
       from: TextPosition;
@@ -197,6 +211,7 @@ type EditorIntentAllocation = EditorIntent | SplitParagraphIntent;
 const intentEndpoints = (intent: EditorIntentAllocation) => {
   switch (intent.type) {
     case "table":
+    case "tableRow":
       return {
         story: intent.operation.story,
         fromId: intent.operation.blockId,
@@ -1890,25 +1905,14 @@ export const compileEditorIntent = (
       if (located.isErr()) return Result.err(located.error);
       const demand = tableEditParagraphDemand(located.value, operation);
       if (demand.isErr()) return Result.err(demand.error);
-      const occupied = new Set(
-        [
-          ...packageParagraphIds(document.package),
-          ...(mode.reservedBlockIds ?? []),
-        ].map(idKey),
-      );
-      const newBlockIds: string[] = [];
-      for (let nextId = 1; newBlockIds.length < demand.value; nextId += 1) {
-        if (nextId >= 0x8000_0000)
-          return Result.err(
-            new DocumentOpRefusal({
-              opType: operation.type,
-              reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-              message: "The paragraph identity space is exhausted.",
-            }),
-          );
-        const id = nextId.toString(16).padStart(8, "0").toUpperCase();
-        if (!occupied.has(idKey(id))) newBlockIds.push(id);
-      }
+      const fresh = freshParagraphIds({
+        document,
+        reserved: mode.reservedBlockIds,
+        count: demand.value,
+        opType: operation.type,
+      });
+      if (fresh.isErr()) return Result.err(fresh.error);
+      const newBlockIds = fresh.value;
       let op: TableEditOp;
       switch (operation.type) {
         case DOCUMENT_OP_TYPES.INSERT_COLUMN:
@@ -1952,6 +1956,59 @@ export const compileEditorIntent = (
           );
         blockId = survivor;
       }
+      const applied = applyDocumentOp(document, op);
+      if (applied.isErr()) return Result.err(applied.error);
+      ops = [
+        trimAppliedNewIds({
+          before: document,
+          op,
+          applied: applied.value,
+          story: op.story,
+        }),
+      ];
+      selection = { story: op.story, blockId, offset: 0 };
+      break;
+    }
+    case "tableRow": {
+      const operation = intent.operation;
+      const located = locateTableRow(document, operation);
+      if (located.isErr()) return Result.err(located.error);
+      const { table, rowIndex, list } = located.value;
+      let op: InsertRowOp | DeleteRowOp;
+      let blockId: string | undefined;
+      if (operation.type === DOCUMENT_OP_TYPES.INSERT_ROW) {
+        const fresh = freshParagraphIds({
+          document,
+          reserved: mode.reservedBlockIds,
+          count: rowParagraphCount(operation.row),
+          opType: operation.type,
+        });
+        if (fresh.isErr()) return Result.err(fresh.error);
+        const row = withFreshParagraphIds(operation.row, fresh.value);
+        op = { ...operation, row, ...tracked };
+        blockId = fresh.value[0];
+      } else {
+        op = { ...operation, ...tracked };
+        // The caret lands in a row that stays, or beside the table when its
+        // last row goes with it.
+        blockId =
+          tableRowAnchor(
+            table.rows.filter((_row, index) => index !== rowIndex),
+          ) ??
+          storyParagraphs(storyBody(document, op.story)).find(
+            (paragraph) =>
+              sameBlockList(paragraph.list, list) &&
+              paragraph.paragraph.paraId !== undefined,
+          )?.paragraph.paraId;
+      }
+      if (blockId === undefined)
+        return Result.err(
+          new DocumentOpRefusal({
+            opType: op.type,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            message: "The row edit leaves no paragraph for the caret.",
+          }),
+        );
       const applied = applyDocumentOp(document, op);
       if (applied.isErr()) return Result.err(applied.error);
       ops = [
@@ -2697,4 +2754,82 @@ export const compileEditorIntent = (
     ops = compact;
   }
   return Result.ok({ ops: ops.map(captureDocumentOp), selection });
+};
+
+type FreshParagraphIdsOptions = {
+  document: Document;
+  reserved: ReadonlySet<string> | undefined;
+  count: number;
+  opType: DocumentOp["type"];
+};
+
+/** The lowest paragraph identities neither the package nor the batch holds. */
+const freshParagraphIds = ({
+  document,
+  reserved,
+  count,
+  opType,
+}: FreshParagraphIdsOptions): Result<string[], DocumentOpRefusal> => {
+  const occupied = new Set(
+    [...packageParagraphIds(document.package), ...(reserved ?? [])].map(idKey),
+  );
+  const ids: string[] = [];
+  for (let nextId = 1; ids.length < count; nextId += 1) {
+    if (nextId >= 0x8000_0000)
+      return Result.err(
+        new DocumentOpRefusal({
+          opType,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          message: "The paragraph identity space is exhausted.",
+        }),
+      );
+    const id = nextId.toString(16).padStart(8, "0").toUpperCase();
+    if (!occupied.has(idKey(id))) ids.push(id);
+  }
+  return Result.ok(ids);
+};
+
+const rowParagraphCount = (row: TableRow): number =>
+  storyParagraphs({ content: [{ type: "table", rows: [row] }] }).length;
+
+/** The row with each paragraph, in document order, given the next fresh id. */
+const withFreshParagraphIds = (
+  row: TableRow,
+  ids: readonly string[],
+): TableRow => {
+  let next = 0;
+  const blocks = (content: readonly BlockContent[]): BlockContent[] =>
+    content.map((block) => {
+      switch (block.type) {
+        case "paragraph": {
+          const paraId = ids[next] ?? panic("A fresh paragraph id is missing.");
+          next += 1;
+          const { textId: _textId, ...rest } = block;
+          return { ...rest, paraId };
+        }
+        case "table":
+          return {
+            ...block,
+            rows: block.rows.map((each) => ({
+              ...each,
+              cells: each.cells.map((cell) => ({
+                ...cell,
+                content: blocks(cell.content),
+              })),
+            })),
+          };
+        case "blockSdt":
+        case "blockCustomXml":
+          return { ...block, content: blocks(block.content) };
+        default:
+          return block;
+      }
+    });
+  return {
+    ...row,
+    cells: row.cells.map((cell) => ({
+      ...cell,
+      content: blocks(cell.content),
+    })),
+  };
 };

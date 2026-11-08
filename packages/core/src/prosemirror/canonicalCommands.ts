@@ -6,6 +6,7 @@ import type {
   ParagraphPropsPatch,
   RunPropsPatch,
   TableIntentOperation,
+  TableRowIntentOperation,
 } from "@stll/docx-core/ops";
 
 import type {
@@ -52,6 +53,11 @@ export type CanonicalCommandIntent =
       targets: readonly CanonicalTableFormatTarget[];
     }
   | { type: "editTable"; at: number; edit: CanonicalTableEdit }
+  | {
+      type: "editTableRow";
+      at: number;
+      edit: WithoutTableTarget<TableRowIntentOperation>;
+    }
   | { type: "generateTOC"; at: number; title: string }
   | {
       type: "setHyperlink";

@@ -880,6 +880,7 @@ const intentStory = (intent: EditorIntent): OpStory => {
     case "joinParagraphs":
       return intent.story;
     case "table":
+    case "tableRow":
       return intent.operation.story;
     default: {
       const unreachable: never = intent;
@@ -1274,6 +1275,7 @@ class CanonicalSession {
     let blockIds: readonly string[];
     switch (intent.type) {
       case "table":
+      case "tableRow":
         return true;
       case "generateTOC":
       case "setList":

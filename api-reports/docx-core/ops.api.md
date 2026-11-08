@@ -455,6 +455,9 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "table";
     operation: TableIntentOperation;
 } | {
+    type: "tableRow";
+    operation: TableRowIntentOperation;
+} | {
     type: "replaceFragment";
     from: TextPosition;
     to: TextPosition;
@@ -1239,6 +1242,9 @@ export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | Split
 export type TableIntentOperation = { [Kind in TableEditOp["type"]]: Omit<Extract<TableEditOp, {
         type: Kind;
     }>, "revision" | "newIds" | "newBlockIds">; }[TableEditOp["type"]];
+
+// @public
+export type TableRowIntentOperation = Omit<InsertRowOp, "revision" | "newIds"> | Omit<DeleteRowOp, "revision" | "newIds">;
 
 // @public
 export type TextPosition = {

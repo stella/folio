@@ -2,6 +2,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { isInTable, selectedRect, type TableRect } from "prosemirror-tables";
 
+import type { TableRow } from "@stll/docx-core/model";
 import { DOCUMENT_OP_TYPES, type FormattingPatch } from "@stll/docx-core/ops";
 
 import {
@@ -15,6 +16,7 @@ import {
   withCanonicalCommand,
 } from "./canonicalCommands";
 import {
+  standaloneTableRowsFromProseMirror,
   tableAttrsToFormatting,
   tableCellAttrsToFormatting,
   tableRowAttrsToFormatting,
@@ -338,3 +340,80 @@ export const withCanonicalCellMerge = (command: Command): Command =>
   withCanonicalTableStructureCommand(command, mergeCells);
 export const withCanonicalCellSplit = (command: Command): Command =>
   withCanonicalTableStructureCommand(command, splitCell);
+
+/** A paragraph of the table's own in the given row. */
+const rowAnchor = (rect: TableRect, row: number): number | undefined => {
+  const { map, table, tableStart } = rect;
+  for (let column = 0; column < map.width; column += 1) {
+    const offset = map.map[row * map.width + column];
+    if (offset === undefined) continue;
+    const cell = table.nodeAt(offset);
+    if (cell === null || cell.attrs["_omittedGridSlot"] != null) continue;
+    // A cell reaching down from an earlier row belongs to that row.
+    if (map.findCell(offset).top !== row) continue;
+    const at = firstParagraphPosition(cell, tableStart + offset);
+    if (at !== undefined) return at;
+  }
+  return undefined;
+};
+
+/**
+ * The row the command inserted, as the save would write it. Revision marks
+ * the command put on it are left to the engine, which records its own.
+ */
+const insertedRow = (
+  rect: TableRect,
+  changed: Transaction,
+  index: number,
+): TableRow | undefined => {
+  const after = changed.doc.nodeAt(
+    changed.mapping.map(rect.tableStart - 1, -1),
+  );
+  if (after === null || after.type.name !== "table") return undefined;
+  const row = standaloneTableRowsFromProseMirror(after)[index];
+  if (row === undefined) return undefined;
+  const {
+    structuralChange: _structuralChange,
+    propertyChanges: _propertyChanges,
+    ...plain
+  } = row;
+  return plain;
+};
+
+const insertRow =
+  (side: "above" | "below"): StructureLowering =>
+  (rect, _state, changed) => {
+    const index = side === "above" ? rect.top : rect.bottom;
+    const row = insertedRow(rect, changed, index);
+    const at = rowAnchor(rect, side === "above" ? rect.top : rect.bottom - 1);
+    if (row === undefined || at === undefined) return undefined;
+    return [
+      {
+        type: "editTableRow",
+        at,
+        edit: { type: DOCUMENT_OP_TYPES.INSERT_ROW, at: index, row },
+      },
+    ];
+  };
+
+/** Each selected row from the bottom, addressed by a paragraph of its own. */
+const deleteRows: StructureLowering = (rect) => {
+  const intents: CanonicalCommandIntent[] = [];
+  for (let row = rect.bottom - 1; row >= rect.top; row -= 1) {
+    const at = rowAnchor(rect, row);
+    if (at === undefined) return undefined;
+    intents.push({
+      type: "editTableRow",
+      at,
+      edit: { type: DOCUMENT_OP_TYPES.DELETE_ROW },
+    });
+  }
+  return intents;
+};
+
+export const withCanonicalRowInsertion = (
+  command: Command,
+  side: "above" | "below",
+): Command => withCanonicalTableStructureCommand(command, insertRow(side));
+export const withCanonicalRowDeletion = (command: Command): Command =>
+  withCanonicalTableStructureCommand(command, deleteRows);

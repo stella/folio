@@ -39,13 +39,7 @@ const COMMAND_REFUSAL_CONTRACTS = {
   [CANONICAL_GAP.commands]: {
     operations: [
       "command:insertTable",
-      "command:addRowAbove",
-      "command:addRowBelow",
-      "command:deleteRow",
       "command:deleteTable",
-      "command:selectTable",
-      "command:selectRow",
-      "command:selectColumn",
       "command:autoFitContents",
       "host:addComment",
       "host:acceptChange",
