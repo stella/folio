@@ -152,8 +152,10 @@ test(
             });
             coveredText.set(type, covered.join(""));
           }
+          // Typing over the whole commented paragraph replaces what the
+          // comment covered; accepted, the suggestion reads as the edit does.
           expect(coveredText.get("editing")).toBe("");
-          expect(coveredText.get("suggesting")).toBe(first);
+          expect(coveredText.get("suggesting")).toBe("");
         },
       ),
       {

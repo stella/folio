@@ -97,6 +97,7 @@ import {
   type CanonicalInlineGap,
   canonicalInlineSourceIssue,
   canonicalNativeCells,
+  type CanonicalSeamExtent,
   projectCanonicalInline,
 } from "./canonicalInlineProjection";
 import { normalizeCanonicalListRendering } from "./canonicalListRendering";
@@ -278,9 +279,18 @@ type ParagraphAddress = {
   start: number;
   text: string;
   boundaries: readonly (readonly CanonicalInlineGap[])[];
+  seams: readonly (readonly CanonicalSeamExtent[])[];
   node: PMNode;
   source: Paragraph;
 };
+
+/**
+ * Which source gap an editor position names where invisible markers (comment
+ * ranges, bookmarks, permission ranges, proofing marks) share it: a caret
+ * takes the gap typed text takes (the seam's own gap); `afterMarkers` takes the
+ * seam's last gap and `beforeMarkers` its first.
+ */
+export type CanonicalAddressEdge = "caret" | "afterMarkers" | "beforeMarkers";
 
 type CanonicalProjectionOptions = {
   doc: PMNode;
@@ -304,7 +314,10 @@ class CanonicalProjection {
     );
   }
 
-  addressAt(position: number): Result<TextPosition, CanonicalSessionError> {
+  addressAt(
+    position: number,
+    edge: CanonicalAddressEdge = "caret",
+  ): Result<TextPosition, CanonicalSessionError> {
     if (!Number.isInteger(position))
       return refuse("The input position is not an integer.");
     position = canonicalContentPosition(this.doc, position);
@@ -325,23 +338,68 @@ class CanonicalProjection {
     }
     const gaps =
       paragraph.boundaries.at(offset) ?? panic("Missing canonical boundary");
-    const gap =
-      gaps.find((entry) => entry.position === relative) ??
-      panic("Missing canonical native gap");
+    const index = gaps.findIndex((entry) => entry.position === relative);
+    const gap = gaps[index] ?? panic("Missing canonical native gap");
+    const seam =
+      paragraph.seams.at(offset)?.[index] ?? panic("Missing canonical seam");
+    let ordinal = gap.zeroWidthBefore;
+    if (edge === "afterMarkers") ordinal = seam.last;
+    if (edge === "beforeMarkers") ordinal = seam.first;
     return Result.ok({
       story: this.story,
       blockId: paragraph.blockId,
       offset,
-      ...(gaps.length > 1 || gap.zeroWidthBefore > 0
-        ? { zeroWidthBefore: gap.zeroWidthBefore }
+      ...(gaps.length > 1 || ordinal > 0 || seam.first !== seam.last
+        ? { zeroWidthBefore: ordinal }
         : {}),
     });
   }
 
+  /**
+   * The source gaps a selection from `from` to `to` replaces between. Its
+   * edges stay inside the markers beside them, so replacing exactly the
+   * words a comment covers keeps the comment on the new text. A selection of
+   * a paragraph's whole text takes that paragraph's markers with it: an edge
+   * at the very start of a paragraph whose text the selection covers to its
+   * end reaches before the markers there, and an edge at the very end of a
+   * paragraph the selection covers from its start reaches after them, so a
+   * comment on nothing but the replaced text is emptied, as removing the
+   * text would empty it.
+   */
+  rangeEdgesAt(
+    from: number,
+    to: number,
+  ): { start: CanonicalAddressEdge; end: CanonicalAddressEdge } {
+    const paragraphOf = (position: number) => {
+      const content = canonicalContentPosition(this.doc, position);
+      return this.paragraphs.find(
+        ({ start, node }) =>
+          content >= start && content <= start + node.content.size,
+      );
+    };
+    const first = paragraphOf(from);
+    const last = paragraphOf(to);
+    const startsWhole =
+      first !== undefined &&
+      canonicalContentPosition(this.doc, from) === first.start &&
+      canonicalContentPosition(this.doc, to) >=
+        first.start + first.node.content.size;
+    const endsWhole =
+      last !== undefined &&
+      canonicalContentPosition(this.doc, to) ===
+        last.start + last.node.content.size &&
+      canonicalContentPosition(this.doc, from) <= last.start;
+    return {
+      start: startsWhole ? "beforeMarkers" : "afterMarkers",
+      end: endsWhole ? "afterMarkers" : "beforeMarkers",
+    };
+  }
+
   inputAddressAt(
     position: number,
+    edge: CanonicalAddressEdge = "caret",
   ): Result<TextPosition, CanonicalSessionError> {
-    const address = this.addressAt(position);
+    const address = this.addressAt(position, edge);
     if (address.isErr()) return address;
     const paragraph = this.paragraph(address.value.blockId);
     if (paragraph === undefined) panic("Input lost its paragraph.");
@@ -349,12 +407,14 @@ class CanonicalProjection {
     paragraph.node.forEach((node, start) => {
       if (
         node.marks.some((mark) => mark.type.name === "deletion") &&
-        destination >= paragraph.start + start &&
+        destination > paragraph.start + start &&
         destination < paragraph.start + start + node.nodeSize
       )
         destination = paragraph.start + start + node.nodeSize;
     });
-    return destination === position ? address : this.addressAt(destination);
+    return destination === position
+      ? address
+      : this.addressAt(destination, edge);
   }
 
   positionAt(address: TextPosition): Result<number, CanonicalSessionError> {
@@ -372,15 +432,21 @@ class CanonicalProjection {
     const gaps =
       paragraph.boundaries.at(address.offset) ??
       panic("Missing canonical boundary");
-    const ordinal =
-      address.zeroWidthBefore ??
-      (gaps.at(-1) ?? panic("Missing canonical gap")).zeroWidthBefore;
-    const gap = gaps.find(({ zeroWidthBefore }) => zeroWidthBefore === ordinal);
-    if (
-      !Number.isInteger(ordinal) ||
-      ordinal < 0 ||
-      ordinal > (gaps.at(-1)?.zeroWidthBefore ?? 0)
-    )
+    // An ordinal a seam's editor position stands for, not only the seam's own.
+    const seams =
+      paragraph.seams.at(address.offset) ?? panic("Missing canonical seams");
+    const lastOrdinal = (seams.at(-1) ?? panic("Missing canonical seam")).last;
+    // No ordinal stated: after every zero-width leaf at the offset.
+    const ordinal = address.zeroWidthBefore ?? lastOrdinal;
+    const gap =
+      gaps.find(({ zeroWidthBefore }) => zeroWidthBefore === ordinal) ??
+      gaps.find((_, index) => {
+        const seam = seams[index];
+        return (
+          seam !== undefined && seam.first <= ordinal && ordinal <= seam.last
+        );
+      });
+    if (!Number.isInteger(ordinal) || ordinal < 0 || ordinal > lastOrdinal)
       return refuse("The canonical selection is outside a paragraph gap.");
     if (gap === undefined)
       return refuse(
@@ -1299,6 +1365,26 @@ class CanonicalSession {
   get projection(): CanonicalProjection {
     return this.currentProjection;
   }
+
+  /** The caret the last published edit returned, when the editor shows it at `position`. */
+  private editCaretAt(
+    projection: CanonicalProjection,
+    position: number,
+  ): TextPosition | undefined {
+    const caret = this.currentSelection;
+    if (
+      caret === null ||
+      caret.type !== "text" ||
+      caret.anchor.offset !== caret.head.offset ||
+      caret.anchor.blockId !== caret.head.blockId ||
+      (caret.anchor.zeroWidthBefore ?? null) !==
+        (caret.head.zeroWidthBefore ?? null) ||
+      !sameStory(caret.head.story, projection.story)
+    )
+      return undefined;
+    const shown = projection.positionAt(caret.head);
+    return shown.isOk() && shown.value === position ? caret.head : undefined;
+  }
   get selection(): CanonicalSelection | null {
     return this.currentSelection;
   }
@@ -1383,9 +1469,10 @@ class CanonicalSession {
         );
       const intents: EditorIntent[] = [];
       for (const range of canonicalCellSelectionRanges(state.selection)) {
-        const cellFrom = projection.inputAddressAt(range.from);
+        const edges = projection.rangeEdgesAt(range.from, range.to);
+        const cellFrom = projection.inputAddressAt(range.from, edges.start);
         if (cellFrom.isErr()) return cellFrom;
-        const cellTo = projection.inputAddressAt(range.to);
+        const cellTo = projection.inputAddressAt(range.to, edges.end);
         if (cellTo.isErr()) return cellTo;
         intents.push({
           type: "replaceText",
@@ -1399,9 +1486,23 @@ class CanonicalSession {
     const range = canonicalSelectionRange(state);
     const inputFrom = replacesStructuralSelection ? range.from : from;
     const inputTo = replacesStructuralSelection ? range.to : to;
-    const start = projection.inputAddressAt(inputFrom);
+    const edges =
+      inputFrom === inputTo
+        ? { start: "caret" as const, end: "caret" as const }
+        : projection.rangeEdgesAt(inputFrom, inputTo);
+    // Typing goes on where the last edit left the caret: an editor position
+    // can stand for several source gaps between markers, and the edit's own
+    // caret names the one right after the text it wrote.
+    const editCaret = this.editCaretAt(projection, inputFrom);
+    const start =
+      inputFrom === inputTo && editCaret !== undefined
+        ? Result.ok(editCaret)
+        : projection.inputAddressAt(inputFrom, edges.start);
     if (start.isErr()) return start;
-    const end = projection.inputAddressAt(inputTo);
+    const end =
+      inputFrom === inputTo && editCaret !== undefined
+        ? Result.ok(editCaret)
+        : projection.inputAddressAt(inputTo, edges.end);
     if (end.isErr()) return end;
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;

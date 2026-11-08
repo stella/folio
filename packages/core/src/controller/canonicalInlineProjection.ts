@@ -7,7 +7,11 @@ import {
 import type { Node as PMNode } from "prosemirror-model";
 
 import { hasIllegalXmlCharacters } from "@stll/docx-core";
-import { inlineLeafSpans, paragraphLogicalText } from "@stll/docx-core/ops";
+import {
+  defaultInsertionGap,
+  inlineLeafSpans,
+  paragraphLogicalText,
+} from "@stll/docx-core/ops";
 
 import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
 import {
@@ -437,7 +441,14 @@ export const canonicalNativeCells = (
 };
 
 export type CanonicalInlineGap = { position: number; zeroWidthBefore: number };
-type InlineProjection = { text: string; boundaries: CanonicalInlineGap[][] };
+/** The source ordinals one editor position stands for: from `first` to `last`. */
+export type CanonicalSeamExtent = { first: number; last: number };
+type InlineProjection = {
+  text: string;
+  boundaries: CanonicalInlineGap[][];
+  /** Parallel to `boundaries`: each gap's whole seam. */
+  seams: CanonicalSeamExtent[][];
+};
 const sameSourceMarker = (
   left: ParagraphContent | RunContent,
   right: ParagraphContent | RunContent,
@@ -654,10 +665,30 @@ export const projectCanonicalInline = ({
   );
   let index = 0;
   let consumed = 0;
+  const insertionOrdinals = new Map<number, number>();
+  const insertionOrdinalAt = (offset: number): number => {
+    const known = insertionOrdinals.get(offset);
+    if (known !== undefined) return known;
+    const ordinal = defaultInsertionGap(source.content, offset).zeroWidthBefore;
+    insertionOrdinals.set(offset, ordinal);
+    return ordinal;
+  };
+  const extents = new Map<string, CanonicalSeamExtent>();
   const addGap = (
     position: number,
     gap: { offset: number; zeroWidthBefore: number },
   ) => {
+    const key = `${gap.offset}:${position}`;
+    const extent = extents.get(key);
+    if (extent === undefined)
+      extents.set(key, {
+        first: gap.zeroWidthBefore,
+        last: gap.zeroWidthBefore,
+      });
+    else {
+      extent.first = Math.min(extent.first, gap.zeroWidthBefore);
+      extent.last = Math.max(extent.last, gap.zeroWidthBefore);
+    }
     const gaps = boundaries.at(gap.offset);
     if (!gaps)
       panic(
@@ -665,9 +696,21 @@ export const projectCanonicalInline = ({
       );
     const existing = gaps.findIndex((entry) => entry.position === position);
     const entry = { position, zeroWidthBefore: gap.zeroWidthBefore };
-    // Erased source leaves share a native seam: keep its right-affine source gap.
-    if (existing < 0) gaps.push(entry);
-    else gaps[existing] = entry;
+    if (existing < 0) {
+      gaps.push(entry);
+      return;
+    }
+    // Erased source leaves share a native seam. The seam stands for the gap
+    // typed text takes there (`defaultInsertionGap`: after closing markers,
+    // before opening ones), so a caret the editor places and a caret an
+    // edit returns name the same source gap.
+    const preferred = insertionOrdinalAt(gap.offset);
+    const kept = gaps[existing] ?? panic("Missing canonical seam gap");
+    if (
+      Math.abs(entry.zeroWidthBefore - preferred) <
+      Math.abs(kept.zeroWidthBefore - preferred)
+    )
+      gaps[existing] = entry;
   };
   const consumeErasedLeaves = (position: number | null) => {
     while (consumed === 0) {
@@ -851,5 +894,12 @@ export const projectCanonicalInline = ({
     );
   if (boundaries.some((gaps) => gaps.length === 0))
     return refuse("Canonical editing lost a source character boundary.");
-  return Result.ok({ text, boundaries });
+  const seams = boundaries.map((gaps, offset) =>
+    gaps.map(
+      ({ position }) =>
+        extents.get(`${offset}:${position}`) ??
+        panic("A canonical gap lost its seam"),
+    ),
+  );
+  return Result.ok({ text, boundaries, seams });
 };
