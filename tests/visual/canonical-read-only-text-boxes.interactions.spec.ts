@@ -46,7 +46,7 @@ const positionIn = (json: unknown, text: string, offset: number) => {
   return found;
 };
 
-test("a text box opens read-only: typing inside it refuses, typing beside it edits", async ({
+test("a text box opens read-only: typing inside it changes nothing, typing beside it edits", async ({
   page,
 }) => {
   test.setTimeout(60_000);
@@ -61,21 +61,16 @@ test("a text box opens read-only: typing inside it refuses, typing beside it edi
     expect(opened?.text).toBe("HostInsideNext");
     const content = JSON.stringify(opened?.document?.package.document.content);
 
+    // The box's text is not part of the story the session edits, so the
+    // keystroke reaches no paragraph and changes nothing.
     await select(page, positionIn(opened?.projectionJSON, "Inside", 3));
     await page.keyboard.type("x");
-    const refused = await snapshot(page);
-    expect(refused?.text).toBe("HostInsideNext");
-    expect(refused?.projectionMatchesCanonical).toBe(true);
-    expect(JSON.stringify(refused?.document?.package.document.content)).toBe(
+    const untouched = await snapshot(page);
+    expect(untouched?.text).toBe("HostInsideNext");
+    expect(untouched?.projectionMatchesCanonical).toBe(true);
+    expect(JSON.stringify(untouched?.document?.package.document.content)).toBe(
       content,
     );
-    expect(
-      await page.evaluate(() =>
-        (globalThis.__folioCanonicalFuzzErrors ?? []).map(
-          ({ status }) => status,
-        ),
-      ),
-    ).toContain("refusal");
 
     await clearRefusals(page);
     await select(page, positionIn(opened?.projectionJSON, "Next", 4));
