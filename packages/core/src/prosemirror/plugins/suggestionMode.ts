@@ -747,15 +747,19 @@ export function handleSuggestionPaste(
     carryAcross();
   }
 
-  // An open paste splits the paragraph at its end: its original break ends
-  // the last pasted part. Rejecting the inserted breaks leaves that part, so
-  // it must record the end paragraph's properties even for a cross-paragraph
+  // A paste splits the paragraph at its end: its original break ends the
+  // last pasted part, open or closed (every break inside the pasted range is
+  // marked inserted). Rejecting the inserted breaks leaves that part, so it
+  // must record the end paragraph's properties even for a cross-paragraph
   // replacement. A carry onto the first pasted part cannot survive that join.
-  if (!closedBlocks && $to.parent.type.name === "paragraph") {
-    const $end = tr.doc.resolve(tr.mapping.map(to));
+  if ($to.parent.type.name === "paragraph") {
+    const $end = tr.doc.resolve(
+      closedBlocks ? Math.max(insertFrom, insertTo - 1) : tr.mapping.map(to),
+    );
     if (
       $end.parent.type.name === "paragraph" &&
-      $end.before() !== tr.mapping.map($from.before())
+      $end.before() !== tr.mapping.map($from.before()) &&
+      expectParagraphAttrs($end.parent).pPrMark?.kind !== "ins"
     ) {
       recordReplacedParagraphProperties({
         tr,
