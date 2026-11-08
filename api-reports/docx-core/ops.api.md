@@ -1256,6 +1256,8 @@ export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds
     story: OpStory;
     blockId: string;
     table: Table;
+    side?: "after" | "before";
+    separated?: boolean;
 };
 
 // @public (undocumented)
