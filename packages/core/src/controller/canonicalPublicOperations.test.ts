@@ -10,6 +10,8 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 import { panic } from "better-result";
 import { EditorState } from "prosemirror-state";
 
+import { withoutPendingSuggestions } from "@stll/docx-core/ops";
+
 import {
   createFolioAIEditSnapshot,
   createFolioAITextRangeHandle,
@@ -630,4 +632,124 @@ test("a suggested operation records one pending suggestion named by its id", () 
       )
       .skipped.at(0)?.reason,
   ).toBe("unsupportedMode");
+});
+
+describe("suggested operations in the canonical session", () => {
+  const range = () =>
+    createFolioAITextRangeHandle({
+      text: "alpha beta",
+      blockId: "12345678",
+      startOffset: 0,
+      endOffset: 5,
+    }) ?? panic("Missing range");
+  const kinds = {
+    replaceInBlock: () =>
+      ({
+        id: "s",
+        type: "replaceInBlock",
+        blockId: "12345678",
+        find: "alpha",
+        replace: "gamma",
+      }) as const,
+    replaceRange: () =>
+      ({
+        id: "s",
+        type: "replaceRange",
+        range: range(),
+        replace: "gamma",
+      }) as const,
+    replaceBlock: () =>
+      ({
+        id: "s",
+        type: "replaceBlock",
+        blockId: "12345678",
+        text: "gamma beta",
+      }) as const,
+    formatRange: () =>
+      ({
+        id: "s",
+        type: "formatRange",
+        range: range(),
+        formatting: { bold: true },
+      }) as const,
+  } satisfies Record<string, () => FolioDocumentOperation>;
+  /** The text of every paragraph, as accepting every revision leaves it. */
+  const acceptedTexts = (editor: ReturnType<typeof setup>) => {
+    let state = editor.state();
+    const ids = new Set<number>();
+    const visit = (value: unknown): void => {
+      if (typeof value !== "object" || value === null) return;
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      const record = value as Record<string, unknown>;
+      const info = record["info"] as { id?: unknown } | undefined;
+      if (typeof info?.id === "number") ids.add(info.id);
+      for (const child of Object.values(record)) visit(child);
+    };
+    visit(editor.session.document.package.document.content);
+    if (ids.size > 0) {
+      const commit = editor.session
+        .prepareResolve(state, { revisionIds: [...ids], resolution: "accept" })
+        .unwrap();
+      expect(editor.publish(commit)).toBe(true);
+      state = editor.state();
+    }
+    return createFolioAIEditSnapshot(state.doc).blocks.map(({ text }) => text);
+  };
+
+  for (const [kind, operation] of Object.entries(kinds))
+    test(`${kind} records a suggestion the save leaves out, rejecting restores and accepting matches the tracked edit`, () => {
+      // The edit as an ordinary tracked change, accepted.
+      const tracked = setup();
+      tracked.apply([operation()], { mode: "tracked-changes" });
+      const expected = acceptedTexts(tracked);
+
+      for (const resolution of ["reject", "accept"] as const) {
+        const editor = setup();
+        const original = editor.session.document;
+        const result = editor.apply([operation()], { mode: "suggested" });
+        expect(result.applied.map(({ suggestionId }) => suggestionId)).toEqual([
+          "s",
+        ]);
+        // The file a save writes holds none of it.
+        expect(
+          withoutPendingSuggestions(editor.session.document).unwrap(),
+        ).toEqual(original);
+        const commit = editor.session
+          .prepareSuggestion(editor.state(), {
+            suggestionId: "s",
+            resolution,
+            author: "Adopter",
+            date: "2026-02-02T00:00:00Z",
+          })
+          .unwrap();
+        expect(editor.publish(commit)).toBe(true);
+        if (resolution === "reject")
+          expect(editor.session.document).toEqual(original);
+        else expect(acceptedTexts(editor)).toEqual(expected);
+      }
+    });
+
+  test("operations a suggestion cannot carry skip as unsupported in this mode", () => {
+    const editor = setup();
+    const result = editor.apply(
+      [
+        {
+          id: "split",
+          type: "splitBlock",
+          blockId: "12345678",
+          offset: 5,
+          separator: " ",
+        },
+        { id: "merge", type: "mergeBlockWithNext", blockId: "12345678" },
+      ],
+      { mode: "suggested" },
+    );
+    expect(result.skipped.map(({ reason }) => reason)).toEqual([
+      "unsupportedMode",
+      "unsupportedMode",
+    ]);
+  });
 });
