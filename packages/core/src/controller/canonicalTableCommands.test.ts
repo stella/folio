@@ -294,4 +294,42 @@ describe("table attribute commands in the canonical session", () => {
     ) as () => Parameters<typeof lowerTableAttributeCommand>[0];
     expect(lowerTableAttributeCommand(addRow(), state)).toBeUndefined();
   });
+
+  test("a cell that opens with a nested table addresses the outer cell", async () => {
+    const document = tableDocument();
+    const table = document.package.document.content[1];
+    if (table?.type !== "table") return panic("No table.");
+    const outer = table.rows[0]?.cells[0] ?? panic("No cell.");
+    // The cell's first block is a table of its own; the outer cell's own
+    // paragraph comes after it.
+    outer.content.unshift({
+      type: "table",
+      rows: [{ type: "tableRow", cells: [cell("25000000", "Inner")] }],
+    });
+    const session = createCanonicalSession(document).unwrap();
+    let state = EditorState.create({ schema, doc: session.projection.doc });
+    state = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, positionAfter(state, "A")),
+      ),
+    );
+    const fill = singletonManager.requireCommand(
+      "setCellFillColor" as never,
+    ) as (color: string) => Parameters<typeof lowerTableAttributeCommand>[0];
+    const intents = getCanonicalCommandIntents(fill("FF0000"), state);
+    if (intents === undefined) return panic("The fill has no lowering.");
+    expect(
+      prepareCanonicalCommands(session, state, intents)
+        .unwrap()
+        .publish()
+        .isOk(),
+    ).toBe(true);
+    const saved = session.document.package.document.content[1];
+    if (saved?.type !== "table") return panic("No table.");
+    const savedOuter = saved.rows[0]?.cells[0] ?? panic("No cell.");
+    expect(savedOuter.formatting?.shading).toBeDefined();
+    const inner = savedOuter.content[0];
+    if (inner?.type !== "table") return panic("No nested table.");
+    expect(inner.rows[0]?.cells[0]?.formatting?.shading).toBeUndefined();
+  });
 });

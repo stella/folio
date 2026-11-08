@@ -1,6 +1,13 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
+import type { FormattingPatch } from "@stll/docx-core/ops";
+
+import {
+  expectTableAttrs,
+  expectTableCellAttrs,
+  expectTableRowAttrs,
+} from "./attrs";
 import {
   type CanonicalCommandIntent,
   type CanonicalTableFormatTarget,
@@ -11,7 +18,6 @@ import {
   tableCellAttrsToFormatting,
   tableRowAttrsToFormatting,
 } from "./conversion/fromProseDoc";
-import type { TableAttrs, TableCellAttrs, TableRowAttrs } from "./schema/nodes";
 
 const SCOPES = {
   table: "table",
@@ -23,36 +29,74 @@ type ScopedNodeName = keyof typeof SCOPES;
 const isScoped = (name: string): name is ScopedNodeName =>
   Object.hasOwn(SCOPES, name);
 
-/** The formatting the save writes for a table, row or cell node. */
-const formattingOf = (node: PMNode): Record<string, unknown> => {
-  switch (SCOPES[node.type.name as ScopedNodeName]) {
-    case "table":
-      return { ...tableAttrsToFormatting(node.attrs as TableAttrs) };
-    case "row":
-      return { ...tableRowAttrsToFormatting(node.attrs as TableRowAttrs) };
-    case "cell":
-      return { ...tableCellAttrsToFormatting(node.attrs as TableCellAttrs) };
-  }
-};
-
 /** Keys whose saved value changed: the new value, or null where the key went. */
-const patchBetween = (
-  before: Record<string, unknown>,
-  after: Record<string, unknown>,
-): Record<string, unknown> => {
-  const patch: Record<string, unknown> = {};
-  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
-    patch[key] = Object.hasOwn(after, key) ? after[key] : null;
+const patchBetween = <Formatting extends object>(
+  before: Formatting | undefined,
+  after: Formatting | undefined,
+): FormattingPatch<Formatting> => {
+  const patch: {
+    -readonly [Key in keyof Formatting]?: Formatting[Key] | null;
+  } = {};
+  // Object.keys widens to string; these are the formatting's own keys.
+  const keys = Object.keys({ ...before, ...after }) as (keyof Formatting)[];
+  for (const key of keys) {
+    const was = before?.[key];
+    const is = after?.[key];
+    if (JSON.stringify(was) === JSON.stringify(is)) continue;
+    patch[key] = after !== undefined && Object.hasOwn(after, key) ? is : null;
   }
   return patch;
 };
 
-/** A position inside the node's first paragraph, which addresses it. */
+/**
+ * The patch of the formatting the save writes for a table, row or cell node,
+ * between its attributes before and after the command, as a target at `at`.
+ */
+const targetBetween = (
+  scope: CanonicalTableFormatTarget["scope"],
+  before: PMNode,
+  after: PMNode,
+  at: number,
+): CanonicalTableFormatTarget => {
+  switch (scope) {
+    case "table":
+      return {
+        scope,
+        at,
+        patch: patchBetween(
+          tableAttrsToFormatting(expectTableAttrs(before)),
+          tableAttrsToFormatting(expectTableAttrs(after)),
+        ),
+      };
+    case "row":
+      return {
+        scope,
+        at,
+        patch: patchBetween(
+          tableRowAttrsToFormatting(expectTableRowAttrs(before)),
+          tableRowAttrsToFormatting(expectTableRowAttrs(after)),
+        ),
+      };
+    case "cell":
+      return {
+        scope,
+        at,
+        patch: patchBetween(
+          tableCellAttrsToFormatting(expectTableCellAttrs(before)),
+          tableCellAttrsToFormatting(expectTableCellAttrs(after)),
+        ),
+      };
+  }
+};
+
+/**
+ * A position inside the first paragraph that belongs to the node itself, which
+ * addresses it. A paragraph of a nested table would address the inner table.
+ */
 const firstParagraphPosition = (node: PMNode, position: number) => {
   let found: number | undefined;
   node.descendants((child, offset) => {
-    if (found !== undefined) return false;
+    if (found !== undefined || child.type.name === "table") return false;
     if (child.isTextblock) {
       found = position + 1 + offset + 1;
       return false;
@@ -105,14 +149,14 @@ export const lowerTableAttributeCommand = (
     }
     if (JSON.stringify(after.attrs) === JSON.stringify(node.attrs)) return true;
     expected.setNodeMarkup(position, undefined, after.attrs, node.marks);
-    const patch = patchBetween(formattingOf(node), formattingOf(after));
-    if (Object.keys(patch).length === 0) return true;
     const at = firstParagraphPosition(node, position);
+    const target = targetBetween(SCOPES[node.type.name], node, after, at ?? 0);
+    if (Object.keys(target.patch).length === 0) return true;
     if (at === undefined) {
       lowerable = false;
       return false;
     }
-    targets.push({ scope: SCOPES[node.type.name], at, patch } as never);
+    targets.push(target);
     return true;
   });
   // Attribute changes alone must account for the whole command.
