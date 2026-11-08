@@ -31,7 +31,12 @@ export type AutoSaveStatus = "idle" | "saving" | "saved" | "error";
 
 /** Configuration for {@link AutoSaveManager}. */
 export type AutoSaveManagerOptions = {
-  /** Storage key for localStorage (default: 'docx-editor-autosave'). */
+  /**
+   * Storage key for localStorage (default: 'docx-editor-autosave'). Recovery
+   * offers whatever this key holds, so a host whose origin serves several
+   * users or documents should derive it from both and clear it when either
+   * changes.
+   */
   storageKey?: string;
   /** Save interval in milliseconds (default: 30000 - 30 seconds). */
   interval?: number;

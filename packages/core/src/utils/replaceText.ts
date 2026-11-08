@@ -30,13 +30,50 @@ export function replaceTextInDocument(
   formatting?: TextFormatting,
 ): Document {
   const newDoc = cloneDocumentWithParagraphPropertySources(doc);
-  const body = newDoc.package.document;
-  const { start, end } = range;
+  replaceRangeInPlace(newDoc.package.document, range, text, formatting);
+  return newDoc;
+}
 
+type ReplaceRangesResult = {
+  document: Document;
+  replacedCount: number;
+  failedCount: number;
+};
+
+/**
+ * Replace every range with `text` in one copy of the document. `ranges` must
+ * run from the end of the document backwards, so each replacement leaves the
+ * offsets of the ones after it valid.
+ */
+export function replaceTextRangesInDocument(
+  doc: Document,
+  ranges: readonly ReplaceRange[],
+  text: string,
+): ReplaceRangesResult {
+  const newDoc = cloneDocumentWithParagraphPropertySources(doc);
+  let replacedCount = 0;
+  let failedCount = 0;
+  for (const range of ranges) {
+    try {
+      replaceRangeInPlace(newDoc.package.document, range, text);
+      replacedCount++;
+    } catch {
+      failedCount++;
+    }
+  }
+  return { document: newDoc, replacedCount, failedCount };
+}
+
+const replaceRangeInPlace = (
+  body: DocumentBody,
+  { start, end }: ReplaceRange,
+  text: string,
+  formatting?: TextFormatting,
+): void => {
   if (start.paragraphIndex === end.paragraphIndex) {
     const paragraph = getParagraphByIndex(body, start.paragraphIndex);
     if (!paragraph) {
-      return newDoc;
+      return;
     }
 
     replaceTextInParagraph({
@@ -49,7 +86,7 @@ export function replaceTextInDocument(
   } else {
     const startParagraph = getParagraphByIndex(body, start.paragraphIndex);
     if (!startParagraph) {
-      return newDoc;
+      return;
     }
     const startText = getFindParagraphText(startParagraph);
 
@@ -73,9 +110,7 @@ export function replaceTextInDocument(
       }
     }
   }
-
-  return newDoc;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Helpers (extracted from the former agent/executor)

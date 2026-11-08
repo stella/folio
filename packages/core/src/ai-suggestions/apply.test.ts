@@ -64,3 +64,49 @@ test("suggestion batches share bounded revision allocation with editor commands"
   }
   expect(ids.has(mintRevisionId())).toBe(false);
 });
+
+test("overlapping suggestions never change text outside the range each one covers", () => {
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, [schema.text("abcdef")]),
+  ]);
+  const view = {
+    state: EditorState.create({ doc }),
+    dispatch: (tr: Transaction) => {
+      view.state = view.state.apply(tr);
+    },
+  };
+  const base = {
+    topic: "Text",
+    severity: "style",
+    status: "pending",
+    rationale: "Edit",
+  } as const;
+  const replaceBc = {
+    ...base,
+    id: "replace-bc",
+    range: { from: 2, to: 4 },
+    originalText: "bc",
+    suggestedText: "BC",
+    contextBefore: "a",
+    contextAfter: "def",
+  } satisfies AISuggestion;
+  const deleteCd = {
+    ...base,
+    id: "delete-cd",
+    range: { from: 3, to: 5 },
+    originalText: "cd",
+    suggestedText: "",
+    contextBefore: "ab",
+    contextAfter: "ef",
+  } satisfies AISuggestion;
+
+  const result = applySuggestions({
+    view,
+    suggestions: [replaceBc, deleteCd],
+    mode: "direct",
+    author: "Reviewer",
+  });
+
+  expect(result).toEqual({ applied: ["delete-cd"], stale: ["replace-bc"] });
+  expect(view.state.doc.textContent).toBe("abef");
+});
