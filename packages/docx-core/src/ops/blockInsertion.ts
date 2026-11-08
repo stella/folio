@@ -231,8 +231,10 @@ export const insertBlocks = ({
         },
       ]
     : [];
+  // The anchor's own records are carried over and keep their ids; only the
+  // records this insertion creates take new ones.
   const fresh = freshenIdentities({
-    before: [],
+    before: takesOverMark ? [location.paragraph] : [],
     after: [...anchorBlocks, ...blocks],
     newIds: op.newIds ?? {},
     usedElsewhere: () => new Set(packageIdentityKeys(document.package)),

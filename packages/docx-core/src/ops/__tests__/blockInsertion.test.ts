@@ -271,3 +271,50 @@ test("insertion validates identities, review conflicts and section boundaries", 
     DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
   );
 });
+
+test("tracked insertion after a final paragraph keeps the anchor's own records and ids", () => {
+  const plain = makeParagraph("00000001", "kept");
+  const anchor: Paragraph = {
+    ...plain,
+    content: [
+      { type: "run", content: [{ type: "text", text: "kept" }] },
+      {
+        type: "insertion",
+        info: { id: 5, author: "Other", date: "2026-01-01T00:00:00Z" },
+        content: [{ type: "run", content: [{ type: "text", text: " more" }] }],
+      },
+      {
+        type: "inlineSdt",
+        properties: { sdtType: "richText", id: 42, tag: "clause" },
+        content: [{ type: "run", content: [{ type: "text", text: " field" }] }],
+      },
+    ],
+  };
+  const op: InsertBlocksOp = {
+    ...insertion([makeParagraph("00000002", "new")]),
+    at: { type: "after", blockId: "00000001" },
+  };
+  const demand = (document: Document) => {
+    const counted = revisionIdDemand(document, op);
+    if (counted.isErr()) throw counted.error;
+    return counted.value;
+  };
+  const document = documentOf([anchor]);
+  // The anchor's own records take no new ids.
+  expect(demand(document)).toBe(demand(documentOf([plain])));
+  const applied = apply(document, {
+    ...op,
+    newIds: {
+      revision: Array.from(
+        { length: demand(document) },
+        (_, index) => 101 + index,
+      ),
+    },
+  });
+  const [first] = applied.document.package.document.content;
+  expect(first?.type === "paragraph" && first.content).toEqual(anchor.content);
+  expect(resolve(applied, REVISION_DECISIONS.REJECT).document).toEqual(
+    document,
+  );
+  expect(undo(applied)).toEqual(document);
+});
