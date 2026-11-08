@@ -78,6 +78,7 @@ import {
   collectPairedBookmarkIds,
   footnoteToProseDoc,
   headerFooterToProseDoc,
+  ProjectionBlockCache,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
@@ -702,6 +703,8 @@ type ProjectStoryOptions = {
   document: Document;
   styles: StyleDefinitions | null | undefined;
   story?: OpStory;
+  /** The main story's converted blocks, kept by its session. */
+  blockCache?: ProjectionBlockCache;
 };
 
 /** Whether a paragraph anchors a text box, which converts to a block of its own. */
@@ -724,6 +727,7 @@ const project = ({
   document,
   styles,
   story = OP_STORIES.MAIN,
+  blockCache,
 }: ProjectStoryOptions): Result<CanonicalProjection, CanonicalSessionError> => {
   const body = findStoryBody(document, story);
   if (!body) return refuse("The canonical story no longer exists.");
@@ -738,7 +742,11 @@ const project = ({
   };
   const converted = Result.try({
     try: () => {
-      if (story === OP_STORIES.MAIN) return toProseDoc(document, options);
+      if (story === OP_STORIES.MAIN)
+        return toProseDoc(
+          document,
+          blockCache === undefined ? options : { ...options, blockCache },
+        );
       if (story.kind === "header" || story.kind === "footer")
         return headerFooterToProseDoc(body.content, options);
       return footnoteToProseDoc(body.content, options);
@@ -1170,6 +1178,7 @@ type CanonicalSessionSeedOptions = {
   document: Document;
   projection: CanonicalProjection;
   styles: StyleDefinitions | null | undefined;
+  blockCache: ProjectionBlockCache;
 };
 
 type CanonicalReplaceTextInput = {
@@ -1231,8 +1240,16 @@ class CanonicalSession {
   };
   private readonly undone: UndoneJournalEntry[] = [];
   private readonly styles: StyleDefinitions | null | undefined;
+  /** The main story's converted blocks, reused by every projection of it. */
+  private readonly blockCache: ProjectionBlockCache;
 
-  constructor({ document, projection, styles }: CanonicalSessionSeedOptions) {
+  constructor({
+    document,
+    projection,
+    styles,
+    blockCache,
+  }: CanonicalSessionSeedOptions) {
+    this.blockCache = blockCache;
     this.currentDocument = document;
     this.currentProjection = projection;
     this.sourceBlockIds = new Set(packageParagraphIds(document.package));
@@ -2053,6 +2070,7 @@ class CanonicalSession {
     const projected = project({
       document: applied.value.document,
       styles: this.styles,
+      blockCache: this.blockCache,
     });
     if (projected.isErr()) return projected;
     const surviving = projected.value.paragraph(
@@ -2147,6 +2165,7 @@ class CanonicalSession {
     const projected = project({
       document: this.currentDocument,
       styles: this.styles,
+      blockCache: this.blockCache,
       story,
     });
     if (projected.isOk())
@@ -2423,6 +2442,7 @@ class CanonicalSession {
     const projected = project({
       document: applied.value.document,
       styles: this.styles,
+      blockCache: this.blockCache,
       story: projectedStory,
     });
     if (projected.isErr()) return projected;
@@ -2432,6 +2452,7 @@ class CanonicalSession {
         return project({
           document: applied.value.document,
           styles: this.styles,
+          blockCache: this.blockCache,
         });
       return Result.ok(this.currentProjection);
     })();
@@ -2601,13 +2622,15 @@ export const createCanonicalSession = (
   if (validated.isErr()) return refuse(validated.error.message);
   const normalized = normalizeCanonicalListRendering(identified).document;
   preservePropertySources({ target: normalized, source: owned });
-  const projected = project({ document: normalized, styles });
+  const blockCache = new ProjectionBlockCache();
+  const projected = project({ document: normalized, styles, blockCache });
   if (projected.isErr()) return projected;
   return Result.ok(
     new CanonicalSession({
       document: normalized,
       projection: projected.value,
       styles,
+      blockCache,
     }),
   );
 };
