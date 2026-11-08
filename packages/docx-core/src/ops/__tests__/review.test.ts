@@ -292,6 +292,43 @@ describe("tracked text", () => {
     expect(later.revisions).toEqual([2]);
   });
 
+  test("a suggested insertion carries its suggestion and joins only that suggestion", () => {
+    const document = documentOf(paragraph("00000001", [run("Hello")]));
+    const typed = (
+      from: Document,
+      offset: number,
+      id: number,
+      suggestionId?: string,
+    ) =>
+      applied(from, {
+        type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+        at: at("00000001", offset),
+        text: "x",
+        runProps: "inherit",
+        revision: {
+          ...stamp(id),
+          ...(suggestionId === undefined ? {} : { suggestionId }),
+        },
+      });
+    const first = typed(document, 5, 1, "s1");
+    const [created] = blocks(first.document);
+    const insertion =
+      created?.type === "paragraph"
+        ? created.content.find(({ type }) => type === "insertion")
+        : undefined;
+    expect(insertion?.type === "insertion" && insertion.info).toEqual({
+      id: 1,
+      author: "Reviewer",
+      date: DATE,
+      suggestionId: "s1",
+    });
+    // The same suggestion joins it.
+    expect(typed(first.document, 6, 2, "s1").revisions).toEqual([]);
+    // Another suggestion, or an ordinary tracked change, is a record of its own.
+    expect(typed(first.document, 6, 2, "s2").revisions).toEqual([2]);
+    expect(typed(first.document, 6, 2).revisions).toEqual([2]);
+  });
+
   test("a tracked insertion splits another author's insertion instead of nesting in it", () => {
     const theirs: ParagraphContent = {
       type: "insertion",

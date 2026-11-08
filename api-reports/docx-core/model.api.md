@@ -2315,6 +2315,7 @@ export type TrackedChangeInfo = {
         attribute: string;
         value: string;
     };
+    suggestionId?: string;
 };
 
 // @public

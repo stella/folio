@@ -68,6 +68,9 @@ export const stampInfo = (stamp: RevisionStamp): TrackedChangeInfo => {
   if (stamp.initials !== undefined) {
     info.initials = stamp.initials;
   }
+  if (stamp.suggestionId !== undefined) {
+    info.suggestionId = stamp.suggestionId;
+  }
   return info;
 };
 
@@ -253,6 +256,7 @@ export const foldedParagraphPropertyChange = ({
     return paragraphPropertyChange(stampInfo(stamp), paragraph);
   const info = { ...existing.info, ...stampInfo(stamp), id: existing.info.id };
   if (stamp.initials === undefined) delete info.initials;
+  if (stamp.suggestionId === undefined) delete info.suggestionId;
   // A companion date belongs to the previous attribution, not the new stamp.
   delete info.utcDate;
   const change = { ...existing, info };

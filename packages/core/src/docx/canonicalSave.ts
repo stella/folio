@@ -1,6 +1,7 @@
 import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import type { Document } from "@stll/docx-core";
+import { withoutPendingSuggestions } from "@stll/docx-core/ops";
 
 import { withoutUnreferencedNotes } from "../prosemirror/noteReferenceReview";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -48,7 +49,13 @@ export const serializeCanonicalSave = async ({
   diagnostics: SaveDiagnostic[];
   tripwireResult: TripwireResult | null;
 }> => {
-  const document = withoutUnreferencedNotes(snapshot.document);
+  // A pending suggestion is the host's proposal, not a change in the file:
+  // the file is written as if every one were rejected. A suggestion the
+  // engine cannot reject refuses the save rather than reach the file as an
+  // ordinary tracked change.
+  const withoutSuggestions = withoutPendingSuggestions(snapshot.document);
+  if (withoutSuggestions.isErr()) throw withoutSuggestions.error;
+  const document = withoutUnreferencedNotes(withoutSuggestions.value);
   // Package-resource operations conservatively retain structural save work through undo.
   const replacementPart =
     snapshot.structure === "changed"

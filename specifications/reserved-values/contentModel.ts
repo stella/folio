@@ -936,6 +936,8 @@ export const TRACKED_CHANGE_INFO_RESERVED = {
   date: NO_RESERVED_VALUE,
   initials: NO_RESERVED_VALUE,
   utcDate: NO_RESERVED_VALUE,
+  // In memory only: no OOXML attribute carries it.
+  suggestionId: NO_RESERVED_VALUE,
 } satisfies Record<keyof TrackedChangeInfo, ReservedValueDisposition>;
 
 export type ExhaustiveTrackedChangeInfoReserved = ExhaustiveFields<
@@ -963,6 +965,7 @@ export const PROPERTY_CHANGE_INFO_RESERVED = {
   date: NO_RESERVED_VALUE,
   initials: NO_RESERVED_VALUE,
   utcDate: NO_RESERVED_VALUE,
+  suggestionId: NO_RESERVED_VALUE,
 } satisfies Record<keyof PropertyChangeInfo, ReservedValueDisposition>;
 
 export type ExhaustivePropertyChangeInfoReserved = ExhaustiveFields<

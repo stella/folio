@@ -224,7 +224,7 @@ export type NewIds = {
  * of making it: the stamp's id names the first record the edit creates and
  * `newIds.revision` names the others, in document order. The id must be unused
  * in the package. A new tracked wrapper that would sit next to one with the
- * same author, date and initials merges into it and creates no record, so an
+ * same author, date, initials and suggestion merges into it and creates no record, so an
  * author's burst of typing reads as one change.
  */
 export type RevisionStamp = {
@@ -233,6 +233,11 @@ export type RevisionStamp = {
   /** `w:date`, as the author's client stated it. */
   date: string;
   initials?: string;
+  /**
+   * The pending suggestion the records belong to. A record of one suggestion
+   * never merges into a record of another, or into an ordinary tracked change.
+   */
+  suggestionId?: string;
 };
 
 /** The paragraph fields a split gives the new paragraph, besides its id, content and mark. */
