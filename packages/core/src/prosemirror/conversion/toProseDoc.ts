@@ -733,6 +733,50 @@ const setReadsOf = (set: RecordedMembership): SetReads => ({
   answers: set.answers,
 });
 
+/**
+ * The facts kept outside the fields of a block's paragraphs, a table's in
+ * document order: a converted block is reused only while they are the same.
+ */
+const blockSourceState = (block: Paragraph | Table): readonly unknown[] => {
+  if (block.type === "paragraph") return paragraphPropertySourceState(block);
+  const state: unknown[] = [];
+  const visit = (blocks: readonly BlockContent[]): void => {
+    for (const child of blocks) {
+      switch (child.type) {
+        case "paragraph": {
+          const facts = paragraphPropertySourceState(child);
+          state.push(child, facts.length, ...facts);
+          break;
+        }
+        case "table":
+          for (const row of child.rows)
+            for (const cell of row.cells) visit(cell.content);
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          visit(child.content);
+          break;
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          break;
+        default: {
+          const _: never = child;
+          return _;
+        }
+      }
+    }
+  };
+  visit([block]);
+  return state;
+};
+
 type CachedBlock = {
   nodes: readonly PMNode[];
   reads: StoryReads;
@@ -766,7 +810,7 @@ export class ProjectionBlockCache {
   private inputs: ProjectionPackageInputs | undefined;
   private context:
     (PackageConversionContext & { styleResolver: StyleEngine }) | undefined;
-  private blocks = new WeakMap<Paragraph, CachedBlock>();
+  private blocks = new WeakMap<Paragraph | Table, CachedBlock>();
 
   /** The package context for these inputs, the cache started over if they changed. */
   packageContext(
@@ -804,13 +848,13 @@ export class ProjectionBlockCache {
    * The nodes of `paragraph` from the story state it starts at, reused when
    * every story fact its last conversion read still holds, else converted.
    */
-  paragraph(
-    paragraph: Paragraph,
+  block(
+    block: Paragraph | Table,
     state: StoryState,
-    convert: (context: TableConversionContext, groupId: string) => PMNode[],
+    convert: (context: TableConversionContext) => PMNode[],
   ): readonly PMNode[] {
-    const known = this.blocks.get(paragraph);
-    const sourceState = paragraphPropertySourceState(paragraph);
+    const known = this.blocks.get(block);
+    const sourceState = blockSourceState(block);
     if (
       known !== undefined &&
       sameState(known.sourceState, sourceState) &&
@@ -855,7 +899,7 @@ export class ProjectionBlockCache {
       createMark: context.createMark,
       ...story,
     };
-    const nodes = convert(blockContext, story.nextTextBoxGroupId());
+    const nodes = convert(blockContext);
     // A minted text-box id carries the salt; a block holding none of them
     // reads the same wherever its group number falls.
     const saltMark = `"${this.salt}:`;
@@ -876,10 +920,10 @@ export class ProjectionBlockCache {
       },
     };
     // As the conversion left them: it may record facts of its own.
-    this.blocks.set(paragraph, {
+    this.blocks.set(block, {
       nodes,
       reads,
-      sourceState: paragraphPropertySourceState(paragraph),
+      sourceState: blockSourceState(block),
     });
     return nodes;
   }
@@ -959,16 +1003,22 @@ export function toProseDoc(
                   textBoxGroupId: conversionContext.nextTextBoxGroupId(),
                   context: conversionContext,
                 })
-              : cache.paragraph(block, story, (context, textBoxGroupId) =>
+              : cache.block(block, story, (context) =>
                   convertParagraphWithTextBoxes(block, styleResolver, {
-                    textBoxGroupId,
+                    textBoxGroupId: context.nextTextBoxGroupId(),
                     context,
                   }),
                 )),
           );
           break;
         case "table":
-          out.push(convertTable(block, styleResolver, conversionContext));
+          out.push(
+            ...(cache === undefined
+              ? [convertTable(block, styleResolver, conversionContext)]
+              : cache.block(block, story, (context) => [
+                  convertTable(block, styleResolver, context),
+                ])),
+          );
           break;
         case "blockSdt":
           out.push(convertBlockSdt(block, convertBodyBlocks));

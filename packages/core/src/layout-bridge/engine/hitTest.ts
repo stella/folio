@@ -15,7 +15,6 @@ import {
 } from "../../layout-engine/measure/tableCellGrid";
 import { resolveTableCellPadding } from "../../layout-engine/types";
 import type {
-  BlockId,
   FlowBlock,
   Fragment,
   Layout,
@@ -28,6 +27,7 @@ import type {
   TableFragment,
   TableMeasure,
 } from "../../layout-engine/types";
+import { indexBlocksById } from "./blockIndex";
 
 // =============================================================================
 // TYPES
@@ -195,13 +195,6 @@ export function getPageIndexAtY(layout: Layout, y: number): number | null {
 // =============================================================================
 
 /**
- * Find a block by its ID in the blocks array.
- */
-function findBlockIndexById(blocks: FlowBlock[], blockId: BlockId): number {
-  return blocks.findIndex((block) => block.id === blockId);
-}
-
-/**
  * Calculate the actual height of a paragraph fragment from its lines.
  */
 function calculateParagraphFragmentHeight(
@@ -242,8 +235,9 @@ export function hitTestFragment(
     return a.x - b.x;
   });
 
+  const blockIndices = indexBlocksById(blocks);
   for (const fragment of sortedFragments) {
-    const blockIndex = findBlockIndexById(blocks, fragment.blockId);
+    const blockIndex = blockIndices.get(fragment.blockId) ?? -1;
     if (blockIndex === -1) {
       continue;
     }
@@ -300,12 +294,13 @@ export function hitTestImageFragment(
   measures: Measure[],
   pagePoint: Point,
 ): FragmentHit | null {
+  const blockIndices = indexBlocksById(blocks);
   for (const fragment of pageHit.page.fragments) {
     if (fragment.kind !== "image") {
       continue;
     }
 
-    const blockIndex = findBlockIndexById(blocks, fragment.blockId);
+    const blockIndex = blockIndices.get(fragment.blockId) ?? -1;
     if (blockIndex === -1) {
       continue;
     }
@@ -355,6 +350,7 @@ export function hitTestTableCell(
   measures: Measure[],
   pagePoint: Point,
 ): TableCellHit | null {
+  const blockIndices = indexBlocksById(blocks);
   for (const fragment of pageHit.page.fragments) {
     if (fragment.kind !== "table") {
       continue;
@@ -373,7 +369,7 @@ export function hitTestTableCell(
       continue;
     }
 
-    const blockIndex = findBlockIndexById(blocks, tableFragment.blockId);
+    const blockIndex = blockIndices.get(tableFragment.blockId) ?? -1;
     if (blockIndex === -1) {
       continue;
     }
@@ -754,8 +750,9 @@ export function findNearestFragment(
   let nearestHit: FragmentHit | null = null;
   let nearestDistance = Infinity;
 
+  const blockIndices = indexBlocksById(blocks);
   for (const fragment of pageHit.page.fragments) {
-    const blockIndex = findBlockIndexById(blocks, fragment.blockId);
+    const blockIndex = blockIndices.get(fragment.blockId) ?? -1;
     if (blockIndex === -1) {
       continue;
     }

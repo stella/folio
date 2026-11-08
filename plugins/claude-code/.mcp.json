@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@stll/folio-cli@0.5.11",
+        "@stll/folio-cli@0.5.12",
         "mcp",
         "--root",
         "${CLAUDE_PROJECT_DIR}"

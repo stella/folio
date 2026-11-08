@@ -16,6 +16,7 @@ import type {
 import type { ListCounterStreams } from "../../prosemirror/listMarker";
 import type { RunStyleResolver } from "../../prosemirror/runStyleFormatting";
 import type { StyleDefinitions, Theme } from "../../types/document";
+import type { ParagraphBlockCache } from "./paragraphBlockCache";
 
 /**
  * Options for the conversion.
@@ -118,6 +119,11 @@ export type ToFlowBlocksOptions = {
    * longer the document's last and keeps its height.
    */
   trailingEndnoteIds?: ReadonlySet<number>;
+  /**
+   * Paragraph blocks kept from earlier conversions of the same editor's
+   * document. Conversion gives the same blocks with or without it.
+   */
+  paragraphBlocks?: ParagraphBlockCache;
 };
 
 export type FlowConversionOptions = ToFlowBlocksOptions & {
@@ -129,6 +135,22 @@ export type FlowConversionOptions = ToFlowBlocksOptions & {
   textBoxAnchorBlockIds: Map<string, ParagraphBlock["id"]>;
   styleResolver: RunStyleResolver;
 };
+
+/** The options holding list counter state, which each paragraph advances in story order. */
+export type ListCounterOptionKey =
+  | "listCounters"
+  | "listAbstractCounters"
+  | "listSeenNumIds"
+  | "originalListCounters"
+  | "originalListAbstractCounters"
+  | "originalListSeenNumIds"
+  | "listCounterStreams";
+
+/** The conversion options without list counter state: what converting one paragraph at a known list marker reads. */
+export type CounterFreeFlowConversionOptions = Omit<
+  FlowConversionOptions,
+  ListCounterOptionKey
+>;
 
 /**
  * Convert twips to pixels (1 twip = 1/1440 inch, 1 inch = 96 CSS px).

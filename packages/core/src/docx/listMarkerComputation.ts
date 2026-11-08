@@ -1,4 +1,6 @@
 /** Marker counters shared by parsing and canonical model normalization. */
+import { panic } from "better-result";
+
 import type { Paragraph } from "../types/document";
 import { bulletMarkerFontName, convertBulletToUnicode } from "./bulletMarkers";
 import { resolveListTemplate } from "./listTemplate";
@@ -18,6 +20,125 @@ export type ComputeListMarkerOptions = {
   restartedNumIds: Set<number>;
   previousList: PreviousListState;
 };
+
+/**
+ * What each field of the marker counters depends on: the package alone, or
+ * the paragraphs of the story before the current one. Total over the fields:
+ * one added does not compile until it is placed, and the story half is what
+ * a snapshot copies.
+ */
+const LIST_COUNTER_DEPENDENCY = {
+  numbering: "package",
+  listCounters: "story",
+  abstractCounters: "story",
+  restartedNumIds: "story",
+  previousList: "story",
+} as const satisfies Record<
+  keyof ComputeListMarkerOptions,
+  "package" | "story"
+>;
+type CounterDependency = typeof LIST_COUNTER_DEPENDENCY;
+type StoryCounterField = {
+  [K in keyof CounterDependency]: CounterDependency[K] extends "story"
+    ? K
+    : never;
+}[keyof CounterDependency];
+
+/**
+ * The story half of the marker counters at one paragraph, copied. Counter
+ * arrays are shared between a list instance and its abstract list, and a
+ * later paragraph advances the shared array, so the copy names each array by
+ * its index in `arrays` and keeps which entries share one.
+ */
+export type ListCounterSnapshot = {
+  readonly arrays: readonly (readonly number[])[];
+  readonly listCounters: readonly (readonly [number, number])[];
+  readonly abstractCounters: readonly (readonly [number, number])[];
+  readonly restartedNumIds: readonly number[];
+  readonly previousList: Readonly<PreviousListState>;
+} & Record<StoryCounterField, unknown>;
+
+export const snapshotListCounters = (
+  counters: ComputeListMarkerOptions,
+): ListCounterSnapshot => {
+  const indices = new Map<number[], number>();
+  const arrays: (readonly number[])[] = [];
+  const indexOf = (values: number[]): number => {
+    const known = indices.get(values);
+    if (known !== undefined) return known;
+    indices.set(values, arrays.length);
+    arrays.push([...values]);
+    return arrays.length - 1;
+  };
+  return {
+    listCounters: [...counters.listCounters].map(
+      ([numId, values]) => [numId, indexOf(values)] as const,
+    ),
+    abstractCounters: [...counters.abstractCounters].map(
+      ([abstractNumId, values]) => [abstractNumId, indexOf(values)] as const,
+    ),
+    arrays,
+    restartedNumIds: [...counters.restartedNumIds],
+    previousList: { ...counters.previousList },
+  };
+};
+
+/** Put the story half of `counters` back as the snapshot copied it. */
+export const restoreListCounters = (
+  counters: ComputeListMarkerOptions,
+  snapshot: ListCounterSnapshot,
+): void => {
+  const arrays = snapshot.arrays.map((values) => [...values]);
+  const arrayAt = (index: number): number[] =>
+    arrays[index] ?? panic("A list counter snapshot lost an array.");
+  const story: Pick<ComputeListMarkerOptions, StoryCounterField> = {
+    listCounters: new Map(
+      snapshot.listCounters.map(([numId, index]) => [numId, arrayAt(index)]),
+    ),
+    abstractCounters: new Map(
+      snapshot.abstractCounters.map(([abstractNumId, index]) => [
+        abstractNumId,
+        arrayAt(index),
+      ]),
+    ),
+    restartedNumIds: new Set(snapshot.restartedNumIds),
+    previousList: { ...snapshot.previousList },
+  };
+  Object.assign(counters, story);
+};
+
+const samePairs = (
+  left: readonly (readonly [number, number])[],
+  right: readonly (readonly [number, number])[],
+) =>
+  left.length === right.length &&
+  left.every(
+    ([key, index], at) => right[at]?.[0] === key && right[at]?.[1] === index,
+  );
+
+/** Whether two snapshots hold the same counters, shared the same way, in the same order. */
+export const sameListCounters = (
+  left: ListCounterSnapshot,
+  right: ListCounterSnapshot,
+): boolean =>
+  left.previousList.abstractNumId === right.previousList.abstractNumId &&
+  left.previousList.fromStyle === right.previousList.fromStyle &&
+  left.previousList.numId === right.previousList.numId &&
+  left.restartedNumIds.length === right.restartedNumIds.length &&
+  left.restartedNumIds.every(
+    (numId, at) => right.restartedNumIds[at] === numId,
+  ) &&
+  samePairs(left.listCounters, right.listCounters) &&
+  samePairs(left.abstractCounters, right.abstractCounters) &&
+  left.arrays.length === right.arrays.length &&
+  left.arrays.every((values, at) => {
+    const other = right.arrays[at];
+    return (
+      other !== undefined &&
+      values.length === other.length &&
+      values.every((value, index) => Object.is(value, other[index]))
+    );
+  });
 
 export const computeListMarker = (
   paragraph: Paragraph,
