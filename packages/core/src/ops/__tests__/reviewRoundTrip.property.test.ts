@@ -78,7 +78,73 @@ afterAll(() => {
   );
 });
 
+/**
+ * A tracked document reads back from the editor and from a saved file with
+ * the same review state, and resolves the same way live as reopened.
+ */
+const expectSurvivesSaveAndReopen = async (pending: Document) => {
+  expect(
+    reviewDifferences(pending, editorProjectionRoundTrip(pending)),
+  ).toEqual({ messages: [], omitted: 0 });
+  const reopened = await editorRoundTrip(pending);
+  expect(reviewDifferences(pending, reopened)).toEqual({
+    messages: [],
+    omitted: 0,
+  });
+  expect(storyRevisionIds(reopened)).toEqual(storyRevisionIds(pending));
+  for (const decision of Object.values(REVISION_DECISIONS)) {
+    const liveResolved = resolved(pending, decision);
+    const reopenedResolved = resolved(reopened, decision);
+    expect(reviewDifferences(liveResolved, reopenedResolved)).toEqual({
+      messages: [],
+      omitted: 0,
+    });
+    expect(
+      reviewDifferences(reopenedResolved, await editorRoundTrip(liveResolved)),
+    ).toEqual({ messages: [], omitted: 0 });
+  }
+};
+
+/** Whether a paragraph mark records which paragraph rejecting it keeps. */
+const marksASurvivor = (document: Document): boolean =>
+  JSON.stringify(document.package.document.content).includes('"survivor"');
+
 describe("tracked model round trip and resolution oracle", () => {
+  test("L8: an insertion after the paragraph ending a block list survives editor save and reopen", async () => {
+    await assertProperty(
+      fc.asyncProperty(seedArbitrary, async (seed) => {
+        const document = await fixture(seed);
+        const applied = applyDocumentOp(document, {
+          type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+          story: OP_STORIES.MAIN,
+          at: { type: "after", blockId: "00000004" },
+          blocks: [
+            {
+              type: "paragraph",
+              paraId: "00000021",
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: seed.insertion }],
+                },
+              ],
+            },
+          ],
+          revision: stamp,
+          newIds,
+        });
+        if (applied.isErr()) throw applied.error;
+        // The anchor ends its block list only inside the fixture's cell.
+        fc.pre(marksASurvivor(applied.value.document));
+        await expectSurvivesSaveAndReopen(applied.value.document);
+      }),
+      {
+        numRuns: 20,
+        id: "L8: an insertion after the paragraph ending a block list survives editor save and reopen",
+      },
+    );
+  });
+
   for (const [kind, operation] of Object.entries(operations)) {
     test(`L8: ${kind} survives editor save and reopen`, async () => {
       await assertProperty(
@@ -90,33 +156,7 @@ describe("tracked model round trip and resolution oracle", () => {
           );
           if (applied.isErr()) throw applied.error;
           expect(applied.value.revisions.length).toBeGreaterThan(0);
-          const pending = applied.value.document;
-          expect(
-            reviewDifferences(pending, editorProjectionRoundTrip(pending)),
-          ).toEqual({
-            messages: [],
-            omitted: 0,
-          });
-          const reopened = await editorRoundTrip(pending);
-          expect(reviewDifferences(pending, reopened)).toEqual({
-            messages: [],
-            omitted: 0,
-          });
-          expect(storyRevisionIds(reopened)).toEqual(storyRevisionIds(pending));
-          for (const decision of Object.values(REVISION_DECISIONS)) {
-            const liveResolved = resolved(pending, decision);
-            const reopenedResolved = resolved(reopened, decision);
-            expect(reviewDifferences(liveResolved, reopenedResolved)).toEqual({
-              messages: [],
-              omitted: 0,
-            });
-            expect(
-              reviewDifferences(
-                reopenedResolved,
-                await editorRoundTrip(liveResolved),
-              ),
-            ).toEqual({ messages: [], omitted: 0 });
-          }
+          await expectSurvivesSaveAndReopen(applied.value.document);
         }),
         { numRuns: 20, id: "L8: ${kind} survives editor save and reopen" },
       );

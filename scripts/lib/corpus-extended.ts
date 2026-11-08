@@ -14,8 +14,8 @@
 import { panic, Result } from "better-result";
 
 import { classifyCorpusFile } from "./corpus-classify";
-import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
 import {
+  type CorpusDeclaredRefusal,
   type CorpusInvariantInput,
   type CorpusInvariantOutcome,
   EXTENDED_CORPUS_INVARIANTS,

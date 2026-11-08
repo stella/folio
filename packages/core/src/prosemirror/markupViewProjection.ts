@@ -255,8 +255,8 @@ export const projectStoryMarkupView = ({
   const state = EditorState.create({
     doc,
     plugins: [
-      createDocumentStyleContextPlugin(styles),
       createDocumentNumberingPlugin(numbering),
+      createDocumentStyleContextPlugin(styles),
     ],
   });
   storyProjectionStates.set(doc, { styles, numbering, state });

@@ -870,6 +870,9 @@ export const paragraphMarkOutcome: (input: {
 } & SectionTransfer);
 
 // @public
+export const paragraphPropertySnapshotToken: (paragraph: Paragraph) => object | undefined;
+
+// @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
 // @public

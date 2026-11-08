@@ -368,11 +368,13 @@ export function createHiddenEditorState(
   const numberingPlugin = createDocumentNumberingPlugin(
     document?.package.numbering,
   );
+  // Numbering comes first: other plugins read it while they apply a
+  // transaction, which only sees the states of the plugins before them.
   const plugins: Plugin[] = [
+    numberingPlugin,
     ...externalPlugins,
     ...(manager?.getPlugins() ?? [createTextInputPlugin()]),
     styleResolverPlugin,
-    numberingPlugin,
   ];
 
   if (collaboration) {
@@ -676,11 +678,11 @@ export const createHiddenEditorManager = (
     PMEditorState.create({
       doc: session.projection.doc,
       plugins: [
+        createDocumentNumberingPlugin(session.document.package.numbering),
         createParagraphChangeTrackerPlugin(),
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? session.document.package.styles,
         ),
-        createDocumentNumberingPlugin(session.document.package.numbering),
         ...[
           ...(deps.getExtensionManager()?.getPlugins() ?? []),
           ...deps.getExternalPlugins(),
