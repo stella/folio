@@ -126,6 +126,12 @@ const CASES: readonly Case[] = [
     tracked: true,
   },
   {
+    name: "delete the whole selected table",
+    command: "deleteTable",
+    selection: { type: "cells", from: "A", to: "F" },
+    tracked: true,
+  },
+  {
     name: "insert a row above",
     command: "addRowAbove",
     selection: { type: "caret", in: "D" },

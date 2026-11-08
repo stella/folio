@@ -868,6 +868,17 @@ export const createHiddenEditorManager = (
       if (!view || deps.getReadOnly() || editorSession.type !== "canonical")
         return;
       syncCanonicalMode();
+      if (type === "deleteTable") {
+        const command = deps
+          .getExtensionManager()
+          ?.getCommand("deleteTable")?.();
+        if (command === undefined)
+          refuse("Deleting the table is unavailable.", {
+            gap: CANONICAL_GAP.commands,
+          });
+        else executeCanonicalCommand(command);
+        return;
+      }
       const session = editorSession.session;
       const state = view.state;
       if (
