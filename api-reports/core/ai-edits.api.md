@@ -947,6 +947,19 @@ export type FolioReviewedStory = {
 export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 
 // @public
+export type FolioReviewResolution = {
+    resolved: number;
+    skipped: FolioReviewResolutionSkip[];
+};
+
+// @public
+export type FolioReviewResolutionSkip = {
+    id: number;
+    reason: "contentControlLock";
+    message: string;
+};
+
+// @public
 export type FolioRevisionStamp = {
     date: string;
     idSeed: number;

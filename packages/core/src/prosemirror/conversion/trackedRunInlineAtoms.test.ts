@@ -155,7 +155,8 @@ const resolveAll = async (
     }),
   ]);
   expect(
-    decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll(),
+    (decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll())
+      .resolved,
   ).toBe(1);
   const resolved = await reviewer.toBuffer();
   const reopened = await FolioDocxReviewer.fromBuffer(resolved);

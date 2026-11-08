@@ -544,7 +544,7 @@ test("partial numbered deletions retain empty structure across saved review reso
     assert.equal(reviewer.acceptChange(deletion), true);
     const remaining = reviewer.getChanges().length;
     assert.ok(remaining > 0);
-    assert.equal(reviewer.rejectAll(), remaining);
+    assert.equal(reviewer.rejectAll().resolved, remaining);
     assert.equal(reviewer.getChanges().length, 0);
     const empty = reviewer.getContent().find((block) => block.id === target.id);
     assert.equal(empty?.text, "");

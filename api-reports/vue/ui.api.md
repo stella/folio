@@ -34,7 +34,7 @@ import { Style } from '@stll/folio-core/types/document';
 import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
 import { TabStop } from '@stll/folio-core/types/document';
 import { Theme } from '@stll/folio-core/types/document';
-import { TrackedChangeEntry } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
+import { TrackedChangeEntry as TrackedChangeEntry_2 } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
 import { VNode } from 'vue';
 import { Watermark } from '@stll/folio-core/watermark';
 
