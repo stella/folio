@@ -1880,7 +1880,10 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       } else {
         scan.complexFieldSourceRuns?.push(runElement);
       }
-      if (instrText) {
+      // A field nested in this one's result has its own instruction; only
+      // this field's code (with any field nested inside the code) is this
+      // field's instruction.
+      if (instrText && !(isNestedField && scan.afterSeparator)) {
         scan.complexFieldInstr += instrText;
       }
       // Prefer any field run that actually carries formatting (the begin
@@ -1937,21 +1940,27 @@ const PARAGRAPH_CONTENT_HANDLERS = {
         scan.afterSeparator = true;
       }
 
-      if (scan.afterSeparator && !hasFieldEnd) {
-        // Add to result runs (excluding the separator run itself). A run
-        // read here can still sit inside a deeper field's own still-open
-        // instruction region — this field's own `afterSeparator` only says
-        // this position is not in *this* field's code, not that no
-        // enclosing field's code contains it (see the two-nesting-level
-        // case in `nestedFieldCodeVisibility.property.test.ts`) — so its
-        // content shows only when nothing currently open still hides it.
-        if (!hasFieldSeparate) {
-          scan.complexFieldResultRuns.push(
-            isHiddenByOpenFieldCode(scan)
-              ? hiddenRunCaptureOf(runElement, run.formatting)
-              : run,
-          );
-        }
+      // Add to result runs every run after this field's own separator up to
+      // its own end, those two excluded. A field nested in the result is
+      // content the result carries whole: its own `begin`, `separate` and
+      // `end` stay with it, or the field it is would lose its structure and
+      // a writer could not give its result back. A run read here can still
+      // sit inside a deeper field's own still-open instruction region —
+      // this field's own `afterSeparator` only says this position is not in
+      // *this* field's code, not that no enclosing field's code contains it
+      // (see the two-nesting-level case in
+      // `nestedFieldCodeVisibility.property.test.ts`) — so its content shows
+      // only when nothing currently open still hides it.
+      const ownStructure = !isNestedField && (hasFieldSeparate || hasFieldEnd);
+      if (scan.afterSeparator && !ownStructure) {
+        let resultRun = run;
+        if (isHiddenByOpenFieldCode(scan))
+          resultRun = hiddenRunCaptureOf(runElement, run.formatting);
+        else if (isNestedField)
+          // The nested field's own characters are source markup the result
+          // carries, not structure the editor models.
+          resultRun = withOrphanFieldCharsPreserved(run, runElement);
+        scan.complexFieldResultRuns.push(resultRun);
       }
 
       if (hasFieldEnd && !isNestedField) {
