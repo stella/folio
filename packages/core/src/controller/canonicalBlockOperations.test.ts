@@ -12,6 +12,7 @@ import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { FolioDocumentOperation } from "../ai-edits";
+import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/apply";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
@@ -400,6 +401,26 @@ const OPERATIONS = {
     blockId: "10000002",
     properties: { numbering: { kind: "newList", format: "bullet", level: 1 } },
   },
+  mergeBlockWithNext: {
+    id: "op",
+    type: "mergeBlockWithNext",
+    blockId: "10000001",
+  },
+  "mergeBlockWithNext separated": {
+    id: "op",
+    type: "mergeBlockWithNext",
+    blockId: "10000001",
+    separator: " ",
+  },
+  "mergeBlockWithNext with properties": {
+    id: "op",
+    type: "mergeBlockWithNext",
+    blockId: "10000001",
+    mergedParagraphProperties: {
+      alignment: "right",
+      spacing: { spaceAfter: 120 },
+    },
+  },
   "setBlockParagraphProperties alignment": {
     id: "op",
     type: "setBlockParagraphProperties",
@@ -467,7 +488,12 @@ describe("block-level public operations match the default engine", () => {
             await viaCanonicalEngine(source, operation, mode),
           );
           expect(actual).toEqual(expected);
-          if (mode !== "tracked-changes") return;
+          // Kinds a suggestion cannot carry skip in both engines.
+          if (
+            mode !== "tracked-changes" ||
+            !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(operation.type)
+          )
+            return;
           // Suggested, the edit saves as nothing until it is resolved:
           // rejecting gives the source back, accepting the tracked edit.
           expect(
@@ -850,4 +876,57 @@ describe("a block move matches the default engine", () => {
           expect(xml).toContain("<w:moveFrom ");
           expect(xml).toContain("<w:moveTo ");
         });
+});
+
+describe("a comment on an edit in a table cell matches the default engine", () => {
+  const operation = {
+    id: "op",
+    type: "replaceInBlock",
+    blockId: "10000004",
+    find: "Cell",
+    replace: "Box",
+    comment: { text: "Inside the table" },
+  } as const satisfies FolioDocumentOperation;
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(mode, async () => {
+      const source = await packageOf(BODIES["before a table"]);
+      const expected = await outcomes(
+        await viaDefaultEngine(source, operation, mode),
+      );
+      expect(expected.comments.pending).toHaveLength(1);
+      const actual = await outcomes(
+        await viaCanonicalEngine(source, operation, mode),
+      );
+      expect(actual).toEqual(expected);
+    });
+});
+
+describe("a commented insertion inside a block content control matches the default engine", () => {
+  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const mode of ["direct", "tracked-changes"] as const)
+      test(`${type}, ${mode}`, async () => {
+        const source = await packageOf([
+          paragraph("10000001", "Alpha"),
+          `<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr><w:sdtContent>${paragraph("10000002", "Beta")}</w:sdtContent></w:sdt>`,
+          paragraph("10000003", "Gamma"),
+        ]);
+        const operation = {
+          id: "op",
+          type,
+          blockId: "10000002",
+          text: "Inserted",
+          comment: { text: "Why this clause" },
+        } as const satisfies FolioDocumentOperation;
+        const run = await canonicalRun(source, operation, mode);
+        expect(run.skipped).toEqual([]);
+        const expected = await outcomes(
+          await viaDefaultEngine(source, operation, mode),
+        );
+        expect(expected.comments.pending).toEqual([
+          { anchoredText: "Inserted", text: "Why this clause" },
+        ]);
+        expect(
+          await outcomes(await viaCanonicalEngine(source, operation, mode)),
+        ).toEqual(expected);
+      });
 });
