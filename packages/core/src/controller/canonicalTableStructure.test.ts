@@ -120,6 +120,12 @@ type Case = {
 
 const CASES: readonly Case[] = [
   {
+    name: "delete the table",
+    command: "deleteTable",
+    selection: { type: "caret", in: "E" },
+    tracked: true,
+  },
+  {
     name: "insert a row above",
     command: "addRowAbove",
     selection: { type: "caret", in: "D" },
