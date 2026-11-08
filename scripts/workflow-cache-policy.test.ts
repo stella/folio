@@ -90,6 +90,13 @@ const publishingJobNames = (workflow: unknown) => {
   return protectedJobs;
 };
 
+/** The repository's own Bun setup, at the root checkout or a nested one. */
+const LOCAL_BUN_SETUP = /^\.\/(?:[\w.-]+\/)*\.github\/actions\/bun$/u;
+const isLocalBunSetup = (uses: unknown): uses is string =>
+  typeof uses === "string" && LOCAL_BUN_SETUP.test(uses);
+const localInput = (step: Record<string, unknown>, name: string) =>
+  isRecord(step["with"]) ? step["with"][name] : undefined;
+
 const cacheProblems = (workflow: unknown): string[] => {
   if (!isRecord(workflow) || !isRecord(workflow["jobs"]))
     panic("Invalid workflow jobs");
@@ -112,6 +119,8 @@ const cacheProblems = (workflow: unknown): string[] => {
         const uses = step["uses"];
         return (
           uses === "./.github/actions/safe-chain" ||
+          (isLocalBunSetup(uses) &&
+            (localInput(step, "install-cache") ?? "none") === "none") ||
           (typeof uses === "string" &&
             /(?:oven-sh\/setup-bun|stella\/\.github\/actions\/setup-bun-cached)@/u.test(
               uses,
@@ -127,6 +136,24 @@ const cacheProblems = (workflow: unknown): string[] => {
       if (!protectedInstall && uses.startsWith("oven-sh/setup-bun@")) {
         problems.push(
           `${name}: raw Bun setup needs the shared install-cache action`,
+        );
+      }
+      if (
+        protectedInstall &&
+        isLocalBunSetup(uses) &&
+        localInput(step, "install-cache") === "actions"
+      ) {
+        problems.push(
+          `${name}: shared install cache changes protected download policy`,
+        );
+      }
+      if (
+        (defaultScope || publishing.has(name)) &&
+        isLocalBunSetup(uses) &&
+        localInput(step, "binary-cache") !== "read-only"
+      ) {
+        problems.push(
+          `${name}: a protected job restores the Bun binary cache read-only`,
         );
       }
       if (protectedInstall && uses.includes("setup-bun-cached@")) {
@@ -159,6 +186,7 @@ const cacheProblems = (workflow: unknown): string[] => {
 };
 
 const raw = { uses: "oven-sh/setup-bun@fixture" };
+const BUN_SETUP_ACTION = ".github/actions/bun/action.yml";
 const cached = { uses: "stella/.github/actions/setup-bun-cached@fixture" };
 
 test("ordinary jobs use the cache owner and preserve protected runtime setup", () => {
@@ -192,6 +220,54 @@ test("ordinary jobs use the cache owner and preserve protected runtime setup", (
   expect(
     cacheProblems({
       jobs: { fixture: { steps: [{ ...cached, with: { "no-cache": true } }] } },
+    }),
+  ).toHaveLength(1);
+});
+
+test("the repository's Bun setup restores read-only in protected jobs and keeps their install policy", () => {
+  const local = (inputs: Record<string, string>) => ({
+    uses: "./.github/actions/bun",
+    with: inputs,
+  });
+  const nested = { ...local({}), uses: "./base/.github/actions/bun" };
+  // Ordinary jobs: either install policy, and the binary cache read-write.
+  for (const step of [local({}), local({ "install-cache": "actions" })])
+    expect(cacheProblems({ jobs: { fixture: { steps: [step] } } })).toEqual([]);
+  // A job keeping its own download policy takes no shared install cache.
+  expect(
+    cacheProblems({
+      jobs: {
+        fixture: {
+          steps: [
+            { uses: "./.github/actions/safe-chain" },
+            local({ "install-cache": "actions" }),
+          ],
+        },
+      },
+    }),
+  ).toHaveLength(1);
+  for (const on of ["workflow_run", ["pull_request_target"]]) {
+    for (const step of [local({}), nested])
+      expect(
+        cacheProblems({ on, jobs: { fixture: { steps: [step] } } }),
+      ).toEqual([
+        "fixture: a protected job restores the Bun binary cache read-only",
+      ]);
+    expect(
+      cacheProblems({
+        on,
+        jobs: { fixture: { steps: [local({ "binary-cache": "read-only" })] } },
+      }),
+    ).toEqual([]);
+  }
+  expect(
+    cacheProblems({
+      jobs: {
+        publish: {
+          permissions: { contents: "write" },
+          steps: [local({})],
+        },
+      },
     }),
   ).toHaveLength(1);
 });
@@ -251,6 +327,8 @@ test("every committed workflow and composite action follows the shared cache pol
   for (const file of new Bun.Glob(
     ".github/actions/**/action.{yml,yaml}",
   ).scanSync({ cwd: root })) {
+    // The Bun setup action owns the binary and install caches it moves.
+    if (file === BUN_SETUP_ACTION) continue;
     const action: unknown = Bun.YAML.parse(
       readFileSync(`${root}/${file}`, "utf8"),
     );
@@ -282,7 +360,13 @@ test("the guard rejects reverting every committed shared setup to raw Bun setup"
       for (const [index, step] of job["steps"].entries()) {
         if (!isRecord(step) || typeof step["uses"] !== "string") continue;
         if (
-          !step["uses"].startsWith("stella/.github/actions/setup-bun-cached@")
+          !step["uses"].startsWith(
+            "stella/.github/actions/setup-bun-cached@",
+          ) &&
+          !(
+            isLocalBunSetup(step["uses"]) &&
+            localInput(step, "install-cache") === "actions"
+          )
         )
           continue;
         const steps = job["steps"].map(

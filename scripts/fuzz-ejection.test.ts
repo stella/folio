@@ -455,12 +455,25 @@ test("ejection workflow pins main and separates replay from issue writes", () =>
   const pin = replay.steps.find((step: { id?: string }) => step.id === "base");
   expect(pin.run).toContain('commits/main" --jq');
   expect(pin.run).not.toContain(".parents[0]");
-  const checkouts = replay.steps.filter((step: { uses?: string }) =>
-    step.uses?.startsWith("actions/checkout@"),
+  const checkouts = replay.steps.filter(
+    (step: { uses?: string; with?: { path?: string } }) =>
+      step.uses?.startsWith("actions/checkout@") &&
+      step.with?.path !== "workflow-source",
   );
   expect(checkouts).toHaveLength(2);
   for (const checkout of checkouts)
     expect(checkout.with.ref).toBe("${{ steps.base.outputs.sha }}");
+  // Only the Bun setup action comes from the workflow's own commit, and only
+  // the actions directory of it.
+  const actions = replay.steps.find(
+    (step: { with?: { path?: string } }) =>
+      step.with?.path === "workflow-source",
+  );
+  expect(actions.with).toEqual({
+    path: "workflow-source",
+    "sparse-checkout": ".github/actions",
+    "persist-credentials": false,
+  });
   const execution = replay.steps.find((step: { run?: string }) =>
     step.run?.includes("fuzz-ejection.ts replay"),
   );
