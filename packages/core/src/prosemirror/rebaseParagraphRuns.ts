@@ -25,12 +25,7 @@ export const sameRunStyleContext = (
   formattingEquals(
     source.baseParagraphFormatting,
     target.baseParagraphFormatting,
-  ) &&
-  formattingEquals(source.paragraphFormatting, target.paragraphFormatting) &&
-  formattingEquals(
-    source.paragraphMarkFormatting,
-    target.paragraphMarkFormatting,
-  );
+  ) && formattingEquals(source.paragraphFormatting, target.paragraphFormatting);
 
 type RebaseParagraphRunsOptions = {
   tr: Transaction;

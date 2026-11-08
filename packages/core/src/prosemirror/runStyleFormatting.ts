@@ -1,15 +1,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import type { StyleEngine } from "../style-engine";
-import type {
-  ColorValue,
-  EmphasisMark,
-  PreservedMarkup,
-  ShadingProperties,
-  TextEffect,
-  TextFormatting,
-  UnderlineStyle,
-} from "../types/document";
+import type { TextFormatting } from "../types/document";
 import {
   mergeTextFormatting,
   STYLE_TOGGLE_KEYS,
@@ -21,21 +13,6 @@ import {
   type StyleToggleKey,
 } from "./styles/styleToggleCascade";
 
-const PARAGRAPH_MARK_BOOLEAN_KEYS = [
-  "bold",
-  "italic",
-  "strike",
-  "doubleStrike",
-  "allCaps",
-  "smallCaps",
-  "hidden",
-  "emboss",
-  "imprint",
-  "shadow",
-  "outline",
-  "rtl",
-] as const satisfies readonly (keyof TextFormatting)[];
-
 export const hasDirectRunFormatting = (
   formatting: TextFormatting | undefined,
 ): boolean => {
@@ -46,12 +23,6 @@ export const hasDirectRunFormatting = (
     ([property, value]) => property !== "styleId" && value !== undefined,
   );
 };
-
-/** A stated run property or character style establishes paragraph-mark suppression. */
-export const isParagraphMarkSuppressionEligible = (
-  formatting: TextFormatting | undefined,
-): boolean =>
-  hasDirectRunFormatting(formatting) || formatting?.styleId !== undefined;
 
 export const stripParagraphMarkOnlyFormatting = (
   formatting: TextFormatting,
@@ -74,122 +45,12 @@ export const stripParagraphMarkOnlyFormatting = (
 };
 
 /**
- * Whether a paragraph's mark lends its run properties to the paragraph's
- * runs: only when the paragraph has no style. One rule for reading a run and
- * for the save's view of what a run inherited.
+ * What a paragraph lends its body runs. The paragraph mark's own run
+ * properties format the mark alone and lend nothing.
  */
-export const paragraphMarkLendsRuns = (styleId: string | undefined): boolean =>
-  styleId === undefined;
-
-export const stripParagraphMarkFormattingForBodyRuns = (
-  formatting: TextFormatting,
-): TextFormatting | undefined => {
-  const paragraphMarkFormatting = stripParagraphMarkOnlyFormatting(formatting);
-  if (!paragraphMarkFormatting) {
-    return undefined;
-  }
-  const { fontFamily: _fontFamily, ...bodyRunFormatting } =
-    paragraphMarkFormatting;
-  return Object.keys(bodyRunFormatting).length > 0
-    ? bodyRunFormatting
-    : undefined;
-};
-
-type SuppressParagraphMarkFormattingOptions = {
-  baseFormatting: TextFormatting | undefined;
-  directFormatting: TextFormatting | undefined;
-  paragraphMarkFormatting: TextFormatting | undefined;
-};
-
-export const suppressParagraphMarkFormatting = ({
-  baseFormatting,
-  directFormatting,
-  paragraphMarkFormatting,
-}: SuppressParagraphMarkFormattingOptions): TextFormatting | undefined => {
-  if (!paragraphMarkFormatting) {
-    return baseFormatting;
-  }
-  const result =
-    mergeTextFormatting(baseFormatting, paragraphMarkFormatting) ?? {};
-  for (const property of PARAGRAPH_MARK_BOOLEAN_KEYS) {
-    if (
-      paragraphMarkFormatting[property] !== undefined &&
-      directFormatting?.[property] === undefined
-    ) {
-      Reflect.set(result, property, baseFormatting?.[property] ?? false);
-    }
-  }
-  for (const property of ["fontSize", "fontSizeCs"] as const) {
-    if (
-      paragraphMarkFormatting[property] !== undefined &&
-      directFormatting?.[property] === undefined &&
-      baseFormatting?.[property] !== undefined
-    ) {
-      result[property] = baseFormatting[property];
-    }
-  }
-  if (
-    paragraphMarkFormatting.underline !== undefined &&
-    directFormatting?.underline === undefined
-  ) {
-    result.underline = { style: "none" };
-  }
-  if (
-    paragraphMarkFormatting.spacing !== undefined &&
-    directFormatting?.spacing === undefined
-  ) {
-    result.spacing = 0;
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
-};
-
-type GetParagraphMarkSuppressionOverridesOptions = {
-  directFormatting: TextFormatting | undefined;
-  paragraphMarkFormatting: TextFormatting | undefined;
-  suppressedFormatting: TextFormatting | undefined;
-  /**
-   * The run's own character style. A property it states is the style's to
-   * give, not the paragraph mark's to take away: the run keeps it as the
-   * style cascade resolves it, with no override saying it is off.
-   */
-  characterStyleFormatting: TextFormatting | undefined;
-};
-
-export const getParagraphMarkSuppressionOverrides = ({
-  directFormatting,
-  paragraphMarkFormatting,
-  suppressedFormatting,
-  characterStyleFormatting,
-}: GetParagraphMarkSuppressionOverridesOptions): TextFormatting | undefined => {
-  if (!paragraphMarkFormatting) {
-    return undefined;
-  }
-  const overrides: TextFormatting = {};
-  for (const property of PARAGRAPH_MARK_BOOLEAN_KEYS) {
-    if (
-      paragraphMarkFormatting[property] !== undefined &&
-      directFormatting?.[property] === undefined &&
-      characterStyleFormatting?.[property] === undefined &&
-      suppressedFormatting?.[property] === false
-    ) {
-      Reflect.set(overrides, property, false);
-    }
-  }
-  if (
-    paragraphMarkFormatting.underline !== undefined &&
-    directFormatting?.underline === undefined &&
-    characterStyleFormatting?.underline === undefined &&
-    suppressedFormatting?.underline?.style === "none"
-  ) {
-    overrides.underline = { style: "none" };
-  }
-  return Object.keys(overrides).length > 0 ? overrides : undefined;
-};
-
 export type ParagraphRunStyleContext = {
   baseParagraphFormatting: TextFormatting | undefined;
   paragraphFormatting: TextFormatting | undefined;
-  paragraphMarkFormatting: TextFormatting | undefined;
 };
 
 export type RunStyleResolver = Pick<
@@ -314,128 +175,20 @@ export const resolveParagraphBodyRunFormatting = ({
   };
 };
 
-type ResolveParagraphInheritedRunFormattingOptions =
-  ResolveParagraphBodyRunFormattingOptions & {
-    paragraphMarkFormatting: TextFormatting | undefined;
-  };
-
-/** One source cascade for imported body runs and the saver inheritance baseline. */
+/**
+ * The formatting a paragraph's runs inherit, with the toggles of the style
+ * cascade resolved as they stand: what a run that states nothing shows.
+ */
 export const resolveParagraphInheritedRunFormatting = (
-  options: ResolveParagraphInheritedRunFormattingOptions,
-): {
-  inheritedFormatting:
-    | {
-        bold?: boolean | undefined;
-        boldCs?: boolean | undefined;
-        italic?: boolean | undefined;
-        italicCs?: boolean | undefined;
-        underline?:
-          | {
-              style: UnderlineStyle;
-              color?: ColorValue;
-            }
-          | undefined;
-        strike?: boolean | undefined;
-        doubleStrike?: boolean | undefined;
-        vertAlign?: "baseline" | "superscript" | "subscript" | undefined;
-        smallCaps?: boolean | undefined;
-        allCaps?: boolean | undefined;
-        hidden?: boolean | undefined;
-        noProof?: boolean | undefined;
-        color?: ColorValue | undefined;
-        highlight?:
-          | "black"
-          | "blue"
-          | "cyan"
-          | "darkBlue"
-          | "darkCyan"
-          | "darkGray"
-          | "darkGreen"
-          | "darkMagenta"
-          | "darkRed"
-          | "darkYellow"
-          | "green"
-          | "lightGray"
-          | "magenta"
-          | "none"
-          | "red"
-          | "white"
-          | "yellow"
-          | undefined;
-        shading?: ShadingProperties | undefined;
-        fontSize?: number | undefined;
-        fontSizeCs?: number | undefined;
-        fontFamily?:
-          | {
-              ascii?: string;
-              hAnsi?: string;
-              eastAsia?: string;
-              cs?: string;
-              hint?: "default" | "eastAsia" | "cs";
-              asciiTheme?:
-                | "majorAscii"
-                | "majorHAnsi"
-                | "majorEastAsia"
-                | "majorBidi"
-                | "minorAscii"
-                | "minorHAnsi"
-                | "minorEastAsia"
-                | "minorBidi";
-              hAnsiTheme?: string;
-              eastAsiaTheme?: string;
-              csTheme?: string;
-            }
-          | undefined;
-        language?:
-          | {
-              val?: string;
-              eastAsia?: string;
-              bidi?: string;
-            }
-          | undefined;
-        spacing?: number | undefined;
-        position?: number | undefined;
-        scale?: number | undefined;
-        kerning?: number | undefined;
-        effect?: TextEffect | undefined;
-        emphasisMark?: EmphasisMark | undefined;
-        emboss?: boolean | undefined;
-        imprint?: boolean | undefined;
-        outline?: boolean | undefined;
-        shadow?: boolean | undefined;
-        rtl?: boolean | undefined;
-        cs?: boolean | undefined;
-        styleId?: string | undefined;
-        preserved?: PreservedMarkup | undefined;
-      }
-    | undefined;
-  inheritedToggleCascade: {
-    formatting: TextFormatting | undefined;
-    toggleStates: ReadonlyMap<
-      StyleToggleKey,
-      {
-        value: boolean;
-        defaultsActive: boolean;
-      }
-    >;
-    type: "styleToggleCascade";
-  };
-  baseFormatting: TextFormatting | undefined;
-  baseToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
-  defaultFormatting: TextFormatting | undefined;
-  defaultToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
-} => {
+  options: ResolveParagraphBodyRunFormattingOptions,
+) => {
   const body = resolveParagraphBodyRunFormatting(options);
-  const ordinaryFormatting = mergeTextFormatting(
-    body.defaultFormatting,
-    options.paragraphMarkFormatting,
-  );
   const inheritedToggleCascade = cascadeStyleTextFormatting(
     [
       { cascade: body.defaultToggleCascade, type: "carried" },
-      { formatting: options.paragraphMarkFormatting, type: "direct" },
+      { formatting: undefined, type: "direct" },
     ],
-    { ordinaryFormatting },
+    { ordinaryFormatting: body.defaultFormatting },
   );
   return {
     ...body,
@@ -449,19 +202,6 @@ export const paragraphRunStyleContext = (
   styleResolver?: RunStyleResolver | null,
 ): ParagraphRunStyleContext => {
   const attrs = expectParagraphAttrs(paragraph);
-  const paragraphMarkFormatting = paragraphMarkLendsRuns(attrs.styleId)
-    ? attrs._originalFormatting?.runProperties
-    : undefined;
-  const characterStyleFormatting = paragraphMarkFormatting?.styleId
-    ? styleResolver?.getRunStyleOwnProperties(paragraphMarkFormatting.styleId)
-    : undefined;
-  const resolvedParagraphMarkFormatting = cascadeStyleTextFormatting([
-    { formatting: characterStyleFormatting, type: "style" },
-    { formatting: paragraphMarkFormatting, type: "direct" },
-  ]).formatting;
-  const inheritableParagraphMarkFormatting = resolvedParagraphMarkFormatting
-    ? stripParagraphMarkFormattingForBodyRuns(resolvedParagraphMarkFormatting)
-    : undefined;
   return {
     baseParagraphFormatting:
       attrs._tableRunFormatting === undefined
@@ -472,19 +212,20 @@ export const paragraphRunStyleContext = (
             styleResolver,
           }).defaultFormatting,
     paragraphFormatting: attrs.defaultTextFormatting ?? undefined,
-    paragraphMarkFormatting: inheritableParagraphMarkFormatting,
   };
 };
 
 type ParagraphFormattingForRunOptions = {
   context: ParagraphRunStyleContext;
-  directFormatting?: TextFormatting;
   marks: readonly Mark[];
 };
 
+/**
+ * What a run inherits from its paragraph: the caret defaults for a run with
+ * no stated formatting, the paragraph style cascade for one that states some.
+ */
 export const paragraphFormattingForRun = ({
   context,
-  directFormatting,
   marks,
 }: ParagraphFormattingForRunOptions): TextFormatting | undefined => {
   if (
@@ -495,11 +236,7 @@ export const paragraphFormattingForRun = ({
   ) {
     return context.paragraphFormatting;
   }
-  return suppressParagraphMarkFormatting({
-    baseFormatting: context.baseParagraphFormatting,
-    directFormatting,
-    paragraphMarkFormatting: context.paragraphMarkFormatting,
-  });
+  return context.baseParagraphFormatting;
 };
 
 type ParagraphRunStyleContextAtOptions = {
@@ -537,7 +274,6 @@ export const nearestParagraphRunStyleContext = (
     : {
         baseParagraphFormatting: undefined,
         paragraphFormatting: undefined,
-        paragraphMarkFormatting: undefined,
       };
 
 type ResolveEffectiveRunStyleFormattingOptions = {

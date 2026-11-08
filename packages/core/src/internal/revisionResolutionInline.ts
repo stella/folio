@@ -31,10 +31,7 @@ import {
 import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
-import {
-  reconstructRejectedRunFormattingMarks,
-  restoreHistoricalRunFormatting,
-} from "../prosemirror/runPropertyChangeResolution";
+import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
 import {
   type ParagraphRunStyleContext,
   paragraphRunStyleContext,
@@ -70,7 +67,6 @@ type RevisionInlineContext = {
 const EMPTY_PARAGRAPH_RUN_STYLE_CONTEXT: ParagraphRunStyleContext = {
   baseParagraphFormatting: undefined,
   paragraphFormatting: undefined,
-  paragraphMarkFormatting: undefined,
 };
 
 type ParagraphRunStyleScope = {
@@ -121,23 +117,6 @@ const resolveInlineNode = ({
 }: ResolveInlineNodeOptions): PMNode | RemovedSubtree => {
   let marks: readonly Mark[] = node.marks;
   let attrs = node.attrs;
-  if (
-    context.mode === "reject" &&
-    node.marks.some(
-      (mark) =>
-        mark.type === context.keepType &&
-        expectTrackedChangeMarkAttrs(mark)._historicalFormatting,
-    )
-  ) {
-    marks = restoreHistoricalRunFormatting({
-      node,
-      paragraphContext: resolveParagraphRunStyleScope(
-        paragraphScope,
-        context.styleResolver,
-      ),
-      styleResolver: context.styleResolver,
-    });
-  }
   const runPropertyChangeMark = marks.find(
     (mark) => mark.type.name === "runPropertyChange",
   );

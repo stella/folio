@@ -2,12 +2,8 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import type { RunPropertyChange } from "../types/document";
 import { expectRunIdentityMarkAttrs } from "./attrs";
-import { runFormattingInlineAtomDisposition } from "./runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
-import {
-  readAuthoredRunFormatting,
-  reconcileRunFormattingMarks,
-} from "./runFormattingReconciliation";
+import { reconcileRunFormattingMarks } from "./runFormattingReconciliation";
 import { RUN_IDENTITY_MARK_NAME, runIdentityAttrs } from "./runIdentity";
 import {
   type ParagraphRunStyleContext,
@@ -61,36 +57,4 @@ export const reconstructRejectedRunFormattingMarks = ({
       }),
     ),
   ];
-};
-
-type RestoreHistoricalRunFormattingOptions = {
-  node: PMNode;
-  paragraphContext: ParagraphRunStyleContext;
-  styleResolver?: RunStyleResolver | null;
-};
-
-/** Restored deletions inherit the live paragraph cascade without authoring their historical visuals. */
-export const restoreHistoricalRunFormatting = ({
-  node,
-  paragraphContext,
-  styleResolver,
-}: RestoreHistoricalRunFormattingOptions): readonly Mark[] => {
-  const disposition = runFormattingInlineAtomDisposition(node);
-  if (disposition === null || disposition === "not-a-run") return node.marks;
-  if (paragraphContext.paragraphMarkFormatting === undefined) return node.marks;
-  const authoredFormatting = readAuthoredRunFormatting({
-    context: {
-      baseParagraphFormatting: paragraphContext.baseParagraphFormatting,
-      paragraphFormatting: paragraphContext.baseParagraphFormatting,
-      paragraphMarkFormatting: undefined,
-    },
-    marks: node.marks,
-    ...(styleResolver !== undefined ? { styleResolver } : {}),
-  });
-  return reconcileRunFormattingMarks({
-    authoredFormatting,
-    context: paragraphContext,
-    node,
-    ...(styleResolver !== undefined ? { styleResolver } : {}),
-  });
 };

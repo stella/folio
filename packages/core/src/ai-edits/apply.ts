@@ -1448,7 +1448,6 @@ const applyBlockParagraphProperties = ({
 const OPERATION_TEXT_CONTEXT: ParagraphRunStyleContext = {
   baseParagraphFormatting: undefined,
   paragraphFormatting: undefined,
-  paragraphMarkFormatting: undefined,
 };
 
 type ApplyReplaceBlockStyleIdResult = {
