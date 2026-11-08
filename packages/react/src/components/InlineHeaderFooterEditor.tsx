@@ -38,8 +38,11 @@ import { redo, undo } from "prosemirror-history";
 import type { EditorView } from "prosemirror-view";
 import { useTranslations } from "use-intl";
 
+import { PAINTER_PAINTED_EVENT } from "@stll/folio-core/layout-painter/renderPage";
 import { schema } from "@stll/folio-core/prosemirror";
 import "prosemirror-view/style/prosemirror.css";
+
+import { useEqualState } from "../hooks/keepEqual";
 
 // ============================================================================
 // TYPES
@@ -48,8 +51,13 @@ import "prosemirror-view/style/prosemirror.css";
 export type InlineHeaderFooterEditorProps = {
   /** Whether editing header or footer */
   position: "header" | "footer";
-  /** The DOM element to overlay (the .layout-page-header / .layout-page-footer) */
-  targetElement: HTMLElement;
+  /**
+   * The selector of the painted element to overlay under `parentElement`
+   * (`.layout-page-header` / `.layout-page-footer`). The painter replaces
+   * that element when it repaints the page, so the chrome looks it up again
+   * on every paint.
+   */
+  targetSelector: string;
   /** The positioning parent element (the div wrapping PagedEditor) */
   parentElement: HTMLElement;
   /**
@@ -124,7 +132,7 @@ const InlineHeaderFooterEditorComponent = forwardRef<
 >(function InlineHeaderFooterEditor(
   {
     position,
-    targetElement,
+    targetSelector,
     parentElement,
     getActiveView,
     onClose,
@@ -136,7 +144,9 @@ const InlineHeaderFooterEditorComponent = forwardRef<
   const [showOptions, setShowOptions] = useState(false);
   const optionsRef = useRef<HTMLDivElement>(null);
 
-  const [overlayPos, setOverlayPos] = useState<{
+  // A repaint writes the same position on most keys; an equal one must not
+  // commit.
+  const [overlayPos, setOverlayPos] = useEqualState<{
     top: number;
     left: number;
     width: number;
@@ -144,9 +154,26 @@ const InlineHeaderFooterEditorComponent = forwardRef<
   } | null>(null);
 
   useEffect(() => {
+    let observed: HTMLElement | null = null;
+    // The HF box grows/shrinks as the user types, and the footer bar is
+    // anchored to the box bottom (`top: 100%`), so the overlay height must
+    // track the box — recompute on target resize, not just scroll/window.
+    const resizeObserver = new ResizeObserver(() => {
+      computePosition();
+    });
+    // The painter replaces the painted slot when it repaints its page, so the
+    // position is read from the slot that is painted now, never one held
+    // from an earlier paint: a replaced one is detached and measures zero.
     const computePosition = () => {
+      const target = parentElement.querySelector<HTMLElement>(targetSelector);
+      if (target !== observed) {
+        if (observed !== null) resizeObserver.unobserve(observed);
+        if (target !== null) resizeObserver.observe(target);
+        observed = target;
+      }
+      if (target === null) return;
       const parentRect = parentElement.getBoundingClientRect();
-      const targetRect = targetElement.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
       setOverlayPos({
         top: targetRect.top - parentRect.top + parentElement.scrollTop,
         left: targetRect.left - parentRect.left + parentElement.scrollLeft,
@@ -156,22 +183,19 @@ const InlineHeaderFooterEditorComponent = forwardRef<
     };
     computePosition();
 
-    // The HF box grows/shrinks as the user types, and the footer bar is
-    // anchored to the box bottom (`top: 100%`), so the overlay height must
-    // track the box — recompute on target resize, not just scroll/window.
-    const resizeObserver = new ResizeObserver(computePosition);
-    resizeObserver.observe(targetElement);
-
+    // The painted event bubbles from the pages container to this parent.
+    parentElement.addEventListener(PAINTER_PAINTED_EVENT, computePosition);
     const scrollParent =
       parentElement.closest('[style*="overflow"]') || parentElement;
     scrollParent.addEventListener("scroll", computePosition);
     window.addEventListener("resize", computePosition);
     return () => {
       resizeObserver.disconnect();
+      parentElement.removeEventListener(PAINTER_PAINTED_EVENT, computePosition);
       scrollParent.removeEventListener("scroll", computePosition);
       window.removeEventListener("resize", computePosition);
     };
-  }, [targetElement, parentElement]);
+  }, [parentElement, targetSelector, setOverlayPos]);
 
   // Latest getActiveView, read through a ref so the focus loop below is never
   // stuck on a stale mount-time closure if the active HF view resolves later.

@@ -6342,21 +6342,19 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                               if (!activeHf) {
                                 return null;
                               }
-                              const targetEl =
-                                editorContentElement?.querySelector<HTMLElement>(
-                                  hfEditPosition === "header"
-                                    ? ".layout-page-header"
-                                    : ".layout-page-footer",
-                                );
                               const parentEl = editorContentElement;
-                              if (!targetEl || !parentEl) {
+                              if (!parentEl) {
                                 return null;
                               }
                               return (
                                 <InlineHeaderFooterEditor
                                   ref={hfEditorRef}
                                   position={hfEditPosition}
-                                  targetElement={targetEl}
+                                  targetSelector={
+                                    hfEditPosition === "header"
+                                      ? ".layout-page-header"
+                                      : ".layout-page-footer"
+                                  }
                                   parentElement={parentEl}
                                   getActiveView={getActiveHfView}
                                   onClose={handleBodyClick}
