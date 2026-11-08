@@ -200,6 +200,15 @@ import {
   CLIPBOARD_READ_ERROR_EVENT,
   pastePlainTextSlice,
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
+import {
+  clearPendingComment,
+  commentRecordsOf,
+  commentThreadIds,
+  commitCommentThread,
+  deleteCommentThread,
+  markPendingComment,
+  recordingCommentsView,
+} from "@stll/folio-core/prosemirror/commentRecords";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   executeEditorCommand,
@@ -275,14 +284,11 @@ import { DEFAULT_COMPONENTS, FolioUIProvider } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
 import { resolveCommentCreationRange } from "./commentAnchors";
 import {
-  applyCommentMarkRange,
   countOpenCommentThreads,
   EMPTY_ANCHOR_POSITIONS,
   findSelectionYPosition,
   getCommentAuthorKey,
   getFallbackCommentYPosition,
-  PENDING_COMMENT_ID,
-  removePendingCommentMarkRange,
 } from "./commentsHelpers";
 import type { TrackedChangeEntry } from "./CommentsSidebar";
 import { ContentControlWidgetsOverlay } from "./ContentControlWidgetsOverlay";
@@ -393,24 +399,11 @@ const preventMouseDownDefault = (event: React.MouseEvent) =>
 type LiveDocumentOperationUndoEntry = {
   undoHandle: FolioDocumentOperationUndoHandle;
   afterState: EditorView["state"];
-  commentsBefore: Comment[];
+  /** The comment records the batch ended on; a host may hand back a copy. */
   commentsAfterJson: string;
 };
 
 let documentOperationUndoHandleCursor = Date.now();
-
-/**
- * The comments a batch's applied operations own. A run whose result the
- * save-time check refused allocated comments nothing in the document names;
- * they stay out of the comment list.
- */
-const appliedOperationComments = (
-  created: readonly Comment[],
-  applied: readonly { commentId?: number }[],
-): Comment[] => {
-  const appliedIds = new Set(applied.map(({ commentId }) => commentId));
-  return created.filter((comment) => appliedIds.has(comment.id));
-};
 
 function isDisplayMode(value: unknown): value is DisplayMode {
   return (
@@ -1090,6 +1083,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // the document loads; readers of its state, such as the outline's heading
     // collection, re-run when it appears.
     const [bodyViewEpoch, setBodyViewEpoch] = useState(0);
+    const [bodyEditorView, setBodyEditorView] = useState<EditorView | null>(
+      null,
+    );
     // The view starts from the mode the editor mounted with, and it is made at
     // the first click or replaced by a new document. Whatever was chosen since
     // has had no view to reach, so a view takes the mode as it appears.
@@ -1110,6 +1106,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           syncCanonicalMode();
         }
         reportEditorViewReady(view);
+        setBodyEditorView(view);
         setBodyViewEpoch((epoch) => epoch + 1);
       },
       [reportEditorViewReady, syncCanonicalMode, syncSuggestionMode],
@@ -1291,6 +1288,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       getCommentsDirty,
       setCommentsDirty,
       resetLoadedComments,
+      resetComments,
       showCommentsSidebar,
       setShowCommentsSidebar,
       setVisibleCommentAuthors,
@@ -1316,6 +1314,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       commentsProp,
       onCommentsChange,
       committedComments: canonicalComments,
+      bodyView: bodyEditorView,
     });
     const comments = canonicalComments ?? legacyComments;
     const commentDraftMode = usesCanonicalSession(
@@ -1668,7 +1667,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         }
         setCommentsDirty(false);
         resetLoadedComments();
-        setComments([]);
+        resetComments();
         setTrackedChanges([]);
         setVisibleCommentAuthors(null);
         setActiveCommentId(null);
@@ -1688,10 +1687,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       }, [
         setCommentsDirty,
         resetLoadedComments,
+        resetComments,
         setActiveCommentId,
         setAddCommentYPosition,
         setCommentSelectionRange,
-        setComments,
         setTrackedChanges,
         setFloatingCommentBtn,
         setHfEditPosition,
@@ -1890,6 +1889,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       }
       // The threads are the host's list; the editor's document carries the
       // ones it was loaded with.
+      // Uncontrolled, the list mirrors the editor's records; controlled, it
+      // is the host's accepted value.
       return withHostCommentThreads(doc, commentsRef.current);
     }, [commentsRef, experimentalSession]);
 
@@ -3466,10 +3467,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               yPos ?? getFallbackCommentYPosition(scrollContainerRef.current);
             setCommentSelectionRange({ from, to });
             if (commentDraftMode === "prosemirror") {
-              const marked = applyCommentMarkRange(
+              const marked = markPendingComment(
                 view,
                 { from, to },
-                PENDING_COMMENT_ID,
                 {
                   selectEnd: true,
                 },
@@ -4001,17 +4001,19 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           if (
             existingUndoEntry &&
             (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
-              canonicalJson(commentsRef.current) !==
+              canonicalJson(commentRecordsOf(view.state)) !==
                 existingUndoEntry.commentsAfterJson)
           ) {
             documentOperationUndoEntriesRef.current.length = 0;
           }
-          const commentsBefore = commentsRef.current;
           const createdComments: Comment[] = [];
+          // The comments the batch anchors join the records in its own
+          // transaction, so one undo takes both back.
+          const recordingView = recordingCommentsView(view, createdComments);
           const operationView = {
             state: view.state,
             dispatch: (transaction: Parameters<EditorView["dispatch"]>[0]) => {
-              view.dispatch(closeHistory(transaction));
+              recordingView.dispatch(closeHistory(transaction));
               operationView.state = view.state;
             },
           };
@@ -4046,22 +4048,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             });
           }
 
-          const batchComments = appliedOperationComments(
-            createdComments,
-            result.applied,
-          );
-          const commentsAfter =
-            batchComments.length > 0
-              ? [...commentsRef.current, ...batchComments]
-              : commentsRef.current;
-          if (batchComments.length > 0) replaceComments(commentsAfter);
-
           if (result.undoHandle !== null) {
             documentOperationUndoEntriesRef.current.push({
               undoHandle: result.undoHandle,
               afterState: view.state,
-              commentsBefore,
-              commentsAfterJson: canonicalJson(commentsAfter),
+              commentsAfterJson: canonicalJson(commentRecordsOf(view.state)),
             });
           }
 
@@ -4093,7 +4084,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           }
           if (
             !view.state.doc.eq(entry.afterState.doc) ||
-            canonicalJson(commentsRef.current) !== entry.commentsAfterJson
+            canonicalJson(commentRecordsOf(view.state)) !==
+              entry.commentsAfterJson
           ) {
             return {
               status: "rejected",
@@ -4115,7 +4107,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             };
           }
 
-          replaceComments(entry.commentsBefore);
           entries.pop();
           requestAnimationFrame(refreshBodyHistoryAvailability);
           return { status: "undone", undoHandle };
@@ -4171,7 +4162,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           const createdComments: Comment[] = [];
           const { applied, skipped } = applyFolioDocumentOperations({
             undefinedReferences,
-            view,
+            view: recordingCommentsView(view, createdComments),
             snapshot,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -4185,17 +4176,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               return comment.id;
             },
           });
-
-          const batchComments = appliedOperationComments(
-            createdComments,
-            applied,
-          );
-          if (batchComments.length > 0) {
-            updateComments((currentComments) => [
-              ...currentComments,
-              ...batchComments,
-            ]);
-          }
 
           if (mode === "suggested") {
             pendingSuggestionRegistryRef.current.recordApplied({
@@ -4471,7 +4451,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               const createdComments: Comment[] = [];
               const result = applyFolioDocumentOperations({
                 undefinedReferences: "refuse",
-                view,
+                view: recordingCommentsView(view, createdComments),
                 snapshot,
                 batch: {
                   version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -4485,16 +4465,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   return comment.id;
                 },
               });
-              const appliedComments = appliedOperationComments(
-                createdComments,
-                result.applied,
-              );
-              if (appliedComments.length > 0) {
-                updateComments((currentComments) => [
-                  ...currentComments,
-                  ...appliedComments,
-                ]);
-              }
               return { applied: result.applied, skipped: result.skipped };
             },
             activeSuggestionIds: () => {
@@ -5208,11 +5178,17 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           notifyReadonlyEditAttempt();
           return;
         }
-        updateComments((previous) =>
-          previous.filter(
-            (comment) => comment.id !== id && comment.parentId !== id,
-          ),
-        );
+        // The thread's record, its replies and its anchors go in one edit.
+        const view = pagedEditorRef.current?.getView();
+        if (view && commentRecordsOf(view.state) !== null) {
+          const deleted = deleteCommentThread(view.state, id);
+          if (deleted) view.dispatch(deleted);
+        } else {
+          const thread = commentThreadIds(commentsRef.current, id);
+          updateComments((previous) =>
+            previous.filter((comment) => !thread.has(comment.id)),
+          );
+        }
         if (activeCommentId === id) {
           setActiveCommentId(null);
         }
@@ -5220,6 +5196,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       [
         activeCommentId,
         applyCanonicalComment,
+        commentsRef,
         notifyReadonlyEditAttempt,
         readOnly,
         setActiveCommentId,
@@ -5294,15 +5271,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           return false;
         }
         const comment = createComment(addText, author);
-        const marked = applyCommentMarkRange(
-          view,
-          commentSelectionRange,
-          comment.id,
-          {
-            replacePending: true,
-          },
-        );
-        if (!marked) {
+        if (!commitCommentThread(view, commentSelectionRange, comment)) {
           return false;
         }
         const commentAuthor = getCommentAuthorKey(comment.author);
@@ -5315,7 +5284,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           return next;
         });
         setActiveCommentId(comment.id);
-        updateComments((previous) => [...previous, comment]);
         pagedEditorRef.current?.relayout();
         requestAnimationFrame(() => {
           syncCommentHighlightStyles();
@@ -5339,7 +5307,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         setIsAddingComment,
         setVisibleCommentAuthors,
         syncCommentHighlightStyles,
-        updateComments,
       ],
     );
     const handleTrackedChangeReply = useCallback(
@@ -5374,7 +5341,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const handleCancelAddComment = useCallback(() => {
       const view = pagedEditorRef.current?.getView();
       if (view && commentSelectionRange && commentDraftMode === "prosemirror") {
-        removePendingCommentMarkRange(view, commentSelectionRange);
+        clearPendingComment(view, commentSelectionRange);
       }
       setIsAddingComment(false);
       setCommentSelectionRange(null);
@@ -6250,10 +6217,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                                     }
                                     setCommentSelectionRange(safeRange);
                                     if (commentDraftMode === "prosemirror") {
-                                      const marked = applyCommentMarkRange(
+                                      const marked = markPendingComment(
                                         view,
                                         safeRange,
-                                        PENDING_COMMENT_ID,
                                         { selectEnd: true },
                                       );
                                       if (!marked) {
