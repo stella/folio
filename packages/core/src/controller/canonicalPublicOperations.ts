@@ -474,6 +474,19 @@ const resolveBlockInsertion = ({
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
 
+/**
+ * The operations a canonical suggestion can carry: the default engine's, and
+ * splits and merges, which the canonical session records as tracked paragraph
+ * marks stamped with the suggestion.
+ */
+const CANONICAL_SUGGESTED_OPERATION_TYPES: ReadonlySet<
+  FolioDocumentOperation["type"]
+> = new Set<FolioDocumentOperation["type"]>([
+  ...SUGGESTED_SUPPORTED_OPERATION_TYPES,
+  "splitBlock",
+  "mergeBlockWithNext",
+]);
+
 /** The move a block operation names, if it is a half of one. */
 const blockMoveId = (operation: FolioDocumentOperation): string | undefined =>
   operation.type === "deleteBlock" ||
@@ -747,10 +760,9 @@ export class CanonicalPublicOperations {
         skip(operation.id, "documentNotEditable");
         continue;
       }
-      // The operations a suggestion can carry are the editor's.
       if (
         batch.mode === "suggested" &&
-        !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(operation.type)
+        !CANONICAL_SUGGESTED_OPERATION_TYPES.has(operation.type)
       ) {
         skip(operation.id, "unsupportedMode");
         continue;

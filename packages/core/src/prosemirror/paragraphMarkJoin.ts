@@ -43,39 +43,13 @@ import {
 export const joinedParagraphAttrs = (
   paragraph: PMNode,
   next: PMNode,
-  keepIdentity = false,
 ): PMNode["attrs"] => {
   const sessions: unknown = next.attrs["_preservedAttributes"];
-  const attrs =
-    typeof sessions === "object" &&
+  return typeof sessions === "object" &&
     sessions !== null &&
     sessions === paragraph.attrs["_preservedAttributes"]
-      ? { ...next.attrs, _preservedAttributes: null }
-      : next.attrs;
-  // The paragraph whose mark goes was there before the paragraph after it:
-  // the joined paragraph is it again, with the mark the next one holds.
-  return keepIdentity
-    ? {
-        ...attrs,
-        paraId: paragraph.attrs["paraId"],
-        textId: paragraph.attrs["textId"],
-      }
-    : attrs;
-};
-
-/**
- * Whether rejecting this paragraph's inserted mark gives the paragraph back
- * under its own identity: a split that kept the identity on its first half
- * marks the mark it added so. Any other inserted mark joins into the
- * paragraph after it, which keeps its own, as a reader resolves it.
- */
-export const rejectionKeepsIdentity = (paragraph: PMNode): boolean => {
-  const mark: unknown = paragraph.attrs["pPrMark"];
-  return (
-    typeof mark === "object" &&
-    mark !== null &&
-    (mark as { survivor?: unknown }).survivor === "first"
-  );
+    ? { ...next.attrs, _preservedAttributes: null }
+    : next.attrs;
 };
 
 type JoinAtParagraphMarkOptions = {
@@ -85,11 +59,6 @@ type JoinAtParagraphMarkOptions = {
   paragraph: PMNode;
   /** The paragraph directly after it, which the join runs into. */
   next: PMNode;
-  /**
-   * The joined paragraph keeps this paragraph's identity, not the next one's:
-   * rejecting a split's inserted mark gives the split paragraph back.
-   */
-  keepIdentity?: boolean;
   /**
    * Re-reads the moved runs' inherited formatting in the next paragraph's
    * style. Without one, the editor's join restyler does it when the
@@ -104,7 +73,6 @@ export const joinAtParagraphMark = ({
   paragraph,
   next,
   styleResolver,
-  keepIdentity = false,
 }: JoinAtParagraphMarkOptions): void => {
   const boundary = paragraphPos + paragraph.nodeSize;
   const join = paragraphJoinAfter(tr.doc, boundary);
@@ -117,7 +85,7 @@ export const joinAtParagraphMark = ({
     tr.setNodeMarkup(
       paragraphPos,
       undefined,
-      joinedParagraphAttrs(paragraph, next, keepIdentity),
+      joinedParagraphAttrs(paragraph, next),
     );
     markParagraphPropertySourceTransfers(tr, [
       {
@@ -127,7 +95,7 @@ export const joinAtParagraphMark = ({
     ]);
   } else {
     joinProseParagraphsWithRightPropertySource({
-      attrs: joinedParagraphAttrs(paragraph, next, keepIdentity),
+      attrs: joinedParagraphAttrs(paragraph, next),
       pos: boundary,
       transaction: tr,
     });

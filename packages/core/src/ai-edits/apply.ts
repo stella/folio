@@ -538,8 +538,6 @@ export const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
   "deleteTableRow",
   "insertTableColumn",
   "deleteTableColumn",
-  "splitBlock",
-  "mergeBlockWithNext",
 ]);
 
 /** Operations that only add marks: they move no position of the document. */
@@ -7495,12 +7493,9 @@ const applyFolioAIEditOperationsInternal = ({
           // The mark goes on the FIRST half: the break belongs to the paragraph
           // it now ends, and a reader rejecting it closes that paragraph back
           // over the second half.
-          // The first half keeps the paragraph's identity, so rejecting the
-          // mark gives the paragraph back under it.
           tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
             kind: "ins",
             info,
-            survivor: "first",
           });
           // The second half keeps a pending join running into the paragraph
           // it leaves, which holds the properties the join gives. Accepted,
