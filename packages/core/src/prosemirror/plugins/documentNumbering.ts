@@ -1,5 +1,6 @@
 /** Document-scoped numbering definitions for list-editing commands. */
 
+import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, Plugin, type Transaction } from "prosemirror-state";
 import {
@@ -152,6 +153,13 @@ export const getDocumentNumbering = (
   if (tracked) {
     return tracked.map;
   }
+  // A plugin applying a transaction sees only the states of the plugins
+  // before it. Read there, numbering placed later would look absent and be
+  // rebuilt from the paragraphs alone, without the package's definitions.
+  if (documentNumberingKey.get(state) !== undefined)
+    panic(
+      "Document numbering was read before its plugin applied: place the numbering plugin before the plugins that read it.",
+    );
   // A state without the plugin knows no package numbering; its paragraphs
   // still define the lists commands started in it.
   return getDocumentNumberingForDoc(state.doc);
@@ -208,6 +216,6 @@ export const withDocumentNumbering = (
   const previous = documentNumberingKey.get(state);
   const retained = state.plugins.filter((plugin) => plugin !== previous);
   return state.reconfigure({ plugins: retained }).reconfigure({
-    plugins: [...retained, createDocumentNumberingPlugin(definitions)],
+    plugins: [createDocumentNumberingPlugin(definitions), ...retained],
   });
 };

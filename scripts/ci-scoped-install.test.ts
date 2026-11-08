@@ -29,7 +29,11 @@ setDefaultTimeout(scanTestTimeout(30_000));
 
 const root = path.resolve(import.meta.dir, "..");
 type JobSteps = {
-  steps: { run?: string; uses?: string; with?: { "no-cache"?: unknown } }[];
+  steps: {
+    run?: string;
+    uses?: string;
+    with?: { "no-cache"?: unknown; "install-cache"?: unknown };
+  }[];
 };
 const checkScopedJobs = (jobs: Record<string, JobSteps>) => {
   for (const scope of Object.keys(INSTALL_SCOPES)) {
@@ -46,6 +50,8 @@ const checkScopedJobs = (jobs: Record<string, JobSteps>) => {
       expect(step.uses ?? "").not.toContain("setup-bun-cached");
       if (step.uses?.startsWith("oven-sh/setup-bun@"))
         expect(step.with?.["no-cache"]).toBe(true);
+      if (step.uses === "./.github/actions/bun")
+        expect(step.with?.["install-cache"] ?? "none").toBe("none");
     }
   }
 };
@@ -127,6 +133,10 @@ describe("scoped CI environments", () => {
         { run: "bun install --frozen-lockfile" },
         { uses: "stella/.github/actions/setup-bun-cached@fixture" },
         { uses: "oven-sh/setup-bun@fixture", with: { "no-cache": false } },
+        {
+          uses: "./.github/actions/bun",
+          with: { "install-cache": "actions" },
+        },
       ]) {
         const invalid = structuredClone(jobs);
         invalid[scope].steps.push(invalidStep);
