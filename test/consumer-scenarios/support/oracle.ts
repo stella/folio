@@ -158,60 +158,6 @@ const addLiveListMarkerLevels = (
   }
 };
 
-/**
- * A header, footer or note story starts its lists against the package alone,
- * so its new ids can repeat another story's and the reviewer's numbering
- * read (the main story's) does not define them. The level a pending
- * insertion beside its anchor states is all that marks such a list.
- */
-const addPendingInsertionListLevels = (
-  facts: NumberingFacts,
-  reviewer: Reviewer,
-  blocks: NonNullable<ReturnType<Reviewer["snapshotStory"]>>["blocks"],
-): void => {
-  const pendingInsertionBlockIds = new Set<string>();
-  for (const { operation } of reviewer.exportPendingSuggestions()) {
-    if (
-      operation.type !== "insertAfterBlock" &&
-      operation.type !== "insertBeforeBlock"
-    )
-      continue;
-    if (operation.numbering?.kind !== "newList") continue;
-    let anchorIndex = blocks.findIndex(({ id }) => id === operation.blockId);
-    if (anchorIndex < 0) continue;
-    const direction = operation.type === "insertAfterBlock" ? 1 : -1;
-    const anchorTable = blocks[anchorIndex]?.table;
-    if (anchorTable) {
-      while (
-        blocks.at(anchorIndex + direction)?.table?.outerTableIndex ===
-        anchorTable.outerTableIndex
-      ) {
-        anchorIndex += direction;
-      }
-    }
-    const blockAt = (index: number) =>
-      index >= 0 ? blocks.at(index) : undefined;
-    let insertedIndex = anchorIndex + direction;
-    while (pendingInsertionBlockIds.has(blockAt(insertedIndex)?.id ?? "")) {
-      insertedIndex += direction;
-    }
-    const inserted = blockAt(insertedIndex) ?? null;
-    if (
-      !inserted ||
-      inserted.kind === "diagnostic" ||
-      inserted.statedNumbering.kind !== "reference"
-    )
-      continue;
-    pendingInsertionBlockIds.add(inserted.id);
-    const level = inserted.statedNumbering.ilvl ?? 0;
-    const levels =
-      facts.markerLevels.get(inserted.statedNumbering.numId) ??
-      new Set<number>();
-    levels.add(level);
-    facts.markerLevels.set(inserted.statedNumbering.numId, levels);
-  }
-};
-
 /** Capture the authored story, including proposals omitted from the saved model. */
 const liveNumberingFacts = (
   reviewer: Reviewer,
@@ -221,11 +167,10 @@ const liveNumberingFacts = (
   const snapshot = reviewer.snapshotStory(story);
   if (!snapshot) return facts;
   const { anchors, blocks } = snapshot;
-  if (story.type === "main") {
-    addLiveListMarkerLevels(facts, reviewer.readNumberingDefinitions());
-  } else {
-    addPendingInsertionListLevels(facts, reviewer, blocks);
-  }
+  // A story reads the lists it started itself; no other story defines them.
+  const definitions = reviewer.readNumberingDefinitions(story);
+  assert.ok(definitions, "A snapshotted story must have numbering to read");
+  addLiveListMarkerLevels(facts, definitions);
   for (const block of blocks) {
     if (block.kind === "diagnostic") continue;
     const anchor = anchors[block.id];
