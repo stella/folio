@@ -1270,6 +1270,8 @@ const commentManagement = useCommentManagement({
     emit("comments-change", next);
   },
   reLayout,
+  readOnly: () => readOnly.value,
+  onReadOnlyEditAttempt: reportReadonlyEditAttempt,
 });
 const comments = commentManagement.comments;
 
