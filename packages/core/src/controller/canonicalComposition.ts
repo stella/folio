@@ -1,5 +1,12 @@
 import { Result } from "better-result";
 import {
+  DOMParser as ProseMirrorDOMParser,
+  DOMSerializer,
+  Fragment,
+  type Mark,
+  type Node as PMNode,
+} from "prosemirror-model";
+import {
   EditorState,
   TextSelection,
   type Transaction,
@@ -74,6 +81,36 @@ const REVIEW_MARK_NAMES: ReadonlySet<string> = new Set([
   "insertion",
   "deletion",
 ]);
+const readBackCache = new WeakMap<Mark, Mark | null>();
+/**
+ * The mark a DOM read rebuilds from the mark's own rendering: `null` when no
+ * rule reads it back, `undefined` with no document to render into. A read
+ * keeps only what the rendering carries, so this is all a reread can say.
+ */
+const readBack = (mark: Mark): Mark | null | undefined => {
+  const cached = readBackCache.get(mark);
+  if (cached !== undefined) return cached;
+  if (typeof document === "undefined") return undefined;
+  const { schema } = mark.type;
+  const container = document.createElement("div");
+  container.append(
+    DOMSerializer.fromSchema(schema).serializeFragment(
+      Fragment.from(schema.text("x", [mark])),
+      { document },
+    ),
+  );
+  const texts: PMNode[] = [];
+  ProseMirrorDOMParser.fromSchema(schema)
+    .parseSlice(container)
+    .content.descendants((node) => {
+      if (node.isText) texts.push(node);
+      return texts.length === 0;
+    });
+  const read = mark.type.isInSet(texts.at(0)?.marks ?? []) ?? null;
+  readBackCache.set(mark, read);
+  return read;
+};
+
 type NativeReplacementComparisonOptions = {
   baseline: EditorState;
   proposed: EditorState;
@@ -84,10 +121,11 @@ type NativeReplacementComparisonOptions = {
 /**
  * Whether a native proposal is one plain replacement. The commit is a text
  * replacement over the captured model, so this only has to tell DOM noise from a
- * real change. Reading the DOM back can lose a mark with no parse rule or, through
- * `insertText`, a non-inclusive one. It rebuilds a review mark from fewer attributes,
- * and composed text sits in the DOM wrapper of the tracked run beside it. Gaining
- * any other mark, losing an inclusive one, or another revision is a real change.
+ * real change. Reading the DOM back can lose a mark no rule reads back or, through
+ * `insertText`, a non-inclusive one. It rebuilds any mark from what its rendering
+ * carries, a review mark from fewer attributes, and composed text sits in the DOM
+ * wrapper of the tracked run beside it. Gaining any other mark, losing or changing
+ * one the rendering carries, or another revision is a real change.
  * So is a selected paragraph boundary that does not disappear exactly.
  */
 const matchesNativeReplacement = ({
@@ -132,12 +170,28 @@ const matchesNativeReplacement = ({
           const held = type.isInSet(authored.marks);
           const read = type.isInSet(node.marks);
           if (held && !read) {
+            const rebuilt = readBack(held);
             if (
               type.spec.inclusive === false ||
-              (type.spec.parseDOM ?? []).length === 0
+              rebuilt === null ||
+              (rebuilt === undefined && (type.spec.parseDOM ?? []).length === 0)
             )
               corrections.push(() =>
                 expected.removeMark(rangeFrom, rangeTo, type),
+              );
+            continue;
+          }
+          // A reread rebuilds a mark from what its rendering carries, so
+          // attributes the rendering cannot hold come back as defaults.
+          if (
+            held &&
+            read &&
+            !held.eq(read) &&
+            !REVIEW_MARK_NAMES.has(type.name)
+          ) {
+            if (readBack(held)?.eq(read))
+              corrections.push(() =>
+                expected.addMark(rangeFrom, rangeTo, read),
               );
             continue;
           }
