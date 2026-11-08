@@ -330,3 +330,55 @@ export const paragraphMarkResolutionJoinAttributes = (
     ? {}
     : { [`folio:${options.attribute}`]: encoded };
 };
+
+/**
+ * One piece of a tracked change written as several elements: a revision that
+ * holds a hyperlink is written with the revision inside the link, so a
+ * change spanning text and a link becomes one element per stretch. The first
+ * piece carries the whole change's resolution joins; every piece says which
+ * one it is, so a reader rebuilds the one change, and a change nested in it
+ * can be rebuilt in turn. It is its own attribute: a reader that does not know
+ * it drops the joins and keeps the revisions.
+ */
+export type SplitResolutionPiece = {
+  piece: number;
+  pieces: number;
+  joins?: ResolutionJoins;
+};
+
+const SPLIT_PIECE_FIELDS = {
+  piece: true,
+  pieces: true,
+  joins: true,
+} as const satisfies Record<keyof SplitResolutionPiece, true>;
+
+export const isSplitResolutionPiece = (
+  value: unknown,
+): value is SplitResolutionPiece =>
+  record(value) &&
+  Object.keys(value).every((key) => Object.hasOwn(SPLIT_PIECE_FIELDS, key)) &&
+  natural(value["piece"]) &&
+  natural(value["pieces"]) &&
+  value["pieces"] >= 2 &&
+  value["piece"] < value["pieces"] &&
+  // Only the first piece carries joins, when the change has them.
+  (!Object.hasOwn(value, "joins") ||
+    (value["piece"] === 0 && isResolutionJoins(value["joins"])));
+
+export const parseSplitResolutionPiece = (
+  node: XmlElement,
+): SplitResolutionPiece | undefined =>
+  parseAttribute({
+    node,
+    attribute: "splitResolutionJoins",
+    valid: isSplitResolutionPiece,
+  });
+
+export const serializeSplitResolutionPiece = (
+  value: SplitResolutionPiece,
+): string =>
+  serializeAttribute({
+    attribute: "splitResolutionJoins",
+    value,
+    valid: isSplitResolutionPiece,
+  });

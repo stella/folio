@@ -19,6 +19,11 @@ export type PageBreakRunSourceDescendantIndex = {
   paragraphFeatures: (
     paragraph: Paragraph,
   ) => PageBreakRunSourceParagraphFeatures;
+  /**
+   * Index more content: a later version of the story, whose unchanged
+   * records the index already holds. Each record is inspected once.
+   */
+  include: (content: readonly BlockContent[]) => void;
 };
 
 export type PageBreakRunSourceParagraphFeatures = {
@@ -251,6 +256,9 @@ export const buildPageBreakRunSourceDescendantIndex = (
   };
 
   return {
+    include: (content) => {
+      inspectBlocks(content);
+    },
     containsPageBreakRun: (content) =>
       hasFlag(indexedFlags(content), SOURCE_FLAGS.containsPageBreak),
     blockContainsPageBreakRun: (block) =>
