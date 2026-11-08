@@ -241,6 +241,10 @@ export const createNoteEditorManager = (
       : deps.getDocument();
 
   const sync = (): void => {
+    // Only mounted or active stories are brought up to date, so with neither
+    // there is nothing to read. The canonical session copies the whole
+    // document to answer, and the host syncs after every edit.
+    if (mounted.size === 0 && active === null) return;
     const host = deps.getHost();
     if (!host) return;
     // Pending IME input owns its view until the shared session commits.
