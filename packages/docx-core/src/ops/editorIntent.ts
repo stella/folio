@@ -407,14 +407,18 @@ export const createEditorIntentIdAllocator = () => {
           : locateTableRow(document, op)
               .map(({ table: found }) => found)
               .unwrapOr(undefined);
-      if (table !== undefined)
-        demand =
-          2 +
-          table.rows.length +
-          (storyParagraphs({ content: [{ type: "table", rows: table.rows }] })
-            .length +
-            1) *
-            PARAGRAPH_REVISION_DEMAND;
+      if (table !== undefined) {
+        // Each leaf may start its own deletion record where pending
+        // revisions already cut the text, as a range deletion counts it.
+        demand = 2 + table.rows.length + PARAGRAPH_REVISION_DEMAND;
+        for (const { paragraph } of storyParagraphs({
+          content: [{ type: "table", rows: table.rows }],
+        })) {
+          demand += PARAGRAPH_REVISION_DEMAND;
+          for (const span of leafSpans(paragraph.content))
+            demand += leafRevisionDemand(span.ancestors.length);
+        }
+      }
     }
     if (intent.type === "table") {
       const op = intent.operation;

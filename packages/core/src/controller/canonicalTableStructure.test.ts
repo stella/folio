@@ -305,3 +305,48 @@ describe("table structure commands in the canonical session", () => {
       );
     });
 });
+
+describe("a suggested table deletion over pending revisions", () => {
+  test("budgets a record for every piece the pending revisions cut the text into", async () => {
+    const source = tableDocument();
+    const [, table] = source.package.document.content;
+    if (table?.type !== "table") return panic("No table");
+    const pieces = Array.from({ length: 60 }, (_, index) =>
+      index % 2 === 0
+        ? {
+            type: "run" as const,
+            content: [{ type: "text" as const, text: `p${String(index)}` }],
+          }
+        : {
+            type: "insertion" as const,
+            info: {
+              id: 100 + index,
+              author: "Other",
+              date: "2026-01-01T00:00:00Z",
+            },
+            content: [
+              {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: `i${String(index)}` }],
+              },
+            ],
+          },
+    );
+    const [first] = table.rows[1]?.cells[1]?.content ?? [];
+    if (first?.type !== "paragraph") return panic("No cell paragraph");
+    first.content = pieces;
+    const session = createCanonicalSession(
+      await parseDocx(
+        (await prepareCanonicalDocxInput(await createDocx(source))).unwrap(),
+        { preloadFonts: false, detectVariables: false },
+      ),
+    ).unwrap();
+    session.setMode({ type: "suggesting", author: "Reviewer" });
+    const state = select(
+      EditorState.create({ schema, doc: session.projection.doc }),
+      { type: "caret", in: "A" },
+    );
+    const commit = run(session, state, "deleteTable");
+    expect(commit.isOk() ? "applied" : commit.error.message).toBe("applied");
+  });
+});
