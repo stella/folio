@@ -225,6 +225,37 @@ const filterChainPath = ({
     ? conditionPath
     : undefined;
 
+const isPreviewSpan = (span: unknown): span is TemplatePreviewSpan =>
+  typeof span === "object" &&
+  span !== null &&
+  typeof Reflect.get(span, "text") === "string";
+
+/**
+ * The value stored under one key, read like {@link ownVerdict}: only a key the
+ * host set itself, holding text or a list of text spans, counts. A marker named
+ * after an inherited property (`constructor`) or holding a malformed value
+ * keeps its authored text.
+ */
+const ownPreviewValue = (
+  values: Record<string, TemplatePreviewValue>,
+  key: string,
+): TemplatePreviewValue | undefined => {
+  if (!Object.hasOwn(values, key)) {
+    return undefined;
+  }
+  const value: unknown = values[key];
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const runs: unknown = Reflect.get(value, "runs");
+  return Array.isArray(runs) && runs.every(isPreviewSpan)
+    ? { runs }
+    : undefined;
+};
+
 /**
  * The verdict stored under one key. Only a key the host set itself, holding a
  * real boolean, counts: an inherited property (`constructor`, or a boolean the
@@ -379,7 +410,7 @@ function collectPreviewEntries(
     if (range.kind !== "placeholder" && range.kind !== "clause") {
       continue;
     }
-    const value = values[range.expr];
+    const value = ownPreviewValue(values, range.expr);
     if (value === undefined || templatePreviewValueText(value) === "") {
       continue;
     }

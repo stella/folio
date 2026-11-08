@@ -3,6 +3,7 @@
  */
 
 import { imageLuminanceFilter } from "../../../utils/imageLuminance";
+import { sanitizeImageSrc } from "../../../utils/sanitizeImageSrc";
 import { expectImageAttrs } from "../../attrs";
 import {
   pictureNamesDomAttrs,
@@ -11,6 +12,13 @@ import {
 import type { ImageAttrs } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
 import type { NodeExtension } from "../types";
+
+/**
+ * A source the DOM must not load (anything `sanitizeImageSrc` rejects, such
+ * as a linked `https:` image) is kept under this attribute instead of `src`,
+ * so the node still round-trips through the clipboard without a request.
+ */
+const UNLOADED_SRC_ATTRIBUTE = "data-folio-src";
 
 export const ImageExtension: (
   options?: Partial<Record<string, unknown>> | undefined,
@@ -83,9 +91,13 @@ export const ImageExtension: (
     },
     parseDOM: [
       {
-        tag: "img[src]",
+        tag: `img[src], img[${UNLOADED_SRC_ATTRIBUTE}]`,
         getAttrs(dom): ImageAttrs {
           const element = dom as HTMLImageElement;
+          const src =
+            element.getAttribute("src") ||
+            element.getAttribute(UNLOADED_SRC_ATTRIBUTE) ||
+            "";
           const pictureNames = pictureNamesFromDom(element);
           const alt = element.getAttribute("alt");
           const title = element.getAttribute("title");
@@ -102,7 +114,7 @@ export const ImageExtension: (
           const contrast =
             contrastRaw === undefined ? Number.NaN : Number(contrastRaw);
           return {
-            src: element.getAttribute("src") || "",
+            src,
             ...(element.dataset["docPrName"] === undefined
               ? {}
               : { docPrName: element.dataset["docPrName"] }),
@@ -140,8 +152,11 @@ export const ImageExtension: (
     ],
     toDOM(node) {
       const attrs = expectImageAttrs(node);
+      const loadable = sanitizeImageSrc(attrs.src);
       const domAttrs: Record<string, string> = {
-        src: attrs.src,
+        ...(loadable === undefined
+          ? { [UNLOADED_SRC_ATTRIBUTE]: attrs.src }
+          : { src: loadable }),
         class: "docx-image",
         ...pictureNamesDomAttrs(attrs.pictureNames),
       };

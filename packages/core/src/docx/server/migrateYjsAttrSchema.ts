@@ -159,6 +159,16 @@ export const migrateFolioYjsSnapshot = (
   const paragraphsRewritten = migratedAttrs.value;
   const migrated = Y.encodeStateAsUpdate(ydoc);
   ydoc.destroy();
+  // A migration adds attributes, so its output can cross the limit its input
+  // met; `materializeYjsDocx` would refuse that update, so it is not returned.
+  if (migrated.byteLength > FOLIO_YJS_UPDATE_MAX_BYTES) {
+    return Result.err(
+      new FolioYjsSnapshotMigrationError({
+        code: "update_too_large",
+        message: "The migrated Yjs update exceeds the snapshot size limit.",
+      }),
+    );
+  }
 
   return Result.ok({
     fromVersion,

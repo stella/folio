@@ -41,6 +41,10 @@ import type {
 } from "./ai-edits/types";
 import { createScopedWordDiffOptions } from "./ai-edits/word-diff";
 import { FolioContentInlinePresentationProjectionError } from "./compare/content";
+import {
+  createFolioContentAlignmentWorkSession,
+  type FolioContentAlignmentWorkSession,
+} from "./compare/content-alignment";
 import { inlineFormattingSegments } from "./compare/formatting";
 import { importStyleClosureWithNumbering } from "./compare/import-style-closure";
 import {
@@ -61,7 +65,7 @@ import {
 } from "./redlineOperationLimit";
 import type { NumberingDefinitions } from "./types/document";
 import {
-  alignFolioBlocks,
+  alignFolioBlocksInSession,
   type FolioAlignedBlockEvent,
 } from "./version-comparison";
 
@@ -146,6 +150,8 @@ type BuildRedlineOperationsOptions = {
   baseSnapshot: FolioAIEditSnapshot;
   revisedBlocks: readonly FolioAIBlock[];
   nextOperationId: () => string;
+  /** One allowance for the whole comparison, not one per story. */
+  alignmentSession: FolioContentAlignmentWorkSession;
 };
 
 type BuildFormattingRedlineOperationsOptions = {
@@ -214,8 +220,13 @@ const buildRedlineOperations = ({
   baseSnapshot,
   revisedBlocks,
   nextOperationId,
+  alignmentSession,
 }: BuildRedlineOperationsOptions): FolioAIEditOperation[] => {
-  const events = alignFolioBlocks(baseSnapshot.blocks, revisedBlocks);
+  const events = alignFolioBlocksInSession({
+    baseBlocks: baseSnapshot.blocks,
+    revisedBlocks,
+    workSession: alignmentSession,
+  });
   const anchorIds = nextBaseBlockIdByIndex(events);
   const operations: FolioAIEditOperation[] = [];
   const trailingAdditions: FolioAIBlock[] = [];
@@ -502,6 +513,7 @@ export const generateRedlineDocx = async (
   );
   const unprocessedStories: GenerateRedlineUnprocessedStory[] = [];
   const wordDiff = createScopedWordDiffOptions({});
+  const alignmentSession = createFolioContentAlignmentWorkSession();
   let operationSequence = 0;
   const nextOperationId = () => {
     if (operationSequence >= MAX_GENERATED_REDLINE_OPERATIONS) {
@@ -518,6 +530,8 @@ export const generateRedlineDocx = async (
     snapshot: FolioAIEditSnapshot;
     revisedSnapshot: FolioAIEditSnapshot;
     inserted: ReturnType<typeof createInsertedResourceProjection>;
+    /** The allowance left when this story was planned. */
+    alignmentAllowance: FolioContentAlignmentWorkSession;
   }[] = [];
   for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     if (!pair.baseStory) {
@@ -542,14 +556,26 @@ export const generateRedlineDocx = async (
     if (!baseSnapshot || !revisedSnapshot) {
       panic("A matched document story could not be read");
     }
+    // Every story draws on one comparison-wide allowance. The projection and
+    // the operations align the same story, so both start from the allowance
+    // this story was planned with and reach the same pairing; the story's
+    // work is charged once.
+    const alignmentAllowance = { ...alignmentSession };
+    const projectionSession = { ...alignmentAllowance };
+    const inserted = createInsertedResourceProjection({
+      base: baseSnapshot,
+      revised: revisedSnapshot,
+      alignmentSession: projectionSession,
+    });
+    alignmentSession.remainingLcsCells = projectionSession.remainingLcsCells;
+    alignmentSession.remainingStructuralTokenLookups =
+      projectionSession.remainingStructuralTokenLookups;
     plannedStories.push({
       story: pair.baseStory,
       snapshot: baseSnapshot,
       revisedSnapshot,
-      inserted: createInsertedResourceProjection({
-        base: baseSnapshot,
-        revised: revisedSnapshot,
-      }),
+      inserted,
+      alignmentAllowance,
     });
   }
 
@@ -587,7 +613,7 @@ export const generateRedlineDocx = async (
   );
   for (const [
     index,
-    { story, snapshot, revisedSnapshot, inserted },
+    { story, snapshot, revisedSnapshot, inserted, alignmentAllowance },
   ] of plannedStories.entries()) {
     const rebound =
       resources.snapshots.at(index) ??
@@ -620,6 +646,7 @@ export const generateRedlineDocx = async (
         (block) => insertedById.get(block.id) ?? block,
       ),
       nextOperationId,
+      alignmentSession: { ...alignmentAllowance },
     });
     if (operations.length === 0) continue;
     const result = baseReviewer.applyDocumentOperationsToStory({

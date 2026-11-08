@@ -262,6 +262,13 @@ const createReviewerComment = ({
   content: [commentTextParagraph(text)],
 });
 
+/**
+ * How many document-operation batches a reviewer can step back through.
+ * Each entry holds the story's state before and after its batch; older
+ * entries are dropped, as an editor's undo history drops its oldest steps.
+ */
+export const FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT = 100;
+
 type FolioDocumentOperationUndoEntry = {
   undoHandle: FolioDocumentOperationUndoHandle;
   story: FolioEditableDocumentStoryHandle;
@@ -2158,11 +2165,19 @@ export class FolioDocxReviewer {
         createdCommentsLengthBefore,
         createdCommentsLengthAfter: this.createdComments.length,
       });
+      const excess =
+        this.documentOperationUndoEntries.length -
+        FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT;
+      if (excess > 0) this.documentOperationUndoEntries.splice(0, excess);
     }
     return result;
   }
 
-  /** Undo the latest unchanged document-operation batch and its created comments. */
+  /**
+   * Undo the latest unchanged document-operation batch and its created
+   * comments. Only the last {@link FOLIO_DOCUMENT_OPERATION_UNDO_LIMIT}
+   * batches are kept; an older handle is `unknownHandle`.
+   */
   undoDocumentOperations(
     undoHandle: FolioDocumentOperationUndoHandle,
   ): FolioDocumentOperationUndoResult {

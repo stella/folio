@@ -12,7 +12,9 @@ inline atoms occupy one unit, deleted tracked content still occupies space,
 and `zeroWidthBefore` distinguishes gaps between markers.
 
 The sequencer returns the original acknowledgement or rejection for every
-resubmission of an `opId`. An accepted batch applies atomically and appears
+resubmission of an `opId` by the same `actor`; another actor reusing it is
+rejected as a conflict. The optimistic client likewise refuses a broadcast that
+reuses a pending `opId` under another actor. An accepted batch applies atomically and appears
 in the broadcast journal. A rejection leaves the document and journal unchanged.
 Sequenced effects record document-dependent split identities and join lengths,
 so replay does not infer positions from a later document.

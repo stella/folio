@@ -404,6 +404,45 @@ describe("FindReplaceManager real search replacement eligibility", () => {
   });
 });
 
+describe("FindReplaceManager replaceAll batch", () => {
+  test("replacing every match at once equals replacing them one at a time, last first", () => {
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            { type: "paragraph", content: [textRun("a hit, hit and hit")] },
+            { type: "paragraph", content: [textRun("no match here")] },
+            {
+              type: "paragraph",
+              content: [textRun("hi"), textRun("t then "), textRun("hit")],
+            },
+          ],
+        },
+      },
+    };
+    const matches = findInDocument(source, "hit", createDefaultFindOptions());
+    expect(matches).toHaveLength(5);
+
+    let oneByOne = source;
+    for (const each of matches.toReversed()) {
+      const manager = new FindReplaceManager<(typeof matches)[number]>();
+      manager.setMatches([each]);
+      oneByOne = manager.replaceCurrent(oneByOne, "longer text") ?? oneByOne;
+    }
+    const all = new FindReplaceManager<(typeof matches)[number]>().replaceAll(
+      source,
+      matches,
+      "longer text",
+    );
+
+    expect(all).toMatchObject({ replacedCount: 5, skippedCount: 0 });
+    expect(all?.document).toEqual(oneByOne);
+    expect(
+      findInDocument(source, "hit", createDefaultFindOptions()),
+    ).toHaveLength(5);
+  });
+});
+
 describe("getAdjacentFindIndex", () => {
   test("wraps forward past the last match to the first", () => {
     expect(getAdjacentFindIndex(2, 3, "next")).toBe(0);

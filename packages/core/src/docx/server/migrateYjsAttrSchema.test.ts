@@ -765,3 +765,62 @@ test.each([11, FOLIO_YJS_ATTR_SCHEMA_VERSION])(
     ydoc.destroy();
   },
 );
+
+/**
+ * A version-4 snapshot of many stated-width cells, padded with an unrelated
+ * metadata entry to `byteLength` bytes, so the backfill grows it.
+ */
+const versionFourTableSnapshotOfSize = (byteLength: number): Uint8Array => {
+  const build = (padding: number): Uint8Array => {
+    // A fixed client id keeps the encoded size independent of the run.
+    const ydoc = new Y.Doc();
+    ydoc.clientID = 1;
+    const cells = Array.from({ length: 2000 }, () => {
+      const cell = new Y.XmlElement("tableCell");
+      storedAttributes(cell).setAttribute("width", 2400);
+      cell.setAttribute("widthType", "dxa");
+      storedAttributes(cell).setAttribute("_originalFormatting", {
+        width: { value: 2400, type: "dxa" },
+      });
+      cell.insert(0, [new Y.XmlElement("paragraph")]);
+      return cell;
+    });
+    const row = new Y.XmlElement("tableRow");
+    row.insert(0, cells);
+    const table = new Y.XmlElement("table");
+    table.insert(0, [row]);
+    ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME).insert(0, [table]);
+    const metadata = ydoc.getMap(METADATA_MAP_NAME);
+    metadata.set(ATTR_SCHEMA_VERSION_KEY, 4);
+    metadata.set("padding", "x".repeat(padding));
+    const update = Y.encodeStateAsUpdate(ydoc);
+    ydoc.destroy();
+    return update;
+  };
+  // The padding's length prefix grows with it, so trim until it fits.
+  let padding = byteLength - build(0).byteLength;
+  let update = build(padding);
+  while (update.byteLength > byteLength) {
+    padding -= update.byteLength - byteLength;
+    update = build(padding);
+  }
+  expect(update.byteLength).toBeGreaterThan(byteLength - 16);
+  return update;
+};
+
+describe("migrateFolioYjsSnapshot output size", () => {
+  test("refuses a migration whose output would exceed the update limit", () => {
+    const input = versionFourTableSnapshotOfSize(FOLIO_YJS_UPDATE_MAX_BYTES);
+    expect(expectError(input).code).toBe("update_too_large");
+  });
+
+  test("returns a migrated output that stays within the update limit", () => {
+    const input = versionFourTableSnapshotOfSize(1024 * 1024);
+    const migrated = migrateFolioYjsSnapshot(input);
+    if (migrated.isErr()) throw migrated.error;
+    expect(migrated.value.update.byteLength).toBeGreaterThan(input.byteLength);
+    expect(migrated.value.update.byteLength).toBeLessThanOrEqual(
+      FOLIO_YJS_UPDATE_MAX_BYTES,
+    );
+  });
+});
