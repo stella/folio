@@ -77,6 +77,9 @@ export default library({
     // findings for both.
     "unicorn/no-useless-spread": "off",
     "unicorn/prefer-string-starts-ends-with": "off",
+    // `import type {} from` loads a module's `declare global` without
+    // running it; tests and fixtures use it on purpose.
+    "import/no-empty-named-blocks": "off",
     // ZIP archives are read and written by @stll/docx-core/zip, which bounds
     // every read and passes unchanged entries through; XML is read by
     // @stll/docx-core/xml, one bounded reader with a stated conformance.
@@ -154,6 +157,11 @@ export default library({
     "test/__fixtures__/**",
   ],
   overrides: [
+    {
+      // Boundary fixtures model CommonJS imports with `require` in TypeScript.
+      files: ["test/__fixtures__/**"],
+      rules: { "typescript/no-require-imports": "off" },
+    },
     {
       files: [
         "packages/react/src/paged-editor/ImageSelectionOverlay.tsx",

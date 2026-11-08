@@ -10,6 +10,7 @@ import {
   parseSourceModule,
   walkAst,
 } from "../../../../scripts/lib/oxc-ast";
+import { createCommentRecordsPlugin } from "./commentRecords";
 import { AutoBidiDetectionExtension } from "./extensions/features/AutoBidiDetectionExtension";
 import { EmptyParagraphFormatExtension } from "./extensions/features/EmptyParagraphFormatExtension";
 import { ImageDragExtension } from "./extensions/features/ImageDragExtension";
@@ -112,6 +113,7 @@ const FACTORIES = {
   paraIdAllocator: [() => extensionPlugin(ParaIdAllocatorExtension())],
   paragraphChangeTracker: [createParagraphChangeTrackerPlugin],
   runIdentityStrip: [() => extensionPlugin(RunIdentityExtension())],
+  commentRecords: [() => createCommentRecordsPlugin([])],
 };
 
 // Functions, methods, accessors and signatures: everything that owns parameters.

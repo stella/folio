@@ -1,18 +1,8 @@
 /**
- * ProseMirror comment-mark helpers for the Vue adapter's add-comment flow.
- *
- * Core owns the paraId/search-based `addCommentToRange` (commentOps.ts) and the
- * id allocator, but the interactive "select text → pending highlight → type →
- * submit" flow needs range-based mark ops that core does not expose. These
- * mirror the React adapter's `commentsHelpers.ts` / `commentAnchors.ts` so both
- * adapters apply the same pending/real comment marks and resolve the same
- * creation range.
+ * The range the Vue adapter's add-comment flow comments on. The highlight and
+ * the thread's marks come from core's comment records; this picks the range,
+ * as React's `commentAnchors.ts` does.
  */
-
-import { Selection } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
-
-import { PENDING_COMMENT_ID } from "@stll/folio-core/prosemirror/commentIdAllocator";
 
 export type CommentMarkRange = {
   from: number;
@@ -55,64 +45,4 @@ export function resolveCommentCreationRange({
     return null;
   })();
   return range ? clampCommentMarkRange(docSize, range) : null;
-}
-
-export type ApplyCommentMarkOptions = {
-  replacePending?: boolean;
-  selectEnd?: boolean;
-};
-
-/**
- * Add a `comment` mark for `commentId` over `range`. With `replacePending` the
- * placeholder mark (PENDING_COMMENT_ID) is removed from the range first so a
- * pre-existing real comment the selection overlaps is left intact. Returns
- * false when the schema lacks the mark or the range is empty.
- */
-export function applyCommentMarkRange(
-  view: EditorView,
-  range: CommentMarkRange,
-  commentId: number,
-  options?: ApplyCommentMarkOptions,
-): boolean {
-  const commentMark = view.state.schema.marks["comment"];
-  const safeRange = clampCommentMarkRange(view.state.doc.content.size, range);
-  if (!commentMark || !safeRange) return false;
-
-  let tr = view.state.tr;
-  if (options?.replacePending) {
-    tr = tr.removeMark(
-      safeRange.from,
-      safeRange.to,
-      commentMark.create({ commentId: PENDING_COMMENT_ID }),
-    );
-  }
-  tr = tr.addMark(
-    safeRange.from,
-    safeRange.to,
-    commentMark.create({ commentId }),
-  );
-
-  if (options?.selectEnd) {
-    tr = tr.setSelection(Selection.near(tr.doc.resolve(safeRange.to), -1));
-  }
-
-  view.dispatch(tr);
-  return true;
-}
-
-/** Strip the pending placeholder comment mark from `range` (cancel add-comment). */
-export function removePendingCommentMarkRange(
-  view: EditorView,
-  range: CommentMarkRange,
-): void {
-  const commentMark = view.state.schema.marks["comment"];
-  const safeRange = clampCommentMarkRange(view.state.doc.content.size, range);
-  if (!commentMark || !safeRange) return;
-  view.dispatch(
-    view.state.tr.removeMark(
-      safeRange.from,
-      safeRange.to,
-      commentMark.create({ commentId: PENDING_COMMENT_ID }),
-    ),
-  );
 }

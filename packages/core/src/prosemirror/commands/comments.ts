@@ -1,4 +1,5 @@
 import { panic } from "better-result";
+import { closeHistory } from "prosemirror-history";
 /**
  * Comment and Track Changes Commands
  *
@@ -15,11 +16,11 @@ import { TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
 
 import {
+  type LockedControlViolation,
   PARAGRAPH_MARK_CHANGE_KINDS,
   type ParagraphMarkChangeKind,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
-import type { LockedControlViolation } from "@stll/docx-core/model";
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
@@ -43,6 +44,7 @@ import {
   isCommentRangeBoundaryNode,
   readCommentRangeBoundaryAttrs,
 } from "../commentRangeBoundaryAttrs";
+import { retireThreadsResolvedAway } from "../commentRecords";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
@@ -191,6 +193,16 @@ export function removeCommentMark(commentId: number): Command {
 }
 
 type ResolveMode = "accept" | "reject";
+
+/**
+ * What every review resolution does before it is dispatched: it retires the
+ * comment threads it left without an anchor, and it is an undo step of its
+ * own, never merged into the edit it resolves.
+ */
+const finishResolution = (state: EditorState, tr: Transaction): void => {
+  retireThreadsResolvedAway(state, tr);
+  closeHistory(tr);
+};
 
 /**
  * Resolve a tracked change: accept or reject.
@@ -1080,6 +1092,7 @@ function resolveChangeUnguarded(
         }
       }
       normalizeKeptRangeBoundaries(tr, keptBoundaries);
+      finishResolution(state, tr);
       if (tr.steps.length > 0) {
         dispatch(tr);
       }
@@ -1925,6 +1938,7 @@ const resolveAllChanges =
         removedEndpointCount: result.removedEndpointCount,
         removedReferences: result.removedReferences,
       });
+    finishResolution(state, tr);
     dispatch(tr);
     return true;
   };
@@ -3414,6 +3428,7 @@ const acceptSuggestions = (
       return false;
     }
     if (dispatch) {
+      finishResolution(state, tr);
       dispatch(tr);
     }
     return true;
@@ -3523,6 +3538,7 @@ export function rejectSuggestion(suggestionId: string): Command {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, workingTr);
       dispatch(workingTr);
     }
     return true;
@@ -3598,6 +3614,7 @@ export function rejectAllSuggestions(): Command {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, workingTr);
       dispatch(workingTr);
     }
     return true;

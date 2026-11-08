@@ -32,7 +32,6 @@ import {
 } from "../../layout-engine/measure/tableCellGrid";
 import { resolveTableCellPadding } from "../../layout-engine/types";
 import type {
-  BlockId,
   FlowBlock,
   Layout,
   MathRun,
@@ -55,6 +54,7 @@ import {
   resolvePhysicalParagraphInlineLayout,
 } from "../../utils/paragraphInlineLayout";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
+import { indexBlocksById } from "./blockIndex";
 import { getPageTop } from "./hitTest";
 import { computeLinePmRange } from "./linePmRange";
 
@@ -128,10 +128,6 @@ function mathRunToFontStyle(run: MathRun): FontStyle {
 /**
  * Find a block by its ID.
  */
-function findBlockById(blocks: FlowBlock[], blockId: BlockId): number {
-  return blocks.findIndex((block) => block.id === blockId);
-}
-
 function getCellContentOffsetY(
   cell: TableCell,
   cellMeasure: TableCellMeasure,
@@ -411,6 +407,7 @@ export function selectionToRects(
   const rects: SelectionRect[] = [];
   const tableCellPlacements = new WeakMap<TableBlock, TableCellPlacements>();
 
+  const blockIndices = indexBlocksById(blocks);
   // Walk through all pages and fragments
   for (let pageIndex = 0; pageIndex < layout.pages.length; pageIndex++) {
     // SAFETY: pageIndex < layout.pages.length in for loop
@@ -420,7 +417,7 @@ export function selectionToRects(
     for (const fragment of page.fragments) {
       // Handle paragraph fragments
       if (fragment.kind === "paragraph") {
-        const blockIndex = findBlockById(blocks, fragment.blockId);
+        const blockIndex = blockIndices.get(fragment.blockId) ?? -1;
         if (blockIndex === -1) {
           continue;
         }
@@ -539,7 +536,7 @@ export function selectionToRects(
 
       // Handle table fragments
       if (fragment.kind === "table") {
-        const blockIndex = findBlockById(blocks, fragment.blockId);
+        const blockIndex = blockIndices.get(fragment.blockId) ?? -1;
         if (blockIndex === -1) {
           continue;
         }
@@ -792,6 +789,7 @@ export function getCaretPosition(
   measures: Measure[],
   pmPosition: number,
 ): CaretPosition | null {
+  const blockIndices = indexBlocksById(blocks);
   // Search through pages and fragments to find the position
   for (let pageIndex = 0; pageIndex < layout.pages.length; pageIndex++) {
     // SAFETY: pageIndex < layout.pages.length in for loop
@@ -800,7 +798,7 @@ export function getCaretPosition(
 
     for (const fragment of page.fragments) {
       if (fragment.kind === "paragraph") {
-        const blockIndex = findBlockById(blocks, fragment.blockId);
+        const blockIndex = blockIndices.get(fragment.blockId) ?? -1;
         if (blockIndex === -1) {
           continue;
         }

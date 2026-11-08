@@ -2990,15 +2990,13 @@ const recordedRevisions = (
   );
   // Every physical row record is reported, including later rows of a table.
   revisions.unshift(
-    ...documentStories(edit.document)
-      .map((story) =>
-        stampedTableRevisionIds({
-          blocks: storyBody(edit.document, story).content,
-          stamp,
-          known,
-        }),
-      )
-      .flat(),
+    ...documentStories(edit.document).flatMap((story) =>
+      stampedTableRevisionIds({
+        blocks: storyBody(edit.document, story).content,
+        stamp,
+        known,
+      }),
+    ),
   );
   return revisions;
 };

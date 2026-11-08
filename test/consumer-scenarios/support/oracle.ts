@@ -3715,7 +3715,7 @@ export const assertRequestedOutcome = async (
         case "mergeBlockWithNext":
         case "deleteTable":
         case "deleteTableRow":
-        case "deleteTableColumn":
+        case "deleteTableColumn": {
           const getRemovedBlockIds =
             pre.mode === "direct"
               ? getFolioDocumentOperationRemovedBlockIds
@@ -3733,6 +3733,7 @@ export const assertRequestedOutcome = async (
               blockId,
             },
           );
+        }
         default:
           return [];
       }
