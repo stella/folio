@@ -300,48 +300,56 @@ const projections = (document: Document, cache: ProjectionBlockCache) => {
   };
 };
 
+/** Every source parsed as a canonical session loads it. */
+const parsedSources = async () =>
+  Promise.all(
+    SOURCES.map(async (source) => ({
+      id: source.id,
+      document: await parseDocx(
+        (
+          await prepareCanonicalDocxInput((await source.bytes()).slice().buffer)
+        ).unwrap(),
+        { preloadFonts: false, detectVariables: false },
+      ),
+    })),
+  );
+
 describe("a projection reusing converted blocks", () => {
-  for (const source of SOURCES)
-    test(`equals a projection converting every block, ${source.id}`, async () => {
-      const prepared = await prepareCanonicalDocxInput(
-        (await source.bytes()).slice().buffer,
-      );
-      const document = await parseDocx(prepared.unwrap(), {
-        preloadFonts: false,
-        detectVariables: false,
-      });
-      await assertProperty(
-        fc.property(
-          fc.array(editArbitrary, { minLength: 1, maxLength: 16 }),
-          (edits) => {
-            const session = createCanonicalSession(
-              structuredClone(document),
-            ).unwrap();
-            const cache = new ProjectionBlockCache();
-            let state = EditorState.create({
-              schema,
-              doc: session.projection.doc,
-            });
-            const first = projections(session.document, cache);
-            expect(first.cached.eq(first.full)).toBe(true);
-            for (const edit of edits) {
-              state = applyEdit(session, state, edit);
-              const { cached, full } = projections(session.document, cache);
-              expect(cached.toJSON()).toEqual(full.toJSON());
-              // The session's own projection, built with its cache while it
-              // staged the edit, against its document converted afresh.
-              expect(withoutSalt(session.projection.doc.toJSON())).toEqual(
-                withoutSalt(full.toJSON()),
-              );
-            }
-          },
-        ),
-        {
-          id: `projection block cache equals full conversion, ${source.id}`,
-          numRuns: 40,
+  test("equals a projection converting every block over session edits", async () => {
+    const sources = await parsedSources();
+    await assertProperty(
+      fc.property(
+        fc.constantFrom(...sources),
+        fc.array(editArbitrary, { minLength: 1, maxLength: 16 }),
+        ({ document }, edits) => {
+          const session = createCanonicalSession(
+            structuredClone(document),
+          ).unwrap();
+          const cache = new ProjectionBlockCache();
+          let state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
+          const first = projections(session.document, cache);
+          expect(first.cached.eq(first.full)).toBe(true);
+          for (const edit of edits) {
+            state = applyEdit(session, state, edit);
+            const { cached, full } = projections(session.document, cache);
+            expect(cached.toJSON()).toEqual(full.toJSON());
+            // The session's own projection, built with its cache while it
+            // staged the edit, against its document converted afresh.
+            expect(withoutSalt(session.projection.doc.toJSON())).toEqual(
+              withoutSalt(full.toJSON()),
+            );
+          }
         },
-      );
-    });
+      ),
+      {
+        id: "projection block cache equals full conversion over session edits",
+        numRuns: 300,
+      },
+    );
+  });
 });
 
 const MARKERS = [
@@ -435,35 +443,30 @@ const convertedInFull = (document: Document, salt: string) => {
 };
 
 describe("a projection reusing converted blocks across story versions", () => {
-  for (const source of SOURCES)
-    test(`equals a projection converting every block, ${source.id}`, async () => {
-      const document = await parseDocx(
-        (
-          await prepareCanonicalDocxInput((await source.bytes()).slice().buffer)
-        ).unwrap(),
-        { preloadFonts: false, detectVariables: false },
-      );
-      await assertProperty(
-        fc.property(
-          fc.array(modelEditArbitrary, { minLength: 1, maxLength: 16 }),
-          (edits) => {
-            const cache = new ProjectionBlockCache();
-            let version = document;
-            for (const edit of [undefined, ...edits]) {
-              if (edit !== undefined) version = editModel(version, edit);
-              const full = convertedInFull(version, cache.salt);
-              if (full === undefined) continue;
-              const cached = toProseDoc(version, { blockCache: cache });
-              expect(cached.toJSON()).toEqual(full.toJSON());
-            }
-          },
-        ),
-        {
-          id: `projection block cache equals full conversion over story versions, ${source.id}`,
-          numRuns: 60,
+  test("equals a projection converting every block over story versions", async () => {
+    const sources = await parsedSources();
+    await assertProperty(
+      fc.property(
+        fc.constantFrom(...sources),
+        fc.array(modelEditArbitrary, { minLength: 1, maxLength: 16 }),
+        ({ document }, edits) => {
+          const cache = new ProjectionBlockCache();
+          let version = document;
+          for (const edit of [undefined, ...edits]) {
+            if (edit !== undefined) version = editModel(version, edit);
+            const full = convertedInFull(version, cache.salt);
+            if (full === undefined) continue;
+            const cached = toProseDoc(version, { blockCache: cache });
+            expect(cached.toJSON()).toEqual(full.toJSON());
+          }
         },
-      );
-    });
+      ),
+      {
+        id: "projection block cache equals full conversion over story versions",
+        numRuns: 400,
+      },
+    );
+  });
 });
 
 describe("a projection reusing converted blocks through a list suggestion", () => {
