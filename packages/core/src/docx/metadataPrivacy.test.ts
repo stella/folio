@@ -174,6 +174,54 @@ describe("rewriteDocxMetadataPrivacy", () => {
     expect(xml).toContain("<cp:revision>7</cp:revision>");
   });
 
+  test("scrubs the core properties part the package relationship selects", async () => {
+    const zip = await ZipArchive.read(await buildDocument());
+    zip.delete("docProps/core.xml");
+    zip.set("private/core-metadata.xml", CORE_PROPERTIES_XML);
+    const packageRelationships = await zip.entry("_rels/.rels")?.text();
+    if (packageRelationships === undefined) {
+      throw new Error("expected package relationships");
+    }
+    zip.set(
+      "_rels/.rels",
+      packageRelationships.replace(
+        /Target="\/?docProps\/core\.xml"/u,
+        'Target="private/core-metadata.xml"',
+      ),
+    );
+    expect(await zip.entry("_rels/.rels")?.text()).toContain(
+      "private/core-metadata.xml",
+    );
+    const relocated = (await zip.generate({ compression: "store" })).buffer;
+
+    const result = await rewriteDocxMetadataPrivacy(relocated, {
+      transforms: [
+        "remove-attribution",
+        "remove-timestamps",
+        "remove-descriptive-metadata",
+      ],
+    });
+
+    expect(result.privacyReport.removedMetadataProperties).toEqual([
+      "title",
+      "subject",
+      "creator",
+      "keywords",
+      "description",
+      "lastModifiedBy",
+      "created",
+      "modified",
+    ]);
+    const xml = await (
+      await ZipArchive.read(result.buffer)
+    )
+      .entry("private/core-metadata.xml")
+      ?.text();
+    expect(xml).toContain("<cp:revision>7</cp:revision>");
+    expect(xml).not.toContain("<dc:creator>");
+    expect(xml).not.toContain("<dcterms:modified>");
+  });
+
   test("keeps removed timestamps absent through selective and structural saves", async () => {
     const rewritten = await rewriteDocxMetadataPrivacy(await buildDocument(), {
       transforms: [
