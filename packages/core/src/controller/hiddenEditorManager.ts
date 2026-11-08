@@ -49,6 +49,10 @@ import { isReadOnlyEditKey } from "../paged-layout/readOnlyEditAttempt";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { registerClipboardIntentHandler } from "../prosemirror/clipboardIntent";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
+import {
+  createCommentRecordsPlugin,
+  isCommentRecordsSync,
+} from "../prosemirror/commentRecords";
 import { createEmptyDoc, toProseDoc } from "../prosemirror/conversion";
 import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
@@ -372,6 +376,7 @@ export function createHiddenEditorState(
   // transaction, which only sees the states of the plugins before them.
   const plugins: Plugin[] = [
     numberingPlugin,
+    createCommentRecordsPlugin(document?.package.document.comments ?? []),
     ...externalPlugins,
     ...(manager?.getPlugins() ?? [createTextInputPlugin()]),
     styleResolverPlugin,
@@ -1210,7 +1215,12 @@ export const createHiddenEditorManager = (
           return;
         }
 
-        if (deps.getReadOnly() && transaction.docChanged) {
+        // A host writing its comment list in changes no document content.
+        if (
+          deps.getReadOnly() &&
+          transaction.docChanged &&
+          !isCommentRecordsSync(transaction)
+        ) {
           deps.onReadOnlyEditAttempt();
           return;
         }
@@ -1260,11 +1270,15 @@ export const createHiddenEditorManager = (
         view.updateState(applied.state);
 
         const docChanged = applied.transactions.some(
-          (appliedTransaction) => appliedTransaction.docChanged,
+          (appliedTransaction) =>
+            appliedTransaction.docChanged &&
+            !isCommentRecordsSync(appliedTransaction),
         );
         const selectionChanged = applied.transactions.some(
           (appliedTransaction) =>
-            appliedTransaction.selectionSet || appliedTransaction.docChanged,
+            appliedTransaction.selectionSet ||
+            (appliedTransaction.docChanged &&
+              !isCommentRecordsSync(appliedTransaction)),
         );
 
         // Notify about transaction.

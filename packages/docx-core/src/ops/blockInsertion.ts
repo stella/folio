@@ -16,6 +16,7 @@ import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
+import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
@@ -166,6 +167,8 @@ export const insertBlocks = ({
     );
   }
   const revision = op.revision;
+  // A move's destination marks its paragraphs moved to, not inserted.
+  const markKind = op.move === true ? "moveTo" : "ins";
   const blocks: Paragraph[] = [];
   for (const [index, paragraph] of canonicalBlocks.entries()) {
     const wrapped = wrapTracked({
@@ -181,13 +184,17 @@ export const insertBlocks = ({
     if (wrapped.kind === "refused") {
       return refuse(wrapped.reason, "The inserted content cannot be tracked.");
     }
-    const content =
+    const wrappedContent =
       wrapped.kind === "wrapped" ? wrapped.content : paragraph.content;
+    const content =
+      op.move === true
+        ? asMoveHalf(wrappedContent, revision.id, "to")
+        : wrappedContent;
     if (!takesOverMark || index < canonicalBlocks.length - 1) {
       blocks.push({
         ...paragraph,
         content,
-        pPrMark: { kind: "ins", info: stampInfo(revision) },
+        pPrMark: { kind: markKind, info: stampInfo(revision) },
       });
       continue;
     }
@@ -217,7 +224,7 @@ export const insertBlocks = ({
         {
           ...location.paragraph,
           pPrMark: {
-            kind: "ins",
+            kind: markKind,
             info: stampInfo(revision),
             survivor: "first",
           },

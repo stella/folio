@@ -259,6 +259,7 @@ export type DeleteBlocksOp = {
     story: OpStory;
     blockIds: readonly string[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
@@ -466,10 +467,13 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     story: OpStory;
     at: BlockInsertionPoint;
     paragraphs: readonly Paragraph[];
+    move?: true;
+    newList?: NewListInstance;
 } | {
     type: "deleteParagraphs";
     story: OpStory;
     blockIds: readonly string[];
+    move?: true;
 } | {
     type: "replaceFragment";
     from: TextPosition;
@@ -505,6 +509,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "formatParagraph";
     at: TextPosition;
     patch: ParagraphPropsPatch;
+    newList?: NewListInstance;
 } | {
     type: "setList";
     items: readonly {
@@ -615,6 +620,7 @@ export type InsertBlocksOp = {
     at: BlockInsertionPoint;
     blocks: readonly Paragraph[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
@@ -731,6 +737,12 @@ export function mergeRunContent(content1: RunContent[], content2: RunContent[]):
 export type NewIds = {
     revision?: readonly number[];
     control?: readonly number[];
+};
+
+// @public
+export type NewListInstance = {
+    num: NumberingInstance;
+    abstractNum?: AbstractNumbering;
 };
 
 // @public

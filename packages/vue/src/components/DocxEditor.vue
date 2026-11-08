@@ -564,6 +564,7 @@ import {
   insertTableOfContentsInView,
 } from "@stll/folio-core/prosemirror";
 import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
+import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import {
@@ -1290,7 +1291,6 @@ const commentLifecycle = useCommentLifecycle({
   pagesContainer: pagesRef,
   readOnly,
   createComment: commentManagement.createComment,
-  pushComment: commentManagement.pushComment,
   sessionKind: () =>
     canonicalAuthoritySession.value ? "canonical" : "prosemirror",
   createCanonicalComment: (text, range) => {
@@ -2024,7 +2024,10 @@ const { exposed } = useDocxEditorRefApi({
   getDocument: () => {
     const document = getDocument();
     if (!document || canonicalAuthoritySession.value) return document;
-    return withHostCommentThreads(document, savedComments());
+    const editorDoc = editorView.value?.state.doc;
+    return withHostCommentThreads(document, savedComments(), {
+      anchoredInEditor: editorDoc ? commentIdsNamedIn(editorDoc) : null,
+    });
   },
   getActiveView: () => activeEditorView.value,
   getExperimentalSession: () => props.experimentalSession,

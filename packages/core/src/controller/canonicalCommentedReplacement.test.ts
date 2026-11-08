@@ -168,18 +168,14 @@ describe("replacing exactly the text a comment covers", () => {
           await viaCanonicalEngine(source, word, mode),
         );
         expect(actual.accepted).toEqual(expected.accepted);
-        // While the change is pending the comment covers the struck words and
-        // the new ones; the engines may order the two halves differently.
-        const halves = mode === "direct" ? ["Changed"] : [word, "Changed"];
-        for (const { pending } of [expected, actual]) {
-          expect(pending.map(({ id }) => id)).toEqual(
-            expected.accepted.map(({ id }) => id),
-          );
-          for (const half of halves)
-            expect(pending.at(0)?.anchoredText).toContain(half);
-          expect(pending.at(0)?.anchoredText.length).toBe(
-            halves.join("").length,
-          );
-        }
+        // While the change is pending the comment covers the struck words,
+        // then the new ones, in both engines.
+        expect(expected.pending).toEqual([
+          {
+            id: expected.accepted.at(0)?.id ?? -1,
+            anchoredText: mode === "direct" ? "Changed" : `${word}Changed`,
+          },
+        ]);
+        expect(actual.pending).toEqual(expected.pending);
       });
 });

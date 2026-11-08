@@ -42,7 +42,21 @@ const JOIN_FIELDS = {
   deferredRemove: true,
   acceptance: true,
   plainSides: true,
+  retainedEnclosing: true,
 } as const satisfies Record<keyof ResolutionJoins, true>;
+type EnclosingHandoff = NonNullable<
+  ResolutionJoins["retainedEnclosing"]
+>[number];
+const ENCLOSING_FIELDS = {
+  levels: true,
+  source: true,
+  target: true,
+} as const satisfies Record<keyof EnclosingHandoff, true>;
+/**
+ * Saved as its own attribute: a reader that does not know it keeps the
+ * joins and drops only the handoff.
+ */
+const ENCLOSING_ATTRIBUTE = "retainedEnclosing";
 
 const ACCEPTANCE_POLICIES = {
   "merge-plain-runs": true,
@@ -91,6 +105,29 @@ const retained = (value: unknown): value is readonly RetainedIdentity[] =>
       natural(item["depth"]) &&
       slots(source) &&
       slots(target) &&
+      source.length === target.length &&
+      source.every((slot, index) => slot.space === target.at(index)?.space)
+    );
+  });
+
+const enclosingHandoffs = (
+  value: unknown,
+): value is readonly EnclosingHandoff[] =>
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.every((item: unknown) => {
+    if (!record(item)) return false;
+    const levels = item["levels"];
+    const source = item["source"];
+    const target = item["target"];
+    return (
+      Object.keys(item).every((key) => Object.hasOwn(ENCLOSING_FIELDS, key)) &&
+      natural(levels) &&
+      levels >= 1 &&
+      levels <= MAX_REVISION_ID &&
+      slots(source) &&
+      slots(target) &&
+      source.length > 0 &&
       source.length === target.length &&
       source.every((slot, index) => slot.space === target.at(index)?.space)
     );
@@ -147,7 +184,40 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   (value["retainedAfter"] === undefined || retained(value["retainedAfter"])) &&
   (!Object.hasOwn(value, "deferredRemove") ||
     deferredRemovals(value["deferredRemove"])) &&
-  (!Object.hasOwn(value, "plainSides") || isBoundaryJoins(value["plainSides"]));
+  (!Object.hasOwn(value, "plainSides") ||
+    isBoundaryJoins(value["plainSides"])) &&
+  (!Object.hasOwn(value, ENCLOSING_ATTRIBUTE) ||
+    enclosingHandoffs(value[ENCLOSING_ATTRIBUTE]));
+
+/** The joins as `folio:resolutionJoins` holds them: without the handoff. */
+const isStoredResolutionJoins = (value: unknown): value is ResolutionJoins =>
+  isResolutionJoins(value) && !Object.hasOwn(value, ENCLOSING_ATTRIBUTE);
+
+const storedJoins = (joins: ResolutionJoins): ResolutionJoins => {
+  const { retainedEnclosing: _handoff, ...stored } = joins;
+  return stored;
+};
+
+const withEnclosing = (
+  joins: ResolutionJoins,
+  node: XmlElement,
+): ResolutionJoins => {
+  const handoffs = parseAttribute({
+    node,
+    attribute: ENCLOSING_ATTRIBUTE,
+    valid: enclosingHandoffs,
+  });
+  return handoffs === undefined
+    ? joins
+    : { ...joins, retainedEnclosing: handoffs };
+};
+
+const serializeEnclosing = (joins: ResolutionJoins | undefined): string =>
+  serializeAttribute({
+    attribute: ENCLOSING_ATTRIBUTE,
+    value: joins?.retainedEnclosing,
+    valid: enclosingHandoffs,
+  });
 
 export const isParagraphMarkResolutionJoin = (
   value: unknown,
@@ -266,12 +336,14 @@ const serializeAttribute = (options: SerializeAttributeOptions): string => {
 
 export const parseResolutionJoins = (
   node: XmlElement,
-): ResolutionJoins | undefined =>
-  parseAttribute({
+): ResolutionJoins | undefined => {
+  const joins = parseAttribute({
     node,
     attribute: "resolutionJoins",
-    valid: isResolutionJoins,
+    valid: isStoredResolutionJoins,
   });
+  return joins === undefined ? undefined : withEnclosing(joins, node);
+};
 export const parseBoundaryJoins = (
   node: XmlElement,
 ): BoundaryJoins | undefined =>
@@ -289,9 +361,9 @@ export const serializeResolutionJoins = (
 ): string =>
   serializeAttribute({
     attribute: "resolutionJoins",
-    value,
-    valid: isResolutionJoins,
-  });
+    value: value === undefined ? undefined : storedJoins(value),
+    valid: isStoredResolutionJoins,
+  }) + serializeEnclosing(value);
 export const serializeBoundaryJoins = (
   value: RunPropertyChange["boundaryJoins"],
 ): string =>
@@ -411,36 +483,44 @@ export const isSplitResolutionPiece = (
   value["piece"] < value["pieces"] &&
   // Only the first piece carries joins, when the change has them.
   (!Object.hasOwn(value, "joins") ||
-    (value["piece"] === 0 && isResolutionJoins(value["joins"])));
+    (value["piece"] === 0 && isStoredResolutionJoins(value["joins"])));
 
 export const parseSplitResolutionPiece = (
   node: XmlElement,
-): SplitResolutionPiece | undefined =>
-  parseAttribute({
+): SplitResolutionPiece | undefined => {
+  const piece = parseAttribute({
     node,
     attribute: "splitResolutionJoins",
     valid: isSplitResolutionPiece,
   });
+  return piece?.joins === undefined
+    ? piece
+    : { ...piece, joins: withEnclosing(piece.joins, node) };
+};
 
 export const serializeSplitResolutionPiece = (
   value: SplitResolutionPiece,
 ): string =>
   serializeAttribute({
     attribute: "splitResolutionJoins",
-    value,
+    value:
+      value.joins === undefined
+        ? value
+        : { ...value, joins: storedJoins(value.joins) },
     valid: isSplitResolutionPiece,
-  });
+  }) + serializeEnclosing(value.joins);
 
 /** Every provenance attribute folio reads, with the shape its value must have. */
 const PROVENANCE_VALUE_SHAPES: Readonly<
   Record<string, (value: unknown) => boolean>
 > = {
-  resolutionJoins: isResolutionJoins,
+  resolutionJoins: isStoredResolutionJoins,
   boundaryJoins: isBoundaryJoins,
   [PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute]:
     isEncodedParagraphMarkResolutionJoin,
   copyOriginAncestors: isCopyOriginAncestors,
   splitResolutionJoins: isSplitResolutionPiece,
+  [ENCLOSING_ATTRIBUTE]: enclosingHandoffs,
   [PARAGRAPH_MARK_FIELDS.survivor.attribute]: isParagraphMarkSurvivor,
 };
 
