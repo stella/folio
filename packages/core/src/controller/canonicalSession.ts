@@ -321,6 +321,20 @@ class CanonicalProjection {
     );
   }
 
+  /**
+   * The same projection held as `doc`, a document equal to this one's. A
+   * commit's transaction ends on a document equal to the projection it staged,
+   * sharing the blocks it left; holding that document lets the next commit see
+   * the state it was given is the projection without comparing every node.
+   */
+  heldAs(doc: PMNode): CanonicalProjection {
+    return new CanonicalProjection({
+      doc,
+      paragraphs: this.paragraphs,
+      story: this.story,
+    });
+  }
+
   addressAt(
     position: number,
     edge: CanonicalAddressEdge = "caret",
@@ -1546,7 +1560,7 @@ class CanonicalSession {
   ): Result<void, CanonicalSessionError> {
     if (this.isComposing)
       return refuse("Composition must finish before committing another edit.");
-    if (!state.doc.eq(projection.doc)) {
+    if (state.doc !== projection.doc && !state.doc.eq(projection.doc)) {
       return refuse("The input uses a stale canonical projection.");
     }
     return Result.ok(undefined);
@@ -2543,6 +2557,10 @@ class CanonicalSession {
           "Canonical history cannot restore the selected inline atom.",
         );
     }
+    // The transaction now ends on a document equal to the projection.
+    const held = projected.value.heldAs(transaction.doc);
+    const heldBody =
+      bodyProjection.value === projected.value ? held : bodyProjection.value;
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",
       origin,
@@ -2560,8 +2578,8 @@ class CanonicalSession {
     return Result.ok({
       transaction,
       document: applied.value.document,
-      projection: projected.value,
-      bodyProjection: bodyProjection.value,
+      projection: held,
+      bodyProjection: heldBody,
       selection,
       touched: applied.value.touched,
       version: baseVersion + 1,
@@ -2597,12 +2615,12 @@ class CanonicalSession {
           this.storyProjections.set(storyProjectionKey(projectedStory), {
             content: body.content,
             theme: applied.value.document.package.theme,
-            projection: projected.value,
+            projection: held,
           });
         }
         this.currentSelection = selection;
         this.currentDocument = applied.value.document;
-        this.currentProjection = bodyProjection.value;
+        this.currentProjection = heldBody;
         // Save changes are cumulative against originalBuffer, including undo/redo.
         // They are published with the model, never with a staged projection.
         for (const ids of [
