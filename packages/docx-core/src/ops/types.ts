@@ -655,6 +655,8 @@ export type InsertBlocksOp = {
   at: BlockInsertionPoint;
   blocks: readonly Paragraph[];
   revision?: RevisionStamp;
+  /** With `revision`, the insertion is the destination of a move: `w:moveTo`. */
+  move?: true;
   newIds?: NewIds;
 };
 
@@ -676,6 +678,8 @@ export type DeleteBlocksOp = {
   story: OpStory;
   blockIds: readonly string[];
   revision?: RevisionStamp;
+  /** With `revision`, the deletion is the source of a move: `w:moveFrom`. */
+  move?: true;
   newIds?: NewIds;
 };
 

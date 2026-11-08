@@ -118,6 +118,7 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
+import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
@@ -1433,7 +1434,11 @@ export function useDocxEditor(
       stylesheetSource: { type: "package" },
     });
     const updatedDoc = withoutUnreferencedNotes(
-      comments ? withHostCommentThreads(projected, comments()) : projected,
+      comments
+        ? withHostCommentThreads(projected, comments(), {
+            anchoredInEditor: commentIdsNamedIn(state.doc),
+          })
+        : projected,
     );
 
     const { resolveSelectiveSaveFlags } =

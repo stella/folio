@@ -1,6 +1,3 @@
-import { Selection } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
-
 import { getCommentParentId } from "@stll/folio-core/docx/hostCommentThreads";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import {
@@ -8,9 +5,6 @@ import {
   seedCommentIdAbove,
 } from "@stll/folio-core/prosemirror/commentIdAllocator";
 import type { Comment } from "@stll/folio-core/types/content";
-
-import type { CommentMarkRange } from "./commentAnchors";
-import { clampCommentMarkRange } from "./commentAnchors";
 
 /** Pseudo-id for the comment mark applied while the add-comment form is open. */
 export const PENDING_COMMENT_ID = -1;
@@ -129,43 +123,6 @@ export function countOpenCommentThreads(comments: readonly Comment[]): number {
   return count;
 }
 
-export function applyCommentMarkRange(
-  view: EditorView,
-  range: CommentMarkRange,
-  commentId: number,
-  options?: { replacePending?: boolean; selectEnd?: boolean },
-): boolean {
-  const commentMark = view.state.schema.marks["comment"];
-  const safeRange = clampCommentMarkRange(view.state.doc.content.size, range);
-  if (!commentMark || !safeRange) {
-    return false;
-  }
-
-  let tr = view.state.tr;
-  if (options?.replacePending) {
-    // Target only the pending placeholder mark. Passing the MarkType would
-    // remove every comment mark in the range, including any pre-existing
-    // (non-pending) comments the new selection happens to overlap.
-    tr = tr.removeMark(
-      safeRange.from,
-      safeRange.to,
-      commentMark.create({ commentId: PENDING_COMMENT_ID }),
-    );
-  }
-  tr = tr.addMark(
-    safeRange.from,
-    safeRange.to,
-    commentMark.create({ commentId }),
-  );
-
-  if (options?.selectEnd) {
-    tr = tr.setSelection(Selection.near(tr.doc.resolve(safeRange.to), -1));
-  }
-
-  view.dispatch(tr);
-  return true;
-}
-
 /**
  * Walk arbitrary Folio content subtrees and collect every comment id that
  * is *referenced* by an inline anchor (`commentRangeStart`,
@@ -227,23 +184,4 @@ export function collectCommentIdsFromSources(
     visit(source);
   }
   return ids;
-}
-
-export function removePendingCommentMarkRange(
-  view: EditorView,
-  range: CommentMarkRange,
-): void {
-  const commentMark = view.state.schema.marks["comment"];
-  const safeRange = clampCommentMarkRange(view.state.doc.content.size, range);
-  if (!commentMark || !safeRange) {
-    return;
-  }
-
-  view.dispatch(
-    view.state.tr.removeMark(
-      safeRange.from,
-      safeRange.to,
-      commentMark.create({ commentId: PENDING_COMMENT_ID }),
-    ),
-  );
 }

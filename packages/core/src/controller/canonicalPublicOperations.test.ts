@@ -371,6 +371,29 @@ test("all supported compiler kinds share direct/tracked undo and typed refusals"
       range,
       comment: { text: "note" },
     },
+    deleteBlock: {
+      id: "deleteBlock",
+      type: "deleteBlock",
+      blockId: "12345678",
+    },
+    insertAfterBlock: {
+      id: "insertAfterBlock",
+      type: "insertAfterBlock",
+      blockId: "12345678",
+      text: "gamma",
+    },
+    insertBeforeBlock: {
+      id: "insertBeforeBlock",
+      type: "insertBeforeBlock",
+      blockId: "12345678",
+      text: "gamma",
+    },
+    setBlockParagraphProperties: {
+      id: "setBlockParagraphProperties",
+      type: "setBlockParagraphProperties",
+      blockId: "12345678",
+      properties: { alignment: "center" },
+    },
   } as const satisfies Record<CompiledKind, FolioDocumentOperation>;
   for (const mode of ["direct", "tracked-changes"] as const) {
     for (const operation of Object.values(operations)) {
