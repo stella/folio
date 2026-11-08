@@ -57,7 +57,13 @@ import {
   mergeTableCellAttrs,
   mergeTableRowAttrs,
 } from "../../attrs";
-import { withCanonicalTableAttributeCommand } from "../../canonicalTableCommands";
+import {
+  withCanonicalCellMerge,
+  withCanonicalCellSplit,
+  withCanonicalColumnDeletion,
+  withCanonicalColumnInsertion,
+  withCanonicalTableAttributeCommand,
+} from "../../canonicalTableCommands";
 import { mintRevisionId } from "../../plugins/revisionIds";
 import { makeRevisionInfo } from "../../plugins/suggestionMode";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
@@ -3279,16 +3285,21 @@ export const TablePluginExtension: (
         addRowAbove: () => addRowAbove,
         addRowBelow: () => addRowBelow,
         deleteRow: () => deleteRow,
-        addColumnLeft: () => addColumnLeft,
-        addColumnRight: () => addColumnRight,
-        deleteColumn: () => deleteColumn,
+        addColumnLeft: () =>
+          withCanonicalColumnInsertion(addColumnLeft, "left"),
+        addColumnRight: () =>
+          withCanonicalColumnInsertion(addColumnRight, "right"),
+        deleteColumn: () => withCanonicalColumnDeletion(deleteColumn),
         deleteTable: () => deleteTable,
         selectTable: () => selectTable,
         selectRow: () => selectRow,
         selectColumn: () => selectColumn,
-        mergeCells: () => preserveOmittedGridSlots(pmMergeCells),
+        mergeCells: () =>
+          withCanonicalCellMerge(preserveOmittedGridSlots(pmMergeCells)),
         splitCell: () =>
-          preserveOmittedGridSlots(preserveSourceCellIdentity(pmSplitCell)),
+          withCanonicalCellSplit(
+            preserveOmittedGridSlots(preserveSourceCellIdentity(pmSplitCell)),
+          ),
         setCellBorder: (
           side: "top" | "bottom" | "left" | "right" | "all",
           spec: TableCellBorderCommandSpec | null,
@@ -3319,7 +3330,8 @@ export const TablePluginExtension: (
         ) => withCanonicalTableAttributeCommand(setRowHeight(height, rule)),
         toggleHeaderRow: () =>
           withCanonicalTableAttributeCommand(toggleHeaderRow()),
-        distributeColumns: () => distributeColumns(),
+        distributeColumns: () =>
+          withCanonicalTableAttributeCommand(distributeColumns()),
         autoFitContents: () => autoFitContents(),
         setTableProperties: (props: TablePropertiesCommand) =>
           withCanonicalTableAttributeCommand(setTableProperties(props)),

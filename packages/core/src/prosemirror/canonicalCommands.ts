@@ -5,6 +5,7 @@ import type {
   FormattingPatch,
   ParagraphPropsPatch,
   RunPropsPatch,
+  TableIntentOperation,
 } from "@stll/docx-core/ops";
 
 import type {
@@ -29,12 +30,28 @@ export type CanonicalTableFormatTarget =
   | { scope: "row"; at: number; patch: FormattingPatch<TableRowFormatting> }
   | { scope: "cell"; at: number; patch: FormattingPatch<TableCellFormatting> };
 
+type WithoutTableTarget<Operation> = Operation extends unknown
+  ? Omit<Operation, "story" | "blockId">
+  : never;
+
+/**
+ * A change to a table's columns, cells or grid. The session addresses the
+ * table through a paragraph of its own; the engine derives fresh ids.
+ */
+export type CanonicalTableEdit = WithoutTableTarget<
+  Exclude<
+    TableIntentOperation,
+    { type: "setCellProps" | "setRowProps" | "setTableProps" }
+  >
+>;
+
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
   | {
       type: "formatTable";
       targets: readonly CanonicalTableFormatTarget[];
     }
+  | { type: "editTable"; at: number; edit: CanonicalTableEdit }
   | { type: "generateTOC"; at: number; title: string }
   | {
       type: "setHyperlink";

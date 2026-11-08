@@ -442,6 +442,19 @@ export const prepareCanonicalCommands = (
         }
         break;
       }
+      case "editTable": {
+        const at = session.projection.addressAt(command.at);
+        if (at.isErr()) return at;
+        intents.push({
+          type: "table",
+          operation: {
+            ...command.edit,
+            story: at.value.story,
+            blockId: at.value.blockId,
+          },
+        });
+        break;
+      }
       case "insertBreak": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
