@@ -162,6 +162,32 @@ describe("nested complex fields across a save that writes from the model", () =>
           );
           const reopened = await FolioDocxReviewer.fromBuffer(saved);
           expect(paragraphText(reopened)).toBe(expected);
+          // An edit of text a field shows either applies or is refused, and
+          // leaves every field's characters as they were.
+          for (const mode of ["direct", "tracked-changes"] as const) {
+            const editing = await FolioDocxReviewer.fromBuffer(saved);
+            const edit = editing.applyOperations(
+              [
+                {
+                  id: "edit",
+                  type: "replaceInBlock",
+                  blockId: "22222222",
+                  find: WORDS.find((word) => expected.includes(word)) ?? "tail",
+                  replace: "omega",
+                },
+              ],
+              { undefinedReferences: "refuse", mode },
+            );
+            const edited = await editing.toBuffer();
+            const editedReader = await FolioDocxReviewer.fromBuffer(edited);
+            if (mode === "tracked-changes") editedReader.acceptAll();
+            if (edit.applied.length === 0)
+              expect(paragraphText(editedReader)).toBe(expected);
+            else expect(paragraphText(editedReader)).toContain("omega");
+            expect(await fieldStructureOf(edited)).toEqual(
+              await fieldStructureOf(source),
+            );
+          }
           if (
             nodes.some(
               (node) =>
