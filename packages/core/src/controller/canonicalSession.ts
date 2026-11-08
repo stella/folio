@@ -19,6 +19,10 @@ import { CellSelection } from "prosemirror-tables";
 
 import { hasIllegalXmlCharacters } from "@stll/docx-core";
 import {
+  lockedControlMessage,
+  type LockedControlViolation,
+} from "@stll/docx-core/model";
+import {
   type AppliedDocumentOp,
   applyDocumentOp,
   applyDocumentOps,
@@ -78,6 +82,7 @@ import { markPackageChange } from "../prosemirror/extensions/features/ParagraphC
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_GAP,
+  CANONICAL_RULE,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
@@ -95,6 +100,7 @@ import {
   projectCanonicalInline,
 } from "./canonicalInlineProjection";
 import { normalizeCanonicalListRendering } from "./canonicalListRendering";
+import { lockViolationBetween } from "./canonicalLockGuard";
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import { mapTocSelection } from "./canonicalTocSelection";
 
@@ -112,6 +118,15 @@ const refuse = (message: string) =>
     new CanonicalSessionError({
       ground: { gap: CANONICAL_GAP.dispatch },
       message,
+      reason: "refused",
+    }),
+  );
+/** A change a content control's lock forbids: the document's rule, not a gap. */
+const lockRefusal = (violation: LockedControlViolation) =>
+  Result.err(
+    new CanonicalSessionError({
+      ground: { rule: CANONICAL_RULE.contentControlLock },
+      message: `Refused: ${lockedControlMessage(violation)}`,
       reason: "refused",
     }),
   );
@@ -908,6 +923,8 @@ export type CanonicalCommit = {
   touched: TouchedBlocks;
   version: number;
   origin: CanonicalOrigin;
+  /** Revisions a content control lock held back; they stay pending. */
+  lockHeld?: readonly number[];
   /** Publish only after every projection/plugin transaction has been accepted. */
   publish: () => Result<void, CanonicalSessionError>;
 };
@@ -1750,14 +1767,30 @@ class CanonicalSession {
     if (checked.isErr()) return checked;
     const preSelection = this.projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
-    const ops = [
-      {
-        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-        story: OP_STORIES.MAIN,
-        revisionIds,
-        decision: resolution,
-      },
-    ] as const;
+    const resolve = (ids: readonly number[]) =>
+      [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: ids,
+          decision: resolution,
+        },
+      ] as const;
+    // A revision whose resolution breaks a lock stays pending; the rest resolve.
+    let firstHeld: LockedControlViolation | null = null;
+    const lockHeld = revisionIds.filter((id) => {
+      const alone = applyDocumentOps(this.currentDocument, resolve([id]));
+      if (alone.isErr()) return false;
+      const violation = lockViolationBetween(
+        this.currentDocument,
+        alone.value.document,
+      );
+      firstHeld ??= violation;
+      return violation !== null;
+    });
+    if (firstHeld !== null && lockHeld.length === revisionIds.length)
+      return lockRefusal(firstHeld);
+    const ops = resolve(revisionIds.filter((id) => !lockHeld.includes(id)));
     // Resolution can retire the selected paragraph; choose a valid result anchor before staging.
     const applied = applyDocumentOps(this.currentDocument, ops);
     if (applied.isErr()) return refuse(applied.error.message);
@@ -1781,12 +1814,15 @@ class CanonicalSession {
       blockId: surviving?.blockId ?? first.paraId,
       offset,
     };
-    return this.prepareJournalledOps({
+    const prepared = this.prepareJournalledOps({
       state,
       ops,
       postSelection: { type: "text", anchor: caret, head: caret },
       stagedApplied: applied.value,
     });
+    return prepared.isOk() && lockHeld.length > 0
+      ? Result.ok({ ...prepared.value, lockHeld })
+      : prepared;
   }
 
   projectStory(
@@ -2031,6 +2067,12 @@ class CanonicalSession {
     if (applied.isErr()) return refuse(applied.error.message);
     if (applied.value.inverse.length === 0)
       return noChange("The intent makes no document change.");
+    // Judged on the result, so every path into the session meets one rule.
+    const locked = lockViolationBetween(
+      this.currentDocument,
+      applied.value.document,
+    );
+    if (locked !== null) return lockRefusal(locked);
     if (propertySourceDocument !== undefined)
       preservePropertySources({
         target: applied.value.document,

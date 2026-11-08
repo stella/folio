@@ -20,21 +20,68 @@ const paragraph = (paraId: string, text: string): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
+type Lock = "contentLocked" | "sdtLocked" | "sdtContentLocked";
+
 /** A clause inside a rich text block control, between two plain paragraphs. */
-const controlDocument = (): Document => ({
+const controlDocument = (lock?: Lock, pending = false): Document => ({
   package: {
     document: {
       content: [
         paragraph("10000000", "Before"),
         {
           type: "blockSdt",
-          properties: { sdtType: "richText", tag: "clause", alias: "Clause" },
+          properties: {
+            sdtType: "richText",
+            tag: "clause",
+            alias: "Clause",
+            id: 7,
+            ...(lock === undefined ? {} : { lock }),
+          },
           content: [
-            paragraph("20000000", "First clause"),
+            pending
+              ? {
+                  ...paragraph("20000000", "First clause"),
+                  content: [
+                    ...paragraph("20000000", "First clause").content,
+                    {
+                      type: "insertion",
+                      info: {
+                        id: 41,
+                        author: "Earlier",
+                        date: "2026-11-01T10:00:00Z",
+                      },
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: " added" }],
+                        },
+                      ],
+                    },
+                  ],
+                }
+              : paragraph("20000000", "First clause"),
             paragraph("21000000", "Second clause"),
           ],
         },
-        paragraph("30000000", "After"),
+        pending
+          ? {
+              ...paragraph("30000000", "After"),
+              content: [
+                ...paragraph("30000000", "After").content,
+                {
+                  type: "insertion",
+                  info: {
+                    id: 42,
+                    author: "Earlier",
+                    date: "2026-11-01T10:00:00Z",
+                  },
+                  content: [
+                    { type: "run", content: [{ type: "text", text: " too" }] },
+                  ],
+                },
+              ],
+            }
+          : paragraph("30000000", "After"),
       ],
     },
   },
@@ -189,5 +236,81 @@ describe("block content controls in the canonical session", () => {
     );
     const record = JSON.stringify(control(current.document).content);
     expect(record).toContain('"insertion"');
+  });
+
+  describe("locks", () => {
+    for (const lock of ["contentLocked", "sdtContentLocked"] as const)
+      test(`${lock}: typing inside refuses as the document's rule and changes nothing`, async () => {
+        const current = await session(lock);
+        const before = current.document;
+        for (const mode of ["editing", "suggesting"] as const) {
+          current.setMode(
+            mode === "editing"
+              ? { type: "editing" }
+              : { type: "suggesting", author: "Reviewer" },
+          );
+          let state = stateFor(current);
+          const end = at(state, "First clause");
+          state = select(state, end);
+          const refused = current.prepareReplace(state, {
+            from: end,
+            to: end,
+            text: "s",
+          });
+          expect(refused.isErr()).toBe(true);
+          if (refused.isErr())
+            expect(refused.error.ground).toEqual({
+              rule: "contentControlLock",
+            });
+          // A selection reaching in from outside meets the same rule.
+          const start = at(state, "Before", 2);
+          state = select(state, start, end);
+          expect(
+            current
+              .prepareReplace(state, { from: start, to: end, text: "x" })
+              .isErr(),
+          ).toBe(true);
+          expect(current.document).toBe(before);
+        }
+      });
+
+    test("sdtLocked: the control's content stays editable", async () => {
+      const current = await session("sdtLocked");
+      let state = stateFor(current);
+      const end = at(state, "First clause");
+      state = select(state, end);
+      state = accept(
+        state,
+        current
+          .prepareReplace(state, { from: end, to: end, text: "s" })
+          .unwrap(),
+      );
+      expect(texts(control(current.document).content)).toEqual([
+        "First clauses",
+        "Second clause",
+      ]);
+    });
+
+    test("accepting holds back a revision inside a locked control and resolves the rest", async () => {
+      const current = await session("contentLocked", true);
+      const state = stateFor(current);
+      const prepared = current
+        .prepareResolve(state, { revisionIds: [41, 42], resolution: "accept" })
+        .unwrap();
+      expect(prepared.lockHeld).toEqual([41]);
+      expect(prepared.publish().isOk()).toBe(true);
+      const record = JSON.stringify(current.document.package.document.content);
+      // The held insertion is still pending; the one outside was accepted.
+      expect(record).toContain('"id":41');
+      expect(record).not.toContain('"id":42');
+      // Resolving only the held revision refuses outright, as the rule.
+      const alone = current.prepareResolve(stateFor(current), {
+        revisionIds: [41],
+        resolution: "reject",
+      });
+      expect(alone.isErr()).toBe(true);
+      if (alone.isErr())
+        expect(alone.error.ground).toEqual({ rule: "contentControlLock" });
+    });
   });
 });

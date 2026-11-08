@@ -86,6 +86,7 @@ import {
 } from "../prosemirror/yjsDocumentMetadata";
 import {
   CANONICAL_GAP,
+  CANONICAL_RULE,
   type CanonicalRefusalGround,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
@@ -1691,7 +1692,14 @@ export const createHiddenEditorManager = (
           refuse(prepared.error.message, prepared.error.ground);
         return false;
       }
-      return publishCommit(prepared.value);
+      const published = publishCommit(prepared.value);
+      // The rest resolved; those a lock held stay pending, and the user hears why.
+      if (prepared.value.lockHeld !== undefined)
+        refuse(
+          `Revisions ${prepared.value.lockHeld.join(", ")} stay pending: resolving them changes a locked content control.`,
+          { rule: CANONICAL_RULE.contentControlLock },
+        );
+      return published;
     },
     executeCanonicalCommand,
     getCanonicalHistory: () =>
