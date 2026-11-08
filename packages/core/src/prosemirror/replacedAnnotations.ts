@@ -215,6 +215,8 @@ export const createResolvedCommentPointCollector = ({
     );
     for (const mark of node.marks) {
       if (mark.type.name !== "comment") continue;
+      // A point comment lives as long as its reference, not its display text.
+      if (mark.attrs["point"] === true) continue;
       const id = mark.attrs["commentId"];
       if (!removedWithStructure && !removes(node, position)) retained.add(id);
       else if (!points.has(id)) points.set(id, position);
