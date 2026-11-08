@@ -28,6 +28,7 @@ import {
   parseCopyOriginAncestors,
   parseParagraphMarkResolutionJoin,
   parseResolutionJoins,
+  reviewProvenanceIssue,
   ReviewResolutionProvenanceError,
   serializeBoundaryJoins,
   serializeCopyOriginAncestors,
@@ -214,7 +215,7 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
   });
 }
 
-test("malformed and future provenance is refused instead of discarded", () => {
+test("malformed and future provenance is dropped on read and reported", () => {
   for (const encoded of [
     "not-json",
     ...[
@@ -272,9 +273,9 @@ test("malformed and future provenance is refused instead of discarded", () => {
     const node = element(
       `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:resolutionJoins="${escaped}"/>`,
     );
-    expect(() => parseResolutionJoins(node)).toThrow(
-      ReviewResolutionProvenanceError,
-    );
+    // Advisory metadata: the reader drops it, and says why.
+    expect(parseResolutionJoins(node)).toBeUndefined();
+    expect(reviewProvenanceIssue("resolutionJoins", encoded)).toBeDefined();
   }
   expect(
     parseResolutionJoins(
@@ -298,9 +299,8 @@ test("paragraph cut provenance validates private envelopes and typed projection 
     const node = element(
       `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:resolutionJoin="${escapeXmlAttribute(encoded)}"/>`,
     );
-    expect(() => parseParagraphMarkResolutionJoin(node)).toThrow(
-      ReviewResolutionProvenanceError,
-    );
+    expect(parseParagraphMarkResolutionJoin(node)).toEqual({});
+    expect(reviewProvenanceIssue("resolutionJoin", encoded)).toBeDefined();
   }
   assertExactModel(
     parseParagraphMarkResolutionJoin(
@@ -371,9 +371,8 @@ test("copy-origin ancestry uses the bounded versioned private envelope", () => {
     const node = element(
       `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:copyOriginAncestors="${escapeXmlAttribute(invalid)}"/>`,
     );
-    expect(() => parseCopyOriginAncestors(node)).toThrow(
-      ReviewResolutionProvenanceError,
-    );
+    expect(parseCopyOriginAncestors(node)).toBeUndefined();
+    expect(reviewProvenanceIssue("copyOriginAncestors", invalid)).toBeDefined();
   }
   expect(() => serializeCopyOriginAncestors([])).toThrow(
     ReviewResolutionProvenanceError,
