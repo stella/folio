@@ -1,4 +1,5 @@
 import { panic } from "better-result";
+import { closeHistory } from "prosemirror-history";
 /**
  * Comment and Track Changes Commands
  *
@@ -15,11 +16,11 @@ import { TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
 
 import {
+  type LockedControlViolation,
   PARAGRAPH_MARK_CHANGE_KINDS,
   type ParagraphMarkChangeKind,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
-import type { LockedControlViolation } from "@stll/docx-core/model";
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
@@ -27,7 +28,6 @@ import { markParagraphPropertySourceTransfers } from "../../docx/paragraphProper
 import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
 import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
-import type { Comment } from "../../types/content";
 import type { RunPropertyChange } from "../../types/document";
 import {
   deleteTextBoxesAnchoredAt,
@@ -45,6 +45,7 @@ import {
   isCommentRangeBoundaryNode,
   readCommentRangeBoundaryAttrs,
 } from "../commentRangeBoundaryAttrs";
+import { retireThreadsResolvedAway } from "../commentRecords";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
@@ -79,7 +80,10 @@ import {
   lockedControlViolationOfTransform,
 } from "../lockedControls";
 import { resolveStateStory } from "../markupViewProjection";
-import { joinAtParagraphMark } from "../paragraphMarkJoin";
+import {
+  joinAtParagraphMark,
+  rejectionKeepsIdentity,
+} from "../paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -193,6 +197,16 @@ export function removeCommentMark(commentId: number): Command {
 }
 
 type ResolveMode = "accept" | "reject";
+
+/**
+ * What every review resolution does before it is dispatched: it retires the
+ * comment threads it left without an anchor, and it is an undo step of its
+ * own, never merged into the edit it resolves.
+ */
+const finishResolution = (state: EditorState, tr: Transaction): void => {
+  retireThreadsResolvedAway(state, tr);
+  closeHistory(tr);
+};
 
 /**
  * Resolve a tracked change: accept or reject.
@@ -989,13 +1003,12 @@ function resolveChangeUnguarded(
             next:
               destination?.type.name === "paragraph" ? destination : nextNode,
             styleResolver,
-            // A rejected added mark ended a split: the paragraph still holding
-            // words was there first, and keeps its identity. One that holds
-            // none was all inserted, and the paragraph after it keeps its own.
+            // A split that kept the identity on its first half gives the
+            // paragraph back under it; see `rejectionKeepsIdentity`.
             keepIdentity:
               mode === "reject" &&
               op.markWasAdded &&
-              paragraphContentOf(paragraph),
+              rejectionKeepsIdentity(paragraph),
           });
           joinSeams.push({
             position: mappedPos + 1 + paragraph.content.size,
@@ -1089,6 +1102,7 @@ function resolveChangeUnguarded(
         }
       }
       normalizeKeptRangeBoundaries(tr, keptBoundaries);
+      finishResolution(state, tr);
       if (tr.steps.length > 0) {
         dispatch(tr);
       }
@@ -1934,6 +1948,7 @@ const resolveAllChanges =
         removedEndpointCount: result.removedEndpointCount,
         removedReferences: result.removedReferences,
       });
+    finishResolution(state, tr);
     dispatch(tr);
     return true;
   };
@@ -2236,21 +2251,6 @@ export function suggestionCommentIds(
   suggestionId: string,
 ): number[] {
   return [...(collectSuggestions(state).get(suggestionId)?.commentIds ?? [])];
-}
-
-/**
- * A host's comment list without the given comments and their replies: what
- * it keeps once a rejected suggestion takes its proposed comments away.
- */
-export function withoutCommentThreads(
-  comments: readonly Comment[],
-  ids: readonly number[],
-): Comment[] {
-  const removed = new Set(ids);
-  return comments.filter(
-    ({ id, parentId }) =>
-      !removed.has(id) && (parentId === undefined || !removed.has(parentId)),
-  );
 }
 
 /**
@@ -3514,6 +3514,7 @@ const acceptSuggestions = (
       return false;
     }
     if (dispatch) {
+      finishResolution(state, tr);
       dispatch(tr);
     }
     return true;
@@ -3625,6 +3626,7 @@ export function rejectSuggestion(suggestionId: string): Command {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, workingTr);
       dispatch(workingTr);
     }
     return true;
@@ -3701,6 +3703,7 @@ export function rejectAllSuggestions(): Command {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, workingTr);
       dispatch(workingTr);
     }
     return true;

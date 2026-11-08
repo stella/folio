@@ -63,6 +63,21 @@ export const joinedParagraphAttrs = (
     : attrs;
 };
 
+/**
+ * Whether rejecting this paragraph's inserted mark gives the paragraph back
+ * under its own identity: a split that kept the identity on its first half
+ * marks the mark it added so. Any other inserted mark joins into the
+ * paragraph after it, which keeps its own, as a reader resolves it.
+ */
+export const rejectionKeepsIdentity = (paragraph: PMNode): boolean => {
+  const mark: unknown = paragraph.attrs["pPrMark"];
+  return (
+    typeof mark === "object" &&
+    mark !== null &&
+    (mark as { survivor?: unknown }).survivor === "first"
+  );
+};
+
 type JoinAtParagraphMarkOptions = {
   tr: Transaction;
   /** Position of the paragraph whose mark goes. */

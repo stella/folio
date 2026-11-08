@@ -75,8 +75,8 @@ const OPERATIONS = {
     id: "proposal",
     type: "replaceInBlock",
     blockId: SECOND_ID,
-    find: "clause stays",
-    replace: "clause still stays",
+    find: "Second",
+    replace: "Third",
     comment: { text: "Check this edit." },
   }),
 } as const;
@@ -164,13 +164,11 @@ const readSaved = async (bytes: ArrayBuffer) => {
   const reader = await FolioDocxReviewer.fromBuffer(bytes);
   return {
     text: reader.snapshot().blocks.map(({ text }) => text),
-    comments: reader
-      .getComments()
-      .map(({ text, anchoredText, author }) => ({
-        text,
-        anchoredText,
-        author,
-      })),
+    comments: reader.getComments().map(({ text, anchoredText, author }) => ({
+      text,
+      anchoredText,
+      author,
+    })),
   };
 };
 

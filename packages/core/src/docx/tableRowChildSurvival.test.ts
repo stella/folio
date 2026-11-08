@@ -163,8 +163,7 @@ describe("a table row keeps the children folio does not model", () => {
   });
 
   test("row and table customXml wrappers leave their rows and cells readable", () => {
-    const rowCustomXml =
-      '<w:customXml w:uri="urn:row" w:element="row">' + `${CELL}</w:customXml>`;
+    const rowCustomXml = `<w:customXml w:uri="urn:row" w:element="row">${CELL}</w:customXml>`;
     const tableCustomXml =
       '<w:customXml w:uri="urn:table" w:element="table">' +
       `<w:tr>${CELL}</w:tr></w:customXml>`;

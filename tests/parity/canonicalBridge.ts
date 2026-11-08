@@ -95,11 +95,10 @@ export type CanonicalHyperlinkAction =
 let lastStoryUndoHandle: FolioDocumentOperationUndoHandle | null = null;
 
 /** The public story handle an operation story names. */
-const publicStoryOf = (story: Exclude<OpStory, "main">) => {
-  if (story.kind === "header" || story.kind === "footer")
-    return { type: story.kind, relationshipId: story.rId };
-  return { type: story.kind, noteId: story.id };
-};
+const publicStoryOf = (story: Exclude<OpStory, "main">) =>
+  "rId" in story
+    ? { type: story.kind, relationshipId: story.rId }
+    : { type: story.kind, noteId: story.id };
 
 /** Private interaction-test bridge shared by both playgrounds. */
 export const buildCanonicalBridge = (

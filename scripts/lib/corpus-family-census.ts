@@ -28,8 +28,8 @@ import {
   mergeDeclaredRefusalCounts,
   renderDeclaredRefusals,
 } from "./corpus-declared-refusals";
-import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
 import {
+  type CorpusDeclaredRefusal,
   type CorpusInvariantFamily,
   EXTENDED_INVARIANT_FAMILY,
   familyOf,

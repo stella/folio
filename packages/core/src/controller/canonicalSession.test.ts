@@ -1671,7 +1671,7 @@ describe("canonical session", () => {
     expect(session.version).toBe(3);
   });
 
-  test("activation rejects absent/duplicate identities, secondary stories and unsupported leaves", () => {
+  test("activation rejects absent/duplicate identities and unsupported leaves", () => {
     const unsupported: Document[] = [
       {
         package: {
@@ -1688,19 +1688,27 @@ describe("canonical session", () => {
           },
         },
       },
-      {
-        package: {
-          ...seed().package,
-          headers: new Map([
-            ["rId1", { type: "header", hdrFtrType: "default", content: [] }],
-          ]),
-        },
-      },
       seed("bad\ud800"),
       seed("bad\u0000"),
     ];
     for (const document of unsupported)
       expect(createCanonicalSession(document).isErr()).toBe(true);
+  });
+
+  test("activation gives a header with no blocks the empty paragraph a caret goes in", () => {
+    const session = createCanonicalSession({
+      package: {
+        ...seed().package,
+        headers: new Map([
+          ["rId1", { type: "header", hdrFtrType: "default", content: [] }],
+        ]),
+      },
+    }).unwrap();
+    expect(
+      session.document.package.headers
+        ?.get("rId1")
+        ?.content.map(({ type }) => type),
+    ).toEqual(["paragraph"]);
   });
 
   test("activation refuses list paragraphs inside an unsupported block before normalization", () => {

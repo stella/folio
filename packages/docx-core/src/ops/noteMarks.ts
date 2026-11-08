@@ -4,6 +4,7 @@ import type {
   Document,
   Endnote,
   Footnote,
+  Paragraph,
   Run,
 } from "../model/document";
 import { storyParagraphs, updateBlockList } from "./blocks";
@@ -64,19 +65,53 @@ export const noteUsesCustomMark = (
     ),
   );
 
-const referencedNoteKeys = (document: Document): Set<string> => {
-  const references = new Set<string>();
-  for (const story of documentStories(document)) {
-    for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
-      for (const { node } of leafSpans(paragraph.content)) {
-        if (node.type === "footnoteRef")
-          references.add(`footnote:${String(node.id)}`);
-        if (node.type === "endnoteRef")
-          references.add(`endnote:${String(node.id)}`);
-      }
-    }
+/** The notes one paragraph references. */
+const paragraphNoteKeys = (paragraph: Paragraph): readonly string[] => {
+  const keys: string[] = [];
+  for (const { node } of leafSpans(paragraph.content)) {
+    if (node.type === "footnoteRef") keys.push(`footnote:${String(node.id)}`);
+    if (node.type === "endnoteRef") keys.push(`endnote:${String(node.id)}`);
   }
-  return references;
+  return keys;
+};
+
+/**
+ * The notes a document references, read once per document and per paragraph
+ * object. Operations never change a record they are given, so a paragraph an
+ * edit left as it was reads as it did, and only the paragraphs an edit
+ * replaced are read again.
+ */
+const PARAGRAPH_NOTE_KEYS = new WeakMap<Paragraph, readonly string[]>();
+const DOCUMENT_NOTE_KEYS = new WeakMap<Document, ReadonlySet<string>>();
+const sharedParagraphNoteKeys = (paragraph: Paragraph): readonly string[] => {
+  const known = PARAGRAPH_NOTE_KEYS.get(paragraph);
+  if (known !== undefined) return known;
+  const keys = Object.freeze(paragraphNoteKeys(paragraph));
+  PARAGRAPH_NOTE_KEYS.set(paragraph, keys);
+  return keys;
+};
+
+const noteKeysOf =
+  (ofParagraph: (paragraph: Paragraph) => readonly string[]) =>
+  (document: Document): Set<string> => {
+    const references = new Set<string>();
+    for (const story of documentStories(document))
+      for (const { paragraph } of storyParagraphs(storyBody(document, story)))
+        for (const key of ofParagraph(paragraph)) references.add(key);
+    return references;
+  };
+
+/** {@link referencedNoteKeys} reading every paragraph again: its reference. */
+export const referencedNoteKeysInFull: (document: Document) => Set<string> =
+  noteKeysOf(paragraphNoteKeys);
+
+const readSharedNoteKeys = noteKeysOf(sharedParagraphNoteKeys);
+export const referencedNoteKeys = (document: Document): ReadonlySet<string> => {
+  const known = DOCUMENT_NOTE_KEYS.get(document);
+  if (known !== undefined) return known;
+  const keys = readSharedNoteKeys(document);
+  DOCUMENT_NOTE_KEYS.set(document, keys);
+  return keys;
 };
 
 /** Note stories whose final live reference an edit removes. */

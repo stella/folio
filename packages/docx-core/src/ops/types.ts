@@ -642,9 +642,10 @@ export type BlockInsertionPoint =
  * Insert paragraphs beside an existing paragraph, with pre-minted ids.
  * Section-bearing paragraphs are refused. With `revision`, each inserted
  * paragraph receives an inserted mark and its content an insertion wrapper.
- * Tracked insertion requires a following paragraph in the same block list;
- * terminal insertion and insertion immediately before non-paragraph blocks
- * are refused as `untrackable`.
+ * A tracked insertion after a paragraph no paragraph follows marks the
+ * anchor's mark as the inserted one and gives the last new paragraph the
+ * anchor's former mark; it is refused as `untrackable` when the anchor's mark
+ * carries review records.
  * Incoming revision and content-control identities are refused in tracked
  * mode rather than nesting reviews or rewriting supplied identities.
  */

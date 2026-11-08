@@ -882,6 +882,9 @@ export const paragraphMarkOutcome: (input: {
 } & SectionTransfer);
 
 // @public
+export const paragraphPropertySnapshotToken: (paragraph: Paragraph) => object | undefined;
+
+// @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
 // @public
@@ -993,6 +996,9 @@ export type ReplaceInlineOp = {
     content: readonly ParagraphContent[];
 };
 
+// @public (undocumented)
+export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
+
 // @public
 export type ResolveRevisionOp = {
     type: typeof DOCUMENT_OP_TYPES.RESOLVE_REVISION;
@@ -1028,12 +1034,6 @@ export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION
 
 // @public
 export const revisionIdDemand: (document: Document_2, op: DocumentOp) => Result<number, DocumentOpRefusal>;
-
-// @public
-export const revisionSpan: (items: readonly InlineNode[], revisionIds: ReadonlySet<number>) => {
-    from: number;
-    to: number;
-} | undefined;
 
 // @public
 export type RevisionStamp = {
@@ -1276,9 +1276,6 @@ export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
 
 // @public
-export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];
-
-// @public
 export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];
 
 // @public
@@ -1290,6 +1287,8 @@ export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds
     story: OpStory;
     blockId: string;
     table: Table;
+    side?: "after" | "before";
+    separated?: boolean;
 };
 
 // @public (undocumented)
@@ -1329,7 +1328,7 @@ export type UpdateCommentContentOp = {
     type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
     id: number;
     content: readonly Paragraph[];
-    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date" | "suggestionId">>;
+    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date">>;
 };
 
 // @public

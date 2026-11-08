@@ -443,11 +443,28 @@ export const withCanonicalTableDeletion = (command: Command): Command =>
 export const withCanonicalTableInsertion = (command: Command): Command =>
   withCanonicalCommand(command, (state) => {
     const { $from } = state.selection;
-    // The paragraph holding the caret, even from inside an inline content
-    // control: the command places the table after it.
+    // Where the command puts the table: after the nearest paragraph or table
+    // holding the selection's start, even from inside an inline content
+    // control; at the story's start when nothing holds it (a selection of
+    // the whole story). The table anchors to the paragraph it follows, or
+    // goes before the paragraph that follows the table or starts the story.
     let depth = $from.depth;
-    while (depth > 0 && $from.node(depth).type.name !== "paragraph") depth -= 1;
-    if (depth === 0) return undefined;
+    while (
+      depth > 0 &&
+      $from.node(depth).type.name !== "paragraph" &&
+      $from.node(depth).type.name !== "table"
+    )
+      depth -= 1;
+    const afterTable = depth > 0 && $from.node(depth).type.name === "table";
+    const atStart =
+      depth === 0 &&
+      $from.pos === 0 &&
+      state.doc.firstChild?.type.name === "paragraph";
+    if (depth === 0 && !atStart) return undefined;
+    const following = afterTable
+      ? state.doc.resolve($from.after(depth)).nodeAfter
+      : null;
+    if (afterTable && following?.type.name !== "paragraph") return undefined;
     let transaction: Transaction | undefined;
     if (
       !command(state, (dispatched) => {
@@ -456,9 +473,21 @@ export const withCanonicalTableInsertion = (command: Command): Command =>
       transaction === undefined
     )
       return undefined;
+    // After a table the command writes an empty paragraph ahead of the new
+    // table, so the two never touch.
+    const at = atStart ? 0 : transaction.mapping.map($from.after(depth), -1);
+    const leading = afterTable ? transaction.doc.nodeAt(at) : null;
     const inserted = transaction.doc.nodeAt(
-      transaction.mapping.map($from.after(depth), -1),
+      leading?.type.name === "paragraph" ? at + leading.nodeSize : at,
     );
+    const before = atStart || afterTable;
+    // Inside the paragraph the table goes after, or before: the story's
+    // first, or the one after the table.
+    const anchorPosition = (): number => {
+      if (atStart) return 1;
+      if (afterTable) return $from.after(depth) + 1;
+      return $from.start(depth);
+    };
     if (inserted === null || inserted.type.name !== "table") return undefined;
     const formatting = tableAttrsToFormatting(expectTableAttrs(inserted));
     const columnWidths = expectTableAttrs(inserted).columnWidths;
@@ -476,8 +505,13 @@ export const withCanonicalTableInsertion = (command: Command): Command =>
     return [
       {
         type: "editTableBlock",
-        at: $from.start(depth),
-        edit: { type: DOCUMENT_OP_TYPES.INSERT_TABLE, table },
+        at: anchorPosition(),
+        edit: {
+          type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+          table,
+          ...(before ? { side: "before" as const } : {}),
+          ...(afterTable ? { separated: true } : {}),
+        },
       },
     ];
   });

@@ -13,6 +13,7 @@ export {
   storyBody,
   findStoryBody,
   documentStories,
+  replaceStoryBody,
   sameStory,
 } from "./stories";
 /**
@@ -48,7 +49,10 @@ export {
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
-export { registerParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
+export {
+  paragraphPropertySnapshotToken,
+  registerParagraphPropertySnapshot,
+} from "./paragraphPropertySnapshot";
 export {
   applyDocumentOpEnvelope,
   applyDocumentOp,
