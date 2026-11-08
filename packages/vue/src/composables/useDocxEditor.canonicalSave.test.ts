@@ -1109,7 +1109,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
         expect(error).toBeInstanceOf(CanonicalSessionError);
         if (!(error instanceof CanonicalSessionError))
           panic("Expected composition save refusal");
-        expect(error.gap).toBe("pm-save-projection");
+        expect(error.ground.gap).toBe("pm-save-projection");
         expect(error.reason).toBe("refused");
       }
       expect(api.updateCanonicalInputLifecycle("endComposition")).toBe(true);

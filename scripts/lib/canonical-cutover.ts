@@ -365,9 +365,11 @@ export const inspectCanonicalSources = (
                 : binding.typeAnnotation?.typeAnnotation;
             if (type?.type !== "TSTypeReference") return false;
             const typeName = text(type.typeName);
-            return (
-              typeName === "CanonicalGap" ||
-              imports.get(typeName)?.endsWith(":CanonicalGap")
+            // A relay forwards a refusal's ground, or (still) a bare gap.
+            return ["CanonicalGap", "CanonicalRefusalGround"].some(
+              (relayed) =>
+                typeName === relayed ||
+                imports.get(typeName)?.endsWith(`:${relayed}`),
             );
           })
         )
@@ -523,11 +525,11 @@ export const inspectCanonicalSources = (
             if (
               !gap ||
               gap.type !== "MemberExpression" ||
-              memberKey(gap) !== "gap" ||
+              memberKey(gap) !== "ground" ||
               text(gap.object) !== text(message.object)
             )
               failures.push(
-                `${file}: canonical error relay must forward the original gap id`,
+                `${file}: canonical error relay must forward the original ground`,
               );
           }
         }
@@ -542,10 +544,12 @@ export const inspectCanonicalSources = (
               (property) =>
                 (isPropertyAssignment(property) ||
                   isShorthandProperty(property)) &&
-                keyText(part, property) === "gap",
+                keyText(part, property) === "ground",
             )
           )
-            failures.push(`${file}: canonical refusal must carry its gap id`);
+            failures.push(
+              `${file}: canonical refusal must carry its ground (a gap id or a document rule)`,
+            );
         }
         const mutation = mutationGap(
           node,

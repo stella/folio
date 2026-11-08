@@ -2,7 +2,10 @@ import { CanonicalSessionRefusalError } from "../../packages/core/src/controller
 /** Private error sink: retain repeated refusals even when the status text is unchanged. */
 import { CanonicalSaveDiagnosticError } from "../../packages/core/src/docx/canonicalSave";
 import type { SaveDiagnostic } from "../../packages/core/src/docx/saveDiagnostics";
-import type { CanonicalGap } from "../../packages/core/src/types/canonicalCapabilities";
+import type {
+  CanonicalGap,
+  CanonicalRule,
+} from "../../packages/core/src/types/canonicalCapabilities";
 import { CANONICAL_GAP } from "../../packages/core/src/types/canonicalCapabilities";
 import { CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS } from "../../test/canonicalSaveDiagnostics";
 import type { BrowserInputAction } from "../visual/browserInputTrace";
@@ -26,6 +29,12 @@ type CanonicalFuzzErrorDetails =
       status: "refusal";
       type: "CanonicalSessionRefusalError";
       gap: CanonicalGap;
+    }
+  // A rule the document states: correct, so never matched as a capability gap.
+  | {
+      status: "ruleRefusal";
+      type: "CanonicalSessionRefusalError";
+      rule: CanonicalRule;
     }
   | { status: "error"; type: string };
 
@@ -66,11 +75,17 @@ const canonicalFuzzErrorDetails = (error: Error) => {
       diagnostic: error.diagnostic,
     } as const;
   if (CanonicalSessionRefusalError.is(error))
-    return {
-      status: "refusal",
-      type: "CanonicalSessionRefusalError",
-      gap: error.gap,
-    } as const;
+    return error.ground.rule === undefined
+      ? ({
+          status: "refusal",
+          type: "CanonicalSessionRefusalError",
+          gap: error.ground.gap,
+        } as const)
+      : ({
+          status: "ruleRefusal",
+          type: "CanonicalSessionRefusalError",
+          rule: error.ground.rule,
+        } as const);
   return { status: "error", type: error.name } as const;
 };
 

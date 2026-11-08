@@ -260,7 +260,8 @@ const assertNotePasteRefusal = ({
       getDocumentContext: () => source,
       getExtensionManager: () => singletonManager,
       getExperimentalSession: () => session,
-      onSessionRefusal: (reason, gap) => refusals.push({ reason, gap }),
+      onSessionRefusal: (reason, ground) =>
+        refusals.push({ reason, gap: ground.gap }),
     });
     const manager = createHiddenEditorManager(deps);
     try {
@@ -355,8 +356,8 @@ test("hidden manager refuses a local partial note-reference edit before committi
     getDocument: () => source,
     getDocumentContext: () => source,
     getExtensionManager: () => singletonManager,
-    onSessionRefusal: (reason, gap, error) =>
-      refusals.push({ reason, gap, error }),
+    onSessionRefusal: (reason, ground, error) =>
+      refusals.push({ reason, gap: ground.gap, error }),
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -398,8 +399,8 @@ test("hidden manager accepts an invalid remote note-reference replay and reports
     getDocumentContext: () => source,
     getExtensionManager: () => singletonManager,
     getCollaborationModules: () => modules,
-    onSessionRefusal: (reason, gap, error) =>
-      refusals.push({ reason, gap, error }),
+    onSessionRefusal: (reason, ground, error) =>
+      refusals.push({ reason, gap: ground.gap, error }),
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -441,8 +442,8 @@ test("hidden manager history remains usable around a refused partial note-refere
     getDocument: () => source,
     getDocumentContext: () => source,
     getExtensionManager: () => singletonManager,
-    onSessionRefusal: (reason, gap, error) =>
-      refusals.push({ reason, gap, error }),
+    onSessionRefusal: (reason, ground, error) =>
+      refusals.push({ reason, gap: ground.gap, error }),
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -1694,8 +1695,12 @@ test(
               getDocument: () => source,
               getDocumentContext: () => source,
               getExperimentalSession: () => "canonical",
-              onSessionRefusal: (reason, gap) => {
-                expect(Object.values(CANONICAL_GAP).includes(gap)).toBe(true);
+              onSessionRefusal: (reason, ground) => {
+                const gap = ground.gap;
+                expect(
+                  gap !== undefined &&
+                    Object.values(CANONICAL_GAP).includes(gap),
+                ).toBe(true);
                 reasons.push(reason);
               },
             });
@@ -1784,7 +1789,8 @@ test("canonical command execution reports descriptor refusals without mutation",
     getDocument: () => source,
     getDocumentContext: () => source,
     getExperimentalSession: () => "canonical",
-    onSessionRefusal: (message, gap) => reasons.push({ message, gap }),
+    onSessionRefusal: (message, ground) =>
+      reasons.push({ message, gap: ground.gap }),
   });
   const manager = createHiddenEditorManager(deps);
   try {
@@ -1851,7 +1857,7 @@ test("TOC view helper publishes through the controller and keeps handled refusal
     getDocument: () => source,
     getDocumentContext: () => source,
     getExperimentalSession: () => "canonical",
-    onSessionRefusal: (_reason, gap) => gaps.push(gap),
+    onSessionRefusal: (_reason, ground) => gaps.push(ground.gap),
   });
   const manager = createHiddenEditorManager(deps);
   try {

@@ -34,7 +34,7 @@ import { schema } from "../prosemirror/schema";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import {
   CANONICAL_GAP,
-  type CanonicalGap,
+  type CanonicalRefusalGround,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type {
@@ -73,7 +73,8 @@ export type HeaderFooterEditorManagerDeps = {
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
   onSessionRefusal?:
-    ((reason: string, gap: CanonicalGap, error?: Error) => void) | undefined;
+    | ((reason: string, ground: CanonicalRefusalGround, error?: Error) => void)
+    | undefined;
   getHost: () => HTMLElement | null;
   getStyles: () => StyleDefinitions | null | undefined;
   getTheme: () => Theme | null | undefined;
@@ -437,7 +438,7 @@ export const createHeaderFooterEditorManager = (
           if (noteIssue)
             deps.onSessionRefusal?.(
               noteIssue.message,
-              CANONICAL_GAP.dispatch,
+              { gap: CANONICAL_GAP.dispatch },
               noteIssue,
             );
           view.updateState(nextState);
@@ -489,7 +490,7 @@ export const createHeaderFooterEditorManager = (
         const canonical = deps.getCanonicalApi?.()?.getCanonicalDocument();
         if (canonical) return canonical;
         throw new CanonicalSessionError({
-          gap: CANONICAL_GAP.authorityRouting,
+          ground: { gap: CANONICAL_GAP.authorityRouting },
           reason: "refused",
           message: "Canonical story snapshot is unavailable.",
         });

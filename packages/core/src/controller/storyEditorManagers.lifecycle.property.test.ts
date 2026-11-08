@@ -337,7 +337,7 @@ test("generated canonical story lifecycle follows the owner while host props sta
               }
               if (!(error instanceof CanonicalSessionError))
                 panic("The unavailable snapshot lost its typed refusal.");
-              expect(error.gap).toBe(CANONICAL_GAP.authorityRouting);
+              expect(error.ground.gap).toBe(CANONICAL_GAP.authorityRouting);
             }
           } finally {
             owner.destroy();

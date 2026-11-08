@@ -22,7 +22,7 @@ import type {
   HeaderFooterPartKind,
 } from "@stll/folio-core/controller/headerFooterEditorManager";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
-import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
   Document,
   HeaderFooter,
@@ -46,7 +46,11 @@ export type HiddenHeaderFooterPMsProps = {
   readOnly?: boolean;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
+  onSessionRefusal?: (
+    reason: string,
+    ground: CanonicalRefusalGround,
+    error?: Error,
+  ) => void;
   styles?: StyleDefinitions | null;
   theme?: Theme | null;
   defaultTabStopTwips?: number | null;
@@ -125,8 +129,8 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
           getTheme: () => themeRef.current,
           getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
           getExperimentalSession: () => sessionRef.current,
-          onSessionRefusal: (reason, gap, error) =>
-            refusalRef.current?.(reason, gap, error),
+          onSessionRefusal: (reason, ground, error) =>
+            refusalRef.current?.(reason, ground, error),
           onTransaction: ({
             rId,
             kind,

@@ -568,6 +568,7 @@ import {
   CANONICAL_GAP,
   type CanonicalGap,
   canonicalRefusalMessage,
+  canonicalRefusalNotice,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
@@ -709,7 +710,9 @@ const { message: refusalNotice, show: showRefusalNotice } =
   useTransientNotice();
 
 function reportEditorError(error: Error): void {
-  if (CanonicalSessionRefusalError.is(error)) showRefusalNotice(error.message);
+  // A rule the document states reads as the editor's own message.
+  if (CanonicalSessionRefusalError.is(error))
+    showRefusalNotice(canonicalRefusalNotice(error.ground, error.message, t));
   props.onError?.(error);
   emit("error", error);
 }
@@ -723,7 +726,7 @@ function refuseCanonicalModelEdit(gap: CanonicalGap, message: string): boolean {
   )
     return false;
   const error = new CanonicalSessionRefusalError({
-    gap,
+    ground: { gap },
     message: canonicalRefusalMessage(gap, message),
   });
   reportEditorError(error);

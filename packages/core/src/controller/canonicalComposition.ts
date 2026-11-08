@@ -354,7 +354,7 @@ export const createCanonicalComposition = (
       try: () => view.state.applyTransaction(transaction),
       catch: (cause) =>
         new CanonicalSessionError({
-          gap: CANONICAL_GAP.dispatch,
+          ground: { gap: CANONICAL_GAP.dispatch },
           reason: "refused",
           message: `Composition projection failed: ${String(cause)}`,
         }),

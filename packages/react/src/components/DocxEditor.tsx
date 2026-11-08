@@ -235,6 +235,7 @@ import {
   CANONICAL_GAP,
   type CanonicalGap,
   canonicalRefusalMessage,
+  canonicalRefusalNotice,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { CanonicalCommentRequest } from "@stll/folio-core/types/canonicalComments";
@@ -891,7 +892,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         )
           return false;
         const error = new CanonicalSessionRefusalError({
-          gap,
+          ground: { gap },
           message: canonicalRefusalMessage(gap, message),
         });
         toast(error.message);
@@ -3860,10 +3861,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // Handle error from editor
     const handleEditorError = useCallback(
       (error: Error) => {
-        if (CanonicalSessionRefusalError.is(error)) toast(error.message);
+        if (CanonicalSessionRefusalError.is(error))
+          // A rule the document states reads as the editor's own message.
+          toast(canonicalRefusalNotice(error.ground, error.message, t));
         onError?.(error);
       },
-      [onError],
+      [onError, t],
     );
 
     // Expose ref methods

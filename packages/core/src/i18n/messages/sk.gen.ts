@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Túto reláciu úprav prevzalo iné okno.",
     "editor": {
       "accessibleName": "Editor dokumentov",
+      "contentLocked": "Táto časť dokumentu je uzamknutá.",
       "editing": "Úpravy",
       "editingDescription": "Upravujte dokument priamo",
       "outlineDepthAll": "Všetky úrovne",

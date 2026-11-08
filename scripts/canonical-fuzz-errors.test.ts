@@ -147,7 +147,7 @@ test(
               globalThis.__folioCanonicalFuzzErrors = errors;
               globalThis.__folioCanonicalFuzzPhase = phase;
               recordCanonicalFuzzError(
-                new CanonicalSessionRefusalError({ message, gap }),
+                new CanonicalSessionRefusalError({ message, ground: { gap } }),
               );
               expect(errors).toEqual([
                 {
@@ -245,7 +245,7 @@ test("repeated session refusals retain their typed gap and phase without permitt
       globalThis.__folioCanonicalFuzzPhase = phase;
       const error = new CanonicalSessionRefusalError({
         message: "Command refused",
-        gap: CANONICAL_GAP.storyContentProjection,
+        ground: { gap: CANONICAL_GAP.storyContentProjection },
       });
       recordCanonicalFuzzError(error);
       recordCanonicalFuzzError(error);
@@ -253,13 +253,42 @@ test("repeated session refusals retain their typed gap and phase without permitt
         Array.from({ length: 2 }, () => ({
           status: "refusal",
           type: "CanonicalSessionRefusalError",
-          gap: error.gap,
+          gap: CANONICAL_GAP.storyContentProjection,
           message: error.message,
           phase,
         })),
       );
       expect(errors.some(isCanonicalSaveFallback)).toBe(false);
     }
+  } finally {
+    globalThis.__folioCanonicalFuzzErrors = previousErrors;
+    globalThis.__folioCanonicalFuzzPhase = previousPhase;
+  }
+});
+
+test("a document rule refusal is recorded as its own status, never as a ledger refusal", () => {
+  const previousErrors = globalThis.__folioCanonicalFuzzErrors;
+  const previousPhase = globalThis.__folioCanonicalFuzzPhase;
+  try {
+    const errors: CanonicalFuzzError[] = [];
+    globalThis.__folioCanonicalFuzzErrors = errors;
+    globalThis.__folioCanonicalFuzzPhase = undefined;
+    recordCanonicalFuzzError(
+      new CanonicalSessionRefusalError({
+        message: "Refused: the change reaches inside a locked control.",
+        ground: { rule: "contentControlLock" },
+      }),
+    );
+    expect(errors).toEqual([
+      {
+        status: "ruleRefusal",
+        type: "CanonicalSessionRefusalError",
+        rule: "contentControlLock",
+        message: "Refused: the change reaches inside a locked control.",
+        phase: null,
+      },
+    ]);
+    expect(errors.some(isCanonicalSaveFallback)).toBe(false);
   } finally {
     globalThis.__folioCanonicalFuzzErrors = previousErrors;
     globalThis.__folioCanonicalFuzzPhase = previousPhase;

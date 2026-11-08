@@ -78,7 +78,7 @@ import { markPackageChange } from "../prosemirror/extensions/features/ParagraphC
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_GAP,
-  type CanonicalGap,
+  type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import type {
@@ -103,14 +103,14 @@ const CanonicalSessionErrorBase: TaggedErrorClass<"CanonicalSessionError"> =
 
 export class CanonicalSessionError extends CanonicalSessionErrorBase<{
   message: string;
-  gap: CanonicalGap;
   reason: "refused" | "noChange";
+  ground: CanonicalRefusalGround;
 }> {}
 
 const refuse = (message: string) =>
   Result.err(
     new CanonicalSessionError({
-      gap: CANONICAL_GAP.dispatch,
+      ground: { gap: CANONICAL_GAP.dispatch },
       message,
       reason: "refused",
     }),
@@ -118,7 +118,7 @@ const refuse = (message: string) =>
 const noChange = (message: string) =>
   Result.err(
     new CanonicalSessionError({
-      gap: CANONICAL_GAP.dispatch,
+      ground: { gap: CANONICAL_GAP.dispatch },
       message,
       reason: "noChange",
     }),
@@ -629,7 +629,7 @@ const project = ({
     },
     catch: (cause) =>
       new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
+        ground: { gap: CANONICAL_GAP.dispatch },
         reason: "refused",
         message: `Canonical projection failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
@@ -706,7 +706,7 @@ const project = ({
       typeof paraId === "string" ? sources.get(paraId) : undefined;
     if (typeof paraId !== "string" || located === undefined) {
       failure = new CanonicalSessionError({
-        gap: CANONICAL_GAP.storyContentProjection,
+        ground: { gap: CANONICAL_GAP.storyContentProjection },
         reason: "refused",
         message: "The projection changed paragraph structure.",
       });
@@ -715,7 +715,7 @@ const project = ({
     const { source, container } = located;
     if (projectedSources.has(source)) {
       failure = new CanonicalSessionError({
-        gap: CANONICAL_GAP.storyContentProjection,
+        ground: { gap: CANONICAL_GAP.storyContentProjection },
         reason: "refused",
         message: "The projection changed paragraph structure.",
       });
@@ -730,7 +730,7 @@ const project = ({
     });
     if (inline.isErr()) {
       failure = new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
+        ground: { gap: CANONICAL_GAP.dispatch },
         reason: "refused",
         message: inline.error.message,
       });
@@ -949,7 +949,7 @@ export const publishCanonicalProjection = ({
     try: () => state.applyTransaction(commit.transaction),
     catch: (cause) =>
       new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
+        ground: { gap: CANONICAL_GAP.dispatch },
         reason: "refused",
         message: `Canonical plugin staging failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       }),
@@ -1235,7 +1235,7 @@ class CanonicalSession {
   get document(): Document {
     if (this.isComposing)
       throw new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
+        ground: { gap: CANONICAL_GAP.dispatch },
         reason: "refused",
         message: "Composition must finish before taking a snapshot.",
       });
@@ -1244,7 +1244,7 @@ class CanonicalSession {
   captureSaveSnapshot(): CanonicalSaveSnapshot {
     if (this.isComposing)
       throw new CanonicalSessionError({
-        gap: CANONICAL_GAP.save,
+        ground: { gap: CANONICAL_GAP.save },
         reason: "refused",
         message:
           "Composition must finish before saving the canonical document.",
@@ -1519,7 +1519,7 @@ class CanonicalSession {
       ) {
         return Result.err(
           new CanonicalSessionError({
-            gap: CANONICAL_GAP.trackedHyperlinkResolution,
+            ground: { gap: CANONICAL_GAP.trackedHyperlinkResolution },
             reason: "refused",
             message:
               "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
@@ -1542,7 +1542,7 @@ class CanonicalSession {
         )
           return Result.err(
             new CanonicalSessionError({
-              gap: CANONICAL_GAP.trackedHyperlinkResolution,
+              ground: { gap: CANONICAL_GAP.trackedHyperlinkResolution },
               reason: "refused",
               message: compiled.error.message,
             }),
@@ -2035,7 +2035,7 @@ class CanonicalSession {
     if (unsupportedSeedReason(applied.value.document, changed) !== null)
       return Result.err(
         new CanonicalSessionError({
-          gap: CANONICAL_GAP.storyContentProjection,
+          ground: { gap: CANONICAL_GAP.storyContentProjection },
           reason: "refused",
           message:
             "The operations produce unsupported canonical story content.",
@@ -2295,7 +2295,7 @@ const visibleDeletionContext = (state: EditorState) => {
     const native = canonicalNativeCells(paragraph);
     if (native.isErr()) {
       issue = new CanonicalSessionError({
-        gap: CANONICAL_GAP.dispatch,
+        ground: { gap: CANONICAL_GAP.dispatch },
         reason: "refused",
         message: native.error.message,
       });
@@ -2316,7 +2316,7 @@ const visibleDeletionContext = (state: EditorState) => {
         selection.from < to
       ) {
         issue = new CanonicalSessionError({
-          gap: CANONICAL_GAP.dispatch,
+          ground: { gap: CANONICAL_GAP.dispatch },
           reason: "refused",
           message: "Character deletion cannot start inside an inline atom.",
         });
