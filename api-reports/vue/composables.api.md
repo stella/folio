@@ -9,6 +9,7 @@ import { App } from 'vue';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
 import { CommandMap } from '@stll/folio-core/prosemirror/extensions/types';
+import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComputedRef } from 'vue';
 import { createSelectionFromDOM } from '@stll/folio-core/managers/ClipboardManager';
 import { createVisualLineState } from '@stll/folio-core/prosemirror/utils/visualLineNavigation';
@@ -133,6 +134,7 @@ export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
 
 // @public (undocumented)
 export type UseDocxEditorOptions = {
+    comments?: () => readonly Comment_2[];
     hiddenContainer: Ref<HTMLElement | null>;
     hiddenHeaderFooterContainer?: Ref<HTMLElement | null>;
     noteEditorContainer?: Ref<HTMLElement | null>;

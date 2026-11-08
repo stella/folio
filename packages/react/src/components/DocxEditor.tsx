@@ -72,12 +72,12 @@ import {
 } from "@stll/folio-core/controller/folioEditor";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
-import { setDocumentBodyComments } from "@stll/folio-core/docx/canonicalModel";
 import {
   CanonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
@@ -276,14 +276,12 @@ import { containedHandler } from "../utils/contained-handler";
 import { resolveCommentCreationRange } from "./commentAnchors";
 import {
   applyCommentMarkRange,
-  collectCommentIdsFromSources,
   countOpenCommentThreads,
   EMPTY_ANCHOR_POSITIONS,
   findSelectionYPosition,
   getCommentAuthorKey,
   getFallbackCommentYPosition,
   PENDING_COMMENT_ID,
-  pruneOrphanedComments,
   removePendingCommentMarkRange,
 } from "./commentsHelpers";
 import type { TrackedChangeEntry } from "./CommentsSidebar";
@@ -1890,28 +1888,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         flushBag(doc.package.headers);
         flushBag(doc.package.footers);
       }
-      // Drop comment threads whose anchor text has been edited away. The
-      // in-memory `comments` array can outlive its in-body anchors (PM
-      // removes the mark when its text is deleted, but the array entry
-      // stays put), and serializing the unfiltered array writes
-      // unanchored threads into `comments.xml` that no reader can
-      // resolve.
-      // Collect anchors from every part of the doc that can carry a
-      // comment marker — body, headers, footers, footnotes, endnotes.
-      // A body-only walk would prune legitimate header/footer/note
-      // comments because their anchors live outside `document.content`.
-      const referencedCommentIds = collectCommentIdsFromSources(
-        doc.package.document.content,
-        doc.package.headers,
-        doc.package.footers,
-        doc.package.footnotes,
-        doc.package.endnotes,
-      );
-      setDocumentBodyComments(
-        doc.package.document,
-        pruneOrphanedComments(commentsRef.current, referencedCommentIds),
-      );
-      return doc;
+      // The threads are the host's list; the editor's document carries the
+      // ones it was loaded with.
+      return withHostCommentThreads(doc, commentsRef.current);
     }, [commentsRef, experimentalSession]);
 
     const applyCanonicalComment = useCallback(
@@ -6238,6 +6217,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                               >
                                 <button
                                   type="button"
+                                  aria-label="Add comment"
                                   onMouseDown={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
