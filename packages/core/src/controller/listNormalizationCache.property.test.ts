@@ -1,0 +1,353 @@
+/**
+ * A list normalization that reuses the blocks earlier normalizations left
+ * equals a normalization of every block.
+ *
+ * The cache normalizes a story again from the last checkpoint before its
+ * first changed block, and stops where the counters match those of the
+ * earlier run. Story versions made by session edits and by model edits that
+ * number, renumber, unnumber, insert, remove and move paragraphs are
+ * normalized both ways: the documents, which blocks came back unchanged, the
+ * inverse operations, and the facts kept for each paragraph must agree.
+ */
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
+import { EditorState } from "prosemirror-state";
+
+import {
+  paragraphPropertySnapshotToken,
+  registerParagraphPropertySnapshot,
+} from "@stll/docx-core/ops";
+
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import {
+  ListNormalizationCache,
+  normalizeListModelRendering,
+} from "../docx/listModelNormalization";
+import {
+  paragraphPropertySourceState,
+  restoreParagraphIndentationProjection,
+} from "../docx/paragraphPropertySource";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import type {
+  BlockContent,
+  Document,
+  ListLevel,
+  Paragraph,
+} from "../types/document";
+import {
+  applyEdit,
+  editArbitrary,
+  editModel,
+  modelEditArbitrary,
+  parsedSources,
+} from "./__tests__/canonicalEditRuns";
+import { createCanonicalSession } from "./canonicalSession";
+
+setDefaultTimeout(propertyTestTimeout(240_000));
+
+const mainBlocks = (document: Document): readonly BlockContent[] =>
+  document.package.document.content;
+
+/** The facts kept for a paragraph outside its fields, and its snapshot registration. */
+const keptFacts = (block: BlockContent): readonly unknown[] =>
+  block.type === "paragraph"
+    ? [
+        ...paragraphPropertySourceState(block),
+        paragraphPropertySnapshotToken(block),
+      ]
+    : [];
+
+/** Whether each fact is the very same value or object. */
+const sameFacts = (
+  left: readonly (readonly unknown[])[],
+  right: readonly (readonly unknown[])[],
+): boolean =>
+  left.length === right.length &&
+  left.every(
+    (facts, index) =>
+      facts.length === right[index]?.length &&
+      facts.every((fact, at) => fact === right[index]?.[at]),
+  );
+
+/** Facts by value: a block normalized anew holds fresh objects of equal content. */
+const factValues = (blocks: readonly BlockContent[]): unknown =>
+  JSON.parse(JSON.stringify(blocks.map(keptFacts)));
+
+/**
+ * Normalize `version` with the cache, then in full over the same records,
+ * and require the same outcome; the cached result is the next version's base.
+ */
+const normalizedBothWays = (
+  version: Document,
+  cache: ListNormalizationCache,
+): Document => {
+  const inputs = [...mainBlocks(version)];
+  const cached = normalizeListModelRendering(version, { cache });
+  const cachedBlocks = mainBlocks(cached.document);
+  const cachedFacts = inputs.map(keptFacts);
+  const cachedOutputFacts = factValues(cachedBlocks);
+  const full = normalizeListModelRendering(version);
+  const fullBlocks = mainBlocks(full.document);
+  expect(JSON.parse(JSON.stringify(cached.document.package))).toEqual(
+    JSON.parse(JSON.stringify(full.document.package)),
+  );
+  expect(cached.inverse).toEqual(full.inverse);
+  // The same blocks come back unchanged.
+  expect(cachedBlocks.map((block, index) => block === inputs[index])).toEqual(
+    fullBlocks.map((block, index) => block === inputs[index]),
+  );
+  // The full pass leaves every input's facts as the cached pass left them:
+  // nothing the cached pass skipped had anything left to register.
+  expect(sameFacts(inputs.map(keptFacts), cachedFacts)).toBe(true);
+  // A block normalized anew carries the same facts either way.
+  expect(cachedOutputFacts).toEqual(factValues(fullBlocks));
+  return cached.document;
+};
+
+/** Numbering instances the document defines. */
+const numIdsOf = (document: Document): number[] =>
+  document.package.numbering?.nums.map(({ numId }) => numId) ?? [];
+
+let nextParaId = 0;
+
+const level = (ilvl: number): ListLevel => ({
+  ilvl,
+  start: 1,
+  numFmt: "decimal",
+  lvlText: `%${String(ilvl + 1)}.`,
+  pPr: {
+    indentLeft: 720 * (ilvl + 1),
+    indentFirstLine: -360,
+    hangingIndent: true,
+  },
+});
+
+/**
+ * Three list instances of one abstract list, the second restarting it and
+ * the third continuing the second, at three levels, interleaved with plain
+ * paragraphs: long enough that a story holds several checkpoints, and shared
+ * enough that two instances advance one counter array.
+ */
+const sharedListsDocument = async (): Promise<Document> => {
+  const content: Paragraph[] = Array.from({ length: 48 }, (_, index) => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      paraId: (0x70000000 + index).toString(16).toUpperCase(),
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text: `Item ${String(index)}` }],
+        },
+      ],
+    };
+    if (index % 7 !== 6)
+      paragraph.formatting = {
+        numPr: {
+          kind: "reference",
+          numId: [1, 2, 3, 2, 3, 1][Math.floor(index / 8)] ?? 1,
+          ilvl: index % 3,
+        },
+      };
+    return paragraph;
+  });
+  const bytes = await createDocx({
+    package: {
+      numbering: {
+        abstractNums: [
+          { abstractNumId: 0, levels: [level(0), level(1), level(2)] },
+        ],
+        nums: [
+          { numId: 1, abstractNumId: 0 },
+          {
+            numId: 2,
+            abstractNumId: 0,
+            levelOverrides: [{ ilvl: 0, startOverride: 5 }],
+          },
+          // Met first after the restarted instance, it continues its counters.
+          { numId: 3, abstractNumId: 0 },
+        ],
+      },
+      document: { content },
+    },
+  });
+  return parseDocx(
+    (
+      await prepareCanonicalDocxInput(new Uint8Array(bytes).slice().buffer)
+    ).unwrap(),
+    { preloadFonts: false, detectVariables: false },
+  );
+};
+
+const listEditArbitrary = fc.record({
+  kind: fc.constantFrom(
+    "number",
+    "unnumber",
+    "level",
+    "model",
+    "again",
+    "facts",
+    "register",
+  ),
+  at: fc.nat(),
+  numId: fc.nat(),
+  ilvl: fc.nat({ max: 2 }),
+  model: modelEditArbitrary,
+});
+type ListEdit = fc.RecordValue<typeof listEditArbitrary>;
+
+/** A new version of the story with one paragraph numbered, renumbered or unnumbered, or one model edit. */
+const editLists = (document: Document, edit: ListEdit): Document => {
+  if (
+    edit.kind === "again" ||
+    edit.kind === "facts" ||
+    edit.kind === "register"
+  )
+    return document;
+  if (edit.kind === "model") {
+    // Inserted paragraphs take an identity, as every paragraph of a session has.
+    const edited = editModel(document, edit.model);
+    for (const block of mainBlocks(edited))
+      if (block.type === "paragraph" && block.paraId === undefined)
+        block.paraId = (0x60000000 + nextParaId++).toString(16).toUpperCase();
+    return edited;
+  }
+  const blocks = [...mainBlocks(document)];
+  const paragraphs = blocks.flatMap((block, index) =>
+    block.type === "paragraph" ? [index] : [],
+  );
+  const index = paragraphs[edit.at % Math.max(1, paragraphs.length)];
+  const block = index === undefined ? undefined : blocks[index];
+  if (index === undefined || block?.type !== "paragraph") return document;
+  const numIds = numIdsOf(document);
+  const numId = numIds[edit.numId % Math.max(1, numIds.length)];
+  const current = block.formatting?.numPr;
+  let formatting: Paragraph["formatting"];
+  switch (edit.kind) {
+    case "number":
+      if (numId === undefined) return document;
+      formatting = {
+        ...block.formatting,
+        numPr: { kind: "reference", numId, ilvl: edit.ilvl },
+      };
+      break;
+    case "unnumber": {
+      formatting = { ...block.formatting };
+      delete formatting.numPr;
+      break;
+    }
+    case "level":
+      if (current?.kind !== "reference") return document;
+      formatting = {
+        ...block.formatting,
+        numPr: { ...current, ilvl: edit.ilvl },
+      };
+      break;
+    default:
+      return edit.kind satisfies never;
+  }
+  blocks[index] = { ...block, formatting };
+  return {
+    ...document,
+    package: {
+      ...document.package,
+      document: { ...document.package.document, content: blocks },
+    },
+  };
+};
+
+describe("a list normalization reusing blocks earlier runs left", () => {
+  test("equals a normalization of every block over story versions", async () => {
+    const sources = await parsedSources();
+    await assertProperty(
+      fc.property(
+        fc.constantFrom(...sources, {
+          id: "shared-lists",
+          document: await sharedListsDocument(),
+        }),
+        fc.integer({ min: 1, max: 5 }),
+        fc.array(listEditArbitrary, { minLength: 1, maxLength: 20 }),
+        ({ document }, checkpointSpacing, edits) => {
+          const cache = new ListNormalizationCache({ checkpointSpacing });
+          let input = structuredClone(document);
+          let version = normalizedBothWays(input, cache);
+          for (const edit of edits) {
+            switch (edit.kind) {
+              // The version before normalization once more: blocks the last
+              // run changed come back as they were.
+              case "again":
+                break;
+              // A paragraph keeps its records but not the facts kept for it.
+              case "facts":
+              case "register": {
+                const paragraphs = mainBlocks(version).filter(
+                  (block): block is Paragraph => block.type === "paragraph",
+                );
+                const paragraph =
+                  paragraphs[edit.at % Math.max(1, paragraphs.length)];
+                if (paragraph === undefined) break;
+                if (edit.kind === "register")
+                  registerParagraphPropertySnapshot({
+                    paragraph,
+                    snapshot: { indentLeft: 1 + edit.ilvl },
+                  });
+                else
+                  // As history restores a paragraph's projection: in place,
+                  // from another paragraph's.
+                  restoreParagraphIndentationProjection({
+                    target: paragraph,
+                    source:
+                      paragraphs[(edit.at + edit.numId) % paragraphs.length] ??
+                      paragraph,
+                  });
+                input = version;
+                break;
+              }
+              default:
+                input = editLists(version, edit);
+            }
+            version = normalizedBothWays(input, cache);
+          }
+        },
+      ),
+      {
+        id: "list normalization cache equals full normalization over story versions",
+        numRuns: 400,
+      },
+    );
+  });
+
+  test("equals a normalization of every block over a session's documents", async () => {
+    const sources = await parsedSources();
+    await assertProperty(
+      fc.property(
+        fc.constantFrom(...sources),
+        fc.integer({ min: 1, max: 5 }),
+        fc.array(editArbitrary, { minLength: 1, maxLength: 16 }),
+        ({ document }, checkpointSpacing, edits) => {
+          const session = createCanonicalSession(
+            structuredClone(document),
+          ).unwrap();
+          const cache = new ListNormalizationCache({ checkpointSpacing });
+          normalizedBothWays(session.document, cache);
+          let state = EditorState.create({
+            schema: session.projection.doc.type.schema,
+            doc: session.projection.doc,
+          });
+          for (const edit of edits) {
+            state = applyEdit(session, state, edit);
+            normalizedBothWays(session.document, cache);
+          }
+        },
+      ),
+      {
+        id: "list normalization cache equals full normalization over session edits",
+        numRuns: 200,
+      },
+    );
+  });
+});
