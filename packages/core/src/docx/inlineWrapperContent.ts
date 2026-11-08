@@ -286,6 +286,16 @@ export const SIMPLE_FIELD_CONTENT: {
 } as const satisfies AdmissionMap<SimpleField["content"][number]>;
 
 /**
+ * Every paragraph content kind is a tracked change child. The reader keeps a
+ * tracked change whole on this: its resolution joins describe the one wrapper.
+ * A model kind outside `TrackedRunContent` turns this type to `never`, so the
+ * build fails until reading such a change is designed.
+ */
+export const EVERY_PARAGRAPH_CONTENT_IS_TRACKED_CHILD: (typeof TRACKED_CHANGE_WRAPPER_CONTENT)[ParagraphContent["type"]] extends true
+  ? true
+  : never = true;
+
+/**
  * Whether a revision wrapper keeps this content inside itself.
  *
  * Generic in the input so a caller that has already narrowed its content

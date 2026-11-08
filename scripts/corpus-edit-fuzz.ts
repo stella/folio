@@ -312,6 +312,7 @@ const main = async (): Promise<void> => {
       } catch (error) {
         throw new Error(
           `${entry.id}: invalid worker result: ${messageOf(error)}`,
+          { cause: error },
         );
       }
     }

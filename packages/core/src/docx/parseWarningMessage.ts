@@ -90,6 +90,8 @@ const PARSE_WARNING_MESSAGES = {
     `Preserved ${plural(warning.count, "block-level tracked-change wrapper")}; Folio cannot interpret its block content, so that content is unavailable to readers or edits.`,
   [PARSE_WARNING_CODES.nestedRowOpaque]: (warning) =>
     `Preserved ${plural(warning.count, "nested table row")} as opaque markup; readers show a diagnostic marker for its content.`,
+  [PARSE_WARNING_CODES.reviewProvenanceDropped]: (warning) =>
+    `Dropped ${plural(warning.count, "review provenance value")} Folio cannot read (${warning.detail ?? "invalid"})${where(warning)}; the revisions they annotate are kept.`,
 } as const satisfies Record<ParseWarningCode, ParseWarningFormatter>;
 
 export const formatParseWarning = (warning: ParseWarning): string =>
