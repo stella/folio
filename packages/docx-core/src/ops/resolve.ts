@@ -74,6 +74,7 @@ import {
   isTrackedWrapper,
   reviewFieldsOf,
   withMarkFormatting,
+  withReviewFields,
 } from "./review";
 import { runsMergeable } from "./runMerge";
 import { identitySlots, withInlineIdentity } from "./slots";
@@ -2156,30 +2157,32 @@ const joinOps = (
         merged = [...seam.left, ...seam.right];
       }
     }
+    const keepsFirst = paragraph.pPrMark?.survivor === "first";
     // A record left as it was keeps its identity through the merge; an emptied
-    // one folded into its neighbour is rebuilt, and is no longer empty.
-    ends.set(nextId, emptiedEndsOf(merged, emptied));
+    // one folded into its neighbour is rebuilt, and is no longer empty. The
+    // joined paragraph is found again under the id it keeps.
+    ends.set(
+      keepsFirst ? idKey(paraId) : nextId,
+      emptiedEndsOf(merged, emptied),
+    );
     const mergedContent = asParagraphContent(merged);
     const receivesSection = outcome.sectionDestination === "following";
-    const { pPrMark: _rejectedMark, ...first } = paragraph;
     let survivor: Paragraph;
-    // The anchor of an insertion whose last paragraph took over the anchor's
-    // mark comes back as it was: its identity, its fields, the joined words.
-    if (paragraph.pPrMark?.survivor === "first") {
-      // A paragraph's properties are its mark's, so it takes everything the
-      // mark the paragraph after it holds: the properties, their pending
-      // changes, the section break, the mark's own change. It keeps its own
-      // identity and element attributes, and where its words start.
-      survivor = { ...next, content: mergedContent };
-      for (const field of [
-        "paraId",
-        "textId",
-        "preservedAttributes",
-        "renderedPageBreakBefore",
-      ] as const) {
-        if (first[field] === undefined) Reflect.deleteProperty(survivor, field);
-        else Object.assign(survivor, { [field]: first[field] });
-      }
+    if (keepsFirst) {
+      // The anchor of an insertion whose last paragraph took over the
+      // anchor's mark keeps its identity and its own fields, with the joined
+      // words. The mark that stays is the next paragraph's, with the
+      // properties and the reviews still pending on it: where that is the
+      // anchor's former mark, the anchor comes back as it was once those
+      // resolve; where it is another inserted break, rejecting that one
+      // keeps the anchor in turn.
+      const review = reviewFieldsOf(next);
+      if (review.pPrMark !== undefined && markWasAdded(review.pPrMark.kind))
+        review.pPrMark = { ...review.pPrMark, survivor: "first" };
+      survivor = withReviewFields(
+        { ...paragraph, content: mergedContent },
+        review,
+      );
     }
     // An unchanged follower that receives nothing keeps its identity.
     else if (!receivesSection && structurallyEqual(mergedContent, next.content))
