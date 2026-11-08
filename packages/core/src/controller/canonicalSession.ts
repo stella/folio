@@ -501,6 +501,11 @@ class CanonicalProjection {
     return Result.ok({ type, anchor: anchor.value, head: head.value });
   }
 
+  /** The first paragraph the projection addresses, in document order. */
+  get firstParagraph(): ParagraphAddress | undefined {
+    return this.paragraphs.at(0);
+  }
+
   paragraph(blockId: string): ParagraphAddress | undefined {
     return this.paragraphsById.get(blockId);
   }
@@ -1239,11 +1244,6 @@ class CanonicalSession {
     return structuredClone(survivingComments(this.currentDocument));
   }
 
-  /** Whether edits are recorded as suggestions. */
-  get suggesting(): boolean {
-    return this.mode.type === "suggesting";
-  }
-
   setMode(mode: CanonicalSessionMode): void {
     if (
       this.mode.type !== mode.type ||
@@ -1980,16 +1980,16 @@ class CanonicalSession {
     const surviving = projected.value.paragraph(
       preSelection.value.head.blockId,
     );
-    const first = applied.value.document.package.document.content.at(0);
-    if (first?.type !== "paragraph" || first.paraId === undefined)
-      return refuse("Resolution left no paragraph.");
+    // The first paragraph may sit inside a table that opens the story.
+    const first = projected.value.firstParagraph;
+    if (first === undefined) return refuse("Resolution left no paragraph.");
     let offset = surviving
       ? Math.min(preSelection.value.head.offset, surviving.text.length)
       : 0;
     if (surviving && splitsSurrogatePair(surviving.text, offset)) offset -= 1;
     const caret = {
       story: OP_STORIES.MAIN,
-      blockId: surviving?.blockId ?? first.paraId,
+      blockId: surviving?.blockId ?? first.blockId,
       offset,
     };
     const prepared = this.prepareJournalledOps({

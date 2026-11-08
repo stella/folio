@@ -9431,15 +9431,11 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [1200],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
-          "styleId": "Old",
-          "gridChange": {
-            "id": 512,
-            "columnWidths": [1200, 1800]
-          }
+          "styleId": "Old"
         },
         "rows": [
           {
@@ -9533,22 +9529,6 @@
                 }
               }
             ]
-          }
-        ],
-        "propertyChanges": [
-          {
-            "type": "tablePropertyChange",
-            "info": {
-              "id": 513,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
-            },
-            "previousFormatting": {
-              "justification": "center",
-              "layout": "fixed",
-              "styleId": "Old"
-            }
           }
         ]
       },
