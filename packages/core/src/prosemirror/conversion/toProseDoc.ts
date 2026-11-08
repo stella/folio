@@ -1748,6 +1748,11 @@ function convertTrackedChange(
     date: change.info.date ?? null,
     utcDate: change.info.utcDate?.value ?? null,
     initials: change.info.initials ?? null,
+    // A revision of a pending suggestion shows as one, so the review surface
+    // offers it as the suggestion it is.
+    ...(change.info.suggestionId === undefined
+      ? {}
+      : { provenance: "suggested", suggestionId: change.info.suggestionId }),
     moveKind,
     _docxOuterWrapperCount: wrappedBy.length,
     _docxResolutionJoins: change.resolutionJoins ?? null,
