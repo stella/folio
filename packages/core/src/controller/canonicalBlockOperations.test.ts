@@ -4,6 +4,7 @@
  * once every change is accepted, and once every change is rejected.
  */
 
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
@@ -544,6 +545,72 @@ describe("an insertion beside a table cell's paragraph", () => {
         ).toEqual(
           await outcomes(await viaDefaultEngine(source, operation, mode)),
         );
+      });
+});
+
+describe("paragraph identities across undo", () => {
+  // An undone insertion's paragraph id stays retired: a later insertion takes
+  // another, so an operation read before the undo cannot reach the new one.
+  for (const [type, operation] of [
+    [
+      "insertAfterBlock",
+      { id: "op", type: "insertAfterBlock", blockId: "10000002", text: "New" },
+    ],
+    [
+      "splitBlock",
+      { id: "op", type: "splitBlock", blockId: "10000002", offset: 2 },
+    ],
+  ] as const satisfies readonly (readonly [string, FolioDocumentOperation])[])
+    for (const mode of ["direct", "tracked-changes"] as const)
+      test(`${type} after an undone one takes a fresh id, ${mode}`, async () => {
+        const source = await packageOf(BODIES["between two paragraphs"]);
+        const document = await parseDocx(source.slice(0), {
+          preloadFonts: false,
+          detectVariables: false,
+        });
+        const session = createCanonicalSession(
+          document,
+          document.package.styles,
+        ).unwrap();
+        let state = EditorState.create({ schema, doc: session.projection.doc });
+        const executor = new CanonicalPublicOperations({
+          session,
+          getState: () => state,
+          publish: (commit: CanonicalCommit) => {
+            const published = publishCanonicalProjection({
+              state,
+              commit,
+              session,
+            });
+            if (published.isErr()) return false;
+            state = published.value.state;
+            return true;
+          },
+        });
+        const ids = () =>
+          session.document.package.document.content.flatMap((block) =>
+            block.type === "paragraph" ? [block.paraId] : [],
+          );
+        const before = ids();
+        const apply = () =>
+          executor.apply({
+            snapshot: createFolioAIEditSnapshot(state.doc),
+            batch: { version: 1, mode, operations: [operation] },
+            undefinedReferences: "refuse",
+          });
+        const first = apply();
+        expect(first.skipped).toEqual([]);
+        const firstIds = ids().filter((id) => !before.includes(id));
+        expect(firstIds).toHaveLength(1);
+        expect(
+          executor.undo(first.undoHandle ?? panic("Missing undo handle"))
+            .status,
+        ).toBe("undone");
+        expect(ids()).toEqual(before);
+        expect(apply().skipped).toEqual([]);
+        const secondIds = ids().filter((id) => !before.includes(id));
+        expect(secondIds).toHaveLength(1);
+        expect(secondIds).not.toEqual(firstIds);
       });
 });
 

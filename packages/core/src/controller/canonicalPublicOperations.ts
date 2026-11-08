@@ -565,6 +565,8 @@ type CompilePublicIntentsOptions = {
   suggestionId?: string | undefined;
   nextRevisionId: number;
   allocate: ReturnType<typeof createEditorIntentIdAllocator>;
+  /** Paragraph identities the session has consumed, retired ones included. */
+  reservedBlockIds: ReadonlySet<string>;
 };
 
 const compilePublicIntents = ({
@@ -576,6 +578,7 @@ const compilePublicIntents = ({
   suggestionId,
   nextRevisionId,
   allocate,
+  reservedBlockIds,
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
   const revisions: number[] = [];
@@ -598,9 +601,11 @@ const compilePublicIntents = ({
           ? {
               type: "editing",
               newIds: ids.newIds,
+              reservedBlockIds,
             }
           : {
               type: "suggesting",
+              reservedBlockIds,
               revision: {
                 id: firstRevisionId,
                 author,
@@ -924,7 +929,9 @@ export class CanonicalPublicOperations {
       string,
       FolioDocumentOperationResult["applied"][number]
     >();
-    const allocate = createEditorIntentIdAllocator();
+    const allocate = createEditorIntentIdAllocator({
+      reservedBlockIds: session.reservedBlockIds,
+    });
     const date = options.revisionStamp?.date ?? new Date().toISOString();
     for (const resolvedOperation of resolved) {
       const {
@@ -944,6 +951,7 @@ export class CanonicalPublicOperations {
         document,
         intents,
         allocate,
+        reservedBlockIds: session.reservedBlockIds,
         nextRevisionId,
         mode: batch.mode === "direct" ? "direct" : "tracked-changes",
         suggestionId,
@@ -1604,14 +1612,13 @@ export class CanonicalPublicOperations {
           type: "splitParagraph",
           at: from.value,
           to: to.value,
-          newBlockId: createEditorIntentIdAllocator()(
-            this.options.session.document,
-            {
-              type: "splitParagraph",
-              at: from.value,
-              to: to.value,
-            },
-          ).newBlockId,
+          newBlockId: createEditorIntentIdAllocator({
+            reservedBlockIds: this.options.session.reservedBlockIds,
+          })(this.options.session.document, {
+            type: "splitParagraph",
+            at: from.value,
+            to: to.value,
+          }).newBlockId,
         };
         break;
       case "mergeBlockWithNext": {

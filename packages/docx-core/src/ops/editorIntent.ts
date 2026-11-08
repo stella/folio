@@ -398,8 +398,14 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
 const PARAGRAPH_REVISION_DEMAND = 3;
 const leafRevisionDemand = (ancestorCount: number) => 4 * (1 + ancestorCount);
 
-/** Cache only immutable document versions; never retain a retired version strongly. */
-export const createEditorIntentIdAllocator = () => {
+/**
+ * Cache only immutable document versions; never retain a retired version
+ * strongly. A new paragraph identity avoids `reservedBlockIds`, the ones
+ * consumed elsewhere, such as an undone insertion's.
+ */
+export const createEditorIntentIdAllocator = ({
+  reservedBlockIds,
+}: { reservedBlockIds?: ReadonlySet<string> } = {}) => {
   const readCensus = createCensusReader();
   return (
     document: Document,
@@ -562,11 +568,9 @@ export const createEditorIntentIdAllocator = () => {
     }
     const revision = fresh(census.revisions, demand + 1);
     let nextParagraph = 1;
-    while (
-      census.paragraphs.has(
-        nextParagraph.toString(16).padStart(8, "0").toUpperCase(),
-      )
-    )
+    const taken = (id: string) =>
+      census.paragraphs.has(id) || (reservedBlockIds?.has(id) ?? false);
+    while (taken(nextParagraph.toString(16).padStart(8, "0").toUpperCase()))
       nextParagraph += 1;
     return {
       revisionId: revision.at(0) ?? MAX_REVISION_ID + 1,

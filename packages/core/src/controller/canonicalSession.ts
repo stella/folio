@@ -1546,6 +1546,10 @@ class CanonicalSession {
   get selection(): CanonicalSelection | null {
     return this.currentSelection;
   }
+  /** Every paragraph identity this session has read or minted, live or retired. */
+  get reservedBlockIds(): ReadonlySet<string> {
+    return this.allocatedBlockIds;
+  }
   get version(): number {
     return this.currentVersion;
   }
