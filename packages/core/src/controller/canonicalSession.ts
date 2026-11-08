@@ -59,6 +59,7 @@ import {
   rangedCommentIds,
   visitCommentMarkers,
 } from "../docx/commentAnchorIndex";
+import { ListNormalizationCache } from "../docx/listModelNormalization";
 import {
   cloneDocumentWithParagraphPropertySources,
   copyDocumentParagraphPropertySourceContract,
@@ -720,11 +721,14 @@ type StoryProjectionCaches = {
   blocks: ProjectionBlockCache;
   /** Each paragraph's gaps, by its source and editor node. */
   inline: InlineProjectionCache;
+  /** Each story's normalized list rendering, by block and the counters before it. */
+  lists: ListNormalizationCache;
 };
 
 export const newStoryProjectionCaches = (): StoryProjectionCaches => ({
   blocks: new ProjectionBlockCache(),
   inline: new InlineProjectionCache(),
+  lists: new ListNormalizationCache(),
 });
 
 type ProjectStoryOptions = {
@@ -2439,7 +2443,10 @@ class CanonicalSession {
         source: propertySourceDocument,
         indentation: "restore",
       });
-    const normalized = normalizeCanonicalListRendering(applied.value.document);
+    const normalized = normalizeCanonicalListRendering(
+      applied.value.document,
+      this.caches.lists,
+    );
     applied.value.document = normalized.document;
     applied.value.inverse = normalized.inverse.concat(applied.value.inverse);
     const changed = changedStories({
@@ -2662,9 +2669,12 @@ export const createCanonicalSession = (
   preservePropertySources({ target: identified, source: owned });
   const validated = validateOpsDocument(identified);
   if (validated.isErr()) return refuse(validated.error.message);
-  const normalized = normalizeCanonicalListRendering(identified).document;
-  preservePropertySources({ target: normalized, source: owned });
   const caches = newStoryProjectionCaches();
+  const normalized = normalizeCanonicalListRendering(
+    identified,
+    caches.lists,
+  ).document;
+  preservePropertySources({ target: normalized, source: owned });
   const projected = project({ document: normalized, styles, caches });
   if (projected.isErr()) return projected;
   return Result.ok(
