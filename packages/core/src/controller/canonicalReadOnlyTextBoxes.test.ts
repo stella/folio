@@ -176,4 +176,46 @@ describe("text boxes in the canonical session are read-only", () => {
       state = accept(state, current.prepareUndo(state).unwrap());
       expect(current.document).toEqual(before);
     });
+
+  test("a comment range opened in a box's own paragraph and closed after it opens", async () => {
+    const zip = await ZipArchive.read(await createDocx(createEmptyDocument()));
+    zip.set(
+      "word/document.xml",
+      `<?xml version="1.0" encoding="UTF-8"?><w:document ${NS}><w:body>` +
+        `<w:p w14:paraId="10000001"><w:commentRangeStart w:id="1"/>${drawing}</w:p>` +
+        '<w:p w14:paraId="10000002"><w:r><w:t>Next</w:t></w:r><w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r></w:p><w:sectPr/></w:body></w:document>',
+    );
+    zip.set(
+      "word/comments.xml",
+      `<?xml version="1.0" encoding="UTF-8"?><w:comments ${NS}><w:comment w:id="1" w:author="Reviewer"><w:p w14:paraId="30000001"><w:r><w:t>Note</w:t></w:r></w:p></w:comment></w:comments>`,
+    );
+    const rels =
+      (await zip.entry("word/_rels/document.xml.rels")?.text()) ?? "";
+    zip.set(
+      "word/_rels/document.xml.rels",
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdComments" Type="${R}/comments" Target="comments.xml"/></Relationships>`,
+      ),
+    );
+    const types = (await zip.entry("[Content_Types].xml")?.text()) ?? "";
+    zip.set(
+      "[Content_Types].xml",
+      types.replace(
+        "</Types>",
+        '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>',
+      ),
+    );
+    const parsed = await parseDocx(
+      (
+        await prepareCanonicalDocxInput(
+          (await zip.generate({ compression: "store" })).buffer,
+        )
+      ).unwrap(),
+      { preloadFonts: false, detectVariables: false },
+    );
+    expect(parsed.package.document.comments).toHaveLength(1);
+    const opened = createCanonicalSession(parsed);
+    expect(opened.isOk()).toBe(true);
+  });
 });

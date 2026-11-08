@@ -724,6 +724,14 @@ const project = ({
     if (host === undefined || !holdsTextBox(host)) return false;
     textBoxHosts.add(host);
     nextSource = index + 1;
+    // The host carries no address, but a range it opens or closes still
+    // covers the paragraphs after it.
+    visitCommentMarkers([host], ({ item }) => {
+      if (item.type === "commentRangeStart")
+        commentContext.openIds.add(item.id);
+      if (item.type === "commentRangeEnd")
+        commentContext.openIds.delete(item.id);
+    });
     return true;
   };
   let failure: CanonicalSessionError | undefined;

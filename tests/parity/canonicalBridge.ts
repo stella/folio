@@ -24,17 +24,24 @@ import { canonicalTextSelection } from "./canonicalTextSelection";
 
 /**
  * Each conversion salts the ids it mints for text box groups and anchors, so
- * two conversions of one document differ only there; compare without them.
+ * two conversions of one document differ there. Compare with each salt named
+ * by its order of appearance, which keeps every anchor tied to its box.
  */
 const MINTED_ID_ATTRS = new Set(["_docxGroupId", "_docxAnchorId", "anchorId"]);
-const withoutMintedIds = (value: unknown): unknown =>
-  JSON.parse(
-    JSON.stringify(value, (key, field: unknown) =>
-      MINTED_ID_ATTRS.has(key) && typeof field === "string"
-        ? field.replace(/^[^:]*:/u, "")
-        : field,
-    ),
+const withoutMintedIds = (value: unknown): unknown => {
+  const salts = new Map<string, string>();
+  return JSON.parse(
+    JSON.stringify(value, (key, field: unknown) => {
+      if (!MINTED_ID_ATTRS.has(key) || typeof field !== "string") return field;
+      const separator = field.indexOf(":");
+      if (separator < 0) return field;
+      const salt = field.slice(0, separator);
+      const name = salts.get(salt) ?? `salt${salts.size}`;
+      salts.set(salt, name);
+      return `${name}${field.slice(separator)}`;
+    }),
   );
+};
 
 type CanonicalPlaygroundRef = {
   getDocument: () => Document | null;
