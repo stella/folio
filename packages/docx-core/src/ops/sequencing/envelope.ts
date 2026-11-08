@@ -249,6 +249,7 @@ const revision = optional(
     author: string,
     date: string,
     initials: optional(string),
+    suggestionId: optional(string),
   }),
 );
 const newIds = optional(

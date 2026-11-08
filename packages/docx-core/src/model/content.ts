@@ -1643,6 +1643,13 @@ export type TrackedChangeInfo = {
    * prefix of our choosing would name one that is not there.
    */
   utcDate?: { attribute: string; value: string };
+  /**
+   * The pending suggestion this revision belongs to. A suggestion is a set of
+   * revisions proposed together and accepted or rejected together; a revision
+   * without one is an ordinary tracked change. In memory only: no OOXML
+   * attribute carries it.
+   */
+  suggestionId?: string;
 };
 
 /**
