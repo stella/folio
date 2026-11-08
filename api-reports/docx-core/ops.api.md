@@ -467,6 +467,10 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     at: BlockInsertionPoint;
     paragraphs: readonly Paragraph[];
 } | {
+    type: "deleteParagraphs";
+    story: OpStory;
+    blockIds: readonly string[];
+} | {
     type: "replaceFragment";
     from: TextPosition;
     to: TextPosition;
