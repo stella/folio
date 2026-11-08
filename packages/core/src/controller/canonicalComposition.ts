@@ -687,6 +687,21 @@ export const createCanonicalComposition = (
       }
       // Validate the entire proposal against one plain replacement, including plugin output.
       if (!replacement(state.baseline, applied.value.state)) {
+        const describe = (doc: EditorState["doc"], at: number) => {
+          const parent = doc.resolve(Math.min(at, doc.content.size)).parent;
+          const parts: string[] = [];
+          parent.forEach((node) =>
+            parts.push(
+              `${JSON.stringify(node.text ?? node.type.name)}[${node.marks
+                .map((m) => `${m.type.name}${JSON.stringify(m.attrs)}`)
+                .join(",")}]`,
+            ),
+          );
+          return parts.join(" | ");
+        };
+        console.log(
+          `COMP-DIAG refuse sel=${state.baseline.selection.from}\nBASE ${describe(state.baseline.doc, state.baseline.selection.from)}\nCURR ${describe(view.state.doc, state.baseline.selection.from)}\nPROP ${describe(applied.value.state.doc, state.baseline.selection.from)}`,
+        );
         view.updateState(state.baseline);
         state = {
           type: "refused",

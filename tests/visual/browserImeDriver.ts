@@ -122,13 +122,22 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
       },
     };
   });
+  const consoleLines: string[] = [];
+  const onConsole = (message: { text: () => string }) => {
+    if (message.text().startsWith("COMP-DIAG"))
+      consoleLines.push(message.text());
+  };
+  page.on("console", onConsole);
   const cdp = await page.context().newCDPSession(page);
   try {
     await runBrowserImeLifecycle(
       {
         update: async (text) => {
           await lifecycle.evaluate(
-            ({ note }, value) => note(`STEP update ${JSON.stringify(value)}`),
+            ({ note, editor }, value) =>
+              note(
+                `STEP update ${JSON.stringify(value)} html=${editor.firstElementChild?.outerHTML.slice(0, 1500)}`,
+              ),
             text,
           );
           // CDP offsets count UTF-16 code units, including surrogate pairs.
@@ -140,7 +149,10 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
         },
         commit: async (text) => {
           await lifecycle.evaluate(
-            ({ note }, value) => note(`STEP commit ${JSON.stringify(value)}`),
+            ({ note, editor }, value) =>
+              note(
+                `STEP commit ${JSON.stringify(value)} html=${editor.firstElementChild?.outerHTML.slice(0, 1500)}`,
+              ),
             text,
           );
           await cdp.send("Input.insertText", { text });
@@ -169,9 +181,10 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
       action,
     );
   } finally {
+    page.off("console", onConsole);
     const diag = await lifecycle.evaluate(({ diag }) => diag.slice());
     console.log(
-      `IME-DIAG ${JSON.stringify(action.updates)}\n${diag.join("\n")}`,
+      `IME-DIAG ${JSON.stringify(action.updates)}\n${diag.join("\n")}\n${consoleLines.join("\n")}`,
     );
     await lifecycle.evaluate(({ controller }) => controller.abort());
     await lifecycle.dispose();
