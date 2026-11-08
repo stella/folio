@@ -1,5 +1,6 @@
 import { expect, type Page, test, type TestInfo } from "@playwright/test";
 import fc from "fast-check";
+import { writeFileSync } from "node:fs";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
@@ -672,6 +673,11 @@ const checkDefaultEditorTrace = async ({
   });
   if (edited.type !== "ready" || suggested.type !== "ready")
     throw new TypeError("The default editor unexpectedly refused activation.");
+  writeFileSync(
+    test.info().outputPath("suggested.docx"),
+    new Uint8Array(suggested.buffer),
+  );
+  writeFileSync(test.info().outputPath("source.docx"), new Uint8Array(source));
   const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
   accepting.acceptAll();
   expect(
