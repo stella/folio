@@ -113,12 +113,12 @@ const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
   }
 };
 
-type LiveNumberingLevel = ReturnType<
-  Reviewer["readNumberingDefinitions"]
+type LiveNumberingLevel = NonNullable<
+  ReturnType<Reviewer["readNumberingDefinitions"]>
 >[number];
 
 /**
- * The marker levels of the main story's lists that only their paragraphs
+ * The marker levels of a story's lists that only its paragraphs
  * define so far (lists its operations started, pending or applied). The
  * reviewer reads each one whole, so a reference to any of its levels, and a
  * paragraph anywhere among the other insertions beside its anchor, is
