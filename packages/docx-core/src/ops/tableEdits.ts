@@ -1090,12 +1090,14 @@ export const applyTableEdit = (
           op,
           "Grid and source provenance require a grid operation.",
         );
-      if (table.propertyChanges !== undefined)
+      // One record per element: a further change keeps what the first recorded.
+      if ((table.propertyChanges?.length ?? 0) > 1)
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
           message: "Resolve the existing table property revision.",
         });
+      const pending = table.propertyChanges?.at(0);
       const next = { ...table };
       const formatting = applyFormattingPatch(table.formatting, op.patch);
       if (!patchChanges(table.formatting, op.patch))
@@ -1106,16 +1108,18 @@ export const applyTableEdit = (
         });
       if (formatting === undefined) delete next.formatting;
       else next.formatting = authored(formatting);
-      if (op.revision !== undefined)
+      if (op.revision !== undefined) {
+        // A pending change already holds the formatting before any of them.
+        const previousFormatting =
+          pending === undefined ? table.formatting : pending.previousFormatting;
         next.propertyChanges = [
           {
             type: "tablePropertyChange",
             info: stampInfo(op.revision),
-            ...(table.formatting === undefined
-              ? {}
-              : { previousFormatting: table.formatting }),
+            ...(previousFormatting === undefined ? {} : { previousFormatting }),
           },
         ];
+      }
       changed = Result.ok(next);
       break;
     }
@@ -1128,12 +1132,14 @@ export const applyTableEdit = (
         return mismatch(op, "Omitted grid slots require a topology operation.");
       const row = table.rows[location.rowIndex];
       if (!row) return mismatch(op, "The addressed row is absent.");
-      if (row.propertyChanges !== undefined)
+      // One record per element: a further change keeps what the first recorded.
+      if ((row.propertyChanges?.length ?? 0) > 1)
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
           message: "Resolve the existing row property revision.",
         });
+      const pending = row.propertyChanges?.at(0);
       const next = { ...row };
       const formatting = applyFormattingPatch(row.formatting, op.patch);
       if (!patchChanges(row.formatting, op.patch))
@@ -1144,16 +1150,18 @@ export const applyTableEdit = (
         });
       if (formatting === undefined) delete next.formatting;
       else next.formatting = authored(formatting);
-      if (op.revision !== undefined)
+      if (op.revision !== undefined) {
+        // A pending change already holds the formatting before any of them.
+        const previousFormatting =
+          pending === undefined ? row.formatting : pending.previousFormatting;
         next.propertyChanges = [
           {
             type: "tableRowPropertyChange",
             info: stampInfo(op.revision),
-            ...(row.formatting === undefined
-              ? {}
-              : { previousFormatting: row.formatting }),
+            ...(previousFormatting === undefined ? {} : { previousFormatting }),
           },
         ];
+      }
       const rows = [...table.rows];
       rows[location.rowIndex] = next;
       changed = Result.ok({ ...table, rows });
@@ -1169,12 +1177,14 @@ export const applyTableEdit = (
       const row = table.rows[location.rowIndex];
       const cell = row?.cells[location.cellIndex];
       if (!row || !cell) return mismatch(op, "The addressed cell is absent.");
-      if (cell.propertyChanges !== undefined)
+      // One record per element: a further change keeps what the first recorded.
+      if ((cell.propertyChanges?.length ?? 0) > 1)
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
           message: "Resolve the existing cell property revision.",
         });
+      const pending = cell.propertyChanges?.at(0);
       const next = { ...cell };
       const formatting = applyFormattingPatch(cell.formatting, op.patch);
       if (!patchChanges(cell.formatting, op.patch))
@@ -1185,16 +1195,18 @@ export const applyTableEdit = (
         });
       if (formatting === undefined) delete next.formatting;
       else next.formatting = authored(formatting);
-      if (op.revision !== undefined)
+      if (op.revision !== undefined) {
+        // A pending change already holds the formatting before any of them.
+        const previousFormatting =
+          pending === undefined ? cell.formatting : pending.previousFormatting;
         next.propertyChanges = [
           {
             type: "tableCellPropertyChange",
             info: stampInfo(op.revision),
-            ...(cell.formatting === undefined
-              ? {}
-              : { previousFormatting: cell.formatting }),
+            ...(previousFormatting === undefined ? {} : { previousFormatting }),
           },
         ];
+      }
       const rows = [...table.rows];
       const cells = [...row.cells];
       cells[location.cellIndex] = next;

@@ -67,6 +67,7 @@ import {
   canonicalContentPosition,
   canonicalSelectionRange,
 } from "../prosemirror/canonicalSelectionRange";
+import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
 import {
   collectPairedBookmarkIds,
   footnoteToProseDoc,
@@ -562,6 +563,18 @@ const unsupportedSeedReason = (
           paragraphs.push(block);
           continue;
         }
+        // Range markers may open or close between blocks; they hold no text.
+        if (
+          block.type === "commentRangeStart" ||
+          block.type === "commentRangeEnd" ||
+          block.type === "bookmarkStart" ||
+          block.type === "bookmarkEnd" ||
+          block.type === "moveFromRangeStart" ||
+          block.type === "moveFromRangeEnd" ||
+          block.type === "moveToRangeStart" ||
+          block.type === "moveToRangeEnd"
+        )
+          continue;
         if (block.type !== "table")
           return "Canonical sessions currently require paragraphs, tables and supported inline atoms.";
         for (const row of block.rows) {
@@ -676,6 +689,14 @@ const project = ({
   let failure: CanonicalSessionError | undefined;
   converted.value.descendants((node, offset, parent) => {
     if (failure !== undefined) return;
+    // A range opened between blocks covers the paragraphs after it.
+    if (node.type.name === "blockCommentRangeBoundary") {
+      const { marker } = expectCommentRangeBoundaryAttrs(node);
+      if (marker.type === "commentRangeStart")
+        commentContext.openIds.add(marker.id);
+      else commentContext.openIds.delete(marker.id);
+      return;
+    }
     if (node.type.name !== "paragraph") return;
     // A row's w:gridBefore and w:gridAfter render as filler cells whose empty
     // paragraph has no source; there is nothing in them to edit.

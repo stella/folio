@@ -21,11 +21,15 @@ import type { CommentMarkerSlot } from "./commentAnchorIndex";
 import { visitCommentMarkers } from "./commentAnchorIndex";
 import { InlineContentRemovals } from "./inlineContentRemovals";
 
-type MarkerSlot = Pick<CommentMarkerSlot, "content" | "index">;
+type MarkerSlot = CommentMarkerSlot;
 
 /**
  * Collapse each comment's range markers to its first start and its last end.
  * Answers how many markers were dropped.
+ *
+ * A start or an end between blocks counts as one of the range's markers, so a
+ * range that opens beside a content control keeps that start and loses the
+ * one its mark wrote at the front of the first paragraph.
  */
 export const joinCommentRangesAcrossParagraphs = (
   blocks: readonly BlockContent[],
@@ -33,29 +37,47 @@ export const joinCommentRangesAcrossParagraphs = (
   const startsById = new Map<number, MarkerSlot[]>();
   const endsById = new Map<number, MarkerSlot[]>();
 
-  visitCommentMarkers(blocks, ({ content, index, item }) => {
+  visitCommentMarkers(blocks, (slot) => {
+    const { item } = slot;
     if (item.type === "commentReference") {
       return;
     }
     const slotsById = item.type === "commentRangeStart" ? startsById : endsById;
     const slots = slotsById.get(item.id);
     if (slots) {
-      slots.push({ content, index });
+      slots.push(slot);
       return;
     }
-    slotsById.set(item.id, [{ content, index }]);
+    slotsById.set(item.id, [slot]);
   });
 
   const removals = new InlineContentRemovals();
+  const blockRemovals = new Map<BlockContent[], number[]>();
+  const remove = (slot: MarkerSlot): void => {
+    if (slot.level === "inline") {
+      removals.mark(slot);
+      return;
+    }
+    const indexes = blockRemovals.get(slot.content) ?? [];
+    indexes.push(slot.index);
+    blockRemovals.set(slot.content, indexes);
+  };
   for (const slots of startsById.values()) {
     for (const slot of slots.slice(1)) {
-      removals.mark(slot);
+      remove(slot);
     }
   }
   for (const slots of endsById.values()) {
     for (const slot of slots.slice(0, -1)) {
-      removals.mark(slot);
+      remove(slot);
     }
   }
-  return removals.apply();
+  let dropped = removals.apply();
+  for (const [content, indexes] of blockRemovals) {
+    for (const index of indexes.toSorted((first, second) => second - first)) {
+      content.splice(index, 1);
+      dropped += 1;
+    }
+  }
+  return dropped;
 };

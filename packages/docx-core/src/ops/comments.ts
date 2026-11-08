@@ -2,6 +2,7 @@
 import { Result } from "better-result";
 
 import {
+  type BlockContent,
   type Comment,
   COMMENT_PART_RELATIONSHIPS,
   type Document,
@@ -29,12 +30,14 @@ import {
   type InlineNode,
   isCommentAnchor,
   isEmptyRecord,
+  isParagraphContent,
   type LeafSpan,
   leafSpans,
   mergeAlike,
   rebuildNode,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
+import { isRangeBoundary } from "./offsets";
 import { applyFormattingPatch } from "./patch";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
@@ -93,25 +96,196 @@ const storyBodiesIncludingTextBoxes = (
   }
   return bodies;
 };
-type StoryAnchorSpan = LeafSpan & { story: OpStory; blockId: string };
+type StoryAnchorSpan = LeafSpan & {
+  story: OpStory;
+  blockId: string;
+  /** A range marker that stands between blocks rather than in a paragraph. */
+  betweenBlocks?: true;
+};
+type BlockCommentBoundary = Extract<
+  BlockContent,
+  { type: "commentRangeStart" } | { type: "commentRangeEnd" }
+>;
+
+/**
+ * A story's comment anchors in document order. A range marker between blocks
+ * is one of them, placed at the edge of the text beside it: a start at the
+ * front of the next paragraph, an end at the back of the one before.
+ */
+const storyAnchors = (
+  story: OpStory,
+  body: Pick<Document["package"]["document"], "content">,
+): StoryAnchorSpan[] => {
+  const anchors: StoryAnchorSpan[] = [];
+  let waiting: BlockCommentBoundary[] = [];
+  let previous: { blockId: string; end: Gap } | undefined;
+  const boundary = (
+    node: BlockCommentBoundary,
+    blockId: string,
+    gap: Gap,
+  ): StoryAnchorSpan => ({
+    node,
+    ancestors: [],
+    before: gap,
+    after: gap,
+    story,
+    blockId,
+    betweenBlocks: true,
+  });
+  const walk = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      switch (block.type) {
+        case "paragraph": {
+          const blockId = block.paraId ?? "";
+          const spans = leafSpans(block.content);
+          const start = spans.at(0)?.before ?? {
+            offset: 0,
+            zeroWidthBefore: 0,
+          };
+          for (const node of waiting)
+            anchors.push(boundary(node, blockId, start));
+          waiting = [];
+          for (const span of spans) {
+            if (isCommentAnchor(span.node))
+              anchors.push({ story, blockId, ...span });
+          }
+          previous = {
+            blockId,
+            end: spans.at(-1)?.after ?? { offset: 0, zeroWidthBefore: 0 },
+          };
+          break;
+        }
+        case "table":
+          for (const row of block.rows)
+            for (const cell of row.cells) walk(cell.content);
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          walk(block.content);
+          break;
+        case "commentRangeStart":
+          waiting.push(block);
+          break;
+        case "commentRangeEnd":
+          if (previous === undefined) waiting.push(block);
+          else anchors.push(boundary(block, previous.blockId, previous.end));
+          break;
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          break;
+        default: {
+          const unhandled: never = block;
+          return unhandled;
+        }
+      }
+    }
+  };
+  walk(body.content);
+  // Markers after the story's last paragraph close on its end.
+  for (const node of waiting)
+    anchors.push(
+      boundary(
+        node,
+        previous?.blockId ?? "",
+        previous?.end ?? { offset: 0, zeroWidthBefore: 0 },
+      ),
+    );
+  return anchors;
+};
+
 const anchorsIn = (document: Document) => {
   const anchors: StoryAnchorSpan[] = [];
   for (const story of documentStories(document)) {
     for (const body of storyBodiesIncludingTextBoxes(
       storyBody(document, story),
-    )) {
-      for (const { paragraph } of storyParagraphs(body)) {
-        for (const span of leafSpans(paragraph.content)) {
-          if (isCommentAnchor(span.node))
-            anchors.push({ story, blockId: paragraph.paraId ?? "", ...span });
-        }
-      }
-    }
+    ))
+      anchors.push(...storyAnchors(story, body));
   }
   return anchors;
 };
 
-/** Range coverage in source order; comment anchors themselves are only carriers. */
+/** A comment, the comments it replies to and the replies under it. */
+const threadIds = (document: Document, id: number): number[] => {
+  const comments = document.package.document.comments ?? [];
+  const parentOf = new Map(
+    comments.map((comment) => [comment.id, comment.parentId]),
+  );
+  let root = id;
+  const seen = new Set<number>();
+  while (!seen.has(root)) {
+    seen.add(root);
+    const parent = parentOf.get(root);
+    if (parent === undefined || !parentOf.has(parent)) break;
+    root = parent;
+  }
+  const thread = [root];
+  for (let index = 0; index < thread.length; index += 1) {
+    for (const comment of comments)
+      if (comment.parentId === thread[index] && !thread.includes(comment.id))
+        thread.push(comment.id);
+  }
+  return thread;
+};
+
+/**
+ * Comments with a range marker between blocks. Removing or replying to one
+ * would have to edit that block, which the comment operations do not do yet.
+ */
+const blockAnchoredCommentIds = (document: Document): Set<number> =>
+  new Set(
+    anchorsIn(document)
+      .filter(({ betweenBlocks }) => betweenBlocks === true)
+      .map(({ node }) => anchorId(node) ?? -1),
+  );
+
+/** Every leaf of a story with its comment range markers between blocks, in order. */
+const storyCoverageNodes = (
+  body: Pick<Document["package"]["document"], "content">,
+): { node: InlineNode }[] => {
+  const out: { node: InlineNode }[] = [];
+  const walk = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      switch (block.type) {
+        case "paragraph":
+          out.push(...leafSpans(block.content));
+          break;
+        case "table":
+          for (const row of block.rows)
+            for (const cell of row.cells) walk(cell.content);
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          walk(block.content);
+          break;
+        case "commentRangeStart":
+        case "commentRangeEnd":
+          out.push({ node: block });
+          break;
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          break;
+        default: {
+          const unhandled: never = block;
+          return unhandled;
+        }
+      }
+    }
+  };
+  walk(body.content);
+  return out;
+};
+
+/** Range coverage in source order; comment anchors and range boundaries are only carriers. */
 const coveredCommentIds = (document: Document): Set<number> => {
   const covered = new Set<number>();
   for (const story of documentStories(document)) {
@@ -119,19 +293,23 @@ const coveredCommentIds = (document: Document): Set<number> => {
       storyBody(document, story),
     )) {
       const open = new Set<number>();
-      for (const { paragraph } of storyParagraphs(body)) {
-        for (const { node } of leafSpans(paragraph.content)) {
-          if (node.type === "commentRangeStart") {
-            open.add(node.id);
-            continue;
-          }
-          if (node.type === "commentRangeEnd") {
-            open.delete(node.id);
-            continue;
-          }
-          if (isCommentAnchor(node)) continue;
-          for (const id of open) covered.add(id);
+      for (const { node } of storyCoverageNodes(body)) {
+        if (node.type === "commentRangeStart") {
+          open.add(node.id);
+          continue;
         }
+        if (node.type === "commentRangeEnd") {
+          open.delete(node.id);
+          continue;
+        }
+        // A bookmark or other range boundary inside the range marks a position,
+        // not content: a range left holding only those covers nothing.
+        if (
+          isCommentAnchor(node) ||
+          (isParagraphContent(node) && isRangeBoundary(node))
+        )
+          continue;
+        for (const id of open) covered.add(id);
       }
     }
   }
@@ -1132,6 +1310,21 @@ export const applyCommentOp = (
   )
     return fail(op, issue);
   const orphans = orphanRootCommentIds(document);
+  const blockAnchored = blockAnchoredCommentIds(document);
+  if (
+    blockAnchored.size > 0 &&
+    ((op.type === DOCUMENT_OP_TYPES.DELETE_COMMENT &&
+      threadIds(document, op.id).some((id) => blockAnchored.has(id))) ||
+      (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT &&
+        op.anchor?.kind === "reply" &&
+        threadIds(document, op.anchor.parentId).some((id) =>
+          blockAnchored.has(id),
+        )))
+  )
+    return fail(
+      op,
+      "A comment whose range opens or closes between blocks cannot be removed or replied to yet.",
+    );
   if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
     if (op.anchor?.kind === "reply" && orphans.has(op.anchor.parentId))
       return fail(

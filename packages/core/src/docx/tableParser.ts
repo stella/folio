@@ -76,7 +76,10 @@ import {
   sequencePositions,
   withPreservedChildren,
 } from "./containerChildren";
-import { BLOCK_MOVE_RANGE_MARKER_HANDLERS } from "./markupRangeMarker";
+import {
+  BLOCK_COMMENT_RANGE_MARKER_HANDLERS,
+  BLOCK_MOVE_RANGE_MARKER_HANDLERS,
+} from "./markupRangeMarker";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
@@ -1661,8 +1664,18 @@ export const CELL_CONTENT_HANDLERS: {
   // the union every block container shares.
   readonly sectPr: "capture";
   readonly altChunk: "capture";
-  readonly commentRangeEnd: "capture";
-  readonly commentRangeStart: "capture";
+  readonly commentRangeEnd: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
+  readonly commentRangeStart: (
+    child: XmlElement,
+    walk: {
+      modelled: BlockContent[];
+    },
+  ) => void;
   readonly customXmlDelRangeEnd: "capture";
   readonly customXmlDelRangeStart: "capture";
   readonly customXmlInsRangeEnd: "capture";
@@ -1843,13 +1856,12 @@ export const CELL_CONTENT_HANDLERS: {
     modelled.push(parseBookmarkEnd(child));
   },
   ...BLOCK_MOVE_RANGE_MARKER_HANDLERS,
+  ...BLOCK_COMMENT_RANGE_MARKER_HANDLERS,
   tcPr: CELL_PROPERTIES_OWNER,
   // Declared for `w:body`, not for a cell; the handler map is total over
   // the union every block container shares.
   sectPr: CAPTURE,
   altChunk: CAPTURE,
-  commentRangeEnd: CAPTURE,
-  commentRangeStart: CAPTURE,
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,

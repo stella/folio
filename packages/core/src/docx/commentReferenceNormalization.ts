@@ -35,8 +35,8 @@ type NormalizeCommentReferencesResult = {
 };
 
 type CommentRangeMarkerRef = {
-  content: ParagraphContent[];
-  index: number;
+  /** Absent for a marker between blocks, which a reference cannot replace. */
+  slot?: { content: ParagraphContent[]; index: number };
   id: number;
   type: "commentRangeStart" | "commentRangeEnd";
 };
@@ -65,7 +65,11 @@ export const normalizeCommentReferences = ({
         return;
       }
       if (isCommentRangeMarker(item)) {
-        rangeMarkers.push({ content, index, id: item.id, type: item.type });
+        rangeMarkers.push({
+          slot: { content, index },
+          id: item.id,
+          type: item.type,
+        });
       }
     });
   };
@@ -79,23 +83,62 @@ export const normalizeCommentReferences = ({
   };
 
   const normalizeBlock = (block: BlockContent): void => {
-    if (block.type === "paragraph") {
-      normalizeParagraph(block);
-      return;
+    switch (block.type) {
+      // A range may open or close between blocks; it pairs with the marker
+      // inside a paragraph across the block edge.
+      case "commentRangeStart":
+      case "commentRangeEnd":
+        if (validCommentIds.has(block.id)) {
+          rangeMarkers.push({ id: block.id, type: block.type });
+        }
+        return;
+      case "paragraph":
+        normalizeParagraph(block);
+        return;
+      case "table":
+        normalizeTable(block);
+        return;
+      case "blockSdt":
+      case "blockCustomXml":
+        normalizeBlocks(block.content);
+        return;
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        return;
+      default: {
+        const unhandled: never = block;
+        return unhandled;
+      }
     }
-    if (block.type === "table") {
-      normalizeTable(block);
-      return;
-    }
-    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
-      return;
-    }
-    normalizeBlocks(block.content);
   };
 
   const normalizeBlocks = (blocks: BlockContent[]): void => {
     for (const block of blocks) {
       normalizeBlock(block);
+    }
+    // A marker between blocks for a comment the package does not define names
+    // no comment folio can show, so it goes back to the bytes it was: kept in
+    // place, read by nobody.
+    for (const [index, block] of blocks.entries()) {
+      if (
+        (block.type === "commentRangeStart" ||
+          block.type === "commentRangeEnd") &&
+        !validCommentIds.has(block.id)
+      ) {
+        blocks[index] = {
+          type: "preservedBlock",
+          xml: `<w:${block.type} w:id="${String(block.id)}"${
+            block.displacedByCustomXml === undefined
+              ? ""
+              : ` w:displacedByCustomXml="${block.displacedByCustomXml}"`
+          }/>`,
+        };
+      }
     }
   };
 
@@ -144,8 +187,7 @@ const reanchorUnbalancedCommentRanges = (
     for (const marker of markers) {
       if (marker.type === "commentRangeStart") {
         if (openStart) {
-          reanchorCommentRangeMarker(marker);
-          reanchoredCount += 1;
+          if (reanchorCommentRangeMarker(marker)) reanchoredCount += 1;
           continue;
         }
         openStart = marker;
@@ -153,26 +195,27 @@ const reanchorUnbalancedCommentRanges = (
       }
 
       if (!openStart) {
-        reanchorCommentRangeMarker(marker);
-        reanchoredCount += 1;
+        if (reanchorCommentRangeMarker(marker)) reanchoredCount += 1;
         continue;
       }
       openStart = null;
     }
 
     if (openStart) {
-      reanchorCommentRangeMarker(openStart);
-      reanchoredCount += 1;
+      if (reanchorCommentRangeMarker(openStart)) reanchoredCount += 1;
     }
   }
   return reanchoredCount;
 };
 
-const reanchorCommentRangeMarker = (marker: CommentRangeMarkerRef): void => {
-  marker.content[marker.index] = {
+const reanchorCommentRangeMarker = (marker: CommentRangeMarkerRef): boolean => {
+  // A marker between blocks stays as written: no run there can hold a reference.
+  if (!marker.slot) return false;
+  marker.slot.content[marker.slot.index] = {
     type: "commentReference",
     id: marker.id,
   };
+  return true;
 };
 
 const isCommentMarker = (

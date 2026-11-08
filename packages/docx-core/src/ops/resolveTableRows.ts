@@ -40,6 +40,8 @@ const collectTables = (blocks: readonly BlockContent[], out: Table[]): void => {
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":

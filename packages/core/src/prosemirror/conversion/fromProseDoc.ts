@@ -1621,6 +1621,9 @@ function extractBlocks(
     } else if (node.type.name === "blockMoveRangeBoundary") {
       blocks.push({ ...expectMoveRangeBoundaryAttrs(node) });
       previousStandaloneTextBox = null;
+    } else if (node.type.name === "blockCommentRangeBoundary") {
+      blocks.push({ ...expectCommentRangeBoundaryAttrs(node).marker });
+      previousStandaloneTextBox = null;
     }
   });
 
@@ -6925,6 +6928,9 @@ function convertPMTableCell(
     } else if (contentNode.type.name === "blockMoveRangeBoundary") {
       content.push({ ...expectMoveRangeBoundaryAttrs(contentNode) });
       previousStandaloneTextBox = null;
+    } else if (contentNode.type.name === "blockCommentRangeBoundary") {
+      content.push({ ...expectCommentRangeBoundaryAttrs(contentNode).marker });
+      previousStandaloneTextBox = null;
     }
   });
 
@@ -7068,6 +7074,15 @@ export function tableCellAttrsToFormatting(
         delete result.textDirection;
       }
     }
+    // Off is the default, so a cell that stops wrapping states it and one that
+    // wraps again drops the element.
+    if (attrs.noWrap !== (orig.noWrap ?? undefined)) {
+      if (attrs.noWrap === true) {
+        result.noWrap = true;
+      } else {
+        delete result.noWrap;
+      }
+    }
 
     return Object.keys(result).length > 0 ? result : undefined;
   }
@@ -7082,7 +7097,8 @@ export function tableCellAttrsToFormatting(
     backgroundChanged ||
     attrs.borders ||
     attrs.margins ||
-    attrs.textDirection;
+    attrs.textDirection ||
+    attrs.noWrap === true;
 
   if (!hasFormatting) {
     return undefined;
@@ -7103,6 +7119,9 @@ export function tableCellAttrsToFormatting(
   }
   if (attrs.textDirection) {
     f.textDirection = attrs.textDirection;
+  }
+  if (attrs.noWrap === true) {
+    f.noWrap = true;
   }
   if (backgroundChanged) {
     f.shading = cellShadingFromAttrs(attrs);
@@ -7205,6 +7224,9 @@ function convertPMTextBox(
         break;
       case "blockMoveRangeBoundary":
         childBlocks.push({ ...expectMoveRangeBoundaryAttrs(child) });
+        break;
+      case "blockCommentRangeBoundary":
+        childBlocks.push({ ...expectCommentRangeBoundaryAttrs(child).marker });
         break;
       default:
         break;
