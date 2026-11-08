@@ -1,5 +1,6 @@
 import { panic, Result } from "better-result";
 import type { EditorState } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import {
   headingOutlineLevel,
@@ -62,6 +63,9 @@ const currentSectionEndpoint = (paragraph: Paragraph) => {
     return { type: "undefined" } as const;
   return { type: "omitted" } as const;
 };
+
+export const CELL_SELECTION_PLACEMENT_REFUSAL =
+  "A note or table of contents goes at a caret, not over selected cells.";
 
 const refuse = (message: string) =>
   Result.err(
@@ -300,6 +304,18 @@ export const prepareCanonicalCommands = (
   state: EditorState,
   commands: readonly CanonicalCommandIntent[],
 ): Result<CanonicalCommit, CanonicalSessionError> => {
+  // A note reference or a table of contents goes at one caret; selected
+  // cells have none.
+  if (
+    state.selection instanceof CellSelection &&
+    commands.some(
+      ({ type }) =>
+        type === "generateTOC" ||
+        type === "insertNote" ||
+        type === "deleteNote",
+    )
+  )
+    return refuse(CELL_SELECTION_PLACEMENT_REFUSAL);
   const intents: EditorIntent[] = [];
   const sectionCommands = commands.filter(
     (command) =>

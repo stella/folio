@@ -14,6 +14,7 @@ import {
   EditorState as PMEditorState,
   Plugin as PMPlugin,
 } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 import type { DirectEditorProps } from "prosemirror-view";
 import { EditorView } from "prosemirror-view";
 import type * as YProseMirror from "y-prosemirror";
@@ -869,6 +870,50 @@ export const createHiddenEditorManager = (
       syncCanonicalMode();
       const session = editorSession.session;
       const state = view.state;
+      if (
+        state.selection instanceof CellSelection &&
+        (type === "split" ||
+          type === "tab" ||
+          type === "lineBreak" ||
+          type === "pageBreak")
+      ) {
+        const overCells = session.prepareCellSelectionStructure(state, (at) =>
+          type === "split"
+            ? {
+                // A paragraph break: two empty paragraphs whose open ends
+                // join the halves of the first cell's paragraph.
+                type: "replaceFragment",
+                from: at,
+                to: at,
+                paragraphs: [
+                  { type: "paragraph", content: [] },
+                  { type: "paragraph", content: [] },
+                ],
+                openStart: 1,
+                openEnd: 1,
+              }
+            : {
+                type: "insertAtom",
+                from: at,
+                to: at,
+                atom:
+                  type === "tab"
+                    ? { type: "tab" }
+                    : {
+                        type: "break",
+                        breakType:
+                          type === "pageBreak" ? "page" : "textWrapping",
+                      },
+              },
+        );
+        if (overCells.isErr()) {
+          if (overCells.error.reason !== "noChange")
+            refuse(overCells.error.message, overCells.error.ground);
+          return;
+        }
+        publishCommit(overCells.value);
+        return;
+      }
       const selection = session.projection.selectionAt(state);
       if (selection.isErr()) {
         refuse(selection.error.message, selection.error.ground);

@@ -1538,11 +1538,10 @@ class CanonicalSession {
         return refuse(
           "A replacement range cannot partially address a cell selection.",
         );
-      if (text.length > 0)
-        return refuse(
-          "Replacing a cell selection requires a per-cell replacement.",
-        );
+      // Typing over selected cells clears each of them and writes the text
+      // into the first, as the editor does.
       const intents: EditorIntent[] = [];
+      let first = true;
       for (const range of canonicalCellSelectionRanges(state.selection)) {
         const edges = projection.rangeEdgesAt(range.from, range.to);
         const cellFrom = projection.inputAddressAt(range.from, edges.start);
@@ -1553,8 +1552,9 @@ class CanonicalSession {
           type: "replaceText",
           from: cellFrom.value,
           to: cellTo.value,
-          text: "",
+          text: first ? text : "",
         });
+        first = false;
       }
       return this.prepareIntents(state, { intents, semantic });
     }
@@ -1703,6 +1703,52 @@ class CanonicalSession {
         this.undone.length = 0;
       },
     });
+  }
+
+  /**
+   * A structural edit over selected cells: each selected cell is cleared and
+   * the edit happens at the start of the first, as the editor's own command
+   * does over a cell selection. One commit, so one undo step.
+   */
+  prepareCellSelectionStructure(
+    state: EditorState,
+    structure: (at: TextPosition) => EditorIntent,
+    {
+      resourceOps = [],
+      semantic = "structure",
+    }: {
+      resourceOps?: readonly DocumentOp[];
+      semantic?: CanonicalInputSemantic;
+    } = {},
+  ): Result<CanonicalCommit, CanonicalSessionError> {
+    if (!(state.selection instanceof CellSelection))
+      return refuse("The structural edit needs a cell selection.");
+    const projected = this.projectStory(OP_STORIES.MAIN);
+    if (projected.isErr()) return projected;
+    const projection = projected.value;
+    const intents: EditorIntent[] = [];
+    let first: TextPosition | undefined;
+    for (const range of canonicalCellSelectionRanges(state.selection)) {
+      const edges = projection.rangeEdgesAt(range.from, range.to);
+      const cellFrom = projection.inputAddressAt(range.from, edges.start);
+      if (cellFrom.isErr()) return cellFrom;
+      const cellTo = projection.inputAddressAt(range.to, edges.end);
+      if (cellTo.isErr()) return cellTo;
+      first ??= cellFrom.value;
+      if (
+        cellFrom.value.blockId !== cellTo.value.blockId ||
+        cellFrom.value.offset !== cellTo.value.offset
+      )
+        intents.push({
+          type: "replaceText",
+          from: cellFrom.value,
+          to: cellTo.value,
+          text: "",
+        });
+    }
+    if (first === undefined) return refuse("The cell selection is empty.");
+    intents.push(structure({ ...first, offset: 0, zeroWidthBefore: 0 }));
+    return this.prepareIntents(state, { intents, resourceOps, semantic });
   }
 
   prepareIntent(
