@@ -109,3 +109,61 @@ describe("pending suggestions in the canonical projection", () => {
     ).toEqual(["s1", "s2"]);
   });
 });
+
+describe("resolving a pending suggestion in the canonical session", () => {
+  const suggested = () =>
+    createCanonicalSession(
+      documentOf([
+        run("Hello"),
+        { type: "insertion", info: info(1, "s1"), content: [run(" there")] },
+        { type: "insertion", info: info(3), content: [run("!")] },
+      ]),
+    ).unwrap();
+  const infosOf = (session: ReturnType<typeof suggested>) => {
+    const [paragraph] = session.document.package.document.content;
+    return paragraph?.type === "paragraph"
+      ? paragraph.content.flatMap((item) =>
+          item.type === "insertion" ? [item.info] : [],
+        )
+      : [];
+  };
+  const resolve = (
+    session: ReturnType<typeof suggested>,
+    resolution: "accept" | "reject",
+  ) => {
+    const state = EditorState.create({ schema, doc: session.projection.doc });
+    const commit = session
+      .prepareSuggestion(state, {
+        suggestionId: "s1",
+        resolution,
+        author: "Adopter",
+        date: "2026-02-02T00:00:00Z",
+      })
+      .unwrap();
+    expect(commit.publish().isOk()).toBe(true);
+    return state.apply(commit.transaction);
+  };
+
+  test("accepting adopts it as an ordinary tracked change, and undoes", () => {
+    const session = suggested();
+    const before = session.document;
+    const after = resolve(session, "accept");
+    expect(infosOf(session)).toEqual([
+      { id: 1, author: "Adopter", date: "2026-02-02T00:00:00Z" },
+      info(3),
+    ]);
+    expect(
+      getSuggestions(
+        EditorState.create({ schema, doc: session.projection.doc }),
+      ),
+    ).toEqual([]);
+    expect(session.prepareUndo(after).unwrap().publish().isOk()).toBe(true);
+    expect(session.document).toEqual(before);
+  });
+
+  test("rejecting removes its revisions and keeps ordinary tracked changes", () => {
+    const session = suggested();
+    resolve(session, "reject");
+    expect(infosOf(session)).toEqual([info(3)]);
+  });
+});

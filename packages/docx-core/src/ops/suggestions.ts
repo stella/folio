@@ -1,9 +1,10 @@
 import { Result } from "better-result";
 
-import type { Document } from "../model/document";
+import type { Document, TrackedChangeInfo } from "../model/document";
 import { applyDocumentOp } from "./apply";
 import type { DocumentOpRefusal } from "./refusal";
 import { documentStories, storyBody } from "./stories";
+import type { OpStory } from "./types";
 import { DOCUMENT_OP_TYPES, REVISION_DECISIONS } from "./types";
 
 /**
@@ -52,4 +53,36 @@ export const withoutPendingSuggestions = (
     current = rejected.value.document;
   }
   return Result.ok(current);
+};
+
+/**
+ * The revisions of one pending suggestion in a story, one info per revision
+ * id, in document order.
+ */
+export const suggestionRevisionInfos = (
+  document: Document,
+  story: OpStory,
+  suggestionId: string,
+): TrackedChangeInfo[] => {
+  const out = new Map<number, TrackedChangeInfo>();
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    const info = record["info"] as Partial<TrackedChangeInfo> | undefined;
+    if (
+      typeof info === "object" &&
+      info !== null &&
+      info.suggestionId === suggestionId &&
+      typeof info.id === "number" &&
+      !out.has(info.id)
+    )
+      out.set(info.id, info as TrackedChangeInfo);
+    for (const child of Object.values(record)) visit(child);
+  };
+  visit(storyBody(document, story).content);
+  return [...out.values()];
 };

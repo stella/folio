@@ -48,6 +48,7 @@ import type {
   TableRow,
   TableRowFormatting,
   TextFormatting,
+  TrackedChangeInfo,
 } from "../model/document";
 import type {
   AbstractNumbering,
@@ -283,6 +284,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
   readonly REPLACE_INLINE: "replaceInline";
   readonly RESOLVE_REVISION: "resolveRevision";
+  readonly SET_REVISION_INFO: "setRevisionInfo";
   readonly INSERT_TABLE: "insertTable";
   readonly DELETE_TABLE: "deleteTable";
   readonly SET_CONTAINER_BLOCKS: "setContainerBlocks";
@@ -329,6 +331,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   SET_PARAGRAPH_REVIEW: "setParagraphReview",
   REPLACE_INLINE: "replaceInline",
   RESOLVE_REVISION: "resolveRevision",
+  SET_REVISION_INFO: "setRevisionInfo",
   INSERT_TABLE: "insertTable",
   DELETE_TABLE: "deleteTable",
   SET_CONTAINER_BLOCKS: "setContainerBlocks",
@@ -782,6 +785,19 @@ export type ResolveRevisionOp = {
 };
 
 /**
+ * Rewrite the metadata of the revisions with these ids, keeping their content
+ * and their ids: every record carrying an id takes the info given for it.
+ * Adopting a pending suggestion as ordinary tracked changes is this, with the
+ * suggestion id dropped and the adopter's attribution. Its inverse writes the
+ * previous metadata back.
+ */
+export type SetRevisionInfoOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_REVISION_INFO;
+  story: OpStory;
+  infos: readonly TrackedChangeInfo[];
+};
+
+/**
  * Insert a row at a zero-based index in the table holding `blockId`.
  * The paragraph reference selects the innermost table containing it.
  * With `revision`, the row, its cell content and
@@ -1199,6 +1215,7 @@ export type DocumentOp = (
   | SetParagraphReviewOp
   | ReplaceInlineOp
   | ResolveRevisionOp
+  | SetRevisionInfoOp
   | InsertRowOp
   | DeleteRowOp
   | SetTableRowsOp

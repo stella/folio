@@ -467,6 +467,7 @@ const operationFields = {
   setRowProps: undefined,
   setTableProps: undefined,
   setTable: undefined,
+  setRevisionInfo: undefined,
 } satisfies Record<DocumentOpType, Fields | undefined>;
 
 export const BATCH_WIRE_OP_TYPES: readonly string[] = Object.freeze(
