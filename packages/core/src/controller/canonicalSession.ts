@@ -44,6 +44,7 @@ import {
   packageParagraphIds,
   paragraphIdsIn,
   sameStory,
+  suggestionRevisionInfos,
   survivingComments,
   type TextPosition,
   type TouchedBlocks,
@@ -202,6 +203,8 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+    // A row's or cell's own revision sits outside every paragraph too.
+    case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return true;
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
@@ -2076,6 +2079,55 @@ class CanonicalSession {
     return prepared.isOk() && lockHeld.length > 0
       ? Result.ok({ ...prepared.value, lockHeld })
       : prepared;
+  }
+
+  /**
+   * Accept or reject one pending suggestion. Rejecting it rejects its
+   * revisions. Accepting it adopts them as ordinary tracked changes by
+   * `author`, keeping their ids, as the editor does: the change then waits
+   * for review like any other.
+   */
+  prepareSuggestion(
+    state: EditorState,
+    {
+      suggestionId,
+      resolution,
+      author,
+      date,
+    }: {
+      suggestionId: string;
+      resolution: "accept" | "reject";
+      author: string;
+      date: string;
+    },
+  ): Result<CanonicalCommit, CanonicalSessionError> {
+    const infos = suggestionRevisionInfos(
+      this.currentDocument,
+      OP_STORIES.MAIN,
+      suggestionId,
+    );
+    if (infos.length === 0)
+      return noChange(`No pending suggestion ${suggestionId}.`);
+    if (resolution === "reject")
+      return this.prepareResolve(state, {
+        revisionIds: infos.map(({ id }) => id),
+        resolution: "reject",
+      });
+    const checked = this.checkState(state);
+    if (checked.isErr()) return checked;
+    const selection = this.projection.selectionAt(state);
+    if (selection.isErr()) return selection;
+    return this.prepareJournalledOps({
+      state,
+      ops: [
+        {
+          type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+          story: OP_STORIES.MAIN,
+          infos: infos.map(({ id }) => ({ id, author, date })),
+        },
+      ],
+      postSelection: selection.value,
+    });
   }
 
   projectStory(

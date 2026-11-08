@@ -503,6 +503,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         })),
       };
     }
+    const activeSuggestionIds = new Set(
+      getSuggestions(view.state).map((s) => s.suggestionId),
+    );
     const canonical = opts.editor.applyCanonicalDocumentOperations({
       undefinedReferences,
       snapshot,
@@ -513,10 +516,20 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       },
       author: operationAuthor,
     });
-    if (canonical) return canonical;
-    const activeSuggestionIds = new Set(
-      getSuggestions(view.state).map((s) => s.suggestionId),
-    );
+    if (canonical) {
+      // A canonical session's suggestions are pending suggestions the host
+      // can export and restore like any other.
+      if (mode === "suggested" && canonical.status === "committed")
+        pendingSuggestionRegistry.recordApplied({
+          snapshot,
+          story: { type: "main" },
+          operations,
+          applied: canonical.applied,
+          author: operationAuthor,
+          activeSuggestionIds,
+        });
+      return canonical;
+    }
     // Through the document-operation applier, like the batch path, so a
     // result the save-time check refuses never reaches the editor.
     const { applied, skipped } = applyWithStagedOperationComments({
@@ -637,13 +650,29 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           undoHandle: null,
         };
       }
+      const activeBeforeCanonical = new Set(
+        getSuggestions(view.state).map((s) => s.suggestionId),
+      );
       const canonical = opts.editor.applyCanonicalDocumentOperations({
         undefinedReferences,
         snapshot,
         batch,
         author: operationAuthor,
       });
-      if (canonical) return canonical;
+      if (canonical) {
+        // A canonical session's suggestions are pending suggestions the host
+        // can export and restore like any other.
+        if (batch.mode === "suggested" && canonical.status === "committed")
+          pendingSuggestionRegistry.recordApplied({
+            snapshot,
+            story: { type: "main" },
+            operations: batch.operations,
+            applied: canonical.applied,
+            author: operationAuthor,
+            activeSuggestionIds: activeBeforeCanonical,
+          });
+        return canonical;
+      }
       const existingUndoEntry = documentOperationUndoEntries.at(-1);
       if (
         existingUndoEntry &&
@@ -953,9 +982,16 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const appliedAs =
         getSuggestions(view.state).find((s) => s.suggestionId === suggestionId)
           ?.appliedAs ?? null;
-      const accepted = acceptSuggestion(suggestionId, {
-        author: options?.author ?? opts.author(),
-      })(view.state, view.dispatch);
+      // A canonical session journals the acceptance itself.
+      const accepted = opts.editor.getCanonicalDocument()
+        ? opts.editor.resolveCanonicalSuggestion(
+            suggestionId,
+            "accept",
+            options?.author ?? opts.author(),
+          )
+        : acceptSuggestion(suggestionId, {
+            author: options?.author ?? opts.author(),
+          })(view.state, view.dispatch);
       return { accepted, appliedAs: accepted ? appliedAs : null };
     },
     rejectSuggestion: (suggestionId) => {
@@ -963,6 +999,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!view) {
         return false;
       }
+      if (opts.editor.getCanonicalDocument())
+        return opts.editor.resolveCanonicalSuggestion(
+          suggestionId,
+          "reject",
+          opts.author(),
+        );
       return rejectSuggestion(suggestionId)(view.state, view.dispatch);
     },
     scrollToSuggestion: (suggestionId) => {

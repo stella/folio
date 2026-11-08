@@ -20,7 +20,6 @@ export const CANONICAL_GAP = {
   documentOperations: "pm-document-operations",
   aiSnapshots: "pm-ai-snapshots",
   publicComments: "publicOps.comments",
-  publicSuggestedMode: "publicOps.suggestedMode",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   publicTableStructure: "publicOps.tableStructure",
   publicPendingParagraphMarkProperties:
@@ -208,13 +207,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Canonical public comments compile to semantic operations; default sessions retain PM comments.";
   };
-  readonly "publicOps.suggestedMode": {
-    readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public suggested mode refuses in canonical sessions until pending suggestions use the journal.";
-  };
   readonly "publicOps.unsupportedInline": {
     readonly owner: "document-operations";
     readonly defaultSessionMutation: "pm-public-operations";
@@ -384,14 +376,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Canonical public comments compile to semantic operations; default sessions retain PM comments.",
-  },
-  [CANONICAL_GAP.publicSuggestedMode]: {
-    owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Public suggested mode refuses in canonical sessions until pending suggestions use the journal.",
   },
   [CANONICAL_GAP.publicUnsupportedInline]: {
     owner: "document-operations",
