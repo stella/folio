@@ -400,7 +400,34 @@ describe("structural selective save through the editor pipeline", () => {
 });
 
 describe("structural save fallback boundaries", () => {
-  test("cell paragraph insertion falls back", async () => {
+  /** The saved table's rows, as the text of each cell's paragraphs. */
+  const savedRows = async (saved: ArrayBuffer | null) => {
+    if (saved === null) return panic("The selective save refused.");
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    const table = reopened.package.document.content.find(
+      (block) => block.type === "table",
+    );
+    if (table?.type !== "table") return panic("The table is absent.");
+    return table.rows.map((row) =>
+      row.cells.map((cell) =>
+        cell.content.map((block) =>
+          block.type === "paragraph"
+            ? block.content
+                .flatMap((item) =>
+                  item.type === "run"
+                    ? item.content.flatMap((leaf) =>
+                        leaf.type === "text" ? [leaf.text] : [],
+                      )
+                    : [],
+                )
+                .join("")
+            : block.type,
+        ),
+      ),
+    );
+  };
+
+  test("cell paragraph insertion writes the edited table whole", async () => {
     const buffer = await packageBytes(documentXml(BODY + TABLE));
     const { base, state } = await openEditor(buffer);
     let cellParagraphPosition: number | undefined;
@@ -414,10 +441,13 @@ describe("structural save fallback boundaries", () => {
     });
     if (cellParagraphPosition === undefined) panic("Expected cell paragraph");
     const edited = state.apply(state.tr.split(cellParagraphPosition + 5));
-    expect(await saveEditor({ base, state: edited, buffer })).toBeNull();
+    const rows = await savedRows(
+      await saveEditor({ base, state: edited, buffer }),
+    );
+    expect(rows.flat().some((cell) => cell.length === 2)).toBe(true);
   });
 
-  test("table row insertion falls back", async () => {
+  test("table row insertion writes the edited table whole", async () => {
     const buffer = await packageBytes(documentXml(BODY + TABLE));
     const { base, state } = await openEditor(buffer);
     let row: { node: PMNode; position: number } | undefined;
@@ -428,7 +458,11 @@ describe("structural save fallback boundaries", () => {
     const edited = state.apply(
       state.tr.insert(row.position + row.node.nodeSize, row.node),
     );
-    expect(await saveEditor({ base, state: edited, buffer })).toBeNull();
+    const before = await savedRows(buffer);
+    const rows = await savedRows(
+      await saveEditor({ base, state: edited, buffer }),
+    );
+    expect(rows).toEqual([...before, before.at(-1)]);
   });
 
   test("paragraph section endpoint deletion falls back", async () => {

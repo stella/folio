@@ -1,7 +1,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
+import { isInTable, selectedRect, type TableRect } from "prosemirror-tables";
 
-import type { FormattingPatch } from "@stll/docx-core/ops";
+import { DOCUMENT_OP_TYPES, type FormattingPatch } from "@stll/docx-core/ops";
 
 import {
   expectTableAttrs,
@@ -129,6 +130,7 @@ export const lowerTableAttributeCommand = (
     return undefined;
   const changed = transaction;
   const targets: CanonicalTableFormatTarget[] = [];
+  const grids: CanonicalCommandIntent[] = [];
   const expected = state.tr;
   let lowerable = true;
   state.doc.descendants((node, position) => {
@@ -150,6 +152,14 @@ export const lowerTableAttributeCommand = (
     if (JSON.stringify(after.attrs) === JSON.stringify(node.attrs)) return true;
     expected.setNodeMarkup(position, undefined, after.attrs, node.marks);
     const at = firstParagraphPosition(node, position);
+    if (node.type.name === "table") {
+      const grid = gridEdit(node, after, at);
+      if (grid === null) {
+        lowerable = false;
+        return false;
+      }
+      if (grid !== undefined) grids.push(grid);
+    }
     const target = targetBetween(SCOPES[node.type.name], node, after, at ?? 0);
     if (Object.keys(target.patch).length === 0) return true;
     if (at === undefined) {
@@ -161,7 +171,32 @@ export const lowerTableAttributeCommand = (
   });
   // Attribute changes alone must account for the whole command.
   if (!lowerable || !expected.doc.eq(changed.doc)) return undefined;
-  return targets.length === 0 ? [] : [{ type: "formatTable", targets }];
+  return [
+    ...grids,
+    ...(targets.length === 0
+      ? []
+      : [{ type: "formatTable", targets } as const]),
+  ];
+};
+
+/**
+ * The grid a command left on a table, as a grid edit: `undefined` when the
+ * grid is unchanged, `null` when the change cannot be written as a grid.
+ */
+const gridEdit = (
+  before: PMNode,
+  after: PMNode,
+  at: number | undefined,
+): CanonicalCommandIntent | null | undefined => {
+  const was = expectTableAttrs(before).columnWidths;
+  const is = expectTableAttrs(after).columnWidths;
+  if (JSON.stringify(was) === JSON.stringify(is)) return undefined;
+  if (at === undefined || is === undefined || is.length === 0) return null;
+  return {
+    type: "editTable",
+    at,
+    edit: { type: DOCUMENT_OP_TYPES.SET_TABLE_GRID, columnWidths: [...is] },
+  };
 };
 
 /** Register a command whose whole effect is table, row and cell attributes. */
@@ -169,3 +204,137 @@ export const withCanonicalTableAttributeCommand = (command: Command): Command =>
   withCanonicalCommand(command, (state) =>
     lowerTableAttributeCommand(command, state),
   );
+
+/** A paragraph of the table's own, outside the given columns, that addresses it. */
+const tableAnchor = (
+  rect: TableRect,
+  avoid: { left: number; right: number } = { left: 0, right: 0 },
+): number | undefined => {
+  const { map, table, tableStart } = rect;
+  for (let row = 0; row < map.height; row += 1)
+    for (let column = 0; column < map.width; column += 1) {
+      if (column >= avoid.left && column < avoid.right) continue;
+      const offset = map.map[row * map.width + column];
+      if (offset === undefined) continue;
+      const cell = table.nodeAt(offset);
+      // A row's gridBefore and gridAfter fillers have no source paragraph.
+      if (cell === null || cell.attrs["_omittedGridSlot"] != null) continue;
+      const cellRect = map.findCell(offset);
+      if (cellRect.left < avoid.right && cellRect.right > avoid.left) continue;
+      const at = firstParagraphPosition(cell, tableStart + offset);
+      if (at !== undefined) return at;
+    }
+  return undefined;
+};
+
+type StructureLowering = (
+  rect: TableRect,
+  state: EditorState,
+  changed: Transaction,
+) => readonly CanonicalCommandIntent[] | undefined;
+
+/**
+ * Register a command that changes a table's columns or cells, lowered from the
+ * selection it acts on to the engine's table edit. The command still runs
+ * against the state first: one it would refuse has no lowering.
+ */
+const withCanonicalTableStructureCommand = (
+  command: Command,
+  lower: StructureLowering,
+): Command =>
+  withCanonicalCommand(command, (state) => {
+    if (!isInTable(state)) return undefined;
+    let transaction: Transaction | undefined;
+    if (
+      !command(state, (dispatched) => {
+        transaction = dispatched;
+      }) ||
+      transaction === undefined
+    )
+      return undefined;
+    return lower(selectedRect(state), state, transaction);
+  });
+
+/** The width the command gave the column it inserted, from the table it left. */
+const insertedWidth = (
+  rect: TableRect,
+  changed: Transaction,
+  column: number,
+): number | undefined => {
+  const after = changed.doc.nodeAt(
+    changed.mapping.map(rect.tableStart - 1, -1),
+  );
+  if (after === null || after.type.name !== "table") return undefined;
+  return expectTableAttrs(after).columnWidths?.[column];
+};
+
+const insertColumn =
+  (side: "left" | "right"): StructureLowering =>
+  (rect, _state, changed) => {
+    const column = side === "left" ? rect.left : rect.right;
+    const width = insertedWidth(rect, changed, column);
+    const at = tableAnchor(rect);
+    if (width === undefined || at === undefined) return undefined;
+    return [
+      {
+        type: "editTable",
+        at,
+        edit: { type: DOCUMENT_OP_TYPES.INSERT_COLUMN, column, width },
+      },
+    ];
+  };
+
+/** Each selected column, from the right so the indices still hold. */
+const deleteColumns: StructureLowering = (rect) => {
+  const at = tableAnchor(rect, { left: rect.left, right: rect.right });
+  if (at === undefined) return undefined;
+  const intents: CanonicalCommandIntent[] = [];
+  for (let column = rect.right - 1; column >= rect.left; column -= 1)
+    intents.push({
+      type: "editTable",
+      at,
+      edit: { type: DOCUMENT_OP_TYPES.DELETE_COLUMN, column },
+    });
+  return intents;
+};
+
+const mergeCells: StructureLowering = (rect) => {
+  const at = tableAnchor(rect);
+  if (at === undefined) return undefined;
+  return [
+    {
+      type: "editTable",
+      at,
+      edit: {
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+      },
+    },
+  ];
+};
+
+/** The cell at the selection's top left, addressed by its own paragraph. */
+const splitCell: StructureLowering = (rect) => {
+  const offset = rect.map.map[rect.top * rect.map.width + rect.left];
+  const cell = offset === undefined ? null : rect.table.nodeAt(offset);
+  if (offset === undefined || cell === null) return undefined;
+  const at = firstParagraphPosition(cell, rect.tableStart + offset);
+  if (at === undefined) return undefined;
+  return [
+    { type: "editTable", at, edit: { type: DOCUMENT_OP_TYPES.SPLIT_CELL } },
+  ];
+};
+
+export const withCanonicalColumnInsertion = (
+  command: Command,
+  side: "left" | "right",
+): Command => withCanonicalTableStructureCommand(command, insertColumn(side));
+export const withCanonicalColumnDeletion = (command: Command): Command =>
+  withCanonicalTableStructureCommand(command, deleteColumns);
+export const withCanonicalCellMerge = (command: Command): Command =>
+  withCanonicalTableStructureCommand(command, mergeCells);
+export const withCanonicalCellSplit = (command: Command): Command =>
+  withCanonicalTableStructureCommand(command, splitCell);

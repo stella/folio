@@ -21,6 +21,11 @@ const REFUSAL_ROWS = {
     message:
       "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
   },
+  trackedColumnDeletion: {
+    id: CANONICAL_GAP.commands,
+    gap: CANONICAL_GAP.commands,
+    message: "A suggested column deletion is unavailable in this session.",
+  },
   fieldProjection: {
     id: CANONICAL_GAP.storyContentProjection,
     gap: CANONICAL_GAP.storyContentProjection,
@@ -37,16 +42,10 @@ const COMMAND_REFUSAL_CONTRACTS = {
       "command:addRowAbove",
       "command:addRowBelow",
       "command:deleteRow",
-      "command:addColumnLeft",
-      "command:addColumnRight",
-      "command:deleteColumn",
       "command:deleteTable",
       "command:selectTable",
       "command:selectRow",
       "command:selectColumn",
-      "command:mergeCells",
-      "command:splitCell",
-      "command:distributeColumns",
       "command:autoFitContents",
       "host:addComment",
       "host:acceptChange",
@@ -142,6 +141,10 @@ export const canonicalConformanceRefusalRows = (
       canonicalRefusalCaseId(candidate) === canonicalRefusalCaseId(key),
   );
   if (projection) return [STORY_PROJECTION_ROWS[projection.shape]];
+  if (key.operation === "command:deleteColumn")
+    return key.mode === "suggesting" && key.shape === "tables"
+      ? [REFUSAL_ROWS.trackedColumnDeletion]
+      : [];
   if (key.operation === "command:generateTOC")
     return key.mode === "suggesting" &&
       TOC_HEADING_SHAPES.some((shape) => shape === key.shape)

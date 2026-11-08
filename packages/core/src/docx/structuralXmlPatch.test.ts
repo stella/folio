@@ -83,7 +83,7 @@ test("refuses moved, duplicate, missing, or reserved source identities", () => {
   ).toBeNull();
 });
 
-test("retains identical tables as barriers but refuses crossing or editing them", () => {
+test("retains identical tables as barriers, writes an edited table whole, and refuses crossing them", () => {
   const table = `<w:tbl><w:tr><w:tc>${paragraph(9)}</w:tc></w:tr></w:tbl>`;
   const original = wrap(paragraph(1) + table + paragraph(2));
   const patch = (body: string) =>
@@ -96,9 +96,17 @@ test("retains identical tables as barriers but refuses crossing or editing them"
     table,
   );
   expect(patch(paragraph(2) + table + paragraph(1))).toBeNull();
-  expect(
-    patch(paragraph(1) + table.replace("Paragraph 9", "edited") + paragraph(2)),
-  ).toBeNull();
+  // An edited table is written from the serialized part, in its place.
+  const edited = patch(
+    paragraph(1) + table.replace("Paragraph 9", "edited") + paragraph(2),
+  );
+  expect(edited).toContain("edited");
+  expect(edited).not.toContain("Paragraph 9");
+  expect(edited?.indexOf("Paragraph 1")).toBeLessThan(
+    edited?.indexOf("edited") ?? -1,
+  );
+  // A table added or removed still takes the full write.
+  expect(patch(paragraph(1) + paragraph(2))).toBeNull();
   expect(patch(paragraph(1) + table + paragraph(9))).toBeNull();
 });
 
