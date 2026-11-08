@@ -37,7 +37,7 @@ const FOOTNOTE_SEPARATORS =
   '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
 
 // The normal note carries the in-note `w:footnoteRef` auto-number mark that
-// real Word documents emit; the byte-exact assertions below confirm an unedited
+// authored documents emit; the byte-exact assertions below confirm an unedited
 // note keeps it.
 const footnotesXml = `${XML_DECLARATION}
 <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">${FOOTNOTE_SEPARATORS}<w:footnote w:id="1"><w:p w14:paraId="${FOOTNOTE_PARA_ID}"><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve">${ORIGINAL_FOOTNOTE_TEXT}</w:t></w:r></w:p></w:footnote></w:footnotes>`;
