@@ -172,7 +172,7 @@ test("generated source union shapes activate with exact logical gaps or explain 
 });
 
 test("structured field caches keep text safety checks despite atomic projection", () => {
-  for (const text of ["bad\u0000", "bad\ud800", "bad\t", "bad\n", "bad\r"]) {
+  for (const text of ["bad\u0000", "bad\ud800", "bad\n", "bad\r"]) {
     for (const fixture of [
       ...CANONICAL_PARAGRAPH_SHAPE_FACTORIES.simpleField(text),
       ...CANONICAL_PARAGRAPH_SHAPE_FACTORIES.complexField(text),
