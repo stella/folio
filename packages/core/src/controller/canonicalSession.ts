@@ -101,6 +101,7 @@ import {
   canonicalInlineSourceIssue,
   canonicalNativeCells,
   type CanonicalSeamExtent,
+  InlineProjectionCache,
   projectCanonicalInline,
 } from "./canonicalInlineProjection";
 import { normalizeCanonicalListRendering } from "./canonicalListRendering";
@@ -699,12 +700,25 @@ const unsupportedSeedReason = (
   return null;
 };
 
+/** A session's projection pieces, reused by every projection of its stories. */
+type StoryProjectionCaches = {
+  /** The main story's converted blocks. */
+  blocks: ProjectionBlockCache;
+  /** Each paragraph's gaps, by its source and editor node. */
+  inline: InlineProjectionCache;
+};
+
+export const newStoryProjectionCaches = (): StoryProjectionCaches => ({
+  blocks: new ProjectionBlockCache(),
+  inline: new InlineProjectionCache(),
+});
+
 type ProjectStoryOptions = {
   document: Document;
   styles: StyleDefinitions | null | undefined;
   story?: OpStory;
-  /** The main story's converted blocks, kept by its session. */
-  blockCache?: ProjectionBlockCache;
+  /** What earlier projections converted, kept by its session. */
+  caches?: StoryProjectionCaches;
 };
 
 /** Whether a paragraph anchors a text box, which converts to a block of its own. */
@@ -727,7 +741,7 @@ const project = ({
   document,
   styles,
   story = OP_STORIES.MAIN,
-  blockCache,
+  caches,
 }: ProjectStoryOptions): Result<CanonicalProjection, CanonicalSessionError> => {
   const body = findStoryBody(document, story);
   if (!body) return refuse("The canonical story no longer exists.");
@@ -745,7 +759,9 @@ const project = ({
       if (story === OP_STORIES.MAIN)
         return toProseDoc(
           document,
-          blockCache === undefined ? options : { ...options, blockCache },
+          caches === undefined
+            ? options
+            : { ...options, blockCache: caches.blocks },
         );
       if (story.kind === "header" || story.kind === "footer")
         return headerFooterToProseDoc(body.content, options);
@@ -896,12 +912,16 @@ const project = ({
     }
     projectedSources.add(source);
     nextSource = (sourceOrder.get(source) ?? panic("Unordered source")) + 1;
-    const inline = projectCanonicalInline({
+    const inlineArgs = {
       source,
       paragraph: node,
       pairedBookmarkIds,
       commentContext,
-    });
+    };
+    const inline =
+      caches === undefined
+        ? projectCanonicalInline(inlineArgs)
+        : caches.inline.project(inlineArgs);
     if (inline.isErr()) {
       failure = new CanonicalSessionError({
         ground: { gap: CANONICAL_GAP.dispatch },
@@ -1178,7 +1198,7 @@ type CanonicalSessionSeedOptions = {
   document: Document;
   projection: CanonicalProjection;
   styles: StyleDefinitions | null | undefined;
-  blockCache: ProjectionBlockCache;
+  caches: StoryProjectionCaches;
 };
 
 type CanonicalReplaceTextInput = {
@@ -1240,16 +1260,16 @@ class CanonicalSession {
   };
   private readonly undone: UndoneJournalEntry[] = [];
   private readonly styles: StyleDefinitions | null | undefined;
-  /** The main story's converted blocks, reused by every projection of it. */
-  private readonly blockCache: ProjectionBlockCache;
+  /** What earlier projections converted, reused by every later one. */
+  private readonly caches: StoryProjectionCaches;
 
   constructor({
     document,
     projection,
     styles,
-    blockCache,
+    caches,
   }: CanonicalSessionSeedOptions) {
-    this.blockCache = blockCache;
+    this.caches = caches;
     this.currentDocument = document;
     this.currentProjection = projection;
     this.sourceBlockIds = new Set(packageParagraphIds(document.package));
@@ -2070,7 +2090,7 @@ class CanonicalSession {
     const projected = project({
       document: applied.value.document,
       styles: this.styles,
-      blockCache: this.blockCache,
+      caches: this.caches,
     });
     if (projected.isErr()) return projected;
     const surviving = projected.value.paragraph(
@@ -2165,7 +2185,7 @@ class CanonicalSession {
     const projected = project({
       document: this.currentDocument,
       styles: this.styles,
-      blockCache: this.blockCache,
+      caches: this.caches,
       story,
     });
     if (projected.isOk())
@@ -2442,7 +2462,7 @@ class CanonicalSession {
     const projected = project({
       document: applied.value.document,
       styles: this.styles,
-      blockCache: this.blockCache,
+      caches: this.caches,
       story: projectedStory,
     });
     if (projected.isErr()) return projected;
@@ -2452,7 +2472,7 @@ class CanonicalSession {
         return project({
           document: applied.value.document,
           styles: this.styles,
-          blockCache: this.blockCache,
+          caches: this.caches,
         });
       return Result.ok(this.currentProjection);
     })();
@@ -2608,6 +2628,8 @@ class CanonicalSession {
 }
 
 export type { CanonicalProjection, CanonicalSession };
+/** Project one story, reusing what the caches kept when they are given. */
+export { project as projectCanonicalStory };
 
 export const createCanonicalSession = (
   document: Document,
@@ -2622,15 +2644,15 @@ export const createCanonicalSession = (
   if (validated.isErr()) return refuse(validated.error.message);
   const normalized = normalizeCanonicalListRendering(identified).document;
   preservePropertySources({ target: normalized, source: owned });
-  const blockCache = new ProjectionBlockCache();
-  const projected = project({ document: normalized, styles, blockCache });
+  const caches = newStoryProjectionCaches();
+  const projected = project({ document: normalized, styles, caches });
   if (projected.isErr()) return projected;
   return Result.ok(
     new CanonicalSession({
       document: normalized,
       projection: projected.value,
       styles,
-      blockCache,
+      caches,
     }),
   );
 };
