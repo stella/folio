@@ -5,7 +5,7 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
-import { Mark } from "prosemirror-model";
+import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
 import {
@@ -24,6 +24,7 @@ import {
   OP_STORIES,
   type OpStory,
   paragraphLength,
+  type ParagraphPropsPatch,
   pendingSuggestionIdsIn,
   type RunPropsPatch,
   type TextPosition,
@@ -45,9 +46,12 @@ import {
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
 import type {
+  FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
   FolioAIEditSkippedOperation,
   FolioAIEditSkipReason,
+  FolioAIParagraphIndentation,
+  FolioAIParagraphSpacing,
 } from "../ai-edits/types";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
 import {
@@ -69,7 +73,11 @@ import {
   CANONICAL_GAP,
   type CanonicalGap,
 } from "../types/canonicalCapabilities";
-import type { Document } from "../types/document";
+import type {
+  Document,
+  Paragraph,
+  ParagraphFormatting,
+} from "../types/document";
 import {
   canonicalCommentBody,
   compileCanonicalComments,
@@ -77,6 +85,7 @@ import {
 import { lockViolationBetween } from "./canonicalLockGuard";
 import {
   type CanonicalCommit,
+  type CanonicalProjection,
   type CanonicalSession,
 } from "./canonicalSession";
 
@@ -92,10 +101,10 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   readonly splitBlock: "compile";
   readonly formatRange: "compile";
   readonly mergeBlockWithNext: "compile";
-  readonly setBlockParagraphProperties: "publicOps.unsupportedInline";
-  readonly insertAfterBlock: "publicOps.unsupportedInline";
-  readonly insertBeforeBlock: "publicOps.unsupportedInline";
-  readonly deleteBlock: "publicOps.unsupportedInline";
+  readonly setBlockParagraphProperties: "compile";
+  readonly insertAfterBlock: "compile";
+  readonly insertBeforeBlock: "compile";
+  readonly deleteBlock: "compile";
   readonly commentOnBlock: "compile";
   readonly commentOnRange: "compile";
   readonly insertTable: "publicOps.tableStructure";
@@ -114,10 +123,10 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   splitBlock: "compile",
   formatRange: "compile",
   mergeBlockWithNext: "compile",
-  setBlockParagraphProperties: CANONICAL_GAP.publicUnsupportedInline,
-  insertAfterBlock: CANONICAL_GAP.publicUnsupportedInline,
-  insertBeforeBlock: CANONICAL_GAP.publicUnsupportedInline,
-  deleteBlock: CANONICAL_GAP.publicUnsupportedInline,
+  setBlockParagraphProperties: "compile",
+  insertAfterBlock: "compile",
+  insertBeforeBlock: "compile",
+  deleteBlock: "compile",
   commentOnBlock: "compile",
   commentOnRange: "compile",
   insertTable: CANONICAL_GAP.publicTableStructure,
@@ -177,6 +186,238 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
     >;
   }
   return { type: "plain", operation } as const;
+};
+
+const SPACING_FIELDS = [
+  "spaceBefore",
+  "spaceAfter",
+  "lineSpacing",
+  "lineSpacingRule",
+  "beforeAutospacing",
+  "afterAutospacing",
+] as const satisfies readonly (keyof FolioAIParagraphSpacing)[];
+const INDENTATION_FIELDS = [
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+  "hangingIndent",
+] as const satisfies readonly (keyof FolioAIParagraphIndentation)[];
+
+/**
+ * The stated paragraph properties an operation writes: each given property
+ * as it says, a spacing or indentation object as the whole direct child, so
+ * an attribute it leaves out is removed, and `null` clears a property back
+ * to what the style gives.
+ */
+const statedParagraphPatch = (
+  properties: FolioAIBlockParagraphProperties,
+): ParagraphPropsPatch => {
+  const patch: Record<string, unknown> = {};
+  if (properties.styleId !== undefined) patch["styleId"] = properties.styleId;
+  if (properties.outlineLevel !== undefined)
+    patch["outlineLevel"] = properties.outlineLevel;
+  if (properties.alignment !== undefined)
+    patch["alignment"] = properties.alignment;
+  const { spacing, indentation } = properties;
+  if (spacing !== undefined)
+    for (const field of SPACING_FIELDS)
+      patch[field] = spacing === null ? null : (spacing[field] ?? null);
+  if (indentation !== undefined)
+    for (const field of INDENTATION_FIELDS)
+      patch[field] = indentation === null ? null : (indentation[field] ?? null);
+  // Every key is a ParagraphFormatting field set to its value or null.
+  return patch as ParagraphPropsPatch;
+};
+
+type ResolveParagraphPropertiesOptions = {
+  operation: Extract<
+    FolioDocumentOperation,
+    { type: "setBlockParagraphProperties" }
+  >;
+  paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
+  projection: CanonicalProjection;
+  refusal: (
+    reason: FolioAIEditSkipReason,
+    message?: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
+};
+
+const resolveParagraphProperties = ({
+  operation,
+  paragraph,
+  projection,
+  refusal,
+}: ResolveParagraphPropertiesOptions) => {
+  if (operation.properties.numbering !== undefined)
+    return refusal(
+      "unsupportedBlock",
+      "Canonical paragraph numbering changes are unavailable.",
+    );
+  const patch = statedParagraphPatch(operation.properties);
+  if (Object.keys(patch).length === 0) return refusal("emptyOperation");
+  const at = projection.addressAt(paragraph.start);
+  if (at.isErr()) return refusal("unsupportedBlock");
+  const intents: EditorIntent[] = [
+    { type: "formatParagraph", at: at.value, patch },
+  ];
+  return Result.ok({
+    type: "plain" as const,
+    operation,
+    intents,
+    normalizations: [],
+    from: paragraph.start,
+    to: paragraph.start + paragraph.node.content.size,
+  });
+};
+
+type BlockInsertion = Extract<
+  FolioDocumentOperation,
+  { type: "insertAfterBlock" | "insertBeforeBlock" }
+>;
+
+const isBlockInsertion = (
+  operation: FolioDocumentOperation,
+): operation is BlockInsertion =>
+  operation.type === "insertAfterBlock" ||
+  operation.type === "insertBeforeBlock";
+
+type ResolveBlockInsertionOptions = {
+  operation: BlockInsertion;
+  paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
+  projection: CanonicalProjection;
+  doc: PMNode;
+  refusal: (
+    reason: FolioAIEditSkipReason,
+    message?: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
+};
+
+/**
+ * One new paragraph beside the anchor, as the default engine writes it: the
+ * anchor's stated paragraph properties unless `inheritFormatting` is false,
+ * with the operation's own on top, holding the text as one plain run.
+ */
+const resolveBlockInsertion = ({
+  operation,
+  paragraph,
+  projection,
+  doc,
+  refusal,
+}: ResolveBlockInsertionOptions) => {
+  const unavailable = (
+    [
+      ["numbering", "paragraph numbering"],
+      ["moveId", "tracked moves"],
+      ["hardPageBreak", "inserted page breaks"],
+      ["comment", "comments on an inserted block"],
+      ["lineBreakMode", "inline line breaks"],
+      ["formattingScope", "formatting scopes"],
+    ] as const
+  ).find(([key]) => operation[key] !== undefined);
+  if (unavailable !== undefined)
+    return refusal(
+      "unsupportedBlock",
+      `Canonical block insertion with ${unavailable[1]} is unavailable.`,
+    );
+  const { text } = operation;
+  if (stripInlineEmphasisMarkers(text) !== text)
+    return refusal(
+      "unsupportedBlock",
+      "Canonical public emphasis replacements are unavailable.",
+    );
+  if (/\[\^(?:e)?\d+\]/u.test(text) || /[\t\r\n]/u.test(text))
+    return refusal(
+      "unsupportedBlock",
+      "Canonical block insertion requires one paragraph of plain text.",
+    );
+  const formatting: Record<string, unknown> =
+    operation.inheritFormatting === false
+      ? {}
+      : { ...paragraph.source.formatting };
+  for (const [key, value] of Object.entries(
+    statedParagraphPatch({
+      ...(operation.styleId === undefined
+        ? {}
+        : { styleId: operation.styleId }),
+      ...(operation.outlineLevel === undefined
+        ? {}
+        : { outlineLevel: operation.outlineLevel }),
+      ...(operation.alignment === undefined
+        ? {}
+        : { alignment: operation.alignment }),
+      ...(operation.spacing === undefined
+        ? {}
+        : { spacing: operation.spacing }),
+      ...(operation.indentation === undefined
+        ? {}
+        : { indentation: operation.indentation }),
+    }),
+  ))
+    if (value === null) Reflect.deleteProperty(formatting, key);
+    else formatting[key] = value;
+  if (operation.pageBreakBefore === true) formatting["pageBreakBefore"] = true;
+  const inserted: Paragraph = {
+    type: "paragraph",
+    content:
+      text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+    // The anchor's properties with the operation's set or cleared over them.
+    ...(Object.keys(formatting).length === 0
+      ? {}
+      : { formatting: formatting as ParagraphFormatting }),
+  };
+  // A paragraph keeps its identity with its mark, so the new paragraph goes
+  // in at the start of the paragraph it precedes: the anchor itself, or, for
+  // an insertion after it, the paragraph after it in the same block list.
+  let target: typeof paragraph | undefined = paragraph;
+  if (operation.type === "insertAfterBlock") {
+    const after = doc.resolve(
+      paragraph.start + paragraph.node.content.size + 1,
+    ).nodeAfter;
+    const id: unknown = after?.attrs["paraId"];
+    target =
+      after?.type.name === "paragraph" && typeof id === "string"
+        ? projection.paragraph(id)
+        : undefined;
+  }
+  if (target === undefined)
+    return refusal(
+      "unsupportedBlock",
+      "Canonical insertion after a paragraph no paragraph follows is unavailable.",
+    );
+  const position = target.start;
+  const at = projection.addressAt(position);
+  if (at.isErr()) return refusal("unsupportedBlock");
+  const intents: EditorIntent[] = [
+    {
+      type: "replaceFragment",
+      from: at.value,
+      to: at.value,
+      // The open empty edge joins the paragraph after, which keeps its mark.
+      paragraphs: [inserted, { type: "paragraph", content: [] }],
+      openStart: 0,
+      openEnd: 1,
+    },
+  ];
+  return Result.ok({
+    type: "plain" as const,
+    operation,
+    intents,
+    normalizations: [],
+    from: position,
+    to: position,
+  });
+};
+
+type ResolveBlockDeletionOptions = {
+  operation: Extract<FolioDocumentOperation, { type: "deleteBlock" }>;
+  paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
+  projection: CanonicalProjection;
+  doc: PMNode;
+  tracked: boolean;
+  refusal: (
+    reason: FolioAIEditSkipReason,
+    message?: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
 };
 
 type CanonicalPublicOperationsOptions = {
@@ -271,6 +512,8 @@ type ResolveCanonicalPublicOperationOptions = {
   state: EditorState;
   story: OpStory;
   diff: ReturnType<typeof wordDiffSessionFromOptions>["diff"];
+  /** Whether the batch records its edits as revisions. */
+  tracked: boolean;
 };
 
 const canonicalPublicStory = (story: FolioDocumentOperationStory): OpStory => {
@@ -437,7 +680,14 @@ export class CanonicalPublicOperations {
         skip(operation.id, "unsupportedBlock");
         continue;
       }
-      const compiled = this.resolve({ operation, options, state, story, diff });
+      const compiled = this.resolve({
+        operation,
+        options,
+        state,
+        story,
+        diff,
+        tracked: batch.mode !== "direct",
+      });
       if (compiled.isErr()) {
         if (compiled.error.reason === "unsupportedBlock")
           refusals.set(operation.id, {
@@ -702,12 +952,92 @@ export class CanonicalPublicOperations {
     return { status: "undone", undoHandle: handle };
   }
 
+  /**
+   * A whole paragraph removed as the editor removes a selection of it with
+   * its paragraph mark: from its start to the start of the paragraph after
+   * it, or, for the paragraph that ends its block list, from the end of the
+   * paragraph before it, whose mark then ends the list. Tracked, the text and
+   * the mark are marked deleted.
+   */
+  private resolveBlockDeletion({
+    operation,
+    paragraph,
+    projection,
+    doc,
+    tracked,
+    refusal,
+  }: ResolveBlockDeletionOptions) {
+    if (operation.comment !== undefined)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical comments on a deleted block are unavailable.",
+      );
+    if (operation.moveId !== undefined)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical tracked moves are unavailable.",
+      );
+    const end = paragraph.start + paragraph.node.content.size;
+    const after = doc.resolve(end + 1).nodeAfter;
+    const before = doc.resolve(paragraph.start - 1).nodeBefore;
+    const neighbour = (node: PMNode | null) => {
+      const id: unknown = node?.attrs["paraId"];
+      return node?.type.name === "paragraph" && typeof id === "string"
+        ? projection.paragraph(id)
+        : undefined;
+    };
+    const next = neighbour(after);
+    const previous = neighbour(before);
+    // Before a table, tracked, the paragraph's own mark is the one deleted;
+    // a text range can only delete the mark before it.
+    if (tracked && next === undefined && after !== null)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical tracked deletion of a paragraph before a table is unavailable.",
+      );
+    let range: { from: number; to: number } | undefined;
+    if (next !== undefined) range = { from: paragraph.start, to: next.start };
+    // Removed directly, the paragraph that ends its block list would leave
+    // its own identity on the paragraph before it, whose words it takes: the
+    // session's join keeps the surviving mark's paragraph.
+    else if (!tracked && previous !== undefined)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical direct deletion of the paragraph that ends its block list is unavailable.",
+      );
+    else if (previous !== undefined)
+      range = {
+        from: previous.start + previous.node.content.size,
+        to: end,
+      };
+    if (range === undefined)
+      return refusal(
+        "unsupportedBlock",
+        "Canonical deletion of the only paragraph in its container is unavailable.",
+      );
+    const from = projection.addressAt(range.from);
+    const to = projection.addressAt(range.to);
+    if (from.isErr() || to.isErr()) return refusal("unsupportedBlock");
+    const intents: EditorIntent[] = [
+      { type: "replaceText", from: from.value, to: to.value, text: "" },
+    ];
+    return Result.ok({
+      type: "plain" as const,
+      operation,
+      intents,
+      normalizations: [],
+      from: Math.min(range.from, paragraph.start),
+      to: Math.max(range.to, end),
+    });
+  }
+
   private resolve({
     operation,
     options,
     state,
     story,
     diff,
+    tracked,
   }: ResolveCanonicalPublicOperationOptions) {
     const refusal = (reason: FolioAIEditSkipReason, message?: string) =>
       Result.err(
@@ -725,6 +1055,10 @@ export class CanonicalPublicOperations {
       case "mergeBlockWithNext":
       case "commentOnRange":
       case "commentOnBlock":
+      case "deleteBlock":
+      case "setBlockParagraphProperties":
+      case "insertAfterBlock":
+      case "insertBeforeBlock":
         break;
       default:
         return refusal(
@@ -758,6 +1092,30 @@ export class CanonicalPublicOperations {
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
     if (hash !== anchor.textHash) return refusal("changedBlock");
+    if (isBlockInsertion(operation))
+      return resolveBlockInsertion({
+        operation,
+        paragraph,
+        projection: projection.value,
+        doc: state.doc,
+        refusal,
+      });
+    if (operation.type === "setBlockParagraphProperties")
+      return resolveParagraphProperties({
+        operation,
+        paragraph,
+        projection: projection.value,
+        refusal,
+      });
+    if (operation.type === "deleteBlock")
+      return this.resolveBlockDeletion({
+        operation,
+        paragraph,
+        projection: projection.value,
+        doc: state.doc,
+        tracked,
+        refusal,
+      });
     let start = 0;
     let end = clean.text.length;
     let text = "";
