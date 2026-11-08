@@ -18,6 +18,7 @@ import * as documentOps from "@stll/docx-core/ops";
 import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
+import { acquireHarnessDom } from "../../../../test/harnessDom";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -2247,5 +2248,61 @@ test("read-only switches synchronize DOM editability without changing the author
   } finally {
     manager.destroyView();
     GlobalRegistrator.unregister();
+  }
+});
+
+test("typing after the browser moved the caret lands there in both session modes", () => {
+  const releaseDom = acquireHarnessDom();
+  try {
+    for (const session of ["legacy", "canonical"] as const) {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const source = createEmptyDocument({ initialText: "RAISEDTEXT" });
+      const refusals: string[] = [];
+      const { deps } = makeDeps({
+        getHost: () => host,
+        getDocument: () => source,
+        getDocumentContext: () => source,
+        getExtensionManager: () => singletonManager,
+        getExperimentalSession: () => session,
+        onSessionRefusal: (reason) => refusals.push(reason),
+      });
+      const manager = createHiddenEditorManager(deps);
+      try {
+        manager.ensureView();
+        const view = manager.getView() ?? panic("Missing typing view");
+        view.dispatch(
+          view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)),
+        );
+        // End moves the DOM caret; ProseMirror has not observed it yet.
+        const { node, offset } = view.domAtPos(11, 1);
+        const native = document.getSelection();
+        native?.removeAllRanges();
+        native?.collapse(node, offset);
+        view.dom.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            key: "X",
+          }),
+        );
+        view.dom.dispatchEvent(
+          new InputEvent("beforeinput", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "insertText",
+            data: "X",
+          }),
+        );
+        expect(refusals).toEqual([]);
+        expect(view.state.doc.textContent).toBe("RAISEDTEXTX");
+        expect(view.state.selection.from).toBe(12);
+      } finally {
+        manager.destroyView();
+        host.remove();
+      }
+    }
+  } finally {
+    releaseDom();
   }
 });

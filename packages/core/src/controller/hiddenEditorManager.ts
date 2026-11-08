@@ -71,6 +71,10 @@ import {
 } from "../prosemirror/extensions/marks/markUtils";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import {
+  adoptNativeSelection,
+  isCompositionKeyDown,
+} from "../prosemirror/nativeSelection";
+import {
   markNoteReferenceReplay,
   noteReferenceTransactionIssue,
 } from "../prosemirror/noteReferenceOccurrences";
@@ -1400,10 +1404,15 @@ export const createHiddenEditorManager = (
       handleScrollToSelection: suppressHiddenEditorScrollToSelection,
       // Prevent focus handling from interfering with visual layer
       handleDOMEvents: {
-        keydown: (pmView, event) =>
-          editorSession.type === "canonical"
+        // Handlers here run before any plugin's, so the key or text input
+        // takes the caret the browser shows before either engine reads it.
+        keydown: (pmView, event) => {
+          if (!input.isComposing && !isCompositionKeyDown(event))
+            adoptNativeSelection(pmView);
+          return editorSession.type === "canonical"
             ? input.handleDOMEvents.keydown(pmView, event)
-            : false,
+            : false;
+        },
         focus: () => false,
         blur: (pmView) =>
           editorSession.type === "canonical"
@@ -1432,6 +1441,8 @@ export const createHiddenEditorManager = (
             ? input.handleDOMEvents.cut(pmView, event)
             : createHiddenEditorClipboardHandlers(deps).cut(pmView, event),
         beforeinput: (_view, event) => {
+          if (!input.isComposing && !event.isComposing)
+            adoptNativeSelection(_view);
           if (editorSession.type === "canonical" && !deps.getReadOnly())
             return input.handleDOMEvents.beforeinput(_view, event);
           if (!deps.getReadOnly()) {
