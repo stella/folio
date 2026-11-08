@@ -1431,7 +1431,10 @@ function applyCommentMarks(nodes: PMNode[], commentIds: Set<number>): PMNode[] {
 }
 
 function anchorPointComment(nodes: PMNode[], commentId: number): void {
-  const commentMark = schema.marks["comment"]?.create({ commentId });
+  const commentMark = schema.marks["comment"]?.create({
+    commentId,
+    point: true,
+  });
   if (!commentMark) {
     return;
   }

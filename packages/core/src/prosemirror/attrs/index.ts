@@ -2513,6 +2513,7 @@ export const readCommentMarkAttrs = (
   expectMarkType(mark, "comment", issues);
 
   requiredNumber(attrs, "commentId", "comment.attrs.commentId", issues);
+  optionalBoolean(attrs, "point", "comment.attrs.point", issues);
 
   return attrsResult(attrs, issues);
 };
