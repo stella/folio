@@ -11,6 +11,7 @@ import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { FolioDocumentOperation } from "../ai-edits";
+import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/apply";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
@@ -399,6 +400,26 @@ const OPERATIONS = {
     blockId: "10000002",
     properties: { numbering: { kind: "newList", format: "bullet", level: 1 } },
   },
+  mergeBlockWithNext: {
+    id: "op",
+    type: "mergeBlockWithNext",
+    blockId: "10000001",
+  },
+  "mergeBlockWithNext separated": {
+    id: "op",
+    type: "mergeBlockWithNext",
+    blockId: "10000001",
+    separator: " ",
+  },
+  "mergeBlockWithNext with properties": {
+    id: "op",
+    type: "mergeBlockWithNext",
+    blockId: "10000001",
+    mergedParagraphProperties: {
+      alignment: "right",
+      spacing: { spaceAfter: 120 },
+    },
+  },
   "setBlockParagraphProperties alignment": {
     id: "op",
     type: "setBlockParagraphProperties",
@@ -466,7 +487,12 @@ describe("block-level public operations match the default engine", () => {
             await viaCanonicalEngine(source, operation, mode),
           );
           expect(actual).toEqual(expected);
-          if (mode !== "tracked-changes") return;
+          // Kinds a suggestion cannot carry skip in both engines.
+          if (
+            mode !== "tracked-changes" ||
+            !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(operation.type)
+          )
+            return;
           // Suggested, the edit saves as nothing until it is resolved:
           // rejecting gives the source back, accepting the tracked edit.
           expect(
