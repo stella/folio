@@ -83,8 +83,8 @@ import {
   getHeaderFooterText,
 } from "../docx/storyPlainText";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
-import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
+  type RemovedSectionReference,
   type TrackedSectionEndpointRemoval,
   withTrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
@@ -936,9 +936,9 @@ const createHeadlessPlugins = (
   styles: Document["package"]["styles"],
   numbering: NumberingDefinitions | null | undefined,
 ): Plugin[] => [
+  createDocumentNumberingPlugin(numbering),
   ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
   createDocumentStylesPlugin(styles),
-  createDocumentNumberingPlugin(numbering),
 ];
 
 const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>

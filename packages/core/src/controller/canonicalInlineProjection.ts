@@ -486,16 +486,58 @@ const sameSourceMarker = (
   }
 };
 
+/** Whether a story holds an id: all a paragraph's projection asks of a story id set. */
+export type StoryIdMembership = Pick<ReadonlySet<number>, "has">;
+
+/** The story's comments as one paragraph's projection reads them. */
+export type CanonicalInlineCommentContext = {
+  rangedIds: StoryIdMembership;
+  pointIds: StoryIdMembership;
+  /** The comment ranges open where the paragraph starts. */
+  openIds: ReadonlySet<number>;
+};
+
 type CanonicalInlineProjectionArgs = {
   source: Paragraph;
   paragraph: PMNode;
-  pairedBookmarkIds: ReadonlySet<number>;
-  commentContext?: {
-    rangedIds: ReadonlySet<number>;
-    pointIds: ReadonlySet<number>;
-    openIds: ReadonlySet<number>;
-  };
+  pairedBookmarkIds: StoryIdMembership;
+  commentContext?: CanonicalInlineCommentContext;
 };
+
+/**
+ * What each input of a paragraph's projection depends on: the paragraph
+ * alone (its source records and its editor node), or the story around it.
+ * A cached projection is reused only for the same paragraph inputs, and only
+ * where every story fact it read still holds. Total over the inputs: an input
+ * added to them does not compile until it is placed in one half or the other.
+ */
+const INLINE_INPUT_DEPENDENCY = {
+  source: "paragraph",
+  paragraph: "paragraph",
+  pairedBookmarkIds: "story",
+  commentContext: "story",
+} as const satisfies Record<
+  keyof CanonicalInlineProjectionArgs,
+  "paragraph" | "story"
+>;
+type InlineDependency = typeof INLINE_INPUT_DEPENDENCY;
+type ParagraphInputField = {
+  [K in keyof InlineDependency]: InlineDependency[K] extends "paragraph"
+    ? K
+    : never;
+}[keyof InlineDependency];
+type StoryInputField = Exclude<
+  keyof CanonicalInlineProjectionArgs,
+  ParagraphInputField
+>;
+const PARAGRAPH_INPUT_FIELDS = (
+  Object.keys(INLINE_INPUT_DEPENDENCY) as (keyof InlineDependency)[]
+).filter(
+  (field): field is ParagraphInputField =>
+    INLINE_INPUT_DEPENDENCY[field] === "paragraph",
+);
+/** The story facts one paragraph's projection reads, each through its recorder. */
+type StoryInlineInputs = Pick<CanonicalInlineProjectionArgs, StoryInputField>;
 
 type CommentTransition = { starts: Set<number>; ends: Set<number> };
 
@@ -512,13 +554,15 @@ const commentMarkTransitions = ({
   explicitCommentIds,
 }: CommentMarkTransitionsArgs) => {
   const spans = inlineLeafSpans(source.content);
-  const rangedIds = new Set(commentContext?.rangedIds);
-  const pointIds = new Set(commentContext?.pointIds);
+  // The story's sets are asked about ids, never walked: a paragraph's own
+  // markers extend them here.
+  const ownRangedIds = new Set<number>();
+  const ownPointIds = new Set<number>();
   const finalIds = new Set(commentContext?.openIds);
   for (const { node } of spans) {
     if (node.type === "commentRangeStart" || node.type === "commentRangeEnd")
-      rangedIds.add(node.id);
-    if (node.type === "commentReference") pointIds.add(node.id);
+      ownRangedIds.add(node.id);
+    if (node.type === "commentReference") ownPointIds.add(node.id);
     if (node.type === "commentRangeStart") finalIds.add(node.id);
     if (node.type === "commentRangeEnd") finalIds.delete(node.id);
   }
@@ -547,9 +591,15 @@ const commentMarkTransitions = ({
         return;
       }
       const id = attrs.value.commentId;
-      if (rangedIds.has(id)) {
+      if (
+        ownRangedIds.has(id) ||
+        (commentContext?.rangedIds.has(id) ?? false)
+      ) {
         if (!explicitCommentIds.has(id)) current.add(id);
-      } else if (!pointIds.has(id)) {
+      } else if (
+        !ownPointIds.has(id) &&
+        !(commentContext?.pointIds.has(id) ?? false)
+      ) {
         issue =
           "Canonical editing cannot attribute a comment mark to its source.";
         return;
@@ -924,3 +974,140 @@ export const projectCanonicalInline = ({
   );
   return Result.ok({ text, boundaries, seams });
 };
+
+/** A membership whose answers one paragraph's projection read, recorded to check later. */
+class RecordedMembership implements StoryIdMembership {
+  readonly answers = new Map<number, boolean>();
+  private readonly source: StoryIdMembership;
+  constructor(source: StoryIdMembership) {
+    this.source = source;
+  }
+  has(value: number): boolean {
+    const answer = this.source.has(value);
+    this.answers.set(value, answer);
+    return answer;
+  }
+}
+
+const answersHold = (
+  answers: ReadonlyMap<number, boolean>,
+  set: StoryIdMembership,
+): boolean => {
+  for (const [value, answer] of answers)
+    if (set.has(value) !== answer) return false;
+  return true;
+};
+
+const sameIds = (left: readonly number[], right: Iterable<number>) => {
+  let index = 0;
+  for (const value of right) {
+    if (left[index] !== value) return false;
+    index += 1;
+  }
+  return index === left.length;
+};
+
+/** Every story fact one paragraph's projection read. */
+type StoryInlineReads = {
+  pairedBookmarkIds: ReadonlyMap<number, boolean>;
+  commentContext:
+    | {
+        rangedIds: ReadonlyMap<number, boolean>;
+        pointIds: ReadonlyMap<number, boolean>;
+        /** In the set's own order. */
+        openIds: readonly number[];
+      }
+    | undefined;
+};
+
+/** The story inputs behind recorders, and what they read once the projection ran. */
+const recordStory = (
+  story: StoryInlineInputs,
+): { recorded: StoryInlineInputs; reads: () => StoryInlineReads } => {
+  const pairedBookmarkIds = new RecordedMembership(story.pairedBookmarkIds);
+  const context = story.commentContext;
+  if (context === undefined)
+    return {
+      recorded: { pairedBookmarkIds },
+      reads: () => ({
+        pairedBookmarkIds: pairedBookmarkIds.answers,
+        commentContext: undefined,
+      }),
+    };
+  const rangedIds = new RecordedMembership(context.rangedIds);
+  const pointIds = new RecordedMembership(context.pointIds);
+  const openIds = [...context.openIds];
+  return {
+    recorded: {
+      pairedBookmarkIds,
+      commentContext: { rangedIds, pointIds, openIds: new Set(openIds) },
+    },
+    reads: () => ({
+      pairedBookmarkIds: pairedBookmarkIds.answers,
+      commentContext: {
+        rangedIds: rangedIds.answers,
+        pointIds: pointIds.answers,
+        openIds,
+      },
+    }),
+  };
+};
+
+const storyReadsHold = (
+  reads: StoryInlineReads,
+  story: StoryInlineInputs,
+): boolean => {
+  if (!answersHold(reads.pairedBookmarkIds, story.pairedBookmarkIds))
+    return false;
+  const read = reads.commentContext;
+  const context = story.commentContext;
+  if (read === undefined || context === undefined)
+    return read === undefined && context === undefined;
+  return (
+    sameIds(read.openIds, context.openIds) &&
+    answersHold(read.rangedIds, context.rangedIds) &&
+    answersHold(read.pointIds, context.pointIds)
+  );
+};
+
+type CachedInlineProjection = {
+  inputs: Pick<CanonicalInlineProjectionArgs, ParagraphInputField>;
+  reads: StoryInlineReads;
+  projection: InlineProjection;
+};
+
+/**
+ * Paragraph projections kept across projections of a story.
+ *
+ * A paragraph an edit left keeps its source records, and the block cache
+ * keeps its editor node, so its gaps can be reused where the story facts its
+ * projection read are the same: the comments open at its start and the
+ * comment and bookmark ids it asked about. Gap positions are relative to the
+ * paragraph, so a reused projection holds wherever the paragraph now starts.
+ */
+export class InlineProjectionCache {
+  private paragraphs = new WeakMap<Paragraph, CachedInlineProjection>();
+
+  project(
+    args: CanonicalInlineProjectionArgs,
+  ): Result<InlineProjection, InlineProjectionError> {
+    const known = this.paragraphs.get(args.source);
+    if (
+      known !== undefined &&
+      PARAGRAPH_INPUT_FIELDS.every(
+        (field) => known.inputs[field] === args[field],
+      ) &&
+      storyReadsHold(known.reads, args)
+    )
+      return Result.ok(known.projection);
+    const { recorded, reads } = recordStory(args);
+    const projected = projectCanonicalInline({ ...args, ...recorded });
+    if (projected.isOk())
+      this.paragraphs.set(args.source, {
+        inputs: { source: args.source, paragraph: args.paragraph },
+        reads: reads(),
+        projection: projected.value,
+      });
+    return projected;
+  }
+}

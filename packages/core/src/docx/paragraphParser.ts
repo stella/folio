@@ -72,6 +72,7 @@ import {
   parseHyperlinkShell,
 } from "./hyperlinkParser";
 import {
+  EVERY_PARAGRAPH_CONTENT_IS_TRACKED_CHILD,
   isHyperlinkContent,
   isInlineSdtContent,
   isSimpleFieldContent,
@@ -116,7 +117,6 @@ import {
   parseParagraphMarkResolutionJoin,
   parseResolutionJoins,
   parseSplitResolutionPiece,
-  ReviewResolutionProvenanceError,
   type SplitResolutionPiece,
 } from "./reviewResolutionProvenance";
 import { consolidateParagraphContent } from "./runConsolidator";
@@ -577,59 +577,28 @@ function pushTrackedChangeSegments({
   parsedContent,
   split,
 }: PushTrackedChangeSegmentsParams): void {
-  if (
-    resolutionJoins !== undefined &&
-    parsedContent.some((item) => !isTrackedChangeWrapperChild(item))
-  ) {
-    throw new ReviewResolutionProvenanceError({
-      attribute: "resolutionJoins",
-      reason: "invalid",
-      message:
-        "Tracked-resolution provenance cannot bind a fragmented imported wrapper.",
-    });
+  // A tracked change is read whole: every paragraph content kind is a tracked
+  // change child, which the build asserts, so its joins always have the one
+  // wrapper they describe.
+  const content: TrackedRunChange["content"] = [];
+  for (const item of parsedContent) {
+    if (
+      !EVERY_PARAGRAPH_CONTENT_IS_TRACKED_CHILD ||
+      !isTrackedChangeWrapperChild(item)
+    )
+      panic(
+        `A ${item.type} is not a tracked change child; the invariant that every paragraph content kind is one broke.`,
+      );
+    content.push(item);
   }
-  if (!parsedContent.some(isTrackedChangeWrapperChild)) {
-    pushTrackedChangeWrapper({
-      contents,
-      type,
-      info,
-      resolutionJoins,
-      content: [],
-      preserveEmpty: true,
-    });
-    contents.push(...parsedContent);
-    return;
-  }
-
-  const segment: TrackedRunChange["content"] = [];
-
-  for (const content of parsedContent) {
-    if (isTrackedChangeWrapperChild(content)) {
-      segment.push(content);
-      continue;
-    }
-
-    pushTrackedChangeWrapper({
-      contents,
-      type,
-      info,
-      resolutionJoins,
-      content: segment,
-    });
-    segment.length = 0;
-    contents.push(content);
-  }
-
-  // A piece read whole is one wrapper; a fragmented one is not a piece any
-  // more, and its change's joins are dropped with it.
-  const whole = parsedContent.every(isTrackedChangeWrapperChild);
   pushTrackedChangeWrapper({
     contents,
     type,
     info,
     resolutionJoins,
-    content: segment,
-    ...(whole && split !== undefined ? { split } : {}),
+    content,
+    preserveEmpty: true,
+    ...(split === undefined ? {} : { split }),
   });
 }
 

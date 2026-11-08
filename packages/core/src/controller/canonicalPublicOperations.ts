@@ -924,23 +924,22 @@ export class CanonicalPublicOperations {
           const { comment } = resolvedOperation;
           const id = freshCommentId(nextDocument);
           if (comment.inserted === true) {
-            // The comment covers every paragraph the operation inserted.
+            // The comment covers every paragraph the operation inserted, at
+            // any depth: in a content control or a table cell as much as in
+            // the story's own block list.
+            const paragraphsIn = (current: Document) => {
+              const body = findStoryBody(current, story);
+              return body === undefined
+                ? []
+                : storyParagraphs(body).map(({ paragraph }) => paragraph);
+            };
             const known = new Set(
-              (findStoryBody(document, story)?.content ?? []).flatMap(
-                (block) =>
-                  block.type === "paragraph" && block.paraId !== undefined
-                    ? [block.paraId]
-                    : [],
+              paragraphsIn(document).flatMap(({ paraId }) =>
+                paraId === undefined ? [] : [paraId],
               ),
             );
-            const added = (
-              findStoryBody(nextDocument, story)?.content ?? []
-            ).flatMap((block) =>
-              block.type === "paragraph" &&
-              block.paraId !== undefined &&
-              !known.has(block.paraId)
-                ? [block]
-                : [],
+            const added = paragraphsIn(nextDocument).filter(
+              ({ paraId }) => paraId !== undefined && !known.has(paraId),
             );
             const firstAdded = added.at(0);
             const lastAdded = added.at(-1);
@@ -1715,16 +1714,25 @@ export class CanonicalPublicOperations {
               code: "uniformReplacementFormatting",
             });
         }
+        // A replaced range ends just after its last character, before what
+        // the clean text skips there (a comment's reference mark, struck
+        // text), since the new text follows the struck words.
+        const lastCharacter =
+          change.end > change.start ? clean.offsets[change.end - 1] : undefined;
+        const changeEnd =
+          lastCharacter === undefined
+            ? gap.to
+            : Math.max(gap.from, Math.min(gap.to, lastCharacter + 1));
         // A replaced range takes the editor's selection rule: its edges stay
         // inside the markers beside them, so replacing exactly the words a
         // comment covers keeps the comment on the new text, pending and
         // accepted. An insertion at a point takes the caret's gap.
         const edges =
-          gap.from < gap.to
-            ? projection.value.rangeEdgesAt(gap.from, gap.to)
+          gap.from < changeEnd
+            ? projection.value.rangeEdgesAt(gap.from, changeEnd)
             : undefined;
         const changeFrom = projection.value.addressAt(gap.from, edges?.start);
-        const changeTo = projection.value.addressAt(gap.to, edges?.end);
+        const changeTo = projection.value.addressAt(changeEnd, edges?.end);
         if (changeFrom.isErr() || changeTo.isErr())
           return refusal("unsupportedBlock");
         intents.push({

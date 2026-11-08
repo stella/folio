@@ -590,7 +590,48 @@ function buildParityBridge(
       const buffer = await (getRef()?.save() ?? Promise.resolve(null));
       return buffer?.byteLength ?? 0;
     },
+    suggestCommentedInsertion: (after, text, comment) => {
+      const ref = getRef();
+      const snapshot = ref?.createAIEditSnapshot();
+      const block = snapshot?.blocks.find((candidate) =>
+        candidate.text.includes(after),
+      );
+      if (!ref || !snapshot || !block) return null;
+      const result = ref.applyDocumentOperations({
+        undefinedReferences: "refuse",
+        snapshot,
+        batch: {
+          version: 1,
+          mode: "suggested",
+          operations: [
+            {
+              id: "parity-suggested-comment",
+              type: "insertAfterBlock",
+              blockId: block.id,
+              text,
+              comment: { text: comment },
+            },
+          ],
+        },
+      });
+      return result.status === "committed"
+        ? (result.applied.at(0)?.suggestionId ?? null)
+        : null;
+    },
+    rejectSuggestion: (suggestionId) =>
+      getRef()?.rejectSuggestion(suggestionId) ?? false,
     hasPendingChanges: () => getRef()?.hasPendingChanges() ?? false,
+    loadDocx: async (bytes) => {
+      const ref = getRef();
+      if (!ref) throw new Error("Loading requires an editor ref");
+      await ref.loadDocumentBuffer(new Uint8Array(bytes));
+      ref.ensureEditorView({ focus: false });
+    },
+    saveDocx: async () => {
+      const saved = await getRef()?.save();
+      if (!saved) throw new Error("The editor did not save");
+      return [...new Uint8Array(saved)];
+    },
     insertTextViaPagedEditorRef: (text) => {
       const pagedRef = getRef()?.getEditorRef();
       const view = pagedRef?.getView();
