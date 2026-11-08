@@ -601,10 +601,14 @@ type ResolveCanonicalPublicOperationOptions = {
 
 type MintedList = { numId: number; newList: NewListInstance };
 
-/** Mints new lists for one batch, each after the ones before it. */
-const createListMinter = (document: Document) => {
-  let definitions = document.package.numbering;
+/**
+ * Mints new lists for one batch, each after the ones before it. The document
+ * is read at the first mint, so a batch that starts no list never reads it.
+ */
+const createListMinter = (document: () => Document) => {
+  let definitions: Document["package"]["numbering"] | null = null;
   return (format: FolioAIListKind): MintedList => {
+    definitions ??= document().package.numbering;
     const minted = mintListInstance(
       definitions,
       { kind: format },
@@ -711,7 +715,7 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
     const resolved: ResolvedOperation[] = [];
-    const mintList = createListMinter(session.document);
+    const mintList = createListMinter(() => session.document);
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
     if (!session.isComposing && options.revisionStamp === undefined) {
