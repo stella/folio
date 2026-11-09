@@ -42,6 +42,7 @@ const HOSTS: readonly AdapterFixture[] = [
 const ENGINES = ["default", "canonical"] as const;
 
 test.use({ viewport: { width: 1500, height: 900 } });
+test.describe.configure({ timeout: 90_000 });
 
 const recordBuildsAndKeys = async (page: Page) => {
   await page.addInitScript(() => {
@@ -113,8 +114,58 @@ for (const host of HOSTS) {
       );
       await clearBuildsAndKeys(page);
 
-      await page.keyboard.type("x".repeat(KEYS), { delay: KEY_DELAY_MS });
+      await page.evaluate(() => {
+        const frames: unknown[] = [];
+        (globalThis as { __probeFrames?: unknown[] }).__probeFrames = frames;
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            const frame = entry as PerformanceEntry & {
+              renderStart: number;
+              styleAndLayoutStart: number;
+              blockingDuration: number;
+              scripts: {
+                invoker: string;
+                sourceFunctionName: string;
+                sourceURL: string;
+                duration: number;
+                forcedStyleAndLayoutDuration: number;
+              }[];
+            };
+            frames.push({
+              start: Math.round(frame.startTime),
+              duration: Math.round(frame.duration),
+              render: Math.round(
+                frame.startTime + frame.duration - frame.renderStart,
+              ),
+              styleLayout: Math.round(
+                frame.startTime + frame.duration - frame.styleAndLayoutStart,
+              ),
+              scripts: frame.scripts.map((script) => ({
+                invoker: script.invoker,
+                fn: script.sourceFunctionName,
+                url: script.sourceURL.split("/").pop(),
+                duration: Math.round(script.duration),
+                forced: Math.round(script.forcedStyleAndLayoutDuration),
+              })),
+            });
+          }
+        }).observe({ type: "long-animation-frame", buffered: false });
+      });
+      const PROBE_KEYS = 4;
+      const startedAt = Date.now();
+      await page.keyboard.type("x".repeat(PROBE_KEYS), { delay: KEY_DELAY_MS });
+      console.log("PROBE-KEYS", host.name, engine, Date.now() - startedAt);
       await page.waitForTimeout(SETTLE_MS);
+      console.log(
+        "PROBE-FRAMES",
+        host.name,
+        engine,
+        JSON.stringify(
+          await page.evaluate(
+            () => (globalThis as { __probeFrames?: unknown[] }).__probeFrames,
+          ),
+        ).slice(0, 6000),
+      );
 
       const { builds, keydowns } = await readBuildsAndKeys(page);
       const firstKey = keydowns.at(0) ?? Number.NaN;
