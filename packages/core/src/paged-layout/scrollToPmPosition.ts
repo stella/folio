@@ -24,6 +24,7 @@ import {
   findPageShellForPmPos,
   renderPagesAround,
 } from "../layout-painter/renderPage";
+import { readPaintedEnd, readPaintedStart } from "../utils/paintedPositions";
 import {
   getEditorScrollRoot,
   scrollEditorElementIntoView,
@@ -75,15 +76,14 @@ type AnchorRange = { element: HTMLElement; start: number; end: number };
 const anchorRanges = (root: ParentNode): AnchorRange[] => {
   const ranges: AnchorRange[] = [];
   for (const element of findBodyPmAnchors(root)) {
-    const start = Number(element.dataset["pmStart"]);
+    const start = readPaintedStart(element) ?? Number.NaN;
     if (Number.isNaN(start)) {
       continue;
     }
-    const endAttr = element.dataset["pmEnd"];
     ranges.push({
       element,
       start,
-      end: endAttr === undefined ? start : Number(endAttr),
+      end: readPaintedEnd(element) ?? start,
     });
   }
   return ranges;

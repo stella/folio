@@ -269,6 +269,7 @@ import {
 } from "@stll/folio-core/utils/outlineDepth";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { resolveOutlineHeadings } from "@stll/folio-core/utils/outlineHeadings";
+import { paintedStartSelector } from "@stll/folio-core/utils/paintedPositions";
 import type { TableAction } from "@stll/folio-core/utils/tableOperations";
 import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 import {
@@ -5591,7 +5592,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           return;
         }
         const element = container.querySelector<HTMLElement>(
-          `.layout-page-content [data-pm-start="${String(pmPos)}"]`,
+          `.layout-page-content ${paintedStartSelector(pmPos)}`,
         );
         if (element) {
           delete element.dataset["folioOutlineFlash"];

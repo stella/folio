@@ -11,6 +11,7 @@
 import type { FlowBlock, Measure } from "../layout-engine/types";
 import type { ImageAttrs } from "../prosemirror/schema/nodes";
 import type { WrapType } from "../types/wrap";
+import { hasPaintedStart } from "../utils/paintedPositions";
 import { pixelsToEmu } from "../utils/units";
 import type { BlockLookup } from "./index";
 
@@ -84,7 +85,7 @@ export function findImageElement(
   }
   // Otherwise walk up to the nearest image container with `data-pm-start`.
   const container = target.closest<HTMLElement>(IMAGE_HIT_SELECTOR);
-  if (container && container.dataset["pmStart"]) {
+  if (container && hasPaintedStart(container)) {
     return container;
   }
   return null;

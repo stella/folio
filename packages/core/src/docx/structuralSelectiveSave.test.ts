@@ -479,7 +479,7 @@ describe("structural save fallback boundaries", () => {
     expect(await saveEditor({ base, state: edited, buffer })).toBeNull();
   });
 
-  test("comment range crossing a split falls back", async () => {
+  test("a split inside a comment range splices, keeping the range around both pieces", async () => {
     const body =
       paragraphXml({ text: "Alpha beta", id: "10000001" }).replace(
         "<w:r>",
@@ -495,7 +495,38 @@ describe("structural save fallback boundaries", () => {
     const { base, state } = await openEditor(buffer);
     expect(base.package.document.comments).toHaveLength(1);
     const edited = state.apply(state.tr.split(6));
-    expect(await saveEditor({ base, state: edited, buffer })).toBeNull();
+    const saved = await saveEditor({ base, state: edited, buffer });
+    if (saved === null) return panic("The selective save refused.");
+    const xml =
+      (await (
+        await ZipArchive.read(saved)
+      )
+        .entry("word/document.xml")
+        ?.text()) ?? "";
+    // One range, opening before the first piece and closing after the
+    // paragraph it ended in, with its one reference after it.
+    const anchors = [
+      ...xml.matchAll(
+        /<w:(commentRange(?:Start|End)|commentReference) w:id="7"/gu,
+      ),
+    ].map((match) => match[1]);
+    expect(anchors).toEqual([
+      "commentRangeStart",
+      "commentRangeEnd",
+      "commentReference",
+    ]);
+    const start = xml.indexOf("commentRangeStart");
+    const end = xml.indexOf("commentRangeEnd");
+    for (const text of ["Alpha", "beta", "Range end"]) {
+      const at = xml.indexOf(text);
+      expect([text, start < at && at < end]).toEqual([text, true]);
+    }
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    expect(
+      reopened.package.document.content.filter(
+        (block) => block.type === "paragraph",
+      ),
+    ).toHaveLength(3);
   });
 
   test("new numbering definitions fall back", async () => {
