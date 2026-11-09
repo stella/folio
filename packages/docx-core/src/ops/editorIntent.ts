@@ -2830,11 +2830,17 @@ export const compileEditorIntent = (
           },
           stamp: mode.revision,
         });
+        // The grouped stamp keeps this edit's id, so only its record's
+        // metadata changes; the plan applies the deletion with it, so the
+        // typed text takes a fresh id whenever the deletion makes a record.
         const planned = planTrackedReplace(document, {
           sourceContainerPolicy: "join",
           from,
           to,
           revision: text === "" ? struck : mode.revision,
+          ...(text !== "" && struck !== mode.revision
+            ? { deletionRevision: struck }
+            : {}),
           newIds: mode.newIds,
           seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
           replacement: {
@@ -2859,16 +2865,7 @@ export const compileEditorIntent = (
               })
             : undefined;
         ops = [];
-        for (const plannedOp of planned.value) {
-          // The grouped stamp keeps this edit's id, so only its record's
-          // metadata changes and every planned position still holds.
-          const op =
-            text !== "" &&
-            struck !== mode.revision &&
-            plannedOp.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
-            plannedOp.revision?.id === mode.revision.id
-              ? { ...plannedOp, revision: struck }
-              : plannedOp;
+        for (const op of planned.value) {
           if (
             resumed === undefined ||
             op.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT ||

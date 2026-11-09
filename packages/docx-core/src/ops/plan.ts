@@ -471,6 +471,13 @@ type TrackedPlanOptions = {
    * it applied a piece with none first. Only its reference in tests.
    */
   countEveryPiece?: boolean;
+  /**
+   * The record a deletion carrying the edit's own id is stamped as, when it
+   * continues the author's earlier deletion: the plan applies each piece as
+   * it will be written, so whether the deletion makes a record of its own,
+   * and so which id later pieces take, holds for the ops it gives.
+   */
+  deletionRevision?: RevisionStamp;
 };
 
 /** The story a planned piece edits. */
@@ -506,6 +513,7 @@ export const createTrackedPlan = ({
   revision,
   newIds,
   countEveryPiece = false,
+  deletionRevision,
 }: TrackedPlanOptions): {
   append: (input: PlannedReviewOp) => Result<void, DocumentOpRefusal>;
   document: () => Document;
@@ -535,14 +543,19 @@ export const createTrackedPlan = ({
       // Source cuts consume the caller's pool in the same order as editing.
       // Additional mode-owned stamps use its other end and cannot displace them.
       let stampId = revision.id;
+      let stamp = revision;
       if (stampUsed) {
         if (remaining <= taken) return outOfIds();
         remaining -= 1;
         stampId =
           pool.at(remaining) ??
           panic("A reserved stamp has an allocated pool entry.");
-      }
-      op = { ...input, revision: { ...revision, id: stampId } };
+      } else if (
+        input.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+        deletionRevision !== undefined
+      )
+        stamp = deletionRevision;
+      op = { ...input, revision: { ...stamp, id: stampId } };
     }
     const controls = usedIds(current, IDENTITY_SPACES.CONTROL);
     const control = (newIds?.control ?? []).filter((id) => !controls.has(id));

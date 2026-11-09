@@ -125,6 +125,8 @@ export const rangeEndAfterDeletion = ({
  * paragraphs require an explicit package import policy.
  */
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+  /** How the deletion carrying the edit's own id is recorded, when not as `revision`. */
+  deletionRevision?: RevisionStamp;
   sourceContainerPolicy: "join" | "separate";
   seamPolicy?: Extract<DocumentOp, { type: "insertContent" }>["seamPolicy"];
   replacement: {
@@ -163,7 +165,14 @@ export const planTrackedReplace = (
       "Tracked replacement cannot import section-bearing paragraphs.",
     );
   }
-  const plan = createTrackedPlan({ document, revision, newIds });
+  const plan = createTrackedPlan({
+    document,
+    revision,
+    newIds,
+    ...(options.deletionRevision === undefined
+      ? {}
+      : { deletionRevision: options.deletionRevision }),
+  });
   const deleted = appendTrackedDeletion({ document, options, plan });
   if (deleted.isErr()) return Result.err(deleted.error);
   if (
