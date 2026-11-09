@@ -58,7 +58,13 @@ export type LayoutInstrumentation = {
     phase: LayoutPhase;
     reason: LayoutRunReason;
   }) => void;
+  /** A block was measured: its lines were broken and its size computed. */
   onMeasureBlock?: (event: {
+    blockIndex: number;
+    blockKind: FlowBlock["kind"];
+  }) => void;
+  /** A block took a measure taken before, without measuring it again. */
+  onReuseMeasure?: (event: {
     blockIndex: number;
     blockKind: FlowBlock["kind"];
   }) => void;
@@ -75,11 +81,38 @@ declare global {
   var __folioLayoutInstrumentation: LayoutInstrumentation | undefined;
 }
 
-export function recordMeasureBlock(blockIndex: number, block: FlowBlock): void {
-  globalThis.__folioLayoutInstrumentation?.onMeasureBlock?.({
-    blockIndex,
-    blockKind: block.kind,
-  });
+/**
+ * What giving a block its measure took: measuring it, reusing a measure taken
+ * before, or nothing (a break or an image measures as a constant).
+ */
+export type MeasureOutcome = "measured" | "reused" | "constant";
+
+/**
+ * Report what giving a block its measure took. A block whose measure is a
+ * constant (a break, an image) reports nothing.
+ */
+export function recordMeasureOutcome(
+  blockIndex: number,
+  block: FlowBlock,
+  outcome: MeasureOutcome,
+): void {
+  const instrumentation = globalThis.__folioLayoutInstrumentation;
+  if (!instrumentation) return;
+  const event = { blockIndex, blockKind: block.kind };
+  switch (outcome) {
+    case "measured":
+      instrumentation.onMeasureBlock?.(event);
+      return;
+    case "reused":
+      instrumentation.onReuseMeasure?.(event);
+      return;
+    case "constant":
+      return;
+    default: {
+      const unhandled: never = outcome;
+      throw new TypeError(`Unhandled measure outcome ${String(unhandled)}`);
+    }
+  }
 }
 
 export function recordMeasureBlockError(

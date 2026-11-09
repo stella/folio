@@ -1,7 +1,8 @@
 import { hasPageBreakBefore } from "../keep-together";
 import {
-  recordMeasureBlock,
+  type MeasureOutcome,
   recordMeasureBlockError,
+  recordMeasureOutcome,
 } from "../layoutInstrumentation";
 import { getParagraphFrame, isParagraphFrameTextBox } from "../paragraphFrame";
 import { resolveTableSpacing } from "../paragraphSpacing";
@@ -1234,6 +1235,35 @@ export function measureBlock(
   fieldValues?: ReadonlyMap<number, string>,
   options?: MeasureBlocksOptions,
 ): Measure {
+  return measureBlockWithOutcome(
+    block,
+    contentWidth,
+    floatingZones,
+    cumulativeY,
+    fieldValues,
+    options,
+  ).measure;
+}
+
+type MeasuredBlock = { measure: Measure; outcome: MeasureOutcome };
+
+const measured = (measure: Measure): MeasuredBlock => ({
+  measure,
+  outcome: "measured",
+});
+const constant = (measure: Measure): MeasuredBlock => ({
+  measure,
+  outcome: "constant",
+});
+
+function measureBlockWithOutcome(
+  block: FlowBlock,
+  contentWidth: number,
+  floatingZones?: FloatingImageZone[],
+  cumulativeY?: number,
+  fieldValues?: ReadonlyMap<number, string>,
+  options?: MeasureBlocksOptions,
+): MeasuredBlock {
   switch (block.kind) {
     case "paragraph": {
       const pBlock = block as ParagraphBlock;
@@ -1254,7 +1284,7 @@ export function measureBlock(
       if (cacheable) {
         const cached = getCachedParagraphMeasure(pBlock, contentWidth);
         if (cached) {
-          return cached;
+          return { measure: cached, outcome: "reused" };
         }
       }
 
@@ -1280,42 +1310,44 @@ export function measureBlock(
         setCachedParagraphMeasure(pBlock, contentWidth, result);
       }
 
-      return result;
+      return measured(result);
     }
 
     case "table": {
-      return measureTableBlock(block as TableBlock, contentWidth, fieldValues);
+      return measured(
+        measureTableBlock(block as TableBlock, contentWidth, fieldValues),
+      );
     }
 
     case "image": {
       const imageBlock = block as ImageBlock;
-      return {
+      return constant({
         kind: "image",
         width: imageBlock.width,
         height: imageBlock.height,
-      };
+      });
     }
 
     case "textBox": {
-      return measureTextBoxBlock(block as TextBoxBlock, fieldValues);
+      return measured(measureTextBoxBlock(block as TextBoxBlock, fieldValues));
     }
 
     case "pageBreak":
-      return { kind: "pageBreak" };
+      return constant({ kind: "pageBreak" });
 
     case "columnBreak":
-      return { kind: "columnBreak" };
+      return constant({ kind: "columnBreak" });
 
     case "sectionBreak":
-      return { kind: "sectionBreak" };
+      return constant({ kind: "sectionBreak" });
 
     default:
       // Unknown block type - return empty paragraph measure
-      return {
+      return constant({
         kind: "paragraph",
         lines: [],
         totalHeight: 0,
-      };
+      });
   }
 }
 
@@ -1512,8 +1544,6 @@ export function measureBlocks(
   const sectionAdvances = pageGeometry?.sectionAdvances;
 
   return blocks.map((block, blockIndex) => {
-    recordMeasureBlock(blockIndex, block);
-
     const blockWidth = Array.isArray(contentWidth)
       ? (contentWidth[blockIndex] ?? defaultWidth)
       : contentWidth;
@@ -1619,7 +1649,7 @@ export function measureBlocks(
       const blockZones = isUndecoratedParagraphMark(block)
         ? zones?.filter((zone) => zone.source !== "floatingTable")
         : zones;
-      const measure = measureBlock(
+      const { measure, outcome } = measureBlockWithOutcome(
         block,
         blockWidth,
         blockZones,
@@ -1627,6 +1657,7 @@ export function measureBlocks(
         fieldValues,
         options,
       );
+      recordMeasureOutcome(blockIndex, block, outcome);
 
       // Paragraphs clear floating exclusions internally (findClearLineY inside
       // measureParagraph). An in-flow table cannot reflow its cells around a
@@ -1702,6 +1733,7 @@ export function measureSingleBlockWithoutFloatingZones(
   blockWidth: number,
   blockIndex: number,
 ): Measure {
-  recordMeasureBlock(blockIndex, block);
-  return measureBlock(block, blockWidth);
+  const { measure, outcome } = measureBlockWithOutcome(block, blockWidth);
+  recordMeasureOutcome(blockIndex, block, outcome);
+  return measure;
 }
