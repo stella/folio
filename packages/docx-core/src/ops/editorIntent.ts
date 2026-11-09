@@ -72,6 +72,7 @@ import {
   paragraphLength,
   paragraphLogicalText,
 } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import { applyFormattingPatch } from "./patch";
 import {
   appendTrackedDeletion,
@@ -799,9 +800,7 @@ const replacementCaret = (at: TextPosition, text: string): TextPosition =>
       };
 
 const paragraphAt = (document: Document, at: TextPosition) =>
-  storyParagraphs(storyBody(document, at.story)).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(at.blockId),
-  )?.paragraph;
+  findStoryParagraph(storyBody(document, at.story), at.blockId)?.paragraph;
 
 /** Zero-width markers and empty leaves never supply the formatting of typed content. */
 const visibleFormattingSpans = (paragraph: Paragraph) =>
