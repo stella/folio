@@ -373,6 +373,156 @@ test("tracked deletion of a paragraph a table follows marks its own mark, and re
   ]);
 });
 
+test.each([
+  [
+    "a block content control",
+    {
+      type: "blockSdt",
+      properties: { sdtType: "richText", id: 5 },
+      content: [paragraph("00000003", "inside")],
+    },
+    "blockSdt",
+  ],
+  [
+    "a preserved block",
+    { type: "preservedBlock", xml: "<w:altChunk/>" },
+    "preservedBlock",
+  ],
+] as const satisfies readonly (readonly [string, BlockContent, string])[])(
+  "tracked deletion of a paragraph %s follows marks its own mark, and resolves both ways",
+  (_name, block, kind) => {
+    const document = documentOf([
+      paragraph("00000001", "first"),
+      paragraph("00000002", "target"),
+      block,
+      paragraph("00000004", "after"),
+    ]);
+    const tracked = apply(document, deletion(["00000002"]));
+    const [, deleted] = tracked.document.package.document.content;
+    expect(deleted?.type === "paragraph" && deleted.pPrMark?.kind).toBe("del");
+    const resolve = (decision: RevisionDecision) =>
+      apply(tracked.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: tracked.revisions,
+        decision,
+      });
+    const shape = (edit: { document: Document }) =>
+      edit.document.package.document.content.map((item) =>
+        item.type === "paragraph" ? item.paraId : item.type,
+      );
+    const rejected = resolve(REVISION_DECISIONS.REJECT);
+    expect(rejected.document).toStrictEqual(document);
+    const accepted = resolve(REVISION_DECISIONS.ACCEPT);
+    expect(shape(accepted)).toEqual(["00000001", kind, "00000004"]);
+    for (const resolved of [rejected, accepted])
+      expect(
+        applyDocumentOps(resolved.document, resolved.inverse).unwrap().document,
+      ).toStrictEqual(tracked.document);
+    expect(
+      applyDocumentOps(tracked.document, tracked.inverse).unwrap().document,
+    ).toStrictEqual(document);
+    // Accepting its mark and its words one at a time, in either order, ends
+    // the same way where the block can take the words in the meantime. A
+    // preserved block takes nothing in: there the mark accepted first keeps
+    // the paragraph, emptied once its words go.
+    expect(tracked.revisions).toHaveLength(2);
+    for (const order of [tracked.revisions, tracked.revisions.toReversed()]) {
+      let inTurn = tracked.document;
+      for (const id of order)
+        inTurn = apply(inTurn, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [id],
+          decision: REVISION_DECISIONS.ACCEPT,
+        }).document;
+      if (block.type === "blockSdt" || order[0] !== tracked.revisions[0])
+        expect(inTurn).toStrictEqual(accepted.document);
+      else
+        expect(
+          inTurn.package.document.content.map((item) =>
+            item.type === "paragraph" ? item.paraId : item.type,
+          ),
+        ).toEqual(["00000001", "00000002", kind, "00000004"]);
+    }
+    // A deleted mark whose paragraph still holds words keeps the paragraph.
+    const kept = documentOf([
+      paragraph("00000001", "first"),
+      {
+        ...paragraph("00000002", "target"),
+        pPrMark: { kind: "del", info: { id: 9, author: "Other" } },
+      },
+      block,
+      paragraph("00000004", "after"),
+    ]);
+    const keptAccepted = apply(kept, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [9],
+      decision: REVISION_DECISIONS.ACCEPT,
+    });
+    expect(keptAccepted.document.package.document.content).toStrictEqual([
+      paragraph("00000001", "first"),
+      paragraph("00000002", "target"),
+      block,
+      paragraph("00000004", "after"),
+    ]);
+  },
+);
+
+test("accepting the marks of paragraphs before a block content control at once equals accepting them in turn", () => {
+  const sdt: BlockContent = {
+    type: "blockSdt",
+    properties: { sdtType: "group", id: 1 },
+    content: [paragraph("00000003", "")],
+  };
+  for (const words of ["", "x"]) {
+    const document = documentOf([
+      {
+        ...paragraph("00000001", ""),
+        content:
+          words === ""
+            ? []
+            : [
+                {
+                  type: "insertion",
+                  info: { id: 4, author: "C" },
+                  content: [
+                    { type: "run", content: [{ type: "text", text: words }] },
+                  ],
+                },
+              ],
+        formatting: { styleId: "Heading2" },
+        pPrMark: { kind: "del", info: { id: 2, author: "C" } },
+      },
+      {
+        ...paragraph("00000002", ""),
+        pPrMark: { kind: "del", info: { id: 1, author: "A" } },
+      },
+      sdt,
+      paragraph("00000004", "after"),
+    ]);
+    const accept = (current: Document, revisionIds: number[]) =>
+      apply(current, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds,
+        decision: REVISION_DECISIONS.ACCEPT,
+      }).document;
+    const atOnce = accept(document, [1, 2, 4]);
+    expect(accept(accept(accept(document, [2]), [1]), [4])).toStrictEqual(
+      atOnce,
+    );
+    // The first paragraph joins the second, which keeps what stays, or goes
+    // with it when nothing does.
+    expect(atOnce.package.document.content).toStrictEqual(
+      words === ""
+        ? [sdt, paragraph("00000004", "after")]
+        : [paragraph("00000002", words), sdt, paragraph("00000004", "after")],
+    );
+  }
+});
+
 test("tracked deletion refuses existing inline review and missing physical ids", () => {
   const first = paragraph("00000001", "first");
   const final = paragraph("00000002", "final");
