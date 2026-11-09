@@ -708,16 +708,24 @@ type StoryReads = {
   noteOccurrences: { start: number; taken: number };
   pairedBookmarkIds: SetReads;
   storyRangedCommentIds: SetReads;
+  /** The comments open at the block's start and end, one array when the same. */
   openCommentIds: { start: readonly number[]; end: readonly number[] };
 };
-
-const sameIds = (left: readonly number[], right: readonly number[]) =>
-  left.length === right.length &&
-  left.every((value, index) => value === right[index]);
 
 const setReadsHold = (reads: SetReads, set: IdMembership): boolean => {
   for (const [value, answer] of reads.answers)
     if (set.has(value) !== answer) return false;
+  return true;
+};
+
+/** Whether `set` holds exactly `ids`, in their order. */
+const holdsInOrder = (ids: readonly number[], set: ReadonlySet<number>) => {
+  if (ids.length !== set.size) return false;
+  let index = 0;
+  for (const id of set) {
+    if (ids[index] !== id) return false;
+    index += 1;
+  }
   return true;
 };
 
@@ -731,13 +739,16 @@ const storyReadsHold = (reads: StoryReads, state: StoryState): boolean =>
   setReadsHold(reads.pairedBookmarkIds, state.pairedBookmarkIds) &&
   setReadsHold(reads.storyRangedCommentIds, state.storyRangedCommentIds) &&
   // In the set's own order: comment marks are added in it.
-  sameIds(reads.openCommentIds.start, [...state.openCommentIds]);
+  holdsInOrder(reads.openCommentIds.start, state.openCommentIds);
 
 /** Advance the story past a block whose reads hold, as converting it would. */
 const advanceStory = (reads: StoryReads, state: StoryState): void => {
   state.textBoxGroups.value += reads.textBoxGroups.taken;
   state.hyperlinks.value += reads.hyperlinks.taken;
   state.noteOccurrences.value += reads.noteOccurrences.taken;
+  // The reads held, so the open comments are the start ones: a block that
+  // opened or closed none leaves them as they are.
+  if (reads.openCommentIds.end === reads.openCommentIds.start) return;
   state.openCommentIds.clear();
   for (const id of reads.openCommentIds.end) state.openCommentIds.add(id);
 };
@@ -918,7 +929,9 @@ export class ProjectionBlockCache {
       storyRangedCommentIds: setReadsOf(storyRangedCommentIds),
       openCommentIds: {
         start: openStart,
-        end: [...state.openCommentIds],
+        end: holdsInOrder(openStart, state.openCommentIds)
+          ? openStart
+          : [...state.openCommentIds],
       },
     };
     // As the conversion left them: it may record facts of its own.
