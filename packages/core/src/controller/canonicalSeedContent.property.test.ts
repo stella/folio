@@ -241,4 +241,28 @@ describe("canonical seed check", () => {
     );
     expect(judged).toBeGreaterThan(300);
   });
+
+  test("judges again an edit that turns an anchor into another kind with the same id", () => {
+    const anchor = (
+      type: "commentRangeStart" | "commentRangeEnd" | "commentReference",
+    ): Paragraph => ({ type: "paragraph", content: [{ type, id: 1 }] });
+    const previous = documentOf(
+      [anchor("commentRangeStart"), anchor("commentRangeEnd")],
+      [{ type: "paragraph", content: [] }],
+      commentsOf([1]),
+    );
+    expect(unsupportedSeedReasonWholeDocument(previous)).toBeNull();
+    // The range loses its end and gains a reference: unbalanced.
+    const document = edited(
+      previous,
+      { type: "replace", at: 1, block: anchor("commentReference") },
+      false,
+    );
+    const stories = changedStoriesOf(previous, document);
+    const verdict = unsupportedSeedReasonWholeDocument(document, stories);
+    expect(verdict).not.toBeNull();
+    expect(unsupportedEditReason({ previous, document, stories })).toBe(
+      verdict,
+    );
+  });
 });
