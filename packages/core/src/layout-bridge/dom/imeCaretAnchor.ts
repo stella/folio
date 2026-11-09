@@ -1,3 +1,5 @@
+import { scrollClipBoxToOrigin } from "../../paged-layout/editorScrollRoot";
+
 /**
  * The class of the box hosts put the hidden editor's host in: a tiny clipping
  * box off-screen, which the browser may scroll to reveal the native caret.
@@ -31,10 +33,8 @@ const isScrollingWrapper = (value: unknown): value is ScrollingWrapper =>
   "scrollTop" in value &&
   "addEventListener" in value;
 
-const toOrigin = (wrapper: ScrollingWrapper): void => {
-  if (wrapper.scrollLeft !== 0) wrapper.scrollLeft = 0;
-  if (wrapper.scrollTop !== 0) wrapper.scrollTop = 0;
-};
+const toOrigin = (wrapper: ScrollingWrapper): void =>
+  scrollClipBoxToOrigin(wrapper);
 
 const heldWrappers = new WeakSet<ScrollingWrapper>();
 
