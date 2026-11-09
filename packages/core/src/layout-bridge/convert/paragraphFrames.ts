@@ -5,15 +5,12 @@ import {
 import type { ParagraphFrame } from "../../layout-engine/paragraphFrame";
 import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import type {
-  BlockId,
   FlowBlock,
   ImageRunPosition,
   ParagraphBlock,
   TextBoxBlock,
 } from "../../layout-engine/types";
 import { pixelsToEmu } from "../../utils/units";
-
-type BlockIdFactory = () => BlockId;
 
 const FRAME_PROPERTIES = [
   "width",
@@ -110,14 +107,14 @@ function frameWrapType(
 function toFrameTextBox(
   content: ParagraphBlock[],
   frame: ParagraphFrame,
-  nextBlockId: BlockIdFactory,
 ): TextBoxBlock {
   const first = content.at(0);
   const last = content.at(-1);
   const hasAuthoredWidth = frame.width !== undefined;
   const textBox: TextBoxBlock = {
     kind: "textBox",
-    id: nextBlockId(),
+    // From its first paragraph, so the frame keeps its id across conversions.
+    id: `${String(first?.id)}:frame`,
     width: frame.width ?? 0,
     margins: { top: 0, right: 0, bottom: 0, left: 0 },
     content,
@@ -147,10 +144,7 @@ function toFrameTextBox(
   return textBox;
 }
 
-export function groupParagraphFrames(
-  blocks: FlowBlock[],
-  nextBlockId: BlockIdFactory,
-): FlowBlock[] {
+export function groupParagraphFrames(blocks: FlowBlock[]): FlowBlock[] {
   const grouped: FlowBlock[] = [];
   let index = 0;
   let activeFrameSetId: string | undefined;
@@ -195,7 +189,7 @@ export function groupParagraphFrames(
       index += 1;
     }
 
-    const textBox = toFrameTextBox(content, frame, nextBlockId);
+    const textBox = toFrameTextBox(content, frame);
     setTextBoxGroupId(textBox, activeFrameSetId);
     grouped.push(textBox);
   }

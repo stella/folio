@@ -49,9 +49,8 @@ export type ConversionCheckpoint = {
 export type TopLevelConversion = {
   readonly node: PMNode;
   readonly pos: number;
-  /** Block ids handed out before the node was converted. */
-  readonly firstBlockId: number;
-  readonly blockIds: number;
+  /** The block ids converting the node handed out, in order. */
+  readonly ids: readonly string[];
   /** Content control ids handed out before the node was converted. */
   readonly firstSdt: number;
   readonly sdts: number;
@@ -67,6 +66,8 @@ export type RecordedConversion = {
   readonly nodes: readonly TopLevelConversion[];
   /** The state the last node left. */
   readonly end: ConversionCheckpoint;
+  /** Above every block id the conversion handed out. */
+  readonly freshFrom: number;
 };
 
 export type KeptBlockFlags = {

@@ -27,6 +27,7 @@ import {
   HeadlessEditorView,
   parseShapeDocument,
 } from "../../__tests__/editorHarness";
+import { blockIdsIn, renameBlockIds } from "../../__tests__/renameBlockIds";
 import {
   hashParagraphBlock,
   serializeParagraphBlock,
@@ -36,6 +37,7 @@ import type { Document } from "../../types/document";
 import type { ToFlowBlocksOptions } from "./flowConversionShared";
 import { ParagraphBlockCache } from "./paragraphBlockCache";
 import { toFlowBlocks, WORD_UNSPECIFIED_FONT_SIZE } from "./toFlowBlocks";
+import type { RecordedConversion } from "./topLevelConversion";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
@@ -316,11 +318,93 @@ const paragraphBlocksOf = (blocks: readonly FlowBlock[]) =>
 /** Counts the blocks it hands out, so the property cannot pass by never reusing one. */
 class CountingCache extends ParagraphBlockCache {
   reused = 0;
+  /** Each conversion's record, with the one it started from, oldest first. */
+  readonly records: {
+    readonly from: RecordedConversion | undefined;
+    readonly record: RecordedConversion | undefined;
+  }[] = [];
+  private startedFrom: RecordedConversion | undefined;
   override take(...args: Parameters<ParagraphBlockCache["take"]>) {
     const block = super.take(...args);
     if (block) this.reused += 1;
     return block;
   }
+  override lastConversion(
+    ...args: Parameters<ParagraphBlockCache["lastConversion"]>
+  ) {
+    this.startedFrom = super.lastConversion(...args);
+    return this.startedFrom;
+  }
+  override recordConversion(conversion: RecordedConversion | undefined) {
+    this.records.push({ from: this.startedFrom, record: conversion });
+    this.startedFrom = undefined;
+    super.recordConversion(conversion);
+  }
+  /** The last conversion's record and the one it started from. */
+  lastStep(): readonly [RecordedConversion, RecordedConversion] | undefined {
+    const { from, record } = this.records.at(-1) ?? {};
+    return from !== undefined && record !== undefined
+      ? [from, record]
+      : undefined;
+  }
+}
+
+/**
+ * The conversion with kept blocks equals the one from scratch up to the names
+ * of its blocks, and names every block, row and cell once.
+ */
+function expectFreshConversion(
+  kept: readonly FlowBlock[],
+  fresh: readonly FlowBlock[],
+): void {
+  expect(renameBlockIds(kept)).toEqual(renameBlockIds(fresh));
+  const ids = blockIdsIn(kept);
+  expect(ids.length).toBeGreaterThan(0);
+  expect(new Set(ids).size).toBe(ids.length);
+}
+
+/**
+ * The nodes a document still starts and ends with after an edit keep the ids
+ * of their blocks, whether their blocks are kept, moved or converted again.
+ * Returns how many blocks kept their id.
+ */
+function nodesAtEitherEndKeepTheirIds(
+  before: RecordedConversion,
+  after: RecordedConversion,
+): number {
+  const old = before.nodes;
+  const now = after.nodes;
+  let start = 0;
+  while (
+    start < old.length &&
+    start < now.length &&
+    old[start]?.node === now[start]?.node
+  )
+    start += 1;
+  let end = 0;
+  while (
+    end < old.length - start &&
+    end < now.length - start &&
+    old[old.length - 1 - end]?.node === now[now.length - 1 - end]?.node
+  )
+    end += 1;
+  const pairs = [
+    ...Array.from({ length: start }, (_, index) => [index, index] as const),
+    ...Array.from(
+      { length: end },
+      (_, index) => [old.length - 1 - index, now.length - 1 - index] as const,
+    ),
+  ];
+  let keptIds = 0;
+  for (const [from, to] of pairs) {
+    const was = old[from]?.blocks.map(({ id }) => id) ?? [];
+    const is = now[to]?.blocks.map(({ id }) => id) ?? [];
+    // A node converting again in other surroundings may give other blocks.
+    if (was.length !== is.length) continue;
+    expect(is).toEqual(was);
+    keptIds += is.length;
+  }
+  return keptIds;
 }
 
 describe("paragraph block cache", () => {
@@ -334,6 +418,7 @@ describe("paragraph block cache", () => {
     );
     let reused = 0;
     let handedOutAgain = 0;
+    let keptIds = 0;
     await assertProperty(
       fc.asyncProperty(
         fc.integer({ min: 0, max: documents.length - 1 }),
@@ -353,7 +438,10 @@ describe("paragraph block cache", () => {
               ...constants,
               paragraphBlocks: cache,
             });
-            expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+            expectFreshConversion(
+              kept,
+              toFlowBlocks(view.state.doc, constants),
+            );
             for (const block of kept) if (last.has(block)) handedOutAgain += 1;
             last = new Set(kept);
             deepFreeze(kept);
@@ -373,6 +461,9 @@ describe("paragraph block cache", () => {
           for (const edit of edits) {
             applyEdit(view, edit, options);
             convert();
+            const step = cache.lastStep();
+            if (step !== undefined)
+              keptIds += nodesAtEitherEndKeepTheirIds(...step);
           }
           reused += cache.reused;
         },
@@ -381,6 +472,7 @@ describe("paragraph block cache", () => {
     );
     expect(reused).toBeGreaterThan(0);
     expect(handedOutAgain).toBeGreaterThan(0);
+    expect(keptIds).toBeGreaterThan(0);
   });
 
   test("a cross-reference to a later list item shows the number the list gives now", async () => {
@@ -396,7 +488,7 @@ describe("paragraph block cache", () => {
         ...constants,
         paragraphBlocks: cache,
       });
-      expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+      expectFreshConversion(kept, toFlowBlocks(view.state.doc, constants));
       return kept;
     };
     convert();
@@ -418,12 +510,12 @@ describe("paragraph block cache", () => {
     convert();
   });
 
-  test("an edit that adds a block without moving the paragraphs after it gives them their new ids", async () => {
+  test("an edit that adds a block without moving the paragraphs after it keeps their ids", async () => {
     const document = await parseShapeDocument(await structuresPackage());
     const view = new HeadlessEditorView(
       createHarnessState(document, "editing"),
     );
-    const cache = new ParagraphBlockCache();
+    const cache = new CountingCache();
     const options = { showCommentHighlights: true, alternate: "One" };
     const convert = () => {
       const constants = flowOptions(document, options);
@@ -431,7 +523,7 @@ describe("paragraph block cache", () => {
         ...constants,
         paragraphBlocks: cache,
       });
-      expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+      expectFreshConversion(kept, toFlowBlocks(view.state.doc, constants));
       return kept;
     };
     const before = convert();
@@ -456,6 +548,13 @@ describe("paragraph block cache", () => {
     );
     const after = convert();
     expect(after.length).toBe(before.length + 1);
+    // Every block but the one the mark now paints keeps its id.
+    const afterIds = new Set(after.map(({ id }) => id));
+    expect(before.filter(({ id }) => !afterIds.has(id))).toEqual([]);
+    const step = cache.lastStep();
+    expect(step).toBeDefined();
+    if (step !== undefined)
+      expect(nodesAtEitherEndKeepTheirIds(...step)).toBeGreaterThan(0);
   });
 
   test("paragraphs kept before a section mark take the line pitch it gives now", async () => {
@@ -471,7 +570,7 @@ describe("paragraph block cache", () => {
         ...constants,
         paragraphBlocks: cache,
       });
-      expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+      expectFreshConversion(kept, toFlowBlocks(view.state.doc, constants));
       return kept;
     };
     convert();
@@ -511,7 +610,7 @@ describe("paragraph block cache", () => {
         ...constants,
         paragraphBlocks: cache,
       });
-      expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+      expectFreshConversion(kept, toFlowBlocks(view.state.doc, constants));
     };
     convert();
     // A new list item before "Beta" renumbers it; the paragraphs referring to

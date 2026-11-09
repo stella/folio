@@ -239,7 +239,7 @@ function convertTableCell(
 
   const cell: TableCell = {
     id: nextBlockId(),
-    blocks: groupParagraphFrames(blocks, nextBlockId),
+    blocks: groupParagraphFrames(blocks),
     colSpan: attrs.colspan,
     rowSpan: attrs.rowspan,
     padding,
