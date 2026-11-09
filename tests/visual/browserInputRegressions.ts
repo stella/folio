@@ -398,6 +398,7 @@ export const CANONICAL_COMPOSITION_BESIDE_PASTED_RUN = {
   seed: 197,
   path: "beside-pasted-run",
   fingerprint: "composition-beside-pasted-run",
+  comparesWithDefaultEditor: true,
   trace: {
     shape: "mixed-lists",
     actions: [
@@ -415,6 +416,7 @@ export const CANONICAL_COMPOSITION_BESIDE_PASTED_RUN = {
   seed: number;
   path: string;
   fingerprint: string;
+  comparesWithDefaultEditor: true;
   trace: BrowserInputTrace;
 };
 

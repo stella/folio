@@ -38,7 +38,6 @@ import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import {
   BROWSER_INPUT_REGRESSIONS,
-  CANONICAL_COMPOSITION_BESIDE_PASTED_RUN,
   PINNED_BROWSER_INPUT_TAG,
 } from "./browserInputRegressions";
 import {
@@ -716,6 +715,39 @@ const checkDefaultEditorTrace = async ({
   ).toEqual(baseline);
 };
 
+/** Both modes commit through the canonical session what the default editor commits. */
+const checkCommittedAsDefaultEditor = async ({
+  page,
+  source,
+  baseline,
+  trace,
+}: CanonicalTraceOptions) => {
+  for (const suggesting of [false, true]) {
+    const canonical = await runMode({
+      page,
+      source,
+      baseline,
+      trace,
+      suggesting,
+      authority: "canonical",
+    });
+    const viaDefault = await runMode({
+      page,
+      source,
+      baseline,
+      trace,
+      suggesting,
+      authority: "prosemirror",
+    });
+    if (canonical.type !== "ready" || viaDefault.type !== "ready")
+      throw new TypeError("Both editors must open the compared trace.");
+    expect(canonical.blocks).toEqual(viaDefault.blocks);
+    expect(canonical.changes.map(({ type, text }) => ({ type, text }))).toEqual(
+      viaDefault.changes.map(({ type, text }) => ({ type, text })),
+    );
+  }
+};
+
 const paintedTargetReplays = [
   {
     shape: "tables",
@@ -770,6 +802,13 @@ test.describe("pinned browser input", () => {
         const baseline = project(await FolioDocxReviewer.fromBuffer(source));
         if ("authority" in regression) {
           await checkCanonicalTrace({ page, source, baseline, trace });
+          if ("comparesWithDefaultEditor" in regression)
+            await checkCommittedAsDefaultEditor({
+              page,
+              source,
+              baseline,
+              trace,
+            });
           return;
         }
         await checkDefaultEditorTrace({ page, source, baseline, trace });
@@ -777,43 +816,6 @@ test.describe("pinned browser input", () => {
     );
   }
 });
-
-test(
-  "a composition beside a pasted run commits what the default editor commits",
-  { tag: PINNED_BROWSER_INPUT_TAG },
-  async ({ page }) => {
-    test.setTimeout(60_000);
-    const { trace } = CANONICAL_COMPOSITION_BESIDE_PASTED_RUN;
-    const source = await shapeArrayBuffer(trace.shape);
-    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-    for (const suggesting of [false, true]) {
-      const [canonical, viaDefault] = [
-        await runMode({
-          page,
-          source,
-          baseline,
-          trace,
-          suggesting,
-          authority: "canonical",
-        }),
-        await runMode({
-          page,
-          source,
-          baseline,
-          trace,
-          suggesting,
-          authority: "prosemirror",
-        }),
-      ];
-      if (canonical.type !== "ready" || viaDefault.type !== "ready")
-        throw new TypeError("Both editors must open the composition fixture.");
-      expect(canonical.blocks).toEqual(viaDefault.blocks);
-      expect(
-        canonical.changes.map(({ type, text }) => ({ type, text })),
-      ).toEqual(viaDefault.changes.map(({ type, text }) => ({ type, text })));
-    }
-  },
-);
 
 /** Replays the same action schedule through #1148's fresh-render scheduler oracle. */
 const checkFreshRender = (trace: BrowserInputTrace) => {
