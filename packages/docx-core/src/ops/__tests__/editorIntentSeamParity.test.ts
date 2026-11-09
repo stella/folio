@@ -331,3 +331,89 @@ for (const intent of intentsFor(source())) {
     }
   });
 }
+
+test("a direct replacement continues the wrapper the range boundaries it keeps stay in", () => {
+  const wrapper = (content: Paragraph["content"]) =>
+    ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    }) as const satisfies Paragraph["content"][number];
+  for (const boundaries of [
+    [{ type: "bookmarkStart", id: 1, name: "_Ref1" }],
+    [
+      { type: "bookmarkStart", id: 1, name: "_Ref1" },
+      { type: "bookmarkEnd", id: 1 },
+    ],
+  ] as const) {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                { type: "run", content: [{ type: "text", text: "a" }] },
+                wrapper([
+                  ...boundaries,
+                  { type: "run", content: [{ type: "tab" }] },
+                  { type: "commentRangeEnd", id: 7 },
+                ]),
+              ],
+            },
+            { type: "paragraph", paraId: "00000002", content: [] },
+          ],
+          comments: [
+            {
+              id: 7,
+              author: "A",
+              content: [{ type: "paragraph", paraId: "7FFFFFF0", content: [] }],
+            },
+          ],
+        },
+      },
+    };
+    const intent: EditorIntent = {
+      type: "replaceText",
+      from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+      to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 2 },
+      text: "edited",
+    };
+    const allocation = allocateEditorIntentIds(document, intent);
+    const compiled = (
+      mode: Parameters<typeof compileEditorIntent>[1]["mode"],
+    ) =>
+      applyDocumentOps(
+        document,
+        compileEditorIntent(document, { intent, mode }).unwrap().ops,
+      ).unwrap();
+    const direct = compiled({ type: "editing", newIds: allocation.newIds });
+    const tracked = compiled({
+      type: "suggesting",
+      revision: {
+        id: allocation.revisionId,
+        author: "Reviewer",
+        date: "2026-10-02T00:00:00Z",
+      },
+      newIds: allocation.newIds,
+    });
+    const accepted = applyDocumentOp(tracked.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: tracked.revisions,
+      decision: REVISION_DECISIONS.ACCEPT,
+    }).unwrap();
+    const first = (edited: Document) =>
+      storyParagraphs(edited.package.document).at(0)?.paragraph.content;
+    expect(first(direct.document)).toStrictEqual([
+      wrapper([
+        ...boundaries,
+        { type: "run", content: [{ type: "text", text: "edited" }] },
+        { type: "commentRangeEnd", id: 7 },
+      ]),
+    ]);
+    expect(first(accepted.document)).toStrictEqual(first(direct.document));
+  }
+});

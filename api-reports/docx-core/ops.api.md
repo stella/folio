@@ -860,11 +860,13 @@ export const paragraphLogicalText: (paragraph: Paragraph) => string;
 
 // @public
 export const paragraphMarkOutcome: (input: {
-    follows: "paragraph" | "table" | "nothing";
+    follows: "paragraph" | "table" | "block" | "nothing";
     holdsContent: ParagraphContentVerdict;
     markWasAdded: boolean;
     containerStillEndsWithParagraph: boolean;
     followingTableCanReceiveRunIn: boolean;
+    holdsContentOnceAccepted?: ParagraphContentVerdict;
+    followingBlockCanReceiveRunIn?: boolean;
     needsFollowingCommentHost?: boolean;
     tableRemovalIsTrackable?: boolean;
     removedSectionProperties?: boolean;

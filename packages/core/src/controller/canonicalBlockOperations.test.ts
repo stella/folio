@@ -51,6 +51,12 @@ const BODIES = {
     table("10000004", "Cell"),
     paragraph("10000003", "Gamma"),
   ],
+  "before a block content control": [
+    paragraph("10000001", "Alpha"),
+    paragraph("10000002", "Beta", '<w:ind w:left="720"/>'),
+    `<w:sdt><w:sdtPr><w:id w:val="5"/></w:sdtPr><w:sdtContent>${paragraph("10000004", "Inside")}</w:sdtContent></w:sdt>`,
+    paragraph("10000003", "Gamma"),
+  ],
 } as const;
 
 const packageOf = async (body: readonly string[]) => {
@@ -178,6 +184,21 @@ const outcomes = async (bytes: ArrayBuffer) => {
   };
 };
 
+const withoutIds = (blocks: readonly object[]) =>
+  blocks.map((block) => ({ ...block, id: undefined }));
+
+/**
+ * Shapes where the default engine, reading the canonical session's file back,
+ * rejects an insertion after the anchor by joining the anchor into the new
+ * paragraph under the new paragraph's id. The file records the anchor as the
+ * paragraph that stays, as it does at the end of a container; the canonical
+ * session's own rejection gives the source back, ids included, which the
+ * suggested half of each case checks.
+ */
+const READ_BACK_UNDER_NEW_ID: ReadonlySet<string> = new Set([
+  "before a block content control",
+]);
+
 /**
  * The canonical session's outcomes against the default engine's. Rejecting a
  * tracked insertion after a container's final paragraph gives the source back
@@ -190,13 +211,21 @@ const expectOutcomes = async (
   actual: Awaited<ReturnType<typeof outcomes>>,
   expected: Awaited<ReturnType<typeof outcomes>>,
   source: ArrayBuffer,
+  shape?: string,
 ) => {
-  const withoutIds = (blocks: readonly object[]) =>
-    blocks.map((block) => ({ ...block, id: undefined }));
-  if (
+  const sourceBlocks = await blocksOf(source);
+  const idsOnly =
     !Bun.deepEquals(actual.rejected, expected.rejected) &&
-    Bun.deepEquals(actual.rejected, await blocksOf(source)) &&
-    Bun.deepEquals(withoutIds(actual.rejected), withoutIds(expected.rejected))
+    Bun.deepEquals(withoutIds(actual.rejected), withoutIds(expected.rejected));
+  if (idsOnly && Bun.deepEquals(actual.rejected, sourceBlocks)) {
+    expect({ ...actual, rejected: expected.rejected }).toEqual(expected);
+    return;
+  }
+  if (
+    idsOnly &&
+    shape !== undefined &&
+    READ_BACK_UNDER_NEW_ID.has(shape) &&
+    Bun.deepEquals(expected.rejected, sourceBlocks)
   ) {
     expect({ ...actual, rejected: expected.rejected }).toEqual(expected);
     return;
@@ -322,6 +351,8 @@ const SKIPPED_BY_BOTH: Record<string, string> = {
   "deleteBlock commented between two paragraphs, direct": "unsupportedBlock",
   "deleteBlock commented ending the body, direct": "unsupportedBlock",
   "deleteBlock commented before a table, direct": "unsupportedBlock",
+  "deleteBlock commented before a block content control, direct":
+    "unsupportedBlock",
 };
 
 const OPERATIONS = {
@@ -576,7 +607,7 @@ describe("block-level public operations match the default engine", () => {
           const actual = await outcomes(
             await viaCanonicalEngine(source, operation, mode),
           );
-          await expectOutcomes(actual, expected, source);
+          await expectOutcomes(actual, expected, source, shape);
           // Kinds a suggestion cannot carry skip in both engines.
           if (
             mode !== "tracked-changes" ||
@@ -606,6 +637,7 @@ describe("block-level public operations match the default engine", () => {
             ),
             expected,
             source,
+            shape,
           );
           // The default engine's suggestion resolves the same way; it
           // carries no splits or merges.
@@ -856,15 +888,49 @@ describe("an insertion beside the paragraph the batch deletes", () => {
                 return;
               }
               expect(run.skipped).toEqual([]);
-              expect(
-                await outcomes(
-                  await viaCanonicalEngine(source, operations, mode),
-                ),
-              ).toEqual(
-                await outcomes(
-                  await viaDefaultEngine(source, operations, mode),
-                ),
+              const actual = await outcomes(
+                await viaCanonicalEngine(source, operations, mode),
               );
+              const expected = await outcomes(
+                await viaDefaultEngine(source, operations, mode),
+              );
+              // Tracked after a paragraph a block content control follows,
+              // the default engine keeps the deleted paragraph apart and
+              // leaves it behind, empty, once everything is accepted. Here
+              // its struck words join the new paragraph that holds its mark,
+              // as at the end of the body: accepting gives what the batch
+              // gives directly, and rejecting gives the source's paragraphs
+              // back, the anchor's words under the new paragraph's id.
+              if (
+                type === "insertAfterBlock" &&
+                shape === "before a block content control" &&
+                mode === "tracked-changes"
+              ) {
+                expect(actual.lists).toEqual(expected.lists);
+                expect(actual.comments).toEqual(expected.comments);
+                expect(actual.accepted).toEqual(
+                  await blocksOf(
+                    await viaDefaultEngine(source, operations, "direct"),
+                  ),
+                );
+                expect(withoutIds(actual.rejected)).toEqual(
+                  withoutIds(await blocksOf(source)),
+                );
+                expect(
+                  withoutIds(
+                    await blocksOf(
+                      await viaCanonicalEngine(
+                        source,
+                        operations,
+                        "suggested",
+                        "reject",
+                      ),
+                    ),
+                  ),
+                ).toEqual(withoutIds(await blocksOf(source)));
+                return;
+              }
+              expect(actual).toEqual(expected);
             });
 });
 
@@ -1056,6 +1122,7 @@ describe("a block move matches the default engine", () => {
             await outcomes(byCanonical),
             await outcomes(byDefault),
             source,
+            shape,
           );
           if (mode === "direct") return;
           expect(await halves(byCanonical)).toEqual(await halves(byDefault));
@@ -1158,8 +1225,6 @@ describe("an insertion before a block content control", () => {
       // Read back by the default engine, rejecting the canonical file joins
       // the anchor into the new paragraph under the new paragraph's id, as at
       // the end of a container; everything else is the same.
-      const withoutIds = (blocks: readonly object[]) =>
-        blocks.map((block) => ({ ...block, id: undefined }));
       const actual = await outcomes(
         await viaCanonicalEngine(source, operation, "tracked-changes"),
       );
