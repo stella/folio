@@ -31,6 +31,7 @@ import {
   type InlineSlice,
   type OpStory,
   type ReplaceInlineOp,
+  type RevisionStamp,
   SPLIT_HALVES,
   type TextPosition,
 } from "./types";
