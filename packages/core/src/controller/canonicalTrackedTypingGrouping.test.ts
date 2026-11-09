@@ -152,6 +152,7 @@ const positionOf = (doc: PMNode, needle: string, skip = 0): number => {
 
 type Step =
   | { caret: readonly [string, number] }
+  | { select: readonly [string, number, number] }
   | { type: string }
   | { key: "Backspace" | "Delete"; times: number };
 
@@ -169,6 +170,14 @@ const drive = (driver: Driver, steps: readonly Step[]) => {
       driver.dispatch(
         driver.state.tr.setSelection(
           TextSelection.create(driver.state.doc, at),
+        ),
+      );
+    } else if ("select" in step) {
+      const [text, offset, length] = step.select;
+      const at = positionOf(driver.state.doc, text, offset);
+      driver.dispatch(
+        driver.state.tr.setSelection(
+          TextSelection.create(driver.state.doc, at, at + length),
         ),
       );
     } else if ("type" in step) driver.typeText(step.type);
@@ -281,6 +290,22 @@ const CASES: readonly Case[] = [
       { kind: "text", text: "Alpha Be" },
       { kind: "del", author: ME, text: "ta" },
       { kind: "text", text: " Gamma" },
+    ],
+  },
+  {
+    id: "typing over a selection just after the author's own deletion",
+    body: ALPHA,
+    steps: [
+      { caret: ["Beta", 4] },
+      { key: "Backspace", times: 2 },
+      { select: [" Gamma", 0, 2] },
+      { type: "XY" },
+    ],
+    expected: [
+      { kind: "text", text: "Alpha Be" },
+      { kind: "del", author: ME, text: "ta G" },
+      { kind: "ins", author: ME, text: "XY" },
+      { kind: "text", text: "amma" },
     ],
   },
   {

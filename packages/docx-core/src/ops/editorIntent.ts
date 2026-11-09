@@ -2802,34 +2802,33 @@ export const compileEditorIntent = (
         break;
       }
       if (mode.type === "suggesting") {
+        // A deletion beside the author's own pending one continues it, and
+        // so does the struck part of a replacement; the typed text keeps its
+        // own stamp.
+        const struck = groupedDeletionStamp({
+          start: {
+            items: paragraph.content,
+            gap: {
+              offset: from.offset,
+              zeroWidthBefore:
+                from.zeroWidthBefore ??
+                zeroWidthLeavesAt(paragraph.content, from.offset).length,
+            },
+          },
+          end: {
+            items: (paragraphAt(document, to) ?? paragraph).content,
+            gap: {
+              offset: to.offset,
+              zeroWidthBefore: to.zeroWidthBefore ?? 0,
+            },
+          },
+          stamp: mode.revision,
+        });
         const planned = planTrackedReplace(document, {
           sourceContainerPolicy: "join",
           from,
           to,
-          // A deletion beside the author's own pending one continues it.
-          revision:
-            text === ""
-              ? groupedDeletionStamp({
-                  start: {
-                    items: paragraph.content,
-                    gap: {
-                      offset: from.offset,
-                      zeroWidthBefore:
-                        from.zeroWidthBefore ??
-                        zeroWidthLeavesAt(paragraph.content, from.offset)
-                          .length,
-                    },
-                  },
-                  end: {
-                    items: (paragraphAt(document, to) ?? paragraph).content,
-                    gap: {
-                      offset: to.offset,
-                      zeroWidthBefore: to.zeroWidthBefore ?? 0,
-                    },
-                  },
-                  stamp: mode.revision,
-                })
-              : mode.revision,
+          revision: text === "" ? struck : mode.revision,
           newIds: mode.newIds,
           seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
           replacement: {
@@ -2854,7 +2853,16 @@ export const compileEditorIntent = (
               })
             : undefined;
         ops = [];
-        for (const op of planned.value) {
+        for (const plannedOp of planned.value) {
+          // The grouped stamp keeps this edit's id, so only its record's
+          // metadata changes and every planned position still holds.
+          const op =
+            text !== "" &&
+            struck !== mode.revision &&
+            plannedOp.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+            plannedOp.revision?.id === mode.revision.id
+              ? { ...plannedOp, revision: struck }
+              : plannedOp;
           if (
             resumed === undefined ||
             op.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT ||
