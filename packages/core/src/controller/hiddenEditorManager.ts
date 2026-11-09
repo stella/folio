@@ -1565,8 +1565,10 @@ export const createHiddenEditorManager = (
     if (!view) {
       // A canonical session is seeded with its view and reads input and
       // composition from it, so a host that routes through it gets the view
-      // as soon as it syncs, not when something first reads a story.
-      if (canonicalRequested) ensureView();
+      // as soon as it syncs a document, not when something first reads a
+      // story. Without a document there is nothing to seed yet; the sync
+      // that brings one creates the view.
+      if (canonicalRequested && deps.getDocument() !== null) ensureView();
       return;
     }
     const collaboration = deps.getCollaboration();
