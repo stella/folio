@@ -44,6 +44,7 @@ import {
   type HiddenProseMirrorCollaboration,
   type HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
+import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
@@ -443,10 +444,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   // ========================================================================
 
   return (
-    <div
-      className="paged-editor__hidden-pm-wrapper"
-      style={HIDDEN_WRAPPER_STYLES}
-    >
+    <div className={HIDDEN_EDITOR_WRAPPER_CLASS} style={HIDDEN_WRAPPER_STYLES}>
       <div
         ref={hostRef}
         className="paged-editor__hidden-pm"
