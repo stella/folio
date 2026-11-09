@@ -2600,13 +2600,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           onSelectionTextChangeRef.current({ from, to, text });
         }
 
+        // While typing hides the overlay, the anchor stays where it is: the
+        // reveal moves it to the new caret, and resetting it in between would
+        // send a composition started meanwhile to the unanchored position.
         if (suppressSelectionOverlayRef.current) {
           setSelectionRects([]);
-          syncImeCaretAnchor({
-            hiddenHost: hiddenPMRef.current?.getHostElement(),
-            editorView: hiddenPMRef.current?.getView(),
-            visibleCaret: null,
-          });
           return;
         }
 
