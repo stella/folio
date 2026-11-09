@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Başka bir sekme, pencere veya cihaz bu belgeyi düzenlemek için açtığından bu oturum sonlandırıldı. Kaydedilmemiş yerel değişiklikler korunur; devam etmek için belgeyi yeniden açın.",
     "editor": {
       "accessibleName": "Belge düzenleyici",
+      "changeUnavailable": "Bu değişiklik henüz burada yapılamıyor.",
       "contentLocked": "Belgenin bu bölümü kilitli.",
       "editing": "Düzenleme",
       "editingDescription": "Belgeyi doğrudan düzenleyin",
