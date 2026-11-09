@@ -508,6 +508,9 @@ type IndexNode = {
 
 const MAX_CHAIN = 32;
 
+/** How many recently indexed packages an index may derive a new one from. */
+const RECENT_BASES = 8;
+
 const countIn = (node: IndexNode, key: string): number => {
   let count = 0;
   for (let at: IndexNode | undefined = node; at !== undefined; at = at.parent)
@@ -695,12 +698,34 @@ const keyIndex = (
 ): ((pkg: DocxPackage) => IdentityKeyIndex) => {
   const nodes = new WeakMap<DocxPackage, IndexNode>();
   const changeBetween = censusChange(censusOf, ownKeys);
-  let last: WeakRef<DocxPackage> | undefined;
+  // The packages indexed last, newest first, held weakly. A package indexed
+  // only on the way to another (an edit's intermediate version) is often
+  // collected before the next lookup; an older one still alive, such as the
+  // version an editor holds, is then the base instead of a full count.
+  const recent: WeakRef<DocxPackage>[] = [];
+  const baseFor = ():
+    { previous: DocxPackage; base: IndexNode } | undefined => {
+    for (const reference of recent) {
+      const previous = reference.deref();
+      const base = previous === undefined ? undefined : nodes.get(previous);
+      if (previous !== undefined && base?.shareable === true)
+        return { previous, base };
+    }
+    return undefined;
+  };
+  const remember = (pkg: DocxPackage): void => {
+    if (recent[0]?.deref() === pkg) return;
+    const alive = recent.filter((reference) => {
+      const held = reference.deref();
+      return held !== undefined && held !== pkg;
+    });
+    recent.length = 0;
+    recent.push(new WeakRef(pkg), ...alive.slice(0, RECENT_BASES - 1));
+  };
   const derived = (pkg: DocxPackage): IndexNode | undefined => {
-    const previous = last?.deref();
-    const base = previous === undefined ? undefined : nodes.get(previous);
-    if (previous === undefined || base === undefined || !base.shareable)
-      return undefined;
+    const found = baseFor();
+    if (found === undefined) return undefined;
+    const { previous, base } = found;
     const changes = new Map<string, number>();
     if (!changeBetween(viewOf(previous), viewOf(pkg), changes))
       return undefined;
@@ -729,7 +754,7 @@ const keyIndex = (
       node = derived(pkg) ?? counted(pkg);
       nodes.set(pkg, node);
     }
-    last = new WeakRef(pkg);
+    remember(pkg);
     const indexed = node;
     return {
       count: (key) => countIn(indexed, key),

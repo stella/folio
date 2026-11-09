@@ -222,3 +222,65 @@ describe("the key index of a package", () => {
     );
   });
 });
+
+describe("the key index after the newest indexed package is gone", () => {
+  // An edit's intermediate version is indexed and then dropped; once it is
+  // collected, the next version is found from an older one still held.
+  test("still equals a census walking every record", async () => {
+    await assertProperty(
+      fc.property(
+        fc.oneof(documentArbitrary, reviewDocumentArbitrary),
+        fc.array(
+          fc.record({
+            kept: opSeedArbitrary,
+            dropped: opSeedArbitrary,
+            tracked: fc.boolean(),
+            collect: fc.boolean(),
+          }),
+          { minLength: 1, maxLength: 12 },
+        ),
+        (start, edits) => {
+          let latest = start;
+          const check = (document: Document): void => {
+            const expected = countedInFull(document);
+            const asked = new Set([
+              ...expected.identity.keys(),
+              ...expected.reserved.keys(),
+            ]);
+            expectIndexed({
+              index: packageIdentityKeyIndex(document.package),
+              expected: expected.identity,
+              asked,
+              listed: true,
+            });
+            expectIndexed({
+              index: packageReservedKeyIndex(document.package),
+              expected: expected.reserved,
+              asked,
+              listed: true,
+            });
+          };
+          check(latest);
+          edits.forEach(({ kept, dropped, tracked, collect }, index) => {
+            const opOf = (document: Document, seed: typeof kept) =>
+              tracked
+                ? trackedOpFor(document, seed, index)
+                : opForStory({ document, seed, story: OP_STORIES.MAIN });
+            // Indexed on the way, then let go.
+            (() => {
+              const transient = applyDocumentOp(latest, opOf(latest, dropped));
+              if (transient.isOk())
+                packageIdentityKeyIndex(transient.value.document.package);
+            })();
+            if (collect) Bun.gc(true);
+            const next = applyDocumentOp(latest, opOf(latest, kept));
+            if (next.isErr()) return;
+            latest = next.value.document;
+            check(latest);
+          });
+        },
+      ),
+      { numRuns: 60, id: "the key index after the newest package is gone" },
+    );
+  });
+});
