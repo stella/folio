@@ -627,6 +627,16 @@ export function useDocxEditor(
     isCanonicalSession()
       ? cloneDocumentWithParagraphPropertySources(document)
       : document;
+  // Both change listeners are the host's, so they share the one copy a
+  // notification makes, as the default session's listeners share its model.
+  // The canonical session's own document is never handed out.
+  const notifyHosts = (document: Document, sessionOwned: boolean) => {
+    const forHosts = sessionOwned
+      ? cloneDocumentWithParagraphPropertySources(document)
+      : cloneForHost(document);
+    onChange?.(forHosts);
+    emitter.emit("docChange", forHosts);
+  };
   const refuseCanonicalModelEdit = (gap: CanonicalGap, message: string) => {
     if (!isCanonicalSession()) return false;
     const error = new CanonicalSessionRefusalError({
@@ -777,13 +787,13 @@ export function useDocxEditor(
         isDirty.value = true;
         const current = docModel.value;
         if (current) {
+          const canonical = manager.readCanonicalDocument();
           const updated =
-            manager.api.getCanonicalDocument() ??
+            canonical ??
             noteEditorManagerHolder.current?.snapshotDocument(current) ??
             current;
           docModel.value = updated;
-          onChange?.(cloneForHost(updated));
-          emitter.emit("docChange", cloneForHost(updated));
+          notifyHosts(updated, canonical !== null);
         }
         scheduler.schedule();
       }
@@ -946,7 +956,7 @@ export function useDocxEditor(
       return;
     }
     try {
-      const canonical = manager.api.getCanonicalDocument();
+      const canonical = manager.readCanonicalDocument();
       if (!canonical && isCanonicalSession()) return;
       const updated =
         canonical ??
@@ -959,8 +969,7 @@ export function useDocxEditor(
         );
       docModel.value = updated;
       syncSecondaryStoryEditors();
-      onChange?.(cloneForHost(updated));
-      emitter.emit("docChange", cloneForHost(updated));
+      notifyHosts(updated, canonical !== null);
     } catch (err) {
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
@@ -1109,7 +1118,9 @@ export function useDocxEditor(
       noteFollower.noteBase(before);
     }
     if (docChanged) {
-      const canonical = manager.api.getCanonicalDocument();
+      // The model only reads the session's document, so it takes it without
+      // a copy; hosts get theirs when the change is notified.
+      const canonical = manager.readCanonicalDocument();
       if (canonical) {
         docModel.value = canonical;
         syncSecondaryStoryEditors();
