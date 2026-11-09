@@ -1,8 +1,9 @@
 /**
- * Table-resize commit + width-read helpers shared by the React and Vue
- * adapters. Pure `(view, …) → result` over the PM doc — the gesture state
- * machines (which DOM handle is grabbed, pixel deltas, listener wiring) stay
- * in each adapter.
+ * Table-resize commands and width-read helpers shared by the React and Vue
+ * adapters. A resize is a command the adapter runs through the editor, so the
+ * canonical session applies it as table edits; the gesture state machines
+ * (which DOM handle is grabbed, pixel deltas, listener wiring) stay in each
+ * adapter.
  *
  * Widths and heights are stored in twips (1/20 of a point) on the PM doc,
  * matching OOXML's `w:tblGrid` and `w:tcW` units.
@@ -10,6 +11,7 @@
 
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
+import type { Command, EditorState, Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import {
@@ -18,6 +20,7 @@ import {
   mergeTableAttrs,
   mergeTableCellAttrs,
 } from "./attrs";
+import { withCanonicalTableAttributeCommand } from "./canonicalTableCommands";
 
 /** 1px ≈ 15 twips at 96dpi (20 twips/pt × 72pt/in ÷ 96px/in). */
 export const TWIPS_PER_PIXEL = 15;
@@ -47,9 +50,9 @@ type FoundTable = {
 };
 
 /** Walk up from `pmStart + 1` to find the enclosing table node. */
-function findTableAt(view: EditorView, pmStart: number): FoundTable | null {
+function findTableAt(doc: PMNode, pmStart: number): FoundTable | null {
   try {
-    const $pos = view.state.doc.resolve(pmStart + 1);
+    const $pos = doc.resolve(pmStart + 1);
     for (let d = $pos.depth; d >= 0; d--) {
       const node = $pos.node(d);
       if (node.type.name === "table") {
@@ -68,7 +71,7 @@ export function readColumnWidths(
   pmStart: number,
   colIndex: number,
 ): { left: number; right: number } | null {
-  const found = findTableAt(view, pmStart);
+  const found = findTableAt(view.state.doc, pmStart);
   if (!found) return null;
   const widths = found.node.attrs["columnWidths"] as number[] | null;
   if (!widths) return null;
@@ -88,7 +91,7 @@ export function readRowHeight(
   pmStart: number,
   rowIndex: number,
 ): number | null {
-  const found = findTableAt(view, pmStart);
+  const found = findTableAt(view.state.doc, pmStart);
   if (!found) return null;
   let rowHeight: number | null = null;
   let idx = 0;
@@ -108,7 +111,7 @@ export function readColumnWidthAt(
   pmStart: number,
   colIndex: number,
 ): number | null {
-  const found = findTableAt(view, pmStart);
+  const found = findTableAt(view.state.doc, pmStart);
   if (!found) return null;
   const widths = found.node.attrs["columnWidths"] as number[] | null;
   if (!widths) return null;
@@ -117,22 +120,22 @@ export function readColumnWidthAt(
   return width;
 }
 
-type CommitGridResizeOptions = {
-  view: EditorView;
+type GridResizeOptions = {
+  state: EditorState;
   table: FoundTable;
   widths: number[];
   firstColumn: number;
   lastColumn: number;
 };
 
-const commitGridResize = ({
-  view,
+const gridResize = ({
+  state,
   table: { node, tablePos },
   widths,
   firstColumn,
   lastColumn,
-}: CommitGridResizeOptions): void => {
-  const tr = view.state.tr;
+}: GridResizeOptions): Transaction => {
+  const tr = state.tr;
   tr.setNodeMarkup(
     tablePos,
     undefined,
@@ -183,81 +186,98 @@ const commitGridResize = ({
     });
     rowOffset += row.nodeSize;
   });
-  view.dispatch(tr);
+  return tr;
 };
 
-/** Commit a column-pair resize, preserving each spanning cell's full grid width. */
-export function commitColumnResize(
-  view: EditorView,
-  opts: { pmStart: number; colIdx: number; newLeft: number; newRight: number },
-): void {
-  const { pmStart, colIdx, newLeft, newRight } = opts;
-  const found = findTableAt(view, pmStart);
-  if (!found) return;
-  const sourceWidths = expectTableAttrs(found.node).columnWidths;
-  if (
-    !sourceWidths ||
-    sourceWidths[colIdx] === undefined ||
-    sourceWidths[colIdx + 1] === undefined
-  )
-    return;
-  const widths = [...sourceWidths];
-  widths[colIdx] = newLeft;
-  widths[colIdx + 1] = newRight;
-  commitGridResize({
-    view,
-    table: found,
-    widths,
-    firstColumn: colIdx,
-    lastColumn: colIdx + 1,
-  });
-}
-
-/** Bake a row-resize into the PM doc: update the target row's `height` + `heightRule`. */
-export function commitRowResize(
-  view: EditorView,
-  opts: { pmStart: number; rowIdx: number; newHeight: number },
-): void {
-  const { pmStart, rowIdx, newHeight } = opts;
-  const found = findTableAt(view, pmStart);
-  if (!found) return;
-  const { node, tablePos } = found;
-
-  const tr = view.state.tr;
-  let rowOffset = tablePos + 1;
-  let idx = 0;
-  node.forEach((row) => {
-    if (idx === rowIdx) {
-      tr.setNodeMarkup(tr.mapping.map(rowOffset), undefined, {
-        ...row.attrs,
-        height: newHeight,
-        heightRule: "atLeast",
-      });
-    }
-    rowOffset += row.nodeSize;
-    idx++;
+/**
+ * A resize as a command over the table at `pmStart`. It changes only table,
+ * row and cell attributes, so the canonical session applies it as the grid
+ * and formatting edits it makes.
+ */
+const resizeCommand = (
+  pmStart: number,
+  resize: (state: EditorState, table: FoundTable) => Transaction | null,
+): Command =>
+  withCanonicalTableAttributeCommand((state, dispatch) => {
+    const found = findTableAt(state.doc, pmStart);
+    if (!found) return false;
+    const tr = resize(state, found);
+    if (tr === null) return false;
+    dispatch?.(tr);
+    return true;
   });
 
-  view.dispatch(tr);
-}
-
-/** Commit a right-edge resize, including cells that span the resized column. */
-export function commitRightEdgeResize(
-  view: EditorView,
-  opts: { pmStart: number; colIdx: number; newWidth: number },
-): void {
-  const { pmStart, colIdx, newWidth } = opts;
-  const found = findTableAt(view, pmStart);
-  if (!found) return;
-  const sourceWidths = expectTableAttrs(found.node).columnWidths;
-  if (!sourceWidths || sourceWidths[colIdx] === undefined) return;
-  const widths = [...sourceWidths];
-  widths[colIdx] = newWidth;
-  commitGridResize({
-    view,
-    table: found,
-    widths,
-    firstColumn: colIdx,
-    lastColumn: colIdx,
+/** A column-pair resize, preserving each spanning cell's full grid width. */
+export const columnResizeCommand = (opts: {
+  pmStart: number;
+  colIdx: number;
+  newLeft: number;
+  newRight: number;
+}): Command =>
+  resizeCommand(opts.pmStart, (state, table) => {
+    const { colIdx, newLeft, newRight } = opts;
+    const sourceWidths = expectTableAttrs(table.node).columnWidths;
+    if (
+      !sourceWidths ||
+      sourceWidths[colIdx] === undefined ||
+      sourceWidths[colIdx + 1] === undefined
+    )
+      return null;
+    const widths = [...sourceWidths];
+    widths[colIdx] = newLeft;
+    widths[colIdx + 1] = newRight;
+    return gridResize({
+      state,
+      table,
+      widths,
+      firstColumn: colIdx,
+      lastColumn: colIdx + 1,
+    });
   });
-}
+
+/** A row resize: the row's `height`, at least that tall. */
+export const rowResizeCommand = (opts: {
+  pmStart: number;
+  rowIdx: number;
+  newHeight: number;
+}): Command =>
+  resizeCommand(opts.pmStart, (state, { node, tablePos }) => {
+    const tr = state.tr;
+    let rowOffset = tablePos + 1;
+    let idx = 0;
+    let found = false;
+    node.forEach((row) => {
+      if (idx === opts.rowIdx) {
+        found = true;
+        tr.setNodeMarkup(tr.mapping.map(rowOffset), undefined, {
+          ...row.attrs,
+          height: opts.newHeight,
+          heightRule: "atLeast",
+        });
+      }
+      rowOffset += row.nodeSize;
+      idx++;
+    });
+    return found ? tr : null;
+  });
+
+/** A right-edge resize, including cells that span the resized column. */
+export const rightEdgeResizeCommand = (opts: {
+  pmStart: number;
+  colIdx: number;
+  newWidth: number;
+}): Command =>
+  resizeCommand(opts.pmStart, (state, table) => {
+    const { colIdx, newWidth } = opts;
+    const sourceWidths = expectTableAttrs(table.node).columnWidths;
+    if (!sourceWidths || sourceWidths[colIdx] === undefined) return null;
+    const widths = [...sourceWidths];
+    widths[colIdx] = newWidth;
+    return gridResize({
+      state,
+      table,
+      widths,
+      firstColumn: colIdx,
+      lastColumn: colIdx,
+    });
+  });

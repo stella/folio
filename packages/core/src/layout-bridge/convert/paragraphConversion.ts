@@ -15,7 +15,10 @@ import type {
   ParagraphBlock,
   Run,
 } from "../../layout-engine/types";
-import { expectParagraphAttrs } from "../../prosemirror/attrs";
+import {
+  expectParagraphAttrs,
+  expectRunPropertyChangeMarkAttrs,
+} from "../../prosemirror/attrs";
 import { expectBookmarkBoundaryAttrs } from "../../prosemirror/bookmarkBoundaryAttrs";
 import { advanceVisibleListMarker } from "../../prosemirror/listMarker";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
@@ -127,6 +130,29 @@ export function convertParagraph(
   );
 }
 
+/**
+ * Whether a paragraph holds a pending formatting change: a recorded change of
+ * its own properties, or a run whose mark records a change of its run
+ * properties, as the review list lists them.
+ */
+const holdsFormattingRevision = (
+  node: PMNode,
+  pmAttrs: ReturnType<typeof expectParagraphAttrs>,
+): boolean => {
+  if ((pmAttrs._propertyChanges?.length ?? 0) > 0) return true;
+  const runPropertyChange = node.type.schema.marks["runPropertyChange"];
+  if (runPropertyChange === undefined) return false;
+  let found = false;
+  node.descendants((child) => {
+    if (found) return false;
+    const mark = runPropertyChange.isInSet(child.marks);
+    if (mark && expectRunPropertyChangeMarkAttrs(mark).changes.length > 0)
+      found = true;
+    return !found;
+  });
+  return found;
+};
+
 /** Advance the list counters past a paragraph and return the marker they give it. */
 export function paragraphListMarker(
   node: PMNode,
@@ -162,6 +188,7 @@ export function convertParagraphWithListMarker(
   if (options.numberingTabIgnoresIndent && attrs.listMarker !== undefined) {
     attrs.listNumberingTabIgnoresIndent = true;
   }
+  if (holdsFormattingRevision(node, pmAttrs)) attrs.formattingRevision = true;
   if (options.defaultFont !== undefined) {
     attrs.defaultFontFamily ??= options.defaultFont;
   }

@@ -1,7 +1,11 @@
 import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import type { Document } from "@stll/docx-core";
-import { withoutPendingSuggestions } from "@stll/docx-core/ops";
+import {
+  idKey,
+  packageParagraphIds,
+  withoutPendingSuggestions,
+} from "@stll/docx-core/ops";
 
 import { withoutUnreferencedNotes } from "../prosemirror/noteReferenceReview";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -78,6 +82,17 @@ export const serializeCanonicalSave = async ({
       diagnostic,
     });
   }
+  // A paragraph a pending suggestion adds is not in the file, so it is no
+  // change to write: rejecting the suggestion only ever removes paragraphs
+  // the suggestion itself added.
+  const heldBack = new Set<string>();
+  if (withoutSuggestions.value !== snapshot.document) {
+    const kept = new Set(
+      packageParagraphIds(withoutSuggestions.value.package).map(idKey),
+    );
+    for (const id of packageParagraphIds(snapshot.document.package))
+      if (!kept.has(idKey(id))) heldBack.add(idKey(id));
+  }
   const baseline = document.originalBuffer;
   const flags = resolveSelectiveSaveFlags(featureFlags);
   const diagnostics: SaveDiagnostic[] = [];
@@ -99,7 +114,9 @@ export const serializeCanonicalSave = async ({
     const { attemptSelectiveSave } = await import("./selectiveSave");
     selectiveBuffer = await attemptSelectiveSave(document, baseline, {
       bodyAuthority: "canonical",
-      changedParaIds: new Set(snapshot.changedBlockIds),
+      changedParaIds: new Set(
+        snapshot.changedBlockIds.filter((id) => !heldBack.has(idKey(id))),
+      ),
       structuralChange: snapshot.structure === "changed",
       hasUntrackedChanges: false,
       maxBytes: flags.selectiveSaveMaxBytes,
