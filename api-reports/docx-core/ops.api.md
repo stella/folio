@@ -937,6 +937,7 @@ export const planTrackedReplace: (document: Document_2, options: PlanTrackedRepl
 
 // @public
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+    deletionRevision?: RevisionStamp;
     sourceContainerPolicy: "join" | "separate";
     seamPolicy?: Extract<DocumentOp, {
         type: "insertContent";
