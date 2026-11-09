@@ -37,6 +37,7 @@ import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import { isValidHexId } from "@stll/folio-core/utils/hexId";
 
+import { useEqualState } from "../hooks/keepEqual";
 import {
   countOpenCommentThreads,
   createComment as buildComment,
@@ -356,7 +357,7 @@ export function useFolioComments({
   );
 
   const [isAddingComment, setIsAddingComment] = useState(false);
-  const [commentSelectionRange, setCommentSelectionRange] = useState<{
+  const [commentSelectionRange, setCommentSelectionRange] = useEqualState<{
     from: number;
     to: number;
   } | null>(null);
@@ -365,7 +366,7 @@ export function useFolioComments({
   );
 
   // Floating "add comment" button position (relative to scroll container, null = hidden)
-  const [floatingCommentBtn, setFloatingCommentBtn] = useState<{
+  const [floatingCommentBtn, setFloatingCommentBtn] = useEqualState<{
     top: number;
     left: number;
     from: number;

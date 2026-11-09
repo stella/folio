@@ -276,6 +276,7 @@ import {
   twipsToPixels,
 } from "@stll/folio-core/utils/units";
 
+import { useEqualState } from "../hooks/keepEqual";
 import { useDocumentHistory } from "../hooks/useHistory";
 import { useTableSelection } from "../hooks/useTableSelection";
 import { useWheelZoom } from "../hooks/useWheelZoom";
@@ -464,7 +465,9 @@ function areTableContextsEqual(
   }
   return (
     a.isInTable === b.isInTable &&
-    a.table === b.table &&
+    // Only the table's attributes are read (the properties dialog): typing in
+    // a cell makes a new table node with the same attributes.
+    a.table?.attrs === b.table?.attrs &&
     a.tablePos === b.tablePos &&
     a.rowIndex === b.rowIndex &&
     a.columnIndex === b.columnIndex &&
@@ -516,8 +519,6 @@ function areActiveTrackedChangesEqual(
     a.type === b.type &&
     a.author === b.author &&
     a.date === b.date &&
-    a.from === b.from &&
-    a.to === b.to &&
     a.heldByLock.accept === b.heldByLock.accept &&
     a.heldByLock.reject === b.heldByLock.reject
   );
@@ -740,20 +741,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     );
     // Document outline sidebar state
     const [showOutline, setShowOutline] = useState(showOutlineProp);
-    const [outlineHeadings, setHeadingInfos] = useState<HeadingInfo[]>([]);
+    const [outlineHeadings, setHeadingInfos] = useEqualState<HeadingInfo[]>([]);
 
-    const [, setTrackedChangeEntries] = useState<TrackedChangeEntry[]>([]);
+    const [, setTrackedChangeEntries] = useEqualState<TrackedChangeEntry[]>([]);
     // Mirrors the tracked-change entries so the sidebar accept/reject handlers
     // can resolve a specific `revisionId` from a (from, to) range without
     // subscribing to the state value (avoids extra re-renders / dep churn).
     const trackedChangesRef = useRef<TrackedChangeEntry[]>([]);
-    const setTrackedChanges = useCallback((entries: TrackedChangeEntry[]) => {
-      trackedChangesRef.current = entries;
-      setTrackedChangeEntries(entries);
-    }, []);
-    const [anchorPositions, setAnchorPositions] = useState<Map<string, number>>(
-      EMPTY_ANCHOR_POSITIONS,
+    const setTrackedChanges = useCallback(
+      (entries: TrackedChangeEntry[]) => {
+        trackedChangesRef.current = entries;
+        setTrackedChangeEntries(entries);
+      },
+      [setTrackedChangeEntries],
     );
+    const [anchorPositions, setAnchorPositions] = useEqualState<
+      Map<string, number>
+    >(EMPTY_ANCHOR_POSITIONS);
 
     const {
       editingMode,
@@ -1142,7 +1146,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       };
       refresh(pagedEditor.getLayout());
       return pagedEditor.getEditor().on("layoutComplete", refresh);
-    }, [showOutline, bodyViewEpoch]);
+    }, [showOutline, bodyViewEpoch, setHeadingInfos]);
 
     // Refs
 
@@ -1374,10 +1378,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       onZoomChange: setZoomWithViewportAnchor,
       keyboardShortcuts: "none",
     });
-    const [bodyHistoryAvailability, setBodyHistoryAvailability] = useState({
-      canRedo: false,
-      canUndo: false,
-    });
+    const [bodyHistoryAvailability, setBodyHistoryAvailability] =
+      useEqualState<{
+        canRedo: boolean;
+        canUndo: boolean;
+      }>({
+        canRedo: false,
+        canUndo: false,
+      });
     const [activeNoteStory, setActiveNoteStory] = useState<NoteStoryKey | null>(
       null,
     );
@@ -1400,7 +1408,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           ? prev
           : { canUndo, canRedo },
       );
-    }, []);
+    }, [setBodyHistoryAvailability]);
 
     // Header/footer editing state + content resolution + mutation callbacks
     const {
@@ -1698,6 +1706,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         setIsAddingComment,
         setShowCommentsSidebar,
         setVisibleCommentAuthors,
+        setHeadingInfos,
+        setAnchorPositions,
       ]),
       setDocumentLoadState: useCallback((documentLoad: DocumentLoadState) => {
         setState((prev) => ({ ...prev, documentLoad }));
@@ -2152,9 +2162,18 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         // and active tracked-change at the cursor live in pure helpers so the
         // logic is unit-tested without spinning up a real component.
         const pmImageCtx = view ? detectImageContext(view.state) : null;
-        const trackedChange = view
+        const detectedChange = view
           ? detectActiveTrackedChange(view.state)
           : null;
+        const trackedChange: EditorState["activeTrackedChange"] =
+          detectedChange === null
+            ? null
+            : {
+                type: detectedChange.type,
+                author: detectedChange.author,
+                date: detectedChange.date,
+                heldByLock: detectedChange.heldByLock,
+              };
 
         if (!selectionState) {
           setFloatingCommentBtn(null);
@@ -6323,21 +6342,19 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                               if (!activeHf) {
                                 return null;
                               }
-                              const targetEl =
-                                editorContentElement?.querySelector<HTMLElement>(
-                                  hfEditPosition === "header"
-                                    ? ".layout-page-header"
-                                    : ".layout-page-footer",
-                                );
                               const parentEl = editorContentElement;
-                              if (!targetEl || !parentEl) {
+                              if (!parentEl) {
                                 return null;
                               }
                               return (
                                 <InlineHeaderFooterEditor
                                   ref={hfEditorRef}
                                   position={hfEditPosition}
-                                  targetElement={targetEl}
+                                  targetSelector={
+                                    hfEditPosition === "header"
+                                      ? ".layout-page-header"
+                                      : ".layout-page-footer"
+                                  }
                                   parentElement={parentEl}
                                   getActiveView={getActiveHfView}
                                   onClose={handleBodyClick}
