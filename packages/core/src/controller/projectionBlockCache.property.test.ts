@@ -19,9 +19,13 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
-import { CommentMarkerCache } from "../docx/commentAnchorIndex";
+import {
+  CommentMarkerCache,
+  rangedCommentIds,
+} from "../docx/commentAnchorIndex";
 import { parseDocx } from "../docx/parser";
 import {
+  collectPairedBookmarkIds,
   ProjectionBlockCache,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
@@ -166,6 +170,9 @@ const convertedInFull = (document: Document, salt: string) => {
 describe("a projection reusing converted blocks across story versions", () => {
   test("equals a projection converting every block over story versions", async () => {
     const sources = await parsedSources();
+    const sorted = (ids: ReadonlySet<number>) =>
+      [...ids].toSorted((left, right) => left - right);
+    let marked = 0;
     await assertProperty(
       fc.property(
         fc.constantFrom(...sources),
@@ -176,6 +183,21 @@ describe("a projection reusing converted blocks across story versions", () => {
           let version = document;
           for (const edit of [undefined, ...edits]) {
             if (edit !== undefined) version = editModel(version, edit);
+            // The story's bookmark and comment ids, from the blocks kept,
+            // against a walk of every block.
+            const blocks = version.package.document.content;
+            const markers = cache.storyMarkers(blocks);
+            expect(sorted(markers.pairedBookmarkIds)).toEqual(
+              sorted(collectPairedBookmarkIds(blocks)),
+            );
+            expect(sorted(markers.rangedCommentIds)).toEqual(
+              sorted(rangedCommentIds(blocks)),
+            );
+            if (
+              markers.pairedBookmarkIds.size > 0 &&
+              markers.rangedCommentIds.size > 0
+            )
+              marked += 1;
             const full = convertedInFull(version, cache.salt);
             if (full === undefined) continue;
             const cached = toProseDoc(version, { blockCache: cache });
@@ -204,6 +226,8 @@ describe("a projection reusing converted blocks across story versions", () => {
         numRuns: 400,
       },
     );
+    // Versions held both paired bookmarks and ranged comments.
+    expect(marked).toBeGreaterThan(50);
   });
 });
 
