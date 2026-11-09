@@ -155,7 +155,10 @@ class CounterView {
   private readonly bindings = new Map<number, number>();
   private readonly arrays = new Map<number, readonly number[]>();
 
-  constructor(readonly counters: ComputeListMarkerOptions) {
+  readonly counters: ComputeListMarkerOptions;
+
+  constructor(counters: ComputeListMarkerOptions) {
+    this.counters = counters;
     for (const values of counters.listCounters.values()) this.bind(values);
     for (const values of counters.abstractCounters.values()) this.bind(values);
   }

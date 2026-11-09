@@ -16,6 +16,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 import {
   OP_STORIES,
   paragraphPropertySnapshotToken,
@@ -318,11 +319,80 @@ const sharedListsDocument = async (): Promise<Document> => {
   );
 };
 
+/**
+ * Lists of one abstract list numbered by direct references and by a
+ * paragraph style, a restarting instance among them: a style-numbered
+ * paragraph advances the latest instance of the abstract list, so instances
+ * trade counter arrays and arrays fall out of use.
+ */
+const styledListsDocument = async (): Promise<Document> => {
+  const content: Paragraph[] = Array.from({ length: 40 }, (_, index) => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      paraId: (0x40000000 + index).toString(16).toUpperCase(),
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text: `Item ${String(index)}` }],
+        },
+      ],
+    };
+    if (index % 7 === 6) return paragraph;
+    paragraph.formatting =
+      index % 3 === 0
+        ? { styleId: "ListStyle" }
+        : {
+            numPr: {
+              kind: "reference",
+              numId: [2, 3, 1, 4][Math.floor(index / 5) % 4] ?? 1,
+              ilvl: index % 2,
+            },
+          };
+    return paragraph;
+  });
+  const bytes = await createDocx({
+    package: {
+      styles: {
+        styles: [
+          {
+            styleId: "ListStyle",
+            type: "paragraph",
+            pPr: { numPr: paragraphNumberingReference({ numId: 4, ilvl: 0 }) },
+          },
+        ],
+      },
+      numbering: {
+        abstractNums: [
+          { abstractNumId: 0, levels: [level(0), level(1), level(2)] },
+        ],
+        nums: [
+          { numId: 1, abstractNumId: 0 },
+          {
+            numId: 2,
+            abstractNumId: 0,
+            levelOverrides: [{ ilvl: 0, startOverride: 3 }],
+          },
+          { numId: 3, abstractNumId: 0 },
+          { numId: 4, abstractNumId: 0 },
+        ],
+      },
+      document: { content },
+    },
+  });
+  return parseDocx(
+    (
+      await prepareCanonicalDocxInput(new Uint8Array(bytes).slice().buffer)
+    ).unwrap(),
+    { preloadFonts: false, detectVariables: false },
+  );
+};
+
 const listEditArbitrary = fc.record({
   kind: fc.constantFrom(
     "number",
     "unnumber",
     "level",
+    "style",
     "model",
     "again",
     "facts",
@@ -382,6 +452,16 @@ const editLists = (document: Document, edit: ListEdit): Document => {
         numPr: { ...current, ilvl: edit.ilvl },
       };
       break;
+    // Numbered by the style instead of a reference, or no longer by it.
+    case "style": {
+      formatting = { ...block.formatting };
+      if (formatting.styleId === "ListStyle") delete formatting.styleId;
+      else {
+        formatting.styleId = "ListStyle";
+        delete formatting.numPr;
+      }
+      break;
+    }
     default:
       return edit.kind satisfies never;
   }
@@ -418,10 +498,11 @@ describe("a list normalization reusing blocks earlier runs left", () => {
     const sources = await parsedSources();
     await assertProperty(
       fc.property(
-        fc.constantFrom(...sources, {
-          id: "shared-lists",
-          document: await sharedListsDocument(),
-        }),
+        fc.constantFrom(
+          ...sources,
+          { id: "shared-lists", document: await sharedListsDocument() },
+          { id: "styled-lists", document: await styledListsDocument() },
+        ),
         fc.integer({ min: 1, max: 5 }),
         fc.array(listEditArbitrary, { minLength: 1, maxLength: 20 }),
         ({ document }, checkpointSpacing, edits) => {
@@ -543,6 +624,19 @@ const longListDocument = async (items: number): Promise<Document> => {
   );
 };
 
+/**
+ * A long list normalized with `cache`, then once more as normalized, after
+ * which every block normalizes to itself.
+ */
+const settledLongList = async (
+  cache: ListNormalizationCache,
+): Promise<Normalized> => {
+  const first = normalizedBothWays(await longListDocument(400), cache);
+  const settled = normalizedBothWays(first.document, cache, first);
+  expect(settled.settled.every(Boolean)).toBe(true);
+  return settled;
+};
+
 /** `document` with main story block `index` replaced by what `edit` makes of it. */
 const editingMainBlock = (
   document: Document,
@@ -557,8 +651,7 @@ const editingMainBlock = (
 describe("a list normalization after one edit to a long list", () => {
   test("normalizes the edited paragraph alone when no counter changes", async () => {
     const cache = new ListNormalizationCache();
-    let last = normalizedBothWays(await longListDocument(400), cache);
-    expect(cache.normalizedBlocks(OP_STORIES.MAIN)).toBe(400);
+    let last = await settledLongList(cache);
     for (const index of [0, 37, 200, 399]) {
       const edited = editingMainBlock(last.document, index, (paragraph) => ({
         ...paragraph,
@@ -571,7 +664,7 @@ describe("a list normalization after one edit to a long list", () => {
 
   test("normalizes the paragraphs after it while their counters change", async () => {
     const cache = new ListNormalizationCache();
-    const last = normalizedBothWays(await longListDocument(400), cache);
+    const last = await settledLongList(cache);
     const unnumbered = editingMainBlock(last.document, 100, (paragraph) => {
       const formatting = { ...paragraph.formatting };
       delete formatting.numPr;
