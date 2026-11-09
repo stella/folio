@@ -1547,7 +1547,8 @@ export class CanonicalPublicOperations {
     // With no paragraph after it, one the batch inserts beside it applies
     // first at one position: after it, that paragraph then follows it;
     // tracked, before it, the deletion finds it by identity there too, and
-    // the inserted paragraph's own pending mark joins it.
+    // the inserted paragraph's own pending mark joins it. A move's halves do
+    // the same, so no mark is left on the container's final paragraph.
     if (
       next !== undefined ||
       gainsFollower ||
@@ -1740,12 +1741,8 @@ export class CanonicalPublicOperations {
         refusal,
       });
     if (operation.type === "deleteBlock") {
-      // Tracked, a move keeps a mark on each side, which an insertion that
-      // takes over this paragraph's mark cannot give: it stays refused.
       const gainsFollower =
-        !followed &&
-        besideDeletions.insertedBeside.has(blockId) &&
-        (!tracked || operation.moveId === undefined);
+        !followed && besideDeletions.insertedBeside.has(blockId);
       const deleted = this.resolveBlockDeletion({
         operation,
         paragraph,

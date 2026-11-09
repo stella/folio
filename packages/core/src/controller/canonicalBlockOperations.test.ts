@@ -842,29 +842,56 @@ describe("an insertion beside the paragraph the batch deletes", () => {
               ] as const satisfies readonly FolioDocumentOperation[];
               const operations = reversed ? [...halves].reverse() : halves;
               const run = await canonicalRun(source, operations, mode);
-              // Tracked, a move beside a paragraph that ends the body keeps a
-              // mark on each side, which the insertion taking over that
-              // paragraph's mark cannot give, so one half is refused.
+              expect(run.skipped).toEqual([]);
+              const actual = await outcomes(
+                await viaCanonicalEngine(source, operations, mode),
+              );
+              const expected = await outcomes(
+                await viaDefaultEngine(source, operations, mode),
+              );
+              // Tracked, a move of the paragraph that ends the body beside
+              // itself: the default engine keeps both paragraphs pending,
+              // each with a mark, the last one on the body's final paragraph,
+              // and leaves the moved paragraph behind, empty, once accepted.
+              // Here no mark stands on the final paragraph: the moved words
+              // and the words moved there share one paragraph. Accepting
+              // gives the paragraphs the batch gives directly and rejecting
+              // gives the source's back; which of the two paragraph ids the
+              // one paragraph keeps differs.
               if (
                 moveId !== undefined &&
                 shape === "ending the body" &&
                 mode === "tracked-changes"
               ) {
-                expect(run.skipped.map(({ reason }) => reason)).toEqual([
-                  "overlappingOperation",
-                ]);
+                expect(actual.lists).toEqual(expected.lists);
+                expect(actual.comments).toEqual(expected.comments);
+                const withoutIds = (blocks: readonly object[]) =>
+                  blocks.map((block) => ({ ...block, id: undefined }));
+                expect(withoutIds(actual.accepted)).toEqual(
+                  withoutIds(
+                    await blocksOf(
+                      await viaDefaultEngine(source, operations, "direct"),
+                    ),
+                  ),
+                );
+                expect(withoutIds(actual.rejected)).toEqual(
+                  withoutIds(await blocksOf(source)),
+                );
+                expect(
+                  withoutIds(
+                    await blocksOf(
+                      await viaCanonicalEngine(
+                        source,
+                        operations,
+                        "suggested",
+                        "reject",
+                      ),
+                    ),
+                  ),
+                ).toEqual(withoutIds(await blocksOf(source)));
                 return;
               }
-              expect(run.skipped).toEqual([]);
-              expect(
-                await outcomes(
-                  await viaCanonicalEngine(source, operations, mode),
-                ),
-              ).toEqual(
-                await outcomes(
-                  await viaDefaultEngine(source, operations, mode),
-                ),
-              );
+              expect(actual).toEqual(expected);
             });
 });
 
