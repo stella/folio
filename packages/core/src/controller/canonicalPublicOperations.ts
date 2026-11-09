@@ -604,7 +604,11 @@ type ResolveBlockDeletionOptions = {
   projectionStory: OpStory;
   doc: PMNode;
   tracked: boolean;
-  /** Whether the batch inserts a paragraph after this one, which then follows it. */
+  /**
+   * Whether the batch inserts a paragraph beside this one, which no
+   * paragraph follows: the insertion applies first, and the deletion then
+   * finds this paragraph by identity.
+   */
   gainsFollower: boolean;
   refusal: (
     reason: FolioAIEditSkipReason,
@@ -1470,8 +1474,10 @@ export class CanonicalPublicOperations {
     // records a move's source, which the batch pairs before compiling.
     // So does a deletion the paragraph after it survives, by identity: an
     // insertion before that paragraph in the same batch leaves it in place.
-    // With no paragraph after it, one the batch inserts after it follows it
-    // once that insertion applies, which goes first at one position.
+    // With no paragraph after it, one the batch inserts beside it applies
+    // first at one position: after it, that paragraph then follows it;
+    // tracked, before it, the deletion finds it by identity there too, and
+    // the inserted paragraph's own pending mark joins it.
     if (
       next !== undefined ||
       gainsFollower ||
@@ -1630,7 +1636,8 @@ export class CanonicalPublicOperations {
     // A paragraph no paragraph follows, deleted directly by the same batch:
     // before it and after it are one place once it is gone, and after it,
     // the deletion keeps a paragraph to remove it by identity. A tracked
-    // deletion leaves the paragraph in place, so its sides stay apart.
+    // deletion leaves the paragraph in place, so its sides stay apart, and it
+    // removes the paragraph by identity once the insertion beside it applies.
     const followed =
       state.doc.resolve(paragraph.start + paragraph.node.content.size + 1)
         .nodeAfter?.type.name === "paragraph";
@@ -1663,8 +1670,12 @@ export class CanonicalPublicOperations {
         refusal,
       });
     if (operation.type === "deleteBlock") {
+      // Tracked, a move keeps a mark on each side, which an insertion that
+      // takes over this paragraph's mark cannot give: it stays refused.
       const gainsFollower =
-        !tracked && !followed && besideDeletions.insertedBeside.has(blockId);
+        !followed &&
+        besideDeletions.insertedBeside.has(blockId) &&
+        (!tracked || operation.moveId === undefined);
       const deleted = this.resolveBlockDeletion({
         operation,
         paragraph,

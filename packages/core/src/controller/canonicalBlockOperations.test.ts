@@ -772,10 +772,14 @@ describe("an insertion beside the paragraph the batch deletes", () => {
               ] as const satisfies readonly FolioDocumentOperation[];
               const operations = reversed ? [...halves].reverse() : halves;
               const run = await canonicalRun(source, operations, mode);
-              // Tracked, beside a paragraph that ends the body, the insertion
-              // takes over the paragraph's mark that the deletion records,
-              // so it is still refused, and says so.
-              if (shape === "ending the body" && mode === "tracked-changes") {
+              // Tracked, a move beside a paragraph that ends the body keeps a
+              // mark on each side, which the insertion taking over that
+              // paragraph's mark cannot give, so one half is refused.
+              if (
+                moveId !== undefined &&
+                shape === "ending the body" &&
+                mode === "tracked-changes"
+              ) {
                 expect(run.skipped.map(({ reason }) => reason)).toEqual([
                   "overlappingOperation",
                 ]);
@@ -792,6 +796,29 @@ describe("an insertion beside the paragraph the batch deletes", () => {
                 ),
               );
             });
+});
+
+describe("paragraphs inserted beside the paragraph the batch deletes", () => {
+  // Each line its own paragraph, beside a paragraph that ends the body, as
+  // the default engine places and records them.
+  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const reversed of [false, true])
+      for (const mode of ["direct", "tracked-changes"] as const)
+        test(`${type}${reversed ? " listed first" : ""}, ${mode}`, async () => {
+          const source = await packageOf(BODIES["ending the body"]);
+          const halves = [
+            { id: "from", type: "deleteBlock", blockId: "10000002" },
+            { id: "to", type, blockId: "10000002", text: "Moved\nAgain" },
+          ] as const satisfies readonly FolioDocumentOperation[];
+          const operations = reversed ? [...halves].reverse() : halves;
+          const run = await canonicalRun(source, operations, mode);
+          expect(run.skipped).toEqual([]);
+          expect(
+            await outcomes(await viaCanonicalEngine(source, operations, mode)),
+          ).toEqual(
+            await outcomes(await viaDefaultEngine(source, operations, mode)),
+          );
+        });
 });
 
 describe("a deletion beside an insertion the batch refuses", () => {
