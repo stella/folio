@@ -396,28 +396,15 @@ type BookmarkBoundaryCount = {
 };
 
 /**
- * Find bookmark pairs across every editable inline wrapper in a document story.
- * Each endpoint is converted at its own structural position, so a range may
- * start outside a hyperlink and end inside it (or the inverse).
+ * Every bookmark boundary of a story's blocks, in the document order the
+ * conversion meets them, across every editable inline wrapper. Each endpoint
+ * is converted at its own structural position, so a range may start outside
+ * a hyperlink and end inside it (or the inverse).
  */
-export const collectPairedBookmarkIds = (
+export const visitBookmarkBoundaries = (
   blocks: readonly BlockContent[],
-): ReadonlySet<number> => {
-  const counts = new Map<number, BookmarkBoundaryCount>();
-  let position = 0;
-  const countBoundary = (id: number, type: "start" | "end"): void => {
-    const count = counts.get(id) ?? { starts: 0, ends: 0 };
-    if (type === "start") {
-      count.starts += 1;
-      count.firstStart ??= position;
-    } else {
-      count.ends += 1;
-      count.firstEnd ??= position;
-    }
-    position += 1;
-    counts.set(id, count);
-  };
-
+  countBoundary: (id: number, type: "start" | "end") => void,
+): void => {
   const countMarkersWhere = (
     markers: readonly PositionedBookmarkMarker[] | undefined,
     stands: (index: number) => boolean,
@@ -604,6 +591,26 @@ export const collectPairedBookmarkIds = (
   };
 
   visitBlocks(blocks);
+};
+
+/** The bookmarks of a story's blocks whose one start opens before their one end. */
+export const collectPairedBookmarkIds = (
+  blocks: readonly BlockContent[],
+): ReadonlySet<number> => {
+  const counts = new Map<number, BookmarkBoundaryCount>();
+  let position = 0;
+  visitBookmarkBoundaries(blocks, (id, type) => {
+    const count = counts.get(id) ?? { starts: 0, ends: 0 };
+    if (type === "start") {
+      count.starts += 1;
+      count.firstStart ??= position;
+    } else {
+      count.ends += 1;
+      count.firstEnd ??= position;
+    }
+    position += 1;
+    counts.set(id, count);
+  });
   return new Set(
     [...counts].flatMap(([id, count]) =>
       count.starts === 1 &&
