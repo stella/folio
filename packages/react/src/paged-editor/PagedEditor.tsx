@@ -64,7 +64,6 @@ import {
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { allowsDirectDrawingEdit } from "@stll/folio-core/docx/imageRawXml";
 import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
 import { FontFaceLifecycle } from "@stll/folio-core/fonts/FontFaceLifecycle";
@@ -2460,25 +2459,20 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         ) {
           newDoc = noteFollower.reconcile(newDoc, body);
         }
+        // `getDocument` returns a document the host owns: a copy of the
+        // canonical session's, or one built from the editor state.
         if (newDoc) {
-          onDocumentChangeRef.current?.(
-            usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)
-              ? cloneDocumentWithParagraphPropertySources(newDoc)
-              : newDoc,
-          );
-          folioEmitterRef.current.emit(
-            "docChange",
-            usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            )
-              ? cloneDocumentWithParagraphPropertySources(newDoc)
-              : newDoc,
-          );
+          onDocumentChangeRef.current?.(newDoc);
+          folioEmitterRef.current.emit("docChange", newDoc);
         }
       };
       flush();
     }, [experimentalSession, noteFollower, getActiveEditorStory]);
+
+    const readCanonicalDocument = useCallback(
+      () => hiddenPMRef.current?.readCanonicalDocument() ?? null,
+      [],
+    );
 
     const scheduleDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
@@ -3591,26 +3585,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     );
 
     const handleNoteDocumentChange = useCallback(
+      // A note story's snapshot is already a document the host owns.
       (updated: Document) => {
-        onDocumentChangeRef.current?.(
-          usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? cloneDocumentWithParagraphPropertySources(updated)
-            : updated,
-        );
-        folioEmitterRef.current.emit(
-          "docChange",
-          usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? cloneDocumentWithParagraphPropertySources(updated)
-            : updated,
-        );
+        onDocumentChangeRef.current?.(updated);
+        folioEmitterRef.current.emit("docChange", updated);
       },
-      [experimentalSession],
+      [],
     );
 
     // Clear HF caret state + cross-surface drag state on any hfEditMode
@@ -6667,6 +6647,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           readOnly={readOnly}
           onTransaction={handleHfPmTransaction}
           getCanonicalApi={getCanonicalApi}
+          readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
           {...(!usesCanonicalSession(
             experimentalSession,
@@ -6683,6 +6664,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           document={document}
           onActiveChange={handleActiveNoteStoryChange}
           getCanonicalApi={getCanonicalApi}
+          readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
           {...(!usesCanonicalSession(
             experimentalSession,

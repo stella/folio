@@ -953,6 +953,7 @@ test.each(["body", "story"] as const)(
       // Synchronization must defer before either snapshot source is read.
       getDocument: () => manager.api.getDocument(),
       getCanonicalApi: () => manager.api,
+      readCanonicalDocument: () => manager.readCanonicalDocument(),
       getExperimentalSession: () => "canonical" as const,
       getStyles: () => null,
       getTheme: () => null,
@@ -2112,6 +2113,7 @@ test.each([
       getHost: () => noteHost,
       getDocument: () => source,
       getCanonicalApi: () => manager.api,
+      readCanonicalDocument: () => manager.readCanonicalDocument(),
       getExperimentalSession: () => "canonical",
       getStyles: () => null,
       getTheme: () => null,
