@@ -1555,13 +1555,20 @@ export const createHiddenEditorManager = (
   // This should NOT run when the document prop changes due to internal edits
   // being passed back through the parent component's state.
   const syncExternalDocument = (): void => {
-    if (!view || isDestroying) {
+    if (isDestroying) {
       return;
     }
     const canonicalRequested = usesCanonicalSession(
       deps.getExperimentalSession?.(),
       CANONICAL_GAP.authorityRouting,
     );
+    if (!view) {
+      // A canonical session is seeded with its view and reads input and
+      // composition from it, so a host that routes through it gets the view
+      // as soon as it syncs, not when something first reads a story.
+      if (canonicalRequested) ensureView();
+      return;
+    }
     const collaboration = deps.getCollaboration();
     const collaborationModules = deps.getCollaborationModules();
     if (collaboration && !collaborationModules && !canonicalRequested) {
@@ -2071,14 +2078,9 @@ export const createHiddenEditorManager = (
         }
         return publishCommit(prepared.value);
       },
+      // A read: the view a canonical session lives in is requested by
+      // `syncExternalDocument`, never as a side effect of asking for a story.
       getCanonicalStoryProjection: (story) => {
-        if (
-          usesCanonicalSession(
-            deps.getExperimentalSession?.(),
-            CANONICAL_GAP.authorityRouting,
-          )
-        )
-          ensureView();
         if (
           editorSession.type !== "canonical" ||
           editorSession.session.isComposing

@@ -2315,3 +2315,32 @@ test("typing after the browser moved the caret lands there in both session modes
     releaseDom();
   }
 });
+
+test("a canonical body view comes from the host's sync, never from a story read", () => {
+  const releaseDom = acquireHarnessDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Start" });
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    // Reading a story answers from the session it finds and creates nothing.
+    expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).toBeNull();
+    expect(manager.getView()).toBeNull();
+    // The host's sync is what brings the view the session lives in.
+    manager.syncExternalDocument();
+    expect(manager.getView()).not.toBeNull();
+    expect(
+      manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN),
+    ).not.toBeNull();
+  } finally {
+    manager.destroyView();
+    host.remove();
+    releaseDom();
+  }
+});
