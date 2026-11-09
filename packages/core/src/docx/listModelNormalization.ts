@@ -11,7 +11,9 @@ import {
   type OpStory,
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,
+  replaceStoryBody,
   withBodyContent,
+  withParagraphRenderings,
 } from "@stll/docx-core/ops";
 
 import {
@@ -25,8 +27,7 @@ import type {
   BlockContent,
   Document,
   DocumentBody,
-  Endnote,
-  Footnote,
+  Paragraph,
 } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import {
@@ -337,7 +338,8 @@ export class ListNormalizationCache {
 
   /**
    * The blocks of one story normalized, from `counters` as a fresh story
-   * starts them; undefined when every block normalizes to itself.
+   * starts them: the place of each block that normalized to another one, and
+   * that one.
    */
   story(
     story: OpStory,
@@ -348,7 +350,7 @@ export class ListNormalizationCache {
       settled: boolean;
       advance: ListCounterAdvance | null;
     },
-  ): BlockContent[] | undefined {
+  ): (readonly [number, BlockContent])[] {
     const key = storyKey(story);
     const old = this.runs.get(key) ?? [];
     const length = blocks.length;
@@ -375,7 +377,7 @@ export class ListNormalizationCache {
     // the earlier run had there.
     let sinceCheckpoint = prefix - countersAt(old, prefix, counters);
     let records = old.slice(0, prefix);
-    let outputs: BlockContent[] | undefined;
+    const replaced: (readonly [number, BlockContent])[] = [];
     let normalized = 0;
     const next = (index: number): ListCounterAdvance | null => {
       const block = blocks[index] ?? panic("A story lost a block.");
@@ -387,10 +389,7 @@ export class ListNormalizationCache {
       const { output, settled, advance } = normalize(block);
       sinceCheckpoint += 1;
       normalized += 1;
-      if (output !== block) {
-        outputs ??= [...blocks];
-        outputs[index] = output;
-      }
+      if (output !== block) replaced.push([index, output]);
       // A block normalized to a new one is kept as that one: normalizing it
       // again from the same counters returns it unchanged.
       records.push(
@@ -430,7 +429,7 @@ export class ListNormalizationCache {
     }
     this.runs.set(key, records);
     this.normalized.set(key, normalized);
-    return outputs;
+    return replaced;
   }
 }
 
@@ -664,92 +663,93 @@ export const normalizeListModelRendering = (
     packageInputs.numbering === undefined
       ? null
       : getCachedNumberingMap(packageInputs.numbering);
-  const normalizeBody = <Body extends DocumentBody>(
-    body: Body,
+  /** The place of each block of one story that normalized to another one, and that one. */
+  const replacedIn = (
+    body: DocumentBody,
     story: OpStory,
-  ): Body => {
+  ): (readonly [number, BlockContent])[] => {
     const counters = freshCounters(numbering);
     const inputs: BlockNormalizationInputs = {
       styles,
       story,
       recordInverse,
     };
-    if (cache === undefined) {
-      const content = body.content.map(
-        (block) => normalizeBlock(block, inputs, counters).output,
-      );
-      return content.every(
-        (paragraph, index) => paragraph === body.content[index],
-      )
-        ? body
-        : { ...body, ...withBodyContent(body, content) };
+    return cache === undefined
+      ? body.content.flatMap((block, index) => {
+          const { output } = normalizeBlock(block, inputs, counters);
+          return output === block ? [] : [[index, output] as const];
+        })
+      : cache.story(story, body.content, counters, (block) => {
+          const before = recorded;
+          const { output, advance } = normalizeBlock(block, inputs, counters);
+          return {
+            output,
+            settled: output === block && recorded === before,
+            advance,
+          };
+        });
+  };
+  /**
+   * `document` with one story's replaced blocks in their places. A paragraph
+   * normalized to another takes its place through the renderings helper,
+   * which keeps the document's standing against the operations contract; a
+   * story that holds one paragraph object at two places has its blocks
+   * replaced by place instead, and the result is checked anew.
+   */
+  const withReplaced = (
+    target: Document,
+    story: OpStory,
+    body: DocumentBody,
+    replaced: readonly (readonly [number, BlockContent])[],
+  ): Document => {
+    const renderings = new Map<Paragraph, Paragraph>();
+    let byPlace = false;
+    for (const [index, output] of replaced) {
+      const block = body.content[index];
+      if (block?.type !== "paragraph" || output.type !== "paragraph")
+        return panic("List normalization replaces only paragraphs.");
+      const known = renderings.get(block);
+      if (known !== undefined && known !== output) byPlace = true;
+      renderings.set(block, output);
     }
-    const content = cache.story(story, body.content, counters, (block) => {
-      const before = recorded;
-      const { output, advance } = normalizeBlock(block, inputs, counters);
-      return {
-        output,
-        settled: output === block && recorded === before,
-        advance,
-      };
+    const rendered = byPlace
+      ? undefined
+      : withParagraphRenderings({ document: target, story, renderings });
+    if (rendered !== undefined) return rendered;
+    const content = [...body.content];
+    for (const [index, output] of replaced) content[index] = output;
+    return replaceStoryBody({
+      document: target,
+      story,
+      body: { ...body, ...withBodyContent(body, content) },
     });
-    return content === undefined
-      ? body
-      : { ...body, ...withBodyContent(body, content) };
   };
   const pkg = document.package;
-  const body = normalizeBody(pkg.document, OP_STORIES.MAIN);
-  const normalizeParts = <Body extends DocumentBody>(
-    parts: Map<string, Body> | undefined,
-    kind: "header" | "footer",
-  ) => {
-    if (parts === undefined) return parts;
-    const normalized = new Map(
-      [...parts].map(([id, part]) => [
-        id,
-        normalizeBody(part, { kind, rId: id }),
-      ]),
-    );
-    return [...normalized].every(([id, part]) => part === parts.get(id))
-      ? parts
-      : normalized;
-  };
-  const normalizeNotes = <Body extends Footnote | Endnote>(
-    notes: Body[] | undefined,
-    kind: "footnote" | "endnote",
-  ) => {
-    if (notes === undefined) return notes;
-    const normalized = notes.map((note) =>
-      normalizeBody(note, { kind, id: note.id }),
-    );
-    return normalized.every((note, index) => note === notes[index])
-      ? notes
-      : normalized;
-  };
-  const headers = normalizeParts(pkg.headers, "header");
-  const footers = normalizeParts(pkg.footers, "footer");
-  const footnotes = normalizeNotes(pkg.footnotes, "footnote");
-  const endnotes = normalizeNotes(pkg.endnotes, "endnote");
-  if (
-    body === pkg.document &&
-    headers === pkg.headers &&
-    footers === pkg.footers &&
-    footnotes === pkg.footnotes &&
-    endnotes === pkg.endnotes
-  )
-    return { document, inverse };
-  return {
-    inverse,
-    document: {
-      ...document,
-      package: {
-        ...pkg,
-        document: body,
-        ...(headers === undefined ? {} : { headers }),
-        ...(footers === undefined ? {} : { footers }),
-        ...(footnotes === undefined ? {} : { footnotes }),
-        ...(endnotes === undefined ? {} : { endnotes }),
-      },
-    },
-  };
+  // Stories in the order every normalization takes them: the counters and
+  // the inverse operations follow it.
+  const stories: { story: OpStory; body: DocumentBody }[] = [
+    { story: OP_STORIES.MAIN, body: pkg.document },
+    ...[...(pkg.headers ?? [])].map(([rId, body]) => ({
+      story: { kind: "header" as const, rId },
+      body,
+    })),
+    ...[...(pkg.footers ?? [])].map(([rId, body]) => ({
+      story: { kind: "footer" as const, rId },
+      body,
+    })),
+    ...(pkg.footnotes ?? []).map((body) => ({
+      story: { kind: "footnote" as const, id: body.id },
+      body,
+    })),
+    ...(pkg.endnotes ?? []).map((body) => ({
+      story: { kind: "endnote" as const, id: body.id },
+      body,
+    })),
+  ];
+  // Each story's renderings replace its paragraphs in place: a document known
+  // to meet the operations contract still does.
+  let normalized = document;
+  for (const { story, body } of stories)
+    normalized = withReplaced(normalized, story, body, replacedIn(body, story));
+  return { document: normalized, inverse };
 };
