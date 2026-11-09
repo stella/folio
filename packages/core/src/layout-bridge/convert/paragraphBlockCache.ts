@@ -13,7 +13,8 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { documentFontFactsCacheIdentity } from "../../fonts/documentFontFacts";
 import { noteParagraphOrigin } from "../../layout-engine/measure/paragraphKeyMemo";
-import type { ParagraphBlock, Run } from "../../layout-engine/types";
+import type { ParagraphBlock } from "../../layout-engine/types";
+import { shiftParagraphPmAnchors } from "../../layout-engine/types";
 import {
   getParagraphFrame,
   setParagraphFrame,
@@ -143,12 +144,6 @@ type KeptParagraph = {
   block: ParagraphBlock;
 };
 
-const movedRun = (run: Run, delta: number): Run => ({
-  ...run,
-  ...(run.pmStart === undefined ? {} : { pmStart: run.pmStart + delta }),
-  ...(run.pmEnd === undefined ? {} : { pmEnd: run.pmEnd + delta }),
-});
-
 /**
  * A copy of `block` moved by `delta`, under `id`. The copy owns its top-level
  * fields, attributes and runs, which conversion stamps after a paragraph is
@@ -160,12 +155,9 @@ const movedBlock = (
   id: ParagraphBlock["id"],
 ): ParagraphBlock => {
   const moved: ParagraphBlock = {
-    ...block,
+    ...shiftParagraphPmAnchors(block, delta),
     id,
-    runs: block.runs.map((run) => movedRun(run, delta)),
     attrs: { ...block.attrs },
-    ...(block.pmStart === undefined ? {} : { pmStart: block.pmStart + delta }),
-    ...(block.pmEnd === undefined ? {} : { pmEnd: block.pmEnd + delta }),
   };
   // A text frame is kept beside the block, not on it: the copy carries it too.
   const frame = getParagraphFrame(block);
