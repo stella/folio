@@ -69,6 +69,7 @@ export default defineConfig({
     open: false,
   },
   build: {
+    minify: false,
     outDir: "dist",
   },
 });

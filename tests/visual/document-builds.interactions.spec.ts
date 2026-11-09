@@ -42,6 +42,7 @@ const HOSTS: readonly AdapterFixture[] = [
 const ENGINES = ["default", "canonical"] as const;
 
 test.use({ viewport: { width: 1500, height: 900 } });
+test.describe.configure({ timeout: 60_000 });
 
 const recordBuildsAndKeys = async (page: Page) => {
   await page.addInitScript(() => {
@@ -113,7 +114,40 @@ for (const host of HOSTS) {
       );
       await clearBuildsAndKeys(page);
 
-      await page.keyboard.type("x".repeat(KEYS), { delay: KEY_DELAY_MS });
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Debugger.enable");
+      let samples = 0;
+      cdp.on("Debugger.paused", (event) => {
+        samples += 1;
+        console.log(
+          "PROBE-STACK",
+          host.name,
+          engine,
+          samples,
+          JSON.stringify(
+            event.callFrames
+              .slice(0, 40)
+              .map(
+                (frame) =>
+                  `${frame.functionName} ${frame.url.split("/").pop() ?? ""}:${String(frame.location.lineNumber + 1)}:${String((frame.location.columnNumber ?? 0) + 1)}`,
+              ),
+          ),
+        );
+        void cdp.send("Debugger.resume");
+      });
+      let keysDone = false;
+      const typing = page.keyboard
+        .type("x".repeat(KEYS), { delay: KEY_DELAY_MS })
+        .then(() => {
+          keysDone = true;
+        });
+      for (let sample = 0; sample < 4; sample += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 4_000));
+        if (keysDone) break;
+        console.log("PROBE-PAUSE", host.name, engine, sample);
+        void cdp.send("Debugger.pause");
+      }
+      await typing;
       await page.waitForTimeout(SETTLE_MS);
 
       const { builds, keydowns } = await readBuildsAndKeys(page);
