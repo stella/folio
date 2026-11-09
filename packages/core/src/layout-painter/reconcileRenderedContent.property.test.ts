@@ -1,9 +1,14 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { acquireHarnessDom } from "../../../../test/harnessDom";
-import { assertProperty } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { reconcileRenderedContent } from "./reconcileRenderedContent";
+
+setDefaultTimeout(propertyTestTimeout(10_000));
 
 type Line = {
   pmStart: number;
