@@ -74,7 +74,9 @@ const measureIndexBuild = (depth: number): number => {
   doc.descendants(() => {
     nodeCount += 1;
   });
-  expect(visitCount).toBe(nodeCount);
+  // Subtrees without a page break run are skipped: every other node is
+  // visited once, and neither the paragraph without one nor its text is.
+  expect(visitCount).toBe(nodeCount - 2);
 
   const pageBreakPosition = absolutePositionOf(doc, pageBreak);
   expect(
@@ -87,7 +89,7 @@ const measureIndexBuild = (depth: number): number => {
 };
 
 describe("page-break descendant index", () => {
-  test("visits every node exactly once across adversarial nested containers", () => {
+  test("visits each node at most once across adversarial nested containers", () => {
     const depth = 128;
     const visitsAtDepth = measureIndexBuild(depth);
     const visitsAtDoubleDepth = measureIndexBuild(depth * 2);

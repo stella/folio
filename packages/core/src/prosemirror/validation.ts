@@ -1,6 +1,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
+import { subtreeHolds } from "../internal/subtreeHolds";
 import type { PositionedBookmarkMarker } from "../types/document";
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import {
@@ -206,17 +207,9 @@ const carriesBookmarkBoundary = (node: PMNode): boolean => {
 // whether a subtree holds a boundary is decided once per node. The pairing
 // pass then walks only the subtrees that hold one, and an edit costs the path
 // it changed rather than every node of the document.
-const bookmarkFree = new WeakMap<PMNode, boolean>();
-const holdsNoBookmarkBoundary = (node: PMNode): boolean => {
-  if (node.isText) return true;
-  const known = bookmarkFree.get(node);
-  if (known !== undefined) return known;
-  let free = !carriesBookmarkBoundary(node);
-  for (let index = 0; free && index < node.childCount; index++)
-    free = holdsNoBookmarkBoundary(node.child(index));
-  bookmarkFree.set(node, free);
-  return free;
-};
+const holdsBookmarkBoundary = subtreeHolds(carriesBookmarkBoundary);
+const holdsNoBookmarkBoundary = (node: PMNode): boolean =>
+  !holdsBookmarkBoundary(node);
 
 /** The pairing pass over every node, skipping none: the reference for the skip. */
 export const bookmarkIssuesWalkingEveryNode = (
