@@ -241,6 +241,99 @@ test("deletion refuses invalid selections, boundaries and paragraph review confl
   }
 });
 
+test("a tracked deletion removes a mark its own author's pending insertion added, joining the paragraph after it", () => {
+  // Deleting over one's own insertion removes it; nothing records it deleted.
+  const ownMark = (block: Paragraph): Paragraph => ({
+    ...block,
+    pPrMark: { kind: "ins", info: { id: 9, author: "Reviewer" } },
+  });
+  const texts = (document: Document) =>
+    document.package.document.content.map((block) =>
+      block.type === "paragraph"
+        ? {
+            id: block.paraId,
+            mark: block.pPrMark?.kind,
+            content: block.content.map((node) => node.type),
+          }
+        : block.type,
+    );
+  const cases = [
+    {
+      // The marked paragraph itself, with one after it.
+      blocks: [
+        ownMark(paragraph("00000001", "gone")),
+        paragraph("00000002", "kept"),
+      ],
+      ids: ["00000001"],
+      expected: [
+        { id: "00000002", mark: undefined, content: ["deletion", "run"] },
+      ],
+      removed: ["00000001"],
+    },
+    {
+      // The paragraph ending the body, after the marked one.
+      blocks: [
+        ownMark(paragraph("00000001", "kept")),
+        paragraph("00000002", "gone"),
+      ],
+      ids: ["00000002"],
+      expected: [
+        { id: "00000002", mark: undefined, content: ["run", "deletion"] },
+      ],
+      removed: ["00000001"],
+    },
+  ];
+  for (const { blocks, ids, expected, removed } of cases) {
+    const document = documentOf(blocks);
+    const applied = applyDocumentOp(document, deletion(ids));
+    if (applied.isErr()) throw applied.error;
+    expect(texts(applied.value.document)).toEqual(expected);
+    expect(applied.value.touched.removed).toEqual(removed);
+    const accepted = apply(applied.value.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: applied.value.revisions,
+      decision: REVISION_DECISIONS.ACCEPT,
+    });
+    expect(
+      storyParagraphs(accepted.document.package.document).map(
+        ({ paragraph: block }) => block.content,
+      ),
+    ).toEqual(
+      storyParagraphs(
+        apply(document, { ...deletion(ids), revision: undefined }).document
+          .package.document,
+      ).map(({ paragraph: block }) => block.content),
+    );
+    const undo = applyDocumentOps(
+      applied.value.document,
+      applied.value.inverse,
+    );
+    if (undo.isErr()) throw undo.error;
+    expect(undo.value.document).toStrictEqual(document);
+  }
+  // Another author's mark, or one with no paragraph after it, stays refused.
+  for (const blocks of [
+    [
+      {
+        ...paragraph("00000001", "gone"),
+        pPrMark: { kind: "ins", info: { id: 9, author: "Other" } },
+      } satisfies Paragraph,
+      paragraph("00000002", "kept"),
+    ],
+    [
+      ownMark(paragraph("00000001", "gone")),
+      cell([paragraph("00000003", "cell")]),
+      paragraph("00000002", "kept"),
+    ],
+  ]) {
+    const refused = applyDocumentOp(documentOf(blocks), deletion(["00000001"]));
+    expect(refused.isErr() && refused.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+    );
+  }
+});
+
 test("tracked deletion of a paragraph a table follows marks its own mark, and resolves both ways", () => {
   const first = paragraph("00000001", "first");
   const target = paragraph("00000002", "target");

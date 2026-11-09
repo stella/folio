@@ -434,7 +434,30 @@ export const deleteBlocks = ({
       },
     });
   }
-  if (affected.some(({ pPrMark }) => pPrMark !== undefined)) {
+  const revision = op.revision;
+  // The paragraphs whose own mark the tracked deletion records deleted.
+  const losesMark = (paragraph: Paragraph) =>
+    !terminal || paragraph !== last.paragraph;
+  // A mark the same author's pending insertion or move added goes outright,
+  // joining its paragraph to the next one, as deleting over one's own
+  // insertion removes it; no deletion of an addition is recorded. Before a
+  // table, the last paragraph has none to join and keeps the refusal.
+  const joinsNext = new Set(
+    affected.filter(
+      (paragraph) =>
+        losesMark(paragraph) &&
+        (paragraph !== last.paragraph || following?.type === "paragraph") &&
+        (paragraph.pPrMark?.kind === "ins" ||
+          paragraph.pPrMark?.kind === "moveTo") &&
+        paragraph.pPrMark.info.author === revision.author,
+    ),
+  );
+  if (
+    affected.some(
+      (paragraph) =>
+        paragraph.pPrMark !== undefined && !joinsNext.has(paragraph),
+    )
+  ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
       "Deletion would overwrite a paragraph review record.",
@@ -466,7 +489,10 @@ export const deleteBlocks = ({
               : form.content,
         };
     }
-    if (!terminal || paragraph !== last.paragraph) {
+    if (joinsNext.has(paragraph)) {
+      const { pPrMark: _removed, ...unmarked } = next;
+      next = unmarked;
+    } else if (losesMark(paragraph)) {
       next = {
         ...next,
         // A move's source marks its paragraph moved from, not deleted.
@@ -515,22 +541,42 @@ export const deleteBlocks = ({
         "Paragraph deletion received an invalid revision id.",
       );
     case "fresh": {
-      const blocks =
+      const marked =
         following?.type === "paragraph"
           ? [...fresh.paragraphs, following]
           : fresh.paragraphs;
+      const original =
+        following?.type === "paragraph" ? [...affected, following] : affected;
+      const changed =
+        following?.type === "paragraph" ? [...tracked, following] : tracked;
+      // Each paragraph whose mark went joins the one after it, which keeps
+      // its own identity and properties.
+      const blocks: Paragraph[] = [];
+      const removed: string[] = [];
+      const modified = new Set<string>();
+      let carried: ParagraphContent[] | undefined;
+      for (const [index, paragraph] of marked.entries()) {
+        const source = original[index];
+        if (source !== undefined && joinsNext.has(source)) {
+          carried = [...(carried ?? []), ...paragraph.content];
+          removed.push(paragraph.paraId ?? "");
+          continue;
+        }
+        const joined =
+          carried === undefined
+            ? paragraph
+            : { ...paragraph, content: [...carried, ...paragraph.content] };
+        if (carried !== undefined || changed[index] !== source)
+          modified.add(joined.paraId ?? "");
+        carried = undefined;
+        blocks.push(joined);
+      }
       const result = applyOps(document, [replacement(blocks)]);
       if (result.isErr())
         return refuse(result.error.reason, result.error.message);
       return Result.ok({
         ...result.value,
-        touched: {
-          modified: tracked
-            .filter((paragraph, index) => paragraph !== affected[index])
-            .map(({ paraId }) => paraId ?? ""),
-          inserted: [],
-          removed: [],
-        },
+        touched: { modified: [...modified], inserted: [], removed },
       });
     }
     default: {
