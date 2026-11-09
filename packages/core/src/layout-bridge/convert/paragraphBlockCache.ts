@@ -12,6 +12,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { documentFontFactsCacheIdentity } from "../../fonts/documentFontFacts";
+import { noteParagraphOrigin } from "../../layout-engine/measure/paragraphKeyMemo";
 import type { ParagraphBlock, Run } from "../../layout-engine/types";
 import {
   getParagraphFrame,
@@ -23,6 +24,7 @@ import type {
   ToFlowBlocksOptions,
 } from "./flowConversionShared";
 import type { ParagraphListMarker } from "./paragraphAttrs";
+import type { RecordedConversion } from "./topLevelConversion";
 
 type ConstantKey = Exclude<
   keyof ToFlowBlocksOptions,
@@ -196,6 +198,7 @@ const readsOtherBlocks = (node: PMNode): boolean => {
 export class ParagraphBlockCache {
   private constants: FlowConversionOptions | undefined;
   private paragraphs = new WeakMap<PMNode, KeptParagraph | null>();
+  private conversion: RecordedConversion | undefined;
 
   /** Start over unless every conversion constant converts as the one the kept blocks were converted with. */
   use(options: FlowConversionOptions): void {
@@ -208,6 +211,23 @@ export class ParagraphBlockCache {
     )
       return;
     this.paragraphs = new WeakMap();
+    this.conversion = undefined;
+  }
+
+  /**
+   * The last conversion, when it converted a document with the same document
+   * attributes under the constants `use` was last given.
+   */
+  lastConversion(doc: PMNode): RecordedConversion | undefined {
+    const conversion = this.conversion;
+    return conversion !== undefined && conversion.doc.sameMarkup(doc)
+      ? conversion
+      : undefined;
+  }
+
+  /** Keep what converting each top-level node gave, for the next conversion. */
+  recordConversion(conversion: RecordedConversion | undefined): void {
+    this.conversion = conversion;
   }
 
   /** The block converting `node` at `pmStart` with `listMarker` gives, under `id`. */
@@ -219,7 +239,9 @@ export class ParagraphBlockCache {
   ): ParagraphBlock | undefined {
     const kept = this.paragraphs.get(node);
     if (!kept || kept.listMarker !== listMarker) return undefined;
-    return movedBlock(kept.block, pmStart - kept.pmStart, id());
+    const moved = movedBlock(kept.block, pmStart - kept.pmStart, id());
+    noteParagraphOrigin(moved, kept.block);
+    return moved;
   }
 
   /**
@@ -237,10 +259,8 @@ export class ParagraphBlockCache {
       this.paragraphs.set(node, null);
       return;
     }
-    this.paragraphs.set(node, {
-      listMarker,
-      pmStart,
-      block: movedBlock(block, 0, block.id),
-    });
+    const kept = movedBlock(block, 0, block.id);
+    noteParagraphOrigin(block, kept);
+    this.paragraphs.set(node, { listMarker, pmStart, block: kept });
   }
 }
