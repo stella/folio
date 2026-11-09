@@ -127,6 +127,26 @@ export function convertParagraph(
   );
 }
 
+/**
+ * Whether a paragraph holds a pending formatting change: a recorded change of
+ * its own properties, or a run carrying one of its run properties.
+ */
+const holdsFormattingRevision = (
+  node: PMNode,
+  pmAttrs: ReturnType<typeof expectParagraphAttrs>,
+): boolean => {
+  if ((pmAttrs._propertyChanges?.length ?? 0) > 0) return true;
+  const runPropertyChange = node.type.schema.marks["runPropertyChange"];
+  if (runPropertyChange === undefined) return false;
+  let found = false;
+  node.descendants((child) => {
+    if (found) return false;
+    if (runPropertyChange.isInSet(child.marks)) found = true;
+    return !found;
+  });
+  return found;
+};
+
 /** Advance the list counters past a paragraph and return the marker they give it. */
 export function paragraphListMarker(
   node: PMNode,
@@ -162,6 +182,7 @@ export function convertParagraphWithListMarker(
   if (options.numberingTabIgnoresIndent && attrs.listMarker !== undefined) {
     attrs.listNumberingTabIgnoresIndent = true;
   }
+  if (holdsFormattingRevision(node, pmAttrs)) attrs.formattingRevision = true;
   if (options.defaultFont !== undefined) {
     attrs.defaultFontFamily ??= options.defaultFont;
   }

@@ -3497,6 +3497,7 @@ function bordersFormGroup(a?: ParagraphBorders, b?: ParagraphBorders): boolean {
 export const paragraphHasTrackedChanges = (block: ParagraphBlock): boolean =>
   block.reviewIndicator === "change-bar" ||
   block.attrs?.listMarkerRevision !== undefined ||
+  block.attrs?.formattingRevision === true ||
   block.runs.some(
     (run) =>
       run.kind !== "lineBreak" &&
