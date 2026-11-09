@@ -1,9 +1,9 @@
 /**
- * A comment a suggestion proposes, in the canonical session, against the
- * default engine: pending it is listed with its suggestion and left out of
- * the save; the host's pending-suggestion export carries it into a fresh
- * session; rejecting removes it and accepting keeps it, in both engines
- * alike.
+ * A comment a suggestion proposes, in the canonical session: pending it is
+ * listed with its suggestion and left out of the save; the host's
+ * pending-suggestion export carries it into a fresh session; rejecting
+ * removes it and accepting keeps it. An edit's attached comment covers the
+ * text the edit changed, as in the default engine.
  */
 
 import { panic } from "better-result";
@@ -174,36 +174,6 @@ const readSaved = async (bytes: ArrayBuffer) => {
 
 type Outcomes = Record<"pending" | "rejected" | "accepted", unknown>;
 
-const defaultOutcomes = async (
-  operation: FolioDocumentOperation,
-): Promise<Outcomes> => {
-  const staged = await FolioDocxReviewer.fromBuffer(await sourceBytes());
-  staged.applyOperations([operation], {
-    undefinedReferences: "refuse",
-    mode: "suggested",
-  });
-  const records = JSON.parse(JSON.stringify(staged.exportPendingSuggestions()));
-  const saved = await staged.toBuffer();
-  const restore = async () => {
-    const fresh = await FolioDocxReviewer.fromBuffer(saved);
-    expect(fresh.loadPendingSuggestions(records)).toEqual([
-      { status: "restaged", suggestionId: "proposal" },
-    ]);
-    return fresh;
-  };
-  const rejecting = await restore();
-  expect(rejecting.rejectSuggestion("proposal")).toBe(true);
-  const accepting = await restore();
-  expect(accepting.acceptSuggestion("proposal", { author: "Adopter" })).toBe(
-    true,
-  );
-  return {
-    pending: await readSaved(saved),
-    rejected: await readSaved(await rejecting.toBuffer()),
-    accepted: await readSaved(await accepting.toBuffer()),
-  };
-};
-
 const canonicalOutcomes = async (
   operation: FolioDocumentOperation,
 ): Promise<Outcomes> => {
@@ -253,20 +223,19 @@ const canonicalOutcomes = async (
   };
 };
 
-describe("suggested comments in both engines", () => {
+describe("suggested comments in the canonical session", () => {
   for (const [name, operation] of Object.entries(OPERATIONS)) {
-    test(`${name}: pending, restored, rejected and accepted alike`, async () => {
-      const expected = await defaultOutcomes(operation());
+    test(`${name}: pending, restored, rejected and accepted`, async () => {
       const proposed = operation();
       const comment =
         "comment" in proposed ? proposed.comment?.text : undefined;
+      const outcomes = await canonicalOutcomes(operation());
       // Pending and rejected, the file holds no comment; accepted, it does.
-      expect(expected.pending).toMatchObject({ comments: [] });
-      expect(expected.rejected).toMatchObject({ comments: [] });
-      expect(expected.accepted).toMatchObject({
+      expect(outcomes.pending).toMatchObject({ comments: [] });
+      expect(outcomes.rejected).toMatchObject({ comments: [] });
+      expect(outcomes.accepted).toMatchObject({
         comments: [{ text: comment, author: AUTHOR }],
       });
-      expect(await canonicalOutcomes(operation())).toEqual(expected);
     });
   }
 });

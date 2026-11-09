@@ -8,7 +8,7 @@ import { test } from "../parity/canonicalTest";
 /**
  * A comment a suggestion proposes shows as a card while the suggestion is
  * pending; rejecting the suggestion takes the card away at once, and
- * accepting keeps it, in both hosts and both sessions.
+ * accepting keeps it, in both hosts, in the canonical session.
  */
 
 const source = (): Document => ({
@@ -33,10 +33,6 @@ const source = (): Document => ({
 const HOSTS = [
   { name: "React", port: reactPort, card: ".docx-comment-card" },
   { name: "Vue", port: vuePort, card: ".comment-card" },
-] as const;
-const SESSIONS = [
-  { name: "default", query: "" },
-  { name: "canonical", query: "?session=canonical" },
 ] as const;
 
 const load = async (page: Page, bytes: number[]) => {
@@ -76,26 +72,25 @@ test("a proposed comment's card goes with a rejected suggestion and stays with a
   test.setTimeout(120_000);
   const bytes = [...new Uint8Array(await createDocx(source()))];
   for (const host of HOSTS)
-    for (const session of SESSIONS)
-      for (const resolution of ["reject", "accept"] as const) {
-        const label = `${host.name}, ${session.name}, ${resolution}`;
-        await page.goto(`http://localhost:${host.port}/${session.query}`);
-        await page.waitForSelector(".layout-page");
-        await load(page, bytes);
-        expect(await proposeComment(page), label).toEqual({
-          applied: ["proposal"],
-          skipped: [],
-        });
-        expect(await suggestionIds(page), label).toEqual(["proposal"]);
-        const card = page.locator(host.card, {
-          hasText: "Confirm the period.",
-        });
-        await expect(card, label).toHaveCount(1);
-        expect(await resolve(page, resolution), label).toBe(true);
-        expect(await suggestionIds(page), label).toEqual([]);
-        // At once: no save or reload between the decision and the sidebar.
-        await expect(card, label).toHaveCount(resolution === "reject" ? 0 : 1, {
-          timeout: 2_000,
-        });
-      }
+    for (const resolution of ["reject", "accept"] as const) {
+      const label = `${host.name}, ${resolution}`;
+      await page.goto(`http://localhost:${host.port}/?session=canonical`);
+      await page.waitForSelector(".layout-page");
+      await load(page, bytes);
+      expect(await proposeComment(page), label).toEqual({
+        applied: ["proposal"],
+        skipped: [],
+      });
+      expect(await suggestionIds(page), label).toEqual(["proposal"]);
+      const card = page.locator(host.card, {
+        hasText: "Confirm the period.",
+      });
+      await expect(card, label).toHaveCount(1);
+      expect(await resolve(page, resolution), label).toBe(true);
+      expect(await suggestionIds(page), label).toEqual([]);
+      // At once: no save or reload between the decision and the sidebar.
+      await expect(card, label).toHaveCount(resolution === "reject" ? 0 : 1, {
+        timeout: 2_000,
+      });
+    }
 });

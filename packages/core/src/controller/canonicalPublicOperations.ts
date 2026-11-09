@@ -525,9 +525,10 @@ const resolveBlockInsertion = ({
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
 
 /**
- * The operations a canonical suggestion can carry: the default engine's, and
+ * The operations a canonical suggestion can carry: the default engine's;
  * splits and merges, which the canonical session records as tracked paragraph
- * marks stamped with the suggestion.
+ * marks stamped with the suggestion; and comments, which it holds as proposed
+ * by the suggestion until it is accepted or rejected.
  */
 const CANONICAL_SUGGESTED_OPERATION_TYPES: ReadonlySet<
   FolioDocumentOperation["type"]
@@ -535,6 +536,8 @@ const CANONICAL_SUGGESTED_OPERATION_TYPES: ReadonlySet<
   ...SUGGESTED_SUPPORTED_OPERATION_TYPES,
   "splitBlock",
   "mergeBlockWithNext",
+  "commentOnRange",
+  "commentOnBlock",
 ]);
 
 /**
