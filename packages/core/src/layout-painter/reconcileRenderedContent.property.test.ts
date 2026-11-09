@@ -120,3 +120,174 @@ test("reconciling painted content gives the fresh rendering and keeps the lines 
     releaseDom();
   }
 });
+
+type Edit = "same" | "shifted" | "text" | "bold" | "spans";
+
+const edited = (painted: Line, kind: Edit): Line => {
+  switch (kind) {
+    case "same":
+    case "shifted":
+      return painted;
+    case "text":
+      return { ...painted, text: `${painted.text}!` };
+    case "bold":
+      return { ...painted, bold: !painted.bold };
+    case "spans":
+      return { ...painted, spans: painted.spans + 1 };
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
+};
+
+/** A table's cells, each holding paragraphs, with an edit for each paragraph. */
+type Table = {
+  rows: (readonly (readonly [Line, Edit])[])[][];
+  /** What the edit does to the table itself. */
+  shell: "same" | "width" | "row";
+};
+
+type Block =
+  | { kind: "paragraph"; line: Line; edit: Edit }
+  | { kind: "table"; table: Table };
+
+const tableElement = (
+  rows: readonly (readonly Line[])[][],
+  shifts: readonly (readonly number[])[][],
+  width: number,
+): HTMLElement => {
+  const table = document.createElement("div");
+  table.className = "layout-table";
+  table.style.setProperty("width", `${String(width)}px`);
+  for (const [rowIndex, cells] of rows.entries()) {
+    const row = document.createElement("div");
+    row.className = "layout-table-row";
+    for (const [cellIndex, lines] of cells.entries()) {
+      const cell = document.createElement("div");
+      cell.className = "layout-table-cell";
+      const content = document.createElement("div");
+      content.className = "layout-table-cell-content";
+      for (const [index, paragraph] of lines.entries())
+        content.append(
+          paragraphElement(
+            paragraph,
+            shifts[rowIndex]?.[cellIndex]?.[index] ?? 0,
+          ),
+        );
+      cell.append(content);
+      row.append(cell);
+    }
+    table.append(row);
+  }
+  return table;
+};
+
+const edit = change as fc.Arbitrary<Edit>;
+const table: fc.Arbitrary<Table> = fc.record({
+  rows: fc.array(
+    fc.array(fc.array(fc.tuple(line, edit), { maxLength: 3 }), {
+      minLength: 1,
+      maxLength: 3,
+    }),
+    { minLength: 1, maxLength: 3 },
+  ),
+  shell: fc.constantFrom("same", "same", "same", "width", "row"),
+});
+const block: fc.Arbitrary<Block> = fc.oneof(
+  fc.record({
+    kind: fc.constant("paragraph" as const),
+    line,
+    edit,
+  }),
+  fc.record({ kind: fc.constant("table" as const), table }),
+);
+
+test("reconciling nested content replaces only the smallest parts that changed", () => {
+  const releaseDom = acquireHarnessDom();
+  try {
+    assertProperty(
+      fc.property(
+        fc.array(block, { minLength: 0, maxLength: 5 }),
+        fc.integer({ min: -3, max: 3 }),
+        (blocks, delta) => {
+          const shiftOf = (kind: Edit) => (kind === "same" ? 0 : delta);
+          const render = (fresh: boolean) => {
+            const content = document.createElement("div");
+            content.className = "layout-page-content";
+            for (const item of blocks) {
+              if (item.kind === "paragraph") {
+                content.append(
+                  paragraphElement(
+                    fresh ? edited(item.line, item.edit) : item.line,
+                    fresh ? shiftOf(item.edit) : 0,
+                  ),
+                );
+                continue;
+              }
+              const { rows, shell } = item.table;
+              const lines = rows.map((cells) =>
+                cells.map((cell) =>
+                  cell.map(([painted, kind]) =>
+                    fresh ? edited(painted, kind) : painted,
+                  ),
+                ),
+              );
+              const shifts = rows.map((cells) =>
+                cells.map((cell) =>
+                  cell.map(([, kind]) => (fresh ? shiftOf(kind) : 0)),
+                ),
+              );
+              if (fresh && shell === "row") lines.push([[]]);
+              content.append(
+                tableElement(
+                  lines,
+                  shifts,
+                  fresh && shell === "width" ? 101 : 100,
+                ),
+              );
+            }
+            return content;
+          };
+          const painted = render(false);
+          const fresh = render(true);
+          const expected = fresh.cloneNode(true);
+          const kept = Array.from(painted.childNodes);
+          const paragraphsOf = (element: Element | undefined) =>
+            Array.from(element?.querySelectorAll(".layout-paragraph") ?? []);
+          const keptParagraphs = kept.map((node) =>
+            paragraphsOf(node as Element),
+          );
+
+          expect(reconcileRenderedContent(painted, fresh)).toBe(true);
+          // The content is now exactly what painting it afresh gives.
+          expect(painted.isEqualNode(expected)).toBe(true);
+          for (const [index, item] of blocks.entries()) {
+            const node = painted.childNodes[index];
+            if (item.kind === "paragraph") {
+              if (item.edit === "same" || item.edit === "shifted")
+                expect(node).toBe(kept[index]);
+              continue;
+            }
+            const { rows, shell } = item.table;
+            // A table whose own attributes and rows stay is kept, and so is
+            // every paragraph in it the edit only shifted or left alone.
+            if (shell !== "same") continue;
+            expect(node).toBe(kept[index]);
+            const now = paragraphsOf(node as Element);
+            const before = keptParagraphs[index] ?? [];
+            const edits = rows.flat(2).map(([, kind]) => kind);
+            for (const [position, kind] of edits.entries())
+              if (kind === "same" || kind === "shifted")
+                expect(now[position]).toBe(before[position]);
+          }
+        },
+      ),
+      {
+        id: "reconciling nested content replaces only the smallest parts that changed",
+      },
+    );
+  } finally {
+    releaseDom();
+  }
+});
