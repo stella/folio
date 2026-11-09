@@ -9,7 +9,7 @@ import type {
 } from "../model/document";
 import { storyParagraphs, updateBlockList } from "./blocks";
 import { leafSpans } from "./leaves";
-import { documentStories, storyBody } from "./stories";
+import { documentStories, sameStory, storyBody } from "./stories";
 import type { NoteStory } from "./types";
 
 type NoteMarkOptions = { note: Footnote | Endnote; customMark: boolean };
@@ -114,11 +114,68 @@ export const referencedNoteKeys = (document: Document): ReadonlySet<string> => {
   return keys;
 };
 
+/** The note keys a run of blocks references, sorted. */
+const noteKeysIn = (blocks: readonly BlockContent[]): string[] =>
+  storyParagraphs({ content: [...blocks] })
+    .flatMap(({ paragraph }) => sharedParagraphNoteKeys(paragraph))
+    .sort();
+
+/**
+ * Whether `after` references exactly the notes `before` does, read from the
+ * top-level blocks of each story that are not the very blocks `before` held
+ * at the same place from either end: when those carry the same references
+ * as the ones they replace, every other block's references are unchanged.
+ * False when the stories differ or the references might.
+ */
+export const sameNoteReferences = (
+  before: Document,
+  after: Document,
+): boolean => {
+  const stories = documentStories(after);
+  const earlier = documentStories(before);
+  if (
+    stories.length !== earlier.length ||
+    stories.some((story, index) => {
+      const other = earlier[index];
+      return other === undefined || !sameStory(story, other);
+    })
+  )
+    return false;
+  for (const story of stories) {
+    const old = storyBody(before, story).content;
+    const now = storyBody(after, story).content;
+    if (old === now) continue;
+    let start = 0;
+    while (
+      start < old.length &&
+      start < now.length &&
+      old[start] === now[start]
+    )
+      start += 1;
+    let end = 0;
+    while (
+      end < old.length - start &&
+      end < now.length - start &&
+      old[old.length - 1 - end] === now[now.length - 1 - end]
+    )
+      end += 1;
+    const removed = noteKeysIn(old.slice(start, old.length - end));
+    const added = noteKeysIn(now.slice(start, now.length - end));
+    if (
+      removed.length !== added.length ||
+      removed.some((key, index) => added[index] !== key)
+    )
+      return false;
+  }
+  return true;
+};
+
 /** Note stories whose final live reference an edit removes. */
 export const removedNoteStories = (
   before: Document,
   after: Document,
 ): readonly NoteStory[] => {
+  if (sameNoteReferences(before, after)) return [];
   const beforeReferences = referencedNoteKeys(before);
   const afterReferences = referencedNoteKeys(after);
   return [...beforeReferences]
@@ -137,6 +194,7 @@ export const noteStoriesTouchedByReferences = (
   before: Document,
   after: Document,
 ): readonly NoteStory[] => {
+  if (sameNoteReferences(before, after)) return [];
   const beforeReferences = referencedNoteKeys(before);
   const afterReferences = referencedNoteKeys(after);
   return [...new Set([...beforeReferences, ...afterReferences])]

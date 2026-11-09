@@ -179,8 +179,10 @@ import {
   runIdentityAttrs,
 } from "../runIdentity";
 import {
+  CarrierContinuationCache,
   continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks,
   continueSourceCarrierIdentitiesAcrossRevisions,
+  continueSourceCarrierIdentitiesKeeping,
 } from "../runIdentityAcrossRevisions";
 import {
   getParagraphMarkSuppressionOverrides,
@@ -221,7 +223,11 @@ import {
   canCarryTrackedRunMark,
   trackedRunInlineAtomDisposition,
 } from "../trackedRunInlineAtoms";
-import { assertValidProseMirrorDocument } from "../validation";
+import {
+  assertValidProseMirrorDocument,
+  assertValidProseMirrorDocumentKeeping,
+  type ValidatedStory,
+} from "../validation";
 import {
   resolveEffectiveTableCellFormatting,
   type TableCellMarginsAttrs,
@@ -830,6 +836,10 @@ type ProjectionPackageInputs = {
  */
 export class ProjectionBlockCache {
   readonly salt: string = newTextBoxGroupSalt();
+  /** The story's top-level blocks as the last pass continued them. */
+  readonly carriers = new CarrierContinuationCache();
+  /** The last story document that passed validation. */
+  validated: ValidatedStory | undefined;
   private inputs: ProjectionPackageInputs | undefined;
   private context:
     (PackageConversionContext & { styleResolver: StyleEngine }) | undefined;
@@ -1114,13 +1124,22 @@ export function toProseDoc(
         _adjustLineHeightInTable: adjustLineHeightInTable,
         _doNotUseIndentAsNumberingTabStop: doNotUseIndentAsNumberingTabStop,
       },
-      [...continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(nodes)],
+      [
+        ...(cache === undefined
+          ? continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(nodes)
+          : continueSourceCarrierIdentitiesKeeping(nodes, cache.carriers)),
+      ],
     ),
   );
-  assertValidProseMirrorDocument(
-    pmDoc,
-    "Document conversion produced an invalid ProseMirror document",
-  );
+  const invalid =
+    "Document conversion produced an invalid ProseMirror document";
+  if (cache === undefined) assertValidProseMirrorDocument(pmDoc, invalid);
+  else
+    cache.validated = assertValidProseMirrorDocumentKeeping(
+      pmDoc,
+      invalid,
+      cache.validated,
+    );
   return pmDoc;
 }
 
