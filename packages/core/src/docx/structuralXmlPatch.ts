@@ -1,6 +1,7 @@
 /** Conservative body-paragraph splices; source offsets never come from reserialization. */
 import { canonicalJson } from "../utils/canonicalJson";
 import { parseDocumentBody } from "./documentParser";
+import { parseMarkupRangeMarker } from "./markupRangeMarker";
 import { paraIdAttribute } from "./paraIdAttribute";
 import {
   spliceSupportsRootNamespaces,
@@ -9,7 +10,6 @@ import {
 } from "./selectiveXmlPatch";
 import { materializeReplayFragment } from "./storyBlockReplay";
 import {
-  getAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -326,9 +326,9 @@ const commentAnchors = (root: XmlElement): string => {
       continue;
     const name = getLocalName(element.name);
     if (COMMENT_ELEMENTS.has(name))
-      anchors.push(
-        `${name}:${getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id") ?? ""}`,
-      );
+      // The id as the reader takes it, so the source and the serialized body
+      // are compared as the document reads.
+      anchors.push(`${name}:${parseMarkupRangeMarker(element).id}`);
   }
   return anchors.join(" ");
 };

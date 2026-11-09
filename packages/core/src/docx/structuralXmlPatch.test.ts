@@ -237,3 +237,20 @@ test("structural splices preserve valid locally bound replay paragraphs at every
     }
   }
 });
+
+test("reads a source comment anchor's unprefixed id as the reader does", () => {
+  const anchored = (id: number, marker: string) =>
+    paragraph(id).replace("</w:p>", `${marker}</w:p>`);
+  const start = anchored(1, '<w:commentRangeStart id="7"/>');
+  const end = anchored(2, '<w:commentRangeEnd id="7"/>');
+  const serializedStart = anchored(1, '<w:commentRangeStart w:id="7"/>');
+  const serializedEnd = anchored(2, '<w:commentRangeEnd w:id="7"/>');
+  const inserted = buildStructuralDocumentPatch({
+    originalXml: wrap(start + end),
+    serializedXml: wrap(serializedStart + paragraph(3) + serializedEnd),
+    changedIds: new Set(["00000003"]),
+  });
+  expect(inserted).toContain(start);
+  expect(inserted).toContain(end);
+  expect(inserted).toContain("Paragraph 3");
+});
