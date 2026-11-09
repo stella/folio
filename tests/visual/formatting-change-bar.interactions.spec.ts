@@ -9,8 +9,8 @@ import { test } from "../parity/canonicalTest";
 /**
  * A pending formatting change, of a run's properties or of a paragraph's,
  * paints the text as it now is and marks its paragraph with the change bar
- * in the margin, in both hosts and both sessions. A paragraph with no change
- * has no bar.
+ * in the margin, in All Markup and Simple Markup, in both hosts and both
+ * sessions. A paragraph with no change has no bar.
  */
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -60,27 +60,48 @@ test("a pending formatting change marks its paragraph with the change bar", asyn
       await expect(page.locator(".layout-page").first(), label).toContainText(
         "Untouched",
       );
-      const bars = await page.evaluate(() =>
-        ["10000001", "10000002", "10000003"].map((paraId) => {
-          const fragment = document.querySelector<HTMLElement>(
-            `.layout-paragraph[data-para-id="${paraId}"]`,
-          );
-          if (!fragment) return [paraId, "missing"];
-          const bar = getComputedStyle(fragment, "::before");
-          return [
-            paraId,
-            fragment.dataset["trackedChanges"] === "true" &&
-            bar.content !== "none" &&
-            bar.width !== "0px"
-              ? "bar"
-              : "none",
-          ];
-        }),
-      );
-      expect(bars, label).toEqual([
+      const bars = () =>
+        page.evaluate(() =>
+          ["10000001", "10000002", "10000003"].map((paraId) => {
+            const fragment = document.querySelector<HTMLElement>(
+              `.layout-paragraph[data-para-id="${paraId}"]`,
+            );
+            if (!fragment) return [paraId, "missing"];
+            const bar = getComputedStyle(fragment, "::before");
+            return [
+              paraId,
+              fragment.dataset["trackedChanges"] === "true" &&
+              bar.content !== "none" &&
+              bar.width !== "0px"
+                ? "bar"
+                : "none",
+            ];
+          }),
+        );
+      const expected = [
         ["10000001", "bar"],
         ["10000002", "bar"],
         ["10000003", "none"],
-      ]);
+      ];
+      expect(await bars(), `${label}, All Markup`).toEqual(expected);
+      // Simple Markup shows the text as it would be accepted, and marks the
+      // same paragraphs.
+      if (host.name === "React") {
+        await page
+          .getByRole("combobox")
+          .filter({ hasText: "All Markup" })
+          .click();
+        await page
+          .getByRole("option", { name: "Simple Markup", exact: true })
+          .click();
+      } else {
+        await page.locator(".review-controls__display").click();
+        await page
+          .locator(".review-controls__option", { hasText: "Simple Markup" })
+          .click({ force: true });
+      }
+      await expect
+        .poll(bars, { message: `${label}, Simple Markup` })
+        .toEqual(expected);
     }
 });
