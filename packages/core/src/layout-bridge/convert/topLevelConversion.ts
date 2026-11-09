@@ -69,6 +69,33 @@ export type RecordedConversion = {
   readonly end: ConversionCheckpoint;
 };
 
+export type KeptBlockFlags = {
+  /** Freeze every block a kept conversion keeps or hands out. */
+  enabled?: boolean;
+};
+
+declare global {
+  var __folioFreezeKeptBlocks: KeptBlockFlags | undefined;
+}
+
+/**
+ * Whether kept conversions freeze their blocks. Tests set it, so code that
+ * writes to a block handed out again fails where it writes instead of
+ * changing what a later conversion hands out.
+ */
+export const freezesKeptBlocks = (): boolean =>
+  globalThis.__folioFreezeKeptBlocks?.enabled === true;
+
+/** Freeze every plain object and array `value` holds, and `value`. */
+export const freezeKeptBlock = (value: unknown): void => {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value))
+    return;
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== Array.prototype) return;
+  Object.freeze(value);
+  for (const nested of Object.values(value)) freezeKeptBlock(nested);
+};
+
 const readsOtherNodes = subtreeHolds((node) => {
   switch (node.type.name) {
     case "field":

@@ -76,6 +76,8 @@ import { convertTable, convertTextBoxNode } from "./tableConversion";
 import {
   type ConversionCheckpoint,
   convertsWithOtherNodes,
+  freezeKeptBlock,
+  freezesKeptBlocks,
   restoreListCounterState,
   sameCheckpoint,
   type SectionMarginsTwips,
@@ -938,7 +940,13 @@ export function toFlowBlocks(
     options.splitPageBreakAndParagraphMark === true,
     sectionBreaksWithoutMarker,
   );
-  return groupParagraphFrames(reconciledBlocks, nextBlockId);
+  const result = groupParagraphFrames(reconciledBlocks, nextBlockId);
+  if (recording && freezesKeptBlocks()) {
+    for (const node of converted)
+      for (const block of node.blocks) freezeKeptBlock(block);
+    for (const block of result) freezeKeptBlock(block);
+  }
+  return result;
 }
 
 type FontResolutionContext = Pick<
