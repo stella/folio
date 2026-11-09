@@ -1117,7 +1117,14 @@ const {
   handleHyperlinkPopupRemove,
 } = useHyperlinkManagement({ editorView: activeEditorView, getCommands });
 
-const tableResize = useTableResize();
+// The body runs a resize through the editor, which applies it in the
+// session that owns the document; a header or footer view runs it directly.
+const tableResize = useTableResize({
+  runCommand: (view, command) => {
+    if (view === editorView.value) editor.executeCommand(command);
+    else command(view.state, (tr) => view.dispatch(tr), view);
+  },
+});
 
 const {
   tableInsertButton,
