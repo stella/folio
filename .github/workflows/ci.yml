@@ -38,6 +38,13 @@ jobs:
           fetch-depth: 0 # need history to compute the merge base with main
           persist-credentials: false
 
+      - name: Refuse changesets a release already published
+        # A merge of the released main into an older branch brings back the
+        # notes the release deleted; publishing them again repeats them.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/check-released-changesets.sh origin/main "origin/$BASE_REF" HEAD
+
       - name: Enforce release intent
         # The repository owner publishes this versioned shared contract.
         uses: stella/.github/.github/actions/changeset-policy@37bfa04a893d1ae2b9d28379cf68e8360781c8bc # v1.8.0
