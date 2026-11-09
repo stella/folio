@@ -104,6 +104,7 @@ import {
   recordingCommentsView,
 } from "@stll/folio-core/prosemirror/commentRecords";
 import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
+import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import {
   CANONICAL_GAP,
@@ -303,17 +304,23 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     options?: ScrollToParaIdOptions,
   ): boolean {
     const root = opts.pagesRef.value;
-    if (!root) {
+    const doc = opts.editor.getState()?.doc;
+    if (!root || !doc) {
       return false;
     }
-    const fragments = findParagraphFragmentsByParaId(root, paraId);
-    const first = fragments.at(0);
-    if (!first) {
+    // Find the paragraph in the document, not among the painted pages: only
+    // the pages near the viewport are painted. Scrolling to its position
+    // paints its page, so its fragments exist to flash afterwards.
+    const start = findStartPosForParaId(doc, paraId);
+    if (start === null || start < 0) {
       return false;
     }
-    scrollEditorElementIntoView(first);
+    opts.scrollVisiblePositionIntoView(start);
     if (options?.highlight) {
-      flashParagraphElements(fragments, options.highlight);
+      flashParagraphElements(
+        findParagraphFragmentsByParaId(root, paraId),
+        options.highlight,
+      );
     }
     return true;
   }
