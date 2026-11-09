@@ -1612,14 +1612,16 @@ export class CanonicalPublicOperations {
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
     if (hash !== anchor.textHash) return refusal("changedBlock");
-    // A paragraph no paragraph follows, deleted by the same batch: before it
-    // and after it are one place once it is gone, and after it, the deletion
-    // keeps a paragraph to remove it by identity.
+    // A paragraph no paragraph follows, deleted directly by the same batch:
+    // before it and after it are one place once it is gone, and after it,
+    // the deletion keeps a paragraph to remove it by identity. A tracked
+    // deletion leaves the paragraph in place, so its sides stay apart.
     const followed =
       state.doc.resolve(paragraph.start + paragraph.node.content.size + 1)
         .nodeAfter?.type.name === "paragraph";
     if (isBlockInsertion(operation)) {
       const besideDeletion =
+        !tracked &&
         operation.type === "insertBeforeBlock" &&
         !followed &&
         besideDeletions.deleted.has(blockId);
@@ -1647,7 +1649,7 @@ export class CanonicalPublicOperations {
       });
     if (operation.type === "deleteBlock") {
       const gainsFollower =
-        !followed && besideDeletions.insertedBeside.has(blockId);
+        !tracked && !followed && besideDeletions.insertedBeside.has(blockId);
       const deleted = this.resolveBlockDeletion({
         operation,
         paragraph,
