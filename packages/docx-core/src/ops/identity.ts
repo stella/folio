@@ -17,7 +17,12 @@ import {
   MAX_REVISION_ID,
   type Paragraph,
 } from "../model/document";
-import { IDENTITY_SPACES, type IdentitySlot, slotKey } from "./ids";
+import {
+  IDENTITY_SPACES,
+  type IdentitySlot,
+  type KeyMembership,
+  slotKey,
+} from "./ids";
 import {
   asParagraphContent,
   childNodes,
@@ -175,11 +180,11 @@ export type FreshenOptions = {
   after: readonly Paragraph[];
   newIds: NewIds;
   /** Slot keys used anywhere in the package outside `before`; asked for only when needed. */
-  usedElsewhere: () => ReadonlySet<string>;
+  usedElsewhere: () => KeyMembership;
   /** Records holding only content the edit inserted: they yield an id to records that held it before. */
   inserted?: ReadonlySet<object>;
   /** Pending cut references must not be reused by a fresh identity. */
-  reserved?: ReadonlySet<string>;
+  reserved?: KeyMembership;
 };
 
 export type FreshenOutcome =
@@ -558,11 +563,9 @@ export const freshenIdentities = ({
       keepers.set(record, kept);
     }
   }
-  const taken = new Set([
-    ...elsewhere,
-    ...identityKeysOf(before),
-    ...identityKeysOf(after),
-  ]);
+  // Ids the package holds elsewhere, the edit's own records hold, or fresh
+  // ids already handed out here.
+  const taken = new Set([...identityKeysOf(before), ...identityKeysOf(after)]);
   const pools = {
     [IDENTITY_SPACES.REVISION]: newIds.revision ?? [],
     [IDENTITY_SPACES.CONTROL]: newIds.control ?? [],
@@ -586,7 +589,7 @@ export const freshenIdentities = ({
       const pool = pools[slot.space];
       const isTaken = (id: number) => {
         const key = slotKey({ space: slot.space, id });
-        return taken.has(key) || reserved.has(key);
+        return taken.has(key) || elsewhere.has(key) || reserved.has(key);
       };
       let fresh = pool[next[slot.space]];
       while (fresh !== undefined && Number.isInteger(fresh) && isTaken(fresh)) {
