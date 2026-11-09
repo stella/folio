@@ -115,7 +115,10 @@ import {
   storyFactContributions,
   type StoryProjectionFacts,
 } from "./canonicalProjectionBlocks";
-import { unsupportedSeedReason } from "./canonicalSeedContent";
+import {
+  unsupportedEditReason,
+  unsupportedSeedReason,
+} from "./canonicalSeedContent";
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import {
   type CanonicalSourceRestore,
@@ -2877,7 +2880,13 @@ class CanonicalSession {
       document: applied.value.document,
       previous: this.currentDocument,
     });
-    if (unsupportedSeedReason(applied.value.document, changed) !== null)
+    if (
+      unsupportedEditReason({
+        previous: this.currentDocument,
+        document: applied.value.document,
+        stories: changed,
+      }) !== null
+    )
       return Result.err(
         new CanonicalSessionError({
           ground: { gap: CANONICAL_GAP.storyContentProjection },
