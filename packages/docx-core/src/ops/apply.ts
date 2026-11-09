@@ -92,9 +92,10 @@ import {
   identityKeysIn,
   idKey,
   isParaId,
-  packageIdentityKeys,
+  type KeyMembership,
+  packageIdentityKeyIndex,
   packageParagraphIds,
-  packageReservedIdentityKeys,
+  packageReservedKeyIndex,
   paragraphIdsIn,
   slotKey,
 } from "./ids";
@@ -269,7 +270,7 @@ const stampRefusal = (
     );
   }
   const key = slotKey({ space: IDENTITY_SPACES.REVISION, id: stamp.id });
-  if (packageIdentityKeys(document.package).includes(key)) {
+  if (packageIdentityKeyIndex(document.package).has(key)) {
     return refusal(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
@@ -489,13 +490,10 @@ const touchedBetween = (
 const identitiesOutside = (
   document: Document,
   before: readonly Paragraph[],
-): Set<string> => {
-  const counts = countKeys(packageIdentityKeys(document.package));
-  for (const key of identityKeysIn(before))
-    counts.set(key, (counts.get(key) ?? 1) - 1);
-  return new Set(
-    [...counts].flatMap(([key, count]) => (count > 0 ? [key] : [])),
-  );
+): KeyMembership => {
+  const index = packageIdentityKeyIndex(document.package);
+  const inside = countKeys(identityKeysIn(before));
+  return { has: (key) => index.count(key) > (inside.get(key) ?? 0) };
 };
 
 type Commit = {
@@ -530,7 +528,7 @@ const withFreshIds = ({
     after,
     newIds: newIds ?? {},
     usedElsewhere: () => identitiesOutside(document, before),
-    reserved: new Set(packageReservedIdentityKeys(document.package)),
+    reserved: packageReservedKeyIndex(document.package),
     ...(inserted === undefined ? {} : { inserted }),
   });
   switch (freshened.kind) {
@@ -2477,11 +2475,11 @@ const setParagraphReview = (
       `${op.blockId} ends its container: there is no next paragraph its mark could join.`,
     );
   }
-  const taken = identitiesOutside(document, [paragraph]);
-  for (const key of identityKeysIn(paragraph.content)) taken.add(key);
+  const outside = identitiesOutside(document, [paragraph]);
+  const own = new Set(identityKeysIn(paragraph.content));
   const incoming = reviewKeysOf(review);
   if (
-    incoming.some((key) => taken.has(key)) ||
+    incoming.some((key) => outside.has(key) || own.has(key)) ||
     new Set(incoming).size !== incoming.length
   ) {
     return refuse(
@@ -2569,11 +2567,11 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
       "The content holds a paragraph id the package already uses.",
     );
   }
-  const taken = identitiesOutside(document, [paragraph]);
-  for (const key of reviewKeysOf(reviewFieldsOf(paragraph))) taken.add(key);
+  const outside = identitiesOutside(document, [paragraph]);
+  const own = new Set(reviewKeysOf(reviewFieldsOf(paragraph)));
   const incoming = identityKeysIn(content);
   if (
-    incoming.some((key) => taken.has(key)) ||
+    incoming.some((key) => outside.has(key) || own.has(key)) ||
     new Set(incoming).size !== incoming.length
   ) {
     return refuse(
@@ -2991,7 +2989,7 @@ const recordedRevisions = (
     .flatMap((story) => storyParagraphs(storyBody(edit.document, story)))
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
-  const known = new Set(packageIdentityKeys(before.package));
+  const known = packageIdentityKeyIndex(before.package);
   const revisions = paragraphs.flatMap((paragraph) =>
     stampedRevisionIds([paragraph], stamp, known),
   );

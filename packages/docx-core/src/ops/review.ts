@@ -27,7 +27,7 @@ import {
   isTrackedRunContent,
 } from "./copyOriginAncestors";
 import { structurallyEqual } from "./equality";
-import { IDENTITY_SPACES, slotKey } from "./ids";
+import { IDENTITY_SPACES, type KeyMembership, slotKey } from "./ids";
 import {
   alikeDepth,
   childNodes,
@@ -131,7 +131,7 @@ const revisionInfosOf = (paragraph: Paragraph): TrackedChangeInfo[] => {
 export const stampedRevisionIds = (
   paragraphs: readonly Paragraph[],
   stamp: RevisionStamp,
-  known: ReadonlySet<string>,
+  known: KeyMembership,
 ): number[] => {
   const out: number[] = [];
   for (const paragraph of paragraphs) {

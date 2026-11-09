@@ -477,6 +477,9 @@ export const packageReservedIdentityKeys: (
   ...sharedReservedCensus(pkg, freshContext()).keys,
 ]);
 
+/** Which keys are taken, asked one key at a time. */
+export type KeyMembership = { has: (key: string) => boolean };
+
 /**
  * How many records of one package carry each key, answered without a census
  * of the whole package.
