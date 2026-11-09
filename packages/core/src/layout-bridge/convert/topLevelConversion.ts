@@ -194,22 +194,37 @@ export const takeCheckpoint = (
 
 /**
  * Make `target` the state `source` holds, in place: the conversion options
- * hold `target`'s maps and sets themselves.
+ * hold `target`'s maps and sets themselves. Arrays `source` shares stay
+ * shared in `target`, and `source` is never written.
  */
 export const restoreListCounterState = (
   target: ListCounterState,
   source: ListCounterState,
 ): void => {
-  const copy = cloneListCounterState(source);
+  const copies = new Map<readonly number[], number[]>();
+  const copyOf = (values: readonly number[]): number[] => {
+    const known = copies.get(values);
+    if (known !== undefined) return known;
+    const copy = [...values];
+    copies.set(values, copy);
+    return copy;
+  };
   target.counters.clear();
-  for (const [key, values] of copy.counters) target.counters.set(key, values);
+  for (const [key, values] of source.counters)
+    target.counters.set(key, copyOf(values));
   target.abstractCounters.clear();
-  for (const [key, values] of copy.abstractCounters)
-    target.abstractCounters.set(key, values);
+  for (const [key, values] of source.abstractCounters)
+    target.abstractCounters.set(key, copyOf(values));
   target.seenLevels.clear();
-  for (const level of copy.seenLevels) target.seenLevels.add(level);
-  target.restartedNumIds = copy.restartedNumIds ?? new Set();
-  if (copy.previousList !== undefined) target.previousList = copy.previousList;
-  if (copy.lastAdvancedNumId === undefined) delete target.lastAdvancedNumId;
-  else target.lastAdvancedNumId = copy.lastAdvancedNumId;
+  for (const level of source.seenLevels) target.seenLevels.add(level);
+  target.restartedNumIds = new Set(source.restartedNumIds);
+  target.previousList = {
+    ...(source.previousList ?? {
+      abstractNumId: null,
+      fromStyle: false,
+      numId: null,
+    }),
+  };
+  if (source.lastAdvancedNumId === undefined) delete target.lastAdvancedNumId;
+  else target.lastAdvancedNumId = source.lastAdvancedNumId;
 };

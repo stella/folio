@@ -180,9 +180,11 @@ export function toFlowBlocks(
     options.originalListCounters !== undefined ||
     options.originalListAbstractCounters !== undefined ||
     options.originalListSeenNumIds !== undefined;
-  const lastConversion = seeded
-    ? undefined
-    : paragraphBlocks?.lastConversion(doc);
+  /** Whether this conversion is kept for the next one. */
+  const recording = paragraphBlocks !== undefined && !seeded;
+  const lastConversion = recording
+    ? paragraphBlocks?.lastConversion(doc)
+    : undefined;
   const hasFontResolutionContext =
     options.embeddedFontFamilyMap !== undefined ||
     options.documentFontFacts !== undefined;
@@ -865,7 +867,13 @@ export function toFlowBlocks(
         continue;
       }
     }
-    const before = bringLiveStateUpToDate() ?? checkpoint(lastBefore);
+    const resumed = bringLiveStateUpToDate();
+    if (!recording) {
+      visit(node, pos);
+      pos += node.nodeSize;
+      continue;
+    }
+    const before = resumed ?? checkpoint(lastBefore);
     const firstSdt = sdtSeq;
     const firstBlock = blocks.length;
     projectedMarker = undefined;
@@ -891,8 +899,8 @@ export function toFlowBlocks(
     lastBefore = before;
     pos += node.nodeSize;
   }
-  if (paragraphBlocks !== undefined && !seeded) {
-    paragraphBlocks.recordConversion({
+  if (recording) {
+    paragraphBlocks?.recordConversion({
       doc,
       nodes: converted,
       end: pending ?? checkpoint(lastBefore),
