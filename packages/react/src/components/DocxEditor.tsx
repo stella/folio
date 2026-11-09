@@ -282,7 +282,10 @@ import { useDocumentHistory } from "../hooks/useHistory";
 import { useTableSelection } from "../hooks/useTableSelection";
 import { useWheelZoom } from "../hooks/useWheelZoom";
 import { PagedEditor, VIEWPORT_PADDING_TOP } from "../paged-editor/PagedEditor";
-import type { PagedEditorRef } from "../paged-editor/PagedEditor";
+import type {
+  DocumentChange,
+  PagedEditorRef,
+} from "../paged-editor/PagedEditor";
 import { DEFAULT_COMPONENTS, FolioUIProvider } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
 import { resolveCommentCreationRange } from "./commentAnchors";
@@ -1784,31 +1787,35 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     }, [syncSuggestionMode]);
 
     // Handle document change
-    const handleDocumentChange = useCallback(
-      (newDocument: Document) => {
+    /**
+     * Take a settled change: hold the editor's document model as the
+     * document state, hand the host its own document.
+     */
+    const applyDocumentChange = useCallback(
+      ({ model, forHost }: DocumentChange) => {
         const canonical = usesCanonicalSession(
           experimentalSession,
           CANONICAL_GAP.authorityRouting,
         );
-        const currentComments = commentsRef.current;
-        const documentWithComments = canonical
-          ? newDocument
-          : {
-              ...newDocument,
-              package: {
-                ...newDocument.package,
-                document: {
-                  ...newDocument.package.document,
-                  comments: currentComments,
-                },
+        if (canonical) {
+          // The session never writes a document it has handed out, and the
+          // editor only reads its document state: one model, held as is.
+          pushDocument(model as Document);
+          onChange?.(forHost);
+        } else {
+          const documentWithComments = {
+            ...forHost,
+            package: {
+              ...forHost.package,
+              document: {
+                ...forHost.package.document,
+                comments: commentsRef.current,
               },
-            };
-        pushDocument(documentWithComments);
-        onChange?.(
-          canonical
-            ? cloneDocumentWithParagraphPropertySources(documentWithComments)
-            : documentWithComments,
-        );
+            },
+          };
+          pushDocument(documentWithComments);
+          onChange?.(documentWithComments);
+        }
         // Re-extract tracked changes after document change (debounced to avoid
         // full-document walk on every keystroke in suggestion mode)
         if (extractTrackedChangesTimerRef.current) {
@@ -1828,6 +1835,22 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         commentsRef,
         experimentalSession,
       ],
+    );
+    /** A document changed outside the paged editor's own notification. */
+    const handleDocumentChange = useCallback(
+      (newDocument: Document) => {
+        const canonical = usesCanonicalSession(
+          experimentalSession,
+          CANONICAL_GAP.authorityRouting,
+        );
+        applyDocumentChange({
+          model: newDocument,
+          forHost: canonical
+            ? cloneDocumentWithParagraphPropertySources(newDocument)
+            : newDocument,
+        });
+      },
+      [applyDocumentChange, experimentalSession],
     );
 
     const buildCurrentDocument = useCallback(() => {
@@ -6154,7 +6177,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             )
                               ? {}
                               : { experimentalSession })}
-                            onDocumentChange={handleDocumentChange}
+                            onDocumentChange={applyDocumentChange}
                             extensionManager={extensionManager}
                             suggestionModeActive={editingMode === "suggesting"}
                             suggestionAuthor={author}
