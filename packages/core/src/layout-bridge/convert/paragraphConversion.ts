@@ -15,7 +15,10 @@ import type {
   ParagraphBlock,
   Run,
 } from "../../layout-engine/types";
-import { expectParagraphAttrs } from "../../prosemirror/attrs";
+import {
+  expectParagraphAttrs,
+  expectRunPropertyChangeMarkAttrs,
+} from "../../prosemirror/attrs";
 import { expectBookmarkBoundaryAttrs } from "../../prosemirror/bookmarkBoundaryAttrs";
 import { advanceVisibleListMarker } from "../../prosemirror/listMarker";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
@@ -129,7 +132,8 @@ export function convertParagraph(
 
 /**
  * Whether a paragraph holds a pending formatting change: a recorded change of
- * its own properties, or a run carrying one of its run properties.
+ * its own properties, or a run whose mark records a change of its run
+ * properties, as the review list lists them.
  */
 const holdsFormattingRevision = (
   node: PMNode,
@@ -141,7 +145,9 @@ const holdsFormattingRevision = (
   let found = false;
   node.descendants((child) => {
     if (found) return false;
-    if (runPropertyChange.isInSet(child.marks)) found = true;
+    const mark = runPropertyChange.isInSet(child.marks);
+    if (mark && expectRunPropertyChangeMarkAttrs(mark).changes.length > 0)
+      found = true;
     return !found;
   });
   return found;

@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { expect, test } from "bun:test";
 
 import { ZipArchive } from "@stll/docx-core/zip";
@@ -8,6 +9,7 @@ import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import type { ParagraphBlock } from "../layout-engine/types";
 import { paragraphHasTrackedChanges } from "../layout-painter/renderParagraph";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { schema } from "../prosemirror/schema";
 import { createCanonicalSession } from "./canonicalSession";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -62,4 +64,21 @@ test("a paragraph holding a pending formatting change paints the change bar", as
       ],
     ]);
   }
+});
+
+// The bar marks what the review list lists: a run property change mark that
+// records no change has nothing to review.
+test("a run property change mark that records no change paints no bar", () => {
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", { paraId: "10000001" }, [
+      schema.text("Text", [
+        schema.marks["runPropertyChange"]?.create({ changes: [] }) ??
+          panic("No run property change mark."),
+      ]),
+    ]),
+  ]);
+  const painted = toFlowBlocks(doc)
+    .filter((block): block is ParagraphBlock => block.kind === "paragraph")
+    .map((block) => paragraphHasTrackedChanges(block));
+  expect(painted).toEqual([false]);
 });
