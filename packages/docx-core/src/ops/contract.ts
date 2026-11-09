@@ -235,6 +235,10 @@ export const meetsContract = (document: Document): void => {
   MEETS_CONTRACT.add(document);
 };
 
+/** Whether `document` was checked against the contract or made by an operation. */
+export const knownToMeetContract = (document: Document): boolean =>
+  MEETS_CONTRACT.has(document);
+
 /** The contract checked afresh, for tests that hold operations to it. */
 export const contractViolation = (
   document: Document,

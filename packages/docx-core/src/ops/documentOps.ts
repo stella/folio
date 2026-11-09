@@ -8,6 +8,7 @@ export {
   shiftCopyOriginAncestors,
 } from "./copyOriginAncestors";
 export { noteUsesCustomMark } from "./noteMarks";
+export { withParagraphCopies } from "./paragraphCopies";
 export { sectionPropertiesAt } from "./storyLifecycle";
 export {
   storyBody,

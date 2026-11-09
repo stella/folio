@@ -42,7 +42,6 @@ import {
   type OpStory,
   packageParagraphIds,
   paragraphIdsIn,
-  replaceStoryBody,
   sameStory,
   suggestedCommentIds,
   suggestionRevisionInfos,
@@ -50,6 +49,7 @@ import {
   type TextPosition,
   type TouchedBlocks,
   validateOpsDocument,
+  withParagraphCopies,
 } from "@stll/docx-core/ops";
 
 import {
@@ -699,64 +699,6 @@ const changedStories = ({
   return stories;
 };
 
-/** `blocks` with the paragraphs `replaced` names put in their place, in tables too. */
-const withParagraphsReplaced = (
-  blocks: BlockContent[],
-  replaced: ReadonlyMap<Paragraph, Paragraph>,
-): BlockContent[] => {
-  let changed = false;
-  const next = blocks.map((block): BlockContent => {
-    if (block.type === "paragraph") {
-      const replacement = replaced.get(block);
-      if (replacement === undefined) return block;
-      changed = true;
-      return replacement;
-    }
-    if (block.type !== "table") return block;
-    let rowsChanged = false;
-    const rows = block.rows.map((row) => {
-      let cellsChanged = false;
-      const cells = row.cells.map((cell) => {
-        const content = withParagraphsReplaced(cell.content, replaced);
-        if (content === cell.content) return cell;
-        cellsChanged = true;
-        return { ...cell, content };
-      });
-      if (!cellsChanged) return row;
-      rowsChanged = true;
-      return { ...row, cells };
-    });
-    if (!rowsChanged) return block;
-    changed = true;
-    return { ...block, rows };
-  });
-  return changed ? next : blocks;
-};
-
-/** `document` with the paragraphs `replaced` names put in their place in `story`. */
-const withStoryParagraphsReplaced = (
-  document: Document,
-  story: OpStory,
-  replaced: ReadonlyMap<Paragraph, Paragraph>,
-): Document => {
-  if (replaced.size === 0) return document;
-  const body = findStoryBody(document, story);
-  if (body === undefined) return document;
-  const sections = body.sections?.map((section) => {
-    const content = withParagraphsReplaced(section.content, replaced);
-    return content === section.content ? section : { ...section, content };
-  });
-  return replaceStoryBody({
-    document,
-    story,
-    body: {
-      ...body,
-      content: withParagraphsReplaced(body.content, replaced),
-      ...(sections === undefined ? {} : { sections }),
-    },
-  });
-};
-
 /**
  * Carry private paragraph source captures across immutable story operations.
  * A paragraph a reader kept is never written: one whose facts change is
@@ -818,7 +760,7 @@ const preservePropertySources = ({
       });
       if (carried !== next) replaced.set(next, carried);
     }
-    document = withStoryParagraphsReplaced(document, story, replaced);
+    document = withParagraphCopies({ document, story, copies: replaced });
   }
   copyDocumentParagraphPropertySourceContract(document, source);
   return document;
@@ -2963,11 +2905,11 @@ class CanonicalSession {
       const carried = carryParagraphPropertySource({ target: block, source });
       if (carried !== block) owned.set(block, carried);
     }
-    applied.value.document = withStoryParagraphsReplaced(
-      applied.value.document,
-      OP_STORIES.MAIN,
-      owned,
-    );
+    applied.value.document = withParagraphCopies({
+      document: applied.value.document,
+      story: OP_STORIES.MAIN,
+      copies: owned,
+    });
     const projectedStory = findStoryBody(applied.value.document, story)
       ? story
       : OP_STORIES.MAIN;
