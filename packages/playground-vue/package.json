@@ -13,6 +13,7 @@
     "test": "bun test test"
   },
   "dependencies": {
+    "@stll/folio-core": "workspace:*",
     "@stll/folio-vue": "workspace:*",
     "@stll/utf8-boundaries": "workspace:*",
     "vue": "^3.5.44",

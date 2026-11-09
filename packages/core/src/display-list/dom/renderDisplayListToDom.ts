@@ -38,6 +38,7 @@ import { writeCommentAnchorIds } from "../../render-dom/commentAnchorAttributes"
 import { bytesToDataUrl } from "../../utils/base64";
 import { cssString } from "../../utils/cssString";
 import { imageLuminanceFilter } from "../../utils/imageLuminance";
+import { writePaintedRange } from "../../utils/paintedPositions";
 import { applyTextAdvanceGaps } from "../../utils/textAdvanceGapsDom";
 import { anchorTargetAttrs } from "../../utils/urlSecurity";
 import { retainObjectUrl } from "../pageResourceOwnership";
@@ -947,8 +948,7 @@ const applyRegionModel = (
     return;
   }
   if (model.pmRange !== undefined) {
-    element.dataset["pmStart"] = String(model.pmRange.start);
-    element.dataset["pmEnd"] = String(model.pmRange.end);
+    writePaintedRange(element, model.pmRange.start, model.pmRange.end);
   }
   if (model.blockId !== undefined) {
     element.dataset["blockId"] = model.blockId;

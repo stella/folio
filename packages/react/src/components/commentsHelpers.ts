@@ -20,6 +20,10 @@ export {
   getCommentParentId,
   pruneOrphanedComments,
 } from "@stll/folio-core/docx/hostCommentThreads";
+import {
+  readPaintedEnd,
+  readPaintedStart,
+} from "@stll/folio-core/utils/paintedPositions";
 
 export function getCommentAuthorKey(author?: string): string {
   const trimmed = author?.trim();
@@ -45,8 +49,8 @@ export function findSelectionYPosition(
     return null;
   }
   for (const el of findBodyPmAnchors(pagesEl)) {
-    const pmStart = Number(el.dataset["pmStart"]);
-    const pmEnd = Number(el.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(el) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(el) ?? Number.NaN;
     if (pmPos >= pmStart && pmPos <= pmEnd) {
       return (
         el.getBoundingClientRect().top -
