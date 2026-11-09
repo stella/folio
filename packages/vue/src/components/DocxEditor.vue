@@ -713,9 +713,9 @@ const { message: refusalNotice, show: showRefusalNotice } =
   useTransientNotice();
 
 function reportEditorError(error: Error): void {
-  // A rule the document states reads as the editor's own message.
+  // The user reads the catalog's message; the error goes to onError.
   if (CanonicalSessionRefusalError.is(error))
-    showRefusalNotice(canonicalRefusalNotice(error.ground, error.message, t));
+    showRefusalNotice(canonicalRefusalNotice(error.ground, t));
   props.onError?.(error);
   emit("error", error);
 }

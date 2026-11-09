@@ -3878,8 +3878,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const handleEditorError = useCallback(
       (error: Error) => {
         if (CanonicalSessionRefusalError.is(error))
-          // A rule the document states reads as the editor's own message.
-          toast(canonicalRefusalNotice(error.ground, error.message, t));
+          // The user reads the catalog's message; the error goes to onError.
+          toast(canonicalRefusalNotice(error.ground, t));
         onError?.(error);
       },
       [onError, t],

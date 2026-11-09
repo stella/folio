@@ -50,19 +50,32 @@ export const CANONICAL_RULE_MESSAGE_KEYS: {
 } as const satisfies Record<CanonicalRule, string>;
 
 /**
- * What a host shows for a refusal: the editor's own message for a rule the
- * document states, which a host translates, and the session's for a gap.
+ * The editor message, in the folio catalog, a host shows for a refusal under
+ * any gap: the change cannot be made here yet.
+ */
+export const CANONICAL_GAP_MESSAGE_KEY =
+  "editor.changeUnavailable" as const;
+
+/** A catalog key a refusal notice reads. */
+export type CanonicalRefusalMessageKey =
+  | (typeof CANONICAL_RULE_MESSAGE_KEYS)[CanonicalRule]
+  | typeof CANONICAL_GAP_MESSAGE_KEY;
+
+/**
+ * What a host shows for a refusal, always from the folio catalog, which the
+ * host translates: the editor's own message for a rule the document states,
+ * and that the change cannot be made here yet for a gap. The session's own
+ * message describes the refusal for logs and `onError`, never for the user.
  */
 export const canonicalRefusalNotice = (
   ground: CanonicalRefusalGround,
-  message: string,
-  translate: (
-    key: (typeof CANONICAL_RULE_MESSAGE_KEYS)[CanonicalRule],
-  ) => string,
+  translate: (key: CanonicalRefusalMessageKey) => string,
 ): string =>
-  ground.rule === undefined
-    ? message
-    : translate(CANONICAL_RULE_MESSAGE_KEYS[ground.rule]);
+  translate(
+    ground.rule === undefined
+      ? CANONICAL_GAP_MESSAGE_KEY
+      : CANONICAL_RULE_MESSAGE_KEYS[ground.rule],
+  );
 
 /**
  * The ground for a refusal: a capability the session does not have yet, or a
