@@ -71,6 +71,11 @@ export type HeaderFooterEditorManagerDeps = {
   getDocument: () => Document | null;
   getReadOnly?: (() => boolean) | undefined;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
+  /**
+   * The canonical session's own document, read without a copy (see
+   * `HiddenEditorManager.readCanonicalDocument`); null outside a session.
+   */
+  readCanonicalDocument: () => Document | null;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
   onSessionRefusal?:
     | ((reason: string, ground: CanonicalRefusalGround, error?: Error) => void)
@@ -237,7 +242,7 @@ export const createHeaderFooterEditorManager = (
       deps.getExperimentalSession?.(),
       CANONICAL_GAP.authorityRouting,
     )
-      ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? null)
+      ? deps.readCanonicalDocument()
       : deps.getDocument();
 
   const sync = (): void => {

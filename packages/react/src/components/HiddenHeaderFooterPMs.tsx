@@ -46,6 +46,11 @@ export type HiddenHeaderFooterPMsProps = {
   readOnly?: boolean;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;
+  /**
+   * The canonical session's own document, read without a copy; null outside
+   * a session. The editor's story managers only read it.
+   */
+  readCanonicalDocument: () => Document | null;
   onSessionRefusal?: (
     reason: string,
     ground: CanonicalRefusalGround,
@@ -97,6 +102,7 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
         onTransaction,
         experimentalSession,
         getCanonicalApi,
+        readCanonicalDocument,
         onSessionRefusal,
       },
       ref,
@@ -108,6 +114,7 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
       const themeRef = useRef(theme);
       const onTransactionRef = useRef(onTransaction);
       const canonicalApiRef = useRef(getCanonicalApi);
+      const readCanonicalDocumentRef = useRef(readCanonicalDocument);
       const sessionRef = useRef(experimentalSession);
       const refusalRef = useRef(onSessionRefusal);
 
@@ -119,6 +126,7 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
         themeRef.current = theme;
         onTransactionRef.current = onTransaction;
         canonicalApiRef.current = getCanonicalApi;
+        readCanonicalDocumentRef.current = readCanonicalDocument;
         sessionRef.current = experimentalSession;
         refusalRef.current = onSessionRefusal;
         managerRef.current ??= createHeaderFooterEditorManager({
@@ -128,6 +136,7 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
           getStyles: () => stylesRef.current,
           getTheme: () => themeRef.current,
           getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
+          readCanonicalDocument: () => readCanonicalDocumentRef.current(),
           getExperimentalSession: () => sessionRef.current,
           onSessionRefusal: (reason, ground, error) =>
             refusalRef.current?.(reason, ground, error),
@@ -155,6 +164,7 @@ export const HiddenHeaderFooterPMs: NamedExoticComponent<
         theme,
         onTransaction,
         getCanonicalApi,
+        readCanonicalDocument,
         experimentalSession,
         onSessionRefusal,
       ]);

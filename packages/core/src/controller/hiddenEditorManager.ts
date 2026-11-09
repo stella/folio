@@ -614,6 +614,13 @@ export type HiddenEditorManager = {
   getView: () => EditorView | null;
   isInitialized: () => boolean;
   api: HiddenEditorApi;
+  /**
+   * The canonical session's own document, or null outside one, without the
+   * copy `api.getCanonicalDocument` makes for hosts. Each edit replaces it, so
+   * it stays as read; the editor's own story managers read it and never
+   * change it.
+   */
+  readCanonicalDocument: () => Document | null;
 };
 
 export const createHiddenEditorManager = (
@@ -2130,6 +2137,10 @@ export const createHiddenEditorManager = (
     getView: () => view,
     isInitialized: () => isInitialized,
     api,
+    readCanonicalDocument: () =>
+      editorSession.type === "canonical"
+        ? editorSession.session.document
+        : null,
     isCanonicalComposing: () =>
       editorSession.type === "canonical" && editorSession.session.isComposing,
   };

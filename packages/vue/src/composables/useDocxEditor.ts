@@ -734,6 +734,7 @@ export function useDocxEditor(
     getReadOnly: () => toValue(readOnly),
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
+    readCanonicalDocument: () => manager.readCanonicalDocument(),
     getExperimentalSession: () => toValue(experimentalSession),
     onSessionRefusal: (message, ground, error) => {
       parseError.value = message;
@@ -763,6 +764,7 @@ export function useDocxEditor(
     getPlugins: () => notePlugins,
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
+    readCanonicalDocument: () => manager.readCanonicalDocument(),
     getExperimentalSession: () => toValue(experimentalSession),
     onSessionRefusal: (message, ground, error) => {
       parseError.value = message;
