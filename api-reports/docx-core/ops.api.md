@@ -143,6 +143,9 @@ export type CommentAnchor = {
 };
 
 // @public
+export const commentAnchorSequence: (blocks: readonly BlockContent[]) => string[];
+
+// @public
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
 // @public (undocumented)
