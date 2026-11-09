@@ -86,6 +86,7 @@ import {
   resolveAnchoredImagePosition as resolveAnchoredImagePositionShared,
 } from "./anchoredImagePosition";
 import type { BlockLookup } from "./index";
+import { applyPageShellStyles } from "./pageShellStyles";
 import { paintedImageSource } from "./previewSvg";
 import { reconcileRenderedContent } from "./reconcileRenderedContent";
 import { renderFragment } from "./renderFragment";
@@ -362,30 +363,7 @@ function applyPageStyles(
   height: number,
   options: RenderPageOptions,
 ): void {
-  element.style.position = "relative";
-  element.style.width = `${width}px`;
-  element.style.height = `${height}px`;
-  element.style.backgroundColor =
-    options.backgroundColor ?? "var(--doc-canvas, #ffffff)";
-  element.style.color = "var(--doc-canvas-text, #1f2937)";
-  element.style.overflow = "hidden";
-  element.style.border = "none";
-  element.style.boxShadow = "none";
-  element.style.outline = "none";
-
-  // Set default font styles (matches Word default: 11pt Calibri).
-  // Keep this fallback chain aligned with canvas measurement so text widths
-  // do not drift when Calibri is unavailable and Carlito is used instead.
-  element.style.fontFamily = resolveFontFamily(
-    DEFAULT_FONT_FAMILY,
-    options,
-  ).cssFallback;
-  // Use pixels to match Canvas-based measurements (11pt = 11 * 96/72 ≈ 14.67px)
-  element.style.fontSize = `${(11 * 96) / 72}px`;
-  element.style.color = "var(--doc-canvas-text, #000)";
-
-  // Page borders are painted as a separate overlay (see renderPageBorderOverlay)
-  // so they can honor OOXML offsetFrom/zOrder/display and remain text-relative.
+  applyPageShellStyles(element, width, height, options);
 }
 
 function pageBorderShouldRender(
