@@ -143,6 +143,7 @@ import {
   registerParagraphPropertySnapshot,
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
+import { paragraphSnapshotTransfers } from "./paragraphSnapshotTransfers";
 import { priorValues } from "./patch";
 import { insertsInvertedRange, rangeBoundariesIn } from "./rangeBoundaries";
 import {
@@ -3006,45 +3007,13 @@ const recordedRevisions = (
   return revisions;
 };
 
-type PreserveParagraphPropertySnapshotsOptions = {
+/** Content edits retain authored snapshots across immutable paragraph replacements. */
+const preserveParagraphPropertySnapshots = (options: {
   before: Document;
   edit: DocumentEdit;
-};
-
-/** Content edits retain authored snapshots across immutable paragraph replacements. */
-const preserveParagraphPropertySnapshots = ({
-  before,
-  edit,
-}: PreserveParagraphPropertySnapshotsOptions): void => {
-  if (edit.touched.modified.length === 0) return;
-  const modified = new Set(edit.touched.modified.map(idKey));
-  for (const story of documentStories(edit.document)) {
-    const previous = findStoryBody(before, story);
-    const next = storyBody(edit.document, story);
-    if (previous === undefined || previous === next) continue;
-    const originals = new Map(
-      storyParagraphs(previous).flatMap(({ paragraph }) =>
-        paragraph.paraId !== undefined && modified.has(idKey(paragraph.paraId))
-          ? [[idKey(paragraph.paraId), paragraph] as const]
-          : [],
-      ),
-    );
-    if (originals.size === 0) continue;
-    for (const { paragraph } of storyParagraphs(next)) {
-      if (paragraph.paraId === undefined) continue;
-      const original = originals.get(idKey(paragraph.paraId));
-      if (
-        original === undefined ||
-        original === paragraph ||
-        !structurallyEqual(original.formatting, paragraph.formatting)
-      )
-        continue;
-      transferParagraphPropertySnapshot({
-        source: original,
-        target: paragraph,
-      });
-    }
-  }
+}): void => {
+  for (const { source, target } of paragraphSnapshotTransfers(options))
+    transferParagraphPropertySnapshot({ source, target });
 };
 
 /** Apply one operation to a document that meets the seed contract. */
