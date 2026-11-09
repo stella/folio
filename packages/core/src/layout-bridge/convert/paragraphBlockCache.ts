@@ -12,6 +12,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { documentFontFactsCacheIdentity } from "../../fonts/documentFontFacts";
+import { noteParagraphOrigin } from "../../layout-engine/measure/paragraphKeyMemo";
 import type { ParagraphBlock, Run } from "../../layout-engine/types";
 import {
   getParagraphFrame,
@@ -219,7 +220,9 @@ export class ParagraphBlockCache {
   ): ParagraphBlock | undefined {
     const kept = this.paragraphs.get(node);
     if (!kept || kept.listMarker !== listMarker) return undefined;
-    return movedBlock(kept.block, pmStart - kept.pmStart, id());
+    const moved = movedBlock(kept.block, pmStart - kept.pmStart, id());
+    noteParagraphOrigin(moved, kept.block);
+    return moved;
   }
 
   /**
@@ -237,10 +240,8 @@ export class ParagraphBlockCache {
       this.paragraphs.set(node, null);
       return;
     }
-    this.paragraphs.set(node, {
-      listMarker,
-      pmStart,
-      block: movedBlock(block, 0, block.id),
-    });
+    const kept = movedBlock(block, 0, block.id);
+    noteParagraphOrigin(block, kept);
+    this.paragraphs.set(node, { listMarker, pmStart, block: kept });
   }
 }

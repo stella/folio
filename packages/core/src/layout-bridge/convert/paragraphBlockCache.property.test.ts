@@ -25,6 +25,11 @@ import {
   HeadlessEditorView,
   parseShapeDocument,
 } from "../../__tests__/editorHarness";
+import {
+  hashParagraphBlock,
+  serializeParagraphBlock,
+} from "../../layout-engine/measure/cache";
+import type { FlowBlock } from "../../layout-engine/types";
 import type { Document } from "../../types/document";
 import type { ToFlowBlocksOptions } from "./flowConversionShared";
 import { ParagraphBlockCache } from "./paragraphBlockCache";
@@ -232,6 +237,23 @@ const flowOptions = (
   tableIndentCompatibility: { type: "legacy" },
 });
 
+/** Every paragraph block, in table cells and text boxes too. */
+const paragraphBlocksOf = (blocks: readonly FlowBlock[]) =>
+  blocks.flatMap((block): FlowBlock[] => {
+    switch (block.kind) {
+      case "paragraph":
+        return [block];
+      case "table":
+        return block.rows.flatMap((row) =>
+          row.cells.flatMap((cell) => paragraphBlocksOf(cell.blocks)),
+        );
+      case "textBox":
+        return paragraphBlocksOf(block.content);
+      default:
+        return [];
+    }
+  });
+
 /** Counts the blocks it hands out, so the property cannot pass by never reusing one. */
 class CountingCache extends ParagraphBlockCache {
   reused = 0;
@@ -243,7 +265,7 @@ class CountingCache extends ParagraphBlockCache {
 }
 
 describe("paragraph block cache", () => {
-  test("converting with kept paragraph blocks equals converting every paragraph", async () => {
+  test("converting with kept paragraph blocks equals converting every paragraph, and keeps their measurement keys", async () => {
     const documents = await Promise.all(
       [...SHAPES.map(({ build }) => build), referencesPackage].map(
         async (build) => parseShapeDocument(await build()),
@@ -269,6 +291,13 @@ describe("paragraph block cache", () => {
               paragraphBlocks: cache,
             });
             expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+            // A moved paragraph's measurement key, taken from the block it
+            // was moved from, is the key serializing it in full gives.
+            for (const block of paragraphBlocksOf(kept))
+              if (block.kind === "paragraph")
+                expect(hashParagraphBlock(block)).toBe(
+                  serializeParagraphBlock(block),
+                );
           };
           convert();
           for (const edit of edits) {
