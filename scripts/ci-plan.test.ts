@@ -636,6 +636,7 @@ describe("CI plan", () => {
     ).toHaveLength(1);
     expect(suites.find(({ cwd }) => cwd === "packages/vue")?.preloads).toEqual([
       "./test/vueDom.preload.ts",
+      "../../test/freezeKeptBlocks.preload.ts",
     ]);
     const root = JSON.parse(
       readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),

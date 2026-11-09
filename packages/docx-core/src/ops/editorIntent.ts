@@ -3527,9 +3527,24 @@ const continuation = (
       depth += 1;
     return depth;
   };
+  // A direct replacement goes in after the range boundaries its deletion
+  // keeps, so its start meets the last of them, or the leaf before the range
+  // where none stood in it.
+  const kept =
+    struck || caret
+      ? undefined
+      : spans.findLast(
+          ({ node, before, after }) =>
+            isParagraphContent(node) &&
+            isRangeBoundary(node) &&
+            compareGaps(before, start) >= 0 &&
+            compareGaps(after, end) <= 0,
+        );
   return {
     containers,
-    openStart: continued(struck && last !== undefined ? last : outerLeft),
+    openStart: continued(
+      struck && last !== undefined ? last : (kept ?? outerLeft),
+    ),
     openEnd: continued(outerRight),
   };
 };

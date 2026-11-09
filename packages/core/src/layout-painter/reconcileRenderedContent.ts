@@ -64,16 +64,19 @@ const showsTheSame = (painted: Node, fresh: Node): boolean => {
   return true;
 };
 
+/** Give `painted` its own position attributes from `fresh`. */
+const takeOwnPositions = (painted: Element, fresh: Element): void => {
+  for (const name of POSITION_ATTRIBUTES) {
+    const value = fresh.getAttribute(name);
+    if (value !== null && painted.getAttribute(name) !== value)
+      painted.setAttribute(name, value);
+  }
+};
+
 /** Give `painted` the position attributes of `fresh`, which shows the same. */
 const takePositions = (painted: Node, fresh: Node): void => {
   if (painted.nodeType !== painted.ELEMENT_NODE) return;
-  const paintedElement = painted as Element;
-  const freshElement = fresh as Element;
-  for (const name of POSITION_ATTRIBUTES) {
-    const value = freshElement.getAttribute(name);
-    if (value !== null && paintedElement.getAttribute(name) !== value)
-      paintedElement.setAttribute(name, value);
-  }
+  takeOwnPositions(painted as Element, fresh as Element);
   const paintedChildren = painted.childNodes;
   const freshChildren = fresh.childNodes;
   for (let index = 0; index < freshChildren.length; index += 1) {
@@ -84,14 +87,62 @@ const takePositions = (painted: Node, fresh: Node): void => {
 };
 
 /**
+ * Whether `painted` can stay with `fresh`'s position attributes while its
+ * children are brought up to `fresh`'s one by one.
+ */
+const sameShell = (painted: Node, fresh: Node): boolean => {
+  if (
+    painted.nodeType !== painted.ELEMENT_NODE ||
+    fresh.nodeType !== fresh.ELEMENT_NODE
+  )
+    return false;
+  const paintedElement = painted as Element;
+  const freshElement = fresh as Element;
+  return (
+    paintedElement.namespaceURI === freshElement.namespaceURI &&
+    paintedElement.localName === freshElement.localName &&
+    painted.childNodes.length === fresh.childNodes.length &&
+    sameAttributes(paintedElement, freshElement, POSITION_ATTRIBUTES)
+  );
+};
+
+/**
+ * Bring each child of `painted` up to its counterpart in `fresh`: keep it when
+ * it shows the same, descend into it when only some of its children differ,
+ * and move the fresh one in otherwise. The two have as many children.
+ */
+const reconcileChildren = (painted: Element, fresh: Element): void => {
+  const paintedChildren = Array.from(painted.childNodes);
+  const freshChildren = Array.from(fresh.childNodes);
+  for (const [index, freshChild] of freshChildren.entries()) {
+    const paintedChild = paintedChildren[index];
+    if (!paintedChild) continue;
+    if (paintedChild.isEqualNode(freshChild)) continue;
+    if (showsTheSame(paintedChild, freshChild)) {
+      takePositions(paintedChild, freshChild);
+      continue;
+    }
+    if (sameShell(paintedChild, freshChild)) {
+      takeOwnPositions(paintedChild as Element, freshChild as Element);
+      reconcileChildren(paintedChild as Element, freshChild as Element);
+      continue;
+    }
+    if (paintedChild.nodeType === paintedChild.ELEMENT_NODE)
+      releaseDisplayPageResources(paintedChild as Element);
+    paintedChild.replaceWith(freshChild);
+  }
+};
+
+/**
  * Make `painted` equal to `fresh` (as `isEqualNode` compares them), keeping
- * every child of `painted` that shows what its counterpart in `fresh` shows
- * and moving the others in from `fresh`. Returns false, changing nothing, when
- * the two differ in their own attributes or in their number of children: the
- * caller then replaces `painted` whole.
+ * every node of `painted` that shows what its counterpart in `fresh` shows and
+ * moving in from `fresh` only the smallest subtrees that differ: an edit in
+ * one table cell replaces that cell's changed line, not the table. Returns
+ * false, changing nothing, when the two differ in their own attributes or in
+ * their number of children: the caller then replaces `painted` whole.
  *
- * The fresh children it moves leave `fresh`; what remains there is the
- * caller's to release.
+ * The fresh nodes it moves leave `fresh`; what remains there is the caller's
+ * to release.
  */
 export const reconcileRenderedContent = (
   painted: Element,
@@ -103,19 +154,6 @@ export const reconcileRenderedContent = (
     painted.childNodes.length !== fresh.childNodes.length
   )
     return false;
-  const paintedChildren = Array.from(painted.childNodes);
-  const freshChildren = Array.from(fresh.childNodes);
-  for (const [index, freshChild] of freshChildren.entries()) {
-    const paintedChild = paintedChildren[index];
-    if (!paintedChild) return false;
-    if (paintedChild.isEqualNode(freshChild)) continue;
-    if (showsTheSame(paintedChild, freshChild)) {
-      takePositions(paintedChild, freshChild);
-      continue;
-    }
-    if (paintedChild.nodeType === paintedChild.ELEMENT_NODE)
-      releaseDisplayPageResources(paintedChild as Element);
-    paintedChild.replaceWith(freshChild);
-  }
+  reconcileChildren(painted, fresh);
   return true;
 };
