@@ -178,6 +178,32 @@ const outcomes = async (bytes: ArrayBuffer) => {
   };
 };
 
+/**
+ * The canonical session's outcomes against the default engine's. Rejecting a
+ * tracked insertion after a container's final paragraph gives the source back
+ * from the canonical session's file, ids included: it records which paragraph
+ * rejecting the mark keeps. The default engine's file does not, so there the
+ * anchor's words come back under the new paragraph's id. Everything else is
+ * the same.
+ */
+const expectOutcomes = async (
+  actual: Awaited<ReturnType<typeof outcomes>>,
+  expected: Awaited<ReturnType<typeof outcomes>>,
+  source: ArrayBuffer,
+) => {
+  const withoutIds = (blocks: readonly object[]) =>
+    blocks.map((block) => ({ ...block, id: undefined }));
+  if (
+    !Bun.deepEquals(actual.rejected, expected.rejected) &&
+    Bun.deepEquals(actual.rejected, await blocksOf(source)) &&
+    Bun.deepEquals(withoutIds(actual.rejected), withoutIds(expected.rejected))
+  ) {
+    expect({ ...actual, rejected: expected.rejected }).toEqual(expected);
+    return;
+  }
+  expect(actual).toEqual(expected);
+};
+
 type Mode = "direct" | "tracked-changes";
 
 const batchOf = (
@@ -206,6 +232,25 @@ const viaDefaultEngine = async (
  * The canonical session's saved package after the batch; a suggested batch
  * is resolved as `suggestion` says before the save.
  */
+/** The default engine's package after a suggested batch it then resolves. */
+const viaDefaultSuggested = async (
+  source: ArrayBuffer,
+  operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
+  resolution: Suggestion,
+) => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(source.slice(0));
+  const result = reviewer.applyOperations(batchOf(operation), {
+    mode: "suggested",
+    undefinedReferences: "refuse",
+  });
+  expect(result.skipped).toEqual([]);
+  for (const { id } of batchOf(operation))
+    if (resolution === "accept")
+      expect(reviewer.acceptSuggestion(id)).toBe(true);
+    else expect(reviewer.rejectSuggestion(id)).toBe(true);
+  return await reviewer.toBuffer();
+};
+
 const canonicalRun = async (
   source: ArrayBuffer,
   operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
@@ -406,6 +451,12 @@ const OPERATIONS = {
     type: "mergeBlockWithNext",
     blockId: "10000001",
   },
+  splitBlock: {
+    id: "op",
+    type: "splitBlock",
+    blockId: "10000002",
+    offset: 2,
+  },
   "mergeBlockWithNext separated": {
     id: "op",
     type: "mergeBlockWithNext",
@@ -487,7 +538,7 @@ describe("block-level public operations match the default engine", () => {
           const actual = await outcomes(
             await viaCanonicalEngine(source, operation, mode),
           );
-          expect(actual).toEqual(expected);
+          await expectOutcomes(actual, expected, source);
           // Kinds a suggestion cannot carry skip in both engines.
           if (
             mode !== "tracked-changes" ||
@@ -506,7 +557,7 @@ describe("block-level public operations match the default engine", () => {
               ),
             ),
           ).toEqual(await blocksOf(source));
-          expect(
+          await expectOutcomes(
             await outcomes(
               await viaCanonicalEngine(
                 source,
@@ -514,6 +565,25 @@ describe("block-level public operations match the default engine", () => {
                 "suggested",
                 "accept",
               ),
+            ),
+            expected,
+            source,
+          );
+          // The default engine's suggestion resolves the same way; it
+          // carries no splits or merges.
+          if (
+            operation.type === "splitBlock" ||
+            operation.type === "mergeBlockWithNext"
+          )
+            return;
+          expect(
+            await blocksOf(
+              await viaDefaultSuggested(source, operation, "reject"),
+            ),
+          ).toEqual(await blocksOf(source));
+          expect(
+            await outcomes(
+              await viaDefaultSuggested(source, operation, "accept"),
             ),
           ).toEqual(expected);
         });
@@ -861,8 +931,10 @@ describe("a block move matches the default engine", () => {
             move(destination),
             mode,
           );
-          expect(await outcomes(byCanonical)).toEqual(
+          await expectOutcomes(
+            await outcomes(byCanonical),
             await outcomes(byDefault),
+            source,
           );
           if (mode === "direct") return;
           expect(await halves(byCanonical)).toEqual(await halves(byDefault));

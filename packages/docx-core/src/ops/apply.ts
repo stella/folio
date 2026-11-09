@@ -1742,7 +1742,14 @@ const trackSplit = ({
       "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
-  first.pPrMark = { kind: "ins", info: stampInfo(stamp), resolutionJoin };
+  first.pPrMark = {
+    kind: "ins",
+    info: stampInfo(stamp),
+    resolutionJoin,
+    // A first half that keeps the paragraph's identity is the paragraph a
+    // rejection gives back.
+    ...(madeSecond ? { survivor: "first" as const } : {}),
+  };
   if (!sameParagraphProperties(made.formatting, paragraph.formatting)) {
     made.propertyChanges = [
       madeSecond

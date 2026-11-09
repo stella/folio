@@ -524,6 +524,19 @@ const resolveBlockInsertion = ({
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
 
 /**
+ * The operations a canonical suggestion can carry: the default engine's, and
+ * splits and merges, which the canonical session records as tracked paragraph
+ * marks stamped with the suggestion.
+ */
+const CANONICAL_SUGGESTED_OPERATION_TYPES: ReadonlySet<
+  FolioDocumentOperation["type"]
+> = new Set<FolioDocumentOperation["type"]>([
+  ...SUGGESTED_SUPPORTED_OPERATION_TYPES,
+  "splitBlock",
+  "mergeBlockWithNext",
+]);
+
+/**
  * Whether one of two resolved operations inserts beside the paragraph the
  * other deletes by identity: they touch only at that paragraph's edge, and
  * both apply, as in the default engine. A deletion of a paragraph that ends
@@ -632,6 +645,9 @@ const compilePublicIntents = ({
             type: "splitParagraph",
             at: sourceIntent.at,
             ...(sourceIntent.to === undefined ? {} : { to: sourceIntent.to }),
+            ...(sourceIntent.newHalf === undefined
+              ? {}
+              : { newHalf: sourceIntent.newHalf }),
             newBlockId: ids.newBlockId,
           } as const)
         : sourceIntent;
@@ -837,10 +853,9 @@ export class CanonicalPublicOperations {
         skip(operation.id, "documentNotEditable");
         continue;
       }
-      // The operations a suggestion can carry are the editor's.
       if (
         batch.mode === "suggested" &&
-        !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(operation.type)
+        !CANONICAL_SUGGESTED_OPERATION_TYPES.has(operation.type)
       ) {
         skip(operation.id, "unsupportedMode");
         continue;
@@ -1698,10 +1713,13 @@ export class CanonicalPublicOperations {
     let intent: EditorIntent;
     switch (operation.type) {
       case "splitBlock":
+        // The first half keeps the paragraph's identity, as the default
+        // engine's split does.
         intent = {
           type: "splitParagraph",
           at: from.value,
           to: to.value,
+          newHalf: "second",
           newBlockId: createEditorIntentIdAllocator({
             reservedBlockIds: this.options.session.reservedBlockIds,
           })(this.options.session.document, {
