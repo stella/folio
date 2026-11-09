@@ -102,6 +102,7 @@ import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
 } from "../../internal/paragraphFormattingSerialization";
+import { recordDocumentBuilt } from "../../layout-engine/layoutInstrumentation";
 import { createStyleEngine, type StyleEngine } from "../../style-engine";
 import type {
   EffectExtentSlots,
@@ -998,6 +999,7 @@ export function fromProseDoc(
   baseDocument: Document | undefined,
   { stylesheetSource, reuse = "none" }: FromProseDocOptions,
 ): Document {
+  recordDocumentBuilt("conversion");
   assertNoteReferenceOccurrences(pmDoc);
   switch (reuse) {
     case "none": {

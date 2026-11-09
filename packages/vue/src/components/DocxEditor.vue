@@ -591,11 +591,11 @@ import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import {
-  getDocumentWatermark,
   setDocumentWatermark,
   type Watermark,
 } from "@stll/folio-core/watermark";
 
+import { documentChrome } from "../composables/documentChrome";
 import { useColorMode } from "../composables/useColorMode";
 import { useCommentLifecycle } from "../composables/useCommentLifecycle";
 import { useCommentManagement } from "../composables/useCommentManagement";
@@ -935,6 +935,8 @@ const {
   isDirty,
   parseError,
   layout,
+  modelDocument,
+  sourceBuffer,
   blocks,
   measures,
   syncCoordinator,
@@ -1079,7 +1081,7 @@ function remeasureForFontChange(): void {
 
 useFontLifecycle({
   isReady,
-  getDocument,
+  sourceBuffer: () => sourceBuffer.value,
   fonts: () => props.fonts,
   remeasure: remeasureForFontChange,
   setEmbeddedFontFamilies,
@@ -1360,20 +1362,16 @@ function handleHyperlinkPopupCopy(href: string): void {
 }
 
 // ---- Document-derived computed refs -------------------------------------
-const currentSectionProps = computed<SectionProperties | null>(() => {
-  void stateTick.value;
-  const body = getDocument()?.package.document;
-  if (!body) {
-    return null;
-  }
-  return body.finalSectionProperties ?? body.sections?.[0]?.properties ?? null;
-});
-
-const currentWatermark = computed<Watermark | undefined>(() => {
-  void stateTick.value;
-  const doc = getDocument();
-  return doc ? getDocumentWatermark(doc) : undefined;
-});
+// Read from the editor's document model: building a document here would run
+// on every keystroke, in proportion to the document.
+const currentChrome = computed(() => documentChrome(modelDocument.value));
+const currentSectionProps = computed<SectionProperties | null>(
+  () => currentChrome.value.sectionProperties,
+);
+const currentWatermark = computed<Watermark | undefined>(
+  () => currentChrome.value.watermark,
+);
+const currentStyles = computed(() => currentChrome.value.styles);
 
 const currentTableProperties = computed(() => {
   void stateTick.value;
@@ -1391,7 +1389,6 @@ const currentTableProperties = computed(() => {
 // Optional Toolbar props that must be OMITTED (not passed as `undefined`) under
 // exactOptionalPropertyTypes: bind via `v-bind` so an absent value drops the key.
 const toolbarDynamicProps = computed(() => {
-  void stateTick.value;
   const dynamic: {
     fontFamilies?: ReadonlyArray<string | FontOption>;
     documentStyles?: Style[];
@@ -1399,7 +1396,7 @@ const toolbarDynamicProps = computed(() => {
   if (props.fontFamilies !== undefined) {
     dynamic.fontFamilies = props.fontFamilies;
   }
-  const styles = getDocument()?.package.styles?.styles;
+  const styles = currentStyles.value;
   if (styles !== undefined) {
     dynamic.documentStyles = styles;
   }

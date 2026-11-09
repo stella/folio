@@ -11,6 +11,7 @@ import {
   type ModeledParagraphFormattingEmission,
   modelParagraphFormattingEmission,
 } from "../internal/paragraphFormattingSerialization";
+import { recordDocumentBuilt } from "../layout-engine/layoutInstrumentation";
 import type {
   BlockContent,
   Document,
@@ -889,6 +890,7 @@ const paragraphsIn = (document: Document): Paragraph[] => {
 export const cloneDocumentWithParagraphPropertySources = (
   document: Document,
 ): Document => {
+  recordDocumentBuilt("copy");
   const cloned = structuredClone(document);
   const sources = paragraphsIn(document);
   const targets = paragraphsIn(cloned);

@@ -505,6 +505,18 @@ export type UseDocxEditorReturn = {
   parseError: Ref<string | null>;
   /** Computed page layout, or null before first paint. */
   layout: Ref<Layout | null>;
+  /**
+   * The document model the editor holds, to derive toolbar and overlay state
+   * from: in a canonical session the session's own document, replaced on each
+   * edit (read it, never hand it out); otherwise the document the last change
+   * notification wrote back. Reading it never builds a document.
+   */
+  modelDocument: Readonly<Ref<Document | null>>;
+  /**
+   * The bytes the current document was loaded from: replaced when a document
+   * is loaded or set, never by an edit.
+   */
+  sourceBuffer: Readonly<Ref<ArrayBuffer | null>>;
   /** Flow blocks from the latest layout pass — the range-projection fallback. */
   blocks: Ref<FlowBlock[]>;
   /** Measures from the latest layout pass — the range-projection fallback. */
@@ -517,7 +529,10 @@ export type UseDocxEditorReturn = {
   loadDocument: (doc: Document) => void;
   /** Serialize the current document to a DOCX blob. */
   save: (options?: { selective?: boolean }) => Promise<Blob | null>;
-  /** Snapshot the current document model. */
+  /**
+   * Build a copy of the current document, in time proportional to its size.
+   * For a host that owns the result; derived state reads `modelDocument`.
+   */
   getDocument: () => Document | null;
   /** Publish a fresh Document object (e.g. after HF materialisation). */
   setDocument: (doc: Document) => void;
@@ -588,6 +603,7 @@ export function useDocxEditor(
   // `docModel` (not `document`) so the global `document` stays reachable for the
   // FontFaceSet probe + DOM host lookups.
   const docModel = shallowRef<Document | null>(null);
+  const sourceBuffer = shallowRef<ArrayBuffer | null>(null);
   // Per-load identity for the hidden-editor manager: advanced on every document
   // swap, unchanged across internal edits (not reactive; read at sync time).
   let loadSequence = 0;
@@ -1279,6 +1295,7 @@ export function useDocxEditor(
     // loaded document has no unsaved edits yet (mirrors React clearing its dirty
     // signals on document reset).
     loadSequence += 1;
+    sourceBuffer.value = docModel.value?.originalBuffer ?? null;
     isDirty.value = false;
     headerFooterSelection.value = null;
     activeNoteStory.value = null;
@@ -1590,6 +1607,7 @@ export function useDocxEditor(
       return;
     }
     docModel.value = doc;
+    sourceBuffer.value = doc.originalBuffer ?? null;
     syncSecondaryStoryEditors();
     if (
       activeNoteStory.value &&
@@ -1674,6 +1692,7 @@ export function useDocxEditor(
     editorState.value = null;
     layout.value = null;
     docModel.value = null;
+    sourceBuffer.value = null;
     isReady.value = false;
   }
 
@@ -1698,6 +1717,8 @@ export function useDocxEditor(
     isReady,
     isDirty,
     parseError,
+    modelDocument: docModel,
+    sourceBuffer,
     layout,
     blocks,
     measures,
