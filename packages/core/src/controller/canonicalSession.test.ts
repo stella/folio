@@ -534,7 +534,9 @@ describe("canonical session", () => {
     });
     const calls = apply.mock.calls.length;
     apply.mockRestore();
-    expect(calls).toBe(2);
+    // The typed text comes back applied from its compilation; only the
+    // paragraph change is applied here, and staging applies nothing again.
+    expect(calls).toBe(1);
     const commit = prepared.unwrap();
     expect(session.document).toBe(original);
     expect(commit.transaction.selection.head).toBe(3);

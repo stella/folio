@@ -21,7 +21,11 @@ import {
   NO_NUMBERING_NUM_ID,
   paragraphNumberingReference,
 } from "../model/paragraphNumbering";
-import { applyDocumentOp, applyDocumentOps } from "./apply";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "./apply";
 import {
   blockListAt,
   sameBlockList,
@@ -29,6 +33,7 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { createCensusReader } from "./editorIntentCensus";
+import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
 import { resolveGap } from "./gaps";
 /** One editor intent, compiled to direct or tracked document operations. */
@@ -308,7 +313,15 @@ type CompileEditorIntentOptions = {
   /** Lowest candidate for compiler-owned pasted block IDs, including retired session IDs. */
   firstBlockId?: number;
 };
-type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
+type CompiledEditorIntent = {
+  ops: DocumentOp[];
+  selection: TextPosition;
+  /**
+   * What applying `ops` to the compiled document gives, when the compiler
+   * already applied exactly them; a caller applies `ops` itself otherwise.
+   */
+  applied?: AppliedDocumentOp;
+};
 
 /** A split's paragraph identity is allocated with its other fresh identities. */
 type EditorIntentAllocation = EditorIntent | SplitParagraphIntent;
@@ -1356,6 +1369,10 @@ export const compileEditorIntent = (
       : allocationFields;
   let ops: DocumentOp[];
   let selection: TextPosition;
+  // The application of the ops a branch compiled, kept only while `ops`
+  // still holds exactly the ops it applied.
+  let handedBack:
+    { ops: readonly DocumentOp[]; result: AppliedDocumentOp } | undefined;
   const editedSeams: TextPosition[] = [];
   switch (intent.type) {
     case "generateTOC": {
@@ -2745,19 +2762,21 @@ export const compileEditorIntent = (
             slice,
             ...(mode.newIds === undefined ? {} : { newIds: mode.newIds }),
           };
-          const applied = applyDocumentOp(document, insert);
-          if (applied.isErr()) return Result.err(applied.error);
-          // Only the ids a cut record took stay with the insertion.
+          const inserted = applyDocumentOp(document, insert);
+          if (inserted.isErr()) return Result.err(inserted.error);
+          // Only the ids a cut record took stay with the insertion; the
+          // insertion applies the same with only them.
           ops = [
             trimAppliedNewIds({
               before: document,
               op: insert,
-              applied: applied.value,
+              applied: inserted.value,
               story: at.story,
             }),
           ];
+          const steps: AppliedDocumentOp[] = [inserted.value];
           // The typed run joins the alike runs of the insertion it meets.
-          let current = applied.value.document;
+          let current = inserted.value.document;
           for (const seam of [
             { offset: at.offset + text.length, zeroWidthBefore: 0 },
             { offset: at.offset, zeroWidthBefore: at.zeroWidthBefore },
@@ -2779,8 +2798,16 @@ export const compileEditorIntent = (
             const joined = applyDocumentOp(current, join);
             if (joined.isErr()) return Result.err(joined.error);
             ops.push(join);
+            steps.push(joined.value);
             current = joined.value.document;
           }
+          handedBack = {
+            ops: [...ops],
+            result: {
+              ...combineEdits(document, steps),
+              revisions: steps.flatMap(({ revisions }) => revisions),
+            },
+          };
           selection = replacementCaret(at, text);
           break;
         }
@@ -3224,6 +3251,7 @@ export const compileEditorIntent = (
   if (mode.type === "editing") {
     let current = document;
     const compact: DocumentOp[] = [];
+    const steps: AppliedDocumentOp[] = [];
     const takenRevision = new Set<number>();
     const takenControl = new Set<number>();
     const sourceRunSeams: TextPosition[] = [];
@@ -3256,6 +3284,7 @@ export const compileEditorIntent = (
         for (const id of trimmed.newIds?.control ?? []) takenControl.add(id);
       }
       compact.push(trimmed);
+      steps.push(applied.value);
       current = applied.value.document;
       if (sourceRunStart !== undefined) sourceRunSeams.push(sourceRunStart);
     }
@@ -3269,6 +3298,7 @@ export const compileEditorIntent = (
         const aligned = applyDocumentOp(current, alignment);
         if (aligned.isErr()) return Result.err(aligned.error);
         compact.push(alignment);
+        steps.push(aligned.value);
         current = aligned.value.document;
       }
     }
@@ -3317,27 +3347,51 @@ export const compileEditorIntent = (
       const joined = applyDocumentOp(current, join);
       if (joined.isErr()) return Result.err(joined.error);
       compact.push(join);
+      steps.push(joined.value);
       current = joined.value.document;
     }
     ops = compact;
+    // Typed text hands its application back; other intents apply again.
+    if (intent.type === "replaceText")
+      handedBack = {
+        ops: [...compact],
+        result: {
+          ...combineEdits(document, steps),
+          revisions: steps.flatMap(({ revisions }) => revisions),
+        },
+      };
     if (paragraphAt(current, selection) === undefined)
       panic("A direct edit's caret must name a paragraph the edit keeps.");
   }
+  const appliedAsCompiled =
+    handedBack !== undefined &&
+    handedBack.ops.length === ops.length &&
+    handedBack.ops.every((op, index) => op === ops[index])
+      ? handedBack.result
+      : undefined;
   if (mode.type === "suggesting" && cutsBesideRemoval(document, ops)) {
     // A tracked edit that cuts a record whose first piece only holds content
     // on its way out records who takes the record's identities back.
-    const applied = applyDocumentOps(document, ops);
-    if (applied.isErr()) return Result.err(applied.error);
+    const cut =
+      appliedAsCompiled === undefined
+        ? applyDocumentOps(document, ops)
+        : Result.ok(appliedAsCompiled);
+    if (cut.isErr()) return Result.err(cut.error);
     ops = [
       ...ops,
       ...cutPieceHandoffs({
         before: document,
-        after: applied.value.document,
+        after: cut.value.document,
         story: intentEndpoints(intent).story,
       }),
     ];
+    return Result.ok({ ops: ops.map(captureDocumentOp), selection });
   }
-  return Result.ok({ ops: ops.map(captureDocumentOp), selection });
+  return Result.ok({
+    ops: ops.map(captureDocumentOp),
+    selection,
+    ...(appliedAsCompiled === undefined ? {} : { applied: appliedAsCompiled }),
+  });
 };
 
 /** A record holding removed content inside its own identity, in a paragraph. */
