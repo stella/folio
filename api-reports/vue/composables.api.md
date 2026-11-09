@@ -184,6 +184,9 @@ export type UseDocxEditorReturn = {
     isDirty: Ref<boolean>;
     parseError: Ref<string | null>;
     layout: Ref<Layout | null>;
+    modelDocument: Readonly<Ref<Document_2 | null>>;
+    sourceBuffer: Readonly<Ref<ArrayBuffer | null>>;
+    hiddenEditorWidth: Ref<number>;
     blocks: Ref<FlowBlock[]>;
     measures: Ref<Measure[]>;
     syncCoordinator: LayoutSelectionGate;
