@@ -26,7 +26,7 @@ import {
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
-import type { Document } from "../types/document";
+import type { BlockContent, Document, Paragraph } from "../types/document";
 import {
   applyEdit,
   type Edit,
@@ -205,6 +205,68 @@ describe("a projection reusing converted blocks across story versions", () => {
       },
     );
   });
+});
+
+const withMainContent = (
+  document: Document,
+  content: BlockContent[],
+): Document => ({
+  ...document,
+  package: {
+    ...document.package,
+    document: { ...document.package.document, content },
+  },
+});
+
+describe("a projection reusing a block after the comments open before it change", () => {
+  const text = (value: string) => ({
+    type: "run" as const,
+    content: [{ type: "text" as const, text: value }],
+  });
+  // The block after the first paragraph is the same object in every version:
+  // only the comments the first paragraph opens before it change.
+  const kept: Paragraph = {
+    type: "paragraph",
+    paraId: "7A000002",
+    content: [text("kept")],
+  };
+  const versionOpening = (document: Document, ids: readonly number[]) =>
+    withMainContent(document, [
+      {
+        type: "paragraph",
+        paraId: "7A000001",
+        content: [
+          ...ids.map((id) => ({ type: "commentRangeStart" as const, id })),
+          text("opening"),
+        ],
+      },
+      kept,
+      {
+        type: "paragraph",
+        paraId: "7A000003",
+        content: [
+          text("closing"),
+          ...ids.map((id) => ({ type: "commentRangeEnd" as const, id })),
+        ],
+      },
+    ]);
+  const cases: [string, readonly number[], readonly number[]][] = [
+    ["other comments, as many", [1], [2]],
+    ["the same comments in another order", [1, 2], [2, 1]],
+  ];
+  for (const [name, before, after] of cases)
+    test(`converts it again: ${name}`, async () => {
+      const [source] = await parsedSources();
+      if (source === undefined) throw new Error("No source document.");
+      const cache = new ProjectionBlockCache();
+      toProseDoc(versionOpening(source.document, before), {
+        blockCache: cache,
+      });
+      const version = versionOpening(source.document, after);
+      expect(toProseDoc(version, { blockCache: cache }).toJSON()).toEqual(
+        toProseDoc(version, { textBoxGroupSalt: cache.salt }).toJSON(),
+      );
+    });
 });
 
 describe("a projection reusing converted blocks through a list suggestion", () => {
