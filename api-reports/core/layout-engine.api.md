@@ -733,6 +733,7 @@ export type ParagraphAttrs = {
         date?: string;
         revisionId?: number;
     };
+    formattingRevision?: true;
     listMarkerSecondSlotOffsetTwips?: number;
     defaultFontSize?: number;
     defaultFontFamily?: string;
