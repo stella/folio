@@ -38,7 +38,9 @@ import {
   createProseParagraphWithPropertySource,
   getDocumentParagraphPropertySourceContract,
   paragraphFormattingWithAuthoredIndentation,
-  paragraphPropertySourceState,
+  type ParagraphPropertySourceStamp,
+  paragraphPropertySourceStamp,
+  paragraphPropertySourceStampMatches,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   proseParagraphAttrsWithoutPropertySource,
   recreateProseNodeWithParagraphPropertySource,
@@ -733,21 +735,30 @@ const setReadsOf = (set: RecordedMembership): SetReads => ({
   answers: set.answers,
 });
 
+/** Where the facts kept outside one paragraph's fields stood. */
+type ParagraphSourceStamp = {
+  paragraph: Paragraph;
+  stamp: ParagraphPropertySourceStamp;
+};
+
 /**
- * The facts kept outside the fields of a block's paragraphs, a table's in
- * document order: a converted block is reused only while they are the same.
+ * Where the facts kept outside the fields of a block's paragraphs stood, a
+ * table's in document order: a converted block is reused only while none of
+ * them changed.
  */
-const blockSourceState = (block: Paragraph | Table): readonly unknown[] => {
-  if (block.type === "paragraph") return paragraphPropertySourceState(block);
-  const state: unknown[] = [];
+const blockSourceStamps = (
+  block: Paragraph | Table,
+): readonly ParagraphSourceStamp[] => {
+  const stamps: ParagraphSourceStamp[] = [];
   const visit = (blocks: readonly BlockContent[]): void => {
     for (const child of blocks) {
       switch (child.type) {
-        case "paragraph": {
-          const facts = paragraphPropertySourceState(child);
-          state.push(child, facts.length, ...facts);
+        case "paragraph":
+          stamps.push({
+            paragraph: child,
+            stamp: paragraphPropertySourceStamp(child),
+          });
           break;
-        }
         case "table":
           for (const row of child.rows)
             for (const cell of row.cells) visit(cell.content);
@@ -774,19 +785,24 @@ const blockSourceState = (block: Paragraph | Table): readonly unknown[] => {
     }
   };
   visit([block]);
-  return state;
+  return stamps;
 };
+
+/**
+ * Whether no fact kept outside the fields of the paragraphs of `block`, the
+ * same object the stamps were read from, changed since.
+ */
+const sourceStampsHold = (stamps: readonly ParagraphSourceStamp[]): boolean =>
+  stamps.every(({ paragraph, stamp }) =>
+    paragraphPropertySourceStampMatches(paragraph, stamp),
+  );
 
 type CachedBlock = {
   nodes: readonly PMNode[];
   reads: StoryReads;
-  /** The paragraph's facts kept outside its fields, as converted. */
-  sourceState: readonly unknown[];
+  /** Where the facts kept outside its paragraphs' fields stood, as converted. */
+  sourceStamps: readonly ParagraphSourceStamp[];
 };
-
-const sameState = (left: readonly unknown[], right: readonly unknown[]) =>
-  left.length === right.length &&
-  left.every((value, index) => value === right[index]);
 
 type ProjectionPackageInputs = {
   styles: StyleDefinitions | undefined;
@@ -854,10 +870,9 @@ export class ProjectionBlockCache {
     convert: (context: TableConversionContext) => PMNode[],
   ): readonly PMNode[] {
     const known = this.blocks.get(block);
-    const sourceState = blockSourceState(block);
     if (
       known !== undefined &&
-      sameState(known.sourceState, sourceState) &&
+      sourceStampsHold(known.sourceStamps) &&
       storyReadsHold(known.reads, state)
     ) {
       advanceStory(known.reads, state);
@@ -923,7 +938,7 @@ export class ProjectionBlockCache {
     this.blocks.set(block, {
       nodes,
       reads,
-      sourceState: blockSourceState(block),
+      sourceStamps: blockSourceStamps(block),
     });
     return nodes;
   }
