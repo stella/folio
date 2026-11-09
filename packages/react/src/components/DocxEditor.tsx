@@ -1788,11 +1788,13 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
 
     // Handle document change
     /**
-     * Take a settled change: hold the editor's document model as the
-     * document state, hand the host its own document.
+     * Take a change: hold the editor's document model as the document state,
+     * hand the host its own document. A document built outside the paged
+     * editor's notification arrives as `built` and is the model; in a
+     * canonical session the host gets a copy of it, as it does of the model.
      */
     const applyDocumentChange = useCallback(
-      ({ model, forHost }: DocumentChange) => {
+      (change: DocumentChange | { built: Document }) => {
         const canonical = usesCanonicalSession(
           experimentalSession,
           CANONICAL_GAP.authorityRouting,
@@ -1800,9 +1802,15 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (canonical) {
           // The session never writes a document it has handed out, and the
           // editor only reads its document state: one model, held as is.
-          pushDocument(model as Document);
-          onChange?.(forHost);
+          if ("built" in change) {
+            pushDocument(change.built);
+            onChange?.(cloneDocumentWithParagraphPropertySources(change.built));
+          } else {
+            pushDocument(change.model as Document);
+            onChange?.(change.forHost);
+          }
         } else {
+          const forHost = "built" in change ? change.built : change.forHost;
           const documentWithComments = {
             ...forHost,
             package: {
@@ -1838,19 +1846,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     );
     /** A document changed outside the paged editor's own notification. */
     const handleDocumentChange = useCallback(
-      (newDocument: Document) => {
-        const canonical = usesCanonicalSession(
-          experimentalSession,
-          CANONICAL_GAP.authorityRouting,
-        );
-        applyDocumentChange({
-          model: newDocument,
-          forHost: canonical
-            ? cloneDocumentWithParagraphPropertySources(newDocument)
-            : newDocument,
-        });
-      },
-      [applyDocumentChange, experimentalSession],
+      (newDocument: Document) => applyDocumentChange({ built: newDocument }),
+      [applyDocumentChange],
     );
 
     const buildCurrentDocument = useCallback(() => {
