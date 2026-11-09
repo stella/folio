@@ -1,0 +1,25 @@
+name: Scratch breaks (list normalization)
+
+on:
+  push:
+    branches: [scratch/list-normalization-breaks]
+
+permissions:
+  contents: read
+
+jobs:
+  breaks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+        with:
+          bun-version-file: "package.json"
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+        working-directory: packages/core
+        continue-on-error: true
+      - run: python3 -I scripts/zz-breaks-list-normalization.py
