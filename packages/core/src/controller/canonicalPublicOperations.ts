@@ -1633,8 +1633,8 @@ export class CanonicalPublicOperations {
         mintList,
         refusal,
       });
-      return besideDeletion
-        ? inserted.map((value) => ({ ...value, besideDeletion: true as const }))
+      return besideDeletion && inserted.isOk()
+        ? Result.ok({ ...inserted.value, besideDeletion: true as const })
         : inserted;
     }
     if (operation.type === "setBlockParagraphProperties")
@@ -1658,8 +1658,8 @@ export class CanonicalPublicOperations {
         gainsFollower,
         refusal,
       });
-      return gainsFollower
-        ? deleted.map((value) => ({ ...value, besideDeletion: true as const }))
+      return gainsFollower && deleted.isOk()
+        ? Result.ok({ ...deleted.value, besideDeletion: true as const })
         : deleted;
     }
     let start = 0;
