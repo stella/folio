@@ -143,6 +143,7 @@ type Comment_2 = {
     annotationReferenceFormatting?: TextFormatting;
     parentId?: number;
     done?: boolean;
+    suggestionId?: string;
     preserved?: PreservedMarkup;
 };
 export { Comment_2 as Comment }

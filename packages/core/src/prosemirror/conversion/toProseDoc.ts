@@ -1085,6 +1085,11 @@ export function toProseDoc(
   if (nodes.length === 0) {
     nodes.push(schema.node("paragraph", {}, []));
   }
+  const suggestedComments = suggestedCommentIdsOf(document);
+  if (suggestedComments.size > 0) {
+    for (const [index, node] of nodes.entries())
+      nodes[index] = withSuggestedCommentMarks(node, suggestedComments);
+  }
 
   const finalSectionStart =
     document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
@@ -1111,6 +1116,55 @@ export function toProseDoc(
   );
   return pmDoc;
 }
+
+/** The comments pending suggestions propose, by comment id. */
+const suggestedCommentIdsOf = (document: Document): Map<number, string> => {
+  const suggested = new Map<number, string>();
+  for (const comment of document.package.document.comments ?? [])
+    if (comment.suggestionId !== undefined)
+      suggested.set(comment.id, comment.suggestionId);
+  return suggested;
+};
+
+/**
+ * Give the comment marks of a proposed comment the suggestion that proposes
+ * it, so the editor lists, accepts and rejects the comment with it. Nodes
+ * with nothing to stamp are returned as they are.
+ */
+const withSuggestedCommentMarks = (
+  node: PMNode,
+  suggested: ReadonlyMap<number, string>,
+): PMNode => {
+  let marks: readonly Mark[] = node.marks;
+  for (const mark of node.marks) {
+    if (mark.type.name !== "comment") continue;
+    const suggestionId = suggested.get(mark.attrs["commentId"]);
+    if (
+      suggestionId === undefined ||
+      mark.attrs["suggestionId"] === suggestionId
+    )
+      continue;
+    marks = node.type.schema
+      .mark(mark.type, { ...mark.attrs, suggestionId })
+      .addToSet(mark.removeFromSet(marks));
+  }
+  if (node.childCount === 0)
+    return marks === node.marks ? node : node.mark(marks);
+  const children: PMNode[] = [];
+  let changed = marks !== node.marks;
+  for (let index = 0; index < node.childCount; index += 1) {
+    const child = node.child(index);
+    const stamped = withSuggestedCommentMarks(child, suggested);
+    changed ||= stamped !== child;
+    children.push(stamped);
+  }
+  return changed
+    ? recreateProseNodeWithParagraphPropertySource(node, {
+        content: children,
+        marks,
+      })
+    : node;
+};
 
 /**
  * Carry a block folio does not model into the editor as a zero-width node.

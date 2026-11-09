@@ -1484,10 +1484,21 @@ export const applyCommentOp = (
     if (
       op.patch &&
       Object.keys(op.patch).some(
-        (key) => key !== "author" && key !== "initials" && key !== "date",
+        (key) =>
+          key !== "author" &&
+          key !== "initials" &&
+          key !== "date" &&
+          key !== "suggestionId",
       )
     )
       return fail(op, "A content edit cannot change comment ownership.");
+    // A comment joins a suggestion only when the suggestion proposes it.
+    if (
+      op.patch !== undefined &&
+      Object.hasOwn(op.patch, "suggestionId") &&
+      op.patch.suggestionId !== null
+    )
+      return fail(op, "Only a suggestion can propose a comment.");
     if (
       op.patch &&
       Object.hasOwn(op.patch, "author") &&
@@ -1503,6 +1514,9 @@ export const applyCommentOp = (
             ? { initials: comment.initials }
             : {}),
           ...(Object.hasOwn(comment, "date") ? { date: comment.date } : {}),
+          ...(Object.hasOwn(comment, "suggestionId")
+            ? { suggestionId: comment.suggestionId }
+            : {}),
         },
         op.patch ?? {},
       ),
@@ -1510,6 +1524,7 @@ export const applyCommentOp = (
     };
     if (op.patch?.initials === null) delete updated.initials;
     if (op.patch?.date === null) delete updated.date;
+    if (op.patch?.suggestionId === null) delete updated.suggestionId;
     return edited(
       document,
       withComments(

@@ -247,7 +247,11 @@ const parseRecord = (value: unknown): FolioPendingSuggestionRecord | null => {
   ) {
     return null;
   }
-  if (operation.type === "replaceRange" || operation.type === "formatRange") {
+  if (
+    operation.type === "replaceRange" ||
+    operation.type === "formatRange" ||
+    operation.type === "commentOnRange"
+  ) {
     if (
       anchor["selectedTextHash"] !== operation.range.selectedTextHash ||
       anchor["startOffset"] !== operation.range.startOffset ||
@@ -326,7 +330,9 @@ export class FolioPendingSuggestionRegistry {
       const anchor = snapshot.anchors[blockId];
       if (!anchor) continue;
       const range =
-        operation.type === "replaceRange" || operation.type === "formatRange"
+        operation.type === "replaceRange" ||
+        operation.type === "formatRange" ||
+        operation.type === "commentOnRange"
           ? operation.range
           : null;
       // An operation the applier gave a distinct suggestion id restages under

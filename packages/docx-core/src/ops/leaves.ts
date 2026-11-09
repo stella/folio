@@ -724,6 +724,37 @@ export const leafSpans = (items: readonly InlineNode[]): LeafSpan[] => {
   return out;
 };
 
+/**
+ * The stretch of a paragraph's content the given revisions hold: from the
+ * first leaf inside one of their tracked wrappers to the last, or `undefined`
+ * when none is there.
+ */
+export const revisionSpan = (
+  items: readonly InlineNode[],
+  revisionIds: ReadonlySet<number>,
+): { from: number; to: number } | undefined => {
+  let span: { from: number; to: number } | undefined;
+  for (const { ancestors, before, after } of leafSpans(items)) {
+    const held = ancestors.some(
+      (ancestor) =>
+        (ancestor.type === "insertion" ||
+          ancestor.type === "deletion" ||
+          ancestor.type === "moveFrom" ||
+          ancestor.type === "moveTo") &&
+        revisionIds.has(ancestor.info.id),
+    );
+    if (!held) continue;
+    span =
+      span === undefined
+        ? { from: before.offset, to: after.offset }
+        : {
+            from: Math.min(span.from, before.offset),
+            to: Math.max(span.to, after.offset),
+          };
+  }
+  return span;
+};
+
 /** Source leaf coordinates without the ancestry needed by edit planning. */
 export const inlineLeafSpans = (
   items: readonly InlineNode[],

@@ -1149,7 +1149,10 @@ export type UpdateCommentContentOp = {
   type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
   id: number;
   content: readonly Paragraph[];
-  patch?: FormattingPatch<Pick<Comment, "author" | "initials" | "date">>;
+  /** `suggestionId: null` adopts a proposed comment as an ordinary one. */
+  patch?: FormattingPatch<
+    Pick<Comment, "author" | "initials" | "date" | "suggestionId">
+  >;
 };
 export type SetCommentResolutionOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION;

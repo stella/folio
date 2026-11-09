@@ -632,7 +632,7 @@ test("a suggested operation records one pending suggestion named by its id", () 
   expect(second.applied.map(({ suggestionId }) => suggestionId)).toEqual([
     "replace#2",
   ]);
-  // Comments are not something a suggestion carries.
+  // A comment is proposed as a suggestion of its own, and its record says so.
   const range = createFolioAITextRangeHandle({
     text: editor.snapshot().blocks.at(0)?.text ?? panic("Missing block"),
     blockId: "12345678",
@@ -640,21 +640,25 @@ test("a suggested operation records one pending suggestion named by its id", () 
     endOffset: 1,
   });
   if (!range) return panic("Missing range");
+  const commented = editor.apply(
+    [
+      {
+        id: "comment",
+        type: "commentOnRange",
+        range,
+        comment: { text: "Why?" },
+      },
+    ],
+    { mode: "suggested" },
+  );
+  expect(commented.applied.map(({ suggestionId }) => suggestionId)).toEqual([
+    "comment",
+  ]);
   expect(
-    editor
-      .apply(
-        [
-          {
-            id: "comment",
-            type: "commentOnRange",
-            range,
-            comment: { text: "Why?" },
-          },
-        ],
-        { mode: "suggested" },
-      )
-      .skipped.at(0)?.reason,
-  ).toBe("unsupportedMode");
+    editor.session.document.package.document.comments?.map(
+      ({ suggestionId }) => suggestionId,
+    ),
+  ).toEqual(["comment"]);
 });
 
 describe("suggested operations in the canonical session", () => {
@@ -757,20 +761,13 @@ describe("suggested operations in the canonical session", () => {
 
   test("operations a suggestion cannot carry skip as unsupported in this mode", () => {
     const editor = setup();
-    const commented =
-      createFolioAITextRangeHandle({
-        text: "alpha beta",
-        blockId: "12345678",
-        startOffset: 0,
-        endOffset: 5,
-      }) ?? panic("Missing range");
     const result = editor.apply(
       [
         {
-          id: "comment",
-          type: "commentOnRange",
-          range: commented,
-          comment: { text: "note" },
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: "12345678",
+          rowCount: 2,
         },
       ],
       { mode: "suggested" },
