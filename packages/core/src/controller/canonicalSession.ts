@@ -57,6 +57,7 @@ import {
 } from "../ai-edits/character-boundaries";
 import {
   CommentMarkerCache,
+  type ParagraphCommentMarkers,
   paragraphCommentMarkers,
   visitCommentMarkerItems,
 } from "../docx/commentAnchorIndex";
@@ -99,14 +100,21 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import {
-  type CanonicalInlineGap,
   canonicalNativeCells,
-  type CanonicalSeamExtent,
   InlineProjectionCache,
   projectCanonicalInline,
 } from "./canonicalInlineProjection";
 import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 import { lockViolationBetween } from "./canonicalLockGuard";
+import {
+  type BlockParagraph,
+  type ParagraphAddress,
+  ParagraphIdIndex,
+  type ProjectedBlock,
+  sameIdOrder,
+  storyFactContributions,
+  type StoryProjectionFacts,
+} from "./canonicalProjectionBlocks";
 import { unsupportedSeedReason } from "./canonicalSeedContent";
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import {
@@ -287,17 +295,6 @@ export type CanonicalSessionMode =
   { type: "editing" } | { type: "suggesting"; author: string };
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
 
-type ParagraphAddress = {
-  blockId: string;
-  container: readonly BlockContent[];
-  start: number;
-  text: string;
-  boundaries: readonly (readonly CanonicalInlineGap[])[];
-  seams: readonly (readonly CanonicalSeamExtent[])[];
-  node: PMNode;
-  source: Paragraph;
-};
-
 /**
  * Which source gap an editor position names where invisible markers (comment
  * ranges, bookmarks, permission ranges, proofing marks) share it: a caret
@@ -308,24 +305,61 @@ export type CanonicalAddressEdge = "caret" | "afterMarkers" | "beforeMarkers";
 
 type CanonicalProjectionOptions = {
   doc: PMNode;
-  paragraphs: readonly ParagraphAddress[];
   story: OpStory;
+  /** The story's blocks the projection was made from. */
+  content: readonly BlockContent[];
+  /** One per top-level node of `doc`, in order. */
+  blocks: readonly ProjectedBlock[];
+  index: ParagraphIdIndex;
+  facts: StoryProjectionFacts;
+  /**
+   * Whether the next projection may keep this one's blocks: each top-level
+   * node was projected from the story block at its index alone, and no two
+   * source paragraphs share an id.
+   */
+  reusable: boolean;
 };
 
 /** Paragraph gaps bind logical units and source zero-width ordinals to PM positions. */
 class CanonicalProjection {
   readonly doc: PMNode;
   readonly story: OpStory;
-  private readonly paragraphs: readonly ParagraphAddress[];
-  private readonly paragraphsById: ReadonlyMap<string, ParagraphAddress>;
+  readonly content: readonly BlockContent[];
+  readonly blocks: readonly ProjectedBlock[];
+  readonly index: ParagraphIdIndex;
+  readonly facts: StoryProjectionFacts;
+  readonly reusable: boolean;
+  /** Where each top-level node starts. */
+  private readonly starts: readonly number[];
+  private readonly addresses: Map<string, ParagraphAddress>;
 
-  constructor({ doc, paragraphs, story }: CanonicalProjectionOptions) {
-    this.story = story;
-    this.doc = doc;
-    this.paragraphs = paragraphs;
-    this.paragraphsById = new Map(
-      paragraphs.map((paragraph) => [paragraph.blockId, paragraph]),
-    );
+  constructor(
+    options: CanonicalProjectionOptions,
+    /** What a projection of an equal document already worked out. */
+    held?: {
+      starts: readonly number[];
+      addresses: Map<string, ParagraphAddress>;
+    },
+  ) {
+    this.doc = options.doc;
+    this.story = options.story;
+    this.content = options.content;
+    this.blocks = options.blocks;
+    this.index = options.index;
+    this.facts = options.facts;
+    this.reusable = options.reusable;
+    this.addresses = held?.addresses ?? new Map();
+    if (held !== undefined) {
+      this.starts = held.starts;
+      return;
+    }
+    const starts: number[] = [];
+    let position = 0;
+    for (let child = 0; child < this.doc.childCount; child += 1) {
+      starts.push(position);
+      position += this.doc.child(child).nodeSize;
+    }
+    this.starts = starts;
   }
 
   /**
@@ -335,11 +369,74 @@ class CanonicalProjection {
    * the state it was given is the projection without comparing every node.
    */
   heldAs(doc: PMNode): CanonicalProjection {
-    return new CanonicalProjection({
-      doc,
-      paragraphs: this.paragraphs,
-      story: this.story,
-    });
+    return new CanonicalProjection(
+      {
+        doc,
+        story: this.story,
+        content: this.content,
+        blocks: this.blocks,
+        index: this.index,
+        facts: this.facts,
+        reusable: this.reusable,
+      },
+      { starts: this.starts, addresses: this.addresses },
+    );
+  }
+
+  private addressOf(block: number, paragraph: number): ParagraphAddress {
+    const entry =
+      this.blocks[block]?.paragraphs[paragraph] ??
+      panic("Missing canonical paragraph");
+    const known = this.addresses.get(entry.blockId);
+    if (known !== undefined) return known;
+    const address: ParagraphAddress = {
+      blockId: entry.blockId,
+      container: entry.container ?? this.content,
+      start:
+        (this.starts[block] ?? panic("Missing block start")) + entry.offset,
+      text: entry.inline.text,
+      boundaries: entry.inline.boundaries,
+      seams: entry.inline.seams,
+      node: entry.node,
+      source: entry.source,
+    };
+    this.addresses.set(entry.blockId, address);
+    return address;
+  }
+
+  /** The paragraph whose content holds `position`, its ends included. */
+  private paragraphAround(position: number): ParagraphAddress | undefined {
+    // The last top-level node starting before the position.
+    let low = 0;
+    let high = this.starts.length - 1;
+    let block = -1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if ((this.starts[middle] ?? 0) < position) {
+        block = middle;
+        low = middle + 1;
+      } else high = middle - 1;
+    }
+    const paragraphs = this.blocks[block]?.paragraphs;
+    if (paragraphs === undefined) return undefined;
+    const relative = position - (this.starts[block] ?? 0);
+    low = 0;
+    high = paragraphs.length - 1;
+    let found = -1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if ((paragraphs[middle]?.offset ?? 0) <= relative) {
+        found = middle;
+        low = middle + 1;
+      } else high = middle - 1;
+    }
+    const paragraph = paragraphs[found];
+    if (
+      paragraph === undefined ||
+      relative > paragraph.offset + paragraph.node.content.size
+    )
+      return undefined;
+    return this.addressOf(block, found);
   }
 
   addressAt(
@@ -349,10 +446,7 @@ class CanonicalProjection {
     if (!Number.isInteger(position))
       return refuse("The input position is not an integer.");
     position = canonicalContentPosition(this.doc, position);
-    const paragraph = this.paragraphs.find(
-      ({ start, node }) =>
-        position >= start && position <= start + node.content.size,
-    );
+    const paragraph = this.paragraphAround(position);
     if (paragraph === undefined)
       return refuse("The input is outside a plain paragraph.");
     const relative = position - paragraph.start;
@@ -398,13 +492,8 @@ class CanonicalProjection {
     from: number,
     to: number,
   ): { start: CanonicalAddressEdge; end: CanonicalAddressEdge } {
-    const paragraphOf = (position: number) => {
-      const content = canonicalContentPosition(this.doc, position);
-      return this.paragraphs.find(
-        ({ start, node }) =>
-          content >= start && content <= start + node.content.size,
-      );
-    };
+    const paragraphOf = (position: number) =>
+      this.paragraphAround(canonicalContentPosition(this.doc, position));
     const first = paragraphOf(from);
     const last = paragraphOf(to);
     const startsWhole =
@@ -530,26 +619,40 @@ class CanonicalProjection {
 
   /** The first paragraph the projection addresses, in document order. */
   get firstParagraph(): ParagraphAddress | undefined {
-    return this.paragraphs.at(0);
+    const block = this.blocks.findIndex(
+      ({ paragraphs }) => paragraphs.length > 0,
+    );
+    return block < 0 ? undefined : this.addressOf(block, 0);
   }
 
   paragraph(blockId: string): ParagraphAddress | undefined {
-    return this.paragraphsById.get(blockId);
+    const slot = this.index.get(blockId);
+    if (slot === undefined || slot.paragraph < 0) return undefined;
+    return this.addressOf(slot.block, slot.paragraph);
   }
 
   /** The paragraph whose node starts at `before`. */
   paragraphStartingAt(before: number): ParagraphAddress | undefined {
-    return this.paragraphs.find(({ start }) => start === before + 1);
+    const paragraph = this.paragraphAround(before + 1);
+    return paragraph?.start === before + 1 ? paragraph : undefined;
   }
 
   nextParagraphInContainer(blockId: string): ParagraphAddress | undefined {
-    const index = this.paragraphs.findIndex(
-      (paragraph) => paragraph.blockId === blockId,
-    );
-    if (index < 0) return undefined;
-    const paragraph = this.paragraphs.at(index);
-    const next = this.paragraphs.at(index + 1);
-    return paragraph?.container === next?.container ? next : undefined;
+    const slot = this.index.get(blockId);
+    if (slot === undefined || slot.paragraph < 0) return undefined;
+    const paragraph = this.addressOf(slot.block, slot.paragraph);
+    let block = slot.block;
+    let next = slot.paragraph + 1;
+    while (
+      block < this.blocks.length &&
+      next >= (this.blocks[block]?.paragraphs.length ?? 0)
+    ) {
+      block += 1;
+      next = 0;
+    }
+    if (block >= this.blocks.length) return undefined;
+    const following = this.addressOf(block, next);
+    return paragraph.container === following.container ? following : undefined;
   }
 }
 
@@ -680,6 +783,8 @@ type ProjectStoryOptions = {
   story?: OpStory;
   /** What earlier projections converted, kept by its session. */
   caches?: StoryProjectionCaches;
+  /** A projection of the story whose top-level blocks this one may keep. */
+  previous?: CanonicalProjection;
 };
 
 /** Whether a paragraph anchors a text box, which converts to a block of its own. */
@@ -698,11 +803,502 @@ const holdsTextBox = (paragraph: Paragraph): boolean => {
   return found;
 };
 
+const structureRefusal = () =>
+  new CanonicalSessionError({
+    ground: { gap: CANONICAL_GAP.storyContentProjection },
+    reason: "refused",
+    message: "The projection changed paragraph structure.",
+  });
+
+/** A story paragraph's records: where it is held and the top-level block holding it. */
+type LocatedSource = {
+  source: Paragraph;
+  container: readonly BlockContent[];
+  top: number;
+};
+
+/**
+ * Every paragraph a projection addresses or skips under `blocks`, with
+ * whether it lies in a merged cell's skipped continuation, in document order.
+ */
+const visitSourceParagraphs = (
+  blocks: readonly BlockContent[],
+  visit: (
+    source: Paragraph,
+    container: readonly BlockContent[],
+    continuation: boolean,
+  ) => void,
+  insideSkippedContinuation = false,
+): void => {
+  for (const block of blocks)
+    visitBlockSources(block, blocks, visit, insideSkippedContinuation);
+};
+
+const visitBlockSources = (
+  block: BlockContent,
+  container: readonly BlockContent[],
+  visit: Parameters<typeof visitSourceParagraphs>[1],
+  insideSkippedContinuation: boolean,
+): void => {
+  if (block.type === "paragraph") {
+    visit(block, container, insideSkippedContinuation);
+    return;
+  }
+  if (block.type === "blockSdt") {
+    visitSourceParagraphs(block.content, visit, insideSkippedContinuation);
+    return;
+  }
+  if (block.type !== "table") return;
+  const rowSpans = calculateRowSpans(block);
+  for (const [rowIndex, row] of block.rows.entries()) {
+    let column = row.formatting?.gridBefore ?? 0;
+    for (const cell of row.cells) {
+      const skippedContinuation =
+        isCellMergeContinuation(cell) &&
+        (rowSpans.get(`${rowIndex}-${column}`)?.skip ?? false);
+      visitSourceParagraphs(
+        cell.content,
+        visit,
+        insideSkippedContinuation || skippedContinuation,
+      );
+      column += cell.formatting?.gridSpan ?? 1;
+    }
+  }
+};
+
+/** The source paragraphs of a run of story blocks. */
+type StorySources = {
+  located: Map<string, LocatedSource>;
+  /** Each block's source paragraph ids, from the run's first block. */
+  idsByBlock: string[][];
+  all: Paragraph[];
+  continuation: Set<Paragraph>;
+  /** Whether an id repeats in the run or is taken outside it. */
+  repeated: boolean;
+};
+
+const collectSources = (
+  content: readonly BlockContent[],
+  start: number,
+  end: number,
+  takenElsewhere: (paraId: string) => boolean,
+): StorySources => {
+  const found: StorySources = {
+    located: new Map(),
+    idsByBlock: [],
+    all: [],
+    continuation: new Set(),
+    repeated: false,
+  };
+  const at: { top: number; ids: string[] } = { top: start, ids: [] };
+  const visit = (
+    source: Paragraph,
+    container: readonly BlockContent[],
+    continuation: boolean,
+  ): void => {
+    found.all.push(source);
+    if (continuation) found.continuation.add(source);
+    if (source.paraId === undefined) return;
+    if (found.located.has(source.paraId) || takenElsewhere(source.paraId))
+      found.repeated = true;
+    found.located.set(source.paraId, { source, container, top: at.top });
+    at.ids.push(source.paraId);
+  };
+  for (let top = start; top < end; top += 1) {
+    at.top = top;
+    at.ids = [];
+    found.idsByBlock.push(at.ids);
+    visitBlockSources(
+      content[top] ?? panic("Missing story block"),
+      content,
+      visit,
+      false,
+    );
+  }
+  return found;
+};
+
+/** The comment ranges open as a walk goes, with a copy kept while they stay the same. */
+class OpenComments {
+  readonly ids: Set<number>;
+  private kept: readonly number[];
+
+  constructor(open: readonly number[]) {
+    this.ids = new Set(open);
+    this.kept = open;
+  }
+
+  /** The open ranges now, in their set's order. */
+  get current(): readonly number[] {
+    let same = this.kept.length === this.ids.size;
+    let at = 0;
+    for (const id of this.ids) {
+      if (!same) break;
+      same = this.kept[at] === id;
+      at += 1;
+    }
+    if (!same) this.kept = [...this.ids];
+    return this.kept;
+  }
+}
+
+/** What projecting the paragraphs of one top-level node reads from its story. */
+type BlockWalk = {
+  facts: StoryProjectionFacts;
+  open: OpenComments;
+  /** The story's own blocks: a paragraph held there has no container of its own. */
+  content: readonly BlockContent[];
+  locate: (paraId: string) => LocatedSource | undefined;
+  /** Takes the paragraph a standalone text box was converted from; false when there is none. */
+  claimTextBoxHost: () => boolean;
+  /** Records the source a paragraph is projected from; false when one already was. */
+  take: (source: Paragraph) => boolean;
+  passComments: (paragraph: Paragraph) => void;
+  inline: InlineProjectionCache | undefined;
+};
+
+/**
+ * The paragraphs of the top-level node at `index`, each start from the
+ * node's own, and whether each came from the story block at that index.
+ */
+const projectBlock = (
+  top: PMNode,
+  index: number,
+  walk: BlockWalk,
+): Result<
+  { paragraphs: BlockParagraph[]; local: boolean },
+  CanonicalSessionError
+> => {
+  const paragraphs: BlockParagraph[] = [];
+  let local = true;
+  let failure: CanonicalSessionError | undefined;
+  const commentContext = {
+    rangedIds: walk.facts.rangedIds,
+    pointIds: walk.facts.pointIds,
+    openIds: walk.open.ids,
+  };
+  const visit = (
+    node: PMNode,
+    offset: number,
+    parent: PMNode | null,
+  ): boolean => {
+    if (failure !== undefined) return false;
+    // A text box's paragraphs belong to its shape, not to this story. The
+    // session holds no address in them, so input there refuses and the box
+    // keeps its source as it was.
+    if (node.type.name === "textBox") {
+      if (
+        node.attrs["_docxPlacement"] === "standalone" &&
+        node.attrs["_docxHostParagraph"] != null &&
+        !walk.claimTextBoxHost()
+      )
+        failure = structureRefusal();
+      return false;
+    }
+    // A range opened between blocks covers the paragraphs after it.
+    if (node.type.name === "blockCommentRangeBoundary") {
+      const { marker } = expectCommentRangeBoundaryAttrs(node);
+      if (marker.type === "commentRangeStart") walk.open.ids.add(marker.id);
+      else walk.open.ids.delete(marker.id);
+      return false;
+    }
+    if (node.type.name !== "paragraph") return true;
+    // A row's w:gridBefore and w:gridAfter render as filler cells whose empty
+    // paragraph has no source; there is nothing in them to edit.
+    if (parent?.attrs["_omittedGridSlot"] != null) return false;
+    const paraId = node.attrs["paraId"];
+    const located =
+      typeof paraId === "string" ? walk.locate(paraId) : undefined;
+    if (typeof paraId !== "string" || located === undefined) {
+      failure = structureRefusal();
+      return false;
+    }
+    const { source, container } = located;
+    if (!walk.take(source)) {
+      failure = structureRefusal();
+      return false;
+    }
+    if (located.top !== index) local = false;
+    const inlineArgs = {
+      source,
+      paragraph: node,
+      pairedBookmarkIds: walk.facts.pairedBookmarkIds,
+      commentContext,
+    };
+    const inline =
+      walk.inline === undefined
+        ? projectCanonicalInline(inlineArgs)
+        : walk.inline.project(inlineArgs);
+    if (inline.isErr()) {
+      failure = new CanonicalSessionError({
+        ground: { gap: CANONICAL_GAP.dispatch },
+        reason: "refused",
+        message: inline.error.message,
+      });
+      return false;
+    }
+    paragraphs.push({
+      blockId: paraId,
+      container: container === walk.content ? undefined : container,
+      offset: offset + 1,
+      inline: inline.value,
+      node,
+      source,
+    });
+    walk.passComments(source);
+    return false;
+  };
+  if (visit(top, 0, null) && top.content.size > 0)
+    top.descendants((node, offset, parent) => visit(node, offset + 1, parent));
+  if (failure !== undefined) return Result.err(failure);
+  return Result.ok({ paragraphs, local });
+};
+
+type StoryWalkOptions = {
+  doc: PMNode;
+  content: readonly BlockContent[];
+  story: OpStory;
+  markersOf: ParagraphCommentMarkers;
+  inline: InlineProjectionCache | undefined;
+};
+
+/** Opens and closes the ranges a paragraph's markers start and end. */
+const commentPasser =
+  (markersOf: ParagraphCommentMarkers, open: OpenComments) =>
+  (paragraph: Paragraph): void => {
+    for (const item of markersOf(paragraph)) {
+      if (item.type === "commentRangeStart") open.ids.add(item.id);
+      if (item.type === "commentRangeEnd") open.ids.delete(item.id);
+    }
+  };
+
+/** Every paragraph's address, walking every top-level node. */
+const projectEveryBlock = ({
+  doc,
+  content,
+  story,
+  markersOf,
+  inline,
+}: StoryWalkOptions): Result<CanonicalProjection, CanonicalSessionError> => {
+  const pairedBookmarkIds = collectPairedBookmarkIds(content);
+  const rangedIds = new Set<number>();
+  const referencedIds = new Set<number>();
+  visitCommentMarkerItems(content, markersOf, (item) => {
+    if (item.type === "commentRangeStart") rangedIds.add(item.id);
+    if (item.type === "commentReference") referencedIds.add(item.id);
+  });
+  const facts: StoryProjectionFacts = {
+    pairedBookmarkIds,
+    rangedIds,
+    pointIds: new Set([...referencedIds].filter((id) => !rangedIds.has(id))),
+  };
+  const open = new OpenComments([]);
+  const passComments = commentPasser(markersOf, open);
+  const aligned = doc.childCount === content.length;
+  const found = collectSources(content, 0, content.length, () => false);
+  let reusable = aligned && !found.repeated;
+  const sources = found.located;
+  const allSources = new Set(found.all);
+  const continuationSources = found.continuation;
+  const idsByBlock = found.idsByBlock;
+  const projectedSources = new Set<Paragraph>();
+  // A paragraph holding only text boxes projects as the boxes alone; the first
+  // box of its group stands where the paragraph was.
+  const orderedSources = [...allSources];
+  const sourceOrder = new Map(
+    orderedSources.map((source, index) => [source, index]),
+  );
+  const textBoxHosts = new Set<Paragraph>();
+  let nextSource = 0;
+  const walk: BlockWalk = {
+    facts,
+    open,
+    content,
+    locate: (paraId) => sources.get(paraId),
+    claimTextBoxHost: () => {
+      // The host is found by the story's paragraph order, across blocks.
+      reusable = false;
+      let index = nextSource;
+      while (
+        index < orderedSources.length &&
+        continuationSources.has(orderedSources[index] ?? panic("No source"))
+      )
+        index += 1;
+      const host = orderedSources[index];
+      if (host === undefined || !holdsTextBox(host)) return false;
+      textBoxHosts.add(host);
+      nextSource = index + 1;
+      // The host carries no address, but a range it opens or closes still
+      // covers the paragraphs after it.
+      passComments(host);
+      return true;
+    },
+    take: (source) => {
+      if (projectedSources.has(source)) return false;
+      projectedSources.add(source);
+      nextSource = (sourceOrder.get(source) ?? panic("Unordered source")) + 1;
+      return true;
+    },
+    passComments,
+    inline,
+  };
+  const blocks: ProjectedBlock[] = [];
+  for (let index = 0; index < doc.childCount; index += 1) {
+    const node = doc.child(index);
+    const openBefore = open.current;
+    const projected = projectBlock(node, index, walk);
+    if (projected.isErr()) return projected;
+    if (!projected.value.local) reusable = false;
+    blocks.push({
+      node,
+      source: aligned ? content[index] : undefined,
+      paragraphs: projected.value.paragraphs,
+      sourceIds: aligned ? (idsByBlock[index] ?? []) : [],
+      openBefore,
+      openAfter: open.current,
+    });
+  }
+  if (
+    projectedSources.size + continuationSources.size + textBoxHosts.size !==
+      allSources.size ||
+    [...projectedSources].some(
+      (source) => continuationSources.has(source) || textBoxHosts.has(source),
+    ) ||
+    [...textBoxHosts].some((source) => continuationSources.has(source))
+  ) {
+    return refuse("The projection changed paragraph structure.");
+  }
+  return Result.ok(
+    new CanonicalProjection({
+      doc,
+      story,
+      content,
+      blocks,
+      index: ParagraphIdIndex.of(blocks),
+      facts,
+      reusable,
+    }),
+  );
+};
+
+/**
+ * The projection keeping every top-level block of `previous` an edit left:
+ * the run of blocks from the start and the run to the end whose story block
+ * and converted node are both the ones `previous` walked. Only the blocks
+ * between are walked, from the comment ranges open where they start. Nothing
+ * when the kept blocks would read other story facts than they did, or the
+ * walked ones reach outside themselves; the story is then walked in full.
+ */
+const projectChangedBlocks = (
+  previous: CanonicalProjection,
+  { doc, content, story, markersOf, inline }: StoryWalkOptions,
+): CanonicalProjection | undefined => {
+  if (!previous.reusable || !sameStory(previous.story, story)) return undefined;
+  const before = previous.blocks;
+  const count = content.length;
+  if (doc.childCount !== count) return undefined;
+  const unchanged = (block: ProjectedBlock | undefined, at: number): boolean =>
+    block !== undefined &&
+    block.source === content[at] &&
+    block.node === doc.child(at);
+  let start = 0;
+  while (
+    start < count &&
+    start < before.length &&
+    unchanged(before[start], start)
+  )
+    start += 1;
+  let after = 0;
+  while (
+    after < count - start &&
+    after < before.length - start &&
+    unchanged(before[before.length - 1 - after], count - 1 - after)
+  )
+    after += 1;
+  const end = before.length - after;
+  const newEnd = count - after;
+  // The bookmarks paired and the comments ranged across the story stay the
+  // same when the walked blocks contribute what the ones they replace did.
+  if (
+    !sameIdOrder(
+      storyFactContributions(previous.content.slice(start, end), markersOf),
+      storyFactContributions(content.slice(start, newEnd), markersOf),
+    )
+  )
+    return undefined;
+  const removed = new Set<string>();
+  for (let index = start; index < end; index += 1)
+    for (const id of before[index]?.sourceIds ?? []) removed.add(id);
+  const found = collectSources(
+    content,
+    start,
+    newEnd,
+    (paraId) =>
+      previous.index.get(paraId) !== undefined && !removed.has(paraId),
+  );
+  if (found.repeated) return undefined;
+  const sources = found.located;
+  const continuationSources = found.continuation;
+  const open = new OpenComments(before[start - 1]?.openAfter ?? []);
+  const projectedSources = new Set<Paragraph>();
+  const walk: BlockWalk = {
+    facts: previous.facts,
+    open,
+    content,
+    locate: (paraId) => sources.get(paraId),
+    claimTextBoxHost: () => false,
+    take: (source) => {
+      if (projectedSources.has(source)) return false;
+      projectedSources.add(source);
+      return true;
+    },
+    passComments: commentPasser(markersOf, open),
+    inline,
+  };
+  const window: ProjectedBlock[] = [];
+  for (let index = start; index < newEnd; index += 1) {
+    const node = doc.child(index);
+    const openBefore = open.current;
+    const projected = projectBlock(node, index, walk);
+    if (projected.isErr() || !projected.value.local) return undefined;
+    window.push({
+      node,
+      source: content[index],
+      paragraphs: projected.value.paragraphs,
+      sourceIds: found.idsByBlock[index - start] ?? [],
+      openBefore,
+      openAfter: open.current,
+    });
+  }
+  if (
+    projectedSources.size + continuationSources.size !== found.all.length ||
+    [...projectedSources].some((source) => continuationSources.has(source))
+  )
+    return undefined;
+  const following = before[end];
+  if (
+    following !== undefined &&
+    !sameIdOrder(open.current, following.openBefore)
+  )
+    return undefined;
+  const blocks = [...before.slice(0, start), ...window, ...before.slice(end)];
+  return new CanonicalProjection({
+    doc,
+    story,
+    content,
+    blocks,
+    index: previous.index.replaced({ start, end, removed, window, blocks }),
+    facts: previous.facts,
+    reusable: true,
+  });
+};
+
 const project = ({
   document,
   styles,
   story = OP_STORIES.MAIN,
   caches,
+  previous,
 }: ProjectStoryOptions): Result<CanonicalProjection, CanonicalSessionError> => {
   const body = findStoryBody(document, story);
   if (!body) return refuse("The canonical story no longer exists.");
@@ -736,190 +1332,16 @@ const project = ({
       }),
   });
   if (converted.isErr()) return converted;
-  const pairedBookmarkIds = collectPairedBookmarkIds(body.content);
-  const markersOf = caches?.comments.read ?? paragraphCommentMarkers;
-  const rangedIds = new Set<number>();
-  const referencedIds = new Set<number>();
-  visitCommentMarkerItems(body.content, markersOf, (item) => {
-    if (item.type === "commentRangeStart") rangedIds.add(item.id);
-    if (item.type === "commentReference") referencedIds.add(item.id);
-  });
-  const commentContext = {
-    rangedIds,
-    pointIds: new Set([...referencedIds].filter((id) => !rangedIds.has(id))),
-    openIds: new Set<number>(),
+  const walk: StoryWalkOptions = {
+    doc: converted.value,
+    content: body.content,
+    story,
+    markersOf: caches?.comments.read ?? paragraphCommentMarkers,
+    inline: caches?.inline,
   };
-  /** Opens and closes the ranges a paragraph's markers start and end. */
-  const passComments = (paragraph: Paragraph): void => {
-    for (const item of markersOf(paragraph)) {
-      if (item.type === "commentRangeStart")
-        commentContext.openIds.add(item.id);
-      if (item.type === "commentRangeEnd")
-        commentContext.openIds.delete(item.id);
-    }
-  };
-  const sources = new Map<
-    string,
-    { source: Paragraph; container: readonly BlockContent[] }
-  >();
-  const allSources = new Set<Paragraph>();
-  const continuationSources = new Set<Paragraph>();
-  const collectSources = (
-    blocks: readonly BlockContent[],
-    insideSkippedContinuation = false,
-  ): void => {
-    for (const block of blocks) {
-      if (block.type === "paragraph") {
-        allSources.add(block);
-        if (insideSkippedContinuation) continuationSources.add(block);
-        if (block.paraId !== undefined)
-          sources.set(block.paraId, { source: block, container: blocks });
-        continue;
-      }
-      if (block.type === "blockSdt") {
-        collectSources(block.content, insideSkippedContinuation);
-        continue;
-      }
-      if (block.type !== "table") continue;
-      const rowSpans = calculateRowSpans(block);
-      for (const [rowIndex, row] of block.rows.entries()) {
-        let column = row.formatting?.gridBefore ?? 0;
-        for (const cell of row.cells) {
-          const skippedContinuation =
-            isCellMergeContinuation(cell) &&
-            (rowSpans.get(`${rowIndex}-${column}`)?.skip ?? false);
-          collectSources(
-            cell.content,
-            insideSkippedContinuation || skippedContinuation,
-          );
-          column += cell.formatting?.gridSpan ?? 1;
-        }
-      }
-    }
-  };
-  collectSources(body.content);
-  const paragraphs: ParagraphAddress[] = [];
-  const projectedSources = new Set<Paragraph>();
-  // A paragraph holding only text boxes projects as the boxes alone; the first
-  // box of its group stands where the paragraph was.
-  const orderedSources = [...allSources];
-  const sourceOrder = new Map(
-    orderedSources.map((source, index) => [source, index]),
-  );
-  const textBoxHosts = new Set<Paragraph>();
-  let nextSource = 0;
-  const claimTextBoxHost = (): boolean => {
-    let index = nextSource;
-    while (
-      index < orderedSources.length &&
-      continuationSources.has(orderedSources[index] ?? panic("No source"))
-    )
-      index += 1;
-    const host = orderedSources[index];
-    if (host === undefined || !holdsTextBox(host)) return false;
-    textBoxHosts.add(host);
-    nextSource = index + 1;
-    // The host carries no address, but a range it opens or closes still
-    // covers the paragraphs after it.
-    passComments(host);
-    return true;
-  };
-  let failure: CanonicalSessionError | undefined;
-  converted.value.descendants((node, offset, parent) => {
-    if (failure !== undefined) return false;
-    // A text box's paragraphs belong to its shape, not to this story. The
-    // session holds no address in them, so input there refuses and the box
-    // keeps its source as it was.
-    if (node.type.name === "textBox") {
-      if (
-        node.attrs["_docxPlacement"] === "standalone" &&
-        node.attrs["_docxHostParagraph"] != null &&
-        !claimTextBoxHost()
-      )
-        failure = new CanonicalSessionError({
-          ground: { gap: CANONICAL_GAP.storyContentProjection },
-          reason: "refused",
-          message: "The projection changed paragraph structure.",
-        });
-      return false;
-    }
-    // A range opened between blocks covers the paragraphs after it.
-    if (node.type.name === "blockCommentRangeBoundary") {
-      const { marker } = expectCommentRangeBoundaryAttrs(node);
-      if (marker.type === "commentRangeStart")
-        commentContext.openIds.add(marker.id);
-      else commentContext.openIds.delete(marker.id);
-      return false;
-    }
-    if (node.type.name !== "paragraph") return true;
-    // A row's w:gridBefore and w:gridAfter render as filler cells whose empty
-    // paragraph has no source; there is nothing in them to edit.
-    if (parent?.attrs["_omittedGridSlot"] != null) return false;
-    const paraId = node.attrs["paraId"];
-    const located =
-      typeof paraId === "string" ? sources.get(paraId) : undefined;
-    if (typeof paraId !== "string" || located === undefined) {
-      failure = new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.storyContentProjection },
-        reason: "refused",
-        message: "The projection changed paragraph structure.",
-      });
-      return false;
-    }
-    const { source, container } = located;
-    if (projectedSources.has(source)) {
-      failure = new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.storyContentProjection },
-        reason: "refused",
-        message: "The projection changed paragraph structure.",
-      });
-      return false;
-    }
-    projectedSources.add(source);
-    nextSource = (sourceOrder.get(source) ?? panic("Unordered source")) + 1;
-    const inlineArgs = {
-      source,
-      paragraph: node,
-      pairedBookmarkIds,
-      commentContext,
-    };
-    const inline =
-      caches === undefined
-        ? projectCanonicalInline(inlineArgs)
-        : caches.inline.project(inlineArgs);
-    if (inline.isErr()) {
-      failure = new CanonicalSessionError({
-        ground: { gap: CANONICAL_GAP.dispatch },
-        reason: "refused",
-        message: inline.error.message,
-      });
-      return false;
-    }
-    paragraphs.push({
-      blockId: paraId,
-      container,
-      start: offset + 1,
-      ...inline.value,
-      node,
-      source,
-    });
-    passComments(source);
-    return false;
-  });
-  if (failure !== undefined) return Result.err(failure);
-  if (
-    projectedSources.size + continuationSources.size + textBoxHosts.size !==
-      allSources.size ||
-    [...projectedSources].some(
-      (source) => continuationSources.has(source) || textBoxHosts.has(source),
-    ) ||
-    [...textBoxHosts].some((source) => continuationSources.has(source))
-  ) {
-    return refuse("The projection changed paragraph structure.");
-  }
-  return Result.ok(
-    new CanonicalProjection({ doc: converted.value, paragraphs, story }),
-  );
+  const kept =
+    previous === undefined ? undefined : projectChangedBlocks(previous, walk);
+  return kept === undefined ? projectEveryBlock(walk) : Result.ok(kept);
 };
 
 const intentStory = (intent: EditorIntent): OpStory => {
@@ -2085,6 +2507,7 @@ class CanonicalSession {
       document: applied.value.document,
       styles: this.styles,
       caches: this.caches,
+      previous: this.currentProjection,
     });
     if (projected.isErr()) return projected;
     const surviving = projected.value.paragraph(
@@ -2199,6 +2622,7 @@ class CanonicalSession {
       styles: this.styles,
       caches: this.caches,
       story,
+      ...(cached === undefined ? {} : { previous: cached.projection }),
     });
     if (projected.isOk())
       this.storyProjections.set(key, {
@@ -2479,6 +2903,9 @@ class CanonicalSession {
       styles: this.styles,
       caches: this.caches,
       story: projectedStory,
+      previous: sameStory(projectedStory, OP_STORIES.MAIN)
+        ? this.currentProjection
+        : previous.value,
     });
     if (projected.isErr()) return projected;
     const bodyProjection = (() => {
@@ -2488,6 +2915,7 @@ class CanonicalSession {
           document: applied.value.document,
           styles: this.styles,
           caches: this.caches,
+          previous: this.currentProjection,
         });
       return Result.ok(this.currentProjection);
     })();
