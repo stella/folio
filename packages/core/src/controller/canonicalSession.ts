@@ -42,6 +42,7 @@ import {
   type OpStory,
   packageParagraphIds,
   paragraphIdsIn,
+  replaceStoryBody,
   sameStory,
   suggestedCommentIds,
   suggestionRevisionInfos,
@@ -63,10 +64,9 @@ import {
 } from "../docx/commentAnchorIndex";
 import { ListNormalizationCache } from "../docx/listModelNormalization";
 import {
+  carryParagraphPropertySource,
   cloneDocumentWithParagraphPropertySources,
   copyDocumentParagraphPropertySourceContract,
-  copyParagraphPropertySource,
-  restoreParagraphIndentationProjection,
 } from "../docx/paragraphPropertySource";
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
@@ -699,7 +699,70 @@ const changedStories = ({
   return stories;
 };
 
-/** Carry private paragraph source captures across immutable story operations. */
+/** `blocks` with the paragraphs `replaced` names put in their place, in tables too. */
+const withParagraphsReplaced = (
+  blocks: BlockContent[],
+  replaced: ReadonlyMap<Paragraph, Paragraph>,
+): BlockContent[] => {
+  let changed = false;
+  const next = blocks.map((block): BlockContent => {
+    if (block.type === "paragraph") {
+      const replacement = replaced.get(block);
+      if (replacement === undefined) return block;
+      changed = true;
+      return replacement;
+    }
+    if (block.type !== "table") return block;
+    let rowsChanged = false;
+    const rows = block.rows.map((row) => {
+      let cellsChanged = false;
+      const cells = row.cells.map((cell) => {
+        const content = withParagraphsReplaced(cell.content, replaced);
+        if (content === cell.content) return cell;
+        cellsChanged = true;
+        return { ...cell, content };
+      });
+      if (!cellsChanged) return row;
+      rowsChanged = true;
+      return { ...row, cells };
+    });
+    if (!rowsChanged) return block;
+    changed = true;
+    return { ...block, rows };
+  });
+  return changed ? next : blocks;
+};
+
+/** `document` with the paragraphs `replaced` names put in their place in `story`. */
+const withStoryParagraphsReplaced = (
+  document: Document,
+  story: OpStory,
+  replaced: ReadonlyMap<Paragraph, Paragraph>,
+): Document => {
+  if (replaced.size === 0) return document;
+  const body = findStoryBody(document, story);
+  if (body === undefined) return document;
+  const sections = body.sections?.map((section) => {
+    const content = withParagraphsReplaced(section.content, replaced);
+    return content === section.content ? section : { ...section, content };
+  });
+  return replaceStoryBody({
+    document,
+    story,
+    body: {
+      ...body,
+      content: withParagraphsReplaced(body.content, replaced),
+      ...(sections === undefined ? {} : { sections }),
+    },
+  });
+};
+
+/**
+ * Carry private paragraph source captures across immutable story operations.
+ * A paragraph a reader kept is never written: one whose facts change is
+ * replaced by a new paragraph carrying them, so the result is `target` or a
+ * new document.
+ */
 type PreservePropertySourcesOptions = {
   target: Document;
   source: Document;
@@ -711,7 +774,7 @@ const preservePropertySources = ({
   source,
   stories = documentStories(source),
   indentation = "derive",
-}: PreservePropertySourcesOptions): void => {
+}: PreservePropertySourcesOptions): Document => {
   const collectParagraphs = (blocks: readonly BlockContent[]): Paragraph[] => {
     const paragraphs: Paragraph[] = [];
     for (const block of blocks) {
@@ -727,9 +790,10 @@ const preservePropertySources = ({
     }
     return paragraphs;
   };
+  let document = target;
   for (const story of stories) {
     const originals = findStoryBody(source, story)?.content ?? [];
-    const derived = findStoryBody(target, story)?.content ?? [];
+    const derived = findStoryBody(document, story)?.content ?? [];
     if (originals === derived) continue;
     const originalParagraphs = collectParagraphs(originals);
     const derivedParagraphs = collectParagraphs(derived);
@@ -740,22 +804,24 @@ const preservePropertySources = ({
           : [[paragraph.paraId, paragraph] as const],
       ),
     );
+    const replaced = new Map<Paragraph, Paragraph>();
     for (const [index, original] of originalParagraphs.entries()) {
       const next =
         original.paraId === undefined
           ? derivedParagraphs.at(index)
           : paragraphs.get(original.paraId);
-      if (next !== undefined && next !== original) {
-        copyParagraphPropertySource(next, original);
-        if (indentation === "restore")
-          restoreParagraphIndentationProjection({
-            target: next,
-            source: original,
-          });
-      }
+      if (next === undefined || next === original) continue;
+      const carried = carryParagraphPropertySource({
+        target: replaced.get(next) ?? next,
+        source: original,
+        indentation,
+      });
+      if (carried !== next) replaced.set(next, carried);
     }
+    document = withStoryParagraphsReplaced(document, story, replaced);
   }
-  copyDocumentParagraphPropertySourceContract(target, source);
+  copyDocumentParagraphPropertySourceContract(document, source);
+  return document;
 };
 
 /** A session's projection pieces, reused by every projection of its stories. */
@@ -2854,7 +2920,7 @@ class CanonicalSession {
     );
     if (locked !== null) return lockRefusal(locked);
     if (propertySourceDocument !== undefined)
-      preservePropertySources({
+      applied.value.document = preservePropertySources({
         target: applied.value.document,
         source: propertySourceDocument,
         indentation: "restore",
@@ -2878,23 +2944,30 @@ class CanonicalSession {
             "The operations produce unsupported canonical story content.",
         }),
       );
-    preservePropertySources({
+    applied.value.document = preservePropertySources({
       target: applied.value.document,
       source: this.currentDocument,
       stories: changed,
     });
     if (propertySourceDocument !== undefined)
-      preservePropertySources({
+      applied.value.document = preservePropertySources({
         target: applied.value.document,
         source: propertySourceDocument,
       });
     const stagedSources = new Map(this.sourceOwners);
+    const owned = new Map<Paragraph, Paragraph>();
     for (const block of applied.value.document.package.document.content) {
       if (block.type !== "paragraph" || block.paraId === undefined) continue;
       const source = stagedSources.get(block.paraId);
-      if (source && block !== source)
-        copyParagraphPropertySource(block, source);
+      if (source === undefined || block === source) continue;
+      const carried = carryParagraphPropertySource({ target: block, source });
+      if (carried !== block) owned.set(block, carried);
     }
+    applied.value.document = withStoryParagraphsReplaced(
+      applied.value.document,
+      OP_STORIES.MAIN,
+      owned,
+    );
     const projectedStory = findStoryBody(applied.value.document, story)
       ? story
       : OP_STORIES.MAIN;
@@ -3086,16 +3159,17 @@ export const createCanonicalSession = (
   const source = normalizeCanonicalSource(owned);
   const unsupported = unsupportedSeedReason(source.document);
   if (unsupported !== null) return refuse(unsupported);
-  const identified = normalizeForOps(source.document);
-  preservePropertySources({ target: identified, source: owned });
+  const identified = preservePropertySources({
+    target: normalizeForOps(source.document),
+    source: owned,
+  });
   const validated = validateOpsDocument(identified);
   if (validated.isErr()) return refuse(validated.error.message);
   const caches = newStoryProjectionCaches();
-  const normalized = normalizeCanonicalListRendering(
-    identified,
-    caches.lists,
-  ).document;
-  preservePropertySources({ target: normalized, source: owned });
+  const normalized = preservePropertySources({
+    target: normalizeCanonicalListRendering(identified, caches.lists).document,
+    source: owned,
+  });
   const projected = project({ document: normalized, styles, caches });
   if (projected.isErr()) return projected;
   return Result.ok(

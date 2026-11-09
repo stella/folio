@@ -17,7 +17,7 @@ import { DOCUMENT_SHAPES } from "../../__tests__/documentShapes";
 import { prepareCanonicalDocxInput } from "../../docx/canonicalSessionInput";
 import { mintListInstance } from "../../docx/listNumberingInstances";
 import { NO_NUMBERING_IDS_IN_USE } from "../../docx/numberingIds";
-import { restoreParagraphIndentationProjection } from "../../docx/paragraphPropertySource";
+import { carryParagraphPropertySource } from "../../docx/paragraphPropertySource";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import type { BlockContent, Document, Paragraph } from "../../types/document";
@@ -310,6 +310,38 @@ const storyParagraphsOf = (blocks: readonly BlockContent[]): Paragraph[] =>
     }
   });
 
+/** `blocks` with `from` replaced by `to` wherever it is held, as a new version holds it. */
+const replacingParagraph = (
+  blocks: readonly BlockContent[],
+  from: Paragraph,
+  to: Paragraph,
+): BlockContent[] =>
+  blocks.map((block): BlockContent => {
+    switch (block.type) {
+      case "paragraph":
+        return block === from ? to : block;
+      case "table":
+        return {
+          ...block,
+          rows: block.rows.map((row) => ({
+            ...row,
+            cells: row.cells.map((cell) => ({
+              ...cell,
+              content: replacingParagraph(cell.content, from, to),
+            })),
+          })),
+        };
+      case "blockSdt":
+      case "blockCustomXml":
+        return {
+          ...block,
+          content: replacingParagraph(block.content, from, to),
+        };
+      default:
+        return block;
+    }
+  });
+
 export const modelEditArbitrary = fc.record({
   kind: fc.constantFrom(
     "touch",
@@ -330,9 +362,10 @@ export type ModelEdit = fc.RecordValue<typeof modelEditArbitrary>;
  * A new version of the story sharing every block the edit leaves, as the
  * operations make one: a block changed, a table's first cell changed,
  * removed, inserted with markers that move what the blocks after it read,
- * repeated, or moved. `restore` keeps the version and gives one paragraph,
- * in a table too, another paragraph's indentation projection in place, as
- * history restores it.
+ * repeated, or moved. `restore` gives one paragraph, in a table too, another
+ * paragraph's source facts and indentation projection, as history restores
+ * them: in place while no reader kept the paragraph, else on a new paragraph
+ * in its place.
  */
 export const editModel = (document: Document, edit: ModelEdit): Document => {
   const blocks = [...document.package.document.content];
@@ -389,9 +422,16 @@ export const editModel = (document: Document, edit: ModelEdit): Document => {
       const paragraphs = storyParagraphsOf(blocks);
       const target = paragraphs[index % Math.max(1, paragraphs.length)];
       const source = paragraphs[edit.to % Math.max(1, paragraphs.length)];
-      if (target !== undefined && source !== undefined)
-        restoreParagraphIndentationProjection({ target, source });
-      return document;
+      if (target === undefined || source === undefined) return document;
+      const restored = carryParagraphPropertySource({
+        target,
+        source,
+        indentation: "restore",
+      });
+      if (restored === target) return document;
+      const replaced = replacingParagraph(blocks, target, restored);
+      blocks.splice(0, blocks.length, ...replaced);
+      break;
     }
     case "remove":
       if (blocks.length > 1) blocks.splice(index, 1);
