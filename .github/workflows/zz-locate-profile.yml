@@ -20,12 +20,4 @@ jobs:
         with:
           bun-version-file: "package.json"
       - run: bun install --frozen-lockfile
-      - run: git worktree add --detach ../base 20483e31b942dadf38eeb0731d70d6d3a04e1b7b
-      - run: bun install --frozen-lockfile
-        working-directory: ../base
-      - run: bash scripts/zz-profile/pair.sh "$(cd ../base && pwd)" "$RUNNER_TEMP/prof" 3
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: profiles
-          path: ${{ runner.temp }}/prof
-          retention-days: 7
+      - run: python3 -I scripts/zz-breaks-locator.py
