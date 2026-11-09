@@ -133,12 +133,11 @@ const countersBeforeEach = (normalized: Document): string[] => {
   });
 };
 
-/** A version as its normalization met it, to judge what the next one may reuse. */
+/** A version as its normalization left it, to judge what the next one may reuse. */
 type Normalized = {
   document: Document;
-  inputs: readonly BlockContent[];
-  /** Whether each block normalized to itself. */
-  settled: readonly boolean[];
+  /** The normalized blocks, each of which normalizes to itself. */
+  blocks: readonly BlockContent[];
   /** The snapshot registration each block was left with. */
   tokens: readonly unknown[];
   counters: readonly string[];
@@ -157,10 +156,9 @@ const blocksToNormalize = (
 ): number => {
   if (earlier === undefined) return inputs.length;
   const length = inputs.length;
-  const old = earlier.inputs;
+  const old = earlier.blocks;
   const kept = (index: number, oldIndex: number) =>
     inputs[index] === old[oldIndex] &&
-    earlier.settled[oldIndex] === true &&
     tokens[index] === earlier.tokens[oldIndex];
   let prefix = 0;
   while (prefix < length && prefix < old.length && kept(prefix, prefix))
@@ -234,9 +232,8 @@ const normalizedBothWays = (
   );
   return {
     document: cached.document,
-    inputs,
-    settled: fullBlocks.map((block, index) => block === inputs[index]),
-    tokens: inputs.map((block) =>
+    blocks: cachedBlocks,
+    tokens: cachedBlocks.map((block) =>
       block.type === "paragraph"
         ? paragraphPropertySnapshotToken(block)
         : undefined,
@@ -722,15 +719,15 @@ const longListDocument = async (items: number): Promise<Document> => {
 };
 
 /**
- * A long list normalized with `cache`, then once more as normalized, after
- * which every block normalizes to itself.
+ * A long list normalized with `cache`, then once more as normalized: the
+ * second normalization reuses every block the first left.
  */
 const settledLongList = async (
   cache: ListNormalizationCache,
 ): Promise<Normalized> => {
   const first = normalizedBothWays(await longListDocument(400), cache);
   const settled = normalizedBothWays(first.document, cache, first);
-  expect(settled.settled.every(Boolean)).toBe(true);
+  expect(cache.normalizedBlocks(OP_STORIES.MAIN)).toBe(0);
   return settled;
 };
 
