@@ -388,6 +388,38 @@ export const CANONICAL_COMPOSITION_REREAD_AFTER_PASTE = {
   trace: BrowserInputTrace;
 };
 
+/**
+ * A composition right after a pasted run, as an input method grows it: its
+ * text in progress shows at the caret, and it commits what the default
+ * editor commits.
+ */
+export const CANONICAL_COMPOSITION_BESIDE_PASTED_RUN = {
+  authority: "canonical",
+  seed: 197,
+  path: "beside-pasted-run",
+  fingerprint: "composition-beside-pasted-run",
+  comparesWithDefaultEditor: true,
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "typing", text: "valid invoice" },
+      { kind: "pastePlain", plain: "alpha valid", html: "" },
+      {
+        kind: "imeReplacement",
+        updates: ["in", "inv", "invoice"],
+        completion: "commit",
+      },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  comparesWithDefaultEditor: true;
+  trace: BrowserInputTrace;
+};
+
 /** A restarted composition after tracked typing commits at the caret, not mid-word. */
 export const CANONICAL_RESTARTED_AFTER_TYPING = {
   authority: "canonical",
@@ -1016,6 +1048,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_RESTARTED_AFTER_PASTE_SEED_197,
   CANONICAL_RESTARTED_AFTER_TYPING,
   CANONICAL_COMPOSITION_REREAD_AFTER_PASTE,
+  CANONICAL_COMPOSITION_BESIDE_PASTED_RUN,
   CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
   CANONICAL_JOIN_BESIDE_DELETION_SEED_29,
   CANONICAL_TYPING_OVER_LIST_ITEMS_SEED_431,

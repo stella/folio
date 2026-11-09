@@ -24,6 +24,7 @@ import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
+import { createNativeSelectionRefreshPlugin } from "../prosemirror/nativeSelection";
 import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import {
@@ -431,6 +432,7 @@ export const createHeaderFooterEditorManager = (
               plugins: [
                 createDocumentNumberingPlugin(numbering),
                 createDocumentStyleContextPlugin(styles),
+                createNativeSelectionRefreshPlugin(),
               ],
             })
           : buildInitialState(headerFooter, styles, theme, numbering, manager),
