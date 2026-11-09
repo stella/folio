@@ -44,6 +44,7 @@ import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   proseParagraphAttrsWithoutPropertySource,
   recreateProseNodeWithParagraphPropertySource,
+  sealParagraphFacts,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
 import {
@@ -767,6 +768,7 @@ const blockSourceStamps = (
     for (const child of blocks) {
       switch (child.type) {
         case "paragraph":
+          sealParagraphFacts(child);
           stamps.push({
             paragraph: child,
             stamp: paragraphPropertySourceStamp(child),

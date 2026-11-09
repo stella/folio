@@ -27,6 +27,7 @@ import type {
   DocumentBody,
   Endnote,
   Footnote,
+  Paragraph,
 } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import {
@@ -52,6 +53,7 @@ import {
   paragraphPropertySourceStamp,
   paragraphPropertySourceStampMatches,
   sameParagraphIndentationProjection,
+  sealParagraphFacts,
 } from "./paragraphPropertySource";
 
 type CanonicalListNormalization = { document: Document; inverse: DocumentOp[] };
@@ -83,12 +85,19 @@ type StoryRun = {
 
 const CHECKPOINT_SPACING = 32;
 
+const sealedSourceStamp = (
+  paragraph: Paragraph,
+): ParagraphPropertySourceStamp => {
+  sealParagraphFacts(paragraph);
+  return paragraphPropertySourceStamp(paragraph);
+};
+
 const recordOf = (input: BlockContent, settled: boolean): BlockRecord =>
   input.type === "paragraph"
     ? {
         input,
         settled,
-        sourceStamp: paragraphPropertySourceStamp(input),
+        sourceStamp: sealedSourceStamp(input),
         snapshotToken: paragraphPropertySnapshotToken(input),
       }
     : { input, settled, sourceStamp: undefined, snapshotToken: undefined };

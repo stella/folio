@@ -43,6 +43,27 @@ const renewFacts = (key: object): void => {
   factStamps.set(key, lastFactStamp);
 };
 
+/**
+ * Objects whose facts a reader has kept: a converted block's paragraphs and
+ * their formatting. A fact of one is fixed from then on, and every fact is
+ * written once: a writer that would change one panics, naming itself.
+ */
+const sealedFacts = new WeakSet<object>();
+
+const refuseFactChange = (key: object, what: string): void => {
+  panic(
+    sealedFacts.has(key)
+      ? `A paragraph fact (${what}) changed after a reader kept it.`
+      : `A paragraph fact (${what}) is written once and was written again.`,
+  );
+};
+
+/** Fix the facts of `paragraph` and its formatting: a reader keeps them. */
+export const sealParagraphFacts = (paragraph: Paragraph): void => {
+  sealedFacts.add(paragraph);
+  if (paragraph.formatting !== undefined) sealedFacts.add(paragraph.formatting);
+};
+
 /** A weak table whose writes renew the stamp of the key they change. */
 class KeptFacts<Key extends object, Value> {
   private readonly table = new WeakMap<Key, Value>();
@@ -57,6 +78,8 @@ class KeptFacts<Key extends object, Value> {
 
   set(key: Key, value: Value): void {
     if (this.table.has(key) && this.table.get(key) === value) return;
+    if (this.table.has(key) || sealedFacts.has(key))
+      refuseFactChange(key, "table entry");
     this.table.set(key, value);
     renewFacts(key);
   }
@@ -72,12 +95,16 @@ class KeptFlags<Key extends object> {
 
   add(key: Key): void {
     if (this.flags.has(key)) return;
+    if (sealedFacts.has(key)) refuseFactChange(key, "flag");
     this.flags.add(key);
     renewFacts(key);
   }
 
   delete(key: Key): void {
-    if (this.flags.delete(key)) renewFacts(key);
+    if (!this.flags.has(key)) return;
+    refuseFactChange(key, "flag removal");
+    this.flags.delete(key);
+    renewFacts(key);
   }
 }
 
@@ -90,9 +117,12 @@ const keepHandle = (
   const current = Object.getOwnPropertyDescriptor(paragraph, key);
   if (descriptor === undefined) {
     if (current === undefined) return;
+    refuseFactChange(paragraph, `handle removal ${String(key.description)}`);
     Reflect.deleteProperty(paragraph, key);
   } else {
     if (current !== undefined && current.value === descriptor.value) return;
+    if (current !== undefined || sealedFacts.has(paragraph))
+      refuseFactChange(paragraph, `handle ${String(key.description)}`);
     Object.defineProperty(paragraph, key, descriptor);
   }
   renewFacts(paragraph);
@@ -241,6 +271,8 @@ export const assignParagraphIndentationProjection = ({
   ) {
     Reflect.deleteProperty(effective, "hangingIndent");
   }
+  if (sealedFacts.has(paragraph))
+    refuseFactChange(paragraph, "indentation formatting");
   paragraph.formatting = { ...authored, ...effective };
   if (Object.keys(paragraph.formatting).length === 0)
     delete paragraph.formatting;
