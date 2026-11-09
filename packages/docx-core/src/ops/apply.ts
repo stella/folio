@@ -139,6 +139,7 @@ import { noteContentWithAutomaticMark, removedNoteStories } from "./noteMarks";
 import { applyNumberingSectionOp } from "./numberingSections";
 import { paragraphLength } from "./offsets";
 import { applyPackageResourcesOp } from "./packageResources";
+import { findStoryParagraph } from "./paragraphLocator";
 import {
   getParagraphPropertySnapshot,
   registerParagraphPropertySnapshot,
@@ -359,8 +360,18 @@ const locate = (
   op: DocumentOp,
   story: OpStory,
   blockId: string,
-): Result<ParagraphLocation, DocumentOpRefusal> =>
-  findParagraph(op, storyParagraphs(storyBody(document, story)), blockId);
+): Result<ParagraphLocation, DocumentOpRefusal> => {
+  const location = findStoryParagraph(storyBody(document, story), blockId);
+  return location === undefined
+    ? Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+          `No paragraph is ${blockId}.`,
+        ),
+      )
+    : Result.ok(location);
+};
 
 const isGap = (value: Gap | DocumentOpRefusalReason): value is Gap =>
   typeof value === "object";
