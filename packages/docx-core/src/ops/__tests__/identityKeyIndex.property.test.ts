@@ -284,3 +284,120 @@ describe("the key index after the newest indexed package is gone", () => {
     );
   });
 });
+
+describe("the key index across documents", () => {
+  // Several documents edited in turn, each edit's intermediate version
+  // dropped and sometimes collected: a version is often found from another
+  // document's package, which must count what a full census counts.
+  test("equals a census walking every record whichever package it derives from", async () => {
+    await assertProperty(
+      fc.property(
+        fc.array(fc.oneof(documentArbitrary, reviewDocumentArbitrary), {
+          minLength: 2,
+          maxLength: 4,
+        }),
+        fc.array(
+          fc.record({
+            document: fc.nat(),
+            kept: opSeedArbitrary,
+            dropped: opSeedArbitrary,
+            tracked: fc.boolean(),
+            collect: fc.boolean(),
+            // Edit an earlier version of the document instead of its latest.
+            branch: fc.option(fc.nat(), { freq: 3 }),
+          }),
+          { minLength: 2, maxLength: 16 },
+        ),
+        (generated, edits) => {
+          // Every document but the first holds a header of its own, under
+          // its own relationship id, with a record in it, so a version found
+          // from another document's package counts headers in and out.
+          const documents = generated.map((document, index): Document =>
+            index === 0
+              ? document
+              : {
+                  ...document,
+                  package: {
+                    ...document.package,
+                    headers: new Map([
+                      [
+                        `rIdIndexed${index}`,
+                        {
+                          type: "header",
+                          hdrFtrType: "default",
+                          content: [
+                            {
+                              type: "paragraph",
+                              paraId: (0x7b000000 + index)
+                                .toString(16)
+                                .toUpperCase(),
+                              content: [
+                                {
+                                  type: "insertion",
+                                  info: { id: 9000 + index, author: "Header" },
+                                  content: [
+                                    {
+                                      type: "run",
+                                      content: [{ type: "text", text: "h" }],
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    ]),
+                  },
+                },
+          );
+          const histories = documents.map((document) => [document]);
+          const check = (document: Document): void => {
+            const expected = countedInFull(document);
+            const asked = new Set([
+              ...expected.identity.keys(),
+              ...expected.reserved.keys(),
+            ]);
+            expectIndexed({
+              index: packageIdentityKeyIndex(document.package),
+              expected: expected.identity,
+              asked,
+              listed: true,
+            });
+            expectIndexed({
+              index: packageReservedKeyIndex(document.package),
+              expected: expected.reserved,
+              asked,
+              listed: true,
+            });
+          };
+          for (const document of documents) check(document);
+          edits.forEach((edit, index) => {
+            const history = histories[edit.document % histories.length] ?? [];
+            const latest = history.at(-1);
+            if (latest === undefined) return;
+            const base =
+              edit.branch === null
+                ? latest
+                : (history[edit.branch % history.length] ?? latest);
+            const opOf = (document: Document, seed: typeof edit.kept) =>
+              edit.tracked
+                ? trackedOpFor(document, seed, index)
+                : opForStory({ document, seed, story: OP_STORIES.MAIN });
+            (() => {
+              const transient = applyDocumentOp(base, opOf(base, edit.dropped));
+              if (transient.isOk())
+                packageIdentityKeyIndex(transient.value.document.package);
+            })();
+            if (edit.collect) Bun.gc(true);
+            const next = applyDocumentOp(base, opOf(base, edit.kept));
+            if (next.isErr()) return;
+            history.push(next.value.document);
+            check(next.value.document);
+          });
+        },
+      ),
+      { numRuns: 60, id: "the key index across documents" },
+    );
+  });
+});
