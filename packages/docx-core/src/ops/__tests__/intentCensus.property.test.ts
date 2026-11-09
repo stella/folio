@@ -1,15 +1,15 @@
 /**
- * The id census an editor intent reads, kept across versions of a document,
- * equals a census of each version read afresh.
+ * The ids an editor intent reads as taken, from the package's kept indexes,
+ * are those a census of each version read afresh holds.
  *
- * The census reader counts a new version of the main story by the blocks the
- * edit replaced: paragraphs, tables and content controls alike. A wrong count
- * there would let a later edit mint an id the document already holds, so
- * every version of a random run of edits, direct and tracked, in the body and
- * in notes, through tables and stacked row controls, and back to earlier
- * versions, is read both ways.
+ * The indexes count a new version along the paths the edit changed:
+ * paragraphs, tables and content controls alike. A wrong count there would
+ * let a later edit mint an id the document already holds, so every version
+ * of a random run of edits, direct and tracked, in the body and in notes,
+ * through tables and stacked row controls, and back to earlier versions, is
+ * read both ways.
  */
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { describe, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import {
@@ -18,7 +18,14 @@ import {
 } from "../../../../../test/property-testing";
 import type { Document } from "../../model/document";
 import { applyDocumentOp } from "../apply";
-import { createCensusReader } from "../editorIntentCensus";
+import { packageIdOccupancy } from "../editorIntentCensus";
+import {
+  IDENTITY_SPACES,
+  idKey,
+  packageIdentityKeys,
+  packageParagraphIds,
+  packageReservedIdentityKeys,
+} from "../ids";
 import { documentStories } from "../stories";
 import {
   DOCUMENT_OP_TYPES,
@@ -33,6 +40,7 @@ import {
   reviewDocumentArbitrary,
   trackedOpFor,
 } from "./documentArbitraries";
+import { type CensusIds, expectOccupancyOf } from "./occupancyProbe";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
@@ -81,12 +89,27 @@ const withStackedRowControl = (document: Document): Document => {
   };
 };
 
-/** The ids a census holds, in a comparable order. */
-const idsOf = (census: ReturnType<ReturnType<typeof createCensusReader>>) => ({
-  revisions: [...census.revisions].toSorted((left, right) => left - right),
-  controls: [...census.controls].toSorted((left, right) => left - right),
-  paragraphs: [...census.paragraphs].toSorted(),
-});
+/** The ids of each space a census of the whole package holds. */
+const censusOf = (document: Document): CensusIds => {
+  const keys = [
+    ...packageIdentityKeys(document.package),
+    ...packageReservedIdentityKeys(document.package),
+  ];
+  const idsIn = (space: string) =>
+    new Set(
+      keys
+        .filter((key) => key.startsWith(`${space}:`))
+        .map((key) => Number(key.slice(space.length + 1))),
+    );
+  return {
+    revisions: idsIn(IDENTITY_SPACES.REVISION),
+    controls: idsIn(IDENTITY_SPACES.CONTROL),
+    paragraphs: new Set(packageParagraphIds(document.package).map(idKey)),
+  };
+};
+
+const expectCensusOf = (document: Document): void =>
+  expectOccupancyOf(packageIdOccupancy(document.package), censusOf(document));
 
 describe("the id census an editor intent reads", () => {
   test("equals a census read afresh over a run of edits", async () => {
@@ -109,19 +132,14 @@ describe("the id census an editor intent reads", () => {
           { minLength: 1, maxLength: 12 },
         ),
         (generated, stacked, edits) => {
-          const read = createCensusReader();
           let document = stacked ? withStackedRowControl(generated) : generated;
           const versions = [document];
-          expect(idsOf(read(document))).toEqual(
-            idsOf(createCensusReader()(document)),
-          );
+          expectCensusOf(document);
           edits.forEach(
             ({ seed, tracked, story: at, row, split, back }, index) => {
               if (back !== null) {
                 document = versions[back % versions.length] ?? document;
-                expect(idsOf(read(document))).toEqual(
-                  idsOf(createCensusReader()(document)),
-                );
+                expectCensusOf(document);
                 return;
               }
               const stories = documentStories(document);
@@ -154,9 +172,7 @@ describe("the id census an editor intent reads", () => {
               if (applied.isErr()) return;
               document = applied.value.document;
               versions.push(document);
-              expect(idsOf(read(document))).toEqual(
-                idsOf(createCensusReader()(document)),
-              );
+              expectCensusOf(document);
             },
           );
         },
