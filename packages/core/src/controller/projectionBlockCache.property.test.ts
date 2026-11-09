@@ -19,6 +19,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { CommentMarkerCache } from "../docx/commentAnchorIndex";
 import { parseDocx } from "../docx/parser";
 import {
   ProjectionBlockCache,
@@ -372,7 +373,11 @@ describe("a paragraph projection reusing its kept gaps", () => {
       projectCanonicalStory({
         document,
         styles: document.package.styles,
-        caches: { blocks: new ProjectionBlockCache(), inline },
+        caches: {
+          blocks: new ProjectionBlockCache(),
+          inline,
+          comments: new CommentMarkerCache(),
+        },
       }).unwrap();
       return inline.calls;
     });

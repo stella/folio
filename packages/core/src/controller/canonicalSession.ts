@@ -55,8 +55,9 @@ import {
   splitsSurrogatePair,
 } from "../ai-edits/character-boundaries";
 import {
-  rangedCommentIds,
-  visitCommentMarkers,
+  CommentMarkerCache,
+  paragraphCommentMarkers,
+  visitCommentMarkerItems,
 } from "../docx/commentAnchorIndex";
 import { ListNormalizationCache } from "../docx/listModelNormalization";
 import {
@@ -661,12 +662,15 @@ type StoryProjectionCaches = {
   inline: InlineProjectionCache;
   /** Each story's normalized list rendering, by block and the counters before it. */
   lists: ListNormalizationCache;
+  /** Each paragraph's comment markers, by its source. */
+  comments: CommentMarkerCache;
 };
 
 export const newStoryProjectionCaches = (): StoryProjectionCaches => ({
   blocks: new ProjectionBlockCache(),
   inline: new InlineProjectionCache(),
   lists: new ListNormalizationCache(),
+  comments: new CommentMarkerCache(),
 });
 
 type ProjectStoryOptions = {
@@ -732,18 +736,27 @@ const project = ({
   });
   if (converted.isErr()) return converted;
   const pairedBookmarkIds = collectPairedBookmarkIds(body.content);
+  const markersOf = caches?.comments.read ?? paragraphCommentMarkers;
+  const rangedIds = new Set<number>();
+  const referencedIds = new Set<number>();
+  visitCommentMarkerItems(body.content, markersOf, (item) => {
+    if (item.type === "commentRangeStart") rangedIds.add(item.id);
+    if (item.type === "commentReference") referencedIds.add(item.id);
+  });
   const commentContext = {
-    rangedIds: rangedCommentIds(body.content),
-    pointIds: new Set<number>(),
+    rangedIds,
+    pointIds: new Set([...referencedIds].filter((id) => !rangedIds.has(id))),
     openIds: new Set<number>(),
   };
-  visitCommentMarkers(body.content, ({ item }) => {
-    if (
-      item.type === "commentReference" &&
-      !commentContext.rangedIds.has(item.id)
-    )
-      commentContext.pointIds.add(item.id);
-  });
+  /** Opens and closes the ranges a paragraph's markers start and end. */
+  const passComments = (paragraph: Paragraph): void => {
+    for (const item of markersOf(paragraph)) {
+      if (item.type === "commentRangeStart")
+        commentContext.openIds.add(item.id);
+      if (item.type === "commentRangeEnd")
+        commentContext.openIds.delete(item.id);
+    }
+  };
   const sources = new Map<
     string,
     { source: Paragraph; container: readonly BlockContent[] }
@@ -807,12 +820,7 @@ const project = ({
     nextSource = index + 1;
     // The host carries no address, but a range it opens or closes still
     // covers the paragraphs after it.
-    visitCommentMarkers([host], ({ item }) => {
-      if (item.type === "commentRangeStart")
-        commentContext.openIds.add(item.id);
-      if (item.type === "commentRangeEnd")
-        commentContext.openIds.delete(item.id);
-    });
+    passComments(host);
     return true;
   };
   let failure: CanonicalSessionError | undefined;
@@ -894,12 +902,7 @@ const project = ({
       node,
       source,
     });
-    visitCommentMarkers([source], ({ item }) => {
-      if (item.type === "commentRangeStart")
-        commentContext.openIds.add(item.id);
-      if (item.type === "commentRangeEnd")
-        commentContext.openIds.delete(item.id);
-    });
+    passComments(source);
     return false;
   });
   if (failure !== undefined) return Result.err(failure);
