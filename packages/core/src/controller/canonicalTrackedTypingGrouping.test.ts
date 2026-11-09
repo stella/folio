@@ -1,12 +1,13 @@
 /**
  * Consecutive tracked typing and deletion by one author read as one change:
  * a typed word saves as one insertion, a run of Backspace or Delete as one
- * deletion, in both engines, whatever the earlier change's date. Another
+ * deletion, in both engines, whatever the earlier change's date. A paste
+ * stays a change of its own, and typing right after it continues it. Another
  * author's change is never continued. Undo takes the edits back exactly, and
  * rejecting gives the source back with its runs whole.
  */
 import { describe, expect, test } from "bun:test";
-import type { Node as PMNode } from "prosemirror-model";
+import type { Node as PMNode, Slice } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
@@ -23,6 +24,7 @@ import {
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { parseDocx } from "../docx/parser";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
+import { buildPlainTextSlice } from "../prosemirror/commands/pastePlainText";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
@@ -154,12 +156,14 @@ type Step =
   | { caret: readonly [string, number] }
   | { select: readonly [string, number, number] }
   | { type: string }
+  | { paste: string }
   | { key: "Backspace" | "Delete"; times: number };
 
 type Driver = {
   state: EditorState;
   dispatch: (tr: EditorState["tr"]) => void;
   typeText: (text: string) => void;
+  paste: (slice: Slice) => void;
   pressKey: (binding: string) => unknown;
 };
 
@@ -181,6 +185,8 @@ const drive = (driver: Driver, steps: readonly Step[]) => {
         ),
       );
     } else if ("type" in step) driver.typeText(step.type);
+    else if ("paste" in step)
+      driver.paste(buildPlainTextSlice(step.paste, driver.state.schema));
     else
       for (let count = 0; count < step.times; count += 1)
         driver.pressKey(step.key);
@@ -305,6 +311,60 @@ const CASES: readonly Case[] = [
       { kind: "text", text: "Alpha Be" },
       { kind: "del", author: ME, text: "ta G" },
       { kind: "ins", author: ME, text: "XY" },
+      { kind: "text", text: "amma" },
+    ],
+  },
+  {
+    id: "pasting just after a word typed earlier stays a change of its own",
+    body: ALPHA,
+    steps: [{ caret: ["Beta", 4] }, { type: "XY" }, { paste: "PQ" }],
+    expected: [
+      { kind: "text", text: "Alpha Beta" },
+      { kind: "ins", author: ME, text: "XY" },
+      { kind: "ins", author: ME, text: "PQ" },
+      { kind: "text", text: " Gamma" },
+    ],
+  },
+  {
+    id: "pasting just before a word typed earlier stays a change of its own",
+    body: ALPHA,
+    steps: [
+      { caret: ["Beta", 4] },
+      { type: "XY" },
+      { caret: ["XY", 0] },
+      { paste: "PQ" },
+    ],
+    expected: [
+      { kind: "text", text: "Alpha Beta" },
+      { kind: "ins", author: ME, text: "PQ" },
+      { kind: "ins", author: ME, text: "XY" },
+      { kind: "text", text: " Gamma" },
+    ],
+  },
+  {
+    id: "typing just after pasted text continues the pasted insertion",
+    body: ALPHA,
+    steps: [{ caret: ["Beta", 4] }, { paste: "PQ" }, { type: "XY" }],
+    expected: [
+      { kind: "text", text: "Alpha Beta" },
+      { kind: "ins", author: ME, text: "PQXY" },
+      { kind: "text", text: " Gamma" },
+    ],
+  },
+  {
+    id: "pasting over a selection just after a word typed earlier",
+    body: ALPHA,
+    steps: [
+      { caret: ["Beta", 4] },
+      { type: "XY" },
+      { select: [" Gamma", 0, 2] },
+      { paste: "PQ" },
+    ],
+    expected: [
+      { kind: "text", text: "Alpha Beta" },
+      { kind: "ins", author: ME, text: "XY" },
+      { kind: "del", author: ME, text: " G" },
+      { kind: "ins", author: ME, text: "PQ" },
       { kind: "text", text: "amma" },
     ],
   },
