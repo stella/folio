@@ -315,7 +315,6 @@ describe("sealed paragraph facts", () => {
   });
 
   test("each writer leaves a paragraph sealed just before it as it was", () => {
-    const refused = new Set<string>();
     assertProperty(
       fc.property(
         fc.array(
@@ -341,7 +340,6 @@ describe("sealed paragraph facts", () => {
                 step.kind === "carryRestore"
               )
                 throw error;
-              refused.add(step.kind);
             }
           };
           for (const step of history) attempt(step);
@@ -361,17 +359,67 @@ describe("sealed paragraph facts", () => {
       ),
       { id: "a writer leaves a just-sealed paragraph", numRuns: 1000 },
     );
-    // Every writer that can change a fact met a sealed paragraph and refused.
-    for (const kind of [
-      "source",
-      "copySource",
-      "copyCapture",
-      "copyProjection",
-      "restoreProjection",
-      "assignProjection",
-      "candidate",
-      "contract",
-    ])
-      expect(refused).toContain(kind);
+  });
+
+  test("every writer refuses a kept paragraph whose facts it would change", () => {
+    const withProjection = (): Paragraph => {
+      const paragraph = paragraphAt(1, undefined);
+      // Inherited indentation the paragraph does not author keeps a projection.
+      assignParagraphIndentationProjection({
+        paragraph,
+        authored: undefined,
+        inherited: { indentLeft: 360 },
+      });
+      return paragraph;
+    };
+    const withSource = (): Paragraph => {
+      const paragraph = paragraphAt(2, undefined);
+      assignParagraphPropertySource(paragraph, "<w:pPr/>");
+      return paragraph;
+    };
+    const writers: Record<string, (target: Paragraph) => void> = {
+      source: (target) => assignParagraphPropertySource(target, "<w:pPr/>"),
+      copySource: (target) => copyParagraphPropertySource(target, withSource()),
+      copyCapture: (target) =>
+        copyParagraphPropertyCapture(target, withSource()),
+      copyProjection: (target) =>
+        copyParagraphIndentationProjection({
+          target,
+          source: withProjection(),
+        }),
+      restoreProjection: (target) =>
+        restoreParagraphIndentationProjection({
+          target,
+          source: withProjection(),
+        }),
+      assignProjection: (target) =>
+        assignParagraphIndentationProjection({
+          paragraph: target,
+          authored: undefined,
+          inherited: { indentLeft: 720 },
+        }),
+      candidate: (target) =>
+        linkParagraphPropertySourceCandidate(
+          target,
+          createProseParagraphWithPropertySource(
+            schema.nodes["paragraph"],
+            withSource(),
+          ),
+        ),
+      contract: (target) =>
+        assignDocumentParagraphPropertySourceContract(
+          { package: { document: { content: [target] } } },
+          DIGEST,
+        ),
+    };
+    for (const [kind, write] of Object.entries(writers)) {
+      const target = paragraphAt(0, 1);
+      sealParagraphFacts(target);
+      const formatting = target.formatting;
+      const state = paragraphPropertySourceState(target);
+      expect(() => write(target), kind).toThrow(REFUSAL);
+      expect(target.formatting).toBe(formatting);
+      expect(paragraphPropertySourceState(target)).toEqual(state);
+    }
   });
 });
