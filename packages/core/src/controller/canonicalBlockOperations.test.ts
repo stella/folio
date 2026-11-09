@@ -1124,6 +1124,79 @@ describe("a commented insertion inside a block content control matches the defau
       });
 });
 
+describe("an insertion before a block content control", () => {
+  // Rejected, the inserted paragraph goes with its text, as in the default
+  // engine: with no paragraph after the new one, the anchor's mark is the
+  // inserted one, so rejecting it joins the two.
+  const body = [
+    paragraph("10000001", "Alpha"),
+    paragraph("10000002", "Beta", '<w:ind w:left="720"/>'),
+    `<w:sdt><w:sdtPr><w:id w:val="5"/></w:sdtPr><w:sdtContent>${paragraph("10000004", "Inside")}</w:sdtContent></w:sdt>`,
+    paragraph("10000003", "Gamma"),
+  ];
+  for (const [name, operation] of [
+    [
+      "one paragraph",
+      { id: "op", type: "insertAfterBlock", blockId: "10000002", text: "New" },
+    ],
+    [
+      "several paragraphs",
+      {
+        id: "op",
+        type: "insertAfterBlock",
+        blockId: "10000002",
+        text: "New\nMore",
+      },
+    ],
+    [
+      "a blank paragraph",
+      { id: "op", type: "insertAfterBlock", blockId: "10000002", text: "" },
+    ],
+  ] as const satisfies readonly (readonly [string, FolioDocumentOperation])[])
+    test(name, async () => {
+      const source = await packageOf(body);
+      // Read back by the default engine, rejecting the canonical file joins
+      // the anchor into the new paragraph under the new paragraph's id, as at
+      // the end of a container; everything else is the same.
+      const withoutIds = (blocks: readonly object[]) =>
+        blocks.map((block) => ({ ...block, id: undefined }));
+      const actual = await outcomes(
+        await viaCanonicalEngine(source, operation, "tracked-changes"),
+      );
+      const expected = await outcomes(
+        await viaDefaultEngine(source, operation, "tracked-changes"),
+      );
+      expect({ ...actual, rejected: undefined }).toEqual({
+        ...expected,
+        rejected: undefined,
+      });
+      expect(withoutIds(actual.rejected)).toEqual(
+        withoutIds(await blocksOf(source)),
+      );
+      expect(withoutIds(expected.rejected)).toEqual(
+        withoutIds(await blocksOf(source)),
+      );
+      // Rejected in the canonical session itself, the source comes back,
+      // identities included.
+      expect(
+        await blocksOf(
+          await viaCanonicalEngine(source, operation, "suggested", "reject"),
+        ),
+      ).toEqual(await blocksOf(source));
+      // While the suggestion is pending, the file holds the source.
+      const pending = await canonicalRun(source, operation, "suggested");
+      expect(
+        await blocksOf(
+          (
+            await serializeCanonicalSave({
+              snapshot: pending.session.captureSaveSnapshot(),
+            })
+          ).buffer,
+        ),
+      ).toEqual(await blocksOf(source));
+    });
+});
+
 describe("a save while a suggestion is pending", () => {
   // The file is written as if the suggestion were rejected: the paragraphs it
   // adds are no change to the file, so the save splices only what changed.
