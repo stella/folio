@@ -43,6 +43,7 @@ const ENGINES = ["default", "canonical"] as const;
 
 test.use({ viewport: { width: 1500, height: 900 } });
 test.describe.configure({ timeout: 90_000 });
+test.use({ launchOptions: { args: ["--force-overlay-scrollbars"] } });
 
 const recordBuildsAndKeys = async (page: Page) => {
   await page.addInitScript(() => {
