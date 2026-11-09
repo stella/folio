@@ -44,6 +44,7 @@ import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type {
   FolioEditor,
@@ -565,8 +566,6 @@ export const DEFAULT_PAGE_GAP = 24;
 const TABLE_INSERT_EDGE_PROXIMITY = 30;
 /** Delay in ms before hiding the insert button when cursor moves away */
 const TABLE_INSERT_HIDE_DELAY = 200;
-/** Delay before converting PM state back to the Folio document model. */
-const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 /** Keep the visual caret hidden briefly while typed content relayouts. */
 const SELECTION_REVEAL_AFTER_INPUT_DELAY = 120;
 
@@ -2493,7 +2492,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       documentChangeNotifyTimerRef.current = window.setTimeout(() => {
         documentChangeNotifyTimerRef.current = null;
         flushDocumentChangeNotification();
-      }, DOCUMENT_CHANGE_NOTIFY_DELAY);
+      }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
     }, [flushDocumentChangeNotification]);
 
     // Thin adapter over the framework-agnostic scheduler. Repeated calls in the

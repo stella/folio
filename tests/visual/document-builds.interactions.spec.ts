@@ -8,11 +8,17 @@
  *
  * The page is wide enough that the outline and the comments open beside the
  * page, so their per-edit updates are exercised too.
+ *
+ * A slow runner can pause between two keys for longer than the notification
+ * delay, and then the notification's build lands between them. Such a build
+ * comes at least that delay after the key before it; a build an edit causes
+ * comes within the key's own handling.
  */
 
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "../../packages/core/src/controller/documentChangeNotification";
 import type {
   DocumentBuildKind,
   LayoutInstrumentation,
@@ -32,7 +38,7 @@ declare global {
 
 const KEYS = 20;
 const KEY_DELAY_MS = 30;
-// The change notification waits this long after the last edit.
+// Long enough for the change notification after the last edit.
 const SETTLE_MS = 1_500;
 
 const HOSTS: readonly AdapterFixture[] = [
@@ -119,9 +125,13 @@ for (const host of HOSTS) {
       const { builds, keydowns } = await readBuildsAndKeys(page);
       const firstKey = keydowns.at(0) ?? Number.NaN;
       const lastKey = keydowns.at(-1) ?? Number.NaN;
-      const betweenKeys = builds.filter(
-        (build) => build.at >= firstKey && build.at <= lastKey,
-      );
+      // Builds between keys that no pause long enough for a notification
+      // explains.
+      const betweenKeys = builds.filter((build) => {
+        if (build.at < firstKey || build.at > lastKey) return false;
+        const keyBefore = keydowns.findLast((at) => at <= build.at) ?? firstKey;
+        return build.at - keyBefore < DOCUMENT_CHANGE_NOTIFY_DELAY_MS;
+      });
       const afterKeys = builds.filter((build) => build.at > lastKey);
       const after = await page.evaluate(
         () => window.__folioParity?.getDocumentText() ?? "",

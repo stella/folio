@@ -44,6 +44,7 @@ import { LayoutSelectionGate } from "../../paged-layout/LayoutSelectionGate";
 import { schema } from "../../prosemirror/schema";
 import type { Document } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "../documentChangeNotification";
 import {
   type LayoutOutcome,
   type LayoutPipelineDeps,
@@ -59,8 +60,6 @@ import { createLayoutSession, type LayoutSession } from "../layoutSession";
 
 /** One browser frame. */
 export const FRAME_MS = 16;
-/** The adapters' debounced document-change notification (a React re-render). */
-export const DOCUMENT_CHANGE_NOTIFY_DELAY_MS = 250;
 /** Longer than any timer the adapters arm. */
 const SETTLE_TIMERS_MS = 1000;
 const TRANSACTION_LAYOUT_DEBOUNCE_MS = 32;

@@ -13,8 +13,8 @@ import { type Page, test } from "@playwright/test";
  *   animation frame, so the work the edit schedules (layout, paint) counts.
  * - `measuredBlocksPerKey` and `layoutsPerKey`: what layout did per key, read
  *   through the layout instrumentation hook.
- * - `commitsPerKey` (React host): React commits per key that change the
- *   page, counted through the developer tools hook. Each one with a focused
+ * - `commitsPerKey` (React host; `null` for a Vue host): React commits per
+ *   key that change the page, counted through the developer tools hook. Each one with a focused
  *   editor reads the editor's whole DOM to save the selection, so commits
  *   cost on their own.
  *   `FOLIO_TYPING_LATENCY_COMMITS=1` also logs which components' state
@@ -422,7 +422,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
             writeFileSync(
               join(
                 PROFILE_DIRECTORY,
-                `${name.replaceAll(/[^a-z0-9]+/gu, "-")}-${engine}-${painter}.cpuprofile`,
+                `${name.replaceAll(/[^a-z0-9]+/gu, "-")}-${host.name}-${engine}-${painter}.cpuprofile`,
               ),
               JSON.stringify(profile),
             );
@@ -458,12 +458,18 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
               measuredBlocksPerKey:
                 (countsAfter.measuredBlocks - countsBefore.measuredBlocks) /
                 MEASURED_KEYS,
+              // React commits only: a Vue host has none to count.
               commitsPerKey:
-                (commitsAfter.withEffects - commitsBefore.withEffects) /
-                MEASURED_KEYS,
+                host.name === "react"
+                  ? (commitsAfter.withEffects - commitsBefore.withEffects) /
+                    MEASURED_KEYS
+                  : null,
             })}`,
           );
-          if (process.env["FOLIO_TYPING_LATENCY_COMMITS"] === "1")
+          if (
+            host.name === "react" &&
+            process.env["FOLIO_TYPING_LATENCY_COMMITS"] === "1"
+          )
             console.info(
               `typing latency state changes ${JSON.stringify(
                 Object.fromEntries(

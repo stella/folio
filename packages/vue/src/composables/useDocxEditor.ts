@@ -29,6 +29,7 @@ import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   createFolioEditor,
   FOLIO_DOCX_SERIALIZATION_MODE,
@@ -173,8 +174,6 @@ import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter"
 
 const DEFAULT_PAGE_GAP = 24;
 const DEFAULT_SUGGESTION_AUTHOR = "User";
-/** Delay before converting PM state back to the Folio document model. */
-const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 
 // Stable empty fallback for the template-preview entries dep. A fresh `[]` per
 // run would defeat the pipeline's identity checks.
@@ -1005,7 +1004,7 @@ export function useDocxEditor(
     docChangeTimer = window.setTimeout(() => {
       docChangeTimer = null;
       flushDocumentChangeNotification();
-    }, DOCUMENT_CHANGE_NOTIFY_DELAY);
+    }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
   }
 
   // ---- Hidden-editor manager ----------------------------------------------
