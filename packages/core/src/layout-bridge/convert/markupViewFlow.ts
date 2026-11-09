@@ -23,6 +23,7 @@
 import type { StepMap } from "prosemirror-transform";
 
 import { indexedPositionMap } from "../../internal/indexedPositionMap";
+import { noteTableOrigin } from "../../layout-engine/measure/tableMeasureMemo";
 import type {
   FlowBlock,
   ParagraphBlock,
@@ -142,7 +143,7 @@ function remapBlock(block: FlowBlock, context: RemapContext): FlowBlock {
 }
 
 function remapTable(block: TableBlock, context: RemapContext): TableBlock {
-  return {
+  const remapped: TableBlock = {
     ...block,
     ...remapNodeRange(block, context.toSource),
     ...remapSdtGroups(block.sdtGroups, context.toSource),
@@ -154,6 +155,10 @@ function remapTable(block: TableBlock, context: RemapContext): TableBlock {
       })),
     })),
   };
+  // The view shows the table from its own content: under the same view (a
+  // measure input) it measures as the table does.
+  noteTableOrigin(remapped, block);
+  return remapped;
 }
 
 function remapParagraph(

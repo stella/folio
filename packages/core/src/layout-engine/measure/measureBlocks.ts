@@ -61,6 +61,7 @@ import {
   getTableCellSpacingInsetsY,
   getTableCellVerticalBorderHeight,
 } from "./tableCellGrid";
+import { recordTableMeasure, takenTableMeasure } from "./tableMeasureMemo";
 import { layoutTextBoxContent } from "./textBoxParagraphLayout";
 
 /**
@@ -1314,9 +1315,21 @@ function measureBlockWithOutcome(
     }
 
     case "table": {
-      return measured(
-        measureTableBlock(block as TableBlock, contentWidth, fieldValues),
-      );
+      const table = block as TableBlock;
+      // As for paragraphs: without floating zones and resolved field values a
+      // table's measure depends only on the table and the width. A measure
+      // that layout writes a band skip into is never taken or handed out here.
+      const reusable =
+        (!floatingZones || floatingZones.length === 0) && !fieldValues;
+      if (reusable) {
+        const taken = takenTableMeasure(table, contentWidth);
+        if (taken) return { measure: taken, outcome: "reused" };
+      }
+      const missesBefore = getHyphenationDictionaryMisses();
+      const result = measureTableBlock(table, contentWidth, fieldValues);
+      if (reusable && getHyphenationDictionaryMisses() === missesBefore)
+        recordTableMeasure(table, contentWidth, result);
+      return measured(result);
     }
 
     case "image": {

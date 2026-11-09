@@ -9,6 +9,7 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
 import { buildPageBreakRunDescendantIndex } from "../../internal/pageBreakRunDescendantIndex";
+import { noteTableOrigin } from "../../layout-engine/measure/tableMeasureMemo";
 import type {
   ColumnBreakBlock,
   FlowBlock,
@@ -878,9 +879,12 @@ export function toFlowBlocks(
         // The table converts as it did, moved: its blocks move with it, ids
         // and all, instead of converting every cell again.
         const delta = pos - previous.pos;
-        const shifted = previous.blocks.map((block) =>
-          shiftFlowBlockPmAnchors(block, delta),
-        );
+        const shifted = previous.blocks.map((block) => {
+          const copy = shiftFlowBlockPmAnchors(block, delta);
+          if (block.kind === "table" && copy.kind === "table")
+            noteTableOrigin(copy, block);
+          return copy;
+        });
         for (const block of shifted) blocks.push(block);
         converted.push({
           ...previous,

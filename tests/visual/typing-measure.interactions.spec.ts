@@ -1,5 +1,5 @@
 /**
- * Typing measures only the paragraphs it changed.
+ * Typing measures only the blocks it changed.
  *
  * A key changes one paragraph, so a layout pass after it measures that
  * paragraph and reuses the measure of every other paragraph. The layout
@@ -8,10 +8,10 @@
  * tables, a document of tables) in both hosts and both engines, with track
  * changes off and on, and bounds the paragraphs measured per layout pass.
  *
- * Tables are converted again by every pass, so each one is measured again
- * (its cell paragraphs come from the cache). Their count is reported, not
- * bounded: reusing a table's measure needs tables that keep their identity
- * across passes, as paragraphs do.
+ * A table the edit did not reach keeps its measure too, whether the pass
+ * hands it out again or moves it. In the default engine a settled edit builds
+ * the document again, with new styles, so the next pass measures every table
+ * once: a table is measured at most once per such build.
  */
 
 import { expect, type Page, test } from "@playwright/test";
@@ -27,6 +27,7 @@ type MeasureCounts = {
   measured: number;
   measuredTables: number;
   reused: number;
+  conversions: number;
 };
 
 declare global {
@@ -142,6 +143,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
               measured: 0,
               measuredTables: 0,
               reused: 0,
+              conversions: 0,
             };
             globalThis.__folioMeasureCounts = counts;
             globalThis.__folioLayoutInstrumentation = {
@@ -154,6 +156,9 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
               },
               onReuseMeasure: () => {
                 counts.reused += 1;
+              },
+              onDocumentBuilt: ({ kind }) => {
+                if (kind === "conversion") counts.conversions += 1;
               },
             };
           });
@@ -198,6 +203,20 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           const reused = (after.reused ?? 0) - (before.reused ?? 0);
           const measuredTables =
             (after.measuredTables ?? 0) - (before.measuredTables ?? 0);
+          const conversions =
+            (after.conversions ?? 0) - (before.conversions ?? 0);
+          const tables = await page.evaluate(() => {
+            const view = globalThis.__folioPlayground
+              ?.getEditorRef()
+              ?.getEditor()
+              ?.getView();
+            let count = 0;
+            view?.state.doc.descendants((node) => {
+              if (node.type.name === "table") count += 1;
+              return node.type.name !== "table";
+            });
+            return count;
+          });
           console.info(
             JSON.stringify({
               name,
@@ -207,6 +226,8 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
               layouts,
               measured,
               measuredTables,
+              tables,
+              conversions,
               reused,
             }),
           );
@@ -215,6 +236,13 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           expect(reused).toBeGreaterThan(layouts * 10);
           expect(measured).toBeLessThanOrEqual(
             layouts * MEASURED_PARAGRAPHS_PER_LAYOUT,
+          );
+          // A canonical session builds no document between keys, so no
+          // table is measured again. The default engine measures each table
+          // at most once per build: those in the window, and the one that may
+          // land just before it.
+          expect(measuredTables).toBeLessThanOrEqual(
+            engine === "canonical" ? 0 : tables * (conversions + 1),
           );
         });
       }
