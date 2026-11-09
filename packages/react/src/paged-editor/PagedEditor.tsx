@@ -30,7 +30,12 @@ import { redo as historyRedo, undo as historyUndo } from "prosemirror-history";
  */
 import type { Node as PMNode } from "prosemirror-model";
 import { NodeSelection, TextSelection } from "prosemirror-state";
-import type { EditorState, Plugin, Transaction } from "prosemirror-state";
+import type {
+  Command,
+  EditorState,
+  Plugin,
+  Transaction,
+} from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 
@@ -213,10 +218,10 @@ import type {
 import { getTemplateSlashMenu } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import {
   clampRowResizeDelta,
-  commitColumnResize,
-  commitRightEdgeResize,
-  commitRowResize,
+  columnResizeCommand,
   MIN_ROW_HEIGHT_TWIPS,
+  rightEdgeResizeCommand,
+  rowResizeCommand,
 } from "@stll/folio-core/prosemirror/tableResize";
 import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
@@ -2600,13 +2605,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           onSelectionTextChangeRef.current({ from, to, text });
         }
 
+        // While typing hides the overlay, the anchor stays where it is: the
+        // reveal moves it to the new caret, and resetting it in between would
+        // send a composition started meanwhile to the unanchored position.
         if (suppressSelectionOverlayRef.current) {
           setSelectionRects([]);
-          syncImeCaretAnchor({
-            hiddenHost: hiddenPMRef.current?.getHostElement(),
-            editorView: hiddenPMRef.current?.getView(),
-            visibleCaret: null,
-          });
           return;
         }
 
@@ -4685,6 +4688,19 @@ export const PagedEditor: React.ForwardRefExoticComponent<
      * Handle mouseup - end drag selection.
      */
     const handleMouseUp = useCallback(() => {
+      // A resize runs as a command in the view it started in: a header or
+      // footer view directly, the body through the editor, which applies it
+      // in the session that owns the document.
+      const runTableResize = (command: Command): void => {
+        const surface = resizingHfSurfaceRef.current;
+        resizingHfSurfaceRef.current = null;
+        if (surface) {
+          const view = hfPMsRef.current?.getView(surface.rId);
+          if (view) command(view.state, (tr) => view.dispatch(tr), view);
+          return;
+        }
+        hiddenPMRef.current?.executeCommand(command);
+      };
       // Commit column resize
       if (isResizingColumnRef.current) {
         isResizingColumnRef.current = false;
@@ -4693,21 +4709,17 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           resizeHandleRef.current = null;
         }
 
-        // Update ProseMirror document with new column widths. Commit on the
-        // HF view if the resize started inside an HF slot, else body.
-        const view =
-          (resizingHfSurfaceRef.current
-            ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
-            : hiddenPMRef.current?.getView()) ?? null;
-        resizingHfSurfaceRef.current = null;
-        if (view) {
-          const pmStart = resizeTablePmStartRef.current;
-          const colIdx = resizeColumnIndexRef.current;
-          const { left: newLeft, right: newRight } =
-            resizeOrigWidthsRef.current;
-
-          commitColumnResize(view, { pmStart, colIdx, newLeft, newRight });
-        }
+        // Update the document with the new column widths, in the HF view
+        // if the resize started inside an HF slot, else in the body.
+        const { left: newLeft, right: newRight } = resizeOrigWidthsRef.current;
+        runTableResize(
+          columnResizeCommand({
+            pmStart: resizeTablePmStartRef.current,
+            colIdx: resizeColumnIndexRef.current,
+            newLeft,
+            newRight,
+          }),
+        );
         return;
       }
 
@@ -4719,18 +4731,13 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           resizeRowHandleRef.current = null;
         }
 
-        const view =
-          (resizingHfSurfaceRef.current
-            ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
-            : hiddenPMRef.current?.getView()) ?? null;
-        resizingHfSurfaceRef.current = null;
-        if (view) {
-          const pmStart = resizeRowTablePmStartRef.current;
-          const rowIdx = resizeRowIndexRef.current;
-          const newHeight = resizeRowOrigHeightRef.current;
-
-          commitRowResize(view, { pmStart, rowIdx, newHeight });
-        }
+        runTableResize(
+          rowResizeCommand({
+            pmStart: resizeRowTablePmStartRef.current,
+            rowIdx: resizeRowIndexRef.current,
+            newHeight: resizeRowOrigHeightRef.current,
+          }),
+        );
         return;
       }
 
@@ -4742,18 +4749,13 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           resizeRightEdgeHandleRef.current = null;
         }
 
-        const view =
-          (resizingHfSurfaceRef.current
-            ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
-            : hiddenPMRef.current?.getView()) ?? null;
-        resizingHfSurfaceRef.current = null;
-        if (view) {
-          const pmStart = resizeRightEdgePmStartRef.current;
-          const colIdx = resizeRightEdgeColIndexRef.current;
-          const newWidth = resizeRightEdgeOrigWidthRef.current;
-
-          commitRightEdgeResize(view, { pmStart, colIdx, newWidth });
-        }
+        runTableResize(
+          rightEdgeResizeCommand({
+            pmStart: resizeRightEdgePmStartRef.current,
+            colIdx: resizeRightEdgeColIndexRef.current,
+            newWidth: resizeRightEdgeOrigWidthRef.current,
+          }),
+        );
         return;
       }
 

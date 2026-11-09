@@ -640,6 +640,12 @@ export type ParagraphAttrs = {
     revisionId?: number;
   };
   /**
+   * Set when the paragraph holds a pending formatting change: of its own
+   * properties (`w:pPrChange`) or of a run in it (`w:rPrChange`). The text
+   * paints with its current formatting, so the change bar is what shows it.
+   */
+  formattingRevision?: true;
+  /**
    * When the marker text contains a TAB character (\t), the marker is
    * rendered as a flex layout with two slots; this is the column offset
    * (in twips, from the marker zone's left edge) where the second slot

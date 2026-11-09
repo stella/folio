@@ -84,8 +84,36 @@ const load = async (page: Page, bytes: number[]): Promise<void> => {
   );
 };
 
-const save = (page: Page): Promise<number[]> =>
-  page.evaluate(() => window.__folioParity?.saveDocx() ?? Promise.resolve([]));
+const save = async (page: Page): Promise<number[]> => {
+  expect(
+    await page.evaluate(() => globalThis.__folioCanonicalFuzzErrors ?? []),
+  ).toEqual([]);
+  return page.evaluate(
+    () => window.__folioParity?.saveDocx() ?? Promise.resolve([]),
+  );
+};
+
+/**
+ * Once a suggestion has added a paragraph, a body that holds comment ranges
+ * is written whole rather than spliced, even after the suggestion is
+ * rejected: the only record such a save may leave is that fallback.
+ */
+const expectOnlyBodyRewrites = async (page: Page): Promise<void> => {
+  const records = await page.evaluate(() =>
+    (globalThis.__folioCanonicalFuzzErrors ?? []).splice(0),
+  );
+  expect(
+    records.filter(
+      (entry) =>
+        !(
+          entry.status === "saveDiagnostic" &&
+          "diagnostic" in entry &&
+          entry.diagnostic.type === "selectiveSaveRefused" &&
+          entry.diagnostic.part === "word/document.xml"
+        ),
+    ),
+  ).toEqual([]);
+};
 
 /** Save, reopen what was saved, and return the saved comment parts. */
 const saveAndReopen = async (page: Page): Promise<SavedComments> => {
@@ -94,15 +122,34 @@ const saveAndReopen = async (page: Page): Promise<SavedComments> => {
   return savedComments(bytes);
 };
 
-const open = async (page: Page, adapter: AdapterFixture): Promise<void> => {
+/** Each flow runs in the default session and in the canonical one. */
+const SESSIONS = [
+  { title: "", query: "" },
+  { title: " in the canonical session", query: "/?session=canonical" },
+] as const;
+
+const open = async (
+  page: Page,
+  adapter: AdapterFixture,
+  query: string,
+): Promise<void> => {
   // A blank editor, so the sidebar opens for the commented package.
-  await page.goto(adapter.baseUrl);
+  await page.goto(`${adapter.baseUrl}${query}`);
+  // Refusals are recorded from here on; each save checks there were none.
+  await page.evaluate(() => {
+    globalThis.__folioCanonicalFuzzErrors = [];
+  });
   await expect
     .poll(() => page.evaluate(() => window.__folioParity !== undefined), {
       timeout: 30_000,
     })
     .toBe(true);
   await load(page, await commentedPackage());
+  expect(
+    await page.evaluate(
+      () => globalThis.__folioCanonical?.snapshot()?.active ?? false,
+    ),
+  ).toBe(query !== "");
   // Vue's sidebar opens by itself only for the first commented document an
   // editor shows; the blank editor's own document may have used that.
   const opened = await card(page, adapter, 3)
@@ -116,173 +163,182 @@ const open = async (page: Page, adapter: AdapterFixture): Promise<void> => {
   await expect(card(page, adapter, 3)).toBeVisible();
 };
 
-forEachAdapter(
-  "comment threads: a comment added in the sidebar is saved",
-  async (adapter, { page }) => {
-    await open(page, adapter);
-    await page
-      .locator(".layout-page")
-      .first()
-      .getByText("Opening words")
-      .dblclick();
-    await page
-      .getByRole("button", { name: "Add comment" })
-      .dispatchEvent("mousedown");
-    const field = page.getByPlaceholder(/^Add a comment/u);
-    await field.fill("Brand new note");
-    if (adapter.name === "react") await field.press("Enter");
-    else
-      await page.getByRole("button", { name: "Comment", exact: true }).click();
-    await expect(
-      page.locator(CARD[adapter.name]).filter({ hasText: "Brand new note" }),
-    ).toHaveCount(1);
-
-    const saved = await saveAndReopen(page);
-    expect(saved.comments).toContain("Brand new note");
-    await expect(
-      page.locator(CARD[adapter.name]).filter({ hasText: "Brand new note" }),
-    ).toHaveCount(1);
-  },
-);
-
-forEachAdapter(
-  "comment threads: a deleted thread and its reply stay deleted after a save",
-  async (adapter, { page }) => {
-    await open(page, adapter);
-    const thread = card(page, adapter, 1);
-    await thread.click();
-    await thread.getByTitle("More options").click();
-    await page.getByRole("button", { name: "Delete", exact: true }).click();
-    await expect(thread).toHaveCount(0);
-
-    const saved = await saveAndReopen(page);
-    expect(saved.comments).not.toContain("Check the account");
-    expect(saved.comments).not.toContain("Agreed reply text");
-    expect(saved.comments).toContain("Second thread");
-    await expect(card(page, adapter, 1)).toHaveCount(0);
-    await expect(card(page, adapter, 3)).toBeVisible();
-  },
-);
-
-forEachAdapter(
-  "comment threads: a reply is saved under its thread",
-  async (adapter, { page }) => {
-    await open(page, adapter);
-    const thread = card(page, adapter, 3);
-    await thread.click();
-    await thread
-      .getByPlaceholder(/^Reply/u)
-      .first()
-      .click();
-    await thread
-      .getByPlaceholder(/^Reply/u)
-      .last()
-      .fill("A fresh reply");
-    await thread.getByRole("button", { name: "Reply", exact: true }).click();
-    await expect(thread).toContainText("A fresh reply");
-
-    const saved = await saveAndReopen(page);
-    expect(saved.comments).toContain("A fresh reply");
-    // The reply is threaded under the second thread's paragraph.
-    expect(saved.extended).toMatch(/w15:paraIdParent="10000003"/u);
-  },
-);
-
-forEachAdapter(
-  "comment threads: a resolved thread is saved resolved",
-  async (adapter, { page }) => {
-    await open(page, adapter);
-    const thread = card(page, adapter, 3);
-    await thread.click();
-    await thread.getByTitle("Resolve").click();
-
-    const saved = await saveAndReopen(page);
-    expect(saved.extended).toMatch(
-      /w15:paraId="10000003"[^>]*w15:done="1"|w15:done="1"[^>]*w15:paraId="10000003"/u,
-    );
-  },
-);
-
 /** Undo in the document, as a user does after editing a thread. */
 const undoInDocument = async (page: Page): Promise<void> => {
   await page.locator(".layout-page").first().getByText("Opening words").click();
   await page.keyboard.press("ControlOrMeta+z");
 };
 
-forEachAdapter(
-  "comment threads: undo brings back a deleted thread and its reply, and the save keeps them",
-  async (adapter, { page }) => {
-    await open(page, adapter);
-    const thread = card(page, adapter, 1);
-    await thread.click();
-    await thread.getByTitle("More options").click();
-    await page.getByRole("button", { name: "Delete", exact: true }).click();
-    await expect(thread).toHaveCount(0);
+for (const session of SESSIONS) {
+  forEachAdapter(
+    `comment threads: a comment added in the sidebar is saved${session.title}`,
+    async (adapter, { page }) => {
+      await open(page, adapter, session.query);
+      await page
+        .locator(".layout-page")
+        .first()
+        .getByText("Opening words")
+        .dblclick();
+      await page
+        .getByRole("button", { name: "Add comment" })
+        .dispatchEvent("mousedown");
+      const field = page.getByPlaceholder(/^Add a comment/u);
+      await field.fill("Brand new note");
+      if (adapter.name === "react") await field.press("Enter");
+      else
+        await page
+          .getByRole("button", { name: "Comment", exact: true })
+          .click();
+      await expect(
+        page.locator(CARD[adapter.name]).filter({ hasText: "Brand new note" }),
+      ).toHaveCount(1);
 
-    await undoInDocument(page);
-    await expect(card(page, adapter, 1)).toBeVisible();
-    await expect(card(page, adapter, 1)).toContainText("Agreed reply text");
+      const saved = await saveAndReopen(page);
+      expect(saved.comments).toContain("Brand new note");
+      await expect(
+        page.locator(CARD[adapter.name]).filter({ hasText: "Brand new note" }),
+      ).toHaveCount(1);
+    },
+  );
 
-    const saved = await saveAndReopen(page);
-    expect(saved.comments).toContain("Check the account");
-    expect(saved.comments).toContain("Agreed reply text");
-    expect(saved.extended).toMatch(/w15:paraIdParent="10000001"/u);
-    await expect(card(page, adapter, 1)).toBeVisible();
-    await expect(card(page, adapter, 1)).toContainText("Agreed reply text");
-  },
-);
+  forEachAdapter(
+    `comment threads: a deleted thread and its reply stay deleted after a save${session.title}`,
+    async (adapter, { page }) => {
+      await open(page, adapter, session.query);
+      const thread = card(page, adapter, 1);
+      await thread.click();
+      await thread.getByTitle("More options").click();
+      await page.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect(thread).toHaveCount(0);
 
-forEachAdapter(
-  "comment threads: undo reopens a resolved thread, and the save keeps it open",
-  async (adapter, { page }) => {
-    await open(page, adapter);
-    const thread = card(page, adapter, 3);
-    await thread.click();
-    await thread.getByTitle("Resolve").click();
+      const saved = await saveAndReopen(page);
+      expect(saved.comments).not.toContain("Check the account");
+      expect(saved.comments).not.toContain("Agreed reply text");
+      expect(saved.comments).toContain("Second thread");
+      await expect(card(page, adapter, 1)).toHaveCount(0);
+      await expect(card(page, adapter, 3)).toBeVisible();
+    },
+  );
 
-    await undoInDocument(page);
-    const saved = await saveAndReopen(page);
-    expect(saved.extended).toMatch(
-      /w15:paraId="10000003"[^>]*w15:done="0"|w15:done="0"[^>]*w15:paraId="10000003"/u,
-    );
-    await expect(card(page, adapter, 3)).toBeVisible();
-  },
-);
+  forEachAdapter(
+    `comment threads: a reply is saved under its thread${session.title}`,
+    async (adapter, { page }) => {
+      await open(page, adapter, session.query);
+      const thread = card(page, adapter, 3);
+      await thread.click();
+      await thread
+        .getByPlaceholder(/^Reply/u)
+        .first()
+        .click();
+      await thread
+        .getByPlaceholder(/^Reply/u)
+        .last()
+        .fill("A fresh reply");
+      await thread.getByRole("button", { name: "Reply", exact: true }).click();
+      await expect(thread).toContainText("A fresh reply");
 
-forEachAdapter(
-  "comment threads: rejecting a suggested paragraph takes its comment with it, and undo brings both back",
-  async (adapter, { page }) => {
-    await open(page, adapter);
-    const suggestionId = await page.evaluate(
-      () =>
-        window.__folioParity?.suggestCommentedInsertion(
-          "Closing",
-          "A suggested last line.",
-          "Suggested wording note",
-        ) ?? null,
-    );
-    expect(suggestionId).not.toBeNull();
-    const suggested = page
-      .locator(CARD[adapter.name])
-      .filter({ hasText: "Suggested wording note" });
-    await expect(suggested).toHaveCount(1);
-    // A pending suggestion's comment is held back with it.
-    const pending = await savedComments(await save(page));
-    expect(pending.comments).not.toContain("Suggested wording note");
-    expect(pending.comments).toContain("Second thread");
+      const saved = await saveAndReopen(page);
+      expect(saved.comments).toContain("A fresh reply");
+      // The reply is threaded under the second thread's paragraph.
+      expect(saved.extended).toMatch(/w15:paraIdParent="10000003"/u);
+    },
+  );
 
-    await page.evaluate(
-      (id) => window.__folioParity?.rejectSuggestion(id ?? ""),
-      suggestionId,
-    );
-    await expect(suggested).toHaveCount(0);
-    const rejected = await savedComments(await save(page));
-    expect(rejected.comments).not.toContain("Suggested wording note");
-    expect(rejected.comments).toContain("Second thread");
+  forEachAdapter(
+    `comment threads: a resolved thread is saved resolved${session.title}`,
+    async (adapter, { page }) => {
+      await open(page, adapter, session.query);
+      const thread = card(page, adapter, 3);
+      await thread.click();
+      await thread.getByTitle("Resolve").click();
 
-    // A pending suggestion is not part of the saved package; undo brings the
-    // suggestion back with its comment.
-    await undoInDocument(page);
-    await expect(suggested).toHaveCount(1);
-  },
-);
+      const saved = await saveAndReopen(page);
+      expect(saved.extended).toMatch(
+        /w15:paraId="10000003"[^>]*w15:done="1"|w15:done="1"[^>]*w15:paraId="10000003"/u,
+      );
+    },
+  );
+
+  forEachAdapter(
+    `comment threads: undo brings back a deleted thread and its reply, and the save keeps them${session.title}`,
+    async (adapter, { page }) => {
+      await open(page, adapter, session.query);
+      const thread = card(page, adapter, 1);
+      await thread.click();
+      await thread.getByTitle("More options").click();
+      await page.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect(thread).toHaveCount(0);
+
+      await undoInDocument(page);
+      await expect(card(page, adapter, 1)).toBeVisible();
+      await expect(card(page, adapter, 1)).toContainText("Agreed reply text");
+
+      const saved = await saveAndReopen(page);
+      expect(saved.comments).toContain("Check the account");
+      expect(saved.comments).toContain("Agreed reply text");
+      expect(saved.extended).toMatch(/w15:paraIdParent="10000001"/u);
+      await expect(card(page, adapter, 1)).toBeVisible();
+      await expect(card(page, adapter, 1)).toContainText("Agreed reply text");
+    },
+  );
+
+  forEachAdapter(
+    `comment threads: undo reopens a resolved thread, and the save keeps it open${session.title}`,
+    async (adapter, { page }) => {
+      await open(page, adapter, session.query);
+      const thread = card(page, adapter, 3);
+      await thread.click();
+      await thread.getByTitle("Resolve").click();
+
+      await undoInDocument(page);
+      const saved = await saveAndReopen(page);
+      expect(saved.extended).toMatch(
+        /w15:paraId="10000003"[^>]*w15:done="0"|w15:done="0"[^>]*w15:paraId="10000003"/u,
+      );
+      await expect(card(page, adapter, 3)).toBeVisible();
+    },
+  );
+
+  forEachAdapter(
+    `comment threads: rejecting a suggested paragraph takes its comment with it, and undo brings both back${session.title}`,
+    async (adapter, { page }) => {
+      await open(page, adapter, session.query);
+      const suggestionId = await page.evaluate(
+        () =>
+          window.__folioParity?.suggestCommentedInsertion(
+            "Closing",
+            "A suggested last line.",
+            "Suggested wording note",
+          ) ?? null,
+      );
+      expect(suggestionId).not.toBeNull();
+      const suggested = page
+        .locator(CARD[adapter.name])
+        .filter({ hasText: "Suggested wording note" });
+      await expect(suggested).toHaveCount(1);
+      // A pending suggestion's comment is held back with it.
+      const pending = await savedComments(await save(page));
+      await expectOnlyBodyRewrites(page);
+      expect(pending.comments).not.toContain("Suggested wording note");
+      expect(pending.comments).toContain("Second thread");
+
+      await page.evaluate(
+        (id) => window.__folioParity?.rejectSuggestion(id ?? ""),
+        suggestionId,
+      );
+      await expect(suggested).toHaveCount(0);
+      const rejected = await savedComments(await save(page));
+      await expectOnlyBodyRewrites(page);
+      expect(rejected.comments).not.toContain("Suggested wording note");
+      expect(rejected.comments).toContain("Second thread");
+
+      // A pending suggestion is not part of the saved package; undo brings the
+      // suggestion back with its comment.
+      await undoInDocument(page);
+      await expect(suggested).toHaveCount(1);
+      expect(
+        await page.evaluate(() => globalThis.__folioCanonicalFuzzErrors ?? []),
+      ).toEqual([]);
+    },
+  );
+}

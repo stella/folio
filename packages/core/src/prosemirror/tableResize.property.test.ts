@@ -14,7 +14,7 @@ import { serializeTableFormatting } from "../docx/serializer/tableSerializer";
 import { expectTableAttrs, expectTableCellAttrs } from "./attrs";
 import { tableAttrsToFormatting } from "./conversion/fromProseDoc";
 import { schema } from "./schema";
-import { commitColumnResize, commitRightEdgeResize } from "./tableResize";
+import { columnResizeCommand, rightEdgeResizeCommand } from "./tableResize";
 
 let releaseDom: ReturnType<typeof acquireHarnessDom>;
 beforeAll(() => {
@@ -174,19 +174,19 @@ test(
             switch (type) {
               case "pair":
                 expected[lastColumn] = newRight;
-                commitColumnResize(view, {
+                columnResizeCommand({
                   pmStart: 0,
                   colIdx: column,
                   newLeft,
                   newRight,
-                });
+                })(view.state, (tr) => view.dispatch(tr), view);
                 break;
               case "rightEdge":
-                commitRightEdgeResize(view, {
+                rightEdgeResizeCommand({
                   pmStart: 0,
                   colIdx: firstColumn,
                   newWidth: newLeft,
-                });
+                })(view.state, (tr) => view.dispatch(tr), view);
                 break;
               default: {
                 const exhaustive: never = type;

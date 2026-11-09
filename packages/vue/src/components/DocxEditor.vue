@@ -697,16 +697,23 @@ const canonicalAuthoritySession = computed(() =>
   ),
 );
 
+/** Hand the host a document it owns; its three listeners share it. */
+function notifyHostDocument(doc: Document): void {
+  props.onChange?.(doc);
+  emit("change", doc);
+  emit("update:document", doc);
+}
+
+/**
+ * Notify the host of a document this component may still share with the
+ * editor: a canonical session hands the host one copy.
+ */
 function notifyDocumentChange(doc: Document): void {
-  if (!canonicalAuthoritySession.value) {
-    props.onChange?.(doc);
-    emit("change", doc);
-    emit("update:document", doc);
-    return;
-  }
-  props.onChange?.(cloneDocumentWithParagraphPropertySources(doc));
-  emit("change", cloneDocumentWithParagraphPropertySources(doc));
-  emit("update:document", cloneDocumentWithParagraphPropertySources(doc));
+  notifyHostDocument(
+    canonicalAuthoritySession.value
+      ? cloneDocumentWithParagraphPropertySources(doc)
+      : doc,
+  );
 }
 
 const { message: refusalNotice, show: showRefusalNotice } =
@@ -972,7 +979,8 @@ const {
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) =>
     props.onSlashMenuKeyAction?.(action) ?? false,
-  onChange: notifyDocumentChange,
+  // The editor's notifications already carry a copy the host owns.
+  onChange: notifyHostDocument,
   onError: reportEditorError,
   onSelectionUpdate: (state) => {
     props.onSelectionChange?.(extractSelectionState(state));
@@ -1117,7 +1125,14 @@ const {
   handleHyperlinkPopupRemove,
 } = useHyperlinkManagement({ editorView: activeEditorView, getCommands });
 
-const tableResize = useTableResize();
+// The body runs a resize through the editor, which applies it in the
+// session that owns the document; a header or footer view runs it directly.
+const tableResize = useTableResize({
+  runCommand: (view, command) => {
+    if (view === editorView.value) editor.executeCommand(command);
+    else command(view.state, (tr) => view.dispatch(tr), view);
+  },
+});
 
 const {
   tableInsertButton,
