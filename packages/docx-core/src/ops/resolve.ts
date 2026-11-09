@@ -28,7 +28,9 @@ import type {
 } from "../model/document";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
 import {
+  isOpaqueFollower,
   markBeforeTableResolves,
+  paragraphBlockRunInTarget,
   paragraphMarkOutcome,
   paragraphTableRunInTarget,
   type TableRunInTarget,
@@ -60,7 +62,10 @@ import {
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
-import { paragraphHoldsContent } from "./offsets";
+import {
+  paragraphHoldsContent,
+  paragraphHoldsContentOnceAccepted,
+} from "./offsets";
 import {
   isBlockBoundary,
   noRelocatedBoundaries,
@@ -2075,6 +2080,7 @@ type ResolutionReceiverEffect = {
   type:
     | "paragraph-join"
     | "table-run-in"
+    | "block-run-in"
     | "retained-range-boundaries"
     | "section-transfer";
   receiver: Paragraph;
@@ -2096,6 +2102,8 @@ const joinOps = (
   ends: EmptiedEndsById,
   /** Table receivers a later paragraph of this resolution already ran into. */
   ranInto: ReadonlySet<string> = new Set(),
+  /** Paragraphs whose marks this resolution resolves after this one's. */
+  joinsBefore: ReadonlySet<string> = new Set(),
 ): Result<ParagraphMarkPlan, DocumentOpRefusal> => {
   const body = storyBody(document, story);
   const location = storyParagraphs(body).find(
@@ -2241,7 +2249,9 @@ const joinOps = (
       ),
     );
   }
-  // No paragraph to join: a table follows, or the paragraph ends its container.
+  // No paragraph to join: a table or another block follows, or the
+  // paragraph ends its container.
+  const followsBlock = isOpaqueFollower(next);
   const containerFinal = endsItsContainer(body, location);
   // A cell-ending mark describes the terminator, not a paragraph to retire.
   const cellFinal =
@@ -2250,19 +2260,49 @@ const joinOps = (
     next?.type === "table"
       ? paragraphTableRunInTarget(paragraph, next)
       : undefined;
+  const blockTarget =
+    next !== undefined && followsBlock
+      ? paragraphBlockRunInTarget(paragraph, next)
+      : undefined;
+  const runInReceiver = tableTarget?.receiver ?? blockTarget?.receiver;
   const remains = paragraphRemains(paragraph.content);
+  let follows: "table" | "block" | "nothing" = "nothing";
+  if (next?.type === "table") follows = "table";
+  else if (followsBlock) follows = "block";
+  // Before a block, what stays decides; resolving the marks one at a time
+  // from the first joins the paragraphs before this one, whose marks this
+  // resolution resolves too, into it first, so their content counts.
+  const joining: Paragraph[] = [];
+  for (let index = location.index - 1; follows === "block"; index -= 1) {
+    const before = blocks[index];
+    if (
+      before?.type !== "paragraph" ||
+      !joinsBefore.has(idKey(before.paraId ?? ""))
+    )
+      break;
+    joining.unshift(before);
+  }
+  const chained: Paragraph =
+    joining.length === 0
+      ? paragraph
+      : {
+          ...paragraph,
+          content: [...joining, paragraph].flatMap(({ content }) => content),
+        };
   const outcome = paragraphMarkOutcome({
-    follows: next?.type === "table" ? "table" : "nothing",
-    holdsContent: paragraphHoldsContent(paragraph),
+    follows,
+    holdsContent: paragraphHoldsContent(chained),
     markWasAdded: added,
     containerStillEndsWithParagraph:
-      next?.type === "table"
+      follows !== "nothing"
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last.
           containerFinal &&
           !cellFinal &&
           blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn: tableTarget !== undefined,
+    holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
+    followingBlockCanReceiveRunIn: blockTarget !== undefined,
     needsFollowingCommentHost:
       next?.type === "table" &&
       previous?.type !== "paragraph" &&
@@ -2285,20 +2325,21 @@ const joinOps = (
       ),
     );
   }
-  // The paragraph after this one ran into the table in this resolution, so
-  // this one follows it in: resolving the marks one at a time from the first
-  // joins this paragraph to that one before it runs in. Removing it as a
-  // paragraph with no content of its own would drop what it holds.
+  // The paragraph after this one ran into the table or block in this
+  // resolution, so this one follows it in: resolving the marks one at a time
+  // from the first joins this paragraph to that one before it runs in.
+  // Removing it as a paragraph with no content of its own would drop what it
+  // holds.
   const continuesRunIn =
     outcome.kind === "remove" &&
-    tableTarget !== undefined &&
+    runInReceiver !== undefined &&
     paragraph.content.length > 0 &&
-    ranInto.has(idKey(tableTarget.receiver.paraId ?? ""));
+    ranInto.has(idKey(runInReceiver.paraId ?? ""));
   const tableOutcome = continuesRunIn ? "run-in" : outcome.kind;
   if (
     (tableOutcome === "remove" || tableOutcome === "run-in") &&
     blocks.length > 1 &&
-    next?.type === "table"
+    (next?.type === "table" || followsBlock)
   ) {
     const anchor = blocks.find(
       (block, index): block is Paragraph =>
@@ -2332,6 +2373,33 @@ const joinOps = (
           ],
           [...removal.effects],
         );
+    } else if (blockTarget !== undefined) {
+      // The paragraph goes from around the block, and the receiver, where it
+      // stands inside the block, takes what it held.
+      const { receiver } = blockTarget;
+      return paragraphMarkPlan(
+        [
+          {
+            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+            story,
+            blockId: anchor.paraId ?? "",
+            expected: blocks,
+            blocks: blocks.filter((_, index) => index !== location.index),
+          },
+          {
+            type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+            story,
+            expected: [receiver],
+            blocks: [
+              {
+                ...receiver,
+                content: joinParagraphSeam(paragraph.content, receiver.content),
+              },
+            ],
+          },
+        ],
+        [{ type: "block-run-in", receiver }],
+      );
     } else {
       if (tableTarget === undefined)
         panic("An eligible table run-in has a validated receiver.");
@@ -2806,15 +2874,17 @@ export const planRevisionResolution = ({
   const edits: DocumentEdit[] = [staged.value, rows.value];
   let current = rows.value.document;
   const ranInto = new Set<string>();
+  const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
   for (const join of joins.toReversed()) {
+    joinsBefore.delete(idKey(join.paraId));
     if (removedParagraphs.has(idKey(join.paraId))) continue;
-    const planned = joinOps(current, join, emptiedEnds, ranInto);
+    const planned = joinOps(current, join, emptiedEnds, ranInto, joinsBefore);
     if (planned.isErr()) {
       return Result.err(planned.error);
     }
     receiverEffects.push(...planned.value.receiverEffects);
     for (const effect of planned.value.receiverEffects)
-      if (effect.type === "table-run-in")
+      if (effect.type === "table-run-in" || effect.type === "block-run-in")
         ranInto.add(idKey(effect.receiver.paraId ?? ""));
     const joined = applyOps(current, planned.value.ops);
     if (joined.isErr()) {
