@@ -387,6 +387,74 @@ const styledListsDocument = async (): Promise<Document> => {
   );
 };
 
+const generatedParagraphArbitrary = fc.record({
+  kind: fc.constantFrom("reference", "reference", "style", "plain"),
+  numId: fc.integer({ min: 1, max: 5 }),
+  ilvl: fc.nat({ max: 2 }),
+});
+
+/**
+ * A short story of paragraphs numbered by references to five instances of
+ * one abstract list (two of them restarting it), by a paragraph style, or
+ * not at all: instances meet, resume and trade counter arrays in every
+ * order.
+ */
+const generatedListsDocument = (
+  paragraphs: readonly fc.RecordValue<typeof generatedParagraphArbitrary>[],
+): Document => ({
+  package: {
+    styles: {
+      styles: [
+        {
+          styleId: "ListStyle",
+          type: "paragraph",
+          pPr: { numPr: paragraphNumberingReference({ numId: 4, ilvl: 0 }) },
+        },
+      ],
+    },
+    numbering: {
+      abstractNums: [
+        { abstractNumId: 0, levels: [level(0), level(1), level(2)] },
+      ],
+      nums: [
+        { numId: 1, abstractNumId: 0 },
+        {
+          numId: 2,
+          abstractNumId: 0,
+          levelOverrides: [{ ilvl: 0, startOverride: 3 }],
+        },
+        { numId: 3, abstractNumId: 0 },
+        { numId: 4, abstractNumId: 0 },
+        {
+          numId: 5,
+          abstractNumId: 0,
+          levelOverrides: [{ ilvl: 1, startOverride: 2 }],
+        },
+      ],
+    },
+    document: {
+      content: paragraphs.map(({ kind, numId, ilvl }, index) => {
+        const paragraph: Paragraph = {
+          type: "paragraph",
+          paraId: (0x30000000 + index).toString(16).toUpperCase(),
+          content: [
+            {
+              type: "run",
+              content: [{ type: "text", text: `Item ${String(index)}` }],
+            },
+          ],
+        };
+        if (kind === "style") paragraph.formatting = { styleId: "ListStyle" };
+        if (kind === "reference")
+          paragraph.formatting = {
+            numPr: { kind: "reference", numId, ilvl },
+          };
+        return paragraph;
+      }),
+    },
+  },
+});
+
 const listEditArbitrary = fc.record({
   kind: fc.constantFrom(
     "number",
@@ -559,6 +627,35 @@ describe("a list normalization reusing blocks earlier runs left", () => {
       {
         id: "list normalization cache equals full normalization over story versions",
         numRuns: 400,
+      },
+    );
+  });
+
+  test("equals a normalization of every block over generated list stories", async () => {
+    await assertProperty(
+      fc.property(
+        fc.array(generatedParagraphArbitrary, { minLength: 2, maxLength: 24 }),
+        fc.integer({ min: 1, max: 4 }),
+        fc.array(listEditArbitrary, { minLength: 1, maxLength: 16 }),
+        (paragraphs, checkpointSpacing, edits) => {
+          const cache = new ListNormalizationCache({ checkpointSpacing });
+          let last = normalizedBothWays(
+            generatedListsDocument(paragraphs),
+            cache,
+          );
+          for (const edit of edits)
+            last = normalizedBothWays(
+              edit.kind === "again"
+                ? last.document
+                : editLists(last.document, edit),
+              cache,
+              last,
+            );
+        },
+      ),
+      {
+        id: "list normalization cache equals full normalization over generated list stories",
+        numRuns: 600,
       },
     );
   });
