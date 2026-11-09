@@ -6,7 +6,10 @@
  * never collide with numbering the target already defines.
  */
 
-import { createNumberingIdAllocator } from "../docx/numberingIds";
+import {
+  createNumberingIdAllocator,
+  numberingNumIdsTaken,
+} from "../docx/numberingIds";
 import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 import type {
@@ -110,8 +113,8 @@ export function mergeDocumentContent(
       ...numbering.abstractNums.map(({ abstractNumId }) => abstractNumId),
     ];
     const existingNumIds = [
-      ...(targetNumbering?.nums ?? []).map(({ numId }) => numId),
-      ...numbering.nums.map(({ numId }) => numId),
+      ...numberingNumIdsTaken(targetNumbering),
+      ...numberingNumIdsTaken(numbering),
     ];
     const abstractIds = createNumberingIdAllocator(
       "abstract",

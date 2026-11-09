@@ -1,6 +1,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
+import { subtreeHolds } from "../internal/subtreeHolds";
 import type { PositionedBookmarkMarker } from "../types/document";
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
 import {
@@ -125,7 +126,7 @@ export const validateProseMirrorDocument = (
   }
 
   validateNode(doc, "doc", issues);
-  validateBookmarkBoundaryStructure(doc, issues);
+  validateBookmarkBoundaryStructure(doc, issues, holdsNoBookmarkBoundary);
 
   return {
     valid: issues.length === 0,
@@ -176,9 +177,62 @@ const describeBookmark = (id: number, name: string | null): string =>
     ? `Bookmark id ${id}`
     : `Bookmark "${name}" (id ${id})`;
 
+// A node that carries a bookmark boundary itself: a boundary node, a
+// paragraph's unpaired bookmarks, or a table's or row's positioned markers.
+// Attrs that do not read count too, so a subtree the pass skips never holds
+// a boundary.
+const carriesBookmarkBoundary = (node: PMNode): boolean => {
+  switch (node.type.name) {
+    case "bookmarkBoundary":
+    case "blockBookmarkBoundary":
+      return true;
+    case "paragraph": {
+      const attrs = readParagraphAttrs(node);
+      return !attrs.ok || (attrs.value.bookmarks?.length ?? 0) > 0;
+    }
+    case "table": {
+      const attrs = readTableAttrs(node);
+      return !attrs.ok || (attrs.value._bookmarks?.length ?? 0) > 0;
+    }
+    case "tableRow": {
+      const attrs = readTableRowAttrs(node);
+      return !attrs.ok || (attrs.value._bookmarks?.length ?? 0) > 0;
+    }
+    default:
+      return false;
+  }
+};
+
+// Nodes are immutable and an edit shares every subtree it does not touch, so
+// whether a subtree holds a boundary is decided once per node. The pairing
+// pass then walks only the subtrees that hold one, and an edit costs the path
+// it changed rather than every node of the document.
+const holdsBookmarkBoundary = subtreeHolds(carriesBookmarkBoundary);
+const holdsNoBookmarkBoundary = (node: PMNode): boolean =>
+  !holdsBookmarkBoundary(node);
+
+/** The pairing pass over every node, skipping none: the reference for the skip. */
+export const bookmarkIssuesWalkingEveryNode = (
+  doc: PMNode,
+): ProseMirrorDocumentValidationIssue[] => {
+  const issues: ProseMirrorDocumentValidationIssue[] = [];
+  validateBookmarkBoundaryStructure(doc, issues, () => false);
+  return issues;
+};
+
+/** The pairing pass as validation runs it. */
+export const bookmarkIssues = (
+  doc: PMNode,
+): ProseMirrorDocumentValidationIssue[] => {
+  const issues: ProseMirrorDocumentValidationIssue[] = [];
+  validateBookmarkBoundaryStructure(doc, issues, holdsNoBookmarkBoundary);
+  return issues;
+};
+
 const validateBookmarkBoundaryStructure = (
   doc: PMNode,
   issues: ProseMirrorDocumentValidationIssue[],
+  skip: (node: PMNode) => boolean,
 ): void => {
   // Bookmark boundaries pair by id, not by stack order. Word permits ranges
   // to overlap (start A, start B, end A, end B), so crossing pairs are valid.
@@ -351,7 +405,8 @@ const validateBookmarkBoundaryStructure = (
     // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
     node.forEach((child, _offset, index) => {
       visitPositionedBookmarks(index);
-      visit(child, `${path}.content[${index}]`, enclosingParagraph);
+      if (!skip(child))
+        visit(child, `${path}.content[${index}]`, enclosingParagraph);
     });
     visitPositionedBookmarks(node.childCount);
 

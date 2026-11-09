@@ -771,6 +771,14 @@ export async function parseDocxWithPreviewBudget(
       styles: styleDefinitions?.styles ?? [],
       numbering,
     });
+    const danglingNumIds = [
+      ...new Set([
+        ...numberingReferenceNormalization.danglingNumIds,
+        ...styleNumberingNormalization.danglingNumIds,
+      ]),
+    ].sort((left, right) => left - right);
+    if (danglingNumIds.length > 0)
+      numbering.definitions.danglingNumIds = danglingNumIds;
     for (const styleId of styleNumberingNormalization.unnumberedStyleIds) {
       parseContext.warn({
         code: UNNUMBERED_STYLE_WARNING,

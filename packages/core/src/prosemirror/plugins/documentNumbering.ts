@@ -56,10 +56,38 @@ const leavesNumberingUnchanged = (step: Step): boolean =>
   step instanceof RemoveMarkStep ||
   step instanceof DocAttrStep;
 
-const containsNumberedParagraph = (
+/** The instances a package's numbering part defines, by its definitions object. */
+const definedInstances = new WeakMap<
+  NumberingDefinitions,
+  ReadonlySet<number>
+>();
+const instancesDefinedBy = (
+  definitions: NumberingDefinitions | null,
+): ReadonlySet<number> => {
+  if (definitions === null) return new Set();
+  let defined = definedInstances.get(definitions);
+  if (defined === undefined) {
+    defined = new Set((definitions.nums ?? []).map(({ numId }) => numId));
+    definedInstances.set(definitions, defined);
+  }
+  return defined;
+};
+
+/**
+ * Whether a paragraph names an instance the package does not define: only
+ * those reach the completed numbering, which adds an instance for each.
+ */
+const namesUndefinedInstance = (
+  node: PMNode,
+  defined: ReadonlySet<number>,
+): boolean =>
+  paragraphListReferences(node).some((numId) => !defined.has(numId));
+
+const containsUndefinedReference = (
   node: PMNode,
   from: number,
   to: number,
+  defined: ReadonlySet<number>,
 ): boolean => {
   let found = false;
   node.nodesBetween(from, to, (child, pos) => {
@@ -67,7 +95,7 @@ const containsNumberedParagraph = (
       child.type.name !== "paragraph" ||
       pos < from ||
       pos + child.nodeSize > to ||
-      paragraphListReferences(child).length === 0
+      !namesUndefinedInstance(child, defined)
     ) {
       return !found;
     }
@@ -78,24 +106,30 @@ const containsNumberedParagraph = (
 };
 
 /**
- * Whether a transaction can change a paragraph-level numbering source. Text
- * and mark edits do not; paragraph attrs and structural replacements do. The
- * latter are inspected in the step-local document rather than by walking the
- * completed document.
+ * Whether a transaction can change the completed numbering: the instances the
+ * document names that the package does not define. Text and mark edits do
+ * not; paragraph attrs can. A structural replacement can only when a
+ * paragraph it inserts, removes or joins names such an instance, so typing in
+ * a list whose instances the package defines leaves the numbering as it is.
+ * Replacements are inspected in the step-local document rather than by
+ * walking the completed document.
  */
-const changesNumberingInputs = (tr: Transaction): boolean =>
+const changesNumberingInputs = (
+  tr: Transaction,
+  defined: ReadonlySet<number>,
+): boolean =>
   tr.steps.some((step, index) => {
     if (leavesNumberingUnchanged(step)) return false;
     if (!isReplace(step)) return true;
 
-    let insertsNumberedParagraph = false;
+    let insertsUndefinedReference = false;
     step.slice.content.descendants((node) => {
-      if (paragraphListReferences(node).length === 0)
-        return !insertsNumberedParagraph;
-      insertsNumberedParagraph = true;
+      if (!namesUndefinedInstance(node, defined))
+        return !insertsUndefinedReference;
+      insertsUndefinedReference = true;
       return false;
     });
-    if (insertsNumberedParagraph) return true;
+    if (insertsUndefinedReference) return true;
 
     const before = tr.docs[index];
     if (before === undefined) return true;
@@ -103,12 +137,12 @@ const changesNumberingInputs = (tr: Transaction): boolean =>
     const toParent = before.resolve(step.to).parent;
     if (
       fromParent !== toParent &&
-      (paragraphListReferences(fromParent).length > 0 ||
-        paragraphListReferences(toParent).length > 0)
+      (namesUndefinedInstance(fromParent, defined) ||
+        namesUndefinedInstance(toParent, defined))
     ) {
       return true;
     }
-    return containsNumberedParagraph(before, step.from, step.to);
+    return containsUndefinedReference(before, step.from, step.to, defined);
   });
 
 export const createDocumentNumberingPlugin = (
@@ -119,7 +153,8 @@ export const createDocumentNumberingPlugin = (
     state: {
       init: (_config, state) => completedState(definitions ?? null, state.doc),
       apply: (tr, current, _oldState, state) =>
-        tr.docChanged && changesNumberingInputs(tr)
+        tr.docChanged &&
+        changesNumberingInputs(tr, instancesDefinedBy(current.definitions))
           ? completedState(current.definitions, state.doc)
           : current,
     },

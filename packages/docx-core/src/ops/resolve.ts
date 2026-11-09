@@ -27,7 +27,12 @@ import type {
   Table,
 } from "../model/document";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
-import { paragraphMarkOutcome } from "./blockDeletion";
+import {
+  markBeforeTableResolves,
+  paragraphMarkOutcome,
+  paragraphTableRunInTarget,
+  type TableRunInTarget,
+} from "./blockDeletion";
 import {
   blockListAt,
   endsItsContainer,
@@ -112,40 +117,6 @@ const precedingSectionOwner = (
     JSON.stringify(paragraph.sectionProperties)
     ? "same"
     : "occupied";
-};
-
-type TableRunInTarget = {
-  receiver: Paragraph;
-  tables: readonly Table[];
-};
-
-const paragraphTableRunInTarget = (
-  paragraph: Paragraph,
-  table: Table,
-): TableRunInTarget | undefined => {
-  if (paragraph.sectionProperties !== undefined) return undefined;
-  const tables: Table[] = [];
-  let current = table;
-  for (;;) {
-    const row = current.rows.at(0);
-    const cell = row?.cells.at(0);
-    if (!row || !cell) return undefined;
-    if (
-      row.structuralChange?.type === "tableRowInsertion" ||
-      row.structuralChange?.type === "tableRowDeletion" ||
-      cell.structuralChange !== undefined
-    ) {
-      return undefined;
-    }
-    tables.push(current);
-    const target = cell.content.at(0);
-    if (target?.type === "paragraph")
-      return target.sectionProperties === undefined
-        ? { receiver: target, tables }
-        : undefined;
-    if (target?.type !== "table") return undefined;
-    current = target;
-  }
 };
 
 const runParagraphIntoTable = (
@@ -237,6 +208,48 @@ const hasNoteReference = (
       ),
     ),
   );
+
+/**
+ * The paragraph a rejected mark that keeps the first paragraph leaves: the
+ * first paragraph's identity, and everything the mark that stays carries,
+ * which is the next paragraph's. Where that mark is the first paragraph's
+ * former one, the first paragraph comes back as it was once the reviews
+ * pending on it resolve; where it is another break the same edit inserted,
+ * that break says itself which paragraph its rejection keeps.
+ */
+const joinedKeepingFirst = (
+  paragraph: Paragraph,
+  next: Paragraph,
+  content: Paragraph["content"],
+  receivesSection: boolean,
+): Paragraph => {
+  const {
+    paraId: _paraId,
+    textId: _textId,
+    preservedAttributes: _preservedAttributes,
+    renderedPageBreakBefore: _renderedPageBreakBefore,
+    sectionProperties: _sectionProperties,
+    ...marked
+  } = next;
+  // A section the rejected mark ended moves into the joined paragraph;
+  // otherwise the section break is the one the staying mark ends.
+  const sectionProperties = receivesSection
+    ? paragraph.sectionProperties
+    : next.sectionProperties;
+  return {
+    ...marked,
+    content,
+    ...(paragraph.paraId === undefined ? {} : { paraId: paragraph.paraId }),
+    ...(paragraph.textId === undefined ? {} : { textId: paragraph.textId }),
+    ...(paragraph.preservedAttributes === undefined
+      ? {}
+      : { preservedAttributes: paragraph.preservedAttributes }),
+    ...(paragraph.renderedPageBreakBefore === undefined
+      ? {}
+      : { renderedPageBreakBefore: paragraph.renderedPageBreakBefore }),
+    ...(sectionProperties === undefined ? {} : { sectionProperties }),
+  };
+};
 
 /** Whether a mark of this kind recorded a break being added. */
 const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
@@ -2156,31 +2169,24 @@ const joinOps = (
         merged = [...seam.left, ...seam.right];
       }
     }
+    const keepsFirst = paragraph.pPrMark?.survivor === "first";
     // A record left as it was keeps its identity through the merge; an emptied
-    // one folded into its neighbour is rebuilt, and is no longer empty.
-    ends.set(nextId, emptiedEndsOf(merged, emptied));
+    // one folded into its neighbour is rebuilt, and is no longer empty. The
+    // joined paragraph is found again under the id it keeps.
+    ends.set(
+      keepsFirst ? idKey(paraId) : nextId,
+      emptiedEndsOf(merged, emptied),
+    );
     const mergedContent = asParagraphContent(merged);
     const receivesSection = outcome.sectionDestination === "following";
-    const { pPrMark: _rejectedMark, ...first } = paragraph;
     let survivor: Paragraph;
-    // The anchor of an insertion whose last paragraph took over the anchor's
-    // mark comes back as it was: its identity, its fields, the joined words.
-    if (paragraph.pPrMark?.survivor === "first") {
-      // A paragraph's properties are its mark's, so it takes everything the
-      // mark the paragraph after it holds: the properties, their pending
-      // changes, the section break, the mark's own change. It keeps its own
-      // identity and element attributes, and where its words start.
-      survivor = { ...next, content: mergedContent };
-      for (const field of [
-        "paraId",
-        "textId",
-        "preservedAttributes",
-        "renderedPageBreakBefore",
-      ] as const) {
-        if (first[field] === undefined) Reflect.deleteProperty(survivor, field);
-        else Object.assign(survivor, { [field]: first[field] });
-      }
-    }
+    if (keepsFirst)
+      survivor = joinedKeepingFirst(
+        paragraph,
+        next,
+        mergedContent,
+        receivesSection,
+      );
     // An unchanged follower that receives nothing keeps its identity.
     else if (!receivesSection && structurallyEqual(mergedContent, next.content))
       survivor = next;
@@ -2264,7 +2270,7 @@ const joinOps = (
       remains.comments.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
-      (blocks.at(-1)?.type === "paragraph" && tableTarget !== undefined),
+      markBeforeTableResolves({ blocks, paragraph, table: next }),
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),

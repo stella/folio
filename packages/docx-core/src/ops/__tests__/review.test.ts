@@ -1868,3 +1868,63 @@ describe("whole-document revision rejection", () => {
     expect(result.document.package.footnotes).toBeUndefined();
   });
 });
+
+describe("rejecting a split whose first half kept the paragraph's identity", () => {
+  const splitAtEnd = (blockId: string): DocumentOp => ({
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: at(blockId, 3),
+    newBlockId: "00000002",
+    revision: stamp(2),
+    newIds: { revision: [3] },
+  });
+  const next = paragraph("00000009", [run("next")]);
+
+  test("gives the paragraph back with the mark it already had pending", () => {
+    const pending = paragraph("00000001", [run("abc")], {
+      pPrMark: { kind: "ins", info: stamp(1, "Other") },
+    });
+    const document = documentOf(pending, next);
+    const split = applied(document, splitAtEnd("00000001"));
+    expect(
+      resolved(split.document, split.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+    // The mark that was pending resolves as before the split.
+    const rejectedSplit = resolved(
+      split.document,
+      split.revisions,
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(
+      resolved(rejectedSplit, [1], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(resolved(document, [1], REVISION_DECISIONS.REJECT));
+  });
+
+  test("gives back the section break the paragraph ends", () => {
+    const ends = paragraph("00000001", [run("abc")], {
+      sectionProperties: { pageWidth: 11906 },
+    });
+    const document = documentOf(ends, next);
+    const split = applied(document, splitAtEnd("00000001"));
+    expect(
+      resolved(split.document, split.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+    // Typed into after the split, each review still resolves on its own.
+    const typed = applied(split.document, {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: at("00000001", 3),
+      text: "x",
+      runProps: "inherit",
+      revision: stamp(4),
+      newIds: { revision: [5] },
+    });
+    const all = [...split.revisions, ...typed.revisions];
+    const atOnce = resolved(typed.document, all, REVISION_DECISIONS.REJECT);
+    const inTurn = resolved(
+      resolved(typed.document, typed.revisions, REVISION_DECISIONS.REJECT),
+      split.revisions,
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(atOnce).toStrictEqual(document);
+    expect(inTurn).toStrictEqual(document);
+  });
+});

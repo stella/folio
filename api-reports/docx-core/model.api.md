@@ -1045,6 +1045,7 @@ export type NumberingDefinitions = {
     nums: NumberingInstance[];
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
+    danglingNumIds?: number[];
 };
 
 // @public
