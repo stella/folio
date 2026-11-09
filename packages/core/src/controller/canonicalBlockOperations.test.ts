@@ -1026,3 +1026,52 @@ describe("a commented insertion inside a block content control matches the defau
         ).toEqual(expected);
       });
 });
+
+describe("a save while a suggestion is pending", () => {
+  // The file is written as if the suggestion were rejected: the paragraphs it
+  // adds are no change to the file, so the save splices only what changed.
+  // Where the suggestion touched no source paragraph, the body stays as the
+  // source has it, byte for byte.
+  for (const [name, operation, untouched] of [
+    [
+      "insertion",
+      { id: "op", type: "insertAfterBlock", blockId: "10000002", text: "New" },
+      true,
+    ],
+    [
+      "commented insertion",
+      {
+        id: "op",
+        type: "insertAfterBlock",
+        blockId: "10000002",
+        text: "New",
+        comment: { text: "Why this line" },
+      },
+      true,
+    ],
+    [
+      "split",
+      { id: "op", type: "splitBlock", blockId: "10000002", offset: 2 },
+      false,
+    ],
+  ] as const satisfies readonly (readonly [
+    string,
+    FolioDocumentOperation,
+    boolean,
+  ])[])
+    test(name, async () => {
+      const source = await packageOf(BODIES["between two paragraphs"]);
+      const run = await canonicalRun(source, operation, "suggested");
+      expect(run.skipped).toEqual([]);
+      const saved = await serializeCanonicalSave({
+        snapshot: run.session.captureSaveSnapshot(),
+        featureFlags: { selectiveSave: true },
+      });
+      expect(saved.diagnostics).toEqual([]);
+      expect(await blocksOf(saved.buffer)).toEqual(await blocksOf(source));
+      if (!untouched) return;
+      const body = async (bytes: ArrayBuffer) =>
+        (await ZipArchive.read(bytes)).entry("word/document.xml")?.text();
+      expect(await body(saved.buffer)).toBe(await body(source));
+    });
+});
