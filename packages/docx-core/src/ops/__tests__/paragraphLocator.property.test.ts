@@ -32,8 +32,11 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
-/** Every story of a version answers as a walk does. */
-const expectLocatorOf = (document: Document): number => {
+/**
+ * Every story of a version answers as a walk does, for the ids it holds, ids
+ * earlier versions held, and an id none holds.
+ */
+const expectLocatorOf = (document: Document, seen: Set<string>): number => {
   let asked = 0;
   for (const story of documentStories(document)) {
     const body = storyBody(document, story);
@@ -41,9 +44,12 @@ const expectLocatorOf = (document: Document): number => {
     const ids = walked.flatMap(({ paragraph }) =>
       paragraph.paraId === undefined ? [] : [paragraph.paraId],
     );
+    const earlier = [...seen];
+    for (const id of ids) seen.add(id);
     for (const id of [
       ...ids,
       ...ids.map((each) => each.toLowerCase()),
+      ...earlier,
       "7FFFFFFE",
     ]) {
       const expected = walked.find(
@@ -94,17 +100,18 @@ describe("finding a story paragraph through the kept locator", () => {
         (generated, edits) => {
           let document = generated;
           const versions = [document];
-          asked += expectLocatorOf(document);
+          const seen = new Set<string>();
+          asked += expectLocatorOf(document, seen);
           edits.forEach(({ seed, tracked, story: at, back, rotate }, index) => {
             if (back !== null) {
               document = versions[back % versions.length] ?? document;
-              asked += expectLocatorOf(document);
+              asked += expectLocatorOf(document, seen);
               return;
             }
             if (rotate) {
               document = rotated(document);
               versions.push(document);
-              asked += expectLocatorOf(document);
+              asked += expectLocatorOf(document, seen);
               return;
             }
             const stories = documentStories(document);
@@ -117,7 +124,7 @@ describe("finding a story paragraph through the kept locator", () => {
             if (applied.isErr()) return;
             document = applied.value.document;
             versions.push(document);
-            asked += expectLocatorOf(document);
+            asked += expectLocatorOf(document, seen);
           });
         },
       ),
