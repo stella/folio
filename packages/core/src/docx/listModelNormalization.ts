@@ -48,10 +48,8 @@ import {
   assignParagraphIndentationProjection,
   cloneParagraphWithPropertySource,
   paragraphFormattingWithAuthoredIndentation,
-  type ParagraphPropertySourceStamp,
-  paragraphPropertySourceStamp,
-  paragraphPropertySourceStampMatches,
   sameParagraphIndentationProjection,
+  sealParagraphFacts,
 } from "./paragraphPropertySource";
 
 type CanonicalListNormalization = { document: Document; inverse: DocumentOp[] };
@@ -69,8 +67,6 @@ type BlockRecord = {
   input: BlockContent;
   /** Normalizing it returned it unchanged and recorded no inverse. */
   settled: boolean;
-  /** Where the paragraph's facts kept outside its fields stood after normalizing. */
-  sourceStamp: ParagraphPropertySourceStamp | undefined;
   /** The snapshot registration normalizing left for the paragraph. */
   snapshotToken: object | undefined;
 };
@@ -83,24 +79,24 @@ type StoryRun = {
 
 const CHECKPOINT_SPACING = 32;
 
-const recordOf = (input: BlockContent, settled: boolean): BlockRecord =>
-  input.type === "paragraph"
-    ? {
-        input,
-        settled,
-        sourceStamp: paragraphPropertySourceStamp(input),
-        snapshotToken: paragraphPropertySnapshotToken(input),
-      }
-    : { input, settled, sourceStamp: undefined, snapshotToken: undefined };
+/** The record of `input`, whose kept facts are fixed from now on. */
+const recordOf = (input: BlockContent, settled: boolean): BlockRecord => {
+  if (input.type !== "paragraph")
+    return { input, settled, snapshotToken: undefined };
+  sealParagraphFacts(input);
+  return {
+    input,
+    settled,
+    snapshotToken: paragraphPropertySnapshotToken(input),
+  };
+};
 
 /** Whether normalizing `block` again would leave it, its facts and its registration as they are. */
 const stillSettled = (block: BlockContent, record: BlockRecord): boolean =>
   record.settled &&
   block === record.input &&
   (block.type !== "paragraph" ||
-    (record.sourceStamp !== undefined &&
-      paragraphPropertySourceStampMatches(block, record.sourceStamp) &&
-      paragraphPropertySnapshotToken(block) === record.snapshotToken));
+    paragraphPropertySnapshotToken(block) === record.snapshotToken);
 
 const storyKey = (story: OpStory): string => {
   if (story === OP_STORIES.MAIN) return story;

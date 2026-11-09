@@ -38,12 +38,10 @@ import {
   createProseParagraphWithPropertySource,
   getDocumentParagraphPropertySourceContract,
   paragraphFormattingWithAuthoredIndentation,
-  type ParagraphPropertySourceStamp,
-  paragraphPropertySourceStamp,
-  paragraphPropertySourceStampMatches,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   proseParagraphAttrsWithoutPropertySource,
   recreateProseNodeWithParagraphPropertySource,
+  sealParagraphFacts,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
 import {
@@ -748,29 +746,17 @@ const setReadsOf = (set: RecordedMembership): SetReads => ({
   answers: set.answers,
 });
 
-/** Where the facts kept outside one paragraph's fields stood. */
-type ParagraphSourceStamp = {
-  paragraph: Paragraph;
-  stamp: ParagraphPropertySourceStamp;
-};
-
 /**
- * Where the facts kept outside the fields of a block's paragraphs stood, a
- * table's in document order: a converted block is reused only while none of
- * them changed.
+ * Fix the facts kept outside the fields of a block's paragraphs, a table's
+ * too: a converted block is reused while it is the same object, so they must
+ * stay the ones it was converted with.
  */
-const blockSourceStamps = (
-  block: Paragraph | Table,
-): readonly ParagraphSourceStamp[] => {
-  const stamps: ParagraphSourceStamp[] = [];
+const sealBlockFacts = (block: Paragraph | Table): void => {
   const visit = (blocks: readonly BlockContent[]): void => {
     for (const child of blocks) {
       switch (child.type) {
         case "paragraph":
-          stamps.push({
-            paragraph: child,
-            stamp: paragraphPropertySourceStamp(child),
-          });
+          sealParagraphFacts(child);
           break;
         case "table":
           for (const row of child.rows)
@@ -798,23 +784,11 @@ const blockSourceStamps = (
     }
   };
   visit([block]);
-  return stamps;
 };
-
-/**
- * Whether no fact kept outside the fields of the paragraphs of `block`, the
- * same object the stamps were read from, changed since.
- */
-const sourceStampsHold = (stamps: readonly ParagraphSourceStamp[]): boolean =>
-  stamps.every(({ paragraph, stamp }) =>
-    paragraphPropertySourceStampMatches(paragraph, stamp),
-  );
 
 type CachedBlock = {
   nodes: readonly PMNode[];
   reads: StoryReads;
-  /** Where the facts kept outside its paragraphs' fields stood, as converted. */
-  sourceStamps: readonly ParagraphSourceStamp[];
 };
 
 type ProjectionPackageInputs = {
@@ -887,11 +861,7 @@ export class ProjectionBlockCache {
     convert: (context: TableConversionContext) => PMNode[],
   ): readonly PMNode[] {
     const known = this.blocks.get(block);
-    if (
-      known !== undefined &&
-      sourceStampsHold(known.sourceStamps) &&
-      storyReadsHold(known.reads, state)
-    ) {
+    if (known !== undefined && storyReadsHold(known.reads, state)) {
       advanceStory(known.reads, state);
       return known.nodes;
     }
@@ -952,11 +922,8 @@ export class ProjectionBlockCache {
       },
     };
     // As the conversion left them: it may record facts of its own.
-    this.blocks.set(block, {
-      nodes,
-      reads,
-      sourceStamps: blockSourceStamps(block),
-    });
+    sealBlockFacts(block);
+    this.blocks.set(block, { nodes, reads });
     return nodes;
   }
 }
