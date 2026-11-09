@@ -87,6 +87,7 @@ import {
 } from "./anchoredImagePosition";
 import type { BlockLookup } from "./index";
 import { paintedImageSource } from "./previewSvg";
+import { reconcileRenderedContent } from "./reconcileRenderedContent";
 import { renderFragment } from "./renderFragment";
 import {
   applyImageVisualAttrs,
@@ -3983,8 +3984,10 @@ function repopulatePageContent(
     } else if (oldFontStyle) {
       removeRenderedPage(oldFontStyle);
     }
-    // Replace only the content area — header/footer stay untouched
-    replaceRenderedPageElement(oldContentEl, newContentEl);
+    // Update only the content area — header/footer stay untouched — and in
+    // it only the nodes the fresh rendering shows differently.
+    if (!reconcileRenderedContent(oldContentEl, newContentEl))
+      replaceRenderedPageElement(oldContentEl, newContentEl);
     syncPageWatermarkOverlay(
       shell,
       data.page,
