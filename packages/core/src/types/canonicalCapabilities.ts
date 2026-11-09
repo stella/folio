@@ -53,8 +53,7 @@ export const CANONICAL_RULE_MESSAGE_KEYS: {
  * The editor message, in the folio catalog, a host shows for a refusal under
  * any gap: the change cannot be made here yet.
  */
-export const CANONICAL_GAP_MESSAGE_KEY =
-  "editor.changeUnavailable" as const;
+export const CANONICAL_GAP_MESSAGE_KEY = "editor.changeUnavailable" as const;
 
 /** A catalog key a refusal notice reads. */
 export type CanonicalRefusalMessageKey =
