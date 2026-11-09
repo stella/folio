@@ -28,8 +28,8 @@ import {
   normalizeListModelRendering,
 } from "../docx/listModelNormalization";
 import {
+  carryParagraphPropertySource,
   paragraphPropertySourceState,
-  restoreParagraphIndentationProjection,
 } from "../docx/paragraphPropertySource";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
@@ -260,6 +260,24 @@ const editLists = (document: Document, edit: ListEdit): Document => {
   };
 };
 
+/** `document` with the main story block `from` replaced by `to`. */
+const replacingMainBlock = (
+  document: Document,
+  from: BlockContent,
+  to: BlockContent,
+): Document => ({
+  ...document,
+  package: {
+    ...document.package,
+    document: {
+      ...document.package.document,
+      content: mainBlocks(document).map((block) =>
+        block === from ? to : block,
+      ),
+    },
+  },
+});
+
 describe("a list normalization reusing blocks earlier runs left", () => {
   test("equals a normalization of every block over story versions", async () => {
     const sources = await parsedSources();
@@ -281,7 +299,8 @@ describe("a list normalization reusing blocks earlier runs left", () => {
               // run changed come back as they were.
               case "again":
                 break;
-              // A paragraph keeps its records but not the facts kept for it.
+              // The facts kept for a paragraph change: its registration, or its
+              // restored projection on a new paragraph in its place.
               case "facts":
               case "register": {
                 const paragraphs = mainBlocks(version).filter(
@@ -295,15 +314,20 @@ describe("a list normalization reusing blocks earlier runs left", () => {
                     paragraph,
                     snapshot: { indentLeft: 1 + edit.ilvl },
                   });
-                else
-                  // As history restores a paragraph's projection: in place,
-                  // from another paragraph's.
-                  restoreParagraphIndentationProjection({
+                else {
+                  // As history restores a paragraph's facts from another
+                  // paragraph's: on a new paragraph in its place once a
+                  // normalization kept it.
+                  const restored = carryParagraphPropertySource({
                     target: paragraph,
                     source:
                       paragraphs[(edit.at + edit.numId) % paragraphs.length] ??
                       paragraph,
+                    indentation: "restore",
                   });
+                  if (restored !== paragraph)
+                    version = replacingMainBlock(version, paragraph, restored);
+                }
                 input = version;
                 break;
               }

@@ -30,38 +30,26 @@ import { visitDocxParagraphs } from "./paragraphTraversal";
 import { parseXmlDocument } from "./xmlParser";
 
 /**
- * A stamp per object, renewed whenever a fact this module keeps for it
- * changes. Every table read by `paragraphPropertySourceState` writes through
- * `KeptFacts` or `KeptFlags`, and every handle a paragraph carries is set
- * through `keepHandle`, so an unchanged stamp means unchanged facts.
- */
-const factStamps = new WeakMap<object, number>();
-let lastFactStamp = 0;
-
-const renewFacts = (key: object): void => {
-  lastFactStamp += 1;
-  factStamps.set(key, lastFactStamp);
-};
-
-/**
- * Objects whose facts a reader has kept: a converted block's paragraphs and
- * their formatting. A fact of one is fixed from then on: a writer that would
- * change one panics, naming the fact. A writer that has to change it makes a
- * new paragraph instead (`carryParagraphPropertySource`).
+ * Paragraphs whose facts a reader has kept, as a converted block or a list
+ * record keeps them. Every table read by `paragraphPropertySourceState` is
+ * written through `KeptFacts` or `KeptFlags`, every handle a paragraph
+ * carries through `keepHandle`, and its formatting here only by the
+ * indentation projection; each of them refuses a kept paragraph, so it reads
+ * the facts it was kept with. A writer that has to change one makes a new
+ * paragraph instead (`carryParagraphPropertySource`).
  */
 const sealedFacts = new WeakSet<object>();
 
-const refuseFactChange = (key: object, what: string): void => {
+const refuseFactChange = (what: string): void => {
   panic(`A paragraph fact (${what}) changed after a reader kept it.`);
 };
 
-/** Fix the facts of `paragraph` and its formatting: a reader keeps them. */
+/** Fix the facts of `paragraph`: a reader keeps them. */
 export const sealParagraphFacts = (paragraph: Paragraph): void => {
   sealedFacts.add(paragraph);
-  if (paragraph.formatting !== undefined) sealedFacts.add(paragraph.formatting);
 };
 
-/** A weak table whose writes renew the stamp of the key they change. */
+/** A weak table whose writes refuse a sealed key. */
 class KeptFacts<Key extends object, Value> {
   private readonly table = new WeakMap<Key, Value>();
 
@@ -75,13 +63,12 @@ class KeptFacts<Key extends object, Value> {
 
   set(key: Key, value: Value): void {
     if (this.table.has(key) && this.table.get(key) === value) return;
-    if (sealedFacts.has(key)) refuseFactChange(key, "table entry");
+    if (sealedFacts.has(key)) refuseFactChange("table entry");
     this.table.set(key, value);
-    renewFacts(key);
   }
 }
 
-/** A weak set whose writes renew the stamp of the key they change. */
+/** A weak set whose writes refuse a sealed key. */
 class KeptFlags<Key extends object> {
   private readonly flags = new WeakSet<Key>();
 
@@ -91,16 +78,8 @@ class KeptFlags<Key extends object> {
 
   add(key: Key): void {
     if (this.flags.has(key)) return;
-    if (sealedFacts.has(key)) refuseFactChange(key, "flag");
+    if (sealedFacts.has(key)) refuseFactChange("flag");
     this.flags.add(key);
-    renewFacts(key);
-  }
-
-  delete(key: Key): void {
-    if (!this.flags.has(key)) return;
-    if (sealedFacts.has(key)) refuseFactChange(key, "flag removal");
-    this.flags.delete(key);
-    renewFacts(key);
   }
 }
 
@@ -114,15 +93,14 @@ const keepHandle = (
   if (descriptor === undefined) {
     if (current === undefined) return;
     if (sealedFacts.has(paragraph))
-      refuseFactChange(paragraph, `handle removal ${String(key.description)}`);
+      refuseFactChange(`handle removal ${String(key.description)}`);
     Reflect.deleteProperty(paragraph, key);
   } else {
     if (current !== undefined && current.value === descriptor.value) return;
     if (sealedFacts.has(paragraph))
-      refuseFactChange(paragraph, `handle ${String(key.description)}`);
+      refuseFactChange(`handle ${String(key.description)}`);
     Object.defineProperty(paragraph, key, descriptor);
   }
-  renewFacts(paragraph);
 };
 
 // The private symbol makes a source factory-only at the type boundary. Keep it
@@ -225,9 +203,12 @@ export const restoreParagraphIndentationProjection = ({
   target,
   source,
 }: CopyParagraphIndentationProjectionOptions): void => {
-  assignedIndentationProjections.delete(target);
-  keepHandle(target, paragraphIndentationProjection, undefined);
-  copyParagraphIndentationProjection({ target, source });
+  // Read before writing: the source may be the target.
+  const descriptor =
+    indentationProjectionFor(source) === undefined
+      ? undefined
+      : Object.getOwnPropertyDescriptor(source, paragraphIndentationProjection);
+  keepHandle(target, paragraphIndentationProjection, descriptor);
   assignedIndentationProjections.add(target);
 };
 
@@ -268,8 +249,7 @@ export const assignParagraphIndentationProjection = ({
   ) {
     Reflect.deleteProperty(effective, "hangingIndent");
   }
-  if (sealedFacts.has(paragraph))
-    refuseFactChange(paragraph, "indentation formatting");
+  if (sealedFacts.has(paragraph)) refuseFactChange("indentation formatting");
   paragraph.formatting = { ...authored, ...effective };
   if (Object.keys(paragraph.formatting).length === 0)
     delete paragraph.formatting;
@@ -868,49 +848,7 @@ export const paragraphPropertySourceState = (
   indentationProjectionFor(paragraph),
   assignedIndentationProjections.has(paragraph),
   decodedTableCellParagraphSourcePayloads.get(paragraph),
-  ...(paragraph.formatting === undefined
-    ? []
-    : [
-        paragraphPropertyCaptures.get(paragraph.formatting),
-        indentationProjections.get(paragraph.formatting),
-      ]),
 ];
-
-/**
- * Where the facts `paragraphPropertySourceState` reads for a paragraph stood:
- * they are keyed by the paragraph, by its formatting object, and by handles
- * that are written once, when they are made. Reading it allocates; matching
- * it against the paragraph does not.
- */
-export type ParagraphPropertySourceStamp = Readonly<{
-  paragraph: number | undefined;
-  formatting: object | undefined;
-  formattingStamp: number | undefined;
-}>;
-
-export const paragraphPropertySourceStamp = (
-  paragraph: Paragraph,
-): ParagraphPropertySourceStamp => ({
-  paragraph: factStamps.get(paragraph),
-  formatting: paragraph.formatting,
-  formattingStamp:
-    paragraph.formatting === undefined
-      ? undefined
-      : factStamps.get(paragraph.formatting),
-});
-
-/**
- * Whether no fact kept for the paragraph changed since `stamp` was read: its
- * `paragraphPropertySourceState` is then the one it was.
- */
-export const paragraphPropertySourceStampMatches = (
-  paragraph: Paragraph,
-  stamp: ParagraphPropertySourceStamp,
-): boolean =>
-  factStamps.get(paragraph) === stamp.paragraph &&
-  paragraph.formatting === stamp.formatting &&
-  (paragraph.formatting === undefined ||
-    factStamps.get(paragraph.formatting) === stamp.formattingStamp);
 
 export const getParagraphPropertySourceToken = (
   paragraph: Paragraph,

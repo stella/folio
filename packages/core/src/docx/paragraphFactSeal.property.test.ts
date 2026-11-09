@@ -8,7 +8,9 @@
  * writers run over a few paragraphs, some sharing handles through object
  * spreads and some sealed on the way; after each step, whether the writer
  * finished or refused, every sealed paragraph must read the very same facts,
- * and a refusal must name the fact it would have changed.
+ * and a refusal must name the fact it would have changed. Carrying one
+ * paragraph's facts onto another never refuses: it gives the target the
+ * facts the copy makes, on a new paragraph when the target is kept.
  */
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
@@ -24,6 +26,7 @@ import {
   assignDocumentParagraphPropertySourceContract,
   assignParagraphIndentationProjection,
   assignParagraphPropertySource,
+  carryParagraphPropertySource,
   cloneParagraphWithoutPropertySource,
   cloneParagraphWithPropertySource,
   copyParagraphIndentationProjection,
@@ -44,6 +47,8 @@ const POOL = 5;
 const stepArbitrary = fc.record({
   kind: fc.constantFrom(
     "seal",
+    "carry",
+    "carryRestore",
     "source",
     "copySource",
     "copyCapture",
@@ -73,6 +78,53 @@ const paragraphAt = (index: number, indent: number | undefined): Paragraph => ({
 
 const DIGEST = "ab".repeat(32);
 
+/**
+ * The facts `carryParagraphPropertySource` gives `target`, in the order
+ * `paragraphPropertySourceState` reads them: those `source` holds, the
+ * target's own where the source holds none, and the target's projection
+ * unless it holds none or history restores the source's.
+ */
+const carriedFacts = (
+  target: Paragraph,
+  source: Paragraph,
+  indentation: "derive" | "restore",
+): readonly unknown[] => {
+  const [
+    token,
+    candidate,
+    transferId,
+    kind,
+    capture,
+    projection,
+    assigned,
+    payload,
+    ...byFormatting
+  ] = paragraphPropertySourceState(target);
+  const [
+    sourceToken,
+    sourceCandidate,
+    sourceTransferId,
+    sourceKind,
+    sourceCapture,
+    sourceProjection,
+  ] = paragraphPropertySourceState(source);
+  const keepsProjection = assigned === true || projection !== undefined;
+  return [
+    sourceToken ?? token,
+    sourceCandidate ?? candidate,
+    sourceTransferId ?? transferId,
+    kind ??
+      (sourceToken !== undefined || sourceKind === "durable"
+        ? "durable"
+        : "capture-only"),
+    sourceCapture ?? capture,
+    indentation === "derive" && keepsProjection ? projection : sourceProjection,
+    indentation === "restore" ? true : assigned,
+    payload,
+    ...byFormatting,
+  ];
+};
+
 const run = (
   step: Step,
   pool: Paragraph[],
@@ -87,6 +139,27 @@ const run = (
       sealParagraphFacts(target);
       sealed.add(target);
       return;
+    case "carry":
+    case "carryRestore": {
+      const indentation = step.kind === "carry" ? "derive" : "restore";
+      const expected = carriedFacts(target, source, indentation);
+      const carried = carryParagraphPropertySource({
+        target,
+        source,
+        indentation,
+      });
+      const facts = paragraphPropertySourceState(carried);
+      expect(facts.length).toBe(expected.length);
+      for (const [index, fact] of facts.entries())
+        expect(fact).toBe(expected[index]);
+      expect(carried.formatting).toBe(target.formatting);
+      // Only a kept paragraph is replaced, and only by one that differs.
+      if (carried !== target) {
+        expect(sealed.has(target)).toBe(true);
+        pool[step.target] = carried;
+      }
+      return;
+    }
     case "source":
       assignParagraphPropertySource(
         target,
@@ -167,6 +240,7 @@ describe("sealed paragraph facts", () => {
   test("a writer never changes the facts of a sealed paragraph", () => {
     let refusals = 0;
     let unsealedWrites = 0;
+    let replaced = 0;
     assertProperty(
       fc.property(
         fc.array(
@@ -192,11 +266,18 @@ describe("sealed paragraph facts", () => {
             const unsealed = pool
               .filter((paragraph) => !sealed.has(paragraph))
               .map((paragraph) => paragraphPropertySourceState(paragraph));
+            const held = pool[step.target];
             try {
               run(step, pool, nodes, sealed);
             } catch (error) {
               const message = error instanceof Error ? error.message : "";
-              if (!REFUSAL.test(message)) throw error;
+              // Carrying never refuses: it replaces a kept paragraph instead.
+              if (
+                !REFUSAL.test(message) ||
+                step.kind === "carry" ||
+                step.kind === "carryRestore"
+              )
+                throw error;
               refusals += 1;
             }
             for (const { paragraph, formatting, state } of before) {
@@ -216,13 +297,81 @@ describe("sealed paragraph facts", () => {
               )
             )
               unsealedWrites += 1;
+            if (
+              (step.kind === "carry" || step.kind === "carryRestore") &&
+              pool[step.target] !== held
+            )
+              replaced += 1;
           }
         },
       ),
       { id: "sealed paragraph facts never change", numRuns: 500 },
     );
-    // The writers ran against both sealed and open paragraphs.
+    // The writers ran against both sealed and open paragraphs, and carrying
+    // replaced kept ones.
     expect(refusals).toBeGreaterThan(0);
     expect(unsealedWrites).toBeGreaterThan(0);
+    expect(replaced).toBeGreaterThan(0);
+  });
+
+  test("each writer leaves a paragraph sealed just before it as it was", () => {
+    const refused = new Set<string>();
+    assertProperty(
+      fc.property(
+        fc.array(
+          fc.option(fc.integer({ min: 0, max: 3 }), { nil: undefined }),
+          { minLength: POOL, maxLength: POOL },
+        ),
+        fc.array(stepArbitrary, { maxLength: 15 }),
+        stepArbitrary,
+        (indents, history, last) => {
+          const pool = indents.map((indent, index) =>
+            cloneParagraphWithPropertySource(paragraphAt(index, indent), {}),
+          );
+          const nodes: PMNode[] = [];
+          const sealed = new Set<Paragraph>();
+          const attempt = (step: Step): void => {
+            try {
+              run(step, pool, nodes, sealed);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "";
+              if (
+                !REFUSAL.test(message) ||
+                step.kind === "carry" ||
+                step.kind === "carryRestore"
+              )
+                throw error;
+              refused.add(step.kind);
+            }
+          };
+          for (const step of history) attempt(step);
+          const target = pool[last.target];
+          if (target === undefined) return;
+          sealParagraphFacts(target);
+          sealed.add(target);
+          const formatting = target.formatting;
+          const state = paragraphPropertySourceState(target);
+          attempt(last);
+          expect(target.formatting).toBe(formatting);
+          const now = paragraphPropertySourceState(target);
+          expect(now.length).toBe(state.length);
+          for (const [index, fact] of now.entries())
+            expect(fact).toBe(state[index]);
+        },
+      ),
+      { id: "a writer leaves a just-sealed paragraph", numRuns: 1000 },
+    );
+    // Every writer that can change a fact met a sealed paragraph and refused.
+    for (const kind of [
+      "source",
+      "copySource",
+      "copyCapture",
+      "copyProjection",
+      "restoreProjection",
+      "assignProjection",
+      "candidate",
+      "contract",
+    ])
+      expect(refused).toContain(kind);
   });
 });
