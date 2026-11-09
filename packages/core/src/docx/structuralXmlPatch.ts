@@ -9,7 +9,7 @@ import {
 } from "./selectiveXmlPatch";
 import { materializeReplayFragment } from "./storyBlockReplay";
 import {
-  getAttributeAnyPrefix,
+  getAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -326,7 +326,9 @@ const commentAnchors = (root: XmlElement): string => {
       continue;
     const name = getLocalName(element.name);
     if (COMMENT_ELEMENTS.has(name))
-      anchors.push(`${name}:${getAttributeAnyPrefix(element, "id") ?? ""}`);
+      anchors.push(
+        `${name}:${getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id") ?? ""}`,
+      );
   }
   return anchors.join(" ");
 };
