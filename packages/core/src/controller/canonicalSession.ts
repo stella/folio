@@ -2102,6 +2102,10 @@ class CanonicalSession {
       ops,
       selection: postSelection,
       origin: "input",
+      // The compiler's own application of exactly these ops, when it made one.
+      ...(compiled.value.applied === undefined
+        ? {}
+        : { stagedApplied: compiled.value.applied }),
       onPublish: (inverse, version) => {
         const entry = {
           type: "applied",
@@ -2269,7 +2273,11 @@ class CanonicalSession {
           );
         return refuse(compiled.error.message);
       }
-      const applied = applyDocumentOps(document, compiled.value.ops);
+      // The compiler's own application of exactly these ops, when it made one.
+      const applied =
+        compiled.value.applied === undefined
+          ? applyDocumentOps(document, compiled.value.ops)
+          : Result.ok(compiled.value.applied);
       if (applied.isErr())
         return applied.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE
           ? noChange(applied.error.message)

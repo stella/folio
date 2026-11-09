@@ -588,6 +588,7 @@ import {
   filterHeadingsByDepth,
 } from "@stll/folio-core/utils/outlineDepth";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
+import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import {
   getDocumentWatermark,
@@ -1476,7 +1477,7 @@ function updateActiveHeading(): void {
   const threshold = container.scrollTop + container.clientHeight / 2;
   const offsets = anchors
     .map((el) => ({
-      pm: Number(el.dataset["pmStart"]),
+      pm: readPaintedStart(el) ?? Number.NaN,
       top: el.getBoundingClientRect().top - top + container.scrollTop,
     }))
     .filter(({ pm }) => Number.isFinite(pm))

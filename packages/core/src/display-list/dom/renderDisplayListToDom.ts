@@ -38,6 +38,7 @@ import { writeCommentAnchorIds } from "../../render-dom/commentAnchorAttributes"
 import { bytesToDataUrl } from "../../utils/base64";
 import { cssString } from "../../utils/cssString";
 import { imageLuminanceFilter } from "../../utils/imageLuminance";
+import { writePaintedRange } from "../../utils/paintedPositions";
 import { applyTextAdvanceGaps } from "../../utils/textAdvanceGapsDom";
 import { anchorTargetAttrs } from "../../utils/urlSecurity";
 import { retainObjectUrl } from "../pageResourceOwnership";
@@ -457,13 +458,13 @@ const applyModelRange = (
   if (range === undefined) {
     return;
   }
-  if (purpose === "editing") span.className = "layout-run-text";
-  span.dataset[purpose === "editing" ? "pmStart" : "decorationStart"] = String(
-    range.start,
-  );
-  span.dataset[purpose === "editing" ? "pmEnd" : "decorationEnd"] = String(
-    range.end,
-  );
+  if (purpose === "editing") {
+    span.className = "layout-run-text";
+    writePaintedRange(span, range.start, range.end);
+  } else {
+    span.dataset["decorationStart"] = String(range.start);
+    span.dataset["decorationEnd"] = String(range.end);
+  }
   const { story } = range;
   span.dataset["story"] = story.kind;
   switch (story.kind) {
@@ -947,8 +948,7 @@ const applyRegionModel = (
     return;
   }
   if (model.pmRange !== undefined) {
-    element.dataset["pmStart"] = String(model.pmRange.start);
-    element.dataset["pmEnd"] = String(model.pmRange.end);
+    writePaintedRange(element, model.pmRange.start, model.pmRange.end);
   }
   if (model.blockId !== undefined) {
     element.dataset["blockId"] = model.blockId;

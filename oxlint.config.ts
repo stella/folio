@@ -138,6 +138,7 @@ export default library({
     "./.oxlint-plugins/folio-typecheck-proofs.ts",
     "./.oxlint-plugins/folio-harness-workspaces.ts",
     "./.oxlint-plugins/folio-test-dom.ts",
+    "./.oxlint-plugins/folio-painted-positions.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -191,6 +192,31 @@ export default library({
       files: ["**/*.test.*", "**/__tests__/**", "**/generated/**"],
       rules: {
         "utf8-boundaries/no-chunked-text-codec": "off",
+      },
+    },
+    {
+      // A painted element's editor positions are stored by
+      // packages/core/src/utils/paintedPositions.ts alone. The fixtures verify
+      // the rule.
+      files: [
+        "packages/*/src/**/*.{ts,tsx,js,jsx,vue}",
+        "test/__fixtures__/painted-positions.*.ts",
+      ],
+      rules: {
+        "folio-painted-positions/position-attribute-owner": "error",
+      },
+    },
+    {
+      // Tests and the playgrounds' test bridges assert or locate what was
+      // painted, as a consumer reading the page would.
+      files: [
+        "packages/*/src/**/*.test.*",
+        "packages/*/src/**/__tests__/**",
+        "packages/playground/**",
+        "packages/playground-vue/**",
+      ],
+      rules: {
+        "folio-painted-positions/position-attribute-owner": "off",
       },
     },
     {

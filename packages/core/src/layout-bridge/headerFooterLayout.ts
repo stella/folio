@@ -13,6 +13,12 @@
 
 import type { EditorView } from "prosemirror-view";
 
+import {
+  PAINTED_RANGE_SELECTOR,
+  paintedStartSelector,
+  readPaintedEnd,
+  readPaintedStart,
+} from "../utils/paintedPositions";
 import { getCollapsedLineEdgeCaretGeometry } from "./dom/clickToPositionDom";
 import {
   createTextStreamRange,
@@ -94,10 +100,10 @@ function getHfDomSnapshot(
   const cached = hfDomCache[section];
   if (cached && cached.host === host && cached.host.isConnected) return cached;
   const spans = Array.from(
-    host.querySelectorAll<HTMLElement>("span[data-pm-start][data-pm-end]"),
+    host.querySelectorAll<HTMLElement>(`span${PAINTED_RANGE_SELECTOR}`),
   );
   const ranged = Array.from(
-    host.querySelectorAll<HTMLElement>("[data-pm-start][data-pm-end]"),
+    host.querySelectorAll<HTMLElement>(PAINTED_RANGE_SELECTOR),
   );
   const snapshot = { host, spans, ranged };
   hfDomCache[section] = snapshot;
@@ -133,8 +139,8 @@ export function computeHfCaretRectFromView(
   if (!snapshot) return null;
   const { host, spans } = snapshot;
   for (const span of spans) {
-    const start = Number(span.dataset["pmStart"]);
-    const end = Number(span.dataset["pmEnd"]);
+    const start = readPaintedStart(span) ?? Number.NaN;
+    const end = readPaintedEnd(span) ?? Number.NaN;
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
     if (pmPos >= start && pmPos <= end) {
       const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(span, pmPos);
@@ -167,7 +173,7 @@ export function computeHfCaretRectFromView(
     }
   }
   // Exact paragraph/line anchor at `pmPos` (when the painter emits one).
-  const anchor = host.querySelector<HTMLElement>(`[data-pm-start="${pmPos}"]`);
+  const anchor = host.querySelector<HTMLElement>(paintedStartSelector(pmPos));
   if (anchor) {
     const rect = anchor.getBoundingClientRect();
     return { top: rect.top, left: rect.left + 1, height: rect.height || 16 };
@@ -183,8 +189,8 @@ export function computeHfCaretRectFromView(
   let bestEl: HTMLElement | null = null;
   let bestSpan = Infinity;
   for (const el of ranged) {
-    const start = Number(el.dataset["pmStart"]);
-    const end = Number(el.dataset["pmEnd"]);
+    const start = readPaintedStart(el) ?? Number.NaN;
+    const end = readPaintedEnd(el) ?? Number.NaN;
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
     if (pmPos < start || pmPos > end) continue;
     const span = end - start;
@@ -195,7 +201,7 @@ export function computeHfCaretRectFromView(
   }
   if (bestEl) {
     const rect = bestEl.getBoundingClientRect();
-    const end = Number(bestEl.dataset["pmEnd"]);
+    const end = readPaintedEnd(bestEl) ?? Number.NaN;
     const atEnd = pmPos >= end;
     return {
       top: rect.top,
@@ -214,7 +220,7 @@ export function computeHfCaretRectFromView(
   let trailingEl: HTMLElement | null = null;
   let trailingStart = -Infinity;
   for (const el of ranged) {
-    const start = Number(el.dataset["pmStart"]);
+    const start = readPaintedStart(el) ?? Number.NaN;
     if (!Number.isFinite(start)) continue;
     if (start > pmPos) continue;
     if (start > trailingStart) {
@@ -273,8 +279,8 @@ export function computeHfSelectionRectsFromView(
   if (!snapshot) return out;
   const { spans } = snapshot;
   for (const spanEl of spans) {
-    const pmStart = Number(spanEl.dataset["pmStart"]);
-    const pmEnd = Number(spanEl.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(spanEl) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(spanEl) ?? Number.NaN;
     if (!Number.isFinite(pmStart) || !Number.isFinite(pmEnd)) continue;
     if (pmEnd <= from || pmStart >= to) continue;
 
