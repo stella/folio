@@ -1368,6 +1368,9 @@ export type WellFormedRangePlan = {
 export const withBodyContent: (body: DocumentBody, content: BlockContent[]) => DocumentBody;
 
 // @public
+export const withParagraphCopies: (input: WithParagraphCopiesOptions) => Document_2;
+
+// @public
 export const withoutCommentThreads: (comments: readonly Comment_2[], removedRootIds: ReadonlySet<number>) => Comment_2[];
 
 // @public
