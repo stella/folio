@@ -91,7 +91,7 @@ export type ParagraphAnchorFacts = {
   anchors: readonly LeafSpan[];
   start: Gap;
   end: Gap;
-  textBoxes: readonly (readonly BlockContent[])[];
+  textBoxes: readonly BlockContent[][];
 };
 
 /** How the anchor walks read a paragraph's facts. */
@@ -103,7 +103,7 @@ export type ParagraphAnchorReader = (
 export const freshParagraphAnchorFacts: ParagraphAnchorReader = (paragraph) => {
   const spans = leafSpans(paragraph.content);
   const anchors: LeafSpan[] = [];
-  const textBoxes: (readonly BlockContent[])[] = [];
+  const textBoxes: BlockContent[][] = [];
   for (const span of spans) {
     if (isCommentAnchor(span.node)) anchors.push(span);
     if (span.node.type === "shape" && span.node.shape.textBody !== undefined)
