@@ -66,10 +66,10 @@ type ListNormalizationPackageInputs = Pick<
   "styles" | "numbering"
 >;
 
-/** One block as an earlier normalization of its story met it. */
+/** One block as an earlier normalization of its story left it. */
 type BlockRecord = {
   input: BlockContent;
-  /** Normalizing it returned it unchanged and recorded no inverse. */
+  /** Normalizing it returns it unchanged and records no inverse. */
   settled: boolean;
   /** The snapshot registration normalizing left for the paragraph. */
   snapshotToken: object | undefined;
@@ -391,8 +391,15 @@ export class ListNormalizationCache {
         outputs ??= [...blocks];
         outputs[index] = output;
       }
+      // A block normalized to a new one is kept as that one: normalizing it
+      // again from the same counters returns it unchanged.
       records.push(
-        recordOf(block, settled, listCounterStep(counters, advance), before),
+        recordOf(
+          output,
+          output === block ? settled : true,
+          listCounterStep(counters, advance),
+          before,
+        ),
       );
       return advance;
     };
