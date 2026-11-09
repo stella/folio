@@ -1,4 +1,4 @@
-import { type Locator, type Page, test } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import {
   ensureLiveView,
@@ -231,10 +231,6 @@ forEachAdapter(
 forEachAdapter(
   "CJK IME input caret stays beside a composition as it grows",
   async (adapter, { page }) => {
-    test.skip(
-      adapter.name === "vue",
-      "Runs in the Vue host from the next change.",
-    );
     await openEditor(page, adapter);
     await ensureLiveView(page);
     await page

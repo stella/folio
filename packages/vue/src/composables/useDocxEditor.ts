@@ -505,6 +505,11 @@ export type UseDocxEditorReturn = {
   parseError: Ref<string | null>;
   /** Computed page layout, or null before first paint. */
   layout: Ref<Layout | null>;
+  /**
+   * Width in pixels of the first section's text column, for the hidden editor
+   * to lay out its content at; 0 before the first layout pass.
+   */
+  hiddenEditorWidth: Ref<number>;
   /** Flow blocks from the latest layout pass — the range-projection fallback. */
   blocks: Ref<FlowBlock[]>;
   /** Measures from the latest layout pass — the range-projection fallback. */
@@ -603,6 +608,7 @@ export function useDocxEditor(
   );
   const activeNoteStory = shallowRef<NoteStoryKey | null>(null);
   const layout = shallowRef<Layout | null>(null);
+  const hiddenEditorWidth = ref(0);
   // Latest flow blocks + measures — the range-projection fallback (off-screen /
   // not-yet-painted ranges) needs them; the primary DOM-rect path does not.
   const blocks = shallowRef<FlowBlock[]>([]);
@@ -861,6 +867,7 @@ export function useDocxEditor(
     const margins = getMargins(sectionProps);
     const columns = getColumns(sectionProps);
     const contentWidth = pageSize.w - margins.left - margins.right;
+    hiddenEditorWidth.value = contentWidth;
     const styles = model?.package.styles ?? null;
     const theme = model?.package.theme ?? null;
     const defaultTabStop = model?.package.settings?.defaultTabStop;
@@ -1698,6 +1705,7 @@ export function useDocxEditor(
     isReady,
     isDirty,
     parseError,
+    hiddenEditorWidth,
     layout,
     blocks,
     measures,
