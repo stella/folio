@@ -64,6 +64,18 @@ const expectLocatorOf = (document: Document, seen: Set<string>): number => {
   return asked;
 };
 
+/** `document` with `content` as its main story's blocks. */
+const withMainContent = (
+  document: Document,
+  content: BlockContent[],
+): Document => ({
+  ...document,
+  package: {
+    ...document.package,
+    document: { ...document.package.document, content },
+  },
+});
+
 /** `document` with its main story's blocks reordered: the first block moved last. */
 const rotated = (document: Document): Document => {
   const [first, ...rest]: BlockContent[] = [
@@ -134,5 +146,25 @@ describe("finding a story paragraph through the kept locator", () => {
       },
     );
     expect(asked).toBeGreaterThan(1000);
+  });
+
+  test("equals a walk of the story along a chain longer than one index keeps", () => {
+    // Eighty versions in a row, each deriving its index from the one before:
+    // the chain settles into a root on the way.
+    const [generated] = fc.sample(documentArbitrary, { seed: 7, numRuns: 1 });
+    if (generated === undefined) throw new Error("No document was drawn.");
+    const seen = new Set<string>();
+    let document = generated;
+    let asked = expectLocatorOf(document, seen);
+    for (let version = 0; version < 80; version += 1) {
+      // One block replaced by a copy of itself: one changed block a version.
+      const content = [...document.package.document.content];
+      const at = version % Math.max(1, content.length);
+      const block = content[at];
+      if (block !== undefined) content[at] = { ...block };
+      document = withMainContent(document, content);
+      asked += expectLocatorOf(document, seen);
+    }
+    expect(asked).toBeGreaterThan(80);
   });
 });
