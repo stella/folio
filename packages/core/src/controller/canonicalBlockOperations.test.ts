@@ -772,12 +772,10 @@ describe("an insertion beside the paragraph the batch deletes", () => {
               ] as const satisfies readonly FolioDocumentOperation[];
               const operations = reversed ? [...halves].reverse() : halves;
               const run = await canonicalRun(source, operations, mode);
-              // Beside a paragraph that ends the body, or directly before a
-              // table, the insertion is still refused, and says so.
-              if (
-                shape === "ending the body" ||
-                (shape === "before a table" && mode === "direct")
-              ) {
+              // Tracked, beside a paragraph that ends the body, the insertion
+              // takes over the paragraph's mark that the deletion records,
+              // so it is still refused, and says so.
+              if (shape === "ending the body" && mode === "tracked-changes") {
                 expect(run.skipped.map(({ reason }) => reason)).toEqual([
                   "overlappingOperation",
                 ]);
@@ -794,6 +792,32 @@ describe("an insertion beside the paragraph the batch deletes", () => {
                 ),
               );
             });
+});
+
+describe("a deletion beside an insertion the batch refuses", () => {
+  // The deletion resolves on its own, as it does without the insertion.
+  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const mode of ["direct"] as const)
+      test(`${type} refused, ${mode}`, async () => {
+        const source = await packageOf(BODIES["ending the body"]);
+        const operations = [
+          { id: "from", type: "deleteBlock", blockId: "10000002" },
+          {
+            id: "to",
+            type,
+            blockId: "10000002",
+            text: "Moved",
+            precondition: { blockTextHash: "h0stale" },
+          },
+        ] as const satisfies readonly FolioDocumentOperation[];
+        const run = await canonicalRun(source, operations, mode);
+        expect(run.skipped.map(({ id, reason }) => [id, reason])).toEqual([
+          ["to", "preconditionFailed"],
+        ]);
+        const alone = await canonicalRun(source, [operations[0]], mode);
+        expect(alone.skipped).toEqual([]);
+        expect(run.state().doc.toJSON()).toEqual(alone.state().doc.toJSON());
+      });
 });
 
 describe("a move whose source a content lock keeps", () => {
