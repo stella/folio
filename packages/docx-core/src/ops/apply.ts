@@ -72,6 +72,7 @@ import { applyCommentOp } from "./comments";
 import {
   hasMultipleParagraphPropertyChanges,
   meetsContract,
+  repeatedParagraphId,
   validateOpsDocument,
 } from "./contract";
 import {
@@ -3134,6 +3135,11 @@ export const applyDocumentOp = (
       ),
     );
   }
+  // The contract keeps paragraph ids unique: an edit that would repeat one,
+  // however its operation came by it, is refused here, where it is owned.
+  const repeatedId = repeatedParagraphId(edit.document);
+  if (repeatedId !== undefined)
+    return Result.err(refusal(op, repeatedId.reason, repeatedId.message));
   meetsContract(edit.document);
   preserveParagraphPropertySnapshots({ before: document, edit });
   return Result.ok({
