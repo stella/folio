@@ -44,8 +44,10 @@ import {
   suppressFinalParagraphInRepeatedEmptySuffix,
 } from "./flowBlockPostprocessing";
 import {
+  blockIdsHandedOut,
   nextBlockId,
   resetBlockIdCounter,
+  skipBlockIds,
   twipsToPixels,
 } from "./flowConversionShared";
 import type {
@@ -55,6 +57,7 @@ import type {
 import { convertImage } from "./imageConversion";
 import { collectNoteRefs } from "./noteReferences";
 import { splitParagraphAtPageBreaks } from "./pageBreakSplitting";
+import type { ParagraphListMarker } from "./paragraphAttrs";
 import {
   convertParagraphWithListMarker,
   drawsParagraphBorder,
@@ -70,6 +73,15 @@ import {
   readFinalSectionStart,
 } from "./sectionBoundaries";
 import { convertTable, convertTextBoxNode } from "./tableConversion";
+import {
+  type ConversionCheckpoint,
+  convertsWithOtherNodes,
+  restoreListCounterState,
+  sameCheckpoint,
+  type SectionMarginsTwips,
+  takeCheckpoint,
+  type TopLevelConversion,
+} from "./topLevelConversion";
 
 export {
   formatCounter,
@@ -159,11 +171,25 @@ export function toFlowBlocks(
 
   const paragraphBlocks = options.paragraphBlocks;
   paragraphBlocks?.use(opts);
+  // Counters handed in continue another story's lists: the kept conversions
+  // started from none.
+  const seeded =
+    options.listCounters !== undefined ||
+    options.listAbstractCounters !== undefined ||
+    options.listSeenNumIds !== undefined ||
+    options.originalListCounters !== undefined ||
+    options.originalListAbstractCounters !== undefined ||
+    options.originalListSeenNumIds !== undefined;
+  const lastConversion = seeded
+    ? undefined
+    : paragraphBlocks?.lastConversion(doc);
+  const hasFontResolutionContext =
+    options.embeddedFontFamilyMap !== undefined ||
+    options.documentFontFacts !== undefined;
 
   const blocks: FlowBlock[] = [];
   const offset = 0; // Start at document beginning; kept for clarity.
-  void offset;
-  let lastSectionMarginsTwips = {
+  let lastSectionMarginsTwips: SectionMarginsTwips = {
     top: 1440,
     bottom: 1440,
     left: 1440,
@@ -189,8 +215,12 @@ export function toFlowBlocks(
 
   const trackedPush = (block: FlowBlock): void => {
     tagBlockWithSdtStack(block);
+    if (hasFontResolutionContext) attachFontResolutionContext(block, options);
     blocks.push(block);
   };
+
+  /** The marker of the last paragraph projected whole. */
+  let projectedMarker: { marker: ParagraphListMarker } | undefined;
 
   const pushParagraphProjection = (
     node: PMNode,
@@ -199,6 +229,7 @@ export function toFlowBlocks(
   ): void => {
     const listMarker = paragraphListMarker(node, opts);
     if (!stripLeadingLineBreak) {
+      projectedMarker = { marker: listMarker };
       const kept = paragraphBlocks?.take(node, pos, listMarker, nextBlockId);
       if (kept) {
         trackedPush(kept);
@@ -303,6 +334,7 @@ export function toFlowBlocks(
       return;
     }
     tagBlockWithSdtStack(textBox);
+    if (hasFontResolutionContext) attachFontResolutionContext(textBox, options);
     const heldBack = textBoxesBeforePageBreak.get(pageBreak);
     if (heldBack) {
       heldBack.push(textBox);
@@ -714,10 +746,158 @@ export function toFlowBlocks(
     }
   };
 
-  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-  doc.forEach((node, nodeOffset) => {
-    visit(node, offset + nodeOffset);
+  // The state converting the next node starts from, when the live state has
+  // not been brought up to it: blocks kept from the last conversion were
+  // handed out without converting their nodes.
+  let pending: ConversionCheckpoint | undefined;
+  /** The live state as a checkpoint, `previous` itself when it holds the same. */
+  const checkpoint = (
+    previous: ConversionCheckpoint | undefined,
+  ): ConversionCheckpoint => {
+    const live = takeLiveCheckpointView();
+    return previous !== undefined && sameCheckpoint(live, previous)
+      ? previous
+      : takeCheckpoint(
+          listCounterState,
+          originalListCounterState,
+          lastSectionMarginsTwips,
+          blocks.length - sectionStartBlockCount,
+        );
+  };
+  /** The live state, read in place: valid until the next node converts. */
+  const takeLiveCheckpointView = (): ConversionCheckpoint => ({
+    final: listCounterState,
+    original: originalListCounterState,
+    margins: lastSectionMarginsTwips,
+    sectionBlocks: blocks.length - sectionStartBlockCount,
   });
+  const startsFrom = (state: ConversionCheckpoint): boolean =>
+    sameCheckpoint(pending ?? takeLiveCheckpointView(), state);
+  const bringLiveStateUpToDate = (): ConversionCheckpoint | undefined => {
+    const state = pending;
+    if (state === undefined) return undefined;
+    restoreListCounterState(listCounterState, state.final);
+    restoreListCounterState(originalListCounterState, state.original);
+    lastSectionMarginsTwips = state.margins;
+    sectionStartBlockCount = blocks.length - state.sectionBlocks;
+    pending = undefined;
+    return state;
+  };
+
+  // The last conversion's nodes the document starts and ends with.
+  const kept = lastConversion?.nodes ?? [];
+  const nodeCount = doc.childCount;
+  let keptStart = 0;
+  while (
+    keptStart < nodeCount &&
+    keptStart < kept.length &&
+    kept[keptStart]?.node === doc.child(keptStart)
+  )
+    keptStart += 1;
+  let keptEnd = 0;
+  while (
+    keptEnd < nodeCount - keptStart &&
+    keptEnd < kept.length - keptStart &&
+    kept[kept.length - 1 - keptEnd]?.node === doc.child(nodeCount - 1 - keptEnd)
+  )
+    keptEnd += 1;
+  const keptIndex = (index: number): number | undefined => {
+    if (index < keptStart) return index;
+    if (index >= nodeCount - keptEnd) return index - nodeCount + kept.length;
+    return undefined;
+  };
+  const stateAfter = (index: number): ConversionCheckpoint | undefined =>
+    kept[index + 1]?.before ?? lastConversion?.end;
+
+  const converted: TopLevelConversion[] = [];
+  let lastBefore: ConversionCheckpoint | undefined;
+  let pos = offset;
+  for (let index = 0; index < nodeCount; index += 1) {
+    const node = doc.child(index);
+    const keptAt = keptIndex(index);
+    const previous = keptAt === undefined ? undefined : kept[keptAt];
+    const firstBlockId = blockIdsHandedOut();
+    if (
+      keptAt !== undefined &&
+      previous !== undefined &&
+      !convertsWithOtherNodes(node) &&
+      startsFrom(previous.before)
+    ) {
+      if (
+        previous.pos === pos &&
+        previous.firstBlockId === firstBlockId &&
+        previous.firstSdt === sdtSeq
+      ) {
+        // The node converts as it did: the same blocks.
+        for (const block of previous.blocks) blocks.push(block);
+        skipBlockIds(previous.blockIds);
+        sdtSeq += previous.sdts;
+        converted.push(previous);
+        lastBefore = previous.before;
+        pending = stateAfter(keptAt);
+        pos += node.nodeSize;
+        continue;
+      }
+      const moved =
+        previous.paragraphMarker !== undefined &&
+        previous.blockIds === 1 &&
+        previous.sdts === 0
+          ? paragraphBlocks?.take(
+              node,
+              pos,
+              previous.paragraphMarker.marker,
+              nextBlockId,
+            )
+          : undefined;
+      if (moved !== undefined) {
+        // The node converts as it did, moved: its paragraph moved.
+        trackedPush(moved);
+        converted.push({
+          ...previous,
+          pos,
+          firstBlockId,
+          firstSdt: sdtSeq,
+          blocks: [moved],
+        });
+        lastBefore = previous.before;
+        pending = stateAfter(keptAt);
+        pos += node.nodeSize;
+        continue;
+      }
+    }
+    const before = bringLiveStateUpToDate() ?? checkpoint(lastBefore);
+    const firstSdt = sdtSeq;
+    const firstBlock = blocks.length;
+    projectedMarker = undefined;
+    visit(node, pos);
+    const projected = blocks.slice(firstBlock);
+    const blockIds = blockIdsHandedOut() - firstBlockId;
+    converted.push({
+      node,
+      pos,
+      firstBlockId,
+      blockIds,
+      firstSdt,
+      sdts: sdtSeq - firstSdt,
+      before,
+      blocks: projected,
+      ...(projectedMarker !== undefined &&
+      node.type.name === "paragraph" &&
+      projected.length === 1 &&
+      projected[0]?.kind === "paragraph"
+        ? { paragraphMarker: projectedMarker }
+        : {}),
+    });
+    lastBefore = before;
+    pos += node.nodeSize;
+  }
+  if (paragraphBlocks !== undefined && !seeded) {
+    paragraphBlocks.recordConversion({
+      doc,
+      nodes: converted,
+      end: pending ?? checkpoint(lastBefore),
+    });
+  }
   releaseTextBoxesBeforePageBreaks();
 
   reserveLeadingEmptyOutlineHeight(blocks);
@@ -750,76 +930,75 @@ export function toFlowBlocks(
     options.splitPageBreakAndParagraphMark === true,
     sectionBreaksWithoutMarker,
   );
-  const result = groupParagraphFrames(reconciledBlocks, nextBlockId);
-  if (
-    options.embeddedFontFamilyMap !== undefined ||
-    options.documentFontFacts !== undefined
-  ) {
-    attachFontResolutionContext(result, options);
-  }
-  return result;
+  return groupParagraphFrames(reconciledBlocks, nextBlockId);
 }
 
-/** Attach editor-owned resolution to freshly derived blocks without changing authored data. */
+type FontResolutionContext = Pick<
+  ToFlowBlocksOptions,
+  "embeddedFontFamilyMap" | "documentFontFacts"
+>;
+
+/**
+ * Attach editor-owned resolution to a freshly derived block without changing
+ * authored data. Blocks kept from an earlier conversion under the same
+ * constants already carry it.
+ */
 const attachFontResolutionContext = (
-  blocks: FlowBlock[],
-  options: Pick<
-    ToFlowBlocksOptions,
-    "embeddedFontFamilyMap" | "documentFontFacts"
-  >,
+  block: FlowBlock,
+  options: FontResolutionContext,
 ): void => {
-  for (const block of blocks) {
-    switch (block.kind) {
-      case "paragraph":
-        for (const run of block.runs) {
-          if (run.kind !== "image" && run.kind !== "lineBreak") {
-            if (options.embeddedFontFamilyMap !== undefined) {
-              run.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
-            }
-            if (options.documentFontFacts !== undefined) {
-              run.documentFontFacts = options.documentFontFacts;
-            }
+  switch (block.kind) {
+    case "paragraph":
+      for (const run of block.runs) {
+        if (run.kind !== "image" && run.kind !== "lineBreak") {
+          if (options.embeddedFontFamilyMap !== undefined) {
+            run.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
+          }
+          if (options.documentFontFacts !== undefined) {
+            run.documentFontFacts = options.documentFontFacts;
           }
         }
-        block.attrs ??= {};
-        if (options.embeddedFontFamilyMap !== undefined) {
-          block.attrs.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
-        }
-        if (options.documentFontFacts !== undefined) {
-          block.attrs.documentFontFacts = options.documentFontFacts;
-        }
-        if (block.attrs.listMarkerFormatting) {
-          // A new object: the converted one may be kept for later conversions.
-          block.attrs.listMarkerFormatting = {
-            ...block.attrs.listMarkerFormatting,
-            ...(options.embeddedFontFamilyMap === undefined
-              ? {}
-              : { embeddedFontFamilyMap: options.embeddedFontFamilyMap }),
-            ...(options.documentFontFacts === undefined
-              ? {}
-              : { documentFontFacts: options.documentFontFacts }),
-          };
-        }
-        break;
-      case "table":
-        for (const row of block.rows) {
-          for (const cell of row.cells) {
-            attachFontResolutionContext(cell.blocks, options);
-          }
-        }
-        break;
-      case "textBox":
-        attachFontResolutionContext(block.content, options);
-        break;
-      case "image":
-      case "sectionBreak":
-      case "pageBreak":
-      case "columnBreak":
-        break;
-      default: {
-        const exhaustive: never = block;
-        return exhaustive;
       }
+      block.attrs ??= {};
+      if (options.embeddedFontFamilyMap !== undefined) {
+        block.attrs.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
+      }
+      if (options.documentFontFacts !== undefined) {
+        block.attrs.documentFontFacts = options.documentFontFacts;
+      }
+      if (block.attrs.listMarkerFormatting) {
+        // A new object: the converted one may be kept for later conversions.
+        block.attrs.listMarkerFormatting = {
+          ...block.attrs.listMarkerFormatting,
+          ...(options.embeddedFontFamilyMap === undefined
+            ? {}
+            : { embeddedFontFamilyMap: options.embeddedFontFamilyMap }),
+          ...(options.documentFontFacts === undefined
+            ? {}
+            : { documentFontFacts: options.documentFontFacts }),
+        };
+      }
+      break;
+    case "table":
+      for (const row of block.rows) {
+        for (const cell of row.cells) {
+          for (const cellBlock of cell.blocks)
+            attachFontResolutionContext(cellBlock, options);
+        }
+      }
+      break;
+    case "textBox":
+      for (const contentBlock of block.content)
+        attachFontResolutionContext(contentBlock, options);
+      break;
+    case "image":
+    case "sectionBreak":
+    case "pageBreak":
+    case "columnBreak":
+      break;
+    default: {
+      const exhaustive: never = block;
+      return exhaustive;
     }
   }
 };

@@ -1,13 +1,15 @@
 /**
- * Converting a document with the paragraph blocks kept from earlier
- * conversions equals converting every paragraph.
+ * Converting a document with the blocks kept from earlier conversions equals
+ * converting every node.
  *
  * Random runs of edits in the editor, typing, deleting across paragraphs,
  * splitting, list indent and outdent, undo and redo, and moving or copying a
  * whole paragraph elsewhere, over documents with lists, tables, notes,
  * comments, revisions, sections, fields, bookmarks, cross-references to list
- * numbers and anchored text boxes, are converted both ways after every edit,
- * with options that change along the way.
+ * numbers, anchored text boxes, content controls, page breaks, run-in
+ * headings and document grids, are converted both ways after every edit,
+ * with options that change along the way. Every block handed out is frozen,
+ * so a later conversion that wrote to a block it hands out again would fail.
  */
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
@@ -105,6 +107,62 @@ const referencesPackage = async (): Promise<Uint8Array> => {
     xml.replace(/<w:body>.*<w:sectPr>/su, `<w:body>${body}<w:sectPr>`),
   );
   return zip.generate({ compression: "store" });
+};
+
+/**
+ * Content controls, page breaks, run-in headings, grids, a closing table, a
+ * cross-reference to a later list number and an empty section mark.
+ */
+const structuresPackage = async (): Promise<Uint8Array> => {
+  const list = DOCUMENT_SHAPES.find(({ id }) => id === "single-decimal-list");
+  if (!list) throw new TypeError("The decimal list shape is missing.");
+  const zip = await ZipArchive.read(await list.build());
+  const xml = await zip.entry("word/document.xml")?.text();
+  if (xml === undefined) throw new TypeError("The list shape has no body.");
+  const control = (tag: string, inner: string) =>
+    `<w:sdt><w:sdtPr><w:alias w:val="Clause ${tag}"/><w:tag w:val="${tag}"/></w:sdtPr><w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
+  const gridSection = (top: number, pitch: number) =>
+    `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="${top}" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/><w:docGrid w:type="lines" w:linePitch="${pitch}"/></w:sectPr>`;
+  const body = [
+    '<w:p><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:p>',
+    paragraph(text("Opening, see ") + numberReference(9, "4")),
+    paragraph(text("First item"), true),
+    control(
+      "outer",
+      paragraph(text("Controlled item"), true) +
+        control("inner", paragraph(text("Nested control"))) +
+        paragraph(text("Controlled tail")),
+    ),
+    paragraph(text("Second item"), true),
+    '<w:p><w:r><w:br w:type="page"/></w:r></w:p>',
+    `<w:p><w:pPr><w:rPr><w:specVanish/></w:rPr></w:pPr>${text("Run-in heading.")}</w:p>`,
+    paragraph(text("Runs on after the heading.")),
+    `<w:p><w:pPr>${gridSection(1000, 360)}</w:pPr>${text("Ends a gridded section.")}</w:p>`,
+    paragraph(bookmark(9, text("Third item")), true),
+    paragraph(text("After the grid.")),
+    `<w:p><w:pPr><w:sectPr><w:type w:val="continuous"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1200" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:pPr></w:p>`,
+    paragraph(text("Closing words.")),
+    `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="4000" w:type="dxa"/></w:tcPr>${paragraph(text("Cell item"), true)}</w:tc></w:tr></w:tbl>`,
+    "<w:p/>",
+  ].join("");
+  zip.set(
+    "word/document.xml",
+    xml.replace(
+      /<w:body>.*<\/w:body>/su,
+      `<w:body>${body}${gridSection(1440, 312)}</w:body>`,
+    ),
+  );
+  return zip.generate({ compression: "store" });
+};
+
+/** Freeze every plain object and array a block holds. */
+const deepFreeze = (value: unknown, seen = new Set<unknown>()): void => {
+  if (typeof value !== "object" || value === null || seen.has(value)) return;
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== Array.prototype) return;
+  seen.add(value);
+  for (const nested of Object.values(value)) deepFreeze(nested, seen);
+  Object.freeze(value);
 };
 
 const editArbitrary = fc.record({
@@ -232,6 +290,7 @@ const flowOptions = (
     ),
   ),
   automaticHyphenation: { enabled: true },
+  finalSectionDocumentGridLinePitchTwips: 312,
   // Built afresh for every run, as a layout run builds them.
   justificationCompatibility: { type: "legacy" },
   tableIndentCompatibility: { type: "legacy" },
@@ -267,11 +326,14 @@ class CountingCache extends ParagraphBlockCache {
 describe("paragraph block cache", () => {
   test("converting with kept paragraph blocks equals converting every paragraph, and keeps their measurement keys", async () => {
     const documents = await Promise.all(
-      [...SHAPES.map(({ build }) => build), referencesPackage].map(
-        async (build) => parseShapeDocument(await build()),
-      ),
+      [
+        ...SHAPES.map(({ build }) => build),
+        referencesPackage,
+        structuresPackage,
+      ].map(async (build) => parseShapeDocument(await build())),
     );
     let reused = 0;
+    let handedOutAgain = 0;
     await assertProperty(
       fc.asyncProperty(
         fc.integer({ min: 0, max: documents.length - 1 }),
@@ -284,6 +346,7 @@ describe("paragraph block cache", () => {
           );
           const cache = new CountingCache();
           const options = { showCommentHighlights: true, alternate: "One" };
+          let last = new Set<FlowBlock>();
           const convert = () => {
             const constants = flowOptions(document, options);
             const kept = toFlowBlocks(view.state.doc, {
@@ -291,6 +354,13 @@ describe("paragraph block cache", () => {
               paragraphBlocks: cache,
             });
             expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+            for (const block of kept) if (last.has(block)) handedOutAgain += 1;
+            last = new Set(kept);
+            deepFreeze(kept);
+            // The blocks each node projected, before the passes over the list.
+            for (const node of cache.lastConversion(view.state.doc)?.nodes ??
+              [])
+              deepFreeze(node.blocks);
             // A moved paragraph's measurement key, taken from the block it
             // was moved from, is the key serializing it in full gives.
             for (const block of paragraphBlocksOf(kept))
@@ -310,6 +380,122 @@ describe("paragraph block cache", () => {
       { id: "paragraph-block-cache-equals-full-conversion", numRuns: 60 },
     );
     expect(reused).toBeGreaterThan(0);
+    expect(handedOutAgain).toBeGreaterThan(0);
+  });
+
+  test("a cross-reference to a later list item shows the number the list gives now", async () => {
+    const document = await parseShapeDocument(await structuresPackage());
+    const view = new HeadlessEditorView(
+      createHarnessState(document, "editing"),
+    );
+    const cache = new ParagraphBlockCache();
+    const options = { showCommentHighlights: true, alternate: "One" };
+    const convert = () => {
+      const constants = flowOptions(document, options);
+      const kept = toFlowBlocks(view.state.doc, {
+        ...constants,
+        paragraphBlocks: cache,
+      });
+      expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+      return kept;
+    };
+    convert();
+    // A new list item after the reference renumbers what it refers to; the
+    // paragraph holding the reference is the same node, where it was.
+    let firstItemEnd = 0;
+    view.state.doc.descendants((node, position) => {
+      if (node.isTextblock && node.textContent === "First item")
+        firstItemEnd = position + node.nodeSize - 1;
+      return firstItemEnd === 0;
+    });
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, firstItemEnd),
+      ),
+    );
+    view.pressKey("Enter");
+    view.typeText("Inserted");
+    convert();
+  });
+
+  test("an edit that adds a block without moving the paragraphs after it gives them their new ids", async () => {
+    const document = await parseShapeDocument(await structuresPackage());
+    const view = new HeadlessEditorView(
+      createHarnessState(document, "editing"),
+    );
+    const cache = new ParagraphBlockCache();
+    const options = { showCommentHighlights: true, alternate: "One" };
+    const convert = () => {
+      const constants = flowOptions(document, options);
+      const kept = toFlowBlocks(view.state.doc, {
+        ...constants,
+        paragraphBlocks: cache,
+      });
+      expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+      return kept;
+    };
+    const before = convert();
+    // A border on the empty section mark makes it paint a paragraph, so it
+    // projects a block it did not; its size, and every position, stay.
+    let markPos = -1;
+    view.state.doc.forEach((node, position) => {
+      if (
+        node.type.name === "paragraph" &&
+        node.content.size === 0 &&
+        node.attrs["_sectionProperties"] != null
+      )
+        markPos = position;
+    });
+    expect(markPos).toBeGreaterThan(0);
+    const mark = view.state.doc.nodeAt(markPos);
+    view.dispatch(
+      view.state.tr.setNodeMarkup(markPos, undefined, {
+        ...mark?.attrs,
+        borders: { bottom: { style: "single", size: 4 } },
+      }),
+    );
+    const after = convert();
+    expect(after.length).toBe(before.length + 1);
+  });
+
+  test("paragraphs kept before a section mark take the line pitch it gives now", async () => {
+    const document = await parseShapeDocument(await structuresPackage());
+    const view = new HeadlessEditorView(
+      createHarnessState(document, "editing"),
+    );
+    const cache = new ParagraphBlockCache();
+    const options = { showCommentHighlights: true, alternate: "One" };
+    const convert = () => {
+      const constants = flowOptions(document, options);
+      const kept = toFlowBlocks(view.state.doc, {
+        ...constants,
+        paragraphBlocks: cache,
+      });
+      expect(kept).toEqual(toFlowBlocks(view.state.doc, constants));
+      return kept;
+    };
+    convert();
+    let markPos = -1;
+    view.state.doc.forEach((node, position) => {
+      const section = node.attrs["_sectionProperties"] as
+        { docGrid?: { linePitch?: number } } | null | undefined;
+      if (section?.docGrid?.linePitch === 360) markPos = position;
+    });
+    expect(markPos).toBeGreaterThan(0);
+    const mark = view.state.doc.nodeAt(markPos);
+    const section = mark?.attrs["_sectionProperties"] as {
+      docGrid: Record<string, unknown>;
+    };
+    view.dispatch(
+      view.state.tr.setNodeMarkup(markPos, undefined, {
+        ...mark?.attrs,
+        _sectionProperties: {
+          ...section,
+          docGrid: { ...section.docGrid, linePitch: 480 },
+        },
+      }),
+    );
+    convert();
   });
 
   test("a cross-reference formatted in parts shows the number the list gives now", async () => {
