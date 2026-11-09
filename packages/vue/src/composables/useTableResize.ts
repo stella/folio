@@ -28,6 +28,7 @@ import {
   rowResizeCommand,
   TWIPS_PER_PIXEL,
 } from "@stll/folio-core/prosemirror/tableResize";
+import { readPaintedTableStart } from "@stll/folio-core/utils/paintedPositions";
 
 type ColumnResizeState = {
   active: boolean;
@@ -118,7 +119,7 @@ export function useTableResize({
       col.handle = target;
       target.classList.add("dragging");
       col.columnIndex = parseInt(target.dataset["columnIndex"] ?? "0", 10);
-      col.tablePmStart = parseInt(target.dataset["tablePmStart"] ?? "0", 10);
+      col.tablePmStart = readPaintedTableStart(target) ?? 0;
       seedColumnWidths(view, col);
       return true;
     }
@@ -136,7 +137,7 @@ export function useTableResize({
       row.isEdge = target.dataset["isEdge"] === "bottom";
       target.classList.add("dragging");
       row.rowIndex = parseInt(target.dataset["rowIndex"] ?? "0", 10);
-      row.tablePmStart = parseInt(target.dataset["tablePmStart"] ?? "0", 10);
+      row.tablePmStart = readPaintedTableStart(target) ?? 0;
       seedRowHeight(view, row, target);
       return true;
     }
@@ -150,7 +151,7 @@ export function useTableResize({
       edge.handle = target;
       target.classList.add("dragging");
       edge.columnIndex = parseInt(target.dataset["columnIndex"] ?? "0", 10);
-      edge.tablePmStart = parseInt(target.dataset["tablePmStart"] ?? "0", 10);
+      edge.tablePmStart = readPaintedTableStart(target) ?? 0;
       seedRightEdgeWidth(view, edge);
       return true;
     }

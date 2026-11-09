@@ -245,6 +245,12 @@ import {
   htmlQueryAll,
   queryHtmlElement,
 } from "@stll/folio-core/utils/domGuards";
+import {
+  hasPaintedStart,
+  PAINTED_START_SELECTOR,
+  readPaintedStart,
+  readPaintedTableStart,
+} from "@stll/folio-core/utils/paintedPositions";
 
 import { HiddenHeaderFooterPMs } from "../components/HiddenHeaderFooterPMs";
 import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterPMs";
@@ -2641,9 +2647,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
               ".layout-table-cell",
             );
             for (const cellEl of allCells) {
-              const pmStartAttr = cellEl.dataset["pmStart"];
-              if (pmStartAttr !== undefined) {
-                const pmPos = Number(pmStartAttr);
+              const pmPos = readPaintedStart(cellEl);
+              if (pmPos !== undefined) {
                 for (const [start, end] of selectedRanges) {
                   if (pmPos >= start && pmPos < end) {
                     cellEl.classList.add("layout-table-cell-selected");
@@ -3797,7 +3802,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           "layout-page-floating-image",
         ];
         const isImageContainer = (el: HTMLElement) =>
-          !!el.dataset["pmStart"] &&
+          hasPaintedStart(el) &&
           IMAGE_CONTAINER_CLASSES.some((c) => el.classList.contains(c));
 
         // Inline images: <img class="layout-run layout-run-image" data-pm-start="X">
@@ -4202,10 +4207,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             10,
           );
           resizeColumnIndexRef.current = colIndex;
-          resizeTablePmStartRef.current = Number.parseInt(
-            target.dataset["tablePmStart"] ?? "0",
-            10,
-          );
+          resizeTablePmStartRef.current = readPaintedTableStart(target) ?? 0;
 
           const view = resizeViewForRead;
           if (view) {
@@ -4259,10 +4261,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             10,
           );
           resizeRowIndexRef.current = rowIndex;
-          resizeRowTablePmStartRef.current = Number.parseInt(
-            target.dataset["tablePmStart"] ?? "0",
-            10,
-          );
+          resizeRowTablePmStartRef.current = readPaintedTableStart(target) ?? 0;
 
           const view = resizeViewForRead;
           if (view) {
@@ -4319,10 +4318,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             10,
           );
           resizeRightEdgeColIndexRef.current = colIndex;
-          resizeRightEdgePmStartRef.current = Number.parseInt(
-            target.dataset["tablePmStart"] ?? "0",
-            10,
-          );
+          resizeRightEdgePmStartRef.current =
+            readPaintedTableStart(target) ?? 0;
 
           // Get current last column width from ProseMirror doc
           const view = resizeViewForRead;
@@ -4350,9 +4347,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           e.preventDefault();
           e.stopPropagation();
 
-          const pmStart = imageEl.dataset["pmStart"];
+          const pmStart = readPaintedStart(imageEl);
           if (pmStart !== undefined) {
-            const pos = Number.parseInt(pmStart, 10);
+            const pos = pmStart;
             // HF edit mode + image inside an HF slot: NodeSelect on the
             // matching HF PM. Otherwise selection would land on body at
             // an HF-doc position, which doesn't address a valid node and
@@ -4905,7 +4902,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
 
         /** Extract PM position from a cell element */
         const getCellPmPos = (el: HTMLElement | null): number =>
-          el ? Number(el.dataset["pmStart"]) || 0 : 0;
+          el ? readPaintedStart(el) || 0 : 0;
 
         // Show button centered on the hovered row (left edge hover)
         if (nearLeftEdge) {
@@ -6430,15 +6427,16 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           let bestNumber: number | null = null;
           let bestStart = Number.NEGATIVE_INFINITY;
           for (const shell of shells) {
-            const anchors =
-              shell.querySelectorAll<HTMLElement>("[data-pm-start]");
+            const anchors = shell.querySelectorAll<HTMLElement>(
+              PAINTED_START_SELECTOR,
+            );
             if (anchors.length === 0) {
               continue;
             }
             let pageStart = Number.POSITIVE_INFINITY;
             let pageEnd = Number.NEGATIVE_INFINITY;
             for (const el of anchors) {
-              const pm = Number(el.dataset["pmStart"]);
+              const pm = readPaintedStart(el) ?? Number.NaN;
               if (!Number.isFinite(pm)) {
                 continue;
               }

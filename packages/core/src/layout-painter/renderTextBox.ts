@@ -22,6 +22,7 @@ import type {
 } from "../layout-engine/types";
 import { presetDashForOutlineAttr } from "../types/documentEnumValues";
 import { cssBorderStyleForDash } from "../utils/borderCss";
+import { writePaintedRange } from "../utils/paintedPositions";
 import { setAuthoredBackgroundColor } from "./documentColors";
 import { renderParagraphFragment } from "./renderParagraph";
 import type { RenderContext } from "./renderUtils";
@@ -152,12 +153,7 @@ export function renderTextBoxFragment(
 
   // Store metadata
   containerEl.dataset["blockId"] = String(fragment.blockId);
-  if (fragment.pmStart !== undefined) {
-    containerEl.dataset["pmStart"] = String(fragment.pmStart);
-  }
-  if (fragment.pmEnd !== undefined) {
-    containerEl.dataset["pmEnd"] = String(fragment.pmEnd);
-  }
+  writePaintedRange(containerEl, fragment.pmStart, fragment.pmEnd);
 
   // Render inner content using pre-measured data
   const innerWidth = fragment.width - margins.left - margins.right;

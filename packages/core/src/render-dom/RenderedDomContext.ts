@@ -19,6 +19,7 @@ import {
   totalTextLength,
 } from "../layout-bridge/dom/textStreamDom";
 import { closestHtmlElement } from "../utils/domGuards";
+import { readPaintedEnd, readPaintedStart } from "../utils/paintedPositions";
 
 export type RenderedDomPoint = {
   x: number;
@@ -67,8 +68,8 @@ export class RenderedDomContextImpl implements RenderedDomContext {
     }
 
     for (const span of spans) {
-      const pmStart = Number(span.dataset["pmStart"]);
-      const pmEnd = Number(span.dataset["pmEnd"]);
+      const pmStart = readPaintedStart(span) ?? Number.NaN;
+      const pmEnd = readPaintedEnd(span) ?? Number.NaN;
       const containsPosition = span.classList.contains("layout-run-tab")
         ? pmPos >= pmStart && pmPos < pmEnd
         : pmPos >= pmStart && pmPos <= pmEnd;
@@ -122,8 +123,8 @@ export class RenderedDomContextImpl implements RenderedDomContext {
       if (!paragraph) {
         continue;
       }
-      const pmStart = Number(paragraph.dataset["pmStart"]);
-      const pmEnd = Number(paragraph.dataset["pmEnd"]);
+      const pmStart = readPaintedStart(paragraph) ?? Number.NaN;
+      const pmEnd = readPaintedEnd(paragraph) ?? Number.NaN;
       if (pmPos < pmStart || pmPos > pmEnd) {
         continue;
       }
@@ -139,8 +140,8 @@ export class RenderedDomContextImpl implements RenderedDomContext {
 
   findElementsForRange(from: number, to: number): Element[] {
     return findBodyPmSpans(this.#pagesContainer).filter((span) => {
-      const pmStart = Number(span.dataset["pmStart"]);
-      const pmEnd = Number(span.dataset["pmEnd"]);
+      const pmStart = readPaintedStart(span) ?? Number.NaN;
+      const pmEnd = readPaintedEnd(span) ?? Number.NaN;
       return pmEnd > from && pmStart < to;
     });
   }

@@ -7,6 +7,7 @@
  */
 
 import { releaseDisplayPageResources } from "../display-list/pageResourceOwnership";
+import { PAINTED_POSITION_ATTRIBUTES } from "../utils/paintedPositions";
 
 /**
  * The attributes that say where a painted node stands in the editor document.
@@ -14,12 +15,7 @@ import { releaseDisplayPageResources } from "../display-list/pageResourceOwnersh
  * node that differs from its fresh rendering only in these is kept and takes
  * the fresh values.
  */
-const POSITION_ATTRIBUTES: ReadonlySet<string> = new Set([
-  "data-pm-start",
-  "data-pm-end",
-  "data-table-pm-start",
-  "data-sdt-pm-pos",
-]);
+const POSITION_ATTRIBUTES = PAINTED_POSITION_ATTRIBUTES;
 
 const sameAttributes = (
   painted: Element,

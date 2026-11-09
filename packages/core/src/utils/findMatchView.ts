@@ -21,6 +21,11 @@ import { resolveFindMatchRanges } from "../prosemirror/findReplaceSelection";
 import type { FindMatchRange } from "../prosemirror/findReplaceSelection";
 import type { Document } from "../types/document";
 import type { FindMatch } from "./findReplace";
+import {
+  PAINTED_RANGE_SELECTOR,
+  readPaintedEnd,
+  readPaintedStart,
+} from "./paintedPositions";
 
 const storyKey = (story: OpStory): string => {
   if (story === OP_STORIES.MAIN) return "body";
@@ -264,7 +269,7 @@ export const createFindMatchView = (
     targets.clear();
     const spans = new Map<string, HTMLElement[]>();
     for (const span of container.querySelectorAll<HTMLElement>(
-      ".layout-page span[data-pm-start][data-pm-end], .layout-page span[data-decoration-start][data-decoration-end]",
+      `.layout-page span${PAINTED_RANGE_SELECTOR}, .layout-page span[data-decoration-start][data-decoration-end]`,
     )) {
       const key = spanStoryKey(span);
       const group = spans.get(key);
@@ -569,6 +574,6 @@ export const createFindMatchView = (
 };
 
 const spanStart = (span: HTMLElement) =>
-  Number(span.dataset["pmStart"] ?? span.dataset["decorationStart"]);
+  readPaintedStart(span) ?? Number(span.dataset["decorationStart"]);
 const spanEnd = (span: HTMLElement) =>
-  Number(span.dataset["pmEnd"] ?? span.dataset["decorationEnd"]);
+  readPaintedEnd(span) ?? Number(span.dataset["decorationEnd"]);
