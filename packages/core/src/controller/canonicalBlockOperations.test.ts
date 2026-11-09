@@ -457,6 +457,44 @@ const OPERATIONS = {
     blockId: "10000002",
     offset: 2,
   },
+  "splitBlock first half's properties": {
+    id: "op",
+    type: "splitBlock",
+    blockId: "10000002",
+    offset: 2,
+    firstParagraphProperties: { alignment: "right", indentation: null },
+  },
+  "splitBlock second half's properties": {
+    id: "op",
+    type: "splitBlock",
+    blockId: "10000002",
+    offset: 2,
+    secondParagraphProperties: {
+      styleId: "Heading1",
+      spacing: { spaceAfter: 120 },
+    },
+  },
+  "splitBlock both halves' properties": {
+    id: "op",
+    type: "splitBlock",
+    blockId: "10000002",
+    offset: 2,
+    firstParagraphProperties: {
+      numbering: paragraphNumberingReference({ numId: 1, ilvl: 0 }),
+    },
+    secondParagraphProperties: {
+      numbering: paragraphNumberingReference({ numId: 1, ilvl: 1 }),
+    },
+  },
+  "splitBlock second half in a new list": {
+    id: "op",
+    type: "splitBlock",
+    blockId: "10000002",
+    offset: 2,
+    secondParagraphProperties: {
+      numbering: { kind: "newList", format: "bullet" },
+    },
+  },
   "mergeBlockWithNext separated": {
     id: "op",
     type: "mergeBlockWithNext",
@@ -588,6 +626,38 @@ describe("block-level public operations match the default engine", () => {
           ).toEqual(expected);
         });
       }
+});
+
+describe("a split's second half after an insertion in one batch", () => {
+  // The insertion after the later paragraph applies first and takes a new
+  // paragraph id; the split's second half takes the next one, and its
+  // properties follow it there.
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(mode, async () => {
+      const source = await packageOf(BODIES["between two paragraphs"]);
+      const operations = [
+        {
+          id: "split",
+          type: "splitBlock",
+          blockId: "10000001",
+          offset: 2,
+          secondParagraphProperties: { alignment: "right" },
+        },
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: "10000003",
+          text: "Added",
+        },
+      ] as const satisfies readonly FolioDocumentOperation[];
+      const run = await canonicalRun(source, operations, mode);
+      expect(run.skipped).toEqual([]);
+      await expectOutcomes(
+        await outcomes(await viaCanonicalEngine(source, operations, mode)),
+        await outcomes(await viaDefaultEngine(source, operations, mode)),
+        source,
+      );
+    });
 });
 
 describe("inline line breaks", () => {

@@ -313,6 +313,38 @@ const resolveParagraphProperties = ({
   });
 };
 
+/**
+ * The intent that states `properties` on one paragraph by its identity,
+ * none when they state nothing.
+ */
+const statedPropertiesIntents = ({
+  story,
+  blockId,
+  properties,
+  mintList,
+}: {
+  story: OpStory;
+  blockId: string;
+  properties: FolioAIBlockParagraphProperties | undefined;
+  mintList: (format: FolioAIListKind) => MintedList;
+}): EditorIntent[] => {
+  if (properties === undefined) return [];
+  const stated = statedNumbering(properties.numbering, mintList);
+  const patch = statedParagraphPatch({
+    ...properties,
+    ...(stated.numbering === undefined ? {} : { numbering: stated.numbering }),
+  });
+  if (Object.keys(patch).length === 0) return [];
+  return [
+    {
+      type: "formatParagraph",
+      at: { story, blockId, offset: 0 },
+      patch,
+      ...(stated.newList === undefined ? {} : { newList: stated.newList }),
+    },
+  ];
+};
+
 type BlockInsertion = Extract<
   FolioDocumentOperation,
   { type: "insertAfterBlock" | "insertBeforeBlock" }
@@ -645,20 +677,28 @@ const compilePublicIntents = ({
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
   const revisions: number[] = [];
+  // A split's new half takes the id allocated here, not the one it resolved
+  // with: a later intent naming that half names the allocated one.
+  const allocated = new Map<string, string>();
   for (const sourceIntent of intents) {
     const ids = allocate(document, sourceIntent);
-    const intent =
-      sourceIntent.type === "splitParagraph"
-        ? ({
-            type: "splitParagraph",
-            at: sourceIntent.at,
-            ...(sourceIntent.to === undefined ? {} : { to: sourceIntent.to }),
-            ...(sourceIntent.newHalf === undefined
-              ? {}
-              : { newHalf: sourceIntent.newHalf }),
-            newBlockId: ids.newBlockId,
-          } as const)
-        : sourceIntent;
+    let intent: EditorIntent = sourceIntent;
+    if (sourceIntent.type === "splitParagraph") {
+      allocated.set(sourceIntent.newBlockId, ids.newBlockId);
+      intent = {
+        type: "splitParagraph",
+        at: sourceIntent.at,
+        ...(sourceIntent.to === undefined ? {} : { to: sourceIntent.to }),
+        ...(sourceIntent.newHalf === undefined
+          ? {}
+          : { newHalf: sourceIntent.newHalf }),
+        newBlockId: ids.newBlockId,
+      };
+    } else if (sourceIntent.type === "formatParagraph") {
+      const blockId = allocated.get(sourceIntent.at.blockId);
+      if (blockId !== undefined)
+        intent = { ...sourceIntent, at: { ...sourceIntent.at, blockId } };
+    }
     const firstRevisionId = nextRevisionId;
     const compiled = compileEditorIntent(document, {
       intent,
@@ -1726,14 +1766,6 @@ export class CanonicalPublicOperations {
         text = operation.text;
         break;
       case "splitBlock":
-        if (
-          operation.firstParagraphProperties ||
-          operation.secondParagraphProperties
-        )
-          return refusal(
-            "unsupportedBlock",
-            "Canonical split paragraph properties are unavailable.",
-          );
         start = operation.offset;
         end = start + (operation.separator?.length ?? 0);
         if (
@@ -2032,29 +2064,34 @@ export class CanonicalPublicOperations {
       intents.push(intent);
       // The merged paragraph's properties: on the first paragraph a direct
       // join keeps, on the second, whose mark a tracked join leaves.
-      const properties = operation.mergedParagraphProperties;
-      if (properties !== undefined) {
-        const stated = statedNumbering(properties.numbering, mintList);
-        const patch = statedParagraphPatch({
-          ...properties,
-          ...(stated.numbering === undefined
-            ? {}
-            : { numbering: stated.numbering }),
-        });
-        if (Object.keys(patch).length > 0)
-          intents.push({
-            type: "formatParagraph",
-            at: {
-              story,
-              blockId: tracked ? intent.nextBlockId : intent.blockId,
-              offset: 0,
-            },
-            patch,
-            ...(stated.newList === undefined
-              ? {}
-              : { newList: stated.newList }),
-          });
-      }
+      intents.push(
+        ...statedPropertiesIntents({
+          story,
+          blockId: tracked ? intent.nextBlockId : intent.blockId,
+          properties: operation.mergedParagraphProperties,
+          mintList,
+        }),
+      );
+    } else if (
+      operation.type === "splitBlock" &&
+      intent.type === "splitParagraph"
+    ) {
+      intents.push(intent);
+      // Each half's properties, as the default engine sets them once the
+      // split is made: the first half keeps the paragraph's identity, the
+      // second takes the new one.
+      for (const [half, properties] of [
+        [paragraph.blockId, operation.firstParagraphProperties],
+        [intent.newBlockId, operation.secondParagraphProperties],
+      ] as const)
+        intents.push(
+          ...statedPropertiesIntents({
+            story,
+            blockId: half,
+            properties,
+            mintList,
+          }),
+        );
     } else intents.push(intent);
     const structural =
       operation.type === "splitBlock" ||
