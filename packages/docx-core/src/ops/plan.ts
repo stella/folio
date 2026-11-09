@@ -19,6 +19,7 @@ import {
   identityKeysIn,
   type IdentitySpace,
   idKey,
+  packageIdentityKeyIndex,
   packageIdentityKeys,
 } from "./ids";
 import {
@@ -168,7 +169,7 @@ export const trimAppliedNewIds = ({
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const identities = new Set(identityKeysIn(paragraphs));
   const revisions = new Set(applied.revisions);
-  const known = new Set(packageIdentityKeys(before.package));
+  const known = packageIdentityKeyIndex(before.package);
   return filterNewIds(op, (space, id) => {
     const key = `${space}:${id}`;
     return (
