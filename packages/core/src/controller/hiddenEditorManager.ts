@@ -74,6 +74,7 @@ import {
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import {
   adoptNativeSelection,
+  createNativeSelectionRefreshPlugin,
   isCompositionKeyDown,
 } from "../prosemirror/nativeSelection";
 import {
@@ -691,6 +692,7 @@ export const createHiddenEditorManager = (
       plugins: [
         createDocumentNumberingPlugin(session.document.package.numbering),
         createParagraphChangeTrackerPlugin(),
+        createNativeSelectionRefreshPlugin(),
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? session.document.package.styles,
         ),

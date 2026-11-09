@@ -38,6 +38,7 @@ import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import {
   BROWSER_INPUT_REGRESSIONS,
+  CANONICAL_COMPOSITION_BESIDE_PASTED_RUN,
   PINNED_BROWSER_INPUT_TAG,
 } from "./browserInputRegressions";
 import {
@@ -349,7 +350,18 @@ const paste = async (
   );
 };
 
-const drive = async (page: Page, action: BrowserInputAction) => {
+const PROVISIONAL_TEXT_AT_CARET =
+  "a composition shows its text in progress at the caret";
+
+/**
+ * Drives one action. With `readsProvisional`, a composition's text in
+ * progress must show where its caret was after every update.
+ */
+const drive = async (
+  page: Page,
+  action: BrowserInputAction,
+  { readsProvisional = false }: { readsProvisional?: boolean } = {},
+) => {
   switch (action.kind) {
     case "typing":
       await page.keyboard.type(action.text);
@@ -374,9 +386,27 @@ const drive = async (page: Page, action: BrowserInputAction) => {
     case "pasteMultiBlock":
       await paste(page, action);
       return;
-    case "imeReplacement":
-      await driveBrowserIme(page, action);
+    case "imeReplacement": {
+      const readings = await driveBrowserIme(page, action, {
+        readProvisional: readsProvisional,
+      });
+      // The browser may keep part of an earlier update beside the new one;
+      // the text around the caret stays as it was.
+      for (const { update, before, after, actual } of readings) {
+        const between =
+          actual !== null &&
+          actual.length >= before.length + after.length &&
+          actual.startsWith(before) &&
+          actual.endsWith(after)
+            ? actual.slice(before.length, actual.length - after.length)
+            : null;
+        expect(
+          between?.includes(update) ?? false,
+          `${PROVISIONAL_TEXT_AT_CARET}: ${JSON.stringify(update)} between ${JSON.stringify(before)} and ${JSON.stringify(after)}, shown ${JSON.stringify(actual)}`,
+        ).toBe(true);
+      }
       return;
+    }
     case "cut":
       await page.keyboard.press(`${MODIFIER}+x`);
       return;
@@ -466,7 +496,7 @@ const driveWithAuthority = async ({
     selection: before.selection["type"] === "cell" ? "cells" : "other",
   });
   validateHarnessRefusalRows(rows);
-  await drive(page, action);
+  await drive(page, action, { readsProvisional: true });
   const after = await canonicalSnapshot(page);
   const errors = await drainCanonicalErrors(page);
   if (rows.length > 0) expect(errors.length).toBeGreaterThan(0);
@@ -747,6 +777,43 @@ test.describe("pinned browser input", () => {
     );
   }
 });
+
+test(
+  "a composition beside a pasted run commits what the default editor commits",
+  { tag: PINNED_BROWSER_INPUT_TAG },
+  async ({ page }) => {
+    test.setTimeout(60_000);
+    const { trace } = CANONICAL_COMPOSITION_BESIDE_PASTED_RUN;
+    const source = await shapeArrayBuffer(trace.shape);
+    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+    for (const suggesting of [false, true]) {
+      const [canonical, viaDefault] = [
+        await runMode({
+          page,
+          source,
+          baseline,
+          trace,
+          suggesting,
+          authority: "canonical",
+        }),
+        await runMode({
+          page,
+          source,
+          baseline,
+          trace,
+          suggesting,
+          authority: "prosemirror",
+        }),
+      ];
+      if (canonical.type !== "ready" || viaDefault.type !== "ready")
+        throw new TypeError("Both editors must open the composition fixture.");
+      expect(canonical.blocks).toEqual(viaDefault.blocks);
+      expect(
+        canonical.changes.map(({ type, text }) => ({ type, text })),
+      ).toEqual(viaDefault.changes.map(({ type, text }) => ({ type, text })));
+    }
+  },
+);
 
 /** Replays the same action schedule through #1148's fresh-render scheduler oracle. */
 const checkFreshRender = (trace: BrowserInputTrace) => {

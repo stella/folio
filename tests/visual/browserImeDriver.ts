@@ -3,6 +3,16 @@ import type { Page } from "@playwright/test";
 import type { BrowserInputAction } from "./browserInputTrace";
 
 type BrowserImeAction = Extract<BrowserInputAction, { kind: "imeReplacement" }>;
+/**
+ * The composing paragraph's text after one update, and its text before and
+ * after the selection the composition started from.
+ */
+export type ProvisionalReading = {
+  update: string;
+  before: string;
+  after: string;
+  actual: string | null;
+};
 type ImeLifecycleDriver = {
   update: (text: string) => Promise<void>;
   commit: (text: string) => Promise<void>;
@@ -32,7 +42,17 @@ export const runBrowserImeLifecycle = async (
   // focus lifecycle without issuing a second edit against restored canonical DOM.
   await driver.finish(action.completion);
 };
-export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
+/**
+ * Drives one composition through Chromium's input method. With
+ * `readProvisional`, it reads the composing paragraph after each update: the
+ * text in progress belongs where the caret was, between the paragraph's text
+ * before and after the selection it started from.
+ */
+export const driveBrowserIme = async (
+  page: Page,
+  action: BrowserImeAction,
+  { readProvisional = false }: { readProvisional?: boolean } = {},
+): Promise<readonly ProvisionalReading[]> => {
   const lifecycle = await page.evaluateHandle(() => {
     const editor = document.activeElement;
     if (
@@ -42,6 +62,51 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
       throw new TypeError("Native IME requires a focused editor");
     let phase: "active" | "ended" = "active";
     const controller = new AbortController();
+    const paragraphOf = (node: Node) =>
+      (node instanceof Element ? node : node.parentElement)?.closest("p") ??
+      null;
+    const range =
+      (document.getSelection()?.rangeCount ?? 0) > 0
+        ? document.getSelection()?.getRangeAt(0)
+        : undefined;
+    const started = range ? paragraphOf(range.startContainer) : null;
+    // Only a composition inside one paragraph has a text to expect there.
+    const around =
+      range &&
+      started &&
+      editor.contains(started) &&
+      paragraphOf(range.endContainer) === started
+        ? (() => {
+            const before = document.createRange();
+            before.selectNodeContents(started);
+            before.setEnd(range.startContainer, range.startOffset);
+            const after = document.createRange();
+            after.selectNodeContents(started);
+            after.setStart(range.endContainer, range.endOffset);
+            return {
+              paragraph: started,
+              id: started.getAttribute("data-para-id"),
+              before: before.toString(),
+              after: after.toString(),
+            };
+          })()
+        : null;
+    /** The composing paragraph's text, even when the editor redrew it. */
+    const provisional = () => {
+      if (around === null) return null;
+      const redrawn =
+        around.id === null
+          ? null
+          : editor.querySelector(`p[data-para-id="${CSS.escape(around.id)}"]`);
+      const paragraph = around.paragraph.isConnected
+        ? around.paragraph
+        : redrawn;
+      return {
+        before: around.before,
+        after: around.after,
+        actual: paragraph?.textContent ?? null,
+      };
+    };
     editor.addEventListener(
       "compositionend",
       (event) => {
@@ -54,11 +119,13 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
     return {
       editor,
       controller,
+      provisional,
       get phase() {
         return phase;
       },
     };
   });
+  const readings: ProvisionalReading[] = [];
   const cdp = await page.context().newCDPSession(page);
   try {
     await runBrowserImeLifecycle(
@@ -70,6 +137,17 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
             selectionStart: text.length,
             selectionEnd: text.length,
           });
+          if (!readProvisional) return;
+          // Read once the editor has handled the update and painted it.
+          const read = await lifecycle.evaluate(
+            ({ provisional }) =>
+              new Promise<ReturnType<typeof provisional>>((resolve) =>
+                requestAnimationFrame(() =>
+                  setTimeout(() => resolve(provisional()), 0),
+                ),
+              ),
+          );
+          if (read !== null) readings.push({ update: text, ...read });
         },
         commit: async (text) => {
           await cdp.send("Input.insertText", { text });
@@ -102,4 +180,5 @@ export const driveBrowserIme = async (page: Page, action: BrowserImeAction) => {
     await lifecycle.dispose();
     await cdp.detach();
   }
+  return readings;
 };
