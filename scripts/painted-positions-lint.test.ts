@@ -22,15 +22,22 @@ const lintFixture = (fixture: string) => {
     { cwd: REPO_ROOT },
   );
   const output = `${result.stdout.toString()}${result.stderr.toString()}`;
-  return output.split(RULE_MARKER).length - 1;
+  return {
+    hits: output.split(RULE_MARKER).length - 1,
+    exitCode: result.exitCode,
+  };
 };
 
 describe("painted positions owner", () => {
   test("rejects every spelling of a painted position outside the owner", () => {
-    expect(lintFixture("painted-positions.invalid.ts")).toBe(8);
+    expect(lintFixture("painted-positions.invalid.ts").hits).toBe(11);
   });
 
   test("accepts the owner's readers, writers and selectors", () => {
-    expect(lintFixture("painted-positions.valid.ts")).toBe(0);
+    // A run that fails before linting prints no marker either.
+    expect(lintFixture("painted-positions.valid.ts")).toEqual({
+      hits: 0,
+      exitCode: 0,
+    });
   });
 });

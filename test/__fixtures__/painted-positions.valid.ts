@@ -17,3 +17,7 @@ export const spans = root.querySelectorAll(`span${PAINTED_RANGE_SELECTOR}`);
 export const anchor = root.querySelector(paintedStartSelector(3));
 export const blockId = element.dataset["blockId"];
 export const layoutStart = fragment.pmStart;
+declare const block: { pmStart?: number };
+export const known = "pmStart" in block;
+export const { blockId: destructuredId } = element.dataset;
+export type PositionField = "pmStart" | "pmEnd";
