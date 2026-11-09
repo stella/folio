@@ -32,7 +32,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { createCensusReader } from "./editorIntentCensus";
+import { packageIdOccupancy } from "./editorIntentCensus";
 import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
 import { resolveGap } from "./gaps";
@@ -430,7 +430,11 @@ const leafRevisionDemand = (ancestorCount: number) => 4 * (1 + ancestorCount);
 export const createEditorIntentIdAllocator = ({
   reservedBlockIds,
 }: { reservedBlockIds?: ReadonlySet<string> } = {}) => {
-  const readCensus = createCensusReader();
+  // A story's paragraphs, by the body object: a body an edit left is read once.
+  const storyLocations = new WeakMap<
+    ReturnType<typeof storyBody>,
+    ReturnType<typeof storyParagraphs>
+  >();
   return (
     document: Document,
     intent: EditorIntentAllocation,
@@ -442,13 +446,14 @@ export const createEditorIntentIdAllocator = ({
       control: number[];
     };
   } => {
-    const census = readCensus(document);
+    const census = packageIdOccupancy(document.package);
     const { story, fromId, toId, fromOffset, toOffset } =
       intentEndpoints(intent);
-    let locations = census.stories.get(story);
+    const body = storyBody(document, story);
+    let locations = storyLocations.get(body);
     if (locations === undefined) {
-      locations = storyParagraphs(storyBody(document, story));
-      census.stories.set(story, locations);
+      locations = storyParagraphs(body);
+      storyLocations.set(body, locations);
     }
     const first = locations.findIndex(
       ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(fromId),
@@ -503,7 +508,10 @@ export const createEditorIntentIdAllocator = ({
           demand += 4 * (1 + span.ancestors.length);
       }
     }
-    const fresh = (occupied: ReadonlySet<number>, count: number) => {
+    const fresh = (
+      occupied: { has: (id: number) => boolean },
+      count: number,
+    ) => {
       const ids: number[] = [];
       for (let id = 1; id <= MAX_REVISION_ID && ids.length < count; id += 1) {
         if (!occupied.has(id)) ids.push(id);
