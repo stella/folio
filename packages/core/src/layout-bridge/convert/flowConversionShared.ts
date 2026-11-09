@@ -174,3 +174,13 @@ export function nextBlockId(): string {
 export function resetBlockIdCounter(): void {
   blockIdCounter = 0;
 }
+
+/** How many block ids the current conversion has handed out. */
+export function blockIdsHandedOut(): number {
+  return blockIdCounter;
+}
+
+/** Hand out `count` ids without making blocks: blocks kept from before hold them. */
+export function skipBlockIds(count: number): void {
+  blockIdCounter += count;
+}

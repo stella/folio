@@ -21,6 +21,7 @@ import type {
 } from "../types";
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 import { clearFontResolvedCache } from "./measureHelpers";
+import { memoizedParagraphKey } from "./paragraphKeyMemo";
 
 // =============================================================================
 // TEXT WIDTH CACHE
@@ -453,6 +454,15 @@ const paragraphAttrsMeasureCacheInput = (
 
 /** Serialize the complete, semantically normalized paragraph measurement contract into a cache key. */
 export function hashParagraphBlock(block: ParagraphBlock): string {
+  return memoizedParagraphKey(
+    block,
+    getLineBreakProviderGeneration(),
+    serializeParagraphBlock,
+  );
+}
+
+/** `hashParagraphBlock` computed in full. */
+export function serializeParagraphBlock(block: ParagraphBlock): string {
   // Each distinct map appears once in the paragraph key; every run carries
   // a small local reference instead of duplicating all embedded families.
   const fontContexts: string[] = [];

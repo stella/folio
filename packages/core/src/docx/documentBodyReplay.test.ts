@@ -235,3 +235,27 @@ test.each(["removed", "renamed"] as const)(
     expect(again.styles).toBe(captured.styles);
   },
 );
+
+test("a paragraph whose computed list marker moved on keeps its source", async () => {
+  // An edit elsewhere in its list renumbers it: the marker its numbering
+  // computes changes, the paragraph does not, and no save writes the marker.
+  const document = cloneDocumentWithParagraphPropertySources(
+    await parsedSource(),
+  );
+  const [renumbered, edited] = document.package.document.content;
+  if (renumbered?.type !== "paragraph" || edited?.type !== "paragraph")
+    throw new Error("Missing paragraph");
+  renumbered.listRendering = {
+    marker: "2.",
+    level: 0,
+    numId: 1,
+    isBullet: false,
+  };
+  edited.content = [
+    { type: "run", content: [{ type: "text", text: "after" }] },
+  ];
+  const xml = serializeDocument(document, undefined, {
+    bodyAuthority: "canonical",
+  });
+  expect(xml).toContain(untouched);
+});

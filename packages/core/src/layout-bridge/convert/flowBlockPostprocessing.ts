@@ -12,6 +12,29 @@ import type {
   ParagraphBlock,
   SdtGroup,
 } from "../../layout-engine/types";
+import {
+  getParagraphFrame,
+  setParagraphFrame,
+} from "../../utils/paragraphFrame";
+
+/**
+ * `block` with `attrs` added, as a new block in its place: the list's blocks
+ * may be kept from an earlier conversion, so they are never written.
+ */
+function replaceParagraphAttrs(
+  blocks: FlowBlock[],
+  index: number,
+  block: ParagraphBlock,
+  attrs: ParagraphAttrs,
+): void {
+  const replaced: ParagraphBlock = {
+    ...block,
+    attrs: { ...block.attrs, ...attrs },
+  };
+  const frame = getParagraphFrame(block);
+  if (frame !== undefined) setParagraphFrame(replaced, frame);
+  blocks[index] = replaced;
+}
 
 /**
  * Word keeps a final empty body paragraph after a table as an editable anchor,
@@ -67,10 +90,9 @@ export function suppressFinalEmptyParagraphAfterTable(
 
   const finalBlock = blocks.at(-1);
   if (isPaintlessTerminalParagraph(finalBlock)) {
-    finalBlock.attrs = {
-      ...finalBlock.attrs,
+    replaceParagraphAttrs(blocks, blocks.length - 1, finalBlock, {
       suppressEmptyParagraphHeight: true,
-    };
+    });
   }
 }
 
@@ -95,10 +117,9 @@ export function suppressFinalParagraphInRepeatedEmptySuffix(
 
   const finalBlock = blocks.at(-1);
   if (isPaintlessTerminalParagraph(finalBlock)) {
-    finalBlock.attrs = {
-      ...finalBlock.attrs,
+    replaceParagraphAttrs(blocks, blocks.length - 1, finalBlock, {
       suppressEmptyParagraphHeight: true,
-    };
+    });
   }
 }
 
@@ -112,7 +133,9 @@ export function reserveLeadingEmptyOutlineHeight(blocks: FlowBlock[]): void {
     return;
   }
 
-  firstBlock.attrs = { ...firstBlock.attrs, reserveEmptyOutlineHeight: true };
+  replaceParagraphAttrs(blocks, 0, firstBlock, {
+    reserveEmptyOutlineHeight: true,
+  });
 }
 
 /**
