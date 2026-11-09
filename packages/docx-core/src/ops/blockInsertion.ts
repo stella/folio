@@ -91,13 +91,17 @@ export const insertBlocks = ({
   // properties as its prior ones. Rejecting removes the new text and the
   // anchor's mark, which leaves the anchor as it was; accepting leaves both.
   // Before a table the new paragraph's own mark can be the inserted one, as
-  // the default editor records it; only at the end of the list, or before a
-  // range boundary between blocks that no resolution may carry content
-  // across, is there no mark after the anchor's for it to take.
+  // the default editor records it, since resolving it runs into the table.
+  // At the end of the list, before a range boundary between blocks that no
+  // resolution may carry content across, or before any other block, such as
+  // a content control, there is no mark after the new paragraph's for it to
+  // resolve against, so the anchor's mark is the inserted one.
   const takesOverMark =
     op.revision !== undefined &&
     !before &&
-    (following === undefined || isBlockBoundary(following));
+    (following === undefined ||
+      isBlockBoundary(following) ||
+      following.type !== "table");
   if (
     takesOverMark &&
     (location.paragraph.pPrMark !== undefined ||
