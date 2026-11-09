@@ -37,9 +37,13 @@ import {
 import {
   computeListMarker,
   type ComputeListMarkerOptions,
+  counterCellOf,
+  type ListCounterAdvance,
   type ListCounterSnapshot,
+  type ListCounterStep,
+  listCounterStep,
+  replayListCounterStep,
   restoreListCounters,
-  sameListCounters,
   snapshotListCounters,
 } from "./listMarkerComputation";
 import { listRenderingDefinitionsMatch } from "./listRendering";
@@ -69,25 +73,30 @@ type BlockRecord = {
   settled: boolean;
   /** The snapshot registration normalizing left for the paragraph. */
   snapshotToken: object | undefined;
-};
-
-type StoryRun = {
-  records: readonly BlockRecord[];
-  /** The counters before the block at an index, kept every few blocks normalized. */
-  checkpoints: ReadonlyMap<number, ListCounterSnapshot>;
+  /** What normalizing it changed in the counters. */
+  step: ListCounterStep;
+  /** The counters before it, kept every few blocks. */
+  before: ListCounterSnapshot | undefined;
 };
 
 const CHECKPOINT_SPACING = 32;
 
 /** The record of `input`, whose kept facts are fixed from now on. */
-const recordOf = (input: BlockContent, settled: boolean): BlockRecord => {
+const recordOf = (
+  input: BlockContent,
+  settled: boolean,
+  step: ListCounterStep,
+  before: ListCounterSnapshot | undefined,
+): BlockRecord => {
   if (input.type !== "paragraph")
-    return { input, settled, snapshotToken: undefined };
+    return { input, settled, snapshotToken: undefined, step, before };
   sealParagraphFacts(input);
   return {
     input,
     settled,
     snapshotToken: paragraphPropertySnapshotToken(input),
+    step,
+    before,
   };
 };
 
@@ -105,6 +114,183 @@ const storyKey = (story: OpStory): string => {
     : `${story.kind}:${String(story.id)}`;
 };
 
+const freshCounters = (
+  numbering: ComputeListMarkerOptions["numbering"],
+): ComputeListMarkerOptions => ({
+  numbering,
+  listCounters: new Map(),
+  abstractCounters: new Map(),
+  restartedNumIds: new Set(),
+  previousList: { abstractNumId: null, fromStyle: false, numId: null },
+});
+
+/**
+ * The counters before block `index` of a run, from the nearest kept
+ * snapshot at or before it and the steps of the blocks between.
+ */
+const countersAt = (
+  records: readonly BlockRecord[],
+  index: number,
+  counters: ComputeListMarkerOptions,
+): number => {
+  let from = Math.min(index, records.length);
+  while (from > 0 && records[from]?.before === undefined) from -= 1;
+  const before = records[from]?.before;
+  if (before !== undefined) restoreListCounters(counters, before);
+  else from = 0;
+  for (let at = from; at < index; at += 1)
+    replayListCounterStep(
+      counters,
+      (records[at] ?? panic("A list normalization lost a block.")).step,
+    );
+  return from;
+};
+
+/**
+ * One state of the counters, its arrays by cell. Only arrays an instance
+ * or abstract list is bound to are held: an array nothing reaches any more
+ * can never be advanced again.
+ */
+class CounterView {
+  private readonly bindings = new Map<number, number>();
+  private readonly arrays = new Map<number, readonly number[]>();
+
+  constructor(readonly counters: ComputeListMarkerOptions) {
+    for (const values of counters.listCounters.values()) this.bind(values);
+    for (const values of counters.abstractCounters.values()) this.bind(values);
+  }
+
+  private bind(values: readonly number[]): void {
+    const cell = counterCellOf(values);
+    this.bindings.set(cell, (this.bindings.get(cell) ?? 0) + 1);
+    this.arrays.set(cell, values);
+  }
+
+  private unbind(values: readonly number[]): void {
+    const cell = counterCellOf(values);
+    const left =
+      (this.bindings.get(cell) ??
+        panic("A list counter array was not bound.")) - 1;
+    if (left > 0) this.bindings.set(cell, left);
+    else {
+      this.bindings.delete(cell);
+      this.arrays.delete(cell);
+    }
+  }
+
+  /** Follow the bindings a paragraph's step changed. */
+  advanced(advance: ListCounterAdvance | null): void {
+    if (advance === null) return;
+    if (advance.listBefore !== advance.counters) {
+      if (advance.listBefore !== undefined) this.unbind(advance.listBefore);
+      this.bind(advance.counters);
+    }
+    if (
+      advance.abstractNumId !== null &&
+      advance.abstractBefore !== advance.counters
+    ) {
+      if (advance.abstractBefore !== undefined)
+        this.unbind(advance.abstractBefore);
+      this.bind(advance.counters);
+    }
+  }
+
+  cells(): IterableIterator<number> {
+    return this.arrays.keys();
+  }
+
+  cell(cell: number): readonly number[] | undefined {
+    return this.arrays.get(cell);
+  }
+}
+
+/**
+ * One part of the counters: the previous-list state (`p`), the array bound
+ * to an instance (`n`) or an abstract list (`a`), whether an instance
+ * restarted (`r`), or the values of one array (`c`). Two states equal in
+ * every part number every later paragraph alike.
+ */
+type CounterPart = string;
+
+const cellOrNone = (values: readonly number[] | undefined) =>
+  values === undefined ? undefined : counterCellOf(values);
+
+const samePart = (
+  part: CounterPart,
+  left: CounterView,
+  right: CounterView,
+): boolean => {
+  const l = left.counters;
+  const r = right.counters;
+  if (part === "p")
+    return (
+      l.previousList.abstractNumId === r.previousList.abstractNumId &&
+      l.previousList.fromStyle === r.previousList.fromStyle &&
+      l.previousList.numId === r.previousList.numId
+    );
+  const id = Number(part.slice(1));
+  switch (part[0]) {
+    case "n":
+      return (
+        cellOrNone(l.listCounters.get(id)) ===
+        cellOrNone(r.listCounters.get(id))
+      );
+    case "a":
+      return (
+        cellOrNone(l.abstractCounters.get(id)) ===
+        cellOrNone(r.abstractCounters.get(id))
+      );
+    case "r":
+      return l.restartedNumIds.has(id) === r.restartedNumIds.has(id);
+    default: {
+      const a = left.cell(id);
+      const b = right.cell(id);
+      if (a === undefined || b === undefined) return a === b;
+      return (
+        a.length === b.length &&
+        a.every((value, level) => Object.is(value, b[level]))
+      );
+    }
+  }
+};
+
+/** The parts a step can have changed. */
+const partsOf = (advance: ListCounterAdvance | null): CounterPart[] => {
+  if (advance === null) return ["p"];
+  const parts: CounterPart[] = [
+    "p",
+    `n${String(advance.numId)}`,
+    `r${String(advance.numId)}`,
+    `c${String(counterCellOf(advance.counters))}`,
+  ];
+  if (advance.abstractNumId !== null)
+    parts.push(`a${String(advance.abstractNumId)}`);
+  if (advance.listBefore !== undefined)
+    parts.push(`c${String(counterCellOf(advance.listBefore))}`);
+  if (advance.abstractBefore !== undefined)
+    parts.push(`c${String(counterCellOf(advance.abstractBefore))}`);
+  return parts;
+};
+
+/** Every part in which two states differ. */
+const differingParts = (
+  left: CounterView,
+  right: CounterView,
+): Set<CounterPart> => {
+  const parts = new Set<CounterPart>(["p"]);
+  for (const view of [left, right]) {
+    for (const numId of view.counters.listCounters.keys())
+      parts.add(`n${String(numId)}`);
+    for (const abstractNumId of view.counters.abstractCounters.keys())
+      parts.add(`a${String(abstractNumId)}`);
+    for (const numId of view.counters.restartedNumIds)
+      parts.add(`r${String(numId)}`);
+    for (const cell of view.cells()) parts.add(`c${String(cell)}`);
+  }
+  for (const part of parts) if (samePart(part, left, right)) parts.delete(part);
+  return parts;
+};
+
 /**
  * Normalized blocks kept across the normalizations of one session.
  *
@@ -112,13 +298,15 @@ const storyKey = (story: OpStory): string => {
  * and the list counters the blocks before it advanced. A block an edit left
  * the same object, with the same kept facts and snapshot registration, that
  * normalized to itself before, normalizes to itself again from the same
- * counters. So a story is normalized again from the last checkpoint before
- * its first changed block, and only until the counters after its last
- * changed block match those the earlier run had at that place.
+ * counters. So a story is normalized again from its first changed block,
+ * with the counters the earlier run had there, and after its last changed
+ * block only while the counters differ from those the earlier run had at
+ * the same block.
  */
 export class ListNormalizationCache {
   private inputs: ListNormalizationPackageInputs | undefined;
-  private runs = new Map<string, StoryRun>();
+  private runs = new Map<string, readonly BlockRecord[]>();
+  private readonly normalized = new Map<string, number>();
   private readonly spacing: number;
 
   constructor({
@@ -139,23 +327,31 @@ export class ListNormalizationCache {
     this.runs = new Map();
   }
 
-  /** The blocks of one story normalized, from `counters` as a fresh story starts them. */
+  /** How many blocks of `story` its latest normalization normalized. */
+  normalizedBlocks(story: OpStory): number {
+    return this.normalized.get(storyKey(story)) ?? 0;
+  }
+
+  /**
+   * The blocks of one story normalized, from `counters` as a fresh story
+   * starts them; undefined when every block normalizes to itself.
+   */
   story(
-    key: string,
+    story: OpStory,
     blocks: readonly BlockContent[],
     counters: ComputeListMarkerOptions,
     normalize: (block: BlockContent) => {
       output: BlockContent;
       settled: boolean;
+      advance: ListCounterAdvance | null;
     },
-  ): BlockContent[] {
-    const old = this.runs.get(key);
-    const oldRecords = old?.records ?? [];
-    const oldCheckpoints = old?.checkpoints ?? new Map();
+  ): BlockContent[] | undefined {
+    const key = storyKey(story);
+    const old = this.runs.get(key) ?? [];
     const length = blocks.length;
-    const shift = length - oldRecords.length;
+    const shift = length - old.length;
     const settledAt = (index: number, oldIndex: number): boolean => {
-      const record = oldRecords[oldIndex];
+      const record = old[oldIndex];
       const block = blocks[index];
       return (
         record !== undefined &&
@@ -168,62 +364,62 @@ export class ListNormalizationCache {
     let suffix = 0;
     while (
       suffix < length - prefix &&
-      suffix < oldRecords.length - prefix &&
-      settledAt(length - 1 - suffix, oldRecords.length - 1 - suffix)
+      suffix < old.length - prefix &&
+      settledAt(length - 1 - suffix, old.length - 1 - suffix)
     )
       suffix += 1;
-    const outputs: BlockContent[] = [];
-    const records: BlockRecord[] = [];
-    const checkpoints = new Map<number, ListCounterSnapshot>();
-    const keep = (from: number, to: number, offset: number) => {
-      for (let index = from; index < to; index += 1) {
-        const record =
-          oldRecords[index - offset] ??
-          panic("A kept list normalization lost a block.");
-        outputs.push(record.input);
-        records.push(record);
-      }
-    };
-    // Resume at the last checkpoint at or before the first changed block: the
-    // blocks before it normalize as they did.
-    let start = 0;
-    for (const index of oldCheckpoints.keys())
-      if (index <= prefix && index > start) start = index;
-    const resumed = oldCheckpoints.get(start);
-    if (start > 0 && resumed !== undefined) {
-      restoreListCounters(counters, resumed);
-      keep(0, start, 0);
-      for (const [index, snapshot] of oldCheckpoints)
-        if (index <= start) checkpoints.set(index, snapshot);
-    } else start = 0;
-    for (let index = start; index < length; index += 1) {
-      const oldIndex = index - shift;
-      const earlier =
-        index >= length - suffix ? oldCheckpoints.get(oldIndex) : undefined;
-      const here =
-        earlier !== undefined || index % this.spacing === 0
+    // The blocks before the first changed one stay, and so do the counters
+    // the earlier run had there.
+    let sinceCheckpoint = prefix - countersAt(old, prefix, counters);
+    let records = old.slice(0, prefix);
+    let outputs: BlockContent[] | undefined;
+    let normalized = 0;
+    const next = (index: number): ListCounterAdvance | null => {
+      const block = blocks[index] ?? panic("A story lost a block.");
+      const before =
+        sinceCheckpoint >= this.spacing
           ? snapshotListCounters(counters)
           : undefined;
-      if (
-        earlier !== undefined &&
-        here !== undefined &&
-        sameListCounters(earlier, here)
-      ) {
-        // Every block from here settled before, from these same counters.
-        keep(index, length, shift);
-        for (const [at, snapshot] of oldCheckpoints)
-          if (at >= oldIndex) checkpoints.set(at + shift, snapshot);
-        this.runs.set(key, { records, checkpoints });
-        return outputs;
+      if (before !== undefined) sinceCheckpoint = 0;
+      const { output, settled, advance } = normalize(block);
+      sinceCheckpoint += 1;
+      normalized += 1;
+      if (output !== block) {
+        outputs ??= [...blocks];
+        outputs[index] = output;
       }
-      if (here !== undefined && index % this.spacing === 0)
-        checkpoints.set(index, here);
-      const block = blocks[index] ?? panic("A story lost a block.");
-      const { output, settled } = normalize(block);
-      outputs.push(output);
-      records.push(recordOf(block, settled));
+      records.push(
+        recordOf(block, settled, listCounterStep(counters, advance), before),
+      );
+      return advance;
+    };
+    let index = prefix;
+    for (; index < length - suffix; index += 1) next(index);
+    if (index < length) {
+      // Every block from here settled before; it settles again from where
+      // the counters are those the earlier run met at it.
+      const earlier = freshCounters(counters.numbering);
+      countersAt(old, index - shift, earlier);
+      const live = new CounterView(counters);
+      const was = new CounterView(earlier);
+      const differing = differingParts(live, was);
+      while (differing.size > 0 && index < length) {
+        const advance = next(index);
+        live.advanced(advance);
+        const record =
+          old[index - shift] ??
+          panic("A kept list normalization lost a block.");
+        const advanceBefore = replayListCounterStep(earlier, record.step);
+        was.advanced(advanceBefore);
+        for (const part of [...partsOf(advance), ...partsOf(advanceBefore)])
+          if (samePart(part, live, was)) differing.delete(part);
+          else differing.add(part);
+        index += 1;
+      }
+      records = records.concat(old.slice(index - shift));
     }
-    this.runs.set(key, { records, checkpoints });
+    this.runs.set(key, records);
+    this.normalized.set(key, normalized);
     return outputs;
   }
 }
@@ -258,9 +454,10 @@ const normalizeBlock = (
   paragraph: BlockContent,
   { styles, story, recordInverse }: BlockNormalizationInputs,
   counters: ComputeListMarkerOptions,
-): BlockContent => {
+): { output: BlockContent; advance: ListCounterAdvance | null } => {
   const { numbering } = counters;
-  if (paragraph.type !== "paragraph") return paragraph;
+  if (paragraph.type !== "paragraph")
+    return { output: paragraph, advance: null };
   registerParagraphPropertySnapshot({
     paragraph,
     snapshot: paragraphFormattingWithAuthoredIndentation(paragraph),
@@ -319,8 +516,10 @@ const normalizeBlock = (
     next.formatting?.numPrFromStyle === undefined &&
     (numPr?.kind !== "reference" || numbering === null)
   ) {
-    computeListMarker(paragraph, counters);
-    return paragraph;
+    return {
+      output: paragraph,
+      advance: computeListMarker(paragraph, counters),
+    };
   }
   const definition =
     numPr?.kind === "reference" && numbering !== null
@@ -416,7 +615,7 @@ const normalizeBlock = (
         : template;
     next.listRendering = rendering;
   }
-  computeListMarker(next, counters);
+  const advance = computeListMarker(next, counters);
   registerParagraphPropertySnapshot({
     paragraph: next,
     snapshot: authoredFormatting,
@@ -429,9 +628,9 @@ const normalizeBlock = (
     canonicalJson(next.formatting) === canonicalJson(formatting) &&
     canonicalJson(next.listRendering) === canonicalJson(cached)
   ) {
-    return paragraph;
+    return { output: paragraph, advance };
   }
-  return next;
+  return { output: next, advance };
 };
 
 export const normalizeListModelRendering = (
@@ -459,29 +658,32 @@ export const normalizeListModelRendering = (
     body: Body,
     story: OpStory,
   ): Body => {
-    const counters: ComputeListMarkerOptions = {
-      numbering,
-      listCounters: new Map(),
-      abstractCounters: new Map(),
-      restartedNumIds: new Set(),
-      previousList: { abstractNumId: null, fromStyle: false, numId: null },
-    };
+    const counters = freshCounters(numbering);
     const inputs: BlockNormalizationInputs = {
       styles,
       story,
       recordInverse,
     };
-    const content =
-      cache === undefined
-        ? body.content.map((block) => normalizeBlock(block, inputs, counters))
-        : cache.story(storyKey(story), body.content, counters, (block) => {
-            const before = recorded;
-            const output = normalizeBlock(block, inputs, counters);
-            return { output, settled: output === block && recorded === before };
-          });
-    return content.every(
-      (paragraph, index) => paragraph === body.content[index],
-    )
+    if (cache === undefined) {
+      const content = body.content.map(
+        (block) => normalizeBlock(block, inputs, counters).output,
+      );
+      return content.every(
+        (paragraph, index) => paragraph === body.content[index],
+      )
+        ? body
+        : { ...body, ...withBodyContent(body, content) };
+    }
+    const content = cache.story(story, body.content, counters, (block) => {
+      const before = recorded;
+      const { output, advance } = normalizeBlock(block, inputs, counters);
+      return {
+        output,
+        settled: output === block && recorded === before,
+        advance,
+      };
+    });
+    return content === undefined
       ? body
       : { ...body, ...withBodyContent(body, content) };
   };
