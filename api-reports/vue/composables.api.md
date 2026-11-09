@@ -8,6 +8,7 @@ import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymi
 import { App } from 'vue';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
+import { Command } from 'prosemirror-state';
 import { CommandMap } from '@stll/folio-core/prosemirror/extensions/types';
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComputedRef } from 'vue';
@@ -311,7 +312,12 @@ export type UseSelectionHighlightReturn = {
 };
 
 // @public (undocumented)
-export function useTableResize(): UseTableResizeReturn;
+export function useTableResize(input: UseTableResizeOptions): UseTableResizeReturn;
+
+// @public (undocumented)
+export type UseTableResizeOptions = {
+    runCommand: (view: EditorView, command: Command) => void;
+};
 
 // @public (undocumented)
 export type UseTableResizeReturn = {

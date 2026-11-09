@@ -35,7 +35,7 @@ import {
 } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { commitColumnResize } from "../prosemirror/tableResize";
+import { columnResizeCommand } from "../prosemirror/tableResize";
 import type { Table } from "../types/document";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
@@ -180,12 +180,12 @@ describe("a cell's preferred width is the one it states", () => {
     const view = mount(columns);
     const document_ = documentOf(parsed(tableXml(columns)));
 
-    commitColumnResize(view, {
+    columnResizeCommand({
       pmStart: 0,
       colIdx: 0,
       newLeft: 3000,
       newRight: 1800,
-    });
+    })(view.state, (tr) => view.dispatch(tr), view);
 
     const projected = fromProseDoc(view.state.doc, document_, {
       stylesheetSource: { type: "package" },
