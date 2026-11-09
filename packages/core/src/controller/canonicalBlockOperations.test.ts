@@ -4,6 +4,7 @@
  * once every change is accepted, and once every change is rejected.
  */
 
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
@@ -11,6 +12,7 @@ import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { FolioDocumentOperation } from "../ai-edits";
+import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/apply";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
@@ -399,6 +401,26 @@ const OPERATIONS = {
     blockId: "10000002",
     properties: { numbering: { kind: "newList", format: "bullet", level: 1 } },
   },
+  mergeBlockWithNext: {
+    id: "op",
+    type: "mergeBlockWithNext",
+    blockId: "10000001",
+  },
+  "mergeBlockWithNext separated": {
+    id: "op",
+    type: "mergeBlockWithNext",
+    blockId: "10000001",
+    separator: " ",
+  },
+  "mergeBlockWithNext with properties": {
+    id: "op",
+    type: "mergeBlockWithNext",
+    blockId: "10000001",
+    mergedParagraphProperties: {
+      alignment: "right",
+      spacing: { spaceAfter: 120 },
+    },
+  },
   "setBlockParagraphProperties alignment": {
     id: "op",
     type: "setBlockParagraphProperties",
@@ -466,7 +488,12 @@ describe("block-level public operations match the default engine", () => {
             await viaCanonicalEngine(source, operation, mode),
           );
           expect(actual).toEqual(expected);
-          if (mode !== "tracked-changes") return;
+          // Kinds a suggestion cannot carry skip in both engines.
+          if (
+            mode !== "tracked-changes" ||
+            !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(operation.type)
+          )
+            return;
           // Suggested, the edit saves as nothing until it is resolved:
           // rejecting gives the source back, accepting the tracked edit.
           expect(
@@ -491,6 +518,292 @@ describe("block-level public operations match the default engine", () => {
           ).toEqual(expected);
         });
       }
+});
+
+describe("inline line breaks", () => {
+  // CRLF and a lone CR are each one line break, as LF is. The default engine
+  // keeps a carriage return as a text character, which saves as no break.
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`CRLF and CR insert one line break each, ${mode}`, async () => {
+      const source = await packageOf(BODIES["ending the body"]);
+      const inline = (text: string) =>
+        ({
+          id: "op",
+          type: "insertAfterBlock",
+          blockId: "10000002",
+          text,
+          lineBreakMode: "inline",
+        }) as const satisfies FolioDocumentOperation;
+      const run = await canonicalRun(
+        source,
+        inline("Name\r\nNext\rLast"),
+        mode,
+      );
+      expect(run.skipped).toEqual([]);
+      expect(
+        await outcomes(
+          await viaCanonicalEngine(source, inline("Name\r\nNext\rLast"), mode),
+        ),
+      ).toEqual(
+        await outcomes(
+          await viaDefaultEngine(source, inline("Name\nNext\nLast"), mode),
+        ),
+      );
+    });
+});
+
+describe("a new list beside a dangling list reference", () => {
+  // A paragraph names list 2, which the package does not define. A new list
+  // takes another id, so that paragraph stays out of it.
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`takes an id no paragraph names, ${mode}`, async () => {
+      const source = await packageOf([
+        paragraph(
+          "10000001",
+          "Dangling",
+          '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>',
+        ),
+        paragraph("10000002", "Beta"),
+      ]);
+      const operation = {
+        id: "op",
+        type: "insertAfterBlock",
+        blockId: "10000002",
+        text: "Item",
+        numbering: { kind: "newList", format: "bullet" },
+      } as const satisfies FolioDocumentOperation;
+      const run = await canonicalRun(source, operation, mode);
+      expect(run.skipped).toEqual([]);
+      const expected = await outcomes(
+        await viaDefaultEngine(source, operation, mode),
+      );
+      const actual = await outcomes(
+        await viaCanonicalEngine(source, operation, mode),
+      );
+      // The paragraph that named list 2 stays out of the new list.
+      for (const state of ["pending", "accepted", "rejected"] as const)
+        expect(actual[state].at(0)?.numPr).toEqual({ kind: "none" });
+      expect(actual).toEqual(expected);
+    });
+});
+
+describe("an insertion beside a table cell's paragraph", () => {
+  // The default engine places it beside the table, not inside the cell.
+  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const mode of ["direct", "tracked-changes"] as const)
+      test(`${type}, ${mode}`, async () => {
+        const source = await packageOf(BODIES["before a table"]);
+        const operation = {
+          id: "op",
+          type,
+          blockId: "10000004",
+          text: "Beside",
+        } as const satisfies FolioDocumentOperation;
+        const run = await canonicalRun(source, operation, mode);
+        expect(run.skipped).toEqual([]);
+        expect(
+          await outcomes(await viaCanonicalEngine(source, operation, mode)),
+        ).toEqual(
+          await outcomes(await viaDefaultEngine(source, operation, mode)),
+        );
+      });
+});
+
+describe("paragraph identities across undo", () => {
+  // An undone insertion's paragraph id stays retired: a later insertion takes
+  // another, so an operation read before the undo cannot reach the new one.
+  for (const [type, operation] of [
+    [
+      "insertAfterBlock",
+      { id: "op", type: "insertAfterBlock", blockId: "10000002", text: "New" },
+    ],
+    [
+      "splitBlock",
+      { id: "op", type: "splitBlock", blockId: "10000002", offset: 2 },
+    ],
+  ] as const satisfies readonly (readonly [string, FolioDocumentOperation])[])
+    for (const mode of ["direct", "tracked-changes"] as const)
+      test(`${type} after an undone one takes a fresh id, ${mode}`, async () => {
+        const source = await packageOf(BODIES["between two paragraphs"]);
+        const document = await parseDocx(source.slice(0), {
+          preloadFonts: false,
+          detectVariables: false,
+        });
+        const session = createCanonicalSession(
+          document,
+          document.package.styles,
+        ).unwrap();
+        let state = EditorState.create({ schema, doc: session.projection.doc });
+        const executor = new CanonicalPublicOperations({
+          session,
+          getState: () => state,
+          publish: (commit: CanonicalCommit) => {
+            const published = publishCanonicalProjection({
+              state,
+              commit,
+              session,
+            });
+            if (published.isErr()) return false;
+            state = published.value.state;
+            return true;
+          },
+        });
+        const ids = () =>
+          session.document.package.document.content.flatMap((block) =>
+            block.type === "paragraph" ? [block.paraId] : [],
+          );
+        const before = ids();
+        const apply = () =>
+          executor.apply({
+            snapshot: createFolioAIEditSnapshot(state.doc),
+            batch: { version: 1, mode, operations: [operation] },
+            undefinedReferences: "refuse",
+          });
+        const first = apply();
+        expect(first.skipped).toEqual([]);
+        const firstIds = ids().filter((id) => !before.includes(id));
+        expect(firstIds).toHaveLength(1);
+        expect(
+          executor.undo(first.undoHandle ?? panic("Missing undo handle"))
+            .status,
+        ).toBe("undone");
+        expect(ids()).toEqual(before);
+        expect(apply().skipped).toEqual([]);
+        const secondIds = ids().filter((id) => !before.includes(id));
+        expect(secondIds).toHaveLength(1);
+        expect(secondIds).not.toEqual(firstIds);
+      });
+});
+
+describe("an insertion beside the paragraph the batch deletes", () => {
+  // Both apply, as in the default engine, in either order, as a move when
+  // both halves name one.
+  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const moveId of [undefined, "move"] as const)
+      for (const reversed of [false, true])
+        for (const [shape, body] of Object.entries(BODIES))
+          for (const mode of ["direct", "tracked-changes"] as const)
+            test(`${type}${moveId === undefined ? "" : " as a move"}${reversed ? " listed first" : ""} ${shape}, ${mode}`, async () => {
+              const source = await packageOf(body);
+              const halves = [
+                {
+                  id: "from",
+                  type: "deleteBlock",
+                  blockId: "10000002",
+                  ...(moveId === undefined ? {} : { moveId }),
+                },
+                {
+                  id: "to",
+                  type,
+                  blockId: "10000002",
+                  text: "Moved",
+                  ...(moveId === undefined ? {} : { moveId }),
+                },
+              ] as const satisfies readonly FolioDocumentOperation[];
+              const operations = reversed ? [...halves].reverse() : halves;
+              const run = await canonicalRun(source, operations, mode);
+              // Beside a paragraph that ends the body, or directly before a
+              // table, the insertion is still refused, and says so.
+              if (
+                shape === "ending the body" ||
+                (shape === "before a table" && mode === "direct")
+              ) {
+                expect(run.skipped.map(({ reason }) => reason)).toEqual([
+                  "overlappingOperation",
+                ]);
+                return;
+              }
+              expect(run.skipped).toEqual([]);
+              expect(
+                await outcomes(
+                  await viaCanonicalEngine(source, operations, mode),
+                ),
+              ).toEqual(
+                await outcomes(
+                  await viaDefaultEngine(source, operations, mode),
+                ),
+              );
+            });
+});
+
+describe("a move whose source a content lock keeps", () => {
+  // The source half is refused; the destination applies as a plain
+  // insertion, reported unpaired, never as half a move.
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`inserts the destination plainly, ${mode}`, async () => {
+      const source = await packageOf([
+        `<w:sdt><w:sdtPr><w:lock w:val="contentLocked"/></w:sdtPr><w:sdtContent>${paragraph("10000001", "Alpha")}</w:sdtContent></w:sdt>`,
+        paragraph("10000002", "Beta"),
+        paragraph("10000003", "Gamma"),
+      ]);
+      const document = await parseDocx(source.slice(0), {
+        preloadFonts: false,
+        detectVariables: false,
+      });
+      const session = createCanonicalSession(
+        document,
+        document.package.styles,
+      ).unwrap();
+      let state = EditorState.create({ schema, doc: session.projection.doc });
+      const executor = new CanonicalPublicOperations({
+        session,
+        getState: () => state,
+        publish: (commit: CanonicalCommit) => {
+          const published = publishCanonicalProjection({
+            state,
+            commit,
+            session,
+          });
+          if (published.isErr()) return false;
+          state = published.value.state;
+          return true;
+        },
+      });
+      const result = executor.apply({
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        batch: {
+          version: 1,
+          mode,
+          operations: [
+            {
+              id: "from",
+              type: "deleteBlock",
+              blockId: "10000001",
+              moveId: "move",
+            },
+            {
+              id: "to",
+              type: "insertAfterBlock",
+              blockId: "10000003",
+              text: "Alpha",
+              moveId: "move",
+            },
+          ],
+        },
+        undefinedReferences: "refuse",
+      });
+      expect(result.applied.map(({ id }) => id)).toEqual(["to"]);
+      expect(result.skipped.map(({ id }) => id)).toEqual(["from"]);
+      expect(result.normalizations).toContainEqual({
+        id: "to",
+        code: "unpairedMove",
+        moveId: "move",
+      });
+      const saved = (
+        await serializeCanonicalSave({
+          snapshot: session.captureSaveSnapshot(),
+        })
+      ).buffer;
+      const xml =
+        (await (
+          await ZipArchive.read(saved)
+        )
+          .entry("word/document.xml")
+          ?.text()) ?? "";
+      expect(xml).not.toContain("w:moveTo");
+      expect(xml).not.toContain("w:moveFrom");
+      expect(xml).toContain("Alpha");
+    });
 });
 
 describe("a block move matches the default engine", () => {
@@ -563,4 +876,57 @@ describe("a block move matches the default engine", () => {
           expect(xml).toContain("<w:moveFrom ");
           expect(xml).toContain("<w:moveTo ");
         });
+});
+
+describe("a comment on an edit in a table cell matches the default engine", () => {
+  const operation = {
+    id: "op",
+    type: "replaceInBlock",
+    blockId: "10000004",
+    find: "Cell",
+    replace: "Box",
+    comment: { text: "Inside the table" },
+  } as const satisfies FolioDocumentOperation;
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(mode, async () => {
+      const source = await packageOf(BODIES["before a table"]);
+      const expected = await outcomes(
+        await viaDefaultEngine(source, operation, mode),
+      );
+      expect(expected.comments.pending).toHaveLength(1);
+      const actual = await outcomes(
+        await viaCanonicalEngine(source, operation, mode),
+      );
+      expect(actual).toEqual(expected);
+    });
+});
+
+describe("a commented insertion inside a block content control matches the default engine", () => {
+  for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
+    for (const mode of ["direct", "tracked-changes"] as const)
+      test(`${type}, ${mode}`, async () => {
+        const source = await packageOf([
+          paragraph("10000001", "Alpha"),
+          `<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr><w:sdtContent>${paragraph("10000002", "Beta")}</w:sdtContent></w:sdt>`,
+          paragraph("10000003", "Gamma"),
+        ]);
+        const operation = {
+          id: "op",
+          type,
+          blockId: "10000002",
+          text: "Inserted",
+          comment: { text: "Why this clause" },
+        } as const satisfies FolioDocumentOperation;
+        const run = await canonicalRun(source, operation, mode);
+        expect(run.skipped).toEqual([]);
+        const expected = await outcomes(
+          await viaDefaultEngine(source, operation, mode),
+        );
+        expect(expected.comments.pending).toEqual([
+          { anchoredText: "Inserted", text: "Why this clause" },
+        ]);
+        expect(
+          await outcomes(await viaCanonicalEngine(source, operation, mode)),
+        ).toEqual(expected);
+      });
 });

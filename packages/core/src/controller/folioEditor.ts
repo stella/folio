@@ -104,6 +104,9 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       deps.getEditorApi()?.getCanonicalStoryProjection(story) ?? null,
     replaceCanonicalStoryText: (options) =>
       deps.getEditorApi()?.replaceCanonicalStoryText(options) ?? false,
+    noteCanonicalStoryView: (options) => {
+      deps.getEditorApi()?.noteCanonicalStoryView(options);
+    },
     isCanonicalSaveCurrent: (version) =>
       deps.getEditorApi()?.isCanonicalSaveCurrent(version) ?? false,
     captureCanonicalSave: () =>

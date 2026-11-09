@@ -18,6 +18,7 @@ import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
 import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
+import { isBlockBoundary } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { stampInfo, WRAP_KINDS, wrapTracked } from "./review";
@@ -90,10 +91,13 @@ export const insertBlocks = ({
   // properties as its prior ones. Rejecting removes the new text and the
   // anchor's mark, which leaves the anchor as it was; accepting leaves both.
   // Before a table the new paragraph's own mark can be the inserted one, as
-  // the default editor records it; only at the end of the list is there no
-  // mark after the anchor's for it to take.
+  // the default editor records it; only at the end of the list, or before a
+  // range boundary between blocks that no resolution may carry content
+  // across, is there no mark after the anchor's for it to take.
   const takesOverMark =
-    op.revision !== undefined && !before && following === undefined;
+    op.revision !== undefined &&
+    !before &&
+    (following === undefined || isBlockBoundary(following));
   if (
     takesOverMark &&
     (location.paragraph.pPrMark !== undefined ||
@@ -231,8 +235,10 @@ export const insertBlocks = ({
         },
       ]
     : [];
+  // The anchor's own records are carried over and keep their ids; only the
+  // records this insertion creates take new ones.
   const fresh = freshenIdentities({
-    before: [],
+    before: takesOverMark ? [location.paragraph] : [],
     after: [...anchorBlocks, ...blocks],
     newIds: op.newIds ?? {},
     usedElsewhere: () => new Set(packageIdentityKeys(document.package)),

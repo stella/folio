@@ -36,6 +36,8 @@ import {
   type CreateCommentOp,
   freshCommentId,
   OP_STORIES,
+  type OpStory,
+  sameStory,
 } from "@stll/docx-core/ops";
 
 import {
@@ -70,6 +72,10 @@ import {
   toggleUnderlineMark,
 } from "../prosemirror/extensions/marks/markUtils";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
+import {
+  adoptNativeSelection,
+  isCompositionKeyDown,
+} from "../prosemirror/nativeSelection";
 import {
   markNoteReferenceReplay,
   noteReferenceTransactionIssue,
@@ -1400,10 +1406,15 @@ export const createHiddenEditorManager = (
       handleScrollToSelection: suppressHiddenEditorScrollToSelection,
       // Prevent focus handling from interfering with visual layer
       handleDOMEvents: {
-        keydown: (pmView, event) =>
-          editorSession.type === "canonical"
+        // Handlers here run before any plugin's, so the key or text input
+        // takes the caret the browser shows before either engine reads it.
+        keydown: (pmView, event) => {
+          if (!input.isComposing && !isCompositionKeyDown(event))
+            adoptNativeSelection(pmView);
+          return editorSession.type === "canonical"
             ? input.handleDOMEvents.keydown(pmView, event)
-            : false,
+            : false;
+        },
         focus: () => false,
         blur: (pmView) =>
           editorSession.type === "canonical"
@@ -1432,6 +1443,8 @@ export const createHiddenEditorManager = (
             ? input.handleDOMEvents.cut(pmView, event)
             : createHiddenEditorClipboardHandlers(deps).cut(pmView, event),
         beforeinput: (_view, event) => {
+          if (!input.isComposing && !event.isComposing)
+            adoptNativeSelection(_view);
           if (editorSession.type === "canonical" && !deps.getReadOnly())
             return input.handleDOMEvents.beforeinput(_view, event);
           if (!deps.getReadOnly()) {
@@ -1712,6 +1725,22 @@ export const createHiddenEditorManager = (
     session: CanonicalSession;
     executor: CanonicalPublicOperations;
   } | null = null;
+  /** The editor last in use for each secondary story, as its editors report it. */
+  const storyViews: { story: OpStory; view: EditorView }[] = [];
+  /** The open editor of `story` showing its committed projection, if any. */
+  const openStoryView = (
+    session: CanonicalSession,
+    story: OpStory,
+  ): EditorView | null => {
+    const entry = storyViews.find((candidate) =>
+      sameStory(candidate.story, story),
+    );
+    if (!entry || entry.view.isDestroyed) return null;
+    const projected = session.projectStory(story);
+    return projected.isOk() && entry.view.state.doc.eq(projected.value.doc)
+      ? entry.view
+      : null;
+  };
   const getPublicOperations = () => {
     if (editorSession.type !== "canonical") return null;
     const session = editorSession.session;
@@ -1721,8 +1750,10 @@ export const createHiddenEditorManager = (
       getState: (story) => {
         if (!view || deps.getReadOnly() || isDestroying) return null;
         if (story === OP_STORIES.MAIN) return view.state;
-        // The story's projection; a host's open story editor follows the
-        // session's committed story, as it does after its own edits.
+        // The editor open on the story, so its selection maps through the
+        // batch; with none, the story's projection.
+        const open = openStoryView(session, story);
+        if (open) return open.state;
         const projected = session.projectStory(story);
         return projected.isErr()
           ? null
@@ -1733,9 +1764,18 @@ export const createHiddenEditorManager = (
       },
       publish: (commit) => {
         const story = commit.selection.anchor.story;
-        return story === OP_STORIES.MAIN
-          ? publishCommit(commit)
-          : publishStoryCommit(null, commit);
+        if (story === OP_STORIES.MAIN) return publishCommit(commit);
+        const open = storyViews.find((candidate) =>
+          sameStory(candidate.story, story),
+        )?.view;
+        return publishStoryCommit(
+          open &&
+            !open.isDestroyed &&
+            open.state.doc.eq(commit.transaction.before)
+            ? open
+            : null,
+          commit,
+        );
       },
     });
     publicOperations = { session, executor };
@@ -2050,6 +2090,14 @@ export const createHiddenEditorManager = (
           return null;
         }
         return result.value.doc;
+      },
+      noteCanonicalStoryView: ({ story, view: storyView }) => {
+        if (story === OP_STORIES.MAIN) return;
+        const index = storyViews.findIndex((candidate) =>
+          sameStory(candidate.story, story),
+        );
+        if (index >= 0) storyViews.splice(index, 1);
+        storyViews.push({ story, view: storyView });
       },
       replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly())

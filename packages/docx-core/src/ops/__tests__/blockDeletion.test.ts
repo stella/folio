@@ -357,3 +357,84 @@ test.each(["body", "cell"] as const)(
     ).toStrictEqual(tracked.document);
   },
 );
+
+test("tracked deletion before a table its mark cannot run into is refused, and one it can is resolvable alone", () => {
+  const foreign = { id: 9, author: "Other", date: "2026-01-01T00:00:00Z" };
+  const inner = cell([paragraph("00000003", "cell")]);
+  if (inner.type !== "table") throw new Error("A cell fixture is a table.");
+  const row = inner.rows[0];
+  if (row === undefined) throw new Error("A cell fixture has a row.");
+  const [firstCell] = row.cells;
+  if (firstCell === undefined) throw new Error("A cell fixture has a cell.");
+  const blocked: BlockContent[] = [
+    // The first row is a pending insertion or deletion.
+    {
+      ...inner,
+      rows: [
+        {
+          ...row,
+          structuralChange: { type: "tableRowInsertion", info: foreign },
+        },
+      ],
+    },
+    {
+      ...inner,
+      rows: [
+        {
+          ...row,
+          structuralChange: { type: "tableRowDeletion", info: foreign },
+        },
+      ],
+    },
+    // The first cell is a pending structural change.
+    {
+      ...inner,
+      rows: [
+        {
+          ...row,
+          cells: [
+            {
+              ...firstCell,
+              structuralChange: { type: "tableCellInsertion", info: foreign },
+            },
+          ],
+        },
+      ],
+    },
+    // The first cell opens with no paragraph.
+    {
+      ...inner,
+      rows: [{ ...row, cells: [{ ...firstCell, content: [] }] }],
+    },
+  ];
+  for (const table of blocked) {
+    const document = documentOf([
+      paragraph("00000001", "first"),
+      paragraph("00000002", "target"),
+      table,
+      paragraph("00000004", "after"),
+    ]);
+    const refused = applyDocumentOp(document, deletion(["00000002"]));
+    expect(refused.isErr() && refused.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+    );
+  }
+  // A table whose first cell opens with a paragraph receives the mark, and
+  // each decision on the deletion alone resolves.
+  const document = documentOf([
+    paragraph("00000001", "first"),
+    paragraph("00000002", "target"),
+    inner,
+    paragraph("00000004", "after"),
+  ]);
+  const tracked = apply(document, deletion(["00000002"]));
+  for (const decision of Object.values(REVISION_DECISIONS)) {
+    const resolved = applyDocumentOp(tracked.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: tracked.revisions,
+      decision,
+    });
+    if (resolved.isErr()) throw resolved.error;
+  }
+});

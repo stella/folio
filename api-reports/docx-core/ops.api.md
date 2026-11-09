@@ -215,7 +215,9 @@ export type CreateCommentOp = {
 };
 
 // @public
-export const createEditorIntentIdAllocator: () => (document: Document_2, intent: EditorIntentAllocation) => {
+export const createEditorIntentIdAllocator: (input?: {
+    reservedBlockIds?: ReadonlySet<string>;
+}) => (document: Document_2, intent: EditorIntentAllocation) => {
     revisionId: number;
     newBlockId: string;
     newIds: {
@@ -1271,6 +1273,9 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 
 // @public (undocumented)
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
+// @public
+export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
 
 // @public
 export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];

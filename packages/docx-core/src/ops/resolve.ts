@@ -27,7 +27,12 @@ import type {
   Table,
 } from "../model/document";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
-import { paragraphMarkOutcome } from "./blockDeletion";
+import {
+  markBeforeTableResolves,
+  paragraphMarkOutcome,
+  paragraphTableRunInTarget,
+  type TableRunInTarget,
+} from "./blockDeletion";
 import {
   blockListAt,
   endsItsContainer,
@@ -74,6 +79,7 @@ import {
   isTrackedWrapper,
   reviewFieldsOf,
   withMarkFormatting,
+  withReviewFields,
 } from "./review";
 import { runsMergeable } from "./runMerge";
 import { identitySlots, withInlineIdentity } from "./slots";
@@ -112,40 +118,6 @@ const precedingSectionOwner = (
     JSON.stringify(paragraph.sectionProperties)
     ? "same"
     : "occupied";
-};
-
-type TableRunInTarget = {
-  receiver: Paragraph;
-  tables: readonly Table[];
-};
-
-const paragraphTableRunInTarget = (
-  paragraph: Paragraph,
-  table: Table,
-): TableRunInTarget | undefined => {
-  if (paragraph.sectionProperties !== undefined) return undefined;
-  const tables: Table[] = [];
-  let current = table;
-  for (;;) {
-    const row = current.rows.at(0);
-    const cell = row?.cells.at(0);
-    if (!row || !cell) return undefined;
-    if (
-      row.structuralChange?.type === "tableRowInsertion" ||
-      row.structuralChange?.type === "tableRowDeletion" ||
-      cell.structuralChange !== undefined
-    ) {
-      return undefined;
-    }
-    tables.push(current);
-    const target = cell.content.at(0);
-    if (target?.type === "paragraph")
-      return target.sectionProperties === undefined
-        ? { receiver: target, tables }
-        : undefined;
-    if (target?.type !== "table") return undefined;
-    current = target;
-  }
 };
 
 const runParagraphIntoTable = (
@@ -2156,17 +2128,33 @@ const joinOps = (
         merged = [...seam.left, ...seam.right];
       }
     }
+    const keepsFirst = paragraph.pPrMark?.survivor === "first";
     // A record left as it was keeps its identity through the merge; an emptied
-    // one folded into its neighbour is rebuilt, and is no longer empty.
-    ends.set(nextId, emptiedEndsOf(merged, emptied));
+    // one folded into its neighbour is rebuilt, and is no longer empty. The
+    // joined paragraph is found again under the id it keeps.
+    ends.set(
+      keepsFirst ? idKey(paraId) : nextId,
+      emptiedEndsOf(merged, emptied),
+    );
     const mergedContent = asParagraphContent(merged);
     const receivesSection = outcome.sectionDestination === "following";
-    const { pPrMark: _rejectedMark, ...first } = paragraph;
     let survivor: Paragraph;
-    // The anchor of an insertion whose last paragraph took over the anchor's
-    // mark comes back as it was: its identity, its fields, the joined words.
-    if (paragraph.pPrMark?.survivor === "first")
-      survivor = { ...first, content: mergedContent };
+    if (keepsFirst) {
+      // The anchor of an insertion whose last paragraph took over the
+      // anchor's mark keeps its identity and its own fields, with the joined
+      // words. The mark that stays is the next paragraph's, with the
+      // properties and the reviews still pending on it: where that is the
+      // anchor's former mark, the anchor comes back as it was once those
+      // resolve; where it is another inserted break, rejecting that one
+      // keeps the anchor in turn.
+      const review = reviewFieldsOf(next);
+      if (review.pPrMark !== undefined && markWasAdded(review.pPrMark.kind))
+        review.pPrMark = { ...review.pPrMark, survivor: "first" };
+      survivor = withReviewFields(
+        { ...paragraph, content: mergedContent },
+        review,
+      );
+    }
     // An unchanged follower that receives nothing keeps its identity.
     else if (!receivesSection && structurallyEqual(mergedContent, next.content))
       survivor = next;
@@ -2250,7 +2238,7 @@ const joinOps = (
       remains.comments.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
-      (blocks.at(-1)?.type === "paragraph" && tableTarget !== undefined),
+      markBeforeTableResolves({ blocks, paragraph, table: next }),
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),

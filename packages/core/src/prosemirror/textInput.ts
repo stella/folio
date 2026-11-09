@@ -9,6 +9,7 @@ import {
 import { Mapping } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
+import { adoptNativeSelection, isCompositionKeyDown } from "./nativeSelection";
 import { createPluginKeyOwner } from "./pluginKeyOwner";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import { isZeroWidthAnchor } from "./zeroWidthAnchors";
@@ -388,8 +389,14 @@ export const createTextInputPlugin = (): Plugin => {
           });
           return false;
         },
+        keydown(view, event) {
+          if (!compositions.has(view) && !isCompositionKeyDown(event))
+            adoptNativeSelection(view);
+          return false;
+        },
         beforeinput(view, event) {
           if (compositions.has(view)) return false;
+          adoptNativeSelection(view);
           return handleEditorBeforeInput(view, event);
         },
       },

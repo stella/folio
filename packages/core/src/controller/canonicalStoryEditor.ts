@@ -1,12 +1,12 @@
-import {
-  AllSelection,
-  TextSelection,
-  type Transaction,
-} from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { OpStory } from "@stll/docx-core/ops";
 
+import {
+  adoptNativeSelection,
+  isCompositionKeyDown,
+} from "../prosemirror/nativeSelection";
 import {
   CANONICAL_GAP,
   type CanonicalRefusalGround,
@@ -49,38 +49,7 @@ export const createCanonicalStoryEditor = ({
     return accepted;
   };
   const syncNativeSelection = (view: EditorView) => {
-    if (boundary.isComposing || view.composing) return;
-    const selection = view.dom.ownerDocument.getSelection();
-    if (
-      !selection?.anchorNode ||
-      !selection.focusNode ||
-      !view.dom.contains(selection.anchorNode) ||
-      !view.dom.contains(selection.focusNode)
-    )
-      return;
-    const anchor = view.posAtDOM(selection.anchorNode, selection.anchorOffset);
-    const head = view.posAtDOM(selection.focusNode, selection.focusOffset);
-    if (
-      view.state.selection instanceof AllSelection &&
-      Math.min(anchor, head) === 0 &&
-      Math.max(anchor, head) === view.state.doc.content.size
-    )
-      return;
-    if (
-      anchor === view.state.selection.anchor &&
-      head === view.state.selection.head
-    )
-      return;
-    if (
-      !view.state.doc.resolve(anchor).parent.inlineContent ||
-      !view.state.doc.resolve(head).parent.inlineContent
-    )
-      return;
-    view.dispatch(
-      view.state.tr.setSelection(
-        TextSelection.create(view.state.doc, anchor, head),
-      ),
-    );
+    if (!boundary.isComposing) adoptNativeSelection(view);
   };
   const boundary = createCanonicalInputBoundary({
     breakUndoGroup: () => {
@@ -107,6 +76,8 @@ export const createCanonicalStoryEditor = ({
     dispatch: (transaction: Transaction): boolean => {
       if (!enabled()) return false;
       const view = getView();
+      // Public operations on this story work through the editor in use.
+      getApi()?.noteCanonicalStoryView({ story, view });
       if (transaction.docChanged) {
         if (boundary.acceptComposition(view, transaction)) return true;
         if (!boundary.commitNativeProposal(view, transaction))
@@ -139,8 +110,11 @@ export const createCanonicalStoryEditor = ({
       handleKeyPress: (view: EditorView, event: KeyboardEvent): boolean =>
         enabled() && boundary.handleKeyPress(view, event),
       handleDOMEvents: {
-        keydown: (view: EditorView, event: KeyboardEvent): boolean =>
-          enabled() && boundary.handleDOMEvents.keydown(view, event),
+        keydown: (view: EditorView, event: KeyboardEvent): boolean => {
+          if (!enabled()) return false;
+          if (!isCompositionKeyDown(event)) syncNativeSelection(view);
+          return boundary.handleDOMEvents.keydown(view, event);
+        },
         // Native navigation completes before keyup; synchronize it before typing
         // rather than waiting for the asynchronous selection observer.
         keyup: (view: EditorView, event: KeyboardEvent) => {
@@ -152,8 +126,11 @@ export const createCanonicalStoryEditor = ({
           if (enabled()) syncNativeSelection(view);
           return false;
         },
-        beforeinput: (view: EditorView, event: InputEvent): boolean =>
-          enabled() && boundary.handleDOMEvents.beforeinput(view, event),
+        beforeinput: (view: EditorView, event: InputEvent): boolean => {
+          if (!enabled()) return false;
+          if (!event.isComposing) syncNativeSelection(view);
+          return boundary.handleDOMEvents.beforeinput(view, event);
+        },
         mousedown: (view: EditorView): boolean =>
           enabled() && boundary.handleDOMEvents.mousedown(view),
         compositionstart: (view: EditorView): boolean =>
