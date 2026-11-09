@@ -176,6 +176,7 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
+import { FOLIO_INPUT_HIDDEN_ATTRIBUTE } from "@stll/folio-core/paged-layout/selectionViewportRect";
 import { resizeColumnPair } from "@stll/folio-core/paged-layout/tableColumnResize";
 import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInsertButtonGeometry";
 // Table commands (for quick-action insert buttons)
@@ -245,7 +246,7 @@ import { HiddenHeaderFooterPMs } from "../components/HiddenHeaderFooterPMs";
 import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterPMs";
 import { NoteStoryEditor } from "../components/NoteStoryEditor";
 import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
-import { useEqualState } from "../hooks/keepEqual";
+import { structurallyEqual, useEqualState } from "../hooks/keepEqual";
 import { containedHandler } from "../utils/contained-handler";
 // Internal components
 import { AISuggestionRectsOverlay } from "./AISuggestionRectsOverlay";
@@ -558,6 +559,22 @@ const TABLE_INSERT_HIDE_DELAY = 200;
 const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 /** Keep the visual caret hidden briefly while typed content relayouts. */
 const SELECTION_REVEAL_AFTER_INPUT_DELAY = 120;
+
+/**
+ * Hide the selection overlay while typed content lays out again. It is a DOM
+ * write, not a state change: a keystroke must not render the editor, since
+ * every commit with the editor focused reads its whole DOM.
+ */
+const hideSelectionOverlay = (overlay: HTMLElement | null): void => {
+  overlay?.setAttribute(FOLIO_INPUT_HIDDEN_ATTRIBUTE, "");
+  overlay?.style.setProperty("visibility", "hidden");
+};
+
+const showSelectionOverlay = (overlay: HTMLElement | null): void => {
+  if (!overlay?.hasAttribute(FOLIO_INPUT_HIDDEN_ATTRIBUTE)) return;
+  overlay.removeAttribute(FOLIO_INPUT_HIDDEN_ATTRIBUTE);
+  overlay.style.removeProperty("visibility");
+};
 /**
  * Readability floor for the autocomplete ghost width: with the caret at the
  * right content boundary, an unfloored width plus `overflow-wrap: anywhere`
@@ -1706,8 +1723,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const [selectionRects, setSelectionRects] = useEqualState<SelectionRect[]>(
       [],
     );
-    const [caretPosition, setCaretPosition] =
+    const [caretPosition, setCaretPositionState] =
       useEqualState<CaretPosition | null>(null);
+    /** The selection overlay, hidden without a render while typing. */
+    const selectionOverlayRef = useRef<HTMLDivElement>(null);
+    /** The caret the overlay last painted. */
+    const committedCaretRef = useRef<CaretPosition | null>(null);
     const [anonymizationRectGroups, setAnonymizationRectGroups] = useEqualState<
       AnonymizationRectGroup[]
     >([]);
@@ -1793,6 +1814,30 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     >([]);
     const suppressSelectionOverlayRef = useRef(false);
     const revealSelectionOverlayTimerRef = useRef<number | null>(null);
+    /**
+     * Write the caret. While typed content lays out again the overlay is
+     * hidden instead of cleared, so a keystroke renders nothing for it; the
+     * first caret written after that shows the overlay again, once the caret
+     * it holds is the one painted.
+     */
+    const setCaretPosition = useCallback(
+      (next: CaretPosition | null) => {
+        setCaretPositionState(next);
+        if (
+          !suppressSelectionOverlayRef.current &&
+          structurallyEqual(committedCaretRef.current, next)
+        ) {
+          showSelectionOverlay(selectionOverlayRef.current);
+        }
+      },
+      [setCaretPositionState],
+    );
+    useLayoutEffect(() => {
+      committedCaretRef.current = caretPosition;
+      if (!suppressSelectionOverlayRef.current) {
+        showSelectionOverlay(selectionOverlayRef.current);
+      }
+    }, [caretPosition]);
     const [selectionOverlayRequestGate] = useState(createLatestRequestGate);
 
     const validPrecomputedInitialState = useMemo(() => {
@@ -2562,7 +2607,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         }
 
         if (suppressSelectionOverlayRef.current) {
-          setCaretPosition(null);
           setSelectionRects([]);
           syncImeCaretAnchor({
             hiddenHost: hiddenPMRef.current?.getHostElement(),
@@ -3231,7 +3275,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       (state: EditorState) => {
         selectionOverlayRequestGate.invalidate();
         suppressSelectionOverlayRef.current = true;
-        setCaretPosition(null);
+        hideSelectionOverlay(selectionOverlayRef.current);
         setSelectionRects([]);
 
         if (revealSelectionOverlayTimerRef.current !== null) {
@@ -3244,12 +3288,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           updateSelectionOverlay(hiddenPMRef.current?.getState() ?? state);
         }, SELECTION_REVEAL_AFTER_INPUT_DELAY);
       },
-      [
-        selectionOverlayRequestGate,
-        updateSelectionOverlay,
-        setSelectionRects,
-        setCaretPosition,
-      ],
+      [selectionOverlayRequestGate, updateSelectionOverlay, setSelectionRects],
     );
 
     useEffect(
@@ -6781,6 +6820,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
               isFocused={isFocused}
               pageGap={pageGap}
               markCaretRect
+              overlayRef={selectionOverlayRef}
             />
             {/* HF caret overlay — draws the caret + selection rects for the
               focused persistent hidden HF EditorView. Painted DOM is the

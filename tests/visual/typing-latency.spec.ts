@@ -140,6 +140,14 @@ const prepare = (page: Page) =>
     const middle = paragraphs[Math.floor(paragraphs.length / 2)];
     if (middle === undefined) throw new TypeError("No paragraph to type in.");
     editor.setSelection(middle + 3, middle + 3);
+    // Type where the caret is in view, as a person does: the edited page and
+    // the caret are painted.
+    const paraId: unknown = view.state.doc.nodeAt(middle)?.attrs["paraId"];
+    if (
+      typeof paraId !== "string" ||
+      !globalThis.__folioPlayground?.getEditorRef()?.scrollToParaId(paraId)
+    )
+      throw new TypeError("No paragraph to scroll to.");
     editor.focus();
     const record = { input: new Map<number, number>(), frames: [] as number[] };
     new PerformanceObserver((list) => {
@@ -280,7 +288,13 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
             for (let current = fiber; current; current = current.sibling) {
               const previous = current.alternate;
               // Function components and their forwardRef / memo forms.
-              if (previous && [0, 11, 14, 15].includes(current.tag)) {
+              // Components that rendered in this commit (PerformedWork); a
+              // fiber that did not keeps an older alternate.
+              if (
+                previous &&
+                (current.flags & 1) !== 0 &&
+                [0, 11, 14, 15].includes(current.tag)
+              ) {
                 let hook = current.memoizedState as Hook | null;
                 let old = previous.memoizedState as Hook | null;
                 let index = 0;
