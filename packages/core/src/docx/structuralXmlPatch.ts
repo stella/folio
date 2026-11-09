@@ -9,6 +9,7 @@ import {
 } from "./selectiveXmlPatch";
 import { materializeReplayFragment } from "./storyBlockReplay";
 import {
+  getAttributeAnyPrefix,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -88,11 +89,18 @@ function* descendants(element: XmlElement): Generator<XmlElement> {
   for (const child of getChildElements(element)) yield* descendants(child);
 }
 
-/** Cross-paragraph ranges require a wider edit contract than paragraph identity. */
-const RANGE_ELEMENTS = new Set([
+/**
+ * Comment anchors a splice may carry: what the spliced body holds of them is
+ * checked against the serialized body afterwards.
+ */
+const COMMENT_ELEMENTS = new Set([
   "commentRangeStart",
   "commentRangeEnd",
   "commentReference",
+]);
+
+/** Cross-paragraph ranges require a wider edit contract than paragraph identity. */
+const RANGE_ELEMENTS = new Set([
   "bookmarkStart",
   "bookmarkEnd",
   "permStart",
@@ -160,7 +168,8 @@ export const buildStructuralDocumentPatch = ({
   const current = readBody(serializedXml);
   if (!source || !current) return null;
   // A range can start in one table and end in another, enclosing a body edit
-  // without placing either endpoint in an edited paragraph.
+  // without placing either endpoint in an edited paragraph. Comment anchors
+  // are checked on the spliced body instead.
   for (const root of [source.root, current.root]) {
     for (const element of descendants(root)) {
       if (
@@ -297,5 +306,27 @@ export const buildStructuralDocumentPatch = ({
     })
   )
     return null;
-  return spliceXml(originalXml, splices);
+  const patched = spliceXml(originalXml, splices);
+  if (patched === null) return null;
+  // Untouched paragraphs keep their source bytes, so the comment anchors in
+  // them are the source's. The splice holds only where those, with the ones
+  // the serialized paragraphs carry, are exactly the serialized body's, in
+  // order: no anchor dropped, duplicated or left behind.
+  const spliced = readBody(patched);
+  if (!spliced || commentAnchors(spliced.root) !== commentAnchors(current.root))
+    return null;
+  return patched;
+};
+
+/** The body's comment anchors in document order, each by kind and id. */
+const commentAnchors = (root: XmlElement): string => {
+  const anchors: string[] = [];
+  for (const element of descendants(root)) {
+    if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? ""))
+      continue;
+    const name = getLocalName(element.name);
+    if (COMMENT_ELEMENTS.has(name))
+      anchors.push(`${name}:${getAttributeAnyPrefix(element, "id") ?? ""}`);
+  }
+  return anchors.join(" ");
 };
