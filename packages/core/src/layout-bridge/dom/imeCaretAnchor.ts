@@ -1,7 +1,63 @@
+/**
+ * The class of the box hosts put the hidden editor's host in: a tiny clipping
+ * box off-screen, which the browser may scroll to reveal the native caret.
+ */
+export const HIDDEN_EDITOR_WRAPPER_CLASS = "paged-editor__hidden-pm-wrapper";
+
 type ImeCaretHost = {
   style: {
     transform: string;
   };
+  readonly parentElement?: {
+    closest: (selectors: string) => unknown;
+  } | null;
+};
+
+/** The scroll state of the wrapper, as the browser keeps it. */
+type ScrollingWrapper = {
+  scrollLeft: number;
+  scrollTop: number;
+  addEventListener: (
+    type: "scroll",
+    listener: () => void,
+    options?: { passive?: boolean },
+  ) => void;
+};
+
+const isScrollingWrapper = (value: unknown): value is ScrollingWrapper =>
+  typeof value === "object" &&
+  value !== null &&
+  "scrollLeft" in value &&
+  "scrollTop" in value &&
+  "addEventListener" in value;
+
+const toOrigin = (wrapper: ScrollingWrapper): void => {
+  if (wrapper.scrollLeft !== 0) wrapper.scrollLeft = 0;
+  if (wrapper.scrollTop !== 0) wrapper.scrollTop = 0;
+};
+
+const heldWrappers = new WeakSet<ScrollingWrapper>();
+
+/**
+ * Keep the wrapper around the host scrolled to its origin. The translation
+ * moves the native caret outside the clipping wrapper, so the browser scrolls
+ * the wrapper to reveal it, by any amount, whenever it reveals the caret; the
+ * translation is measured with the wrapper at its origin and is only right
+ * there. So the wrapper goes back to its origin before every measurement, and
+ * after every scroll of it, which leaves the caret where the last measurement
+ * put it.
+ */
+const holdWrapperAtOrigin = (hiddenHost: ImeCaretHost): void => {
+  const wrapper = hiddenHost.parentElement?.closest(
+    `.${HIDDEN_EDITOR_WRAPPER_CLASS}`,
+  );
+  if (!isScrollingWrapper(wrapper)) return;
+  toOrigin(wrapper);
+  if (heldWrappers.has(wrapper)) return;
+  heldWrappers.add(wrapper);
+  wrapper.addEventListener("scroll", () => toOrigin(wrapper), {
+    passive: true,
+  });
 };
 
 type ImeCaretEditorView = {
@@ -106,6 +162,7 @@ export const syncImeCaretAnchor = ({
   if (!hiddenHost) {
     return false;
   }
+  holdWrapperAtOrigin(hiddenHost);
 
   if (!editorView) {
     resetHostTransform(hiddenHost);
