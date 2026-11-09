@@ -1,4 +1,3 @@
-import { paintedStartSelector } from "@stll/folio-core/utils/paintedPositions";
 import type {
   DocxEditorProps,
   DocxEditorRef,
@@ -76,7 +75,7 @@ export const findScrollSuggestionTarget = ({
   const anchor = block ? snapshot.anchors[block.id] : undefined;
   return anchor
     ? root.querySelector<HTMLElement>(
-        `.layout-paragraph${paintedStartSelector(anchor.from)}`,
+        `.layout-paragraph[data-pm-start="${anchor.from}"]`,
       )
     : null;
 };

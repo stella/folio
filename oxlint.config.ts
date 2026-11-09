@@ -196,8 +196,7 @@ export default library({
     },
     {
       // A painted element's editor positions are stored by
-      // packages/core/src/utils/paintedPositions.ts alone. Tests assert what
-      // was painted and stay free to read the attributes; the fixtures verify
+      // packages/core/src/utils/paintedPositions.ts alone. The fixtures verify
       // the rule.
       files: [
         "packages/*/src/**/*.{ts,tsx,js,jsx,vue}",
@@ -208,7 +207,14 @@ export default library({
       },
     },
     {
-      files: ["packages/*/src/**/*.test.*", "packages/*/src/**/__tests__/**"],
+      // Tests and the playgrounds' test bridges assert or locate what was
+      // painted, as a consumer reading the page would.
+      files: [
+        "packages/*/src/**/*.test.*",
+        "packages/*/src/**/__tests__/**",
+        "packages/playground/**",
+        "packages/playground-vue/**",
+      ],
       rules: {
         "folio-painted-positions/position-attribute-owner": "off",
       },

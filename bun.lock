@@ -298,7 +298,6 @@
       "name": "@stll/playground-vue",
       "version": "0.0.0",
       "dependencies": {
-        "@stll/folio-core": "workspace:*",
         "@stll/folio-vue": "workspace:*",
         "@stll/utf8-boundaries": "workspace:*",
         "vue": "^3.5.44",
