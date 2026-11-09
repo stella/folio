@@ -7,6 +7,7 @@ import {
   COMMENT_PART_RELATIONSHIPS,
   type Document,
   MAX_REVISION_ID,
+  type Paragraph,
   type ParagraphContent,
   setDocumentBodyComments,
 } from "../model/document";
@@ -79,24 +80,101 @@ const anchorId = (node: InlineNode): number | undefined => {
       return undefined;
   }
 };
-const storyBodiesIncludingTextBoxes = (
-  body: Pick<Document["package"]["document"], "content">,
-): Pick<Document["package"]["document"], "content">[] => {
-  const bodies = [body];
-  const paragraphs = storyParagraphs(body);
-  for (const location of paragraphs) {
-    for (const { node } of leafSpans(location.paragraph.content)) {
-      if (node.type !== "shape" || node.shape.textBody === undefined) continue;
-      bodies.push(
-        ...storyBodiesIncludingTextBoxes({
-          content: node.shape.textBody.content,
-        }),
-      );
-    }
+type StoryBodyContent = Pick<Document["package"]["document"], "content">;
+
+/**
+ * What a paragraph adds to its story's comment anchors, read off its own
+ * content: its anchors, where its text starts and ends, and the bodies of
+ * its text boxes, each in leaf order.
+ */
+export type ParagraphAnchorFacts = {
+  anchors: readonly LeafSpan[];
+  start: Gap;
+  end: Gap;
+  textBoxes: readonly (readonly BlockContent[])[];
+};
+
+/** How the anchor walks read a paragraph's facts. */
+export type ParagraphAnchorReader = (
+  paragraph: Paragraph,
+) => ParagraphAnchorFacts;
+
+/** A paragraph's facts, read from every leaf of it. */
+export const freshParagraphAnchorFacts: ParagraphAnchorReader = (paragraph) => {
+  const spans = leafSpans(paragraph.content);
+  const anchors: LeafSpan[] = [];
+  const textBoxes: (readonly BlockContent[])[] = [];
+  for (const span of spans) {
+    if (isCommentAnchor(span.node)) anchors.push(span);
+    if (span.node.type === "shape" && span.node.shape.textBody !== undefined)
+      textBoxes.push(span.node.shape.textBody.content);
   }
+  return {
+    anchors,
+    start: spans.at(0)?.before ?? { offset: 0, zeroWidthBefore: 0 },
+    end: spans.at(-1)?.after ?? { offset: 0, zeroWidthBefore: 0 },
+    textBoxes,
+  };
+};
+
+/**
+ * A paragraph's facts, read once per paragraph object. A package's
+ * paragraphs are never changed in place: an edit replaces the paragraphs it
+ * changes and keeps the rest, so a kept paragraph's facts still hold.
+ */
+const keptParagraphAnchorFacts: ParagraphAnchorReader = (() => {
+  const known = new WeakMap<Paragraph, ParagraphAnchorFacts>();
+  return (paragraph) => {
+    const cached = known.get(paragraph);
+    if (cached !== undefined) return cached;
+    const facts = freshParagraphAnchorFacts(paragraph);
+    known.set(paragraph, facts);
+    return facts;
+  };
+})();
+
+/** A story's body, then the bodies of the text boxes in it, depth first in document order. */
+const storyBodiesIncludingTextBoxes = (
+  body: StoryBodyContent,
+  facts: ParagraphAnchorReader,
+): StoryBodyContent[] => {
+  const bodies = [body];
+  const visit = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      switch (block.type) {
+        case "paragraph":
+          for (const content of facts(block).textBoxes)
+            bodies.push(...storyBodiesIncludingTextBoxes({ content }, facts));
+          break;
+        case "table":
+          for (const row of block.rows)
+            for (const cell of row.cells) visit(cell.content);
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          visit(block.content);
+          break;
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          break;
+        default: {
+          const unhandled: never = block;
+          return unhandled;
+        }
+      }
+    }
+  };
+  visit(body.content);
   return bodies;
 };
-type StoryAnchorSpan = LeafSpan & {
+export type StoryAnchorSpan = LeafSpan & {
   story: OpStory;
   blockId: string;
   /** A range marker that stands between blocks rather than in a paragraph. */
@@ -114,7 +192,8 @@ type BlockCommentBoundary = Extract<
  */
 const storyAnchors = (
   story: OpStory,
-  body: Pick<Document["package"]["document"], "content">,
+  body: StoryBodyContent,
+  facts: ParagraphAnchorReader,
 ): StoryAnchorSpan[] => {
   const anchors: StoryAnchorSpan[] = [];
   let waiting: BlockCommentBoundary[] = [];
@@ -137,22 +216,12 @@ const storyAnchors = (
       switch (block.type) {
         case "paragraph": {
           const blockId = block.paraId ?? "";
-          const spans = leafSpans(block.content);
-          const start = spans.at(0)?.before ?? {
-            offset: 0,
-            zeroWidthBefore: 0,
-          };
+          const { anchors: own, start, end } = facts(block);
           for (const node of waiting)
             anchors.push(boundary(node, blockId, start));
           waiting = [];
-          for (const span of spans) {
-            if (isCommentAnchor(span.node))
-              anchors.push({ story, blockId, ...span });
-          }
-          previous = {
-            blockId,
-            end: spans.at(-1)?.after ?? { offset: 0, zeroWidthBefore: 0 },
-          };
+          for (const span of own) anchors.push({ story, blockId, ...span });
+          previous = { blockId, end };
           break;
         }
         case "table":
@@ -198,16 +267,28 @@ const storyAnchors = (
   return anchors;
 };
 
-const anchorsIn = (document: Document) => {
+/**
+ * Every comment anchor of a document, story by story, each story's text
+ * boxes after its body. `facts` is for comparing the kept reading with a
+ * fresh one.
+ */
+export const commentAnchorsIn = (
+  document: Document,
+  facts: ParagraphAnchorReader = keptParagraphAnchorFacts,
+): StoryAnchorSpan[] => {
   const anchors: StoryAnchorSpan[] = [];
   for (const story of documentStories(document)) {
     for (const body of storyBodiesIncludingTextBoxes(
       storyBody(document, story),
+      facts,
     ))
-      anchors.push(...storyAnchors(story, body));
+      anchors.push(...storyAnchors(story, body, facts));
   }
   return anchors;
 };
+
+const anchorsIn = (document: Document): StoryAnchorSpan[] =>
+  commentAnchorsIn(document);
 
 /** A comment, the comments it replies to and the replies under it. */
 const threadIds = (document: Document, id: number): number[] => {
@@ -291,6 +372,7 @@ const coveredCommentIds = (document: Document): Set<number> => {
   for (const story of documentStories(document)) {
     for (const body of storyBodiesIncludingTextBoxes(
       storyBody(document, story),
+      keptParagraphAnchorFacts,
     )) {
       const open = new Set<number>();
       for (const { node } of storyCoverageNodes(body)) {
