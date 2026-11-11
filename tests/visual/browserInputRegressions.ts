@@ -1015,6 +1015,18 @@ export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+/** Everything cut while suggesting, across a comment's range and its reference. */
+export const CANONICAL_CUT_EVERYTHING_BESIDE_COMMENT_SEED_431 = {
+  authority: "canonical",
+  seed: 431,
+  path: "4:3:1",
+  fingerprint: "5713f8fb706927fd",
+  trace: {
+    shape: "comments",
+    actions: [{ kind: "selectAll" }, { kind: "cut" }],
+  },
+} satisfies CanonicalRegression;
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -1057,4 +1069,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_TYPING_OVER_EVERYTHING,
   CANONICAL_TYPING_OVER_CELLS,
   BROWSER_NOTES_LIST_PASTE_SEED_29,
+  CANONICAL_CUT_EVERYTHING_BESIDE_COMMENT_SEED_431,
 ];
