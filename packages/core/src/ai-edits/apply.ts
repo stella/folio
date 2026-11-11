@@ -3297,6 +3297,12 @@ const pendingJoinInsertionRefusal = {
     "Accepting the pending paragraph mark deletion before this place would run the paragraph together with the words before it or the table after it. Resolve that change first, or insert elsewhere.",
 } as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
 
+const pendingJoinTableRemovalRefusal = {
+  reason: "pendingParagraphMarkDeletion",
+  message:
+    "Accepting the pending paragraph mark deletion before this table would run the paragraph together with the one after the table once the table is gone. Resolve that change first.",
+} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
+
 const pendingParagraphMarkPropertyRefusal = {
   reason: "pendingParagraphMarkDeletion",
   canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
@@ -10254,6 +10260,17 @@ const resolveOperationTarget = ({
     const target = findEnclosingTableRow(doc, blockFrom);
     if (!target) {
       return { type: "skip", reason: "unsupportedBlock" };
+    }
+    // A pending join that runs words up to the table stops there; without the
+    // table those words would run into the paragraph after it once accepted.
+    if (
+      joinRunsWordsInto({
+        doc,
+        paragraphPos: target.tablePosition,
+        noteReferences,
+      })
+    ) {
+      return { type: "skip", ...pendingJoinTableRemovalRefusal };
     }
     return {
       type: "resolved",
