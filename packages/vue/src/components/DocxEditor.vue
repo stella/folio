@@ -963,6 +963,7 @@ const {
   loadDocument,
   save: saveDocument,
   getDocument,
+  readDocumentModel,
   setDocument,
   getHeaderFooterView,
   syncHeaderFooterViews,
@@ -2051,6 +2052,7 @@ const { exposed } = useDocxEditorRefApi({
     commentManagement.setComments(nextComments);
   },
   focus: () => activeEditorView.value?.focus(),
+  readDocumentModel,
   // The editor's document carries the threads it was loaded with; the host's
   // list is what the sidebar shows and what saving writes.
   getDocument: () => {
