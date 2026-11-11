@@ -61,6 +61,7 @@ import {
 import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
 import {
   addedBreakCarrierBefore,
+  containerEndsAt,
   finalParagraphsOf,
   paragraphEndsItsContainer,
 } from "../prosemirror/containerFinalParagraph";
@@ -3833,13 +3834,6 @@ type BatchParagraphPosition = { position: number; mappedFrom: number };
 /** A container-ending paragraph a tracked `deleteBlock` emptied, as it recorded it. */
 type DeletedFinalParagraph = BatchParagraphPosition & {
   operationId: string;
-  /**
-   * Whether a paragraph preceded the emptied one when the deletion ran. One
-   * that nothing preceded (a table, or its container's start) stays emptied,
-   * as the deletion alone leaves it: a paragraph this batch inserts before it
-   * lands afterwards and keeps its own break.
-   */
-  precededWhenDeleted: boolean;
   revisionExtras: {
     initials?: string;
     provenance?: "suggested";
@@ -3901,17 +3895,13 @@ const finalParagraphPredecessor = (doc: PMNode, at: number) => {
 };
 
 /**
- * The paragraph whose break a recorded final deletion retires, if any. A
- * deletion that nothing preceded when it ran keeps its paragraph emptied, as
- * the deletion alone does: a paragraph the batch places before it afterwards
- * (an insertion after a table, a deleted table's predecessor) lands after the
- * deletion and keeps its own break.
+ * The paragraph whose break a recorded final deletion retires, if any, read
+ * from the finished batch: what precedes the emptied paragraph then, whatever
+ * stood there when the deletion ran. A paragraph the batch places before it
+ * gives up its break; a table it places there leaves the paragraph emptied.
  */
-const retiredFinalBreak = (
-  doc: PMNode,
-  at: number,
-  deletion: Pick<DeletedFinalParagraph, "precededWhenDeleted">,
-) => (deletion.precededWhenDeleted ? finalParagraphPredecessor(doc, at) : null);
+const retiredFinalBreak = (doc: PMNode, at: number) =>
+  finalParagraphPredecessor(doc, at);
 
 /**
  * The paragraph a direct replay leaves at a container's end when the batch
@@ -3992,7 +3982,7 @@ const pendingRemovedFinalBreakPositions = (
   const positions = new Set<number>();
   for (const deletion of deletions) {
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
-    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
+    const predecessor = retiredFinalBreak(tr.doc, at);
     if (!predecessor || predecessor.node.attrs["pPrMark"] != null) continue;
     positions.add(predecessor.position);
   }
@@ -4060,7 +4050,7 @@ const hasDeferredParagraphPropertyWrite = ({
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
     const target = tr.doc.nodeAt(at);
     if (!target) continue;
-    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
+    const predecessor = retiredFinalBreak(tr.doc, at);
     if (!predecessor) continue;
     const mark: unknown = predecessor.node.attrs["pPrMark"];
     if (
@@ -4136,7 +4126,7 @@ const paragraphPropertyRevisionTargets = ({
   // in preflight without changing the established deferred mutation order.
   for (const deletion of deletedFinalParagraphs) {
     const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
-    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
+    const predecessor = retiredFinalBreak(tr.doc, at);
     if (
       !predecessor ||
       addedBreakRevisionId(predecessor.node.attrs["pPrMark"]) === null
@@ -4160,6 +4150,89 @@ const paragraphPropertyRevisionTargets = ({
     targets.push(survivor);
   }
   return targets;
+};
+
+/**
+ * A container-ending paragraph a direct `deleteBlock` took: removed, where a
+ * paragraph preceded it when the deletion ran (`position` is then where it
+ * ended its container), or emptied in place, where nothing did.
+ */
+type DirectFinalDeletion =
+  | (BatchParagraphPosition & { kind: "removed"; paragraph: PMNode })
+  | (BatchParagraphPosition & { kind: "emptied" });
+
+/**
+ * Whether a paragraph stands right before `at`, so that a container-ending
+ * paragraph deleted directly there can go: that one ends the container.
+ */
+const precededByParagraph = (at: ResolvedPos, paragraphTypeName: string) =>
+  at.nodeBefore?.type.name === paragraphTypeName;
+
+/**
+ * Finish the direct deletion of every paragraph a container ends with, as
+ * `withRetiredFinalParagraphs` finishes the tracked one: once, over the
+ * finished batch. The batch runs backwards, so a block placed before the
+ * deleted paragraph lands after its deletion ran, and what precedes it is
+ * settled only now. A paragraph placed before an emptied one ends the
+ * container, and the emptied one goes. A table placed after the paragraph a
+ * removal left ending the container would end it instead, and a container
+ * has to end with a paragraph: the paragraph the removal took ends it again,
+ * emptied. Of a run of removals that is the leftmost, the one a run keeps
+ * when nothing precedes it.
+ *
+ * Returns whether the document changed.
+ */
+const withSettledDirectFinalDeletions = (
+  tr: Transaction,
+  deletions: readonly DirectFinalDeletion[],
+): boolean => {
+  const edits: (
+    | { kind: "emptied"; at: number }
+    | { kind: "restored"; at: number; paragraph: PMNode }
+  )[] = [];
+  /** Per container end, the paragraph to end it with again: the last one removed. */
+  const restored = new Map<number, PMNode>();
+  for (const deletion of deletions) {
+    const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position, 1);
+    if (deletion.kind === "emptied") {
+      edits.push({ kind: "emptied", at });
+      continue;
+    }
+    const $end = tr.doc.resolve(at);
+    if (
+      containerEndsAt($end, deletion.paragraph.type.name) &&
+      $end.nodeBefore?.type.spec["tableRole"] === "table"
+    ) {
+      restored.set(at, deletion.paragraph);
+    }
+  }
+  for (const [at, paragraph] of restored) {
+    edits.push({ kind: "restored", at, paragraph });
+  }
+  let changed = false;
+  for (const edit of edits.toSorted((left, right) => right.at - left.at)) {
+    if (edit.kind === "restored") {
+      const { paragraph } = edit;
+      tr.insert(
+        edit.at,
+        paragraph.type.create(paragraph.attrs, null, paragraph.marks),
+      );
+      changed = true;
+      continue;
+    }
+    const node = tr.doc.nodeAt(edit.at);
+    if (node?.type.name !== "paragraph" || node.content.size > 0) continue;
+    const $at = tr.doc.resolve(edit.at);
+    if (
+      !paragraphEndsItsContainer($at, node.type.name) ||
+      !precededByParagraph($at, node.type.name)
+    ) {
+      continue;
+    }
+    tr.delete(edit.at, edit.at + node.nodeSize);
+    changed = true;
+  }
+  return changed;
 };
 
 /**
@@ -4215,11 +4288,9 @@ const withRetiredFinalParagraphs = ({
     if (emptied?.type.name !== "paragraph") {
       continue;
     }
-    const predecessor = retiredFinalBreak(tr.doc, at, deletion);
+    const predecessor = retiredFinalBreak(tr.doc, at);
     if (!predecessor) {
-      const source = deletion.precededWhenDeleted
-        ? collapsedFinalRunSource(tr.doc, at, batchRevisionIds)
-        : null;
+      const source = collapsedFinalRunSource(tr.doc, at, batchRevisionIds);
       if (!source) continue;
       const revisionId = nextRevisionId;
       const carried = carryParagraphProperties({
@@ -5688,6 +5759,8 @@ const applyFolioAIEditOperationsInternal = ({
   const deletedTextBoxAnchorIds = new Set<string>();
   /** Container-ending paragraphs a tracked `deleteBlock` emptied: see `withRetiredFinalParagraphs`. */
   const deletedFinalParagraphs: DeletedFinalParagraph[] = [];
+  /** Container-ending paragraphs a direct `deleteBlock` took: see `withSettledDirectFinalDeletions`. */
+  const directFinalDeletions: DirectFinalDeletion[] = [];
   const mergedPropertyTargets: BatchParagraphPosition[] = [];
   const deferredNoopFinalDeletions = new Set<string>();
   const ownsSharedRevisionIdCursor =
@@ -6895,10 +6968,26 @@ const applyFolioAIEditOperationsInternal = ({
           );
           const leavesAParagraph =
             !endsItsContainer ||
-            at.nodeBefore?.type.name === item.blockNode.type.name;
+            precededByParagraph(at, item.blockNode.type.name);
+          const deletedNode = tr.doc.nodeAt(item.blockFrom);
+          const mappedFrom = tr.mapping.maps.length;
           tr = leavesAParagraph
             ? removeParagraph(tr, item.blockFrom, item.blockTo)
             : emptyParagraph(tr, item.blockFrom, item.blockTo);
+          // What precedes it is settled only once the batch is: see
+          // `withSettledDirectFinalDeletions`.
+          if (endsItsContainer && deletedNode) {
+            directFinalDeletions.push(
+              leavesAParagraph
+                ? {
+                    kind: "removed",
+                    position: item.blockTo,
+                    mappedFrom,
+                    paragraph: deletedNode,
+                  }
+                : { kind: "emptied", position: item.blockFrom, mappedFrom },
+            );
+          }
           break;
         }
 
@@ -7122,8 +7211,6 @@ const applyFolioAIEditOperationsInternal = ({
             // settled only once the batch is: see `withRetiredFinalParagraphs`.
             deletedFinalParagraphs.push({
               operationId: item.operation.id,
-              precededWhenDeleted:
-                finalParagraphPredecessor(tr.doc, markPosition) !== null,
               position: markPosition,
               mappedFrom: tr.mapping.maps.length,
               revisionExtras: trackedRevisionExtras,
@@ -7148,7 +7235,6 @@ const applyFolioAIEditOperationsInternal = ({
             if (finalPosition !== null) {
               deletedFinalParagraphs.push({
                 operationId: item.operation.id,
-                precededWhenDeleted: true,
                 position: finalPosition,
                 mappedFrom: tr.mapping.maps.length,
                 revisionExtras: trackedRevisionExtras,
@@ -7210,27 +7296,18 @@ const applyFolioAIEditOperationsInternal = ({
             boundary,
             "paragraph",
           );
-          const mapping = tr.mapping;
-          const pendingIndex =
-            finalDeleted === null
-              ? -1
-              : deletedFinalParagraphs.findIndex(
-                  ({ position, mappedFrom }) =>
-                    mapping.slice(mappedFrom).map(position) === finalDeleted,
-                );
-          const pending =
-            pendingIndex < 0
-              ? undefined
-              : deletedFinalParagraphs.at(pendingIndex);
+          // An earlier batch retired the final break onto the paragraph the
+          // table follows, so accepting runs that paragraph into the deleted
+          // tail: the table goes after the tail, which accepting removes. A
+          // final deletion of this batch retires nothing yet; whether it does
+          // is read once the batch is finished (`withRetiredFinalParagraphs`),
+          // with this table standing at its anchor.
           if (
             before?.type.name === "paragraph" &&
             finalDeleted !== null &&
-            (pending !== undefined ||
-              (isPlainDeletedPPrMark(before.attrs["pPrMark"]) &&
-                !holdsOnlyDeletedContent(before)))
+            isPlainDeletedPPrMark(before.attrs["pPrMark"]) &&
+            !holdsOnlyDeletedContent(before)
           ) {
-            // The table follows the deleted tail in the tracked document, so
-            // accepting removes that tail and leaves the table at its anchor.
             insertionComments = commentsAcrossBlockBoundary(tr.doc, at);
             const final = tr.doc.nodeAt(finalDeleted);
             if (!final) {
@@ -7239,44 +7316,12 @@ const applyFolioAIEditOperationsInternal = ({
                 { finalDeleted },
               );
             }
-            if (pending) {
-              // A deletion in this batch has not retired the final break yet.
-              const receiptIndex = applied.findIndex(
-                ({ id }) => id === pending.operationId,
-              );
-              const receipt =
-                receiptIndex < 0 ? undefined : applied.at(receiptIndex);
-              if (receipt === undefined) {
-                panic("A deleted final paragraph lost its operation receipt", {
-                  operationId: pending.operationId,
-                });
-              }
-              const revisionId = operationRevisionSeed++;
-              tr.setNodeAttribute(finalDeleted, "pPrMark", {
-                kind: "del",
-                info: {
-                  id: revisionId,
-                  author,
-                  date,
-                  ...pending.revisionExtras,
-                },
-              });
-              applied[receiptIndex] = {
-                ...receipt,
-                revisionId: receipt.revisionId ?? revisionId,
-                revisionIds: [...(receipt.revisionIds ?? []), revisionId],
-              };
-              deletedFinalParagraphs.splice(pendingIndex, 1);
-              deferredNoopFinalDeletions.delete(pending.operationId);
-            } else {
-              // An earlier batch retired the break onto its surviving predecessor.
-              tr.setNodeAttribute(at - before.nodeSize, "pPrMark", null);
-              tr.setNodeAttribute(
-                finalDeleted,
-                "pPrMark",
-                before.attrs["pPrMark"],
-              );
-            }
+            tr.setNodeAttribute(at - before.nodeSize, "pPrMark", null);
+            tr.setNodeAttribute(
+              finalDeleted,
+              "pPrMark",
+              before.attrs["pPrMark"],
+            );
             at = finalDeleted + final.nodeSize;
           }
         }
@@ -7994,6 +8039,9 @@ const applyFolioAIEditOperationsInternal = ({
     });
   }
 
+  if (withSettledDirectFinalDeletions(tr, directFinalDeletions)) {
+    markStructuralChange(tr);
+  }
   removeRowsWithoutCellsAfterBatch(tr, emptiedRows);
   markTerminalTableReviewCarrier(tr, view.state.doc);
 
