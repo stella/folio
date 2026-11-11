@@ -5,49 +5,31 @@
  * Accepting removes some blocks whole: a paragraph with nothing left of it
  * whose mark is deleted (`paragraphGoes`), and a table every row of which is
  * deleted (`tableGoes`). An edit reads a document with pending changes as
- * accepting leaves it, so it reads past those blocks: a merge joins what
- * stands beyond them, and the two sides of a table accepting removes are one
- * gap. Applied directly after those blocks are gone, the same edit meets the
- * same neighbours.
+ * accepting leaves it: a join into a paragraph accepting removes, right
+ * before a table, ends there, and the two sides of a table accepting removes
+ * are one gap. Applied directly, the same edit reads the same.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import { paragraphJoinAfter } from "./commands/paragraphBookmarkJoin";
-import { isBlockBoundaryNode } from "./keptRangeBoundaries";
 import { paragraphGoes, tableGoes } from "./tableRunIn";
 
 const isTable = (node: PMNode): boolean =>
   node.type.spec["tableRole"] === "table";
 
 /**
- * The join a merge of the paragraph ending at `position` makes with the
- * paragraph after it, or null where it has no paragraph to join: the next
- * block is no paragraph (`paragraphJoinAfter`), or accepting removes every
- * block from that paragraph on up to a table that stays. Accepted, such a join
- * runs the merged paragraph's words on into the table's first cell, which a
- * merge right before a table never does, so it is refused in every mode alike.
- * Paragraphs that accepting removes up to the end of the container leave the
- * merged paragraph last, as before.
+ * Whether accepting every change ends a join at the paragraph at `position`,
+ * leaving the words joined into it apart from the table right after it:
+ * nothing of that paragraph stays and its mark goes, and a table that stays
+ * follows it. A deleted paragraph stood before the table, and the join ended
+ * there (`tableRunIn`), so a merge into it applied directly keeps its break
+ * before the table, as the same merge tracked and accepted leaves it.
  */
-export const paragraphMergeJoinAfter = (
-  doc: PMNode,
-  position: number,
-): ReturnType<typeof paragraphJoinAfter> => {
-  const join = paragraphJoinAfter(doc, position);
-  if (!join) return null;
-  const $next = doc.resolve(join.nextPosition);
-  const { parent } = $next;
-  for (let index = $next.index(); index < parent.childCount; index++) {
-    const block = parent.child(index);
-    if (isBlockBoundaryNode(block)) continue;
-    if (isTable(block)) {
-      if (tableGoes(block, "accept")) continue;
-      return null;
-    }
-    if (!paragraphGoes(block, "accept")) return join;
-  }
-  return join;
+export const joinEndsBeforeTable = (doc: PMNode, position: number): boolean => {
+  const paragraph = doc.nodeAt(position);
+  if (!paragraph || !paragraphGoes(paragraph, "accept")) return false;
+  const after = doc.resolve(position + paragraph.nodeSize).nodeAfter;
+  return after !== null && isTable(after) && !tableGoes(after, "accept");
 };
 
 /**

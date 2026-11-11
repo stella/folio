@@ -38,7 +38,10 @@ import type { NumberingMap } from "../docx/numberingParser";
 import { isNumberingReference } from "../docx/numberingReference";
 import { formattingEquals } from "../docx/runConsolidator";
 import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
-import { insertionGapStart } from "../prosemirror/acceptedBlockNeighbours";
+import {
+  insertionGapStart,
+  joinEndsBeforeTable,
+} from "../prosemirror/acceptedBlockNeighbours";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
   deleteTextBoxesAnchoredAt,
@@ -7594,6 +7597,10 @@ const applyFolioAIEditOperationsInternal = ({
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
         }
+        // Accepted, a join into a paragraph that goes whole right before a
+        // table ends there, apart from the table: the joined paragraph keeps
+        // a break that stays, and no removed mark runs it into the table.
+        const endsBeforeTable = joinEndsBeforeTable(tr.doc, join.nextPosition);
         allocateNewLists({ status: "willApply", items: [item] });
         assertNewListsAllocated(item.operation);
         const separator = followedOnlyByDeletedParagraphs(tr.doc, blockTo)
@@ -7680,12 +7687,12 @@ const applyFolioAIEditOperationsInternal = ({
           // merge tracked leaves it. `join` keeps the first node's attrs.
           const secondSection = second ? sectionPropertiesOf(second) : null;
           const joined = tr.doc.nodeAt(blockFrom);
+          const endingMark =
+            second && !endsBeforeTable
+              ? expectParagraphAttrs(second).pPrMark
+              : null;
           if (joined && second) {
-            tr = tr.setNodeAttribute(
-              blockFrom,
-              "pPrMark",
-              expectParagraphAttrs(second).pPrMark ?? null,
-            );
+            tr = tr.setNodeAttribute(blockFrom, "pPrMark", endingMark ?? null);
           }
           if (joined && sectionPropertiesOf(joined) !== secondSection) {
             tr = tr.setNodeAttribute(
@@ -7694,9 +7701,6 @@ const applyFolioAIEditOperationsInternal = ({
               secondSection,
             );
           }
-          const endingMark = second
-            ? expectParagraphAttrs(second).pPrMark
-            : null;
           if (
             joined &&
             (endingMark?.kind === "del" || endingMark?.kind === "moveFrom")

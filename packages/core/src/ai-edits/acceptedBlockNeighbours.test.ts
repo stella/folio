@@ -3,10 +3,9 @@
  * the blocks accepting removes whole: applied as tracked changes and accepted,
  * it reads as the same edit applied directly.
  *
- * - A merge whose next paragraphs accepting removes, up to a table that
- *   stays, has no paragraph to join, as right before a table: it is refused in
- *   every mode, rather than running the paragraph into the table's first cell
- *   directly while the tracked one keeps it apart.
+ * - A merge into a paragraph accepting removes, right before a table, ends
+ *   there: the merged paragraph stays apart from the table in every mode,
+ *   rather than running into its first cell when applied directly.
  * - Blocks put on either side of a table accepting removes share one gap and
  *   keep the order the batch names them in, as they do once the table is
  *   removed directly.
@@ -68,12 +67,19 @@ const accepted = async (reviewer: FolioDocxReviewer) => {
   return reopened.snapshot().blocks.map((block) => ({
     text: block.text,
     inTable: block.table !== undefined,
+    numbering: block.statedNumbering?.kind,
   }));
 };
 
-/** Delete `texts` as tracked changes another author left pending. */
+/**
+ * Delete `texts` as tracked changes another author left pending; the ids of
+ * every block, read before, since a reader shows a deleted one blank.
+ */
 const withPendingDeletions = async (markdown: string, texts: string[]) => {
   const reviewer = await open(markdown);
+  const ids = new Map(
+    reviewer.snapshot().blocks.map((block) => [block.text, block.id]),
+  );
   const result = apply(
     reviewer,
     "tracked-changes",
@@ -84,9 +90,16 @@ const withPendingDeletions = async (markdown: string, texts: string[]) => {
     })),
   );
   expect(result.skipped).toEqual([]);
-  return FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
-    author: "Test",
-  });
+  const reopened = await FolioDocxReviewer.fromBuffer(
+    await reviewer.toBuffer(),
+    { author: "Test" },
+  );
+  const id = (text: string): string => {
+    const found = ids.get(text);
+    if (found === undefined) throw new Error(`No block read "${text}"`);
+    return found;
+  };
+  return { reviewer: reopened, id };
 };
 
 const merge = (blockId: string): FolioDocumentOperation => ({
@@ -104,7 +117,7 @@ type MergeCase = {
   /** Paragraphs another author's pending change deletes. */
   pending: string[];
   /** A batch before the merge, in the mode of the merge or as a suggestion. */
-  before?: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[];
+  before?: (id: (text: string) => string) => FolioDocumentOperation[];
   suggestedBefore?: boolean;
 };
 
@@ -124,11 +137,11 @@ const mergeCases: Record<string, MergeCase> = {
   "a table an earlier batch inserted": {
     markdown: ["Kept item.", "Gone item.", "End."].join("\n\n"),
     pending: ["Gone item."],
-    before: (reviewer) => [
+    before: (id) => [
       {
         id: "table",
         type: "insertTable",
-        blockId: idOf(reviewer, "Gone item."),
+        blockId: id("Gone item."),
         rows: ROWS,
       },
     ],
@@ -137,63 +150,47 @@ const mergeCases: Record<string, MergeCase> = {
     markdown: ["Kept item.", "Gone item.", "End."].join("\n\n"),
     pending: ["Gone item."],
     suggestedBefore: true,
-    before: (reviewer) => [
+    before: (id) => [
       {
         id: "table",
         type: "insertTable",
-        blockId: idOf(reviewer, "Gone item."),
+        blockId: id("Gone item."),
         rows: ROWS,
       },
     ],
   },
 };
 
-describe("probe: a merge whose next paragraphs accepting removes", () => {
-  const show = async (reviewer: FolioDocxReviewer) =>
-    JSON.stringify(
-      (await accepted(reviewer)).map(
-        ({ text, inTable }) => `${inTable ? "cell" : "body"}:${text}`,
-      ),
+describe("a merge into a paragraph accepting removes, before a table", () => {
+  const replay = async (
+    setup: MergeCase,
+    mode: "direct" | "tracked-changes",
+  ) => {
+    const { reviewer, id } = await withPendingDeletions(
+      setup.markdown,
+      setup.pending,
     );
-  for (const [name, setup] of Object.entries(mergeCases)) {
-    for (const mode of ["direct", "tracked-changes"] as const) {
-      test(`PROBE ${name} ${mode}`, async () => {
-        const reviewer = await withPendingDeletions(
-          setup.markdown,
-          setup.pending,
-        );
-        if (setup.before) {
-          apply(
-            reviewer,
-            setup.suggestedBefore === true ? "suggested" : mode,
-            setup.before(reviewer),
-          );
-        }
-        const result = apply(reviewer, mode, [
-          merge(idOf(reviewer, "Kept item.")),
-        ]);
-        console.log(
-          `PROBE ${name} | ${mode} | skipped ${JSON.stringify(result.skipped)} | ${await show(reviewer)}`,
-        );
-      });
+    if (setup.before) {
+      const before = apply(
+        reviewer,
+        setup.suggestedBefore === true ? "suggested" : mode,
+        setup.before(id),
+      );
+      expect(before.skipped).toEqual([]);
     }
-  }
-  for (const mode of ["direct", "tracked-changes"] as const) {
-    test(`PROBE same batch ${mode}`, async () => {
-      const reviewer = await open(
-        ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
-      );
-      const result = apply(reviewer, mode, [
-        merge(idOf(reviewer, "Kept item.")),
-        {
-          id: "gone",
-          type: "deleteBlock",
-          blockId: idOf(reviewer, "Gone item."),
-        },
-      ]);
-      console.log(
-        `PROBE same batch | ${mode} | skipped ${JSON.stringify(result.skipped)} | ${await show(reviewer)}`,
-      );
+    const result = apply(reviewer, mode, [merge(id("Kept item."))]);
+    expect(result.skipped).toEqual([]);
+    return accepted(reviewer);
+  };
+  for (const [name, setup] of Object.entries(mergeCases)) {
+    test(`stays apart from the table, directly as tracked (${name})`, async () => {
+      const direct = await replay(setup, "direct");
+      expect(direct).toContainEqual({
+        text: "Kept item. ",
+        inTable: false,
+        numbering: "reference",
+      });
+      expect(await replay(setup, "tracked-changes")).toEqual(direct);
     });
   }
 });
