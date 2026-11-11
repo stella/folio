@@ -38,6 +38,11 @@ import type { NumberingMap } from "../docx/numberingParser";
 import { isNumberingReference } from "../docx/numberingReference";
 import { formattingEquals } from "../docx/runConsolidator";
 import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
+import {
+  insertionGapStart,
+  joinEndsBeforeTable,
+  paragraphMergeLeaves,
+} from "../prosemirror/acceptedBlockNeighbours";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
   deleteTextBoxesAnchoredAt,
@@ -3167,11 +3172,14 @@ const insertionAt = ({
   if (item.joinSide === undefined) return item.from;
   const position = sinceRead(tr, item).map(item.blockFrom, 1);
   if (tr.doc.nodeAt(position)?.type.name !== "paragraph") return item.from;
-  return pendingJoinBounds({
-    doc: tr.doc,
-    paragraphPos: position,
-    noteReferences,
-  })[item.joinSide];
+  return insertionGapStart(
+    tr.doc,
+    pendingJoinBounds({
+      doc: tr.doc,
+      paragraphPos: position,
+      noteReferences,
+    })[item.joinSide],
+  );
 };
 
 /**
@@ -4139,13 +4147,15 @@ const paragraphPropertyRevisionTargets = ({
     if (canRetractFinalBreak({ predecessor: predecessor.node, target }))
       removedBreakPositions.add(predecessor.position);
   }
-  const survivorPosition = paragraphLeftAfter({
+  const survivorPosition = paragraphMergeLeaves({
     doc: tr.doc,
     paragraphPos: position,
     removedBreakPositions,
   });
   const survivor =
-    survivorPosition === null ? null : tr.doc.nodeAt(survivorPosition);
+    survivorPosition === null || survivorPosition === position
+      ? null
+      : tr.doc.nodeAt(survivorPosition);
   if (survivor?.type.name === "paragraph") {
     targets.push(survivor);
   }
@@ -7642,6 +7652,10 @@ const applyFolioAIEditOperationsInternal = ({
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
         }
+        // Accepted, a join into a paragraph that goes whole right before a
+        // table ends there, apart from the table: the joined paragraph keeps
+        // a break that stays, and no removed mark runs it into the table.
+        const endsBeforeTable = joinEndsBeforeTable(tr.doc, join.nextPosition);
         allocateNewLists({ status: "willApply", items: [item] });
         assertNewListsAllocated(item.operation);
         const separator = followedOnlyByDeletedParagraphs(tr.doc, blockTo)
@@ -7728,12 +7742,12 @@ const applyFolioAIEditOperationsInternal = ({
           // merge tracked leaves it. `join` keeps the first node's attrs.
           const secondSection = second ? sectionPropertiesOf(second) : null;
           const joined = tr.doc.nodeAt(blockFrom);
+          const endingMark =
+            second && !endsBeforeTable
+              ? expectParagraphAttrs(second).pPrMark
+              : null;
           if (joined && second) {
-            tr = tr.setNodeAttribute(
-              blockFrom,
-              "pPrMark",
-              expectParagraphAttrs(second).pPrMark ?? null,
-            );
+            tr = tr.setNodeAttribute(blockFrom, "pPrMark", endingMark ?? null);
           }
           if (joined && sectionPropertiesOf(joined) !== secondSection) {
             tr = tr.setNodeAttribute(
@@ -7742,9 +7756,6 @@ const applyFolioAIEditOperationsInternal = ({
               secondSection,
             );
           }
-          const endingMark = second
-            ? expectParagraphAttrs(second).pPrMark
-            : null;
           if (
             joined &&
             (endingMark?.kind === "del" || endingMark?.kind === "moveFrom")
@@ -7765,11 +7776,11 @@ const applyFolioAIEditOperationsInternal = ({
               }).tr;
               mergedPropertiesApplied = true;
             }
-            const survivor = paragraphLeftAfter({
+            const survivor = paragraphMergeLeaves({
               doc: tr.doc,
               paragraphPos: blockFrom,
             });
-            if (survivor !== null) {
+            if (survivor !== null && survivor !== blockFrom) {
               tr = carryParagraphProperties({
                 tr,
                 position: survivor,
@@ -7841,7 +7852,7 @@ const applyFolioAIEditOperationsInternal = ({
             const carryPos =
               isDeletedPPrMark(joinedMark) ||
               removedBreakPositions.has(blockFrom)
-                ? (paragraphLeftAfter({
+                ? (paragraphMergeLeaves({
                     doc: tr.doc,
                     paragraphPos: blockFrom,
                     removedBreakPositions,
@@ -7883,8 +7894,9 @@ const applyFolioAIEditOperationsInternal = ({
             // accepting gives what the direct merge gives, rejecting restores
             // its own.
             // A chain of pending merges ends in the paragraph whose break stays.
+            // Where the join ends before a table, accepting leaves this one.
             const survivorPos =
-              paragraphLeftAfter({
+              paragraphMergeLeaves({
                 doc: tr.doc,
                 paragraphPos: blockFrom,
                 removedBreakPositions: pendingRemovedFinalBreakPositions(
@@ -7892,21 +7904,23 @@ const applyFolioAIEditOperationsInternal = ({
                   deletedFinalParagraphs,
                 ),
               }) ?? nextPosition;
-            const carried = carryParagraphProperties({
-              tr,
-              position: survivorPos,
-              source: paragraph,
-              styleResolver,
-              numbering,
-              revision: {
-                id: revisionIdMark,
-                author,
-                date,
-                ...trackedRevisionExtras,
-              },
-            });
-            tr = carried.tr;
-            mergedPropertiesRecorded = carried.tracked;
+            if (survivorPos !== blockFrom) {
+              const carried = carryParagraphProperties({
+                tr,
+                position: survivorPos,
+                source: paragraph,
+                styleResolver,
+                numbering,
+                revision: {
+                  id: revisionIdMark,
+                  author,
+                  date,
+                  ...trackedRevisionExtras,
+                },
+              });
+              tr = carried.tr;
+              mergedPropertiesRecorded = carried.tracked;
+            }
             mergedPropertiesAt = survivorPos;
           }
         }
@@ -9885,26 +9899,34 @@ const resolveOperationTarget = ({
           after: endOfParagraphWithItsTextBoxes(doc, blockFrom),
         }
       : pendingJoinBounds({ doc, paragraphPos: blockFrom, noteReferences });
-  // A block beside the anchor: `from` is the anchor's own gap, `at` where a
-  // pending join around it puts the block (see `joinSide`).
-  const beside = (
-    side: "before" | "after",
-  ): {
+  type Placement = {
     from: number;
     at: number;
     joinSide?: "before" | "after";
     joinAt?: number;
-  } => {
+  };
+  // A block beside the outermost table its anchor sits in.
+  const besideTable = (boundary: number): Placement => {
+    const at = insertionGapStart(doc, boundary);
+    return { from: at, at };
+  };
+  // A block beside the anchor: `from` is the anchor's own gap, `at` where a
+  // pending join around it puts the block (see `joinSide`).
+  const beside = (side: "before" | "after"): Placement => {
     // A block after the join orders by the anchor's own gap: edits inside
     // the paragraph the join leaves run first, and the block follows where
     // they leave the join's end. A block before it orders by where it lands,
     // ahead of the paragraphs the join takes in: edits inside them run first
     // and keep the positions they were read at.
-    const plain =
+    // Either side of a table accepting removes is one gap
+    // (`insertionGapStart`).
+    const plain = insertionGapStart(
+      doc,
       side === "after"
         ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
-        : blockFrom;
-    const at = joinBounds()[side];
+        : blockFrom,
+    );
+    const at = insertionGapStart(doc, joinBounds()[side]);
     const from = side === "after" ? plain : at;
     return at === plain
       ? { from, at }
@@ -9984,7 +10006,7 @@ const resolveOperationTarget = ({
     // After a paragraph is after the text boxes drawn in it too: a block
     // between the two is read after the boxes once the package is saved.
     const placed = tableBoundary
-      ? { from: tableBoundary[side], at: tableBoundary[side] }
+      ? besideTable(tableBoundary[side])
       : beside(side);
     if (
       joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences })
@@ -10024,7 +10046,7 @@ const resolveOperationTarget = ({
     const position = operation.position ?? "after";
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const placed = tableBoundary
-      ? { from: tableBoundary[position], at: tableBoundary[position] }
+      ? besideTable(tableBoundary[position])
       : beside(position);
     return {
       type: "resolved",
@@ -10285,7 +10307,7 @@ const resolveOperationTarget = ({
       (operation.position ?? "after") === "after" ? "after" : "before";
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const placed = tableBoundary
-      ? { from: tableBoundary[side], at: tableBoundary[side] }
+      ? besideTable(tableBoundary[side])
       : beside(side);
     return {
       type: "resolved",
