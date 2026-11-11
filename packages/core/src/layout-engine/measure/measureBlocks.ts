@@ -1645,19 +1645,22 @@ export function measureBlocks(
         ? [...activeZones, ...projectedTableZones]
         : undefined;
 
+    // Reported after the recovery below, so an instrumentation callback that
+    // throws cannot turn a block measured well into the fallback.
+    let outcome: MeasureOutcome;
+    let measure: Measure;
     try {
       const blockZones = isUndecoratedParagraphMark(block)
         ? zones?.filter((zone) => zone.source !== "floatingTable")
         : zones;
-      const { measure, outcome } = measureBlockWithOutcome(
+      ({ measure, outcome } = measureBlockWithOutcome(
         block,
         blockWidth,
         blockZones,
         cumulativeY,
         fieldValues,
         options,
-      );
-      recordMeasureOutcome(blockIndex, block, outcome);
+      ));
 
       // Paragraphs clear floating exclusions internally (findClearLineY inside
       // measureParagraph). An in-flow table cannot reflow its cells around a
@@ -1708,8 +1711,6 @@ export function measureBlocks(
         pageRelativeY = nextSectionY;
         columnRegionMaxBottom = 0;
       }
-
-      return measure;
     } catch (error) {
       // A single bad block must not crash pagination, so fall back to a minimal
       // real measure (downstream layout treats it as a single-line paragraph of
@@ -1725,6 +1726,8 @@ export function measureBlocks(
       pageRelativeY += fallback.totalHeight;
       return fallback;
     }
+    recordMeasureOutcome(blockIndex, block, outcome);
+    return measure;
   });
 }
 
