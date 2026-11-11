@@ -191,21 +191,22 @@ test("a suggested paragraph whose mark another revision holds leaves with its su
     const suggestions = batches
       .filter(({ mode }) => mode === "suggested")
       .map(({ operation }) => operation.id);
-    const changes = (await applyBatches(bytes, batches))
-      .getChanges()
-      .map(({ id }) => id);
-    for (const first of [null, ...changes]) {
+    // Revision ids differ between reviewers: a change is picked by its place.
+    const count = (await applyBatches(bytes, batches)).getChanges().length;
+    expect(count).toBeGreaterThan(0);
+    for (let index = -1; index < count; index++) {
       const reviewer = await applyBatches(bytes, batches);
+      const change = reviewer.getChanges()[index];
+      const first = change?.type ?? "suggestion";
       let rejected = true;
-      if (first === null) {
-        for (const id of suggestions)
-          rejected = reviewer.rejectSuggestion(id) && rejected;
-      } else {
-        rejected = reviewer.rejectChange(first);
+      for (const id of index < 0 ? suggestions : [])
+        rejected = reviewer.rejectSuggestion(id) && rejected;
+      if (index >= 0) {
+        rejected = change !== undefined && reviewer.rejectChange(change);
         for (const id of suggestions) reviewer.rejectSuggestion(id);
       }
-      for (const change of reviewer.getChanges().toReversed())
-        reviewer.rejectChange(change);
+      for (const left of reviewer.getChanges().toReversed())
+        reviewer.rejectChange(left);
       reviewer.rejectAll();
       expect({
         first,
