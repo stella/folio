@@ -74,6 +74,10 @@ const maximumOriginalPropertySnapshotsBrotliBytes = 1536;
 const maximumFlatOpcMainProjectionBytes = 12512;
 const maximumFlatOpcMainProjectionBrotliBytes = 4872;
 
+// The Unicode 18 script tables (unicode-script 0.5.9). Measured raw delta:
+// 411 bytes, rounded to 512-byte increments.
+const maximumUnicode18ScriptTablesBytes = 512;
+
 const kernel = {
   label: "DOCX kernel",
   crate: "stella-docx-kernel",
@@ -98,7 +102,8 @@ const kernel = {
     maximumTablePropertyRevisionSpansBytes +
     maximumEffectiveProjectionStylesBytes +
     maximumOriginalPropertySnapshotsBytes +
-    maximumFlatOpcMainProjectionBytes,
+    maximumFlatOpcMainProjectionBytes +
+    maximumUnicode18ScriptTablesBytes,
   maximumBrotliBytes:
     100 * 1024 +
     maximumReviewDetailBrotliBytes +
