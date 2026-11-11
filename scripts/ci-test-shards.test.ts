@@ -19,7 +19,6 @@ import {
 import {
   assignTestShards,
   discoverTestSuites,
-  planTestShards,
   shardLoads,
 } from "./ci-test-shard-plan";
 import {
