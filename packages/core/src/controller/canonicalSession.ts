@@ -191,7 +191,7 @@ const intentRefusal = (
     case "table":
     case "tableRow":
     case "tableBlock":
-      if (mode.type !== "suggesting") return refuse(message);
+      if (mode.type === "suggesting") return refuse(message);
       gap = CANONICAL_GAP.trackedTableStructure;
       break;
     default:

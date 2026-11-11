@@ -109,7 +109,9 @@ export const canonicalConformanceRefusalRows = (
     key.placement !== "document";
   // Deleting the table records every row, the nested table's too.
   if (key.operation === "command:deleteTable")
-    return inFixtureTable ? [REFUSAL_ROWS.suggestedNestedTableRows] : [];
+    return key.shape === "tables" && key.mode === "suggesting"
+      ? [REFUSAL_ROWS.suggestedNestedTableRows]
+      : [];
   // Across the focused cell and the next, the selection spans the merged
   // block and reaches the row with the nested table; at a caret the row and
   // column hold neither.
