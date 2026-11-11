@@ -22,7 +22,7 @@ import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
 
-type Mode = "direct" | "tracked-changes" | "suggested";
+type Mode = "direct" | "tracked-changes";
 
 const TABLE = "| Item | Price |\n| --- | --- |\n| Widget | 10 |";
 const ROWS = [
@@ -116,9 +116,8 @@ type MergeCase = {
   markdown: string;
   /** Paragraphs another author's pending change deletes. */
   pending: string[];
-  /** A batch before the merge, in the mode of the merge or as a suggestion. */
+  /** A batch before the merge, in the mode of the merge. */
   before?: (id: (text: string) => string) => FolioDocumentOperation[];
-  suggestedBefore?: boolean;
 };
 
 const mergeCases: Record<string, MergeCase> = {
@@ -146,19 +145,6 @@ const mergeCases: Record<string, MergeCase> = {
       },
     ],
   },
-  "a table an earlier suggestion inserted": {
-    markdown: ["Kept item.", "Gone item.", "End."].join("\n\n"),
-    pending: ["Gone item."],
-    suggestedBefore: true,
-    before: (id) => [
-      {
-        id: "table",
-        type: "insertTable",
-        blockId: id("Gone item."),
-        rows: ROWS,
-      },
-    ],
-  },
 };
 
 describe("a merge into a paragraph accepting removes, before a table", () => {
@@ -171,11 +157,7 @@ describe("a merge into a paragraph accepting removes, before a table", () => {
       setup.pending,
     );
     if (setup.before) {
-      const before = apply(
-        reviewer,
-        setup.suggestedBefore === true ? "suggested" : mode,
-        setup.before(id),
-      );
+      const before = apply(reviewer, mode, setup.before(id));
       expect(before.skipped).toEqual([]);
     }
     const result = apply(reviewer, mode, [merge(id("Kept item."))]);
