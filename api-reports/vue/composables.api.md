@@ -197,6 +197,7 @@ export type UseDocxEditorReturn = {
         selective?: boolean;
     }) => Promise<Blob | null>;
     getDocument: () => Document_2 | null;
+    readDocument: () => ReadonlyDocument | null;
     setDocument: (doc: Document_2) => void;
     getHeaderFooterView: (rId: string) => EditorView | null;
     syncHeaderFooterViews: () => void;
