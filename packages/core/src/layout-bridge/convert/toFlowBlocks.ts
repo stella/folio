@@ -44,10 +44,11 @@ import {
   suppressFinalParagraphInRepeatedEmptySuffix,
 } from "./flowBlockPostprocessing";
 import {
-  blockIdsHandedOut,
+  freshBlockIdsFrom,
   nextBlockId,
+  preferBlockIds,
   resetBlockIdCounter,
-  skipBlockIds,
+  takeHandedOutBlockIds,
   twipsToPixels,
 } from "./flowConversionShared";
 import type {
@@ -118,8 +119,6 @@ export function toFlowBlocks(
     "Cannot layout invalid ProseMirror document",
   );
 
-  resetBlockIdCounter();
-
   const listCounters = options.listCounters ?? new Map<number, number[]>();
   const originalListCounters =
     options.originalListCounters ?? new Map<number, number[]>();
@@ -187,6 +186,9 @@ export function toFlowBlocks(
   const lastConversion = recording
     ? paragraphBlocks?.lastConversion(doc)
     : undefined;
+  // A block keeps its id across conversions: fresh ids start above the ones
+  // the last conversion handed out, which the nodes converting again reuse.
+  resetBlockIdCounter(lastConversion?.freshFrom ?? 0);
   const hasFontResolutionContext =
     options.embeddedFontFamilyMap !== undefined ||
     options.documentFontFacts !== undefined;
@@ -812,6 +814,40 @@ export function toFlowBlocks(
   };
   const stateAfter = (index: number): ConversionCheckpoint | undefined =>
     kept[index + 1]?.before ?? lastConversion?.end;
+  // The changed range's nodes the last conversion converted too, each paired
+  // once with its own earlier conversion, in document order: a node an edit
+  // moved within the range takes back its own ids, not those of the node now
+  // at its old place.
+  const changedEnd = kept.length - keptEnd;
+  const survivors = new Map<number, number>();
+  if (changedEnd > keptStart && nodeCount - keptEnd > keptStart) {
+    const earlier = new Map<PMNode, number[]>();
+    for (let at = keptStart; at < changedEnd; at += 1) {
+      const node = kept[at]?.node;
+      if (node === undefined) continue;
+      const places = earlier.get(node);
+      if (places === undefined) earlier.set(node, [at]);
+      else places.push(at);
+    }
+    for (let index = keptStart; index < nodeCount - keptEnd; index += 1) {
+      const at = earlier.get(doc.child(index))?.shift();
+      if (at !== undefined) survivors.set(index, at);
+    }
+  }
+  const survivorPlaces = new Set(survivors.values());
+  /**
+   * The last conversion's node whose block ids converting `index` takes back:
+   * the same node at either end, the same node in the changed range between
+   * them, and else the node at the same place in that range that no surviving
+   * node took. Each one is taken at most once.
+   */
+  const predecessor = (index: number): TopLevelConversion | undefined => {
+    const at = keptIndex(index) ?? survivors.get(index);
+    if (at !== undefined) return kept[at];
+    return index < changedEnd && !survivorPlaces.has(index)
+      ? kept[index]
+      : undefined;
+  };
 
   const converted: TopLevelConversion[] = [];
   let lastBefore: ConversionCheckpoint | undefined;
@@ -820,21 +856,15 @@ export function toFlowBlocks(
     const node = doc.child(index);
     const keptAt = keptIndex(index);
     const previous = keptAt === undefined ? undefined : kept[keptAt];
-    const firstBlockId = blockIdsHandedOut();
     if (
       keptAt !== undefined &&
       previous !== undefined &&
       !convertsWithOtherNodes(node) &&
       startsFrom(previous.before)
     ) {
-      if (
-        previous.pos === pos &&
-        previous.firstBlockId === firstBlockId &&
-        previous.firstSdt === sdtSeq
-      ) {
+      if (previous.pos === pos && previous.firstSdt === sdtSeq) {
         // The node converts as it did: the same blocks.
         for (const block of previous.blocks) blocks.push(block);
-        skipBlockIds(previous.blockIds);
         sdtSeq += previous.sdts;
         converted.push(previous);
         lastBefore = previous.before;
@@ -844,13 +874,13 @@ export function toFlowBlocks(
       }
       const moved =
         previous.paragraphMarker !== undefined &&
-        previous.blockIds === 1 &&
+        previous.ids.length === 1 &&
         previous.sdts === 0
           ? paragraphBlocks?.take(
               node,
               pos,
               previous.paragraphMarker.marker,
-              nextBlockId,
+              () => previous.ids[0] ?? nextBlockId(),
             )
           : undefined;
       if (moved !== undefined) {
@@ -859,7 +889,6 @@ export function toFlowBlocks(
         converted.push({
           ...previous,
           pos,
-          firstBlockId,
           firstSdt: sdtSeq,
           blocks: [moved],
         });
@@ -879,14 +908,14 @@ export function toFlowBlocks(
     const firstSdt = sdtSeq;
     const firstBlock = blocks.length;
     projectedMarker = undefined;
+    preferBlockIds(predecessor(index)?.ids ?? []);
     visit(node, pos);
+    const ids = takeHandedOutBlockIds();
     const projected = blocks.slice(firstBlock);
-    const blockIds = blockIdsHandedOut() - firstBlockId;
     converted.push({
       node,
       pos,
-      firstBlockId,
-      blockIds,
+      ids,
       firstSdt,
       sdts: sdtSeq - firstSdt,
       before,
@@ -906,6 +935,7 @@ export function toFlowBlocks(
       doc,
       nodes: converted,
       end: pending ?? checkpoint(lastBefore),
+      freshFrom: freshBlockIdsFrom(),
     });
   }
   releaseTextBoxesBeforePageBreaks();
@@ -940,7 +970,7 @@ export function toFlowBlocks(
     options.splitPageBreakAndParagraphMark === true,
     sectionBreaksWithoutMarker,
   );
-  const result = groupParagraphFrames(reconciledBlocks, nextBlockId);
+  const result = groupParagraphFrames(reconciledBlocks);
   if (recording && freezesKeptBlocks()) {
     for (const node of converted)
       for (const block of node.blocks) freezeKeptBlock(block);
