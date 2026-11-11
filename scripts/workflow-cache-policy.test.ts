@@ -615,15 +615,13 @@ test("the shared action bounds each install attempt and retries once", () => {
     panic("Invalid Playwright action");
   const steps = broken["runs"]["steps"];
   if (!Array.isArray(steps)) panic("Invalid Playwright action steps");
-  broken["runs"]["steps"] = steps.map((step: unknown) =>
-    isRecord(step) && isRecord(step["env"]) && "ATTEMPT_SECONDS" in step["env"]
-      ? {
-          ...step,
-          env: { ...step["env"], ATTEMPT_SECONDS: undefined },
-          run: "bunx playwright install chromium",
-        }
-      : step,
-  );
+  // The clone is this test's own copy, so the install step is edited in place.
+  for (const step of steps) {
+    if (!isRecord(step) || !isRecord(step["env"])) continue;
+    if (!("ATTEMPT_SECONDS" in step["env"])) continue;
+    delete step["env"]["ATTEMPT_SECONDS"];
+    step["run"] = "bunx playwright install chromium";
+  }
   expect(boundedInstallProblems(broken)).toEqual([
     "the install step sets no ATTEMPT_SECONDS",
     "the install retries other than exactly once",
