@@ -12,12 +12,14 @@ Object.defineProperty(navigator, "platform", {
 import { panic } from "better-result";
 import { afterAll, expect, test } from "bun:test";
 
-const { createApp, defineComponent, h, shallowRef } = await import("vue");
+const { createApp, defineComponent, h, isProxy, reactive, shallowRef } =
+  await import("vue");
 
 import {
   DOCUMENT_OP_TYPES,
   withCanonicalParagraphIds,
 } from "@stll/folio-core/controller/canonicalOperations";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import type { Document } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
@@ -167,3 +169,37 @@ test.each(["note", "body"] as const)(
     }
   },
 );
+
+test("a reactive document a host loads is held raw, so the host's copies can clone it", () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const holder: { editor: ReturnType<typeof useDocxEditor> | null } = {
+    editor: null,
+  };
+  const app = createApp(
+    defineComponent({
+      setup() {
+        holder.editor = useDocxEditor({
+          hiddenContainer: shallowRef(null),
+          pagesContainer: shallowRef(null),
+          onError: (error) => panic(error.message),
+        });
+        return () => h("div");
+      },
+    }),
+  );
+  app.mount(container);
+  try {
+    const adapter = holder.editor ?? panic("Expected mounted Vue editor");
+    const hosted = reactive(createEmptyDocument({ initialText: "Body" }));
+    adapter.loadDocument(hosted);
+    const model = adapter.modelDocument.value ?? panic("Expected a model");
+    expect(isProxy(model)).toBe(false);
+    expect(() =>
+      cloneDocumentWithParagraphPropertySources(model),
+    ).not.toThrow();
+  } finally {
+    app.unmount();
+    container.remove();
+  }
+});

@@ -27,7 +27,7 @@ const lintFixture = (fixture: string) => {
 
 describe("model read owner", () => {
   test("rejects every cast of a model to the model Document", () => {
-    expect(lintFixture("read-model-cast.invalid.ts")).toBe(4);
+    expect(lintFixture("read-model-cast.invalid.ts")).toBe(6);
   });
 
   test("accepts readModel, checked literals and the DOM Document", () => {

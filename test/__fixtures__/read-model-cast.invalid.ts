@@ -2,6 +2,7 @@
 // every cast to the model `Document`, however it is imported or spelled.
 
 import type { Document as ModelDocument } from "../../packages/core/src/types/document";
+import type * as Model from "@stll/folio-core/types/document";
 import type { Document } from "@stll/folio-core/types/document";
 import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 
@@ -15,3 +16,10 @@ export const asUnion = (model: ReadonlyDocument | null): Document | null =>
 
 export const renamed = (model: ReadonlyDocument): ModelDocument =>
   model as ModelDocument;
+
+export const asIntersection = (
+  model: ReadonlyDocument,
+): Document & { marker?: string } => model as Document & { marker?: string };
+
+export const throughNamespace = (model: ReadonlyDocument): Model.Document =>
+  model as Model.Document;

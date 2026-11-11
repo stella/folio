@@ -33,7 +33,11 @@ const shapeDocument = async (id: string): Promise<ReadonlyDocument> => {
   return deepFreeze(cloneDocumentWithParagraphPropertySources(document));
 };
 
-/** Every object reachable from `value`. */
+/**
+ * Every object of document data reachable from `value`. Symbol-keyed handles
+ * are left out: they carry a paragraph's parse provenance, which the copy
+ * owner hands on to the copy on purpose, and hold no document content.
+ */
 const reachable = (value: unknown, seen = new Set<object>()): Set<object> => {
   if (typeof value !== "object" || value === null || seen.has(value))
     return seen;
@@ -46,8 +50,7 @@ const reachable = (value: unknown, seen = new Set<object>()): Set<object> => {
   } else if (value instanceof Set) {
     for (const entry of value) reachable(entry, seen);
   } else if (!(ArrayBuffer.isView(value) || value instanceof ArrayBuffer)) {
-    for (const key of Reflect.ownKeys(value))
-      reachable((value as Record<PropertyKey, unknown>)[key], seen);
+    for (const entry of Object.values(value)) reachable(entry, seen);
   }
   return seen;
 };

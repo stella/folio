@@ -17,6 +17,8 @@
 //   model as unknown as Document
 //   <Document>model
 //   value as Document | null
+//   model as Document & { marker?: string }
+//   model as Model.Document                 (import type * as Model from ...)
 //
 // Not flagged:
 //   readModel(model)                         (the sanctioned reader cast)
@@ -33,8 +35,6 @@ type RuleContext = {
     messageId: "modelDocumentCast";
   }) => void;
 };
-
-const SKIP_KEYS = new Set(["parent", "loc", "range", "start", "end", "type"]);
 
 const isAstNode = (value: unknown): value is AstNode =>
   typeof value === "object" &&
@@ -88,31 +88,16 @@ const isModelImportSource = (filename: string, specifier: string): boolean => {
   return MODEL_MODULE_PATHS.some((modulePath) => stripped.endsWith(modulePath));
 };
 
-const forEachChild = (node: AstNode, visit: (child: AstNode) => void): void => {
-  for (const [key, value] of Object.entries(node)) {
-    if (SKIP_KEYS.has(key)) {
-      continue;
-    }
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        if (isAstNode(item)) {
-          visit(item);
-        }
-      }
-      continue;
-    }
-    if (isAstNode(value)) {
-      visit(value);
-    }
-  }
+type ModelNames = {
+  /** Local names bound to the model `Document` itself. */
+  documents: Set<string>;
+  /** Local names of namespace imports of a module that exports it. */
+  namespaces: Set<string>;
 };
 
-/** The local names the file binds to the model `Document`. */
-const modelDocumentNames = (
-  program: AstNode,
-  filename: string,
-): Set<string> => {
-  const names = new Set<string>();
+/** The local names through which the file reaches the model `Document`. */
+const modelDocumentNames = (program: AstNode, filename: string): ModelNames => {
+  const names: ModelNames = { documents: new Set(), namespaces: new Set() };
   const body = program["body"];
   if (!Array.isArray(body)) {
     return names;
@@ -132,47 +117,80 @@ const modelDocumentNames = (
       continue;
     }
     for (const specifier of specifiers) {
-      if (!isAstNode(specifier) || specifier.type !== "ImportSpecifier") {
+      if (!isAstNode(specifier)) {
+        continue;
+      }
+      const local = specifier["local"];
+      if (!isAstNode(local) || typeof local["name"] !== "string") {
+        continue;
+      }
+      if (specifier.type === "ImportNamespaceSpecifier") {
+        names.namespaces.add(local["name"]);
+        continue;
+      }
+      if (specifier.type !== "ImportSpecifier") {
         continue;
       }
       const imported = specifier["imported"];
-      const local = specifier["local"];
       const importedName = isAstNode(imported)
         ? (imported["name"] ?? imported["value"])
         : undefined;
-      if (
-        importedName === "Document" &&
-        isAstNode(local) &&
-        typeof local["name"] === "string"
-      ) {
-        names.add(local["name"]);
+      if (importedName === "Document") {
+        names.documents.add(local["name"]);
       }
     }
   }
   return names;
 };
 
-/** Whether `node` names the model `Document`, alone or as a union member. */
-const namesModelDocument = (node: unknown, names: Set<string>): boolean => {
+const identifierName = (node: unknown): string | null =>
+  isAstNode(node) &&
+  node.type === "Identifier" &&
+  typeof node["name"] === "string"
+    ? node["name"]
+    : null;
+
+/** Whether a type reference's name is `Document` or `Namespace.Document`. */
+const referencesModelDocument = (
+  typeName: unknown,
+  names: ModelNames,
+): boolean => {
+  const direct = identifierName(typeName);
+  if (direct !== null) {
+    return names.documents.has(direct);
+  }
+  if (!isAstNode(typeName) || typeName.type !== "TSQualifiedName") {
+    return false;
+  }
+  const namespace = identifierName(typeName["left"]);
+  return (
+    namespace !== null &&
+    names.namespaces.has(namespace) &&
+    identifierName(typeName["right"]) === "Document"
+  );
+};
+
+/**
+ * Whether `node` names the model `Document`, alone or as a member of a union
+ * or an intersection: each still hands out writable document fields.
+ */
+const namesModelDocument = (node: unknown, names: ModelNames): boolean => {
   if (!isAstNode(node)) {
     return false;
   }
-  if (node.type === "TSUnionType") {
+  if (node.type === "TSParenthesizedType") {
+    return namesModelDocument(node["typeAnnotation"], names);
+  }
+  if (node.type === "TSUnionType" || node.type === "TSIntersectionType") {
     const members = node["types"];
     return (
       Array.isArray(members) &&
       members.some((member) => namesModelDocument(member, names))
     );
   }
-  if (node.type !== "TSTypeReference") {
-    return false;
-  }
-  const typeName = node["typeName"];
   return (
-    isAstNode(typeName) &&
-    typeName.type === "Identifier" &&
-    typeof typeName["name"] === "string" &&
-    names.has(typeName["name"])
+    node.type === "TSTypeReference" &&
+    referencesModelDocument(node["typeName"], names)
   );
 };
 
@@ -194,11 +212,14 @@ export default {
         },
       },
       create(context: RuleContext) {
-        let names = new Set<string>();
+        let names: ModelNames = {
+          documents: new Set(),
+          namespaces: new Set(),
+        };
         const check = (node: unknown) => {
           if (
             isAstNode(node) &&
-            names.size > 0 &&
+            (names.documents.size > 0 || names.namespaces.size > 0) &&
             namesModelDocument(node["typeAnnotation"], names)
           ) {
             context.report({ node, messageId: "modelDocumentCast" });
@@ -206,9 +227,9 @@ export default {
         };
         return {
           Program: (node: unknown) => {
-            names = isAstNode(node)
-              ? modelDocumentNames(node, context.filename)
-              : new Set();
+            if (isAstNode(node)) {
+              names = modelDocumentNames(node, context.filename);
+            }
           },
           TSAsExpression: check,
           TSTypeAssertion: check,

@@ -25,7 +25,7 @@ import type { EditorView } from "prosemirror-view";
  * `handleScrollToSelection: suppressHiddenEditorScrollToSelection` on the view,
  * so no local scroll-flag stripping is needed here.
  */
-import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
+import { onScopeDispose, ref, shallowRef, toRaw, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
@@ -1413,7 +1413,9 @@ export function useDocxEditor(
 
   function loadDocument(doc: Document): void {
     parseError.value = null;
-    docModel.value = doc;
+    // A host's document may be a reactive proxy; the model is its raw object,
+    // which the copies the host is handed can clone.
+    docModel.value = toRaw(doc);
     noteFollower.reset();
     remountForNewDocument();
   }
@@ -1619,7 +1621,7 @@ export function useDocxEditor(
     ) {
       return;
     }
-    docModel.value = doc;
+    docModel.value = toRaw(doc);
     sourceBuffer.value = doc.originalBuffer ?? null;
     syncSecondaryStoryEditors();
     if (
