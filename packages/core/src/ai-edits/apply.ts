@@ -38,6 +38,10 @@ import type { NumberingMap } from "../docx/numberingParser";
 import { isNumberingReference } from "../docx/numberingReference";
 import { formattingEquals } from "../docx/runConsolidator";
 import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
+import {
+  insertionGapStart,
+  paragraphMergeJoinAfter,
+} from "../prosemirror/acceptedBlockNeighbours";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
   deleteTextBoxesAnchoredAt,
@@ -3166,11 +3170,14 @@ const insertionAt = ({
   if (item.joinSide === undefined) return item.from;
   const position = sinceRead(tr, item).map(item.blockFrom, 1);
   if (tr.doc.nodeAt(position)?.type.name !== "paragraph") return item.from;
-  return pendingJoinBounds({
-    doc: tr.doc,
-    paragraphPos: position,
-    noteReferences,
-  })[item.joinSide];
+  return insertionGapStart(
+    tr.doc,
+    pendingJoinBounds({
+      doc: tr.doc,
+      paragraphPos: position,
+      noteReferences,
+    })[item.joinSide],
+  );
 };
 
 /**
@@ -5808,7 +5815,7 @@ const applyFolioAIEditOperationsInternal = ({
   const blockAccess = (item: ResolvedOperation): BatchBlockAccess<number> => {
     const doc = view.state.doc;
     if (item.operation.type === "mergeBlockWithNext") {
-      const next = paragraphJoinAfter(doc, item.blockTo);
+      const next = paragraphMergeJoinAfter(doc, item.blockTo);
       return {
         addresses: [item.blockFrom],
         removes: next ? [next.nextPosition] : [],
@@ -7584,8 +7591,9 @@ const applyFolioAIEditOperationsInternal = ({
         // one at a time; where nothing does, it is refused as it would be
         // one at a time. Tracked, the deleted paragraphs stay until accepted,
         // but where they run to the story's end the join has nothing to put
-        // a separator in front of.
-        const join = paragraphJoinAfter(tr.doc, blockTo);
+        // a separator in front of, and where a table that stays follows them
+        // the join has no paragraph, as directly (`paragraphMergeJoinAfter`).
+        const join = paragraphMergeJoinAfter(tr.doc, blockTo);
         if (!join) {
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
@@ -9830,6 +9838,11 @@ const resolveOperationTarget = ({
           after: endOfParagraphWithItsTextBoxes(doc, blockFrom),
         }
       : pendingJoinBounds({ doc, paragraphPos: blockFrom, noteReferences });
+  // A block beside the outermost table its anchor sits in.
+  const besideTable = (boundary: number): { from: number; at: number } => {
+    const at = insertionGapStart(doc, boundary);
+    return { from: at, at };
+  };
   // A block beside the anchor: `from` is the anchor's own gap, `at` where a
   // pending join around it puts the block (see `joinSide`).
   const beside = (
@@ -9845,11 +9858,15 @@ const resolveOperationTarget = ({
     // they leave the join's end. A block before it orders by where it lands,
     // ahead of the paragraphs the join takes in: edits inside them run first
     // and keep the positions they were read at.
-    const plain =
+    // Either side of a table accepting removes is one gap
+    // (`insertionGapStart`).
+    const plain = insertionGapStart(
+      doc,
       side === "after"
         ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
-        : blockFrom;
-    const at = joinBounds()[side];
+        : blockFrom,
+    );
+    const at = insertionGapStart(doc, joinBounds()[side]);
     const from = side === "after" ? plain : at;
     return at === plain
       ? { from, at }
@@ -9929,7 +9946,7 @@ const resolveOperationTarget = ({
     // After a paragraph is after the text boxes drawn in it too: a block
     // between the two is read after the boxes once the package is saved.
     const placed = tableBoundary
-      ? { from: tableBoundary[side], at: tableBoundary[side] }
+      ? besideTable(tableBoundary[side])
       : beside(side);
     if (
       joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences })
@@ -9969,7 +9986,7 @@ const resolveOperationTarget = ({
     const position = operation.position ?? "after";
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const placed = tableBoundary
-      ? { from: tableBoundary[position], at: tableBoundary[position] }
+      ? besideTable(tableBoundary[position])
       : beside(position);
     return {
       type: "resolved",
@@ -10230,7 +10247,7 @@ const resolveOperationTarget = ({
       (operation.position ?? "after") === "after" ? "after" : "before";
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const placed = tableBoundary
-      ? { from: tableBoundary[side], at: tableBoundary[side] }
+      ? besideTable(tableBoundary[side])
       : beside(side);
     return {
       type: "resolved",
@@ -10343,8 +10360,8 @@ const resolveOperationTarget = ({
     // `canJoin` is what keeps a deleted paragraph mark off the last paragraph
     // of a table cell, and off the last paragraph of the story: there is no
     // sibling to join with, so accepting the revision could not do what the
-    // mark says it does.
-    if (!paragraphJoinAfter(doc, blockTo)) {
+    // mark says it does. Nor is there one where accepting leaves a table next.
+    if (!paragraphMergeJoinAfter(doc, blockTo)) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
     return {
