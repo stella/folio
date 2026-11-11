@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "title": "PINNED #1757, reported seed 842862122: removing the table that stops a pending join is refused",
+  "title": "PINNED #1757, reported seed 842862122: step 8: the result is not what was asked (insertTableColumn, deleteTable)",
   "kind": "random",
   "generation": "targeted",
   "fixture": "tables",

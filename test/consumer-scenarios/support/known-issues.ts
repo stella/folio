@@ -115,8 +115,6 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   "restyle-paragraph-pending-deletion.json": [1],
   // A paragraph between a pending join and the table that stops it is refused.
   "issue-1757-paragraph-before-table-after-pending-join.json": [2],
-  // Removing the table that stops a pending join is refused.
-  "issue-1757-7483271c36812e15.json": [2],
   // Renumbering the preceding mark after terminal deletion has the same refusal.
   "renumber-after-terminal-delete.json": [1],
   // The recorded seed now draws atomic=true; the overlapping split refuses

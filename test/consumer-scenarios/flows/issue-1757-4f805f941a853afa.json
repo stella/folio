@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "title": "PINNED #1757, reported seed 7977592: a column inserted beside a row a suggestion deletes reads as asked",
+  "title": "PINNED #1757, reported seed 7977592: step 1: the result is not what was asked (insertTableColumn)",
   "kind": "collisions",
   "generation": "targeted",
   "fixture": "stories",
