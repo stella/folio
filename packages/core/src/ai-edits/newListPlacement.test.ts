@@ -466,7 +466,7 @@ describe("new-list placement", () => {
     expect(lists(rejected)).toEqual(lists(original));
   });
 
-  test("a new list inserted after a table keeps its own break when the batch empties the closing paragraph", async () => {
+  test("a new list inserted after a table ends the body when the batch deletes the closing paragraph", async () => {
     const bytes = (
       await ensureParaIds(
         new Uint8Array(
@@ -512,13 +512,14 @@ describe("new-list placement", () => {
     expect(apply(batch, "tracked-changes", [insert, remove]).skipped).toEqual(
       [],
     );
-    // One at a time, from the end backwards: the deletion runs first.
+    // One at a time, with the insertion settled before the deletion: what
+    // precedes the closing paragraph is read from the finished batch.
     const oneByOne = await open(source);
     const single = operations(oneByOne);
-    expect(apply(oneByOne, "tracked-changes", [single.remove]).skipped).toEqual(
+    expect(apply(oneByOne, "tracked-changes", [single.insert]).skipped).toEqual(
       [],
     );
-    expect(apply(oneByOne, "tracked-changes", [single.insert]).skipped).toEqual(
+    expect(apply(oneByOne, "tracked-changes", [single.remove]).skipped).toEqual(
       [],
     );
     const direct = await open(source);
@@ -532,9 +533,11 @@ describe("new-list placement", () => {
 
     expect(lists(batch)).toEqual(lists(oneByOne));
     expect(await accepted(batch)).toEqual(await accepted(direct));
-    expect(
-      (await accepted(batch)).find(({ text }) => text === "Delivery follows."),
-    ).toMatchObject({ kind: "listItem", label: "1." });
+    expect((await accepted(batch)).at(-1)).toMatchObject({
+      text: "Delivery follows.",
+      kind: "listItem",
+      label: "1.",
+    });
   });
 
   test("a suggested new list stays its own suggestion when a later batch reuses its operation id", async () => {
