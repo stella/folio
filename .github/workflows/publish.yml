@@ -47,6 +47,7 @@ jobs:
   source:
     name: Resolve the source commit
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
@@ -88,6 +89,7 @@ jobs:
     name: Build and pack ${{ matrix.pkg }}
     needs: source
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       matrix:
         pkg:
@@ -190,6 +192,7 @@ jobs:
     # Started as its own run rather than called: a called workflow does not
     # see the open-vsx environment's OVSX_PAT, so Open VSX was skipped.
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       actions: write # Start publish-vscode.yml, which owns the registry environments.
     steps:

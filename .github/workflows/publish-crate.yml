@@ -22,6 +22,7 @@ jobs:
   package:
     name: Package stella-docx-kernel
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -46,6 +47,7 @@ jobs:
     needs: package
     if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish) }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write

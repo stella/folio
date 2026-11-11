@@ -32,6 +32,7 @@ jobs:
     name: Changeset present for published package src changes
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -875,6 +876,7 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.docx_kernel_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       CARGO_NET_RETRY: "5"
       CARGO_HTTP_TIMEOUT: "120"
@@ -1065,6 +1067,7 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -1097,6 +1100,7 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1155,6 +1159,7 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.differential_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1187,6 +1192,7 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1260,6 +1266,7 @@ jobs:
     needs: [ci-plan, consumer-scenarios]
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1305,6 +1312,7 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

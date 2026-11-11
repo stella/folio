@@ -549,3 +549,109 @@ test("every committed job installs Playwright through the shared action", () => 
   expect(problems).toEqual([]);
   expect(shared).toBeGreaterThan(0);
 });
+
+// The shared action is the only place that downloads browsers, so it carries
+// the bound: one install step, a limit per attempt and a single retry. A job
+// that uses it leaves room for both attempts within its own timeout.
+const boundedInstallProblems = (action: unknown): string[] => {
+  if (!isRecord(action) || !isRecord(action["runs"]))
+    return ["the action has no runs mapping"];
+  const steps = action["runs"]["steps"];
+  const installs = Array.isArray(steps)
+    ? steps.filter(
+        (step): step is Record<string, unknown> =>
+          isRecord(step) &&
+          typeof step["run"] === "string" &&
+          /\bplaywright\s+install\b/u.test(step["run"]),
+      )
+    : [];
+  if (installs.length !== 1)
+    return [`expected one install step, found ${installs.length}`];
+  const [install] = installs;
+  const env = install?.["env"];
+  const seconds = isRecord(env) ? Number(env["ATTEMPT_SECONDS"]) : Number.NaN;
+  const run = String(install?.["run"]);
+  const problems: string[] = [];
+  if (!Number.isInteger(seconds) || seconds <= 0)
+    problems.push("the install step sets no ATTEMPT_SECONDS");
+  if ((run.match(/^\s*attempt\s*$/gmu) ?? []).length !== 1)
+    problems.push("the install retries other than exactly once");
+  if (!/^\s*if ! attempt; then$/mu.test(run))
+    problems.push("the install does not start with one bounded attempt");
+  if (!/kill -TERM -- "-\$install"/u.test(run))
+    problems.push("the limit does not stop the attempt's process group");
+  return problems;
+};
+
+const attemptMinutes = (action: unknown): number => {
+  if (!isRecord(action) || !isRecord(action["runs"])) return Number.NaN;
+  const steps = action["runs"]["steps"];
+  const install = Array.isArray(steps)
+    ? steps.find(
+        (step) =>
+          isRecord(step) &&
+          isRecord(step["env"]) &&
+          step["env"]["ATTEMPT_SECONDS"],
+      )
+    : undefined;
+  return isRecord(install) && isRecord(install["env"])
+    ? Number(install["env"]["ATTEMPT_SECONDS"]) / 60
+    : Number.NaN;
+};
+
+const readPlaywrightAction = (): unknown =>
+  Bun.YAML.parse(
+    readFileSync(
+      fileURLToPath(new URL(`../${PLAYWRIGHT_ACTION_FILE}`, import.meta.url)),
+      "utf8",
+    ),
+  );
+
+test("the shared action bounds each install attempt and retries once", () => {
+  const action = readPlaywrightAction();
+  expect(boundedInstallProblems(action)).toEqual([]);
+  const broken = structuredClone(action);
+  if (!isRecord(broken) || !isRecord(broken["runs"]))
+    panic("Invalid Playwright action");
+  const steps = broken["runs"]["steps"];
+  if (!Array.isArray(steps)) panic("Invalid Playwright action steps");
+  broken["runs"]["steps"] = steps.map((step: unknown) =>
+    isRecord(step) && isRecord(step["env"]) && "ATTEMPT_SECONDS" in step["env"]
+      ? {
+          ...step,
+          env: { ...step["env"], ATTEMPT_SECONDS: undefined },
+          run: "bunx playwright install chromium",
+        }
+      : step,
+  );
+  expect(boundedInstallProblems(broken)).toEqual([
+    "the install step sets no ATTEMPT_SECONDS",
+    "the install retries other than exactly once",
+    "the install does not start with one bounded attempt",
+    "the limit does not stop the attempt's process group",
+  ]);
+});
+
+test("every job that installs Playwright has room for both attempts", () => {
+  const minutes = attemptMinutes(readPlaywrightAction());
+  expect(minutes).toBeGreaterThan(0);
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const tight: string[] = [];
+  for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({
+    cwd: root,
+  })) {
+    const workflow: unknown = Bun.YAML.parse(
+      readFileSync(`${root}/${file}`, "utf8"),
+    );
+    if (!isRecord(workflow) || !isRecord(workflow["jobs"])) continue;
+    for (const [name, job] of Object.entries(workflow["jobs"])) {
+      if (!isRecord(job) || !Array.isArray(job["steps"])) continue;
+      const installs = job["steps"].some(
+        (step) => isRecord(step) && step["uses"] === PLAYWRIGHT_ACTION,
+      );
+      if (installs && !(Number(job["timeout-minutes"]) > 2 * minutes))
+        tight.push(`${file}: ${name}`);
+    }
+  }
+  expect(tight).toEqual([]);
+});
