@@ -1067,6 +1067,8 @@ type SourceOwner = { state: SourceOwnerState };
 type SourceOccurrence = {
   node: InlineNode;
   owner: SourceOwner | undefined;
+  /** The record the list held, before this resolution; absent on lifted content. */
+  source?: InlineNode;
   lifted?: true;
   /** Content of an added revision this resolution accepts: new, not source. */
   payload?: true;
@@ -1079,6 +1081,7 @@ const occurrenceOf = (
 ): SourceOccurrence => ({
   node,
   owner: occurrence?.owner,
+  ...(occurrence?.source !== undefined && { source: occurrence.source }),
   ...(occurrence?.lifted === true && { lifted: true as const }),
   ...(occurrence?.payload === true && { payload: true as const }),
 });
@@ -1155,6 +1158,39 @@ const sourceOwnerDepthAt = ({
   return undefined;
 };
 
+/**
+ * A depth measured into `source` at its `edge`, as far as the records on the
+ * way stay once `resolution` is done: a wrapper it resolves away at that edge
+ * leaves its content a level up, and one whose content goes takes the
+ * position with it, so the depth stops above it.
+ */
+const survivingDepth = ({
+  source,
+  depth,
+  edge,
+  resolution,
+}: {
+  source: InlineNode;
+  depth: number;
+  edge: "start" | "end";
+  resolution: Resolution;
+}): number => {
+  let surviving = Math.min(depth, 1);
+  let current = source;
+  for (let level = 2; level <= depth; level += 1) {
+    const children = childNodes(current);
+    const child = edge === "start" ? children?.at(0) : children?.at(-1);
+    if (child === undefined) break;
+    current = child;
+    if (isTrackedWrapper(child) && resolution.ids.has(child.info.id)) {
+      if (removesContent(child, resolution.decision)) break;
+      continue;
+    }
+    surviving += 1;
+  }
+  return surviving;
+};
+
 const resolveList = (
   nodes: readonly InlineNode[],
   resolution: Resolution,
@@ -1174,10 +1210,12 @@ const resolveList = (
     lifted = false,
     payload = false,
   ): void => {
+    const source = pending.at(index);
     out.push({
       node,
       owner:
         sourceOwners.at(index) ?? panic("A source occurrence has an owner."),
+      ...(!lifted && source !== undefined && { source }),
       ...(lifted && { lifted: true as const }),
       ...(payload && { payload: true as const }),
     });
@@ -1273,6 +1311,8 @@ const resolveList = (
                 node: next,
                 owner: previous.owner,
               };
+              if (previous.source !== undefined)
+                restoredOccurrence.source = previous.source;
               if (previous.payload === true) restoredOccurrence.payload = true;
               return restoredOccurrence;
             }),
@@ -1627,9 +1667,16 @@ const resolveList = (
           side,
           depth: kept.depth,
         });
-        return depth === undefined || occurrence?.lifted !== true
+        if (depth === undefined) return undefined;
+        if (occurrence?.lifted === true) return depth - 1;
+        return occurrence?.source === undefined
           ? depth
-          : depth - 1;
+          : survivingDepth({
+              source: occurrence.source,
+              depth,
+              edge: side === "after" ? "start" : "end",
+              resolution,
+            });
       };
       const beforeDepth = ownerDepth({
         occurrence: beforeOccurrence,
