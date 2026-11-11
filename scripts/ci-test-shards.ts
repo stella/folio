@@ -11,6 +11,10 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import {
+  PROPERTY_SEEDS_FILE,
+  testFileForSeedFile,
+} from "../test/seed-registry";
 import focusedTests from "./ci-focused-tests.json";
 import timings from "./ci-test-timings.json";
 import { parseSourceModule, staticStringValue, walkAst } from "./lib/oxc-ast";
@@ -494,7 +498,14 @@ export const selectFastTestSuitesWithReason = ({
   repoRoot = REPO_ROOT,
   graph: suppliedGraph,
 }: FastTestSuitesOptions): FastSelection => {
-  const changed = new Set(changedFiles);
+  // A pinned seed file is read at runtime, not imported, so the module graph
+  // never reaches the test it pins: the file itself selects that test.
+  const changed = new Set([
+    ...changedFiles,
+    ...changedFiles
+      .filter((file) => file.startsWith(`${PROPERTY_SEEDS_FILE}/`))
+      .map(testFileForSeedFile),
+  ]);
   const discovered = new Set(suites.flatMap(({ files }) => files));
   const focused = new Set(
     focusedFiles.filter(

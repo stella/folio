@@ -49,6 +49,7 @@ import {
 import {
   preservedInlineCapture,
   preserveInlineChild,
+  withLooseFieldMarkupPreserved,
 } from "./preservedRunContent";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
@@ -416,14 +417,11 @@ export const HYPERLINK_CHILD_HANDLERS: {
       inScopeXmlns,
     }: HyperlinkChildContext,
   ): void => {
-    const run = parseRun(
+    // A field the link holds whole is read by `linkWithFields`; any field
+    // markup a run read here carries belongs to no assembled field.
+    const run = withLooseFieldMarkupPreserved(
+      parseRun(child, styles, theme, rels, media, inScopeXmlns, previews),
       child,
-      styles,
-      theme,
-      rels,
-      media,
-      inScopeXmlns,
-      previews,
     );
     if (runHoldsPayload(run)) {
       push(run);

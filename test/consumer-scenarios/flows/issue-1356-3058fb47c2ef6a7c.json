@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 1141252652: step 4: [batchSequential] the batch (tracked-changes: insertTable, deleteBlock) leaves otherwise than its operations one at a time",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "tracked-changes",
+  "seed": 1141252406,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 253651948,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "7B806329"
+        }
+      ]
+    },
+    {
+      "action": "reject one",
+      "seed": 4108607165
+    },
+    {
+      "action": "core batch",
+      "seed": 3129524398,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "7735D914",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "7B806329"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from reseed of b111b0809fcde4b5"
+}

@@ -1084,6 +1084,34 @@ export const CANONICAL_OFFICE_PASTE_OVER_DECIMAL_LIST_SEED_47 = {
   },
 } satisfies CanonicalRegression;
 
+/** Everything cut while suggesting, across a comment's range and its reference. */
+export const CANONICAL_CUT_EVERYTHING_BESIDE_COMMENT_SEED_431 = {
+  authority: "canonical",
+  seed: 431,
+  path: "4:3:1",
+  fingerprint: "5713f8fb706927fd",
+  trace: {
+    shape: "comments",
+    actions: [{ kind: "selectAll" }, { kind: "cut" }],
+  },
+} satisfies CanonicalRegression;
+
+/** A table pasted where everything around a field, a link and a bookmark was deleted. */
+export const CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11 = {
+  authority: "canonical",
+  seed: 11,
+  path: "2:3:2:2:2",
+  fingerprint: "234f75ae8b2de9d4",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [
+      { kind: "selectAll" },
+      { kind: "delete" },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -1130,4 +1158,6 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_SELECT_ALL_AFTER_PASTE_BESIDE_DELETIONS_SEED_197,
   CANONICAL_LIST_PASTE_OVER_PASTED_SECTIONS_SEED_347,
   CANONICAL_OFFICE_PASTE_OVER_DECIMAL_LIST_SEED_47,
+  CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11,
+  CANONICAL_CUT_EVERYTHING_BESIDE_COMMENT_SEED_431,
 ];

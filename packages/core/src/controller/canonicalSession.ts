@@ -56,6 +56,7 @@ import {
   splitsGraphemeCluster,
   splitsSurrogatePair,
 } from "../ai-edits/character-boundaries";
+import { getTrackedChangeGroupsForIds } from "../ai-edits/read";
 import {
   CommentMarkerCache,
   type ParagraphCommentMarkers,
@@ -2492,10 +2493,13 @@ class CanonicalSession {
           decision: resolution,
         },
       ] as const;
-    // A revision whose resolution breaks a lock stays pending; the rest resolve.
+    // An id names its whole listed change: one split by a comment or a
+    // hyperlink carries several ids, and resolving fewer leaves part pending.
+    const changes = getTrackedChangeGroupsForIds(state.doc, revisionIds);
+    // A change whose resolution breaks a lock stays pending; the rest resolve.
     let firstHeld: LockedControlViolation | null = null;
-    const lockHeld = revisionIds.filter((id) => {
-      const alone = applyDocumentOps(this.currentDocument, resolve([id]));
+    const heldChanges = changes.filter((ids) => {
+      const alone = applyDocumentOps(this.currentDocument, resolve(ids));
       if (alone.isErr()) return false;
       const violation = lockViolationBetween(
         this.currentDocument,
@@ -2504,9 +2508,10 @@ class CanonicalSession {
       firstHeld ??= violation;
       return violation !== null;
     });
-    if (firstHeld !== null && lockHeld.length === revisionIds.length)
+    if (firstHeld !== null && heldChanges.length === changes.length)
       return lockRefusal(firstHeld);
-    const resolved = revisionIds.filter((id) => !lockHeld.includes(id));
+    const lockHeld = heldChanges.flat();
+    const resolved = changes.filter((ids) => !heldChanges.includes(ids)).flat();
     const ops = [
       ...before,
       ...(resolved.length === 0 ? [] : resolve(resolved)),
