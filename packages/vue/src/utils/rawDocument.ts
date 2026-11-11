@@ -1,5 +1,6 @@
 import { toRaw } from "vue";
 
+import { carryParseFacts } from "@stll/folio-core/docx/document-clone";
 import type { Document } from "@stll/folio-core/types/document";
 
 /**
@@ -10,7 +11,8 @@ import type { Document } from "@stll/folio-core/types/document";
  *
  * Nothing is written: a document that reaches no proxy is returned as it is,
  * and an object on the way to a proxy is rebuilt around the raw object, with
- * its own property descriptors (symbol-keyed ones included) carried over.
+ * its own property descriptors (symbol-keyed ones included) and the parse
+ * facts core keeps for it by identity carried over.
  */
 export const rawDocument = <Value extends Document>(document: Value): Value =>
   // SAFETY: `rawData` keeps every value's shape; it only swaps proxies for
@@ -71,9 +73,15 @@ const rebuild = (raw: object, seen: Map<object, unknown>): object => {
     changed = true;
     descriptor.value = next;
   }
-  return changed
-    ? Object.create(Reflect.getPrototypeOf(raw), descriptors)
-    : raw;
+  if (!changed) return raw;
+  const rebuilt: object = Object.create(
+    Reflect.getPrototypeOf(raw),
+    descriptors,
+  );
+  // The parse facts core keeps for a paragraph or a document by identity
+  // follow it to the rebuilt object.
+  carryParseFacts(rebuilt, raw);
+  return rebuilt;
 };
 
 const isDataDescriptor = (

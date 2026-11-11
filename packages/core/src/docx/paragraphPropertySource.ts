@@ -986,6 +986,22 @@ export const cloneCommentsWithParagraphPropertySources = (
   return cloned;
 };
 
+const isParagraphObject = (value: object): value is Paragraph =>
+  "type" in value && value.type === "paragraph";
+
+/**
+ * Carry the parse facts this module keeps by identity for `source`, a
+ * paragraph, over to `target`, an object rebuilt from it with the same
+ * content: for an adapter that rebuilds a host's objects without copying
+ * them, as unwrapping a framework's proxies does. A document's own facts are
+ * own properties, which a rebuild that keeps the property descriptors keeps.
+ */
+export const carryParseFacts = (target: object, source: object): void => {
+  if (isParagraphObject(source) && isParagraphObject(target)) {
+    copyParagraphPropertySource(target, source);
+  }
+};
+
 const paragraphsInTableCells = (cells: readonly TableCell[]): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
   for (const cell of cells) {
