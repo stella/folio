@@ -1691,7 +1691,21 @@ const resolveList = (
     // the pieces it separated, accepting it keeps them apart.
     // Boundaries floating at the seam are placed with its own join; a
     // deferred join would place them apart from the pieces they belong in.
-    if (exactDepth !== undefined && exactDepth > 0 && kept === undefined) {
+    // Pending insertions either side, alike down to the seam's depth, are the
+    // pieces the removed content cut, not insertions standing between them:
+    // the seam joins them now. Kept as blockers, removing them later would
+    // join the records beyond them, which the removed content never cut.
+    const cutPieces =
+      exactDepth !== undefined &&
+      isTrackedWrapper(left) &&
+      isTrackedWrapper(right) &&
+      alikeDepth(left, right) >= exactDepth;
+    if (
+      exactDepth !== undefined &&
+      exactDepth > 0 &&
+      kept === undefined &&
+      !cutPieces
+    ) {
       const blocking = (index: number): boolean => {
         const node = out[index]?.node;
         return (

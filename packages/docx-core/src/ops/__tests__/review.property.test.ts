@@ -1120,8 +1120,11 @@ describe("tracked operations and their resolution", () => {
       if (value === undefined) return "__undef";
       return value;
     };
-    const diagDump = (payload: unknown): void => {
-      if (diagCount >= 8) return;
+    const diagSeen = new Set<string>();
+    const diagDump = (payload: Record<string, unknown>): void => {
+      const key = JSON.stringify(payload["document"], diagReplacer);
+      if (diagCount >= 8 || diagSeen.has(key)) return;
+      diagSeen.add(key);
       diagCount += 1;
       const text = JSON.stringify(payload, diagReplacer);
       const size = 6000;
