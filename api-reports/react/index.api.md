@@ -153,6 +153,7 @@ import React$1 from 'react';
 import { default as React_2 } from 'react';
 import { ReactElement } from 'react';
 import { ReactNode } from 'react';
+import { ReadonlyDocument } from '@stll/folio-core/types/documentModel';
 import { RefAttributes } from 'react';
 import { RefObject } from 'react';
 import { ReplaceAllSummary } from '@stll/folio-core/utils/findReplace';
