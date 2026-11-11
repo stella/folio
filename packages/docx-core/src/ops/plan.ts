@@ -430,6 +430,37 @@ export const replacementDeletionSegments = ({
   return out.filter(({ records }) => records);
 };
 
+/**
+ * The leaves of a range that its direct deletion leaves standing, in
+ * document order: each one no stretch of {@link replacementDeletionSegments}
+ * removes, such as a range boundary, a comment anchor or content already on
+ * its way out. Text replacing the range goes in after the last of them.
+ */
+export const leavesKeptByDirectDeletion = ({
+  spans,
+  from,
+  to,
+}: Omit<ReplacementDeletionSegmentsOptions, "mode">): LeafSpan[] => {
+  const segments = replacementDeletionSegments({
+    spans,
+    from,
+    to,
+    mode: { type: "editing" },
+  });
+  return spans.filter((span) => {
+    const start = laterGap(span.before, from);
+    const end = earlierGap(span.after, to);
+    return (
+      compareGaps(start, end) < 0 &&
+      !segments.some(
+        (segment) =>
+          compareGaps(segment.from, start) <= 0 &&
+          compareGaps(end, segment.to) <= 0,
+      )
+    );
+  });
+};
+
 /** The range a tracked deletion covers, its stamp, and the ids its later pieces take. */
 export type PlanTrackedDeletionOptions = {
   from: TextPosition;

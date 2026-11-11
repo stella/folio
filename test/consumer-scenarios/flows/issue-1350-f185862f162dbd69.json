@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "title": "PINNED #1350, reported seed 1119826200: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked)",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "direct",
+  "seed": 1119826200,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 104343348,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteTable",
+          "blockId": "46B80D85"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "6FFB97E7"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "deleteTable"
+  ],
+  "origin": "shrunk from collisions flow seed 1119826200"
+}

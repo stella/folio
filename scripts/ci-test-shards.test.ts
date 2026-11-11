@@ -516,6 +516,59 @@ describe("reverse import closure", () => {
   });
 });
 
+test("a changed seed file selects the test it pins and nothing else", () => {
+  const root = fixture({
+    "packages/app/package.json": JSON.stringify({ name: "@stll/app" }),
+    "packages/app/src/one.test.ts": "export {};",
+    "packages/app/src/two.test.ts": "export {};",
+    "test/property-seeds/packages%2Fapp%2Fsrc%2Fone.test.ts.json": "{}",
+  });
+  const result = selectFastTestSuitesWithReason({
+    suites: suite([
+      "packages/app/src/one.test.ts",
+      "packages/app/src/two.test.ts",
+    ]),
+    changedFiles: [
+      "test/property-seeds/packages%2Fapp%2Fsrc%2Fone.test.ts.json",
+    ],
+    focusedFiles: [],
+    repoRoot: root,
+  });
+  expect(result.suites.flatMap(({ files }) => files)).toEqual([
+    "packages/app/src/one.test.ts",
+  ]);
+});
+
+test("every checked-in seed file selects the suite test it pins from the real repository graph", () => {
+  const suites = discoverTestSuites();
+  const discovered = new Set(suites.flatMap(({ files }) => files));
+  // A seed file may pin a driver no test suite runs (a fuzz entry point); it
+  // has no suite test to select.
+  const pinned = [
+    ...new Bun.Glob("test/property-seeds/*.json").scanSync({
+      cwd: path.resolve(import.meta.dir, ".."),
+    }),
+  ]
+    .map((file) => `test/property-seeds/${path.basename(file)}`)
+    .map((seedFile) => ({
+      seedFile,
+      pinnedTest: decodeURIComponent(
+        seedFile.slice("test/property-seeds/".length, -".json".length),
+      ),
+    }))
+    .filter(({ pinnedTest }) => discovered.has(pinnedTest));
+  expect(pinned.length).toBeGreaterThan(0);
+  const result = selectFastTestSuitesWithReason({
+    suites,
+    changedFiles: pinned.map(({ seedFile }) => seedFile),
+    focusedFiles: [],
+  });
+  expect(result.reason).not.toBe("full-fallback");
+  const selected = new Set(result.suites.flatMap(({ files }) => files));
+  for (const { seedFile, pinnedTest } of pinned)
+    expect(selected.has(pinnedTest), seedFile).toBe(true);
+});
+
 test("the reported regression tests are selected from the real repository graph", () => {
   const suites = discoverTestSuites();
   const expected = [

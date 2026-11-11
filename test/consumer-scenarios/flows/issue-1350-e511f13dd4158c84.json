@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "title": "PINNED #1350, reported seed 1006713242: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked)",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "direct",
+  "seed": 1006713242,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2206443385,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteTable",
+          "blockId": "5CFDAD72"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 4094374095,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "6FFB97E7",
+          "text": "Payment term warranty."
+        },
+        {
+          "type": "insertTable",
+          "blockId": "79D25458",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "insertBeforeBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "insertTable",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 1006713242"
+}
