@@ -12,6 +12,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import { paragraphLeftAfter } from "./paragraphPropertyCarry";
 import { paragraphGoes, tableGoes } from "./tableRunIn";
 
 const isTable = (node: PMNode): boolean =>
@@ -30,6 +31,22 @@ export const joinEndsBeforeTable = (doc: PMNode, position: number): boolean => {
   if (!paragraph || !paragraphGoes(paragraph, "accept")) return false;
   const after = doc.resolve(position + paragraph.nodeSize).nodeAfter;
   return after !== null && isTable(after) && !tableGoes(after, "accept");
+};
+
+/**
+ * The paragraph accepting every change leaves of a merge from the paragraph
+ * at `paragraphPos`, whose break goes: the one `paragraphLeftAfter` finds,
+ * unless the join ends at it before a table (`joinEndsBeforeTable`), where
+ * accepting leaves the paragraph the merge started from. The merge's
+ * properties go there.
+ */
+export const paragraphMergeLeaves = (
+  options: Parameters<typeof paragraphLeftAfter>[0],
+): number | null => {
+  const left = paragraphLeftAfter(options);
+  return left !== null && joinEndsBeforeTable(options.doc, left)
+    ? options.paragraphPos
+    : left;
 };
 
 /**

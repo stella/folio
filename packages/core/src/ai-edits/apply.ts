@@ -41,6 +41,7 @@ import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattin
 import {
   insertionGapStart,
   joinEndsBeforeTable,
+  paragraphMergeLeaves,
 } from "../prosemirror/acceptedBlockNeighbours";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
@@ -4156,13 +4157,15 @@ const paragraphPropertyRevisionTargets = ({
     if (canRetractFinalBreak({ predecessor: predecessor.node, target }))
       removedBreakPositions.add(predecessor.position);
   }
-  const survivorPosition = paragraphLeftAfter({
+  const survivorPosition = paragraphMergeLeaves({
     doc: tr.doc,
     paragraphPos: position,
     removedBreakPositions,
   });
   const survivor =
-    survivorPosition === null ? null : tr.doc.nodeAt(survivorPosition);
+    survivorPosition === null || survivorPosition === position
+      ? null
+      : tr.doc.nodeAt(survivorPosition);
   if (survivor?.type.name === "paragraph") {
     targets.push(survivor);
   }
@@ -7721,11 +7724,11 @@ const applyFolioAIEditOperationsInternal = ({
               }).tr;
               mergedPropertiesApplied = true;
             }
-            const survivor = paragraphLeftAfter({
+            const survivor = paragraphMergeLeaves({
               doc: tr.doc,
               paragraphPos: blockFrom,
             });
-            if (survivor !== null) {
+            if (survivor !== null && survivor !== blockFrom) {
               tr = carryParagraphProperties({
                 tr,
                 position: survivor,
@@ -7797,7 +7800,7 @@ const applyFolioAIEditOperationsInternal = ({
             const carryPos =
               isDeletedPPrMark(joinedMark) ||
               removedBreakPositions.has(blockFrom)
-                ? (paragraphLeftAfter({
+                ? (paragraphMergeLeaves({
                     doc: tr.doc,
                     paragraphPos: blockFrom,
                     removedBreakPositions,
@@ -7839,8 +7842,9 @@ const applyFolioAIEditOperationsInternal = ({
             // accepting gives what the direct merge gives, rejecting restores
             // its own.
             // A chain of pending merges ends in the paragraph whose break stays.
+            // Where the join ends before a table, accepting leaves this one.
             const survivorPos =
-              paragraphLeftAfter({
+              paragraphMergeLeaves({
                 doc: tr.doc,
                 paragraphPos: blockFrom,
                 removedBreakPositions: pendingRemovedFinalBreakPositions(
@@ -7848,21 +7852,23 @@ const applyFolioAIEditOperationsInternal = ({
                   deletedFinalParagraphs,
                 ),
               }) ?? nextPosition;
-            const carried = carryParagraphProperties({
-              tr,
-              position: survivorPos,
-              source: paragraph,
-              styleResolver,
-              numbering,
-              revision: {
-                id: revisionIdMark,
-                author,
-                date,
-                ...trackedRevisionExtras,
-              },
-            });
-            tr = carried.tr;
-            mergedPropertiesRecorded = carried.tracked;
+            if (survivorPos !== blockFrom) {
+              const carried = carryParagraphProperties({
+                tr,
+                position: survivorPos,
+                source: paragraph,
+                styleResolver,
+                numbering,
+                revision: {
+                  id: revisionIdMark,
+                  author,
+                  date,
+                  ...trackedRevisionExtras,
+                },
+              });
+              tr = carried.tr;
+              mergedPropertiesRecorded = carried.tracked;
+            }
             mergedPropertiesAt = survivorPos;
           }
         }
