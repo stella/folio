@@ -1015,6 +1015,75 @@ export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+/** Enter over a selected list item, then Delete over the paragraphs. */
+export const CANONICAL_DELETE_AFTER_SPLIT_LIST_ITEM_SEED_131 = {
+  authority: "canonical",
+  seed: 131,
+  path: "5:2",
+  fingerprint: "655fd5f3d50f73f7",
+  trace: {
+    shape: "single-bullet-list",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      { kind: "enter" },
+      { kind: "selectionDrag", target: "paragraphs" },
+      { kind: "delete" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Two Deletes and a plain paste between mixed lists, then select all. */
+export const CANONICAL_SELECT_ALL_AFTER_PASTE_BESIDE_DELETIONS_SEED_197 = {
+  authority: "canonical",
+  seed: 197,
+  path: "11:6:4:4",
+  fingerprint: "15b0a756df596baf",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "delete" },
+      { kind: "delete" },
+      { kind: "pastePlain", plain: "alpha", html: "" },
+      { kind: "selectAll" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** Rich paste over every section, then a list pasted over it. */
+export const CANONICAL_LIST_PASTE_OVER_PASTED_SECTIONS_SEED_347 = {
+  authority: "canonical",
+  seed: 347,
+  path: "5:4",
+  fingerprint: "9675b1953ffbca8d",
+  trace: {
+    shape: "sections",
+    actions: [
+      { kind: "selectAll" },
+      { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** An office HTML paste over a decimal list, then a list paste, another office paste and Enter. */
+export const CANONICAL_OFFICE_PASTE_OVER_DECIMAL_LIST_SEED_47 = {
+  authority: "canonical",
+  seed: 47,
+  path: "14",
+  fingerprint: "d6ef7314c0c2bb21",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "selectAll" },
+      { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+      { kind: "historyBurst", keys: ["redo", "redo"] },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+      { kind: "enter" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -1057,4 +1126,8 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_TYPING_OVER_EVERYTHING,
   CANONICAL_TYPING_OVER_CELLS,
   BROWSER_NOTES_LIST_PASTE_SEED_29,
+  CANONICAL_DELETE_AFTER_SPLIT_LIST_ITEM_SEED_131,
+  CANONICAL_SELECT_ALL_AFTER_PASTE_BESIDE_DELETIONS_SEED_197,
+  CANONICAL_LIST_PASTE_OVER_PASTED_SECTIONS_SEED_347,
+  CANONICAL_OFFICE_PASTE_OVER_DECIMAL_LIST_SEED_47,
 ];
