@@ -161,26 +161,56 @@ export function twipsToPixels(twips: number): number {
 }
 
 /**
- * Generate a unique block ID.
+ * Block ids of the conversion under way. Fresh ids count up from where the
+ * conversion started; a node converting again first takes back, in order, the
+ * ids it held in the conversion before, so a block keeps its id across passes.
  */
 let blockIdCounter = 0;
+let preferredBlockIds: readonly string[] = [];
+let preferredAt = 0;
+let handedOut: string[] | undefined;
+
+/** A block id unique within the conversion under way. */
 export function nextBlockId(): string {
-  return `block-${++blockIdCounter}`;
+  const id =
+    preferredAt < preferredBlockIds.length
+      ? (preferredBlockIds[preferredAt++] ?? `block-${++blockIdCounter}`)
+      : `block-${++blockIdCounter}`;
+  handedOut?.push(id);
+  return id;
 }
 
 /**
- * Reset the block ID counter (useful for testing).
+ * Start a conversion whose fresh ids count up from `freshFrom`: above every
+ * id an earlier conversion it reuses ids from handed out.
  */
-export function resetBlockIdCounter(): void {
-  blockIdCounter = 0;
+export function resetBlockIdCounter(freshFrom = 0): void {
+  blockIdCounter = freshFrom;
+  preferredBlockIds = [];
+  preferredAt = 0;
+  handedOut = undefined;
 }
 
-/** How many block ids the current conversion has handed out. */
-export function blockIdsHandedOut(): number {
+/** Where fresh ids of the conversion under way have counted up to. */
+export function freshBlockIdsFrom(): number {
   return blockIdCounter;
 }
 
-/** Hand out `count` ids without making blocks: blocks kept from before hold them. */
-export function skipBlockIds(count: number): void {
-  blockIdCounter += count;
+/**
+ * Hand out `ids` first, in order, then fresh ids, and record every id handed
+ * out until {@link takeHandedOutBlockIds}. For one node's conversion.
+ */
+export function preferBlockIds(ids: readonly string[]): void {
+  preferredBlockIds = ids;
+  preferredAt = 0;
+  handedOut = [];
+}
+
+/** The ids handed out since {@link preferBlockIds}; stops recording. */
+export function takeHandedOutBlockIds(): readonly string[] {
+  const ids = handedOut ?? [];
+  preferredBlockIds = [];
+  preferredAt = 0;
+  handedOut = undefined;
+  return ids;
 }

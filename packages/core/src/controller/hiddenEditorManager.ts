@@ -4,6 +4,12 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
+import {
+  DOMParser as PMDOMParser,
+  DOMSerializer,
+  type ResolvedPos,
+  type Slice,
+} from "prosemirror-model";
 import type {
   Command,
   EditorState,
@@ -72,6 +78,7 @@ import {
   toggleUnderlineMark,
 } from "../prosemirror/extensions/marks/markUtils";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
+import { REVISION_MARK_NAMES } from "../prosemirror/keptRangeBoundaries";
 import {
   adoptNativeSelection,
   createNativeSelectionRefreshPlugin,
@@ -145,6 +152,43 @@ type EditorSession =
 // Initial-load normalization. `appendTransaction` does not fire for the seed
 // document, so the paraId allocator and RTL base-direction detection are
 // applied imperatively to freshly created states.
+/**
+ * Clipboard text takes the caret's formatting, never its revision: text
+ * pasted inside struck or inserted text is new input, which the session marks
+ * for its own mode. Otherwise the text reads as ProseMirror's own parse.
+ */
+const parseCanonicalClipboardText = (
+  text: string,
+  $context: ResolvedPos,
+  _plain: boolean,
+  view: EditorView,
+): Slice => {
+  const { schema: viewSchema } = view.state;
+  const marks = $context
+    .marks()
+    .filter(({ type }) => !REVISION_MARK_NAMES.has(type.name));
+  const serializer = DOMSerializer.fromSchema(viewSchema);
+  const owner = view.dom.ownerDocument;
+  const dom = owner.createElement("div");
+  for (const block of text.split(/(?:\r\n?|\n)+/u)) {
+    const paragraph = dom.appendChild(owner.createElement("p"));
+    if (block)
+      paragraph.append(
+        serializer.serializeNode(viewSchema.text(block, marks), {
+          document: owner,
+        }),
+      );
+  }
+  const parser =
+    view.someProp("clipboardParser") ??
+    view.someProp("domParser") ??
+    PMDOMParser.fromSchema(viewSchema);
+  return parser.parseSlice(dom, {
+    preserveWhitespace: true,
+    context: $context,
+  });
+};
+
 const normalizeSeedState = (state: EditorState): EditorState =>
   ensureBaseDirectionInState(ensureParaIdsInState(state));
 
@@ -703,6 +747,9 @@ export const createHiddenEditorManager = (
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? session.document.package.styles,
         ),
+        new PMPlugin({
+          props: { clipboardTextParser: parseCanonicalClipboardText },
+        }),
         ...[
           ...(deps.getExtensionManager()?.getPlugins() ?? []),
           ...deps.getExternalPlugins(),

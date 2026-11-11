@@ -165,6 +165,7 @@ import type {
   HeaderFooter,
   SectionProperties,
 } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter";
 
@@ -511,6 +512,11 @@ export type UseDocxEditorReturn = {
    * notification wrote back. Reading it never builds a document.
    */
   modelDocument: Readonly<Ref<Document | null>>;
+  /**
+   * The session's own document in a canonical session, read without a copy
+   * (read it, never write it); otherwise null.
+   */
+  readDocumentModel: () => ReadonlyDocument | null;
   /**
    * The bytes the current document was loaded from: replaced when a document
    * is loaded or set, never by an edit.
@@ -1724,6 +1730,7 @@ export function useDocxEditor(
     isDirty,
     parseError,
     modelDocument: docModel,
+    readDocumentModel: () => manager.readCanonicalDocument(),
     sourceBuffer,
     hiddenEditorWidth,
     layout,

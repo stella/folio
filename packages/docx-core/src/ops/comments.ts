@@ -186,6 +186,17 @@ type BlockCommentBoundary = Extract<
   { type: "commentRangeStart" } | { type: "commentRangeEnd" }
 >;
 
+type StoryAnchorWalk = {
+  anchors: StoryAnchorSpan[];
+  /**
+   * How many of the first anchors are range markers between blocks that
+   * waited for the first paragraph, or undefined when there is none.
+   */
+  heldForFirstParagraph: number | undefined;
+  /** How many of the last anchors are markers held past the last paragraph. */
+  heldToEnd: number;
+};
+
 /**
  * A story's comment anchors in document order. A range marker between blocks
  * is one of them, placed at the edge of the text beside it: a start at the
@@ -195,8 +206,9 @@ const storyAnchors = (
   story: OpStory,
   body: StoryBodyContent,
   facts: ParagraphAnchorReader,
-): StoryAnchorSpan[] => {
+): StoryAnchorWalk => {
   const anchors: StoryAnchorSpan[] = [];
+  let heldForFirstParagraph: number | undefined;
   let waiting: BlockCommentBoundary[] = [];
   let previous: { blockId: string; end: Gap } | undefined;
   const boundary = (
@@ -218,6 +230,7 @@ const storyAnchors = (
         case "paragraph": {
           const blockId = block.paraId ?? "";
           const { anchors: own, start, end } = facts(block);
+          heldForFirstParagraph ??= waiting.length;
           for (const node of waiting)
             anchors.push(boundary(node, blockId, start));
           waiting = [];
@@ -265,7 +278,7 @@ const storyAnchors = (
         previous?.end ?? { offset: 0, zeroWidthBefore: 0 },
       ),
     );
-  return anchors;
+  return { anchors, heldForFirstParagraph, heldToEnd: waiting.length };
 };
 
 /**
@@ -283,7 +296,7 @@ export const commentAnchorsIn = (
       storyBody(document, story),
       facts,
     ))
-      anchors.push(...storyAnchors(story, body, facts));
+      anchors.push(...storyAnchors(story, body, facts).anchors);
   }
   return anchors;
 };
@@ -293,13 +306,23 @@ const anchorsIn = (document: Document): StoryAnchorSpan[] =>
 
 /** Stands between a block list's own anchors and those of its text boxes. */
 const TEXT_BOXES_FOLLOW = "textBoxes";
+/** A block list with no paragraph: its markers attach to the blocks around it. */
+const NO_PARAGRAPH = "noParagraph";
+/** Ends the markers that wait for a block list's first paragraph. */
+const FIRST_PARAGRAPH = "firstParagraph";
+/** Starts the markers held past a block list's last paragraph. */
+const HELD_PAST_LAST_PARAGRAPH = "heldPastLastParagraph";
 
 /**
  * What a run of a story's blocks adds to the document's comment anchors, as
  * {@link commentDocumentIssue} reads them: each anchor's kind and id in
  * document order, those of the run's own blocks, then those of the text
- * boxes inside them. Two runs alike here leave the issue as it was when one
- * replaces the other in the same story.
+ * boxes inside them. A range marker between blocks attaches to a paragraph
+ * beside it, which may lie outside the run, so the sequence also marks which
+ * markers wait for the run's first paragraph and which are held past its
+ * last, or that it has no paragraph. Two runs alike here leave the issue as
+ * it was when one replaces the other in the same story, whatever blocks
+ * surround it.
  */
 export const commentAnchorSequence = (
   blocks: readonly BlockContent[],
@@ -309,12 +332,26 @@ export const commentAnchorSequence = (
     { content: [...blocks] },
     facts,
   );
-  const sequenceOf = (body: StoryBodyContent | undefined) =>
-    body === undefined
-      ? []
-      : storyAnchors(OP_STORIES.MAIN, body, facts).map(
-          ({ node }) => `${node.type}:${String(anchorId(node))}`,
-        );
+  const sequenceOf = (body: StoryBodyContent | undefined): string[] => {
+    if (body === undefined) return [];
+    const { anchors, heldForFirstParagraph, heldToEnd } = storyAnchors(
+      OP_STORIES.MAIN,
+      body,
+      facts,
+    );
+    const entries = anchors.map(
+      ({ node }) => `${node.type}:${String(anchorId(node))}`,
+    );
+    if (heldForFirstParagraph === undefined) return [NO_PARAGRAPH, ...entries];
+    const held = entries.length - heldToEnd;
+    return [
+      ...entries.slice(0, heldForFirstParagraph),
+      FIRST_PARAGRAPH,
+      ...entries.slice(heldForFirstParagraph, held),
+      HELD_PAST_LAST_PARAGRAPH,
+      ...entries.slice(held),
+    ];
+  };
   return [
     ...sequenceOf(own),
     TEXT_BOXES_FOLLOW,

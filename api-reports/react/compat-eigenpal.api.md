@@ -55,6 +55,7 @@ import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Popover } from '@base-ui/react/popover';
 import { ReactElement } from 'react';
 import { ReactNode } from 'react';
+import { ReadonlyDocument } from '@stll/folio-core/types/documentModel';
 import { RefAttributes } from 'react';
 import { RefObject } from 'react';
 import { ReviewDisplayMode } from '@stll/folio-core/managers/reviewDisplayMode';
