@@ -1331,6 +1331,8 @@ export function useDocxEditor(
   }
 
   function remountForNewDocument(): void {
+    // A note edit's pending notice belongs to the document it was made in.
+    cancelNoteChangeNotification();
     // A new document is a truly external swap: tear the view down and rebuild it
     // so the seed state + initial layout run fresh, and advance the load
     // identity the hidden-editor manager compares on its next sync. The freshly
@@ -1654,6 +1656,7 @@ export function useDocxEditor(
       return;
     }
     docModel.value = rawDocument(doc);
+    cancelNoteChangeNotification();
     sourceBuffer.value = doc.originalBuffer ?? null;
     syncSecondaryStoryEditors();
     if (

@@ -1669,6 +1669,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       pmImageContext: state.pmImageContext,
     });
 
+    // A built change still in progress (a margin drag) tells the host once it
+    // settles; a later notification, or a load, drops it.
+    const builtChangeNotifyRef = useRef<number | null>(null);
+    const onChangeRef = useRef(onChange);
+    useLayoutEffect(() => {
+      onChangeRef.current = onChange;
+    }, [onChange]);
+    const cancelBuiltChangeNotification = useCallback(() => {
+      if (builtChangeNotifyRef.current === null) return;
+      window.clearTimeout(builtChangeNotifyRef.current);
+      builtChangeNotifyRef.current = null;
+    }, []);
+    useEffect(
+      () => cancelBuiltChangeNotification,
+      [cancelBuiltChangeNotification],
+    );
+
     // Document loading (parse buffer, reset UI, keep original buffer for save)
     const documentLoader = useDocumentLoader({
       documentBuffer: documentBuffer ?? null,
@@ -1708,6 +1725,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         setFloatingCommentBtn(null);
         setHfEditPosition(null);
         setAnchorPositions(EMPTY_ANCHOR_POSITIONS);
+        cancelBuiltChangeNotification();
         resetFindResultRef.current?.();
         if (extractTrackedChangesTimerRef.current) {
           clearTimeout(extractTrackedChangesTimerRef.current);
@@ -1728,6 +1746,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         setVisibleCommentAuthors,
         setHeadingInfos,
         setAnchorPositions,
+        cancelBuiltChangeNotification,
       ]),
       setDocumentLoadState: useCallback((documentLoad: DocumentLoadState) => {
         setState((prev) => ({ ...prev, documentLoad }));
@@ -1803,23 +1822,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     }, [syncSuggestionMode]);
 
     // Handle document change
-    // A built change still in progress (a margin drag) tells the host once it
-    // settles; a later notification carries it instead.
-    const builtChangeNotifyRef = useRef<number | null>(null);
-    const onChangeRef = useRef(onChange);
-    useLayoutEffect(() => {
-      onChangeRef.current = onChange;
-    }, [onChange]);
-    const cancelBuiltChangeNotification = useCallback(() => {
-      if (builtChangeNotifyRef.current === null) return;
-      window.clearTimeout(builtChangeNotifyRef.current);
-      builtChangeNotifyRef.current = null;
-    }, []);
-    useEffect(
-      () => cancelBuiltChangeNotification,
-      [cancelBuiltChangeNotification],
-    );
-
     /**
      * Take a change: hold the editor's document model as the document state
      * and hand the host one copy of it it owns. A document built outside the

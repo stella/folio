@@ -2492,7 +2492,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       if (noteFollowerDocumentRef.current === documentIdentity) return;
       noteFollowerDocumentRef.current = documentIdentity;
       noteFollower.reset();
-    }, [documentIdentity, noteFollower]);
+      // A note edit's pending notice belongs to the document it was made in.
+      cancelNoteChangeNotification();
+    }, [documentIdentity, noteFollower, cancelNoteChangeNotification]);
 
     /**
      * The settled document: in a canonical session the session's own document,
