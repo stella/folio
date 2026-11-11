@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "title": "PINNED #1738, reported seed 1006713221: step 9: the result is not what was asked (setBlockParagraphProperties, replaceBlock)",
+  "title": "PINNED #1738, reported seed 1006713221: clearing the style of a paragraph that states it has no numbering, after a heading style, leaves a plain paragraph",
   "kind": "collisions",
   "generation": "targeted",
   "fixture": "unusedNumbering",

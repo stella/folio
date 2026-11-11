@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "title": "PINNED #1738, reported seed 374939399: step 6: the result is not what was asked (replaceRange, insertAfterBlock, insertAfterBlock)",
+  "title": "PINNED #1738, reported seed 374939399: atomic batches inserting paragraphs after one, one starting a bulleted list, beside a replacement of its first word read as asked",
   "kind": "random",
   "generation": "targeted",
   "fixture": "notes",
