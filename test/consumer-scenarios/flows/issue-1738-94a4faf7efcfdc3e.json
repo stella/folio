@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "title": "PINNED #1738, reported seed 1006713221: clearing the style of a paragraph that states it has no numbering, after a heading style, leaves a plain paragraph",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "unusedNumbering",
+  "mode": "direct",
+  "seed": 1006713221,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1190960512,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": {
+            "numbering": {
+              "kind": "none"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 303360054,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 423666148,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": {
+            "styleId": null
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "commentOnRange",
+    "replaceBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "insertTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from collisions flow seed 1006713221"
+}
