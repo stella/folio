@@ -1,3 +1,4 @@
+import { noteTableOrigin } from "./measure/tableMeasureMemo";
 import { continuesNumberedSequence } from "./paragraphSequence";
 import type {
   FlowBlock,
@@ -195,7 +196,11 @@ export const resolveTableSpacing = (block: TableBlock): TableBlock => {
     changed = true;
     return { ...row, cells };
   });
-  return changed ? { ...block, rows } : block;
+  if (!changed) return block;
+  const resolved = { ...block, rows };
+  // Derived from the table alone, so it measures as the table does.
+  noteTableOrigin(resolved, block);
+  return resolved;
 };
 
 const resolveTextBoxSpacing = (block: TextBoxBlock): TextBoxBlock => {

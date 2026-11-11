@@ -32,7 +32,6 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
-  documentStories,
   type EditorIntent,
   type EditorIntentMode,
   editorParagraphGroups,
@@ -56,6 +55,7 @@ import {
   splitsGraphemeCluster,
   splitsSurrogatePair,
 } from "../ai-edits/character-boundaries";
+import { getTrackedChangeGroupsForIds } from "../ai-edits/read";
 import {
   CommentMarkerCache,
   type ParagraphCommentMarkers,
@@ -63,11 +63,7 @@ import {
   visitCommentMarkerItems,
 } from "../docx/commentAnchorIndex";
 import { ListNormalizationCache } from "../docx/listModelNormalization";
-import {
-  carryParagraphPropertySource,
-  cloneDocumentWithParagraphPropertySources,
-  copyDocumentParagraphPropertySourceContract,
-} from "../docx/paragraphPropertySource";
+import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
@@ -116,6 +112,7 @@ import {
   type StoryProjectionFacts,
 } from "./canonicalProjectionBlocks";
 import {
+  changedWindow,
   unsupportedEditReason,
   unsupportedSeedReason,
 } from "./canonicalSeedContent";
@@ -127,6 +124,11 @@ import {
   withUneditedSourceRestored,
 } from "./canonicalSourceNormalization";
 import { mapTocSelection } from "./canonicalTocSelection";
+import {
+  ownedSourceCopies,
+  preservePropertySources,
+  preservePropertySourcesWholeStories,
+} from "./propertySourcePreservation";
 
 const CanonicalSessionErrorBase: TaggedErrorClass<"CanonicalSessionError"> =
   TaggedError("CanonicalSessionError");
@@ -700,73 +702,6 @@ const changedStories = ({
     }
   }
   return stories;
-};
-
-/**
- * Carry private paragraph source captures across immutable story operations.
- * A paragraph a reader kept is never written: one whose facts change is
- * replaced by a new paragraph carrying them, so the result is `target` or a
- * new document.
- */
-type PreservePropertySourcesOptions = {
-  target: Document;
-  source: Document;
-  stories?: readonly OpStory[];
-  indentation?: "derive" | "restore";
-};
-const preservePropertySources = ({
-  target,
-  source,
-  stories = documentStories(source),
-  indentation = "derive",
-}: PreservePropertySourcesOptions): Document => {
-  const collectParagraphs = (blocks: readonly BlockContent[]): Paragraph[] => {
-    const paragraphs: Paragraph[] = [];
-    for (const block of blocks) {
-      if (block.type === "paragraph") {
-        paragraphs.push(block);
-        continue;
-      }
-      if (block.type !== "table") continue;
-      for (const row of block.rows) {
-        for (const cell of row.cells)
-          paragraphs.push(...collectParagraphs(cell.content));
-      }
-    }
-    return paragraphs;
-  };
-  let document = target;
-  for (const story of stories) {
-    const originals = findStoryBody(source, story)?.content ?? [];
-    const derived = findStoryBody(document, story)?.content ?? [];
-    if (originals === derived) continue;
-    const originalParagraphs = collectParagraphs(originals);
-    const derivedParagraphs = collectParagraphs(derived);
-    const paragraphs = new Map(
-      derivedParagraphs.flatMap((paragraph) =>
-        paragraph.paraId === undefined
-          ? []
-          : [[paragraph.paraId, paragraph] as const],
-      ),
-    );
-    const replaced = new Map<Paragraph, Paragraph>();
-    for (const [index, original] of originalParagraphs.entries()) {
-      const next =
-        original.paraId === undefined
-          ? derivedParagraphs.at(index)
-          : paragraphs.get(original.paraId);
-      if (next === undefined || next === original) continue;
-      const carried = carryParagraphPropertySource({
-        target: replaced.get(next) ?? next,
-        source: original,
-        indentation,
-      });
-      if (carried !== next) replaced.set(next, carried);
-    }
-    document = withParagraphCopies({ document, story, copies: replaced });
-  }
-  copyDocumentParagraphPropertySourceContract(document, source);
-  return document;
 };
 
 /** A session's projection pieces, reused by every projection of its stories. */
@@ -1677,7 +1612,7 @@ class CanonicalSession {
       this.allocatedBlockIds.add(blockId.toUpperCase());
     this.advanceBlockId();
     this.styles = styles == null ? styles : structuredClone(styles);
-    this.rememberSources(document);
+    this.rememberSources(document.package.document.content);
   }
 
   /** Render only the committed comment projection while provisional IME blocks document snapshots. */
@@ -1841,8 +1776,9 @@ class CanonicalSession {
     });
   }
 
-  private rememberSources(document: Document): void {
-    for (const block of document.package.document.content) {
+  /** Record each paragraph among `blocks` as the owner of its id. */
+  private rememberSources(blocks: readonly BlockContent[]): void {
+    for (const block of blocks) {
       if (block.type === "paragraph" && block.paraId !== undefined)
         this.sourceOwners.set(block.paraId, block);
     }
@@ -2492,10 +2428,13 @@ class CanonicalSession {
           decision: resolution,
         },
       ] as const;
-    // A revision whose resolution breaks a lock stays pending; the rest resolve.
+    // An id names its whole listed change: one split by a comment or a
+    // hyperlink carries several ids, and resolving fewer leaves part pending.
+    const changes = getTrackedChangeGroupsForIds(state.doc, revisionIds);
+    // A change whose resolution breaks a lock stays pending; the rest resolve.
     let firstHeld: LockedControlViolation | null = null;
-    const lockHeld = revisionIds.filter((id) => {
-      const alone = applyDocumentOps(this.currentDocument, resolve([id]));
+    const heldChanges = changes.filter((ids) => {
+      const alone = applyDocumentOps(this.currentDocument, resolve(ids));
       if (alone.isErr()) return false;
       const violation = lockViolationBetween(
         this.currentDocument,
@@ -2504,9 +2443,10 @@ class CanonicalSession {
       firstHeld ??= violation;
       return violation !== null;
     });
-    if (firstHeld !== null && lockHeld.length === revisionIds.length)
+    if (firstHeld !== null && heldChanges.length === changes.length)
       return lockRefusal(firstHeld);
-    const resolved = revisionIds.filter((id) => !lockHeld.includes(id));
+    const lockHeld = heldChanges.flat();
+    const resolved = changes.filter((ids) => !heldChanges.includes(ids)).flat();
     const ops = [
       ...before,
       ...(resolved.length === 0 ? [] : resolve(resolved)),
@@ -2905,20 +2845,23 @@ class CanonicalSession {
         target: applied.value.document,
         source: propertySourceDocument,
       });
-    const stagedSources = new Map(this.sourceOwners);
-    const owned = new Map<Paragraph, Paragraph>();
-    for (const block of applied.value.document.package.document.content) {
-      if (block.type !== "paragraph" || block.paraId === undefined) continue;
-      const source = stagedSources.get(block.paraId);
-      if (source === undefined || block === source) continue;
-      const carried = carryParagraphPropertySource({ target: block, source });
-      if (carried !== block) owned.set(block, carried);
-    }
+    // Every main-story paragraph the session holds is its id's owner, so
+    // only the blocks this edit put in place can take an owner's sources.
     applied.value.document = withParagraphCopies({
       document: applied.value.document,
       story: OP_STORIES.MAIN,
-      copies: owned,
+      copies: ownedSourceCopies(
+        this.sourceOwners,
+        changedWindow(
+          this.currentDocument.package.document.content,
+          applied.value.document.package.document.content,
+        ).added,
+      ),
     });
+    const remembered = changedWindow(
+      this.currentDocument.package.document.content,
+      applied.value.document.package.document.content,
+    ).added;
     const projectedStory = findStoryBody(applied.value.document, story)
       ? story
       : OP_STORIES.MAIN;
@@ -3053,7 +2996,7 @@ class CanonicalSession {
           }
         }
         this.advanceBlockId();
-        this.rememberSources(applied.value.document);
+        this.rememberSources(remembered);
         if (projectedStory !== OP_STORIES.MAIN) {
           const body = findStoryBody(applied.value.document, projectedStory);
           if (body === undefined)
@@ -3110,14 +3053,14 @@ export const createCanonicalSession = (
   const source = normalizeCanonicalSource(owned);
   const unsupported = unsupportedSeedReason(source.document);
   if (unsupported !== null) return refuse(unsupported);
-  const identified = preservePropertySources({
+  const identified = preservePropertySourcesWholeStories({
     target: normalizeForOps(source.document),
     source: owned,
   });
   const validated = validateOpsDocument(identified);
   if (validated.isErr()) return refuse(validated.error.message);
   const caches = newStoryProjectionCaches();
-  const normalized = preservePropertySources({
+  const normalized = preservePropertySourcesWholeStories({
     target: normalizeCanonicalListRendering(identified, caches.lists).document,
     source: owned,
   });

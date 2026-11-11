@@ -151,6 +151,7 @@ import { PictureWatermark } from '@stll/folio-core/watermark';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import { PublicProps } from 'vue';
+import { ReadonlyDocument } from '@stll/folio-core/types/documentModel';
 import { Ref } from 'vue';
 import { RendererElement } from 'vue';
 import { RendererNode } from 'vue';

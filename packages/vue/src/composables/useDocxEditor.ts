@@ -518,6 +518,11 @@ export type UseDocxEditorReturn = {
    */
   modelDocument: Readonly<Ref<ReadonlyDocument | null>>;
   /**
+   * The session's own document in a canonical session, read without a copy
+   * (read it, never write it); otherwise null.
+   */
+  readDocumentModel: () => ReadonlyDocument | null;
+  /**
    * The bytes the current document was loaded from: replaced when a document
    * is loaded or set, never by an edit.
    */
@@ -1769,6 +1774,7 @@ export function useDocxEditor(
     isDirty,
     parseError,
     modelDocument: docModel,
+    readDocumentModel: () => manager.readCanonicalDocument(),
     sourceBuffer,
     hiddenEditorWidth,
     layout,

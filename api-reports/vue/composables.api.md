@@ -186,6 +186,7 @@ export type UseDocxEditorReturn = {
     parseError: Ref<string | null>;
     layout: Ref<Layout | null>;
     modelDocument: Readonly<Ref<ReadonlyDocument | null>>;
+    readDocumentModel: () => ReadonlyDocument | null;
     sourceBuffer: Readonly<Ref<ArrayBuffer | null>>;
     hiddenEditorWidth: Ref<number>;
     blocks: Ref<FlowBlock[]>;
