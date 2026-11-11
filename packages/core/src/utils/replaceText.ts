@@ -36,7 +36,8 @@ export function replaceTextInDocument(
 }
 
 type ReplaceRangesResult = {
-  document: Document;
+  /** The copy the ranges were replaced in; null when it could not be made. */
+  document: Document | null;
   replacedCount: number;
   failedCount: number;
 };
@@ -44,18 +45,19 @@ type ReplaceRangesResult = {
 /**
  * Replace every range with `text` in one copy of the document. `ranges` must
  * run from the end of the document backwards, so each replacement leaves the
- * offsets of the ones after it valid. Null when the document cannot be copied.
+ * offsets of the ones after it valid. A document that cannot be copied fails
+ * every range and gives no document.
  */
 export function replaceTextRangesInDocument(
   doc: ReadonlyDocument,
   ranges: readonly ReplaceRange[],
   text: string,
-): ReplaceRangesResult | null {
+): ReplaceRangesResult {
   let newDoc: Document;
   try {
     newDoc = cloneDocumentWithParagraphPropertySources(doc);
   } catch {
-    return null;
+    return { document: null, replacedCount: 0, failedCount: ranges.length };
   }
   let replacedCount = 0;
   let failedCount = 0;

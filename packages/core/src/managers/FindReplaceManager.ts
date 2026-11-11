@@ -35,7 +35,14 @@ export type FindReplaceResult<TMatch> = {
   currentIndex: number;
 };
 
-export type ReplaceAllOutcome = ReplaceAllSummary & { document: Document };
+/**
+ * A replace-all's counts and the document it wrote. `document` is null when
+ * the document could not be copied: nothing was replaced and every match
+ * counts as skipped.
+ */
+export type ReplaceAllOutcome = ReplaceAllSummary & {
+  document: Document | null;
+};
 
 /**
  * The cursor index after stepping `direction` over `totalCount` matches,
@@ -166,7 +173,7 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
    * Replace every match. Matches are replaced from the end of the document
    * backwards so earlier offsets stay valid as the text shifts. Ineligible
    * matches are skipped and counted. Clears the active result, or returns null
-   * when there is nothing to replace or the document cannot be copied.
+   * when there is nothing to replace.
    */
   replaceAll(
     document: ReadonlyDocument,
@@ -188,13 +195,15 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
     });
 
     // One copy of the document for the whole batch, not one per match.
-    const replaced = replaceTextRangesInDocument(
+    const {
+      document: nextDocument,
+      replacedCount,
+      failedCount,
+    } = replaceTextRangesInDocument(
       document,
       sortedMatches.map((match) => toReplaceRange(match)),
       replaceText,
     );
-    if (!replaced) return null;
-    const { document: nextDocument, replacedCount, failedCount } = replaced;
     const skippedCount = matches.length - eligibleMatches.length + failedCount;
 
     if (replacedCount > 0) this.result = null;

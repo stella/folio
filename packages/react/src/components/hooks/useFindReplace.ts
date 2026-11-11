@@ -469,7 +469,7 @@ export function useFindReplace({
         return { replacedCount: 0, skippedCount: 0 };
       }
 
-      if (outcome.replacedCount > 0) {
+      if (outcome.document && outcome.replacedCount > 0) {
         acceptReplacement(outcome.document);
       }
       return {

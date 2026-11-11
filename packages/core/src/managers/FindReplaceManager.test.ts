@@ -396,7 +396,11 @@ describe("FindReplaceManager real search replacement eligibility", () => {
     if (!all) panic("Body replacement outcome missing");
     expect(all).toMatchObject({ replacedCount: 2, skippedCount: 0 });
     expect(
-      findInDocument(all.document, "value value", createDefaultFindOptions()),
+      findInDocument(
+        all.document ?? panic("Body replacement wrote no document"),
+        "value value",
+        createDefaultFindOptions(),
+      ),
     ).toHaveLength(1);
     expect(
       findInDocument(source, "hit hit", createDefaultFindOptions()),
@@ -532,4 +536,27 @@ test("result refresh preserves or clamps the cursor", () => {
   }
   expect(manager.setMatches([], 4).currentIndex).toBe(0);
   expect(manager.navigate("next")).toBeNull();
+});
+
+test("a replace-all over a document that cannot be copied skips every match", () => {
+  const source: Document = {
+    package: {
+      document: {
+        content: [{ type: "paragraph", content: [textRun("hit hit")] }],
+      },
+    },
+  };
+  const matches = findInDocument(source, "hit", createDefaultFindOptions());
+  expect(matches).toHaveLength(2);
+  // A function is not structured-cloneable, so the copy owner throws on it.
+  const uncopyable = Object.assign(structuredClone(source), {
+    probe: () => undefined,
+  });
+  const manager = new FindReplaceManager<(typeof matches)[number]>();
+  manager.setMatches(matches);
+  expect(manager.replaceAll(uncopyable, matches, "value")).toEqual({
+    document: null,
+    replacedCount: 0,
+    skippedCount: 2,
+  });
 });
