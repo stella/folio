@@ -1,8 +1,9 @@
 /**
  * After an update that changes the document, the browser caret sits in the
  * text before the editor's caret, set again by the editor, so an input
- * method composes into the run the caret follows. With no text beside the
- * caret, it sits right after the separator image before an inline anchor.
+ * method composes into the run the caret follows. That holds for a caret
+ * set between updates, by focus or a click, and for one with no text beside
+ * it, before an anchor at a paragraph's start.
  */
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
@@ -101,57 +102,63 @@ test("an update that changes only the selection leaves the browser's caret alone
 });
 
 /**
- * An anchor and then "Text", with the caret before the anchor, after a
- * paragraph "First". The browser holds the caret where ProseMirror puts it:
- * before the separator image it draws ahead of the anchor.
+ * A caret the browser holds since the last update, set the way focus or a
+ * click sets it, and reported by `selectionchange` as the browser does.
  */
-const anchorRig = () => {
-  const anchored = schema.node("paragraph", null, [
-    schema.node("anchor"),
-    schema.text("Text"),
-  ]);
+const holdCaret = (node: Node, offset: number) => {
+  const native = document.getSelection();
+  if (!native) throw new TypeError("The rig needs a selection.");
+  native.removeAllRanges();
+  native.collapse(node, offset);
+  document.dispatchEvent(new Event("selectionchange"));
+  const held = native.getRangeAt(0);
+  // The browser keeps one range for a selection nobody sets again.
+  expect(native.getRangeAt(0)).toBe(held);
+  return { native, held };
+};
+
+/** Paragraphs inserted before the caret's paragraph, as a pasted list does. */
+const pasteBefore = (view: EditorView) =>
+  view.updateState(
+    view.state.apply(
+      view.state.tr.insert(0, schema.node("paragraph", null, schema.text("!"))),
+    ),
+  );
+
+test("a caret set after the last update and left alone by the next is set again", () => {
+  const { view } = rig([createNativeSelectionRefreshPlugin()]);
+  const first = view.domAtPos(6, -1);
+  const { native, held } = holdCaret(first.node, first.offset);
+  pasteBefore(view);
+  expect(native.getRangeAt(0)).not.toBe(held);
+  expect(native.anchorNode).toBe(first.node);
+  expect(native.anchorOffset).toBe(first.offset);
+});
+
+test("a caret with no text beside it, before an anchor, is set again where it is", () => {
   const doc = schema.node("doc", null, [
-    schema.node("paragraph", null, schema.text("First")),
-    anchored,
+    schema.node("paragraph", null, [
+      schema.node("anchor"),
+      schema.text("Text"),
+    ]),
   ]);
-  const caret = 8;
   const mount = document.createElement("div");
   document.body.append(mount);
   const view = new EditorView(mount, {
     state: EditorState.create({
       doc,
       plugins: [createNativeSelectionRefreshPlugin()],
-      selection: TextSelection.create(doc, caret),
+      selection: TextSelection.create(doc, 1),
     }),
   });
   views.push(view);
   view.focus();
-  const paragraph = view.dom.children.item(1);
-  const native = document.getSelection();
-  if (!native || !paragraph)
-    throw new TypeError("The rig needs the anchored paragraph.");
-  native.removeAllRanges();
-  native.collapse(paragraph, 0);
-  return { view, native, caret };
-};
-
-test("a caret with no text beside it goes after the separator before the anchor", () => {
-  const { view, native, caret } = anchorRig();
-  // A paste before the paragraph moves it, as a pasted list does.
-  view.updateState(view.state.apply(view.state.tr.insertText("!", 1)));
-  expect(view.state.selection.from).toBe(caret + 1);
-  const { anchorNode, anchorOffset } = native;
-  const before = anchorNode?.childNodes.item(anchorOffset - 1);
-  const after = anchorNode?.childNodes.item(anchorOffset);
-  expect(anchorNode?.nodeName).toBe("P");
-  expect(before?.nodeName).toBe("IMG");
-  expect(before instanceof Element && before.className).toBe(
-    "ProseMirror-separator",
-  );
-  expect(
-    after instanceof Element && after.getAttribute("contenteditable"),
-  ).toBe("false");
-  // The browser's caret still reads as the editor's.
-  if (anchorNode)
-    expect(view.posAtDOM(anchorNode, anchorOffset)).toBe(caret + 1);
+  const paragraph = view.dom.firstElementChild;
+  if (!paragraph) throw new TypeError("The rig needs the paragraph.");
+  const { native, held } = holdCaret(paragraph, 0);
+  pasteBefore(view);
+  expect(view.state.selection.from).toBe(4);
+  expect(native.getRangeAt(0)).not.toBe(held);
+  expect(native.anchorNode).toBe(paragraph);
+  expect(native.anchorOffset).toBe(0);
 });

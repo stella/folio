@@ -52,46 +52,24 @@ const nativeRange = (view: EditorView): Range | null => {
   return native !== null && native.rangeCount > 0 ? native.getRangeAt(0) : null;
 };
 
-/** The image ProseMirror draws beside an inline atom with no text there. */
-const isElement = (node: Node): node is Element =>
-  node.nodeType === node.ELEMENT_NODE;
-const isSeparator = (node: Node | undefined): boolean =>
-  node !== undefined &&
-  isElement(node) &&
-  node.nodeName === "IMG" &&
-  node.classList.contains("ProseMirror-separator");
-
 /**
  * Where a browser caret for the editor's collapsed selection belongs: in the
  * text before it, or at a paragraph's start in the first text. ProseMirror
  * treats the end of one text node and the start of the next run as one
  * position, but the browser types and composes into the node it holds.
- *
- * With no text beside it, the caret sits before or after an inline atom,
- * such as a bookmark boundary at a paragraph's start, and ProseMirror draws
- * a separator image there. The caret goes right after that image: before it
- * and the atom, Chromium finds no place to compose and composes into the
- * first text of the editable content instead.
- *
- * `null` when the selection is not a caret in text or beside such an image.
+ * `null` when the selection is not a caret in text.
  */
 export const textCaretOf = (
   view: EditorView,
 ): { node: Node; offset: number } | null => {
   const { selection } = view.state;
   if (!selection.empty) return null;
-  const sides = [
-    view.domAtPos(selection.from, -1),
-    view.domAtPos(selection.from, 1),
-  ];
-  const text = sides.find(({ node }) => node.nodeType === node.TEXT_NODE);
-  if (text) return { node: text.node, offset: text.offset };
-  for (const { node, offset } of sides) {
-    if (isSeparator(node.childNodes[offset - 1])) return { node, offset };
-    if (isSeparator(node.childNodes[offset]))
-      return { node, offset: offset + 1 };
-  }
-  return null;
+  const before = view.domAtPos(selection.from, -1);
+  const { node, offset } =
+    before.node.nodeType === before.node.TEXT_NODE
+      ? before
+      : view.domAtPos(selection.from, 1);
+  return node.nodeType === node.TEXT_NODE ? { node, offset } : null;
 };
 
 /**
@@ -104,16 +82,26 @@ export const textCaretOf = (
  * next composition's start from the start of the editable content, and it
  * picks the text node to compose into before `compositionstart`, so the
  * text in progress shows elsewhere. A caret goes into the text before it,
- * where a composition continues the run it follows.
+ * where a composition continues the run it follows. A caret with no text
+ * beside it, such as one before a bookmark boundary at a paragraph's start,
+ * is set again where it is.
  *
- * A selection the browser or ProseMirror set since the last update has a new
- * range; one left alone keeps its range and is set again.
+ * A selection the browser or ProseMirror set during the update has a new
+ * range; one left alone keeps its range and is set again. The range held is
+ * the one the last update or the last `selectionchange` left, so a caret set
+ * between updates, by focus or a click, counts as left alone too.
  */
 export const createNativeSelectionRefreshPlugin = (): Plugin =>
   new Plugin({
     view: (view) => {
       let held = nativeRange(view);
+      const owner = view.dom.ownerDocument;
+      const hold = () => {
+        held = nativeRange(view);
+      };
+      owner.addEventListener("selectionchange", hold);
       return {
+        destroy: () => owner.removeEventListener("selectionchange", hold),
         update: (current, previous) => {
           const native = current.dom.ownerDocument.getSelection();
           const range = nativeRange(current);
