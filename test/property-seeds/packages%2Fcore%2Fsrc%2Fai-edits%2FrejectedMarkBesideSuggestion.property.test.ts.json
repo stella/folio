@@ -1,0 +1,28 @@
+{
+  "rejected-mark-beside-suggestion-mixed-order": [
+    {
+      "seed": 1530013392,
+      "path": "157:3:2:3:4:4:31:4:4:4:4:4:4:4:4:4:4",
+      "note": "#2498: rejecting every change left an extra empty paragraph",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": 501932560,
+      "path": "19:5:3:4:6:6:6:6:6:6:6:6:6:6:6:6:6:6",
+      "note": "#2498: rejecting every change left an extra empty paragraph",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": -1819669582,
+      "path": "239:4:5:6:6:22:6:5:10:5:11:5:5:5:5:5:5:5:5:5:5",
+      "note": "#2498: rejecting every change left an extra empty paragraph",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": 68121680,
+      "path": "274:2:1:5:6:6:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7",
+      "note": "#2498: rejecting every change left an extra empty paragraph",
+      "date": "2026-11-11"
+    }
+  ]
+}
