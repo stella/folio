@@ -655,7 +655,7 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
   },
   {
     id: "host:cut",
-    placements: ["word", "paragraph", "cross-paragraph"],
+    placements: ["word", "paragraph", "cross-paragraph", "document"],
     run: ({ view }) => {
       if (view.state.selection.empty) {
         return false;

@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 521103458: step 8: [batchSequential] the batch (suggested: deleteBlock, insertAfterBlock) leaves otherwise than its operations one at a time",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "suggested",
+  "seed": 521103458,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3424517020,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Clause payment buyer supplier notice.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3225117129,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "@4"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5E88C024",
+          "text": "Invoice warranty payment party schedule warranty.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from collisions flow seed 521103458"
+}
