@@ -491,6 +491,8 @@ export type IdentityKeyIndex = {
   has: (key: string) => boolean;
   /** Every key with its count, as {@link countKeys} gives them. */
   counts: () => ReadonlyMap<string, number>;
+  /** How many keys more than one record carries. */
+  repeated: () => number;
 };
 
 /**
@@ -504,6 +506,8 @@ type IndexNode = {
   depth: number;
   /** Whether every record of the package can be counted apart from the rest. */
   shareable: boolean;
+  /** How many keys more than one record of the package carries. */
+  repeated: number;
 };
 
 const MAX_CHAIN = 32;
@@ -729,23 +733,37 @@ const keyIndex = (
     const changes = new Map<string, number>();
     if (!changeBetween(viewOf(previous), viewOf(pkg), changes))
       return undefined;
-    for (const [key, change] of changes) if (change === 0) changes.delete(key);
+    // Only a key whose count changed can start or stop repeating.
+    let { repeated } = base;
+    for (const [key, change] of changes) {
+      if (change === 0) {
+        changes.delete(key);
+        continue;
+      }
+      const was = countIn(base, key);
+      repeated += Number(was + change > 1) - Number(was > 1);
+    }
     const node: IndexNode = {
       parent: base,
       changes,
       depth: base.depth + 1,
       shareable: true,
+      repeated,
     };
     if (node.depth >= MAX_CHAIN) settle(node);
     return node;
   };
   const counted = (pkg: DocxPackage): IndexNode => {
     const census = censusOf(viewOf(pkg), freshContext());
+    const changes = countKeys(census.keys);
+    let repeated = 0;
+    for (const count of changes.values()) if (count > 1) repeated += 1;
     return {
       parent: undefined,
-      changes: countKeys(census.keys),
+      changes,
       depth: 0,
       shareable: census.shareable,
+      repeated,
     };
   };
   return (pkg) => {
@@ -763,6 +781,7 @@ const keyIndex = (
         settle(indexed);
         return indexed.changes;
       },
+      repeated: () => indexed.repeated,
     };
   };
 };
@@ -774,3 +793,20 @@ export const packageIdentityKeyIndex: (pkg: DocxPackage) => IdentityKeyIndex =
 /** How many of a package's pending cut references reserve each id. */
 export const packageReservedKeyIndex: (pkg: DocxPackage) => IdentityKeyIndex =
   keyIndex(sharedReservedCensus, ownReservedKeys, (pkg) => pkg);
+
+const ownParagraphKeys: OwnKeys = (entries) => {
+  const id = paragraphIdOf(entries);
+  return { keys: id === undefined ? NO_KEYS : [idKey(id)], shareable: true };
+};
+
+/**
+ * How many paragraphs of a package carry each id, by {@link idKey}: what
+ * {@link countIds} of {@link packageParagraphIds} counts, each package found
+ * from one indexed before it.
+ */
+export const packageParagraphIdIndex: (pkg: DocxPackage) => IdentityKeyIndex =
+  keyIndex(
+    censusWalker(ownParagraphKeys, "shared"),
+    ownParagraphKeys,
+    storiesOf,
+  );

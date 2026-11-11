@@ -38,12 +38,10 @@ import {
   createProseParagraphWithPropertySource,
   getDocumentParagraphPropertySourceContract,
   paragraphFormattingWithAuthoredIndentation,
-  type ParagraphPropertySourceStamp,
-  paragraphPropertySourceStamp,
-  paragraphPropertySourceStampMatches,
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   proseParagraphAttrsWithoutPropertySource,
   recreateProseNodeWithParagraphPropertySource,
+  sealParagraphFacts,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
 import {
@@ -599,25 +597,11 @@ export const visitBookmarkBoundaries = (
   visitBlocks(blocks);
 };
 
-/** The bookmarks of a story's blocks whose one start opens before their one end. */
-export const collectPairedBookmarkIds = (
-  blocks: readonly BlockContent[],
-): ReadonlySet<number> => {
-  const counts = new Map<number, BookmarkBoundaryCount>();
-  let position = 0;
-  visitBookmarkBoundaries(blocks, (id, type) => {
-    const count = counts.get(id) ?? { starts: 0, ends: 0 };
-    if (type === "start") {
-      count.starts += 1;
-      count.firstStart ??= position;
-    } else {
-      count.ends += 1;
-      count.firstEnd ??= position;
-    }
-    position += 1;
-    counts.set(id, count);
-  });
-  return new Set(
+/** The bookmarks whose one start opens before their one end. */
+const pairedOf = (
+  counts: ReadonlyMap<number, BookmarkBoundaryCount>,
+): ReadonlySet<number> =>
+  new Set(
     [...counts].flatMap(([id, count]) =>
       count.starts === 1 &&
       count.ends === 1 &&
@@ -628,6 +612,38 @@ export const collectPairedBookmarkIds = (
         : [],
     ),
   );
+
+/** Bookmark boundaries counted in the order a story meets them. */
+class BookmarkBoundaryCounts {
+  readonly counts = new Map<number, BookmarkBoundaryCount>();
+  private position = 0;
+
+  count(id: number, type: "start" | "end"): void {
+    const count = this.counts.get(id) ?? { starts: 0, ends: 0 };
+    if (type === "start") {
+      count.starts += 1;
+      count.firstStart ??= this.position;
+    } else {
+      count.ends += 1;
+      count.firstEnd ??= this.position;
+    }
+    this.position += 1;
+    this.counts.set(id, count);
+  }
+
+  /** The bookmarks whose one start opens before their one end. */
+  paired(): ReadonlySet<number> {
+    return pairedOf(this.counts);
+  }
+}
+
+/** The bookmarks of a story's blocks whose one start opens before their one end. */
+export const collectPairedBookmarkIds = (
+  blocks: readonly BlockContent[],
+): ReadonlySet<number> => {
+  const boundaries = new BookmarkBoundaryCounts();
+  visitBookmarkBoundaries(blocks, (id, type) => boundaries.count(id, type));
+  return boundaries.paired();
 };
 
 /**
@@ -710,16 +726,24 @@ type StoryReads = {
   noteOccurrences: { start: number; taken: number };
   pairedBookmarkIds: SetReads;
   storyRangedCommentIds: SetReads;
+  /** The comments open at the block's start and end, one array when the same. */
   openCommentIds: { start: readonly number[]; end: readonly number[] };
 };
-
-const sameIds = (left: readonly number[], right: readonly number[]) =>
-  left.length === right.length &&
-  left.every((value, index) => value === right[index]);
 
 const setReadsHold = (reads: SetReads, set: IdMembership): boolean => {
   for (const [value, answer] of reads.answers)
     if (set.has(value) !== answer) return false;
+  return true;
+};
+
+/** Whether `set` holds exactly `ids`, in their order. */
+const holdsInOrder = (ids: readonly number[], set: ReadonlySet<number>) => {
+  if (ids.length !== set.size) return false;
+  let index = 0;
+  for (const id of set) {
+    if (ids[index] !== id) return false;
+    index += 1;
+  }
   return true;
 };
 
@@ -733,13 +757,16 @@ const storyReadsHold = (reads: StoryReads, state: StoryState): boolean =>
   setReadsHold(reads.pairedBookmarkIds, state.pairedBookmarkIds) &&
   setReadsHold(reads.storyRangedCommentIds, state.storyRangedCommentIds) &&
   // In the set's own order: comment marks are added in it.
-  sameIds(reads.openCommentIds.start, [...state.openCommentIds]);
+  holdsInOrder(reads.openCommentIds.start, state.openCommentIds);
 
 /** Advance the story past a block whose reads hold, as converting it would. */
 const advanceStory = (reads: StoryReads, state: StoryState): void => {
   state.textBoxGroups.value += reads.textBoxGroups.taken;
   state.hyperlinks.value += reads.hyperlinks.taken;
   state.noteOccurrences.value += reads.noteOccurrences.taken;
+  // The reads held, so the open comments are the start ones: a block that
+  // opened or closed none leaves them as they are.
+  if (reads.openCommentIds.end === reads.openCommentIds.start) return;
   state.openCommentIds.clear();
   for (const id of reads.openCommentIds.end) state.openCommentIds.add(id);
 };
@@ -748,29 +775,17 @@ const setReadsOf = (set: RecordedMembership): SetReads => ({
   answers: set.answers,
 });
 
-/** Where the facts kept outside one paragraph's fields stood. */
-type ParagraphSourceStamp = {
-  paragraph: Paragraph;
-  stamp: ParagraphPropertySourceStamp;
-};
-
 /**
- * Where the facts kept outside the fields of a block's paragraphs stood, a
- * table's in document order: a converted block is reused only while none of
- * them changed.
+ * Fix the facts kept outside the fields of a block's paragraphs, a table's
+ * too: a converted block is reused while it is the same object, so they must
+ * stay the ones it was converted with.
  */
-const blockSourceStamps = (
-  block: Paragraph | Table,
-): readonly ParagraphSourceStamp[] => {
-  const stamps: ParagraphSourceStamp[] = [];
+const sealBlockFacts = (block: Paragraph | Table): void => {
   const visit = (blocks: readonly BlockContent[]): void => {
     for (const child of blocks) {
       switch (child.type) {
         case "paragraph":
-          stamps.push({
-            paragraph: child,
-            stamp: paragraphPropertySourceStamp(child),
-          });
+          sealParagraphFacts(child);
           break;
         case "table":
           for (const row of child.rows)
@@ -798,23 +813,11 @@ const blockSourceStamps = (
     }
   };
   visit([block]);
-  return stamps;
 };
-
-/**
- * Whether no fact kept outside the fields of the paragraphs of `block`, the
- * same object the stamps were read from, changed since.
- */
-const sourceStampsHold = (stamps: readonly ParagraphSourceStamp[]): boolean =>
-  stamps.every(({ paragraph, stamp }) =>
-    paragraphPropertySourceStampMatches(paragraph, stamp),
-  );
 
 type CachedBlock = {
   nodes: readonly PMNode[];
   reads: StoryReads;
-  /** Where the facts kept outside its paragraphs' fields stood, as converted. */
-  sourceStamps: readonly ParagraphSourceStamp[];
 };
 
 type ProjectionPackageInputs = {
@@ -823,6 +826,14 @@ type ProjectionPackageInputs = {
   numbering: NumberingDefinitions | undefined;
   warn: ParseContext["warn"] | undefined;
 };
+
+/** One block's bookmark boundaries, in document order, and comment range starts. */
+type BlockMarkers = {
+  bookmarks: readonly (readonly [number, "start" | "end"])[];
+  commentStarts: readonly number[];
+};
+
+const NO_BLOCK_MARKERS: BlockMarkers = { bookmarks: [], commentStarts: [] };
 
 /**
  * Converted blocks kept across projections of one story.
@@ -844,6 +855,40 @@ export class ProjectionBlockCache {
   private context:
     (PackageConversionContext & { styleResolver: StyleEngine }) | undefined;
   private blocks = new WeakMap<Paragraph | Table, CachedBlock>();
+  /** Each top-level block's comment range starts and bookmark boundaries. */
+  private markers = new WeakMap<BlockContent, BlockMarkers>();
+
+  /**
+   * `collectPairedBookmarkIds` and `rangedCommentIds` of a story's blocks,
+   * from what each block holds, kept by the block: a block an edit left is
+   * not walked again.
+   */
+  storyMarkers(blocks: readonly BlockContent[]): {
+    pairedBookmarkIds: ReadonlySet<number>;
+    rangedCommentIds: ReadonlySet<number>;
+  } {
+    const boundaries = new BookmarkBoundaryCounts();
+    const ranged = new Set<number>();
+    for (const block of blocks) {
+      let markers = this.markers.get(block);
+      if (markers === undefined) {
+        const bookmarks: [number, "start" | "end"][] = [];
+        visitBookmarkBoundaries([block], (id, type) =>
+          bookmarks.push([id, type]),
+        );
+        const commentStarts = [...rangedCommentIds([block])];
+        markers =
+          bookmarks.length === 0 && commentStarts.length === 0
+            ? NO_BLOCK_MARKERS
+            : { bookmarks, commentStarts };
+        this.markers.set(block, markers);
+      }
+      if (markers === NO_BLOCK_MARKERS) continue;
+      for (const [id, type] of markers.bookmarks) boundaries.count(id, type);
+      for (const id of markers.commentStarts) ranged.add(id);
+    }
+    return { pairedBookmarkIds: boundaries.paired(), rangedCommentIds: ranged };
+  }
 
   /** The package context for these inputs, the cache started over if they changed. */
   packageContext(
@@ -887,11 +932,7 @@ export class ProjectionBlockCache {
     convert: (context: TableConversionContext) => PMNode[],
   ): readonly PMNode[] {
     const known = this.blocks.get(block);
-    if (
-      known !== undefined &&
-      sourceStampsHold(known.sourceStamps) &&
-      storyReadsHold(known.reads, state)
-    ) {
+    if (known !== undefined && storyReadsHold(known.reads, state)) {
       advanceStory(known.reads, state);
       return known.nodes;
     }
@@ -948,15 +989,14 @@ export class ProjectionBlockCache {
       storyRangedCommentIds: setReadsOf(storyRangedCommentIds),
       openCommentIds: {
         start: openStart,
-        end: [...state.openCommentIds],
+        end: holdsInOrder(openStart, state.openCommentIds)
+          ? openStart
+          : [...state.openCommentIds],
       },
     };
     // As the conversion left them: it may record facts of its own.
-    this.blocks.set(block, {
-      nodes,
-      reads,
-      sourceStamps: blockSourceStamps(block),
-    });
+    sealBlockFacts(block);
+    this.blocks.set(block, { nodes, reads });
     return nodes;
   }
 }
@@ -992,12 +1032,16 @@ export function toProseDoc(
     shared?.styleResolver ?? createStyleEngine(packageInputs.styles);
   const salt =
     cache?.salt ?? options?.textBoxGroupSalt ?? newTextBoxGroupSalt();
+  const storyMarkers = cache?.storyMarkers(paragraphs) ?? {
+    pairedBookmarkIds: collectPairedBookmarkIds(paragraphs),
+    rangedCommentIds: rangedCommentIds(paragraphs),
+  };
   const story: StoryState = {
     textBoxGroups: { value: 0 },
     hyperlinks: { value: 0 },
     noteOccurrences: { value: 0 },
-    pairedBookmarkIds: collectPairedBookmarkIds(paragraphs),
-    storyRangedCommentIds: rangedCommentIds(paragraphs),
+    pairedBookmarkIds: storyMarkers.pairedBookmarkIds,
+    storyRangedCommentIds: storyMarkers.rangedCommentIds,
     openCommentIds: new Set<number>(),
   };
   const conversionContext: TableConversionContext = {

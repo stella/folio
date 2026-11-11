@@ -7,7 +7,7 @@ import {
 } from "../../../../../test/property-testing";
 import type { Document } from "../../model/document";
 import { applyDocumentOp } from "../apply";
-import { createCensusReader } from "../editorIntentCensus";
+import { packageIdOccupancy } from "../editorIntentCensus";
 import {
   countKeys,
   IDENTITY_SPACES,
@@ -24,6 +24,7 @@ import {
   reviewDocumentArbitrary,
   trackedOpFor,
 } from "./documentArbitraries";
+import { expectOccupancyOf } from "./occupancyProbe";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
@@ -66,7 +67,6 @@ describe("identity counts across documents", () => {
     expect((await freshIds()).packageIdentityKeyIndex).not.toBe(
       packageIdentityKeyIndex,
     );
-    const shared = createCensusReader();
     let checked = 0;
     await assertProperty(
       fc.asyncProperty(
@@ -79,8 +79,7 @@ describe("identity counts across documents", () => {
           const histories: Document[][] = documents.map((document) => [
             document,
           ]);
-          const readers = documents.map(() => createCensusReader());
-          const check = async (index: number, document: Document) => {
+          const check = async (document: Document) => {
             const fresh = await freshIds();
             const identities = fresh.packageIdentityKeys(document.package);
             const reserved = fresh.packageReservedIdentityKeys(
@@ -107,21 +106,13 @@ describe("identity counts across documents", () => {
                 fresh.packageParagraphIds(document.package).map(fresh.idKey),
               ),
             };
-            for (const reader of [shared, readers[index] ?? shared]) {
-              const census = reader(document);
-              expect({
-                revisions: census.revisions,
-                controls: census.controls,
-                paragraphs: census.paragraphs,
-              }).toEqual(expected);
-            }
+            expectOccupancyOf(packageIdOccupancy(document.package), expected);
             expect(packageParagraphIds(document.package).length).toBe(
               fresh.packageParagraphIds(document.package).length,
             );
             checked += 1;
           };
-          for (const [index, document] of documents.entries())
-            await check(index, document);
+          for (const document of documents) await check(document);
           for (const {
             document: pick,
             version,
@@ -141,10 +132,10 @@ describe("identity counts across documents", () => {
               ? trackedOpFor(base, seed, history.length)
               : opFor(base, seed);
             const applied = applyDocumentOp(base, op);
-            await check(index, base);
+            await check(base);
             if (applied.isErr()) continue;
             history.push(applied.value.document);
-            await check(index, applied.value.document);
+            await check(applied.value.document);
           }
         },
       ),

@@ -143,6 +143,9 @@ export type CommentAnchor = {
 };
 
 // @public
+export const commentAnchorSequence: (blocks: readonly BlockContent[]) => string[];
+
+// @public
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
 // @public (undocumented)
@@ -1372,6 +1375,9 @@ export const withoutCommentThreads: (comments: readonly Comment_2[], removedRoot
 
 // @public
 export const withoutPendingSuggestions: (document: Document_2) => Result<Document_2, DocumentOpRefusal>;
+
+// @public
+export const withParagraphCopies: (input: WithParagraphCopiesOptions) => Document_2;
 
 // @public
 export type ZeroWidthItem = keyof typeof ZERO_WIDTH_ITEMS_HOLD_CONTENT;

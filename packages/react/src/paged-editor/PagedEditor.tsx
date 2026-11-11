@@ -44,6 +44,7 @@ import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type {
   FolioEditor,
@@ -69,6 +70,7 @@ import {
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { allowsDirectDrawingEdit } from "@stll/folio-core/docx/imageRawXml";
 import { getFootnoteText } from "@stll/folio-core/docx/storyPlainText";
 import { FontFaceLifecycle } from "@stll/folio-core/fonts/FontFaceLifecycle";
@@ -240,6 +242,7 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import {
   closestHtmlElement,
   htmlQueryAll,
@@ -293,6 +296,18 @@ import { useVisualLineNavigation } from "./useVisualLineNavigation";
 // =============================================================================
 // TYPES
 // =============================================================================
+
+/** A settled change: the editor's document model and the host's document. */
+export type DocumentChange = {
+  /**
+   * The editor's document model: in a canonical session the session's own
+   * document (read it, never write it), otherwise the document built from the
+   * editor state.
+   */
+  model: ReadonlyDocument;
+  /** A document the host owns: a copy of the model in a canonical session. */
+  forHost: Document;
+};
 
 export type PagedEditorProps = {
   /** Accessible name announced for the editor or read-only document. */
@@ -358,8 +373,11 @@ export type PagedEditorProps = {
   showMarginGuides?: boolean;
   /** CSS color used for margin guides. */
   marginGuideColor?: string;
-  /** Callback when document changes. */
-  onDocumentChange?: (document: Document) => void;
+  /**
+   * Callback when the document changes, once the edits settle: the editor's
+   * document model, and the document the host owns.
+   */
+  onDocumentChange?: (change: DocumentChange) => void;
   /** Callback when a readonly user action would mutate the document. */
   onReadOnlyEditAttempt?: () => void;
   /** Fires when the editor receives a copy event. */
@@ -565,8 +583,6 @@ export const DEFAULT_PAGE_GAP = 24;
 const TABLE_INSERT_EDGE_PROXIMITY = 30;
 /** Delay in ms before hiding the insert button when cursor moves away */
 const TABLE_INSERT_HIDE_DELAY = 200;
-/** Delay before converting PM state back to the Folio document model. */
-const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 /** Keep the visual caret hidden briefly while typed content relayouts. */
 const SELECTION_REVEAL_AFTER_INPUT_DELAY = 120;
 
@@ -2438,6 +2454,29 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       noteFollower.reset();
     }, [documentIdentity, noteFollower]);
 
+    /**
+     * The settled document: in a canonical session the session's own document
+     * as the model and one copy for the host; otherwise one document built
+     * from the editor state, which is both.
+     */
+    const settledDocumentChange = useCallback((): DocumentChange | null => {
+      const hidden = hiddenPMRef.current;
+      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) {
+        const model = hidden?.readCanonicalDocument() ?? null;
+        return model === null
+          ? null
+          : {
+              model,
+              forHost: cloneDocumentWithParagraphPropertySources(model),
+            };
+      }
+      const built = hidden?.getDocument();
+      const body = hidden?.getState()?.doc;
+      if (!built) return null;
+      const reconciled = body ? noteFollower.reconcile(built, body) : built;
+      return { model: reconciled, forHost: reconciled };
+    }, [experimentalSession, noteFollower]);
+
     const flushDocumentChangeNotification = useCallback(() => {
       const flush = () => {
         if (documentChangeNotifyTimerRef.current !== null) {
@@ -2461,24 +2500,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         compositionNotificationRetryRef.current?.();
         compositionNotificationRetryRef.current = null;
 
-        let newDoc = hiddenPMRef.current?.getDocument();
-        const body = hiddenPMRef.current?.getState()?.doc;
-        if (
-          newDoc &&
-          body &&
-          !usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)
-        ) {
-          newDoc = noteFollower.reconcile(newDoc, body);
-        }
-        // `getDocument` returns a document the host owns: a copy of the
-        // canonical session's, or one built from the editor state.
-        if (newDoc) {
-          onDocumentChangeRef.current?.(newDoc);
-          folioEmitterRef.current.emit("docChange", newDoc);
+        const change = settledDocumentChange();
+        if (change) {
+          onDocumentChangeRef.current?.(change);
+          folioEmitterRef.current.emit("docChange", change.forHost);
         }
       };
       flush();
-    }, [experimentalSession, noteFollower, getActiveEditorStory]);
+    }, [getActiveEditorStory, settledDocumentChange]);
 
     const readCanonicalDocument = useCallback(
       () => hiddenPMRef.current?.readCanonicalDocument() ?? null,
@@ -2493,7 +2522,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       documentChangeNotifyTimerRef.current = window.setTimeout(() => {
         documentChangeNotifyTimerRef.current = null;
         flushDocumentChangeNotification();
-      }, DOCUMENT_CHANGE_NOTIFY_DELAY);
+      }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
     }, [flushDocumentChangeNotification]);
 
     // Thin adapter over the framework-agnostic scheduler. Repeated calls in the
@@ -3593,9 +3622,13 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     );
 
     const handleNoteDocumentChange = useCallback(
-      // A note story's snapshot is already a document the host owns.
+      // A note story's snapshot is already a document the host owns; in a
+      // canonical session the model is the session's own document.
       (updated: Document) => {
-        onDocumentChangeRef.current?.(updated);
+        onDocumentChangeRef.current?.({
+          model: hiddenPMRef.current?.readCanonicalDocument() ?? updated,
+          forHost: updated,
+        });
         folioEmitterRef.current.emit("docChange", updated);
       },
       [],

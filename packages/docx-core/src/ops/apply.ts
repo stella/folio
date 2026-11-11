@@ -72,6 +72,7 @@ import { applyCommentOp } from "./comments";
 import {
   hasMultipleParagraphPropertyChanges,
   meetsContract,
+  repeatedParagraphId,
   validateOpsDocument,
 } from "./contract";
 import {
@@ -138,6 +139,7 @@ import { noteContentWithAutomaticMark, removedNoteStories } from "./noteMarks";
 import { applyNumberingSectionOp } from "./numberingSections";
 import { paragraphLength } from "./offsets";
 import { applyPackageResourcesOp } from "./packageResources";
+import { findStoryParagraph } from "./paragraphLocator";
 import {
   getParagraphPropertySnapshot,
   registerParagraphPropertySnapshot,
@@ -358,8 +360,18 @@ const locate = (
   op: DocumentOp,
   story: OpStory,
   blockId: string,
-): Result<ParagraphLocation, DocumentOpRefusal> =>
-  findParagraph(op, storyParagraphs(storyBody(document, story)), blockId);
+): Result<ParagraphLocation, DocumentOpRefusal> => {
+  const location = findStoryParagraph(storyBody(document, story), blockId);
+  return location === undefined
+    ? Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+          `No paragraph is ${blockId}.`,
+        ),
+      )
+    : Result.ok(location);
+};
 
 const isGap = (value: Gap | DocumentOpRefusalReason): value is Gap =>
   typeof value === "object";
@@ -3134,6 +3146,11 @@ export const applyDocumentOp = (
       ),
     );
   }
+  // The contract keeps paragraph ids unique: an edit that would repeat one,
+  // however its operation came by it, is refused here, where it is owned.
+  const repeatedId = repeatedParagraphId(edit.document);
+  if (repeatedId !== undefined)
+    return Result.err(refusal(op, repeatedId.reason, repeatedId.message));
   meetsContract(edit.document);
   preserveParagraphPropertySnapshots({ before: document, edit });
   return Result.ok({

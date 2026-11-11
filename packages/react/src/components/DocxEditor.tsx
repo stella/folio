@@ -282,7 +282,10 @@ import { useDocumentHistory } from "../hooks/useHistory";
 import { useTableSelection } from "../hooks/useTableSelection";
 import { useWheelZoom } from "../hooks/useWheelZoom";
 import { PagedEditor, VIEWPORT_PADDING_TOP } from "../paged-editor/PagedEditor";
-import type { PagedEditorRef } from "../paged-editor/PagedEditor";
+import type {
+  DocumentChange,
+  PagedEditorRef,
+} from "../paged-editor/PagedEditor";
 import { DEFAULT_COMPONENTS, FolioUIProvider } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
 import { resolveCommentCreationRange } from "./commentAnchors";
@@ -1784,31 +1787,43 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     }, [syncSuggestionMode]);
 
     // Handle document change
-    const handleDocumentChange = useCallback(
-      (newDocument: Document) => {
+    /**
+     * Take a change: hold the editor's document model as the document state,
+     * hand the host its own document. A document built outside the paged
+     * editor's notification arrives as `built` and is the model; in a
+     * canonical session the host gets a copy of it, as it does of the model.
+     */
+    const applyDocumentChange = useCallback(
+      (change: DocumentChange | { built: Document }) => {
         const canonical = usesCanonicalSession(
           experimentalSession,
           CANONICAL_GAP.authorityRouting,
         );
-        const currentComments = commentsRef.current;
-        const documentWithComments = canonical
-          ? newDocument
-          : {
-              ...newDocument,
-              package: {
-                ...newDocument.package,
-                document: {
-                  ...newDocument.package.document,
-                  comments: currentComments,
-                },
+        if (canonical) {
+          // The session never writes a document it has handed out, and the
+          // editor only reads its document state: one model, held as is.
+          if ("built" in change) {
+            pushDocument(change.built);
+            onChange?.(cloneDocumentWithParagraphPropertySources(change.built));
+          } else {
+            pushDocument(change.model as Document);
+            onChange?.(change.forHost);
+          }
+        } else {
+          const forHost = "built" in change ? change.built : change.forHost;
+          const documentWithComments = {
+            ...forHost,
+            package: {
+              ...forHost.package,
+              document: {
+                ...forHost.package.document,
+                comments: commentsRef.current,
               },
-            };
-        pushDocument(documentWithComments);
-        onChange?.(
-          canonical
-            ? cloneDocumentWithParagraphPropertySources(documentWithComments)
-            : documentWithComments,
-        );
+            },
+          };
+          pushDocument(documentWithComments);
+          onChange?.(documentWithComments);
+        }
         // Re-extract tracked changes after document change (debounced to avoid
         // full-document walk on every keystroke in suggestion mode)
         if (extractTrackedChangesTimerRef.current) {
@@ -1828,6 +1843,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         commentsRef,
         experimentalSession,
       ],
+    );
+    /** A document changed outside the paged editor's own notification. */
+    const handleDocumentChange = useCallback(
+      (newDocument: Document) => applyDocumentChange({ built: newDocument }),
+      [applyDocumentChange],
     );
 
     const buildCurrentDocument = useCallback(() => {
@@ -6154,7 +6174,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             )
                               ? {}
                               : { experimentalSession })}
-                            onDocumentChange={handleDocumentChange}
+                            onDocumentChange={applyDocumentChange}
                             extensionManager={extensionManager}
                             suggestionModeActive={editingMode === "suggesting"}
                             suggestionAuthor={author}

@@ -1,8 +1,10 @@
 import {
+  commentAnchorSequence,
   commentDocumentIssue,
   documentStories,
   findStoryBody,
   OP_STORIES,
+  type OpStory,
 } from "@stll/docx-core/ops";
 
 import type { BlockContent, Document, Paragraph } from "../types/document";
@@ -112,6 +114,106 @@ export const unsupportedSeedReason = (
     if (!content || content.length === 0)
       return "Canonical sessions require a nonempty paragraph story.";
     const issues = content.map(issuesOf);
+    const structure = issues.find((issue) => issue.structure !== null);
+    if (structure !== undefined) return structure.structure;
+    const paragraph = issues.find((issue) => issue.paragraph !== null);
+    if (paragraph !== undefined) return paragraph.paragraph;
+  }
+  return null;
+};
+
+/** Whether a story is a separator or continuation note, which the session never holds as a story. */
+const skippedNote = (document: Document, story: OpStory): boolean => {
+  if (
+    story === OP_STORIES.MAIN ||
+    (story.kind !== "footnote" && story.kind !== "endnote")
+  )
+    return false;
+  const notes =
+    story.kind === "footnote"
+      ? document.package.footnotes
+      : document.package.endnotes;
+  const note = notes?.find(({ id }) => id === story.id);
+  return note?.noteType !== undefined && note.noteType !== "normal";
+};
+
+/** The blocks of a story an edit replaced, and the ones it put in their place. */
+const changedWindow = (
+  before: readonly BlockContent[],
+  after: readonly BlockContent[],
+): { removed: readonly BlockContent[]; added: readonly BlockContent[] } => {
+  let prefix = 0;
+  while (
+    prefix < before.length &&
+    prefix < after.length &&
+    before[prefix] === after[prefix]
+  )
+    prefix += 1;
+  let suffix = 0;
+  while (
+    suffix < before.length - prefix &&
+    suffix < after.length - prefix &&
+    before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+  )
+    suffix += 1;
+  return {
+    removed: before.slice(prefix, before.length - suffix),
+    added: after.slice(prefix, after.length - suffix),
+  };
+};
+
+const sameSequence = (left: readonly string[], right: readonly string[]) =>
+  left.length === right.length &&
+  left.every((entry, index) => entry === right[index]);
+
+type UnsupportedEditOptions = {
+  /** A document the session holds: one {@link unsupportedSeedReason} accepts. */
+  previous: Document;
+  document: Document;
+  /** Every story whose blocks differ from `previous`'s. */
+  stories: readonly OpStory[];
+};
+
+/**
+ * {@link unsupportedSeedReason} of an edit's result, judging only what the
+ * edit changed. Every block the edit left was judged with `previous`, which
+ * holds none the session cannot hold, so only the blocks between a story's
+ * kept prefix and suffix are judged. The comment verdict reads only the
+ * comments and the order, kind and id of their anchors: while the comments
+ * and the stories are the ones `previous` had and each story's replaced
+ * blocks carried the anchors its new blocks carry, it stays as it was.
+ */
+export const unsupportedEditReason = ({
+  previous,
+  document,
+  stories,
+}: UnsupportedEditOptions): string | null => {
+  const windows = stories.map((story) => ({
+    story,
+    content: findStoryBody(document, story)?.content,
+    ...changedWindow(
+      findStoryBody(previous, story)?.content ?? [],
+      findStoryBody(document, story)?.content ?? [],
+    ),
+  }));
+  const anchorsKept =
+    document.package.document.comments === previous.package.document.comments &&
+    documentStories(document).length === documentStories(previous).length &&
+    windows.every(({ removed, added }) =>
+      sameSequence(
+        commentAnchorSequence(removed),
+        commentAnchorSequence(added),
+      ),
+    );
+  if (!anchorsKept) {
+    const commentIssue = commentDocumentIssue(document, "all");
+    if (commentIssue !== undefined) return commentIssue;
+  }
+  for (const { story, content, added } of windows) {
+    if (skippedNote(document, story)) continue;
+    if (!content || content.length === 0)
+      return "Canonical sessions require a nonempty paragraph story.";
+    const issues = added.map(issuesOf);
     const structure = issues.find((issue) => issue.structure !== null);
     if (structure !== undefined) return structure.structure;
     const paragraph = issues.find((issue) => issue.paragraph !== null);

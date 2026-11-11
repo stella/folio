@@ -45,13 +45,34 @@ type StoryCounterField = {
 }[keyof CounterDependency];
 
 /**
+ * Counter arrays by the list instance that made them: an array is made when
+ * its instance's first paragraph is met, once per story run, so the numId
+ * names it the same way in every run over the same paragraphs.
+ */
+const counterCells = new WeakMap<readonly number[], number>();
+
+const UNSET_COUNTERS: readonly number[] = Array.from<number>({
+  length: 9,
+}).fill(Number.NaN);
+
+const cellArray = (cell: number, values: readonly number[]): number[] => {
+  const array = [...values];
+  counterCells.set(array, cell);
+  return array;
+};
+
+/** The list instance whose first paragraph made `values`. */
+export const counterCellOf = (values: readonly number[]): number =>
+  counterCells.get(values) ?? panic("A list counter array has no cell.");
+
+/**
  * The story half of the marker counters at one paragraph, copied. Counter
- * arrays are shared between a list instance and its abstract list, and a
+ * arrays are shared between list instances and their abstract list, and a
  * later paragraph advances the shared array, so the copy names each array by
- * its index in `arrays` and keeps which entries share one.
+ * its cell and keeps which entries share one.
  */
 export type ListCounterSnapshot = {
-  readonly arrays: readonly (readonly number[])[];
+  readonly cells: ReadonlyMap<number, readonly number[]>;
   readonly listCounters: readonly (readonly [number, number])[];
   readonly abstractCounters: readonly (readonly [number, number])[];
   readonly restartedNumIds: readonly number[];
@@ -61,23 +82,20 @@ export type ListCounterSnapshot = {
 export const snapshotListCounters = (
   counters: ComputeListMarkerOptions,
 ): ListCounterSnapshot => {
-  const indices = new Map<number[], number>();
-  const arrays: (readonly number[])[] = [];
-  const indexOf = (values: number[]): number => {
-    const known = indices.get(values);
-    if (known !== undefined) return known;
-    indices.set(values, arrays.length);
-    arrays.push([...values]);
-    return arrays.length - 1;
+  const cells = new Map<number, readonly number[]>();
+  const cellOf = (values: number[]): number => {
+    const cell = counterCellOf(values);
+    if (!cells.has(cell)) cells.set(cell, [...values]);
+    return cell;
   };
   return {
     listCounters: [...counters.listCounters].map(
-      ([numId, values]) => [numId, indexOf(values)] as const,
+      ([numId, values]) => [numId, cellOf(values)] as const,
     ),
     abstractCounters: [...counters.abstractCounters].map(
-      ([abstractNumId, values]) => [abstractNumId, indexOf(values)] as const,
+      ([abstractNumId, values]) => [abstractNumId, cellOf(values)] as const,
     ),
-    arrays,
+    cells,
     restartedNumIds: [...counters.restartedNumIds],
     previousList: { ...counters.previousList },
   };
@@ -88,17 +106,22 @@ export const restoreListCounters = (
   counters: ComputeListMarkerOptions,
   snapshot: ListCounterSnapshot,
 ): void => {
-  const arrays = snapshot.arrays.map((values) => [...values]);
-  const arrayAt = (index: number): number[] =>
-    arrays[index] ?? panic("A list counter snapshot lost an array.");
+  const arrays = new Map(
+    [...snapshot.cells].map(([cell, values]) => [
+      cell,
+      cellArray(cell, values),
+    ]),
+  );
+  const arrayOf = (cell: number): number[] =>
+    arrays.get(cell) ?? panic("A list counter snapshot lost an array.");
   const story: Pick<ComputeListMarkerOptions, StoryCounterField> = {
     listCounters: new Map(
-      snapshot.listCounters.map(([numId, index]) => [numId, arrayAt(index)]),
+      snapshot.listCounters.map(([numId, cell]) => [numId, arrayOf(cell)]),
     ),
     abstractCounters: new Map(
-      snapshot.abstractCounters.map(([abstractNumId, index]) => [
+      snapshot.abstractCounters.map(([abstractNumId, cell]) => [
         abstractNumId,
-        arrayAt(index),
+        arrayOf(cell),
       ]),
     ),
     restartedNumIds: new Set(snapshot.restartedNumIds),
@@ -107,38 +130,83 @@ export const restoreListCounters = (
   Object.assign(counters, story);
 };
 
-const samePairs = (
-  left: readonly (readonly [number, number])[],
-  right: readonly (readonly [number, number])[],
-) =>
-  left.length === right.length &&
-  left.every(
-    ([key, index], at) => right[at]?.[0] === key && right[at]?.[1] === index,
-  );
+/**
+ * The counter arrays one paragraph advanced: the array bound to its list
+ * instance and abstract list after it, and those bound to them before it.
+ * Besides these the paragraph changes only the previous-list state and
+ * whether its instance restarted.
+ */
+export type ListCounterAdvance = {
+  readonly numId: number;
+  readonly abstractNumId: number | null;
+  readonly counters: number[];
+  readonly listBefore: number[] | undefined;
+  readonly abstractBefore: number[] | undefined;
+};
 
-/** Whether two snapshots hold the same counters, shared the same way, in the same order. */
-export const sameListCounters = (
-  left: ListCounterSnapshot,
-  right: ListCounterSnapshot,
-): boolean =>
-  left.previousList.abstractNumId === right.previousList.abstractNumId &&
-  left.previousList.fromStyle === right.previousList.fromStyle &&
-  left.previousList.numId === right.previousList.numId &&
-  left.restartedNumIds.length === right.restartedNumIds.length &&
-  left.restartedNumIds.every(
-    (numId, at) => right.restartedNumIds[at] === numId,
-  ) &&
-  samePairs(left.listCounters, right.listCounters) &&
-  samePairs(left.abstractCounters, right.abstractCounters) &&
-  left.arrays.length === right.arrays.length &&
-  left.arrays.every((values, at) => {
-    const other = right.arrays[at];
-    return (
-      other !== undefined &&
-      values.length === other.length &&
-      values.every((value, index) => Object.is(value, other[index]))
-    );
-  });
+/** What one paragraph's marker computation left in the story half of the counters. */
+export type ListCounterStep = {
+  readonly previousList: Readonly<PreviousListState>;
+  readonly advanced:
+    | {
+        readonly numId: number;
+        readonly abstractNumId: number | null;
+        readonly cell: number;
+        readonly values: readonly number[];
+        readonly restarted: boolean;
+      }
+    | undefined;
+};
+
+/** The step a paragraph just took, `advance` being what its computation returned. */
+export const listCounterStep = (
+  counters: ComputeListMarkerOptions,
+  advance: ListCounterAdvance | null,
+): ListCounterStep => ({
+  previousList: { ...counters.previousList },
+  advanced:
+    advance === null
+      ? undefined
+      : {
+          numId: advance.numId,
+          abstractNumId: advance.abstractNumId,
+          cell: counterCellOf(advance.counters),
+          values: [...advance.counters],
+          restarted: counters.restartedNumIds.has(advance.numId),
+        },
+});
+
+/**
+ * Take `step` again from the counters it was first taken from: the counters
+ * end as the paragraph's computation left them, without the paragraph.
+ */
+export const replayListCounterStep = (
+  counters: ComputeListMarkerOptions,
+  step: ListCounterStep,
+): ListCounterAdvance | null => {
+  Object.assign(counters.previousList, step.previousList);
+  const advanced = step.advanced;
+  if (advanced === undefined) return null;
+  const { numId, abstractNumId, cell, values, restarted } = advanced;
+  const listBefore = counters.listCounters.get(numId);
+  const abstractBefore =
+    abstractNumId === null
+      ? undefined
+      : counters.abstractCounters.get(abstractNumId);
+  // The computation advances the instance's array, the abstract list's, or
+  // one it made for the instance's first paragraph.
+  const array =
+    [listBefore, abstractBefore].find(
+      (bound) => bound !== undefined && counterCellOf(bound) === cell,
+    ) ?? cellArray(cell, values);
+  for (let level = 0; level < values.length; level += 1)
+    array[level] = values[level] ?? Number.NaN;
+  counters.listCounters.set(numId, array);
+  if (abstractNumId !== null)
+    counters.abstractCounters.set(abstractNumId, array);
+  if (restarted) counters.restartedNumIds.add(numId);
+  return { numId, abstractNumId, counters: array, listBefore, abstractBefore };
+};
 
 export const computeListMarker = (
   paragraph: Paragraph,
@@ -149,13 +217,13 @@ export const computeListMarker = (
     restartedNumIds,
     previousList,
   }: ComputeListMarkerOptions,
-): void => {
+): ListCounterAdvance | null => {
   const listRendering = paragraph.listRendering;
   if (!listRendering || !numbering) {
     previousList.abstractNumId = null;
     previousList.fromStyle = false;
     previousList.numId = null;
-    return;
+    return null;
   }
 
   const { numId, level } = listRendering;
@@ -163,18 +231,13 @@ export const computeListMarker = (
     previousList.abstractNumId = null;
     previousList.fromStyle = false;
     previousList.numId = null;
-    return;
+    return null;
   }
 
-  const firstEncounter = !listCounters.has(numId);
-  if (firstEncounter) {
-    listCounters.set(numId, Array.from<number>({ length: 9 }).fill(Number.NaN));
-  }
-
-  let counters = listCounters.get(numId);
-  if (!counters) {
-    return;
-  }
+  const listBefore = listCounters.get(numId);
+  const firstEncounter = listBefore === undefined;
+  let counters = listBefore ?? cellArray(numId, UNSET_COUNTERS);
+  if (firstEncounter) listCounters.set(numId, counters);
 
   const abstractNumId = numbering.getAbstractNumId(numId);
   const styleNumbering =
@@ -254,9 +317,18 @@ export const computeListMarker = (
         : childCounter) + childAdvances;
   }
 
+  const abstractBefore =
+    abstractNumId === null ? undefined : abstractCounters.get(abstractNumId);
   if (abstractNumId !== null) {
     abstractCounters.set(abstractNumId, counters);
   }
+  const advance: ListCounterAdvance = {
+    numId,
+    abstractNumId,
+    counters,
+    listBefore,
+    abstractBefore,
+  };
   previousList.abstractNumId = abstractNumId;
   previousList.fromStyle = Boolean(styleNumbering);
   previousList.numId = numId;
@@ -271,7 +343,7 @@ export const computeListMarker = (
     previousList.abstractNumId = null;
     previousList.fromStyle = false;
     previousList.numId = null;
-    return;
+    return advance;
   }
 
   const currentLevelInfo = numbering.getLevel(numId, level);
@@ -284,4 +356,5 @@ export const computeListMarker = (
     forceDecimal:
       currentLevelInfo?.isLgl === true || listRendering.isLegal === true,
   });
+  return advance;
 };

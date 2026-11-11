@@ -19,14 +19,18 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
-import { CommentMarkerCache } from "../docx/commentAnchorIndex";
+import {
+  CommentMarkerCache,
+  rangedCommentIds,
+} from "../docx/commentAnchorIndex";
 import { parseDocx } from "../docx/parser";
 import {
+  collectPairedBookmarkIds,
   ProjectionBlockCache,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
-import type { Document } from "../types/document";
+import type { BlockContent, Document, Paragraph } from "../types/document";
 import {
   applyEdit,
   type Edit,
@@ -166,6 +170,9 @@ const convertedInFull = (document: Document, salt: string) => {
 describe("a projection reusing converted blocks across story versions", () => {
   test("equals a projection converting every block over story versions", async () => {
     const sources = await parsedSources();
+    const sorted = (ids: ReadonlySet<number>) =>
+      [...ids].toSorted((left, right) => left - right);
+    let marked = 0;
     await assertProperty(
       fc.property(
         fc.constantFrom(...sources),
@@ -176,6 +183,21 @@ describe("a projection reusing converted blocks across story versions", () => {
           let version = document;
           for (const edit of [undefined, ...edits]) {
             if (edit !== undefined) version = editModel(version, edit);
+            // The story's bookmark and comment ids, from the blocks kept,
+            // against a walk of every block.
+            const blocks = version.package.document.content;
+            const markers = cache.storyMarkers(blocks);
+            expect(sorted(markers.pairedBookmarkIds)).toEqual(
+              sorted(collectPairedBookmarkIds(blocks)),
+            );
+            expect(sorted(markers.rangedCommentIds)).toEqual(
+              sorted(rangedCommentIds(blocks)),
+            );
+            if (
+              markers.pairedBookmarkIds.size > 0 &&
+              markers.rangedCommentIds.size > 0
+            )
+              marked += 1;
             const full = convertedInFull(version, cache.salt);
             if (full === undefined) continue;
             const cached = toProseDoc(version, { blockCache: cache });
@@ -204,7 +226,71 @@ describe("a projection reusing converted blocks across story versions", () => {
         numRuns: 400,
       },
     );
+    // Versions held both paired bookmarks and ranged comments.
+    expect(marked).toBeGreaterThan(50);
   });
+});
+
+const withMainContent = (
+  document: Document,
+  content: BlockContent[],
+): Document => ({
+  ...document,
+  package: {
+    ...document.package,
+    document: { ...document.package.document, content },
+  },
+});
+
+describe("a projection reusing a block after the comments open before it change", () => {
+  const text = (value: string) => ({
+    type: "run" as const,
+    content: [{ type: "text" as const, text: value }],
+  });
+  // The block after the first paragraph is the same object in every version:
+  // only the comments the first paragraph opens before it change.
+  const kept: Paragraph = {
+    type: "paragraph",
+    paraId: "7A000002",
+    content: [text("kept")],
+  };
+  const versionOpening = (document: Document, ids: readonly number[]) =>
+    withMainContent(document, [
+      {
+        type: "paragraph",
+        paraId: "7A000001",
+        content: [
+          ...ids.map((id) => ({ type: "commentRangeStart" as const, id })),
+          text("opening"),
+        ],
+      },
+      kept,
+      {
+        type: "paragraph",
+        paraId: "7A000003",
+        content: [
+          text("closing"),
+          ...ids.map((id) => ({ type: "commentRangeEnd" as const, id })),
+        ],
+      },
+    ]);
+  const cases: [string, readonly number[], readonly number[]][] = [
+    ["other comments, as many", [1], [2]],
+    ["the same comments in another order", [1, 2], [2, 1]],
+  ];
+  for (const [name, before, after] of cases)
+    test(`converts it again: ${name}`, async () => {
+      const [source] = await parsedSources();
+      if (source === undefined) throw new Error("No source document.");
+      const cache = new ProjectionBlockCache();
+      toProseDoc(versionOpening(source.document, before), {
+        blockCache: cache,
+      });
+      const version = versionOpening(source.document, after);
+      expect(toProseDoc(version, { blockCache: cache }).toJSON()).toEqual(
+        toProseDoc(version, { textBoxGroupSalt: cache.salt }).toJSON(),
+      );
+    });
 });
 
 describe("a projection reusing converted blocks through a list suggestion", () => {
