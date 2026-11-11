@@ -251,6 +251,7 @@ import {
   htmlQueryAll,
   queryHtmlElement,
 } from "@stll/folio-core/utils/domGuards";
+import { resolveEffectiveSectionProperties } from "@stll/folio-core/utils/headerFooter";
 import {
   hasPaintedStart,
   PAINTED_START_SELECTOR,
@@ -300,17 +301,26 @@ import { useVisualLineNavigation } from "./useVisualLineNavigation";
 // TYPES
 // =============================================================================
 
-/** A settled change: the editor's document model and the host's document. */
-export type DocumentChange = {
-  /**
-   * The editor's document model: in a canonical session the session's own
-   * document (read it, never write it), otherwise the document built from the
-   * editor state.
-   */
-  model: ReadonlyDocument;
-  /** A document the host owns: a copy of the model in a canonical session. */
-  forHost: Document;
-};
+/**
+ * A change to the editor's document. `model` is the editor's document model:
+ * in a canonical session the session's own document, otherwise the document
+ * built from the editor state; read it, never write it. `forHost` is a copy
+ * of the model the host owns, made once the change settles: a change still in
+ * progress (typing in a note) moves the model alone, and the host hears of it
+ * when it settles, with no model left to move.
+ */
+export type DocumentChange =
+  | SettledDocumentChange
+  | { model: ReadonlyDocument; forHost: null }
+  | { model: null; forHost: Document };
+
+type SettledDocumentChange = { model: ReadonlyDocument; forHost: Document };
+
+/** A settled change of `model`: the model and the host's one copy of it. */
+const settledChangeOf = (model: ReadonlyDocument): SettledDocumentChange => ({
+  model,
+  forHost: cloneDocumentWithParagraphPropertySources(model),
+});
 
 export type PagedEditorProps = {
   /** Accessible name announced for the editor or read-only document. */
@@ -334,12 +344,14 @@ export type PagedEditorProps = {
    * paint measures against the real metrics.
    */
   fonts?: ReadonlyArray<FontDefinition>;
-  /** Document styles for style resolution. */
-  styles?: StyleDefinitions | null;
   /** Theme for styling. */
   theme?: Theme | null;
-  /** Section properties (page size, margins). */
-  sectionProperties?: SectionProperties | null;
+  /**
+   * Whether the first page has its own header and footer, inferred from the
+   * header and footer references: merged into the section properties (page
+   * size, margins) the editor reads from its document.
+   */
+  hasTitlePg?: boolean;
   /** Header content for all pages (or pages 2+ when titlePg is set). */
   headerContent?: HeaderFooter | null;
   /** Footer content for all pages (or pages 2+ when titlePg is set). */
@@ -1535,9 +1547,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       documentIdentity,
       experimentalSession,
       fonts: hostFonts,
-      styles,
       theme: _theme,
-      sectionProperties,
+      hasTitlePg = false,
       headerContent,
       footerContent,
       firstPageHeaderContent,
@@ -1593,6 +1604,16 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     // the editor state, and the readers it hands the model to are the ones a
     // deep-freeze test runs over frozen documents.
     const document = documentModel && readModel(documentModel);
+    // Styles and section properties are read from that same document.
+    const styles = document?.package.styles;
+    const sectionProperties = useMemo(
+      () =>
+        resolveEffectiveSectionProperties(
+          document?.package.document,
+          hasTitlePg,
+        ) ?? null,
+      [document, hasTitlePg],
+    );
 
     // Resolve the scroll container: prefer parent-provided ref, fallback to own container
     const getScrollContainer = useCallback((): HTMLElement | null => {
@@ -2447,6 +2468,18 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     // latency cap) lives in the framework-agnostic layout scheduler; this adapter
     // just feeds it transactions and points it at runLayoutPipeline.
     const documentChangeNotifyTimerRef = useRef<number | null>(null);
+    // A note edit moves the model as it is typed and tells the host once it
+    // settles; a body notification due by then carries it instead.
+    const noteChangeNotifyTimerRef = useRef<number | null>(null);
+    const documentModelRef = useRef(documentModel);
+    useLayoutEffect(() => {
+      documentModelRef.current = documentModel;
+    }, [documentModel]);
+    const cancelNoteChangeNotification = useCallback(() => {
+      if (noteChangeNotifyTimerRef.current === null) return;
+      window.clearTimeout(noteChangeNotifyTimerRef.current);
+      noteChangeNotifyTimerRef.current = null;
+    }, []);
     const compositionNotificationRetryRef = useRef<(() => void) | null>(null);
     // A note follows its reference: a reference whose deletion the reported
     // edits rejected gives its note back its text, and deleting it again (as
@@ -2462,27 +2495,24 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     }, [documentIdentity, noteFollower]);
 
     /**
-     * The settled document: in a canonical session the session's own document
-     * as the model and one copy for the host; otherwise one document built
-     * from the editor state, which is both.
+     * The settled document: in a canonical session the session's own document,
+     * otherwise one document built from the editor state; either way the
+     * model, with one copy for the host.
      */
-    const settledDocumentChange = useCallback((): DocumentChange | null => {
-      const hidden = hiddenPMRef.current;
-      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) {
-        const model = hidden?.readCanonicalDocument() ?? null;
-        return model === null
-          ? null
-          : {
-              model,
-              forHost: cloneDocumentWithParagraphPropertySources(model),
-            };
-      }
-      const built = hidden?.getDocument();
-      const body = hidden?.getState()?.doc;
-      if (!built) return null;
-      const reconciled = body ? noteFollower.reconcile(built, body) : built;
-      return { model: reconciled, forHost: reconciled };
-    }, [experimentalSession, noteFollower]);
+    const settledDocumentChange =
+      useCallback((): SettledDocumentChange | null => {
+        const hidden = hiddenPMRef.current;
+        if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) {
+          const model = hidden?.readCanonicalDocument() ?? null;
+          return model === null ? null : settledChangeOf(model);
+        }
+        const built = hidden?.getDocument();
+        const body = hidden?.getState()?.doc;
+        if (!built) return null;
+        return settledChangeOf(
+          body ? noteFollower.reconcile(built, body) : built,
+        );
+      }, [experimentalSession, noteFollower]);
 
     const flushDocumentChangeNotification = useCallback(() => {
       const flush = () => {
@@ -2509,12 +2539,17 @@ export const PagedEditor: React.ForwardRefExoticComponent<
 
         const change = settledDocumentChange();
         if (change) {
+          cancelNoteChangeNotification();
           onDocumentChangeRef.current?.(change);
           folioEmitterRef.current.emit("docChange", change.forHost);
         }
       };
       flush();
-    }, [getActiveEditorStory, settledDocumentChange]);
+    }, [
+      getActiveEditorStory,
+      settledDocumentChange,
+      cancelNoteChangeNotification,
+    ]);
 
     const readCanonicalDocument = useCallback(
       () => hiddenPMRef.current?.readCanonicalDocument() ?? null,
@@ -2548,8 +2583,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           window.clearTimeout(documentChangeNotifyTimerRef.current);
           documentChangeNotifyTimerRef.current = null;
         }
+        cancelNoteChangeNotification();
       },
-      [layoutScheduler],
+      [layoutScheduler, cancelNoteChangeNotification],
     );
 
     /**
@@ -3629,16 +3665,24 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     );
 
     const handleNoteDocumentChange = useCallback(
-      // A note story's snapshot is already a document the host owns; in a
-      // canonical session the model is the session's own document.
-      (updated: Document) => {
-        onDocumentChangeRef.current?.({
-          model: hiddenPMRef.current?.readCanonicalDocument() ?? updated,
-          forHost: updated,
-        });
-        folioEmitterRef.current.emit("docChange", updated);
+      // A note edit moves the model as it is typed; the host hears of it once
+      // the edit settles, with one copy of the model as it then stands.
+      (model: ReadonlyDocument) => {
+        onDocumentChangeRef.current?.({ model, forHost: null });
+        cancelNoteChangeNotification();
+        noteChangeNotifyTimerRef.current = window.setTimeout(() => {
+          noteChangeNotifyTimerRef.current = null;
+          if (documentChangeNotifyTimerRef.current !== null) return;
+          const settled =
+            hiddenPMRef.current?.readCanonicalDocument() ??
+            documentModelRef.current;
+          if (!settled) return;
+          const forHost = cloneDocumentWithParagraphPropertySources(settled);
+          onDocumentChangeRef.current?.({ model: null, forHost });
+          folioEmitterRef.current.emit("docChange", forHost);
+        }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
       },
-      [],
+      [cancelNoteChangeNotification],
     );
 
     // Clear HF caret state + cross-surface drag state on any hfEditMode

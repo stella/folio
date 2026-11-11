@@ -66,6 +66,7 @@ import {
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
@@ -76,7 +77,10 @@ import {
   CanonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import {
+  cloneCommentsWithParagraphPropertySources,
+  cloneDocumentWithParagraphPropertySources,
+} from "@stll/folio-core/docx/document-clone";
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
@@ -362,6 +366,13 @@ import { useFolioComments } from "./useFolioComments";
 
 /** No headings to track while the outline is not shown. */
 const NO_HEADINGS: readonly HeadingInfo[] = [];
+
+/** A document built outside the paged editor's notification: the new model. */
+type BuiltDocumentChange = {
+  built: ReadonlyDocument;
+  /** For a change still in progress: the host is told once it settles. */
+  settles?: "later";
+};
 
 const CommentsSidebar = lazy(() =>
   import("./CommentsSidebar").then((m) => ({
@@ -1431,6 +1442,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       activeFooterRId,
       activeFirstHeaderRId,
       activeFirstFooterRId,
+      hasTitlePg,
       effectiveSectionProperties,
       handleHeaderFooterDoubleClick,
       handleBodyClick,
@@ -1791,42 +1803,88 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     }, [syncSuggestionMode]);
 
     // Handle document change
+    // A built change still in progress (a margin drag) tells the host once it
+    // settles; a later notification carries it instead.
+    const builtChangeNotifyRef = useRef<number | null>(null);
+    const onChangeRef = useRef(onChange);
+    useLayoutEffect(() => {
+      onChangeRef.current = onChange;
+    }, [onChange]);
+    const cancelBuiltChangeNotification = useCallback(() => {
+      if (builtChangeNotifyRef.current === null) return;
+      window.clearTimeout(builtChangeNotifyRef.current);
+      builtChangeNotifyRef.current = null;
+    }, []);
+    useEffect(
+      () => cancelBuiltChangeNotification,
+      [cancelBuiltChangeNotification],
+    );
+
     /**
-     * Take a change: hold the editor's document model as the document state,
-     * hand the host its own document. A document built outside the paged
-     * editor's notification arrives as `built` and is the model; in a
-     * canonical session the host gets a copy of it, as it does of the model.
+     * Take a change: hold the editor's document model as the document state
+     * and hand the host one copy of it it owns. A document built outside the
+     * paged editor's notification arrives as `built` and is the model; the
+     * host gets its copy now or, for a change still in progress, once the
+     * change settles. In the default session the model holds this hook's
+     * comment list, and the host's document a copy of it.
      */
     const applyDocumentChange = useCallback(
-      (change: DocumentChange | { built: Document }) => {
+      (change: DocumentChange | BuiltDocumentChange) => {
         const canonical = usesCanonicalSession(
           experimentalSession,
           CANONICAL_GAP.authorityRouting,
         );
-        if (canonical) {
-          // The session never writes a document it has handed out, and the
-          // editor only reads its document state: one model, held as is.
-          if ("built" in change) {
-            pushDocument(change.built);
-            onChange?.(cloneDocumentWithParagraphPropertySources(change.built));
+        // The session keeps its own comments; the default session's are the
+        // list this hook holds.
+        const held = (model: ReadonlyDocument): ReadonlyDocument =>
+          canonical
+            ? model
+            : {
+                ...model,
+                package: {
+                  ...model.package,
+                  document: {
+                    ...model.package.document,
+                    comments: commentsRef.current,
+                  },
+                },
+              };
+        const owned = (copy: Document): Document =>
+          canonical
+            ? copy
+            : {
+                ...copy,
+                package: {
+                  ...copy.package,
+                  document: {
+                    ...copy.package.document,
+                    comments: cloneCommentsWithParagraphPropertySources(
+                      commentsRef.current,
+                    ),
+                  },
+                },
+              };
+        if ("built" in change) {
+          const built = held(change.built);
+          pushDocument(built);
+          cancelBuiltChangeNotification();
+          if (change.settles === "later") {
+            builtChangeNotifyRef.current = window.setTimeout(() => {
+              builtChangeNotifyRef.current = null;
+              onChangeRef.current?.(
+                cloneDocumentWithParagraphPropertySources(built),
+              );
+            }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
           } else {
-            pushDocument(change.model);
-            onChange?.(change.forHost);
+            onChange?.(cloneDocumentWithParagraphPropertySources(built));
           }
         } else {
-          const forHost = "built" in change ? change.built : change.forHost;
-          const documentWithComments = {
-            ...forHost,
-            package: {
-              ...forHost.package,
-              document: {
-                ...forHost.package.document,
-                comments: commentsRef.current,
-              },
-            },
-          };
-          pushDocument(documentWithComments);
-          onChange?.(documentWithComments);
+          if (change.model) pushDocument(held(change.model));
+          if (change.forHost) {
+            cancelBuiltChangeNotification();
+            onChange?.(owned(change.forHost));
+          }
+          if (!change.model) return;
         }
         // Re-extract tracked changes after document change (debounced to avoid
         // full-document walk on every keystroke in suggestion mode)
@@ -1846,6 +1904,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         refreshBodyHistoryAvailability,
         commentsRef,
         experimentalSession,
+        cancelBuiltChangeNotification,
       ],
     );
     /** A document changed outside the paged editor's own notification. */
@@ -3614,19 +3673,32 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (!history.state || readOnly) {
           return;
         }
-        // The change is written to a copy: the model is never written.
-        const newDoc = cloneDocumentWithParagraphPropertySources(history.state);
-        const body = newDoc.package.document;
-        body.finalSectionProperties = {
-          ...body.finalSectionProperties,
-          ...props,
-        };
-        handleDocumentChange(newDoc);
+        // The new model shares what the change leaves with the old one, and
+        // neither is written. A margin drag sends one of these per pointer
+        // move, so the host hears of it once it settles.
+        const model = history.state;
+        const body = model.package.document;
+        applyDocumentChange({
+          built: {
+            ...model,
+            package: {
+              ...model.package,
+              document: {
+                ...body,
+                finalSectionProperties: {
+                  ...body.finalSectionProperties,
+                  ...props,
+                },
+              },
+            },
+          },
+          settles: "later",
+        });
       },
       [
         history.state,
         readOnly,
-        handleDocumentChange,
+        applyDocumentChange,
         getCanonicalApi,
         refuseCanonicalModelEdit,
       ],
@@ -6133,9 +6205,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             altChunkMarkerText={t("contentNotDisplayed")}
                             {...(fonts !== undefined ? { fonts } : {})}
                             theme={history.state.package.theme || theme || null}
-                            sectionProperties={
-                              effectiveSectionProperties ?? null
-                            }
+                            hasTitlePg={hasTitlePg}
                             headerContent={headerContent}
                             footerContent={footerContent}
                             firstPageHeaderContent={firstPageHeaderContent}
@@ -6144,13 +6214,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             footerContentRId={activeFooterRId}
                             firstPageHeaderContentRId={activeFirstHeaderRId}
                             firstPageFooterContentRId={activeFirstFooterRId}
-                            {...(history.state.package.styles
-                              ? {
-                                  styles:
-                                    readModel(history.state).package.styles ??
-                                    null,
-                                }
-                              : {})}
                             onHeaderFooterDoubleClick={
                               handleHeaderFooterStoryOpen
                             }

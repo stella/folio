@@ -26,6 +26,7 @@ import type {
   SectionProperties,
   TabStop,
 } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import {
   formatPx,
   pixelsToTwips,
@@ -37,7 +38,7 @@ import {
 // ============================================================================
 
 export type HorizontalRulerProps = {
-  sectionProps?: SectionProperties | null;
+  sectionProps?: DeepReadonly<SectionProperties> | null;
   zoom?: number;
   editable?: boolean;
   onLeftMarginChange?: (marginTwips: number) => void;
@@ -685,7 +686,7 @@ export function positionToMargin(
 }
 
 export function getRulerDimensions(
-  sectionProps?: SectionProperties | null,
+  sectionProps?: DeepReadonly<SectionProperties> | null,
   zoom: number = 1,
 ): {
   width: number;

@@ -29,6 +29,7 @@ import type {
   SectionProperties,
 } from "@stll/folio-core/types/document";
 import {
+  type DeepReadonly,
   readModel,
   type ReadonlyDocument,
 } from "@stll/folio-core/types/documentModel";
@@ -87,8 +88,11 @@ type UseHeaderFooterEditorReturn = {
   activeFirstHeaderRId: string | null;
   activeFirstFooterRId: string | null;
 
-  /** Section properties with titlePg merged from inline sections */
-  effectiveSectionProperties: SectionProperties | undefined;
+  /**
+   * Section properties with titlePg merged from inline sections: the model's
+   * own when nothing is merged, so read them, never write them.
+   */
+  effectiveSectionProperties: DeepReadonly<SectionProperties> | undefined;
 
   /** Open the inline HF editor on double-click; creates an empty HF if needed */
   handleHeaderFooterDoubleClick: (
@@ -221,7 +225,7 @@ export const useHeaderFooterEditor = ({
   const effectiveSectionProperties = useMemo(
     () =>
       resolveEffectiveSectionProperties(
-        history.state ? readModel(history.state).package.document : undefined,
+        history.state?.package.document,
         hasTitlePg,
       ),
     [history.state, hasTitlePg],
