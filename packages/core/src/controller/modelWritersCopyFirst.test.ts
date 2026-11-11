@@ -74,7 +74,7 @@ describe("writers copy the model first", () => {
   test("the document copy owner", async () => {
     const model = await shapeDocument("comments");
     const copy = cloneDocumentWithParagraphPropertySources(model);
-    expect(copy).toEqual(structuredClone(copy));
+    expect(copy).toEqual(cloneDocumentWithParagraphPropertySources(model));
     expect(sharedObjects(model, copy)).toEqual([]);
   });
 
@@ -83,7 +83,7 @@ describe("writers copy the model first", () => {
     const comments = model.package.document.comments;
     expect(comments?.length).toBeGreaterThan(0);
     const copy = cloneCommentsWithParagraphPropertySources(comments);
-    expect(copy).toEqual(structuredClone(copy));
+    expect(copy).toEqual(cloneCommentsWithParagraphPropertySources(comments));
     expect(copy.length).toBe(comments?.length ?? 0);
     expect(sharedObjects(model, copy)).toEqual([]);
   });

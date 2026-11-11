@@ -124,7 +124,10 @@ describe("useFolioComments.setComments", () => {
       onCommentsChange: (next) => changes.push(next),
     });
     expect(changes).toEqual([loaded]);
-    expect(harness.hook.comments).toBe(loaded);
+    // The hook's list is a copy: the model's own comments are never handed out.
+    expect(harness.hook.comments).toEqual(loaded);
+    expect(harness.hook.comments).not.toBe(loaded);
+    expect(changes[0]).toBe(harness.hook.comments);
     harness.rerender();
     expect(changes).toEqual([loaded]);
     act(() => harness.hook.resetLoadedComments());
