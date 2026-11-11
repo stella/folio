@@ -345,6 +345,23 @@ export const createCanonicalEditorHarness = (
         ),
       );
     },
+    /**
+     * Paste clipboard text through the view's own paste event, as a browser
+     * does: the editor parses the text against the caret, then pastes it.
+     */
+    pasteText: (text: string) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", text);
+      const event = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData,
+      });
+      withRefusalRows(caseRefusalRows, () =>
+        editorView.dom.dispatchEvent(event),
+      );
+      return event.defaultPrevented;
+    },
     cut: () => {
       const event = new ClipboardEvent("cut", {
         bubbles: true,
