@@ -1,5 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 
 import {
   documentShape,
@@ -127,6 +128,39 @@ test("a paragraphs drag is offered exactly for shapes with two adjacent text par
     expect($from.sameParent($to)).toBe(false);
     expect($to.index(0)).toBe($from.index(0) + 1);
   }
+});
+
+test("a paragraphs drag passes over struck text, as the applied input reads", async () => {
+  const doc = toProseDoc(
+    await parseDocx(await shapeArrayBuffer("single-bullet-list"), {
+      preloadFonts: false,
+      detectVariables: false,
+    }),
+  );
+  const range = crossParagraphDragRange(doc);
+  if (range === null) throw new TypeError("The list shape has no drag.");
+  const $first = doc.resolve(range.from);
+  const deletion = doc.type.schema.marks["deletion"]?.create({ revisionId: 1 });
+  if (deletion === undefined) throw new TypeError("No deletion mark.");
+  // The first paragraph struck whole reads as no text, so the drag starts in
+  // the next pair, as it would once the deletion is applied.
+  const struckChildren: PMNode[] = [];
+  $first.parent.forEach((child) => {
+    struckChildren.push(child.mark(deletion.addToSet(child.marks)));
+  });
+  const struck = doc.replace(
+    $first.start(),
+    $first.end(),
+    new Slice(Fragment.fromArray(struckChildren), 0, 0),
+  );
+  const shifted = crossParagraphDragRange(struck);
+  if (shifted === null) throw new TypeError("The struck shape has no drag.");
+  const $from = struck.resolve(shifted.from);
+  const $to = struck.resolve(shifted.to);
+  expect($from.index(0)).toBe($first.index(0) + 1);
+  expect($to.index(0)).toBe($from.index(0) + 1);
+  expect(shifted.from).toBe($from.start() + 1);
+  expect(shifted.to).toBe($to.start() + 2);
 });
 
 test("IME generator covers cancellation, repeated updates and Unicode with valid shrinking", () => {
