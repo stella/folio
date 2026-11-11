@@ -364,14 +364,17 @@ function expectFreshConversion(
 }
 
 /**
- * The nodes a document still starts and ends with after an edit keep the ids
- * of their blocks, whether their blocks are kept, moved or converted again.
- * Returns how many blocks kept their id.
+ * Every node a document still holds after an edit keeps the ids of its
+ * blocks, whether its blocks are kept, moved or converted again, and whether
+ * it stayed at either end or moved among the nodes the edit changed. A node
+ * the document holds more than once keeps no particular one's ids. Returns
+ * how many blocks kept their id, and how many of those belong to a node that
+ * left its place among the changed nodes.
  */
-function nodesAtEitherEndKeepTheirIds(
+function survivingNodesKeepTheirIds(
   before: RecordedConversion,
   after: RecordedConversion,
-): number {
+): { kept: number; movedInside: number } {
   const old = before.nodes;
   const now = after.nodes;
   let start = 0;
@@ -388,23 +391,33 @@ function nodesAtEitherEndKeepTheirIds(
     old[old.length - 1 - end]?.node === now[now.length - 1 - end]?.node
   )
     end += 1;
-  const pairs = [
-    ...Array.from({ length: start }, (_, index) => [index, index] as const),
-    ...Array.from(
-      { length: end },
-      (_, index) => [old.length - 1 - index, now.length - 1 - index] as const,
-    ),
-  ];
-  let keptIds = 0;
-  for (const [from, to] of pairs) {
+  type Nodes = RecordedConversion["nodes"];
+  const placesOf = (nodes: Nodes) => {
+    const places = new Map<Nodes[number]["node"], number[]>();
+    nodes.forEach(({ node }, index) => {
+      const at = places.get(node);
+      if (at === undefined) places.set(node, [index]);
+      else at.push(index);
+    });
+    return places;
+  };
+  const oldPlaces = placesOf(old);
+  let kept = 0;
+  let movedInside = 0;
+  for (const [node, [to, ...again]] of placesOf(now)) {
+    const [from, ...earlier] = oldPlaces.get(node) ?? [];
+    if (to === undefined || from === undefined) continue;
+    if (again.length > 0 || earlier.length > 0) continue;
     const was = old[from]?.blocks.map(({ id }) => id) ?? [];
     const is = now[to]?.blocks.map(({ id }) => id) ?? [];
     // A node converting again in other surroundings may give other blocks.
     if (was.length !== is.length) continue;
     expect(is).toEqual(was);
-    keptIds += is.length;
+    kept += is.length;
+    if (from !== to && to >= start && to < now.length - end)
+      movedInside += is.length;
   }
-  return keptIds;
+  return { kept, movedInside };
 }
 
 describe("paragraph block cache", () => {
@@ -419,6 +432,7 @@ describe("paragraph block cache", () => {
     let reused = 0;
     let handedOutAgain = 0;
     let keptIds = 0;
+    let movedInside = 0;
     await assertProperty(
       fc.asyncProperty(
         fc.integer({ min: 0, max: documents.length - 1 }),
@@ -462,8 +476,11 @@ describe("paragraph block cache", () => {
             applyEdit(view, edit, options);
             convert();
             const step = cache.lastStep();
-            if (step !== undefined)
-              keptIds += nodesAtEitherEndKeepTheirIds(...step);
+            if (step !== undefined) {
+              const ids = survivingNodesKeepTheirIds(...step);
+              keptIds += ids.kept;
+              movedInside += ids.movedInside;
+            }
           }
           reused += cache.reused;
         },
@@ -473,6 +490,7 @@ describe("paragraph block cache", () => {
     expect(reused).toBeGreaterThan(0);
     expect(handedOutAgain).toBeGreaterThan(0);
     expect(keptIds).toBeGreaterThan(0);
+    expect(movedInside).toBeGreaterThan(0);
   });
 
   test("a cross-reference to a later list item shows the number the list gives now", async () => {
@@ -554,7 +572,7 @@ describe("paragraph block cache", () => {
     const step = cache.lastStep();
     expect(step).toBeDefined();
     if (step !== undefined)
-      expect(nodesAtEitherEndKeepTheirIds(...step)).toBeGreaterThan(0);
+      expect(survivingNodesKeepTheirIds(...step).kept).toBeGreaterThan(0);
   });
 
   test("paragraphs kept before a section mark take the line pitch it gives now", async () => {

@@ -814,15 +814,39 @@ export function toFlowBlocks(
   };
   const stateAfter = (index: number): ConversionCheckpoint | undefined =>
     kept[index + 1]?.before ?? lastConversion?.end;
+  // The changed range's nodes the last conversion converted too, each paired
+  // once with its own earlier conversion, in document order: a node an edit
+  // moved within the range takes back its own ids, not those of the node now
+  // at its old place.
+  const changedEnd = kept.length - keptEnd;
+  const survivors = new Map<number, number>();
+  if (changedEnd > keptStart && nodeCount - keptEnd > keptStart) {
+    const earlier = new Map<PMNode, number[]>();
+    for (let at = keptStart; at < changedEnd; at += 1) {
+      const node = kept[at]?.node;
+      if (node === undefined) continue;
+      const places = earlier.get(node);
+      if (places === undefined) earlier.set(node, [at]);
+      else places.push(at);
+    }
+    for (let index = keptStart; index < nodeCount - keptEnd; index += 1) {
+      const at = earlier.get(doc.child(index))?.shift();
+      if (at !== undefined) survivors.set(index, at);
+    }
+  }
+  const survivorPlaces = new Set(survivors.values());
   /**
    * The last conversion's node whose block ids converting `index` takes back:
-   * the same node at either end, and the node at the same place in the
-   * changed range between them. Each one is taken at most once.
+   * the same node at either end, the same node in the changed range between
+   * them, and else the node at the same place in that range that no surviving
+   * node took. Each one is taken at most once.
    */
   const predecessor = (index: number): TopLevelConversion | undefined => {
-    const at = keptIndex(index);
+    const at = keptIndex(index) ?? survivors.get(index);
     if (at !== undefined) return kept[at];
-    return index < kept.length - keptEnd ? kept[index] : undefined;
+    return index < changedEnd && !survivorPlaces.has(index)
+      ? kept[index]
+      : undefined;
   };
 
   const converted: TopLevelConversion[] = [];
