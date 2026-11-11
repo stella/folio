@@ -12,6 +12,7 @@ export type ProvisionalReading = {
   before: string;
   after: string;
   actual: string | null;
+  diag?: unknown;
 };
 type ImeLifecycleDriver = {
   update: (text: string) => Promise<void>;
@@ -91,6 +92,87 @@ export const driveBrowserIme = async (
             };
           })()
         : null;
+    const diag: unknown[] = [];
+    const describe = (node: Node | null, offset: number) => {
+      if (!node) return null;
+      const el = node instanceof Element ? node : node.parentElement;
+      return {
+        type: node.nodeType,
+        name: node.nodeName,
+        text: node.nodeType === 3 ? node.textContent : null,
+        offset,
+        el: el?.outerHTML.slice(0, 160),
+        children: node.nodeType === 1 ? node.childNodes.length : null,
+      };
+    };
+    const domSel = () => {
+      const s = document.getSelection();
+      return s
+        ? [
+            describe(s.anchorNode, s.anchorOffset),
+            describe(s.focusNode, s.focusOffset),
+          ]
+        : null;
+    };
+    const pmState = () => {
+      const view = (
+        globalThis as unknown as {
+          __folioPlayground?: {
+            getEditorRef: () => {
+              getEditorRef: () => {
+                getView: () => {
+                  state: { selection: unknown; storedMarks: unknown };
+                } | null;
+              } | null;
+            } | null;
+          };
+        }
+      ).__folioPlayground
+        ?.getEditorRef()
+        ?.getEditorRef()
+        ?.getView();
+      return view
+        ? { sel: view.state.selection, stored: view.state.storedMarks }
+        : null;
+    };
+    diag.push({
+      at: "setup",
+      dom: domSel(),
+      pm: JSON.stringify(pmState()),
+      para: started?.innerHTML.slice(0, 600),
+    });
+    for (const type of [
+      "compositionstart",
+      "beforeinput",
+      "input",
+      "compositionupdate",
+    ]) {
+      document.addEventListener(
+        type,
+        (event) => {
+          diag.push({
+            at: type,
+            phase: "capture",
+            inputType: (event as InputEvent).inputType,
+            targets:
+              event instanceof InputEvent
+                ? event
+                    .getTargetRanges()
+                    .map((r) => [
+                      describe(r.startContainer, r.startOffset),
+                      describe(r.endContainer, r.endOffset),
+                    ])
+                : null,
+            dom: domSel(),
+            pm: JSON.stringify(pmState()),
+            para: started?.isConnected
+              ? started.innerHTML.slice(0, 600)
+              : "detached",
+          });
+        },
+        { capture: true, signal: controller.signal },
+      );
+    }
     /** The composing paragraph's text, even when the editor redrew it. */
     const provisional = () => {
       if (around === null) return null;
@@ -105,6 +187,14 @@ export const driveBrowserIme = async (
         before: around.before,
         after: around.after,
         actual: paragraph?.textContent ?? null,
+        diag: [
+          ...diag,
+          {
+            at: "read",
+            dom: domSel(),
+            para: paragraph?.innerHTML.slice(0, 600),
+          },
+        ],
       };
     };
     editor.addEventListener(

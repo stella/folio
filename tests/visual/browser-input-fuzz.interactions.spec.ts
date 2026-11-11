@@ -391,7 +391,7 @@ const drive = async (
       });
       // The browser may keep part of an earlier update beside the new one;
       // the text around the caret stays as it was.
-      for (const { update, before, after, actual } of readings) {
+      for (const { update, before, after, actual, diag } of readings) {
         const between =
           actual !== null &&
           actual.length >= before.length + after.length &&
@@ -401,7 +401,7 @@ const drive = async (
             : null;
         expect(
           between?.includes(update) ?? false,
-          `${PROVISIONAL_TEXT_AT_CARET}: ${JSON.stringify(update)} between ${JSON.stringify(before)} and ${JSON.stringify(after)}, shown ${JSON.stringify(actual)}`,
+          `${PROVISIONAL_TEXT_AT_CARET}: ${JSON.stringify(update)} between ${JSON.stringify(before)} and ${JSON.stringify(after)}, shown ${JSON.stringify(actual)} DIAG ${JSON.stringify(diag)}`,
         ).toBe(true);
       }
       return;
