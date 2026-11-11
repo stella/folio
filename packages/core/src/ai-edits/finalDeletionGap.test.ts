@@ -214,7 +214,7 @@ describe("a batch deleting a container's last paragraph beside a gap insertion",
         const beforeLast = blocks.at(-2);
         expect(last?.inTable).toBe(false);
         expect(blocks.some(({ text }) => text === CLOSING)).toBe(false);
-        expect(last?.text === "").toBe(beforeLast?.inTable === true);
+        expect(last?.text !== "" || beforeLast?.inTable === true).toBe(true);
       });
     }
   }

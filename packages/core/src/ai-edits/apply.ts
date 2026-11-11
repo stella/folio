@@ -4193,7 +4193,14 @@ const withSettledDirectFinalDeletions = (
   /** Per container end, the paragraph to end it with again: the last one removed. */
   const restored = new Map<number, PMNode>();
   for (const deletion of deletions) {
-    const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position, 1);
+    const mapped = tr.mapping
+      .slice(deletion.mappedFrom)
+      .mapResult(deletion.position, 1);
+    // A later operation took the emptied paragraph, or the container it
+    // ended, away with what held it (a deleted row or table): nothing is
+    // left to settle, and the mapped position names another block.
+    if (mapped.deleted) continue;
+    const at = mapped.pos;
     if (deletion.kind === "emptied") {
       edits.push({ kind: "emptied", at });
       continue;
