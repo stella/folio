@@ -14,6 +14,7 @@ import {
   type TableSelectionState,
 } from "@stll/folio-core/managers/TableSelectionManager";
 import type { Document } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import type {
   TableAction,
   TableContext,
@@ -43,7 +44,7 @@ export type UseTableSelectionReturn = {
 };
 
 export type UseTableSelectionOptions = {
-  document: Document | null;
+  document: ReadonlyDocument | null;
   onChange?: (document: Document) => void;
   onSelectionChange?: (context: TableContext | null) => void;
 };

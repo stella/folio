@@ -598,6 +598,7 @@ import type {
   SectionProperties,
   Style,
 } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import type { FindResult } from "@stll/folio-core/utils/findReplace";
 import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
@@ -1384,10 +1385,10 @@ function handleHyperlinkPopupCopy(href: string): void {
 // Read from the editor's document model: building a document here would run
 // on every keystroke, in proportion to the document.
 const currentChrome = computed(() => documentChrome(modelDocument.value));
-const currentSectionProps = computed<SectionProperties | null>(
+const currentSectionProps = computed<DeepReadonly<SectionProperties> | null>(
   () => currentChrome.value.sectionProperties,
 );
-const currentWatermark = computed<Watermark | undefined>(
+const currentWatermark = computed<DeepReadonly<Watermark> | undefined>(
   () => currentChrome.value.watermark,
 );
 const currentStyles = computed(() => currentChrome.value.styles);
@@ -1410,7 +1411,7 @@ const currentTableProperties = computed(() => {
 const toolbarDynamicProps = computed(() => {
   const dynamic: {
     fontFamilies?: ReadonlyArray<string | FontOption>;
-    documentStyles?: Style[];
+    documentStyles?: DeepReadonly<Style[]>;
   } = {};
   if (props.fontFamilies !== undefined) {
     dynamic.fontFamilies = props.fontFamilies;

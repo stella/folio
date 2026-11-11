@@ -198,12 +198,14 @@ export const decodeAutoSaveEnvelope = (
       return null;
     }
     // SAFETY: the model validator is the runtime boundary for this decoded value.
+    // oxlint-disable-next-line folio-read-model/no-model-document-cast -- a value decoded from storage for the validator to check, not a model
     const validation = validateFolioDocumentModel(document as Document);
     if (!validation.valid) {
       return null;
     }
     // SAFETY: validation above established the decoded value as a Document model.
     return {
+      // oxlint-disable-next-line folio-read-model/no-model-document-cast -- the decoded value the validator accepted, owned by the caller
       document: document as Document,
       savedAt: parsed.savedAt,
       version: AUTOSAVE_FORMAT_VERSION,

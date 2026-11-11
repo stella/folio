@@ -19,6 +19,7 @@ import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { DocumentLoaderManager } from "@stll/folio-core/managers/DocumentLoaderManager";
 import type { DocumentLoadState } from "@stll/folio-core/managers/DocumentLoaderManager";
 import type { Document } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import { getDocumentLoadSource } from "@stll/folio-core/utils/documentLoaderBehavior";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
@@ -39,7 +40,7 @@ type UseDocumentLoaderParams = {
   password?: string | undefined;
   experimentalSession?: "canonical";
   /** History instance — used to reset/push document state. */
-  history: UseHistoryReturn<Document | null>;
+  history: UseHistoryReturn<ReadonlyDocument | null>;
   /** Called when an unrecoverable parse error occurs. */
   onError: ((error: Error) => void) | undefined;
   /** Called after parsing to report whether editing can preserve fidelity. */

@@ -10,6 +10,7 @@
  * @public
  */
 import type { Style } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 /**
  * Inline preview style for a paragraph-style dropdown item.
@@ -100,7 +101,7 @@ export function getStylePreviewProps(input: {
  * @public
  */
 export function resolveParagraphStyleOptions(
-  styles: Style[] | undefined,
+  styles: DeepReadonly<Style[]> | undefined,
 ): ResolvedStyleOption[] {
   if (!styles || styles.length === 0) return [];
   return styles

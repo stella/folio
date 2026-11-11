@@ -12,6 +12,7 @@ import { type JSX, useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import { TWIPS_PER_INCH } from "@stll/folio-core/utils/units";
 
 import { useFolioUI } from "../../ui/folio-ui";
@@ -36,7 +37,7 @@ export type PageSetupDialogProps = {
   isOpen: boolean;
   onClose: () => void;
   onApply: (props: Partial<SectionProperties>) => void;
-  currentProps?: SectionProperties;
+  currentProps?: DeepReadonly<SectionProperties>;
 };
 
 // ============================================================================

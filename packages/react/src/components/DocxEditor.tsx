@@ -257,6 +257,10 @@ import type {
   HeaderFooter,
   SectionProperties,
 } from "@stll/folio-core/types/document";
+import {
+  readModel,
+  type ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
 import { resolveColor } from "@stll/folio-core/utils/colorResolver";
 import { queryHtmlElement } from "@stll/folio-core/utils/domGuards";
@@ -873,7 +877,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const historyShortcuts = historyShortcutOwner(hostShortcuts);
 
     // History hook for undo/redo - start with null document
-    const history = useDocumentHistory<Document | null>(
+    const history = useDocumentHistory<ReadonlyDocument | null>(
       initialDocument || null,
       {
         maxEntries: 100,
@@ -1397,7 +1401,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const getCanonicalApi = pagedEditorBinding.getCanonicalApi;
 
     const pushDocument = useCallback(
-      (document: Document) => {
+      (document: ReadonlyDocument) => {
         history.push(document);
         return document;
       },
@@ -1806,7 +1810,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             pushDocument(change.built);
             onChange?.(cloneDocumentWithParagraphPropertySources(change.built));
           } else {
-            pushDocument(change.model as Document);
+            pushDocument(change.model);
             onChange?.(change.forHost);
           }
         } else {
@@ -2252,7 +2256,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
 
         // If no explicit font/size marks, resolve from paragraph style or document defaults
         if (!fontFamily || !fontSize) {
-          const currentDoc = historyStateRef.current;
+          const committed = historyStateRef.current;
+          const currentDoc = committed && readModel(committed);
           const paraStyleId = selectionState.styleId;
           if (currentDoc?.package.styles && paraStyleId) {
             const resolver = getCachedStyleResolver(currentDoc.package.styles);
@@ -2725,7 +2730,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                 let preset: TableStylePreset | undefined = getBuiltinTableStyle(
                   action.styleId,
                 );
-                const currentDocForTable = historyStateRef.current;
+                const committed = historyStateRef.current;
+                const currentDocForTable = committed && readModel(committed);
                 if (!preset && currentDocForTable?.package.styles) {
                   const styleResolver = getCachedStyleResolver(
                     currentDocForTable.package.styles,
@@ -3031,7 +3037,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               // Resolve style to get its formatting properties
               // Use ref to avoid stale closure (handleFormat does not depend on
               // the live document)
-              const currentDoc = historyStateRef.current;
+              const committed = historyStateRef.current;
+              const currentDoc = committed && readModel(committed);
               const styleResolver = currentDoc?.package.styles
                 ? getCachedStyleResolver(currentDoc.package.styles)
                 : null;
@@ -3607,18 +3614,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (!history.state || readOnly) {
           return;
         }
-        const newDoc = {
-          ...history.state,
-          package: {
-            ...history.state.package,
-            document: {
-              ...history.state.package.document,
-              finalSectionProperties: {
-                ...history.state.package.document.finalSectionProperties,
-                ...props,
-              },
-            },
-          },
+        // The change is written to a copy: the model is never written.
+        const newDoc = cloneDocumentWithParagraphPropertySources(history.state);
+        const body = newDoc.package.document;
+        body.finalSectionProperties = {
+          ...body.finalSectionProperties,
+          ...props,
         };
         handleDocumentChange(newDoc);
       },

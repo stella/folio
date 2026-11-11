@@ -14,6 +14,7 @@ import type {
   Style,
   Theme,
 } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import type { TableAction } from "@stll/folio-core/utils/tableOperations";
 
 import { cn } from "../lib/utils";
@@ -151,7 +152,7 @@ export type ToolbarProps = {
    */
   onFormatPainter?: ((sticky: boolean) => void) | undefined;
   /** Document styles for the style picker */
-  documentStyles?: Style[] | undefined;
+  documentStyles?: DeepReadonly<Style[]> | undefined;
   /** Theme for the style picker */
   theme?: Theme | null | undefined;
   /** Callback for print action */

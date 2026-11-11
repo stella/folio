@@ -19,6 +19,7 @@ import {
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
+import type { ReadonlyDocument } from "../types/documentModel";
 import { resetAuthorColors } from "../utils/authorColors";
 import type { DocxInput } from "../utils/docxInput";
 import { loadFontsWithMapping } from "../utils/fontLoader";
@@ -33,8 +34,8 @@ export type DocumentLoadState =
  * here so core does not depend on the React `useHistory` return type.
  */
 export type DocumentLoaderHistory = {
-  /** The current document, or null before any load. */
-  readonly state: Document | null;
+  /** The current document model, or null before any load. */
+  readonly state: ReadonlyDocument | null;
   /** Reset history to a freshly loaded document. */
   reset: (document: Document) => void;
 };

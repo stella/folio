@@ -10,6 +10,7 @@
 import { computed, type ComputedRef } from "vue";
 
 import type { Style } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 import {
   paragraphStyles,
@@ -33,7 +34,7 @@ export type UseParagraphStyleOptionsReturn = {
 };
 
 export function useParagraphStyleOptions(opts: {
-  documentStyles: () => Style[] | undefined;
+  documentStyles: () => DeepReadonly<Style[]> | undefined;
   currentStyleId: () => string;
   t: (key: TranslationKey) => string;
 }): UseParagraphStyleOptionsReturn {

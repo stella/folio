@@ -12,6 +12,7 @@ import {
   modelParagraphFormattingEmission,
 } from "../internal/paragraphFormattingSerialization";
 import { recordDocumentBuilt } from "../layout-engine/layoutInstrumentation";
+import type { Comment } from "../types/content";
 import type {
   BlockContent,
   Document,
@@ -21,6 +22,7 @@ import type {
   RunContent,
   TableCell,
 } from "../types/document";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
 import {
   copyHeaderFooterBaselineHandles,
@@ -931,9 +933,10 @@ const paragraphsIn = (document: Document): Paragraph[] => {
  * mismatch is an internal invariant failure rather than a position heuristic.
  */
 export const cloneDocumentWithParagraphPropertySources = (
-  document: Document,
+  model: ReadonlyDocument,
 ): Document => {
   recordDocumentBuilt("copy");
+  const document = readModel(model);
   const cloned = structuredClone(document);
   const sources = paragraphsIn(document);
   const targets = paragraphsIn(cloned);
@@ -950,6 +953,36 @@ export const cloneDocumentWithParagraphPropertySources = (
   copyDocumentParagraphPropertySourceContract(cloned, document);
   copyHeaderFooterBaselineHandles(cloned, document);
   copyHeaderFooterPackageBaselines(cloned, document);
+  return cloned;
+};
+
+/**
+ * Deep-clone a document's comments, keeping each comment paragraph's parsed
+ * `w:pPr` owner, for a holder that writes its own comment list.
+ */
+export const cloneCommentsWithParagraphPropertySources = (
+  comments: ReadonlyDocument["package"]["document"]["comments"],
+): Comment[] => {
+  const source = readModel({
+    package: { document: { content: [], ...(comments && { comments }) } },
+  }).package.document.comments;
+  if (!source) return [];
+  const cloned = structuredClone(source);
+  const holder = (list: Comment[]): Document => ({
+    package: { document: { content: [], comments: list } },
+  });
+  const sources = paragraphsIn(holder(source));
+  const targets = paragraphsIn(holder(cloned));
+  if (sources.length !== targets.length) {
+    panic("The cloned comments changed paragraph graph ownership.");
+  }
+  for (const [index, paragraph] of sources.entries()) {
+    const target = targets.at(index);
+    if (!target) {
+      panic("The cloned comments lost a paragraph owner.");
+    }
+    copyParagraphPropertySource(target, paragraph);
+  }
   return cloned;
 };
 

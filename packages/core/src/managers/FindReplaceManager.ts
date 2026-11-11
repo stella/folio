@@ -16,6 +16,7 @@ import type { OpStory } from "@stll/docx-core/ops";
 
 import type { FindMatchPosition } from "../prosemirror/findReplaceSelection";
 import type { Document } from "../types/document";
+import type { ReadonlyDocument } from "../types/documentModel";
 import {
   type ReplaceAllSummary,
   type ReplaceEligibility,
@@ -136,7 +137,10 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
    * Replace the current match's text. Returns the new document, or null when
    * there is no current match or the replace fails.
    */
-  replaceCurrent(document: Document, replaceText: string): Document | null {
+  replaceCurrent(
+    document: ReadonlyDocument,
+    replaceText: string,
+  ): Document | null {
     const result = this.result;
     if (!result || result.matches.length === 0) {
       return null;
@@ -162,10 +166,10 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
    * Replace every match. Matches are replaced from the end of the document
    * backwards so earlier offsets stay valid as the text shifts. Ineligible
    * matches are skipped and counted. Clears the active result, or returns null
-   * when there is nothing to replace.
+   * when there is nothing to replace or the document cannot be copied.
    */
   replaceAll(
-    document: Document,
+    document: ReadonlyDocument,
     matches: readonly TMatch[],
     replaceText: string,
   ): ReplaceAllOutcome | null {
@@ -184,15 +188,13 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
     });
 
     // One copy of the document for the whole batch, not one per match.
-    const {
-      document: nextDocument,
-      replacedCount,
-      failedCount,
-    } = replaceTextRangesInDocument(
+    const replaced = replaceTextRangesInDocument(
       document,
       sortedMatches.map((match) => toReplaceRange(match)),
       replaceText,
     );
+    if (!replaced) return null;
+    const { document: nextDocument, replacedCount, failedCount } = replaced;
     const skippedCount = matches.length - eligibleMatches.length + failedCount;
 
     if (replacedCount > 0) this.result = null;

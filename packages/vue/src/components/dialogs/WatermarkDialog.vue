@@ -102,6 +102,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import {
   isAllowedExternalWatermarkImageUrl,
   type Watermark,
@@ -115,7 +116,7 @@ type WatermarkMode = "none" | "text" | "picture";
 
 const props = defineProps<{
   isOpen: boolean;
-  currentWatermark?: Watermark | undefined;
+  currentWatermark?: DeepReadonly<Watermark> | undefined;
 }>();
 
 const emit = defineEmits<{

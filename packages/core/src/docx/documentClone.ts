@@ -1,3 +1,6 @@
 /** Public, ownership-aware document cloning. */
 
-export { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
+export {
+  cloneCommentsWithParagraphPropertySources,
+  cloneDocumentWithParagraphPropertySources,
+} from "./paragraphPropertySource";

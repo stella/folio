@@ -242,7 +242,10 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
-import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
+import {
+  readModel,
+  type ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 import {
   closestHtmlElement,
   htmlQueryAll,
@@ -312,8 +315,8 @@ export type DocumentChange = {
 export type PagedEditorProps = {
   /** Accessible name announced for the editor or read-only document. */
   accessibleName: string;
-  /** The document to edit. */
-  document: Document | null;
+  /** The document model to edit; the editor reads it and never writes it. */
+  document: ReadonlyDocument | null;
   experimentalSession?: "canonical";
   /** Adapter-owned document I/O exposed through the shared controller. */
   documentIO: FolioEditorDocumentIO;
@@ -1527,7 +1530,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
   function PagedEditor(props, ref) {
     const {
       accessibleName,
-      document,
+      document: documentModel,
       documentIO,
       documentIdentity,
       experimentalSession,
@@ -1586,6 +1589,10 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       selectedAnonymizationCanonical = null,
       anonymizationSelectionSeq,
     } = props;
+    // The editor reads its model and never writes it: an edit goes through
+    // the editor state, and the readers it hands the model to are the ones a
+    // deep-freeze test runs over frozen documents.
+    const document = documentModel && readModel(documentModel);
 
     // Resolve the scroll container: prefer parent-provided ref, fallback to own container
     const getScrollContainer = useCallback((): HTMLElement | null => {

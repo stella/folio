@@ -22,6 +22,7 @@ import {
 
 import type { EditorView } from "prosemirror-view";
 
+import { cloneCommentsWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import {
   type CommentRecords,
   commentRecordsOf,
@@ -34,7 +35,7 @@ import {
   commentAnchorIds,
 } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment, Paragraph } from "@stll/folio-core/types/content";
-import type { Document } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import { isValidHexId } from "@stll/folio-core/utils/hexId";
 
 import { useEqualState } from "../hooks/keepEqual";
@@ -95,7 +96,7 @@ function sanitizeControlledComments(comments: Comment[]): Comment[] {
 
 type UseFolioCommentsOptions = {
   /** Current document (history head); seeds comments on first load. */
-  doc: Document | null;
+  doc: ReadonlyDocument | null;
   autoOpenReviewSidebar: boolean;
   /** Anchor offsets from layout; re-triggers highlight sync when they shift. */
   anchorPositions: Map<string, number>;
@@ -401,7 +402,10 @@ export function useFolioComments({
       !isControlledComments &&
       doc?.package.document.comments
     ) {
-      const loadedComments = doc.package.document.comments;
+      // The list is the hook's to replace and the host's to keep: a copy.
+      const loadedComments = cloneCommentsWithParagraphPropertySources(
+        doc.package.document.comments,
+      );
       setInternalComments(loadedComments);
       setLoadedCommentsNotification({ comments: loadedComments });
     }
