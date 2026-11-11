@@ -11,7 +11,10 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { TextSelection } from "prosemirror-state";
 
-import { propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { DOCUMENT_SHAPES } from "../../__tests__/documentShapes";
 import {
   createHarnessState,
@@ -160,7 +163,7 @@ test("a reused table measure equals measuring the table again", async () => {
               }
             },
           ),
-          { numRuns: 60 },
+          propertyConfig({ numRuns: 60 }),
         );
       },
       { charWidth: fixedCharWidth(5) },
