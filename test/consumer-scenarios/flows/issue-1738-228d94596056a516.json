@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "title": "PINNED #1738, reported seed 374939399: atomic batches inserting paragraphs after one, one starting a bulleted list, beside a replacement of its first word read as asked",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "suggested",
+  "seed": 374939399,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 495245493,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "581FD868",
+          "text": "Invoice warranty warranty party invoice schedule.",
+          "alignment": "right"
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "581FD868",
+            "startOffset": 0,
+            "endOffset": 3,
+            "selectedTextHash": "h376r1e"
+          },
+          "replace": "updated"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "581FD868",
+          "text": "Goods delivery schedule.",
+          "numbering": {
+            "kind": "newList",
+            "format": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3902612331,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "581FD868",
+          "text": "Invoice period goods.",
+          "numbering": {
+            "kind": "reference",
+            "numId": 1,
+            "ilvl": 0
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": ["replaceRange", "insertAfterBlock", "insertTableRow"],
+  "origin": "shrunk from random flow seed 374939399"
+}
