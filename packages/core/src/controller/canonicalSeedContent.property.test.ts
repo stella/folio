@@ -242,6 +242,65 @@ describe("canonical seed check", () => {
     expect(judged).toBeGreaterThan(300);
   });
 
+  describe("judges again an edit that changes the paragraph a marker between blocks attaches to", () => {
+    const text = (value: string): Paragraph => ({
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "text", text: value }] }],
+    });
+    const start: BlockContent = { type: "commentRangeStart", id: 1 };
+    const end: BlockContent = { type: "commentRangeEnd", id: 1 };
+    const expectJudgedAsOneWalk = (
+      previous: Document,
+      document: Document,
+    ): void => {
+      expect(unsupportedSeedReasonWholeDocument(previous)).toBeNull();
+      const stories = changedStoriesOf(previous, document);
+      const verdict = unsupportedSeedReasonWholeDocument(document, stories);
+      expect(verdict).not.toBeNull();
+      expect(unsupportedEditReason({ previous, document, stories })).toBe(
+        verdict,
+      );
+    };
+
+    test("deleting the empty paragraph a range opens and closes on", () => {
+      // The range starts and ends on the empty paragraph; without it, its
+      // end closes on the paragraph before while its start waits for one.
+      const first = text("a");
+      const empty: Paragraph = { type: "paragraph", content: [] };
+      const previous = documentOf(
+        [first, start, empty, end],
+        [{ type: "paragraph", content: [] }],
+        commentsOf([1]),
+      );
+      expectJudgedAsOneWalk(
+        previous,
+        edited(previous, { type: "delete", at: 2 }, false),
+      );
+    });
+
+    test("moving a range start past the empty paragraph it opened on", () => {
+      // Both runs hold the same anchors, but the moved start is held past
+      // the paragraph, after the end that closes on it.
+      const first = text("a");
+      const empty: Paragraph = { type: "paragraph", content: [] };
+      const note: BlockContent[] = [{ type: "paragraph", content: [] }];
+      const previous = documentOf(
+        [first, start, empty, end],
+        note,
+        commentsOf([1]),
+      );
+      // The same comments: only the anchors decide that the check runs.
+      expectJudgedAsOneWalk(
+        previous,
+        documentOf(
+          [first, empty, start, end],
+          note,
+          previous.package.document.comments,
+        ),
+      );
+    });
+  });
+
   test("judges again an edit that turns an anchor into another kind with the same id", () => {
     const anchor = (
       type: "commentRangeStart" | "commentRangeEnd" | "commentReference",
