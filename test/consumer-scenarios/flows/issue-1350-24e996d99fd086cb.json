@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "title": "PINNED #1350, reported seed 7977575: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked)",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 1339715958,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3420419519,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "numbering": {
+              "kind": "newList",
+              "format": "bullet"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from insert+reseed+dropOperation of 77e89c4aed6afe2e"
+}

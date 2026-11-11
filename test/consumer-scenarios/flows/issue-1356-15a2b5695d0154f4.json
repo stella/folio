@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 825139935: step 6: [batchSequential] the batch (tracked-changes: deleteBlock, insertTable) leaves otherwise than its operations one at a time",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 717860705,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3053379794,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "412DDC7F",
+            "startOffset": 0,
+            "endOffset": 7,
+            "selectedTextHash": "hu6sn9r"
+          },
+          "formatting": {
+            "bold": true
+          }
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 4221387969,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "31617F9A",
+          "separator": " ",
+          "mergedParagraphProperties": {
+            "spacing": {
+              "spaceBefore": 120,
+              "spaceAfter": 120
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 366432752,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "31617F9A",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "formatRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "insertTable",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from dropOperation+insert+splice of 619e85e0aeecfd00"
+}
