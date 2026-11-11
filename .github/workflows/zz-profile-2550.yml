@@ -26,7 +26,7 @@ jobs:
       - run: |
           python3 -I scripts/zz-profile/instrument.py "$(cd ../base && pwd)"
           python3 -I scripts/zz-profile/instrument.py "$(pwd)"
-      - run: bash scripts/zz-profile/pair.sh "$(cd ../base && pwd)" "$RUNNER_TEMP/prof" 5 "validateOpsDocument applyDocumentOp normalizeListModelRendering withParagraphRenderings withParagraphCopies compileEditorIntent stage prepareReplace" "applyDocumentOp,validateOpsDocument prepareReplace,normalizeListModelRendering"
+      - run: bash scripts/zz-profile/pair.sh "$(cd ../base && pwd)" "$RUNNER_TEMP/prof" 7 "validateOpsDocument applyDocumentOp normalizeListModelRendering withParagraphRenderings withParagraphCopies compileEditorIntent stage prepareReplace" "applyDocumentOp,validateOpsDocument prepareReplace,normalizeListModelRendering"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: profiles
