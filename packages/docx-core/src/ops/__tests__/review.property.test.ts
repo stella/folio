@@ -1111,157 +1111,91 @@ describe("tracked operations and their resolution", () => {
 
   test("L3: resolving a run's revisions at once equals resolving each operation's in turn", () => {
     const tally: Tally = new Map();
-    const diagFailures: string[] = [];
-    let diagCount = 0;
-    const diagReplacer = (_key: string, value: unknown): unknown => {
-      if (value instanceof Map) return { __map: [...value] };
-      if (value instanceof Set) return { __set: [...value] };
-      if (value instanceof Uint8Array) return { __bytes: value.length };
-      if (value === undefined) return "__undef";
-      return value;
-    };
-    const diagSeen = new Set<string>();
-    const diagDump = (payload: Record<string, unknown>): void => {
-      const key = JSON.stringify(payload["document"], diagReplacer);
-      if (diagCount >= 8 || diagSeen.has(key)) return;
-      diagSeen.add(key);
-      diagCount += 1;
-      const text = JSON.stringify(payload, diagReplacer);
-      const size = 6000;
-      const parts = Math.ceil(text.length / size);
-      for (let part = 0; part < parts; part += 1)
-        console.log(
-          `L3DIAG ${String(diagCount)} ${String(part + 1)}/${String(parts)} ${text.slice(part * size, (part + 1) * size)}`,
-        );
-    };
-    const body = (doc: Document) => doc.package.document.content;
     assertProperty(
       fc.property(
         reviewDocumentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
         (document, seeds: OpSeed[]) => {
-          const trace: Record<string, unknown> = { document, seeds };
-          const ops: unknown[] = [];
-          const afterOps: unknown[] = [];
-          trace["ops"] = ops;
-          trace["afterOps"] = afterOps;
-          let stage = "ops";
-          try {
-            let current = document;
-            const stamps: RevisionStamp[] = [];
-            let keptEarlier = false;
-            for (const [index, seed] of seeds.entries()) {
-              const op = trackedOpFor(current, seed, index);
-              const applied = applyDocumentOp(current, op);
-              if (applied.isErr()) continue;
-              const stamp = stampOf(op);
-              if (stamp === undefined) continue;
-              keptEarlier ||= keptEarlierChange(
-                current,
-                op,
-                new Set(stampedIds(current, stamps)),
-              );
-              count(tally, kindOf(op));
-              stamps.push(stamp);
-              current = applied.value.document;
-              ops.push(op);
-              afterOps.push(body(current));
-            }
-            const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
-            trace["perOp"] = perOp;
-            const all = perOp.flat();
-            if (all.length === 0) return;
-            stage = "rejectedAtOnce";
-            const rejectedAtOnce = resolved(
+          let current = document;
+          const stamps: RevisionStamp[] = [];
+          let keptEarlier = false;
+          for (const [index, seed] of seeds.entries()) {
+            const op = trackedOpFor(current, seed, index);
+            const applied = applyDocumentOp(current, op);
+            if (applied.isErr()) continue;
+            const stamp = stampOf(op);
+            if (stamp === undefined) continue;
+            keptEarlier ||= keptEarlierChange(
               current,
-              all,
-              REVISION_DECISIONS.REJECT,
+              op,
+              new Set(stampedIds(current, stamps)),
             );
-            trace["rejectedAtOnce"] = body(rejectedAtOnce);
-            stage = "rejectedInTurn";
-            const rejectSteps: unknown[] = [];
-            trace["rejectSteps"] = rejectSteps;
-            let rejectedInTurn = current;
-            for (const ids of perOp.toReversed()) {
-              rejectedInTurn = resolved(
-                rejectedInTurn,
-                ids,
-                REVISION_DECISIONS.REJECT,
-              );
-              rejectSteps.push(body(rejectedInTurn));
-            }
-            stage = "rejectCompare";
+            count(tally, kindOf(op));
+            stamps.push(stamp);
+            current = applied.value.document;
+          }
+          // An operation's revisions: every record carrying its stamp, pieces later
+          // operations cut from them included.
+          const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
+          const all = perOp.flat();
+          if (all.length === 0) return;
+          // The run's own revisions: at once, and one operation's at a time.
+          const rejectedAtOnce = resolved(
+            current,
+            all,
+            REVISION_DECISIONS.REJECT,
+          );
+          const rejectedInTurn = resolvedInTurn(
+            current,
+            perOp.toReversed(),
+            REVISION_DECISIONS.REJECT,
+          );
+          assertExactModel(
+            projected(rejectedAtOnce, "π′"),
+            projected(rejectedInTurn, "π′"),
+          );
+          // A split at a paragraph's end is given back under the new paragraph's id.
+          if (!keptEarlier) {
+            expectRejectedTo({
+              rejected: rejectedAtOnce,
+              tracked: current,
+              ids: all,
+              expected: document,
+              projection: "π′",
+            });
+          }
+          // Every revision (A*, J*): the run's in turn first, or all at once.
+          const acceptedInTurn = resolvedInTurn(
+            current,
+            perOp,
+            REVISION_DECISIONS.ACCEPT,
+          );
+          const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
+          const turnAccepted = resolvedAll(
+            acceptedInTurn,
+            REVISION_DECISIONS.ACCEPT,
+          );
+          if (allAccepted !== undefined && turnAccepted !== undefined) {
+            count(tally, "A*");
             assertExactModel(
-              projected(rejectedAtOnce, "π′"),
-              projected(rejectedInTurn, "π′"),
+              projected(allAccepted, "π′"),
+              projected(turnAccepted, "π′"),
             );
-            if (!keptEarlier) {
-              stage = "rejectedToDocument";
-              expectRejectedTo({
-                rejected: rejectedAtOnce,
-                tracked: current,
-                ids: all,
-                expected: document,
-                projection: "π′",
-              });
-            }
-            stage = "acceptedInTurn";
-            const acceptSteps: unknown[] = [];
-            trace["acceptSteps"] = acceptSteps;
-            let acceptedInTurn = current;
-            for (const ids of perOp) {
-              acceptedInTurn = resolved(
-                acceptedInTurn,
-                ids,
-                REVISION_DECISIONS.ACCEPT,
-              );
-              acceptSteps.push(body(acceptedInTurn));
-            }
-            stage = "allAccepted";
-            const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
-            trace["allAccepted"] =
-              allAccepted === undefined ? undefined : body(allAccepted);
-            stage = "turnAccepted";
-            const turnAccepted = resolvedAll(
-              acceptedInTurn,
-              REVISION_DECISIONS.ACCEPT,
-            );
-            trace["turnAccepted"] =
-              turnAccepted === undefined ? undefined : body(turnAccepted);
-            if (allAccepted !== undefined && turnAccepted !== undefined) {
-              count(tally, "A*");
-              stage = "acceptCompare";
-              assertExactModel(
-                projected(allAccepted, "π′"),
-                projected(turnAccepted, "π′"),
-              );
-            }
-            stage = "allRejected";
-            const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
-            const originalRejected = resolvedAll(
-              document,
-              REVISION_DECISIONS.REJECT,
-            );
-            if (allRejected !== undefined && originalRejected !== undefined) {
-              count(tally, "J*");
-              trace["allRejected"] = body(allRejected);
-              trace["originalRejected"] = body(originalRejected);
-              stage = "allRejectedCompare";
-              expectRejectedTo({
-                rejected: allRejected,
-                tracked: current,
-                ids: all,
-                expected: originalRejected,
-                projection: "π′",
-              });
-            }
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            trace["stage"] = stage;
-            trace["error"] = message.slice(0, 4000);
-            diagDump(trace);
-            diagFailures.push(`${stage}: ${message.slice(0, 200)}`);
+          }
+          const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
+          const originalRejected = resolvedAll(
+            document,
+            REVISION_DECISIONS.REJECT,
+          );
+          if (allRejected !== undefined && originalRejected !== undefined) {
+            count(tally, "J*");
+            expectRejectedTo({
+              rejected: allRejected,
+              tracked: current,
+              ids: all,
+              expected: originalRejected,
+              projection: "π′",
+            });
           }
         },
       ),
@@ -1270,8 +1204,6 @@ describe("tracked operations and their resolution", () => {
         id: "L3: resolving a run's revisions at once equals resolving each operation's in turn",
       },
     );
-    if (diagFailures.length > 0)
-      throw new Error(`L3 diagnostics: ${diagFailures.join(" | ")}`);
     expectEveryKindChecked(tally, NUM_RUNS / 5);
   });
 
