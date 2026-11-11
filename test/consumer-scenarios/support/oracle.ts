@@ -2078,9 +2078,17 @@ const paragraphRequestForLiveRow = ({
     numbering: preserveDirect ? "preserveDirect" : "deriveStyle",
   });
   if (preserveDirect && live) {
-    // Direct numbering outlives the restyle, but a heading style still makes
-    // the block a heading.
-    if (result.fields.kind !== "heading") result.fields.kind = live.kind;
+    // Direct numbering outlives the restyle, and so does an outline level the
+    // paragraph states itself, but a heading style still makes the block a
+    // heading. A heading only its old style made is a list item or a plain
+    // paragraph once restyled, as its direct numbering shows.
+    if (result.fields.kind !== "heading") {
+      const headingFromOldStyle =
+        live.kind === "heading" && live.directOutlineLevel?.kind !== "heading";
+      const directKind =
+        live.listLevel === undefined ? "paragraph" : "listItem";
+      result.fields.kind = headingFromOldStyle ? directKind : live.kind;
+    }
     result.fields.listLevel = live.listLevel;
   }
   return result;

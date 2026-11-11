@@ -6,7 +6,9 @@
  * instrumentation reports each block measured and each measure reused; this
  * spec types in long documents (a numbered list, a contract with lists and
  * tables, a document of tables) in both hosts and both engines, with track
- * changes off and on, and bounds the paragraphs measured per layout pass.
+ * changes off and on, and bounds the paragraphs each layout pass measures.
+ * Every key waits for the layout pass it causes before the next one, so each
+ * key lays out on its own whatever the machine's speed.
  *
  * A table the edit did not reach keeps its measure too, whether the pass
  * hands it out again or moves it. In the default engine a settled edit builds
@@ -24,10 +26,16 @@ import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
 
 type MeasureCounts = {
   layouts: number;
+  /** Layout passes an edit scheduled: the ones a key causes. */
+  transactionLayouts: number;
   measured: number;
   measuredTables: number;
   reused: number;
   conversions: number;
+  /** The paragraphs each completed layout pass measured, in order. */
+  passes: number[];
+  /** The paragraphs the layout pass under way has measured so far. */
+  current: number | undefined;
 };
 
 declare global {
@@ -38,8 +46,6 @@ declare global {
 }
 
 const KEYS = 8;
-// Long enough for each key to lay out on its own.
-const PAUSE_MS = 200;
 // The edited paragraph, plus a paragraph on either side whose measure reads it.
 const MEASURED_PARAGRAPHS_PER_LAYOUT = 3;
 
@@ -140,19 +146,34 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           await page.addInitScript(() => {
             const counts: MeasureCounts = {
               layouts: 0,
+              transactionLayouts: 0,
               measured: 0,
               measuredTables: 0,
               reused: 0,
               conversions: 0,
+              passes: [],
+              current: undefined,
             };
             globalThis.__folioMeasureCounts = counts;
             globalThis.__folioLayoutInstrumentation = {
-              onLayoutComplete: () => {
+              onLayoutStart: () => {
+                counts.current = 0;
+              },
+              onLayoutComplete: ({ reason }) => {
                 counts.layouts += 1;
+                if (reason === "transaction") counts.transactionLayouts += 1;
+                counts.passes.push(counts.current ?? 0);
+                counts.current = undefined;
+              },
+              onLayoutError: () => {
+                counts.current = undefined;
               },
               onMeasureBlock: ({ blockKind }) => {
                 if (blockKind === "table") counts.measuredTables += 1;
-                else counts.measured += 1;
+                else {
+                  counts.measured += 1;
+                  if (counts.current !== undefined) counts.current += 1;
+                }
               },
               onReuseMeasure: () => {
                 counts.reused += 1;
@@ -185,26 +206,39 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           );
           await page.evaluate(() => document.fonts.ready);
           await placeCaret(page);
-          // The first key may convert the paragraph into a tracked one.
-          await page.keyboard.press("x");
-          await page.waitForTimeout(1_000);
-          const before = await page.evaluate(() => ({
-            ...globalThis.__folioMeasureCounts,
-          }));
-          for (let key = 0; key < KEYS; key += 1) {
+          /** Press a key, then wait for the layout pass the key causes. */
+          const pressAndLayOut = async () => {
+            const done = await page.evaluate(
+              () => globalThis.__folioMeasureCounts?.transactionLayouts ?? 0,
+            );
             await page.keyboard.press("x");
-            await page.waitForTimeout(PAUSE_MS);
-          }
-          const after = await page.evaluate(() => ({
-            ...globalThis.__folioMeasureCounts,
-          }));
-          const layouts = (after.layouts ?? 0) - (before.layouts ?? 0);
-          const measured = (after.measured ?? 0) - (before.measured ?? 0);
-          const reused = (after.reused ?? 0) - (before.reused ?? 0);
-          const measuredTables =
-            (after.measuredTables ?? 0) - (before.measuredTables ?? 0);
-          const conversions =
-            (after.conversions ?? 0) - (before.conversions ?? 0);
+            await page.waitForFunction(
+              (seen) =>
+                (globalThis.__folioMeasureCounts?.transactionLayouts ?? 0) >
+                seen,
+              done,
+              { timeout: 10_000 },
+            );
+          };
+          const snapshot = () =>
+            page.evaluate(() => {
+              const counts = globalThis.__folioMeasureCounts;
+              if (!counts) throw new TypeError("No measure counts.");
+              return { ...counts, passes: [...counts.passes] };
+            });
+          // The first key may convert the paragraph into a tracked one.
+          await pressAndLayOut();
+          const before = await snapshot();
+          for (let key = 0; key < KEYS; key += 1) await pressAndLayOut();
+          const after = await snapshot();
+          const layouts = after.layouts - before.layouts;
+          const keyLayouts =
+            after.transactionLayouts - before.transactionLayouts;
+          const passes = after.passes.slice(before.passes.length);
+          const measured = after.measured - before.measured;
+          const reused = after.reused - before.reused;
+          const measuredTables = after.measuredTables - before.measuredTables;
+          const conversions = after.conversions - before.conversions;
           const tables = await page.evaluate(() => {
             const view = globalThis.__folioPlayground
               ?.getEditorRef()
@@ -224,19 +258,21 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
               engine,
               mode,
               layouts,
+              keyLayouts,
               measured,
+              mostMeasuredInAPass: Math.max(0, ...passes),
               measuredTables,
               tables,
               conversions,
               reused,
             }),
           );
-          expect(layouts).toBeGreaterThanOrEqual(KEYS);
+          expect(keyLayouts).toBeGreaterThanOrEqual(KEYS);
           // Every other block's measure is reused, not taken again.
           expect(reused).toBeGreaterThan(layouts * 10);
-          expect(measured).toBeLessThanOrEqual(
-            layouts * MEASURED_PARAGRAPHS_PER_LAYOUT,
-          );
+          // Every pass, not only their average, stays within the bound.
+          for (const pass of passes)
+            expect(pass).toBeLessThanOrEqual(MEASURED_PARAGRAPHS_PER_LAYOUT);
           // A canonical session builds no document between keys, so no
           // table is measured again. The default engine measures each table
           // at most once per build: those in the window, and the one that may
