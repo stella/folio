@@ -26,17 +26,29 @@ type DragDocument = {
   ) => void;
 };
 
-/** The offset of a paragraph's first text that is not struck, when it opens with two characters. */
+/**
+ * Offsets past a paragraph's first and second characters that are not struck,
+ * when both are text before any other content that is not struck.
+ */
 const openingText = (paragraph: {
   forEach: (visit: (child: DragInline, offset: number) => void) => void;
-}) => {
-  let opening: number | null | undefined;
+}): readonly [number, number] | null => {
+  const after: number[] = [];
+  let opensWithText = true;
   paragraph.forEach((child, offset) => {
-    if (opening !== undefined) return;
+    if (!opensWithText || after.length >= 2) return;
     if (child.marks.some(({ type }) => type.name === "deletion")) return;
-    opening = child.isText && child.nodeSize >= 2 ? offset : null;
+    if (!child.isText) {
+      opensWithText = false;
+      return;
+    }
+    for (let index = 1; index <= child.nodeSize && after.length < 2; index += 1)
+      after.push(offset + index);
   });
-  return opening ?? null;
+  const [first, second] = after;
+  return opensWithText && first !== undefined && second !== undefined
+    ? [first, second]
+    : null;
 };
 
 export const crossParagraphDragRange = (
@@ -47,10 +59,9 @@ export const crossParagraphDragRange = (
   doc.forEach((node, offset) => {
     if (range) return;
     const opening = node.type.name === "paragraph" ? openingText(node) : null;
-    const start = opening === null ? null : offset + 1 + opening;
-    if (start !== null && previous !== null)
-      range = { from: previous + 1, to: start + 2 };
-    previous = start;
+    if (opening !== null && previous !== null)
+      range = { from: previous, to: offset + 1 + opening[1] };
+    previous = opening === null ? null : offset + 1 + opening[0];
   });
   return range;
 };
