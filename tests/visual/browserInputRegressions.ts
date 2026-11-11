@@ -1015,6 +1015,18 @@ export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+/** Everything cut while suggesting, across a comment's range and its reference. */
+export const CANONICAL_CUT_EVERYTHING_BESIDE_COMMENT_SEED_431 = {
+  authority: "canonical",
+  seed: 431,
+  path: "4:3:1",
+  fingerprint: "5713f8fb706927fd",
+  trace: {
+    shape: "comments",
+    actions: [{ kind: "selectAll" }, { kind: "cut" }],
+  },
+} satisfies CanonicalRegression;
+
 /** A table pasted where everything around a field, a link and a bookmark was deleted. */
 export const CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11 = {
   authority: "canonical",
@@ -1074,4 +1086,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_TYPING_OVER_CELLS,
   BROWSER_NOTES_LIST_PASTE_SEED_29,
   CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11,
+  CANONICAL_CUT_EVERYTHING_BESIDE_COMMENT_SEED_431,
 ];
