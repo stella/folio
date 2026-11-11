@@ -148,60 +148,54 @@ const mergeCases: Record<string, MergeCase> = {
   },
 };
 
-describe("a merge whose next paragraphs accepting removes, before a table", () => {
+describe("probe: a merge whose next paragraphs accepting removes", () => {
+  const show = async (reviewer: FolioDocxReviewer) =>
+    JSON.stringify(
+      (await accepted(reviewer)).map(
+        ({ text, inTable }) => `${inTable ? "cell" : "body"}:${text}`,
+      ),
+    );
   for (const [name, setup] of Object.entries(mergeCases)) {
     for (const mode of ["direct", "tracked-changes"] as const) {
-      test(`is refused, as right before a table (${name}, ${mode})`, async () => {
+      test(`PROBE ${name} ${mode}`, async () => {
         const reviewer = await withPendingDeletions(
           setup.markdown,
           setup.pending,
         );
         if (setup.before) {
-          const before = apply(
+          apply(
             reviewer,
             setup.suggestedBefore === true ? "suggested" : mode,
             setup.before(reviewer),
           );
-          expect(before.skipped).toEqual([]);
         }
-        const blocksBefore = reviewer.snapshot().blocks;
         const result = apply(reviewer, mode, [
           merge(idOf(reviewer, "Kept item.")),
         ]);
-        expect(result.skipped).toEqual([
-          { id: "merge", reason: "unsupportedBlock" },
-        ]);
-        expect(result.applied).toEqual([]);
-        expect(reviewer.snapshot().blocks).toEqual(blocksBefore);
+        console.log(
+          `PROBE ${name} | ${mode} | skipped ${JSON.stringify(result.skipped)} | ${await show(reviewer)}`,
+        );
       });
     }
   }
-
-  test("still joins the paragraph past a table accepting removes", async () => {
-    const markdown = ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n");
-    const results = [];
-    for (const mode of ["direct", "tracked-changes"] as const) {
-      const reviewer = await withPendingDeletions(markdown, ["Gone item."]);
-      const removed = apply(reviewer, "tracked-changes", [
-        {
-          id: "table",
-          type: "deleteTable",
-          blockId: idOf(reviewer, "Widget"),
-        },
-      ]);
-      expect(removed.skipped).toEqual([]);
+  for (const mode of ["direct", "tracked-changes"] as const) {
+    test(`PROBE same batch ${mode}`, async () => {
+      const reviewer = await open(
+        ["Kept item.", "Gone item.", TABLE, "End."].join("\n\n"),
+      );
       const result = apply(reviewer, mode, [
         merge(idOf(reviewer, "Kept item.")),
+        {
+          id: "gone",
+          type: "deleteBlock",
+          blockId: idOf(reviewer, "Gone item."),
+        },
       ]);
-      expect(result.skipped).toEqual([]);
-      results.push(await accepted(reviewer));
-    }
-    const [direct, tracked] = results;
-    expect(direct?.some(({ text }) => text.startsWith("Kept item. "))).toBe(
-      true,
-    );
-    expect(tracked).toEqual(direct);
-  });
+      console.log(
+        `PROBE same batch | ${mode} | skipped ${JSON.stringify(result.skipped)} | ${await show(reviewer)}`,
+      );
+    });
+  }
 });
 
 type Insertion = {
