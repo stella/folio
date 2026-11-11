@@ -19,6 +19,7 @@ import type {
   TableWidthType,
 } from "../types/document";
 import { TABLE_JUSTIFICATION_VALUES } from "../types/documentEnumValues";
+import type { DeepReadonly } from "../types/documentModel";
 
 export type TablePropertiesCommand = {
   width?: number | null;
@@ -127,7 +128,8 @@ export type TableSelection = {
 };
 
 export type TableContext = {
-  table: Table;
+  /** The selected table as the document holds it: read it, never write it. */
+  table: DeepReadonly<Table>;
   selection: TableSelection;
   hasMultiCellSelection: boolean;
   canSplitCell: boolean;
@@ -139,7 +141,7 @@ export type TableContext = {
 // Table manipulation utilities
 // ---------------------------------------------------------------------------
 
-export const getColumnCount = (table: Table): number => {
+export const getColumnCount = (table: DeepReadonly<Table>): number => {
   let maxCols = 0;
   for (const row of table.rows) {
     let colCount = 0;
@@ -151,11 +153,12 @@ export const getColumnCount = (table: Table): number => {
   return maxCols;
 };
 
-export const getCellAt = (
-  table: Table,
+/** The cell at a grid position: a writable table gives a writable cell. */
+export const getCellAt = <Cell extends DeepReadonly<TableCell>>(
+  table: { readonly rows: readonly { readonly cells: readonly Cell[] }[] },
   rowIndex: number,
   columnIndex: number,
-): TableCell | null => {
+): Cell | null => {
   const row = table.rows[rowIndex];
   if (!row) {
     return null;
@@ -172,7 +175,7 @@ export const getCellAt = (
 };
 
 export const createTableContext = (
-  table: Table,
+  table: DeepReadonly<Table>,
   selection: TableSelection,
 ): TableContext => {
   const rowCount = table.rows.length;

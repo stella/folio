@@ -1,5 +1,6 @@
 import type { PageMargins, SectionPageNumbering } from "../layout-engine/types";
 import type { SectionProperties } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 
 export const DEFAULT_PAGE_WIDTH_PX = 816;
 export const DEFAULT_PAGE_HEIGHT_PX = 1056;
@@ -38,14 +39,14 @@ const pageDimToPx = (
     : fallbackPx;
 
 export const getPageSize = (
-  sectionProps: SectionProperties | null | undefined,
+  sectionProps: DeepReadonly<SectionProperties> | null | undefined,
 ): { w: number; h: number } => ({
   w: pageDimToPx(sectionProps?.pageWidth, DEFAULT_PAGE_WIDTH_PX),
   h: pageDimToPx(sectionProps?.pageHeight, DEFAULT_PAGE_HEIGHT_PX),
 });
 
 export const getMargins = (
-  sectionProps: SectionProperties | null | undefined,
+  sectionProps: DeepReadonly<SectionProperties> | null | undefined,
 ): PageMargins => ({
   top: twipsToPxOr(sectionProps?.marginTop, DEFAULT_MARGINS.top),
   right: twipsToPxOr(sectionProps?.marginRight, DEFAULT_MARGINS.right),

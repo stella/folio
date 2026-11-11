@@ -11,7 +11,11 @@
 
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import type { Document, Table } from "../types/document";
-import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import {
   addColumn,
   addRow,
@@ -173,7 +177,8 @@ export function deleteTableFromDocument(
  */
 export type TableSelectionState = {
   context: TableContext | null;
-  table: Table | null;
+  /** The selected table as the document holds it: read it, never write it. */
+  table: DeepReadonly<Table> | null;
   tableIndex: number | null;
   rowIndex: number | null;
   columnIndex: number | null;
