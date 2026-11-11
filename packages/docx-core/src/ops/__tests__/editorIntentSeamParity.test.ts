@@ -417,3 +417,102 @@ test("a direct replacement continues the wrapper the range boundaries it keeps s
     expect(first(accepted.document)).toStrictEqual(first(direct.document));
   }
 });
+
+test("a direct replacement continues the container the comment anchors its deletion keeps stay in", () => {
+  type Content = Paragraph["content"];
+  const containers = {
+    wrapper: (content: Content) =>
+      ({
+        type: "inlineWrapper",
+        kind: "bidi",
+        control: "embedding",
+        content,
+      }) as const satisfies Content[number],
+    control: (content: Content) =>
+      ({
+        type: "inlineSdt",
+        properties: { sdtType: "richText", id: 1, tag: "clause" },
+        content,
+      }) as const satisfies Content[number],
+  };
+  const reference: Content[number] = { type: "commentReference", id: 7 };
+  const followers: Content = [
+    { type: "commentRangeEnd", id: 7 },
+    { type: "bookmarkEnd", id: 1 },
+    { type: "moveToRangeEnd", id: 1 },
+    { type: "run", content: [{ type: "renderedPageBreak" }] },
+  ];
+  let checked = 0;
+  for (const [name, container] of Object.entries(containers)) {
+    for (const follower of followers) {
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                paraId: "00000001",
+                content: [container([reference, follower])],
+              },
+              { type: "paragraph", paraId: "00000002", content: [] },
+            ],
+            comments: [
+              {
+                id: 7,
+                author: "A",
+                content: [
+                  { type: "paragraph", paraId: "7FFFFFF0", content: [] },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const intent: EditorIntent = {
+        type: "replaceText",
+        from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+        to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 },
+        text: "edited",
+      };
+      const allocation = allocateEditorIntentIds(document, intent);
+      const compiled = (
+        mode: Parameters<typeof compileEditorIntent>[1]["mode"],
+      ) =>
+        applyDocumentOps(
+          document,
+          compileEditorIntent(document, { intent, mode }).unwrap().ops,
+        ).unwrap();
+      const direct = compiled({ type: "editing", newIds: allocation.newIds });
+      const tracked = compiled({
+        type: "suggesting",
+        revision: {
+          id: allocation.revisionId,
+          author: "Reviewer",
+          date: "2026-10-02T00:00:00Z",
+        },
+        newIds: allocation.newIds,
+      });
+      const accepted = applyDocumentOp(tracked.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: tracked.revisions,
+        decision: REVISION_DECISIONS.ACCEPT,
+      }).unwrap();
+      const first = (result: Document) =>
+        storyParagraphs(result.package.document).at(0)?.paragraph.content;
+      // The retained reference stays where it was, and the text follows it
+      // inside the same container in both modes.
+      const edited: Content[number] = {
+        type: "run",
+        content: [{ type: "text", text: "edited" }],
+      };
+      expect({ name, content: first(direct.document) }).toStrictEqual({
+        name,
+        content: [container([reference, edited, follower])],
+      });
+      assertExactModel(first(accepted.document), first(direct.document));
+      checked += 1;
+    }
+  }
+  expect(checked).toBe(8);
+});

@@ -83,7 +83,7 @@ const rowGoes = (row: PMNode, mode: ResolutionMode): boolean =>
   row.attrs[mode === "accept" ? "trDel" : "trIns"] != null;
 
 /** Whether resolving every change in `mode` removes the whole table. */
-const tableGoes = (table: PMNode, mode: ResolutionMode): boolean => {
+export const tableGoes = (table: PMNode, mode: ResolutionMode): boolean => {
   if (table.type.spec["tableRole"] !== "table" || table.childCount === 0)
     return false;
   for (let index = 0; index < table.childCount; index++) {
@@ -254,7 +254,10 @@ type RunsIntoFollowingTableOptions = {
 };
 
 /** Whether resolving every change in `mode` leaves nothing of this paragraph. */
-const paragraphGoes = (paragraph: PMNode, mode: ResolutionMode): boolean => {
+export const paragraphGoes = (
+  paragraph: PMNode,
+  mode: ResolutionMode,
+): boolean => {
   if (
     paragraph.type.name !== "paragraph" ||
     !markGoes(paragraph, mode) ||

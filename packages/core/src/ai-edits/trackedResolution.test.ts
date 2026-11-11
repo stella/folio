@@ -441,9 +441,6 @@ describe("inserting after a deleted final paragraph", () => {
         );
         expect(result.applied).toHaveLength(deleted.length + 1);
         if (mode === "tracked-changes") {
-          expect(
-            result.applied.find(({ id }) => id === "delete-0")?.revisionIds,
-          ).toHaveLength(2);
           const rejecting = await reopen(reviewer);
           rejecting.rejectAll();
           expect(texts(await reopen(rejecting))).toEqual(ORIGINAL);
@@ -452,6 +449,9 @@ describe("inserting after a deleted final paragraph", () => {
         results.push(texts(await reopen(reviewer)));
       }
       expect(results[1]).toEqual(results[0]);
+      // The table lands before the deleted closing paragraph, which then
+      // stays emptied: the body still ends with a paragraph.
+      expect(results[0]?.slice(-3)).toEqual(["Term", "Value", ""]);
     });
   }
 

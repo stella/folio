@@ -125,6 +125,34 @@ export const sequentialGroups = ({
     }
     return undefined;
   };
+  /**
+   * Whether the batch places a block in the gap before a deleted final
+   * paragraph's run: the paragraph and the ones before it in its container the
+   * batch deletes too. Whether the paragraph goes or stays emptied is read
+   * from what precedes it once the batch is finished, in every mode, so its
+   * deletion is replayed after such a block lands.
+   */
+  const placesBeforeRun = (last: Row): boolean => {
+    const lastAt = preRows.indexOf(last);
+    let start = lastAt;
+    while (start > 0) {
+      const row = preRows.at(start - 1);
+      if (!sameContainerRows(last, row) || !deleted.has(row.id)) break;
+      start -= 1;
+    }
+    return applied.some((operation) => {
+      if (!INSERTIONS.has(operation.type)) return false;
+      const anchor = preRows.find((row) => row.id === blockIdOf(operation));
+      if (anchor === undefined) return false;
+      const [index] = placement(operation, preRows);
+      if (index < start || index > lastAt) return false;
+      // A paragraph placed beside a cell goes outside the table, into the
+      // container the table stands in.
+      return anchor.table !== undefined && last.table === undefined
+        ? operation.type !== "insertTable"
+        : sameContainerRows(last, anchor);
+    });
+  };
   const retiringFinals = new Set<string>();
   const finalBlocks = new Set<string>();
   const uncarriedFinals = new Set<string>();
@@ -164,7 +192,7 @@ export const sequentialGroups = ({
       mode === "tracked-changes"
         ? !replaced || endsARun
         : mode === "direct" && carrier === undefined && replaced && endsARun;
-    if (runsLate) retiringFinals.add(last.id);
+    if (runsLate || placesBeforeRun(last)) retiringFinals.add(last.id);
   }
   const isColumnEdit = (operation: AnyOperation): boolean =>
     operation.type === "insertTableColumn" ||
