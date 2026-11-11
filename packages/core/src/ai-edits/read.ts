@@ -631,14 +631,37 @@ export const getTrackedChangesFromSnapshot = (
 export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] =>
   getTrackedChangesFromProjectedDoc(doc, blockStartIdsFromDoc(doc));
 
+/**
+ * The physical revision ids behind each listed change that `ids` name, one
+ * group per change. An inline change split by markup is one entry of the
+ * change list over several ids, and any of them resolves the whole change.
+ * An id no change lists stands alone.
+ */
+export const getTrackedChangeGroupsForIds = (
+  doc: PMNode,
+  ids: readonly number[],
+): number[][] => {
+  const groups = getTrackedChangeGroupsFromProjectedDoc(
+    doc,
+    blockStartIdsFromDoc(doc),
+  );
+  const out: number[][] = [];
+  const taken = new Set<number>();
+  for (const id of ids) {
+    if (taken.has(id)) continue;
+    const members = groups.find((group) => group.ids.includes(id))?.ids ?? [id];
+    const fresh = [...new Set(members)].filter((member) => !taken.has(member));
+    for (const member of fresh) taken.add(member);
+    out.push(fresh);
+  }
+  return out;
+};
+
 /** Physical revision ids behind an inline change split by markup. */
 export const getTrackedChangeGroupIdsFromDoc = (
   doc: PMNode,
   id: number,
-): number[] =>
-  getTrackedChangeGroupsFromProjectedDoc(doc, blockStartIdsFromDoc(doc)).find(
-    ({ ids }) => ids.includes(id),
-  )?.ids ?? [id];
+): number[] => getTrackedChangeGroupsForIds(doc, [id]).at(0) ?? [id];
 
 /** @internal Read revision statistics without paying for an unrelated block projection. */
 export const getTrackedChangeStatsFromDoc = (
