@@ -143,7 +143,11 @@ describe("resolving the listed changes of a suggested cut beside a comment", () 
             continue;
           }
           const listed = (await listedChanges(saved)).map(({ id }) => id);
-          if (listed.length === 0) continue;
+          if (listed.length === 0) {
+            if (range.type === "all")
+              failures.push("everything: the cut listed no change");
+            continue;
+          }
           resolvedCases += 1;
           for (const decision of ["accept", "reject"] as const) {
             const label = `${describeRange(range)} ${decision}`;
