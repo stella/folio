@@ -169,59 +169,17 @@
       "if": null
     }
   ],
-  "tests-1": [
+  "tests": [
     {
       "run": "bun install --frozen-lockfile",
       "if": null
     },
     {
-      "run": "bun scripts/ci-test-shards.ts --shard 1 --depth fast",
+      "run": "bun scripts/ci-test-shards.ts --shard \"$TEST_SHARD\" --shards \"$TEST_SHARDS\" --depth fast",
       "if": "needs.ci-plan.outputs.suite_depth == 'fast'"
     },
     {
-      "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 1 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
-    }
-  ],
-  "tests-2": [
-    {
-      "run": "bun install --frozen-lockfile",
-      "if": null
-    },
-    {
-      "run": "bun scripts/ci-test-shards.ts --shard 2 --depth fast",
-      "if": "needs.ci-plan.outputs.suite_depth == 'fast'"
-    },
-    {
-      "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 2 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
-    }
-  ],
-  "tests-3": [
-    {
-      "run": "bun install --frozen-lockfile",
-      "if": null
-    },
-    {
-      "run": "bun scripts/ci-test-shards.ts --shard 3 --depth fast",
-      "if": "needs.ci-plan.outputs.suite_depth == 'fast'"
-    },
-    {
-      "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 3 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
-      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
-    }
-  ],
-  "tests-4": [
-    {
-      "run": "bun install --frozen-lockfile",
-      "if": null
-    },
-    {
-      "run": "bun scripts/ci-test-shards.ts --shard 4 --depth fast",
-      "if": "needs.ci-plan.outputs.suite_depth == 'fast'"
-    },
-    {
-      "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 4 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
+      "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard \"$TEST_SHARD\" --shards \"$TEST_SHARDS\" --depth full 2>&1 | tee test-results/full-test-suite.log\n",
       "if": "needs.ci-plan.outputs.suite_depth == 'full'"
     }
   ]
