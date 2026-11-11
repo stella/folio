@@ -231,6 +231,7 @@ export {
 export { idKey, packageParagraphIds, paragraphIdsIn } from "./ids";
 
 export {
+  commentAnchorSequence,
   commentDocumentIssue,
   freshCommentId,
   isCommentExhausted,
