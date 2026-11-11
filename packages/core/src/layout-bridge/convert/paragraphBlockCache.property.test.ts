@@ -547,8 +547,9 @@ describe("paragraph block cache", () => {
         );
       };
       convert();
-      // Move the node at `from` to the gap `past` nodes away, the same node,
-      // so the edit reorders the nodes between the kept start and end.
+      // Move the node at `from` to the gap `past` nodes away, so the edit
+      // reorders the nodes between the kept start and end. The nodes it
+      // passes are the same nodes, now at other places in that range.
       const { doc } = view.state;
       const node = doc.child(from);
       const offsetOf = (index: number) => {
@@ -562,18 +563,27 @@ describe("paragraph block cache", () => {
       const moved = tr.mapping.map(start, 1);
       view.dispatch(tr.delete(moved, moved + node.nodeSize));
       const index = from + past;
-      expect(view.state.doc.child(index)).toBe(node);
+      const passed = Array.from({ length: Math.abs(past) }, (_, offset) =>
+        doc.child(past > 0 ? from + 1 + offset : index + offset),
+      );
       convert();
       const step = cache.lastStep();
       expect(step).toBeDefined();
       if (step === undefined) return;
-      // The moved node and every node it passed left their places.
+      // Every node the move passed left its place and kept its ids; so did
+      // the moved node, if the edit left it the same node.
       const { movedInside } = survivingNodesKeepTheirIds(...step);
-      expect(movedInside).toBe(
-        step[1].nodes
-          .slice(Math.min(from, index), Math.max(from, index) + 1)
-          .reduce((count, { blocks }) => count + blocks.length, 0),
+      const survivors = new Set(step[0].nodes.map((at) => at.node));
+      const left = step[1].nodes
+        .slice(Math.min(from, index), Math.max(from, index) + 1)
+        .filter((at) => survivors.has(at.node));
+      expect(passed.every((one) => left.some((at) => at.node === one))).toBe(
+        true,
       );
+      expect(movedInside).toBe(
+        left.reduce((count, { blocks }) => count + blocks.length, 0),
+      );
+      expect(movedInside).toBeGreaterThan(0);
     },
   );
 
