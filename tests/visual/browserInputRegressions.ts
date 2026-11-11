@@ -1015,6 +1015,21 @@ export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition right after a list pasted before a bookmarked heading. */
+export const CANONICAL_COMPOSITION_AFTER_LIST_PASTE_SEED_11 = {
+  authority: "canonical",
+  seed: 11,
+  path: "3:2:1:1",
+  fingerprint: "9b669b5c44effff2",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -1057,4 +1072,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_TYPING_OVER_EVERYTHING,
   CANONICAL_TYPING_OVER_CELLS,
   BROWSER_NOTES_LIST_PASTE_SEED_29,
+  CANONICAL_COMPOSITION_AFTER_LIST_PASTE_SEED_11,
 ];
