@@ -1,0 +1,34 @@
+name: Scratch profile (2550)
+
+on:
+  push:
+    branches: [scratch/profile-2550]
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+        with:
+          bun-version-file: "package.json"
+      - run: bun install --frozen-lockfile
+      - run: git worktree add --detach ../base b65f2f6f48c8b8b8a6b7ce48ed16daad2948ca62
+      - run: bun install --frozen-lockfile
+        working-directory: ../base
+      - run: |
+          python3 -I scripts/zz-profile/instrument.py "$(cd ../base && pwd)"
+          python3 -I scripts/zz-profile/instrument.py "$(pwd)"
+      - run: bash scripts/zz-profile/pair.sh "$(cd ../base && pwd)" "$RUNNER_TEMP/prof" 5 "validateOpsDocument applyDocumentOp normalizeListModelRendering withParagraphRenderings withParagraphCopies compileEditorIntent stage prepareReplace" "applyDocumentOp,validateOpsDocument prepareReplace,normalizeListModelRendering"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: profiles
+          path: ${{ runner.temp }}/prof
+          retention-days: 7

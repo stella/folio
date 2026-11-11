@@ -1,0 +1,120 @@
+// Local measurement only (copied into packages/core/src/controller/, never committed).
+// Times the canonical transaction per typed key in suggesting mode on the latency documents.
+const test = async (_n: string, f: () => Promise<void>, _t?: number) => {
+  await f();
+};
+import { EditorState, TextSelection } from "prosemirror-state";
+
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { parseDocx } from "../docx/parser";
+import { createDocx } from "../docx/rezip";
+import { fromMarkdown } from "../markdown/fromMarkdown";
+import { createCanonicalSession } from "./canonicalSession";
+
+const WORDS =
+  "the supplier shall deliver goods services under this agreement subject to terms conditions warranty liability indemnity confidential information party notice period".split(
+    " ",
+  );
+const contract = (articles: number): string => {
+  let seed = 7;
+  const random = () => {
+    seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+    return seed / 2 ** 31;
+  };
+  const sentence = (length: number) =>
+    Array.from(
+      { length },
+      () => WORDS[Math.floor(random() * WORDS.length)] ?? "the",
+    ).join(" ");
+  const lines = ["# Services Agreement", ""];
+  for (let article = 1; article <= articles; article += 1) {
+    lines.push(`## ${article}. ${sentence(3)}`, "");
+    for (let clause = 1; clause <= 8; clause += 1) {
+      lines.push(
+        `${article}.${clause} **${sentence(2)}** ${sentence(40)}. ${sentence(25)}.`,
+        "",
+      );
+      if (clause % 3 === 0) {
+        for (let item = 1; item <= 4; item += 1)
+          lines.push(`${item}. ${sentence(18)};`);
+        lines.push("");
+      }
+    }
+    if (article % 10 === 0) {
+      lines.push("| Item | Fee | Term |", "|---|---|---|");
+      for (let row = 0; row < 12; row += 1)
+        lines.push(`| ${sentence(3)} | ${row * 100} | ${sentence(2)} |`);
+      lines.push("");
+    }
+  }
+  return lines.join("\n");
+};
+const numberedList = (items: number) =>
+  Array.from({ length: items }, (_, index) => `1. Item ${index + 1}`).join(
+    "\n",
+  );
+const KEYS = Number(process.env["ZZ_KEYS"] ?? 60);
+const MODE = (process.env["ZZ_MODE"] ?? "suggesting") as
+  "suggesting" | "editing";
+
+for (const [name, markdown] of [
+  ["contract-100", () => contract(100)],
+  ["list-3500", () => numberedList(3500)],
+] as const)
+  await test(`per key ${name}`, async () => {
+    if (process.env["ZZ_DOC"] !== undefined && process.env["ZZ_DOC"] !== name)
+      return;
+    const input = (
+      await prepareCanonicalDocxInput(
+        await createDocx(fromMarkdown(markdown())),
+      )
+    ).unwrap();
+    const source = await parseDocx(input, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    const session = createCanonicalSession(source).unwrap();
+    if (MODE === "suggesting")
+      session.setMode({ type: "suggesting", author: "Typist" });
+    let state = EditorState.create({ doc: session.projection.doc });
+    const paragraphs: number[] = [];
+    state.doc.descendants((node, position) => {
+      if (node.type.name === "paragraph" && node.textContent.length > 4)
+        paragraphs.push(position);
+      return true;
+    });
+    const middle = paragraphs[Math.floor(paragraphs.length / 2)] ?? 0;
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, middle + 3)),
+    );
+    (globalThis as { zzT?: Record<string, number> }).zzT = {};
+    const times: number[] = [];
+    let time = 1_000_000;
+    for (let key = 0; key < KEYS; key += 1) {
+      const at = state.selection.from;
+      const started = performance.now();
+      const commit = session
+        .prepareReplace(state, {
+          from: at,
+          to: at,
+          text: "x",
+          time: (time += 50),
+        })
+        .unwrap();
+      commit.publish().unwrap();
+      state = state.apply(commit.transaction);
+      times.push(performance.now() - started);
+    }
+    const warm = times.slice(10).toSorted((a, b) => a - b);
+    const zt = (globalThis as { zzT?: Record<string, number> }).zzT;
+    console.log(
+      `ZZ ${name} ${MODE} median ${warm[warm.length >> 1]?.toFixed(2)} p25 ${warm[warm.length >> 2]?.toFixed(2)} p75 ${warm[(warm.length * 3) >> 2]?.toFixed(2)} ms/key`,
+      zt
+        ? JSON.stringify(
+            Object.fromEntries(
+              Object.entries(zt).map(([k, v]) => [k, +(v / KEYS).toFixed(3)]),
+            ),
+          )
+        : "",
+    );
+  }, 120_000);
