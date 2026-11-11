@@ -479,7 +479,7 @@ export default library({
       // files covered here.
       files: [
         "packages/*/src/**/*.{ts,tsx,vue}",
-        "test/__fixtures__/read-model-cast.*.ts",
+        "test/__fixtures__/read-model-cast.*.{ts,vue}",
       ],
       rules: {
         "folio-read-model/no-model-document-cast": "error",

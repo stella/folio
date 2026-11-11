@@ -22,12 +22,18 @@ const lintFixture = (fixture: string) => {
     { cwd: REPO_ROOT },
   );
   const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  expect(output).not.toContain("Failed to load");
+  expect(output).not.toContain("Failed to parse");
   return output.split(RULE_MARKER).length - 1;
 };
 
 describe("model read owner", () => {
   test("rejects every cast of a model to the model Document", () => {
     expect(lintFixture("read-model-cast.invalid.ts")).toBe(6);
+  });
+
+  test("reads a single-file component's script block", () => {
+    expect(lintFixture("read-model-cast.invalid.vue")).toBe(2);
   });
 
   test("accepts readModel, checked literals and the DOM Document", () => {
