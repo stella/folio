@@ -358,6 +358,68 @@ export const CANONICAL_RESTARTED_AFTER_PASTE_SEED_197 = {
   trace: BrowserInputTrace;
 };
 
+/**
+ * A composition that keeps going after the editor redrew its first text
+ * beside a pasted run: the reread names the run's font for one script only.
+ */
+export const CANONICAL_COMPOSITION_REREAD_AFTER_PASTE = {
+  authority: "canonical",
+  seed: 197,
+  path: "reread-after-paste",
+  fingerprint: "composition-reread-after-paste",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "typing", text: "valid invoice" },
+      { kind: "pastePlain", plain: "alpha valid", html: "" },
+      {
+        kind: "imeReplacement",
+        updates: ["invoice", "👩🏽‍⚖️ invoice", "café", "alpha buyer café"],
+        completion: "commit",
+      },
+      { kind: "cut" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/**
+ * A composition right after a pasted run, as an input method grows it: its
+ * text in progress shows at the caret, and it commits what the default
+ * editor commits.
+ */
+export const CANONICAL_COMPOSITION_BESIDE_PASTED_RUN = {
+  authority: "canonical",
+  seed: 197,
+  path: "beside-pasted-run",
+  fingerprint: "composition-beside-pasted-run",
+  comparesWithDefaultEditor: true,
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "typing", text: "valid invoice" },
+      { kind: "pastePlain", plain: "alpha valid", html: "" },
+      {
+        kind: "imeReplacement",
+        updates: ["in", "inv", "invoice"],
+        completion: "commit",
+      },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  comparesWithDefaultEditor: true;
+  trace: BrowserInputTrace;
+};
+
 /** A restarted composition after tracked typing commits at the caret, not mid-word. */
 export const CANONICAL_RESTARTED_AFTER_TYPING = {
   authority: "canonical",
@@ -985,6 +1047,8 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_PARAGRAPH_START_SEED_431,
   CANONICAL_RESTARTED_AFTER_PASTE_SEED_197,
   CANONICAL_RESTARTED_AFTER_TYPING,
+  CANONICAL_COMPOSITION_REREAD_AFTER_PASTE,
+  CANONICAL_COMPOSITION_BESIDE_PASTED_RUN,
   CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
   CANONICAL_JOIN_BESIDE_DELETION_SEED_29,
   CANONICAL_TYPING_OVER_LIST_ITEMS_SEED_431,

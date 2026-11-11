@@ -588,6 +588,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       fontAlternates,
       ...(styles ? { styles } : {}),
       ...(document === null ? {} : { defaultSize: WORD_UNSPECIFIED_FONT_SIZE }),
+      paragraphBlocks: session.paragraphBlocks,
     };
     if (_theme !== undefined) {
       flowOpts.theme = _theme;

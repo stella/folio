@@ -4,6 +4,7 @@ import { CellSelection } from "prosemirror-tables";
 import { ReplaceStep } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
+import { textCaretOf } from "../prosemirror/nativeSelection";
 import {
   getEditorInputTargetRange,
   handleEditorBeforeInput,
@@ -69,17 +70,11 @@ type NativeProposal =
  * model's caret is: in the text before it, or at a paragraph's start in the first.
  */
 const placeCompositionCaret = (view: EditorView): void => {
-  const { selection } = view.state;
   const native = view.dom.ownerDocument.getSelection();
-  if (!selection.empty || !native?.isCollapsed) return;
-  const before = view.domAtPos(selection.from, -1);
-  const { node, offset } =
-    before.node.nodeType === before.node.TEXT_NODE
-      ? before
-      : view.domAtPos(selection.from, 1);
-  if (node.nodeType !== node.TEXT_NODE) return;
+  const caret = textCaretOf(view);
+  if (!native?.isCollapsed || caret === null) return;
   native.removeAllRanges();
-  native.collapse(node, offset);
+  native.collapse(caret.node, caret.offset);
 };
 
 export const createCanonicalInputBoundary = (

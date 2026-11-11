@@ -235,3 +235,53 @@ test.each(["removed", "renamed"] as const)(
     expect(again.styles).toBe(captured.styles);
   },
 );
+
+test("a part read with its byte order mark still replays the body the reader captured without it", async () => {
+  const zip = await ZipArchive.read(
+    await createDocx(createSimpleDocument([{ text: "seed" }])),
+  );
+  zip.set("word/document.xml", `﻿${source}`);
+  const document = await parseDocx(
+    (await zip.generate({ compression: "store" })).buffer,
+  );
+  const paragraph = document.package.document.content.at(1);
+  if (paragraph?.type !== "paragraph") throw new Error("Missing paragraph");
+  paragraph.content = [
+    { type: "run", content: [{ type: "text", text: "after" }] },
+  ];
+  const diagnostics: string[] = [];
+  const xml = serializeDocument(document, readRootNamespaceBindings(source), {
+    bodyAuthority: "canonical",
+    // The part as the save reads it, byte order mark kept.
+    xml: `﻿${source}`,
+    onDiagnostic: ({ type }) => diagnostics.push(type),
+  });
+  expect(diagnostics).toEqual([]);
+  expect(xml).toContain(untouched);
+  expect(xml).toContain("<!-- authored gap -->\t");
+  expect(xml).toContain("after");
+});
+
+test("a paragraph whose computed list marker moved on keeps its source", async () => {
+  // An edit elsewhere in its list renumbers it: the marker its numbering
+  // computes changes, the paragraph does not, and no save writes the marker.
+  const document = cloneDocumentWithParagraphPropertySources(
+    await parsedSource(),
+  );
+  const [renumbered, edited] = document.package.document.content;
+  if (renumbered?.type !== "paragraph" || edited?.type !== "paragraph")
+    throw new Error("Missing paragraph");
+  renumbered.listRendering = {
+    marker: "2.",
+    level: 0,
+    numId: 1,
+    isBullet: false,
+  };
+  edited.content = [
+    { type: "run", content: [{ type: "text", text: "after" }] },
+  ];
+  const xml = serializeDocument(document, undefined, {
+    bodyAuthority: "canonical",
+  });
+  expect(xml).toContain(untouched);
+});

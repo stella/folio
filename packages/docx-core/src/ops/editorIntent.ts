@@ -21,9 +21,19 @@ import {
   NO_NUMBERING_NUM_ID,
   paragraphNumberingReference,
 } from "../model/paragraphNumbering";
-import { applyDocumentOp, applyDocumentOps } from "./apply";
-import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
-import { createCensusReader } from "./editorIntentCensus";
+import {
+  type AppliedDocumentOp,
+  applyDocumentOp,
+  applyDocumentOps,
+} from "./apply";
+import {
+  blockListAt,
+  sameBlockList,
+  storyBody,
+  storyParagraphs,
+} from "./blocks";
+import { packageIdOccupancy } from "./editorIntentCensus";
+import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
 import { resolveGap } from "./gaps";
 /** One editor intent, compiled to direct or tracked document operations. */
@@ -62,6 +72,7 @@ import {
   paragraphLength,
   paragraphLogicalText,
 } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import { applyFormattingPatch } from "./patch";
 import {
   appendTrackedDeletion,
@@ -72,8 +83,9 @@ import {
   trimAppliedNewIds,
 } from "./plan";
 import {
+  cutPieceHandoffs,
   planTrackedReplace,
-  rangeStartAfterDeletion,
+  rangeEndAfterDeletion,
 } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
@@ -81,12 +93,15 @@ import {
   paragraphPropertiesOf,
   reviewFieldsOf,
 } from "./review";
+import { groupedDeletionStamp, ownInsertionSlice } from "./revisionGrouping";
 import { runsMergeable } from "./runMerge";
+import { identitySlots } from "./slots";
 import { tableEditParagraphDemand } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import {
+  type BlockInsertionPoint,
   type DeleteRangeOp,
   type DeleteRowOp,
   type DeleteTableOp,
@@ -104,6 +119,7 @@ import {
   type RunPropsPatch,
   SECTION_BOUNDARY_POLICIES,
   SPLIT_HALVES,
+  type SplitHalf,
   type TableEditOp,
   type TableIntentOperation,
   type TextPosition,
@@ -114,6 +130,12 @@ type SplitParagraphIntent = {
   type: "splitParagraph";
   at: TextPosition;
   to?: TextPosition;
+  /**
+   * Which half takes the new identity: by default the first, as typing a
+   * break moves the text before it to a paragraph of its own; the second
+   * keeps the paragraph's identity on the text before the split.
+   */
+  newHalf?: SplitHalf;
 };
 export type { TableIntentOperation } from "./types";
 
@@ -160,6 +182,29 @@ export type EditorIntent =
   | { type: "tableRow"; operation: TableRowIntentOperation }
   | { type: "tableBlock"; operation: TableBlockIntentOperation }
   | {
+      /**
+       * Whole paragraphs beside a paragraph, which keeps its identity: the
+       * compiler gives each a fresh id, and a suggestion records each as
+       * inserted.
+       */
+      type: "insertParagraphs";
+      story: OpStory;
+      at: BlockInsertionPoint;
+      paragraphs: readonly Paragraph[];
+      /** A suggestion records the paragraphs as a move's destination. */
+      move?: true;
+      /** A list instance the paragraphs' numbering names, created first. */
+      newList?: NewListInstance;
+    }
+  | {
+      /** Whole adjacent paragraphs removed with their marks. */
+      type: "deleteParagraphs";
+      story: OpStory;
+      blockIds: readonly string[];
+      /** A suggestion records the paragraphs as a move's source. */
+      move?: true;
+    }
+  | {
       type: "replaceFragment";
       from: TextPosition;
       to: TextPosition;
@@ -196,7 +241,13 @@ export type EditorIntent =
       to: TextPosition;
       patch: RunPropsPatch;
     }
-  | { type: "formatParagraph"; at: TextPosition; patch: ParagraphPropsPatch }
+  | {
+      type: "formatParagraph";
+      at: TextPosition;
+      patch: ParagraphPropsPatch;
+      /** A list instance the patch's numbering names, created first. */
+      newList?: NewListInstance;
+    }
   | {
       type: "setList";
       items: readonly { at: TextPosition; ilvl: number }[];
@@ -222,7 +273,31 @@ export type EditorIntent =
       story: OpStory;
       blockId: string;
       nextBlockId: string;
+      /**
+       * Which paragraph's identity a direct join keeps, by default the
+       * second's; a tracked join always keeps the second.
+       */
+      survivor?: SplitHalf;
     };
+
+/** A numbering instance, with its abstract definition, an edit creates. */
+export type NewListInstance = {
+  num: NumberingInstance;
+  abstractNum?: AbstractNumbering;
+};
+
+const newListOps = (newList: NewListInstance | undefined): DocumentOp[] =>
+  newList === undefined
+    ? []
+    : [
+        {
+          type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
+          num: newList.num,
+          ...(newList.abstractNum === undefined
+            ? {}
+            : { abstractNum: newList.abstractNum }),
+        },
+      ];
 
 /** Revision metadata and every fresh identity are supplied before compilation. */
 export type EditorIntentMode = {
@@ -239,7 +314,15 @@ type CompileEditorIntentOptions = {
   /** Lowest candidate for compiler-owned pasted block IDs, including retired session IDs. */
   firstBlockId?: number;
 };
-type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
+type CompiledEditorIntent = {
+  ops: DocumentOp[];
+  selection: TextPosition;
+  /**
+   * What applying `ops` to the compiled document gives, when the compiler
+   * already applied exactly them; a caller applies `ops` itself otherwise.
+   */
+  applied?: AppliedDocumentOp;
+};
 
 /** A split's paragraph identity is allocated with its other fresh identities. */
 type EditorIntentAllocation = EditorIntent | SplitParagraphIntent;
@@ -255,6 +338,20 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
         toId: intent.operation.blockId,
         fromOffset: 0,
         toOffset: 0,
+      };
+    case "insertParagraphs":
+      return {
+        story: intent.story,
+        fromId: intent.at.blockId,
+        toId: intent.at.blockId,
+        fromOffset: 0,
+        toOffset: 0,
+      };
+    case "deleteParagraphs":
+      return {
+        story: intent.story,
+        fromId: intent.blockIds[0] ?? "",
+        toId: intent.blockIds.at(-1) ?? "",
       };
     case "setHyperlink":
     case "removeHyperlink":
@@ -326,9 +423,19 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
 const PARAGRAPH_REVISION_DEMAND = 3;
 const leafRevisionDemand = (ancestorCount: number) => 4 * (1 + ancestorCount);
 
-/** Cache only immutable document versions; never retain a retired version strongly. */
-export const createEditorIntentIdAllocator = () => {
-  const readCensus = createCensusReader();
+/**
+ * Cache only immutable document versions; never retain a retired version
+ * strongly. A new paragraph identity avoids `reservedBlockIds`, the ones
+ * consumed elsewhere, such as an undone insertion's.
+ */
+export const createEditorIntentIdAllocator = ({
+  reservedBlockIds,
+}: { reservedBlockIds?: ReadonlySet<string> } = {}) => {
+  // A story's paragraphs, by the body object: a body an edit left is read once.
+  const storyLocations = new WeakMap<
+    ReturnType<typeof storyBody>,
+    ReturnType<typeof storyParagraphs>
+  >();
   return (
     document: Document,
     intent: EditorIntentAllocation,
@@ -340,13 +447,14 @@ export const createEditorIntentIdAllocator = () => {
       control: number[];
     };
   } => {
-    const census = readCensus(document);
+    const census = packageIdOccupancy(document.package);
     const { story, fromId, toId, fromOffset, toOffset } =
       intentEndpoints(intent);
-    let locations = census.stories.get(story);
+    const body = storyBody(document, story);
+    let locations = storyLocations.get(body);
     if (locations === undefined) {
-      locations = storyParagraphs(storyBody(document, story));
-      census.stories.set(story, locations);
+      locations = storyParagraphs(body);
+      storyLocations.set(body, locations);
     }
     const first = locations.findIndex(
       ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(fromId),
@@ -401,13 +509,26 @@ export const createEditorIntentIdAllocator = () => {
           demand += 4 * (1 + span.ancestors.length);
       }
     }
-    const fresh = (occupied: ReadonlySet<number>, count: number) => {
+    const fresh = (
+      occupied: { has: (id: number) => boolean },
+      count: number,
+    ) => {
       const ids: number[] = [];
       for (let id = 1; id <= MAX_REVISION_ID && ids.length < count; id += 1) {
         if (!occupied.has(id)) ids.push(id);
       }
       return ids;
     };
+    if (intent.type === "insertParagraphs") {
+      // Each paragraph's mark and content wrappers, the anchor's mark, and
+      // the property change the paragraph that takes over that mark records.
+      demand = 3;
+      for (const paragraph of intent.paragraphs) {
+        demand += PARAGRAPH_REVISION_DEMAND;
+        for (const span of leafSpans(paragraph.content))
+          demand += leafRevisionDemand(span.ancestors.length);
+      }
+    }
     if (intent.type === "tableBlock") {
       const op = intent.operation;
       // An inserted table records each row and each of its paragraphs, and
@@ -480,11 +601,9 @@ export const createEditorIntentIdAllocator = () => {
     }
     const revision = fresh(census.revisions, demand + 1);
     let nextParagraph = 1;
-    while (
-      census.paragraphs.has(
-        nextParagraph.toString(16).padStart(8, "0").toUpperCase(),
-      )
-    )
+    const taken = (id: string) =>
+      census.paragraphs.has(id) || (reservedBlockIds?.has(id) ?? false);
+    while (taken(nextParagraph.toString(16).padStart(8, "0").toUpperCase()))
       nextParagraph += 1;
     return {
       revisionId: revision.at(0) ?? MAX_REVISION_ID + 1,
@@ -689,9 +808,7 @@ const replacementCaret = (at: TextPosition, text: string): TextPosition =>
       };
 
 const paragraphAt = (document: Document, at: TextPosition) =>
-  storyParagraphs(storyBody(document, at.story)).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(at.blockId),
-  )?.paragraph;
+  findStoryParagraph(storyBody(document, at.story), at.blockId)?.paragraph;
 
 /** Zero-width markers and empty leaves never supply the formatting of typed content. */
 const visibleFormattingSpans = (paragraph: Paragraph) =>
@@ -1067,20 +1184,25 @@ const joinParagraphPropertyAlignment = ({
     firstGroup.text.length === 0
       ? followingGroup.paragraphs.at(-1)
       : firstGroup.paragraphs.at(-1);
+  // A direct join may keep the first paragraph; a tracked one keeps the second.
+  const survivorId =
+    revision === undefined && intent.survivor === "first"
+      ? firstGroup.blockId
+      : followingGroup.blockId;
   const survivor = paragraphAt(current, {
     story: intent.story,
-    blockId: followingGroup.blockId,
+    blockId: survivorId,
     offset: 0,
   });
   if (!survivor)
-    panic("A valid canonical join must retain its following group survivor.");
+    panic("A valid canonical join must retain its surviving group.");
   const desired = paragraphPropertiesOf(source?.formatting);
   const existing = paragraphPropertiesOf(survivor.formatting);
   if (structurallyEqual(existing, desired)) return undefined;
   return {
     type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
     story: intent.story,
-    blockId: followingGroup.blockId,
+    blockId: survivorId,
     patch: Object.fromEntries([
       ...Object.keys(existing ?? {}).map((key) => [key, null]),
       ...Object.entries(desired ?? {}),
@@ -1142,7 +1264,12 @@ const runSeamDepth = ({
   return 0;
 };
 
-const replacementSourceRunEnd = (
+/**
+ * Where a direct replacement inside a source run rejoins the run it cut: at
+ * the replacement's start, where accepting the tracked replacement (struck
+ * content first, then the new) removes the deletion and joins its sides.
+ */
+const replacementSourceRunStart = (
   document: Document,
   op: InsertContentOp,
 ): TextPosition | undefined => {
@@ -1161,7 +1288,7 @@ const replacementSourceRunEnd = (
     )
   )
     return undefined;
-  return { ...op.at, ...gapAfterInserted(at, op.slice.content) };
+  return { ...op.at, ...at };
 };
 
 type ReplacementPreservesOutsideContentOptions = {
@@ -1186,6 +1313,40 @@ const replacementPreservesOutsideContent = ({
     isParagraphContent(node) &&
     (isRangeBoundary(node) || node.type === "commentReference");
   return before.every(preserved) && after.every(preserved);
+};
+
+/**
+ * Where the caret lands once whole paragraphs go directly: at the start of the
+ * paragraph that follows them, or, when they end their container, in the
+ * final paragraph that stays, where its predecessor's content ends.
+ */
+const directDeletionCaret = (
+  document: Document,
+  { story, blockIds }: { story: OpStory; blockIds: readonly string[] },
+): TextPosition => {
+  const located = storyParagraphs(storyBody(document, story));
+  const indexOf = (id: string | undefined) =>
+    located.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(id ?? ""),
+    );
+  const first = located[indexOf(blockIds[0])];
+  const last = located[indexOf(blockIds.at(-1))];
+  // A deletion naming no paragraph is refused when it applies.
+  if (first === undefined || last === undefined)
+    return { story, blockId: blockIds[0] ?? "", offset: 0 };
+  const list = blockListAt(storyBody(document, story).content, last.list);
+  const following = list[last.index + 1];
+  if (following?.type === "paragraph" && following.paraId !== undefined)
+    return { story, blockId: following.paraId, offset: 0 };
+  const preceding = list[first.index - 1];
+  return {
+    story,
+    blockId: last.paragraph.paraId ?? "",
+    offset:
+      last.index === list.length - 1 && preceding?.type === "paragraph"
+        ? paragraphLength(preceding)
+        : 0,
+  };
 };
 
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
@@ -1215,6 +1376,10 @@ export const compileEditorIntent = (
       : allocationFields;
   let ops: DocumentOp[];
   let selection: TextPosition;
+  // The application of the ops a branch compiled, kept only while `ops`
+  // still holds exactly the ops it applied.
+  let handedBack:
+    { ops: readonly DocumentOp[]; result: AppliedDocumentOp } | undefined;
   const editedSeams: TextPosition[] = [];
   switch (intent.type) {
     case "generateTOC": {
@@ -1397,32 +1562,14 @@ export const compileEditorIntent = (
         ops = planned.value;
         const applied = applyDocumentOps(document, ops);
         if (applied.isErr()) return Result.err(applied.error);
-        const at = rangeStartAfterDeletion({
+        // The pasted content follows the struck selection: the caret ends
+        // where the pasted tail meets the content after the selection.
+        selection = rangeEndAfterDeletion({
           before: document,
           after: applied.value.document,
           from: intent.from,
           to: intent.to,
         });
-        const insertionAt =
-          leading.length > 0 ? { ...at, offset: 0, zeroWidthBefore: 0 } : at;
-        const insertionParagraph = paragraphAt(document, insertionAt);
-        selection = {
-          ...insertionAt,
-          ...gapAfterInserted(
-            {
-              offset: insertionAt.offset,
-              zeroWidthBefore:
-                insertionAt.zeroWidthBefore ??
-                (insertionParagraph === undefined
-                  ? 0
-                  : defaultInsertionGap(
-                      insertionParagraph.content,
-                      insertionAt.offset,
-                    ).zeroWidthBefore),
-            },
-            tail?.content ?? [],
-          ),
-        };
       } else {
         const deleted = compileEditorIntent(document, {
           intent: {
@@ -2082,6 +2229,72 @@ export const compileEditorIntent = (
       selection = { story: op.story, blockId, offset: 0 };
       break;
     }
+    case "deleteParagraphs": {
+      const first = intent.blockIds[0];
+      if (first === undefined)
+        return Result.err(
+          new DocumentOpRefusal({
+            reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
+            message: "No paragraphs to delete.",
+            opType: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+          }),
+        );
+      return Result.ok({
+        ops: [
+          {
+            type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+            story: intent.story,
+            blockIds: intent.blockIds,
+            ...tracked,
+            ...(mode.type === "suggesting" && intent.move === true
+              ? { move: true as const }
+              : {}),
+          },
+        ],
+        selection:
+          mode.type === "editing"
+            ? directDeletionCaret(document, intent)
+            : { story: intent.story, blockId: first, offset: 0 },
+      });
+    }
+    case "insertParagraphs": {
+      const fresh = freshParagraphIds({
+        document,
+        reserved: mode.reservedBlockIds,
+        count: intent.paragraphs.length,
+        opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+      });
+      if (fresh.isErr()) return Result.err(fresh.error);
+      const blocks = intent.paragraphs.map((paragraph, index) => ({
+        ...paragraph,
+        paraId: fresh.value[index] ?? panic("A fresh paragraph id is missing."),
+      }));
+      const first = blocks[0];
+      if (first === undefined)
+        return Result.err(
+          new DocumentOpRefusal({
+            reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_BLOCK_LIST,
+            message: "No paragraphs to insert.",
+            opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+          }),
+        );
+      return Result.ok({
+        ops: [
+          ...newListOps(intent.newList),
+          {
+            type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+            story: intent.story,
+            at: intent.at,
+            blocks,
+            ...tracked,
+            ...(mode.type === "suggesting" && intent.move === true
+              ? { move: true as const }
+              : {}),
+          },
+        ],
+        selection: { story: intent.story, blockId: first.paraId, offset: 0 },
+      });
+    }
     case "tableBlock": {
       if (intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE) {
         const { story, blockId, table } = intent.operation;
@@ -2331,6 +2544,7 @@ export const compileEditorIntent = (
         }
         ops = plan.ops;
       }
+      ops = [...newListOps(intent.newList), ...ops];
       selection = intent.at;
       break;
     }
@@ -2522,17 +2736,89 @@ export const compileEditorIntent = (
         idKey(from.blockId) === idKey(to.blockId) &&
         from.offset === to.offset &&
         (from.zeroWidthBefore ?? 0) === (to.zeroWidthBefore ?? 0);
-      const continuing =
+      const continued =
         insertionOnly && text !== ""
-          ? continuedSlice(
-              continuation(paragraph.content, from, to, {
-                ...(intent.inside === undefined
-                  ? {}
-                  : { inside: intent.inside }),
-              }),
-              content,
-            )
+          ? continuation(paragraph.content, from, to, {
+              ...(intent.inside === undefined ? {} : { inside: intent.inside }),
+            })
           : undefined;
+      const continuing =
+        continued === undefined
+          ? undefined
+          : continuedSlice(continued, content);
+      if (mode.type === "suggesting" && continued !== undefined) {
+        // Typed beside the author's own pending insertion: the text goes
+        // into it, so consecutive typing reads as one change.
+        const at = {
+          ...from,
+          zeroWidthBefore:
+            from.zeroWidthBefore ??
+            defaultInsertionGap(paragraph.content, from.offset).zeroWidthBefore,
+        };
+        const slice = ownInsertionSlice({
+          items: paragraph.content,
+          gap: { offset: at.offset, zeroWidthBefore: at.zeroWidthBefore },
+          continued: continued.containers,
+          author: mode.revision.author,
+          content,
+        });
+        if (slice !== undefined) {
+          const insert: InsertContentOp = {
+            type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+            at,
+            slice,
+            ...(mode.newIds === undefined ? {} : { newIds: mode.newIds }),
+          };
+          const inserted = applyDocumentOp(document, insert);
+          if (inserted.isErr()) return Result.err(inserted.error);
+          // Only the ids a cut record took stay with the insertion; the
+          // insertion applies the same with only them.
+          ops = [
+            trimAppliedNewIds({
+              before: document,
+              op: insert,
+              applied: inserted.value,
+              story: at.story,
+            }),
+          ];
+          const steps: AppliedDocumentOp[] = [inserted.value];
+          // The typed run joins the alike runs of the insertion it meets.
+          let current = inserted.value.document;
+          for (const seam of [
+            { offset: at.offset + text.length, zeroWidthBefore: 0 },
+            { offset: at.offset, zeroWidthBefore: at.zeroWidthBefore },
+          ]) {
+            const typedInto = paragraphAt(current, at);
+            if (typedInto === undefined)
+              panic("A typed paragraph must exist at its seam.");
+            const depth = runSeamDepth({
+              paragraph: typedInto,
+              at: seam,
+              policy: RUN_SEAM_POLICIES.plain,
+            });
+            if (depth === 0) continue;
+            const join = {
+              type: DOCUMENT_OP_TYPES.JOIN_INLINE,
+              at: { ...at, ...seam },
+              depth,
+            } as const;
+            const joined = applyDocumentOp(current, join);
+            if (joined.isErr()) return Result.err(joined.error);
+            ops.push(join);
+            steps.push(joined.value);
+            current = joined.value.document;
+          }
+          handedBack = {
+            ops: [...ops],
+            result: {
+              ...combineEdits(document, steps),
+              revisions: steps.flatMap(({ revisions }) => revisions),
+            },
+          };
+          selection = replacementCaret(at, text);
+          break;
+        }
+      }
       if (mode.type === "suggesting" && continuing !== undefined) {
         // Typed inside a hyperlink, content control or wrapper: the tracked
         // insertion goes inside it too, rather than cutting it in two.
@@ -2556,11 +2842,39 @@ export const compileEditorIntent = (
         break;
       }
       if (mode.type === "suggesting") {
+        // A deletion beside the author's own pending one continues it, and
+        // so does the struck part of a replacement; the typed text keeps its
+        // own stamp.
+        const struck = groupedDeletionStamp({
+          start: {
+            items: paragraph.content,
+            gap: {
+              offset: from.offset,
+              zeroWidthBefore:
+                from.zeroWidthBefore ??
+                zeroWidthLeavesAt(paragraph.content, from.offset).length,
+            },
+          },
+          end: {
+            items: (paragraphAt(document, to) ?? paragraph).content,
+            gap: {
+              offset: to.offset,
+              zeroWidthBefore: to.zeroWidthBefore ?? 0,
+            },
+          },
+          stamp: mode.revision,
+        });
+        // The grouped stamp keeps this edit's id, so only its record's
+        // metadata changes; the plan applies the deletion with it, so the
+        // typed text takes a fresh id whenever the deletion makes a record.
         const planned = planTrackedReplace(document, {
           sourceContainerPolicy: "join",
           from,
           to,
-          revision: mode.revision,
+          revision: text === "" ? struck : mode.revision,
+          ...(text !== "" && struck !== mode.revision
+            ? { deletionRevision: struck }
+            : {}),
           newIds: mode.newIds,
           seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
           replacement: {
@@ -2573,14 +2887,15 @@ export const compileEditorIntent = (
           },
         });
         if (planned.isErr()) return Result.err(planned.error);
-        // The typed text goes in before the tracked deletion, inside the
-        // content controls and wrappers the direct replacement continues.
+        // The typed text follows the tracked deletion, inside the content
+        // controls and wrappers the direct replacement continues.
         const resumed =
           idKey(from.blockId) === idKey(to.blockId) && text !== ""
             ? continuation(paragraph.content, from, to, {
                 ...(intent.inside === undefined
                   ? {}
                   : { inside: intent.inside }),
+                struck: true,
               })
             : undefined;
         ops = [];
@@ -2647,11 +2962,11 @@ export const compileEditorIntent = (
       }
       ops = [];
       let survivorId = from.blockId;
-      if (
+      const deletes =
         from.blockId !== to.blockId ||
         from.offset !== to.offset ||
-        (from.zeroWidthBefore ?? 0) !== (to.zeroWidthBefore ?? 0)
-      ) {
+        (from.zeroWidthBefore ?? 0) !== (to.zeroWidthBefore ?? 0);
+      if (deletes) {
         const partitioned = selectedParagraphRuns(document, from, to);
         if (partitioned.isErr()) return Result.err(partitioned.error);
         survivorId =
@@ -2712,15 +3027,26 @@ export const compileEditorIntent = (
           }
         }
       }
-      // Resolve insertion affinity in the input, before deletion shifts trailing
-      // zero-width leaves onto this offset.
-      const at = {
+      // A replacement goes after what the deletion keeps in the range, where
+      // accepting the tracked replacement puts it. A caret insertion resolves
+      // its affinity in the input.
+      let at: TextPosition = {
         ...from,
         blockId: survivorId,
         zeroWidthBefore:
           from.zeroWidthBefore ??
           defaultInsertionGap(paragraph.content, from.offset).zeroWidthBefore,
       };
+      if (deletes) {
+        const deleted = applyDocumentOps(document, ops);
+        if (deleted.isErr()) return Result.err(deleted.error);
+        at = rangeEndAfterDeletion({
+          before: document,
+          after: deleted.value.document,
+          from,
+          to,
+        });
+      }
       if (text !== "")
         ops.push({
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
@@ -2746,7 +3072,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at: intent.at,
           newBlockId: intent.newBlockId,
-          newHalf: SPLIT_HALVES.FIRST,
+          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
           newParagraph: splitParagraphFields(document, intent.at),
           ...tracked,
         } as const;
@@ -2780,7 +3106,7 @@ export const compileEditorIntent = (
           plan,
         });
         if (deletion.isErr()) return Result.err(deletion.error);
-        const at = rangeStartAfterDeletion({
+        const at = rangeEndAfterDeletion({
           before: document,
           after: plan.document(),
           from: intent.at,
@@ -2790,7 +3116,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at,
           newBlockId: intent.newBlockId,
-          newHalf: SPLIT_HALVES.FIRST,
+          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
           newParagraph: splitParagraphFields(plan.document(), at),
           newIds: mode.newIds,
           revision: mode.revision,
@@ -2818,7 +3144,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
           at: deletion.value.selection,
           newBlockId: intent.newBlockId,
-          newHalf: SPLIT_HALVES.FIRST,
+          newHalf: intent.newHalf ?? SPLIT_HALVES.FIRST,
           newParagraph: splitParagraphFields(
             deleted.value.document,
             deletion.value.selection,
@@ -2847,6 +3173,9 @@ export const compileEditorIntent = (
         blockId: intent.blockId,
         nextBlockId: intent.nextBlockId,
         sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
+        ...(mode.type === "editing" && intent.survivor !== undefined
+          ? { survivor: intent.survivor }
+          : {}),
         ...(ownInsertedMark ? {} : tracked),
       } as const;
       if (mode.type === "suggesting") {
@@ -2908,7 +3237,12 @@ export const compileEditorIntent = (
       ) {
         offset = paragraphLength(paragraph);
       }
-      selection = { story: intent.story, blockId: intent.nextBlockId, offset };
+      // A direct join may keep the first paragraph; a tracked one keeps the second.
+      const survivorId =
+        mode.type === "editing" && intent.survivor === "first"
+          ? intent.blockId
+          : intent.nextBlockId;
+      selection = { story: intent.story, blockId: survivorId, offset };
       break;
     }
     default: {
@@ -2921,6 +3255,7 @@ export const compileEditorIntent = (
   if (mode.type === "editing") {
     let current = document;
     const compact: DocumentOp[] = [];
+    const steps: AppliedDocumentOp[] = [];
     const takenRevision = new Set<number>();
     const takenControl = new Set<number>();
     const sourceRunSeams: TextPosition[] = [];
@@ -2938,9 +3273,9 @@ export const compileEditorIntent = (
       );
       const applied = applyDocumentOp(current, op);
       if (applied.isErr()) return Result.err(applied.error);
-      const sourceRunEnd =
+      const sourceRunStart =
         replacesSourceContent && op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT
-          ? replacementSourceRunEnd(current, op)
+          ? replacementSourceRunStart(current, op)
           : undefined;
       const trimmed = trimAppliedNewIds({
         before: current,
@@ -2953,8 +3288,9 @@ export const compileEditorIntent = (
         for (const id of trimmed.newIds?.control ?? []) takenControl.add(id);
       }
       compact.push(trimmed);
+      steps.push(applied.value);
       current = applied.value.document;
-      if (sourceRunEnd !== undefined) sourceRunSeams.push(sourceRunEnd);
+      if (sourceRunStart !== undefined) sourceRunSeams.push(sourceRunStart);
     }
     if (intent.type === "joinParagraphs") {
       const alignment = joinParagraphPropertyAlignment({
@@ -2966,6 +3302,7 @@ export const compileEditorIntent = (
         const aligned = applyDocumentOp(current, alignment);
         if (aligned.isErr()) return Result.err(aligned.error);
         compact.push(alignment);
+        steps.push(aligned.value);
         current = aligned.value.document;
       }
     }
@@ -3014,12 +3351,78 @@ export const compileEditorIntent = (
       const joined = applyDocumentOp(current, join);
       if (joined.isErr()) return Result.err(joined.error);
       compact.push(join);
+      steps.push(joined.value);
       current = joined.value.document;
     }
     ops = compact;
+    // Typed text hands its application back; other intents apply again.
+    if (intent.type === "replaceText")
+      handedBack = {
+        ops: [...compact],
+        result: {
+          ...combineEdits(document, steps),
+          revisions: steps.flatMap(({ revisions }) => revisions),
+        },
+      };
+    if (paragraphAt(current, selection) === undefined)
+      panic("A direct edit's caret must name a paragraph the edit keeps.");
   }
-  return Result.ok({ ops: ops.map(captureDocumentOp), selection });
+  const appliedAsCompiled =
+    handedBack !== undefined &&
+    handedBack.ops.length === ops.length &&
+    handedBack.ops.every((op, index) => op === ops[index])
+      ? handedBack.result
+      : undefined;
+  if (mode.type === "suggesting" && cutsBesideRemoval(document, ops)) {
+    // A tracked edit that cuts a record whose first piece only holds content
+    // on its way out records who takes the record's identities back.
+    const cut =
+      appliedAsCompiled === undefined
+        ? applyDocumentOps(document, ops)
+        : Result.ok(appliedAsCompiled);
+    if (cut.isErr()) return Result.err(cut.error);
+    ops = [
+      ...ops,
+      ...cutPieceHandoffs({
+        before: document,
+        after: cut.value.document,
+        story: intentEndpoints(intent).story,
+      }),
+    ];
+    return Result.ok({ ops: ops.map(captureDocumentOp), selection });
+  }
+  return Result.ok({
+    ops: ops.map(captureDocumentOp),
+    selection,
+    ...(appliedAsCompiled === undefined ? {} : { applied: appliedAsCompiled }),
+  });
 };
+
+/** A record holding removed content inside its own identity, in a paragraph. */
+const holdsNestedRemoval = (nodes: readonly InlineNode[]): boolean =>
+  nodes.some(
+    (node) =>
+      (identitySlots(node).length > 0 &&
+        (childNodes(node) ?? []).some(isRemovedRevisionNode)) ||
+      holdsNestedRemoval(childNodes(node) ?? []),
+  );
+
+/**
+ * Whether a tracked edit may cut a record whose first piece then holds only
+ * removed content: it removes a range, or inserts where such content sits.
+ */
+const cutsBesideRemoval = (
+  document: Document,
+  ops: readonly DocumentOp[],
+): boolean =>
+  ops.some(
+    (op) =>
+      (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+        op.revision !== undefined) ||
+      ((op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT ||
+        op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) &&
+        holdsNestedRemoval(paragraphAt(document, op.at)?.content ?? [])),
+  );
 
 type FreshParagraphIdsOptions = {
   document: Document;
@@ -3117,17 +3520,31 @@ type Continuation = {
  * so typing within one extends it rather than cutting it in two. At an edge
  * only one side is inside, and the text stays outside, as a mark that does not
  * extend past its end, unless the caret stood just inside that edge.
+ *
+ * Text replacing a range takes the place after the range's last leaf, where
+ * a tracked replacement follows the struck content: it continues what holds
+ * that leaf and the leaf after the range. A tracked replacement meets the
+ * struck leaf on its start side; a direct one meets the leaf before the range.
  */
 const continuation = (
   items: readonly ParagraphContent[],
   from: Pick<TextPosition, "offset" | "zeroWidthBefore">,
   to: Pick<TextPosition, "offset" | "zeroWidthBefore">,
-  { inside = {} }: { inside?: { start?: boolean; end?: boolean } } = {},
+  {
+    inside = {},
+    struck = false,
+  }: { inside?: { start?: boolean; end?: boolean }; struck?: boolean } = {},
 ): Continuation => {
   const spans = leafSpans(items);
+  // A range starts where its deletion does: after the markers at its start
+  // unless it names its gap. A caret names one gap for both of its ends.
+  const caret =
+    from.offset === to.offset && from.zeroWidthBefore === to.zeroWidthBefore;
   const start = {
     offset: from.offset,
-    zeroWidthBefore: from.zeroWidthBefore ?? 0,
+    zeroWidthBefore:
+      from.zeroWidthBefore ??
+      (caret ? 0 : zeroWidthLeavesAt(items, from.offset).length),
   };
   const end = { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 };
   // A leaf the range falls inside stands on both of its sides. A caret just
@@ -3136,9 +3553,15 @@ const continuation = (
     ({ before }) => compareGaps(before, start) < 0,
   );
   const outerRight = spans.find(({ after }) => compareGaps(after, end) > 0);
-  const left = inside.start
-    ? spans.find(({ after }) => compareGaps(after, start) > 0)
-    : outerLeft;
+  const last = spans.findLast(
+    ({ before, after }) =>
+      compareGaps(before, end) < 0 && compareGaps(after, start) > 0,
+  );
+  const left =
+    last ??
+    (inside.start
+      ? spans.find(({ after }) => compareGaps(after, start) > 0)
+      : outerLeft);
   const right = inside.end
     ? spans.findLast(({ before }) => compareGaps(before, end) < 0)
     : outerRight;
@@ -3162,9 +3585,24 @@ const continuation = (
       depth += 1;
     return depth;
   };
+  // A direct replacement goes in after the range boundaries its deletion
+  // keeps, so its start meets the last of them, or the leaf before the range
+  // where none stood in it.
+  const kept =
+    struck || caret
+      ? undefined
+      : spans.findLast(
+          ({ node, before, after }) =>
+            isParagraphContent(node) &&
+            isRangeBoundary(node) &&
+            compareGaps(before, start) >= 0 &&
+            compareGaps(after, end) <= 0,
+        );
   return {
     containers,
-    openStart: continued(outerLeft),
+    openStart: continued(
+      struck && last !== undefined ? last : (kept ?? outerLeft),
+    ),
     openEnd: continued(outerRight),
   };
 };

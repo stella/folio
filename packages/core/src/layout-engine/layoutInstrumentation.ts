@@ -40,6 +40,11 @@ export type LayoutInstrumentation = {
     dictionary: string;
     message: string;
   }) => void;
+  /**
+   * A whole document was built: a deep copy of one, or one converted from an
+   * editor state. Either costs time in proportion to the document.
+   */
+  onDocumentBuilt?: (event: { kind: DocumentBuildKind }) => void;
   onLayoutComplete?: (event: { reason: LayoutRunReason }) => void;
   onLayoutError?: (event: { message: string; reason: LayoutRunReason }) => void;
   onLayoutStart?: (event: { reason: LayoutRunReason }) => void;
@@ -87,6 +92,12 @@ export function recordMeasureBlockError(
     blockKind: block.kind,
     message: error instanceof Error ? error.message : String(error),
   });
+}
+
+export type DocumentBuildKind = "copy" | "conversion";
+
+export function recordDocumentBuilt(kind: DocumentBuildKind): void {
+  globalThis.__folioLayoutInstrumentation?.onDocumentBuilt?.({ kind });
 }
 
 export function recordLayoutComplete(reason: LayoutRunReason = "manual"): void {

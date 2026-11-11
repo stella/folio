@@ -22,6 +22,7 @@ import {
   IDENTITY_SPACES,
   identityKeysIn,
   idKey,
+  type KeyMembership,
   packageIdentityKeys,
   slotKey,
 } from "./ids";
@@ -420,7 +421,7 @@ export const permitsCellFinalMark = (
 type StampedTableRevisionIdsOptions = {
   blocks: readonly BlockContent[];
   stamp: RevisionStamp;
-  known: ReadonlySet<string>;
+  known: KeyMembership;
 };
 export const stampedTableRevisionIds = ({
   blocks,

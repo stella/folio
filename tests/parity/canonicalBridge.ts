@@ -1,8 +1,11 @@
 import { TextSelection } from "prosemirror-state";
 
 import type { Document } from "@stll/folio-core";
+import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "@stll/folio-core/ai-edits/types";
+import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type { FolioDocumentOperationUndoHandle } from "@stll/folio-core/document-operations";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
@@ -87,6 +90,15 @@ export type CanonicalHyperlinkAction =
       href: string;
       tooltip?: string;
     };
+
+/** The undo handle of the last story edit `replaceStoryBlock` made. */
+let lastStoryUndoHandle: FolioDocumentOperationUndoHandle | null = null;
+
+/** The public story handle an operation story names. */
+const publicStoryOf = (story: Exclude<OpStory, "main">) =>
+  "rId" in story
+    ? { type: story.kind, relationshipId: story.rId }
+    : { type: story.kind, noteId: story.id };
 
 /** Private interaction-test bridge shared by both playgrounds. */
 export const buildCanonicalBridge = (
@@ -273,6 +285,45 @@ export const buildCanonicalBridge = (
   ) =>
     getRef()?.getEditor()?.resolveCanonicalRevisions(revisionIds, resolution) ??
     false,
+  /**
+   * Replace a secondary story's first paragraph through the public operation
+   * API, as a host's batch would, whatever editor has focus.
+   */
+  replaceStoryBlock: (story: Exclude<OpStory, "main">, text: string) => {
+    const editor = getRef()?.getEditor();
+    const projection = editor?.getCanonicalStoryProjection(story);
+    if (!editor || !projection) return null;
+    const snapshot = createFolioAIEditSnapshot(projection);
+    const block = snapshot.blocks.at(0);
+    if (!block) return null;
+    const result = editor.applyCanonicalDocumentOperations({
+      undefinedReferences: "refuse",
+      snapshot,
+      story: publicStoryOf(story),
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          { id: "story-edit", type: "replaceBlock", blockId: block.id, text },
+        ],
+      },
+    });
+    if (!result) return null;
+    lastStoryUndoHandle = result.undoHandle;
+    return {
+      applied: result.applied.length,
+      skipped: result.skipped.map(({ reason }) => reason),
+    };
+  },
+  /** Undo the last story edit `replaceStoryBlock` made. */
+  undoStoryBlock: () => {
+    const handle = lastStoryUndoHandle;
+    if (!handle) return null;
+    return (
+      getRef()?.getEditor()?.undoCanonicalDocumentOperations(handle)?.status ??
+      null
+    );
+  },
   /** Suggest replacing `find` with `replace` in a block, as a host's batch would. */
   suggestReplace: (
     id: string,
@@ -296,6 +347,35 @@ export const buildCanonicalBridge = (
       applied: result.applied.map(({ suggestionId }) => suggestionId ?? null),
       skipped: result.skipped.map(({ reason }) => reason),
     };
+  },
+  /** Propose a comment on a block as a suggestion of its own. */
+  suggestBlockComment: (id: string, blockId: string, text: string) => {
+    const ref = getRef();
+    const snapshot = ref?.createAIEditSnapshot();
+    if (!ref || !snapshot) return null;
+    const result = ref.applyDocumentOperations({
+      undefinedReferences: "refuse",
+      snapshot,
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [
+          { id, type: "commentOnBlock", blockId, comment: { text } },
+        ],
+      },
+    });
+    return {
+      applied: result.applied.map(({ suggestionId }) => suggestionId ?? null),
+      skipped: result.skipped.map(({ reason }) => reason),
+    };
+  },
+  /** Load a package in whichever session the page runs. */
+  loadAnySession: async (bytes: number[]) => {
+    const ref = getRef();
+    if (!ref) return false;
+    await ref.loadDocumentBuffer(new Uint8Array(bytes));
+    ref.ensureEditorView();
+    return true;
   },
   suggestionIds: () =>
     getRef()

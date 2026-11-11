@@ -55,6 +55,7 @@ import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "./relsParser";
 import { parseRun } from "./runParser";
 import { runHoldsPayload } from "./runPayload";
+import { tagSplitPiece } from "./splitRevisionPieces";
 import type { StyleMap } from "./styleParser";
 import {
   findChildren,
@@ -552,11 +553,14 @@ const parseLinkedInlineWrapper = (
       },
     },
   });
-  return inlineWrapperOf(
+  const wrapper = inlineWrapperOf(
     element,
     node,
     withPreservedChildren(content, preserved, preservedInlineCapture),
   );
+  // A piece of a wrapper the serializer split around this link.
+  tagSplitPiece(node, wrapper);
+  return wrapper;
 };
 
 // ============================================================================

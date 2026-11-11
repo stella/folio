@@ -1,4 +1,5 @@
 import { panic } from "better-result";
+import { closeHistory } from "prosemirror-history";
 /**
  * Comment and Track Changes Commands
  *
@@ -15,11 +16,11 @@ import { TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
 
 import {
+  type LockedControlViolation,
   PARAGRAPH_MARK_CHANGE_KINDS,
   type ParagraphMarkChangeKind,
   REVIEW_CARRIERS,
 } from "@stll/docx-core/model";
-import type { LockedControlViolation } from "@stll/docx-core/model";
 import { paragraphMarkOutcome } from "@stll/docx-core/ops";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
@@ -34,6 +35,7 @@ import {
   moveTextBoxesPastNextParagraph,
 } from "../anchoredTextBoxes";
 import {
+  expectCommentMarkAttrs,
   expectFieldAttrs,
   expectParagraphAttrs,
   expectRunPropertyChangeMarkAttrs,
@@ -43,6 +45,7 @@ import {
   isCommentRangeBoundaryNode,
   readCommentRangeBoundaryAttrs,
 } from "../commentRangeBoundaryAttrs";
+import { retireThreadsResolvedAway } from "../commentRecords";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
@@ -191,6 +194,16 @@ export function removeCommentMark(commentId: number): Command {
 }
 
 type ResolveMode = "accept" | "reject";
+
+/**
+ * What every review resolution does before it is dispatched: it retires the
+ * comment threads it left without an anchor, and it is an undo step of its
+ * own, never merged into the edit it resolves.
+ */
+const finishResolution = (state: EditorState, tr: Transaction): void => {
+  retireThreadsResolvedAway(state, tr);
+  closeHistory(tr);
+};
 
 /**
  * Resolve a tracked change: accept or reject.
@@ -1080,6 +1093,7 @@ function resolveChangeUnguarded(
         }
       }
       normalizeKeptRangeBoundaries(tr, keptBoundaries);
+      finishResolution(state, tr);
       if (tr.steps.length > 0) {
         dispatch(tr);
       }
@@ -1925,6 +1939,7 @@ const resolveAllChanges =
         removedEndpointCount: result.removedEndpointCount,
         removedReferences: result.removedReferences,
       });
+    finishResolution(state, tr);
     dispatch(tr);
     return true;
   };
@@ -2209,6 +2224,58 @@ const isSuggestionMark = (mark: Mark): boolean =>
   mark.attrs["provenance"] === "suggested" &&
   SUGGESTION_MARK_NAMES.has(mark.type.name);
 
+/**
+ * The suggestion a comment mark belongs to: a comment a suggestion proposed
+ * is pending with it, never saved, accepted and rejected with it.
+ */
+const suggestedCommentOf = (mark: Mark): string | null => {
+  if (mark.type.name !== "comment") return null;
+  const suggestionId = mark.attrs["suggestionId"];
+  return typeof suggestionId === "string" && suggestionId.length > 0
+    ? suggestionId
+    : null;
+};
+
+/** The ids of the comments a pending suggestion proposes. */
+export function suggestionCommentIds(
+  state: EditorState,
+  suggestionId: string,
+): number[] {
+  return [...(collectSuggestions(state).get(suggestionId)?.commentIds ?? [])];
+}
+
+/**
+ * Remove the comment marks of the suggestions `matches` selects, or, with
+ * `keep`, clear their suggestion so they stay as ordinary comments. Mark
+ * steps do not shift positions.
+ */
+const resolveSuggestedCommentMarks = (
+  tr: Transaction,
+  matches: (suggestionId: string) => boolean,
+  keep: boolean,
+): boolean => {
+  const found: { from: number; to: number; mark: Mark }[] = [];
+  tr.doc.descendants((node, pos) => {
+    if (!node.isInline) return undefined;
+    for (const mark of node.marks) {
+      const suggestionId = suggestedCommentOf(mark);
+      if (suggestionId !== null && matches(suggestionId))
+        found.push({ from: pos, to: pos + node.nodeSize, mark });
+    }
+    return undefined;
+  });
+  for (const { from, to, mark } of found) {
+    tr.removeMark(from, to, mark);
+    if (keep)
+      tr.addMark(
+        from,
+        to,
+        mark.type.create({ ...mark.attrs, suggestionId: null }),
+      );
+  }
+  return found.length > 0;
+};
+
 export type SuggestionKind =
   | "insertion"
   | "deletion"
@@ -2218,14 +2285,16 @@ export type SuggestionKind =
   | "insertRow"
   | "deleteRow"
   | "insertColumn"
-  | "deleteColumn";
+  | "deleteColumn"
+  | "comment";
 
 /**
  * How a suggestion is applied when accepted:
  * - `"tracked"` — converts to a normal OOXML tracked change (`w:ins`/`w:del`,
  *   paragraph-mark `w:ins`, row/cell `w:ins`/`w:del`);
  * - `"direct"` — no OOXML tracked representation exists (a whole inserted
- *   table), so accepting applies it directly;
+ *   table), so accepting applies it directly; a suggestion that only
+ *   proposes a comment is accepted as an ordinary comment;
  * - `"mixed"` — a heterogeneous group (one `suggestionId` spanning a whole
  *   inserted table AND other edits) whose parts apply both ways. Accept still
  *   resolves the whole group in one transaction; this flag lets the host
@@ -2385,6 +2454,8 @@ type SuggestionAccumulator = {
   segments: { from: number; to: number }[];
   kinds: Set<SuggestionKind>;
   revisionIds: Set<number>;
+  /** The comments the suggestion proposes. */
+  commentIds: Set<number>;
 };
 
 const collectSuggestions = (
@@ -2401,6 +2472,7 @@ const collectSuggestions = (
       segments: [],
       kinds: new Set<SuggestionKind>(),
       revisionIds: new Set<number>(),
+      commentIds: new Set<number>(),
     };
     bySuggestion.set(suggestionId, created);
     return created;
@@ -2440,6 +2512,14 @@ const collectSuggestions = (
       return undefined;
     }
     for (const mark of node.marks) {
+      const commentSuggestion = suggestedCommentOf(mark);
+      if (commentSuggestion !== null) {
+        const entry = entryFor(commentSuggestion);
+        entry.segments.push({ from: pos, to: pos + node.nodeSize });
+        entry.kinds.add("comment");
+        entry.commentIds.add(expectCommentMarkAttrs(mark).commentId);
+        continue;
+      }
       if (!isSuggestionMark(mark)) {
         continue;
       }
@@ -2473,10 +2553,16 @@ const collectSuggestions = (
 const suggestionAppliedAs = (
   kinds: ReadonlySet<SuggestionKind>,
 ): SuggestionAppliedAs => {
+  // A proposed comment becomes an ordinary comment either way; it decides
+  // nothing unless it is all the suggestion holds.
+  const changes = [...kinds].filter((kind) => kind !== "comment");
+  if (changes.length === 0) {
+    return "direct";
+  }
   if (!kinds.has("insertTable")) {
     return "tracked";
   }
-  const hasOtherKind = [...kinds].some((kind) => kind !== "insertTable");
+  const hasOtherKind = changes.some((kind) => kind !== "insertTable");
   return hasOtherKind ? "mixed" : "direct";
 };
 
@@ -2509,6 +2595,7 @@ const SUGGESTION_KIND_ORDER: readonly SuggestionKind[] = [
   "deleteRow",
   "insertColumn",
   "deleteColumn",
+  "comment",
 ];
 
 /**
@@ -3409,11 +3496,16 @@ const acceptSuggestions = (
     ) {
       return false;
     }
+    // A proposed comment stays as an ordinary comment.
+    if (resolveSuggestedCommentMarks(tr, matchesSuggestion, true)) {
+      changed = true;
+    }
 
     if (!changed) {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, tr);
       dispatch(tr);
     }
     return true;
@@ -3518,11 +3610,14 @@ export function rejectSuggestion(suggestionId: string): Command {
     ) {
       return false;
     }
+    // A proposed comment goes with its suggestion.
+    resolveSuggestedCommentMarks(workingTr, (id) => id === suggestionId, false);
 
     if (workingTr.steps.length === 0) {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, workingTr);
       dispatch(workingTr);
     }
     return true;
@@ -3593,11 +3688,13 @@ export function rejectAllSuggestions(): Command {
     ) {
       return false;
     }
+    resolveSuggestedCommentMarks(workingTr, () => true, false);
 
     if (workingTr.steps.length === 0) {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, workingTr);
       dispatch(workingTr);
     }
     return true;

@@ -25,7 +25,6 @@ export const CANONICAL_GAP = {
   publicPendingParagraphMarkProperties:
     "publicOps.pendingParagraphMarkProperties",
   publicHeadlessSession: "publicOps.headlessSession",
-  publicSecondaryStories: "publicOps.secondaryStories",
 } as const;
 
 export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
@@ -51,19 +50,31 @@ export const CANONICAL_RULE_MESSAGE_KEYS: {
 } as const satisfies Record<CanonicalRule, string>;
 
 /**
- * What a host shows for a refusal: the editor's own message for a rule the
- * document states, which a host translates, and the session's for a gap.
+ * The editor message, in the folio catalog, a host shows for a refusal under
+ * any gap: the change cannot be made here yet.
+ */
+export const CANONICAL_GAP_MESSAGE_KEY = "editor.changeUnavailable" as const;
+
+/** A catalog key a refusal notice reads. */
+export type CanonicalRefusalMessageKey =
+  | (typeof CANONICAL_RULE_MESSAGE_KEYS)[CanonicalRule]
+  | typeof CANONICAL_GAP_MESSAGE_KEY;
+
+/**
+ * What a host shows for a refusal, always from the folio catalog, which the
+ * host translates: the editor's own message for a rule the document states,
+ * and that the change cannot be made here yet for a gap. The session's own
+ * message describes the refusal for logs and `onError`, never for the user.
  */
 export const canonicalRefusalNotice = (
   ground: CanonicalRefusalGround,
-  message: string,
-  translate: (
-    key: (typeof CANONICAL_RULE_MESSAGE_KEYS)[CanonicalRule],
-  ) => string,
+  translate: (key: CanonicalRefusalMessageKey) => string,
 ): string =>
-  ground.rule === undefined
-    ? message
-    : translate(CANONICAL_RULE_MESSAGE_KEYS[ground.rule]);
+  translate(
+    ground.rule === undefined
+      ? CANONICAL_GAP_MESSAGE_KEY
+      : CANONICAL_RULE_MESSAGE_KEYS[ground.rule],
+  );
 
 /**
  * The ground for a refusal: a capability the session does not have yet, or a
@@ -227,13 +238,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.";
-  };
-  readonly "publicOps.secondaryStories": {
-    readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public secondary-story batches refuse until canonical story routing is available.";
   };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
@@ -400,14 +404,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.",
-  },
-  [CANONICAL_GAP.publicSecondaryStories]: {
-    owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Public secondary-story batches refuse until canonical story routing is available.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",

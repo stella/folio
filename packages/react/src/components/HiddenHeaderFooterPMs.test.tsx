@@ -36,6 +36,9 @@ const persistentHeaderDocument = {
   },
 } satisfies Document;
 
+// Outside a canonical session there is no session document to read.
+const readNoCanonicalDocument = () => null;
+
 test("persistent header/footer views refuse edits through read-only switches", async () => {
   const ownsDom = typeof document === "undefined";
   if (ownsDom) GlobalRegistrator.register();
@@ -48,7 +51,11 @@ test("persistent header/footer views refuse edits through read-only switches", a
   try {
     await act(async () =>
       root.render(
-        <HiddenHeaderFooterPMs ref={ref} document={persistentHeaderDocument} />,
+        <HiddenHeaderFooterPMs
+          ref={ref}
+          document={persistentHeaderDocument}
+          readCanonicalDocument={readNoCanonicalDocument}
+        />,
       ),
     );
     const view = ref.current?.getView("rIdH");
@@ -60,6 +67,7 @@ test("persistent header/footer views refuse edits through read-only switches", a
           <HiddenHeaderFooterPMs
             ref={ref}
             document={persistentHeaderDocument}
+            readCanonicalDocument={readNoCanonicalDocument}
             readOnly={readOnly}
           />,
         ),

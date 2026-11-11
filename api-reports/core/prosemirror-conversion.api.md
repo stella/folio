@@ -4,9 +4,12 @@
 
 ```ts
 
+import { Attrs } from 'prosemirror-model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { ImportedIdCollisionKind } from '@stll/docx-core/model';
+import { Mark } from 'prosemirror-model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { OutlineLevel } from '@stll/docx-core/model';
 import { ParseWarningCode } from '@stll/docx-core/model';
 
 // @public (undocumented)
@@ -56,6 +59,8 @@ export type ToProseDocOptions = {
     numbering?: import__stll_docx_core_model.NumberingDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
     warn?: ParseContext["warn"];
+    blockCache?: ProjectionBlockCache;
+    textBoxGroupSalt?: string;
 };
 
 // @public

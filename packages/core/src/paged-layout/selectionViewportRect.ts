@@ -21,6 +21,13 @@ export const FOLIO_SELECTION_RECT_ATTRIBUTE = "data-folio-selection-rect";
 export const FOLIO_CARET_RECT_ATTRIBUTE = "data-folio-caret-rect";
 
 /**
+ * Attribute the paged editor sets on its selection overlay while typed
+ * content lays out again: the caret the overlay still holds stands where the
+ * text was, so it is hidden, and it does not anchor anything.
+ */
+export const FOLIO_INPUT_HIDDEN_ATTRIBUTE = "data-folio-input-hidden";
+
+/**
  * Union bounding rect (client coordinates) of the painted selection
  * highlights mirroring `view`'s selection. Returns null for a collapsed
  * selection or while the overlay has not painted yet — the selection
@@ -78,7 +85,7 @@ export const getFolioCaretViewportRect = (view: EditorView): DOMRect | null => {
   const caret = scrollContainer.querySelector<HTMLElement>(
     `[${FOLIO_CARET_RECT_ATTRIBUTE}]`,
   );
-  if (!caret) {
+  if (!caret || caret.closest(`[${FOLIO_INPUT_HIDDEN_ATTRIBUTE}]`)) {
     return null;
   }
   const rect = caret.getBoundingClientRect();

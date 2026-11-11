@@ -1,6 +1,6 @@
 /** Zero-width `w:commentReference`: where a comment's visible mark is painted. */
 
-import { Plugin } from "prosemirror-state";
+import { Plugin, TextSelection } from "prosemirror-state";
 
 import { readCommentReferenceAttrs } from "../../commentReferenceAttrs";
 import {
@@ -79,6 +79,17 @@ export const CommentReferenceExtension: (
           if (!resolution) return null;
           const transaction = newState.tr;
           for (const step of resolution.steps) transaction.step(step);
+          // A reference put back at the end of its comment's text stays after
+          // the caret there, so what is typed next still joins the comment.
+          const { selection } = newState;
+          if (selection instanceof TextSelection && selection.empty) {
+            transaction.setSelection(
+              TextSelection.create(
+                transaction.doc,
+                transaction.mapping.map(selection.head, -1),
+              ),
+            );
+          }
           return transaction;
         },
       }),

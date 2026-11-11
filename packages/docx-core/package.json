@@ -1,6 +1,6 @@
 {
   "name": "@stll/docx-core",
-  "version": "0.42.1",
+  "version": "0.43.1",
   "description": "Typed OOXML/DOCX model, validation, serialization, legal-source compilation, and browser-native package projection.",
   "keywords": [
     "document-model",
@@ -56,7 +56,6 @@
     "prepack": "bun run build"
   },
   "dependencies": {
-    "@stll/docx-utils": "^0.2.0",
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1",
     "marked": "^18.1.2"

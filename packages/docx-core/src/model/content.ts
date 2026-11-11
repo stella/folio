@@ -1545,6 +1545,12 @@ export type Comment = {
   /** Whether the comment is resolved/done */
   done?: boolean;
   /**
+   * The pending suggestion that proposed this comment. In memory only, never
+   * written to a file: a save leaves a proposed comment out, accepting its
+   * suggestion clears this, and rejecting it removes the comment.
+   */
+  suggestionId?: string;
+  /**
    * Body markup `content` cannot hold: a table, an equation, a content
    * control, a bookmark or range marker, a tracked-change wrapper. The
    * schema lets a comment body hold everything a document body can, and a
@@ -1720,6 +1726,16 @@ type TrackedResolutionJoins = {
   /** Source identities handed to the retained suffix when a deleted prefix goes. */
   retainedAfter?: readonly {
     depth: number;
+    source: readonly { space: "revision" | "control"; id: number }[];
+    target: readonly { space: "revision" | "control"; id: number }[];
+  }[];
+  /**
+   * Identities of the record `levels` above this wrapper, handed to the
+   * piece of it that an edit cut off after this wrapper, when removing this
+   * wrapper leaves that record empty. Saved as its own ignorable attribute.
+   */
+  retainedEnclosing?: readonly {
+    levels: number;
     source: readonly { space: "revision" | "control"; id: number }[];
     target: readonly { space: "revision" | "control"; id: number }[];
   }[];
@@ -2373,6 +2389,14 @@ export type ParagraphMarkChange = {
   info: TrackedChangeInfo;
   /** Exact source-cut depth for rejection; absent in ordinary imported revisions. */
   resolutionJoin?: number | undefined;
+  /**
+   * Which paragraph rejecting this inserted mark keeps: `"first"` when the
+   * paragraph after it took over the mark this one had, so this one is the
+   * paragraph that was there before. Saved as folio's own ignorable review
+   * provenance, so rejecting it after a reopen keeps the same paragraph; a
+   * reader that does not know it joins as any rejected mark does.
+   */
+  survivor?: "first" | undefined;
 };
 
 export const REVIEW_CARRIERS = {

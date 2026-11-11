@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Ši redagavimo sesija buvo perimta kitur.",
     "editor": {
       "accessibleName": "Dokumentų redaktorius",
+      "changeUnavailable": "Šio pakeitimo čia dar negalima atlikti.",
       "contentLocked": "Ši dokumento dalis užrakinta.",
       "editing": "Redagavimas",
       "editingDescription": "Redaguokite dokumentą tiesiogiai",
