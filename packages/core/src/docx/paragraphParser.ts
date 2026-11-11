@@ -110,6 +110,7 @@ import {
   preservedInlineCapture,
   preserveInlineChild,
   preserveRunChild,
+  withLooseFieldMarkupPreserved,
 } from "./preservedRunContent";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
@@ -1280,47 +1281,6 @@ const hasRunPayload = ({
   return textBoxDrawings.length > 0 || vmlTextBoxes.length > 0;
 };
 
-/**
- * A field character that belongs to no field, kept as the markup it was.
- *
- * `FieldCharContent` is half of a `ComplexField`: `convertField` reads it off
- * the assembled field, and one that reaches the editor's inline converter on
- * its own is dropped. So a `w:fldChar` whose field this paragraph never closed,
- * or one with no `begin` before it, loses the editor round trip — and the
- * orphan field has no owning `ComplexField` to hold its `w:ffData`, so dropping
- * this run would also lose its name, macros, help text and checkbox state.
- *
- * `preservedXml` is the run's own capture member: the editor carries it as an
- * opaque atom and the serializer replays the source bytes, `w:ffData` included.
- * The two lists line up because `parseRunContents` walks the source children in
- * order, so the nth `w:fldChar` child is the nth `fieldChar` content.
- *
- * `w:instrText` is left alone. It is fully modelled and fully serialized; what
- * the editor does with an orphan is a separate question from what the container
- * contract asks here, and answering it with bytes would trade a model for one.
- */
-const withOrphanFieldCharsPreserved = (
-  run: Run,
-  runElement: XmlElement,
-): Run => {
-  const captured = getChildElements(runElement)
-    .filter((child) => getLocalName(child.name) === "fldChar")
-    .map(preserveRunChild);
-  if (captured.length === 0) {
-    return run;
-  }
-  let next = 0;
-  const content = run.content.map((item) => {
-    if (item.type !== "fieldChar") {
-      return item;
-    }
-    const replacement = captured[next];
-    next += 1;
-    return replacement ?? item;
-  });
-  return { ...run, content };
-};
-
 const LEGACY_FORM_CHECKBOX_GLYPHS = {
   checked: "☒",
   unchecked: "☐",
@@ -1947,7 +1907,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
 
     if (scan.inComplexField) {
       scan.complexFieldOpenRuns.push(
-        withOrphanFieldCharsPreserved(run, runElement),
+        withLooseFieldMarkupPreserved(run, runElement),
       );
       // A comment reference inside a field run is also an item beside the
       // field, so the run's markup would write it a second time.
@@ -2035,7 +1995,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
         else if (isNestedField)
           // The nested field's own characters are source markup the result
           // carries, not structure the editor models.
-          resultRun = withOrphanFieldCharsPreserved(run, runElement);
+          resultRun = withLooseFieldMarkupPreserved(run, runElement);
         scan.complexFieldResultRuns.push(resultRun);
       }
 
@@ -2119,7 +2079,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       // empty run here does not survive re-parsing and breaks round-trip
       // idempotence. Keep the run only when it also carries real content.
       if (runHoldsPayload(run)) {
-        contents.push(withOrphanFieldCharsPreserved(run, runElement));
+        contents.push(withLooseFieldMarkupPreserved(run, runElement));
       }
       contents.push({
         type: "commentReference",
@@ -2146,7 +2106,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       // with no `begin` before it lands here, and it is field structure
       // with no field: the same capture keeps it.
       if (hasRunPayload({ run, runElement, rels, media })) {
-        const kept = withOrphanFieldCharsPreserved(run, runElement);
+        const kept = withLooseFieldMarkupPreserved(run, runElement);
         if (
           isTabOnlyRun(kept) &&
           trackedContext !== "deletion" &&
