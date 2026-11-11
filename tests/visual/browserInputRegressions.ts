@@ -1015,6 +1015,22 @@ export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+/** A table pasted where everything around a field, a link and a bookmark was deleted. */
+export const CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11 = {
+  authority: "canonical",
+  seed: 11,
+  path: "2:3:2:2:2",
+  fingerprint: "234f75ae8b2de9d4",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [
+      { kind: "selectAll" },
+      { kind: "delete" },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -1057,4 +1073,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_TYPING_OVER_EVERYTHING,
   CANONICAL_TYPING_OVER_CELLS,
   BROWSER_NOTES_LIST_PASTE_SEED_29,
+  CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11,
 ];
