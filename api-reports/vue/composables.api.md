@@ -42,6 +42,7 @@ import { NoteStoryKey } from '@stll/folio-core/controller/noteEditorManager';
 import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRenderer';
 import { ParsedClipboardContent } from '@stll/folio-core/utils/clipboard';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
+import { ReadonlyDocument } from '@stll/folio-core/types/documentModel';
 import { Ref } from 'vue';
 import { ReplaceAllSummary } from '@stll/folio-core/utils/findReplace';
 import { runsToClipboardContent } from '@stll/folio-core/utils/clipboard';
@@ -185,6 +186,7 @@ export type UseDocxEditorReturn = {
     parseError: Ref<string | null>;
     layout: Ref<Layout | null>;
     modelDocument: Readonly<Ref<Document_2 | null>>;
+    readDocumentModel: () => ReadonlyDocument | null;
     sourceBuffer: Readonly<Ref<ArrayBuffer | null>>;
     hiddenEditorWidth: Ref<number>;
     blocks: Ref<FlowBlock[]>;
