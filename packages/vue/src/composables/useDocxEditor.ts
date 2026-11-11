@@ -25,7 +25,7 @@ import type { EditorView } from "prosemirror-view";
  * `handleScrollToSelection: suppressHiddenEditorScrollToSelection` on the view,
  * so no local scroll-flag stripping is needed here.
  */
-import { onScopeDispose, ref, shallowRef, toRaw, toValue, watch } from "vue";
+import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
@@ -171,6 +171,8 @@ import {
 } from "@stll/folio-core/types/documentModel";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter";
+
+import { rawDocument } from "../utils/rawDocument";
 
 // ============================================================================
 // CONSTANTS (mirror React PagedEditor.tsx)
@@ -542,6 +544,12 @@ export type UseDocxEditorReturn = {
    * For a host that owns the result; derived state reads `modelDocument`.
    */
   getDocument: () => Document | null;
+  /**
+   * The current document for a reader, never copied: what `getDocument`
+   * copies. In a canonical session it is the session's own document, so it
+   * is read, never written or handed on.
+   */
+  readDocument: () => ReadonlyDocument | null;
   /** Publish a fresh Document object (e.g. after HF materialisation). */
   setDocument: (doc: Document) => void;
   /** Resolve a persistent header/footer EditorView by relationship id. */
@@ -656,8 +664,10 @@ export function useDocxEditor(
   // The model is never handed out: a host gets a copy it owns.
   const cloneForHost = (document: ReadonlyDocument) =>
     cloneDocumentWithParagraphPropertySources(document);
-  // Both change listeners are the host's, so they share one document.
-  const notifyHosts = (forHosts: Document) => {
+  // A settled change hands the host one copy of the model, in both sessions;
+  // both change listeners are the host's, so they share it.
+  const notifyHosts = (model: ReadonlyDocument) => {
+    const forHosts = cloneForHost(model);
     onChange?.(forHosts);
     emitter.emit("docChange", forHosts);
   };
@@ -811,15 +821,14 @@ export function useDocxEditor(
         isDirty.value = true;
         const current = docModel.value;
         if (current) {
-          const canonical = manager.readCanonicalDocument();
-          const updated =
-            canonical ??
+          docModel.value =
+            manager.readCanonicalDocument() ??
             noteEditorManagerHolder.current?.snapshotDocument(
               readModel(current),
             ) ??
             current;
-          docModel.value = updated;
-          notifyHosts(cloneForHost(updated));
+          // The host hears of a note edit once it settles, as of a body edit.
+          scheduleNoteChangeNotification();
         }
         scheduler.schedule();
       }
@@ -996,13 +1005,32 @@ export function useDocxEditor(
         );
       docModel.value = updated;
       syncSecondaryStoryEditors();
-      // The session's own document is copied for the host. The default
-      // session built this document for the change from the editor state, so
-      // the host's listeners share it, as the model's next version.
-      notifyHosts(canonical ? cloneForHost(canonical) : updated);
+      cancelNoteChangeNotification();
+      notifyHosts(updated);
     } catch (err) {
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
+  }
+
+  // A note edit changes the model in place of a body build, so its settled
+  // notification only copies the model; a body notification due by then
+  // carries it instead.
+  let noteChangeTimer: number | null = null;
+
+  function cancelNoteChangeNotification(): void {
+    if (noteChangeTimer === null) return;
+    window.clearTimeout(noteChangeTimer);
+    noteChangeTimer = null;
+  }
+
+  function scheduleNoteChangeNotification(): void {
+    cancelNoteChangeNotification();
+    noteChangeTimer = window.setTimeout(() => {
+      noteChangeTimer = null;
+      if (docChangeTimer !== null) return;
+      const model = docModel.value;
+      if (model) notifyHosts(model);
+    }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
   }
 
   function scheduleDocumentChangeNotification(): void {
@@ -1414,9 +1442,9 @@ export function useDocxEditor(
 
   function loadDocument(doc: Document): void {
     parseError.value = null;
-    // A host's document may be a reactive proxy; the model is its raw object,
-    // which the copies the host is handed can clone.
-    docModel.value = toRaw(doc);
+    // A host's document may hold reactive proxies; the model is its raw
+    // data, which the copies the host is handed can clone.
+    docModel.value = rawDocument(doc);
     noteFollower.reset();
     remountForNewDocument();
   }
@@ -1599,18 +1627,21 @@ export function useDocxEditor(
     });
   }
 
-  function getDocument(): Document | null {
-    const canonical = manager.api.getCanonicalDocument();
+  function readDocument(): ReadonlyDocument | null {
+    const canonical = manager.readCanonicalDocument();
     if (canonical) return canonical;
     if (isCanonicalSession()) return null;
     const document = readDocModel();
     if (!document) return null;
     const live = manager.api.getDocument() ?? document;
-    return cloneForHost(
-      noteEditorManager.snapshotDocument(
-        headerFooterManager.snapshotDocument(live),
-      ),
+    return noteEditorManager.snapshotDocument(
+      headerFooterManager.snapshotDocument(live),
     );
+  }
+
+  function getDocument(): Document | null {
+    const document = readDocument();
+    return document && cloneForHost(document);
   }
 
   function setDocument(doc: Document): void {
@@ -1622,7 +1653,7 @@ export function useDocxEditor(
     ) {
       return;
     }
-    docModel.value = toRaw(doc);
+    docModel.value = rawDocument(doc);
     sourceBuffer.value = doc.originalBuffer ?? null;
     syncSecondaryStoryEditors();
     if (
@@ -1700,6 +1731,7 @@ export function useDocxEditor(
       window.clearTimeout(docChangeTimer);
       docChangeTimer = null;
     }
+    cancelNoteChangeNotification();
     manager.destroyView();
     remoteSelections.value = [];
     headerFooterManager.destroy();
@@ -1744,6 +1776,7 @@ export function useDocxEditor(
     loadDocument,
     save,
     getDocument,
+    readDocument,
     setDocument,
     getHeaderFooterView,
     syncHeaderFooterViews,
