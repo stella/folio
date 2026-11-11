@@ -82,36 +82,6 @@ const suggestedInsertOf = (
     : null;
 };
 
-/** The inserted paragraph mark that records a suggested paragraph's break. */
-const suggestedBreakMark = (
-  suggested: SuggestedStructuralMarker & { suggestionId: string },
-): SuggestedParagraphBreak => ({
-  kind: "ins",
-  info: {
-    id: suggested.revisionId,
-    author: suggested.author,
-    ...(suggested.date == null ? {} : { date: suggested.date }),
-    ...(typeof suggested.initials === "string"
-      ? { initials: suggested.initials }
-      : {}),
-    provenance: "suggested",
-    suggestionId: suggested.suggestionId,
-  },
-});
-
-/** A suggested paragraph's break, written as an inserted paragraph mark. */
-export type SuggestedParagraphBreak = {
-  kind: "ins";
-  info: {
-    id: number;
-    author: string;
-    date?: string;
-    initials?: string;
-    provenance: "suggested";
-    suggestionId: string;
-  };
-};
-
 /**
  * Whether the joined paragraph is still all one suggestion's insertion: only
  * when both paragraphs were. A paragraph that held other words is not, so it
@@ -124,41 +94,6 @@ const stillWhollySuggested = ({ paragraph, next }: JoinSides): boolean => {
   return (
     left !== null && right !== null && left.suggestionId === right.suggestionId
   );
-};
-
-/**
- * The suggested paragraph breaks a join leaves with no mark to stand on.
- *
- * A wholly suggested paragraph's break is its own mark while that mark is
- * free. Where another revision's mark stands there (the break of a paragraph
- * inserted after it, or a deleted break it took over), the suggestion's break
- * is the free mark before it, which is where accepting the suggestion writes
- * it. A join that leaves the paragraph holding other words ends its
- * whole-paragraph marker, so such a break must then be written there: the
- * joined paragraph's mark is another revision's (the next side's own), or is
- * gone (the side whose mark the join removes). The next side's break with a
- * free mark is not among them: the joined mark records it (`pPrMark` above).
- */
-export const suggestedBreaksAJoinDisplaces = (
-  paragraph: PMNode,
-  next: PMNode,
-): SuggestedParagraphBreak[] => {
-  if (stillWhollySuggested({ paragraph, next, between: 0 })) return [];
-  const displaced: SuggestedParagraphBreak[] = [];
-  for (const side of [paragraph, next]) {
-    const suggested = suggestedInsertOf(side);
-    const own: unknown = side.attrs["pPrMark"];
-    if (suggested === null || own == null) continue;
-    const info: unknown =
-      typeof own === "object" && "info" in own ? own.info : null;
-    const ownSuggestion =
-      typeof info === "object" &&
-      info !== null &&
-      "suggestionId" in info &&
-      info.suggestionId === suggested.suggestionId;
-    if (!ownSuggestion) displaced.push(suggestedBreakMark(suggested));
-  }
-  return displaced;
 };
 
 /**
@@ -273,7 +208,21 @@ const JOINED_PARAGRAPH_ATTRS = {
     const own: unknown = sides.next.attrs["pPrMark"];
     if (own != null || stillWhollySuggested(sides)) return own;
     const suggested = suggestedInsertOf(sides.next);
-    return suggested === null ? own : suggestedBreakMark(suggested);
+    return suggested === null
+      ? own
+      : {
+          kind: "ins",
+          info: {
+            id: suggested.revisionId,
+            author: suggested.author,
+            ...(suggested.date == null ? {} : { date: suggested.date }),
+            ...(typeof suggested.initials === "string"
+              ? { initials: suggested.initials }
+              : {}),
+            provenance: "suggested",
+            suggestionId: suggested.suggestionId,
+          },
+        };
   },
   _suggestedInsert: (sides) =>
     stillWhollySuggested(sides) ? sides.next.attrs["_suggestedInsert"] : null,

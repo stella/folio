@@ -196,11 +196,12 @@ test("a suggested paragraph whose mark another revision holds leaves with its su
       .map(({ id }) => id);
     for (const first of [null, ...changes]) {
       const reviewer = await applyBatches(bytes, batches);
+      let rejected = true;
       if (first === null) {
         for (const id of suggestions)
-          expect(reviewer.rejectSuggestion(id)).toBe(true);
+          rejected = reviewer.rejectSuggestion(id) && rejected;
       } else {
-        expect(reviewer.rejectChange(first)).toBe(true);
+        rejected = reviewer.rejectChange(first);
         for (const id of suggestions) reviewer.rejectSuggestion(id);
       }
       for (const change of reviewer.getChanges().toReversed())
@@ -208,8 +209,9 @@ test("a suggested paragraph whose mark another revision holds leaves with its su
       reviewer.rejectAll();
       expect({
         first,
+        rejected,
         texts: await textsOf(await reviewer.toBuffer()),
-      }).toEqual({ first, texts: SOURCE_TEXTS });
+      }).toEqual({ first, rejected: true, texts: SOURCE_TEXTS });
     }
   }
 });

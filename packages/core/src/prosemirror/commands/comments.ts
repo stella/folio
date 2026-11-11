@@ -81,11 +81,7 @@ import {
   lockedControlViolationOfTransform,
 } from "../lockedControls";
 import { resolveStateStory } from "../markupViewProjection";
-import {
-  joinAtParagraphMark,
-  suggestedBreaksAJoinDisplaces,
-  type SuggestedParagraphBreak,
-} from "../paragraphMarkJoin";
+import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -818,7 +814,7 @@ function resolveChangeUnguarded(
       const joinedParagraphs: {
         position: number;
         step: number;
-        displaced: SuggestedParagraphBreak[];
+        displaced: AddedParagraphMark[];
       }[] = [];
       for (const op of pPrMarkOps) {
         const mappedPos = tr.mapping.map(op.paragraphPos);
@@ -3231,6 +3227,71 @@ const shiftAddedParagraphBreakBefore = ({
   return false;
 };
 
+/** A wholly suggested paragraph's break, as the inserted mark that records it. */
+const suggestedParagraphBreakOf = (
+  paragraph: PMNode,
+): AddedParagraphMark | null => {
+  const structural = readStructuralSuggestion(paragraph);
+  if (structural?.kind !== "insertBlock") return null;
+  const marker = paragraph.attrs["_suggestedInsert"] as {
+    author?: unknown;
+    date?: unknown;
+    initials?: unknown;
+  };
+  return {
+    kind: "ins",
+    info: {
+      id: structural.revisionId,
+      author: marker.author,
+      ...(typeof marker.date === "string" ? { date: marker.date } : {}),
+      ...(typeof marker.initials === "string"
+        ? { initials: marker.initials }
+        : {}),
+      provenance: "suggested",
+      suggestionId: structural.suggestionId,
+    },
+  };
+};
+
+/**
+ * The suggested paragraph breaks a join of `paragraph` into `next` leaves
+ * with no mark to stand on.
+ *
+ * A wholly suggested paragraph's break is its own mark while that mark is
+ * free. Where another revision's mark stands there (the break of a paragraph
+ * inserted after it, or a deleted break it took over), the suggestion's break
+ * is the free mark before it, which is where accepting the suggestion writes
+ * it. A join that leaves the paragraph holding other words ends its
+ * whole-paragraph marker, so such a break must then be written there: the
+ * joined paragraph's mark is another revision's (the next side's own), or is
+ * gone (the side whose mark the join removes). The next side's break with a
+ * free mark is not among them: the joined mark records it (`joinedParagraphAttrs`).
+ */
+const suggestedBreaksAJoinDisplaces = (
+  paragraph: PMNode,
+  next: PMNode,
+): AddedParagraphMark[] => {
+  const left = readStructuralSuggestion(paragraph);
+  const right = readStructuralSuggestion(next);
+  if (
+    left?.kind === "insertBlock" &&
+    right?.kind === "insertBlock" &&
+    left.suggestionId === right.suggestionId
+  )
+    return [];
+  const displaced: AddedParagraphMark[] = [];
+  for (const side of [paragraph, next]) {
+    const suggested = suggestedParagraphBreakOf(side);
+    if (suggested === null || side.attrs["pPrMark"] == null) continue;
+    if (
+      readSuggestedParagraphMark(side)?.suggestionId !==
+      suggested.info.suggestionId
+    )
+      displaced.push(suggested);
+  }
+  return displaced;
+};
+
 /** The paragraph a join left at `position`, once `step` and every later step ran. */
 const joinedParagraphAt = (
   tr: Transaction,
@@ -3262,7 +3323,7 @@ const placeSuggestedBreaksOfJoins = (
   joins: readonly {
     position: number;
     step: number;
-    displaced: readonly SuggestedParagraphBreak[];
+    displaced: readonly AddedParagraphMark[];
   }[],
 ): boolean => {
   for (const { position: joinedAt, step, displaced } of joins) {
