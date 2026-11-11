@@ -3,20 +3,22 @@
  * the floating add-comment button that tracks a non-empty selection, the pending
  * comment highlight while the input is open, and submit / cancel. Mirrors the
  * React adapter's floatingCommentBtn + onAddComment / onCancelAddComment, built
- * on the shared comment-mark helpers (commentMarks.ts) and core's id allocator
- * (via the injected `createComment`).
+ * on core's comment records (the highlight and the thread commit) and its id
+ * allocator (via the injected `createComment`).
  */
 
 import type { EditorView } from "prosemirror-view";
 import { type Ref, ref } from "vue";
 
-import { PENDING_COMMENT_ID } from "@stll/folio-core/prosemirror/commentIdAllocator";
+import {
+  clearPendingComment,
+  commitCommentThread,
+  markPendingComment,
+} from "@stll/folio-core/prosemirror/commentRecords";
 import type { Comment } from "@stll/folio-core/types/content";
 
 import {
-  applyCommentMarkRange,
   type CommentMarkRange,
-  removePendingCommentMarkRange,
   resolveCommentCreationRange,
 } from "./commentMarks";
 
@@ -40,8 +42,6 @@ export type UseCommentLifecycleOptions = {
   readOnly: Ref<boolean>;
   /** Build a comment with a freshly-allocated id (from useCommentManagement). */
   createComment: (text: string, parentId?: number) => Comment;
-  /** Append a comment + emit the change (from useCommentManagement). */
-  pushComment: (comment: Comment) => void;
   /** The session kind controls whether draft highlights belong in ProseMirror. */
   sessionKind: () => "canonical" | "prosemirror";
   /** Null selects the legacy comment-mark route; false means canonical refusal. */
@@ -145,9 +145,7 @@ export function useCommentLifecycle(
     }
     if (
       options.sessionKind() === "prosemirror" &&
-      !applyCommentMarkRange(view, safeRange, PENDING_COMMENT_ID, {
-        selectEnd: true,
-      })
+      !markPendingComment(view, safeRange, { selectEnd: true })
     ) {
       floatingCommentButton.value = null;
       commentSelectionRange.value = null;
@@ -181,13 +179,11 @@ export function useCommentLifecycle(
       return true;
     }
 
+    if (options.readOnly.value) return false;
     const comment = options.createComment(text);
-    if (
-      !applyCommentMarkRange(view, range, comment.id, { replacePending: true })
-    )
-      return false;
-
-    options.pushComment(comment);
+    // The highlight gives way to the thread's mark, and the thread joins the
+    // editor's records, as one undoable edit.
+    if (!commitCommentThread(view, range, comment)) return false;
     options.reLayout();
     options.setActiveSidebarItem(`comment-${comment.id}`);
     resetAddCommentState();
@@ -201,7 +197,7 @@ export function useCommentLifecycle(
       commentSelectionRange.value &&
       options.sessionKind() === "prosemirror"
     ) {
-      removePendingCommentMarkRange(view, commentSelectionRange.value);
+      clearPendingComment(view, commentSelectionRange.value);
     }
     resetAddCommentState();
   }

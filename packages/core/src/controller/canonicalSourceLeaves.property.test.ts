@@ -63,7 +63,7 @@ test(
               if (result.isErr())
                 expect(result.error).toMatchObject({
                   name: "CanonicalSessionError",
-                  gap: CANONICAL_GAP.dispatch,
+                  ground: { gap: CANONICAL_GAP.dispatch },
                   reason: "refused",
                   message:
                     "Canonical editing cannot preserve unstructured field instructions; a structured field is required.",

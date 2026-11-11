@@ -41,6 +41,7 @@ import {
   PINNED_BROWSER_INPUT_TAG,
 } from "./browserInputRegressions";
 import {
+  BROWSER_PARAGRAPH_DRAG_SHAPES,
   BROWSER_PASTE_PAYLOADS,
   BROWSER_SHAPE_TARGETS,
   type BrowserInputAction,
@@ -348,7 +349,18 @@ const paste = async (
   );
 };
 
-const drive = async (page: Page, action: BrowserInputAction) => {
+const PROVISIONAL_TEXT_AT_CARET =
+  "a composition shows its text in progress at the caret";
+
+/**
+ * Drives one action. With `readsProvisional`, a composition's text in
+ * progress must show where its caret was after every update.
+ */
+const drive = async (
+  page: Page,
+  action: BrowserInputAction,
+  { readsProvisional = false }: { readsProvisional?: boolean } = {},
+) => {
   switch (action.kind) {
     case "typing":
       await page.keyboard.type(action.text);
@@ -373,9 +385,27 @@ const drive = async (page: Page, action: BrowserInputAction) => {
     case "pasteMultiBlock":
       await paste(page, action);
       return;
-    case "imeReplacement":
-      await driveBrowserIme(page, action);
+    case "imeReplacement": {
+      const readings = await driveBrowserIme(page, action, {
+        readProvisional: readsProvisional,
+      });
+      // The browser may keep part of an earlier update beside the new one;
+      // the text around the caret stays as it was.
+      for (const { update, before, after, actual } of readings) {
+        const between =
+          actual !== null &&
+          actual.length >= before.length + after.length &&
+          actual.startsWith(before) &&
+          actual.endsWith(after)
+            ? actual.slice(before.length, actual.length - after.length)
+            : null;
+        expect(
+          between?.includes(update) ?? false,
+          `${PROVISIONAL_TEXT_AT_CARET}: ${JSON.stringify(update)} between ${JSON.stringify(before)} and ${JSON.stringify(after)}, shown ${JSON.stringify(actual)}`,
+        ).toBe(true);
+      }
       return;
+    }
     case "cut":
       await page.keyboard.press(`${MODIFIER}+x`);
       return;
@@ -401,6 +431,9 @@ const drive = async (page: Page, action: BrowserInputAction) => {
       // An earlier action can remove the target, in one mode and not the other.
       // Such a trace states no edit to compare.
       fc.pre(await selectTarget(page, action.target));
+      return;
+    case "selectAll":
+      await page.keyboard.press(`${MODIFIER}+a`);
       return;
     default: {
       const unreachable: never = action;
@@ -462,7 +495,7 @@ const driveWithAuthority = async ({
     selection: before.selection["type"] === "cell" ? "cells" : "other",
   });
   validateHarnessRefusalRows(rows);
-  await drive(page, action);
+  await drive(page, action, { readsProvisional: true });
   const after = await canonicalSnapshot(page);
   const errors = await drainCanonicalErrors(page);
   if (rows.length > 0) expect(errors.length).toBeGreaterThan(0);
@@ -682,6 +715,39 @@ const checkDefaultEditorTrace = async ({
   ).toEqual(baseline);
 };
 
+/** Both modes commit through the canonical session what the default editor commits. */
+const checkCommittedAsDefaultEditor = async ({
+  page,
+  source,
+  baseline,
+  trace,
+}: CanonicalTraceOptions) => {
+  for (const suggesting of [false, true]) {
+    const canonical = await runMode({
+      page,
+      source,
+      baseline,
+      trace,
+      suggesting,
+      authority: "canonical",
+    });
+    const viaDefault = await runMode({
+      page,
+      source,
+      baseline,
+      trace,
+      suggesting,
+      authority: "prosemirror",
+    });
+    if (canonical.type !== "ready" || viaDefault.type !== "ready")
+      throw new TypeError("Both editors must open the compared trace.");
+    expect(canonical.blocks).toEqual(viaDefault.blocks);
+    expect(canonical.changes.map(({ type, text }) => ({ type, text }))).toEqual(
+      viaDefault.changes.map(({ type, text }) => ({ type, text })),
+    );
+  }
+};
+
 const paintedTargetReplays = [
   {
     shape: "tables",
@@ -736,6 +802,13 @@ test.describe("pinned browser input", () => {
         const baseline = project(await FolioDocxReviewer.fromBuffer(source));
         if ("authority" in regression) {
           await checkCanonicalTrace({ page, source, baseline, trace });
+          if ("comparesWithDefaultEditor" in regression)
+            await checkCommittedAsDefaultEditor({
+              page,
+              source,
+              baseline,
+              trace,
+            });
           return;
         }
         await checkDefaultEditorTrace({ page, source, baseline, trace });
@@ -777,10 +850,25 @@ const browserDragShapes = Object.keys(BROWSER_SHAPE_TARGETS).filter(
   (shape): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
     isBrowserShape(shape) && BROWSER_SHAPE_TARGETS[shape] !== null,
 );
-for (const shape of browserDragShapes) {
-  const target = BROWSER_SHAPE_TARGETS[shape];
-  if (target === null)
-    throw new Error(`browser drag shape ${shape} has no target`);
+// A drag across paragraphs, in list, note and right-to-left paint.
+const paragraphDragShapes = [
+  "plain-markdown",
+  "single-decimal-list",
+  "notes",
+  "rtl-cjk",
+] as const satisfies readonly (keyof typeof BROWSER_SHAPE_TARGETS)[];
+const paintedDrags = [
+  ...browserDragShapes.map(
+    (dragShape) => [dragShape, BROWSER_SHAPE_TARGETS[dragShape]] as const,
+  ),
+  ...paragraphDragShapes.map((dragShape) => [dragShape, "paragraphs"] as const),
+];
+for (const [shape, target] of paintedDrags) {
+  if (
+    target === null ||
+    (target === "paragraphs" && !BROWSER_PARAGRAPH_DRAG_SHAPES.has(shape))
+  )
+    throw new Error(`browser drag shape ${shape} has no ${target} target`);
   for (const suggesting of [false, true]) {
     test(`painted ${target} drag in ${shape} after paste selects its planned range (${suggesting ? "suggesting" : "editing"})`, async ({
       page,

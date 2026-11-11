@@ -451,7 +451,15 @@ export type FolioAIEditSkippedOperation = {
 };
 
 // @public (undocumented)
-export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "staleRange" | "emptyOperation" |
+export type FolioAIEditSkipReason =
+/**
+* A content control's `w:lock` forbids the change: it reaches inside a
+* control whose content is locked (`contentLocked`, `sdtContentLocked`), or
+* removes one that may not be removed (`sdtLocked`, `sdtContentLocked`),
+* also by deleting the paragraph or text that holds it. Nothing was
+* applied; `message` names the lock.
+*/
+"contentControlLock" | "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "staleRange" | "emptyOperation" |
 /** The paragraph already owns the one `w:pPrChange` OOXML permits. */
 "pendingParagraphPropertyChange" |
 /** The affected run already owns the one `w:rPrChange` OOXML permits. */
@@ -937,6 +945,19 @@ export type FolioReviewedStory = {
 
 // @public (undocumented)
 export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
+
+// @public
+export type FolioReviewResolution = {
+    resolved: number;
+    skipped: FolioReviewResolutionSkip[];
+};
+
+// @public
+export type FolioReviewResolutionSkip = {
+    id: number;
+    reason: "contentControlLock";
+    message: string;
+};
 
 // @public
 export type FolioRevisionStamp = {

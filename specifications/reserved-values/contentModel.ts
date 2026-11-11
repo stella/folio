@@ -876,6 +876,7 @@ export const COMMENT_RESERVED = {
   annotationReferenceFormatting: NO_RESERVED_VALUE,
   parentId: NO_RESERVED_VALUE,
   done: NO_RESERVED_VALUE,
+  suggestionId: NO_RESERVED_VALUE,
   // Captured bytes, replayed as written. A reserved value is a spelling the
   // model interprets; this slot interprets nothing.
   preserved: NO_RESERVED_VALUE,
@@ -936,6 +937,8 @@ export const TRACKED_CHANGE_INFO_RESERVED = {
   date: NO_RESERVED_VALUE,
   initials: NO_RESERVED_VALUE,
   utcDate: NO_RESERVED_VALUE,
+  // In memory only: no OOXML attribute carries it.
+  suggestionId: NO_RESERVED_VALUE,
 } satisfies Record<keyof TrackedChangeInfo, ReservedValueDisposition>;
 
 export type ExhaustiveTrackedChangeInfoReserved = ExhaustiveFields<
@@ -963,6 +966,7 @@ export const PROPERTY_CHANGE_INFO_RESERVED = {
   date: NO_RESERVED_VALUE,
   initials: NO_RESERVED_VALUE,
   utcDate: NO_RESERVED_VALUE,
+  suggestionId: NO_RESERVED_VALUE,
 } satisfies Record<keyof PropertyChangeInfo, ReservedValueDisposition>;
 
 export type ExhaustivePropertyChangeInfoReserved = ExhaustiveFields<
@@ -1263,6 +1267,7 @@ export const PARAGRAPH_MARK_CHANGE_RESERVED = {
   kind: NO_RESERVED_VALUE,
   info: NO_RESERVED_VALUE,
   resolutionJoin: NO_RESERVED_VALUE,
+  survivor: NO_RESERVED_VALUE,
 } satisfies Record<keyof ParagraphMarkChange, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphMarkChangeReserved = ExhaustiveFields<

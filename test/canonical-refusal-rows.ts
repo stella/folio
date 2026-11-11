@@ -4,12 +4,18 @@ import {
   CANONICAL_CAPABILITIES,
   CANONICAL_GAP,
 } from "../packages/core/src/types/canonicalCapabilities";
-import type { CanonicalGap } from "../packages/core/src/types/canonicalCapabilities";
+import type {
+  CanonicalGap,
+  CanonicalRule,
+} from "../packages/core/src/types/canonicalCapabilities";
 import type { Document } from "../packages/core/src/types/document";
 import type { BrowserInputAction } from "../tests/visual/browserInputTrace";
 
 export type HarnessRefusal = {
-  gap: CanonicalGap;
+  /** The ledger gap, absent for a rule refusal, which no row declares. */
+  gap: CanonicalGap | undefined;
+  /** The document rule, present only for a rule refusal. */
+  rule?: CanonicalRule;
   message: string;
   expectation: "declared" | "unexpected";
   row?: string;
@@ -74,32 +80,16 @@ const clipboardTableRows: readonly HarnessRefusalRow[] = [
   },
 ];
 
-const selectedCellPasteRow: HarnessRefusalRow = {
-  id: "selected-cells-paste",
-  gap: CANONICAL_GAP.dispatch,
-  message: "Pasting over selected cells requires a per-cell paste operation.",
-};
-
 /**
- * Text input over a cell selection needs a per-cell operation the session does
- * not have yet. Each of these leaves the document as it was, and deleting
- * selected cells is supported, so it stays strict.
+ * Input over a cell selection other than typing and deletion needs a per-cell
+ * operation the session does not have yet. Each of these leaves the document
+ * as it was.
  */
 const SELECTED_CELL_REFUSALS = {
-  typing: [
-    {
-      id: "selected-cells-typing",
-      gap: CANONICAL_GAP.dispatch,
-      message: "Unclassified native text is unavailable in this session.",
-    },
-  ],
-  enter: [
-    {
-      id: "selected-cells-enter",
-      gap: CANONICAL_GAP.dispatch,
-      message: "The input is outside a plain paragraph.",
-    },
-  ],
+  // Typing clears every selected cell and writes into the first.
+  typing: [],
+  // Enter clears every selected cell and breaks the first one's paragraph.
+  enter: [],
   imeReplacement: [
     {
       id: "selected-cells-composition",
@@ -114,11 +104,12 @@ const SELECTED_CELL_REFUSALS = {
       message: "Unclassified native text is unavailable in this session.",
     },
   ],
-  pastePlain: [selectedCellPasteRow],
-  pasteHtml: [selectedCellPasteRow],
-  pasteWordHtml: [selectedCellPasteRow],
-  pasteListHtml: [selectedCellPasteRow],
-  pasteMultiBlock: [selectedCellPasteRow],
+  // A paste clears every selected cell and lands in the first.
+  pastePlain: [],
+  pasteHtml: [],
+  pasteWordHtml: [],
+  pasteListHtml: [],
+  pasteMultiBlock: [],
   pasteTable: clipboardTableRows,
   backspace: [],
   delete: [],
@@ -128,6 +119,7 @@ const SELECTED_CELL_REFUSALS = {
   redo: [],
   historyBurst: [],
   selectionDrag: [],
+  selectAll: [],
 } as const satisfies Record<
   BrowserInputAction["kind"],
   readonly HarnessRefusalRow[]

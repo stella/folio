@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import {
+  baselineOf,
   caseIdentity,
   compareBaseline,
   type EditBaseline,
@@ -40,7 +41,7 @@ const report = (
   cases: EditCase[],
   incomplete: EditReport["incomplete"] = [],
 ): EditReport => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   lockDigest: "pinned-lock",
   shard: null,
   sample: null,
@@ -53,10 +54,9 @@ const report = (
 });
 
 const baseline = (cases: EditCase[]): EditBaseline => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   lockDigest: "pinned-lock",
   identities: cases.map(caseIdentity),
-  knownIncomplete: [],
 });
 
 test("a new failure cannot replace an old one under the same class and count", () => {
@@ -83,29 +83,46 @@ test("a duplicate case is not hidden by the identity set", () => {
   expect(result.duplicates).toEqual([caseIdentity(original)]);
 });
 
-test("unknown timeouts fail and exact known timeouts require later removal", () => {
+test("a timeout is no failure, and its document's cases are not missing", () => {
   const timeout = {
     document: original.document,
     sha256: original.sha256,
     seed: original.seed,
     reason: "timeout" as const,
     detail: "120000ms deadline",
+    durationMs: 120_004,
+  };
+  const result = compareBaseline([report([], [timeout])], baseline([original]));
+  expect(result.missing).toEqual([]);
+  expect(result.crashed).toEqual([]);
+  expect(result.introduced).toEqual([]);
+});
+
+test("a crashed worker always fails", () => {
+  const crash = {
+    document: original.document,
+    sha256: original.sha256,
+    seed: original.seed,
+    reason: "worker" as const,
+    detail: "stderr SHA-256 0",
+    durationMs: 900,
   };
   expect(
-    compareBaseline([report([original], [timeout])], baseline([original]))
-      .unexpectedIncomplete,
-  ).toEqual([timeout]);
-  const known: EditBaseline = {
-    ...baseline([original]),
-    knownIncomplete: [{ ...timeout, finding: "CORPUS_EDIT_FUZZ_TIMEOUT" }],
-  };
-  expect(
-    compareBaseline([report([original], [timeout])], known)
-      .unexpectedIncomplete,
-  ).toEqual([]);
-  expect(
-    compareBaseline([report([original])], known).recoveredIncomplete,
-  ).toEqual(known.knownIncomplete);
+    compareBaseline([report([original], [crash])], baseline([original]))
+      .crashed,
+  ).toEqual([crash]);
+});
+
+test("a recorded baseline matches the run it came from", () => {
+  const run = report([original]);
+  const recorded = baselineOf([run]);
+  expect(recorded.identities).toEqual([caseIdentity(original)]);
+  expect(compareBaseline([run], recorded)).toEqual({
+    introduced: [],
+    missing: [],
+    duplicates: [],
+    crashed: [],
+  });
 });
 
 test("a partial shard set cannot claim a full corpus result", () => {

@@ -17,8 +17,18 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
+import type { EditorView } from "prosemirror-view";
+
+import {
+  type CommentRecords,
+  commentRecordsOf,
+  editCommentRecords,
+  subscribeCommentRecords,
+  syncCommentRecords,
+} from "@stll/folio-core/prosemirror/commentRecords";
 import {
   COMMENT_ANCHOR_SELECTOR,
   commentAnchorIds,
@@ -27,6 +37,7 @@ import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import { isValidHexId } from "@stll/folio-core/utils/hexId";
 
+import { useEqualState } from "../hooks/keepEqual";
 import {
   countOpenCommentThreads,
   createComment as buildComment,
@@ -104,7 +115,15 @@ type UseFolioCommentsOptions = {
    * creation, resolution and deletion show without waiting for host feedback.
    */
   committedComments?: readonly Comment[] | null | undefined;
+  /**
+   * The body editor. Its state holds the comment threads, so every edit to
+   * them is part of the editor's undo history; the list here mirrors it.
+   */
+  bodyView?: EditorView | null | undefined;
 };
+
+/** The records as the list the hook hands out, copied once per change. */
+const listOf = (records: CommentRecords): Comment[] => [...records];
 
 export function useFolioComments({
   doc,
@@ -114,6 +133,7 @@ export function useFolioComments({
   commentsProp,
   onCommentsChange,
   committedComments,
+  bodyView = null,
 }: UseFolioCommentsOptions): {
   comments: Comment[];
   setComments: (
@@ -125,6 +145,7 @@ export function useFolioComments({
   getCommentsDirty: () => boolean;
   setCommentsDirty: (dirty: boolean) => void;
   resetLoadedComments: () => void;
+  resetComments: () => void;
   showCommentsSidebar: boolean;
   setShowCommentsSidebar: Dispatch<SetStateAction<boolean>>;
   setVisibleCommentAuthors: Dispatch<SetStateAction<Set<string> | null>>;
@@ -177,8 +198,34 @@ export function useFolioComments({
   );
   const commentsMode =
     sanitizedCommentsProp === undefined ? "uncontrolled" : "controlled";
+  const commentsModeRef = useRef(commentsMode);
+  useLayoutEffect(() => {
+    commentsModeRef.current = commentsMode;
+  }, [commentsMode]);
   const isControlledComments = commentsMode === "controlled";
-  const comments = sanitizedCommentsProp ?? internalComments;
+  // The body editor's records, when its state holds them (the default
+  // session). Uncontrolled, they are the list; a controlled prop stays the
+  // list and is written into them below, so undo and redo work on the value
+  // the host accepted and report what they restore as a request.
+  const subscribeRecords = useCallback(
+    (notify: () => void) =>
+      bodyView ? subscribeCommentRecords(bodyView, notify) : () => undefined,
+    [bodyView],
+  );
+  const readRecords = useCallback(
+    () => (bodyView ? commentRecordsOf(bodyView.state) : null),
+    [bodyView],
+  );
+  const recordsSnapshot = useSyncExternalStore(
+    subscribeRecords,
+    readRecords,
+    readRecords,
+  );
+  const records = useMemo(
+    () => (recordsSnapshot === null ? null : listOf(recordsSnapshot)),
+    [recordsSnapshot],
+  );
+  const comments = sanitizedCommentsProp ?? records ?? internalComments;
 
   // Reserve before browser events can mint comments, including controlled replies.
   useLayoutEffect(() => {
@@ -210,6 +257,54 @@ export function useFolioComments({
   useLayoutEffect(() => {
     onCommentsChangeRef.current = onCommentsChange;
   }, [onCommentsChange]);
+  const bodyViewRef = useRef(bodyView);
+  useLayoutEffect(() => {
+    bodyViewRef.current = bodyView;
+  }, [bodyView]);
+
+  // An edit to the records (the user's, or undo and redo) is reported to the
+  // host; a value the host wrote in is not echoed back.
+  useLayoutEffect(() => {
+    if (!bodyView) return;
+    return subscribeCommentRecords(bodyView, (next, origin) => {
+      if (next === null) return;
+      const list = listOf(next);
+      for (const { id } of list) seedCommentIdAbove(id);
+      if (commentsModeRef.current === "uncontrolled")
+        commentsRef.current = list;
+      if (origin === "sync") return;
+      commentsDirtyRef.current = true;
+      onCommentsChangeRef.current?.(list);
+    });
+  }, [bodyView]);
+
+  // A controlled prop is the host's value. After each commit where it or the
+  // records changed, records that differ from it take it: an edit the host
+  // did not accept is withdrawn, and a newly loaded document takes it too.
+  const comparedRef = useRef<{
+    prop: Comment[];
+    records: Comment[];
+  } | null>(null);
+  useLayoutEffect(() => {
+    if (!bodyView || sanitizedCommentsProp === undefined || records === null) {
+      comparedRef.current = null;
+      return;
+    }
+    const compared = comparedRef.current;
+    if (
+      compared?.prop === sanitizedCommentsProp &&
+      compared.records === records
+    )
+      return;
+    comparedRef.current = { prop: sanitizedCommentsProp, records };
+    if (JSON.stringify(records) === JSON.stringify(sanitizedCommentsProp))
+      return;
+    const transaction = syncCommentRecords(
+      bodyView.state,
+      sanitizedCommentsProp,
+    );
+    if (transaction) bodyView.dispatch(transaction);
+  });
 
   const createComment = useCallback(
     (text: string, author: string, parentId?: number): Comment => {
@@ -233,6 +328,14 @@ export function useFolioComments({
       if (resolved === commentsRef.current) {
         return;
       }
+      // The records are the threads: an edit to them is an editor edit, which
+      // the mirror above reports.
+      const view = bodyViewRef.current;
+      if (view && commentRecordsOf(view.state) !== null) {
+        const transaction = editCommentRecords(view.state, resolved);
+        if (transaction) view.dispatch(transaction);
+        return;
+      }
       switch (commentsMode) {
         case "controlled":
           break;
@@ -254,7 +357,7 @@ export function useFolioComments({
   );
 
   const [isAddingComment, setIsAddingComment] = useState(false);
-  const [commentSelectionRange, setCommentSelectionRange] = useState<{
+  const [commentSelectionRange, setCommentSelectionRange] = useEqualState<{
     from: number;
     to: number;
   } | null>(null);
@@ -263,7 +366,7 @@ export function useFolioComments({
   );
 
   // Floating "add comment" button position (relative to scroll container, null = hidden)
-  const [floatingCommentBtn, setFloatingCommentBtn] = useState<{
+  const [floatingCommentBtn, setFloatingCommentBtn] = useEqualState<{
     top: number;
     left: number;
     from: number;
@@ -280,6 +383,11 @@ export function useFolioComments({
     (): void => setCommentsLoaded(false),
     [],
   );
+  /** Forget the list for a document about to load; its state brings its own. */
+  const resetComments = useCallback((): void => {
+    commentsRef.current = [];
+    setInternalComments([]);
+  }, []);
   const bodyComments = committedComments ?? doc?.package.document.comments;
   if (
     !commentsLoaded &&
@@ -467,6 +575,7 @@ export function useFolioComments({
     getCommentsDirty,
     setCommentsDirty,
     resetLoadedComments,
+    resetComments,
     showCommentsSidebar,
     setShowCommentsSidebar,
     setVisibleCommentAuthors,

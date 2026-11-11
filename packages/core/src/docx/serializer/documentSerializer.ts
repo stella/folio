@@ -29,6 +29,7 @@ import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import {
   serializeBookmarkMarker,
+  serializeCommentRangeMarker,
   serializeMoveRangeMarker,
 } from "./markupRangeAttributes";
 import { serializeParagraph } from "./paragraphSerializer";
@@ -99,6 +100,9 @@ function serializeBlockContent(block: BlockContent): string {
     case "moveToRangeStart":
     case "moveToRangeEnd":
       return serializeMoveRangeMarker(block);
+    case "commentRangeStart":
+    case "commentRangeEnd":
+      return serializeCommentRangeMarker(block);
     default: {
       const unreachable: never = block;
       return unreachable;
@@ -175,6 +179,9 @@ export function serializeDocumentBody(body: DocumentBody): string {
   return parts.join("");
 }
 
+const withoutByteOrderMark = (xml: string): string =>
+  xml.startsWith("\uFEFF") ? xml.slice(1) : xml;
+
 // A cached validation is keyed by the private captured body, whose fingerprint
 // getDocumentSourceBaseline verifies before this cache can be consulted.
 const replayableDocumentSources = new WeakMap<DocumentBody, string>();
@@ -204,9 +211,12 @@ export function serializeDocument(
     source?.bodyAuthority === "canonical"
       ? getDocumentSourceBaseline(doc)
       : ({ type: "missing" } as const);
+  // The part as the save reads it and as the reader captured it is the same
+  // text whether or not a reader kept its leading byte order mark.
   const sourceMatches =
     baseline.type === "captured" &&
-    (source?.xml === undefined || source.xml === baseline.xml);
+    (source?.xml === undefined ||
+      withoutByteOrderMark(source.xml) === withoutByteOrderMark(baseline.xml));
   // Exact snapshots can replay the trusted part without generating or scanning XML.
   // A different property order only misses this optimization; block replay still applies.
   if (

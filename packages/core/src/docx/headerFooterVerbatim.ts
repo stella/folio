@@ -45,6 +45,7 @@ const contentBaselines = new WeakMap<
       resourceStyles:
         Readonly<NonNullable<Document["package"]["styles"]>> | undefined;
       styleIds: ReadonlySet<string>;
+      numberingIds: SourceNumberingIds;
       resourceRelationships: Document["package"]["relationships"];
       resourceMedia: ReadonlyMap<
         string,
@@ -57,6 +58,7 @@ const contentBaselines = new WeakMap<
       resourceStyles:
         Readonly<NonNullable<Document["package"]["styles"]>> | undefined;
       styleIds: ReadonlySet<string>;
+      numberingIds: SourceNumberingIds;
     }
 >();
 
@@ -310,12 +312,21 @@ export const captureDocumentSourceBaseline = (
   const styleIds = new Set(
     resourceStyles?.styles.map(({ styleId }) => styleId),
   );
+  const numberingIds: SourceNumberingIds = {
+    nums: new Set(document.package.numbering?.nums.map(({ numId }) => numId)),
+    abstractNums: new Set(
+      document.package.numbering?.abstractNums.map(
+        ({ abstractNumId }) => abstractNumId,
+      ),
+    ),
+  };
   if (xml === undefined) {
     contentBaselines.set(handle, {
       type: "body",
       kind: "noMainPart",
       resourceStyles,
       styleIds,
+      numberingIds,
     });
   } else {
     contentBaselines.set(handle, {
@@ -326,6 +337,7 @@ export const captureDocumentSourceBaseline = (
       body: structuredClone(document.package.document),
       resourceStyles,
       styleIds,
+      numberingIds,
       resourceRelationships: structuredClone(document.package.relationships),
       resourceMedia: new Map(
         [...(document.package.media ?? [])].map(([path, media]) => [
@@ -365,6 +377,20 @@ const readDocumentSourceCapture = (document: Document) => {
   if (!baseline || baseline.type !== "body")
     return { type: "mismatch" } as const;
   return { type: "captured", baseline } as const;
+};
+
+/** The numbering instance and abstract definition ids the source package had. */
+export type SourceNumberingIds = {
+  readonly nums: ReadonlySet<number>;
+  readonly abstractNums: ReadonlySet<number>;
+};
+
+/** The numbering ids the parsed source had, or `undefined` without a capture. */
+export const getDocumentSourceNumberingIds = (
+  document: Document,
+): SourceNumberingIds | undefined => {
+  const source = readDocumentSourceCapture(document);
+  return source.type === "captured" ? source.baseline.numberingIds : undefined;
 };
 
 /** Read the identity-stable, deeply frozen stylesheet without cloning or body comparison. */

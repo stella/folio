@@ -38,7 +38,8 @@ export type BrowserInputAction =
   | { kind: "undo" }
   | { kind: "redo" }
   | { kind: "historyBurst"; keys: ("undo" | "redo")[] }
-  | { kind: "selectionDrag"; target: BrowserDragTarget };
+  | { kind: "selectionDrag"; target: BrowserDragTarget }
+  | { kind: "selectAll" };
 
 export const BROWSER_INPUT_ACTION_DISPOSITIONS = {
   typing: "edit",
@@ -59,6 +60,7 @@ export const BROWSER_INPUT_ACTION_DISPOSITIONS = {
   redo: "history",
   historyBurst: "history",
   selectionDrag: "selection",
+  selectAll: "selection",
 } as const satisfies Record<
   BrowserInputAction["kind"],
   "edit" | "history" | "selection"
@@ -200,15 +202,32 @@ const shapeArbitrary = fc.constantFrom(
   ...Object.keys(BROWSER_SHAPE_TARGETS).filter(isBrowserShape),
 );
 
+/** Shapes whose body has two adjacent paragraphs that open with text. */
+export const BROWSER_PARAGRAPH_DRAG_SHAPES: ReadonlySet<
+  keyof typeof BROWSER_SHAPE_TARGETS
+> = new Set(
+  Object.keys(BROWSER_SHAPE_TARGETS)
+    .filter(isBrowserShape)
+    .filter((shape) => shape !== "tables"),
+);
+
 /** fast-check shrinks action sequences and their payloads to minimal failing traces. */
 export const browserInputTraceArbitrary = (
   maxActions = 6,
 ): fc.Arbitrary<BrowserInputTrace> =>
   shapeArbitrary.chain((shape) => {
-    const actions = [...commonActionArbitraries];
+    // Added here, not to the common actions, which seed/path history replays sample.
+    const actions = [
+      ...commonActionArbitraries,
+      fc.constant({ kind: "selectAll" } as const),
+    ];
     const target = BROWSER_SHAPE_TARGETS[shape];
     if (target !== null)
       actions.push(fc.constant({ kind: "selectionDrag", target } as const));
+    if (BROWSER_PARAGRAPH_DRAG_SHAPES.has(shape))
+      actions.push(
+        fc.constant({ kind: "selectionDrag", target: "paragraphs" } as const),
+      );
     if (target === "table")
       actions.push(suggestionActionArbitraries.dragCellDelete);
     return fc.record({

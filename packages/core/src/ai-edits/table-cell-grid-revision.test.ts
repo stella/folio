@@ -104,7 +104,7 @@ describe("tracked table cell grid provenance", () => {
   test("accepting cell removals is a save/reopen fixed point", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildSource());
 
-    expect(reviewer.acceptAll()).toBe(3);
+    expect(reviewer.acceptAll().resolved).toBe(3);
     const once = await reviewer.toBuffer();
     const tables = await tablesFrom(once);
 
@@ -128,7 +128,7 @@ describe("tracked table cell grid provenance", () => {
   test("rejecting cell removals preserves both table grids verbatim", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildSource());
 
-    expect(reviewer.rejectAll()).toBe(3);
+    expect(reviewer.rejectAll().resolved).toBe(3);
     const once = await reviewer.toBuffer();
     const tables = await tablesFrom(once);
 

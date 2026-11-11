@@ -44,8 +44,9 @@ import {
   type HiddenProseMirrorCollaboration,
   type HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
+import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
-import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
   Document,
   StyleDefinitions,
@@ -79,7 +80,11 @@ export type HiddenProseMirrorProps = {
   experimentalSession?: "canonical";
   suggestionModeActive?: boolean;
   suggestionAuthor?: string;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
+  onSessionRefusal?: (
+    reason: string,
+    ground: CanonicalRefusalGround,
+    error?: Error,
+  ) => void;
   /**
    * Identity of the loaded document (same across internal edits, distinct per
    * load); a change means an external load and resets the editor state.
@@ -128,6 +133,8 @@ export type HiddenProseMirrorProps = {
 export type HiddenProseMirrorRef = HiddenEditorApi & {
   /** Internal composition availability for deferred document notifications. */
   isCanonicalComposing: () => boolean;
+  /** The canonical session's own document, read without a copy. */
+  readCanonicalDocument: () => Document | null;
   /** Get the off-screen host element. */
   getHostElement: () => HTMLElement | null;
 };
@@ -307,8 +314,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getEditingMode: () =>
           suggestionModeActiveRef.current ? "suggesting" : "editing",
         getSuggestionAuthor: () => suggestionAuthorRef.current,
-        onSessionRefusal: (reason, gap, error) =>
-          onSessionRefusalRef.current?.(reason, gap, error),
+        onSessionRefusal: (reason, ground, error) =>
+          onSessionRefusalRef.current?.(reason, ground, error),
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,
         onTransaction: (update) => onTransactionRef.current?.(update),
@@ -414,6 +421,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
       getHostElement: () => hostRef.current,
       isCanonicalComposing: () =>
         managerRef.current?.isCanonicalComposing() ?? false,
+      readCanonicalDocument: () =>
+        managerRef.current?.readCanonicalDocument() ?? null,
     }),
     [],
   );
@@ -435,10 +444,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   // ========================================================================
 
   return (
-    <div
-      className="paged-editor__hidden-pm-wrapper"
-      style={HIDDEN_WRAPPER_STYLES}
-    >
+    <div className={HIDDEN_EDITOR_WRAPPER_CLASS} style={HIDDEN_WRAPPER_STYLES}>
       <div
         ref={hostRef}
         className="paged-editor__hidden-pm"

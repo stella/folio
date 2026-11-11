@@ -5,6 +5,9 @@ import type {
   FormattingPatch,
   ParagraphPropsPatch,
   RunPropsPatch,
+  TableBlockIntentOperation,
+  TableIntentOperation,
+  TableRowIntentOperation,
 } from "@stll/docx-core/ops";
 
 import type {
@@ -16,10 +19,51 @@ import type {
   TextEffect,
   UnderlineStyle,
 } from "../types/document";
+import type {
+  TableCellFormatting,
+  TableFormatting,
+  TableRowFormatting,
+} from "../types/formatting";
 import { canonicalSelectionRanges } from "./canonicalSelectionRange";
+
+/** One table, row or cell, addressed by a position inside its first paragraph. */
+export type CanonicalTableFormatTarget =
+  | { scope: "table"; at: number; patch: FormattingPatch<TableFormatting> }
+  | { scope: "row"; at: number; patch: FormattingPatch<TableRowFormatting> }
+  | { scope: "cell"; at: number; patch: FormattingPatch<TableCellFormatting> };
+
+type WithoutTableTarget<Operation> = Operation extends unknown
+  ? Omit<Operation, "story" | "blockId">
+  : never;
+
+/**
+ * A change to a table's columns, cells or grid. The session addresses the
+ * table through a paragraph of its own; the engine derives fresh ids.
+ */
+export type CanonicalTableEdit = WithoutTableTarget<
+  Exclude<
+    TableIntentOperation,
+    { type: "setCellProps" | "setRowProps" | "setTableProps" }
+  >
+>;
 
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
+  | {
+      type: "formatTable";
+      targets: readonly CanonicalTableFormatTarget[];
+    }
+  | { type: "editTable"; at: number; edit: CanonicalTableEdit }
+  | {
+      type: "editTableBlock";
+      at: number;
+      edit: WithoutTableTarget<TableBlockIntentOperation>;
+    }
+  | {
+      type: "editTableRow";
+      at: number;
+      edit: WithoutTableTarget<TableRowIntentOperation>;
+    }
   | { type: "generateTOC"; at: number; title: string }
   | {
       type: "setHyperlink";

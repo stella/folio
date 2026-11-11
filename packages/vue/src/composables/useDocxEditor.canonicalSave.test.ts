@@ -357,6 +357,8 @@ test.each(["immediate", "deferred"] as const)(
                 controlledComments.value = structuredClone(next);
             },
             reLayout: () => undefined,
+            readOnly: () => false,
+            onReadOnlyEditAttempt: () => undefined,
           });
           return () => h("div");
         },
@@ -543,6 +545,8 @@ test.each([
             canonicalTick: stateTick,
             onCommentsChange: () => undefined,
             reLayout: () => undefined,
+            readOnly: () => false,
+            onReadOnlyEditAttempt: () => undefined,
           });
           return () => h("div");
         },
@@ -1109,7 +1113,7 @@ test.each(CANONICAL_SAVE_SEEDS)(
         expect(error).toBeInstanceOf(CanonicalSessionError);
         if (!(error instanceof CanonicalSessionError))
           panic("Expected composition save refusal");
-        expect(error.gap).toBe("pm-save-projection");
+        expect(error.ground.gap).toBe("pm-save-projection");
         expect(error.reason).toBe("refused");
       }
       expect(api.updateCanonicalInputLifecycle("endComposition")).toBe(true);

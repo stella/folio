@@ -21,6 +21,8 @@ export {
   type FolioCommentAnchor,
   type FolioReviewChange,
   type FolioReviewChangeKind,
+  type FolioReviewResolution,
+  type FolioReviewResolutionSkip,
 } from "./read";
 export {
   createFolioAIEditSnapshot,

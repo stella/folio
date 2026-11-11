@@ -292,6 +292,43 @@ describe("tracked text", () => {
     expect(later.revisions).toEqual([2]);
   });
 
+  test("a suggested insertion carries its suggestion and joins only that suggestion", () => {
+    const document = documentOf(paragraph("00000001", [run("Hello")]));
+    const typed = (
+      from: Document,
+      offset: number,
+      id: number,
+      suggestionId?: string,
+    ) =>
+      applied(from, {
+        type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+        at: at("00000001", offset),
+        text: "x",
+        runProps: "inherit",
+        revision: {
+          ...stamp(id),
+          ...(suggestionId === undefined ? {} : { suggestionId }),
+        },
+      });
+    const first = typed(document, 5, 1, "s1");
+    const [created] = blocks(first.document);
+    const insertion =
+      created?.type === "paragraph"
+        ? created.content.find(({ type }) => type === "insertion")
+        : undefined;
+    expect(insertion?.type === "insertion" && insertion.info).toEqual({
+      id: 1,
+      author: "Reviewer",
+      date: DATE,
+      suggestionId: "s1",
+    });
+    // The same suggestion joins it.
+    expect(typed(first.document, 6, 2, "s1").revisions).toEqual([]);
+    // Another suggestion, or an ordinary tracked change, is a record of its own.
+    expect(typed(first.document, 6, 2, "s2").revisions).toEqual([2]);
+    expect(typed(first.document, 6, 2).revisions).toEqual([2]);
+  });
+
   test("a tracked insertion splits another author's insertion instead of nesting in it", () => {
     const theirs: ParagraphContent = {
       type: "insertion",
@@ -841,6 +878,7 @@ describe("C9: Enter and Delete record paragraph marks", () => {
           kind: "ins",
           info: { id: 1, author: "Reviewer", date: DATE },
           resolutionJoin: 0,
+          survivor: "first",
         },
       },
       paragraph("00000002", [], {
@@ -1099,8 +1137,9 @@ describe("a tracked split's new second half keeps the paragraph mark's run prope
       const [rejected, next] = blocks(
         resolved(split.document, split.revisions, REVISION_DECISIONS.REJECT),
       );
-      // The mark ending the paragraph is the new half's, under its id.
-      expect(rejected).toEqual({ ...original, paraId: "00000002" });
+      // The paragraph comes back under its own id, with the mark the new
+      // half held.
+      expect(rejected).toEqual(original);
       expect(next).toEqual(paragraph("00000009", [run("next")]));
     }
   });
@@ -1827,5 +1866,65 @@ describe("whole-document revision rejection", () => {
     expect(remaining.rows[0]?.cells[0]?.content[0]).toBe(follower);
     expect(result.touched.modified).not.toContain("00000003");
     expect(result.document.package.footnotes).toBeUndefined();
+  });
+});
+
+describe("rejecting a split whose first half kept the paragraph's identity", () => {
+  const splitAtEnd = (blockId: string): DocumentOp => ({
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: at(blockId, 3),
+    newBlockId: "00000002",
+    revision: stamp(2),
+    newIds: { revision: [3] },
+  });
+  const next = paragraph("00000009", [run("next")]);
+
+  test("gives the paragraph back with the mark it already had pending", () => {
+    const pending = paragraph("00000001", [run("abc")], {
+      pPrMark: { kind: "ins", info: stamp(1, "Other") },
+    });
+    const document = documentOf(pending, next);
+    const split = applied(document, splitAtEnd("00000001"));
+    expect(
+      resolved(split.document, split.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+    // The mark that was pending resolves as before the split.
+    const rejectedSplit = resolved(
+      split.document,
+      split.revisions,
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(
+      resolved(rejectedSplit, [1], REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(resolved(document, [1], REVISION_DECISIONS.REJECT));
+  });
+
+  test("gives back the section break the paragraph ends", () => {
+    const ends = paragraph("00000001", [run("abc")], {
+      sectionProperties: { pageWidth: 11906 },
+    });
+    const document = documentOf(ends, next);
+    const split = applied(document, splitAtEnd("00000001"));
+    expect(
+      resolved(split.document, split.revisions, REVISION_DECISIONS.REJECT),
+    ).toStrictEqual(document);
+    // Typed into after the split, each review still resolves on its own.
+    const typed = applied(split.document, {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: at("00000001", 3),
+      text: "x",
+      runProps: "inherit",
+      revision: stamp(4),
+      newIds: { revision: [5] },
+    });
+    const all = [...split.revisions, ...typed.revisions];
+    const atOnce = resolved(typed.document, all, REVISION_DECISIONS.REJECT);
+    const inTurn = resolved(
+      resolved(typed.document, typed.revisions, REVISION_DECISIONS.REJECT),
+      split.revisions,
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(atOnce).toStrictEqual(document);
+    expect(inTurn).toStrictEqual(document);
   });
 });

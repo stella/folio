@@ -249,6 +249,7 @@ const revision = optional(
     author: string,
     date: string,
     initials: optional(string),
+    suggestionId: optional(string),
   }),
 );
 const newIds = optional(
@@ -397,6 +398,7 @@ const operationFields = {
     blocks: array(paragraph),
     newIds,
     revision,
+    move: optional(literal(true)),
   } satisfies OperationFields<"insertBlocks">,
   deleteBlocks: {
     type: literal("deleteBlocks"),
@@ -404,6 +406,7 @@ const operationFields = {
     blockIds: array(blockId),
     newIds,
     revision,
+    move: optional(literal(true)),
   } satisfies OperationFields<"deleteBlocks">,
   resolveRevision: {
     type: literal("resolveRevision"),
@@ -466,6 +469,7 @@ const operationFields = {
   setRowProps: undefined,
   setTableProps: undefined,
   setTable: undefined,
+  setRevisionInfo: undefined,
 } satisfies Record<DocumentOpType, Fields | undefined>;
 
 export const BATCH_WIRE_OP_TYPES: readonly string[] = Object.freeze(

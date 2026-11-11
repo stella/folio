@@ -1238,8 +1238,9 @@ type Pinned = {
  * Taken with the reader, the projection and the save as they stood before the
  * fold kept its fields in the paragraph content. `docx-editor-demo.docx` is
  * the fixture with numbered paragraphs, the ones the fold looks at. The
- * projection includes an unset listFoldedMarkerSuffix on existing list nodes
- * and an unset anchor on hyperlink marks;
+ * projection includes an unset listFoldedMarkerSuffix on existing list nodes,
+ * an unset anchor on hyperlink marks and an unset point and suggestion on
+ * comment marks;
  * the saved XML remains byte-for-byte unchanged.
  */
 const FIXTURES: readonly Pinned[] = [
@@ -1272,7 +1273,7 @@ const FIXTURES: readonly Pinned[] = [
   },
   {
     path: "tests/visual/fixtures/docx-editor-demo.docx",
-    projection: { length: 449_985 },
+    projection: { length: 450_019 },
     saved: {
       digest:
         "6bac5af14f8a58ea6627768ea747a8fc8ec69ce3e3edae1c41d720de84f81dee",

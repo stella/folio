@@ -337,6 +337,8 @@
     "editSessionTakenOver": "Başka bir sekme, pencere veya cihaz bu belgeyi düzenlemek için açtığından bu oturum sonlandırıldı. Kaydedilmemiş yerel değişiklikler korunur; devam etmek için belgeyi yeniden açın.",
     "editor": {
       "accessibleName": "Belge düzenleyici",
+      "changeUnavailable": "Bu değişiklik henüz burada yapılamıyor.",
+      "contentLocked": "Belgenin bu bölümü kilitli.",
       "editing": "Düzenleme",
       "editingDescription": "Belgeyi doğrudan düzenleyin",
       "outlineDepthAll": "Tüm düzeyler",
@@ -632,6 +634,7 @@
       "watermark": "Filigran"
     },
     "trackedChanges": {
+      "heldByLock": "Kilitli bir içerik denetimi bu değişikliğin kabul edilmesini veya reddedilmesini engelliyor.",
       "replaced": "Değiştirildi",
       "unknown": "Bilinmiyor",
       "with": "yerine"

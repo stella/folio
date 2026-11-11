@@ -36,7 +36,9 @@ import { panic } from "better-result";
 
 import { writeCommentAnchorIds } from "../../render-dom/commentAnchorAttributes";
 import { bytesToDataUrl } from "../../utils/base64";
+import { cssString } from "../../utils/cssString";
 import { imageLuminanceFilter } from "../../utils/imageLuminance";
+import { writePaintedRange } from "../../utils/paintedPositions";
 import { applyTextAdvanceGaps } from "../../utils/textAdvanceGapsDom";
 import { anchorTargetAttrs } from "../../utils/urlSecurity";
 import { retainObjectUrl } from "../pageResourceOwnership";
@@ -123,9 +125,6 @@ const px = (value: number) => `${value}px`;
 const cssColor = ({ r, g, b, a }: DisplayColor) =>
   a === 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${a})`;
 
-const quoteFontFamily = (family: string) =>
-  `"${family.replaceAll('"', '\\"')}"`;
-
 /**
  * An embedded face wins over any installed face of the same name by being
  * named first, under the id its `@font-face` rule was registered with.
@@ -143,11 +142,11 @@ const fontFamilyStack = ({
   generic,
   embedded,
 }: DisplayFontFace) => {
-  const names = [family, ...fallbacks].map(quoteFontFamily).join(", ");
+  const names = [family, ...fallbacks].map(cssString).join(", ");
   const resolved = `${names}, ${generic}`;
   return embedded === undefined
     ? resolved
-    : `${quoteFontFamily(embedded.id)}, ${resolved}`;
+    : `${cssString(embedded.id)}, ${resolved}`;
 };
 
 const resolveFont = (
@@ -210,7 +209,7 @@ const fontFaceRule = (
   embedded: DisplayEmbeddedFont,
   src: string,
 ) =>
-  `@font-face { font-family: ${quoteFontFamily(embedded.id)}; src: url("${src}"); font-weight: ${face.weight}; font-style: ${face.italic ? "italic" : "normal"}; }`;
+  `@font-face { font-family: ${cssString(embedded.id)}; src: url("${src}"); font-weight: ${face.weight}; font-style: ${face.italic ? "italic" : "normal"}; }`;
 
 /**
  * `@font-face` rules for the faces whose bytes travel with the list. Resolved
@@ -459,13 +458,13 @@ const applyModelRange = (
   if (range === undefined) {
     return;
   }
-  if (purpose === "editing") span.className = "layout-run-text";
-  span.dataset[purpose === "editing" ? "pmStart" : "decorationStart"] = String(
-    range.start,
-  );
-  span.dataset[purpose === "editing" ? "pmEnd" : "decorationEnd"] = String(
-    range.end,
-  );
+  if (purpose === "editing") {
+    span.className = "layout-run-text";
+    writePaintedRange(span, range.start, range.end);
+  } else {
+    span.dataset["decorationStart"] = String(range.start);
+    span.dataset["decorationEnd"] = String(range.end);
+  }
   const { story } = range;
   span.dataset["story"] = story.kind;
   switch (story.kind) {
@@ -949,8 +948,7 @@ const applyRegionModel = (
     return;
   }
   if (model.pmRange !== undefined) {
-    element.dataset["pmStart"] = String(model.pmRange.start);
-    element.dataset["pmEnd"] = String(model.pmRange.end);
+    writePaintedRange(element, model.pmRange.start, model.pmRange.end);
   }
   if (model.blockId !== undefined) {
     element.dataset["blockId"] = model.blockId;

@@ -206,6 +206,17 @@ describe("document style sets", () => {
       throw new Error("Expected legal preset to declare a font");
     }
     firstFont.embedRegular = { id: "rIdFont" };
+    firstFont.preserved = {
+      children: [
+        {
+          index: 0,
+          xml: '<x:note xmlns:x="urn:x">Unmodeled font child</x:note>',
+        },
+      ],
+    };
+    firstFont.preservedAttributes = [
+      { namespace: "urn:x", name: "x:tag", value: "Unmodeled font attribute" },
+    ];
 
     const extracted = extractDocumentStyleSet(document, { name: "Sanitized" });
     const serialized = JSON.stringify(extracted);
@@ -214,6 +225,9 @@ describe("document style sets", () => {
     expect(serialized).not.toContain("Source user");
     expect(serialized).not.toContain("private/template.dotx");
     expect(serialized).not.toContain("rIdFont");
+    expect(serialized).not.toContain("Unmodeled font child");
+    expect(serialized).not.toContain("Unmodeled font attribute");
+    expect(extracted.fontTable?.fonts.at(0)?.name).toBe(firstFont.name);
   });
 
   test("a generated DOCX can be used as a style-set source", async () => {

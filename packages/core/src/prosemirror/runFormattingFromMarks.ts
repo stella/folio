@@ -48,7 +48,6 @@ export type MarksToTextFormattingOptions = {
   baseParagraphFormatting?: TextFormatting | undefined;
   inheritedFormatting?: TextFormatting | undefined;
   paragraphMarkFormatting?: TextFormatting | undefined;
-  paragraphMarkPrecedesStyle?: boolean | undefined;
   styleResolver?: RunStyleResolver | null | undefined;
 };
 
@@ -972,7 +971,6 @@ export function marksToTextFormatting(
     baseParagraphFormatting: options?.baseParagraphFormatting,
     paragraphFormatting: options?.inheritedFormatting,
     paragraphMarkFormatting: options?.paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle: options?.paragraphMarkPrecedesStyle ?? false,
   };
   const paragraphFormatting = paragraphFormattingForRun({
     context: runContext,
@@ -1005,7 +1003,6 @@ export function marksToTextFormatting(
       baseFormatting: options.baseParagraphFormatting,
       directFormatting: authoredFormatting,
       paragraphMarkFormatting: options.paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle: options.paragraphMarkPrecedesStyle ?? false,
     });
     const suppressedInheritedFormatting = resolveEffectiveRunStyleFormatting({
       marks,

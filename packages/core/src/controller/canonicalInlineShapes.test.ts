@@ -39,20 +39,17 @@ import {
 setDefaultTimeout(propertyTestTimeout(60_000));
 
 const fixturesFor = (text: string) => [
-  ...Object.values(CANONICAL_PARAGRAPH_SHAPE_FACTORIES)
-    .map((factory) => factory(text))
-    .flat(),
-  ...Object.values(CANONICAL_RUN_SHAPE_FACTORIES)
-    .map((factory) => factory(text))
-    .flat(),
+  ...Object.values(CANONICAL_PARAGRAPH_SHAPE_FACTORIES).flatMap((factory) =>
+    factory(text),
+  ),
+  ...Object.values(CANONICAL_RUN_SHAPE_FACTORIES).flatMap((factory) =>
+    factory(text),
+  ),
 ];
 const refusalExpected = ({
   item,
 }: CanonicalInlineShapeFixture<ParagraphContent | RunContent>) =>
-  item.type === "inlineSdt" ||
-  item.type === "fieldChar" ||
-  item.type === "instrText" ||
-  item.type === "renderedPageBreak";
+  item.type === "fieldChar" || item.type === "instrText";
 
 const checkShape = (
   fixture: CanonicalInlineShapeFixture<ParagraphContent | RunContent>,
@@ -77,7 +74,7 @@ const checkShape = (
     if (activated.isErr()) {
       expect(activated.error).toBeInstanceOf(CanonicalSessionError);
       expect(activated.error.reason).toBe("refused");
-      expect(activated.error.gap).toBe(CANONICAL_GAP.dispatch);
+      expect(activated.error.ground.gap).toBe(CANONICAL_GAP.dispatch);
       expect(activated.error.message).not.toBe(
         "The projection changed paragraph structure.",
       );
@@ -126,7 +123,15 @@ const checkShape = (
         const address = projection.addressAt(position).unwrap();
         expect(address.offset).toBe(offset);
         expect(address.zeroWidthBefore ?? 0).toBe(gap.zeroWidthBefore);
-        expect(projection.positionAt(address).unwrap()).toBe(position);
+        // A content control's edge is two editor positions, outside and
+        // inside, for one source gap; the address names either of them.
+        const paragraphStart = start;
+        const twins = gaps
+          .filter(
+            ({ zeroWidthBefore }) => zeroWidthBefore === gap.zeroWidthBefore,
+          )
+          .map((twin) => paragraphStart + twin.position);
+        expect(twins).toContain(projection.positionAt(address).unwrap());
       }
     }
     start += native.nodeSize;
@@ -167,7 +172,7 @@ test("generated source union shapes activate with exact logical gaps or explain 
 });
 
 test("structured field caches keep text safety checks despite atomic projection", () => {
-  for (const text of ["bad\u0000", "bad\ud800", "bad\t", "bad\n", "bad\r"]) {
+  for (const text of ["bad\u0000", "bad\ud800", "bad\n", "bad\r"]) {
     for (const fixture of [
       ...CANONICAL_PARAGRAPH_SHAPE_FACTORIES.simpleField(text),
       ...CANONICAL_PARAGRAPH_SHAPE_FACTORIES.complexField(text),

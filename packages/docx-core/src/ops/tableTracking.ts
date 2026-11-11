@@ -22,6 +22,7 @@ import {
   IDENTITY_SPACES,
   identityKeysIn,
   idKey,
+  type KeyMembership,
   packageIdentityKeys,
   slotKey,
 } from "./ids";
@@ -79,6 +80,8 @@ const mapParagraphs = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -137,6 +140,8 @@ const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -416,7 +421,7 @@ export const permitsCellFinalMark = (
 type StampedTableRevisionIdsOptions = {
   blocks: readonly BlockContent[];
   stamp: RevisionStamp;
-  known: ReadonlySet<string>;
+  known: KeyMembership;
 };
 export const stampedTableRevisionIds = ({
   blocks,
@@ -469,6 +474,8 @@ export const stampedTableRevisionIds = ({
         case "preservedBlock":
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
         case "moveFromRangeStart":
         case "moveFromRangeEnd":
         case "moveToRangeStart":

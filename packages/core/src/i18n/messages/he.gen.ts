@@ -341,6 +341,8 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "כרטיסייה, חלון או מכשיר אחר פתחו מסמך זה לעריכה, ולכן הפעלה זו שוחררה. שינויים מקומיים שלא נשמרו נשמרו — פתח מחדש את המסמך כדי להמשיך.",
     "editor": {
       "accessibleName": "עורך מסמכים",
+      "changeUnavailable": "עדיין לא ניתן לבצע את השינוי הזה כאן.",
+      "contentLocked": "חלק זה של המסמך נעול.",
       "editing": "עריכה",
       "editingDescription": "ערוך את המסמך ישירות",
       "outlineDepthAll": "כל הרמות",
@@ -636,6 +638,7 @@ export const messages: FolioMessages = {
       "watermark": "סימן מים"
     },
     "trackedChanges": {
+      "heldByLock": "פקד תוכן נעול מונע קבלה או דחייה של שינוי זה.",
       "replaced": "הוחלף",
       "unknown": "לא ידוע",
       "with": "ב-"

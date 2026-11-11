@@ -15,16 +15,16 @@ const REFUSAL_ROWS = {
     message:
       "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
   },
-  hyperlinkReview: {
-    id: CANONICAL_GAP.trackedHyperlinkResolution,
-    gap: CANONICAL_GAP.trackedHyperlinkResolution,
+  cellSelectionPlacement: {
+    id: CANONICAL_GAP.commands,
+    gap: CANONICAL_GAP.commands,
     message:
-      "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
+      "A note or table of contents goes at a caret, not over selected cells.",
   },
-  fieldProjection: {
-    id: CANONICAL_GAP.storyContentProjection,
-    gap: CANONICAL_GAP.storyContentProjection,
-    message: "The operations produce unsupported canonical story content.",
+  trackedTableDeletion: {
+    id: CANONICAL_GAP.dispatch,
+    gap: CANONICAL_GAP.dispatch,
+    message: "The rows contain an unsupported tracked structure.",
   },
 } as const satisfies Record<string, HarnessRefusalRow>;
 
@@ -33,39 +33,7 @@ const REFUSAL_ROWS = {
 const COMMAND_REFUSAL_CONTRACTS = {
   [CANONICAL_GAP.commands]: {
     operations: [
-      "command:insertTable",
-      "command:addRowAbove",
-      "command:addRowBelow",
-      "command:deleteRow",
-      "command:addColumnLeft",
-      "command:addColumnRight",
-      "command:deleteColumn",
-      "command:deleteTable",
-      "command:selectTable",
-      "command:selectRow",
-      "command:selectColumn",
-      "command:mergeCells",
-      "command:splitCell",
-      "command:setCellBorder",
-      "command:setTableBorderPreset",
-      "command:setTableBorders",
-      "command:removeTableBorders",
-      "command:setAllTableBorders",
-      "command:setOutsideTableBorders",
-      "command:setInsideTableBorders",
-      "command:setCellVerticalAlign",
-      "command:setCellMargins",
-      "command:setCellTextDirection",
-      "command:toggleNoWrap",
-      "command:setRowHeight",
-      "command:toggleHeaderRow",
-      "command:distributeColumns",
       "command:autoFitContents",
-      "command:setTableProperties",
-      "command:applyTableStyle",
-      "command:setCellFillColor",
-      "command:setTableBorderColor",
-      "command:setTableBorderWidth",
       "host:addComment",
       "host:acceptChange",
       "host:rejectChange",
@@ -100,46 +68,6 @@ export const canonicalRefusalCaseId = ({
   mode,
 }: RefusalCase) => `${shape} › ${operation} @ ${placement} [${mode}]`;
 
-export const STORY_PROJECTION_REFUSAL_CASES = [
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "key:Enter",
-    placement: "paragraph",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "paste:copied-blocks",
-    placement: "caret-end",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "key:Delete",
-    placement: "cross-paragraph",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "host:cut",
-    placement: "paragraph",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "host:cut",
-    placement: "cross-paragraph",
-  },
-] as const satisfies readonly RefusalCase[];
-
-const STORY_PROJECTION_ROWS = {
-  "fields-links-bookmarks": REFUSAL_ROWS.fieldProjection,
-} as const satisfies Record<
-  (typeof STORY_PROJECTION_REFUSAL_CASES)[number]["shape"],
-  HarnessRefusalRow
->;
-
 // The fixture source/heading collector assertion binds this applicability set.
 export const TOC_HEADING_SHAPES = [
   "style-numbered-headings",
@@ -155,11 +83,19 @@ export const canonicalConformanceRefusalRows = (
       operations.some((operation) => operation === key.operation),
   );
   if (commandContract) return commandContract.rows;
-  const projection = STORY_PROJECTION_REFUSAL_CASES.find(
-    (candidate) =>
-      canonicalRefusalCaseId(candidate) === canonicalRefusalCaseId(key),
-  );
-  if (projection) return [STORY_PROJECTION_ROWS[projection.shape]];
+  if (
+    key.shape === "tables" &&
+    key.placement === "cross-paragraph" &&
+    (key.operation === "command:generateTOC" ||
+      key.operation === "command:insertFootnote" ||
+      key.operation === "command:insertEndnote")
+  )
+    return [REFUSAL_ROWS.cellSelectionPlacement];
+  // The fixture table's merged cells have no tracked row deletion record.
+  if (key.operation === "command:deleteTable")
+    return key.mode === "suggesting" && key.shape === "tables"
+      ? [REFUSAL_ROWS.trackedTableDeletion]
+      : [];
   if (key.operation === "command:generateTOC")
     return key.mode === "suggesting" &&
       TOC_HEADING_SHAPES.some((shape) => shape === key.shape)
@@ -182,7 +118,6 @@ export const canonicalConformanceRefusalRows = (
   // there is nothing to refuse.
   if (key.shape === "tables" && key.placement === "cross-paragraph") return [];
   if (key.mode === "suggesting") return [REFUSAL_ROWS.hyperlinkSuggestion];
-  if (key.shape === "tracked-changes") return [REFUSAL_ROWS.hyperlinkReview];
   return [];
 };
 

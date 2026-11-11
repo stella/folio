@@ -28,7 +28,7 @@ export const BIDI_CONTROLS: {
 export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
 
 // @public
-export type BlockContent = Paragraph | Table | BlockSdt | BlockCustomXml | PreservedBlock | BookmarkStart | BookmarkEnd | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd;
+export type BlockContent = Paragraph | Table | BlockSdt | BlockCustomXml | PreservedBlock | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd;
 
 // @public
 export type BlockCustomXml = {
@@ -143,6 +143,7 @@ type Comment_2 = {
     annotationReferenceFormatting?: TextFormatting;
     parentId?: number;
     done?: boolean;
+    suggestionId?: string;
     preserved?: PreservedMarkup;
 };
 export { Comment_2 as Comment }
@@ -204,6 +205,18 @@ export type ConditionalFormatStyle = {
     swCell?: boolean;
     seCell?: boolean;
 };
+
+// @public
+export const CONTENT_CONTROL_LOCK: "contentControlLock";
+
+// @public
+export type ContentControlChange = "editContent" | "removeControl";
+
+// @public (undocumented)
+export type ContentControlLock = NonNullable<SdtProperties["lock"]>;
+
+// @public
+export const contentControlLockAllows: (lock: ContentControlLock | null | undefined, change: ContentControlChange) => boolean;
 
 // @public
 export const COUNTER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter", "ordinal", "cardinalText", "ordinalText", "hex", "chicago", "ideographDigital", "japaneseCounting", "aiueo", "iroha", "decimalFullWidth", "decimalHalfWidth", "japaneseLegal", "japaneseDigitalTenThousand", "decimalEnclosedCircle", "decimalFullWidth2", "aiueoFullWidth", "irohaFullWidth", "decimalZero", "bullet", "ganada", "chosung", "decimalEnclosedFullstop", "decimalEnclosedParen", "decimalEnclosedCircleChinese", "ideographEnclosedCircle", "ideographTraditional", "ideographZodiac", "ideographZodiacTraditional", "taiwaneseCounting", "ideographLegalTraditional", "taiwaneseCountingThousand", "taiwaneseDigital", "chineseCounting", "chineseLegalSimplified", "chineseCountingThousand", "koreanDigital", "koreanCounting", "koreanLegal", "koreanDigital2", "vietnameseCounting", "russianLower", "russianUpper", "none", "numberInDash", "hebrew1", "hebrew2", "arabicAlpha", "arabicAbjad", "hindiVowels", "hindiConsonants", "hindiNumbers", "hindiCounting", "thaiLetters", "thaiNumbers", "thaiCounting", "bahtText", "dollarText", "custom", "decimalZero3", "decimalZero4", "decimalZero5"];
@@ -444,6 +457,9 @@ export type FieldType = "PAGE" | "NUMPAGES" | "NUMWORDS" | "NUMCHARS" | "DATE" |
 export const finalizeParagraphFormatting: (formatting: ParagraphFormatting | undefined) => ParagraphFormatting | undefined;
 
 // @public
+export const firstLockedControlViolation: (controls: Iterable<LockedControlSpan>, touches: readonly LockedControlTouch[]) => LockedControlViolation | null;
+
+// @public
 export type FloatingTableProperties = {
     horzAnchor?: "margin" | "page" | "text";
     vertAnchor?: "margin" | "page" | "text";
@@ -572,7 +588,7 @@ export type Hyperlink = {
     target?: string;
     history?: boolean;
     docLocation?: string;
-    children: (Run | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | CommentReference | InlineWrapper | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | PreservedInline)[];
+    children: (Run | ComplexField | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | CommentReference | InlineWrapper | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | PreservedInline)[];
 };
 
 // @public
@@ -867,6 +883,40 @@ export type ListRendering = {
 };
 
 // @public
+export const lockedControlMessage: (input: LockedControlViolation) => string;
+
+// @public
+export type LockedControlSpan = {
+    lock: ContentControlLock;
+    from: number;
+    to: number;
+    contentFrom: number;
+    contentTo: number;
+};
+
+// @public
+export type LockedControlTouch = {
+    from: number;
+    to: number;
+    effect: "remove" | "edit";
+};
+
+// @public
+export type LockedControlViolation = {
+    lock: ContentControlLock;
+    change: ContentControlChange;
+};
+
+// @public
+export const lockedControlViolation: (control: LockedControlSpan, touch: LockedControlTouch) => LockedControlViolation | null;
+
+// @public
+export const locksContent: (lock: ContentControlLock | null | undefined) => lock is "contentLocked" | "sdtContentLocked";
+
+// @public
+export const locksControl: (lock: ContentControlLock | null | undefined) => lock is "sdtLocked" | "sdtContentLocked";
+
+// @public
 export type MarkupRangeMarker = {
     id: number;
     displacedByCustomXml?: DisplacedByCustomXml;
@@ -995,6 +1045,7 @@ export type NumberingDefinitions = {
     nums: NumberingInstance[];
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
+    danglingNumIds?: number[];
 };
 
 // @public
@@ -1150,6 +1201,7 @@ export type ParagraphMarkChange = {
     kind: ParagraphMarkChangeKind;
     info: TrackedChangeInfo;
     resolutionJoin?: number | undefined;
+    survivor?: "first" | undefined;
 };
 
 // @public
@@ -1233,6 +1285,7 @@ export const PARSE_WARNING_CODES: {
     readonly altChunkUnsupported: "alt-chunk-unsupported";
     readonly revisionCarrierOpaque: "revision-carrier-opaque";
     readonly nestedRowOpaque: "nested-row-opaque";
+    readonly reviewProvenanceDropped: "review-provenance-dropped";
 };
 
 // @public (undocumented)
@@ -2266,6 +2319,7 @@ export type TrackedChangeInfo = {
         attribute: string;
         value: string;
     };
+    suggestionId?: string;
 };
 
 // @public

@@ -340,9 +340,20 @@ const unusedInstanceFor = (
   numbering: NumberingMap,
   doc: PMNode,
   request: ListRequest,
-): number | undefined => {
-  const referenced = referencedNumIds(doc);
-  return numbering.definitions.nums.find(({ numId, abstractNumId }) => {
+): number | undefined =>
+  unusedListInstanceFor(numbering, referencedNumIds(doc), request);
+
+/**
+ * The instance the package already defines for `request` that no paragraph
+ * of the story refers to (`referenced`): a new list takes it before one is
+ * minted. One rule for both engines.
+ */
+export const unusedListInstanceFor = (
+  numbering: NumberingMap,
+  referenced: ReadonlySet<number>,
+  request: ListRequest,
+): number | undefined =>
+  numbering.definitions.nums.find(({ numId, abstractNumId }) => {
     const abstract = numbering.getAbstract(abstractNumId);
     const level = numbering.getLevel(numId, 0);
     return (
@@ -356,7 +367,6 @@ const unusedInstanceFor = (
       (level.start ?? 1) === (request.start ?? level.start ?? 1)
     );
   })?.numId;
-};
 
 /**
  * The list a paragraph range joins: the list directly above it, else the one

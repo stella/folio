@@ -574,6 +574,8 @@ const blockRangeMarkerCounters = (
     BlockContent["type"],
     | "bookmarkStart"
     | "bookmarkEnd"
+    | "commentRangeStart"
+    | "commentRangeEnd"
     | "moveFromRangeStart"
     | "moveFromRangeEnd"
     | "moveToRangeStart"
@@ -583,6 +585,8 @@ const blockRangeMarkerCounters = (
 > => ({
   bookmarkStart: ctx.bookmarkStarts,
   bookmarkEnd: ctx.bookmarkEnds,
+  commentRangeStart: ctx.commentRangeStarts,
+  commentRangeEnd: ctx.commentRangeEnds,
   moveFromRangeStart: ctx.moveFromStarts,
   moveFromRangeEnd: ctx.moveFromEnds,
   moveToRangeStart: ctx.moveToStarts,
@@ -616,6 +620,8 @@ const validateBlock = (
   if (
     block.type === "bookmarkStart" ||
     block.type === "bookmarkEnd" ||
+    block.type === "commentRangeStart" ||
+    block.type === "commentRangeEnd" ||
     block.type === "moveFromRangeStart" ||
     block.type === "moveFromRangeEnd" ||
     block.type === "moveToRangeStart" ||
@@ -958,6 +964,12 @@ const validateHyperlinkChild = (
     child.type === "moveToRangeStart" ||
     child.type === "moveToRangeEnd"
   ) {
+    validateParagraphContent(child, path, ctx);
+    return;
+  }
+  // A field the link holds whole, such as a table of contents entry's page
+  // number: its code and result pair their own markers.
+  if (child.type === "complexField") {
     validateParagraphContent(child, path, ctx);
     return;
   }

@@ -1,15 +1,10 @@
-import { Selection } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
-
+import { getCommentParentId } from "@stll/folio-core/docx/hostCommentThreads";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import {
   allocateCommentId,
   seedCommentIdAbove,
 } from "@stll/folio-core/prosemirror/commentIdAllocator";
 import type { Comment } from "@stll/folio-core/types/content";
-
-import type { CommentMarkRange } from "./commentAnchors";
-import { clampCommentMarkRange } from "./commentAnchors";
 
 /** Pseudo-id for the comment mark applied while the add-comment form is open. */
 export const PENDING_COMMENT_ID = -1;
@@ -21,6 +16,14 @@ export const EMPTY_ANCHOR_POSITIONS: Map<string, number> = new Map<
 >();
 
 export { allocateCommentId, seedCommentIdAbove };
+export {
+  getCommentParentId,
+  pruneOrphanedComments,
+} from "@stll/folio-core/docx/hostCommentThreads";
+import {
+  readPaintedEnd,
+  readPaintedStart,
+} from "@stll/folio-core/utils/paintedPositions";
 
 export function getCommentAuthorKey(author?: string): string {
   const trimmed = author?.trim();
@@ -46,8 +49,8 @@ export function findSelectionYPosition(
     return null;
   }
   for (const el of findBodyPmAnchors(pagesEl)) {
-    const pmStart = Number(el.dataset["pmStart"]);
-    const pmEnd = Number(el.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(el) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(el) ?? Number.NaN;
     if (pmPos >= pmStart && pmPos <= pmEnd) {
       return (
         el.getBoundingClientRect().top -
@@ -108,13 +111,6 @@ export function createComment(
   };
 }
 
-export function getCommentParentId(
-  comment: Comment,
-): number | null | undefined {
-  const runtimeComment: { parentId?: number | null } = comment;
-  return runtimeComment.parentId;
-}
-
 /**
  * Threads the comments sidebar shows a card for: top-level comments not yet
  * resolved. Tracked changes are painted inline and have no card, so a
@@ -129,43 +125,6 @@ export function countOpenCommentThreads(comments: readonly Comment[]): number {
     }
   }
   return count;
-}
-
-export function applyCommentMarkRange(
-  view: EditorView,
-  range: CommentMarkRange,
-  commentId: number,
-  options?: { replacePending?: boolean; selectEnd?: boolean },
-): boolean {
-  const commentMark = view.state.schema.marks["comment"];
-  const safeRange = clampCommentMarkRange(view.state.doc.content.size, range);
-  if (!commentMark || !safeRange) {
-    return false;
-  }
-
-  let tr = view.state.tr;
-  if (options?.replacePending) {
-    // Target only the pending placeholder mark. Passing the MarkType would
-    // remove every comment mark in the range, including any pre-existing
-    // (non-pending) comments the new selection happens to overlap.
-    tr = tr.removeMark(
-      safeRange.from,
-      safeRange.to,
-      commentMark.create({ commentId: PENDING_COMMENT_ID }),
-    );
-  }
-  tr = tr.addMark(
-    safeRange.from,
-    safeRange.to,
-    commentMark.create({ commentId }),
-  );
-
-  if (options?.selectEnd) {
-    tr = tr.setSelection(Selection.near(tr.doc.resolve(safeRange.to), -1));
-  }
-
-  view.dispatch(tr);
-  return true;
 }
 
 /**
@@ -229,86 +188,4 @@ export function collectCommentIdsFromSources(
     visit(source);
   }
   return ids;
-}
-
-/**
- * Filter `comments` to drop entries whose reply chain has lost its root.
- *
- * Kept:
- *  - every top-level comment (`parentId` is null/undefined), regardless of
- *    whether its id appears in `referencedIds`,
- *  - replies whose parent chain transitively reaches a kept top-level
- *    comment.
- *
- * Dropped:
- *  - replies whose explicit `parentId` does not reach a kept top-level
- *    comment (a true broken-thread orphan).
- *
- * Why we don't prune unanchored top-level comments: pre-Word-2013
- * documents (and any document missing `commentsExtended.xml`) carry no
- * reply-thread metadata, so Word replies in those files arrive with
- * `parentId === undefined` and look indistinguishable from a true
- * top-level comment whose anchor has been edited away. Dropping
- * unanchored top-level entries would silently lose every reply in
- * those older files on the first save — a strictly worse failure mode
- * than re-emitting a comment whose anchor was actually deleted. The
- * complementary "overwrite stale `comments.xml`" fix in the save paths
- * already prevents the phantom-thread regression when the array does
- * end up empty.
- */
-export function pruneOrphanedComments(
-  comments: Comment[],
-  _referencedIds: Set<number>,
-): Comment[] {
-  void _referencedIds;
-  const keptIds = new Set<number>();
-  // Step 1: keep every top-level comment.
-  for (const comment of comments) {
-    const parentId = getCommentParentId(comment);
-    if (parentId === null || parentId === undefined) {
-      keptIds.add(comment.id);
-    }
-  }
-  // Step 2: iteratively pull in replies whose parent chain reaches a kept
-  // top-level comment. Repeats until no new comment is added, so a
-  // thread of depth N (replies-to-replies-to-…) is fully promoted in
-  // N − 1 passes.
-  let addedThisPass = true;
-  while (addedThisPass) {
-    addedThisPass = false;
-    for (const comment of comments) {
-      if (keptIds.has(comment.id)) {
-        continue;
-      }
-      const parentId = getCommentParentId(comment);
-      if (
-        parentId !== null &&
-        parentId !== undefined &&
-        keptIds.has(parentId)
-      ) {
-        keptIds.add(comment.id);
-        addedThisPass = true;
-      }
-    }
-  }
-  return comments.filter((comment) => keptIds.has(comment.id));
-}
-
-export function removePendingCommentMarkRange(
-  view: EditorView,
-  range: CommentMarkRange,
-): void {
-  const commentMark = view.state.schema.marks["comment"];
-  const safeRange = clampCommentMarkRange(view.state.doc.content.size, range);
-  if (!commentMark || !safeRange) {
-    return;
-  }
-
-  view.dispatch(
-    view.state.tr.removeMark(
-      safeRange.from,
-      safeRange.to,
-      commentMark.create({ commentId: PENDING_COMMENT_ID }),
-    ),
-  );
 }

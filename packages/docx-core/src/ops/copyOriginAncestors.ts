@@ -276,6 +276,10 @@ export const hasValidCopyOriginAncestorsInBlocks = (
       case "blockSdt":
       case "blockCustomXml":
         return hasValidCopyOriginAncestorsInBlocks(block.content);
+      // A comment range marker carries no copy origin.
+      case "commentRangeStart":
+      case "commentRangeEnd":
+        return true;
       case "bookmarkStart":
       case "bookmarkEnd":
       case "moveFromRangeStart":
@@ -327,6 +331,8 @@ export const copyOriginBoundaryKeysInBlocks = (
           if (key !== undefined) keys.add(key);
           break;
         }
+        case "commentRangeStart":
+        case "commentRangeEnd":
         case "preservedBlock":
           break;
         default: {

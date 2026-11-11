@@ -610,7 +610,7 @@ describe("canonical structural commands", () => {
             schema,
             doc: session.projection.doc,
           });
-          let oracle = ["ab😀cd", "EF"];
+          const oracle = ["ab😀cd", "EF"];
           const history: {
             before: Document;
             after: Document;
@@ -964,6 +964,85 @@ describe("canonical structural commands", () => {
       },
     );
   });
+
+  test.each([
+    ["no paragraph refers to it", "unused", 901],
+    ["a paragraph refers to it", "used", undefined],
+    ["only a paragraph accepting removes refers to it", "outgoing", 901],
+  ] as const)(
+    "a numbered marker takes the defined instance when %s, as the default editor does",
+    (_name, use, expected) => {
+      const info = { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
+      const levels = Array.from({ length: 9 }, (_, ilvl) => ({
+        ilvl,
+        start: 1,
+        numFmt: "decimal" as const,
+        lvlText: `%${ilvl + 1}.`,
+      }));
+      const document = seed();
+      document.package.numbering = {
+        abstractNums: [
+          { abstractNumId: 901, multiLevelType: "hybridMultilevel", levels },
+        ],
+        nums: [{ numId: 901, abstractNumId: 901 }],
+      };
+      const user = {
+        type: "paragraph" as const,
+        paraId: "00000002",
+        formatting: {
+          numPr: { kind: "reference" as const, numId: 901, ilvl: 0 },
+        },
+        ...(use === "outgoing"
+          ? { pPrMark: { kind: "del" as const, info: { ...info, id: 8 } } }
+          : {}),
+        content: [
+          use === "outgoing"
+            ? {
+                type: "deletion" as const,
+                info,
+                content: [
+                  {
+                    type: "run" as const,
+                    content: [{ type: "text" as const, text: "Gone" }],
+                  },
+                ],
+              }
+            : {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: "Kept" }],
+              },
+        ],
+      };
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          paraId: "12345678",
+          content: [{ type: "run", content: [{ type: "text", text: "1." }] }],
+        },
+        { type: "paragraph", paraId: "00000001", content: [] },
+        ...(use === "unused" ? [] : [user]),
+      ];
+      const session = createCanonicalSession(document).unwrap();
+      let state = EditorState.create({ schema, doc: session.projection.doc });
+      state = select(state, 3);
+      const commit =
+        prepareCanonicalAutoformat(session, state, {
+          from: state.selection.head,
+          to: state.selection.head,
+          text: " ",
+        }) ?? panic("Declared marker was not recognized.");
+      accept(session, state, commit.unwrap());
+      const numPr = paragraphs(session).at(0)?.formatting?.numPr;
+      if (numPr?.kind !== "reference") return panic("The marker made no list.");
+      if (expected === undefined) {
+        expect(numPr.numId).not.toBe(901);
+        expect(session.document.package.numbering?.nums.length).toBe(2);
+      } else {
+        expect(numPr.numId).toBe(expected);
+        expect(session.document.package.numbering?.nums.length).toBe(1);
+      }
+    },
+  );
 
   test("numbered autoformat keeps its start at level zero through every nested level", async () => {
     await assertProperty(

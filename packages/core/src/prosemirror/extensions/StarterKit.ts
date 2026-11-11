@@ -36,6 +36,7 @@ import { SelectionTrackerExtension } from "./features/SelectionTrackerExtension"
 // Marks
 import { MARK_EXTENSIONS, MARK_NESTING_ORDER } from "./markRegistry";
 import { BlockBookmarkBoundaryExtension } from "./nodes/BlockBookmarkBoundaryExtension";
+import { BlockCommentRangeBoundaryExtension } from "./nodes/BlockCommentRangeBoundaryExtension";
 import { BlockCustomXmlExtension } from "./nodes/BlockCustomXmlExtension";
 import { BlockMoveRangeBoundaryExtension } from "./nodes/BlockMoveRangeBoundaryExtension";
 import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
@@ -142,6 +143,7 @@ export function createStarterKit(
     "blockMoveRangeBoundary",
     BlockMoveRangeBoundaryExtension({ getInternalClipboardToken }),
   );
+  add("blockCommentRangeBoundary", BlockCommentRangeBoundaryExtension());
   add(
     "commentReference",
     CommentReferenceExtension({ getInternalClipboardToken }),

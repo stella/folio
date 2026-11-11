@@ -358,6 +358,68 @@ export const CANONICAL_RESTARTED_AFTER_PASTE_SEED_197 = {
   trace: BrowserInputTrace;
 };
 
+/**
+ * A composition that keeps going after the editor redrew its first text
+ * beside a pasted run: the reread names the run's font for one script only.
+ */
+export const CANONICAL_COMPOSITION_REREAD_AFTER_PASTE = {
+  authority: "canonical",
+  seed: 197,
+  path: "reread-after-paste",
+  fingerprint: "composition-reread-after-paste",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "typing", text: "valid invoice" },
+      { kind: "pastePlain", plain: "alpha valid", html: "" },
+      {
+        kind: "imeReplacement",
+        updates: ["invoice", "👩🏽‍⚖️ invoice", "café", "alpha buyer café"],
+        completion: "commit",
+      },
+      { kind: "cut" },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/**
+ * A composition right after a pasted run, as an input method grows it: its
+ * text in progress shows at the caret, and it commits what the default
+ * editor commits.
+ */
+export const CANONICAL_COMPOSITION_BESIDE_PASTED_RUN = {
+  authority: "canonical",
+  seed: 197,
+  path: "beside-pasted-run",
+  fingerprint: "composition-beside-pasted-run",
+  comparesWithDefaultEditor: true,
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "typing", text: "valid invoice" },
+      { kind: "pastePlain", plain: "alpha valid", html: "" },
+      {
+        kind: "imeReplacement",
+        updates: ["in", "inv", "invoice"],
+        completion: "commit",
+      },
+    ],
+  },
+} satisfies {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  comparesWithDefaultEditor: true;
+  trace: BrowserInputTrace;
+};
+
 /** A restarted composition after tracked typing commits at the caret, not mid-word. */
 export const CANONICAL_RESTARTED_AFTER_TYPING = {
   authority: "canonical",
@@ -782,6 +844,84 @@ export const CANONICAL_JOIN_BESIDE_DELETION_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+type CanonicalRegression = {
+  authority: "canonical";
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** ProseMirror types over a selection across paragraphs from keypress, with no beforeinput. */
+export const CANONICAL_TYPING_OVER_LIST_ITEMS_SEED_431 = {
+  authority: "canonical",
+  seed: 431,
+  path: "14:2:3:2:2:1:1",
+  fingerprint: "d80b63ac597ad07a",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      { kind: "typing", text: "alpha" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+export const CANONICAL_TYPING_OVER_LIST_ITEMS_AFTER_TYPING_SEED_431 = {
+  authority: "canonical",
+  seed: 431,
+  path: "14",
+  fingerprint: "1d751358bf327e40",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "typing", text: "shall alpha" },
+      { kind: "selectionDrag", target: "list" },
+      { kind: "typing", text: "é 東京 東京" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+export const CANONICAL_TYPING_ACROSS_PARAGRAPHS = {
+  authority: "canonical",
+  seed: 0,
+  path: "paragraphs",
+  fingerprint: "typing-across-paragraphs",
+  trace: {
+    shape: "plain-markdown",
+    actions: [
+      { kind: "selectionDrag", target: "paragraphs" },
+      { kind: "typing", text: "shall" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+export const CANONICAL_TYPING_OVER_EVERYTHING = {
+  authority: "canonical",
+  seed: 0,
+  path: "selectAll",
+  fingerprint: "typing-over-select-all",
+  trace: {
+    shape: "plain-markdown",
+    actions: [{ kind: "selectAll" }, { kind: "typing", text: "shall" }],
+  },
+} satisfies CanonicalRegression;
+
+/** Typing over selected cells refuses with the session's own reason, leaving them as they were. */
+export const CANONICAL_TYPING_OVER_CELLS = {
+  authority: "canonical",
+  seed: 0,
+  path: "cells",
+  fingerprint: "typing-over-selected-cells",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "selectionDrag", target: "table" },
+      { kind: "typing", text: "shall" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 const SELECT_ALL = "ControlOrMeta+a";
 const SELECT_DOWN = "Shift+ArrowDown";
 
@@ -832,6 +972,49 @@ const BROWSER_MODIFIED_BACKSPACE_TRACES = (
   trace: BrowserInputTrace;
 }[];
 
+/** A list pasted after cutting a block of table cells, while suggesting. */
+export const BROWSER_TABLE_CUT_PASTE_SEED_1794032767 = {
+  seed: 1794032767,
+  path: "13",
+  fingerprint: "407e8612a9687fad",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+      { kind: "dragCellDelete" },
+      { kind: "cut" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "selectionDrag", target: "table" },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
+/** A list pasted over words running to a paragraph's end, while suggesting. */
+export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
+  seed: 29,
+  path: "15:2",
+  fingerprint: "8d01cc728c151a9c",
+  trace: {
+    shape: "notes",
+    actions: [
+      { kind: "selectionDrag", target: "note" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "backspace" },
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+    ],
+  },
+} satisfies {
+  seed: number;
+  path: string;
+  fingerprint: string;
+  trace: BrowserInputTrace;
+};
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -839,6 +1022,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,
   BROWSER_TABLE_SEED_29,
+  BROWSER_TABLE_CUT_PASTE_SEED_1794032767,
   BROWSER_CANCELLED_COMPOSITION_SEED_1793946574,
   BROWSER_PASTE_BEHIND_BOOKMARK_SEED_1793921366,
   BROWSER_RTL_COMPOSITION_SEED_1793914965,
@@ -863,6 +1047,14 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_PARAGRAPH_START_SEED_431,
   CANONICAL_RESTARTED_AFTER_PASTE_SEED_197,
   CANONICAL_RESTARTED_AFTER_TYPING,
+  CANONICAL_COMPOSITION_REREAD_AFTER_PASTE,
+  CANONICAL_COMPOSITION_BESIDE_PASTED_RUN,
   CANONICAL_TRACKED_RUN_REREAD_SEED_1793897521,
   CANONICAL_JOIN_BESIDE_DELETION_SEED_29,
+  CANONICAL_TYPING_OVER_LIST_ITEMS_SEED_431,
+  CANONICAL_TYPING_OVER_LIST_ITEMS_AFTER_TYPING_SEED_431,
+  CANONICAL_TYPING_ACROSS_PARAGRAPHS,
+  CANONICAL_TYPING_OVER_EVERYTHING,
+  CANONICAL_TYPING_OVER_CELLS,
+  BROWSER_NOTES_LIST_PASTE_SEED_29,
 ];

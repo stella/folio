@@ -51,7 +51,10 @@ test("structured field payloads validate text without refusing authored instruct
     content: [run("L"), field, run("R")],
   } satisfies Paragraph;
   expect(createCanonicalSession(documentFor(source)).isOk()).toBe(true);
-  for (const text of ["\u0001", "\t", "\n"]) {
+  // A literal tab reads as a tab element; the cache keeps every other check.
+  field.fieldResult = [run("\t")];
+  expect(createCanonicalSession(documentFor(source)).isOk()).toBe(true);
+  for (const text of ["\u0001", "\n"]) {
     field.fieldResult = [run(text)];
     const result = createCanonicalSession(documentFor(source));
     expect(result.isErr()).toBe(true);
@@ -316,11 +319,19 @@ test("nonempty comment ranges map their mark transitions to source gap ordinals"
       paragraph: toProseDoc(document).child(0),
       pairedBookmarkIds: new Set(),
     }).unwrap();
+    // A seam shared by a range's start marker stands for the gap typed text
+    // takes, before the marker; its extent still reaches after it.
     expect(mapped.boundaries).toEqual([
       [{ position: 0, zeroWidthBefore: 0 }],
-      [{ position: 1, zeroWidthBefore: 1 }],
+      [{ position: 1, zeroWidthBefore: 0 }],
       [{ position: 2, zeroWidthBefore: 1 }],
       [{ position: 3, zeroWidthBefore: 0 }],
+    ]);
+    expect(mapped.seams).toEqual([
+      [{ first: 0, last: 0 }],
+      [{ first: 0, last: 1 }],
+      [{ first: 0, last: 1 }],
+      [{ first: 0, last: 0 }],
     ]);
   }
 });
@@ -497,8 +508,11 @@ test("generated erased containers keep unique source seams beside text and colla
             offset,
             zeroWidthBefore: ordinal,
           });
+          // Every ordinal a seam spans has the seam's editor position.
           expect(position.isOk()).toBe(
-            gaps.some(({ zeroWidthBefore }) => zeroWidthBefore === ordinal),
+            (mapped.seams[offset] ?? []).some(
+              ({ first, last }) => first <= ordinal && ordinal <= last,
+            ),
           );
         }
       }
@@ -798,7 +812,9 @@ test("story-owned eligibility preserves unpaired and cross-paragraph bookmark so
       offset: 1,
       zeroWidthBefore: 0,
     });
-    expect(before.isOk()).toBe(represented);
+    // Both sides of the marker have an editor position: its own when the
+    // marker is represented, the seam they share when it is erased.
+    expect(before.isOk()).toBe(true);
     const after = session.projection
       .positionAt({
         story: OP_STORIES.MAIN,
@@ -807,9 +823,11 @@ test("story-owned eligibility preserves unpaired and cross-paragraph bookmark so
         zeroWidthBefore: 1,
       })
       .unwrap();
-    expect(session.projection.addressAt(after).unwrap().zeroWidthBefore).toBe(
-      1,
-    );
+    expect(after === before.unwrap()).toBe(!represented);
+    expect(
+      session.projection.addressAt(after, "afterMarkers").unwrap()
+        .zeroWidthBefore,
+    ).toBe(1);
   };
   for (const endpoint of ["start", "end"] as const)
     for (const scenario of cases) check(endpoint, scenario);

@@ -76,7 +76,7 @@ describe("resolving a revision that holds a bidirectional wrapper", () => {
       await createDocx(insertedInsideWrapper()),
     );
     expect(reviewer.getChanges()).toHaveLength(1);
-    expect(reviewer.acceptAll()).toBe(1);
+    expect(reviewer.acceptAll().resolved).toBe(1);
 
     const xml = await documentXml(await reviewer.toBuffer());
     expect(xml).toContain("<w:t>x</w:t>");
@@ -88,7 +88,7 @@ describe("resolving a revision that holds a bidirectional wrapper", () => {
       await createDocx(insertedInsideWrapper()),
     );
     expect(reviewer.getChanges()).toHaveLength(1);
-    expect(reviewer.rejectAll()).toBe(1);
+    expect(reviewer.rejectAll().resolved).toBe(1);
 
     const xml = await documentXml(await reviewer.toBuffer());
     expect(xml).not.toContain(">x<");

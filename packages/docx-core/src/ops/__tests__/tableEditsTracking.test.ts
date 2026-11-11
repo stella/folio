@@ -203,6 +203,96 @@ describe("tracked table edits", () => {
     },
   );
 
+  /** The element a property edit of this kind addresses: the table, its first row or first cell. */
+  const element = (kind: "table" | "row" | "cell", table: Table) => {
+    if (kind === "table") return table;
+    const row = table.rows.at(0);
+    return kind === "row" ? row : row?.cells.at(0);
+  };
+
+  const secondEdit = (
+    kind: "table" | "row" | "cell",
+    id: number,
+  ): DocumentOp => {
+    const stamp = { revision: { ...revision(id), author: "Second" } };
+    switch (kind) {
+      case "table":
+        return {
+          ...tableTarget,
+          type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+          patch: { justification: "center" },
+          ...stamp,
+        };
+      case "row":
+        return {
+          ...tableTarget,
+          type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+          patch: { heightRule: "exact", height: { value: 600, type: "dxa" } },
+          ...stamp,
+        };
+      case "cell":
+        return {
+          ...tableTarget,
+          type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+          patch: { verticalAlign: "center" },
+          ...stamp,
+        };
+      default: {
+        const unreachable: never = kind;
+        return unreachable;
+      }
+    }
+  };
+
+  test.each(["table", "row", "cell"] as const)(
+    "a further %s property change joins the pending record, which still rejects to the baseline",
+    (kind) => {
+      const baseline = documentOf(tableOf());
+      const first = applied(baseline, propertyEdit(kind, revision(300)));
+      const second = applied(first.document, secondEdit(kind, 301));
+      const directFirst = applied(baseline, propertyEdit(kind));
+      const directBoth = applied(
+        directFirst.document,
+        (() => {
+          const { revision: _stamp, ...untracked } = secondEdit(kind, 301) as {
+            revision?: unknown;
+          } & DocumentOp;
+          return untracked as DocumentOp;
+        })(),
+      );
+      const table = tableIn(second.document);
+      const records = element(kind, table)?.propertyChanges;
+      // One record, stamped by the latest change, holding the formatting before both.
+      expect(records).toHaveLength(1);
+      expect(records?.at(0)?.info.id).toBe(301);
+      const before = element(kind, tableIn(baseline))?.formatting;
+      expect(records?.at(0)?.previousFormatting).toEqual(before);
+      exact(
+        resolved(second.document, [301], REVISION_DECISIONS.REJECT).document,
+        baseline,
+      );
+      exact(
+        resolved(second.document, [301], REVISION_DECISIONS.ACCEPT).document,
+        directBoth.document,
+      );
+    },
+  );
+
+  test.each(["table", "row", "cell"] as const)(
+    "an untracked %s property change keeps the pending record",
+    (kind) => {
+      const baseline = documentOf(tableOf());
+      const tracked = applied(baseline, propertyEdit(kind, revision(300)));
+      const { revision: _stamp, ...untracked } = secondEdit(kind, 301) as {
+        revision?: unknown;
+      } & DocumentOp;
+      const after = applied(tracked.document, untracked as DocumentOp);
+      const table = tableIn(after.document);
+      const records = element(kind, table)?.propertyChanges;
+      expect(records?.map(({ info }) => info.id)).toEqual([300]);
+    },
+  );
+
   test("grid revisions restore or keep the exact column widths", () => {
     const baseline = documentOf(tableOf());
     const direct = applied(baseline, {

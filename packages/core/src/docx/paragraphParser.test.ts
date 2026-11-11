@@ -488,10 +488,14 @@ describe("parseParagraph empty-run normalization", () => {
       return;
     }
 
-    expect(hyperlink.children).toHaveLength(5);
+    // The link holds the page number field whole.
+    const field = hyperlink.children.at(0);
+    expect(hyperlink.children).toHaveLength(1);
+    expect(field?.type).toBe("complexField");
+    if (field?.type !== "complexField") return;
     expect(
-      hyperlink.children.some(
-        (child) => child.type === "run" && child.content.length === 0,
+      [...field.fieldCode, ...field.fieldResult].some(
+        (run) => run.content.length === 0,
       ),
     ).toBe(false);
 

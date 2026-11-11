@@ -1,8 +1,10 @@
 import type { EditorState, Transaction } from "prosemirror-state";
 import { Selection, TextSelection } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 import { ReplaceStep } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
+import { textCaretOf } from "../prosemirror/nativeSelection";
 import {
   getEditorInputTargetRange,
   handleEditorBeforeInput,
@@ -40,7 +42,8 @@ type CanonicalInputOptions = {
       | "pageBreak"
       | "tab"
       | "indent"
-      | "outdent",
+      | "outdent"
+      | "deleteTable",
   ) => void;
   command?: (name: "toggleBold" | "toggleItalic" | "toggleUnderline") => void;
   breakUndoGroup?: () => void;
@@ -67,17 +70,11 @@ type NativeProposal =
  * model's caret is: in the text before it, or at a paragraph's start in the first.
  */
 const placeCompositionCaret = (view: EditorView): void => {
-  const { selection } = view.state;
   const native = view.dom.ownerDocument.getSelection();
-  if (!selection.empty || !native?.isCollapsed) return;
-  const before = view.domAtPos(selection.from, -1);
-  const { node, offset } =
-    before.node.nodeType === before.node.TEXT_NODE
-      ? before
-      : view.domAtPos(selection.from, 1);
-  if (node.nodeType !== node.TEXT_NODE) return;
+  const caret = textCaretOf(view);
+  if (!native?.isCollapsed || caret === null) return;
   native.removeAllRanges();
-  native.collapse(node, offset);
+  native.collapse(caret.node, caret.offset);
 };
 
 export const createCanonicalInputBoundary = (
@@ -93,6 +90,7 @@ export const createCanonicalInputBoundary = (
     text: string,
   ) => boolean;
   handleKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
+  handleKeyPress: (view: EditorView, event: KeyboardEvent) => boolean;
   handleDOMEvents: {
     keydown: (view: EditorView, event: KeyboardEvent) => boolean;
     compositionstart: (view: EditorView) => boolean;
@@ -233,6 +231,30 @@ export const createCanonicalInputBoundary = (
       refuseNativeMutation(view);
       return true;
     },
+    /**
+     * ProseMirror types a key over a selection that is not text inside one
+     * paragraph (one across paragraphs, a whole document, cells, a node) itself
+     * from keypress, cancelling it, so no beforeinput ever classifies that
+     * text. It is the same typing a beforeinput carries, at the same selection.
+     */
+    handleKeyPress: (view: EditorView, event: KeyboardEvent): boolean => {
+      if (composition.active || composition.pendingFinal) return false;
+      const { selection } = view.state;
+      if (
+        selection instanceof TextSelection &&
+        selection.$from.sameParent(selection.$to)
+      )
+        return false;
+      const text = String.fromCharCode(event.charCode);
+      if (/[\r\n]/u.test(text)) return false;
+      options.replace({
+        from: selection.from,
+        to: selection.to,
+        text,
+        semantic: "typing",
+      });
+      return true;
+    },
     handleKeyDown: (view: EditorView, event: KeyboardEvent): boolean => {
       if (event.isComposing || event.keyCode === 229) return false;
       beginGesture();
@@ -352,6 +374,18 @@ export const createCanonicalInputBoundary = (
         return true;
       }
       const selection = view.state.selection;
+      // Every cell of a table selected: the key deletes the table, as the
+      // editor's own table keymap does.
+      if (
+        selection instanceof CellSelection &&
+        selection.isRowSelection() &&
+        selection.isColSelection() &&
+        options.structure !== undefined
+      ) {
+        closeGroup();
+        options.structure("deleteTable");
+        return true;
+      }
       if (
         selection.empty &&
         options.structure !== undefined &&

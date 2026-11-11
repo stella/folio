@@ -48,6 +48,7 @@ import type {
   TableRow,
   TableRowFormatting,
   TextFormatting,
+  TrackedChangeInfo,
 } from "../model/document";
 import type {
   AbstractNumbering,
@@ -224,7 +225,7 @@ export type NewIds = {
  * of making it: the stamp's id names the first record the edit creates and
  * `newIds.revision` names the others, in document order. The id must be unused
  * in the package. A new tracked wrapper that would sit next to one with the
- * same author, date and initials merges into it and creates no record, so an
+ * same author, date, initials and suggestion merges into it and creates no record, so an
  * author's burst of typing reads as one change.
  */
 export type RevisionStamp = {
@@ -233,6 +234,11 @@ export type RevisionStamp = {
   /** `w:date`, as the author's client stated it. */
   date: string;
   initials?: string;
+  /**
+   * The pending suggestion the records belong to. A record of one suggestion
+   * never merges into a record of another, or into an ordinary tracked change.
+   */
+  suggestionId?: string;
 };
 
 /** The paragraph fields a split gives the new paragraph, besides its id, content and mark. */
@@ -278,6 +284,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
   readonly REPLACE_INLINE: "replaceInline";
   readonly RESOLVE_REVISION: "resolveRevision";
+  readonly SET_REVISION_INFO: "setRevisionInfo";
   readonly INSERT_TABLE: "insertTable";
   readonly DELETE_TABLE: "deleteTable";
   readonly SET_CONTAINER_BLOCKS: "setContainerBlocks";
@@ -324,6 +331,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   SET_PARAGRAPH_REVIEW: "setParagraphReview",
   REPLACE_INLINE: "replaceInline",
   RESOLVE_REVISION: "resolveRevision",
+  SET_REVISION_INFO: "setRevisionInfo",
   INSERT_TABLE: "insertTable",
   DELETE_TABLE: "deleteTable",
   SET_CONTAINER_BLOCKS: "setContainerBlocks",
@@ -634,9 +642,10 @@ export type BlockInsertionPoint =
  * Insert paragraphs beside an existing paragraph, with pre-minted ids.
  * Section-bearing paragraphs are refused. With `revision`, each inserted
  * paragraph receives an inserted mark and its content an insertion wrapper.
- * Tracked insertion requires a following paragraph in the same block list;
- * terminal insertion and insertion immediately before non-paragraph blocks
- * are refused as `untrackable`.
+ * A tracked insertion after a paragraph no paragraph follows marks the
+ * anchor's mark as the inserted one and gives the last new paragraph the
+ * anchor's former mark; it is refused as `untrackable` when the anchor's mark
+ * carries review records.
  * Incoming revision and content-control identities are refused in tracked
  * mode rather than nesting reviews or rewriting supplied identities.
  */
@@ -646,6 +655,8 @@ export type InsertBlocksOp = {
   at: BlockInsertionPoint;
   blocks: readonly Paragraph[];
   revision?: RevisionStamp;
+  /** With `revision`, the insertion is the destination of a move: `w:moveTo`. */
+  move?: true;
   newIds?: NewIds;
 };
 
@@ -667,6 +678,8 @@ export type DeleteBlocksOp = {
   story: OpStory;
   blockIds: readonly string[];
   revision?: RevisionStamp;
+  /** With `revision`, the deletion is the source of a move: `w:moveFrom`. */
+  move?: true;
   newIds?: NewIds;
 };
 
@@ -774,6 +787,19 @@ export type ResolveRevisionOp = {
   story: OpStory;
   revisionIds: readonly number[];
   decision: RevisionDecision;
+};
+
+/**
+ * Rewrite the metadata of the revisions with these ids, keeping their content
+ * and their ids: every record carrying an id takes the info given for it.
+ * Adopting a pending suggestion as ordinary tracked changes is this, with the
+ * suggestion id dropped and the adopter's attribution. Its inverse writes the
+ * previous metadata back.
+ */
+export type SetRevisionInfoOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_REVISION_INFO;
+  story: OpStory;
+  infos: readonly TrackedChangeInfo[];
 };
 
 /**
@@ -1123,7 +1149,10 @@ export type UpdateCommentContentOp = {
   type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
   id: number;
   content: readonly Paragraph[];
-  patch?: FormattingPatch<Pick<Comment, "author" | "initials" | "date">>;
+  /** `suggestionId: null` adopts a proposed comment as an ordinary one. */
+  patch?: FormattingPatch<
+    Pick<Comment, "author" | "initials" | "date" | "suggestionId">
+  >;
 };
 export type SetCommentResolutionOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION;
@@ -1194,6 +1223,7 @@ export type DocumentOp = (
   | SetParagraphReviewOp
   | ReplaceInlineOp
   | ResolveRevisionOp
+  | SetRevisionInfoOp
   | InsertRowOp
   | DeleteRowOp
   | SetTableRowsOp

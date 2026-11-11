@@ -24,6 +24,7 @@ import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
+import { createNativeSelectionRefreshPlugin } from "../prosemirror/nativeSelection";
 import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import {
@@ -34,7 +35,7 @@ import { schema } from "../prosemirror/schema";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import {
   CANONICAL_GAP,
-  type CanonicalGap,
+  type CanonicalRefusalGround,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type {
@@ -71,9 +72,15 @@ export type HeaderFooterEditorManagerDeps = {
   getDocument: () => Document | null;
   getReadOnly?: (() => boolean) | undefined;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
+  /**
+   * The canonical session's own document, read without a copy (see
+   * `HiddenEditorManager.readCanonicalDocument`); null outside a session.
+   */
+  readCanonicalDocument: () => Document | null;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
   onSessionRefusal?:
-    ((reason: string, gap: CanonicalGap, error?: Error) => void) | undefined;
+    | ((reason: string, ground: CanonicalRefusalGround, error?: Error) => void)
+    | undefined;
   getHost: () => HTMLElement | null;
   getStyles: () => StyleDefinitions | null | undefined;
   getTheme: () => Theme | null | undefined;
@@ -160,9 +167,9 @@ const buildInitialState = (
         doc: document,
         schema,
         plugins: [
+          createDocumentNumberingPlugin(numbering),
           ...manager.getPlugins(),
           createDocumentStylesPlugin(styles),
-          createDocumentNumberingPlugin(numbering),
         ],
       }),
     ),
@@ -236,7 +243,7 @@ export const createHeaderFooterEditorManager = (
       deps.getExperimentalSession?.(),
       CANONICAL_GAP.authorityRouting,
     )
-      ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? null)
+      ? deps.readCanonicalDocument()
       : deps.getDocument();
 
   const sync = (): void => {
@@ -423,8 +430,9 @@ export const createHeaderFooterEditorManager = (
           ? EditorState.create({
               doc: canonicalProjection,
               plugins: [
-                createDocumentStyleContextPlugin(styles),
                 createDocumentNumberingPlugin(numbering),
+                createDocumentStyleContextPlugin(styles),
+                createNativeSelectionRefreshPlugin(),
               ],
             })
           : buildInitialState(headerFooter, styles, theme, numbering, manager),
@@ -437,7 +445,7 @@ export const createHeaderFooterEditorManager = (
           if (noteIssue)
             deps.onSessionRefusal?.(
               noteIssue.message,
-              CANONICAL_GAP.dispatch,
+              { gap: CANONICAL_GAP.dispatch },
               noteIssue,
             );
           view.updateState(nextState);
@@ -489,7 +497,7 @@ export const createHeaderFooterEditorManager = (
         const canonical = deps.getCanonicalApi?.()?.getCanonicalDocument();
         if (canonical) return canonical;
         throw new CanonicalSessionError({
-          gap: CANONICAL_GAP.authorityRouting,
+          ground: { gap: CANONICAL_GAP.authorityRouting },
           reason: "refused",
           message: "Canonical story snapshot is unavailable.",
         });

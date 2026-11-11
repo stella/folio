@@ -1,7 +1,16 @@
 import { TextSelection } from "prosemirror-state";
 
 import type { Document } from "@stll/folio-core";
+import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
+import type { FolioAIEditSnapshot } from "@stll/folio-core/ai-edits/types";
+import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type { FolioDocumentOperationUndoHandle } from "@stll/folio-core/document-operations";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationBatch,
+  type FolioDocumentOperationResult,
+} from "@stll/folio-core/document-operations";
 import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import { singletonManager } from "@stll/folio-core/prosemirror/schema";
@@ -15,9 +24,33 @@ import {
   paragraphPropertySourceBelongsToDocument,
   paragraphPropertySourceTokenMatchesContract,
 } from "../../packages/core/src/docx/paragraphPropertySource";
-import type { BrowserDragTarget } from "../visual/browserDragTarget";
+import {
+  type BrowserDragTarget,
+  crossParagraphDragRange,
+} from "../visual/browserDragTarget";
 import { waitForCanonicalLoadOwner } from "./canonicalLoadOwner";
 import { canonicalTextSelection } from "./canonicalTextSelection";
+
+/**
+ * Each conversion salts the ids it mints for text box groups and anchors, so
+ * two conversions of one document differ there. Compare with each salt named
+ * by its order of appearance, which keeps every anchor tied to its box.
+ */
+const MINTED_ID_ATTRS = new Set(["_docxGroupId", "_docxAnchorId", "anchorId"]);
+const withoutMintedIds = (value: unknown): unknown => {
+  const salts = new Map<string, string>();
+  return JSON.parse(
+    JSON.stringify(value, (key, field: unknown) => {
+      if (!MINTED_ID_ATTRS.has(key) || typeof field !== "string") return field;
+      const separator = field.indexOf(":");
+      if (separator < 0) return field;
+      const salt = field.slice(0, separator);
+      const name = salts.get(salt) ?? `salt${salts.size}`;
+      salts.set(salt, name);
+      return `${name}${field.slice(separator)}`;
+    }),
+  );
+};
 
 type CanonicalPlaygroundRef = {
   getDocument: () => Document | null;
@@ -25,6 +58,19 @@ type CanonicalPlaygroundRef = {
   ensureEditorView: () => void;
   loadDocumentBuffer: (buffer: Uint8Array) => Promise<void>;
   save: () => Promise<ArrayBuffer | null>;
+  createAIEditSnapshot: () => FolioAIEditSnapshot | null;
+  applyDocumentOperations: (options: {
+    undefinedReferences: "refuse";
+    snapshot: FolioAIEditSnapshot;
+    batch: FolioDocumentOperationBatch;
+  }) => FolioDocumentOperationResult;
+  getSuggestions: () => readonly { suggestionId: string }[];
+  exportPendingSuggestions: () => readonly unknown[];
+  acceptSuggestion: (
+    suggestionId: string,
+    options?: { author?: string },
+  ) => { accepted: boolean };
+  rejectSuggestion: (suggestionId: string) => boolean;
 };
 
 export type CanonicalHyperlinkAction =
@@ -44,6 +90,15 @@ export type CanonicalHyperlinkAction =
       href: string;
       tooltip?: string;
     };
+
+/** The undo handle of the last story edit `replaceStoryBlock` made. */
+let lastStoryUndoHandle: FolioDocumentOperationUndoHandle | null = null;
+
+/** The public story handle an operation story names. */
+const publicStoryOf = (story: Exclude<OpStory, "main">) =>
+  "rId" in story
+    ? { type: story.kind, relationshipId: story.rId }
+    : { type: story.kind, noteId: story.id };
 
 /** Private interaction-test bridge shared by both playgrounds. */
 export const buildCanonicalBridge = (
@@ -132,7 +187,10 @@ export const buildCanonicalBridge = (
       projectionJSON: state?.doc.toJSON() ?? null,
       canonicalProjectionJSON: canonicalProjection?.toJSON() ?? null,
       projectionMatchesCanonical: Boolean(
-        state && canonicalProjection && state.doc.eq(canonicalProjection),
+        state &&
+        canonicalProjection &&
+        JSON.stringify(withoutMintedIds(state.doc.toJSON())) ===
+          JSON.stringify(withoutMintedIds(canonicalProjection.toJSON())),
       ),
       provenance: { valid: provenanceValid, capturedParagraphCount },
       text: state?.doc.textContent ?? null,
@@ -148,6 +206,17 @@ export const buildCanonicalBridge = (
   selectStructuralTarget: (target: BrowserDragTarget) => {
     const view = getRef()?.getEditor()?.getView();
     if (!view) return null;
+    if (target === "paragraphs") {
+      const range = crossParagraphDragRange(view.state.doc);
+      if (!range) return null;
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, range.from, range.to),
+        ),
+      );
+      view.focus();
+      return view.state.selection.toJSON();
+    }
     const targets: {
       pos: number;
       size: number;
@@ -216,12 +285,130 @@ export const buildCanonicalBridge = (
   ) =>
     getRef()?.getEditor()?.resolveCanonicalRevisions(revisionIds, resolution) ??
     false,
+  /**
+   * Replace a secondary story's first paragraph through the public operation
+   * API, as a host's batch would, whatever editor has focus.
+   */
+  replaceStoryBlock: (story: Exclude<OpStory, "main">, text: string) => {
+    const editor = getRef()?.getEditor();
+    const projection = editor?.getCanonicalStoryProjection(story);
+    if (!editor || !projection) return null;
+    const snapshot = createFolioAIEditSnapshot(projection);
+    const block = snapshot.blocks.at(0);
+    if (!block) return null;
+    const result = editor.applyCanonicalDocumentOperations({
+      undefinedReferences: "refuse",
+      snapshot,
+      story: publicStoryOf(story),
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          { id: "story-edit", type: "replaceBlock", blockId: block.id, text },
+        ],
+      },
+    });
+    if (!result) return null;
+    lastStoryUndoHandle = result.undoHandle;
+    return {
+      applied: result.applied.length,
+      skipped: result.skipped.map(({ reason }) => reason),
+    };
+  },
+  /** Undo the last story edit `replaceStoryBlock` made. */
+  undoStoryBlock: () => {
+    const handle = lastStoryUndoHandle;
+    if (!handle) return null;
+    return (
+      getRef()?.getEditor()?.undoCanonicalDocumentOperations(handle)?.status ??
+      null
+    );
+  },
+  /** Suggest replacing `find` with `replace` in a block, as a host's batch would. */
+  suggestReplace: (
+    id: string,
+    blockId: string,
+    find: string,
+    replace: string,
+  ) => {
+    const ref = getRef();
+    const snapshot = ref?.createAIEditSnapshot();
+    if (!ref || !snapshot) return null;
+    const result = ref.applyDocumentOperations({
+      undefinedReferences: "refuse",
+      snapshot,
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [{ id, type: "replaceInBlock", blockId, find, replace }],
+      },
+    });
+    return {
+      applied: result.applied.map(({ suggestionId }) => suggestionId ?? null),
+      skipped: result.skipped.map(({ reason }) => reason),
+    };
+  },
+  /** Propose a comment on a block as a suggestion of its own. */
+  suggestBlockComment: (id: string, blockId: string, text: string) => {
+    const ref = getRef();
+    const snapshot = ref?.createAIEditSnapshot();
+    if (!ref || !snapshot) return null;
+    const result = ref.applyDocumentOperations({
+      undefinedReferences: "refuse",
+      snapshot,
+      batch: {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [
+          { id, type: "commentOnBlock", blockId, comment: { text } },
+        ],
+      },
+    });
+    return {
+      applied: result.applied.map(({ suggestionId }) => suggestionId ?? null),
+      skipped: result.skipped.map(({ reason }) => reason),
+    };
+  },
+  /** Load a package in whichever session the page runs. */
+  loadAnySession: async (bytes: number[]) => {
+    const ref = getRef();
+    if (!ref) return false;
+    await ref.loadDocumentBuffer(new Uint8Array(bytes));
+    ref.ensureEditorView();
+    return true;
+  },
+  suggestionIds: () =>
+    getRef()
+      ?.getSuggestions()
+      .map(({ suggestionId }) => suggestionId) ?? null,
+  pendingSuggestionCount: () =>
+    getRef()?.exportPendingSuggestions().length ?? null,
+  resolveSuggestion: (
+    suggestionId: string,
+    resolution: "accept" | "reject",
+  ) => {
+    const ref = getRef();
+    if (!ref) return false;
+    return resolution === "accept"
+      ? ref.acceptSuggestion(suggestionId, { author: "Adopter" }).accepted
+      : ref.rejectSuggestion(suggestionId);
+  },
   select: (from: number, to = from) => {
     const editor = getRef()?.getEditor();
     if (!editor?.getView()) return false;
     editor.setSelection(from, to);
     editor.focus();
     return true;
+  },
+  /** Run a registered editor command by name, as a toolbar control does. */
+  executeNamedCommand: (name: string, args: readonly unknown[]) => {
+    const editor = getRef()?.getEditor();
+    if (!editor) return false;
+    const execute = editor.executeCommand.bind(editor);
+    const create = singletonManager.requireCommand(name as never) as (
+      ...commandArgs: readonly unknown[]
+    ) => Parameters<typeof execute>[0];
+    return execute(create(...args));
   },
   executeHyperlink: (action: CanonicalHyperlinkAction) => {
     const editor = getRef()?.getEditor();

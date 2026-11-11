@@ -2706,10 +2706,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}body|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Body/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}body|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Body/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}body|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Body/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "modelled"
@@ -3189,10 +3189,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_CustomXmlBlock/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_CustomXmlBlock/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_CustomXmlBlock/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "modelled"
@@ -4459,10 +4459,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ftr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_HdrFtr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ftr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_HdrFtr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}ftr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_HdrFtr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "modelled"
@@ -4561,10 +4561,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hdr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_HdrFtr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hdr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_HdrFtr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}hdr|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_HdrFtr/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "modelled"
@@ -7355,10 +7355,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentBlock/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentBlock/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sdtContent|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_SdtContentBlock/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "modelled"
@@ -8685,10 +8685,10 @@
       "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tc|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Tc/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeEnd": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tc|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Tc/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}commentRangeStart": {
-      "disposition": "captured-verbatim"
+      "disposition": "modelled"
     },
     "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tc|{http://schemas.openxmlformats.org/wordprocessingml/2006/main}CT_Tc/{http://schemas.openxmlformats.org/wordprocessingml/2006/main}customXml": {
       "disposition": "modelled"

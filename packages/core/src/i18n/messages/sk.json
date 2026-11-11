@@ -337,6 +337,8 @@
     "editSessionTakenOver": "Túto reláciu úprav prevzalo iné okno.",
     "editor": {
       "accessibleName": "Editor dokumentov",
+      "changeUnavailable": "Túto zmenu tu zatiaľ nemožno vykonať.",
+      "contentLocked": "Táto časť dokumentu je uzamknutá.",
       "editing": "Úpravy",
       "editingDescription": "Upravujte dokument priamo",
       "outlineDepthAll": "Všetky úrovne",
@@ -632,6 +634,7 @@
       "watermark": "Vodotlač"
     },
     "trackedChanges": {
+      "heldByLock": "Uzamknutý ovládací prvok obsahu bráni prijatiu alebo odmietnutiu tejto zmeny.",
       "replaced": "Nahradené",
       "unknown": "Neznáme",
       "with": "za"

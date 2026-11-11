@@ -16,6 +16,14 @@ import {
   queryHtmlElement,
 } from "../../utils/domGuards";
 import {
+  hasPaintedRange,
+  hasPaintedStart,
+  PAINTED_RANGE_SELECTOR,
+  PAINTED_START_SELECTOR,
+  readPaintedEnd,
+  readPaintedStart,
+} from "../../utils/paintedPositions";
+import {
   descendantTextNodes,
   logicalTextOffset,
   measurePaintedSpanRange,
@@ -53,10 +61,7 @@ export function clickToPositionDom(
   // Find span with PM position data
   const spanEl = findHtmlElement(
     elements,
-    (el) =>
-      el.tagName === "SPAN" &&
-      el.dataset["pmStart"] !== undefined &&
-      el.dataset["pmEnd"] !== undefined,
+    (el) => el.tagName === "SPAN" && hasPaintedRange(el),
   );
 
   if (spanEl) {
@@ -69,8 +74,8 @@ export function clickToPositionDom(
   );
   if (emptyRun) {
     const paragraph = closestHtmlElement(emptyRun, ".layout-paragraph");
-    if (paragraph && paragraph.dataset["pmStart"]) {
-      return Number(paragraph.dataset["pmStart"]);
+    if (paragraph && hasPaintedStart(paragraph)) {
+      return readPaintedStart(paragraph) ?? Number.NaN;
     }
   }
 
@@ -79,18 +84,16 @@ export function clickToPositionDom(
   // isn't hit but the parent paragraph div is)
   const paragraphEl = findHtmlElement(
     elements,
-    (el) =>
-      el.classList.contains("layout-paragraph") &&
-      el.dataset["pmStart"] !== undefined,
+    (el) => el.classList.contains("layout-paragraph") && hasPaintedStart(el),
   );
-  if (paragraphEl && paragraphEl.dataset["pmStart"]) {
+  if (paragraphEl && hasPaintedStart(paragraphEl)) {
     // Try to find the nearest span within this paragraph so clicks to the
     // right of text land at the end of the line, not the paragraph start.
     const nearestPos = findNearestSpanInElement(paragraphEl, clientX, clientY);
     if (nearestPos !== null) {
       return nearestPos;
     }
-    return Number(paragraphEl.dataset["pmStart"]);
+    return readPaintedStart(paragraphEl) ?? Number.NaN;
   }
 
   // Check if click is within a table cell. When clicking in empty space below
@@ -122,8 +125,8 @@ export function findPositionInSpan(
   clientX: number,
   clientY: number,
 ): number | null {
-  const pmStart = Number(spanEl.dataset["pmStart"]);
-  const pmEnd = Number(spanEl.dataset["pmEnd"]);
+  const pmStart = readPaintedStart(spanEl) ?? Number.NaN;
+  const pmEnd = readPaintedEnd(spanEl) ?? Number.NaN;
 
   // Special handling for tab spans - they have a visual width but only contain NBSP
   // Clicking anywhere on a tab should position cursor at start or end based on click position
@@ -276,12 +279,12 @@ function findNearestSpanInElement(
     // hard-break position for a paragraph ending in `<w:br/>`, so a click on
     // that trailing blank row lands after the break rather than at the
     // paragraph start. Fall back to the paragraph start. (eigenpal/docx-editor#752.)
-    if (emptyRun.dataset["pmStart"]) {
-      return Number(emptyRun.dataset["pmStart"]);
+    if (hasPaintedStart(emptyRun)) {
+      return readPaintedStart(emptyRun) ?? Number.NaN;
     }
     const paragraph = closestHtmlElement(emptyRun, ".layout-paragraph");
-    if (paragraph && paragraph.dataset["pmStart"]) {
-      return Number(paragraph.dataset["pmStart"]);
+    if (paragraph && hasPaintedStart(paragraph)) {
+      return readPaintedStart(paragraph) ?? Number.NaN;
     }
   }
 
@@ -305,27 +308,24 @@ function findNearestSpanInElement(
     // No lines - try paragraph directly
     const paragraph = queryHtmlElement(
       element,
-      ".layout-paragraph[data-pm-start]",
+      `.layout-paragraph${PAINTED_START_SELECTOR}`,
     );
-    if (paragraph?.dataset["pmStart"]) {
-      return Number(paragraph.dataset["pmStart"]);
+    if (paragraph !== null && hasPaintedStart(paragraph)) {
+      return readPaintedStart(paragraph) ?? Number.NaN;
     }
     // Last resort: use the cell's own PM position
-    if (element.dataset["pmStart"]) {
-      return Number(element.dataset["pmStart"]);
+    if (hasPaintedStart(element)) {
+      return readPaintedStart(element) ?? Number.NaN;
     }
     return null;
   }
 
   // Find closest span in that line
-  const lineSpans = htmlQueryAll(
-    closestLine,
-    "span[data-pm-start][data-pm-end]",
-  );
+  const lineSpans = htmlQueryAll(closestLine, `span${PAINTED_RANGE_SELECTOR}`);
   if (lineSpans.length === 0) {
     const paragraph = closestHtmlElement(closestLine, ".layout-paragraph");
-    if (paragraph?.dataset["pmStart"]) {
-      return Number(paragraph.dataset["pmStart"]);
+    if (paragraph !== null && hasPaintedStart(paragraph)) {
+      return readPaintedStart(paragraph) ?? Number.NaN;
     }
     return null;
   }
@@ -354,9 +354,9 @@ function findNearestSpanInElement(
 
   const rect = closestSpan.getBoundingClientRect();
   if (clientX < rect.left) {
-    return Number(closestSpan.dataset["pmStart"]);
+    return readPaintedStart(closestSpan) ?? Number.NaN;
   }
-  return Number(closestSpan.dataset["pmEnd"]);
+  return readPaintedEnd(closestSpan) ?? Number.NaN;
 }
 
 /**
@@ -377,7 +377,7 @@ function findNearestSpan(
   // a click outside any body span could resolve to an HF position.
   const spans = htmlQueryAll(
     pageEl,
-    ".layout-page-content span[data-pm-start][data-pm-end]",
+    `.layout-page-content span${PAINTED_RANGE_SELECTOR}`,
   );
   if (spans.length === 0) {
     const firstP = htmlQueryAll(
@@ -385,7 +385,7 @@ function findNearestSpan(
       ".layout-page-content .layout-paragraph",
     ).at(0);
     if (firstP) {
-      return Number(firstP.dataset["pmStart"]) || 0;
+      return readPaintedStart(firstP) || 0;
     }
     return null;
   }
@@ -411,15 +411,12 @@ function findNearestSpan(
   }
 
   // Get spans in this line
-  const lineSpans = htmlQueryAll(
-    closestLine,
-    "span[data-pm-start][data-pm-end]",
-  );
+  const lineSpans = htmlQueryAll(closestLine, `span${PAINTED_RANGE_SELECTOR}`);
   if (lineSpans.length === 0) {
     // Empty line - find PM position from paragraph
     const paragraph = closestHtmlElement(closestLine, ".layout-paragraph");
-    if (paragraph?.dataset["pmStart"]) {
-      return Number(paragraph.dataset["pmStart"]);
+    if (paragraph !== null && hasPaintedStart(paragraph)) {
+      return readPaintedStart(paragraph) ?? Number.NaN;
     }
     return null;
   }
@@ -454,9 +451,9 @@ function findNearestSpan(
 
   // If click is to the left, return start; if right, return end
   if (clientX < rect.left) {
-    return Number(closestSpan.dataset["pmStart"]);
+    return readPaintedStart(closestSpan) ?? Number.NaN;
   }
-  return Number(closestSpan.dataset["pmEnd"]);
+  return readPaintedEnd(closestSpan) ?? Number.NaN;
 }
 
 /**
@@ -492,7 +489,7 @@ export function getSelectionRectsFromDom(
   // body coords could resolve to HF positions.
   const spans = htmlQueryAll(
     container,
-    ".layout-page-content span[data-pm-start][data-pm-end]",
+    `.layout-page-content span${PAINTED_RANGE_SELECTOR}`,
   );
 
   for (const spanEl of spans) {
@@ -578,8 +575,8 @@ export function getCollapsedLineEdgeCaretGeometry(
     line?.getBoundingClientRect() ??
     spanRect;
   const lineRect = line?.getBoundingClientRect();
-  const pmStart = Number(spanEl.dataset["pmStart"]);
-  const pmEnd = Number(spanEl.dataset["pmEnd"]);
+  const pmStart = readPaintedStart(spanEl) ?? Number.NaN;
+  const pmEnd = readPaintedEnd(spanEl) ?? Number.NaN;
   const storedSpaceAdvance = Number(spanEl.dataset["collapsedSpaceAdvance"]);
   const lineScale =
     line && line.offsetWidth > 0 && lineRect
@@ -620,8 +617,8 @@ export function findCollapsedLineEdgeCaretTarget(
   pmPos: number,
 ): CollapsedLineEdgeCaretTarget | null {
   for (const span of spans) {
-    const pmStart = Number(span.dataset["pmStart"]);
-    const pmEnd = Number(span.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(span) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(span) ?? Number.NaN;
     if (pmPos < pmStart || pmPos > pmEnd) {
       continue;
     }
@@ -646,7 +643,7 @@ const getPaintedSpanCaretGeometry = (
   const lineHeight =
     line?.getBoundingClientRect().height || spanRect.height || 16;
   if (span.classList.contains("layout-run-tab")) {
-    const pmEnd = Number(span.dataset["pmEnd"]);
+    const pmEnd = readPaintedEnd(span) ?? Number.NaN;
     return {
       left: pmPos >= pmEnd ? spanRect.right : spanRect.left,
       top: spanRect.top,
@@ -659,10 +656,10 @@ const getPaintedSpanCaretGeometry = (
     return { left: spanRect.left, top: spanRect.top, height: lineHeight };
   }
 
-  const pmStart = Number(span.dataset["pmStart"]);
+  const pmStart = readPaintedStart(span) ?? Number.NaN;
   const charIndex = paintedTextOffset({
     pmStart,
-    pmEnd: Number(span.dataset["pmEnd"]),
+    pmEnd: readPaintedEnd(span) ?? Number.NaN,
     pmPosition: pmPos,
     textLength: totalTextLength(textNodes),
   });
@@ -697,16 +694,16 @@ export function findParagraphGapCaretTarget(
     container,
     ".layout-page-content .layout-paragraph",
   )) {
-    const paragraphStart = Number(paragraph.dataset["pmStart"]);
-    const paragraphEnd = Number(paragraph.dataset["pmEnd"]);
+    const paragraphStart = readPaintedStart(paragraph) ?? Number.NaN;
+    const paragraphEnd = readPaintedEnd(paragraph) ?? Number.NaN;
     if (!(pmPos > paragraphStart && pmPos < paragraphEnd)) continue;
 
     for (const span of htmlQueryAll(
       paragraph,
-      "span[data-pm-start][data-pm-end]",
+      `span${PAINTED_RANGE_SELECTOR}`,
     )) {
-      const spanStart = Number(span.dataset["pmStart"]);
-      const spanEnd = Number(span.dataset["pmEnd"]);
+      const spanStart = readPaintedStart(span) ?? Number.NaN;
+      const spanEnd = readPaintedEnd(span) ?? Number.NaN;
       if (!Number.isFinite(spanStart) || !Number.isFinite(spanEnd)) continue;
       const boundaryPos = pmPos < spanStart ? spanStart : spanEnd;
       const distance = Math.abs(boundaryPos - pmPos);
@@ -735,7 +732,7 @@ export function getCaretPositionFromDom(
   // body coords could resolve to HF positions.
   const spans = htmlQueryAll(
     container,
-    ".layout-page-content span[data-pm-start][data-pm-end]",
+    `.layout-page-content span${PAINTED_RANGE_SELECTOR}`,
   );
 
   const collapsedTarget = findCollapsedLineEdgeCaretTarget(spans, pmPos);
@@ -753,8 +750,8 @@ export function getCaretPositionFromDom(
   }
 
   for (const spanEl of spans) {
-    const pmStart = Number(spanEl.dataset["pmStart"]);
-    const pmEnd = Number(spanEl.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(spanEl) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(spanEl) ?? Number.NaN;
 
     // Special handling for tab spans - use exclusive end to avoid boundary conflicts
     // Tab at [5,6) means position 6 belongs to the next run, not the tab
@@ -851,8 +848,8 @@ export function getCaretPositionFromDom(
   // Check empty paragraphs
   const paragraphs = htmlQueryAll(container, ".layout-paragraph");
   for (const pEl of paragraphs) {
-    const pStart = Number(pEl.dataset["pmStart"]);
-    const pEnd = Number(pEl.dataset["pmEnd"]);
+    const pStart = readPaintedStart(pEl) ?? Number.NaN;
+    const pEnd = readPaintedEnd(pEl) ?? Number.NaN;
 
     if (pmPos >= pStart && pmPos <= pEnd) {
       const emptyRun = pEl.querySelector(".layout-empty-run");

@@ -197,7 +197,7 @@ describe("inline content-control tracked changes", () => {
 
     const accepting = await FolioDocxReviewer.fromBuffer(buffer);
     expect(accepting.getChanges()).toHaveLength(2);
-    expect(accepting.acceptAll()).toBe(2);
+    expect(accepting.acceptAll().resolved).toBe(2);
     const accepted = await accepting.toBuffer();
     const acceptedSdt = await parsedInlineSdt(accepted);
     expect(inlineSdtText(acceptedSdt)).toBe("Clause new");
@@ -207,7 +207,7 @@ describe("inline content-control tracked changes", () => {
 
     const rejecting = await FolioDocxReviewer.fromBuffer(buffer);
     expect(rejecting.getChanges()).toHaveLength(2);
-    expect(rejecting.rejectAll()).toBe(2);
+    expect(rejecting.rejectAll().resolved).toBe(2);
     const rejected = await rejecting.toBuffer();
     const rejectedSdt = await parsedInlineSdt(rejected);
     expect(inlineSdtText(rejectedSdt)).toBe("Clause old");

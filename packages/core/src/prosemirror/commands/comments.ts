@@ -1,4 +1,5 @@
 import { panic } from "better-result";
+import { closeHistory } from "prosemirror-history";
 /**
  * Comment and Track Changes Commands
  *
@@ -15,6 +16,7 @@ import { TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
 
 import {
+  type LockedControlViolation,
   PARAGRAPH_MARK_CHANGE_KINDS,
   type ParagraphMarkChangeKind,
   REVIEW_CARRIERS,
@@ -33,12 +35,17 @@ import {
   moveTextBoxesPastNextParagraph,
 } from "../anchoredTextBoxes";
 import {
+  expectCommentMarkAttrs,
   expectFieldAttrs,
   expectParagraphAttrs,
   expectRunPropertyChangeMarkAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../attrs";
-import { readCommentRangeBoundaryAttrs } from "../commentRangeBoundaryAttrs";
+import {
+  isCommentRangeBoundaryNode,
+  readCommentRangeBoundaryAttrs,
+} from "../commentRangeBoundaryAttrs";
+import { retireThreadsResolvedAway } from "../commentRecords";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
@@ -68,6 +75,10 @@ import {
   revisionLayerRemovesContent,
   type RevisionSelection,
 } from "../keptRangeBoundaries";
+import {
+  lockedControlSpans,
+  lockedControlViolationOfTransform,
+} from "../lockedControls";
 import { resolveStateStory } from "../markupViewProjection";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import {
@@ -110,7 +121,10 @@ import {
   retainedTrackedRevisionMark,
   trackedRevisionPathOf,
 } from "../trackedRevisionPath";
-import { extractTrackedChanges } from "../utils/extractTrackedChanges";
+import {
+  extractTrackedChanges,
+  type TrackedChangeEntry,
+} from "../utils/extractTrackedChanges";
 import { paragraphContentOf } from "../zeroWidthAnchors";
 import {
   hasSerializableParagraphPropertyChange,
@@ -182,6 +196,16 @@ export function removeCommentMark(commentId: number): Command {
 type ResolveMode = "accept" | "reject";
 
 /**
+ * What every review resolution does before it is dispatched: it retires the
+ * comment threads it left without an anchor, and it is an undo step of its
+ * own, never merged into the edit it resolves.
+ */
+const finishResolution = (state: EditorState, tr: Transaction): void => {
+  retireThreadsResolvedAway(state, tr);
+  closeHistory(tr);
+};
+
+/**
  * Resolve a tracked change: accept or reject.
  * - Accept: keep insertions (remove mark), delete deletions (remove text)
  * - Reject: keep deletions (remove mark), delete insertions (remove text)
@@ -206,7 +230,7 @@ type RemovedRange = {
 const keptIn = (range: RemovedRange): PMNode[] =>
   range.removals.flatMap(({ kept }) => kept);
 
-function resolveChange(
+function resolveChangeUnguarded(
   from: number,
   to: number,
   mode: "accept" | "reject",
@@ -1044,7 +1068,7 @@ function resolveChange(
             carriers.push({ position, size: node.nodeSize });
             return false;
           }
-          if (node.type.name === "commentRangeBoundary") {
+          if (isCommentRangeBoundaryNode(node)) {
             const attrs = readCommentRangeBoundaryAttrs(node);
             if (attrs.ok && doomed.has(attrs.value.marker.id)) {
               carriers.push({ position, size: node.nodeSize });
@@ -1069,6 +1093,7 @@ function resolveChange(
         }
       }
       normalizeKeptRangeBoundaries(tr, keptBoundaries);
+      finishResolution(state, tr);
       if (tr.steps.length > 0) {
         dispatch(tr);
       }
@@ -1768,6 +1793,99 @@ export function findParagraphBoundaryChangeAtPosition(
   return null;
 }
 
+/** The transaction `command` would dispatch on `state`, or `null` when it would not apply. */
+const attemptedTransaction = (
+  command: Command,
+  state: EditorState,
+  view?: Parameters<Command>[2],
+): Transaction | null => {
+  let attempted: Transaction | null = null;
+  const applies = command(
+    state,
+    (transaction) => {
+      attempted = transaction;
+    },
+    view,
+  );
+  return applies ? attempted : null;
+};
+
+/**
+ * `command`, refused when what it would do breaks a content control's lock
+ * (`lockedControlViolationOfTransform`). A document without a locked control
+ * runs it as it is.
+ */
+const honouringContentControlLocks =
+  (command: Command): Command =>
+  (state, dispatch, view) => {
+    if (lockedControlSpans(state.doc).length === 0)
+      return command(state, dispatch, view);
+    const attempted = attemptedTransaction(command, state, view);
+    if (attempted === null) return false;
+    if (lockedControlViolationOfTransform(attempted) !== null) return false;
+    dispatch?.(attempted);
+    return true;
+  };
+
+function resolveChange(
+  from: number,
+  to: number,
+  mode: "accept" | "reject",
+  revisionIds?: readonly number[],
+): Command {
+  return honouringContentControlLocks(
+    resolveChangeUnguarded(from, to, mode, revisionIds),
+  );
+}
+
+/**
+ * What the content-control locks say about resolving the tracked changes
+ * between `from` and `to` (only those of `revisionIds`, when given): `null`
+ * when they allow it or there is nothing there to resolve. A revision whose
+ * resolution would change a content-locked control's content, or remove a
+ * control locked against removal, stays pending.
+ */
+export const changeResolutionLockViolation = (
+  state: EditorState,
+  {
+    from,
+    to,
+    mode,
+    revisionIds,
+  }: {
+    from: number;
+    to: number;
+    mode: "accept" | "reject";
+    revisionIds?: readonly number[];
+  },
+): LockedControlViolation | null => {
+  if (lockedControlSpans(state.doc).length === 0) return null;
+  const attempted = attemptedTransaction(
+    resolveChangeUnguarded(from, to, mode, revisionIds),
+    state,
+  );
+  return attempted === null
+    ? null
+    : lockedControlViolationOfTransform(attempted);
+};
+
+/** {@link changeResolutionLockViolation} for the revisions `revisionIds`, wherever they are. */
+export const revisionResolutionLockViolation = (
+  state: EditorState,
+  revisionIds: number | readonly number[],
+  mode: "accept" | "reject",
+): LockedControlViolation | null => {
+  const range = findAIEditRevisionRange(state, revisionIds);
+  return range === null
+    ? null
+    : changeResolutionLockViolation(state, {
+        ...range,
+        mode,
+        revisionIds:
+          typeof revisionIds === "number" ? [revisionIds] : revisionIds,
+      });
+};
+
 /**
  * Accept a tracked change at the given range.
  * - Insertion: remove mark, keep text
@@ -1821,6 +1939,7 @@ const resolveAllChanges =
         removedEndpointCount: result.removedEndpointCount,
         removedReferences: result.removedReferences,
       });
+    finishResolution(state, tr);
     dispatch(tr);
     return true;
   };
@@ -1830,12 +1949,12 @@ const resolveAllChanges =
  * suggestions are present because this command cannot restage them.
  */
 export function acceptAllChanges(): Command {
-  const resolve = resolveAllChanges("accept");
-  return (state, dispatch) => {
+  const resolve = resolveAllChangesHonouringLocks("accept");
+  return (state, dispatch, view) => {
     // This generic command has no host operation queue to replay. A mixed
     // story must use the headless reviewer's acceptAll path instead.
     if (getSuggestions(state).length > 0) return false;
-    return resolve(state, dispatch);
+    return resolve(state, dispatch, view);
   };
 }
 
@@ -1843,8 +1962,77 @@ export function acceptAllChanges(): Command {
  * Reject all tracked changes in the document.
  */
 export function rejectAllChanges(): Command {
-  return resolveAllChanges("reject");
+  return resolveAllChangesHonouringLocks("reject");
 }
+
+/**
+ * The revisions of `state` that a content control's lock keeps from being
+ * resolved in `mode`, each with the lock's verdict: see
+ * {@link changeResolutionLockViolation}. Empty without a locked control.
+ */
+export const lockHeldRevisions = (
+  state: EditorState,
+  mode: "accept" | "reject",
+): Map<number, LockedControlViolation> => {
+  const held = new Map<number, LockedControlViolation>();
+  if (lockedControlSpans(state.doc).length === 0) return held;
+  for (const id of new Set(
+    extractTrackedChanges(state).entries.flatMap(trackedChangeEntryRevisionIds),
+  )) {
+    const violation = revisionResolutionLockViolation(state, id, mode);
+    if (violation !== null) held.set(id, violation);
+  }
+  return held;
+};
+
+/** Every revision id one sidebar entry stands for. */
+export const trackedChangeEntryRevisionIds = (
+  entry: TrackedChangeEntry,
+): number[] => [
+  ...new Set([
+    entry.revisionId,
+    ...(entry.insertionRevisionId === undefined
+      ? []
+      : [entry.insertionRevisionId]),
+    ...(entry.coalescedRevisionIds ?? []),
+  ]),
+];
+
+/**
+ * Resolve every tracked change a content control's lock allows. Without a
+ * change the locks hold, the whole story resolves in one pass, as before;
+ * otherwise each other change resolves on its own, in an editor view (a
+ * transaction each), and the held ones stay pending as they are. Without a
+ * view nothing resolves when any change is held.
+ */
+const resolveAllChangesHonouringLocks =
+  (mode: ResolveMode): Command =>
+  (state, dispatch, view) => {
+    const resolveAll = resolveAllChanges(mode);
+    if (lockedControlSpans(state.doc).length === 0)
+      return resolveAll(state, dispatch, view);
+    const attempted = attemptedTransaction(resolveAll, state, view);
+    if (attempted === null) return false;
+    if (lockedControlViolationOfTransform(attempted) === null) {
+      dispatch?.(attempted);
+      return true;
+    }
+    if (!dispatch) return true;
+    if (!view) return false;
+    const held = lockHeldRevisions(state, mode);
+    const ids = new Set(
+      extractTrackedChanges(state).entries.flatMap(
+        trackedChangeEntryRevisionIds,
+      ),
+    );
+    for (const id of [...ids].toReversed()) {
+      if (held.has(id)) continue;
+      const resolveOne =
+        mode === "accept" ? acceptAIEditRevision(id) : rejectAIEditRevision(id);
+      resolveOne(view.state, view.dispatch, view);
+    }
+    return true;
+  };
 
 /**
  * Resolve a complete state synchronously for a headless reader or writer.
@@ -2036,6 +2224,58 @@ const isSuggestionMark = (mark: Mark): boolean =>
   mark.attrs["provenance"] === "suggested" &&
   SUGGESTION_MARK_NAMES.has(mark.type.name);
 
+/**
+ * The suggestion a comment mark belongs to: a comment a suggestion proposed
+ * is pending with it, never saved, accepted and rejected with it.
+ */
+const suggestedCommentOf = (mark: Mark): string | null => {
+  if (mark.type.name !== "comment") return null;
+  const suggestionId = mark.attrs["suggestionId"];
+  return typeof suggestionId === "string" && suggestionId.length > 0
+    ? suggestionId
+    : null;
+};
+
+/** The ids of the comments a pending suggestion proposes. */
+export function suggestionCommentIds(
+  state: EditorState,
+  suggestionId: string,
+): number[] {
+  return [...(collectSuggestions(state).get(suggestionId)?.commentIds ?? [])];
+}
+
+/**
+ * Remove the comment marks of the suggestions `matches` selects, or, with
+ * `keep`, clear their suggestion so they stay as ordinary comments. Mark
+ * steps do not shift positions.
+ */
+const resolveSuggestedCommentMarks = (
+  tr: Transaction,
+  matches: (suggestionId: string) => boolean,
+  keep: boolean,
+): boolean => {
+  const found: { from: number; to: number; mark: Mark }[] = [];
+  tr.doc.descendants((node, pos) => {
+    if (!node.isInline) return undefined;
+    for (const mark of node.marks) {
+      const suggestionId = suggestedCommentOf(mark);
+      if (suggestionId !== null && matches(suggestionId))
+        found.push({ from: pos, to: pos + node.nodeSize, mark });
+    }
+    return undefined;
+  });
+  for (const { from, to, mark } of found) {
+    tr.removeMark(from, to, mark);
+    if (keep)
+      tr.addMark(
+        from,
+        to,
+        mark.type.create({ ...mark.attrs, suggestionId: null }),
+      );
+  }
+  return found.length > 0;
+};
+
 export type SuggestionKind =
   | "insertion"
   | "deletion"
@@ -2045,14 +2285,16 @@ export type SuggestionKind =
   | "insertRow"
   | "deleteRow"
   | "insertColumn"
-  | "deleteColumn";
+  | "deleteColumn"
+  | "comment";
 
 /**
  * How a suggestion is applied when accepted:
  * - `"tracked"` — converts to a normal OOXML tracked change (`w:ins`/`w:del`,
  *   paragraph-mark `w:ins`, row/cell `w:ins`/`w:del`);
  * - `"direct"` — no OOXML tracked representation exists (a whole inserted
- *   table), so accepting applies it directly;
+ *   table), so accepting applies it directly; a suggestion that only
+ *   proposes a comment is accepted as an ordinary comment;
  * - `"mixed"` — a heterogeneous group (one `suggestionId` spanning a whole
  *   inserted table AND other edits) whose parts apply both ways. Accept still
  *   resolves the whole group in one transaction; this flag lets the host
@@ -2212,6 +2454,8 @@ type SuggestionAccumulator = {
   segments: { from: number; to: number }[];
   kinds: Set<SuggestionKind>;
   revisionIds: Set<number>;
+  /** The comments the suggestion proposes. */
+  commentIds: Set<number>;
 };
 
 const collectSuggestions = (
@@ -2228,6 +2472,7 @@ const collectSuggestions = (
       segments: [],
       kinds: new Set<SuggestionKind>(),
       revisionIds: new Set<number>(),
+      commentIds: new Set<number>(),
     };
     bySuggestion.set(suggestionId, created);
     return created;
@@ -2267,6 +2512,14 @@ const collectSuggestions = (
       return undefined;
     }
     for (const mark of node.marks) {
+      const commentSuggestion = suggestedCommentOf(mark);
+      if (commentSuggestion !== null) {
+        const entry = entryFor(commentSuggestion);
+        entry.segments.push({ from: pos, to: pos + node.nodeSize });
+        entry.kinds.add("comment");
+        entry.commentIds.add(expectCommentMarkAttrs(mark).commentId);
+        continue;
+      }
       if (!isSuggestionMark(mark)) {
         continue;
       }
@@ -2300,10 +2553,16 @@ const collectSuggestions = (
 const suggestionAppliedAs = (
   kinds: ReadonlySet<SuggestionKind>,
 ): SuggestionAppliedAs => {
+  // A proposed comment becomes an ordinary comment either way; it decides
+  // nothing unless it is all the suggestion holds.
+  const changes = [...kinds].filter((kind) => kind !== "comment");
+  if (changes.length === 0) {
+    return "direct";
+  }
   if (!kinds.has("insertTable")) {
     return "tracked";
   }
-  const hasOtherKind = [...kinds].some((kind) => kind !== "insertTable");
+  const hasOtherKind = changes.some((kind) => kind !== "insertTable");
   return hasOtherKind ? "mixed" : "direct";
 };
 
@@ -2336,6 +2595,7 @@ const SUGGESTION_KIND_ORDER: readonly SuggestionKind[] = [
   "deleteRow",
   "insertColumn",
   "deleteColumn",
+  "comment",
 ];
 
 /**
@@ -3236,11 +3496,16 @@ const acceptSuggestions = (
     ) {
       return false;
     }
+    // A proposed comment stays as an ordinary comment.
+    if (resolveSuggestedCommentMarks(tr, matchesSuggestion, true)) {
+      changed = true;
+    }
 
     if (!changed) {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, tr);
       dispatch(tr);
     }
     return true;
@@ -3302,7 +3567,7 @@ export function rejectSuggestion(suggestionId: string): Command {
       const ranges = mergeSegments(entry.segments);
       const from = ranges[0]?.from ?? 0;
       const to = ranges.at(-1)?.to ?? from;
-      resolveChange(from, to, "reject", [...entry.revisionIds])(
+      resolveChangeUnguarded(from, to, "reject", [...entry.revisionIds])(
         state,
         (resolved) => {
           tr = resolved;
@@ -3345,11 +3610,14 @@ export function rejectSuggestion(suggestionId: string): Command {
     ) {
       return false;
     }
+    // A proposed comment goes with its suggestion.
+    resolveSuggestedCommentMarks(workingTr, (id) => id === suggestionId, false);
 
     if (workingTr.steps.length === 0) {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, workingTr);
       dispatch(workingTr);
     }
     return true;
@@ -3381,12 +3649,11 @@ export function rejectAllSuggestions(): Command {
     // so whole-node inserts can be dropped from the same transaction below.
     let tr: Transaction | null = null;
     if (revisionIds.size > 0) {
-      resolveChange(0, state.doc.content.size, "reject", [...revisionIds])(
-        state,
-        (resolved) => {
-          tr = resolved;
-        },
-      );
+      resolveChangeUnguarded(0, state.doc.content.size, "reject", [
+        ...revisionIds,
+      ])(state, (resolved) => {
+        tr = resolved;
+      });
     }
     const workingTr: Transaction = tr ?? state.tr;
 
@@ -3421,11 +3688,13 @@ export function rejectAllSuggestions(): Command {
     ) {
       return false;
     }
+    resolveSuggestedCommentMarks(workingTr, () => true, false);
 
     if (workingTr.steps.length === 0) {
       return false;
     }
     if (dispatch) {
+      finishResolution(state, workingTr);
       dispatch(workingTr);
     }
     return true;
@@ -3505,10 +3774,11 @@ export function findChangeAtPosition(
     return { from, to };
   }
 
-  // Resolve the position and check marks at cursor
+  // Resolve the position and check marks at cursor. The parent may be an
+  // inline container, such as a content control, holding the text.
   const $pos = state.doc.resolve(from);
   const node = $pos.parent;
-  if (!node.isTextblock) {
+  if (!node.inlineContent) {
     return { from, to };
   }
 

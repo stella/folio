@@ -206,11 +206,21 @@ export const assertSavedOutcome = ({
     context,
   );
 
-const runSteps = async (
+/**
+ * Every finding of these steps, in step order.
+ *
+ * An oracle gap is what the model cannot predict, not a defect, so it is
+ * recorded and the steps go on: stopping there left every later step of the
+ * document unchecked. Any other finding ends the run, as the document past it
+ * is no longer the one the steps were drawn for.
+ */
+export const runSteps = async (
   original: Uint8Array,
   steps: readonly EditStep[],
   originalSdk: readonly string[] | null,
-): Promise<EditFailure | null> => {
+): Promise<EditFailure[]> => {
+  const found: EditFailure[] = [];
+  const stop = (terminal: EditFailure): EditFailure[] => [...found, terminal];
   const reviewer = await openReviewer(original);
   const control = new Uint8Array(await reviewer.toBuffer());
   for (const [index, { mode, operation }] of steps.entries()) {
@@ -226,12 +236,14 @@ const runSteps = async (
           undefinedReferences: "refuse",
         });
       } catch (error) {
-        return failure(
-          "throw",
-          operation.type,
-          "a typed issue or applied receipt",
-          messageOf(error),
-          steps.slice(0, index + 1),
+        return stop(
+          failure(
+            "throw",
+            operation.type,
+            "a typed issue or applied receipt",
+            messageOf(error),
+            steps.slice(0, index + 1),
+          ),
         );
       }
       const applied = result.applied.length > 0;
@@ -240,12 +252,14 @@ const runSteps = async (
       try {
         ({ saved, reopened } = await saveAndReopen(reviewer));
       } catch (error) {
-        return failure(
-          "reopen",
-          operation.type,
-          "saved package reopens to the edited view",
-          messageOf(error),
-          steps.slice(0, index + 1),
+        return stop(
+          failure(
+            "reopen",
+            operation.type,
+            "saved package reopens to the edited view",
+            messageOf(error),
+            steps.slice(0, index + 1),
+          ),
         );
       }
       try {
@@ -257,33 +271,39 @@ const runSteps = async (
           context: `edit ${index}`,
         });
         if (applied && gaps.length > 0) {
-          return failure(
-            "oracle-gap",
-            operation.type,
-            "requested outcome is modelled",
-            gaps.join("; "),
-            steps.slice(0, index + 1),
+          found.push(
+            failure(
+              "oracle-gap",
+              operation.type,
+              "requested outcome is modelled",
+              gaps.join("; "),
+              steps.slice(0, index + 1),
+            ),
           );
         }
       } catch (error) {
-        return failure(
-          "outcome",
-          operation.type,
-          "requested outcome after save and reopen",
-          messageOf(error),
-          steps.slice(0, index + 1),
+        return stop(
+          failure(
+            "outcome",
+            operation.type,
+            "requested outcome after save and reopen",
+            messageOf(error),
+            steps.slice(0, index + 1),
+          ),
         );
       }
       if (!applied) continue;
       if (index === 0 && mode === "direct") {
         const changed = await localityProblems(control, saved, operation);
         if (changed.length > 0) {
-          return failure(
-            "locality",
-            operation.type,
-            "unrelated package parts byte-identical to control save",
-            changed.join(", "),
-            steps.slice(0, index + 1),
+          return stop(
+            failure(
+              "locality",
+              operation.type,
+              "unrelated package parts byte-identical to control save",
+              changed.join(", "),
+              steps.slice(0, index + 1),
+            ),
           );
         }
       }
@@ -295,38 +315,44 @@ const runSteps = async (
             rowsOf(await openReviewer(rejected.bytes)).map(({ text }) => text),
           ) !== JSON.stringify(before.rows.map(({ text }) => text))
         ) {
-          return failure(
-            "reject",
-            operation.type,
-            "reject-all equals original text",
-            "rejected text differs",
-            steps.slice(0, index + 1),
+          return stop(
+            failure(
+              "reject",
+              operation.type,
+              "reject-all equals original text",
+              "rejected text differs",
+              steps.slice(0, index + 1),
+            ),
           );
         }
       }
       if (originalSdk) {
         const newErrors = compareSdk(originalSdk, sdkErrors(saved));
         if (newErrors.length > 0) {
-          return failure(
-            "schema",
-            operation.type,
-            "no new Open XML SDK errors",
-            newErrors.slice(0, 3).join(" | "),
-            steps.slice(0, index + 1),
+          return stop(
+            failure(
+              "schema",
+              operation.type,
+              "no new Open XML SDK errors",
+              newErrors.slice(0, 3).join(" | "),
+              steps.slice(0, index + 1),
+            ),
           );
         }
       }
     } catch (error) {
-      return failure(
-        "throw",
-        operation.type,
-        "operation and checks complete without throwing",
-        messageOf(error),
-        steps.slice(0, index + 1),
+      return stop(
+        failure(
+          "throw",
+          operation.type,
+          "operation and checks complete without throwing",
+          messageOf(error),
+          steps.slice(0, index + 1),
+        ),
       );
     }
   }
-  return null;
+  return found;
 };
 
 const failure = (
@@ -374,8 +400,10 @@ const shrink = async (
     );
     try {
       // oxlint-disable-next-line no-await-in-loop -- try shorter subsequences first, preserving request order
-      const replay = await runSteps(original, candidate, originalSdk);
-      if (replay?.signature === found.signature) return replay;
+      const replay = (await runSteps(original, candidate, originalSdk)).find(
+        ({ signature }) => signature === found.signature,
+      );
+      if (replay) return replay;
     } catch {
       // A removed setup operation can make a later target inapplicable.
     }
@@ -412,6 +440,7 @@ export const runEditWorker = async (
     }
   }
   let attempts = 0;
+  const seen = new Set<string>();
   for (const mode of ["direct", "tracked-changes"] as const) {
     const random = createRandom(
       seed ^ (mode === "direct" ? 0x1234abcd : 0x5678ef01),
@@ -437,12 +466,27 @@ export const runEditWorker = async (
       }
     }
     if (steps.length > 0) {
-      const found = await runSteps(original, steps, originalSdk);
-      if (found) failures.push(await shrink(original, found, originalSdk));
+      for (const found of await runSteps(original, steps, originalSdk)) {
+        // oxlint-disable-next-line no-await-in-loop -- each finding shrinks against the same original
+        const shrunk = await shrink(original, found, originalSdk);
+        // Two findings of one run can shrink to the same case; it is one case.
+        const key = JSON.stringify([
+          shrunk.signature,
+          shrunk.expected,
+          shrunk.operations,
+        ]);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        failures.push(shrunk);
+      }
     }
   }
   return { status: "parsed", attempts, failures };
 };
+
+/** A replay answers with the finding that ended it, or else its first gap. */
+const mostSevere = (found: readonly EditFailure[]): EditFailure | null =>
+  found.find(({ class: kind }) => kind !== "oracle-gap") ?? found.at(0) ?? null;
 
 export const replayEditCase = async (
   pathToDocx: string,
@@ -450,7 +494,7 @@ export const replayEditCase = async (
   skipSdk: boolean,
 ): Promise<EditFailure | null> => {
   const original = new Uint8Array(await Bun.file(pathToDocx).arrayBuffer());
-  if (skipSdk) return runSteps(original, steps, null);
+  if (skipSdk) return mostSevere(await runSteps(original, steps, null));
   let originalSdk: string[];
   try {
     originalSdk = sdkErrors(original);
@@ -463,7 +507,7 @@ export const replayEditCase = async (
       [],
     );
   }
-  return runSteps(original, steps, originalSdk);
+  return mostSevere(await runSteps(original, steps, originalSdk));
 };
 
 if (import.meta.main) {

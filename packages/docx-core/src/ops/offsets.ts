@@ -197,8 +197,22 @@ type ParagraphRetentionFacts = {
 const collectParagraphRetentionFacts = (
   items: readonly ParagraphContent[],
   facts: ParagraphRetentionFacts,
+  onceAccepted = false,
 ): void => {
   for (const item of items) {
+    // What accepting takes away has no width; a zero-width item in it may
+    // stand outside it once accepted, so it still counts.
+    if (
+      onceAccepted &&
+      (item.type === "deletion" || item.type === "moveFrom")
+    ) {
+      collectParagraphRetentionFacts(
+        childrenOf(item),
+        { width: 0, zeroWidthItems: facts.zeroWidthItems },
+        true,
+      );
+      continue;
+    }
     if (item.type === "commentReference") {
       facts.zeroWidthItems.push(item.type);
       continue;
@@ -208,7 +222,7 @@ const collectParagraphRetentionFacts = (
       continue;
     }
     if (isInlineContainer(item)) {
-      collectParagraphRetentionFacts(childrenOf(item), facts);
+      collectParagraphRetentionFacts(childrenOf(item), facts, onceAccepted);
       continue;
     }
     facts.width += inlineWidth(item);
@@ -221,6 +235,18 @@ export const paragraphHoldsContent = (
 ): ParagraphContentVerdict => {
   const facts: ParagraphRetentionFacts = { width: 0, zeroWidthItems: [] };
   collectParagraphRetentionFacts(paragraph.content, facts);
+  return paragraphContentVerdict(facts);
+};
+
+/**
+ * Whether a paragraph still holds content once every change in it is
+ * accepted: what its pending deletions and moves away hold does not count.
+ */
+export const paragraphHoldsContentOnceAccepted = (
+  paragraph: Paragraph,
+): ParagraphContentVerdict => {
+  const facts: ParagraphRetentionFacts = { width: 0, zeroWidthItems: [] };
+  collectParagraphRetentionFacts(paragraph.content, facts, true);
   return paragraphContentVerdict(facts);
 };
 
@@ -334,6 +360,7 @@ const HYPERLINK_CHILD_TYPES = {
   moveToRangeEnd: true,
   inlineWrapper: true,
   preservedInline: true,
+  complexField: true,
 } as const satisfies Record<HyperlinkChild["type"], true>;
 
 const TRACKED_CHILD_TYPES = {
@@ -343,6 +370,9 @@ const TRACKED_CHILD_TYPES = {
   bookmarkEnd: true,
   commentRangeStart: true,
   commentRangeEnd: true,
+  // The model lifts a w:commentReference out of its w:r carrier; the record
+  // stays in the tracked change that holds that carrier.
+  commentReference: true,
   moveFromRangeStart: true,
   moveFromRangeEnd: true,
   moveToRangeStart: true,
@@ -357,10 +387,7 @@ const TRACKED_CHILD_TYPES = {
   deletion: true,
   moveFrom: true,
   moveTo: true,
-} as const satisfies Record<
-  Exclude<TrackedRunContent["type"], "commentReference">,
-  true
->;
+} as const satisfies Record<TrackedRunContent["type"], true>;
 
 const INLINE_SDT_CHILD_TYPES = {
   run: true,
@@ -393,8 +420,7 @@ export const isHyperlinkChild = (
 /** Whether a tracked change (`w:ins`, `w:del`, a move) can hold the record. */
 export const isTrackedChild = (
   item: ParagraphContent,
-): item is Exclude<TrackedRunContent, { type: "commentReference" }> =>
-  Object.hasOwn(TRACKED_CHILD_TYPES, item.type);
+): item is TrackedRunContent => Object.hasOwn(TRACKED_CHILD_TYPES, item.type);
 
 const isInlineSdtChild = (item: ParagraphContent): item is InlineSdtChild =>
   Object.hasOwn(INLINE_SDT_CHILD_TYPES, item.type);

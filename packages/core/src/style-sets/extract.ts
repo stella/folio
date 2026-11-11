@@ -251,15 +251,19 @@ const sanitizeFontTable = (
     return undefined;
   }
   return {
-    fonts: fontTable.fonts.map(stripEmbeddedFontRelationships),
+    fonts: fontTable.fonts.map(stripFontSourceData),
   };
 };
 
-const stripEmbeddedFontRelationships = ({
+const stripFontSourceData = ({
   embedRegular: _embedRegular,
   embedBold: _embedBold,
   embedItalic: _embedItalic,
   embedBoldItalic: _embedBoldItalic,
+  // Unmodeled children and attributes of `w:font` are opaque source markup,
+  // not formatting a later document can apply.
+  preserved: _preserved,
+  preservedAttributes: _preservedAttributes,
   ...font
 }: FontInfo): FontInfo => font;
 

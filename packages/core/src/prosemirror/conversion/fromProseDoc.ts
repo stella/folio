@@ -43,6 +43,7 @@ export { marksToTextFormatting } from "../runFormattingFromMarks";
 
 import type { PresetLineDashVal } from "@stll/docx-core/model";
 
+import { joinBookmarkRangesAcrossParagraphs } from "../../docx/bookmarkRangeJoin";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
 import { buildSections } from "../../docx/documentParser";
@@ -101,6 +102,7 @@ import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
 } from "../../internal/paragraphFormattingSerialization";
+import { recordDocumentBuilt } from "../../layout-engine/layoutInstrumentation";
 import { createStyleEngine, type StyleEngine } from "../../style-engine";
 import type {
   EffectExtentSlots,
@@ -997,6 +999,7 @@ export function fromProseDoc(
   baseDocument: Document | undefined,
   { stylesheetSource, reuse = "none" }: FromProseDocOptions,
 ): Document {
+  recordDocumentBuilt("conversion");
   assertNoteReferenceOccurrences(pmDoc);
   switch (reuse) {
     case "none": {
@@ -1048,6 +1051,7 @@ export function fromProseDoc(
   // Match the reader's empty-styles resolver when the source has no styles part.
   const blocks = extractBlocks(pmDoc, "resolve", createStyleEngine(styles));
   joinCommentRangesAcrossParagraphs(blocks);
+  joinBookmarkRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (tokenSources) {
@@ -1146,8 +1150,16 @@ const hasSuggestedInsertion = (marks: readonly Mark[]): boolean =>
   marks.some((mark) => mark.type.name === "insertion" && isSuggestedMark(mark));
 
 /**
+ * A comment a pending suggestion proposes: it has no range in the file until
+ * the suggestion is accepted, so the save's orphan pruning leaves it out too.
+ */
+const isSuggestedCommentMark = (mark: Mark): boolean =>
+  mark.type.name === "comment" &&
+  typeof mark.attrs["suggestionId"] === "string";
+
+/**
  * Compute the mark set an inline node should keep once its suggested tracked
- * changes are stripped. Suggested deletions are dropped so their text survives
+ * changes and proposed comments are stripped. Suggested deletions are dropped so their text survives
  * as plain content; a suggested `runPropertyChange` is dropped and the run's
  * live formatting is reverted to the recorded `previousFormatting`.
  *
@@ -1164,16 +1176,22 @@ function stripSuggestedInlineMarks(
   const suggestedRunPropertyChange = marks.find(
     (mark) => mark.type.name === "runPropertyChange" && isSuggestedMark(mark),
   );
-  if (!hasSuggestedDeletion && !suggestedRunPropertyChange) {
+  const hasSuggestedComment = marks.some(isSuggestedCommentMark);
+  if (
+    !hasSuggestedDeletion &&
+    !suggestedRunPropertyChange &&
+    !hasSuggestedComment
+  ) {
     return marks;
   }
 
   let next: readonly Mark[] = marks.filter(
     (mark) =>
       !(
-        (mark.type.name === "deletion" ||
+        ((mark.type.name === "deletion" ||
           mark.type.name === "runPropertyChange") &&
-        isSuggestedMark(mark)
+          isSuggestedMark(mark)) ||
+        isSuggestedCommentMark(mark)
       ),
   );
 
@@ -1182,7 +1200,6 @@ function stripSuggestedInlineMarks(
       baseParagraphFormatting,
       inheritedFormatting,
       paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle,
       styleResolver,
     } = readFormattingContext();
     const previousFormatting = expectRunPropertyChangeMarkAttrs(
@@ -1205,7 +1222,6 @@ function stripSuggestedInlineMarks(
         baseParagraphFormatting,
         paragraphFormatting: inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
       },
       ...(previousFormatting !== undefined
         ? { directFormatting: previousFormatting }
@@ -1431,8 +1447,6 @@ function mapSuggestionStrippedNode(
             inheritedFormatting: paragraphStyleContext.paragraphFormatting,
             paragraphMarkFormatting:
               paragraphStyleContext.paragraphMarkFormatting,
-            paragraphMarkPrecedesStyle:
-              paragraphStyleContext.paragraphMarkPrecedesStyle,
             styleResolver,
           };
           return resolvedChildContext;
@@ -1474,7 +1488,6 @@ function stripSuggestedProvenance(
       baseParagraphFormatting: undefined,
       inheritedFormatting: undefined,
       paragraphMarkFormatting: undefined,
-      paragraphMarkPrecedesStyle: false,
       styleResolver,
     })) ?? doc
   );
@@ -1618,6 +1631,9 @@ function extractBlocks(
       previousStandaloneTextBox = null;
     } else if (node.type.name === "blockMoveRangeBoundary") {
       blocks.push({ ...expectMoveRangeBoundaryAttrs(node) });
+      previousStandaloneTextBox = null;
+    } else if (node.type.name === "blockCommentRangeBoundary") {
+      blocks.push({ ...expectCommentRangeBoundaryAttrs(node).marker });
       previousStandaloneTextBox = null;
     }
   });
@@ -2326,8 +2342,6 @@ function convertPMParagraph(
       baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
       inheritedFormatting: paragraphStyleContext.paragraphFormatting,
       paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle:
-        paragraphStyleContext.paragraphMarkPrecedesStyle,
       styleResolver,
     },
   );
@@ -3037,7 +3051,6 @@ type RunFormattingContext = {
   baseParagraphFormatting: TextFormatting | undefined;
   inheritedFormatting: TextFormatting | undefined;
   paragraphMarkFormatting: TextFormatting | undefined;
-  paragraphMarkPrecedesStyle: boolean;
   styleResolver: RunStyleResolver | null;
 };
 
@@ -3391,8 +3404,6 @@ function extractParagraphContent(
       baseParagraphFormatting: paragraphStyleContext?.baseParagraphFormatting,
       inheritedFormatting: paragraphStyleContext?.paragraphFormatting,
       paragraphMarkFormatting: paragraphStyleContext?.paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle:
-        paragraphStyleContext?.paragraphMarkPrecedesStyle ?? false,
       styleResolver: null,
     } satisfies RunFormattingContext);
   const sortedEmptyHyperlinks = (emptyHyperlinks ?? [])
@@ -4115,7 +4126,6 @@ function extractParagraphContent(
                 formattingContext.baseParagraphFormatting ??
                 formattingContext.inheritedFormatting,
               paragraphMarkFormatting: undefined,
-              paragraphMarkPrecedesStyle: false,
             }
           : formattingContext;
       const revisionAncestors = enclosingInsertionAncestors({
@@ -4317,6 +4327,27 @@ function extractParagraphContent(
 
     const fieldUnderLink =
       node.type.name === "field" || node.type.name === "structuredField";
+    if (linkMark && fieldUnderLink) {
+      // A complex field the link holds whole, such as a table of contents
+      // entry's page number, goes back inside the link. A simple field has no
+      // place in a link and stands beside it.
+      const field = createFieldFromNode(node, {
+        ...formattingContext,
+        marks: node.marks,
+        textBoxAnchorMarkers,
+      });
+      if (field.type === "complexField") {
+        const linkKey = getLinkKey(linkMark);
+        if (!currentHyperlink || currentHyperlinkKey !== linkKey) {
+          flushCurrentInline();
+          currentHyperlink = createIndexedHyperlink(linkMark);
+          currentHyperlinkKey = linkKey;
+        }
+        currentHyperlink.children.push(field);
+        syncStructuredCommentExit(node, offset);
+        return;
+      }
+    }
     if (linkMark && !fieldUnderLink) {
       // Start or continue hyperlink
       const linkKey = getLinkKey(linkMark);
@@ -4535,14 +4566,12 @@ function createTrackedChangeRun({
   marks,
   node,
   paragraphMarkFormatting,
-  paragraphMarkPrecedesStyle,
   styleResolver,
 }: CreateTrackedChangeRunOptions): Run | null {
   const formattingContext = {
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
   };
   const noteRefMark = marks.find((mark) => mark.type.name === "footnoteRef");
@@ -4629,9 +4658,11 @@ function createEmptyHyperlink(
 function getCommentMarkIds(marks: readonly Mark[]): Set<number> {
   const commentIds = new Set<number>();
   for (const mark of marks) {
-    if (mark.type.name === "comment") {
-      commentIds.add(expectCommentMarkAttrs(mark).commentId);
-    }
+    if (mark.type.name !== "comment") continue;
+    const attrs = expectCommentMarkAttrs(mark);
+    // A point comment only shows on its neighbouring text: it saves as the
+    // bare reference it was, not as a range over that text.
+    if (attrs.point !== true) commentIds.add(attrs.commentId);
   }
   return commentIds;
 }
@@ -4744,7 +4775,6 @@ function addNodeToHyperlink({
   inheritedFormatting,
   node,
   paragraphMarkFormatting,
-  paragraphMarkPrecedesStyle,
   sourceRunOwners,
   styleResolver,
 }: AddNodeToHyperlinkOptions): void {
@@ -4758,7 +4788,6 @@ function addNodeToHyperlink({
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
   };
   const nonLinkMarks = node.marks.filter(
@@ -4784,7 +4813,6 @@ function addNodeToHyperlink({
         baseParagraphFormatting,
         inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
         styleResolver,
       }),
     );
@@ -4797,7 +4825,6 @@ function addNodeToHyperlink({
       inheritedFormatting,
       marks: nonLinkMarks,
       paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle,
       styleResolver,
       text: node.text,
     });
@@ -4818,7 +4845,6 @@ function addNodeToHyperlink({
         baseParagraphFormatting,
         inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
         styleResolver,
       }),
     );
@@ -4836,7 +4862,6 @@ function addNodeToHyperlink({
             baseParagraphFormatting,
             inheritedFormatting,
             paragraphMarkFormatting,
-            paragraphMarkPrecedesStyle,
             styleResolver,
           }),
     );
@@ -4849,7 +4874,6 @@ function addNodeToHyperlink({
         baseParagraphFormatting,
         inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
         styleResolver,
       }),
     );
@@ -4874,7 +4898,6 @@ function addNodeToHyperlink({
         baseParagraphFormatting,
         inheritedFormatting,
         paragraphMarkFormatting,
-        paragraphMarkPrecedesStyle,
         styleResolver,
       }),
     );
@@ -4992,7 +5015,6 @@ function createRunFromText({
   inheritedFormatting,
   marks,
   paragraphMarkFormatting,
-  paragraphMarkPrecedesStyle,
   styleResolver,
   text,
 }: CreateRunFromTextOptions): Run {
@@ -5000,7 +5022,6 @@ function createRunFromText({
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
   });
   const run: Run = { type: "run", content: textLeafRunContent(text, marks) };
@@ -5265,7 +5286,6 @@ function createPageBreakCarrierRun({
   inheritedFormatting,
   marks,
   paragraphMarkFormatting,
-  paragraphMarkPrecedesStyle,
   styleResolver,
 }: CreatePageBreakCarrierRunOptions): Run {
   const run: Run = {
@@ -5282,7 +5302,6 @@ function createPageBreakCarrierRun({
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
   });
   if (formatting) {
@@ -5411,7 +5430,6 @@ function createFieldFromNode(
     inheritedFormatting,
     marks,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle,
     styleResolver,
     textBoxAnchorMarkers,
   }: CreateFieldFromNodeOptions,
@@ -5423,7 +5441,6 @@ function createFieldFromNode(
           baseParagraphFormatting,
           inheritedFormatting,
           paragraphMarkFormatting,
-          paragraphMarkPrecedesStyle,
           styleResolver,
         })
       : undefined;
@@ -5431,7 +5448,6 @@ function createFieldFromNode(
     baseParagraphFormatting,
     inheritedFormatting,
     paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle: paragraphMarkPrecedesStyle ?? false,
     styleResolver: styleResolver ?? null,
   };
   const extractedContent = extractParagraphContent(
@@ -6923,6 +6939,9 @@ function convertPMTableCell(
     } else if (contentNode.type.name === "blockMoveRangeBoundary") {
       content.push({ ...expectMoveRangeBoundaryAttrs(contentNode) });
       previousStandaloneTextBox = null;
+    } else if (contentNode.type.name === "blockCommentRangeBoundary") {
+      content.push({ ...expectCommentRangeBoundaryAttrs(contentNode).marker });
+      previousStandaloneTextBox = null;
     }
   });
 
@@ -6988,6 +7007,10 @@ function convertPMTableCell(
 
 export const standaloneTableCellFromProseMirror = (node: PMNode): TableCell =>
   convertPMTableCell(node);
+
+/** A table node's rows as the save writes them, vertical merges included. */
+export const standaloneTableRowsFromProseMirror = (node: PMNode): TableRow[] =>
+  convertPMTableRows(node);
 
 /**
  * Convert ProseMirror table cell attrs to TableCellFormatting
@@ -7066,6 +7089,15 @@ export function tableCellAttrsToFormatting(
         delete result.textDirection;
       }
     }
+    // Off is the default, so a cell that stops wrapping states it and one that
+    // wraps again drops the element.
+    if (attrs.noWrap !== (orig.noWrap ?? undefined)) {
+      if (attrs.noWrap === true) {
+        result.noWrap = true;
+      } else {
+        delete result.noWrap;
+      }
+    }
 
     return Object.keys(result).length > 0 ? result : undefined;
   }
@@ -7080,7 +7112,8 @@ export function tableCellAttrsToFormatting(
     backgroundChanged ||
     attrs.borders ||
     attrs.margins ||
-    attrs.textDirection;
+    attrs.textDirection ||
+    attrs.noWrap === true;
 
   if (!hasFormatting) {
     return undefined;
@@ -7101,6 +7134,9 @@ export function tableCellAttrsToFormatting(
   }
   if (attrs.textDirection) {
     f.textDirection = attrs.textDirection;
+  }
+  if (attrs.noWrap === true) {
+    f.noWrap = true;
   }
   if (backgroundChanged) {
     f.shading = cellShadingFromAttrs(attrs);
@@ -7203,6 +7239,9 @@ function convertPMTextBox(
         break;
       case "blockMoveRangeBoundary":
         childBlocks.push({ ...expectMoveRangeBoundaryAttrs(child) });
+        break;
+      case "blockCommentRangeBoundary":
+        childBlocks.push({ ...expectCommentRangeBoundaryAttrs(child).marker });
         break;
       default:
         break;
@@ -7410,6 +7449,7 @@ export function proseDocToBlocks(
     styles ? createStyleEngine(styles) : null,
   );
   joinCommentRangesAcrossParagraphs(blocks);
+  joinBookmarkRangesAcrossParagraphs(blocks);
   completeCommentReferences(blocks);
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (baseContent) {

@@ -341,6 +341,8 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Tento dokument byl otevřen k úpravám v jiné kartě, okně nebo zařízení, takže byla tato relace ukončena. Neuložené místní změny zůstávají zachovány — otevřete dokument znovu a pokračujte.",
     "editor": {
       "accessibleName": "Editor dokumentů",
+      "changeUnavailable": "Tuto změnu zde zatím nelze provést.",
+      "contentLocked": "Tato část dokumentu je uzamčená.",
       "editing": "Úpravy",
       "editingDescription": "Upravovat dokument přímo",
       "outlineDepthAll": "Vše",
@@ -636,6 +638,7 @@ export const messages: FolioMessages = {
       "watermark": "Vodoznak"
     },
     "trackedChanges": {
+      "heldByLock": "Uzamčený ovládací prvek obsahu brání přijetí nebo odmítnutí této změny.",
       "replaced": "Nahrazeno",
       "unknown": "Neznámý",
       "with": "za"

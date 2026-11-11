@@ -43,6 +43,7 @@ import {
 } from "./journal";
 import { diffPackages, nextRevisionIdSeed } from "./package-parts";
 import type { FolioFileToolSpec, ResolveChangeAction } from "./registry";
+import { checkInScope, type WriteScope } from "./roots";
 import {
   inspectPath,
   readSidecarFile,
@@ -56,6 +57,8 @@ export type { WriteDestination } from "./transaction";
 /** Everything about a write that is not the tool's own arguments. */
 export type WriteOptions = {
   destination: WriteDestination;
+  /** Where the source and destination must resolve, checked again at commit. */
+  scope: WriteScope;
   /** Already resolved: a write never proceeds without one. */
   author: string;
   /** The transaction's one UTC timestamp. */
@@ -328,14 +331,17 @@ const resolveChanges = async ({
 
   let resolved: number | readonly string[];
   if (all === true) {
-    const count =
+    const resolution =
       action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+    const count = resolution.resolved;
     if (count === 0) {
       return Result.err(
         cliError({
           code: FOLIO_CLI_ERROR_CODES.operationRejected,
           message:
-            "The document has no pending tracked changes; nothing was written.",
+            resolution.skipped.length > 0
+              ? "Every pending tracked change is held by a locked content control; nothing was written."
+              : "The document has no pending tracked changes; nothing was written.",
         }),
       );
     }
@@ -780,6 +786,10 @@ export const executeWriteTool = async (
   });
   if (target.isErr()) return Result.err(target.error);
   const { sourcePath, sourceIdentity, destinationPath } = target.value;
+  for (const resolved of [sourcePath, destinationPath]) {
+    const inScope = checkInScope(options.scope, resolved);
+    if (inScope.isErr()) return Result.err(inScope.error);
+  }
   const journalPath = journalPathFor(destinationPath, options.journalPath);
   const inPlace = destinationPath === sourcePath;
 
@@ -920,6 +930,7 @@ export const executeWriteTool = async (
       txId,
       destinationPath,
       destination: options.destination,
+      scope: options.scope,
       sourcePath,
       sourceIdentity: expectedIdentity,
       fromVersion: source.value.fileVersion,

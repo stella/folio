@@ -73,6 +73,14 @@ export const stripParagraphMarkOnlyFormatting = (
     : undefined;
 };
 
+/**
+ * Whether a paragraph's mark lends its run properties to the paragraph's
+ * runs: only when the paragraph has no style. One rule for reading a run and
+ * for the save's view of what a run inherited.
+ */
+export const paragraphMarkLendsRuns = (styleId: string | undefined): boolean =>
+  styleId === undefined;
+
 export const stripParagraphMarkFormattingForBodyRuns = (
   formatting: TextFormatting,
 ): TextFormatting | undefined => {
@@ -91,22 +99,18 @@ type SuppressParagraphMarkFormattingOptions = {
   baseFormatting: TextFormatting | undefined;
   directFormatting: TextFormatting | undefined;
   paragraphMarkFormatting: TextFormatting | undefined;
-  paragraphMarkPrecedesStyle?: boolean;
 };
 
 export const suppressParagraphMarkFormatting = ({
   baseFormatting,
   directFormatting,
   paragraphMarkFormatting,
-  paragraphMarkPrecedesStyle = false,
 }: SuppressParagraphMarkFormattingOptions): TextFormatting | undefined => {
   if (!paragraphMarkFormatting) {
     return baseFormatting;
   }
   const result =
-    (paragraphMarkPrecedesStyle
-      ? mergeTextFormatting(paragraphMarkFormatting, baseFormatting)
-      : mergeTextFormatting(baseFormatting, paragraphMarkFormatting)) ?? {};
+    mergeTextFormatting(baseFormatting, paragraphMarkFormatting) ?? {};
   for (const property of PARAGRAPH_MARK_BOOLEAN_KEYS) {
     if (
       paragraphMarkFormatting[property] !== undefined &&
@@ -143,12 +147,19 @@ type GetParagraphMarkSuppressionOverridesOptions = {
   directFormatting: TextFormatting | undefined;
   paragraphMarkFormatting: TextFormatting | undefined;
   suppressedFormatting: TextFormatting | undefined;
+  /**
+   * The run's own character style. A property it states is the style's to
+   * give, not the paragraph mark's to take away: the run keeps it as the
+   * style cascade resolves it, with no override saying it is off.
+   */
+  characterStyleFormatting: TextFormatting | undefined;
 };
 
 export const getParagraphMarkSuppressionOverrides = ({
   directFormatting,
   paragraphMarkFormatting,
   suppressedFormatting,
+  characterStyleFormatting,
 }: GetParagraphMarkSuppressionOverridesOptions): TextFormatting | undefined => {
   if (!paragraphMarkFormatting) {
     return undefined;
@@ -158,6 +169,7 @@ export const getParagraphMarkSuppressionOverrides = ({
     if (
       paragraphMarkFormatting[property] !== undefined &&
       directFormatting?.[property] === undefined &&
+      characterStyleFormatting?.[property] === undefined &&
       suppressedFormatting?.[property] === false
     ) {
       Reflect.set(overrides, property, false);
@@ -166,6 +178,7 @@ export const getParagraphMarkSuppressionOverrides = ({
   if (
     paragraphMarkFormatting.underline !== undefined &&
     directFormatting?.underline === undefined &&
+    characterStyleFormatting?.underline === undefined &&
     suppressedFormatting?.underline?.style === "none"
   ) {
     overrides.underline = { style: "none" };
@@ -177,7 +190,6 @@ export type ParagraphRunStyleContext = {
   baseParagraphFormatting: TextFormatting | undefined;
   paragraphFormatting: TextFormatting | undefined;
   paragraphMarkFormatting: TextFormatting | undefined;
-  paragraphMarkPrecedesStyle: boolean;
 };
 
 export type RunStyleResolver = Pick<
@@ -437,7 +449,9 @@ export const paragraphRunStyleContext = (
   styleResolver?: RunStyleResolver | null,
 ): ParagraphRunStyleContext => {
   const attrs = expectParagraphAttrs(paragraph);
-  const paragraphMarkFormatting = attrs._originalFormatting?.runProperties;
+  const paragraphMarkFormatting = paragraphMarkLendsRuns(attrs.styleId)
+    ? attrs._originalFormatting?.runProperties
+    : undefined;
   const characterStyleFormatting = paragraphMarkFormatting?.styleId
     ? styleResolver?.getRunStyleOwnProperties(paragraphMarkFormatting.styleId)
     : undefined;
@@ -459,7 +473,6 @@ export const paragraphRunStyleContext = (
           }).defaultFormatting,
     paragraphFormatting: attrs.defaultTextFormatting ?? undefined,
     paragraphMarkFormatting: inheritableParagraphMarkFormatting,
-    paragraphMarkPrecedesStyle: attrs.styleId !== undefined,
   };
 };
 
@@ -486,7 +499,6 @@ export const paragraphFormattingForRun = ({
     baseFormatting: context.baseParagraphFormatting,
     directFormatting,
     paragraphMarkFormatting: context.paragraphMarkFormatting,
-    paragraphMarkPrecedesStyle: context.paragraphMarkPrecedesStyle,
   });
 };
 
@@ -526,7 +538,6 @@ export const nearestParagraphRunStyleContext = (
         baseParagraphFormatting: undefined,
         paragraphFormatting: undefined,
         paragraphMarkFormatting: undefined,
-        paragraphMarkPrecedesStyle: false,
       };
 
 type ResolveEffectiveRunStyleFormattingOptions = {

@@ -72,6 +72,7 @@ import { applyCommentOp } from "./comments";
 import {
   hasMultipleParagraphPropertyChanges,
   meetsContract,
+  repeatedParagraphId,
   validateOpsDocument,
 } from "./contract";
 import {
@@ -92,10 +93,11 @@ import {
   identityKeysIn,
   idKey,
   isParaId,
-  packageIdentityKeys,
+  type KeyMembership,
+  packageIdentityKeyIndex,
   packageParagraphIds,
+  packageReservedKeyIndex,
   paragraphIdsIn,
-  reservedIdentityKeysIn,
   slotKey,
 } from "./ids";
 import {
@@ -137,11 +139,13 @@ import { noteContentWithAutomaticMark, removedNoteStories } from "./noteMarks";
 import { applyNumberingSectionOp } from "./numberingSections";
 import { paragraphLength } from "./offsets";
 import { applyPackageResourcesOp } from "./packageResources";
+import { findStoryParagraph } from "./paragraphLocator";
 import {
   getParagraphPropertySnapshot,
   registerParagraphPropertySnapshot,
   transferParagraphPropertySnapshot,
 } from "./paragraphPropertySnapshot";
+import { paragraphSnapshotTransfers } from "./paragraphSnapshotTransfers";
 import { priorValues } from "./patch";
 import { insertsInvertedRange, rangeBoundariesIn } from "./rangeBoundaries";
 import {
@@ -167,6 +171,7 @@ import {
   type WrapKind,
   wrapTracked,
 } from "./review";
+import { setRevisionInfo } from "./revisionInfo";
 import { documentStories, findStoryBody, sameStory } from "./stories";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
 import { tableEditBoundaryRefusal } from "./tableEditBoundary";
@@ -268,7 +273,7 @@ const stampRefusal = (
     );
   }
   const key = slotKey({ space: IDENTITY_SPACES.REVISION, id: stamp.id });
-  if (packageIdentityKeys(document.package).includes(key)) {
+  if (packageIdentityKeyIndex(document.package).has(key)) {
     return refusal(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
@@ -355,8 +360,18 @@ const locate = (
   op: DocumentOp,
   story: OpStory,
   blockId: string,
-): Result<ParagraphLocation, DocumentOpRefusal> =>
-  findParagraph(op, storyParagraphs(storyBody(document, story)), blockId);
+): Result<ParagraphLocation, DocumentOpRefusal> => {
+  const location = findStoryParagraph(storyBody(document, story), blockId);
+  return location === undefined
+    ? Result.err(
+        refusal(
+          op,
+          DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+          `No paragraph is ${blockId}.`,
+        ),
+      )
+    : Result.ok(location);
+};
 
 const isGap = (value: Gap | DocumentOpRefusalReason): value is Gap =>
   typeof value === "object";
@@ -488,13 +503,10 @@ const touchedBetween = (
 const identitiesOutside = (
   document: Document,
   before: readonly Paragraph[],
-): Set<string> => {
-  const counts = countKeys(packageIdentityKeys(document.package));
-  for (const key of identityKeysIn(before))
-    counts.set(key, (counts.get(key) ?? 1) - 1);
-  return new Set(
-    [...counts].flatMap(([key, count]) => (count > 0 ? [key] : [])),
-  );
+): KeyMembership => {
+  const index = packageIdentityKeyIndex(document.package);
+  const inside = countKeys(identityKeysIn(before));
+  return { has: (key) => index.count(key) > (inside.get(key) ?? 0) };
 };
 
 type Commit = {
@@ -529,7 +541,7 @@ const withFreshIds = ({
     after,
     newIds: newIds ?? {},
     usedElsewhere: () => identitiesOutside(document, before),
-    reserved: new Set(reservedIdentityKeysIn(document.package)),
+    reserved: packageReservedKeyIndex(document.package),
     ...(inserted === undefined ? {} : { inserted }),
   });
   switch (freshened.kind) {
@@ -1741,7 +1753,14 @@ const trackSplit = ({
       "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
-  first.pPrMark = { kind: "ins", info: stampInfo(stamp), resolutionJoin };
+  first.pPrMark = {
+    kind: "ins",
+    info: stampInfo(stamp),
+    resolutionJoin,
+    // A first half that keeps the paragraph's identity is the paragraph a
+    // rejection gives back.
+    ...(madeSecond ? { survivor: "first" as const } : {}),
+  };
   if (!sameParagraphProperties(made.formatting, paragraph.formatting)) {
     made.propertyChanges = [
       madeSecond
@@ -2469,11 +2488,11 @@ const setParagraphReview = (
       `${op.blockId} ends its container: there is no next paragraph its mark could join.`,
     );
   }
-  const taken = identitiesOutside(document, [paragraph]);
-  for (const key of identityKeysIn(paragraph.content)) taken.add(key);
+  const outside = identitiesOutside(document, [paragraph]);
+  const own = new Set(identityKeysIn(paragraph.content));
   const incoming = reviewKeysOf(review);
   if (
-    incoming.some((key) => taken.has(key)) ||
+    incoming.some((key) => outside.has(key) || own.has(key)) ||
     new Set(incoming).size !== incoming.length
   ) {
     return refuse(
@@ -2561,11 +2580,11 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
       "The content holds a paragraph id the package already uses.",
     );
   }
-  const taken = identitiesOutside(document, [paragraph]);
-  for (const key of reviewKeysOf(reviewFieldsOf(paragraph))) taken.add(key);
+  const outside = identitiesOutside(document, [paragraph]);
+  const own = new Set(reviewKeysOf(reviewFieldsOf(paragraph)));
   const incoming = identityKeysIn(content);
   if (
-    incoming.some((key) => taken.has(key)) ||
+    incoming.some((key) => outside.has(key) || own.has(key)) ||
     new Set(incoming).size !== incoming.length
   ) {
     return refuse(
@@ -2854,6 +2873,8 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
       return replaceInline(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return resolveRevision(document, op, applyDocumentOps);
+    case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
+      return setRevisionInfo(document, op);
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
@@ -2959,6 +2980,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
+    case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return undefined;
     default: {
       const unreachable: never = op;
@@ -2980,64 +3002,30 @@ const recordedRevisions = (
     .flatMap((story) => storyParagraphs(storyBody(edit.document, story)))
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
-  const known = new Set(packageIdentityKeys(before.package));
+  const known = packageIdentityKeyIndex(before.package);
   const revisions = paragraphs.flatMap((paragraph) =>
     stampedRevisionIds([paragraph], stamp, known),
   );
   // Every physical row record is reported, including later rows of a table.
   revisions.unshift(
-    ...documentStories(edit.document)
-      .map((story) =>
-        stampedTableRevisionIds({
-          blocks: storyBody(edit.document, story).content,
-          stamp,
-          known,
-        }),
-      )
-      .flat(),
+    ...documentStories(edit.document).flatMap((story) =>
+      stampedTableRevisionIds({
+        blocks: storyBody(edit.document, story).content,
+        stamp,
+        known,
+      }),
+    ),
   );
   return revisions;
 };
 
-type PreserveParagraphPropertySnapshotsOptions = {
+/** Content edits retain authored snapshots across immutable paragraph replacements. */
+const preserveParagraphPropertySnapshots = (options: {
   before: Document;
   edit: DocumentEdit;
-};
-
-/** Content edits retain authored snapshots across immutable paragraph replacements. */
-const preserveParagraphPropertySnapshots = ({
-  before,
-  edit,
-}: PreserveParagraphPropertySnapshotsOptions): void => {
-  if (edit.touched.modified.length === 0) return;
-  const modified = new Set(edit.touched.modified.map(idKey));
-  for (const story of documentStories(edit.document)) {
-    const previous = findStoryBody(before, story);
-    const next = storyBody(edit.document, story);
-    if (previous === undefined || previous === next) continue;
-    const originals = new Map(
-      storyParagraphs(previous).flatMap(({ paragraph }) =>
-        paragraph.paraId !== undefined && modified.has(idKey(paragraph.paraId))
-          ? [[idKey(paragraph.paraId), paragraph] as const]
-          : [],
-      ),
-    );
-    if (originals.size === 0) continue;
-    for (const { paragraph } of storyParagraphs(next)) {
-      if (paragraph.paraId === undefined) continue;
-      const original = originals.get(idKey(paragraph.paraId));
-      if (
-        original === undefined ||
-        original === paragraph ||
-        !structurallyEqual(original.formatting, paragraph.formatting)
-      )
-        continue;
-      transferParagraphPropertySnapshot({
-        source: original,
-        target: paragraph,
-      });
-    }
-  }
+}): void => {
+  for (const { source, target } of paragraphSnapshotTransfers(options))
+    transferParagraphPropertySnapshot({ source, target });
 };
 
 /** Apply one operation to a document that meets the seed contract. */
@@ -3158,6 +3146,11 @@ export const applyDocumentOp = (
       ),
     );
   }
+  // The contract keeps paragraph ids unique: an edit that would repeat one,
+  // however its operation came by it, is refused here, where it is owned.
+  const repeatedId = repeatedParagraphId(edit.document);
+  if (repeatedId !== undefined)
+    return Result.err(refusal(op, repeatedId.reason, repeatedId.message));
   meetsContract(edit.document);
   preserveParagraphPropertySnapshots({ before: document, edit });
   return Result.ok({

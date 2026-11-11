@@ -22,17 +22,35 @@ import type {
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { visitInlineContentSlots } from "./paragraphTraversal";
 
-export type CommentMarkerSlot = {
+type CommentMarker = Extract<
+  ParagraphContent,
+  | { type: "commentRangeStart" }
+  | { type: "commentRangeEnd" }
+  | { type: "commentReference" }
+>;
+
+/** A marker inside a paragraph, in the inline-content array it sits in. */
+export type InlineCommentMarkerSlot = {
+  level: "inline";
   /** The inline-content array the marker sits in, so a caller can splice it. */
   content: ParagraphContent[];
   index: number;
+  item: CommentMarker;
+};
+
+/** A range marker between blocks, in the block array it sits in. */
+export type BlockCommentMarkerSlot = {
+  level: "block";
+  content: BlockContent[];
+  index: number;
   item: Extract<
-    ParagraphContent,
-    | { type: "commentRangeStart" }
-    | { type: "commentRangeEnd" }
-    | { type: "commentReference" }
+    BlockContent,
+    { type: "commentRangeStart" } | { type: "commentRangeEnd" }
   >;
 };
+
+export type CommentMarkerSlot =
+  InlineCommentMarkerSlot | BlockCommentMarkerSlot;
 
 export const visitCommentMarkers = (
   blocks: readonly BlockContent[],
@@ -45,39 +63,150 @@ export const visitCommentMarkers = (
         item.type === "commentRangeEnd" ||
         item.type === "commentReference"
       ) {
-        visit({ content, index, item });
+        visit({ level: "inline", content, index, item });
       }
     });
   };
 
   const visitBlock = (block: BlockContent): void => {
-    if (block.type === "paragraph") {
-      visitParagraph(block);
-      return;
-    }
-    if (block.type === "table") {
-      for (const row of block.rows) {
-        for (const cell of row.cells) {
-          visitBlocks(cell.content);
+    switch (block.type) {
+      case "paragraph":
+        visitParagraph(block);
+        return;
+      case "table":
+        for (const row of block.rows) {
+          for (const cell of row.cells) {
+            visitBlocks(cell.content);
+          }
         }
+        return;
+      case "blockSdt":
+      case "blockCustomXml":
+        visitBlocks(block.content);
+        return;
+      // Reported by `visitBlocks`, which has the array a caller splices.
+      case "commentRangeStart":
+      case "commentRangeEnd":
+        return;
+      // Captured bytes hold no comment boundary folio read, and a bookmark or
+      // move marker anchors none.
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        return;
+      default: {
+        const unhandled: never = block;
+        return unhandled;
       }
-      return;
     }
-    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
-      // Captured bytes hold no comment boundary folio read, and a bookmark
-      // marker anchors none. Only wrappers with parsed children recurse.
-      return;
-    }
-    visitBlocks(block.content);
   };
 
   const visitBlocks = (nested: readonly BlockContent[]): void => {
-    for (const block of nested) {
+    for (const [index, block] of nested.entries()) {
+      // A range may open or close between blocks: the marker is the story's
+      // as much as one inside a paragraph is.
+      if (
+        block.type === "commentRangeStart" ||
+        block.type === "commentRangeEnd"
+      ) {
+        // SAFETY: the walk never writes through `content`; callers splice it.
+        visit({
+          level: "block",
+          content: nested as BlockContent[],
+          index,
+          item: block,
+        });
+        continue;
+      }
       visitBlock(block);
     }
   };
 
   visitBlocks(blocks);
+};
+
+/** A paragraph's comment markers, in document order. */
+export type ParagraphCommentMarkers = (
+  paragraph: Paragraph,
+) => readonly CommentMarker[];
+
+/** A paragraph's comment markers, read from all of its content. */
+export const paragraphCommentMarkers: ParagraphCommentMarkers = (paragraph) => {
+  const markers: CommentMarker[] = [];
+  visitInlineContentSlots(paragraph, ({ item }) => {
+    if (
+      item.type === "commentRangeStart" ||
+      item.type === "commentRangeEnd" ||
+      item.type === "commentReference"
+    )
+      markers.push(item);
+  });
+  return markers;
+};
+
+/**
+ * Each paragraph's comment markers, read once per paragraph object. Only for
+ * documents whose paragraphs are never changed in place, as a session's
+ * versions are: an edit replaces the paragraphs it changes.
+ */
+export class CommentMarkerCache {
+  private readonly known = new WeakMap<Paragraph, readonly CommentMarker[]>();
+
+  readonly read: ParagraphCommentMarkers = (paragraph) => {
+    const kept = this.known.get(paragraph);
+    if (kept !== undefined) return kept;
+    const markers = paragraphCommentMarkers(paragraph);
+    this.known.set(paragraph, markers);
+    return markers;
+  };
+}
+
+/**
+ * Every comment marker of a story's blocks in the order
+ * {@link visitCommentMarkers} visits them, each paragraph's read through
+ * `markersOf`.
+ */
+export const visitCommentMarkerItems = (
+  blocks: readonly BlockContent[],
+  markersOf: ParagraphCommentMarkers,
+  visit: (item: CommentMarker | BlockCommentMarkerSlot["item"]) => void,
+): void => {
+  for (const block of blocks) {
+    switch (block.type) {
+      case "commentRangeStart":
+      case "commentRangeEnd":
+        visit(block);
+        break;
+      case "paragraph":
+        for (const marker of markersOf(block)) visit(marker);
+        break;
+      case "table":
+        for (const row of block.rows)
+          for (const cell of row.cells)
+            visitCommentMarkerItems(cell.content, markersOf, visit);
+        break;
+      case "blockSdt":
+      case "blockCustomXml":
+        visitCommentMarkerItems(block.content, markersOf, visit);
+        break;
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        break;
+      default: {
+        const unhandled: never = block;
+        return unhandled;
+      }
+    }
+  }
 };
 
 /** Remove every serialized anchor record for comments whose definitions are retired. */
@@ -276,6 +405,7 @@ export const removeCommentMarkers = (
       case "moveFromRangeEnd":
       case "moveToRangeStart":
       case "moveToRangeEnd":
+      case "complexField":
       case "preservedInline":
         return item;
     }
@@ -316,6 +446,8 @@ export const removeCommentMarkers = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -326,7 +458,11 @@ export const removeCommentMarkers = (
   const rebuildBlocks = (content: BlockContent[]): BlockContent[] =>
     rebuildArray(content, rebuildBlock);
 
-  return rebuildBlocks(blocks.slice());
+  // The walk keyed markers between blocks by this very array, so it is
+  // rebuilt itself rather than a copy of it.
+  // SAFETY: rebuildArray never writes through the array it reads.
+  const rebuilt = rebuildBlocks(blocks as BlockContent[]);
+  return rebuilt === blocks ? blocks.slice() : rebuilt;
 };
 
 /**

@@ -11,7 +11,14 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canSplit, type Mapping } from "prosemirror-transform";
 
-import { REVIEW_CARRIERS } from "@stll/docx-core/model";
+import {
+  CONTENT_CONTROL_LOCK,
+  firstLockedControlViolation,
+  lockedControlMessage,
+  type LockedControlSpan,
+  type LockedControlTouch,
+  REVIEW_CARRIERS,
+} from "@stll/docx-core/model";
 import {
   type BatchBlockAccess,
   type BatchOrderAddress,
@@ -70,6 +77,7 @@ import {
   removeResolvedSubtree,
 } from "../prosemirror/keptRangeBoundaries";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
+import { lockedControlSpans } from "../prosemirror/lockedControls";
 import {
   effectiveParagraphNumbering,
   paragraphNumberingAttr,
@@ -202,6 +210,7 @@ import {
   stageNewListOperations,
 } from "./newListNumbering";
 import {
+  comparisonApplying,
   cutsIntoNoteReference,
   noteReferenceEditsAllowed,
   type NoteReferenceLabels,
@@ -219,10 +228,10 @@ import {
 import { separateRevisionStretches } from "./revisionStretches";
 import {
   collectNoteReferenceLabels,
+  hashFolioAIBlockContent,
   hashFolioAIBlockStructuralBoundaries,
   hashFolioAIBlockText,
   isHiddenTableRow,
-  normalizeFolioAIBlockText,
 } from "./snapshot";
 import {
   isEmptyTableCell,
@@ -513,7 +522,7 @@ export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
  * accepted. Cell merge/split (not row/column ops) and comment ops stay
  * `unsupportedMode`.
  */
-const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
+export const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<
   FolioAIEditOperation["type"]
 > = new Set([
   "replaceInBlock",
@@ -1440,7 +1449,6 @@ const OPERATION_TEXT_CONTEXT: ParagraphRunStyleContext = {
   baseParagraphFormatting: undefined,
   paragraphFormatting: undefined,
   paragraphMarkFormatting: undefined,
-  paragraphMarkPrecedesStyle: false,
 };
 
 type ApplyReplaceBlockStyleIdResult = {
@@ -2075,7 +2083,7 @@ const collectLiveBlocksByHash = (doc: PMNode) => {
       fieldResults: "text",
       noteReferences,
     }).text;
-    const hash = hashFolioAIBlockText(normalizeFolioAIBlockText(cleanText));
+    const hash = hashFolioAIBlockContent(cleanText);
     const bucket = byHash.get(hash) ?? [];
     bucket.push({ from: pos, to: pos + node.nodeSize, node });
     byHash.set(hash, bucket);
@@ -2436,6 +2444,68 @@ const batchClaimOf = ({
             ? foldedBlankCellRanges(doc, target)
             : [],
       };
+    }
+  }
+};
+
+/**
+ * The stretches an operation changes, for the content-control lock rule
+ * (`lockedControlViolation`), read off the claim the batch already makes for
+ * it. A comment changes nothing a lock guards, so it touches nothing.
+ */
+const lockTouchesOf = (
+  item: ResolvedBase,
+  claim: BatchClaim,
+): LockedControlTouch[] => {
+  switch (claim.type) {
+    case "text":
+    case "split":
+      // Text replaced across a whole control rewrites its content and leaves
+      // it standing, emptied when the replacement gives it nothing.
+      return [{ from: claim.from, to: claim.to, effect: "edit" }];
+    case "annotation":
+      return item.operation.type === "formatRange"
+        ? [{ from: claim.from, to: claim.to, effect: "edit" }]
+        : [];
+    case "rewriteBlock": {
+      // A rewrite may keep any stretch of the old text and change any other,
+      // so it reaches into every control the paragraph holds, as well as
+      // removing it.
+      const content = { from: claim.block + 1, to: item.blockTo - 1 };
+      return [
+        { ...content, effect: "remove" },
+        { ...content, effect: "edit" },
+      ];
+    }
+    case "paragraphProperties":
+      return [{ from: claim.block, to: claim.block, effect: "edit" }];
+    case "deleteBlock":
+      return [{ from: claim.block, to: claim.end, effect: "remove" }];
+    case "merge":
+      // The two paragraph boundaries the join removes.
+      return [{ from: claim.next - 1, to: claim.next + 1, effect: "remove" }];
+    case "insertion":
+      return [{ from: claim.at, to: claim.at, effect: "edit" }];
+    case "tableRemoval":
+      return claim.ranges.map(({ from, to }) => ({
+        from,
+        to,
+        effect: "remove" as const,
+      }));
+    case "tableStructure":
+      return [
+        { from: claim.table, to: claim.table, effect: "edit" },
+        ...claim.folded.map(({ from, to }) => ({
+          from,
+          to,
+          effect: "remove" as const,
+        })),
+      ];
+    case "unclaimed":
+      return [];
+    default: {
+      const unhandled: never = claim;
+      return panic("Unhandled batch claim", { claim: unhandled });
     }
   }
 };
@@ -5258,6 +5328,8 @@ const applyFolioAIEditOperationsInternal = ({
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
   const batchClaims = new BatchClaims();
+  const lockedControls = (): readonly LockedControlSpan[] =>
+    lockedControlSpans(view.state.doc);
   const removedBlocksBy = new Map<
     string,
     { id: string; type: FolioAIEditOperation["type"] }
@@ -5447,6 +5519,22 @@ const applyFolioAIEditOperationsInternal = ({
       doc: view.state.doc,
       producesTrackedChanges,
     });
+    // A comparison describes differences two documents already hold; the
+    // locks guard editing a document, not describing it.
+    const lockViolation = comparisonApplying()
+      ? null
+      : firstLockedControlViolation(
+          lockedControls(),
+          lockTouchesOf(resolution.operation, claim),
+        );
+    if (lockViolation !== null) {
+      skipped.push({
+        id: operation.id,
+        reason: CONTENT_CONTROL_LOCK,
+        message: lockedControlMessage(lockViolation),
+      });
+      continue;
+    }
     const claimedBy = batchClaims.conflictOf(claim);
     if (claimedBy !== null) {
       skipped.push({
@@ -9603,9 +9691,7 @@ const resolveStableBlock = ({
     noteReferences,
   });
   const currentText = cleanBlock.text;
-  const currentTextHash = hashFolioAIBlockText(
-    normalizeFolioAIBlockText(currentText),
-  );
+  const currentTextHash = hashFolioAIBlockContent(currentText);
   const structuralBoundaryHash =
     hashFolioAIBlockStructuralBoundaries(cleanBlock);
   if (

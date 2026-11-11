@@ -215,6 +215,8 @@ const serializeBlock = (block: BlockContent): string => {
     // serializer is what a parsed package is saved with.
     case "bookmarkStart":
     case "bookmarkEnd":
+    case "commentRangeStart":
+    case "commentRangeEnd":
     case "moveFromRangeStart":
     case "moveFromRangeEnd":
     case "moveToRangeStart":

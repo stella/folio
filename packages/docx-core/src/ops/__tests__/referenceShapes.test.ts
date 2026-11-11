@@ -201,7 +201,8 @@ describe("Enter at the end of a paragraph", () => {
     });
     expect(edited(documentOf(alpha), typeAfter("06279B03"))).toEqual([
       INTRO,
-      { ...alpha, pPrMark: mark("ins", 0) },
+      // Rejecting the new mark gives back this paragraph, under its id.
+      { ...alpha, pPrMark: { ...mark("ins", 0), survivor: "first" } },
       paragraph(
         "06279B03",
         [
@@ -223,7 +224,8 @@ describe("Enter at the end of a paragraph", () => {
     });
     expect(edited(documentOf(alpha), typeAfter("57B0C177", {}))).toEqual([
       INTRO,
-      { ...alpha, pPrMark: mark("ins", 0) },
+      // Rejecting the new mark gives back this paragraph, under its id.
+      { ...alpha, pPrMark: { ...mark("ins", 0), survivor: "first" } },
       paragraph(
         "57B0C177",
         [
@@ -256,7 +258,7 @@ describe("Enter at the end of a paragraph", () => {
         [text("Alpha text.")],
         { alignment: "center" },
         {
-          pPrMark: mark("ins", 0),
+          pPrMark: { ...mark("ins", 0), survivor: "first" },
         },
       ),
       paragraph(
@@ -803,7 +805,7 @@ describe("Tracked Enter and Backspace, then every change resolved", () => {
       { propertyChanges: [change(501, { alignment: "right" })] },
     ],
   ] as const) {
-    test(`Enter at the end (${name}): rejecting leaves the new paragraph with the old properties`, () => {
+    test(`Enter at the end (${name}): rejecting gives the paragraph back under its own id with the old properties`, () => {
       const alpha = alphaOf(formatting, fields);
       const split = tracked(documentOf(alpha, bravo), [
         {
@@ -829,7 +831,7 @@ describe("Tracked Enter and Backspace, then every change resolved", () => {
           : { alignment: "right" as const };
       expect(resolvedAll(split, REJECT)).toEqual([
         INTRO,
-        paragraph("06279B03", [text("Alpha text.")], old),
+        paragraph("2A000002", [text("Alpha text.")], old),
         bravo,
         TAIL,
       ]);

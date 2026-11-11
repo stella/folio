@@ -4,7 +4,7 @@ import { FolioDocxReviewer } from "@stll/folio-core/server";
  * graph into the parity harness compiler boundary. */
 export const projectFinalReviewView = async (source) => {
   const reviewer = await FolioDocxReviewer.fromBuffer(source);
-  if (reviewer.acceptAll() === 0) {
+  if (reviewer.acceptAll().resolved === 0) {
     return source;
   }
   return await reviewer.toBuffer();

@@ -6,6 +6,7 @@
  * @packageDocumentation
  * @public
  */
+import type { TrackedChangeEntry as CoreTrackedChangeEntry } from "@stll/folio-core/prosemirror/utils/extractTrackedChanges";
 import type { Paragraph } from "@stll/folio-core/types/content";
 import { sliceText } from "@stll/folio-core/utils/sliceText";
 
@@ -87,4 +88,10 @@ export function truncateText(text: string, maxLength = 50): string {
  *
  * @public
  */
-export type { TrackedChangeEntry } from "@stll/folio-core/prosemirror/utils/extractTrackedChanges";
+export type TrackedChangeEntry = CoreTrackedChangeEntry & {
+  /**
+   * Whether a content control's lock keeps the change from being accepted or
+   * rejected (see `lockHeldRevisions`): the card's buttons are disabled then.
+   */
+  heldByLock?: { accept: boolean; reject: boolean };
+};

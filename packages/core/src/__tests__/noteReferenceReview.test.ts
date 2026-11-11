@@ -461,13 +461,13 @@ describe("an edit operation that deletes a note reference", () => {
 
   test("tracked and accepted, the note goes", async () => {
     const { reviewer } = await deleteNotedParagraph("tracked-changes");
-    expect(reviewer.acceptAll()).toBeGreaterThan(0);
+    expect(reviewer.acceptAll().resolved).toBeGreaterThan(0);
     expect(noteState(await saved(reviewer), 1)).toBeNull();
   });
 
   test("tracked and rejected, the note keeps its text", async () => {
     const { reviewer } = await deleteNotedParagraph("tracked-changes");
-    expect(reviewer.rejectAll()).toBeGreaterThan(0);
+    expect(reviewer.rejectAll().resolved).toBeGreaterThan(0);
     expect(noteState(await saved(reviewer), 1)).toEqual({
       text: "The note text.",
       deleted: false,

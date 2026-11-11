@@ -341,6 +341,8 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "किसी अन्य टैब, विंडो या डिवाइस ने इस दस्तावेज़ को संपादन के लिए खोला, इसलिए यह सत्र बंद कर दिया गया। सहेजे नहीं गए स्थानीय परिवर्तन सुरक्षित हैं — जारी रखने के लिए दस्तावेज़ फिर से खोलें।",
     "editor": {
       "accessibleName": "दस्तावेज़ संपादक",
+      "changeUnavailable": "यह बदलाव अभी यहाँ नहीं किया जा सकता।",
+      "contentLocked": "दस्तावेज़ का यह हिस्सा लॉक है।",
       "editing": "संपादन",
       "editingDescription": "दस्तावेज़ को सीधे संपादित करें",
       "outlineDepthAll": "सभी स्तर",
@@ -636,6 +638,7 @@ export const messages: FolioMessages = {
       "watermark": "वॉटरमार्क"
     },
     "trackedChanges": {
+      "heldByLock": "एक लॉक किया गया सामग्री नियंत्रण इस परिवर्तन को स्वीकार या अस्वीकार करने से रोकता है।",
       "replaced": "बदला गया",
       "unknown": "अज्ञात",
       "with": "से"

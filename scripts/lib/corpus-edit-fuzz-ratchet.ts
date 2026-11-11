@@ -14,9 +14,11 @@ export type Incomplete = {
   seed: number;
   reason: "timeout" | "worker";
   detail: string;
+  /** Wall-clock time the worker ran before it ended or was stopped. */
+  durationMs: number;
 };
 export type EditReport = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   lockDigest: string;
   shard: string | null;
   sample: number | null;
@@ -28,20 +30,19 @@ export type EditReport = {
   incomplete: Incomplete[];
 };
 
-export const FINDINGS = {
-  CORPUS_EDIT_FUZZ_TIMEOUT:
-    "The pinned document's edit worker exceeds its 120-second deadline; remove this disposition when it completes.",
-} as const;
-
-type KnownIncomplete = Omit<Incomplete, "reason"> & {
-  reason: "timeout";
-  finding: keyof typeof FINDINGS;
-};
+/**
+ * The failure identities a pinned corpus run is expected to find.
+ *
+ * A timeout is no identity: a wall-clock limit drifts with machine load, so a
+ * document near the deadline would pass one run and fail the next for nothing
+ * the code did. Timeouts are listed in the run summary instead, and a timed
+ * out document's own identities are not counted missing. A worker that
+ * crashes always fails the ratchet.
+ */
 export type EditBaseline = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   lockDigest: string;
   identities: string[];
-  knownIncomplete: KnownIncomplete[];
 };
 
 /** Pinned document hash, failure category and reduced request; diagnostics may contain volatile SDK ids. */
@@ -68,14 +69,8 @@ const duplicateIds = (ids: readonly string[]): string[] => {
   return [...duplicates].toSorted();
 };
 
-const incompleteIdentity = ({
-  document,
-  sha256,
-  seed,
-  reason,
-  detail,
-}: Incomplete): string =>
-  JSON.stringify({ document, sha256, seed, reason, detail });
+const documentOf = (identity: string): string =>
+  identity.slice(0, identity.indexOf("::"));
 
 /** A sampled run may find no new case; a full run must match in both directions. */
 export const compareBaseline = (
@@ -85,12 +80,14 @@ export const compareBaseline = (
   introduced: string[];
   missing: string[];
   duplicates: string[];
-  unexpectedIncomplete: Incomplete[];
-  recoveredIncomplete: KnownIncomplete[];
+  crashed: Incomplete[];
 } => {
   if (
-    baseline.schemaVersion !== 2 ||
-    reports.some(({ lockDigest }) => lockDigest !== baseline.lockDigest)
+    baseline.schemaVersion !== 3 ||
+    reports.some(
+      ({ schemaVersion, lockDigest }) =>
+        schemaVersion !== 2 || lockDigest !== baseline.lockDigest,
+    )
   ) {
     throw new Error(
       "edit fuzz report and baseline versions or lock digests differ",
@@ -112,27 +109,17 @@ export const compareBaseline = (
   }
   const observed = reports.flatMap(({ cases }) => cases.map(caseIdentity));
   const incomplete = reports.flatMap(({ incomplete: cases }) => cases);
+  const timedOut = new Set(
+    incomplete
+      .filter(({ reason }) => reason === "timeout")
+      .map(({ sha256 }) => sha256),
+  );
   const baselineIds = new Set(baseline.identities);
   const observedIds = new Set(observed);
-  const knownIncomplete = new Set(
-    baseline.knownIncomplete.map(incompleteIdentity),
-  );
-  const observedIncomplete = new Set(incomplete.map(incompleteIdentity));
   const baselineDuplicates = duplicateIds(baseline.identities);
   if (baselineDuplicates.length > 0) {
     throw new Error(
       `edit fuzz baseline contains duplicate identities: ${baselineDuplicates.length}`,
-    );
-  }
-  if (
-    baseline.knownIncomplete.some(
-      ({ reason, finding }) =>
-        reason !== "timeout" || !Object.hasOwn(FINDINGS, finding),
-    ) ||
-    duplicateIds(baseline.knownIncomplete.map(incompleteIdentity)).length > 0
-  ) {
-    throw new Error(
-      "edit fuzz baseline has an invalid or duplicate incomplete disposition",
     );
   }
   return {
@@ -141,17 +128,30 @@ export const compareBaseline = (
       .toSorted(),
     missing:
       fullRun || allShards
-        ? [...baselineIds].filter((id) => !observedIds.has(id)).toSorted()
+        ? [...baselineIds]
+            .filter(
+              (id) => !observedIds.has(id) && !timedOut.has(documentOf(id)),
+            )
+            .toSorted()
         : [],
     duplicates: duplicateIds(observed),
-    unexpectedIncomplete: incomplete.filter(
-      (item) => !knownIncomplete.has(incompleteIdentity(item)),
-    ),
-    recoveredIncomplete:
-      fullRun || allShards
-        ? baseline.knownIncomplete.filter(
-            (item) => !observedIncomplete.has(incompleteIdentity(item)),
-          )
-        : [],
+    crashed: incomplete.filter(({ reason }) => reason === "worker"),
+  };
+};
+
+/** The baseline a complete run records: its identities, once each, sorted. */
+export const baselineOf = (reports: readonly EditReport[]): EditBaseline => {
+  const lockDigest = reports.at(0)?.lockDigest;
+  if (
+    lockDigest === undefined ||
+    reports.some((report) => report.lockDigest !== lockDigest)
+  )
+    throw new Error("edit fuzz reports name different corpus locks");
+  return {
+    schemaVersion: 3,
+    lockDigest,
+    identities: [
+      ...new Set(reports.flatMap(({ cases }) => cases.map(caseIdentity))),
+    ].toSorted(),
   };
 };

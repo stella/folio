@@ -14,6 +14,7 @@ import {
   EditorState as PMEditorState,
   Plugin as PMPlugin,
 } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 import type { DirectEditorProps } from "prosemirror-view";
 import { EditorView } from "prosemirror-view";
 import type * as YProseMirror from "y-prosemirror";
@@ -35,6 +36,8 @@ import {
   type CreateCommentOp,
   freshCommentId,
   OP_STORIES,
+  type OpStory,
+  sameStory,
 } from "@stll/docx-core/ops";
 
 import {
@@ -48,6 +51,10 @@ import { isReadOnlyEditKey } from "../paged-layout/readOnlyEditAttempt";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { registerClipboardIntentHandler } from "../prosemirror/clipboardIntent";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
+import {
+  createCommentRecordsPlugin,
+  isCommentRecordsSync,
+} from "../prosemirror/commentRecords";
 import { createEmptyDoc, toProseDoc } from "../prosemirror/conversion";
 import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
@@ -65,6 +72,11 @@ import {
   toggleUnderlineMark,
 } from "../prosemirror/extensions/marks/markUtils";
 import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
+import {
+  adoptNativeSelection,
+  createNativeSelectionRefreshPlugin,
+  isCompositionKeyDown,
+} from "../prosemirror/nativeSelection";
 import {
   markNoteReferenceReplay,
   noteReferenceTransactionIssue,
@@ -86,7 +98,8 @@ import {
 } from "../prosemirror/yjsDocumentMetadata";
 import {
   CANONICAL_GAP,
-  type CanonicalGap,
+  CANONICAL_RULE,
+  type CanonicalRefusalGround,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type { Document, StyleDefinitions } from "../types/document";
@@ -118,8 +131,9 @@ import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
 const CanonicalSessionRefusalErrorBase: TaggedErrorClass<"CanonicalSessionRefusalError"> =
   TaggedError("CanonicalSessionRefusalError");
 
+/** A refused input, with whether the session lacks the capability or the document forbids it. */
 export class CanonicalSessionRefusalError extends CanonicalSessionRefusalErrorBase<{
-  gap: CanonicalGap;
+  ground: CanonicalRefusalGround;
   message: string;
 }> {}
 
@@ -365,11 +379,14 @@ export function createHiddenEditorState(
   const numberingPlugin = createDocumentNumberingPlugin(
     document?.package.numbering,
   );
+  // Numbering comes first: other plugins read it while they apply a
+  // transaction, which only sees the states of the plugins before them.
   const plugins: Plugin[] = [
+    numberingPlugin,
+    createCommentRecordsPlugin(document?.package.document.comments ?? []),
     ...externalPlugins,
     ...(manager?.getPlugins() ?? [createTextInputPlugin()]),
     styleResolverPlugin,
-    numberingPlugin,
   ];
 
   if (collaboration) {
@@ -513,7 +530,11 @@ export type HiddenEditorManagerDeps = {
   getExperimentalSession?: () => "canonical" | undefined;
   getEditingMode?: () => EditorMode;
   getSuggestionAuthor?: () => string;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
+  onSessionRefusal?: (
+    reason: string,
+    ground: CanonicalRefusalGround,
+    error?: Error,
+  ) => void;
   /**
    * Identity of the loaded document as tracked by the adapter's loader: the
    * same value across internal edits (so typing does not trigger an external
@@ -594,6 +615,13 @@ export type HiddenEditorManager = {
   getView: () => EditorView | null;
   isInitialized: () => boolean;
   api: HiddenEditorApi;
+  /**
+   * The canonical session's own document, or null outside one, without the
+   * copy `api.getCanonicalDocument` makes for hosts. Each edit replaces it, so
+   * it stays as read; the editor's own story managers read it and never
+   * change it.
+   */
+  readCanonicalDocument: () => Document | null;
 };
 
 export const createHiddenEditorManager = (
@@ -618,11 +646,11 @@ export const createHiddenEditorManager = (
   };
   const refuse = (
     reason: string,
-    gap: CanonicalGap = CANONICAL_GAP.dispatch,
+    ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch },
   ): void => {
     const message = reason;
-    if (deps.onSessionRefusal) deps.onSessionRefusal(message, gap);
-    else throw new CanonicalSessionRefusalError({ gap, message });
+    if (deps.onSessionRefusal) deps.onSessionRefusal(message, ground);
+    else throw new CanonicalSessionRefusalError({ ground, message });
   };
   const seedSession = (document: Document | null): boolean => {
     if (
@@ -646,7 +674,7 @@ export const createHiddenEditorManager = (
         ? "Canonical sessions do not support collaboration."
         : "Canonical sessions require a loaded Document.";
       editorSession = { type: "refused", reason, documentIdentity };
-      refuse(reason, CANONICAL_GAP.collaboration);
+      refuse(reason, { gap: CANONICAL_GAP.collaboration });
       return false;
     }
     const result = createCanonicalSession(document, deps.getStyles());
@@ -656,7 +684,7 @@ export const createHiddenEditorManager = (
         reason: result.error.message,
         documentIdentity,
       };
-      refuse(result.error.message, result.error.gap);
+      refuse(result.error.message, result.error.ground);
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
@@ -669,11 +697,12 @@ export const createHiddenEditorManager = (
     PMEditorState.create({
       doc: session.projection.doc,
       plugins: [
+        createDocumentNumberingPlugin(session.document.package.numbering),
         createParagraphChangeTrackerPlugin(),
+        createNativeSelectionRefreshPlugin(),
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? session.document.package.styles,
         ),
-        createDocumentNumberingPlugin(session.document.package.numbering),
         ...[
           ...(deps.getExtensionManager()?.getPlugins() ?? []),
           ...deps.getExternalPlugins(),
@@ -720,7 +749,7 @@ export const createHiddenEditorManager = (
       session,
     });
     if (result.isErr()) {
-      reportRefusal(result.error.message, result.error.gap);
+      reportRefusal(result.error.message, result.error.ground);
       return false;
     }
     const staged = result.value;
@@ -745,7 +774,7 @@ export const createHiddenEditorManager = (
         : session.prepareRedo(view.state);
     if (prepared.isErr()) {
       if (prepared.error.reason !== "noChange")
-        refuse(prepared.error.message, prepared.error.gap);
+        refuse(prepared.error.message, prepared.error.ground);
       return false;
     }
     return publishCommit(prepared.value);
@@ -772,10 +801,10 @@ export const createHiddenEditorManager = (
       if (!(described.error instanceof HyperlinkRemovalRefusal))
         throw described.error;
       const refusal = new CanonicalSessionRefusalError({
-        gap: CANONICAL_GAP.commands,
+        ground: { gap: CANONICAL_GAP.commands },
         message: described.error.message,
       });
-      refuse(refusal.message, refusal.gap);
+      refuse(refusal.message, refusal.ground);
       return false;
     }
     const intents = described.value;
@@ -808,7 +837,7 @@ export const createHiddenEditorManager = (
     );
     if (prepared.isErr()) {
       if (prepared.error.reason !== "noChange")
-        refuse(prepared.error.message, prepared.error.gap);
+        refuse(prepared.error.message, prepared.error.ground);
       return false;
     }
     return publishCommit(prepared.value);
@@ -848,10 +877,9 @@ export const createHiddenEditorManager = (
         }
       }
       if (command === undefined) {
-        refuse(
-          "The formatting command is unavailable.",
-          CANONICAL_GAP.commands,
-        );
+        refuse("The formatting command is unavailable.", {
+          gap: CANONICAL_GAP.commands,
+        });
         return;
       }
       const handled = executeCanonicalCommand(command);
@@ -862,11 +890,66 @@ export const createHiddenEditorManager = (
       if (!view || deps.getReadOnly() || editorSession.type !== "canonical")
         return;
       syncCanonicalMode();
+      if (type === "deleteTable") {
+        const command = deps
+          .getExtensionManager()
+          ?.getCommand("deleteTable")?.();
+        if (command === undefined)
+          refuse("Deleting the table is unavailable.", {
+            gap: CANONICAL_GAP.commands,
+          });
+        else executeCanonicalCommand(command);
+        return;
+      }
       const session = editorSession.session;
       const state = view.state;
+      if (
+        state.selection instanceof CellSelection &&
+        (type === "split" ||
+          type === "tab" ||
+          type === "lineBreak" ||
+          type === "pageBreak")
+      ) {
+        const overCells = session.prepareCellSelectionStructure(state, (at) =>
+          type === "split"
+            ? {
+                // A paragraph break: two empty paragraphs whose open ends
+                // join the halves of the first cell's paragraph.
+                type: "replaceFragment",
+                from: at,
+                to: at,
+                paragraphs: [
+                  { type: "paragraph", content: [] },
+                  { type: "paragraph", content: [] },
+                ],
+                openStart: 1,
+                openEnd: 1,
+              }
+            : {
+                type: "insertAtom",
+                from: at,
+                to: at,
+                atom:
+                  type === "tab"
+                    ? { type: "tab" }
+                    : {
+                        type: "break",
+                        breakType:
+                          type === "pageBreak" ? "page" : "textWrapping",
+                      },
+              },
+        );
+        if (overCells.isErr()) {
+          if (overCells.error.reason !== "noChange")
+            refuse(overCells.error.message, overCells.error.ground);
+          return;
+        }
+        publishCommit(overCells.value);
+        return;
+      }
       const selection = session.projection.selectionAt(state);
       if (selection.isErr()) {
-        refuse(selection.error.message, selection.error.gap);
+        refuse(selection.error.message, selection.error.ground);
         return;
       }
       let prepared;
@@ -939,11 +1022,11 @@ export const createHiddenEditorManager = (
           const from = session.projection.addressAt(state.selection.from);
           const to = session.projection.addressAt(state.selection.to);
           if (from.isErr()) {
-            refuse(from.error.message, from.error.gap);
+            refuse(from.error.message, from.error.ground);
             return;
           }
           if (to.isErr()) {
-            refuse(to.error.message, to.error.gap);
+            refuse(to.error.message, to.error.ground);
             return;
           }
           prepared = session.prepareIntent(state, {
@@ -967,7 +1050,7 @@ export const createHiddenEditorManager = (
       }
       if (prepared.isErr()) {
         if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
         return;
       }
       publishCommit(prepared.value);
@@ -986,7 +1069,7 @@ export const createHiddenEditorManager = (
         return false;
       const begun = editorSession.session.beginComposition();
       if (begun.isErr()) {
-        refuse(begun.error.message, begun.error.gap);
+        refuse(begun.error.message, begun.error.ground);
         return false;
       }
       return true;
@@ -1031,7 +1114,7 @@ export const createHiddenEditorManager = (
         semantic: "replacement",
       });
       if (prepared.isErr()) {
-        refuse(prepared.error.message, prepared.error.gap);
+        refuse(prepared.error.message, prepared.error.ground);
         return true;
       }
       const copied = Result.try({
@@ -1044,11 +1127,11 @@ export const createHiddenEditorManager = (
         },
         catch: () =>
           new CanonicalSessionRefusalError({
-            gap: CANONICAL_GAP.dispatch,
+            ground: { gap: CANONICAL_GAP.dispatch },
             message: "The clipboard could not receive the cut content.",
           }),
       });
-      if (copied.isErr()) refuse(copied.error.message, copied.error.gap);
+      if (copied.isErr()) refuse(copied.error.message, copied.error.ground);
       else publishCommit(prepared.value);
       return true;
     },
@@ -1067,7 +1150,7 @@ export const createHiddenEditorManager = (
         rule ?? editorSession.session.prepareReplace(view.state, intent);
       if (prepared.isErr()) {
         if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
         return;
       }
       const session = editorSession.session;
@@ -1147,7 +1230,12 @@ export const createHiddenEditorManager = (
           return;
         }
 
-        if (deps.getReadOnly() && transaction.docChanged) {
+        // A host writing its comment list in changes no document content.
+        if (
+          deps.getReadOnly() &&
+          transaction.docChanged &&
+          !isCommentRecordsSync(transaction)
+        ) {
           deps.onReadOnlyEditAttempt();
           return;
         }
@@ -1182,7 +1270,7 @@ export const createHiddenEditorManager = (
         if (noteIssue)
           deps.onSessionRefusal?.(
             noteIssue.message,
-            CANONICAL_GAP.dispatch,
+            { gap: CANONICAL_GAP.dispatch },
             noteIssue,
           );
         if (
@@ -1197,11 +1285,15 @@ export const createHiddenEditorManager = (
         view.updateState(applied.state);
 
         const docChanged = applied.transactions.some(
-          (appliedTransaction) => appliedTransaction.docChanged,
+          (appliedTransaction) =>
+            appliedTransaction.docChanged &&
+            !isCommentRecordsSync(appliedTransaction),
         );
         const selectionChanged = applied.transactions.some(
           (appliedTransaction) =>
-            appliedTransaction.selectionSet || appliedTransaction.docChanged,
+            appliedTransaction.selectionSet ||
+            (appliedTransaction.docChanged &&
+              !isCommentRecordsSync(appliedTransaction)),
         );
 
         // Notify about transaction.
@@ -1250,6 +1342,10 @@ export const createHiddenEditorManager = (
         editorSession.type === "canonical"
           ? input.handleTextInput(pmView, from, to, text)
           : false,
+      handleKeyPress: (pmView, event) =>
+        editorSession.type === "canonical" &&
+        !deps.getReadOnly() &&
+        input.handleKeyPress(pmView, event),
       handlePaste: (pmView, _event, slice) => {
         if (editorSession.type !== "canonical") return false;
         if (deps.getReadOnly()) {
@@ -1264,7 +1360,7 @@ export const createHiddenEditorManager = (
         });
         if (prepared.isErr()) {
           if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.gap);
+            refuse(prepared.error.message, prepared.error.ground);
         } else publishCommit(prepared.value);
         return true;
       },
@@ -1312,17 +1408,22 @@ export const createHiddenEditorManager = (
         });
         if (prepared.isErr()) {
           if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.gap);
+            refuse(prepared.error.message, prepared.error.ground);
         } else publishCommit(prepared.value);
         return true;
       },
       handleScrollToSelection: suppressHiddenEditorScrollToSelection,
       // Prevent focus handling from interfering with visual layer
       handleDOMEvents: {
-        keydown: (pmView, event) =>
-          editorSession.type === "canonical"
+        // Handlers here run before any plugin's, so the key or text input
+        // takes the caret the browser shows before either engine reads it.
+        keydown: (pmView, event) => {
+          if (!input.isComposing && !isCompositionKeyDown(event))
+            adoptNativeSelection(pmView);
+          return editorSession.type === "canonical"
             ? input.handleDOMEvents.keydown(pmView, event)
-            : false,
+            : false;
+        },
         focus: () => false,
         blur: (pmView) =>
           editorSession.type === "canonical"
@@ -1351,6 +1452,8 @@ export const createHiddenEditorManager = (
             ? input.handleDOMEvents.cut(pmView, event)
             : createHiddenEditorClipboardHandlers(deps).cut(pmView, event),
         beforeinput: (_view, event) => {
+          if (!input.isComposing && !event.isComposing)
+            adoptNativeSelection(_view);
           if (editorSession.type === "canonical" && !deps.getReadOnly())
             return input.handleDOMEvents.beforeinput(_view, event);
           if (!deps.getReadOnly()) {
@@ -1406,7 +1509,7 @@ export const createHiddenEditorManager = (
         });
         if (prepared.isErr()) {
           if (prepared.error.reason !== "noChange")
-            refuse(prepared.error.message, prepared.error.gap);
+            refuse(prepared.error.message, prepared.error.ground);
           return false;
         }
         return publishCommit(prepared.value);
@@ -1461,13 +1564,22 @@ export const createHiddenEditorManager = (
   // This should NOT run when the document prop changes due to internal edits
   // being passed back through the parent component's state.
   const syncExternalDocument = (): void => {
-    if (!view || isDestroying) {
+    if (isDestroying) {
       return;
     }
     const canonicalRequested = usesCanonicalSession(
       deps.getExperimentalSession?.(),
       CANONICAL_GAP.authorityRouting,
     );
+    if (!view) {
+      // A canonical session is seeded with its view and reads input and
+      // composition from it, so a host that routes through it gets the view
+      // as soon as it syncs a document, not when something first reads a
+      // story. Without a document there is nothing to seed yet; the sync
+      // that brings one creates the view.
+      if (canonicalRequested && deps.getDocument() !== null) ensureView();
+      return;
+    }
     const collaboration = deps.getCollaboration();
     const collaborationModules = deps.getCollaborationModules();
     if (collaboration && !collaborationModules && !canonicalRequested) {
@@ -1548,8 +1660,15 @@ export const createHiddenEditorManager = (
     syncHiddenEditorAccessibility(view, readOnly);
   };
 
+  /**
+   * Publishes a commit to a secondary story: the body view takes the body
+   * projection the commit carries, and the story's open editor, if one is
+   * open, takes the story projection. With no story editor open, the commit
+   * is staged against the story's projection as it stood before the edit.
+   * Every path that edits a secondary story, editor or API, publishes here.
+   */
   const publishStoryCommit = (
-    storyView: EditorView,
+    storyView: EditorView | null,
     commit: CanonicalCommit,
   ): boolean => {
     if (!view || editorSession.type !== "canonical") return false;
@@ -1596,15 +1715,20 @@ export const createHiddenEditorManager = (
       return false;
     }
     const staged = publishCanonicalProjection({
-      state: storyView.state,
+      state:
+        storyView?.state ??
+        PMEditorState.create({
+          schema: view.state.schema,
+          doc: commit.transaction.before,
+        }),
       commit,
       session,
     });
     if (staged.isErr()) {
-      refuse(staged.error.message, staged.error.gap);
+      refuse(staged.error.message, staged.error.ground);
       return false;
     }
-    storyView.updateState(staged.value.state);
+    storyView?.updateState(staged.value.state);
     view.updateState(bodyStaged.value.state);
     deps.onTransaction({
       transactions: staged.value.transactions,
@@ -1619,17 +1743,58 @@ export const createHiddenEditorManager = (
     session: CanonicalSession;
     executor: CanonicalPublicOperations;
   } | null = null;
+  /** The editor last in use for each secondary story, as its editors report it. */
+  const storyViews: { story: OpStory; view: EditorView }[] = [];
+  /** The open editor of `story` showing its committed projection, if any. */
+  const openStoryView = (
+    session: CanonicalSession,
+    story: OpStory,
+  ): EditorView | null => {
+    const entry = storyViews.find((candidate) =>
+      sameStory(candidate.story, story),
+    );
+    if (!entry || entry.view.isDestroyed) return null;
+    const projected = session.projectStory(story);
+    return projected.isOk() && entry.view.state.doc.eq(projected.value.doc)
+      ? entry.view
+      : null;
+  };
   const getPublicOperations = () => {
     if (editorSession.type !== "canonical") return null;
     const session = editorSession.session;
     if (publicOperations?.session === session) return publicOperations.executor;
     const executor = new CanonicalPublicOperations({
       session,
-      getState: (story) =>
-        story === OP_STORIES.MAIN && !deps.getReadOnly() && !isDestroying
-          ? (view?.state ?? null)
-          : null,
-      publish: publishCommit,
+      getState: (story) => {
+        if (!view || deps.getReadOnly() || isDestroying) return null;
+        if (story === OP_STORIES.MAIN) return view.state;
+        // The editor open on the story, so its selection maps through the
+        // batch; with none, the story's projection.
+        const open = openStoryView(session, story);
+        if (open) return open.state;
+        const projected = session.projectStory(story);
+        return projected.isErr()
+          ? null
+          : PMEditorState.create({
+              schema: view.state.schema,
+              doc: projected.value.doc,
+            });
+      },
+      publish: (commit) => {
+        const story = commit.selection.anchor.story;
+        if (story === OP_STORIES.MAIN) return publishCommit(commit);
+        const open = storyViews.find((candidate) =>
+          sameStory(candidate.story, story),
+        )?.view;
+        return publishStoryCommit(
+          open &&
+            !open.isDestroyed &&
+            open.state.doc.eq(commit.transaction.before)
+            ? open
+            : null,
+          commit,
+        );
+      },
     });
     publicOperations = { session, executor };
     return executor;
@@ -1680,7 +1845,30 @@ export const createHiddenEditorManager = (
       });
       if (prepared.isErr()) {
         if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
+        return false;
+      }
+      const published = publishCommit(prepared.value);
+      // The rest resolved; those a lock held stay pending, and the user hears why.
+      if (prepared.value.lockHeld !== undefined)
+        refuse(
+          `Revisions ${prepared.value.lockHeld.join(", ")} stay pending: resolving them changes a locked content control.`,
+          { rule: CANONICAL_RULE.contentControlLock },
+        );
+      return published;
+    },
+    resolveCanonicalSuggestion: (suggestionId, resolution, author) => {
+      if (!view || deps.getReadOnly() || editorSession.type !== "canonical")
+        return false;
+      const prepared = editorSession.session.prepareSuggestion(view.state, {
+        suggestionId,
+        resolution,
+        author,
+        date: new Date().toISOString(),
+      });
+      if (prepared.isErr()) {
+        if (prepared.error.reason !== "noChange")
+          refuse(prepared.error.message, prepared.error.ground);
         return false;
       }
       return publishCommit(prepared.value);
@@ -1703,7 +1891,7 @@ export const createHiddenEditorManager = (
       applyCanonicalSectionProperties: (patch) => {
         ensureView();
         const fail = (message: string) => {
-          refuse(message, CANONICAL_GAP.sectionProperties);
+          refuse(message, { gap: CANONICAL_GAP.sectionProperties });
           return {
             status: "refused",
             gap: CANONICAL_GAP.sectionProperties,
@@ -1743,7 +1931,8 @@ export const createHiddenEditorManager = (
           retry: "afterComposition" | "never" = "never",
         ) => {
           // A deferral the adapters retry after composition is not a user-facing refusal.
-          if (retry === "never") refuse(message, CANONICAL_GAP.comments);
+          if (retry === "never")
+            refuse(message, { gap: CANONICAL_GAP.comments });
           return {
             status: "refused",
             gap: CANONICAL_GAP.comments,
@@ -1881,7 +2070,7 @@ export const createHiddenEditorManager = (
             ? session.prepareUndo(storyView.state, story)
             : session.prepareRedo(storyView.state, story);
         if (prepared.isErr()) {
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
           return false;
         }
         return publishStoryCommit(storyView, prepared.value);
@@ -1895,19 +2084,14 @@ export const createHiddenEditorManager = (
           ops,
         );
         if (prepared.isErr()) {
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
           return false;
         }
         return publishCommit(prepared.value);
       },
+      // A read: the view a canonical session lives in is requested by
+      // `syncExternalDocument`, never as a side effect of asking for a story.
       getCanonicalStoryProjection: (story) => {
-        if (
-          usesCanonicalSession(
-            deps.getExperimentalSession?.(),
-            CANONICAL_GAP.authorityRouting,
-          )
-        )
-          ensureView();
         if (
           editorSession.type !== "canonical" ||
           editorSession.session.isComposing
@@ -1915,10 +2099,18 @@ export const createHiddenEditorManager = (
           return null;
         const result = editorSession.session.projectStory(story);
         if (result.isErr()) {
-          refuse(result.error.message, result.error.gap);
+          refuse(result.error.message, result.error.ground);
           return null;
         }
         return result.value.doc;
+      },
+      noteCanonicalStoryView: ({ story, view: storyView }) => {
+        if (story === OP_STORIES.MAIN) return;
+        const index = storyViews.findIndex((candidate) =>
+          sameStory(candidate.story, story),
+        );
+        if (index >= 0) storyViews.splice(index, 1);
+        storyViews.push({ story, view: storyView });
       },
       replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly())
@@ -1930,7 +2122,7 @@ export const createHiddenEditorManager = (
           story,
         });
         if (prepared.isErr()) {
-          refuse(prepared.error.message, prepared.error.gap);
+          refuse(prepared.error.message, prepared.error.ground);
           return false;
         }
         return publishStoryCommit(storyView, prepared.value);
@@ -1951,6 +2143,10 @@ export const createHiddenEditorManager = (
     getView: () => view,
     isInitialized: () => isInitialized,
     api,
+    readCanonicalDocument: () =>
+      editorSession.type === "canonical"
+        ? editorSession.session.document
+        : null,
     isCanonicalComposing: () =>
       editorSession.type === "canonical" && editorSession.session.isComposing,
   };

@@ -35,12 +35,7 @@ const DocumentOpsContractErrorBase: TaggedErrorClass<"DocumentOpsContractError">
  */
 import { sectionsInStep, storyParagraphs, withBodyContent } from "./blocks";
 import { hasValidCopyOriginAncestorsInBlocks } from "./copyOriginAncestors";
-import {
-  countIds,
-  countKeys,
-  packageIdentityKeys,
-  packageParagraphIds,
-} from "./ids";
+import { countKeys, packageIdentityKeys, packageParagraphIdIndex } from "./ids";
 import {
   asParagraphContent,
   childNodes,
@@ -94,6 +89,8 @@ const blocksHaveMultiplePropertyChanges = (
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -116,6 +113,23 @@ export const hasMultipleParagraphPropertyChanges = (
   documentStories(document).some((story) =>
     blocksHaveMultiplePropertyChanges(storyBody(document, story).content),
   );
+
+/**
+ * Two paragraphs of the package carrying one id. The package's paragraph
+ * id index answers it, so a document an operation made from an indexed one
+ * is checked along the paths the operation changed.
+ */
+export const repeatedParagraphId = (
+  document: Document,
+): DocumentOpsContractError | undefined => {
+  const ids = packageParagraphIdIndex(document.package);
+  if (ids.repeated() === 0) return undefined;
+  const [id, count] = [...ids.counts()].find(([, held]) => held > 1) ?? [];
+  return new DocumentOpsContractError({
+    reason: DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_BLOCK_ID,
+    message: `${count} paragraphs in the package are ${id}.`,
+  });
+};
 
 const violation = (
   document: Document,
@@ -176,15 +190,8 @@ const violation = (
           "An automatic note mark must belong to its matching note story.",
       });
   }
-  const repeated = [...countIds(packageParagraphIds(document.package))].find(
-    ([, count]) => count > 1,
-  );
-  if (repeated !== undefined) {
-    return new DocumentOpsContractError({
-      reason: DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_BLOCK_ID,
-      message: `${repeated[1]} paragraphs in the package are ${repeated[0]}.`,
-    });
-  }
+  const repeated = repeatedParagraphId(document);
+  if (repeated !== undefined) return repeated;
   const repeatedRecord = [
     ...countKeys(packageIdentityKeys(document.package)),
   ].find(([, count]) => count > 1);
@@ -232,6 +239,10 @@ export const validateOpsDocument = (
 export const meetsContract = (document: Document): void => {
   MEETS_CONTRACT.add(document);
 };
+
+/** Whether `document` was checked against the contract or made by an operation. */
+export const knownToMeetContract = (document: Document): boolean =>
+  MEETS_CONTRACT.has(document);
 
 /** The contract checked afresh, for tests that hold operations to it. */
 export const contractViolation = (
@@ -291,6 +302,8 @@ const normalizeBlocks = (blocks: readonly BlockContent[]): BlockContent[] => {
       case "preservedBlock":
       case "bookmarkStart":
       case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":

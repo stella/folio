@@ -23,7 +23,7 @@ import {
   type NoteStoryKey,
 } from "@stll/folio-core/controller/noteEditorManager";
 import { setSuggestionMode } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
-import type { CanonicalGap } from "@stll/folio-core/types/canonicalCapabilities";
+import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
   Document,
   StyleDefinitions,
@@ -43,7 +43,16 @@ export type NoteStoryEditorProps = {
   document: Document | null;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;
-  onSessionRefusal?: (reason: string, gap: CanonicalGap, error?: Error) => void;
+  /**
+   * The canonical session's own document, read without a copy; null outside
+   * a session. The editor's story managers only read it.
+   */
+  readCanonicalDocument: () => Document | null;
+  onSessionRefusal?: (
+    reason: string,
+    ground: CanonicalRefusalGround,
+    error?: Error,
+  ) => void;
   onActiveChange: (story: NoteStoryKey | null) => void;
   onDocumentChange: (document: Document) => void;
   onStoryChange: (
@@ -99,6 +108,7 @@ const NoteStoryEditorComponent = forwardRef<
     document,
     experimentalSession,
     getCanonicalApi,
+    readCanonicalDocument,
     onSessionRefusal,
     onActiveChange,
     onDocumentChange,
@@ -117,6 +127,7 @@ const NoteStoryEditorComponent = forwardRef<
   const hostRef = useRef<HTMLDivElement>(null);
   const documentRef = useRef(document);
   const canonicalApiRef = useRef(getCanonicalApi);
+  const readCanonicalDocumentRef = useRef(readCanonicalDocument);
   const sessionRef = useRef(experimentalSession);
   const refusalRef = useRef(onSessionRefusal);
   const stylesRef = useRef(styles);
@@ -131,6 +142,7 @@ const NoteStoryEditorComponent = forwardRef<
   useEffect(() => {
     documentRef.current = document;
     canonicalApiRef.current = getCanonicalApi;
+    readCanonicalDocumentRef.current = readCanonicalDocument;
     sessionRef.current = experimentalSession;
     refusalRef.current = onSessionRefusal;
     stylesRef.current = styles;
@@ -147,17 +159,23 @@ const NoteStoryEditorComponent = forwardRef<
         getStyles: () => stylesRef.current,
         getTheme: () => themeRef.current,
         getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
+        readCanonicalDocument: () => readCanonicalDocumentRef.current(),
         getExperimentalSession: () => sessionRef.current,
-        onSessionRefusal: (reason, gap, error) =>
-          refusalRef.current?.(reason, gap, error),
+        onSessionRefusal: (reason, ground, error) =>
+          refusalRef.current?.(reason, ground, error),
         onTransaction: ({ docChanged, selectionChanged, view }) => {
           if (docChanged) {
+            // The manager's snapshot is a document the host owns, so the
+            // session's own document is only read on the way there.
+            const manager = managerRef.current;
             const current =
-              canonicalApiRef.current?.()?.getCanonicalDocument() ??
-              documentRef.current;
+              readCanonicalDocumentRef.current() ?? documentRef.current;
             if (current)
               onDocumentChangeRef.current(
-                managerRef.current?.snapshotDocument(current) ?? current,
+                manager
+                  ? manager.snapshotDocument(current)
+                  : (canonicalApiRef.current?.()?.getCanonicalDocument() ??
+                      current),
               );
           }
           onStoryChangeRef.current(view, docChanged, selectionChanged);
@@ -175,6 +193,7 @@ const NoteStoryEditorComponent = forwardRef<
     document,
     experimentalSession,
     getCanonicalApi,
+    readCanonicalDocument,
     onActiveChange,
     onDocumentChange,
     onSessionRefusal,

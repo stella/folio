@@ -98,6 +98,12 @@ export type ActiveTrackedChangeInfo = {
   date: string | null;
   from: number;
   to: number;
+  /**
+   * Whether a content control's lock keeps the change from being accepted or
+   * rejected: resolving it would change a content-locked control's content,
+   * or remove a control locked against removal.
+   */
+  heldByLock: { accept: boolean; reject: boolean };
 };
 
 export type DocxEditorProps = {
@@ -783,6 +789,10 @@ export type EditorState = {
   pmTableContext: TableContextInfo | null;
   /** Image context when cursor is on an image node */
   pmImageContext: ImageContextInfo | null;
-  /** Active tracked change at cursor (for contextual toolbar) */
-  activeTrackedChange: ActiveTrackedChangeInfo | null;
+  /**
+   * Active tracked change at cursor (for contextual toolbar): what the card
+   * shows. Its range is read from the editor when the user acts, so typing
+   * inside the change, which moves its end, leaves this value as it was.
+   */
+  activeTrackedChange: Omit<ActiveTrackedChangeInfo, "from" | "to"> | null;
 };

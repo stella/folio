@@ -2154,6 +2154,7 @@ const recoveryByReason = {
   invalidResult: "refreshDocument",
   pendingDeletion: "resolveTrackedChange",
   pendingParagraphMarkDeletion: "resolveTrackedChange",
+  contentControlLock: "changeTarget",
 } as const satisfies Record<
   FolioAIEditSkippedOperation["reason"],
   FolioDocumentOperationRecovery
@@ -2181,6 +2182,8 @@ export const getFolioDocumentOperationIssues = (
         reason !== "pendingRunPropertyChange" &&
         reason !== "pendingDeletion" &&
         reason !== "pendingParagraphMarkDeletion" &&
+        // A lock refuses the same change to the same control every time.
+        reason !== "contentControlLock" &&
         // The same values never fit the same target; only a changed operation
         // can succeed.
         reason !== "payloadDoesNotFit" &&
@@ -2436,7 +2439,7 @@ export type ApplyFolioDocumentOperationsOptions = {
  * operation gets a distinct id, and an operation of the batch grouping with it
  * by that id follows it.
  */
-const withDistinctSuggestionIds = (
+export const withDistinctSuggestionIds = (
   batch: FolioDocumentOperationBatch,
   pending: ReadonlySet<string>,
 ): FolioDocumentOperationBatch => {
@@ -2594,11 +2597,9 @@ export const applyFolioDocumentOperationsInPackage = ({
     const held: { transaction?: Transaction } = {};
     const commentIds: number[] = [];
     // canonical-gap: publicOps.comments
-    // canonical-gap: publicOps.suggestedMode
     // canonical-gap: publicOps.unsupportedInline
     // canonical-gap: publicOps.tableStructure
     // canonical-gap: publicOps.pendingParagraphMarkProperties
-    // canonical-gap: publicOps.secondaryStories
     // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperationsInPackage({
       ...common,

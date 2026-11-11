@@ -16,6 +16,8 @@ type VsCodeApi = { postMessage: (message: EditorMessage) => void };
 declare const acquireVsCodeApi: () => VsCodeApi;
 
 const vscode = acquireVsCodeApi();
+// VS Code's webview API takes no target origin.
+// oxlint-disable-next-line unicorn/require-post-message-target-origin -- not window.postMessage
 const post = (message: EditorMessage) => vscode.postMessage(message);
 
 /**

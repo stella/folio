@@ -21,9 +21,9 @@ import {
 } from "@stll/docx-core/xml";
 import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
-import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
   consumeTrackedSectionEndpointRemoval,
+  type RemovedSectionReference,
   type TrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
 import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
@@ -590,12 +590,12 @@ async function transformPackagingFile(
   compressionLevel: number,
 ): Promise<void> {
   const file = zip.entry(path);
-  if (!file) {
+  if (!file && !path.endsWith(".rels")) {
     return;
   }
-  const xml = await file
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
+  const xml = file
+    ? await file.bytes().then((bytes) => decodeText(bytes, { ignoreBOM: true }))
+    : await readRelsOrStub(zip, path);
   const next = transform(xml);
   if (next !== xml) {
     zip.set(path, next, { level: compressionLevel });
@@ -735,7 +735,12 @@ function collectDocxParts(doc: Document, zip: ZipArchive): DocxPart[] {
   return parts;
 }
 
-async function readRelsOrStub(
+/**
+ * A relationships part to add to. A package need not have one for a part that
+ * has no relationships yet, so a missing part reads as an empty one: adding to
+ * it must create it, never skip the relationship it was asked for.
+ */
+export async function readRelsOrStub(
   zip: ZipArchive,
   relsPath: string,
 ): Promise<string> {
@@ -2299,14 +2304,7 @@ async function ensureCommentsRelationship(
   compressionLevel: number,
 ): Promise<void> {
   const relsPath = "word/_rels/document.xml.rels";
-  const relsFile = zip.entry(relsPath);
-  if (!relsFile) {
-    return;
-  }
-
-  let relsXml = await relsFile
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
+  let relsXml = await readRelsOrStub(zip, relsPath);
   if (relsXml.toLowerCase().includes("comments.xml")) {
     return;
   }
@@ -2453,15 +2451,7 @@ export async function addRelationship(
 
   // Read existing relationships
   const relsPath = "word/_rels/document.xml.rels";
-  const relsFile = zip.entry(relsPath);
-
-  if (!relsFile) {
-    panic("document.xml.rels not found in DOCX");
-  }
-
-  const relsXml = await relsFile
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
+  const relsXml = await readRelsOrStub(zip, relsPath);
 
   // Generate new rId
   const newRId = `rId${findMaxRId(relsXml) + 1}`;
@@ -3239,10 +3229,10 @@ async function serializeHeadersFootersToZip({
  * Full repack has no change-tracking signal, so "edited" is detected by
  * comparing the current model's note serialization against a BASELINE that
  * re-parses and re-serializes the original part. Both go through the same
- * (lossy) parse+serialize — e.g. the in-note `w:footnoteRef` auto-number mark
- * the model does not represent is dropped on both sides — so an unedited note
- * matches its baseline and is left verbatim (mark intact); only a genuine body
- * edit differs and is spliced.
+ * parse+serialize, so an unedited note matches its baseline and is left
+ * verbatim; only a genuine body edit differs and is spliced. A note the part
+ * already has carries its own reference mark, or none, in the model; only a
+ * note new to the part is given one.
  */
 type SerializeNotesToZipOptions = {
   doc: Document;
@@ -3270,9 +3260,16 @@ async function serializeNotesToZip({
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/footnotes.xml",
         currentXml: serializeFootnotes(footnotes),
-        replacementXml: serializeNewFootnotesPart(footnotes, doc),
-        baselineFrom: (xml) =>
-          serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
+        fromOriginal: (xml) => {
+          const source = parseFootnotes(xml).getNormalFootnotes();
+          return {
+            baselineXml: serializeFootnotes(source),
+            replacementXml: serializeNewFootnotesPart(footnotes, {
+              document: doc,
+              sourceNoteIds: new Set(source.map(({ id }) => id)),
+            }),
+          };
+        },
         elementName: "footnote",
         changedNoteParaIds,
         originalZip,
@@ -3286,7 +3283,7 @@ async function serializeNotesToZip({
         newZip,
         partPath: "word/footnotes.xml",
         relationshipType: RELATIONSHIP_TYPES.footnotes,
-        serializedPart: serializeNewFootnotesPart(footnotes, doc),
+        serializedPart: serializeNewFootnotesPart(footnotes, { document: doc }),
         compressionLevel,
       });
     }
@@ -3302,9 +3299,16 @@ async function serializeNotesToZip({
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/endnotes.xml",
         currentXml: serializeEndnotes(endnotes),
-        replacementXml: serializeNewEndnotesPart(endnotes, doc),
-        baselineFrom: (xml) =>
-          serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
+        fromOriginal: (xml) => {
+          const source = parseEndnotes(xml).getNormalEndnotes();
+          return {
+            baselineXml: serializeEndnotes(source),
+            replacementXml: serializeNewEndnotesPart(endnotes, {
+              document: doc,
+              sourceNoteIds: new Set(source.map(({ id }) => id)),
+            }),
+          };
+        },
         elementName: "endnote",
         changedNoteParaIds,
         originalZip,
@@ -3318,7 +3322,7 @@ async function serializeNotesToZip({
         newZip,
         partPath: "word/endnotes.xml",
         relationshipType: RELATIONSHIP_TYPES.endnotes,
-        serializedPart: serializeNewEndnotesPart(endnotes, doc),
+        serializedPart: serializeNewEndnotesPart(endnotes, { document: doc }),
         compressionLevel,
       });
     }
@@ -3348,15 +3352,16 @@ async function materializeNewNotePart({
   compressionLevel,
 }: MaterializeNewNotePartOptions): Promise<void> {
   const contentTypesFile = findNotePartEntry(newZip, "[content_types].xml");
-  const relationshipsFile = findNotePartEntry(
-    newZip,
-    "word/_rels/document.xml.rels",
-  );
-  if (!contentTypesFile || !relationshipsFile) {
+  if (!contentTypesFile) {
     throw new DocxPackageFidelityError(
-      `Cannot create ${partPath}: the DOCX package is missing content types or document relationships`,
+      `Cannot create ${partPath}: the DOCX package is missing content types`,
     );
   }
+  // A document that refers to no other part may have no relationships part;
+  // the first part it gains starts one, as every other writer does.
+  const relationshipsPath =
+    findNotePartEntry(newZip, "word/_rels/document.xml.rels")?.path ??
+    "word/_rels/document.xml.rels";
 
   const compressionOptions = { level: compressionLevel };
   const contentTypesXml = await contentTypesFile
@@ -3375,14 +3380,12 @@ async function materializeNewNotePart({
     );
   }
 
-  const relationshipsXml = await relationshipsFile
-    .bytes()
-    .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
+  const relationshipsXml = await readRelsOrStub(newZip, relationshipsPath);
   if (!relationshipsXml.includes(relationshipType)) {
     const relationshipId = `rId${findMaxRId(relationshipsXml) + 1}`;
     const target = partPath.slice("word/".length);
     newZip.set(
-      relationshipsFile.path,
+      relationshipsPath,
       relationshipsXml.replace(
         "</Relationships>",
         () =>
@@ -3748,8 +3751,15 @@ async function serializeAddedStylesIntoZip(
 type PatchNotePartIntoZipOptions = {
   conventionalLowerPath: string;
   currentXml: string;
-  replacementXml: string;
-  baselineFrom: (originalXml: string) => string;
+  /**
+   * The source part re-read and re-written (the baseline an unedited note
+   * matches), and the model's part as a new one would be written, which marks
+   * only the notes the source part does not have.
+   */
+  fromOriginal: (originalXml: string) => {
+    baselineXml: string;
+    replacementXml: string;
+  };
   elementName: "footnote" | "endnote";
   changedNoteParaIds: ReadonlySet<string> | undefined;
   originalZip: ZipArchive;
@@ -3825,8 +3835,7 @@ const notePartXmlFor = ({
 async function patchNotePartIntoZip({
   conventionalLowerPath,
   currentXml,
-  replacementXml,
-  baselineFrom,
+  fromOriginal,
   elementName,
   changedNoteParaIds,
   originalZip,
@@ -3840,7 +3849,7 @@ async function patchNotePartIntoZip({
   const originalXml = await file
     .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
-  const baselineXml = baselineFrom(originalXml);
+  const { baselineXml, replacementXml } = fromOriginal(originalXml);
   const effectiveChangedNoteParaIds =
     changedNoteParaIds ?? collectChangedNoteParaIds(baselineXml, currentXml);
   const currentParaIds = collectParaIds(currentXml);
