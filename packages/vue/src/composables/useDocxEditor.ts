@@ -551,8 +551,9 @@ export type UseDocxEditorReturn = {
   getDocument: () => Document | null;
   /**
    * The current document for a reader, never copied: what `getDocument`
-   * copies. In a canonical session it is the session's own document, so it
-   * is read, never written or handed on.
+   * copies. In a canonical session it is `readDocumentModel`'s, the session's
+   * own document; otherwise the document built from the editor state. Read
+   * it, never write it or hand it on.
    */
   readDocument: () => ReadonlyDocument | null;
   /** Publish a fresh Document object (e.g. after HF materialisation). */
@@ -1634,8 +1635,13 @@ export function useDocxEditor(
     });
   }
 
+  /** The session's own document in a canonical session, never copied. */
+  function readDocumentModel(): ReadonlyDocument | null {
+    return manager.readCanonicalDocument();
+  }
+
   function readDocument(): ReadonlyDocument | null {
-    const canonical = manager.readCanonicalDocument();
+    const canonical = readDocumentModel();
     if (canonical) return canonical;
     if (isCanonicalSession()) return null;
     const document = readDocModel();
@@ -1774,7 +1780,7 @@ export function useDocxEditor(
     isDirty,
     parseError,
     modelDocument: docModel,
-    readDocumentModel: () => manager.readCanonicalDocument(),
+    readDocumentModel,
     sourceBuffer,
     hiddenEditorWidth,
     layout,
