@@ -49,6 +49,7 @@ import { retireThreadsResolvedAway } from "../commentRecords";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
+  paragraphEndsItsContainer,
 } from "../containerFinalParagraph";
 import {
   enclosingRevisionIds,
@@ -809,6 +810,12 @@ function resolveChangeUnguarded(
       }
       // Where two paragraphs' runs meet after a join: their runs stay apart.
       const joinSeams: { position: number; step: number }[] = [];
+      // Each joined paragraph, with the suggested breaks the join displaced.
+      const joinedParagraphs: {
+        position: number;
+        step: number;
+        displaced: AddedParagraphMark[];
+      }[] = [];
       for (const op of pPrMarkOps) {
         const mappedPos = tr.mapping.map(op.paragraphPos);
         const paragraph = tr.doc.nodeAt(mappedPos);
@@ -993,17 +1000,24 @@ function resolveChangeUnguarded(
             );
           }
           const destination = tr.doc.nodeAt(nextPos);
+          const next =
+            destination?.type.name === "paragraph" ? destination : nextNode;
+          const displaced = suggestedBreaksAJoinDisplaces(paragraph, next);
           joinAtParagraphMark({
             tr,
             paragraphPos: mappedPos,
             paragraph,
-            next:
-              destination?.type.name === "paragraph" ? destination : nextNode,
+            next,
             styleResolver,
           });
           joinSeams.push({
             position: mappedPos + 1 + paragraph.content.size,
             step: tr.steps.length,
+          });
+          joinedParagraphs.push({
+            position: mappedPos,
+            step: tr.steps.length,
+            displaced,
           });
           countRemovedSectionEndpoint(paragraph);
         } catch {
@@ -1013,6 +1027,9 @@ function resolveChangeUnguarded(
           continue;
         }
         if (op.markWasAdded) carryRestoredProperties(mappedPos);
+      }
+      if (!placeSuggestedBreaksOfJoins(tr, joinedParagraphs)) {
+        return false;
       }
 
       if (removedSectionEndpointCount > 0) {
@@ -2685,6 +2702,8 @@ type AddedParagraphMark = {
     author?: unknown;
     date?: unknown;
     initials?: unknown;
+    provenance?: unknown;
+    suggestionId?: unknown;
   };
 };
 
@@ -2891,7 +2910,14 @@ type AppendRotatedParagraphPropertyChangeOptions = {
   currentPosition: number;
   previous: PMNode;
   mark: {
-    info: { id: number; author?: unknown; date?: unknown; initials?: unknown };
+    info: {
+      id: number;
+      author?: unknown;
+      date?: unknown;
+      initials?: unknown;
+      provenance?: unknown;
+      suggestionId?: unknown;
+    };
   };
   fallbackAuthor?: string;
 };
@@ -2913,7 +2939,16 @@ const appendRotatedParagraphPropertyChange = ({
     return false;
   }
   const existing = expectParagraphAttrs(current)._propertyChanges;
-  if (hasSerializableParagraphPropertyChange(existing)) {
+  const suggestionId =
+    mark.info.provenance === "suggested" &&
+    typeof mark.info.suggestionId === "string"
+      ? mark.info.suggestionId
+      : null;
+  // One saved property change per paragraph; a suggested one is not saved.
+  if (
+    suggestionId === null &&
+    hasSerializableParagraphPropertyChange(existing)
+  ) {
     return false;
   }
   tr.setNodeMarkup(currentPosition, undefined, {
@@ -2931,6 +2966,11 @@ const appendRotatedParagraphPropertyChange = ({
           ...(typeof mark.info.initials === "string"
             ? { initials: mark.info.initials }
             : {}),
+          // A suggested break's snapshot is part of the suggestion: held back
+          // from the save and resolved with it.
+          ...(suggestionId === null
+            ? {}
+            : { provenance: "suggested" as const, suggestionId }),
         },
         previousFormatting: paragraphPropertiesSnapshot(previous),
       } satisfies ParagraphPropertyChangeAttrs,
@@ -3187,6 +3227,136 @@ const shiftAddedParagraphBreakBefore = ({
   return false;
 };
 
+/** A wholly suggested paragraph's break, as the inserted mark that records it. */
+const suggestedParagraphBreakOf = (
+  paragraph: PMNode,
+): AddedParagraphMark | null => {
+  const structural = readStructuralSuggestion(paragraph);
+  if (structural?.kind !== "insertBlock") return null;
+  const marker = paragraph.attrs["_suggestedInsert"] as {
+    author?: unknown;
+    date?: unknown;
+    initials?: unknown;
+  };
+  return {
+    kind: "ins",
+    info: {
+      id: structural.revisionId,
+      author: marker.author,
+      ...(typeof marker.date === "string" ? { date: marker.date } : {}),
+      ...(typeof marker.initials === "string"
+        ? { initials: marker.initials }
+        : {}),
+      provenance: "suggested",
+      suggestionId: structural.suggestionId,
+    },
+  };
+};
+
+/**
+ * The suggested paragraph breaks a join of `paragraph` into `next` leaves
+ * with no mark to stand on.
+ *
+ * A wholly suggested paragraph's break is its own mark while that mark is
+ * free. Where another revision's mark stands there (the break of a paragraph
+ * inserted after it, or a deleted break it took over), the suggestion's break
+ * is the free mark before it, which is where accepting the suggestion writes
+ * it. A join that leaves the paragraph holding other words ends its
+ * whole-paragraph marker, so such a break must then be written there: the
+ * joined paragraph's mark is another revision's (the next side's own), or is
+ * gone (the side whose mark the join removes). The next side's break with a
+ * free mark is not among them: the joined mark records it (`joinedParagraphAttrs`).
+ */
+const suggestedBreaksAJoinDisplaces = (
+  paragraph: PMNode,
+  next: PMNode,
+): AddedParagraphMark[] => {
+  const left = readStructuralSuggestion(paragraph);
+  const right = readStructuralSuggestion(next);
+  if (
+    left?.kind === "insertBlock" &&
+    right?.kind === "insertBlock" &&
+    left.suggestionId === right.suggestionId
+  )
+    return [];
+  const displaced: AddedParagraphMark[] = [];
+  for (const side of [paragraph, next]) {
+    const suggested = suggestedParagraphBreakOf(side);
+    if (suggested === null || side.attrs["pPrMark"] == null) continue;
+    if (
+      readSuggestedParagraphMark(side)?.suggestionId !==
+      suggested.info.suggestionId
+    )
+      displaced.push(suggested);
+  }
+  return displaced;
+};
+
+/** The paragraph a join left at `position`, once `step` and every later step ran. */
+const joinedParagraphAt = (
+  tr: Transaction,
+  position: number,
+  step: number,
+): number | null => {
+  const at = tr.mapping.slice(step).map(position);
+  if (tr.doc.nodeAt(at)?.type.name === "paragraph") return at;
+  // A later join ran an earlier paragraph into this one.
+  const resolved = tr.doc.resolve(at);
+  return resolved.parent.type.name === "paragraph" ? resolved.before() : null;
+};
+
+/**
+ * Write the suggested breaks the joins of one resolution left without a mark.
+ *
+ * A wholly suggested paragraph whose own mark another revision holds has its
+ * break on the free mark before it: accepting the suggestion writes it there
+ * ({@link placeAcceptedParagraphBreakBefore}), and rejecting the suggestion
+ * takes that break out. A join that ends the paragraph's whole-paragraph
+ * marker has to write the break there, or rejecting the suggestion leaves its
+ * paragraph standing. A container's last paragraph carries no added break
+ * either, so a suggested one a join wrote there moves back the same way.
+ * After every join of the resolution, so no break lands on a mark it still
+ * resolves.
+ */
+const placeSuggestedBreaksOfJoins = (
+  tr: Transaction,
+  joins: readonly {
+    position: number;
+    step: number;
+    displaced: readonly AddedParagraphMark[];
+  }[],
+): boolean => {
+  for (const { position: joinedAt, step, displaced } of joins) {
+    const position = joinedParagraphAt(tr, joinedAt, step);
+    const joined = position === null ? null : tr.doc.nodeAt(position);
+    if (position === null || !joined) continue;
+    const breaks: AddedParagraphMark[] = [...displaced];
+    const own: unknown = joined.attrs["pPrMark"];
+    const at = tr.doc.resolve(position);
+    if (
+      isAddedPPrMarkAttr(own) &&
+      readSuggestedParagraphMark(joined) !== null &&
+      paragraphEndsItsContainer(at, joined.type.name) &&
+      addedBreakCarrierBefore({ at, paragraphTypeName: joined.type.name })
+    ) {
+      tr.setNodeAttribute(position, "pPrMark", null);
+      breaks.unshift(own);
+    }
+    for (const mark of breaks) {
+      if (
+        !shiftAddedParagraphBreakBefore({
+          tr,
+          paragraphPosition: position,
+          mark,
+        })
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+};
+
 /**
  * Place an accepted paragraph's break when its own break slot is taken: a
  * following accepted insertion has rotated its break onto the paragraph, or
@@ -3290,8 +3460,15 @@ type RemoveSuggestedInsertNodesOptions = {
 };
 
 /**
- * Remove suggested nodes without deleting a following accepted insertion's
- * paragraph break that has rotated onto one of them.
+ * Remove suggested nodes without removing another revision's paragraph break
+ * that stands on one of them.
+ *
+ * A suggested paragraph whose own mark another revision holds has its break
+ * on the free mark before it (see {@link placeSuggestedBreaksOfJoins}), so
+ * rejecting it takes that break out and the other revision's stays: it moves
+ * onto that mark. An added break (a following insertion's, rotated or placed
+ * there) shifts back as any added break does, its property snapshot rebased
+ * when a rotation recorded one; a removed break simply moves.
  */
 const removeSuggestedInsertNodes = ({
   tr,
@@ -3303,30 +3480,62 @@ const removeSuggestedInsertNodes = ({
     if (!node) {
       continue;
     }
-    const mark = node.attrs["pPrMark"];
-    const followingBreak =
+    const mark: unknown = node.attrs["pPrMark"];
+    const standingBreak =
       node.type.name === "paragraph" &&
-      isAddedPPrMarkAttr(mark) &&
+      isPPrMarkAttr(mark) &&
       !resolvedRevisionIds.has(mark.info.id)
         ? mark
         : null;
     tr.delete(position, position + node.nodeSize);
+    if (!standingBreak) continue;
+    if (!isAddedPPrMarkAttr(standingBreak)) {
+      moveRemovedBreakBefore(tr, position, standingBreak);
+      continue;
+    }
+    const following = tr.doc.nodeAt(position);
+    const snapshots =
+      following?.type.name === "paragraph"
+        ? (expectParagraphAttrs(following)._propertyChanges ?? [])
+        : [];
+    const recordedSnapshot = snapshots.some(
+      ({ info }) => info.id === standingBreak.info.id,
+    );
     if (
-      followingBreak &&
       !shiftAddedParagraphBreakBefore({
         tr,
         paragraphPosition: position,
-        mark: followingBreak,
-        firstPropertyChange: {
-          type: "rebase",
-          revisionId: followingBreak.info.id,
-        },
+        mark: standingBreak,
+        ...(recordedSnapshot && {
+          firstPropertyChange: {
+            type: "rebase",
+            revisionId: standingBreak.info.id,
+          },
+        }),
       })
     ) {
       return false;
     }
   }
   return true;
+};
+
+/**
+ * Put a removed break (`del`, `moveFrom`) that stood on a removed suggested
+ * paragraph on the free mark of the paragraph right before it. With none
+ * there, the break goes with the paragraph, as before.
+ */
+const moveRemovedBreakBefore = (
+  tr: Transaction,
+  position: number,
+  mark: unknown,
+): void => {
+  const resolved = tr.doc.resolve(position);
+  const before = resolved.nodeBefore;
+  if (before?.type.name !== "paragraph" || before.attrs["pPrMark"] != null) {
+    return;
+  }
+  tr.setNodeAttribute(position - before.nodeSize, "pPrMark", mark);
 };
 
 /**
