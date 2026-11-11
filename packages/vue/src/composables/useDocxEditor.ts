@@ -656,10 +656,8 @@ export function useDocxEditor(
   // The model is never handed out: a host gets a copy it owns.
   const cloneForHost = (document: ReadonlyDocument) =>
     cloneDocumentWithParagraphPropertySources(document);
-  // Both change listeners are the host's, so they share the one copy a
-  // notification makes.
-  const notifyHosts = (document: ReadonlyDocument) => {
-    const forHosts = cloneForHost(document);
+  // Both change listeners are the host's, so they share one document.
+  const notifyHosts = (forHosts: Document) => {
     onChange?.(forHosts);
     emitter.emit("docChange", forHosts);
   };
@@ -821,7 +819,7 @@ export function useDocxEditor(
             ) ??
             current;
           docModel.value = updated;
-          notifyHosts(updated);
+          notifyHosts(cloneForHost(updated));
         }
         scheduler.schedule();
       }
@@ -998,7 +996,10 @@ export function useDocxEditor(
         );
       docModel.value = updated;
       syncSecondaryStoryEditors();
-      notifyHosts(updated);
+      // The session's own document is copied for the host. The default
+      // session built this document for the change from the editor state, so
+      // the host's listeners share it, as the model's next version.
+      notifyHosts(canonical ? cloneForHost(canonical) : updated);
     } catch (err) {
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
