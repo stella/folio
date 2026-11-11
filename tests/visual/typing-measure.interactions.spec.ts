@@ -26,8 +26,12 @@ import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
 
 type MeasureCounts = {
   layouts: number;
-  /** Layout passes an edit scheduled: the ones a key causes. */
-  transactionLayouts: number;
+  /** Keys pressed so far. */
+  keys: number;
+  /** The keys pressed when the layout pass under way started. */
+  keysAtStart: number;
+  /** The keys laid out: those pressed before the last edit's pass started. */
+  keysLaidOut: number;
   measured: number;
   measuredTables: number;
   reused: number;
@@ -107,7 +111,9 @@ const HOSTS = [
 const ENGINES = ["default", "canonical"] as const;
 const MODES = ["editing", "suggesting"] as const;
 
-test.use({ viewport: { width: 1280, height: 900 } });
+// Every traced action snapshots these long documents; the counts and the
+// assertion explain a failure without a trace.
+test.use({ viewport: { width: 1280, height: 900 }, trace: "off" });
 
 /** Put the caret in the middle of a paragraph halfway through the document. */
 const placeCaret = (page: Page) =>
@@ -146,7 +152,9 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           await page.addInitScript(() => {
             const counts: MeasureCounts = {
               layouts: 0,
-              transactionLayouts: 0,
+              keys: 0,
+              keysAtStart: 0,
+              keysLaidOut: 0,
               measured: 0,
               measuredTables: 0,
               reused: 0,
@@ -155,13 +163,24 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
               current: undefined,
             };
             globalThis.__folioMeasureCounts = counts;
+            // A key's edit lands while its keydown is handled, before any
+            // layout pass the key schedules can start.
+            globalThis.addEventListener(
+              "keydown",
+              () => {
+                counts.keys += 1;
+              },
+              true,
+            );
             globalThis.__folioLayoutInstrumentation = {
               onLayoutStart: () => {
                 counts.current = 0;
+                counts.keysAtStart = counts.keys;
               },
               onLayoutComplete: ({ reason }) => {
                 counts.layouts += 1;
-                if (reason === "transaction") counts.transactionLayouts += 1;
+                if (reason === "transaction")
+                  counts.keysLaidOut = counts.keysAtStart;
                 counts.passes.push(counts.current ?? 0);
                 counts.current = undefined;
               },
@@ -206,17 +225,15 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           );
           await page.evaluate(() => document.fonts.ready);
           await placeCaret(page);
+          let pressed = 0;
           /** Press a key, then wait for the layout pass the key causes. */
           const pressAndLayOut = async () => {
-            const done = await page.evaluate(
-              () => globalThis.__folioMeasureCounts?.transactionLayouts ?? 0,
-            );
             await page.keyboard.press("x");
+            pressed += 1;
             await page.waitForFunction(
-              (seen) =>
-                (globalThis.__folioMeasureCounts?.transactionLayouts ?? 0) >
-                seen,
-              done,
+              (key) =>
+                (globalThis.__folioMeasureCounts?.keysLaidOut ?? 0) >= key,
+              pressed,
               { timeout: 10_000 },
             );
           };
@@ -232,8 +249,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
           for (let key = 0; key < KEYS; key += 1) await pressAndLayOut();
           const after = await snapshot();
           const layouts = after.layouts - before.layouts;
-          const keyLayouts =
-            after.transactionLayouts - before.transactionLayouts;
+          const keysLaidOut = after.keysLaidOut - before.keysLaidOut;
           const passes = after.passes.slice(before.passes.length);
           const measured = after.measured - before.measured;
           const reused = after.reused - before.reused;
@@ -258,7 +274,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
               engine,
               mode,
               layouts,
-              keyLayouts,
+              keysLaidOut,
               measured,
               mostMeasuredInAPass: Math.max(0, ...passes),
               measuredTables,
@@ -267,7 +283,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
               reused,
             }),
           );
-          expect(keyLayouts).toBeGreaterThanOrEqual(KEYS);
+          expect(layouts).toBeGreaterThanOrEqual(KEYS);
           // Every other block's measure is reused, not taken again.
           expect(reused).toBeGreaterThan(layouts * 10);
           // Every pass, not only their average, stays within the bound.

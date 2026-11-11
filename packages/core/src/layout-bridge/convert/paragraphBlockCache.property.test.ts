@@ -432,7 +432,6 @@ describe("paragraph block cache", () => {
     let reused = 0;
     let handedOutAgain = 0;
     let keptIds = 0;
-    let movedInside = 0;
     await assertProperty(
       fc.asyncProperty(
         fc.integer({ min: 0, max: documents.length - 1 }),
@@ -476,11 +475,8 @@ describe("paragraph block cache", () => {
             applyEdit(view, edit, options);
             convert();
             const step = cache.lastStep();
-            if (step !== undefined) {
-              const ids = survivingNodesKeepTheirIds(...step);
-              keptIds += ids.kept;
-              movedInside += ids.movedInside;
-            }
+            if (step !== undefined)
+              keptIds += survivingNodesKeepTheirIds(...step).kept;
           }
           reused += cache.reused;
         },
@@ -490,7 +486,6 @@ describe("paragraph block cache", () => {
     expect(reused).toBeGreaterThan(0);
     expect(handedOutAgain).toBeGreaterThan(0);
     expect(keptIds).toBeGreaterThan(0);
-    expect(movedInside).toBeGreaterThan(0);
   });
 
   test("a cross-reference to a later list item shows the number the list gives now", async () => {
@@ -527,6 +522,70 @@ describe("paragraph block cache", () => {
     view.typeText("Inserted");
     convert();
   });
+
+  test.each([
+    { from: 0, past: 1 },
+    { from: 0, past: 2 },
+    { from: 2, past: -2 },
+  ])(
+    "a paragraph moved $past places among the nodes an edit changed keeps its ids, as do the nodes it passed",
+    async ({ from, past }) => {
+      const document = await parseShapeDocument(await referencesPackage());
+      const view = new HeadlessEditorView(
+        createHarnessState(document, "editing"),
+      );
+      const cache = new CountingCache();
+      const options = { showCommentHighlights: true, alternate: "One" };
+      const convert = () => {
+        const constants = flowOptions(document, options);
+        expectFreshConversion(
+          toFlowBlocks(view.state.doc, {
+            ...constants,
+            paragraphBlocks: cache,
+          }),
+          toFlowBlocks(view.state.doc, constants),
+        );
+      };
+      convert();
+      // Move the node at `from` to the gap `past` nodes away, so the edit
+      // reorders the nodes between the kept start and end. The nodes it
+      // passes are the same nodes, now at other places in that range.
+      const { doc } = view.state;
+      const node = doc.child(from);
+      const offsetOf = (index: number) => {
+        let offset = 0;
+        for (let i = 0; i < index; i += 1) offset += doc.child(i).nodeSize;
+        return offset;
+      };
+      const start = offsetOf(from);
+      const gap = offsetOf(past > 0 ? from + past + 1 : from + past);
+      const tr = view.state.tr.insert(gap, node);
+      const moved = tr.mapping.map(start, 1);
+      view.dispatch(tr.delete(moved, moved + node.nodeSize));
+      const index = from + past;
+      const passed = Array.from({ length: Math.abs(past) }, (_, offset) =>
+        doc.child(past > 0 ? from + 1 + offset : index + offset),
+      );
+      convert();
+      const step = cache.lastStep();
+      expect(step).toBeDefined();
+      if (step === undefined) return;
+      // Every node the move passed left its place and kept its ids; so did
+      // the moved node, if the edit left it the same node.
+      const { movedInside } = survivingNodesKeepTheirIds(...step);
+      const survivors = new Set(step[0].nodes.map((at) => at.node));
+      const left = step[1].nodes
+        .slice(Math.min(from, index), Math.max(from, index) + 1)
+        .filter((at) => survivors.has(at.node));
+      expect(passed.every((one) => left.some((at) => at.node === one))).toBe(
+        true,
+      );
+      expect(movedInside).toBe(
+        left.reduce((count, { blocks }) => count + blocks.length, 0),
+      );
+      expect(movedInside).toBeGreaterThan(0);
+    },
+  );
 
   test("an edit that adds a block without moving the paragraphs after it keeps their ids", async () => {
     const document = await parseShapeDocument(await structuresPackage());
