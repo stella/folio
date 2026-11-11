@@ -152,13 +152,30 @@
       {{ refusalNotice }}
     </div>
 
+    <!--
+      The hidden editors stay accessible (no aria-hidden). The body editor is
+      laid out at the text column's width inside a tiny contained wrapper, so
+      its text wraps as on the page and its layout stays inside the wrapper.
+    -->
     <div
-      ref="hiddenPmRef"
-      class="docx-editor-vue__hidden-pm paged-editor__hidden-pm"
-    />
+      :class="[
+        'docx-editor-vue__hidden-pm-wrapper',
+        HIDDEN_EDITOR_WRAPPER_CLASS,
+      ]"
+    >
+      <div
+        ref="hiddenPmRef"
+        class="docx-editor-vue__hidden-pm-host paged-editor__hidden-pm"
+        :style="
+          hiddenEditorWidth > 0
+            ? { width: `${hiddenEditorWidth}px` }
+            : undefined
+        "
+      />
+    </div>
     <div
       ref="hiddenHfPmRef"
-      class="docx-editor-vue__hidden-pm paged-editor__hidden-hf-pm"
+      class="docx-editor-vue__hidden-hf-pm paged-editor__hidden-hf-pm"
     />
 
     <div
@@ -534,6 +551,7 @@ import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
+import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import {
   clearAllCaches,
   resetCanvasContext,
@@ -591,11 +609,11 @@ import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import {
-  getDocumentWatermark,
   setDocumentWatermark,
   type Watermark,
 } from "@stll/folio-core/watermark";
 
+import { documentChrome } from "../composables/documentChrome";
 import { useColorMode } from "../composables/useColorMode";
 import { useCommentLifecycle } from "../composables/useCommentLifecycle";
 import { useCommentManagement } from "../composables/useCommentManagement";
@@ -935,6 +953,9 @@ const {
   isDirty,
   parseError,
   layout,
+  modelDocument,
+  sourceBuffer,
+  hiddenEditorWidth,
   blocks,
   measures,
   syncCoordinator,
@@ -1079,7 +1100,7 @@ function remeasureForFontChange(): void {
 
 useFontLifecycle({
   isReady,
-  getDocument,
+  sourceBuffer: () => sourceBuffer.value,
   fonts: () => props.fonts,
   remeasure: remeasureForFontChange,
   setEmbeddedFontFamilies,
@@ -1360,20 +1381,16 @@ function handleHyperlinkPopupCopy(href: string): void {
 }
 
 // ---- Document-derived computed refs -------------------------------------
-const currentSectionProps = computed<SectionProperties | null>(() => {
-  void stateTick.value;
-  const body = getDocument()?.package.document;
-  if (!body) {
-    return null;
-  }
-  return body.finalSectionProperties ?? body.sections?.[0]?.properties ?? null;
-});
-
-const currentWatermark = computed<Watermark | undefined>(() => {
-  void stateTick.value;
-  const doc = getDocument();
-  return doc ? getDocumentWatermark(doc) : undefined;
-});
+// Read from the editor's document model: building a document here would run
+// on every keystroke, in proportion to the document.
+const currentChrome = computed(() => documentChrome(modelDocument.value));
+const currentSectionProps = computed<SectionProperties | null>(
+  () => currentChrome.value.sectionProperties,
+);
+const currentWatermark = computed<Watermark | undefined>(
+  () => currentChrome.value.watermark,
+);
+const currentStyles = computed(() => currentChrome.value.styles);
 
 const currentTableProperties = computed(() => {
   void stateTick.value;
@@ -1391,7 +1408,6 @@ const currentTableProperties = computed(() => {
 // Optional Toolbar props that must be OMITTED (not passed as `undefined`) under
 // exactOptionalPropertyTypes: bind via `v-bind` so an absent value drops the key.
 const toolbarDynamicProps = computed(() => {
-  void stateTick.value;
   const dynamic: {
     fontFamilies?: ReadonlyArray<string | FontOption>;
     documentStyles?: Style[];
@@ -1399,7 +1415,7 @@ const toolbarDynamicProps = computed(() => {
   if (props.fontFamilies !== undefined) {
     dynamic.fontFamilies = props.fontFamilies;
   }
-  const styles = getDocument()?.package.styles?.styles;
+  const styles = currentStyles.value;
   if (styles !== undefined) {
     dynamic.documentStyles = styles;
   }
@@ -2108,12 +2124,32 @@ defineExpose(exposed);
 .docx-editor-vue__toolbar-shell {
   flex: 0 0 auto;
 }
-.docx-editor-vue__hidden-pm {
-  position: absolute;
+.docx-editor-vue__hidden-pm-wrapper {
+  position: fixed;
+  left: -9999px;
+  top: 0;
   width: 1px;
   height: 1px;
   overflow: hidden;
   opacity: 0;
+  z-index: -1;
+  pointer-events: none;
+  contain: layout paint;
+  overflow-anchor: none;
+}
+.docx-editor-vue__hidden-pm-host {
+  position: absolute;
+  left: 0;
+  top: 0;
+  user-select: none;
+  overflow-anchor: none;
+}
+.docx-editor-vue__hidden-hf-pm {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  opacity: 0;
+  z-index: -1;
   pointer-events: none;
 }
 .docx-editor-vue__panels-row {

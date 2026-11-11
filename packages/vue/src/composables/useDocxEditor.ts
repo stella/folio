@@ -29,6 +29,7 @@ import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   createFolioEditor,
   FOLIO_DOCX_SERIALIZATION_MODE,
@@ -173,8 +174,6 @@ import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter"
 
 const DEFAULT_PAGE_GAP = 24;
 const DEFAULT_SUGGESTION_AUTHOR = "User";
-/** Delay before converting PM state back to the Folio document model. */
-const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 
 // Stable empty fallback for the template-preview entries dep. A fresh `[]` per
 // run would defeat the pipeline's identity checks.
@@ -505,6 +504,23 @@ export type UseDocxEditorReturn = {
   parseError: Ref<string | null>;
   /** Computed page layout, or null before first paint. */
   layout: Ref<Layout | null>;
+  /**
+   * The document model the editor holds, to derive toolbar and overlay state
+   * from: in a canonical session the session's own document, replaced on each
+   * edit (read it, never hand it out); otherwise the document the last change
+   * notification wrote back. Reading it never builds a document.
+   */
+  modelDocument: Readonly<Ref<Document | null>>;
+  /**
+   * The bytes the current document was loaded from: replaced when a document
+   * is loaded or set, never by an edit.
+   */
+  sourceBuffer: Readonly<Ref<ArrayBuffer | null>>;
+  /**
+   * Width in pixels of the first section's text column, for the hidden editor
+   * to lay out its content at; 0 before the first layout pass.
+   */
+  hiddenEditorWidth: Ref<number>;
   /** Flow blocks from the latest layout pass — the range-projection fallback. */
   blocks: Ref<FlowBlock[]>;
   /** Measures from the latest layout pass — the range-projection fallback. */
@@ -517,7 +533,10 @@ export type UseDocxEditorReturn = {
   loadDocument: (doc: Document) => void;
   /** Serialize the current document to a DOCX blob. */
   save: (options?: { selective?: boolean }) => Promise<Blob | null>;
-  /** Snapshot the current document model. */
+  /**
+   * Build a copy of the current document, in time proportional to its size.
+   * For a host that owns the result; derived state reads `modelDocument`.
+   */
   getDocument: () => Document | null;
   /** Publish a fresh Document object (e.g. after HF materialisation). */
   setDocument: (doc: Document) => void;
@@ -588,6 +607,7 @@ export function useDocxEditor(
   // `docModel` (not `document`) so the global `document` stays reachable for the
   // FontFaceSet probe + DOM host lookups.
   const docModel = shallowRef<Document | null>(null);
+  const sourceBuffer = shallowRef<ArrayBuffer | null>(null);
   // Per-load identity for the hidden-editor manager: advanced on every document
   // swap, unchanged across internal edits (not reactive; read at sync time).
   let loadSequence = 0;
@@ -603,6 +623,7 @@ export function useDocxEditor(
   );
   const activeNoteStory = shallowRef<NoteStoryKey | null>(null);
   const layout = shallowRef<Layout | null>(null);
+  const hiddenEditorWidth = ref(0);
   // Latest flow blocks + measures — the range-projection fallback (off-screen /
   // not-yet-painted ranges) needs them; the primary DOM-rect path does not.
   const blocks = shallowRef<FlowBlock[]>([]);
@@ -861,6 +882,7 @@ export function useDocxEditor(
     const margins = getMargins(sectionProps);
     const columns = getColumns(sectionProps);
     const contentWidth = pageSize.w - margins.left - margins.right;
+    hiddenEditorWidth.value = contentWidth;
     const styles = model?.package.styles ?? null;
     const theme = model?.package.theme ?? null;
     const defaultTabStop = model?.package.settings?.defaultTabStop;
@@ -982,7 +1004,7 @@ export function useDocxEditor(
     docChangeTimer = window.setTimeout(() => {
       docChangeTimer = null;
       flushDocumentChangeNotification();
-    }, DOCUMENT_CHANGE_NOTIFY_DELAY);
+    }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
   }
 
   // ---- Hidden-editor manager ----------------------------------------------
@@ -1279,6 +1301,7 @@ export function useDocxEditor(
     // loaded document has no unsaved edits yet (mirrors React clearing its dirty
     // signals on document reset).
     loadSequence += 1;
+    sourceBuffer.value = docModel.value?.originalBuffer ?? null;
     isDirty.value = false;
     headerFooterSelection.value = null;
     activeNoteStory.value = null;
@@ -1590,6 +1613,7 @@ export function useDocxEditor(
       return;
     }
     docModel.value = doc;
+    sourceBuffer.value = doc.originalBuffer ?? null;
     syncSecondaryStoryEditors();
     if (
       activeNoteStory.value &&
@@ -1674,6 +1698,7 @@ export function useDocxEditor(
     editorState.value = null;
     layout.value = null;
     docModel.value = null;
+    sourceBuffer.value = null;
     isReady.value = false;
   }
 
@@ -1698,6 +1723,9 @@ export function useDocxEditor(
     isReady,
     isDirty,
     parseError,
+    modelDocument: docModel,
+    sourceBuffer,
+    hiddenEditorWidth,
     layout,
     blocks,
     measures,

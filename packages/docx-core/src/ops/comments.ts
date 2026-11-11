@@ -58,6 +58,7 @@ import {
   type CreateCommentOp,
   DOCUMENT_OP_TYPES,
   type NewIds,
+  OP_STORIES,
   type OpStory,
   type RestoreCommentStateOp,
   type TextPosition,
@@ -289,6 +290,37 @@ export const commentAnchorsIn = (
 
 const anchorsIn = (document: Document): StoryAnchorSpan[] =>
   commentAnchorsIn(document);
+
+/** Stands between a block list's own anchors and those of its text boxes. */
+const TEXT_BOXES_FOLLOW = "textBoxes";
+
+/**
+ * What a run of a story's blocks adds to the document's comment anchors, as
+ * {@link commentDocumentIssue} reads them: each anchor's kind and id in
+ * document order, those of the run's own blocks, then those of the text
+ * boxes inside them. Two runs alike here leave the issue as it was when one
+ * replaces the other in the same story.
+ */
+export const commentAnchorSequence = (
+  blocks: readonly BlockContent[],
+): string[] => {
+  const facts = keptParagraphAnchorFacts;
+  const [own, ...textBoxes] = storyBodiesIncludingTextBoxes(
+    { content: [...blocks] },
+    facts,
+  );
+  const sequenceOf = (body: StoryBodyContent | undefined) =>
+    body === undefined
+      ? []
+      : storyAnchors(OP_STORIES.MAIN, body, facts).map(
+          ({ node }) => `${node.type}:${String(anchorId(node))}`,
+        );
+  return [
+    ...sequenceOf(own),
+    TEXT_BOXES_FOLLOW,
+    ...textBoxes.flatMap(sequenceOf),
+  ];
+};
 
 /** A comment, the comments it replies to and the replies under it. */
 const threadIds = (document: Document, id: number): number[] => {

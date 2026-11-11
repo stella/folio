@@ -32,6 +32,7 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { isRangeBoundary, paragraphLength } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   isAddedRevision,
@@ -164,9 +165,11 @@ export const trimAppliedNewIds = ({
   const touched = new Set(
     [...applied.touched.modified, ...applied.touched.inserted].map(idKey),
   );
-  const paragraphs = storyParagraphs(storyBody(applied.document, story))
-    .map(({ paragraph }) => paragraph)
-    .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
+  const body = storyBody(applied.document, story);
+  const paragraphs = [...touched].flatMap((key) => {
+    const location = findStoryParagraph(body, key);
+    return location === undefined ? [] : [location.paragraph];
+  });
   const identities = new Set(identityKeysIn(paragraphs));
   const revisions = new Set(applied.revisions);
   const known = packageIdentityKeyIndex(before.package);
