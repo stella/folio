@@ -9,11 +9,15 @@
  * fails to compile here, before reuse can hand out a stale position.
  */
 
-import type { Measure } from "../types";
+import type { FlowBlock, FlowBlockAnchorKeys, Measure } from "../types";
 
-/** Field names that say where something stands in the document. */
+/**
+ * Field names that say where something stands in the document. A tab stop's
+ * `pos` is an offset in twips from the margin, not a document position, so a
+ * bare `pos` is not one.
+ */
 type PositionLikeKey<Key> = Key extends
-  `pm${string}` | `${string}Pos` | `${string}Position` | "pos"
+  `pm${string}` | `${string}Pos` | `${string}Position`
   ? Key
   : never;
 
@@ -47,3 +51,16 @@ export type MeasurePositionKeys = PositionKeysIn<Measure>;
 export const MEASURES_HOLD_NO_POSITIONS: [MeasurePositionKeys] extends [never]
   ? true
   : { positionFields: MeasurePositionKeys } = true;
+
+/**
+ * Position-like field names a flow block holds that moving a block does not
+ * shift: none. A flow block type that gains an anchor field fails to compile
+ * here until `shiftFlowBlockPmAnchors` moves it too.
+ */
+export const FLOW_BLOCK_ANCHORS_ARE_SHIFTED: [
+  Exclude<PositionKeysIn<FlowBlock>, FlowBlockAnchorKeys>,
+] extends [never]
+  ? true
+  : {
+      unshiftedFields: Exclude<PositionKeysIn<FlowBlock>, FlowBlockAnchorKeys>;
+    } = true;

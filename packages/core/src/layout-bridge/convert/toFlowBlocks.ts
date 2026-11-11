@@ -9,6 +9,7 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
 import { buildPageBreakRunDescendantIndex } from "../../internal/pageBreakRunDescendantIndex";
+import { noteTableOrigin } from "../../layout-engine/measure/tableMeasureMemo";
 import type {
   ColumnBreakBlock,
   FlowBlock,
@@ -20,6 +21,7 @@ import type {
   TableBlock,
   TextBoxBlock,
 } from "../../layout-engine/types";
+import { shiftFlowBlockPmAnchors } from "../../layout-engine/types";
 import { getPageNumbering } from "../../paged-layout/sectionGeometry";
 import {
   expectBlockSdtAttrs,
@@ -891,6 +893,28 @@ export function toFlowBlocks(
           pos,
           firstSdt: sdtSeq,
           blocks: [moved],
+        });
+        lastBefore = previous.before;
+        pending = stateAfter(keptAt);
+        pos += node.nodeSize;
+        continue;
+      }
+      if (node.type.name === "table" && previous.sdts === 0) {
+        // The table converts as it did, moved: its blocks move with it, ids
+        // and all, instead of converting every cell again.
+        const delta = pos - previous.pos;
+        const shifted = previous.blocks.map((block) => {
+          const copy = shiftFlowBlockPmAnchors(block, delta);
+          if (block.kind === "table" && copy.kind === "table")
+            noteTableOrigin(copy, block);
+          return copy;
+        });
+        for (const block of shifted) blocks.push(block);
+        converted.push({
+          ...previous,
+          pos,
+          firstSdt: sdtSeq,
+          blocks: shifted,
         });
         lastBefore = previous.before;
         pending = stateAfter(keptAt);

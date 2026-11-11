@@ -1113,12 +1113,20 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (view) {
           syncSuggestionMode(view);
           syncCanonicalMode();
+          // A canonical session holds its own copy of the loaded document:
+          // hold that copy as the model from the start, so the document state
+          // (and the styles layout reads from it) is the session's from the
+          // first pass rather than from the first settled edit.
+          const model = pagedEditorRef.current?.readDocumentModel();
+          if (model && model !== history.state) {
+            history.reset(model as Document);
+          }
         }
         reportEditorViewReady(view);
         setBodyEditorView(view);
         setBodyViewEpoch((epoch) => epoch + 1);
       },
-      [reportEditorViewReady, syncCanonicalMode, syncSuggestionMode],
+      [history, reportEditorViewReady, syncCanonicalMode, syncSuggestionMode],
     );
 
     // Outline headings follow completed layouts: each pass collects the

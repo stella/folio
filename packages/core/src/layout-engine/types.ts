@@ -1928,6 +1928,104 @@ export const getTableRowLeadingWidth = (
 };
 
 /**
+ * A copy of a block that an edit before it moved by `delta`: every
+ * ProseMirror anchor it holds, nested ones included, moves with it, and
+ * everything else is shared. Ids stay, so the copy is the same block moved.
+ * The anchors are exactly the fields {@link FlowBlockAnchorKeys} lists.
+ */
+export function shiftFlowBlockPmAnchors(
+  block: FlowBlock,
+  delta: number,
+): FlowBlock {
+  switch (block.kind) {
+    case "paragraph":
+      return shiftParagraphPmAnchors(block, delta);
+    case "table":
+      return shiftTablePmAnchors(block, delta);
+    case "image":
+    case "pageBreak":
+    case "columnBreak":
+      return { ...block, ...shiftedRange(block, delta) };
+    case "textBox":
+      return {
+        ...block,
+        ...shiftedRange(block, delta),
+        content: block.content.map((contentBlock) =>
+          contentBlock.kind === "table"
+            ? shiftTablePmAnchors(contentBlock, delta)
+            : shiftParagraphPmAnchors(contentBlock, delta),
+        ),
+      };
+    case "sectionBreak":
+      return block;
+    default: {
+      const exhaustive: never = block;
+      return exhaustive;
+    }
+  }
+}
+
+/** The anchor field names any flow block holds, nested ones included. */
+export type FlowBlockAnchorKeys =
+  "pmStart" | "pmEnd" | "pmPos" | "fixedPosition";
+
+const shiftedRange = (
+  anchored: { pmStart?: number; pmEnd?: number },
+  delta: number,
+): { pmStart?: number; pmEnd?: number } => ({
+  ...(anchored.pmStart === undefined
+    ? {}
+    : { pmStart: anchored.pmStart + delta }),
+  ...(anchored.pmEnd === undefined ? {} : { pmEnd: anchored.pmEnd + delta }),
+});
+
+const shiftedSdtGroups = (
+  groups: SdtGroup[] | undefined,
+  delta: number,
+): { sdtGroups?: SdtGroup[] } =>
+  groups === undefined
+    ? {}
+    : {
+        sdtGroups: groups.map((group) => ({
+          ...group,
+          pmPos: group.pmPos + delta,
+        })),
+      };
+
+function shiftTablePmAnchors(block: TableBlock, delta: number): TableBlock {
+  return {
+    ...block,
+    ...shiftedRange(block, delta),
+    ...shiftedSdtGroups(block.sdtGroups, delta),
+    rows: block.rows.map((row) => ({
+      ...row,
+      cells: row.cells.map((cell) => ({
+        ...cell,
+        blocks: cell.blocks.map((cellBlock) =>
+          shiftFlowBlockPmAnchors(cellBlock, delta),
+        ),
+      })),
+    })),
+  };
+}
+
+/** {@link shiftFlowBlockPmAnchors} for a paragraph. */
+export function shiftParagraphPmAnchors(
+  block: ParagraphBlock,
+  delta: number,
+): ParagraphBlock {
+  return {
+    ...block,
+    ...shiftedRange(block, delta),
+    ...shiftedSdtGroups(block.sdtGroups, delta),
+    ...(block.fixedPosition === undefined
+      ? {}
+      : { fixedPosition: block.fixedPosition + delta }),
+    runs: block.runs.map((run) => ({ ...run, ...shiftedRange(run, delta) })),
+  };
+}
+
+/**
  * A copy of a block with every ProseMirror anchor removed. A note story's
  * blocks carry positions in the note's own document; painted beside the body
  * they must not resolve a click, a selection or a caret into the body.
