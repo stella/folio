@@ -52,24 +52,46 @@ const nativeRange = (view: EditorView): Range | null => {
   return native !== null && native.rangeCount > 0 ? native.getRangeAt(0) : null;
 };
 
+/** The image ProseMirror draws beside an inline atom with no text there. */
+const isElement = (node: Node): node is Element =>
+  node.nodeType === node.ELEMENT_NODE;
+const isSeparator = (node: Node | undefined): boolean =>
+  node !== undefined &&
+  isElement(node) &&
+  node.nodeName === "IMG" &&
+  node.classList.contains("ProseMirror-separator");
+
 /**
  * Where a browser caret for the editor's collapsed selection belongs: in the
  * text before it, or at a paragraph's start in the first text. ProseMirror
  * treats the end of one text node and the start of the next run as one
  * position, but the browser types and composes into the node it holds.
- * `null` when the selection is not a caret in text.
+ *
+ * With no text beside it, the caret sits before or after an inline atom,
+ * such as a bookmark boundary at a paragraph's start, and ProseMirror draws
+ * a separator image there. The caret goes right after that image: before it
+ * and the atom, Chromium finds no place to compose and composes into the
+ * first text of the editable content instead.
+ *
+ * `null` when the selection is not a caret in text or beside such an image.
  */
 export const textCaretOf = (
   view: EditorView,
 ): { node: Node; offset: number } | null => {
   const { selection } = view.state;
   if (!selection.empty) return null;
-  const before = view.domAtPos(selection.from, -1);
-  const { node, offset } =
-    before.node.nodeType === before.node.TEXT_NODE
-      ? before
-      : view.domAtPos(selection.from, 1);
-  return node.nodeType === node.TEXT_NODE ? { node, offset } : null;
+  const sides = [
+    view.domAtPos(selection.from, -1),
+    view.domAtPos(selection.from, 1),
+  ];
+  const text = sides.find(({ node }) => node.nodeType === node.TEXT_NODE);
+  if (text) return { node: text.node, offset: text.offset };
+  for (const { node, offset } of sides) {
+    if (isSeparator(node.childNodes[offset - 1])) return { node, offset };
+    if (isSeparator(node.childNodes[offset]))
+      return { node, offset: offset + 1 };
+  }
+  return null;
 };
 
 /**

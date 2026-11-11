@@ -1,7 +1,8 @@
 /**
  * After an update that changes the document, the browser caret sits in the
  * text before the editor's caret, set again by the editor, so an input
- * method composes into the run the caret follows.
+ * method composes into the run the caret follows. With no text beside the
+ * caret, it sits right after the separator image before an inline anchor.
  */
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
@@ -16,6 +17,14 @@ const schema = new Schema({
     doc: { content: "block+" },
     paragraph: { content: "inline*", group: "block", toDOM: () => ["p", 0] },
     text: { group: "inline" },
+    // An inline node that shows nothing, drawn the way bookmark boundaries are.
+    anchor: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      selectable: false,
+      toDOM: () => ["span", { contenteditable: "false" }],
+    },
   },
   marks: { strong: { toDOM: () => ["strong", 0] } },
 });
@@ -89,4 +98,60 @@ test("an update that changes only the selection leaves the browser's caret alone
   view.updateState(view.state.apply(view.state.tr.setMeta("noop", true)));
   expect(native.anchorNode?.textContent).toBe("Second");
   expect(native.anchorOffset).toBe(0);
+});
+
+/**
+ * An anchor and then "Text", with the caret before the anchor, after a
+ * paragraph "First". The browser holds the caret where ProseMirror puts it:
+ * before the separator image it draws ahead of the anchor.
+ */
+const anchorRig = () => {
+  const anchored = schema.node("paragraph", null, [
+    schema.node("anchor"),
+    schema.text("Text"),
+  ]);
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, schema.text("First")),
+    anchored,
+  ]);
+  const caret = 8;
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const view = new EditorView(mount, {
+    state: EditorState.create({
+      doc,
+      plugins: [createNativeSelectionRefreshPlugin()],
+      selection: TextSelection.create(doc, caret),
+    }),
+  });
+  views.push(view);
+  view.focus();
+  const paragraph = view.dom.children.item(1);
+  const native = document.getSelection();
+  if (!native || !paragraph)
+    throw new TypeError("The rig needs the anchored paragraph.");
+  native.removeAllRanges();
+  native.collapse(paragraph, 0);
+  return { view, native, caret };
+};
+
+test("a caret with no text beside it goes after the separator before the anchor", () => {
+  const { view, native, caret } = anchorRig();
+  // A paste before the paragraph moves it, as a pasted list does.
+  view.updateState(view.state.apply(view.state.tr.insertText("!", 1)));
+  expect(view.state.selection.from).toBe(caret + 1);
+  const { anchorNode, anchorOffset } = native;
+  const before = anchorNode?.childNodes.item(anchorOffset - 1);
+  const after = anchorNode?.childNodes.item(anchorOffset);
+  expect(anchorNode?.nodeName).toBe("P");
+  expect(before?.nodeName).toBe("IMG");
+  expect(before instanceof Element && before.className).toBe(
+    "ProseMirror-separator",
+  );
+  expect(
+    after instanceof Element && after.getAttribute("contenteditable"),
+  ).toBe("false");
+  // The browser's caret still reads as the editor's.
+  if (anchorNode)
+    expect(view.posAtDOM(anchorNode, anchorOffset)).toBe(caret + 1);
 });
