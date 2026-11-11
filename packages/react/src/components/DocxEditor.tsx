@@ -6145,7 +6145,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             firstPageHeaderContentRId={activeFirstHeaderRId}
                             firstPageFooterContentRId={activeFirstFooterRId}
                             {...(history.state.package.styles
-                              ? { styles: history.state.package.styles }
+                              ? {
+                                  styles:
+                                    readModel(history.state).package.styles ??
+                                    null,
+                                }
                               : {})}
                             onHeaderFooterDoubleClick={
                               handleHeaderFooterStoryOpen

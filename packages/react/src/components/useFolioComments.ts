@@ -35,7 +35,10 @@ import {
   commentAnchorIds,
 } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment, Paragraph } from "@stll/folio-core/types/content";
-import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
+import {
+  readModel,
+  type ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 import { isValidHexId } from "@stll/folio-core/utils/hexId";
 
 import { useEqualState } from "../hooks/keepEqual";
@@ -389,7 +392,8 @@ export function useFolioComments({
     commentsRef.current = [];
     setInternalComments([]);
   }, []);
-  const bodyComments = committedComments ?? doc?.package.document.comments;
+  const bodyComments =
+    committedComments ?? (doc && readModel(doc).package.document.comments);
   if (
     !commentsLoaded &&
     !(committedComments == null && isControlledComments) &&
