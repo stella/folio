@@ -1043,6 +1043,279 @@ export const CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11 = {
   },
 } satisfies CanonicalRegression;
 
+/** A default-editor finding of #2300 (single-decimal-list), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_44ACBA1A39AE6967 = {
+  authority: "canonical",
+  seed: 29,
+  path: "1:3:3",
+  fingerprint: "canonical-44acba1a39ae6967",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+      { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0AE2A73B64015980 = {
+  authority: "canonical",
+  seed: 83,
+  path: "3",
+  fingerprint: "canonical-0ae2a73b64015980",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [{ kind: "delete" }, { kind: "enter" }],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_F833D2A2C838868E = {
+  authority: "canonical",
+  seed: 263,
+  path: "8",
+  fingerprint: "canonical-f833d2a2c838868e",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [
+      {
+        kind: "imeReplacement",
+        updates: ["valid", "invoice alpha shall", "buyer مرحبا é"],
+        completion: "cancel",
+      },
+      { kind: "delete" },
+      { kind: "undo" },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+      { kind: "redo" },
+      { kind: "pastePlain", plain: "café", html: "" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (notes), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_6B03AAC751613037 = {
+  authority: "canonical",
+  seed: 1793897521,
+  path: "11",
+  fingerprint: "canonical-6b03aac751613037",
+  trace: {
+    shape: "notes",
+    actions: [
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+      {
+        kind: "imeReplacement",
+        updates: ["é 東京", "buyer", "invoice alpha alpha"],
+        completion: "cancel",
+      },
+      {
+        kind: "imeReplacement",
+        updates: ["valid buyer"],
+        completion: "commit",
+      },
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (single-bullet-list), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_CAED1ECA237779C4 = {
+  authority: "canonical",
+  seed: 1793946574,
+  path: "10",
+  fingerprint: "canonical-caed1eca237779c4",
+  trace: {
+    shape: "single-bullet-list",
+    actions: [
+      { kind: "enter" },
+      { kind: "selectionDrag", target: "list" },
+      { kind: "delete" },
+      {
+        kind: "imeReplacement",
+        updates: ["shall مرحبا alpha", "invoice valid", "valid", "shall café"],
+        completion: "cancel",
+      },
+      { kind: "pastePlain", plain: "é مرحبا invoice", html: "" },
+      { kind: "cut" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (tables), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_7AF616E1D95C9131 = {
+  authority: "canonical",
+  seed: 1794032767,
+  path: "11",
+  fingerprint: "canonical-7af616e1d95c9131",
+  trace: {
+    shape: "tables",
+    actions: [
+      { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+      { kind: "dragCellDelete" },
+      { kind: "dragCellDelete" },
+      { kind: "pastePlain", plain: "東京 مرحبا 東京", html: "" },
+      { kind: "undo" },
+      {
+        kind: "historyBurst",
+        keys: ["redo", "undo", "undo", "undo", "redo", "undo"],
+      },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (notes), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_1EDA02BD7E61236F = {
+  authority: "canonical",
+  seed: 83,
+  path: "9",
+  fingerprint: "canonical-1eda02bd7e61236f",
+  trace: {
+    shape: "notes",
+    actions: [
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+      { kind: "selectionDrag", target: "paragraphs" },
+      { kind: "imeReplacement", updates: ["invoice 👩🏽‍⚖️"], completion: "cancel" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (image), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B2E6A69C90DD0380 = {
+  authority: "canonical",
+  seed: 431,
+  path: "9",
+  fingerprint: "canonical-b2e6a69c90dd0380",
+  trace: {
+    shape: "image",
+    actions: [
+      { kind: "selectAll" },
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+      { kind: "backspace" },
+      { kind: "selectionDrag", target: "paragraphs" },
+      { kind: "typing", text: "invoice buyer" },
+      { kind: "historyBurst", keys: ["redo", "undo", "redo", "redo"] },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_88B32B907B27833C = {
+  authority: "canonical",
+  seed: 1794119234,
+  path: "15",
+  fingerprint: "canonical-88b32b907b27833c",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [
+      { kind: "undo" },
+      { kind: "backspace" },
+      { kind: "selectionDrag", target: "field" },
+      {
+        kind: "imeReplacement",
+        updates: ["東京 مرحبا", "é"],
+        completion: "commit",
+      },
+      { kind: "redo" },
+      { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (invisible-markers), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_40F31C41449DD72E = {
+  authority: "canonical",
+  seed: 1794292116,
+  path: "8:2:0:1:2",
+  fingerprint: "canonical-40f31c41449dd72e",
+  trace: {
+    shape: "invisible-markers",
+    actions: [
+      { kind: "pastePlain", plain: "👩🏽‍⚖️", html: "" },
+      { kind: "backspace" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2300 (rtl-cjk), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_050B871DCD760539 = {
+  authority: "canonical",
+  seed: 1794378562,
+  path: "6:2:0:1:2",
+  fingerprint: "canonical-050b871dcd760539",
+  trace: {
+    shape: "rtl-cjk",
+    actions: [
+      { kind: "pastePlain", plain: "👩🏽‍⚖️", html: "" },
+      { kind: "backspace" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2302 (single-decimal-list), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_16B45BECAB03610E = {
+  authority: "canonical",
+  seed: 431,
+  path: "9:2:1:1:1:2:2",
+  fingerprint: "canonical-16b45becab03610e",
+  trace: {
+    shape: "single-decimal-list",
+    actions: [
+      { kind: "imeReplacement", updates: ["alpha"], completion: "cancel" },
+      { kind: "redo" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2302 (single-bullet-list), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_5736502082EB3A9B = {
+  authority: "canonical",
+  seed: 1793914965,
+  path: "7:2:1:2:2",
+  fingerprint: "canonical-5736502082eb3a9b",
+  trace: {
+    shape: "single-bullet-list",
+    actions: [
+      { kind: "imeReplacement", updates: ["مرحبا"], completion: "commit" },
+      { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2302 (notes), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B3A7D52FAF40115D = {
+  authority: "canonical",
+  seed: 29,
+  path: "15",
+  fingerprint: "canonical-b3a7d52faf40115d",
+  trace: {
+    shape: "notes",
+    actions: [
+      { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+      { kind: "selectionDrag", target: "note" },
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "backspace" },
+      { kind: "pasteMultiBlock", ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock },
+    ],
+  },
+} satisfies CanonicalRegression;
+
+/** A default-editor finding of #2302 (rtl-cjk), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97 = {
+  authority: "canonical",
+  seed: 1794206220,
+  path: "0:2:1:1:1:1:1:1",
+  fingerprint: "canonical-0f194a9c3f728f97",
+  trace: {
+    shape: "rtl-cjk",
+    actions: [
+      { kind: "selectAll" },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -1087,4 +1360,19 @@ export const BROWSER_INPUT_REGRESSIONS = [
   BROWSER_NOTES_LIST_PASTE_SEED_29,
   CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11,
   CANONICAL_CUT_EVERYTHING_BESIDE_COMMENT_SEED_431,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_44ACBA1A39AE6967,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_0AE2A73B64015980,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_F833D2A2C838868E,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_6B03AAC751613037,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_CAED1ECA237779C4,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_7AF616E1D95C9131,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_1EDA02BD7E61236F,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_B2E6A69C90DD0380,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_88B32B907B27833C,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_40F31C41449DD72E,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_050B871DCD760539,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_16B45BECAB03610E,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_5736502082EB3A9B,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_B3A7D52FAF40115D,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97,
 ];
