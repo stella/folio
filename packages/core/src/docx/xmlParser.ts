@@ -30,9 +30,9 @@ import {
 import {
   attachXmlNamespaceContext,
   EMPTY_NAMESPACE_SCOPE,
+  OOXML_NS,
   resolveNamespaceUri,
 } from "@stll/docx-core/xml/namespaces";
-import { OOXML_NS } from "@stll/docx-utils";
 
 import type { ParseContext } from "./parseContext";
 import {
@@ -49,7 +49,7 @@ import { universalMeasureAs } from "./universalMeasure";
 export type { XmlElement, XmlNamespaceScope };
 
 /**
- * Common OOXML namespace URIs — re-exported from @stll/docx-utils.
+ * Common OOXML namespace URIs, from `@stll/docx-core/xml/namespaces`.
  */
 export const NAMESPACES: {
   readonly w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";

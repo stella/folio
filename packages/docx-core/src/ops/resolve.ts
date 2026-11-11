@@ -27,7 +27,14 @@ import type {
   Table,
 } from "../model/document";
 import { getSingularRunPropertyChange } from "../model/runPropertyReview";
-import { paragraphMarkOutcome } from "./blockDeletion";
+import {
+  isOpaqueFollower,
+  markBeforeTableResolves,
+  paragraphBlockRunInTarget,
+  paragraphMarkOutcome,
+  paragraphTableRunInTarget,
+  type TableRunInTarget,
+} from "./blockDeletion";
 import {
   blockListAt,
   endsItsContainer,
@@ -55,7 +62,10 @@ import {
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
-import { paragraphHoldsContent } from "./offsets";
+import {
+  paragraphHoldsContent,
+  paragraphHoldsContentOnceAccepted,
+} from "./offsets";
 import {
   isBlockBoundary,
   noRelocatedBoundaries,
@@ -112,40 +122,6 @@ const precedingSectionOwner = (
     JSON.stringify(paragraph.sectionProperties)
     ? "same"
     : "occupied";
-};
-
-type TableRunInTarget = {
-  receiver: Paragraph;
-  tables: readonly Table[];
-};
-
-const paragraphTableRunInTarget = (
-  paragraph: Paragraph,
-  table: Table,
-): TableRunInTarget | undefined => {
-  if (paragraph.sectionProperties !== undefined) return undefined;
-  const tables: Table[] = [];
-  let current = table;
-  for (;;) {
-    const row = current.rows.at(0);
-    const cell = row?.cells.at(0);
-    if (!row || !cell) return undefined;
-    if (
-      row.structuralChange?.type === "tableRowInsertion" ||
-      row.structuralChange?.type === "tableRowDeletion" ||
-      cell.structuralChange !== undefined
-    ) {
-      return undefined;
-    }
-    tables.push(current);
-    const target = cell.content.at(0);
-    if (target?.type === "paragraph")
-      return target.sectionProperties === undefined
-        ? { receiver: target, tables }
-        : undefined;
-    if (target?.type !== "table") return undefined;
-    current = target;
-  }
 };
 
 const runParagraphIntoTable = (
@@ -237,6 +213,48 @@ const hasNoteReference = (
       ),
     ),
   );
+
+/**
+ * The paragraph a rejected mark that keeps the first paragraph leaves: the
+ * first paragraph's identity, and everything the mark that stays carries,
+ * which is the next paragraph's. Where that mark is the first paragraph's
+ * former one, the first paragraph comes back as it was once the reviews
+ * pending on it resolve; where it is another break the same edit inserted,
+ * that break says itself which paragraph its rejection keeps.
+ */
+const joinedKeepingFirst = (
+  paragraph: Paragraph,
+  next: Paragraph,
+  content: Paragraph["content"],
+  receivesSection: boolean,
+): Paragraph => {
+  const {
+    paraId: _paraId,
+    textId: _textId,
+    preservedAttributes: _preservedAttributes,
+    renderedPageBreakBefore: _renderedPageBreakBefore,
+    sectionProperties: _sectionProperties,
+    ...marked
+  } = next;
+  // A section the rejected mark ended moves into the joined paragraph;
+  // otherwise the section break is the one the staying mark ends.
+  const sectionProperties = receivesSection
+    ? paragraph.sectionProperties
+    : next.sectionProperties;
+  return {
+    ...marked,
+    content,
+    ...(paragraph.paraId === undefined ? {} : { paraId: paragraph.paraId }),
+    ...(paragraph.textId === undefined ? {} : { textId: paragraph.textId }),
+    ...(paragraph.preservedAttributes === undefined
+      ? {}
+      : { preservedAttributes: paragraph.preservedAttributes }),
+    ...(paragraph.renderedPageBreakBefore === undefined
+      ? {}
+      : { renderedPageBreakBefore: paragraph.renderedPageBreakBefore }),
+    ...(sectionProperties === undefined ? {} : { sectionProperties }),
+  };
+};
 
 /** Whether a mark of this kind recorded a break being added. */
 const markWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
@@ -337,6 +355,12 @@ type Resolution = {
   pairedComments: ReadonlySet<number>;
   /** Boundaries this resolution kept from removed content. */
   relocated: RelocatedBoundaries;
+  /**
+   * Identity handoffs whose retained piece was not beside the removed prefix:
+   * a replacement's new content, or a paragraph break it inserted, stands
+   * between them. They reach that piece later in the same story.
+   */
+  outstanding: RetainedIdentity[];
 };
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
@@ -578,8 +602,12 @@ const restoreRetainedIdentities = ({
   nodes,
   transfers,
   resolution,
-}: RestoreRetainedIdentitiesOptions): InlineNode[] => {
+}: RestoreRetainedIdentitiesOptions): {
+  nodes: InlineNode[];
+  unmatched: RetainedIdentity[];
+} => {
   const references = new Map<string, RetainedIdentity["source"][number]>();
+  const unmatched: RetainedIdentity[] = [];
   let out = [...nodes];
   for (const transfer of transfers) {
     const source = transfer.source.map(
@@ -612,7 +640,10 @@ const restoreRetainedIdentities = ({
       return next;
     };
     out = out.map(restore);
-    if (!matched) continue;
+    if (!matched) {
+      unmatched.push({ ...transfer, source });
+      continue;
+    }
     for (const [index, target] of transfer.target.entries()) {
       const restored = source.at(index);
       if (restored === undefined || restored.space !== target.space)
@@ -636,6 +667,17 @@ const restoreRetainedIdentities = ({
       if (joins.retainedAfter !== undefined) {
         joins.retainedAfter = joins.retainedAfter.map((entry) => ({
           depth: entry.depth,
+          source: entry.source.map(
+            (slot) => references.get(slotKey(slot)) ?? slot,
+          ),
+          target: entry.target.map(
+            (slot) => references.get(slotKey(slot)) ?? slot,
+          ),
+        }));
+      }
+      if (joins.retainedEnclosing !== undefined) {
+        joins.retainedEnclosing = joins.retainedEnclosing.map((entry) => ({
+          levels: entry.levels,
           source: entry.source.map(
             (slot) => references.get(slotKey(slot)) ?? slot,
           ),
@@ -670,8 +712,83 @@ const restoreRetainedIdentities = ({
       ? next
       : rebuildNode(next, children.map(rebase));
   };
-  return out.map(rebase);
+  return { nodes: out.map(rebase), unmatched };
 };
+
+/**
+ * Hand outstanding identities to the pieces they name among `nodes`, content
+ * that follows the removed prefixes in the story. A target id names one
+ * record, so the piece is found wherever the replacement left it.
+ */
+const restoreOutstandingIdentities = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): readonly InlineNode[] => {
+  if (resolution.outstanding.length === 0) return nodes;
+  const restored = restoreRetainedIdentities({
+    nodes,
+    transfers: resolution.outstanding,
+    resolution,
+  });
+  resolution.outstanding = restored.unmatched;
+  return restored.nodes;
+};
+
+const isIdentitySlot = (
+  slot: unknown,
+): slot is RetainedIdentity["source"][number] => {
+  if (
+    typeof slot !== "object" ||
+    slot === null ||
+    !("space" in slot) ||
+    !("id" in slot)
+  )
+    return false;
+  // Revision/control ids allow zero; note-record reserved ids do not apply here.
+  const retainedId = slot.id;
+  return (
+    (slot.space === IDENTITY_SPACES.REVISION ||
+      slot.space === IDENTITY_SPACES.CONTROL) &&
+    typeof retainedId === "number" &&
+    Number.isInteger(retainedId) &&
+    retainedId >= 0 &&
+    retainedId <= MAX_REVISION_ID
+  );
+};
+
+/**
+ * Handoffs to records above a wrapper name paired slots one level up or more;
+ * whether that record holds them is checked where it is resolved.
+ */
+const validEnclosingHandoffs = (handoffs: unknown): boolean =>
+  handoffs === undefined ||
+  (Array.isArray(handoffs) &&
+    handoffs.every((entry: unknown) => {
+      if (
+        typeof entry !== "object" ||
+        entry === null ||
+        !("levels" in entry) ||
+        !("source" in entry) ||
+        !("target" in entry)
+      )
+        return false;
+      const { levels, source, target } = entry;
+      return (
+        typeof levels === "number" &&
+        Number.isInteger(levels) &&
+        levels >= 1 &&
+        levels <= MAX_REVISION_ID &&
+        Array.isArray(source) &&
+        Array.isArray(target) &&
+        source.length > 0 &&
+        source.length === target.length &&
+        source.every(isIdentitySlot) &&
+        target.every(isIdentitySlot) &&
+        new Set(source.map(slotKey)).size === source.length &&
+        new Set(target.map(slotKey)).size === target.length &&
+        source.every((slot, index) => slot.space === target.at(index)?.space)
+      );
+    }));
 
 /** Journal-supplied provenance must name actual source slots at its recorded depth. */
 const validRetainedIdentities = (node: InlineNode): boolean => {
@@ -717,6 +834,7 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
       groupKeys.add(key);
     }
   }
+  if (!validEnclosingHandoffs(joins.retainedEnclosing)) return false;
   if (joins.retainedAfter === undefined) return true;
   if (!Array.isArray(joins.retainedAfter)) return false;
   type AtDepthOptions = {
@@ -841,7 +959,16 @@ const prepareDeferredRemovals = (
 };
 
 type CutEdges = { first?: number; last?: number };
-type ResolvedList = { nodes: InlineNode[]; changed: boolean; edges?: CutEdges };
+/** A handoff waiting for the record `levels` above the list to be emptied. */
+type EnclosingHandoff = { levels: number; transfer: RetainedIdentity };
+
+type ResolvedList = {
+  nodes: InlineNode[];
+  changed: boolean;
+  edges?: CutEdges;
+  /** Handoffs naming records above this list. */
+  enclosing?: EnclosingHandoff[];
+};
 
 /** Comment ids whose complete range belongs to selected content being removed. */
 const removedCommentRangeIds = (
@@ -1082,6 +1209,7 @@ const resolveList = (
     }
   >();
   let changed = false;
+  const enclosing: EnclosingHandoff[] = [];
   for (const [index, node] of pending.entries()) {
     if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
       changed = true;
@@ -1128,9 +1256,10 @@ const resolveList = (
             transfers,
             resolution,
           });
+          resolution.outstanding.push(...restored.unmatched);
           // Restoring source IDs can make a previously unselected blocker
           // selected; recompute deferred facts against those actual identities.
-          const prepared = prepareDeferredRemovals(restored, resolution);
+          const prepared = prepareDeferredRemovals(restored.nodes, resolution);
           out.splice(
             0,
             out.length,
@@ -1154,6 +1283,13 @@ const resolveList = (
             ...prepared.slice(prefixLength),
           );
         }
+        // Removing a prefix that was all a cut record held hands the record's
+        // identities to the piece cut off after it.
+        for (const entry of node.resolutionJoins?.retainedEnclosing ?? [])
+          enclosing.push({
+            levels: entry.levels,
+            transfer: { depth: 0, source: entry.source, target: entry.target },
+          });
         const removalContent =
           resolution.decision === REVISION_DECISIONS.REJECT &&
           isAddedRevision(node)
@@ -1263,6 +1399,35 @@ const resolveList = (
     const children = childNodes(node);
     const inner =
       children === undefined ? undefined : resolveList(children, resolution);
+    for (const handoff of inner?.enclosing ?? []) {
+      if (handoff.levels > 1) {
+        enclosing.push({
+          levels: handoff.levels - 1,
+          transfer: handoff.transfer,
+        });
+        continue;
+      }
+      if (
+        inner !== undefined &&
+        inner.nodes.length === 0 &&
+        (children?.length ?? 0) > 0 &&
+        hasSlots(node, handoff.transfer.source)
+      )
+        resolution.outstanding.push(handoff.transfer);
+    }
+    if (resolution.outstanding.length > 0) {
+      // A prefix removed inside this record hands its identities on to the
+      // pieces after it.
+      const following = restoreOutstandingIdentities(
+        pending.slice(index + 1),
+        resolution,
+      );
+      pending.splice(
+        index + 1,
+        pending.length - index - 1,
+        ...prepareDeferredRemovals(following, resolution),
+      );
+    }
     if (children === undefined || inner === undefined || !inner.changed) {
       appendSource(node, index);
       continue;
@@ -1282,6 +1447,13 @@ const resolveList = (
       // Removing an unselected parent establishes no cut between its neighbours.
       // Fold only fragments this resolution emptied, preserving authored siblings.
       folds.push(out.length);
+      // Accepted new content beside it, as an edit made directly would be,
+      // merges with the plain runs it now meets.
+      if (
+        isTrackedWrapper(node) &&
+        (node.resolutionJoins?.plainSides?.length ?? 0) > 0
+      )
+        plainSeams.add(out.length);
       continue;
     }
     let rebuilt = rebuildNode(node, inner.nodes);
@@ -1376,26 +1548,34 @@ const resolveList = (
   // nothing else.
   const pendingRemoval = (node: InlineNode | undefined): boolean =>
     node !== undefined &&
-    (node.type === "deletion" || node.type === "moveFrom") &&
-    !resolution.ids.has(node.info.id) &&
-    node.resolutionJoins !== undefined;
+    (((node.type === "deletion" || node.type === "moveFrom") &&
+      !resolution.ids.has(node.info.id) &&
+      node.resolutionJoins !== undefined) ||
+      // A cut piece holding only content on its way out goes with it.
+      (isTrackedWrapper(node) &&
+        !resolution.ids.has(node.info.id) &&
+        node.content.length > 0 &&
+        node.content.every((child) => pendingRemoval(child))));
   const acceptAsPlain = (index: number, facing: "before" | "after"): void => {
     const occurrence = out[index];
     const node = occurrence?.node;
     if (
       occurrence === undefined ||
       node === undefined ||
-      !isTrackedWrapper(node) ||
-      node.resolutionJoins === undefined
+      !isTrackedWrapper(node)
     )
       return;
     out[index] = occurrenceOf(
       Object.assign({}, node, {
-        resolutionJoins: Object.assign({}, node.resolutionJoins, {
-          plainSides: [
-            ...new Set([...(node.resolutionJoins.plainSides ?? []), facing]),
-          ],
-        }),
+        resolutionJoins: Object.assign(
+          { before: 0, after: 0, remove: 0 },
+          node.resolutionJoins,
+          {
+            plainSides: [
+              ...new Set([...(node.resolutionJoins?.plainSides ?? []), facing]),
+            ],
+          },
+        ),
       }),
       occurrence,
     );
@@ -1663,7 +1843,12 @@ const resolveList = (
     edges.first = Math.max(edges.first ?? 0, nestedFirst);
   if (nestedLast !== undefined)
     edges.last = Math.max(edges.last ?? 0, nestedLast);
-  return { nodes: out.map(({ node }) => node), changed, edges };
+  return {
+    nodes: out.map(({ node }) => node),
+    changed,
+    edges,
+    ...(enclosing.length === 0 ? {} : { enclosing }),
+  };
 };
 
 /** A paragraph's review fields once its property changes and mark are resolved; `undefined` when unchanged. */
@@ -1895,6 +2080,7 @@ type ResolutionReceiverEffect = {
   type:
     | "paragraph-join"
     | "table-run-in"
+    | "block-run-in"
     | "retained-range-boundaries"
     | "section-transfer";
   receiver: Paragraph;
@@ -1916,6 +2102,8 @@ const joinOps = (
   ends: EmptiedEndsById,
   /** Table receivers a later paragraph of this resolution already ran into. */
   ranInto: ReadonlySet<string> = new Set(),
+  /** Paragraphs whose marks this resolution resolves after this one's. */
+  joinsBefore: ReadonlySet<string> = new Set(),
 ): Result<ParagraphMarkPlan, DocumentOpRefusal> => {
   const body = storyBody(document, story);
   const location = storyParagraphs(body).find(
@@ -1989,22 +2177,35 @@ const joinOps = (
         merged = [...seam.left, ...seam.right];
       }
     }
+    const keepsFirst = paragraph.pPrMark?.survivor === "first";
     // A record left as it was keeps its identity through the merge; an emptied
-    // one folded into its neighbour is rebuilt, and is no longer empty.
-    ends.set(nextId, emptiedEndsOf(merged, emptied));
+    // one folded into its neighbour is rebuilt, and is no longer empty. The
+    // joined paragraph is found again under the id it keeps.
+    ends.set(
+      keepsFirst ? idKey(paraId) : nextId,
+      emptiedEndsOf(merged, emptied),
+    );
     const mergedContent = asParagraphContent(merged);
     const receivesSection = outcome.sectionDestination === "following";
+    let survivor: Paragraph;
+    if (keepsFirst)
+      survivor = joinedKeepingFirst(
+        paragraph,
+        next,
+        mergedContent,
+        receivesSection,
+      );
     // An unchanged follower that receives nothing keeps its identity.
-    const survivor: Paragraph =
-      !receivesSection && structurallyEqual(mergedContent, next.content)
-        ? next
-        : {
-            ...next,
-            content: mergedContent,
-            ...(receivesSection
-              ? { sectionProperties: paragraph.sectionProperties }
-              : {}),
-          };
+    else if (!receivesSection && structurallyEqual(mergedContent, next.content))
+      survivor = next;
+    else
+      survivor = {
+        ...next,
+        content: mergedContent,
+        ...(receivesSection
+          ? { sectionProperties: paragraph.sectionProperties }
+          : {}),
+      };
     const transfersToPrevious =
       outcome.sectionDestination === "preceding" &&
       previous?.type === "paragraph";
@@ -2048,7 +2249,9 @@ const joinOps = (
       ),
     );
   }
-  // No paragraph to join: a table follows, or the paragraph ends its container.
+  // No paragraph to join: a table or another block follows, or the
+  // paragraph ends its container.
+  const followsBlock = isOpaqueFollower(next);
   const containerFinal = endsItsContainer(body, location);
   // A cell-ending mark describes the terminator, not a paragraph to retire.
   const cellFinal =
@@ -2057,19 +2260,49 @@ const joinOps = (
     next?.type === "table"
       ? paragraphTableRunInTarget(paragraph, next)
       : undefined;
+  const blockTarget =
+    next !== undefined && followsBlock
+      ? paragraphBlockRunInTarget(paragraph, next)
+      : undefined;
+  const runInReceiver = tableTarget?.receiver ?? blockTarget?.receiver;
   const remains = paragraphRemains(paragraph.content);
+  let follows: "table" | "block" | "nothing" = "nothing";
+  if (next?.type === "table") follows = "table";
+  else if (followsBlock) follows = "block";
+  // Before a block, what stays decides; resolving the marks one at a time
+  // from the first joins the paragraphs before this one, whose marks this
+  // resolution resolves too, into it first, so their content counts.
+  const joining: Paragraph[] = [];
+  for (let index = location.index - 1; follows === "block"; index -= 1) {
+    const before = blocks[index];
+    if (
+      before?.type !== "paragraph" ||
+      !joinsBefore.has(idKey(before.paraId ?? ""))
+    )
+      break;
+    joining.unshift(before);
+  }
+  const chained: Paragraph =
+    joining.length === 0
+      ? paragraph
+      : {
+          ...paragraph,
+          content: [...joining, paragraph].flatMap(({ content }) => content),
+        };
   const outcome = paragraphMarkOutcome({
-    follows: next?.type === "table" ? "table" : "nothing",
-    holdsContent: paragraphHoldsContent(paragraph),
+    follows,
+    holdsContent: paragraphHoldsContent(chained),
     markWasAdded: added,
     containerStillEndsWithParagraph:
-      next?.type === "table"
+      follows !== "nothing"
         ? blocks.at(-1)?.type === "paragraph"
         : // Removing the final paragraph leaves the block before it last.
           containerFinal &&
           !cellFinal &&
           blocks.at(location.index - 1)?.type === "paragraph",
     followingTableCanReceiveRunIn: tableTarget !== undefined,
+    holdsContentOnceAccepted: paragraphHoldsContentOnceAccepted(chained),
+    followingBlockCanReceiveRunIn: blockTarget !== undefined,
     needsFollowingCommentHost:
       next?.type === "table" &&
       previous?.type !== "paragraph" &&
@@ -2077,7 +2310,7 @@ const joinOps = (
       remains.comments.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
-      (blocks.at(-1)?.type === "paragraph" && tableTarget !== undefined),
+      markBeforeTableResolves({ blocks, paragraph, table: next }),
     removedSectionProperties:
       added && paragraph.sectionProperties !== undefined,
     precedingSectionOwner: precedingSectionOwner(previous, paragraph),
@@ -2092,20 +2325,21 @@ const joinOps = (
       ),
     );
   }
-  // The paragraph after this one ran into the table in this resolution, so
-  // this one follows it in: resolving the marks one at a time from the first
-  // joins this paragraph to that one before it runs in. Removing it as a
-  // paragraph with no content of its own would drop what it holds.
+  // The paragraph after this one ran into the table or block in this
+  // resolution, so this one follows it in: resolving the marks one at a time
+  // from the first joins this paragraph to that one before it runs in.
+  // Removing it as a paragraph with no content of its own would drop what it
+  // holds.
   const continuesRunIn =
     outcome.kind === "remove" &&
-    tableTarget !== undefined &&
+    runInReceiver !== undefined &&
     paragraph.content.length > 0 &&
-    ranInto.has(idKey(tableTarget.receiver.paraId ?? ""));
+    ranInto.has(idKey(runInReceiver.paraId ?? ""));
   const tableOutcome = continuesRunIn ? "run-in" : outcome.kind;
   if (
     (tableOutcome === "remove" || tableOutcome === "run-in") &&
     blocks.length > 1 &&
-    next?.type === "table"
+    (next?.type === "table" || followsBlock)
   ) {
     const anchor = blocks.find(
       (block, index): block is Paragraph =>
@@ -2139,6 +2373,33 @@ const joinOps = (
           ],
           [...removal.effects],
         );
+    } else if (blockTarget !== undefined) {
+      // The paragraph goes from around the block, and the receiver, where it
+      // stands inside the block, takes what it held.
+      const { receiver } = blockTarget;
+      return paragraphMarkPlan(
+        [
+          {
+            type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+            story,
+            blockId: anchor.paraId ?? "",
+            expected: blocks,
+            blocks: blocks.filter((_, index) => index !== location.index),
+          },
+          {
+            type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+            story,
+            expected: [receiver],
+            blocks: [
+              {
+                ...receiver,
+                content: joinParagraphSeam(paragraph.content, receiver.content),
+              },
+            ],
+          },
+        ],
+        [{ type: "block-run-in", receiver }],
+      );
     } else {
       if (tableTarget === undefined)
         panic("An eligible table run-in has a validated receiver.");
@@ -2335,6 +2596,7 @@ export const planRevisionResolution = ({
     cutEdges: new WeakMap(),
     pairedComments: new Set(),
     relocated: noRelocatedBoundaries(),
+    outstanding: [],
   };
   const noteReferences = removedNoteReferences(document, op, ids);
   const paragraphs = storyParagraphs(storyBody(document, op.story));
@@ -2418,8 +2680,13 @@ export const planRevisionResolution = ({
     resolution,
   );
   const resolvedChanged = new Set<string>();
-  for (const { paragraph, content: prepared } of preparedContents) {
+  for (const { paragraph, content: source } of preparedContents) {
     const paraId = paragraph.paraId ?? "";
+    // A replacement's paragraph break can stand between a removed prefix and
+    // the piece that takes its identities: they arrive here.
+    const handed = restoreOutstandingIdentities(source, resolution);
+    const prepared =
+      handed === source ? source : prepareDeferredRemovals(handed, resolution);
     const resolved = resolveList(prepared, resolution);
     resolvedContents.set(
       idKey(paraId),
@@ -2607,15 +2874,17 @@ export const planRevisionResolution = ({
   const edits: DocumentEdit[] = [staged.value, rows.value];
   let current = rows.value.document;
   const ranInto = new Set<string>();
+  const joinsBefore = new Set(joins.map(({ paraId }) => idKey(paraId)));
   for (const join of joins.toReversed()) {
+    joinsBefore.delete(idKey(join.paraId));
     if (removedParagraphs.has(idKey(join.paraId))) continue;
-    const planned = joinOps(current, join, emptiedEnds, ranInto);
+    const planned = joinOps(current, join, emptiedEnds, ranInto, joinsBefore);
     if (planned.isErr()) {
       return Result.err(planned.error);
     }
     receiverEffects.push(...planned.value.receiverEffects);
     for (const effect of planned.value.receiverEffects)
-      if (effect.type === "table-run-in")
+      if (effect.type === "table-run-in" || effect.type === "block-run-in")
         ranInto.add(idKey(effect.receiver.paraId ?? ""));
     const joined = applyOps(current, planned.value.ops);
     if (joined.isErr()) {

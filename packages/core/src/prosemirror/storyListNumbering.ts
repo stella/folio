@@ -13,7 +13,10 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { Transform } from "prosemirror-transform";
 
-import { createNumberingIdAllocator } from "../docx/numberingIds";
+import {
+  createNumberingIdAllocator,
+  numberingNumIdsTaken,
+} from "../docx/numberingIds";
 import { getCachedNumberingMap, isBulletLevel } from "../docx/numberingParser";
 import { paragraphNumberingReference } from "../docx/numberingReference";
 import type { NumberingDefinitions } from "../types/document";
@@ -149,7 +152,12 @@ export const storyListNumbering = (
     };
   }
 
-  const existingNumIds = [...defined, ...referenced];
+  const existingNumIds = [
+    ...defined,
+    ...referenced,
+    ...numberingNumIdsTaken(numbering),
+    ...numberingNumIdsTaken(packageDefinitions),
+  ];
   const numIds = createNumberingIdAllocator("num", existingNumIds);
   const remap: Remap = {
     numIds: new Map([...colliding].map((numId) => [numId, numIds.next()])),

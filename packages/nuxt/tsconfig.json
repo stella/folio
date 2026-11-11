@@ -13,6 +13,7 @@
     "esModuleInterop": true,
     "declaration": true,
     "declarationMap": true,
+    "types": ["node"],
     "paths": {
       "@stll/folio-vue": ["../vue/src/index.ts"],
       "@stll/folio-vue/composables": ["../vue/src/composables/index.ts"],

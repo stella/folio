@@ -2,12 +2,10 @@
  * useTableResize — Vue port of React PagedEditor.tsx's table-resize logic
  * (column / row / right-edge handles).
  *
- * Ports the mouseDown branch (lines 3110-3232 in React), the mouseMove
- * delta tracking (lines 3329-3389), and the mouseUp PM-transaction
- * commit (lines 3454-3618). Same constants (1px ≈ 15 twips at 96dpi,
- * 300 twips column min, 200 twips row min). Same attribute mutations
- * (columnWidths on table node, width/widthType/colwidth on each cell,
- * height/heightRule on the row).
+ * Ports the mouseDown branch, the mouseMove delta tracking, and the mouseUp
+ * commit, which runs the shared resize command through `runCommand` in the
+ * view the resize started in. Same constants (1px ≈ 15 twips at 96dpi,
+ * 300 twips column min, 200 twips row min).
  *
  * Returns:
  *   - tryStartResize(e, view): returns true if the click started a
@@ -15,20 +13,22 @@
  *   - install(): wires global mousemove/mouseup listeners. Caller
  *     should invoke the returned cleanup on unmount.
  */
+import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import {
   clampRowResizeDelta,
-  commitColumnResize,
-  commitRightEdgeResize,
-  commitRowResize,
+  columnResizeCommand,
   MIN_CELL_WIDTH_TWIPS,
   MIN_ROW_HEIGHT_TWIPS,
   readColumnWidthAt,
   readColumnWidths,
   readRowHeight,
+  rightEdgeResizeCommand,
+  rowResizeCommand,
   TWIPS_PER_PIXEL,
 } from "@stll/folio-core/prosemirror/tableResize";
+import { readPaintedTableStart } from "@stll/folio-core/utils/paintedPositions";
 
 type ColumnResizeState = {
   active: boolean;
@@ -65,7 +65,14 @@ export type UseTableResizeReturn = {
   isResizing: () => boolean;
 };
 
-export function useTableResize(): UseTableResizeReturn {
+export type UseTableResizeOptions = {
+  /** Run a resize command in the view the resize started in. */
+  runCommand: (view: EditorView, command: Command) => void;
+};
+
+export function useTableResize({
+  runCommand,
+}: UseTableResizeOptions): UseTableResizeReturn {
   const col: ColumnResizeState = {
     active: false,
     startX: 0,
@@ -112,7 +119,7 @@ export function useTableResize(): UseTableResizeReturn {
       col.handle = target;
       target.classList.add("dragging");
       col.columnIndex = parseInt(target.dataset["columnIndex"] ?? "0", 10);
-      col.tablePmStart = parseInt(target.dataset["tablePmStart"] ?? "0", 10);
+      col.tablePmStart = readPaintedTableStart(target) ?? 0;
       seedColumnWidths(view, col);
       return true;
     }
@@ -130,7 +137,7 @@ export function useTableResize(): UseTableResizeReturn {
       row.isEdge = target.dataset["isEdge"] === "bottom";
       target.classList.add("dragging");
       row.rowIndex = parseInt(target.dataset["rowIndex"] ?? "0", 10);
-      row.tablePmStart = parseInt(target.dataset["tablePmStart"] ?? "0", 10);
+      row.tablePmStart = readPaintedTableStart(target) ?? 0;
       seedRowHeight(view, row, target);
       return true;
     }
@@ -144,7 +151,7 @@ export function useTableResize(): UseTableResizeReturn {
       edge.handle = target;
       target.classList.add("dragging");
       edge.columnIndex = parseInt(target.dataset["columnIndex"] ?? "0", 10);
-      edge.tablePmStart = parseInt(target.dataset["tablePmStart"] ?? "0", 10);
+      edge.tablePmStart = readPaintedTableStart(target) ?? 0;
       seedRightEdgeWidth(view, edge);
       return true;
     }
@@ -203,12 +210,15 @@ export function useTableResize(): UseTableResizeReturn {
       col.active = false;
       col.handle?.classList.remove("dragging");
       if (viewRef)
-        commitColumnResize(viewRef, {
-          pmStart: col.tablePmStart,
-          colIdx: col.columnIndex,
-          newLeft: col.origWidths.left,
-          newRight: col.origWidths.right,
-        });
+        runCommand(
+          viewRef,
+          columnResizeCommand({
+            pmStart: col.tablePmStart,
+            colIdx: col.columnIndex,
+            newLeft: col.origWidths.left,
+            newRight: col.origWidths.right,
+          }),
+        );
       col.handle = null;
       return;
     }
@@ -216,11 +226,14 @@ export function useTableResize(): UseTableResizeReturn {
       row.active = false;
       row.handle?.classList.remove("dragging");
       if (viewRef)
-        commitRowResize(viewRef, {
-          pmStart: row.tablePmStart,
-          rowIdx: row.rowIndex,
-          newHeight: row.origHeight,
-        });
+        runCommand(
+          viewRef,
+          rowResizeCommand({
+            pmStart: row.tablePmStart,
+            rowIdx: row.rowIndex,
+            newHeight: row.origHeight,
+          }),
+        );
       row.handle = null;
       return;
     }
@@ -228,11 +241,14 @@ export function useTableResize(): UseTableResizeReturn {
       edge.active = false;
       edge.handle?.classList.remove("dragging");
       if (viewRef)
-        commitRightEdgeResize(viewRef, {
-          pmStart: edge.tablePmStart,
-          colIdx: edge.columnIndex,
-          newWidth: edge.origWidth,
-        });
+        runCommand(
+          viewRef,
+          rightEdgeResizeCommand({
+            pmStart: edge.tablePmStart,
+            colIdx: edge.columnIndex,
+            newWidth: edge.origWidth,
+          }),
+        );
       edge.handle = null;
     }
   }

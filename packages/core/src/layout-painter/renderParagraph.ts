@@ -73,6 +73,7 @@ import { resolveFontFamily } from "../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
 import { underlineDecorationCss } from "../utils/formatToStyle";
 import { getHorizontalScaleFactor } from "../utils/horizontalScale";
+import { writePaintedRange } from "../utils/paintedPositions";
 import { getParagraphFrame } from "../utils/paragraphFrame";
 import {
   inlinePictureClipInsets,
@@ -759,12 +760,7 @@ function applyPmPositions(
   pmStart?: number,
   pmEnd?: number,
 ): void {
-  if (pmStart !== undefined) {
-    element.dataset["pmStart"] = String(pmStart);
-  }
-  if (pmEnd !== undefined) {
-    element.dataset["pmEnd"] = String(pmEnd);
-  }
+  writePaintedRange(element, pmStart, pmEnd);
 }
 
 /**
@@ -3497,6 +3493,7 @@ function bordersFormGroup(a?: ParagraphBorders, b?: ParagraphBorders): boolean {
 export const paragraphHasTrackedChanges = (block: ParagraphBlock): boolean =>
   block.reviewIndicator === "change-bar" ||
   block.attrs?.listMarkerRevision !== undefined ||
+  block.attrs?.formattingRevision === true ||
   block.runs.some(
     (run) =>
       run.kind !== "lineBreak" &&

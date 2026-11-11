@@ -31,15 +31,54 @@ const suggestedRevisionIdsIn = (value: unknown, out: Set<number>): void => {
 };
 
 /**
+ * The ids of the comments pending suggestions propose: every one, or those of
+ * one suggestion. A reply is removed with the comment it answers.
+ */
+export const suggestedCommentIds = (
+  document: Document,
+  suggestionId?: string,
+): number[] =>
+  (document.package.document.comments ?? []).flatMap((comment) =>
+    comment.suggestionId !== undefined &&
+    (suggestionId === undefined || comment.suggestionId === suggestionId)
+      ? [comment.id]
+      : [],
+  );
+
+/** Remove proposed comments with their ranges and replies. */
+export const withoutSuggestedComments = (
+  document: Document,
+  ids: readonly number[],
+): Result<Document, DocumentOpRefusal> => {
+  let current = document;
+  for (const id of ids) {
+    const removed = applyDocumentOp(current, {
+      type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+      id,
+      scope: "thread",
+    });
+    if (removed.isErr()) return Result.err(removed.error);
+    current = removed.value.document;
+  }
+  return Result.ok(current);
+};
+
+/**
  * The document as a save writes it: every pending suggestion rejected. A
  * suggestion is a proposal the host holds, not a change in the file, so the
- * file reads as if it had never been made; ordinary tracked changes stay.
+ * file reads as if it had never been made; ordinary tracked changes stay. A
+ * comment a suggestion proposes is left out with it.
  */
 export const withoutPendingSuggestions = (
   document: Document,
 ): Result<Document, DocumentOpRefusal> => {
-  let current = document;
-  for (const story of documentStories(document)) {
+  const uncommented = withoutSuggestedComments(
+    document,
+    suggestedCommentIds(document),
+  );
+  if (uncommented.isErr()) return uncommented;
+  let current = uncommented.value;
+  for (const story of documentStories(current)) {
     const ids = new Set<number>();
     suggestedRevisionIdsIn(storyBody(current, story), ids);
     if (ids.size === 0) continue;
@@ -87,9 +126,14 @@ export const suggestionRevisionInfos = (
   return [...out.values()];
 };
 
-/** The ids of every pending suggestion in a document, in every story. */
+/**
+ * The ids of every pending suggestion in a document, in every story, and of
+ * every suggestion that proposes a comment.
+ */
 export const pendingSuggestionIdsIn = (document: Document): Set<string> => {
   const out = new Set<string>();
+  for (const comment of document.package.document.comments ?? [])
+    if (comment.suggestionId !== undefined) out.add(comment.suggestionId);
   const visit = (value: unknown): void => {
     if (typeof value !== "object" || value === null) return;
     if (Array.isArray(value)) {

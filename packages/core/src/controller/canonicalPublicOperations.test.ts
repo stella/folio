@@ -371,6 +371,29 @@ test("all supported compiler kinds share direct/tracked undo and typed refusals"
       range,
       comment: { text: "note" },
     },
+    deleteBlock: {
+      id: "deleteBlock",
+      type: "deleteBlock",
+      blockId: "12345678",
+    },
+    insertAfterBlock: {
+      id: "insertAfterBlock",
+      type: "insertAfterBlock",
+      blockId: "12345678",
+      text: "gamma",
+    },
+    insertBeforeBlock: {
+      id: "insertBeforeBlock",
+      type: "insertBeforeBlock",
+      blockId: "12345678",
+      text: "gamma",
+    },
+    setBlockParagraphProperties: {
+      id: "setBlockParagraphProperties",
+      type: "setBlockParagraphProperties",
+      blockId: "12345678",
+      properties: { alignment: "center" },
+    },
   } as const satisfies Record<CompiledKind, FolioDocumentOperation>;
   for (const mode of ["direct", "tracked-changes"] as const) {
     for (const operation of Object.values(operations)) {
@@ -609,7 +632,7 @@ test("a suggested operation records one pending suggestion named by its id", () 
   expect(second.applied.map(({ suggestionId }) => suggestionId)).toEqual([
     "replace#2",
   ]);
-  // Comments are not something a suggestion carries.
+  // A comment is proposed as a suggestion of its own, and its record says so.
   const range = createFolioAITextRangeHandle({
     text: editor.snapshot().blocks.at(0)?.text ?? panic("Missing block"),
     blockId: "12345678",
@@ -617,21 +640,25 @@ test("a suggested operation records one pending suggestion named by its id", () 
     endOffset: 1,
   });
   if (!range) return panic("Missing range");
+  const commented = editor.apply(
+    [
+      {
+        id: "comment",
+        type: "commentOnRange",
+        range,
+        comment: { text: "Why?" },
+      },
+    ],
+    { mode: "suggested" },
+  );
+  expect(commented.applied.map(({ suggestionId }) => suggestionId)).toEqual([
+    "comment",
+  ]);
   expect(
-    editor
-      .apply(
-        [
-          {
-            id: "comment",
-            type: "commentOnRange",
-            range,
-            comment: { text: "Why?" },
-          },
-        ],
-        { mode: "suggested" },
-      )
-      .skipped.at(0)?.reason,
-  ).toBe("unsupportedMode");
+    editor.session.document.package.document.comments?.map(
+      ({ suggestionId }) => suggestionId,
+    ),
+  ).toEqual(["comment"]);
 });
 
 describe("suggested operations in the canonical session", () => {
@@ -737,18 +764,15 @@ describe("suggested operations in the canonical session", () => {
     const result = editor.apply(
       [
         {
-          id: "split",
-          type: "splitBlock",
+          id: "merge",
+          type: "mergeTableCells",
           blockId: "12345678",
-          offset: 5,
-          separator: " ",
+          rowCount: 2,
         },
-        { id: "merge", type: "mergeBlockWithNext", blockId: "12345678" },
       ],
       { mode: "suggested" },
     );
     expect(result.skipped.map(({ reason }) => reason)).toEqual([
-      "unsupportedMode",
       "unsupportedMode",
     ]);
   });

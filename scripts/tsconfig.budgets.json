@@ -3,7 +3,7 @@
   "compilerOptions": {
     "allowJs": false,
     "checkJs": false,
-    "types": ["bun-types"]
+    "types": ["bun-types", "node"]
   },
   "include": [
     "../test/typecheck/*.typecheck.ts",

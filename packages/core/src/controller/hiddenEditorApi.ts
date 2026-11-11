@@ -101,6 +101,15 @@ export type HiddenEditorApi = {
   ) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
+  /**
+   * The editor a person is working in for `story`: public operations on that
+   * story read its state, so its selection maps through them, and publish to
+   * it. A later view for the story replaces it; a destroyed one is ignored.
+   */
+  noteCanonicalStoryView: (options: {
+    story: OpStory;
+    view: EditorView;
+  }) => void;
   applyCanonicalDocumentOperations: (
     options: CanonicalPublicOperationOptions,
   ) => FolioDocumentOperationResult | null;
@@ -159,6 +168,7 @@ export type HiddenEditorApiDeps = {
     | "applyCanonicalSectionProperties"
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
+    | "noteCanonicalStoryView"
     | "applyCanonicalStoryHistory"
     | "getCanonicalStorySelection"
     | "applyCanonicalDocumentOperations"
@@ -280,6 +290,9 @@ export const createHiddenEditorApi = (
       deps.canonicalOperations?.getCanonicalStoryProjection(story) ?? null,
     replaceCanonicalStoryText: (options) =>
       deps.canonicalOperations?.replaceCanonicalStoryText(options) ?? false,
+    noteCanonicalStoryView: (options) => {
+      deps.canonicalOperations?.noteCanonicalStoryView(options);
+    },
 
     applyCanonicalDocumentOperations: (options) =>
       deps.canonicalOperations?.applyCanonicalDocumentOperations(options) ??

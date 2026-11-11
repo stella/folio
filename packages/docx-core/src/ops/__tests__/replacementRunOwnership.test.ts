@@ -253,18 +253,20 @@ describe("replacement source-run ownership", () => {
       layout: "shared",
       fields: "plain",
     });
+    // The new text follows the struck tab, so accepting removes the tab and
+    // rejoins the cut run before the new text; the direct edit agrees.
     expect(result.direct.package.document.content.at(0)).toEqual({
       type: "paragraph",
       paraId: "00000001",
       content: [
-        { type: "run", content: [{ type: "renderedPageBreak" }] },
         {
           type: "run",
           content: [
-            { type: "text", text: "edited" },
             { type: "renderedPageBreak" },
+            { type: "text", text: "edited" },
           ],
         },
+        { type: "run", content: [{ type: "renderedPageBreak" }] },
       ],
     });
   });

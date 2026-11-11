@@ -1254,6 +1254,8 @@ slowTest(HIDDEN_LEVELS_TEST, async () => {
                   numbering: { kind: "inherit" },
                 },
               };
+            default:
+              return request satisfies never;
           }
         });
         const receipt = await applyChecked(

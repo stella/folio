@@ -15,6 +15,8 @@
         :document-buffer="documentBuffer"
         author="Folio User"
         v-bind="optionalEditorProps"
+        :mode="editorMode"
+        :on-mode-change="(mode: EditorMode) => (editorMode = mode)"
         :show-toolbar="true"
         :show-ruler="true"
         :show-margin-guides="showMarginGuides"
@@ -60,6 +62,7 @@ import type {
   Document as FolioDocument,
   DocxEditorCollaboration,
   DocxEditorRef,
+  EditorMode,
   FindResult,
 } from "@stll/folio-vue";
 
@@ -72,6 +75,14 @@ import { buildScrollParityBridge } from "./scrollParityBridge";
 import type { ScrollParityBridge } from "./scrollParityBridge";
 
 declare global {
+  // Test hook: browser specs read live editor state through this, as in the
+  // React playground.
+  // eslint-disable-next-line no-var
+  var __folioPlayground:
+    | {
+        getEditorRef: () => DocxEditorRef | null;
+      }
+    | undefined;
   // eslint-disable-next-line no-var
   var __folioParity: FolioParityBridge | undefined;
   var __folioScrollParity: ScrollParityBridge | undefined;
@@ -99,6 +110,9 @@ const findResultNotifications: (FindResult | null)[] = [];
 const query = new URLSearchParams(window.location.search);
 const experimentalSession =
   query.get("session") === "canonical" ? "canonical" : undefined;
+const editorMode = ref<EditorMode>(
+  query.get("mode") === "suggesting" ? "suggesting" : "editing",
+);
 const collaborationEnabled = query.has("collaboration");
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;
@@ -139,6 +153,7 @@ collaborationAwareness?.setLocalStateField("user", {
 
 onMounted(() => {
   void loadFromQuery();
+  globalThis.__folioPlayground = { getEditorRef: () => editorRef.value };
   globalThis.__folioCanonical = buildCanonicalBridge(() => editorRef.value);
   globalThis.__folioCanonicalReady = true;
   globalThis.__folioScrollParity = scrollParityHost;
@@ -193,6 +208,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  globalThis.__folioPlayground = undefined;
   globalThis.__folioCanonicalReady = false;
   globalThis.__folioCanonical = undefined;
   globalThis.__folioParity = undefined;

@@ -272,10 +272,10 @@ const editorFor = (document: Document, mode: EditingMode): Editor => {
     state: EditorState.create({
       doc: toProseDoc(document, { styles, theme }),
       plugins: [
+        createDocumentNumberingPlugin(numbering),
         createSuggestionModePlugin(mode === "suggesting", "Reviewer"),
         ...manager.getPlugins(),
         createDocumentStylesPlugin(styles),
-        createDocumentNumberingPlugin(numbering),
       ],
     }),
     composing: false,

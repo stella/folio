@@ -30,7 +30,7 @@ import {
   type SequenceChild,
   type SequenceContainer,
 } from "@stll/docx-core/schema";
-import { OOXML_NS } from "@stll/docx-utils";
+import { OOXML_NS } from "@stll/docx-core/xml/namespaces";
 
 import {
   type DeclaredChild,

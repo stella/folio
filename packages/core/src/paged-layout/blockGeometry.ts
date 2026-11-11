@@ -4,6 +4,10 @@ import {
   findPageShellForPmPos,
   PAINTER_PAINTED_EVENT,
 } from "../layout-painter/renderPage";
+import {
+  PAINTED_START_SELECTOR,
+  readPaintedStart,
+} from "../utils/paintedPositions";
 
 /** Painted geometry for one AI-snapshot block in scroll-content coordinates. */
 export type BlockRect = {
@@ -30,7 +34,7 @@ type RequestedBlock = {
   pmStart: number;
 };
 
-const PAINTED_BLOCK_SELECTOR = "[data-block-id][data-pm-start]";
+const PAINTED_BLOCK_SELECTOR = `[data-block-id]${PAINTED_START_SELECTOR}`;
 const PAGE_SELECTOR = "[data-page-number]";
 
 const pageNumberOf = (page: HTMLElement): number | null => {
@@ -65,7 +69,7 @@ const paintedBlocksByPmStart = (
   for (const element of page.querySelectorAll<HTMLElement>(
     PAINTED_BLOCK_SELECTOR,
   )) {
-    const pmStart = Number(element.dataset["pmStart"]);
+    const pmStart = readPaintedStart(element) ?? Number.NaN;
     if (Number.isFinite(pmStart) && !blocks.has(pmStart)) {
       blocks.set(pmStart, element);
     }

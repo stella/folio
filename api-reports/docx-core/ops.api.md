@@ -143,6 +143,9 @@ export type CommentAnchor = {
 };
 
 // @public
+export const commentAnchorSequence: (blocks: readonly BlockContent[]) => string[];
+
+// @public
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
 // @public (undocumented)
@@ -215,7 +218,9 @@ export type CreateCommentOp = {
 };
 
 // @public
-export const createEditorIntentIdAllocator: () => (document: Document_2, intent: EditorIntentAllocation) => {
+export const createEditorIntentIdAllocator: (input?: {
+    reservedBlockIds?: ReadonlySet<string>;
+}) => (document: Document_2, intent: EditorIntentAllocation) => {
     revisionId: number;
     newBlockId: string;
     newIds: {
@@ -259,6 +264,7 @@ export type DeleteBlocksOp = {
     story: OpStory;
     blockIds: readonly string[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
@@ -462,6 +468,18 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "tableBlock";
     operation: TableBlockIntentOperation;
 } | {
+    type: "insertParagraphs";
+    story: OpStory;
+    at: BlockInsertionPoint;
+    paragraphs: readonly Paragraph[];
+    move?: true;
+    newList?: NewListInstance;
+} | {
+    type: "deleteParagraphs";
+    story: OpStory;
+    blockIds: readonly string[];
+    move?: true;
+} | {
     type: "replaceFragment";
     from: TextPosition;
     to: TextPosition;
@@ -496,6 +514,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "formatParagraph";
     at: TextPosition;
     patch: ParagraphPropsPatch;
+    newList?: NewListInstance;
 } | {
     type: "setList";
     items: readonly {
@@ -524,6 +543,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     story: OpStory;
     blockId: string;
     nextBlockId: string;
+    survivor?: SplitHalf;
 };
 
 // @public
@@ -605,6 +625,7 @@ export type InsertBlocksOp = {
     at: BlockInsertionPoint;
     blocks: readonly Paragraph[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
@@ -724,6 +745,12 @@ export type NewIds = {
 };
 
 // @public
+export type NewListInstance = {
+    num: NumberingInstance;
+    abstractNum?: AbstractNumbering;
+};
+
+// @public
 export const normalizeForOps: (document: Document_2) => Document_2;
 
 // @public (undocumented)
@@ -836,11 +863,13 @@ export const paragraphLogicalText: (paragraph: Paragraph) => string;
 
 // @public
 export const paragraphMarkOutcome: (input: {
-    follows: "paragraph" | "table" | "nothing";
+    follows: "paragraph" | "table" | "block" | "nothing";
     holdsContent: ParagraphContentVerdict;
     markWasAdded: boolean;
     containerStillEndsWithParagraph: boolean;
     followingTableCanReceiveRunIn: boolean;
+    holdsContentOnceAccepted?: ParagraphContentVerdict;
+    followingBlockCanReceiveRunIn?: boolean;
     needsFollowingCommentHost?: boolean;
     tableRemovalIsTrackable?: boolean;
     removedSectionProperties?: boolean;
@@ -858,6 +887,9 @@ export const paragraphMarkOutcome: (input: {
     kind: "refuse";
     reason: "untrackable";
 } & SectionTransfer);
+
+// @public
+export const paragraphPropertySnapshotToken: (paragraph: Paragraph) => object | undefined;
 
 // @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
@@ -908,6 +940,7 @@ export const planTrackedReplace: (document: Document_2, options: PlanTrackedRepl
 
 // @public
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+    deletionRevision?: RevisionStamp;
     sourceContainerPolicy: "join" | "separate";
     seamPolicy?: Extract<DocumentOp, {
         type: "insertContent";
@@ -971,6 +1004,9 @@ export type ReplaceInlineOp = {
     content: readonly ParagraphContent[];
 };
 
+// @public (undocumented)
+export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
+
 // @public
 export type ResolveRevisionOp = {
     type: typeof DOCUMENT_OP_TYPES.RESOLVE_REVISION;
@@ -1006,6 +1042,12 @@ export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION
 
 // @public
 export const revisionIdDemand: (document: Document_2, op: DocumentOp) => Result<number, DocumentOpRefusal>;
+
+// @public
+export const revisionSpan: (items: readonly InlineNode[], revisionIds: ReadonlySet<number>) => {
+    from: number;
+    to: number;
+} | undefined;
 
 // @public
 export type RevisionStamp = {
@@ -1245,6 +1287,12 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
+export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
+
+// @public
+export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];
+
+// @public
 export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];
 
 // @public
@@ -1297,7 +1345,7 @@ export type UpdateCommentContentOp = {
     type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
     id: number;
     content: readonly Paragraph[];
-    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date">>;
+    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date" | "suggestionId">>;
 };
 
 // @public
@@ -1327,6 +1375,9 @@ export const withoutCommentThreads: (comments: readonly Comment_2[], removedRoot
 
 // @public
 export const withoutPendingSuggestions: (document: Document_2) => Result<Document_2, DocumentOpRefusal>;
+
+// @public
+export const withParagraphCopies: (input: WithParagraphCopiesOptions) => Document_2;
 
 // @public
 export type ZeroWidthItem = keyof typeof ZERO_WIDTH_ITEMS_HOLD_CONTENT;

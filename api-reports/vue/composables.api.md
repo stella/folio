@@ -8,7 +8,9 @@ import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymi
 import { App } from 'vue';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
+import { Command } from 'prosemirror-state';
 import { CommandMap } from '@stll/folio-core/prosemirror/extensions/types';
+import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComputedRef } from 'vue';
 import { createSelectionFromDOM } from '@stll/folio-core/managers/ClipboardManager';
 import { createVisualLineState } from '@stll/folio-core/prosemirror/utils/visualLineNavigation';
@@ -133,6 +135,7 @@ export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
 
 // @public (undocumented)
 export type UseDocxEditorOptions = {
+    comments?: () => readonly Comment_2[];
     hiddenContainer: Ref<HTMLElement | null>;
     hiddenHeaderFooterContainer?: Ref<HTMLElement | null>;
     noteEditorContainer?: Ref<HTMLElement | null>;
@@ -181,6 +184,9 @@ export type UseDocxEditorReturn = {
     isDirty: Ref<boolean>;
     parseError: Ref<string | null>;
     layout: Ref<Layout | null>;
+    modelDocument: Readonly<Ref<Document_2 | null>>;
+    sourceBuffer: Readonly<Ref<ArrayBuffer | null>>;
+    hiddenEditorWidth: Ref<number>;
     blocks: Ref<FlowBlock[]>;
     measures: Ref<Measure[]>;
     syncCoordinator: LayoutSelectionGate;
@@ -309,7 +315,12 @@ export type UseSelectionHighlightReturn = {
 };
 
 // @public (undocumented)
-export function useTableResize(): UseTableResizeReturn;
+export function useTableResize(input: UseTableResizeOptions): UseTableResizeReturn;
+
+// @public (undocumented)
+export type UseTableResizeOptions = {
+    runCommand: (view: EditorView, command: Command) => void;
+};
 
 // @public (undocumented)
 export type UseTableResizeReturn = {

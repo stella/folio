@@ -24,6 +24,7 @@ import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
+import { createNativeSelectionRefreshPlugin } from "../prosemirror/nativeSelection";
 import { noteReferenceTransactionIssue } from "../prosemirror/noteReferenceOccurrences";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import {
@@ -68,6 +69,11 @@ export type NoteEditorManagerDeps = {
     | undefined;
   getDocument: () => Document | null;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
+  /**
+   * The canonical session's own document, read without a copy (see
+   * `HiddenEditorManager.readCanonicalDocument`); null outside a session.
+   */
+  readCanonicalDocument: () => Document | null;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
   onSessionRefusal?:
     | ((reason: string, ground: CanonicalRefusalGround, error?: Error) => void)
@@ -157,10 +163,10 @@ const buildInitialState = (
         doc: document,
         schema,
         plugins: [
+          createDocumentNumberingPlugin(numbering),
           ...manager.getPlugins(),
           ...externalPlugins,
           createDocumentStylesPlugin(styles),
-          createDocumentNumberingPlugin(numbering),
         ],
       }),
     ),
@@ -237,7 +243,7 @@ export const createNoteEditorManager = (
       deps.getExperimentalSession?.(),
       CANONICAL_GAP.authorityRouting,
     )
-      ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? null)
+      ? deps.readCanonicalDocument()
       : deps.getDocument();
 
   const sync = (): void => {
@@ -423,8 +429,9 @@ export const createNoteEditorManager = (
           ? EditorState.create({
               doc: canonicalProjection,
               plugins: [
-                createDocumentStyleContextPlugin(styles),
                 createDocumentNumberingPlugin(numbering),
+                createDocumentStyleContextPlugin(styles),
+                createNativeSelectionRefreshPlugin(),
               ],
             })
           : buildInitialState(

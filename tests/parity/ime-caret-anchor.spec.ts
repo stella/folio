@@ -67,14 +67,28 @@ forEachAdapter(
           };
         }
 
-        const nativeCaret = range.getBoundingClientRect();
+        // A caret with no box of its own (in an empty paragraph, beside its
+        // line break, in an empty inline wrapper) stands at the left edge of
+        // the node after it, or of the element holding it, beside that box:
+        // only its left edge is exact.
+        const caretBox = range.getClientRects().length > 0;
+        const holder = range.startContainer;
+        const after = holder.childNodes[range.startOffset];
+        let nativeCaret = range.getBoundingClientRect();
+        if (!caretBox && after instanceof Element)
+          nativeCaret = after.getBoundingClientRect();
+        else if (!caretBox && holder instanceof Element)
+          nativeCaret = holder.getBoundingClientRect();
         const visibleCaret = paintedCaret.getBoundingClientRect();
         const deltaX = Math.abs(nativeCaret.left - visibleCaret.left);
         const deltaY = Math.abs(nativeCaret.top - visibleCaret.top);
+        const withinBox =
+          visibleCaret.top <= nativeCaret.bottom + 1 &&
+          visibleCaret.bottom >= nativeCaret.top - 1;
         return {
           aligned:
             deltaX <= 1 &&
-            deltaY <= 1 &&
+            (caretBox ? deltaY <= 1 : withinBox) &&
             hiddenHost.style.transform.startsWith("translate3d("),
           deltaX,
           deltaY,
@@ -162,14 +176,28 @@ forEachAdapter(
           };
         }
 
-        const nativeCaret = range.getBoundingClientRect();
+        // A caret with no box of its own (in an empty paragraph, beside its
+        // line break, in an empty inline wrapper) stands at the left edge of
+        // the node after it, or of the element holding it, beside that box:
+        // only its left edge is exact.
+        const caretBox = range.getClientRects().length > 0;
+        const holder = range.startContainer;
+        const after = holder.childNodes[range.startOffset];
+        let nativeCaret = range.getBoundingClientRect();
+        if (!caretBox && after instanceof Element)
+          nativeCaret = after.getBoundingClientRect();
+        else if (!caretBox && holder instanceof Element)
+          nativeCaret = holder.getBoundingClientRect();
         const visibleCaret = paintedCaret.getBoundingClientRect();
         const deltaX = Math.abs(nativeCaret.left - visibleCaret.left);
         const deltaY = Math.abs(nativeCaret.top - visibleCaret.top);
+        const withinBox =
+          visibleCaret.top <= nativeCaret.bottom + 1 &&
+          visibleCaret.bottom >= nativeCaret.top - 1;
         return {
           aligned:
             deltaX <= 1 &&
-            deltaY <= 1 &&
+            (caretBox ? deltaY <= 1 : withinBox) &&
             hiddenHost.style.transform.startsWith("translate3d("),
           deltaX,
           deltaY,
@@ -197,5 +225,72 @@ forEachAdapter(
       element.scrollTop += 120;
     });
     await expectAligned();
+  },
+);
+
+forEachAdapter(
+  "CJK IME input caret stays beside a composition as it grows",
+  async (adapter, { page }) => {
+    await openEditor(page, adapter);
+    await ensureLiveView(page);
+    await page
+      .locator(".paged-editor__hidden-pm > .ProseMirror")
+      .first()
+      .focus();
+    await page
+      .locator(".layout-page-content span[data-pm-start][data-pm-end]")
+      .first()
+      .click({ position: { x: 80, y: 8 } });
+
+    // While composing, the anchor stays where the composition began and the
+    // provisional text is measured with the hidden editor's fonts, so the
+    // native caret, where the candidate window opens, may settle a few
+    // pixels from the painted one, but never anywhere else.
+    const readDistance = () =>
+      page.evaluate(() => {
+        const selection = document.getSelection();
+        const painted = document
+          .querySelector<HTMLElement>("[data-folio-caret-rect]")
+          ?.getBoundingClientRect();
+        if (!selection || selection.rangeCount === 0 || !painted) return null;
+        const range = selection.getRangeAt(0);
+        if (range.getClientRects().length === 0) return null;
+        const native = range.getBoundingClientRect();
+        return {
+          dx: Math.abs(native.left - painted.left),
+          dy: Math.abs(native.top - painted.top),
+        };
+      });
+
+    // Compose once the anchor has followed the click.
+    await expect
+      .poll(async () => {
+        const distance = await readDistance();
+        return distance !== null && distance.dx <= 1 && distance.dy <= 1;
+      })
+      .toBe(true);
+
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      const text = "あいうえおかきくけこさしすせそ";
+      for (let length = 1; length <= text.length; length += 2) {
+        await cdp.send("Input.imeSetComposition", {
+          text: text.slice(0, length),
+          selectionStart: length,
+          selectionEnd: length,
+        });
+        // The painted caret follows the provisional text after a layout
+        // pass; the native one must end up beside it.
+        await expect
+          .poll(async () => {
+            const distance = await readDistance();
+            return distance !== null && distance.dx < 12 && distance.dy < 6;
+          }, adapter.name)
+          .toBe(true);
+      }
+      await cdp.send("Input.insertText", { text });
+    } finally {
+      if (!page.isClosed()) await cdp.detach();
+    }
   },
 );

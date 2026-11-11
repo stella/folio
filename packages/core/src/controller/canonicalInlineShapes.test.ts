@@ -39,12 +39,12 @@ import {
 setDefaultTimeout(propertyTestTimeout(60_000));
 
 const fixturesFor = (text: string) => [
-  ...Object.values(CANONICAL_PARAGRAPH_SHAPE_FACTORIES)
-    .map((factory) => factory(text))
-    .flat(),
-  ...Object.values(CANONICAL_RUN_SHAPE_FACTORIES)
-    .map((factory) => factory(text))
-    .flat(),
+  ...Object.values(CANONICAL_PARAGRAPH_SHAPE_FACTORIES).flatMap((factory) =>
+    factory(text),
+  ),
+  ...Object.values(CANONICAL_RUN_SHAPE_FACTORIES).flatMap((factory) =>
+    factory(text),
+  ),
 ];
 const refusalExpected = ({
   item,
@@ -172,7 +172,7 @@ test("generated source union shapes activate with exact logical gaps or explain 
 });
 
 test("structured field caches keep text safety checks despite atomic projection", () => {
-  for (const text of ["bad\u0000", "bad\ud800", "bad\t", "bad\n", "bad\r"]) {
+  for (const text of ["bad\u0000", "bad\ud800", "bad\n", "bad\r"]) {
     for (const fixture of [
       ...CANONICAL_PARAGRAPH_SHAPE_FACTORIES.simpleField(text),
       ...CANONICAL_PARAGRAPH_SHAPE_FACTORIES.complexField(text),

@@ -8,11 +8,13 @@ export {
   shiftCopyOriginAncestors,
 } from "./copyOriginAncestors";
 export { noteUsesCustomMark } from "./noteMarks";
+export { withParagraphCopies } from "./paragraphCopies";
 export { sectionPropertiesAt } from "./storyLifecycle";
 export {
   storyBody,
   findStoryBody,
   documentStories,
+  replaceStoryBody,
   sameStory,
 } from "./stories";
 /**
@@ -22,7 +24,7 @@ export {
  * sequencer apply operations with one implementation.
  */
 
-export { withBodyContent } from "./blocks";
+export { storyParagraphs, withBodyContent } from "./blocks";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {
   type BoundaryOccurrence,
@@ -33,6 +35,7 @@ export {
 export { captureDocumentOp } from "./wire";
 export {
   pendingSuggestionIdsIn,
+  suggestedCommentIds,
   suggestionRevisionInfos,
   withoutPendingSuggestions,
 } from "./suggestions";
@@ -41,12 +44,16 @@ export {
   defaultInsertionGap,
   inlineLeafSpans,
   isCommentAnchorCarrierType,
+  revisionSpan,
   zeroWidthLeavesAt,
 } from "./leaves";
 export { mapTocBookmarkPosition } from "./tocIntent";
 export { packageResourcesOpOf } from "./packageResources";
 export { combineEdits } from "./edits";
-export { registerParagraphPropertySnapshot } from "./paragraphPropertySnapshot";
+export {
+  paragraphPropertySnapshotToken,
+  registerParagraphPropertySnapshot,
+} from "./paragraphPropertySnapshot";
 export {
   applyDocumentOpEnvelope,
   applyDocumentOp,
@@ -68,6 +75,7 @@ export {
   editorPositionAtPhysicalPosition,
   physicalPositionAtEditorOffset,
   type EditorIntent,
+  type NewListInstance,
   type TableIntentOperation,
   type TableRowIntentOperation,
   type TableBlockIntentOperation,
@@ -223,6 +231,7 @@ export {
 export { idKey, packageParagraphIds, paragraphIdsIn } from "./ids";
 
 export {
+  commentAnchorSequence,
   commentDocumentIssue,
   freshCommentId,
   isCommentExhausted,
