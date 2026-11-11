@@ -1380,6 +1380,9 @@ export const withoutPendingSuggestions: (document: Document_2) => Result<Documen
 export const withParagraphCopies: (input: WithParagraphCopiesOptions) => Document_2;
 
 // @public
+export const withParagraphRenderings: (input: WithParagraphRenderingsOptions) => Document_2 | undefined;
+
+// @public
 export type ZeroWidthItem = keyof typeof ZERO_WIDTH_ITEMS_HOLD_CONTENT;
 
 // @public
