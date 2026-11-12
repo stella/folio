@@ -196,6 +196,8 @@ type RowRevisionScope = {
   kind: "insertion" | "deletion";
   /** The row's own change, which the folded run marks belong to. */
   change: FolioReviewChange;
+  /** The row change's key among the grouped changes. */
+  key: string;
 };
 
 /**
@@ -233,6 +235,72 @@ const belongsToRowRevision = (
   (revision.author === scope.change.author &&
     revision.date === scope.change.date);
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/**
+ * Every revision id a model value holds: each tracked record carries its
+ * `info`, and a table grid revision its own `id`.
+ */
+const revisionIdsIn = (value: unknown, ids = new Set<number>()) => {
+  if (Array.isArray(value)) {
+    for (const item of value) revisionIdsIn(item, ids);
+    return ids;
+  }
+  if (!isRecord(value)) return ids;
+  for (const [key, field] of Object.entries(value)) {
+    if (key === "sourceXml" || key === "gridSourceXml") continue;
+    if (
+      (key === "info" || key === "gridChange") &&
+      isRecord(field) &&
+      typeof field["id"] === "number"
+    )
+      ids.add(field["id"]);
+    revisionIdsIn(field, ids);
+  }
+  return ids;
+};
+
+/** The grid revision a table node keeps with its source formatting, if any. */
+const tableGridRevisionId = (node: PMNode): number | null => {
+  const formatting: unknown = node.attrs["_originalFormatting"];
+  if (!isRecord(formatting)) return null;
+  const gridChange = formatting["gridChange"];
+  return isRecord(gridChange) && typeof gridChange["id"] === "number"
+    ? gridChange["id"]
+    : null;
+};
+
+/**
+ * Revision ids in the vertically merged continuation cells each row of
+ * `table` holds without a merge revision of their own. The editor folds a
+ * continuation cell into the cell that starts the merge, so its content has
+ * no node; its row's change stands for it.
+ */
+const continuationRevisionIdsByRow = (
+  table: PMNode,
+  tablePos: number,
+): Map<number, Set<number>> => {
+  const rowPositions: number[] = [];
+  table.forEach((_row, offset) => rowPositions.push(tablePos + 1 + offset));
+  const byRow = new Map<number, Set<number>>();
+  table.forEach((row, _offset, rowIndex) => {
+    row.forEach((cell) => {
+      const continuations: unknown = cell.attrs["_docxVMergeContinuationCells"];
+      if (!Array.isArray(continuations)) return;
+      continuations.forEach((continuation: unknown, index) => {
+        if (getTableCellMergeChange(continuation)) return;
+        const rowPos = rowPositions[rowIndex + 1 + index];
+        if (rowPos === undefined) return;
+        const ids = byRow.get(rowPos) ?? new Set<number>();
+        revisionIdsIn(continuation, ids);
+        if (ids.size > 0) byRow.set(rowPos, ids);
+      });
+    });
+  });
+  return byRow;
+};
+
 /** Shared revision interpreter; a null block map omits unrelated block-id projection. */
 const getTrackedChangeGroupsFromProjectedDoc = (
   doc: PMNode,
@@ -257,8 +325,16 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   // Innermost enclosing marked row first: a table nested in a marked row can
   // carry a marked row of its own.
   const rowRevisionScopes: RowRevisionScope[] = [];
-  // Run revision ids folded into a row's entry: resolving the row reaches them.
-  const rowFoldedIds = new Map<FolioReviewChange, Set<number>>();
+  // Revision ids an entry stands for beyond its own: the run marks a row
+  // folds, the content of continuation cells, a table's grid revision.
+  // Resolving the entry reaches them.
+  const foldedIds = new Map<string, Set<number>>();
+  const fold = (key: string, ids: Iterable<number>) => {
+    const folded = foldedIds.get(key) ?? new Set<number>();
+    for (const id of ids) folded.add(id);
+    foldedIds.set(key, folded);
+  };
+  const continuationRevisions = new Map<number, Set<number>>();
   const derivedFormattingRepresentationPositions = new Set<number>();
   const noteReferences = collectNoteReferenceLabels(doc);
   let currentBlockId: string | null = null;
@@ -289,6 +365,30 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         );
       });
     }
+    if (node.type.name === "table") {
+      for (const [rowPos, ids] of continuationRevisionIdsByRow(node, pos))
+        continuationRevisions.set(rowPos, ids);
+      const gridId = tableGridRevisionId(node);
+      if (gridId !== null) {
+        // A grid revision has no author or date of its own; it is part of
+        // the table's property change, or lists as one when there is none.
+        const tableChangeKey = [...grouped.entries()].find(
+          ([key, change]) =>
+            key.startsWith(`node:${String(pos)}:`) &&
+            change.type === "tablePropertiesChanged",
+        )?.[0];
+        if (tableChangeKey !== undefined) fold(tableChangeKey, [gridId]);
+        else
+          grouped.set(`grid:${String(gridId)}:${String(pos)}`, {
+            id: gridId,
+            type: "tablePropertiesChanged",
+            author: "",
+            date: null,
+            text: node.textContent,
+            blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
+          });
+      }
+    }
     if (node.type.name === "tableRow") {
       for (const [attrName, kind] of [
         ["trIns", "rowInserted"],
@@ -314,12 +414,14 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           text: node.textContent,
           blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
         };
-        grouped.set(`row:${kind}:${revisionId}:${String(pos)}`, change);
-        rowFoldedIds.set(change, new Set());
+        const key = `row:${kind}:${revisionId}:${String(pos)}`;
+        grouped.set(key, change);
+        fold(key, continuationRevisions.get(pos) ?? []);
         rowRevisionScopes.push({
           end: pos + node.nodeSize,
           kind: kind === "rowInserted" ? "insertion" : "deletion",
           change,
+          key,
         });
       }
     }
@@ -399,6 +501,9 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           });
           cellPositions.add(pos);
           structuralChangeCellPositions.set(key, cellPositions);
+          // The continuation cell has no node of its own: what else it
+          // holds belongs to the merge that folded it.
+          fold(key, revisionIdsIn(continuationCell));
         }
       }
     }
@@ -504,8 +609,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       ) {
         // The row's entry stands for this run's revision too, so its ids
         // reach a run mark minted under another id.
-        if (revision.id !== rowScope.change.id)
-          rowFoldedIds.get(rowScope.change)?.add(revision.id);
+        fold(rowScope.key, [revision.id]);
         continue;
       }
       const path = `${currentBlockId ?? ""}:${JSON.stringify(pathLayers.slice(0, layerIndex + 1))}`;
@@ -595,14 +699,17 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       previous.change.blockId === change.blockId
     ) {
       previous.change.text += change.text;
-      previous.ids.push(change.id);
+      previous.ids.push(change.id, ...(foldedIds.get(key) ?? []));
       previousRange.end = range.end;
       previousRange.lastBoundary = range.lastBoundary;
       continue;
     }
     const group = {
       change: { ...change },
-      ids: [change.id, ...(rowFoldedIds.get(change) ?? [])],
+      ids: [
+        change.id,
+        ...[...(foldedIds.get(key) ?? [])].filter((id) => id !== change.id),
+      ],
     };
     groups.push(group);
     if (range) {
