@@ -12,6 +12,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import { expectParagraphAttrs } from "./attrs";
 import { paragraphLeftAfter } from "./paragraphPropertyCarry";
 import { paragraphGoes, tableGoes } from "./tableRunIn";
 
@@ -63,4 +64,56 @@ export const insertionGapStart = (doc: PMNode, position: number): number => {
     if (!before || !isTable(before) || !tableGoes(before, "accept")) return at;
     at -= before.nodeSize;
   }
+};
+
+/**
+ * What accepting every change ends a pending join at: the paragraph whose
+ * break the joined words take, or a table that stays and stops them, as
+ * `joinEndsBeforeTable` reads it.
+ */
+export type PendingJoinEnd = {
+  kind: "paragraph" | "table";
+  position: number;
+};
+
+/**
+ * Where accepting every change ends the join from the paragraph at
+ * `position`, whose break is a plain pending deletion while something of it
+ * stays. The join runs on past the paragraphs accepting removes whole and
+ * takes the break of the next paragraph, when that break stays; a table that
+ * stays after at least one removed paragraph stops it, and the words keep
+ * their own paragraph. Null for any other end: a paragraph whose break goes
+ * as well (the longer join is read from its last paragraph), a table right
+ * after the words, or the end of the container.
+ */
+export const pendingJoinEnd = (
+  doc: PMNode,
+  position: number,
+): PendingJoinEnd | null => {
+  const paragraph = doc.nodeAt(position);
+  if (
+    paragraph?.type.name !== "paragraph" ||
+    expectParagraphAttrs(paragraph).pPrMark?.kind !== "del" ||
+    paragraphGoes(paragraph, "accept")
+  ) {
+    return null;
+  }
+  const $after = doc.resolve(position + paragraph.nodeSize);
+  let at = $after.pos;
+  for (let index = $after.index(); index < $after.parent.childCount; index++) {
+    const next = $after.parent.child(index);
+    if (next.type.name === "paragraph" && paragraphGoes(next, "accept")) {
+      at += next.nodeSize;
+      continue;
+    }
+    if (next.type.name === "paragraph") {
+      return expectParagraphAttrs(next).pPrMark == null
+        ? { kind: "paragraph", position: at }
+        : null;
+    }
+    return isTable(next) && at > $after.pos && !tableGoes(next, "accept")
+      ? { kind: "table", position: at }
+      : null;
+  }
+  return null;
 };

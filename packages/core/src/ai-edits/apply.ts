@@ -42,6 +42,8 @@ import {
   insertionGapStart,
   joinEndsBeforeTable,
   paragraphMergeLeaves,
+  type PendingJoinEnd,
+  pendingJoinEnd,
 } from "../prosemirror/acceptedBlockNeighbours";
 import { addTrackedDeletionMark } from "../prosemirror/addTrackedDeletionMark";
 import {
@@ -175,7 +177,11 @@ import {
   removeRowsWithoutCellsAfterBatch,
   type RowsEmptiedInBatch,
 } from "../prosemirror/tableGridMutation";
-import { runInCellPending } from "../prosemirror/tableRunIn";
+import {
+  paragraphGoes,
+  runInCellPending,
+  tableGoes,
+} from "../prosemirror/tableRunIn";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -4252,6 +4258,115 @@ const withSettledDirectFinalDeletions = (
   return changed;
 };
 
+type PendingJoin = { source: number; end: PendingJoinEnd };
+
+/** Every pending join in `doc`, with where accepting every change ends it. */
+const pendingJoinsOf = (doc: PMNode): PendingJoin[] => {
+  const joins: PendingJoin[] = [];
+  doc.descendants((node, position) => {
+    if (node.type.name !== "paragraph") return !node.isTextblock;
+    const end = pendingJoinEnd(doc, position);
+    if (end !== null) joins.push({ source: position, end });
+    return false;
+  });
+  return joins;
+};
+
+/** Whether every block between `from` and `to`, siblings, is a paragraph accepting removes whole. */
+const onlyRemovedParagraphsBetween = (
+  doc: PMNode,
+  from: number,
+  to: number,
+): boolean => {
+  const $from = doc.resolve(from);
+  if (doc.resolve(to).parent !== $from.parent) return false;
+  let at = from;
+  for (let index = $from.index(); at < to; index++) {
+    const block = $from.parent.maybeChild(index);
+    if (block?.type.name !== "paragraph" || !paragraphGoes(block, "accept"))
+      return false;
+    at += block.nodeSize;
+  }
+  return at === to;
+};
+
+type JoinsEndingWhereTheyDidOptions = {
+  tr: Transaction;
+  /** The pending joins before the batch (`pendingJoinsOf`). */
+  joins: readonly PendingJoin[];
+  /** Revision ids of the breaks the batch's block deletions deleted. */
+  deletedBlockBreaks: ReadonlySet<number>;
+};
+
+/**
+ * Keep each pending join ending where it did before the batch, when the batch
+ * removed what ended it. An edit reads the document as accepting leaves it,
+ * where the joined words are one paragraph with the break the join ended at;
+ * removing a block beside that paragraph leaves it standing, as it does when
+ * the edit is applied directly.
+ *
+ * - The paragraph a join runs into is part of the joined paragraph, and its
+ *   break is the joined paragraph's break. Deleting the paragraph deletes its
+ *   words; its break stays, or the joined words would run on into the block
+ *   after it. Where the batch also deletes the words joined into it, nothing
+ *   of the join is left and the break goes with them.
+ * - A table that stays stops a join run past paragraphs accepting removes,
+ *   and the joined words keep their own paragraph (`joinEndsBeforeTable`).
+ *   Removing that table keeps them there: the break of the paragraph they
+ *   stand in stays, which is what accepting already did.
+ *
+ * Neither changes what rejecting gives back. A break a merge deletes is a
+ * join asked for, and goes. Returns the revision ids of the breaks the
+ * batch's block deletions had deleted and keeps after all.
+ */
+const withJoinsEndingWhereTheyDid = ({
+  tr,
+  joins,
+  deletedBlockBreaks,
+}: JoinsEndingWhereTheyDidOptions): Set<number> => {
+  const kept = new Set<number>();
+  for (const join of joins) {
+    const source = tr.mapping.mapResult(join.source, 1);
+    const end = tr.mapping.mapResult(join.end.position, 1);
+    const paragraph = tr.doc.nodeAt(source.pos);
+    if (
+      source.deleted ||
+      paragraph?.type.name !== "paragraph" ||
+      !isPlainDeletedPPrMark(paragraph.attrs["pPrMark"]) ||
+      paragraphGoes(paragraph, "accept")
+    ) {
+      continue;
+    }
+    const sourceEnd = source.pos + paragraph.nodeSize;
+    if (join.end.kind === "paragraph") {
+      const left = end.deleted ? null : tr.doc.nodeAt(end.pos);
+      const revisionId = addedOrDeletedBreakRevisionId(left?.attrs["pPrMark"]);
+      if (
+        left?.type.name !== "paragraph" ||
+        !isPlainDeletedPPrMark(left.attrs["pPrMark"]) ||
+        revisionId === null ||
+        !deletedBlockBreaks.has(revisionId) ||
+        !paragraphGoes(left, "accept") ||
+        !onlyRemovedParagraphsBetween(tr.doc, sourceEnd, end.pos)
+      ) {
+        continue;
+      }
+      tr.setNodeAttribute(end.pos, "pPrMark", null);
+      kept.add(revisionId);
+      continue;
+    }
+    const table = end.deleted ? null : tr.doc.nodeAt(end.pos);
+    const tableRemoved =
+      table === null ||
+      (table.type.spec["tableRole"] === "table" && tableGoes(table, "accept"));
+    const stillStopped = pendingJoinEnd(tr.doc, source.pos)?.kind === "table";
+    if (tableRemoved && !stillStopped) {
+      tr.setNodeAttribute(source.pos, "pPrMark", null);
+    }
+  }
+  return kept;
+};
+
 /**
  * Finish the tracked deletion of every paragraph a container ends with.
  *
@@ -5772,6 +5887,10 @@ const applyFolioAIEditOperationsInternal = ({
   }
 
   let tr = view.state.tr;
+  /** The pending joins before the batch: see `withJoinsEndingWhereTheyDid`. */
+  const joinsBefore = isSuggested ? [] : pendingJoinsOf(view.state.doc);
+  /** Revision ids of the breaks a tracked `deleteBlock` deleted. */
+  const deletedBlockBreaks = new Set<number>();
   /** Text boxes a tracked block deletion deletes, by anchor. */
   const deletedTextBoxAnchorIds = new Set<string>();
   /** Container-ending paragraphs a tracked `deleteBlock` emptied: see `withRetiredFinalParagraphs`. */
@@ -7211,6 +7330,7 @@ const applyFolioAIEditOperationsInternal = ({
             }
           } else if (!endsItsContainer && deleted?.attrs["pPrMark"] == null) {
             const markRevisionId = operationRevisionSeed++;
+            deletedBlockBreaks.add(markRevisionId);
             tr = tr.setNodeAttribute(markPosition, "pPrMark", {
               kind: isPairedMove(item.operation.moveId) ? "moveFrom" : "del",
               info: {
@@ -8156,9 +8276,15 @@ const applyFolioAIEditOperationsInternal = ({
         revisionIds,
       };
     }
+    const keptJoinBreaks = withJoinsEndingWhereTheyDid({
+      tr,
+      joins: joinsBefore,
+      deletedBlockBreaks,
+    });
     const retractedRevisionIds = new Set([
       ...rotated.retractedRevisionIds,
       ...retired.retractedRevisionIds,
+      ...keptJoinBreaks,
     ]);
     if (retractedRevisionIds.size > 0) {
       for (const [receiptIndex, receipt] of applied.entries()) {
