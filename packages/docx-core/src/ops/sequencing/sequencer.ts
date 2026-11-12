@@ -1,5 +1,8 @@
+import type { Result } from "better-result";
+
 import type { Document } from "../../model/document";
 import { validateOpsDocument } from "../contract";
+import type { IdBlock, IdLease, IdLeaseKind } from "../idLease";
 import { DOCUMENT_OP_TYPES, type DocumentOp } from "../types";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
 import { applyBatch } from "./applyBatch";
@@ -10,6 +13,11 @@ import {
   type SequencedBatch,
   validateDocumentBatch,
 } from "./envelope";
+import {
+  createIdLeaseTable,
+  type IdLeaseRefusal,
+  type IdLeaseState,
+} from "./idLeases";
 import { transformBatch } from "./transform";
 
 const SUBMISSION_TYPES = { ACK: "ack", REJECT: "reject" } as const;
@@ -23,19 +31,44 @@ export type BatchReject = {
 };
 export type BatchSubmission = BatchAck | BatchReject;
 
-/** Deterministic append-only authority; the caller supplies delivery and storage. */
+export type SequencerOptions = {
+  /** The room's lease table, as `idLeases` gave it before a restart. */
+  idLeases?: IdLeaseState;
+};
+
+/**
+ * Deterministic append-only authority; the caller supplies delivery and
+ * storage. Every actor mints fresh ids only from the blocks the sequencer
+ * leases it, and a batch introducing an id outside its actor's lease is
+ * rejected, so concurrent actors never mint the same id.
+ */
 export const createSequencer = (
   document: Document,
+  options: SequencerOptions = {},
 ): {
   submit: (batch: DocumentBatch) => BatchSubmission;
+  /** The actor's remaining lease; the first call grants one block per kind. */
+  grantIdLease: (actor: string) => Result<IdLease, IdLeaseRefusal>;
+  /** One more block of `kind` for an actor running low. */
+  renewIdLease: (
+    actor: string,
+    kind: IdLeaseKind,
+  ) => Result<IdBlock, IdLeaseRefusal>;
   readonly document: Document;
   readonly headRev: number;
   readonly broadcasts: readonly SequencedBatch[];
+  /** The lease table to persist with the journal. */
+  readonly idLeases: IdLeaseState;
 } => {
   const valid = validateOpsDocument(document);
   if (valid.isErr()) {
     throw valid.error;
   }
+  const leaseTable = createIdLeaseTable(document, options.idLeases);
+  if (leaseTable.isErr()) {
+    throw leaseTable.error;
+  }
+  const leases = leaseTable.value;
   let current = document;
   const journal: SequencedBatch[] = [];
   // A replayed outcome answers only the actor whose batch first claimed the id.
@@ -112,6 +145,16 @@ export const createSequencer = (
         }),
       );
     }
+    const leased = leases.check(batch.actor, applied.value.document);
+    if (leased.isErr()) {
+      return reject(
+        new BatchRejection({
+          reason: BATCH_REJECTION_REASONS.OUTSIDE_ID_LEASE,
+          idKind: leased.error.kind,
+          message: `The ${leased.error.kind} id ${leased.error.id} is outside the submitter's lease.`,
+        }),
+      );
+    }
     const revision = journal.length + 1;
     const normalizedOps: DocumentOp[] = [];
     for (const [index, op] of transformed.value.ops.entries()) {
@@ -144,6 +187,7 @@ export const createSequencer = (
     };
     journal.push(sequenced);
     current = applied.value.document;
+    leases.record(batch.actor, current, leased.value);
     const ack: BatchAck = {
       type: SUBMISSION_TYPES.ACK,
       opId: batch.opId,
@@ -155,6 +199,11 @@ export const createSequencer = (
 
   return {
     submit,
+    grantIdLease: leases.grant,
+    renewIdLease: leases.renew,
+    get idLeases(): IdLeaseState {
+      return leases.state;
+    },
     get document(): Document {
       return current;
     },

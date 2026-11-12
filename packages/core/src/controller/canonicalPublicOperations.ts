@@ -23,6 +23,7 @@ import {
   type EditorIntent,
   findStoryBody,
   freshCommentId,
+  type IdLease,
   type NewListInstance,
   type OpStory,
   paragraphLength,
@@ -671,6 +672,11 @@ type CompilePublicIntentsOptions = {
   allocate: ReturnType<typeof createEditorIntentIdAllocator>;
   /** Paragraph identities the session has consumed, retired ones included. */
   reservedBlockIds: ReadonlySet<string>;
+  /**
+   * The ids the session may mint, when it holds a lease: revision ids then
+   * come from the allocator's leased ones rather than one contiguous range.
+   */
+  idLease: IdLease | undefined;
 };
 
 const compilePublicIntents = ({
@@ -683,6 +689,7 @@ const compilePublicIntents = ({
   nextRevisionId,
   allocate,
   reservedBlockIds,
+  idLease,
 }: CompilePublicIntentsOptions) => {
   const ops: DocumentOp[] = [];
   const revisions: number[] = [];
@@ -690,7 +697,8 @@ const compilePublicIntents = ({
   // with: a later intent naming that half names the allocated one.
   const allocated = new Map<string, string>();
   for (const sourceIntent of intents) {
-    const ids = allocate(document, sourceIntent);
+    const ids = allocate(document, sourceIntent, idLease);
+    const leased = idLease === undefined ? {} : { idLease };
     let intent: EditorIntent = sourceIntent;
     if (sourceIntent.type === "splitParagraph") {
       allocated.set(sourceIntent.newBlockId, ids.newBlockId);
@@ -717,21 +725,26 @@ const compilePublicIntents = ({
               type: "editing",
               newIds: ids.newIds,
               reservedBlockIds,
+              ...leased,
             }
           : {
               type: "suggesting",
               reservedBlockIds,
+              ...leased,
               revision: {
-                id: firstRevisionId,
+                id: idLease === undefined ? firstRevisionId : ids.revisionId,
                 author,
                 date,
                 ...(suggestionId === undefined ? {} : { suggestionId }),
               },
               newIds: {
                 control: ids.newIds.control,
-                revision: ids.newIds.revision.map(
-                  (_, index) => firstRevisionId + index + 1,
-                ),
+                revision:
+                  idLease === undefined
+                    ? ids.newIds.revision.map(
+                        (_, index) => firstRevisionId + index + 1,
+                      )
+                    : ids.newIds.revision,
               },
             },
     });
@@ -1142,6 +1155,7 @@ export class CanonicalPublicOperations {
         intents,
         allocate,
         reservedBlockIds: session.reservedBlockIds,
+        idLease: session.idLease,
         nextRevisionId,
         mode: batch.mode === "direct" ? "direct" : "tracked-changes",
         suggestionId,
@@ -1163,7 +1177,7 @@ export class CanonicalPublicOperations {
           break;
         case "commented": {
           const { comment } = resolvedOperation;
-          const id = freshCommentId(nextDocument);
+          const id = freshCommentId(nextDocument, session.idLease);
           // A suggested operation's comment is proposed with it: pending,
           // never saved, accepted and rejected with the suggestion.
           const proposedBy = suggestionId === undefined ? {} : { suggestionId };
@@ -1194,6 +1208,7 @@ export class CanonicalPublicOperations {
                 ? undefined
                 : compileCanonicalComments({
                     document: nextDocument,
+                    idLease: session.idLease,
                     command: {
                       type: "create",
                       comment: {
@@ -1204,6 +1219,7 @@ export class CanonicalPublicOperations {
                         content: canonicalCommentBody(
                           nextDocument,
                           comment.text,
+                          session.idLease,
                         ),
                         ...proposedBy,
                       },
@@ -1293,6 +1309,7 @@ export class CanonicalPublicOperations {
                 };
           const commented = compileCanonicalComments({
             document: nextDocument,
+            idLease: session.idLease,
             command: {
               type: "create",
               comment: {
@@ -1300,7 +1317,11 @@ export class CanonicalPublicOperations {
                 author: options.author ?? "AI",
                 date,
                 done: false,
-                content: canonicalCommentBody(nextDocument, comment.text),
+                content: canonicalCommentBody(
+                  nextDocument,
+                  comment.text,
+                  session.idLease,
+                ),
                 ...proposedBy,
               },
               anchor:
@@ -1900,11 +1921,15 @@ export class CanonicalPublicOperations {
           newHalf: "second",
           newBlockId: createEditorIntentIdAllocator({
             reservedBlockIds: this.options.session.reservedBlockIds,
-          })(readModel(this.options.session.document), {
-            type: "splitParagraph",
-            at: from.value,
-            to: to.value,
-          }).newBlockId,
+          })(
+            readModel(this.options.session.document),
+            {
+              type: "splitParagraph",
+              at: from.value,
+              to: to.value,
+            },
+            this.options.session.idLease,
+          ).newBlockId,
         };
         break;
       case "mergeBlockWithNext": {

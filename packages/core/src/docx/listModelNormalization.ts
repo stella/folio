@@ -74,8 +74,11 @@ type BlockRecord = {
   settled: boolean;
   /** The snapshot registration normalizing left for the paragraph. */
   snapshotToken: object | undefined;
-  /** What normalizing it changed in the counters. */
-  step: ListCounterStep;
+  /**
+   * What normalizing it changed in the counters: one step per paragraph it
+   * holds, in document order, none for a block holding no counted paragraph.
+   */
+  steps: readonly ListCounterStep[];
   /** The counters before it, kept every few blocks. */
   before: ListCounterSnapshot | undefined;
 };
@@ -86,17 +89,17 @@ const CHECKPOINT_SPACING = 32;
 const recordOf = (
   input: BlockContent,
   settled: boolean,
-  step: ListCounterStep,
+  steps: readonly ListCounterStep[],
   before: ListCounterSnapshot | undefined,
 ): BlockRecord => {
   if (input.type !== "paragraph")
-    return { input, settled, snapshotToken: undefined, step, before };
+    return { input, settled, snapshotToken: undefined, steps, before };
   sealParagraphFacts(input);
   return {
     input,
     settled,
     snapshotToken: paragraphPropertySnapshotToken(input),
-    step,
+    steps,
     before,
   };
 };
@@ -140,10 +143,10 @@ const countersAt = (
   if (before !== undefined) restoreListCounters(counters, before);
   else from = 0;
   for (let at = from; at < index; at += 1)
-    replayListCounterStep(
-      counters,
-      (records[at] ?? panic("A list normalization lost a block.")).step,
-    );
+    for (const step of (
+      records[at] ?? panic("A list normalization lost a block.")
+    ).steps)
+      replayListCounterStep(counters, step);
   return from;
 };
 
@@ -345,10 +348,12 @@ export class ListNormalizationCache {
     story: OpStory,
     blocks: readonly BlockContent[],
     counters: ComputeListMarkerOptions,
-    normalize: (block: BlockContent) => {
+    normalize: (
+      block: BlockContent,
+      observe: (advance: ListCounterAdvance | null) => void,
+    ) => {
       output: BlockContent;
       settled: boolean;
-      advance: ListCounterAdvance | null;
     },
   ): (readonly [number, BlockContent])[] {
     const key = storyKey(story);
@@ -379,28 +384,28 @@ export class ListNormalizationCache {
     let records = old.slice(0, prefix);
     const replaced: (readonly [number, BlockContent])[] = [];
     let normalized = 0;
-    const next = (index: number): ListCounterAdvance | null => {
+    const next = (index: number): (ListCounterAdvance | null)[] => {
       const block = blocks[index] ?? panic("A story lost a block.");
       const before =
         sinceCheckpoint >= this.spacing
           ? snapshotListCounters(counters)
           : undefined;
       if (before !== undefined) sinceCheckpoint = 0;
-      const { output, settled, advance } = normalize(block);
+      const advances: (ListCounterAdvance | null)[] = [];
+      const steps: ListCounterStep[] = [];
+      const { output, settled } = normalize(block, (advance) => {
+        advances.push(advance);
+        steps.push(listCounterStep(counters, advance));
+      });
       sinceCheckpoint += 1;
       normalized += 1;
       if (output !== block) replaced.push([index, output]);
       // A block normalized to a new one is kept as that one: normalizing it
       // again from the same counters returns it unchanged.
       records.push(
-        recordOf(
-          output,
-          output === block ? settled : true,
-          listCounterStep(counters, advance),
-          before,
-        ),
+        recordOf(output, output === block ? settled : true, steps, before),
       );
-      return advance;
+      return advances;
     };
     let index = prefix;
     for (; index < length - suffix; index += 1) next(index);
@@ -413,14 +418,16 @@ export class ListNormalizationCache {
       const was = new CounterView(earlier);
       const differing = differingParts(live, was);
       while (differing.size > 0 && index < length) {
-        const advance = next(index);
-        live.advanced(advance);
+        const advances = next(index);
+        for (const advance of advances) live.advanced(advance);
         const record =
           old[index - shift] ??
           panic("A kept list normalization lost a block.");
-        const advanceBefore = replayListCounterStep(earlier, record.step);
-        was.advanced(advanceBefore);
-        for (const part of [...partsOf(advance), ...partsOf(advanceBefore)])
+        const advancesBefore = record.steps.map((step) =>
+          replayListCounterStep(earlier, step),
+        );
+        for (const advance of advancesBefore) was.advanced(advance);
+        for (const part of [...advances, ...advancesBefore].flatMap(partsOf))
           if (samePart(part, live, was)) differing.delete(part);
           else differing.add(part);
         index += 1;
@@ -455,18 +462,60 @@ type BlockNormalizationInputs = {
   recordInverse: (operation: () => DocumentOp) => void;
 };
 
+/** Called after each paragraph advanced the counters, with what it advanced. */
+type ObserveAdvance = (advance: ListCounterAdvance | null) => void;
+
+/**
+ * Advance the counters through the paragraphs a content control or custom
+ * XML wrapper holds, in document order, as the parser counts them: they
+ * continue the story's lists, while a table's cells count their own. Their
+ * renderings stay as they are; the counters are computed on copies.
+ */
+const advanceThroughContainer = (
+  blocks: readonly BlockContent[],
+  counters: ComputeListMarkerOptions,
+  observe: ObserveAdvance,
+): void => {
+  for (const block of blocks) {
+    if (block.type === "blockSdt" || block.type === "blockCustomXml") {
+      advanceThroughContainer(block.content, counters, observe);
+      continue;
+    }
+    if (block.type !== "paragraph") continue;
+    const rendering = block.listRendering;
+    observe(
+      computeListMarker(
+        rendering === undefined
+          ? block
+          : cloneParagraphWithPropertySource(block, {
+              listRendering: {
+                ...rendering,
+                marker: rendering.markerTemplate ?? rendering.marker,
+              },
+            }),
+        counters,
+      ),
+    );
+  }
+};
+
 /**
  * One block of a story with its list rendering normalized, the counters
- * advanced past it. The block is returned itself when nothing changed.
+ * advanced past it and every paragraph it holds. The block is returned
+ * itself when nothing changed.
  */
 const normalizeBlock = (
   paragraph: BlockContent,
   { styles, story, recordInverse }: BlockNormalizationInputs,
   counters: ComputeListMarkerOptions,
-): { output: BlockContent; advance: ListCounterAdvance | null } => {
+  observe: ObserveAdvance,
+): BlockContent => {
   const { numbering } = counters;
-  if (paragraph.type !== "paragraph")
-    return { output: paragraph, advance: null };
+  if (paragraph.type === "blockSdt" || paragraph.type === "blockCustomXml") {
+    advanceThroughContainer(paragraph.content, counters, observe);
+    return paragraph;
+  }
+  if (paragraph.type !== "paragraph") return paragraph;
   registerParagraphPropertySnapshot({
     paragraph,
     snapshot: paragraphFormattingWithAuthoredIndentation(paragraph),
@@ -525,10 +574,8 @@ const normalizeBlock = (
     next.formatting?.numPrFromStyle === undefined &&
     (numPr?.kind !== "reference" || numbering === null)
   ) {
-    return {
-      output: paragraph,
-      advance: computeListMarker(paragraph, counters),
-    };
+    observe(computeListMarker(paragraph, counters));
+    return paragraph;
   }
   const definition =
     numPr?.kind === "reference" && numbering !== null
@@ -624,7 +671,7 @@ const normalizeBlock = (
         : template;
     next.listRendering = rendering;
   }
-  const advance = computeListMarker(next, counters);
+  observe(computeListMarker(next, counters));
   registerParagraphPropertySnapshot({
     paragraph: next,
     snapshot: authoredFormatting,
@@ -637,9 +684,9 @@ const normalizeBlock = (
     canonicalJson(next.formatting) === canonicalJson(formatting) &&
     canonicalJson(next.listRendering) === canonicalJson(cached)
   ) {
-    return { output: paragraph, advance };
+    return paragraph;
   }
-  return { output: next, advance };
+  return next;
 };
 
 export const normalizeListModelRendering = (
@@ -676,17 +723,13 @@ export const normalizeListModelRendering = (
     };
     return cache === undefined
       ? body.content.flatMap((block, index) => {
-          const { output } = normalizeBlock(block, inputs, counters);
+          const output = normalizeBlock(block, inputs, counters, () => {});
           return output === block ? [] : [[index, output] as const];
         })
-      : cache.story(story, body.content, counters, (block) => {
+      : cache.story(story, body.content, counters, (block, observe) => {
           const before = recorded;
-          const { output, advance } = normalizeBlock(block, inputs, counters);
-          return {
-            output,
-            settled: output === block && recorded === before,
-            advance,
-          };
+          const output = normalizeBlock(block, inputs, counters, observe);
+          return { output, settled: output === block && recorded === before };
         });
   };
   /**

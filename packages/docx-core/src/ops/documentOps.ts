@@ -114,8 +114,33 @@ export {
   type SequencedBatch,
 } from "./sequencing/envelope";
 export { transformBatch } from "./sequencing/transform";
-export { createSequencer } from "./sequencing/sequencer";
+export { createSequencer, type SequencerOptions } from "./sequencing/sequencer";
 export { createClient } from "./sequencing/client";
+export {
+  DEFAULT_ID_BLOCK_SIZES,
+  ID_LEASE_REFUSAL_REASONS,
+  IdLeaseRefusal,
+  type IdLeaseGrant,
+  type IdLeaseMinted,
+  type IdLeaseRefusalReason,
+  type IdLeaseState,
+} from "./sequencing/idLeases";
+export {
+  formatParaId,
+  freshLeasedIds,
+  ID_KIND_LIMITS,
+  ID_LEASE_KINDS,
+  idLeaseHolds,
+  idLeaseRemaining,
+  introducedIds,
+  leasedIdCensus,
+  trimIdLease,
+  type IdBlock,
+  type IdLease,
+  type IdLeaseKind,
+  type LeasedId,
+  type LeasedIdCensus,
+} from "./idLease";
 export {
   type BatchBlockAccess,
   compareBatchOrder,

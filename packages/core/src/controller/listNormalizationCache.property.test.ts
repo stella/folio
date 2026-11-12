@@ -38,7 +38,10 @@ import {
   ListNormalizationCache,
   normalizeListModelRendering,
 } from "../docx/listModelNormalization";
-import { getCachedNumberingMap } from "../docx/numberingParser";
+import {
+  computeListRendering,
+  getCachedNumberingMap,
+} from "../docx/numberingParser";
 import {
   carryParagraphPropertySource,
   paragraphPropertySourceState,
@@ -107,6 +110,27 @@ const countersBeforeEach = (normalized: Document): string[] => {
   };
   const sorted = <T extends readonly [number, unknown]>(entries: Iterable<T>) =>
     [...entries].toSorted(([left], [right]) => left - right);
+  // Paragraphs a content control holds continue the story's lists.
+  const advance = (block: BlockContent): void => {
+    if (block.type === "blockSdt" || block.type === "blockCustomXml") {
+      for (const child of block.content) advance(child);
+      return;
+    }
+    if (block.type !== "paragraph") return;
+    const rendering = block.listRendering;
+    computeListMarker(
+      rendering === undefined
+        ? block
+        : {
+            ...block,
+            listRendering: {
+              ...rendering,
+              marker: rendering.markerTemplate ?? rendering.marker,
+            },
+          },
+      counters,
+    );
+  };
   return mainBlocks(normalized).map((block) => {
     const snapshot = snapshotListCounters(counters);
     const before = JSON.stringify({
@@ -119,16 +143,7 @@ const countersBeforeEach = (normalized: Document): string[] => {
         values.map(String),
       ]),
     });
-    if (block.type === "paragraph")
-      computeListMarker(
-        {
-          ...block,
-          ...(block.listRendering === undefined
-            ? {}
-            : { listRendering: { ...block.listRendering } }),
-        },
-        counters,
-      );
+    advance(block);
     return before;
   });
 };
@@ -385,7 +400,7 @@ const styledListsDocument = async (): Promise<Document> => {
 };
 
 const generatedParagraphArbitrary = fc.record({
-  kind: fc.constantFrom("reference", "reference", "style", "plain"),
+  kind: fc.constantFrom("reference", "reference", "style", "plain", "control"),
   numId: fc.integer({ min: 1, max: 5 }),
   ilvl: fc.nat({ max: 2 }),
 });
@@ -393,10 +408,33 @@ const generatedParagraphArbitrary = fc.record({
 /**
  * A short story of paragraphs numbered by references to five instances of
  * one abstract list (two of them restarting it), by a paragraph style, or
- * not at all: instances meet, resume and trade counter arrays in every
- * order.
+ * not at all, some numbered paragraphs inside a content control as a parsed
+ * package holds them: instances meet, resume and trade counter arrays in
+ * every order.
  */
 const generatedListsDocument = (
+  paragraphs: readonly fc.RecordValue<typeof generatedParagraphArbitrary>[],
+): Document => {
+  const document = generatedListsModel(paragraphs);
+  const numbering = document.package.numbering;
+  if (numbering === undefined) return document;
+  const map = getCachedNumberingMap(numbering);
+  document.package.document.content = document.package.document.content.map(
+    (block) => {
+      const paragraph = block.type === "blockSdt" ? block.content.at(0) : null;
+      const numPr =
+        paragraph?.type === "paragraph" && paragraph.formatting?.numPr;
+      if (!paragraph || !numPr || numPr.kind !== "reference") return block;
+      const rendering = computeListRendering(numPr, map);
+      return rendering === null
+        ? block
+        : { ...block, content: [{ ...paragraph, listRendering: rendering }] };
+    },
+  );
+  return document;
+};
+
+const generatedListsModel = (
   paragraphs: readonly fc.RecordValue<typeof generatedParagraphArbitrary>[],
 ): Document => ({
   package: {
@@ -442,11 +480,17 @@ const generatedListsDocument = (
           ],
         };
         if (kind === "style") paragraph.formatting = { styleId: "ListStyle" };
-        if (kind === "reference")
+        if (kind === "reference" || kind === "control")
           paragraph.formatting = {
             numPr: { kind: "reference", numId, ilvl },
           };
-        return paragraph;
+        return kind === "control"
+          ? ({
+              type: "blockSdt",
+              properties: { sdtType: "richText", id: index + 1 },
+              content: [paragraph],
+            } satisfies BlockContent)
+          : paragraph;
       }),
     },
   },

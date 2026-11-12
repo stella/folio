@@ -14,6 +14,7 @@ import {
 import { applyDocumentOps } from "../../apply";
 import { storyParagraphs } from "../../blocks";
 import { equalForStaleness } from "../../equality";
+import { formatParaId, type IdLease } from "../../idLease";
 import { zeroWidthLeavesAt } from "../../leaves";
 import { paragraphLength, paragraphLogicalText } from "../../offsets";
 import {
@@ -115,6 +116,18 @@ type OperationOptions = {
   seed: number;
   id: number;
   coordinate?: "all";
+  /** The submitter's lease, which every id the operation introduces comes from. */
+  lease?: IdLease;
+};
+const leasedId = (
+  lease: IdLease | undefined,
+  kind: "paragraph" | "revision",
+  id: number,
+): number => {
+  const start = lease?.blocks.find((block) => block.kind === kind)?.start;
+  if (start === undefined)
+    throw new Error(`The operation needs a ${kind} lease.`);
+  return start + id;
 };
 const operation = ({
   document,
@@ -123,6 +136,7 @@ const operation = ({
   seed,
   id,
   coordinate,
+  lease,
 }: OperationOptions): DocumentOp => {
   const blockId =
     (group === "differentBlocks" && role % 2 === 1) ||
@@ -194,7 +208,7 @@ const operation = ({
             from,
             to: { ...to, offset: Math.min(1, length) },
             revision: {
-              id: 2_000_000 + id,
+              id: leasedId(lease, "revision", id),
               author: "tracked",
               date: "2026-01-01T00:00:00Z",
             },
@@ -207,7 +221,7 @@ const operation = ({
             from,
             to: { ...to, offset: 1 },
             revision: {
-              id: 2_000_000 + id,
+              id: leasedId(lease, "revision", id),
               author: "tracked",
               date: "2026-01-01T00:00:00Z",
             },
@@ -235,7 +249,7 @@ const operation = ({
         ? {
             type: "splitBlock",
             at,
-            newBlockId: (0x71000000 + id).toString(16).toUpperCase(),
+            newBlockId: formatParaId(leasedId(lease, "paragraph", id)),
             newHalf: "second",
           }
         : insert;
@@ -253,7 +267,7 @@ const operation = ({
       return {
         type: "splitBlock",
         at,
-        newBlockId: (0x71000000 + id).toString(16).toUpperCase(),
+        newBlockId: formatParaId(leasedId(lease, "paragraph", id)),
         newHalf: "second",
       };
     case "insertBlocks":
@@ -264,7 +278,7 @@ const operation = ({
         blocks: [
           {
             type: "paragraph",
-            paraId: (0x71000000 + id).toString(16).toUpperCase(),
+            paraId: formatParaId(leasedId(lease, "paragraph", id)),
             content: [
               { type: "run", content: [{ type: "text", text: "inserted" }] },
             ],
@@ -306,6 +320,9 @@ const simulate = ({
   const clients = Array.from({ length: clientsCount }, () =>
     createClient(independentCopy(document)),
   );
+  const leases = clients.map((_, index) =>
+    sequencer.grantIdLease(`actor-${index}`).unwrap(),
+  );
   const submitted = new Set<string>();
   const admitted = new Set<string>();
   const rejected = new Map<string, { client: number }>();
@@ -329,6 +346,7 @@ const simulate = ({
           role: index,
           seed: choice(),
           id: id++,
+          lease: leases.at(index),
           ...(enqueueLater ? { coordinate: "all" as const } : {}),
         }),
       ],
@@ -346,6 +364,7 @@ const simulate = ({
             role: 1,
             seed: choice(),
             id: id++,
+            lease: leases.at(index),
           }),
         ],
       };
@@ -739,6 +758,7 @@ test("an insertion inside a tracked deletion is refused without altering the jou
     },
   };
   const sequencer = createSequencer(document);
+  const lease = sequencer.grantIdLease("first").unwrap();
   const at = { story: OP_STORIES.MAIN, blockId: FIRST, offset: 0 };
   const deleted: DocumentBatch = {
     schema: DOCUMENT_OP_SCHEMA_VERSION,
@@ -751,7 +771,7 @@ test("an insertion inside a tracked deletion is refused without altering the jou
         from: at,
         to: { ...at, offset: 2 },
         revision: {
-          id: REVIEW_ID,
+          id: leasedId(lease, "revision", 0),
           author: "first",
           date: "2026-01-01T00:00:00Z",
         },
