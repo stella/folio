@@ -1,0 +1,10 @@
+{
+  "judges an edit's result as one walk of every story does": [
+    {
+      "seed": -71963594,
+      "path": "428:2:4:5:6:5:6:6:6:6:6",
+      "note": "#2570: an empty paragraph inserted before a range that closes past it",
+      "date": "2026-11-12"
+    }
+  ]
+}
