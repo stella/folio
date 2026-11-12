@@ -111,3 +111,30 @@ When no free block is left below that limit, granting or renewing refuses with
 `exhausted`; ids never wrap. An actor whose lease runs out cannot mint: its
 edits that need new ids are refused until the room is compacted into a new
 base document.
+
+## Joining a canonical session to a room
+
+`@stll/folio-core` binds one canonical editing session to a room
+(`joinCanonicalRoom`, controller/canonicalCollaboration.ts) over a transport
+that carries batches and leases only (`CanonicalRoomTransport`): the room's
+base snapshot identity (the SHA-256 of the DOCX it was seeded from, which
+revision 0 is), its head revision, `submit` answering an acknowledgement or
+a rejection, a subscription delivering the journal after a revision, and the
+actor's id lease. `createCanonicalMemoryRoom` is the in-memory reference
+transport around `createSequencer`.
+
+A session joins only the room seeded from the DOCX it opened, refusing any
+other snapshot, and only before it is edited; it creates its session with the
+granted lease and replays the journal from revision 0. Each commit the
+session publishes (its committed-batch feed, `onCommitted`) is enqueued on the
+optimistic client under the commit's operation id, at the client's head
+revision, and submitted one at a time. A sequenced batch goes to the client
+first, which rebases the pending batches over it, and the change the client
+reports enters the session through `prepareRemote`. Deliveries may repeat or
+arrive out of order: revisions already applied are ignored and later ones
+wait for the gap. A rejected batch, or a pending batch the client dropped, is
+taken back the same way and reported to the host (`localEditRefused`), never
+lost silently. After a disconnection the unanswered batch is submitted again
+under the same operation id, so the sequencer answers it once. The controller
+asks for another lease block when a kind runs low. A remote batch waits while
+a composition is pending. Rooms hold no Yjs state.

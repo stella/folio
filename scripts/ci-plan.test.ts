@@ -25,6 +25,7 @@ import {
   BROWSER_INPUT_REGRESSIONS,
   PINNED_BROWSER_INPUT_TAG,
 } from "../tests/visual/browserInputRegressions";
+import { PINNED_REPLAY_FONT_DELAYS_MS } from "../tests/visual/pinnedReplayRepeats";
 import { affectedTypecheckPlanForPaths } from "./check-affected-packages";
 import {
   affectedPackagePlan,
@@ -781,7 +782,7 @@ describe("CI plan", () => {
       expect(
         commands.filter((command) => command.includes("playwright test")),
       ).toEqual([
-        "bunx playwright test --project=browser-input-pinned --workers=1 --shard=${{ matrix.shard }}/3",
+        "bunx playwright test --project=browser-input-pinned --workers=1 --shard=${{ matrix.shard }}/3 --retries=0",
       ]);
       const shards = ((
         pinned?.strategy as { matrix?: { shard?: unknown } } | undefined
@@ -797,15 +798,27 @@ describe("CI plan", () => {
           step["run"].includes("playwright test"),
       );
       expect(isRecord(replays) ? replays["timeout-minutes"] : undefined).toBe(
-        5,
+        10,
       );
-      // A replay takes about 3.6 s in CI (69 replays in 4.1 minutes); at a
-      // 4 s ceiling each shard's share must stay within 80% of the step's
-      // 5 minutes, or the registry has outgrown its shards.
+      // A replay takes about 3.6 s in CI (69 replays in 4.1 minutes) and runs
+      // once per font timing; at a 4 s ceiling, plus each timing's delay, each
+      // shard's share must stay within 80% of the step's 10 minutes, or the
+      // registry has outgrown its shards.
       const perShard = Math.ceil(
         BROWSER_INPUT_REGRESSIONS.length / shards.length,
       );
-      expect(perShard * 4).toBeLessThanOrEqual(0.8 * 5 * 60);
+      // The first timing serves the fonts as they come; at least one other delays them.
+      expect(PINNED_REPLAY_FONT_DELAYS_MS.at(0)).toBe(0);
+      expect(new Set(PINNED_REPLAY_FONT_DELAYS_MS).size).toBe(
+        PINNED_REPLAY_FONT_DELAYS_MS.length,
+      );
+      expect(PINNED_REPLAY_FONT_DELAYS_MS.length).toBeGreaterThan(1);
+      const fontDelaySeconds =
+        PINNED_REPLAY_FONT_DELAYS_MS.reduce((sum, delay) => sum + delay, 0) /
+        1000;
+      expect(
+        perShard * (4 * PINNED_REPLAY_FONT_DELAYS_MS.length + fontDelaySeconds),
+      ).toBeLessThanOrEqual(0.8 * 10 * 60);
 
       const listing = expectExited(
         runChild(
