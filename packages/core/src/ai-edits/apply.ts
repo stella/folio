@@ -24,6 +24,8 @@ import {
   type BatchOrderAddress,
   contentRank,
   deletionRemovesBlock,
+  type FinalBreakCandidate,
+  finalBreakCarrier,
   groupInsertionRuns,
   orderAddressingBeforeRemoval,
   orderBatchOperations,
@@ -3966,7 +3968,7 @@ const collapsedFinalRunSource = (
   if (emptied?.type.name !== "paragraph") return null;
   const $emptied = doc.resolve(at);
   if (!paragraphEndsItsContainer($emptied, emptied.type.name)) return null;
-  let source: { node: PMNode; position: number } | null = null;
+  const before: FinalBreakCandidate<{ node: PMNode; position: number }>[] = [];
   let position = at;
   for (let index = $emptied.index() - 1; index >= 0; index--) {
     const node = $emptied.parent.child(index);
@@ -3979,31 +3981,47 @@ const collapsedFinalRunSource = (
           trDel != null && !batchRevisionIds.has(trDel.revisionId);
       });
       if (deletedEarlier) continue;
-      return source;
+      break;
     }
-    if (node.type !== emptied.type) return source;
+    if (node.type !== emptied.type) break;
     const mark: unknown = node.attrs["pPrMark"];
     if (!isPlainDeletedPPrMark(mark) || !holdsOnlyDeletedContent(node)) {
-      return null;
+      before.push({ paragraph: { node, position }, deleted: false });
+      break;
     }
+    // A paragraph an earlier batch deleted is absent from the direct document.
     const revisionId = addedOrDeletedBreakRevisionId(mark);
     if (revisionId !== null && batchRevisionIds.has(revisionId)) {
-      source = { node, position };
+      before.push({ paragraph: { node, position }, deleted: true });
     }
   }
-  return source;
+  const carrier = finalBreakCarrier(before);
+  return carrier.type === "runStart" ? carrier.paragraph : null;
 };
 
 type CanRetractFinalBreakOptions = { predecessor: PMNode; target: PMNode };
 
+/**
+ * Whether a final deletion can retract the inserted break between
+ * `predecessor` and the paragraph it joins. A paragraph holds one pending
+ * property change, so a predecessor with its own must agree with the target
+ * on what rejecting gives back, or already read as the target did. Which
+ * change the batch put on the predecessor before the retirement runs (a
+ * merge into it, a property write, a restyle) does not decide it: one at a
+ * time the retraction runs first, while the predecessor reads as before.
+ */
 const canRetractFinalBreak = ({
   predecessor,
   target,
 }: CanRetractFinalBreakOptions) => {
   if (target.type !== predecessor.type) return false;
+  const targetBefore = JSON.stringify(
+    paragraphPropertiesBeforePendingChanges(target),
+  );
   const formattingChanges =
-    JSON.stringify(paragraphPropertiesBeforePendingChanges(target)) !==
-    JSON.stringify(paragraphPropertiesSnapshot(predecessor));
+    targetBefore !== JSON.stringify(paragraphPropertiesSnapshot(predecessor)) &&
+    targetBefore !==
+      JSON.stringify(paragraphPropertiesBeforePendingChanges(predecessor));
   return !(
     formattingChanges &&
     hasSerializableParagraphPropertyChange(
@@ -6108,18 +6126,18 @@ const applyFolioAIEditOperationsInternal = ({
       return { addresses: [item.blockFrom], removes: [] };
     }
     const at = doc.resolve(item.blockFrom);
-    // The nearest paragraph before it the batch keeps, past ones it deletes;
-    // anything else (a table) leaves none to take the break.
-    let hasKeptParagraphBefore = false;
+    // The paragraphs before it, up to the container's start or anything else
+    // (a table), and which of them the batch deletes.
+    const before: FinalBreakCandidate<number>[] = [];
     let position = at.pos;
     for (let index = at.index() - 1; index >= 0; index -= 1) {
       const previous = at.parent.child(index);
       position -= previous.nodeSize;
       if (previous.type !== item.blockNode.type) break;
-      if (!batchDeletions.has(position)) {
-        hasKeptParagraphBefore = true;
-        break;
-      }
+      before.push({
+        paragraph: position,
+        deleted: batchDeletions.has(position),
+      });
     }
     // A block the batch puts after it ends the container instead.
     const appended = executableResolved.some(
@@ -6132,7 +6150,7 @@ const applyFolioAIEditOperationsInternal = ({
     const removes = deletionRemovesBlock({
       endsContainer:
         !appended && paragraphEndsItsContainer(at, item.blockNode.type.name),
-      hasKeptParagraphBefore,
+      carrier: finalBreakCarrier(before).type,
     });
     return { addresses: [], removes: removes ? [item.blockFrom] : [] };
   };

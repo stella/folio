@@ -21,6 +21,7 @@ import type {
  */
 import { getDocumentSourceBaseline } from "../headerFooterVerbatim";
 import type { SaveDiagnosticOptions } from "../saveDiagnostics";
+import type { SerializedPart } from "../selectiveXmlPatch";
 import {
   buildDocumentBlockReplay,
   canReplayDocumentSource,
@@ -199,12 +200,27 @@ export type DocumentBodyAuthorityOptions = {
   bodyAuthority?: "canonical" | "model" | undefined;
 };
 
+type DocumentSourceOptions = SaveDiagnosticOptions &
+  DocumentBodyAuthorityOptions & { xml?: string | undefined };
+
 export function serializeDocument(
   doc: Document,
   sourceBindings?: ReadonlyMap<string, string>,
-  source?: SaveDiagnosticOptions &
-    DocumentBodyAuthorityOptions & { xml?: string | undefined },
+  source?: DocumentSourceOptions,
 ): string {
+  return serializeDocumentPart(doc, sourceBindings, source).xml;
+}
+
+/**
+ * {@link serializeDocument}, with the body replay that wrote the part when a
+ * canonical save replayed it onto its source: a selective save then routes
+ * its changed paragraphs from what the replay replaced.
+ */
+export function serializeDocumentPart(
+  doc: Document,
+  sourceBindings?: ReadonlyMap<string, string>,
+  source?: DocumentSourceOptions,
+): SerializedPart {
   // Reset for every pass, including complete source replay.
   resetAutoIdCounter();
   const baseline =
@@ -224,11 +240,15 @@ export function serializeDocument(
     sourceMatches &&
     JSON.stringify(doc.package.document) === baseline.fingerprint
   ) {
+    const unchanged = {
+      xml: baseline.xml,
+      replay: { source: baseline.xml, splices: [] },
+    };
     if (replayableDocumentSources.get(baseline.body) === baseline.xml)
-      return baseline.xml;
+      return unchanged;
     if (canReplayDocumentSource(baseline.xml, baseline.body)) {
       replayableDocumentSources.set(baseline.body, baseline.xml);
-      return baseline.xml;
+      return unchanged;
     }
   }
 
@@ -245,7 +265,8 @@ export function serializeDocument(
       sourceBindings,
       body,
     });
-  if (baseline.type === "missing") return serializedXml;
+  const generated = { xml: serializedXml, replay: undefined };
+  if (baseline.type === "missing") return generated;
   if (baseline.type === "captured" && sourceMatches) {
     const replay = buildDocumentBlockReplay({
       sourceXml: baseline.xml,
@@ -259,7 +280,7 @@ export function serializeDocument(
     type: "sourceReplayMismatch",
     part: "word/document.xml",
   });
-  return serializedXml;
+  return generated;
 }
 
 /**

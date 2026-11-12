@@ -9,7 +9,7 @@ import {
 
 import { sequentialGroups } from "../support/batch-replay-order.ts";
 import { openReviewer, packDocument } from "../support/documents.ts";
-import { type Row } from "../support/oracle.ts";
+import { type Row, rowsOf } from "../support/oracle.ts";
 
 const paragraphRows = (count: number): Row[] =>
   Array.from({ length: count }, (_, index) => ({
@@ -239,6 +239,112 @@ test("generated terminal deletions preserve property edits and rejection in real
       assert.deepEqual(sequential.getContent(), batch.getContent());
       rejected.rejectAll();
       assert.deepEqual(rejected.getContent(), preRows);
+    }
+  }
+});
+
+/**
+ * The paragraphs a run deleted back to its container's start or a table can
+ * hold, each with properties of its own, so the paragraph the run collapses
+ * into shows in what accepting leaves.
+ */
+const RUN_PARAGRAPHS = [
+  "Plain clause.",
+  "1. Numbered clause.",
+  "- Bulleted clause.",
+  "## Heading clause",
+] as const;
+const RUN_BEFORE = {
+  table: ["| Term | Value |\n| --- | --- |\n| Period | 12 months |"],
+  start: [],
+} as const;
+
+/** What accepting leaves of a reviewer's body, ids aside. */
+const acceptedView = async (
+  reviewer: Awaited<ReturnType<typeof openReviewer>>,
+) => {
+  const accepted = await openReviewer(
+    new Uint8Array(await reviewer.toBuffer()),
+  );
+  accepted.acceptAll();
+  return rowsOf(accepted).map(({ id: _id, ...row }) => row);
+};
+
+// #1356: a batch deleting the paragraphs after a table collapsed into the
+// run's first one, while the one-at-a-time replay deleted that paragraph
+// before the final one and kept the final paragraph's own numbering.
+test("a run deleted back to its container's start or a table settles on its first paragraph, batched and one at a time", async () => {
+  for (const [before, prefix] of Object.entries(RUN_BEFORE)) {
+    for (let length = 2; length <= RUN_PARAGRAPHS.length; length++) {
+      for (let shift = 0; shift < RUN_PARAGRAPHS.length; shift++) {
+        const run = Array.from(
+          { length },
+          (_, index) =>
+            RUN_PARAGRAPHS[(index + shift) % RUN_PARAGRAPHS.length] ?? "",
+        );
+        const fixture = await packDocument(
+          fromMarkdown([...prefix, ...run].join("\n\n")),
+        );
+        const preRows = rowsOf(await openReviewer(fixture));
+        const deletions = preRows
+          .filter(({ table }) => table === undefined)
+          .map(({ id }) => ({
+            id: `delete-${id}`,
+            type: "deleteBlock" as const,
+            blockId: id,
+          }));
+        assert.equal(deletions.length, length);
+        const outcomes = new Map<string, unknown>();
+        for (const operations of [deletions, deletions.toReversed()]) {
+          for (const mode of ["direct", "tracked-changes"] as const) {
+            const request = {
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode,
+              operations,
+            } as const satisfies Parameters<
+              Awaited<
+                ReturnType<typeof openReviewer>
+              >["applyDocumentOperations"]
+            >[0];
+            const context = `${before}, ${run.join(" | ")}, ${mode}, ${operations === deletions ? "forward" : "reversed"}`;
+            const batch = await openReviewer(fixture);
+            assert.equal(
+              batch.applyDocumentOperations(request, {
+                undefinedReferences: "refuse",
+              }).applied.length,
+              length,
+              context,
+            );
+            const sequential = await openReviewer(fixture);
+            for (const group of sequentialGroups({
+              applied: operations,
+              preRows,
+              mode,
+            })) {
+              const result = sequential.applyDocumentOperations(
+                {
+                  ...request,
+                  operations: group.map(({ id }) => {
+                    const operation = operations.find(
+                      (candidate) => candidate.id === id,
+                    );
+                    assert.ok(operation, `${context}: ${id} is the batch's`);
+                    return operation;
+                  }),
+                },
+                { undefinedReferences: "refuse" },
+              );
+              assert.deepEqual(result.skipped, [], context);
+            }
+            const outcome = await acceptedView(batch);
+            assert.deepEqual(await acceptedView(sequential), outcome, context);
+            outcomes.set(context, outcome);
+          }
+        }
+        // Direct and tracked, in either input order, leave one document.
+        const [first, ...rest] = outcomes.values();
+        for (const outcome of rest) assert.deepEqual(outcome, first);
+      }
     }
   }
 });

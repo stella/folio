@@ -372,7 +372,7 @@ const compareSave = (document: Document): SaveComparison => {
   const exact =
     JSON.stringify(document.package.document) === baseline.fingerprint;
   return {
-    replay: buildDocumentBlockReplay(options),
+    replay: buildDocumentBlockReplay(options)?.xml ?? null,
     oracle,
     canReplay: canReplayDocumentSource(baseline.xml, baseline.body),
     oracleCanReplay,
@@ -561,7 +561,7 @@ describe("document block replay reads", () => {
     const reads = spyOn(streamingXml, "parseStreamingXmlWithSourceRanges");
     const replayed = spyOn(verbatimCapture, "isSafeCapturedXmlDocument");
     try {
-      const replay = buildDocumentBlockReplay(options);
+      const replay = buildDocumentBlockReplay(options)?.xml ?? null;
       const inputs = reads.mock.calls.map(([xml]) => xml);
       const counted: Reads = {
         source: inputs.filter((xml) => xml.includes("<q:body")).length,

@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lineBreaks",
+  "mode": "tracked-changes",
+  "seed": 2116006477,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1318201643,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "1B0E5A11",
+            "startOffset": 18,
+            "endOffset": 25,
+            "selectedTextHash": "hyoqgm2"
+          },
+          "formatting": {
+            "underline": true
+          }
+        }
+      ]
+    }
+  ],
+  "title": "#1762, reported seed 2115896686: rejecting tracked formatting between line breaks gives the same runs after save"
+}

@@ -116,6 +116,7 @@ export type BoundaryOccurrence = {
     range: string;
     side: "start" | "end";
     kept: boolean;
+    copied: boolean;
     keptFrom?: string;
 };
 
@@ -324,7 +325,7 @@ export type DeleteTableOp = {
 // @public
 export const deletionRemovesBlock: (deletion: {
     endsContainer: boolean;
-    hasKeptParagraphBefore: boolean;
+    carrier: FinalBreakCarrier<unknown>["type"];
 }) => boolean;
 
 // @public
@@ -576,6 +577,26 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 
 // @public
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
+
+// @public
+export type FinalBreakCandidate<Paragraph> = {
+    paragraph: Paragraph;
+    deleted: boolean;
+};
+
+// @public
+export type FinalBreakCarrier<Paragraph> = {
+    type: "kept";
+    paragraph: Paragraph;
+} | {
+    type: "runStart";
+    paragraph: Paragraph;
+} | {
+    type: "none";
+};
+
+// @public
+export const finalBreakCarrier: <Paragraph>(before: readonly FinalBreakCandidate<Paragraph>[]) => FinalBreakCarrier<Paragraph>;
 
 // @public (undocumented)
 export const findStoryBody: (document: Document_2, story: OpStory) => DocumentBody | undefined;

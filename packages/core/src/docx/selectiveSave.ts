@@ -65,7 +65,7 @@ import {
 } from "./serializer/commentSerializer";
 import {
   type DocumentBodyAuthorityOptions,
-  serializeDocument,
+  serializeDocumentPart,
 } from "./serializer/documentSerializer";
 import {
   serializeEndnotes,
@@ -556,7 +556,7 @@ export async function attemptSelectiveSave(
       // when the source part is asked, and the save bails to a full repack on
       // every edit. What a changed id names is a body paragraph exactly when
       // the body serializes it.
-      const serializedDocXml = serializeDocument(
+      const serializedDocument = serializeDocumentPart(
         doc,
         readRootNamespaceBindings(originalDocXml),
         {
@@ -565,6 +565,7 @@ export async function attemptSelectiveSave(
           onDiagnostic: options.onDiagnostic,
         },
       );
+      const serializedDocXml = serializedDocument.xml;
       const bodyParaIds = collectParaIds(serializedDocXml);
       const originalBodyParaIds = structuralChange
         ? collectParaIds(originalDocXml)
@@ -627,7 +628,7 @@ export async function attemptSelectiveSave(
             })
           : buildPatchedDocumentXml(
               originalDocXml,
-              serializedDocXml,
+              serializedDocument,
               bodyChangedIds,
             );
         if (!patchedDocXml) {

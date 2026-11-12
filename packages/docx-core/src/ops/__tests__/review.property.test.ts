@@ -1291,6 +1291,99 @@ describe("tracked operations and their resolution", () => {
     expectEveryKindChecked(tally);
   });
 
+  test("L3: a run's accepted and rejected revisions resolved as two batches, in either order, equal resolving each operation's in any order", () => {
+    // One decision per operation. resolveRevision takes one decision, so "at
+    // once" is two resolutions: every accepted operation's revisions, then
+    // every rejected one's, or the other way round. Both give, under π′,
+    // what resolving one operation's revisions at a time does, in an order
+    // the keys draw, each with its own decision.
+    const law = (tally: Tally) =>
+      fc.property(
+        reviewDocumentArbitrary,
+        fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
+        fc.array(fc.nat(), { minLength: 6, maxLength: 6 }),
+        fc.array(decisionArbitrary, { minLength: 6, maxLength: 6 }),
+        (document, seeds: OpSeed[], keys: number[], decisions) => {
+          let current = document;
+          const stamps: RevisionStamp[] = [];
+          const kinds: DocumentOpType[] = [];
+          for (const [index, seed] of seeds.entries()) {
+            const op = trackedOpFor(current, seed, index);
+            const applied = applyDocumentOp(current, op);
+            if (applied.isErr()) continue;
+            const stamp = stampOf(op);
+            if (stamp === undefined) continue;
+            kinds.push(kindOf(op));
+            stamps.push(stamp);
+            current = applied.value.document;
+          }
+          const perOp = stamps.map((stamp, index) => ({
+            ids: stampedIds(current, [stamp]),
+            decision: decisions[index] ?? REVISION_DECISIONS.ACCEPT,
+          }));
+          const idsDecided = (decision: RevisionDecision): number[] =>
+            perOp.flatMap((group) =>
+              group.decision === decision ? group.ids : [],
+            );
+          const accepted = idsDecided(REVISION_DECISIONS.ACCEPT);
+          const rejected = idsDecided(REVISION_DECISIONS.REJECT);
+          if (accepted.length + rejected.length === 0) return;
+          // A kind counts once its revisions reach the checks below.
+          for (const [index, { ids }] of perOp.entries())
+            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
+          if (accepted.length > 0 && rejected.length > 0) count(tally, "mixed");
+          // The operations' revisions in an order the keys draw, earlier
+          // operations' before later ones' as often as after.
+          const order = perOp
+            .map((group, index) => ({
+              group,
+              key: keys[index] ?? index,
+              index,
+            }))
+            .toSorted(
+              (left, right) => left.key - right.key || left.index - right.index,
+            )
+            .map(({ group }) => group);
+          let oneByOne = current;
+          for (const { ids, decision } of order)
+            oneByOne = resolved(oneByOne, ids, decision);
+          const expected = projected(oneByOne, "π′");
+          const acceptedFirst = resolved(
+            resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
+            rejected,
+            REVISION_DECISIONS.REJECT,
+          );
+          assertExactModel(projected(acceptedFirst, "π′"), expected);
+          const rejectedFirst = resolved(
+            resolved(current, rejected, REVISION_DECISIONS.REJECT),
+            accepted,
+            REVISION_DECISIONS.ACCEPT,
+          );
+          assertExactModel(projected(rejectedFirst, "π′"), expected);
+        },
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS / 5,
+      id: "L3: a run's accepted and rejected revisions resolved as two batches, in either order, equal resolving each operation's in any order",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), RUN_COVERAGE_RUNS, {
+      // Decisions alternate, so every sampled run of two or more mixes them.
+      map: ([document, seeds, keys, decisions], index) => [
+        document,
+        runInTurn(seeds, index),
+        keys,
+        decisions.map((_, offset) =>
+          (index + offset) % 2 === 0
+            ? REVISION_DECISIONS.ACCEPT
+            : REVISION_DECISIONS.REJECT,
+        ),
+      ],
+    });
+    expectEveryKindChecked(tally);
+    expect((tally.get("mixed") ?? 0) > 0).toBe(true);
+  });
+
   test("L4: tracked operations and resolutions are undone exactly by their inverses", () => {
     const law = (tally: Tally) =>
       fc.property(

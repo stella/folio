@@ -7,7 +7,11 @@ import {
 
 import type { BlockContent, DocumentBody } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
-import { spliceXml, type XmlSplice } from "./selectiveXmlPatch";
+import {
+  type SerializedPart,
+  spliceXml,
+  type XmlSplice,
+} from "./selectiveXmlPatch";
 import { TRANSITIONAL_NAMESPACE_BY_STRICT_URI } from "./strictValueEncodings.gen";
 import {
   captureSourceProfileXml,
@@ -921,13 +925,17 @@ type DocumentBlockReplayOptions = {
 /**
  * Replay body blocks and modeled document metadata inside the authored part
  * shell. The generated part is read once; the source part once per baseline.
+ *
+ * The answer carries the replayed body blocks when those are all it changed.
+ * It carries none when the replay also rewrote the section properties, the
+ * background or a self-closing body, which are not children of the body.
  */
 export const buildDocumentBlockReplay = ({
   sourceXml,
   serializedXml,
   baseline,
   current,
-}: DocumentBlockReplayOptions): string | null => {
+}: DocumentBlockReplayOptions): SerializedPart | null => {
   const source = readSourceDocument(sourceXml, baseline);
   const generatedStory = readDocumentStory(serializedXml);
   if (!source || !generatedStory) return null;
@@ -945,6 +953,13 @@ export const buildDocumentBlockReplay = ({
     generatedRoot: generated.root,
   });
   if (bodySplices === null) return null;
+  // The splices that change the source; the others copy a block's own bytes.
+  const replayed = bodySplices.filter(
+    ({ start, end, newXml }) => newXml !== sourceXml.slice(start, end),
+  );
+  let blocksOnly = replayed.every(
+    ({ start, end }) => start !== sourceRange.start || end !== sourceRange.end,
+  );
   let bodyXml = spliceXml(
     sourceXml.slice(sourceRange.start, sourceRange.end),
     bodySplices.map(({ start, end, newXml }) => ({
@@ -1011,6 +1026,7 @@ export const buildDocumentBlockReplay = ({
     if (!root) return null;
     bodyXml = replaceMetadata(bodyXml, root, generatedBody, "sectPr");
     if (bodyXml === null) return null;
+    blocksOnly = false;
   }
   let result = spliceXml(sourceXml, [
     { start: sourceRange.start, end: sourceRange.end, newXml: bodyXml },
@@ -1037,6 +1053,11 @@ export const buildDocumentBlockReplay = ({
         newXml: replaced,
       },
     ]);
+    if (result === null) return null;
+    blocksOnly = false;
   }
-  return result;
+  return {
+    xml: result,
+    replay: blocksOnly ? { source: sourceXml, splices: replayed } : undefined,
+  };
 };

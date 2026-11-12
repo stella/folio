@@ -23,6 +23,10 @@
  * and each keeps the properties it asked for: one that asked for none reads
  * as the anchor, never as another block of the batch.
  *
+ * A block's id is its paragraph's: accepting a join leaves the next
+ * paragraph's id (the reference rule), so the blocks the sides name are read
+ * again by their words after every resolution (`heldBlockIds`).
+ *
  * A case saves and reopens a package a few times, about 50 ms; the budget is
  * 120 s for the stated runs, scaled by the nightly factor.
  */
@@ -34,6 +38,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { type HeldBlockIds, heldBlockIds } from "../__tests__/heldBlockIds";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
@@ -210,6 +215,13 @@ const requestedOrder = (
   return result;
 };
 
+/** The block `side` puts blocks beside, as `held` reads it, and on which side. */
+const anchorOf = (held: HeldBlockIds<Side>, side: Side) => {
+  const blockId = held(side);
+  if (blockId === undefined) throw new Error(`No block for ${side}`);
+  return { blockId, after: side !== "beforeNext" && side !== "beforeAnchor" };
+};
+
 const open = async (setup: Case): Promise<FolioDocxReviewer> => {
   const texts = [
     `## ${OPENING}`,
@@ -282,41 +294,43 @@ const applyBatch = (
  */
 const replay = async (setup: Case, mode: Mode) => {
   let reviewer = await open(setup);
-  const idOf = (text: string): string => {
-    const block = reviewer.snapshot().blocks.find((b) => b.text === text);
-    if (!block) throw new Error(`No block reads "${text}"`);
-    return block.id;
+  // What each side puts blocks beside, by its words: accepting can join the
+  // anchor into the paragraph after it, which keeps that one's id, so the ids
+  // are read again after every resolution (a block pending deletion reads no
+  // words, and keeps the id it had while it is listed).
+  const words: Record<Side, string | undefined> = {
+    beforeAnchor: ANCHOR,
+    afterAnchor: ANCHOR,
+    afterTable: setup.table === "none" ? undefined : `${TABLE} one`,
+    beforeNext: setup.anchorIsLast ? undefined : NEXT,
   };
-  const anchorId = idOf(ANCHOR);
-  const nextId = setup.anchorIsLast ? undefined : idOf(NEXT);
-  const tableId = setup.table === "none" ? undefined : idOf(`${TABLE} one`);
+  let held = heldBlockIds(reviewer, words);
   let stretch: Stretch =
     setup.table === "none"
       ? []
       : [{ label: TABLE, table: true, isTable: true }];
-  if (setup.nextRemoved && nextId !== undefined) {
+  if (setup.nextRemoved) {
     // The story's last paragraph, deleted: the anchor's break goes instead.
     applyBatch(reviewer, mode === "direct" ? "direct" : "tracked-changes", [
-      { id: "delete-next", type: "deleteBlock", blockId: nextId },
+      {
+        id: "delete-next",
+        type: "deleteBlock",
+        blockId: anchorOf(held, "beforeNext").blockId,
+      },
     ]);
+    held = heldBlockIds(reviewer, words, held);
   }
-  if (setup.table === "removed" && tableId !== undefined) {
+  if (setup.table === "removed") {
     // Another reviewer's pending deletion, unless applied directly.
     applyBatch(reviewer, mode === "direct" ? "direct" : "tracked-changes", [
-      { id: "delete-table", type: "deleteTable", blockId: tableId },
+      {
+        id: "delete-table",
+        type: "deleteTable",
+        blockId: anchorOf(held, "afterTable").blockId,
+      },
     ]);
+    held = heldBlockIds(reviewer, words, held);
   }
-  const anchors: Record<Side, string | undefined> = {
-    beforeAnchor: anchorId,
-    afterAnchor: anchorId,
-    afterTable: tableId,
-    beforeNext: nextId,
-  };
-  const anchorOf = (side: Side) => {
-    const blockId = anchors[side];
-    if (blockId === undefined) throw new Error(`No block for ${side}`);
-    return { blockId, after: side !== "beforeNext" && side !== "beforeAnchor" };
-  };
   /** What stands right before the anchor, after the opening, in order. */
   const ahead: Placed[] = [];
   const looks = new Map<string, Look>();
@@ -330,11 +344,22 @@ const replay = async (setup: Case, mode: Mode) => {
       if (insertion.kind === "paragraph" || insertion.kind === "paragraphs")
         looks.set(`B${index}I${at}`, insertion.look);
     }
-    const operations = batch.insertions.map((insertion, at) =>
-      insertionOf(insertion, `B${index}I${at}`, anchorOf(insertion.side)),
-    );
+    const operations: FolioDocumentOperation[] = [];
+    for (const [at, insertion] of batch.insertions.entries()) {
+      operations.push(
+        insertionOf(
+          insertion,
+          `B${index}I${at}`,
+          anchorOf(held, insertion.side),
+        ),
+      );
+    }
     if (batch.deletesAnchor) {
-      operations.push({ id: "delete", type: "deleteBlock", blockId: anchorId });
+      operations.push({
+        id: "delete",
+        type: "deleteBlock",
+        blockId: anchorOf(held, "beforeAnchor").blockId,
+      });
     }
     applyBatch(reviewer, mode, operations);
     // Before the anchor is one gap, after what earlier batches put there.
@@ -353,6 +378,7 @@ const replay = async (setup: Case, mode: Mode) => {
     if (step === "accept" || step === "reopenAndAccept") {
       reviewer.acceptAll();
     }
+    held = heldBlockIds(reviewer, words, held);
   }
   const deleted = setup.batches.some((batch) => batch.deletesAnchor);
   const accepted = await acceptedBlocks(reviewer);
