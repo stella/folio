@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyConfig,
@@ -390,13 +391,14 @@ describe("id leases", () => {
   test(
     "concurrent peers minting ids converge on the authority's bytes without losing an edit",
     async () => {
-      const counts = { concurrent: 0, mintsSequenced: 0 };
-      await assertProperty(convergence("leased", counts), {
+      await assertProperty(convergence("leased"), {
         numRuns: NUM_RUNS,
         id: "id lease convergence",
       });
-      // The schedules do race: peers mint while another's minting edit is
-      // unsequenced, and minting edits reach the journal.
+      // On a fixed sample, the schedules do race: peers mint while another's
+      // minting edit is unsequenced, and minting edits reach the journal.
+      const counts = { concurrent: 0, mintsSequenced: 0 };
+      await checkCoverageSample(convergence("leased", counts), NUM_RUNS);
       expect(counts.concurrent).toBeGreaterThan(0);
       expect(counts.mintsSequenced).toBeGreaterThan(NUM_RUNS);
     },
