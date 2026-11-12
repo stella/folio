@@ -417,10 +417,32 @@ const LATE_JOIN: readonly Command[] = [
   { type: "local", peer: 3, kind: "type", seed: 0 },
 ];
 
+/**
+ * Peer 0 types, peer 1 types; peer 1's batch reaches the room and its
+ * broadcast reaches peer 0, which then undoes its own typing.
+ */
+const UNDO_AFTER_REMOTE: readonly Command[] = [
+  { type: "local", peer: 0, kind: "type", seed: 0 },
+  { type: "local", peer: 1, kind: "type", seed: 0 },
+  { type: "deliver", seed: 1 },
+  { type: "deliver", seed: 1 },
+  { type: "local", peer: 0, kind: "undo", seed: 0 },
+];
+
+/** Peer 0 splits its own paragraph until its paragraph ids run low. */
+const LEASE_RENEWAL: readonly Command[] = Array.from({ length: 6 }, () => ({
+  type: "local" as const,
+  peer: 0,
+  kind: "splitEnd" as const,
+  seed: 0,
+}));
+
 const EXAMPLES: [number, boolean, Command[]][] = [
   [3, false, [...REMOTE_OVER_PENDING]],
   [3, false, [...ANSWER_LOST]],
   [4, true, [...LATE_JOIN]],
+  [3, false, [...UNDO_AFTER_REMOTE]],
+  [3, false, [...LEASE_RENEWAL]],
 ];
 
 const emptyCoverage = (): Coverage => ({

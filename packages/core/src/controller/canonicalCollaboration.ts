@@ -17,6 +17,7 @@ import {
   type SequencedBatch,
 } from "@stll/docx-core/ops";
 
+import { readModel } from "../types/documentModel";
 import type {
   CanonicalRoomSubmission,
   CanonicalRoomTransport,
@@ -195,7 +196,8 @@ export const connectCanonicalRoom = async (
   if (session.version !== 0)
     return failure("edited", "The session was edited before it joined.");
 
-  const client = createClient(session.document);
+  // The client only reads the document: every batch it applies makes a new one.
+  const client = createClient(readModel(session.document));
   const joinedAt = transport.headRev;
   const inbox: Inbound[] = [];
   const renewing = new Set<IdLeaseKind>();
