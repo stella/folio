@@ -21,22 +21,22 @@ const isTable = (node: PMNode): boolean =>
 const goesWhole = (block: PMNode): boolean =>
   isTable(block) ? tableGoes(block, "accept") : paragraphGoes(block, "accept");
 
-/** The gap a block put at `boundary`, between blocks, lands in. */
+/** The gap a block put on `side` of the block at `boundary` lands in. */
 export const insertionGap = (
   doc: PMNode,
   boundary: number,
-  afterParagraph: boolean,
+  side: "before" | "after",
 ): number => {
-  // Put right after a paragraph, it lands there, even after one accepting
-  // removes: the batch named that place. Put anywhere else, it lands before
-  // the blocks right before `boundary` that accepting removes whole, tables
-  // and paragraphs alike: accepted, the two sides of those blocks are one
-  // gap, so blocks put on either side of them share it, as they do once
-  // those blocks are removed directly. A paragraph a pending join runs into,
+  // Put after a block, paragraph or table, it lands right after it, even
+  // after one accepting removes: the batch named that place. Put before
+  // one, it lands before the blocks right before `boundary` that accepting
+  // removes whole, tables and paragraphs alike: accepted, the two sides of
+  // those blocks are one gap, so blocks put on either side of them share
+  // it, as they do once those blocks are removed directly. A paragraph a pending join runs into,
   // from words before it whose break goes, is part of that join rather than
   // the gap (`pendingJoinEnd` reads where the join ends), so the gap stops
   // after it, past the tables before it alone.
-  if (afterParagraph) return boundary;
+  if (side === "after") return boundary;
   const $boundary = doc.resolve(boundary);
   const parent = $boundary.parent;
   let first = $boundary.index();

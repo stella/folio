@@ -3191,7 +3191,7 @@ const insertionAt = ({
     paragraphPos: position,
     noteReferences,
   });
-  return insertionGap(tr.doc, bounds[item.joinSide], item.joinSide === "after");
+  return insertionGap(tr.doc, bounds[item.joinSide], item.joinSide);
 };
 
 /**
@@ -10097,8 +10097,11 @@ const resolveOperationTarget = ({
     joinAt?: number;
   };
   // A block beside the outermost table its anchor sits in.
-  const besideTable = (boundary: number): Placement => {
-    const at = insertionGap(doc, boundary, false);
+  const besideTable = (
+    boundary: number,
+    side: "before" | "after",
+  ): Placement => {
+    const at = insertionGap(doc, boundary, side);
     return { from: at, at };
   };
   // A block beside the anchor: `from` is the anchor's own gap, `at` where a
@@ -10111,8 +10114,7 @@ const resolveOperationTarget = ({
     // and keep the positions they were read at.
     // Either side of the blocks accepting removes whole is one gap
     // (`insertionGap`).
-    const gap = (position: number): number =>
-      insertionGap(doc, position, side === "after");
+    const gap = (position: number): number => insertionGap(doc, position, side);
     const plain = gap(
       side === "after"
         ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
@@ -10198,7 +10200,7 @@ const resolveOperationTarget = ({
     // After a paragraph is after the text boxes drawn in it too: a block
     // between the two is read after the boxes once the package is saved.
     const placed = tableBoundary
-      ? besideTable(tableBoundary[side])
+      ? besideTable(tableBoundary[side], side)
       : beside(side);
     if (
       joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences })
@@ -10238,7 +10240,7 @@ const resolveOperationTarget = ({
     const position = operation.position ?? "after";
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const placed = tableBoundary
-      ? besideTable(tableBoundary[position])
+      ? besideTable(tableBoundary[position], position)
       : beside(position);
     return {
       type: "resolved",
@@ -10499,7 +10501,7 @@ const resolveOperationTarget = ({
       (operation.position ?? "after") === "after" ? "after" : "before";
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const placed = tableBoundary
-      ? besideTable(tableBoundary[side])
+      ? besideTable(tableBoundary[side], side)
       : beside(side);
     return {
       type: "resolved",
