@@ -25,6 +25,11 @@ import {
   BROWSER_INPUT_REGRESSIONS,
   PINNED_BROWSER_INPUT_TAG,
 } from "../tests/visual/browserInputRegressions";
+import {
+  PINNED_REPLAY_FONT_DELAYS_MS,
+  PINNED_REPLAY_OUTCOMES_ENV,
+  PINNED_REPLAY_REPEATS,
+} from "../tests/visual/pinnedReplayRepeats";
 import { affectedTypecheckPlanForPaths } from "./check-affected-packages";
 import {
   affectedPackagePlan,
@@ -781,8 +786,21 @@ describe("CI plan", () => {
       expect(
         commands.filter((command) => command.includes("playwright test")),
       ).toEqual([
-        "bunx playwright test --project=browser-input-pinned --workers=1 --shard=${{ matrix.shard }}/3",
+        `bunx playwright test --project=browser-input-pinned --workers=1 --shard=\${{ matrix.shard }}/3 --repeat-each=${String(PINNED_REPLAY_REPEATS)} --retries=0`,
       ]);
+      // The repeats are compared once they ran, also when one failed.
+      const compare = steps.find(
+        (step) =>
+          isRecord(step) &&
+          typeof step["run"] === "string" &&
+          step["run"].includes("pinned-replay-repeats.ts"),
+      );
+      expect(isRecord(compare) ? compare["run"] : undefined).toBe(
+        "bun scripts/pinned-replay-repeats.ts test-results/pinned-replay-outcomes",
+      );
+      expect(isRecord(compare) ? compare["if"] : undefined).toBe(
+        "${{ !cancelled() }}",
+      );
       const shards = ((
         pinned?.strategy as { matrix?: { shard?: unknown } } | undefined
       )?.matrix?.shard ?? []) as unknown[];
@@ -797,15 +815,26 @@ describe("CI plan", () => {
           step["run"].includes("playwright test"),
       );
       expect(isRecord(replays) ? replays["timeout-minutes"] : undefined).toBe(
-        5,
+        10,
       );
+      expect(
+        isRecord(replays) && isRecord(replays["env"])
+          ? replays["env"][PINNED_REPLAY_OUTCOMES_ENV]
+          : undefined,
+      ).toBe("test-results/pinned-replay-outcomes");
       // A replay takes about 3.6 s in CI (69 replays in 4.1 minutes); at a
-      // 4 s ceiling each shard's share must stay within 80% of the step's
-      // 5 minutes, or the registry has outgrown its shards.
+      // 4 s ceiling, plus each repeat's font delay, each shard's repeats must
+      // stay within 80% of the step's 10 minutes, or the registry has
+      // outgrown its shards.
       const perShard = Math.ceil(
         BROWSER_INPUT_REGRESSIONS.length / shards.length,
       );
-      expect(perShard * 4).toBeLessThanOrEqual(0.8 * 5 * 60);
+      const fontDelaySeconds =
+        PINNED_REPLAY_FONT_DELAYS_MS.reduce((sum, delay) => sum + delay, 0) /
+        1000;
+      expect(
+        perShard * (4 * PINNED_REPLAY_REPEATS + fontDelaySeconds),
+      ).toBeLessThanOrEqual(0.8 * 10 * 60);
 
       const listing = expectExited(
         runChild(

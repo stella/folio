@@ -1,5 +1,7 @@
 import { expect, type Page, test, type TestInfo } from "@playwright/test";
 import fc from "fast-check";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
@@ -52,6 +54,11 @@ import {
 } from "./browserInputTrace";
 import type {} from "./browserTestBridge";
 import { clipboardHtmlProjection } from "./clipboardHtmlProjection";
+import {
+  PINNED_REPLAY_FONT_DELAYS_MS,
+  PINNED_REPLAY_OUTCOMES_ENV,
+  pinnedReplayOutcomeFile,
+} from "./pinnedReplayRepeats";
 
 declare global {
   var __folioPlayground:
@@ -59,6 +66,13 @@ declare global {
 }
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
+
+/**
+ * What the running pinned replay observed: each drag's selection and each
+ * mode's saved outcome. Repeated under other font timings, it must observe the
+ * same. Generated runs record nothing.
+ */
+let replayObservations: unknown[] | null = null;
 const INPUT_TRACE = browserInputTraceArbitrary();
 const missingCanonical = createMissingOpBurndown();
 test.afterAll(() => console.info(missingCanonical.markdown()));
@@ -268,6 +282,7 @@ const selectTableTarget = async (page: Page) => {
       return null;
     return { anchor: selectedAnchor.pos, head: selectedHead.pos };
   });
+  replayObservations?.push({ drag: "table", selected });
   expect(selected).toEqual({ anchor: target.anchor, head: target.head });
   return true;
 };
@@ -295,6 +310,7 @@ const selectTarget = async (page: Page, target: BrowserDragTarget) => {
       ?.getView()?.state.selection;
     return selection ? { from: selection.from, to: selection.to } : null;
   });
+  replayObservations?.push({ drag: target, selected });
   expect(selected).toEqual({ from: positions.from, to: positions.to });
   if (positions.targetType === "inline") {
     expect(selected?.from).toBeLessThanOrEqual(positions.targetFrom);
@@ -535,8 +551,10 @@ const runMode = async ({
     suggesting,
     authority,
   });
-  if (loaded.type === "activationRefused")
+  if (loaded.type === "activationRefused") {
+    replayObservations?.push({ authority, suggesting, refused: loaded.row });
     return { type: "activationRefused", row: loaded.row } as const;
+  }
   for (const action of trace.actions)
     await driveWithAuthority({ page, action, authority });
   await page.waitForTimeout(350);
@@ -566,11 +584,18 @@ const runMode = async ({
       message: "a fresh load paints what the page showed before it",
     })
     .toEqual(painted);
+  const changes = reopened.getChanges();
+  replayObservations?.push({
+    authority,
+    suggesting,
+    blocks: project(reopened),
+    changes: changes.map(({ type, text }) => ({ type, text })),
+  });
   return {
     type: "ready",
     buffer,
     blocks: project(reopened),
-    changes: reopened.getChanges(),
+    changes,
   } as const;
 };
 
@@ -797,21 +822,60 @@ test.describe("pinned browser input", () => {
     test(
       `regression seed ${seed} path ${path} / ${fingerprint}`,
       { tag: PINNED_BROWSER_INPUT_TAG },
-      async ({ page }) => {
-        const source = await shapeArrayBuffer(trace.shape);
-        const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-        if ("authority" in regression) {
-          await checkCanonicalTrace({ page, source, baseline, trace });
-          if ("comparesWithDefaultEditor" in regression)
-            await checkCommittedAsDefaultEditor({
-              page,
-              source,
-              baseline,
-              trace,
-            });
-          return;
+      async ({ page }, testInfo) => {
+        // Each repeat delivers the fonts later, so a target read from paint a
+        // late face moves shows as a different observation.
+        const fontDelay =
+          PINNED_REPLAY_FONT_DELAYS_MS[
+            testInfo.repeatEachIndex % PINNED_REPLAY_FONT_DELAYS_MS.length
+          ] ?? 0;
+        if (fontDelay > 0)
+          await page.route(/\.woff2(?:\?|$)/u, async (route) => {
+            await new Promise((resolve) => setTimeout(resolve, fontDelay));
+            await route.continue();
+          });
+        const observations: unknown[] = [];
+        replayObservations = observations;
+        const replay = async () => {
+          const source = await shapeArrayBuffer(trace.shape);
+          const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+          if ("authority" in regression) {
+            await checkCanonicalTrace({ page, source, baseline, trace });
+            if ("comparesWithDefaultEditor" in regression)
+              await checkCommittedAsDefaultEditor({
+                page,
+                source,
+                baseline,
+                trace,
+              });
+            return;
+          }
+          await checkDefaultEditorTrace({ page, source, baseline, trace });
+        };
+        const outcomes = process.env[PINNED_REPLAY_OUTCOMES_ENV];
+        let failure: unknown;
+        await replay().catch((error: unknown) => {
+          failure = error;
+        });
+        replayObservations = null;
+        if (outcomes !== undefined && outcomes !== "") {
+          const file = pinnedReplayOutcomeFile({
+            directory: outcomes,
+            title: testInfo.title,
+            repeat: testInfo.repeatEachIndex,
+          });
+          await mkdir(path.dirname(file), { recursive: true });
+          await writeFile(
+            file,
+            JSON.stringify({
+              title: testInfo.title,
+              repeat: testInfo.repeatEachIndex,
+              outcome: failure === undefined ? "passed" : "failed",
+              observations,
+            }),
+          );
         }
-        await checkDefaultEditorTrace({ page, source, baseline, trace });
+        if (failure !== undefined) throw failure;
       },
     );
   }

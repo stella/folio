@@ -864,9 +864,18 @@ jobs:
       - name: Install Playwright Chromium
         uses: ./.github/actions/playwright-deps
 
+      # Each replay runs once per font timing (tests/visual/pinnedReplayRepeats.ts)
+      # and records what it observed; a replay must observe the same every time.
+      # Nothing is retried.
       - name: Run only standing browser input regressions
-        timeout-minutes: 5
-        run: bunx playwright test --project=browser-input-pinned --workers=1 --shard=${{ matrix.shard }}/3
+        timeout-minutes: 10
+        env:
+          FOLIO_PINNED_REPLAY_OUTCOMES: test-results/pinned-replay-outcomes
+        run: bunx playwright test --project=browser-input-pinned --workers=1 --shard=${{ matrix.shard }}/3 --repeat-each=3 --retries=0
+
+      - name: Compare pinned replay repeats
+        if: ${{ !cancelled() }}
+        run: bun scripts/pinned-replay-repeats.ts test-results/pinned-replay-outcomes
 
       - name: Upload failed pinned replay artifacts
         if: failure()
