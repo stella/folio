@@ -109,6 +109,8 @@ export function CollaborationApp() {
               document={seedDocument}
               author={user.name}
               collaboration={collaboration}
+              // Collaboration still requires the legacy engine.
+              experimentalSession="legacy"
               comments={comments}
               onCommentsChange={setComments}
               showToolbar={true}

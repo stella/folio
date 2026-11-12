@@ -108,17 +108,20 @@ const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const findResultNotifications: (FindResult | null)[] = [];
 const query = new URLSearchParams(window.location.search);
+const collaborationEnabled = query.has("collaboration");
 // The canonical session is the editor's default; `?session=legacy` selects the
 // ProseMirror-owned engine and `?session=canonical` states the default.
+// Collaboration still requires the legacy engine.
 const requestedSession = query.get("session");
 const experimentalSession =
   requestedSession === "legacy" || requestedSession === "canonical"
     ? requestedSession
-    : undefined;
+    : collaborationEnabled
+      ? "legacy"
+      : undefined;
 const editorMode = ref<EditorMode>(
   query.get("mode") === "suggesting" ? "suggesting" : "editing",
 );
-const collaborationEnabled = query.has("collaboration");
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;
 const optionalEditorProps = {
