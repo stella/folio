@@ -679,6 +679,25 @@ const besideItsDeletion = (
   return pair(left, right) || pair(right, left);
 };
 
+/**
+ * Whether one of two resolved operations inserts a block right before or
+ * right after the paragraph the other splits: the split claims that
+ * paragraph whole, and the insertion touches only its edge. Both apply, as
+ * in the default engine: the insertion goes in first, beside the paragraph
+ * it read, and the split then divides that paragraph by its identity.
+ */
+const besideItsSplit = (
+  left: Pick<ResolvedOperation, "operation" | "from" | "to">,
+  right: Pick<ResolvedOperation, "operation" | "from" | "to">,
+): boolean => {
+  const pair = (insertion: typeof left, split: typeof left) =>
+    isBlockInsertion(insertion.operation) &&
+    insertion.from === insertion.to &&
+    split.operation.type === "splitBlock" &&
+    (insertion.from === split.from || insertion.from === split.to);
+  return pair(left, right) || pair(right, left);
+};
+
 /** A block operation without the move it names: a plain insertion or deletion. */
 const withoutMove = (
   operation: FolioDocumentOperation,
@@ -1027,6 +1046,7 @@ export class CanonicalPublicOperations {
         (earlier) =>
           earlier !== candidate &&
           !besideItsDeletion(earlier, candidate) &&
+          !besideItsSplit(earlier, candidate) &&
           ((candidate.from < earlier.to && candidate.to > earlier.from) ||
             (earlier.from === earlier.to &&
               candidate.from <= earlier.from &&
