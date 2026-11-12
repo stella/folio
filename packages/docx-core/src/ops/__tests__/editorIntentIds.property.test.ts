@@ -2,6 +2,7 @@ import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -293,8 +294,7 @@ describe("editor intent identity allocation", () => {
 
   test("generated intent allocations avoid every package identity space", () => {
     const kinds = ["replaceText", "splitParagraph", "joinParagraphs"] as const;
-    const exercised = new Set<string>();
-    assertProperty(
+    const law = (exercised: Set<string>) =>
       fc.property(
         documentArbitrary,
         fc.nat(),
@@ -401,12 +401,15 @@ describe("editor intent identity allocation", () => {
             exercised.add(intent.type);
           }
         },
-      ),
-      {
-        numRuns: 100,
-        id: "generated intent allocations avoid every package identity space",
-      },
-    );
+      );
+    assertProperty(law(new Set()), {
+      numRuns: 100,
+      id: "generated intent allocations avoid every package identity space",
+    });
+    // Every run allocates for each kind, so a few runs show every kind.
+    const COVERAGE_RUNS = 10;
+    const exercised = new Set<string>();
+    checkCoverageSample(law(exercised), COVERAGE_RUNS);
     expect([...exercised].sort()).toEqual([...kinds].sort());
   });
 });

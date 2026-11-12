@@ -43,6 +43,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { assertExactModel } from "../../../../../test/exactModel";
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -122,14 +123,28 @@ const count = (tally: Tally, key: string): void => {
 };
 
 /**
- * A law that holds because nothing applied proves nothing. A replay of one
- * counterexample (`PROPERTY_TEST_PATH`) runs one example, which proves that
- * example and nothing about coverage.
+ * A law that holds because nothing applied proves nothing. Each law also runs
+ * on a fixed sample (test/property-coverage.ts) in which every generated kind
+ * takes its turn, and that sample's tally must reach every kind: what the
+ * property's own seed drew, or how far its run got, decides nothing.
  */
-const expectEveryKindChecked = (tally: Tally, runs: number): void => {
-  if (process.env["PROPERTY_TEST_PATH"] !== undefined) return;
+const COVERAGE_RUNS = GENERATED_TRACKED_OP_KINDS.length * 20;
+/** Runs of two to six operations: fewer runs reach every kind as often. */
+const RUN_COVERAGE_RUNS = GENERATED_TRACKED_OP_KINDS.length * 5;
+
+/** The `index`th seed of a coverage sample, of the kind whose turn it is. */
+const inTurn = (seed: OpSeed, index: number): OpSeed => ({
+  ...seed,
+  kind: index % GENERATED_TRACKED_OP_KINDS.length,
+});
+
+/** The seeds of the `index`th run of a coverage sample, each taking its turn. */
+const runInTurn = (seeds: readonly OpSeed[], index: number): OpSeed[] =>
+  seeds.map((seed, offset) => inTurn(seed, index * 6 + offset));
+
+const expectEveryKindChecked = (tally: Tally): void => {
   for (const kind of GENERATED_TRACKED_OP_KINDS) {
-    expect({ kind, checked: (tally.get(kind) ?? 0) > runs / 2000 }).toEqual({
+    expect({ kind, checked: (tally.get(kind) ?? 0) > 0 }).toEqual({
       kind,
       checked: true,
     });
@@ -1017,8 +1032,7 @@ describe("tracked operations and their resolution", () => {
   });
 
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(
         reviewDocumentArbitrary,
         opSeedArbitrary,
@@ -1061,18 +1075,20 @@ describe("tracked operations and their resolution", () => {
             expect(accepted).toStrictEqual(expected);
           }
         },
-      ),
-      {
-        numRuns: NUM_RUNS,
-        id: "L1: accepting a tracked operation's revisions gives the direct operation's result",
-      },
-    );
-    expectEveryKindChecked(tally, NUM_RUNS);
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS,
+      id: "L1: accepting a tracked operation's revisions gives the direct operation's result",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), COVERAGE_RUNS, {
+      map: ([document, seed], index) => [document, inTurn(seed, index)],
+    });
+    expectEveryKindChecked(tally);
   });
 
   test("L2: rejecting a tracked operation's revisions gives the document back", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(
         reviewDocumentArbitrary,
         opSeedArbitrary,
@@ -1101,18 +1117,20 @@ describe("tracked operations and their resolution", () => {
             projection: rejectProjection(document, op),
           });
         },
-      ),
-      {
-        numRuns: NUM_RUNS,
-        id: "L2: rejecting a tracked operation's revisions gives the document back",
-      },
-    );
-    expectEveryKindChecked(tally, NUM_RUNS);
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS,
+      id: "L2: rejecting a tracked operation's revisions gives the document back",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), COVERAGE_RUNS, {
+      map: ([document, seed], index) => [document, inTurn(seed, index)],
+    });
+    expectEveryKindChecked(tally);
   });
 
   test("L3: resolving a run's revisions at once equals resolving each operation's in turn", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(
         reviewDocumentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
@@ -1199,18 +1217,20 @@ describe("tracked operations and their resolution", () => {
             });
           }
         },
-      ),
-      {
-        numRuns: NUM_RUNS / 5,
-        id: "L3: resolving a run's revisions at once equals resolving each operation's in turn",
-      },
-    );
-    expectEveryKindChecked(tally, NUM_RUNS / 5);
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS / 5,
+      id: "L3: resolving a run's revisions at once equals resolving each operation's in turn",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), RUN_COVERAGE_RUNS, {
+      map: ([document, seeds], index) => [document, runInTurn(seeds, index)],
+    });
+    expectEveryKindChecked(tally);
   });
 
   test("L3: rejecting a run's revisions at once equals rejecting each operation's in any order", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(
         reviewDocumentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
@@ -1247,18 +1267,24 @@ describe("tracked operations and their resolution", () => {
             ),
           );
         },
-      ),
-      {
-        numRuns: NUM_RUNS / 5,
-        id: "L3: rejecting a run's revisions at once equals rejecting each operation's in any order",
-      },
-    );
-    expectEveryKindChecked(tally, NUM_RUNS / 5);
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS / 5,
+      id: "L3: rejecting a run's revisions at once equals rejecting each operation's in any order",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), RUN_COVERAGE_RUNS, {
+      map: ([document, seeds, keys], index) => [
+        document,
+        runInTurn(seeds, index),
+        keys,
+      ],
+    });
+    expectEveryKindChecked(tally);
   });
 
   test("L4: tracked operations and resolutions are undone exactly by their inverses", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(
         reviewDocumentArbitrary,
         opSeedArbitrary,
@@ -1286,19 +1312,26 @@ describe("tracked operations and their resolution", () => {
             count(tally, `resolution ${resolution.error.reason}`);
           }
         },
-      ),
-      {
-        numRuns: NUM_RUNS,
-        id: "L4: tracked operations and resolutions are undone exactly by their inverses",
-      },
-    );
-    expectEveryKindChecked(tally, NUM_RUNS);
-    expect(tally.get("resolved") ?? 0).toBeGreaterThan(NUM_RUNS / 4);
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS,
+      id: "L4: tracked operations and resolutions are undone exactly by their inverses",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), COVERAGE_RUNS, {
+      map: ([document, seed, picks, decision], index) => [
+        document,
+        inTurn(seed, index),
+        picks,
+        decision,
+      ],
+    });
+    expectEveryKindChecked(tally);
+    expect(tally.get("resolved") ?? 0).toBeGreaterThan(COVERAGE_RUNS / 4);
   });
 
   test("L4: a run of tracked operations is undone exactly, in reverse and as a batch", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(
         reviewDocumentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
@@ -1324,13 +1357,16 @@ describe("tracked operations and their resolution", () => {
           expect(batch.value.document).toStrictEqual(current);
           expectRestores(batch.value, original);
         },
-      ),
-      {
-        numRuns: NUM_RUNS / 5,
-        id: "L4: a run of tracked operations is undone exactly, in reverse and as a batch",
-      },
-    );
-    expectEveryKindChecked(tally, NUM_RUNS / 5);
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS / 5,
+      id: "L4: a run of tracked operations is undone exactly, in reverse and as a batch",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), RUN_COVERAGE_RUNS, {
+      map: ([document, seeds], index) => [document, runInTurn(seeds, index)],
+    });
+    expectEveryKindChecked(tally);
   });
 
   test("L5: equal inputs give equal results", () => {
@@ -1443,8 +1479,7 @@ describe("tracked operations and their resolution", () => {
   });
 
   test("L7: no tracked operation marks a paragraph that ends its container", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(
         reviewDocumentArbitrary,
         opSeedArbitrary,
@@ -1461,18 +1496,20 @@ describe("tracked operations and their resolution", () => {
             applied.value.revisions.filter((id) => existing.has(id)),
           ).toEqual([]);
         },
-      ),
-      {
-        numRuns: NUM_RUNS,
-        id: "L7: no tracked operation marks a paragraph that ends its container",
-      },
-    );
-    expectEveryKindChecked(tally, NUM_RUNS);
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS,
+      id: "L7: no tracked operation marks a paragraph that ends its container",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), COVERAGE_RUNS, {
+      map: ([document, seed], index) => [document, inTurn(seed, index)],
+    });
+    expectEveryKindChecked(tally);
   });
 
   test("resolving the same revisions again changes nothing", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(
         reviewDocumentArbitrary,
         fc.array(fc.boolean(), { minLength: 1, maxLength: 6 }),
@@ -1495,13 +1532,14 @@ describe("tracked operations and their resolution", () => {
           expect(twice.value.document).toBe(once.value.document);
           expect(twice.value.inverse).toEqual([]);
         },
-      ),
-      {
-        numRuns: NUM_RUNS,
-        id: "resolving the same revisions again changes nothing",
-      },
-    );
-    expect(tally.get("resolved") ?? 0).toBeGreaterThan(NUM_RUNS / 4);
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS,
+      id: "resolving the same revisions again changes nothing",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), COVERAGE_RUNS);
+    expect(tally.get("resolved") ?? 0).toBeGreaterThan(COVERAGE_RUNS / 4);
   });
 
   test("a tracked operation takes exactly the new ids revisionIdDemand counts", () => {
@@ -1540,8 +1578,7 @@ describe("tracked operations and their resolution", () => {
   });
 
   test("a planned tracked deletion removes only the author's own insertions", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(
         reviewDocumentArbitrary,
         opSeedArbitrary,
@@ -1747,12 +1784,19 @@ describe("tracked operations and their resolution", () => {
             retracted,
           );
         },
-      ),
-      {
-        numRuns: NUM_RUNS / 5,
-        id: "a planned tracked deletion removes only the author's own insertions",
-      },
-    );
+      );
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS / 5,
+      id: "a planned tracked deletion removes only the author's own insertions",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), COVERAGE_RUNS, {
+      map: ([source, seed, loadedComments], index) => [
+        source,
+        inTurn(seed, index),
+        loadedComments,
+      ],
+    });
     expect(tally.get("one") ?? 0).toBeGreaterThan(0);
     expect(tally.get("fresh-split") ?? 0).toBeGreaterThan(0);
     expect(tally.get("loaded-comments") ?? 0).toBeGreaterThan(0);

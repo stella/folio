@@ -26,6 +26,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { assertExactModel } from "../../../../../test/exactModel";
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyConfig,
@@ -148,16 +149,27 @@ const count = (tally: Tally, key: DocumentOpType | "refused"): void => {
 };
 
 /**
- * A property that passes because nothing applied proves nothing: every
- * generated kind must have applied in a real share of the runs.
+ * A property that passes because nothing applied proves nothing. Each such
+ * property also runs on a fixed sample (test/property-coverage.ts) in which
+ * every generated kind takes its turn, and every kind must apply there: what
+ * the property's own seed drew, or how far its run got, decides nothing.
  */
-const expectEveryKindApplied = (tally: Tally, runs: number): void => {
+const COVERAGE_RUNS = GENERATED_OP_KINDS.length * 20;
+/** Sequences of two to eight operations: fewer runs give each kind as many turns. */
+const SEQUENCE_COVERAGE_RUNS = GENERATED_OP_KINDS.length * 4;
+
+/** The `index`th seed of a coverage sample, of the kind whose turn it is. */
+const inTurn = (seed: OpSeed, index: number): OpSeed => ({
+  ...seed,
+  kind: index % GENERATED_OP_KINDS.length,
+});
+
+const expectEveryKindApplied = (tally: Tally): void => {
   for (const kind of GENERATED_OP_KINDS) {
-    expect({ kind, applied: tally.get(kind) ?? 0 }).toEqual({
+    expect({ kind, applied: (tally.get(kind) ?? 0) > 0 }).toEqual({
       kind,
-      applied: expect.any(Number),
+      applied: true,
     });
-    expect(tally.get(kind) ?? 0).toBeGreaterThan(runs / 1000);
   }
 };
 
@@ -872,8 +884,7 @@ describe("document operations", () => {
       "formatParagraph",
       "setList",
     ] as const;
-    const tally = new Set<string>();
-    assertProperty(
+    const law = (tally: Set<string>) =>
       fc.property(
         documentArbitrary,
         plainInputArbitrary,
@@ -1161,12 +1172,23 @@ describe("document operations", () => {
             tracked = applyAll(tracked, entry.inverse);
           expect(tracked).toStrictEqual(original);
         },
-      ),
-      {
-        numRuns: 300,
-        id: "editor intent sequences preserve accepted editing, rejected baseline and exact journal undo",
-      },
-    );
+      );
+    assertProperty(law(new Set()), {
+      numRuns: 300,
+      id: "editor intent sequences preserve accepted editing, rejected baseline and exact journal undo",
+    });
+    // Every input of a coverage run takes its turn, so each run tries every kind.
+    const tally = new Set<string>();
+    checkCoverageSample(law(tally), 30, {
+      map: ([generated, text, inputs], index) => [
+        generated,
+        text,
+        inputs.map((input, offset) => ({
+          ...input,
+          kind: kinds[(index + offset) % kinds.length] ?? input.kind,
+        })),
+      ],
+    });
     expect([...tally].sort()).toEqual([...kinds].sort());
   });
 
@@ -1886,14 +1908,15 @@ describe("document operations", () => {
   });
 
   test("generated clipboard sequences preserve arbitrary ranges, marked content and every inverse", () => {
-    const applied = new Map<string, number>();
-    const refusals = new Map<DocumentOpRefusalReason, number>();
     const payloadText = fc.string({
       unit: fc.constantFrom("x", "é", "😀"),
       minLength: 1,
       maxLength: 5,
     });
-    assertProperty(
+    const law = (
+      applied: Map<string, number>,
+      refusals: Map<DocumentOpRefusalReason, number>,
+    ) =>
       fc.property(
         fc.array(
           fc.record({
@@ -2238,12 +2261,15 @@ describe("document operations", () => {
             document = redo.value.document;
           }
         },
-      ),
-      {
-        numRuns: 50,
-        id: "generated clipboard sequences preserve arbitrary ranges, marked content and every inverse",
-      },
-    );
+      );
+    assertProperty(law(new Map(), new Map()), {
+      numRuns: 50,
+      id: "generated clipboard sequences preserve arbitrary ranges, marked content and every inverse",
+    });
+    // Each case runs eight or more steps; a few cases reach both outcomes.
+    const applied = new Map<string, number>();
+    const refusals = new Map<DocumentOpRefusalReason, number>();
+    checkCoverageSample(law(applied, refusals), 5);
     expect(applied.get("replaceFragment") ?? 0).toBeGreaterThan(0);
     expect([...refusals.keys()]).toEqual([
       DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
@@ -2547,8 +2573,7 @@ describe("document operations", () => {
     );
   });
   test("plain-text input sequences preserve exact inverse, redo and rejection atomicity", () => {
-    const tally = new Map<string, number>();
-    fc.assert(
+    const law = (tally: Map<string, number>) =>
       fc.property(
         documentArbitrary,
         fc
@@ -2696,17 +2721,27 @@ describe("document operations", () => {
           for (const ops of redo.toReversed()) current = applyAll(current, ops);
           expect(current).toStrictEqual(final);
         },
-      ),
-      propertyConfig({ numRuns: NUM_RUNS }),
-    );
+      );
+    fc.assert(law(new Map()), propertyConfig({ numRuns: NUM_RUNS }));
+    // Every input of a coverage run takes its turn, so each run tries every kind.
+    const tally = new Map<string, number>();
+    checkCoverageSample(law(tally), 40, {
+      map: ([generated, initialText, inputs], index) => [
+        generated,
+        initialText,
+        inputs.map((input, offset) => ({
+          ...input,
+          kind:
+            PLAIN_INPUT_KINDS[(index + offset) % PLAIN_INPUT_KINDS.length] ??
+            input.kind,
+        })),
+      ],
+    });
     expect([...tally.keys()].sort()).toEqual([...PLAIN_INPUT_KINDS].sort());
-    for (const applied of tally.values())
-      expect(applied).toBeGreaterThan(NUM_RUNS / 1000);
   });
 
   test("an operation's inverse restores the document exactly", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         const original = structuredClone(document);
@@ -2749,20 +2784,22 @@ describe("document operations", () => {
           expect(applied.value.inverse.length).toBeLessThanOrEqual(1);
         }
         expectRestores(applied.value, original);
-      }),
-      {
-        numRuns: NUM_RUNS,
-        id: "an operation's inverse restores the document exactly",
-      },
-    );
-    expectEveryKindApplied(tally, NUM_RUNS);
+      });
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS,
+      id: "an operation's inverse restores the document exactly",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), COVERAGE_RUNS, {
+      map: ([document, seed], index) => [document, inTurn(seed, index)],
+    });
+    expectEveryKindApplied(tally);
   });
 
   test(
     "a sequence's inverses in reverse, and a batch's, restore the document exactly",
     () => {
-      const tally: Tally = new Map();
-      assertProperty(
+      const law = (tally: Tally) =>
         fc.property(
           documentArbitrary,
           fc.array(opSeedArbitrary, { minLength: 2, maxLength: 8 }),
@@ -2812,13 +2849,19 @@ describe("document operations", () => {
             if (wireUndo.isErr()) throw wireUndo.error;
             expect(wireUndo.value.document).toStrictEqual(original);
           },
-        ),
-        {
-          numRuns: NUM_RUNS,
-          id: "a sequence's inverses in reverse, and a batch's, restore the document exactly",
-        },
-      );
-      expectEveryKindApplied(tally, NUM_RUNS);
+        );
+      assertProperty(law(new Map()), {
+        numRuns: NUM_RUNS,
+        id: "a sequence's inverses in reverse, and a batch's, restore the document exactly",
+      });
+      const tally: Tally = new Map();
+      checkCoverageSample(law(tally), SEQUENCE_COVERAGE_RUNS, {
+        map: ([document, seeds], index) => [
+          document,
+          seeds.map((seed, offset) => inTurn(seed, index * 8 + offset)),
+        ],
+      });
+      expectEveryKindApplied(tally);
     },
     propertyTestTimeout(480_000),
   );
@@ -2950,11 +2993,27 @@ describe("document operations", () => {
   });
 
   test("generated editor intents agree in direct and accepted tracked mode across structural shapes", () => {
-    const tallies = new Map<EditorIntent["type"], number>();
-    const refusals = new Map<DocumentOpRefusalReason, number>();
-    let attemptedPlans = 0;
-    let appliedMultiParagraphFormatting = 0;
-    assertProperty(
+    const expectedRefusals: readonly DocumentOpRefusalReason[] = [
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION,
+      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+      DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    ];
+    type Counts = {
+      tallies: Map<EditorIntent["type"], number>;
+      refusals: number;
+      attemptedPlans: number;
+      appliedMultiParagraphFormatting: number;
+    };
+    const fresh = (): Counts => ({
+      tallies: new Map(),
+      refusals: 0,
+      attemptedPlans: 0,
+      appliedMultiParagraphFormatting: 0,
+    });
+    const law = (counts: Counts) =>
       fc.property(documentArbitrary, (document) => {
         const paragraphs = storyParagraphs(document.package.document);
         const first = paragraphs.at(0);
@@ -3071,13 +3130,12 @@ describe("document operations", () => {
               newIds: allocation.newIds,
             },
           });
-          attemptedPlans += 2;
+          counts.attemptedPlans += 2;
           for (const result of [direct, tracked]) {
-            if (result.isErr())
-              refusals.set(
-                result.error.reason,
-                (refusals.get(result.error.reason) ?? 0) + 1,
-              );
+            if (result.isErr()) {
+              expect(expectedRefusals).toContain(result.error.reason);
+              counts.refusals += 1;
+            }
           }
           if (direct.isErr() || tracked.isErr()) continue;
           const directEdit = applyDocumentOps(document, direct.value.ops);
@@ -3230,20 +3288,25 @@ describe("document operations", () => {
             trackedRedo.value.document,
             trackedEdit.value.document,
           );
-          tallies.set(intent.type, (tallies.get(intent.type) ?? 0) + 1);
+          counts.tallies.set(
+            intent.type,
+            (counts.tallies.get(intent.type) ?? 0) + 1,
+          );
           if (
             intent.type === "formatRun" &&
             intent.from.blockId !== intent.to.blockId
           ) {
-            appliedMultiParagraphFormatting += 1;
+            counts.appliedMultiParagraphFormatting += 1;
           }
         }
-      }),
-      {
-        numRuns: 100,
-        id: "generated editor intents agree in direct and accepted tracked mode across structural shapes",
-      },
-    );
+      });
+    assertProperty(law(fresh()), {
+      numRuns: 100,
+      id: "generated editor intents agree in direct and accepted tracked mode across structural shapes",
+    });
+    // Every case tries every intent kind; a quarter of the runs reaches each.
+    const counts = fresh();
+    checkCoverageSample(law(counts), 25);
     for (const kind of [
       "formatParagraph",
       "formatRun",
@@ -3253,25 +3316,10 @@ describe("document operations", () => {
       "joinParagraphs",
       "setList",
     ] as const) {
-      expect(tallies.get(kind) ?? 0).toBeGreaterThan(0);
+      expect(counts.tallies.get(kind) ?? 0).toBeGreaterThan(0);
     }
-    expect(appliedMultiParagraphFormatting).toBeGreaterThan(0);
-    const expectedRefusals: readonly DocumentOpRefusalReason[] = [
-      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-      DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION,
-      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
-      DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
-      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-    ];
-    for (const reason of refusals.keys())
-      expect(expectedRefusals).toContain(reason);
-    expect(
-      [...refusals.values()].reduce(
-        (total, refusalCount) => total + refusalCount,
-        0,
-      ),
-    ).toBeLessThan(attemptedPlans / 2);
+    expect(counts.appliedMultiParagraphFormatting).toBeGreaterThan(0);
+    expect(counts.refusals).toBeLessThan(counts.attemptedPlans / 2);
   });
 
   test("the same operation on equal documents gives equal results", () => {
@@ -3319,8 +3367,7 @@ describe("document operations", () => {
   });
 
   test("blocks an operation does not touch are the same objects", () => {
-    const tally: Tally = new Map();
-    assertProperty(
+    const law = (tally: Tally) =>
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         const applied = applyDocumentOp(document, op);
@@ -3423,13 +3470,16 @@ describe("document operations", () => {
         );
         expect(body.comments).toBe(document.package.document.comments!);
         expect(next.warnings).toBe(document.warnings!);
-      }),
-      {
-        numRuns: NUM_RUNS,
-        id: "blocks an operation does not touch are the same objects",
-      },
-    );
-    expectEveryKindApplied(tally, NUM_RUNS);
+      });
+    assertProperty(law(new Map()), {
+      numRuns: NUM_RUNS,
+      id: "blocks an operation does not touch are the same objects",
+    });
+    const tally: Tally = new Map();
+    checkCoverageSample(law(tally), COVERAGE_RUNS, {
+      map: ([document, seed], index) => [document, inTurn(seed, index)],
+    });
+    expectEveryKindApplied(tally);
   });
 
   test("operations change logical text and run properties as defined", () => {
