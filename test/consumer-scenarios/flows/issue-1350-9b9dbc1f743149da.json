@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "title": "PINNED #1350, reported seed 2002852398: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked)",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "direct",
+  "seed": 2002852398,
+  "steps": [
+    {
+      "action": "add_comment",
+      "seed": 2570746871
+    },
+    {
+      "action": "core batch",
+      "seed": 611298664,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1739511310,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTableRow"
+  ],
+  "origin": "shrunk from random flow seed 2002852398"
+}

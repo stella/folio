@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "title": "PINNED #1350, reported seed 2002852790: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked)",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "direct",
+  "seed": 2002852769,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 43404562,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "replaceInBlock",
+          "blockId": "5E88C024",
+          "find": "goods",
+          "replace": "revised"
+        }
+      ]
+    },
+    {
+      "action": "add_comment",
+      "seed": 1995276469
+    },
+    {
+      "action": "story batch",
+      "seed": 2307406154,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "5E88C024"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "story batch",
+      "seed": 4075030770,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "483CD5EB"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "formatRange",
+    "commentOnRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from dropOperation+delete+swap of 645248b0e43ecc88"
+}
