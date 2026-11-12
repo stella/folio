@@ -20,7 +20,6 @@ const marker = (
   type: keyof typeof BOUNDARY_SIDES,
   kept: boolean,
 ): BoundaryOccurrence => ({
-  boundary: `${type}:3`,
   range: `${BOUNDARY_SIDES[type].family}:3`,
   side: BOUNDARY_SIDES[type].side,
   kept,
@@ -36,41 +35,28 @@ test("standing duplicate ends remain ambiguous when a rejection keeps their star
   expect(classifyRangeMultiplicity(occurrences).get("bookmark:3")).toEqual({
     type: "ambiguous",
   });
-  expect(planWellFormedRanges(occurrences)).toEqual({ dropped: [], moved: [] });
+  expect(planWellFormedRanges(occurrences)).toEqual({ moved: [] });
 });
 
-test("a boundary kept beside a copy an added revision owns stays, and the copy orders nothing", () => {
-  const copy = (type: keyof typeof BOUNDARY_SIDES): BoundaryOccurrence => ({
-    ...marker(type, false),
-    copied: true,
-  });
-  // Rejecting the copy's revision takes the copy away, so the kept start is
-  // the range's own whichever is resolved first.
+test("every kept boundary stays, whatever other occurrences of it the story holds", () => {
+  const copy = (
+    type: keyof typeof BOUNDARY_SIDES,
+    kept: boolean,
+  ): BoundaryOccurrence => ({ ...marker(type, kept), copied: true });
+  // Whether a kept boundary stays decides nothing about the others: their
+  // own revisions, resolved before or after, decide theirs.
+  for (const occurrences of [
+    [copy("bookmarkStart", false), marker("bookmarkStart", true)],
+    [copy("bookmarkStart", true), marker("bookmarkStart", true)],
+    [marker("bookmarkStart", false), marker("bookmarkStart", true)],
+    [marker("bookmarkStart", true), marker("bookmarkStart", true)],
+  ])
+    expect(planWellFormedRanges(occurrences)).toEqual({ moved: [] });
+  // A copy an added revision owns orders nothing: the kept start closes on
+  // the end, not on the copy before it.
   expect(
     planWellFormedRanges([
-      copy("bookmarkStart"),
-      marker("bookmarkStart", true),
-    ]),
-  ).toEqual({ dropped: [], moved: [] });
-  // Of a kept copy and a kept original, the original stays.
-  expect(
-    planWellFormedRanges([
-      { ...marker("bookmarkStart", true), copied: true },
-      marker("bookmarkStart", true),
-    ]).dropped,
-  ).toEqual([0]);
-  // A standing original still holds the boundary.
-  expect(
-    planWellFormedRanges([
-      marker("bookmarkStart", false),
-      copy("bookmarkStart"),
-      marker("bookmarkStart", true),
-    ]).dropped,
-  ).toEqual([2]);
-  // The kept start closes on the end, not on the copy before it.
-  expect(
-    planWellFormedRanges([
-      copy("bookmarkStart"),
+      copy("bookmarkStart", false),
       marker("bookmarkEnd", false),
       marker("bookmarkStart", true),
     ]).moved,
@@ -83,25 +69,18 @@ test("a unique reversed pair moves only the kept half", () => {
       marker("bookmarkEnd", false),
       marker("bookmarkStart", true),
     ]),
-  ).toEqual({
-    dropped: [],
-    moved: [{ moving: 1, anchor: 0, side: "before" }],
-  });
+  ).toEqual({ moved: [{ moving: 1, anchor: 0, side: "before" }] });
   expect(
     planWellFormedRanges([
       marker("bookmarkEnd", true),
       marker("bookmarkStart", false),
     ]),
-  ).toEqual({
-    dropped: [],
-    moved: [{ moving: 0, anchor: 1, side: "after" }],
-  });
+  ).toEqual({ moved: [{ moving: 0, anchor: 1, side: "after" }] });
 });
 
 const normalize = (occurrences: readonly BoundaryOccurrence[]) => {
   const plan = planWellFormedRanges(occurrences);
-  const dropped = new Set(plan.dropped);
-  const normalized = occurrences.filter((_, index) => !dropped.has(index));
+  const normalized = [...occurrences];
   for (const { moving, anchor, side } of plan.moved) {
     const movingNode = occurrences.at(moving);
     const anchorNode = occurrences.at(anchor);
@@ -116,6 +95,9 @@ const normalize = (occurrences: readonly BoundaryOccurrence[]) => {
   return normalized;
 };
 
+const byIdentity = (left: object, right: object): number =>
+  JSON.stringify(left).localeCompare(JSON.stringify(right));
+
 const occurrenceArbitrary = fc
   .record({
     definition: fc.constantFrom(...Object.entries(BOUNDARY_SIDES)),
@@ -123,45 +105,26 @@ const occurrenceArbitrary = fc
     kept: fc.boolean(),
     copied: fc.boolean(),
   })
-  .map(({ definition: [type, { family, side }], id, kept, copied }) => ({
-    boundary: `${type}:${id}`,
+  .map(({ definition: [, { family, side }], id, kept, copied }) => ({
     range: `${family}:${id}`,
     side,
     kept,
     copied,
   }));
 
-test("normalization preserves standing occurrences, retained quotas, and reaches a fixed point", () => {
+test("normalization keeps every occurrence, moves only kept ones, and reaches a fixed point", () => {
   assertProperty(
     fc.property(
       fc.array(occurrenceArbitrary, { maxLength: 60 }),
       (occurrences) => {
         const normalized = normalize(occurrences);
+        // Nothing goes, so no occurrence's survival depends on another's.
+        expect(normalized.toSorted(byIdentity)).toEqual(
+          occurrences.toSorted(byIdentity),
+        );
         expect(normalized.filter(({ kept }) => !kept)).toEqual(
           occurrences.filter(({ kept }) => !kept),
         );
-        for (const boundary of new Set(
-          occurrences.map((item) => item.boundary),
-        )) {
-          const source = occurrences.filter(
-            (item) => item.boundary === boundary,
-          );
-          const standing = source.filter(({ kept }) => !kept);
-          const held = standing.some(({ copied }) => !copied);
-          const kept = normalized.filter(
-            (item) => item.boundary === boundary && item.kept,
-          );
-          // A copy an added revision owns holds nothing: one kept boundary
-          // stays beside it, and one that is no copy when there is one.
-          expect(kept.length).toBe(
-            held || standing.length === source.length ? 0 : 1,
-          );
-          if (source.some((item) => item.kept && !item.copied))
-            expect(kept.every(({ copied }) => !copied)).toBe(true);
-          expect(
-            normalized.filter((item) => item.boundary === boundary).length,
-          ).toBe(standing.length + kept.length);
-        }
         const keptRanges = new Set(
           normalized.filter(({ kept }) => kept).map(({ range }) => range),
         );
@@ -178,15 +141,12 @@ test("normalization preserves standing occurrences, retained quotas, and reaches
           if (multiplicity.type !== "pair" || !keptRanges.has(range)) continue;
           expect(multiplicity.start).toBeLessThan(multiplicity.end);
         }
-        expect(planWellFormedRanges(normalized)).toEqual({
-          dropped: [],
-          moved: [],
-        });
+        expect(planWellFormedRanges(normalized)).toEqual({ moved: [] });
       },
     ),
     {
       numRuns: 300,
-      id: "normalization preserves standing occurrences, retained quotas, and reaches a fixed point",
+      id: "normalization keeps every occurrence, moves only kept ones, and reaches a fixed point",
     },
   );
 });

@@ -127,7 +127,7 @@ type Boundary = Extract<InlineNode, { type: BoundaryType }>;
 type CommentAnchor = CommentAnchorCarrier;
 type OrderedBoundary = Exclude<Boundary, CommentAnchor>;
 
-const isBoundary = (node: InlineNode): node is Boundary =>
+export const isBoundary = (node: InlineNode): node is Boundary =>
   Object.hasOwn(BOUNDARY_SIDES, node.type);
 
 /** The range a boundary belongs to: its family and id. */
@@ -645,8 +645,6 @@ const withBeside = (
 
 /** One range boundary in document order, as {@link planWellFormedRanges} reads it. */
 export type BoundaryOccurrence = {
-  /** The marker's element and id: what two copies of one boundary share. */
-  boundary: string;
   /** The range it belongs to: its family and id. */
   range: string;
   side: "start" | "end";
@@ -654,8 +652,8 @@ export type BoundaryOccurrence = {
   kept: boolean;
   /**
    * Whether it is a copy an added revision still owns (its
-   * `copyOriginAncestors`): rejecting that revision takes it away, so it is
-   * never the boundary itself, only a copy that may go.
+   * `copyOriginAncestors`): resolving that revision decides whether it
+   * stays, so it orders no range.
    */
   copied: boolean;
   /**
@@ -668,7 +666,6 @@ export type BoundaryOccurrence = {
 
 /** What makes kept boundaries' ranges well-formed, by index into the occurrences. */
 export type WellFormedRangePlan = {
-  dropped: number[];
   /** Each kept boundary that moves to just before or after the other end of its range. */
   moved: { moving: number; anchor: number; side: "before" | "after" }[];
 };
@@ -710,17 +707,16 @@ export const classifyRangeMultiplicity = (
 
 /**
  * The one rule that makes every range a rejection kept boundaries of
- * well-formed, for the engine's model and the editor's document alike. A
- * kept copy of a boundary the story still holds is no boundary of its own and
- * goes (of several kept copies, the first one that is no added revision's
- * copy stays, else the first). A copy an added revision still owns holds
- * nothing: rejecting its revision takes it away, so a boundary kept beside
- * it stays whichever is resolved first, and it counts for no range's order.
- * Then, where such a range's end comes before its start, the half the
- * rejection kept closes on the other: a kept end moves to just after the
- * start, or else a kept start to just before the end. A boundary that was
- * standing never moves, and a range still with more than one start or end is
- * left as it is.
+ * well-formed, for the engine's model and the editor's document alike.
+ * Every kept boundary stays, whatever else the story holds: whether one
+ * stays depends only on the revisions around it, never on another
+ * occurrence of the same boundary, whose own revisions may be resolved
+ * before or after it. A copy an added revision still owns counts for no
+ * range's order, since resolving that revision decides whether it stays.
+ * Where a range's end then comes before its start, the half the rejection
+ * kept closes on the other: a kept end moves to just after the start, or
+ * else a kept start to just before the end. A boundary that was standing
+ * never moves, and a range with more than one start or end is left as it is.
  */
 export const planWellFormedRanges = (
   occurrences: readonly BoundaryOccurrence[],
@@ -728,34 +724,13 @@ export const planWellFormedRanges = (
   const ranges = new Set(
     occurrences.filter(({ kept }) => kept).map(({ range }) => range),
   );
-  const copies = new Map<string, number[]>();
-  for (const [index, { boundary, range }] of occurrences.entries()) {
-    if (!ranges.has(range)) continue;
-    const group = copies.get(boundary);
-    if (group === undefined) copies.set(boundary, [index]);
-    else group.push(index);
-  }
-  const dropped = new Set<number>();
-  for (const group of copies.values()) {
-    if (group.length < 2) continue;
-    const kept = group.filter((member) => occurrences[member]?.kept === true);
-    const held = group.some((member) => {
-      const occurrence = occurrences[member];
-      return occurrence?.kept === false && !occurrence.copied;
-    });
-    const survivor = held
-      ? undefined
-      : (kept.find((member) => occurrences[member]?.copied === false) ??
-        kept.at(0));
-    for (const member of kept) if (member !== survivor) dropped.add(member);
-  }
   const ownedCopies = occurrences.flatMap(({ kept, copied }, index) =>
     !kept && copied ? [index] : [],
   );
   const moved: WellFormedRangePlan["moved"] = [];
   const multiplicities = classifyRangeMultiplicity(
     occurrences,
-    new Set([...dropped, ...ownedCopies]),
+    new Set(ownedCopies),
   );
   for (const range of ranges) {
     const multiplicity = multiplicities.get(range);
@@ -773,10 +748,7 @@ export const planWellFormedRanges = (
     else if (endOccurrence?.kept === true)
       moved.push({ moving: end, anchor: start, side: "after" });
   }
-  return {
-    dropped: [...dropped].toSorted((left, right) => left - right),
-    moved,
-  };
+  return { moved };
 };
 
 /**
@@ -812,7 +784,6 @@ export const wellFormedRanges = ({
     found.map(({ node }) => {
       const keptFrom = relocated.nodes.get(node);
       return {
-        boundary: `${node.type}:${node.id}`,
         range: rangeKey(node),
         side: BOUNDARY_SIDES[node.type].side,
         kept: keptFrom !== undefined,
@@ -823,14 +794,6 @@ export const wellFormedRanges = ({
   );
   const current = (paragraph: string) =>
     changed.get(paragraph) ?? contents.get(paragraph) ?? [];
-  for (const index of plan.dropped) {
-    const occurrence = found[index];
-    if (occurrence !== undefined)
-      changed.set(
-        occurrence.paragraph,
-        withoutNode(current(occurrence.paragraph), occurrence.node),
-      );
-  }
   for (const { moving: movingIndex, anchor: anchorIndex, side } of plan.moved) {
     const moving = found[movingIndex];
     const anchor = found[anchorIndex];

@@ -134,7 +134,7 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
     ]);
   });
 
-  test("dropping a kept copy leaves the content control that held it, emptied", () => {
+  test("a kept boundary stays though the story holds it elsewhere", () => {
     const control = {
       type: "inlineSdt",
       properties: { sdtType: "richText", id: 41, tag: "clause" },
@@ -159,8 +159,66 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
       { type: "bookmarkStart", id: 5, name: "_Ref5" },
       { type: "run", content: [{ type: "text", text: "a" }] },
       { type: "bookmarkEnd", id: 5 },
-      { ...control, content: [] },
+      {
+        ...control,
+        content: [{ type: "bookmarkStart", id: 5, name: "_Ref5" }],
+      },
     ]);
+  });
+
+  test("rejecting a bookmark's insertion and accepting its copy's leaves the same, in either order", () => {
+    const bookmarked = (text: string): ParagraphContent[] => [
+      { type: "bookmarkStart", id: 7, name: "_Ref7" },
+      { type: "run", content: [{ type: "text", text }] },
+      { type: "bookmarkEnd", id: 7 },
+    ];
+    const base = documentWith([
+      { type: "run", content: [{ type: "text", text: "ab" }] },
+    ]);
+    const original = insertAt(base, bookmarked("x"), 1);
+    const applied = applyDocumentOp(original, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { ...at, offset: 3 },
+      slice: { content: bookmarked("y"), openStart: 0, openEnd: 0 },
+      revision: { id: 4, author: "A", date: "2026-03-04T05:00:04Z" },
+    });
+    if (applied.isErr()) throw applied.error;
+    const tracked = applied.value.document;
+    expect(JSON.stringify(firstParagraph(tracked))).toContain(
+      '"copyOriginAncestors"',
+    );
+    const resolve = (
+      document: Document,
+      ids: number[],
+      decision: (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS],
+    ): Document => {
+      const resolved = applyDocumentOp(document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: ids,
+        decision,
+      });
+      if (resolved.isErr()) throw resolved.error;
+      return resolved.value.document;
+    };
+    const rejectedFirst = resolve(
+      rejectAll(tracked, [3]),
+      [4],
+      REVISION_DECISIONS.ACCEPT,
+    );
+    const acceptedFirst = rejectAll(
+      resolve(tracked, [4], REVISION_DECISIONS.ACCEPT),
+      [3],
+    );
+    // The original stays where its insertion was, and the copy stands.
+    expect(firstParagraph(acceptedFirst)).toEqual(
+      firstParagraph(rejectedFirst),
+    );
+    expect(
+      firstParagraph(rejectedFirst).filter(
+        ({ type }) => type === "bookmarkStart",
+      ),
+    ).toHaveLength(2);
   });
 
   test("a bookmark inside a rejected insertion stays where the insertion was", () => {

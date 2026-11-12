@@ -112,7 +112,6 @@ export type BlockInsertionPoint = {
 
 // @public
 export type BoundaryOccurrence = {
-    boundary: string;
     range: string;
     side: "start" | "end";
     kept: boolean;
@@ -1360,7 +1359,6 @@ export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, 
 
 // @public
 export type WellFormedRangePlan = {
-    dropped: number[];
     moved: {
         moving: number;
         anchor: number;
