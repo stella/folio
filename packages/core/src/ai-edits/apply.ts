@@ -581,11 +581,12 @@ type ResolvedOperationFields = {
   boundaryComments?: readonly Mark[];
   /**
    * Which side of a pending join around the anchor a block insertion lands
-   * on, read when it runs: an earlier edit of the batch (a split of the
-   * paragraph the join leaves, or a deletion of one it takes in) can move
-   * where the join ends or starts. `from` orders the insertion among the
-   * batch's edits: the anchor's own gap after the join, where the block
-   * lands before it.
+   * on, read when it runs: an earlier edit of the batch can move where the
+   * join starts (a deletion of a paragraph it takes in) or run it on past
+   * the paragraph it leaves. A split of that paragraph moves nothing: the
+   * block still follows the whole of it (`insertionAt`).
+   * `from` orders the insertion among the batch's edits: the anchor's own
+   * gap after the join, where the block lands before it.
    */
   joinSide?: "before" | "after";
   /** Where the batch read the join to put the block, which `boundaryComments` describes. */
@@ -3211,7 +3212,14 @@ const insertionAt = ({
     paragraphPos: position,
     noteReferences,
   });
-  return insertionGap(tr.doc, bounds[item.joinSide], item.joinSide);
+  const live = insertionGap(tr.doc, bounds[item.joinSide], item.joinSide);
+  if (item.joinSide === "before" || item.joinAt === undefined) return live;
+  // After the join, the block lands after the paragraph the join leaves as
+  // the batch read it, whatever else the batch does to that paragraph: a
+  // split of it keeps the block after its last half, as it does a block put
+  // after that paragraph itself. Only a join the batch runs further on moves
+  // the block past it.
+  return Math.max(live, tr.mapping.map(item.joinAt, -1));
 };
 
 /**
@@ -10146,10 +10154,10 @@ const resolveOperationTarget = ({
   // pending join around it puts the block (see `joinSide`).
   const beside = (side: "before" | "after"): Placement => {
     // A block after the join orders by the anchor's own gap: edits inside
-    // the paragraph the join leaves run first, and the block follows where
-    // they leave the join's end. A block before it orders by where it lands,
-    // ahead of the paragraphs the join takes in: edits inside them run first
-    // and keep the positions they were read at.
+    // the paragraph the join leaves run first, and the block follows the
+    // end of that paragraph, past all of it they split. A block before it
+    // orders by where it lands, ahead of the paragraphs the join takes in:
+    // edits inside them run first and keep the positions they were read at.
     // Either side of the blocks accepting removes whole is one gap
     // (`insertionGap`).
     const gap = (position: number): number => insertionGap(doc, position, side);
