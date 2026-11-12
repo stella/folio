@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 788162332,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1987892475,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "1BF99289"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "core batch",
+      "seed": 1292115608,
+      "operations": [
+        {
+          "type": "insertTableRow",
+          "blockId": "5E88C024",
+          "position": "after",
+          "cellTexts": ["Row cell 1", "Row cell 2"]
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 24043179
+    },
+    {
+      "action": "add_comment",
+      "seed": 532397544
+    },
+    {
+      "action": "reply and resolve",
+      "seed": 3499752303
+    },
+    {
+      "action": "accept all",
+      "seed": 1604245293
+    },
+    {
+      "action": "new reviewer",
+      "seed": 3307928712
+    },
+    {
+      "action": "accept all",
+      "seed": 844527229
+    },
+    {
+      "action": "core batch",
+      "seed": 2676093042,
+      "operations": [
+        {
+          "type": "insertTableColumn",
+          "blockId": "0406D732",
+          "position": "after"
+        },
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "@2",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        },
+        {
+          "type": "replaceBlock",
+          "blockId": "6FFB97E7",
+          "text": "Written period invoice notice written invoice payment supplier."
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 3709583033,
+      "atomic": false
+    },
+    {
+      "action": "story batch",
+      "seed": 3620058397,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "79D25458",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "commentOnBlock",
+          "blockId": "6FFB97E7",
+          "quote": "payment",
+          "comment": {
+            "text": "Payment supplier schedule."
+          }
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "save and reopen",
+      "seed": 2796399136
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 332997653,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "79D25458"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 900892126,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@5",
+          "text": "Supplier term period term schedule goods notice warranty.",
+          "styleId": "Heading2"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "mistake",
+      "seed": 1972739875
+    }
+  ],
+  "origin": "#2044: a tracked heading style on a table cell paragraph; docxToMarkdown wrote the heading marker into the cell"
+}
