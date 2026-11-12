@@ -12,6 +12,15 @@ import { scanTestTimeout } from "./scan-timeout";
 const CHILD_HANG_BASE_MS = 60_000;
 const TEST_SETUP_BASE_MS = 10_000;
 
+/**
+ * The unscaled budget `subprocessTestTimeout(children, ownWorkBaseMs)` scales:
+ * for schedulers that weigh a test by its stated budget.
+ */
+export const subprocessBudgetBaseMs = (
+  children = 1,
+  ownWorkBaseMs = TEST_SETUP_BASE_MS,
+): number => CHILD_HANG_BASE_MS * children + ownWorkBaseMs;
+
 /** How long one child may run before it counts as hung. */
 export const childHangTimeout = (): number =>
   scanTestTimeout(CHILD_HANG_BASE_MS);
