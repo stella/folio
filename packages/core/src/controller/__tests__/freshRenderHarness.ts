@@ -44,7 +44,7 @@ import type {
 } from "../../layout-engine/types";
 import { LayoutSelectionGate } from "../../paged-layout/LayoutSelectionGate";
 import { schema } from "../../prosemirror/schema";
-import type { Document } from "../../types/document";
+import type { ReadonlyDocument } from "../../types/documentModel";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "../documentChangeNotification";
 import {
@@ -254,7 +254,7 @@ export const projectLayout = ({
 /** The layout inputs every rig has. Extension inputs live in `ext`. */
 export type FreshRenderInputs = {
   contentWidth: number;
-  document: Document;
+  document: ReadonlyDocument;
   /** Paint-only: a change re-renders the adapter but is not a layout input. */
   zoom: number;
 };
@@ -308,7 +308,7 @@ export type FreshRenderRig<TExt> = {
   /** `ref.loadDocument`: replace the state wholesale; lay it out now or on the next render. */
   loadDocument: (
     doc: PMNode,
-    options: { layout: LoadLayout; document?: Document },
+    options: { layout: LoadLayout; document?: ReadonlyDocument },
   ) => void;
   /** Change layout inputs (a prop change); the adapter re-renders at once. */
   setInputs: (patch: Partial<FreshRenderInputs>) => void;

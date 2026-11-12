@@ -109,7 +109,7 @@ import {
   type CanonicalRefusalGround,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
-import type { Document, StyleDefinitions } from "../types/document";
+import type { StyleDefinitions } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
@@ -374,7 +374,8 @@ const HIDDEN_EDITOR_ATTRIBUTES = {
  * Otherwise falls back to the default singleton schema with no extension plugins.
  */
 export type CreateHiddenEditorStateOptions = {
-  document: Document | null;
+  /** The model; the editor state is built from it through `readModel`. */
+  document: ReadonlyDocument | null;
   styles?: StyleDefinitions | null | undefined;
   manager?: ExtensionManager | undefined;
   externalPlugins?: Plugin[] | undefined;
@@ -403,8 +404,8 @@ export function createHiddenEditorState(
     const startedAt = performance.now();
     localDoc =
       styles === undefined || styles === null
-        ? toProseDoc(document)
-        : toProseDoc(document, { styles });
+        ? toProseDoc(readModel(document))
+        : toProseDoc(readModel(document), { styles });
     localDoc = ensureParaIdsInDoc(localDoc);
     recordHiddenEditorPhase(
       reason,
@@ -1261,7 +1262,7 @@ export const createHiddenEditorManager = (
       if (precomputedInitialState && !collaboration)
         return precomputedInitialState;
       return createHiddenEditorState({
-        document: document && readModel(document),
+        document,
         styles,
         manager: extensionManager,
         externalPlugins,
@@ -1679,7 +1680,7 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical"
         ? canonicalState(editorSession.session)
         : createHiddenEditorState({
-            document: document && readModel(document),
+            document,
             styles: deps.getStyles(),
             manager: deps.getExtensionManager(),
             externalPlugins: deps.getExternalPlugins(),
