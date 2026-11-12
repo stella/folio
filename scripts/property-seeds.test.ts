@@ -48,6 +48,7 @@ import {
   seedFileFor,
   titlePattern,
 } from "../test/property-testing";
+import { scanTestTimeout } from "../test/scan-timeout";
 import {
   joinPinnedSeeds,
   parseSeedTitles,
@@ -55,9 +56,10 @@ import {
   splitPinnedSeeds,
   testFileForSeedFile,
 } from "../test/seed-registry";
+import { runChild, subprocessTestTimeout } from "../test/subprocess";
 import { parseFailureRecord } from "./fuzz-failure-issues";
 
-setDefaultTimeout(propertyTestTimeout(5_000));
+setDefaultTimeout(subprocessTestTimeout());
 afterAll(closePropertyDriverAnalysis);
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -217,24 +219,48 @@ describe("per-commit seeds", () => {
 });
 
 describe("failure reporting", () => {
-  test("Node runners import and read the default seed registry", () => {
-    const result = Bun.spawnSync(
+  // `tail` runs after the read; the check's own test uses it to break it.
+  const readRegistryWithNode = (
+    module: string,
+    tail = "",
+    hangTimeoutMs?: number,
+  ) =>
+    runChild(
       [
         "node",
         "--experimental-strip-types",
         "--input-type=module",
         "-e",
-        `import { readSeedRegistry } from "./test/seed-registry.ts";
-process.stdout.write(JSON.stringify(Object.keys(readSeedRegistry()).length));`,
+        `import { readSeedRegistry } from ${JSON.stringify(module)};
+process.stdout.write(JSON.stringify(Object.keys(readSeedRegistry()).length));${tail}`,
       ],
-      { cwd: REPO_ROOT },
+      { cwd: REPO_ROOT, hangTimeoutMs },
     );
-    expect({
-      exitCode: result.exitCode,
-      stderr: new TextDecoder().decode(result.stderr),
-    }).toMatchObject({ exitCode: 0 });
-    expect(Number(new TextDecoder().decode(result.stdout))).toBeGreaterThan(0);
+
+  test("Node runners import and read the default seed registry", () => {
+    const outcome = readRegistryWithNode("./test/seed-registry.ts");
+    expect(outcome).toMatchObject({ kind: "exited", exitCode: 0 });
+    expect(Number(outcome.stdout)).toBeGreaterThan(0);
   });
+
+  test(
+    "the Node registry check reports a missing module and a reader that never exits",
+    () => {
+      expect(
+        readRegistryWithNode("./test/no-such-seed-registry.ts"),
+      ).toMatchObject({ kind: "exited", exitCode: 1, stdout: "" });
+      // A child that never exits is hung however fast the runner is, so a short
+      // guard proves the report without depending on runner speed.
+      const hung = readRegistryWithNode(
+        "./test/seed-registry.ts",
+        "\nsetInterval(() => {}, 1_000);",
+        scanTestTimeout(1_000),
+      );
+      expect(hung).toMatchObject({ kind: "hung" });
+      expect(Number(hung.stdout)).toBeGreaterThan(0);
+    },
+    subprocessTestTimeout(2),
+  );
 
   test("explicit nightly fuzz files execute and report their own replay source", () => {
     const directory = mkdtempSync(
@@ -252,7 +278,7 @@ test("nightly replay fixture", () => {
 `,
     );
     try {
-      const result = Bun.spawnSync([process.execPath, "test", fixture], {
+      const result = runChild([process.execPath, "test", fixture], {
         cwd: REPO_ROOT,
         env: {
           ...process.env,
@@ -263,10 +289,8 @@ test("nightly replay fixture", () => {
           FOLIO_PROPERTY_FAILURES_DIR: path.join(directory, "records"),
         },
       });
-      const output =
-        new TextDecoder().decode(result.stderr) +
-        new TextDecoder().decode(result.stdout);
-      expect(result.exitCode).toBe(1);
+      expect(result).toMatchObject({ kind: "exited", exitCode: 1 });
+      const output = result.stderr + result.stdout;
       const relative = path.relative(REPO_ROOT, fixture);
       expect(output).toContain(`bun test ./${relative}`);
       expect(output).toContain(`"file":"${relative}"`);
