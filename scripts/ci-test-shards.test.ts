@@ -18,10 +18,12 @@ import {
 } from "./aggregate-ci-test-timings";
 import {
   assignTestShards,
-  buildModuleGraph,
   discoverTestSuites,
-  selectFastTestSuitesWithReason,
   shardLoads,
+} from "./ci-test-shard-plan";
+import {
+  buildModuleGraph,
+  selectFastTestSuitesWithReason,
 } from "./ci-test-shards";
 
 const temporaryRoots: string[] = [];
@@ -671,7 +673,7 @@ describe("measured test shard balancing", () => {
             const mean = weights.reduce((sum, weight) => sum + weight, 0) / 4;
             fc.pre(Math.max(...weights) <= mean);
             const loads = shardLoads(
-              assignTestShards(Object.keys(timings), timings),
+              assignTestShards(Object.keys(timings), 4, timings),
               timings,
             );
             expect(Math.max(...loads)).toBeLessThanOrEqual(mean * 1.25);
@@ -686,7 +688,7 @@ describe("measured test shard balancing", () => {
   test("unmeasured files use the median measured weight", () => {
     const timings = { a: 10, b: 30, c: 50 };
     expect(
-      shardLoads(assignTestShards(["a", "b", "c", "new"], timings), timings),
+      shardLoads(assignTestShards(["a", "b", "c", "new"], 4, timings), timings),
     ).toEqual([50, 30, 30, 10]);
   });
 
@@ -794,7 +796,7 @@ describe("measured test shard balancing", () => {
   test("assignment is deterministic for identical inputs", () => {
     const timings = { a: 10, b: 10, c: 5, d: 5, e: 1 };
     const assigned = () =>
-      assignTestShards(Object.keys(timings), timings).map((shard) =>
+      assignTestShards(Object.keys(timings), 4, timings).map((shard) =>
         Array.from(shard),
       );
     expect(assigned()).toEqual(assigned());

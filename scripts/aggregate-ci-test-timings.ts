@@ -3,11 +3,7 @@ import { panic } from "better-result";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import {
-  discoverTestSuites,
-  focusedTestFiles,
-  type TestTimings,
-} from "./ci-test-shards";
+import { plannedTestFiles, type TestTimings } from "./ci-test-shard-plan";
 
 type TimingArtifact = { runId: string; timings: TestTimings };
 
@@ -213,10 +209,6 @@ if (import.meta.main) {
   const artifacts = inputs.map(
     (input) => JSON.parse(readFileSync(input, "utf8")) as TimingArtifact,
   );
-  const suites = discoverTestSuites(path.resolve(import.meta.dir, ".."));
-  const files = [
-    ...suites.flatMap(({ files: suiteFiles }) => suiteFiles),
-    ...focusedTestFiles,
-  ];
+  const files = plannedTestFiles(path.resolve(import.meta.dir, ".."));
   writeFileSync(output, aggregateTestTimings(artifacts, files));
 }
