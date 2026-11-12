@@ -79,10 +79,15 @@ export const ROOM_BLOCK_SIZES = {
   comment: 16,
 } as const;
 
-/** A transport that also records every acknowledgement it carried. */
+/**
+ * A transport that also records every acknowledgement it carried while its
+ * peer was alive: a simulated dead tab's code still runs, a real one's does
+ * not.
+ */
 const recordingAcks = (
   transport: CanonicalRoomTransport,
   acked: Map<string, number>,
+  alive: () => boolean,
 ): CanonicalRoomTransport => ({
   get snapshot() {
     return transport.snapshot;
@@ -95,7 +100,7 @@ const recordingAcks = (
   },
   submit: async (batch): Promise<CanonicalRoomSubmission> => {
     const outcome = await transport.submit(batch);
-    if (outcome.type === "ack") acked.set(outcome.opId, outcome.rev);
+    if (outcome.type === "ack" && alive()) acked.set(outcome.opId, outcome.rev);
     return outcome;
   },
   subscribe: (afterRev, onSequenced) =>
@@ -123,10 +128,13 @@ export const createRoomPeers = async (coverage: RoomCoverage) => {
     index,
     incarnation,
     transport,
+    alive = () => true,
   }: {
     index: number;
     incarnation: number;
     transport: CanonicalRoomTransport;
+    /** False once the simulated context running this peer is gone. */
+    alive?: () => boolean;
   }): Promise<RoomPeer> => {
     const actor = `actor-${index}`;
     const document = await parse();
@@ -135,7 +143,7 @@ export const createRoomPeers = async (coverage: RoomCoverage) => {
     let ops = 0;
     const self: { peer?: RoomPeer; state?: EditingPeer["state"] } = {};
     const joined = await joinCanonicalRoom({
-      transport: recordingAcks(transport, acked),
+      transport: recordingAcks(transport, acked, alive),
       actor,
       snapshot,
       renewBelow: ROOM_BLOCK_SIZES.paragraph / 2,

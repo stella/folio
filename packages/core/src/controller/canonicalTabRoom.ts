@@ -559,8 +559,8 @@ export const openCanonicalTabRoom = ({
     if (closed) return;
     if (typeof data !== "string") return;
     const json = Result.try((): unknown => JSON.parse(data));
-    const parsed = json.isOk() ? v.safeParse(MESSAGE, json.value) : undefined;
-    if (parsed?.success !== true) {
+    const parsed = v.safeParse(MESSAGE, json.isOk() ? json.value : undefined);
+    if (!parsed.success) {
       report("invalidMessage", "A message on the room's channel is malformed.");
       return;
     }

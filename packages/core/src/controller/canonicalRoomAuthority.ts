@@ -179,9 +179,9 @@ export const restoreCanonicalRoomAuthority = ({
   const leasedSince = (before: number): CanonicalRoomRecord[] =>
     sequencer.idLeases.grants
       .slice(before)
-      .map((grant) => ({ type: "leased", grant }));
+      .map((grant): CanonicalRoomRecord => ({ type: "leased", grant }));
 
-  return Result.ok({
+  const authority: CanonicalRoomAuthority = {
     submit: (batch) => {
       const before = sequencer.headRev;
       const answer = sequencer.submit(batch);
@@ -214,5 +214,6 @@ export const restoreCanonicalRoomAuthority = ({
     get journal() {
       return sequencer.broadcasts;
     },
-  });
+  };
+  return Result.ok(authority);
 };

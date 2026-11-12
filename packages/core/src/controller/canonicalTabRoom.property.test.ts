@@ -253,7 +253,12 @@ const simulate = async ({
     const slot: Slot = { tab, room: tabRoom, incarnation };
     slots[index] = slot;
     const joinSlot = async (): Promise<void> => {
-      const peer = await room.join({ index, incarnation, transport: tabRoom });
+      const peer = await room.join({
+        index,
+        incarnation,
+        transport: tabRoom,
+        alive: () => tab.alive,
+      });
       if (tab.alive) slot.peer = peer;
     };
     const joined = joinSlot().finally(() => joining.delete(joined));

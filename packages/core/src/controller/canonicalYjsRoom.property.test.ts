@@ -274,20 +274,22 @@ type Slot = {
   peer?: RoomPeer;
 };
 
-const simulate = async ({
-  peersCount,
-  lateJoin,
-  commands,
-  fault,
-  coverage,
-}: {
-  peersCount: number;
-  lateJoin: boolean;
-  commands: readonly Command[];
-  fault: CanonicalYjsRoomFault | undefined;
-  coverage: YjsCoverage;
-}): Promise<void> => {
-  const provider = createProvider();
+const run = async (
+  provider: ReturnType<typeof createProvider>,
+  {
+    peersCount,
+    lateJoin,
+    commands,
+    fault,
+    coverage,
+  }: {
+    peersCount: number;
+    lateJoin: boolean;
+    commands: readonly Command[];
+    fault: CanonicalYjsRoomFault | undefined;
+    coverage: YjsCoverage;
+  },
+): Promise<void> => {
   const room = await createRoomPeers(coverage);
   const authorityErrors: CanonicalYjsRoomError[] = [];
   const serve = (): CanonicalYjsAuthority =>
@@ -464,7 +466,18 @@ const simulate = async ({
   });
   for (const slot of slots) slot.room.close();
   authority.stop();
-  provider.destroy();
+};
+
+type SimulateOptions = Parameters<typeof run>[1];
+
+/** One run, the provider's awareness timers stopped whatever it finds. */
+const simulate = async (options: SimulateOptions): Promise<void> => {
+  const provider = createProvider();
+  try {
+    await run(provider, options);
+  } finally {
+    provider.destroy();
+  }
 };
 
 const law = (fault: CanonicalYjsRoomFault | undefined, coverage: YjsCoverage) =>
