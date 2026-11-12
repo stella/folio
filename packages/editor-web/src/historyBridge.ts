@@ -1,13 +1,15 @@
 /**
- * Mirrors the body editor's undo history to a host that keeps its own undo
- * stack (VS Code's `CustomDocumentEditEvent`s). The host adds one entry per
- * undo step the editor opens and sends undo / redo back one step at a time, so
- * both stacks stay the same length.
+ * Mirrors the canonical session's undo history to a host that keeps its own
+ * undo stack (VS Code's `CustomDocumentEditEvent`s). The host adds one entry
+ * per undo step the session opens and sends undo / redo back one step at a
+ * time, so both stacks stay the same length.
  */
 
-import { isHistoryTransaction, undoDepth } from "prosemirror-history";
-import { Plugin, PluginKey, Transaction } from "prosemirror-state";
+import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
+
+import { canonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
+import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 
 /**
  * What a document change did to the undo history:
@@ -18,22 +20,24 @@ import type { EditorState } from "prosemirror-state";
  */
 export type HistoryChange = "newStep" | "sameStep" | "undoRedo";
 
+const HISTORY_CHANGES = {
+  opened: "newStep",
+  joined: "sameStep",
+  undo: "undoRedo",
+  redo: "undoRedo",
+} as const satisfies Record<CanonicalHistoryEffect, HistoryChange>;
+
 type BridgeState = {
   /**
    * One token per editor state lineage. A document load builds a fresh state,
    * and so a fresh token: its history starting over is not an edit.
    */
   readonly lineage: object;
-  readonly lastWasUndoRedo: boolean;
+  /** What the session said the last document change does to its history. */
+  readonly effect: CanonicalHistoryEffect | null;
 };
 
 const historyBridgeKey = new PluginKey<BridgeState>("folioHistoryBridge");
-
-/** A transaction appended by another plugin belongs to the one that caused it. */
-const rootTransaction = (transaction: Transaction): Transaction => {
-  const root: unknown = transaction.getMeta("appendedTransaction");
-  return root instanceof Transaction ? root : transaction;
-};
 
 const classify = (
   state: EditorState,
@@ -44,26 +48,19 @@ const classify = (
   if (
     current === undefined ||
     before === undefined ||
-    current.lineage !== before.lineage
+    current.lineage !== before.lineage ||
+    state.doc === previous.doc
   ) {
     return null;
   }
-  if (state.doc === previous.doc) {
-    return null;
-  }
-  if (current.lastWasUndoRedo) {
-    return "undoRedo";
-  }
-  // prosemirror-history's event count changes exactly when a change opens a
-  // new event: it grows by one, or drops back to the depth limit when the
-  // oldest events are trimmed. A change folded into the open event keeps it.
-  return undoDepth(state) === undoDepth(previous) ? "sameStep" : "newStep";
+  // A change the session did not stage stays out of its history.
+  return current.effect === null ? "sameStep" : HISTORY_CHANGES[current.effect];
 };
 
 /**
  * Body-editor plugin (pass it through `DocxEditor`'s `plugins`) that reports
- * each document change and whether it opened a new undo step. Keep one
- * instance per mounted editor.
+ * each canonical document change and whether it opened a new undo step. Keep
+ * one instance per mounted editor.
  */
 export const createHistoryBridgePlugin = (
   onChange: (change: HistoryChange) => void,
@@ -71,17 +68,15 @@ export const createHistoryBridgePlugin = (
   new Plugin<BridgeState>({
     key: historyBridgeKey,
     state: {
-      init: () => ({ lineage: {}, lastWasUndoRedo: false }),
+      init: () => ({ lineage: {}, effect: null }),
       apply: (transaction, value) => {
         if (!transaction.docChanged) {
           return value;
         }
-        const lastWasUndoRedo = isHistoryTransaction(
-          rootTransaction(transaction),
-        );
-        return lastWasUndoRedo === value.lastWasUndoRedo
+        const effect = canonicalHistoryEffect(transaction);
+        return effect === value.effect
           ? value
-          : { lineage: value.lineage, lastWasUndoRedo };
+          : { lineage: value.lineage, effect };
       },
     },
     view: () => ({

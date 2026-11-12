@@ -39,7 +39,8 @@ const escapeAttribute = (value: string): string =>
  * The smoke test's hand on the keyboard, in the page only under
  * `FOLIO_VSCODE_TEST=1`: `{ type: "folio-test-type", text }` types `text` at
  * the end of the first paragraph with text, through the editor's own input
- * handling (the browser's insert-text command on the focused editor).
+ * handling (the insert-text input event a key press starts on the focused
+ * editor).
  */
 export const EDITOR_TEST_SCRIPT = `
 window.addEventListener("message", (event) => {
@@ -59,7 +60,16 @@ window.addEventListener("message", (event) => {
     selection.removeAllRanges();
     selection.addRange(range);
   }
-  setTimeout(() => document.execCommand("insertText", false, String(data.text)), 100);
+  setTimeout(() => {
+    editable.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "insertText",
+        data: String(data.text),
+      }),
+    );
+  }, 100);
 });
 `;
 
