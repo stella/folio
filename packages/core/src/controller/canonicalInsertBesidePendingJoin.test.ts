@@ -326,7 +326,8 @@ const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
 
 /**
  * The clause, its break pending deletion, joining "Signed in two copies."
- * across the bookmark that starts between them and ends after "Charlie.".
+ * across the bookmark that starts between them and ends after "Charlie.",
+ * before the body's last paragraph.
  */
 const acrossARangeBoundary = async (): Promise<LongerJoin> => {
   const run = (text: string) =>
@@ -341,6 +342,7 @@ const acrossARangeBoundary = async (): Promise<LongerJoin> => {
       `<w:p w14:paraId="10000003">${run(SURVIVOR)}</w:p>` +
       `<w:p w14:paraId="10000004">${run("Charlie.")}</w:p>` +
       `<w:bookmarkEnd w:id="7"/>` +
+      `<w:p w14:paraId="10000005">${run("Delta.")}</w:p>` +
       `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
   );
   return {
