@@ -387,3 +387,25 @@ test(
   },
   propertyTestTimeout(120_000),
 );
+
+test(
+  "temporary: count paragraphs the property rejects",
+  async () => {
+    const paragraphs = [
+      ...EXAMPLES.map(([segments]) => segments),
+      ...fc.sample(paragraphArb, { numRuns: 40, seed: 17 }),
+    ];
+    let caught = 0;
+    for (const segments of paragraphs) {
+      try {
+        await checkParagraph(segments);
+      } catch {
+        caught += 1;
+      }
+    }
+    console.log(
+      `GRAPHEME_BREAK caught=${String(caught)} total=${String(paragraphs.length)}`,
+    );
+  },
+  propertyTestTimeout(120_000),
+);
