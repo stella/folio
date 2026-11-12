@@ -27,6 +27,7 @@ import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resol
 import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
 import { resolveCommentReferences } from "../prosemirror/commentReferenceIntegrity";
 import {
+  type AcceptedCopies,
   isBlockBoundaryNode,
   paragraphRemainsOf,
 } from "../prosemirror/keptRangeBoundaries";
@@ -961,6 +962,8 @@ export const resolveWholeStory = ({
   removedReferences: RemovedSectionReference[];
   /** The boundaries removed content left standing, for the range repair. */
   keptBoundaries: Set<PMNode>;
+  /** The copies an acceptance made boundaries of their own, for the range repair. */
+  acceptedCopies: AcceptedCopies;
 } => {
   const withoutCopies = new Transform(storyDoc);
   for (const position of sectionRecordCopyPositions(storyDoc))
@@ -1144,5 +1147,6 @@ const resolveStoryRevisions = ({
     runsIntoTable: propertyResult.runsIntoTable,
     /** The boundaries removed content left standing, for the range repair. */
     keptBoundaries: inline?.keptBoundaries ?? new Set<PMNode>(),
+    acceptedCopies: inline?.acceptedCopies ?? new Map(),
   };
 };

@@ -24,6 +24,7 @@ const marker = (
   range: `${BOUNDARY_SIDES[type].family}:3`,
   side: BOUNDARY_SIDES[type].side,
   kept,
+  accepted: false,
   copied: false,
 });
 
@@ -120,16 +121,22 @@ const occurrenceArbitrary = fc
   .record({
     definition: fc.constantFrom(...Object.entries(BOUNDARY_SIDES)),
     id: fc.integer({ min: 0, max: 5 }),
-    kept: fc.boolean(),
+    resolution: fc.constantFrom("standing", "kept", "accepted"),
     copied: fc.boolean(),
   })
-  .map(({ definition: [type, { family, side }], id, kept, copied }) => ({
+  .map(({ definition: [type, { family, side }], id, resolution, copied }) => ({
     boundary: `${type}:${id}`,
     range: `${family}:${id}`,
     side,
-    kept,
-    copied,
+    kept: resolution === "kept",
+    // An accepted copy is a copy no longer.
+    accepted: resolution === "accepted",
+    copied: resolution !== "accepted" && copied,
   }));
+
+/** An occurrence the resolution left as it was. */
+const isStanding = ({ kept, accepted }: BoundaryOccurrence) =>
+  !kept && !accepted;
 
 test("normalization preserves standing occurrences, retained quotas, and reaches a fixed point", () => {
   assertProperty(
@@ -137,8 +144,8 @@ test("normalization preserves standing occurrences, retained quotas, and reaches
       fc.array(occurrenceArbitrary, { maxLength: 60 }),
       (occurrences) => {
         const normalized = normalize(occurrences);
-        expect(normalized.filter(({ kept }) => !kept)).toEqual(
-          occurrences.filter(({ kept }) => !kept),
+        expect(normalized.filter(isStanding)).toEqual(
+          occurrences.filter(isStanding),
         );
         for (const boundary of new Set(
           occurrences.map((item) => item.boundary),
@@ -146,21 +153,24 @@ test("normalization preserves standing occurrences, retained quotas, and reaches
           const source = occurrences.filter(
             (item) => item.boundary === boundary,
           );
-          const standing = source.filter(({ kept }) => !kept);
+          const standing = source.filter(isStanding);
           const held = standing.some(({ copied }) => !copied);
-          const kept = normalized.filter(
-            (item) => item.boundary === boundary && item.kept,
+          const resolved = normalized.filter(
+            (item) => item.boundary === boundary && !isStanding(item),
           );
-          // A copy an added revision owns holds nothing: one kept boundary
-          // stays beside it, and one that is no copy when there is one.
-          expect(kept.length).toBe(
+          // A copy an added revision owns holds nothing: one boundary the
+          // resolution made standing stays beside it, a kept one before an
+          // accepted copy, and one that is no copy when there is one.
+          expect(resolved.length).toBe(
             held || standing.length === source.length ? 0 : 1,
           );
+          if (source.some((item) => item.kept))
+            expect(resolved.every(({ kept }) => kept)).toBe(true);
           if (source.some((item) => item.kept && !item.copied))
-            expect(kept.every(({ copied }) => !copied)).toBe(true);
+            expect(resolved.every(({ copied }) => !copied)).toBe(true);
           expect(
             normalized.filter((item) => item.boundary === boundary).length,
-          ).toBe(standing.length + kept.length);
+          ).toBe(standing.length + resolved.length);
         }
         const keptRanges = new Set(
           normalized.filter(({ kept }) => kept).map(({ range }) => range),

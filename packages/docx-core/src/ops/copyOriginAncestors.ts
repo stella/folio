@@ -468,9 +468,15 @@ export const addCopyOriginToExistingAncestor = (
   return visit(nodes, 0);
 };
 
+/**
+ * `nodes` with the accepted revision gone from every copied boundary's
+ * ancestry. `becameStanding` hears each copy the acceptance makes a boundary
+ * of its own, which the story may still hold elsewhere.
+ */
 export const acceptCopyOriginAncestor = (
   nodes: readonly InlineNode[],
   copiedBoundaries?: Set<InlineNode>,
+  becameStanding?: (node: InlineNode) => void,
 ): InlineNode[] => {
   const visit = (
     current: readonly InlineNode[],
@@ -494,6 +500,7 @@ export const acceptCopyOriginAncestor = (
         if (nextOrigins === undefined) delete next.copyOriginAncestors;
         else next.copyOriginAncestors = nextOrigins;
         if (copiedBoundaries?.delete(node)) copiedBoundaries.add(next);
+        if (nextOrigins === undefined) becameStanding?.(next);
         out.push(next);
         continue;
       }

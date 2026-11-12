@@ -69,9 +69,11 @@ import { requestDeterministicParaIds } from "../extensions/features/ParaIdAlloca
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../fieldRepresentation";
 import {
+  type AcceptedCopies,
   isBlockBoundaryNode,
   normalizeKeptRangeBoundaries,
   paragraphRemainsOf,
+  recordAcceptedCopies,
   type RemovedSubtree,
   removeResolvedSubtree,
   revisionLayerRemovesContent,
@@ -308,6 +310,8 @@ function resolveChangeUnguarded(
       const deleteRanges: RemovedRange[] = [];
       /** The boundaries removed content left standing, for the range repair. */
       const keptBoundaries = new Set<PMNode>();
+      /** The copies this acceptance made boundaries of their own, for the range repair. */
+      const acceptedCopies: AcceptedCopies = new Map();
       /** What this resolution resolves, for what removed content keeps. */
       const selection: RevisionSelection = {
         mode,
@@ -339,6 +343,11 @@ function resolveChangeUnguarded(
         }
         if (attrs !== current.attrs) {
           tr.setNodeMarkup(position, undefined, attrs);
+          recordAcceptedCopies(
+            acceptedCopies,
+            current,
+            tr.doc.nodeAt(position),
+          );
         }
       };
       /** Where resolved inline content began and ended, in `state.doc`. */
@@ -1125,7 +1134,7 @@ function resolveChangeUnguarded(
           tr.delete(carrier.position, carrier.position + carrier.size);
         }
       }
-      normalizeKeptRangeBoundaries(tr, keptBoundaries);
+      normalizeKeptRangeBoundaries(tr, keptBoundaries, acceptedCopies);
       finishResolution(state, tr);
       if (tr.steps.length > 0) {
         dispatch(tr);
@@ -1963,7 +1972,11 @@ const resolveAllChanges =
     // The resolved ranges are positions in the resolved document: the range
     // repair's steps map them too.
     const resolvedAt = tr.steps.length;
-    normalizeKeptRangeBoundaries(tr, result.keptBoundaries);
+    normalizeKeptRangeBoundaries(
+      tr,
+      result.keptBoundaries,
+      result.acceptedCopies,
+    );
     // Resolution is a reproducible projection. Schema fillers, including cells
     // a table-repair plugin adds, need the same identities on every reading.
     requestDeterministicParaIds(tr, `resolve-all:${mode}`);

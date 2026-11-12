@@ -73,6 +73,7 @@ import {
   pairedCommentRanges,
   paragraphRemains,
   planParagraphBoundaryRemoval,
+  recordAcceptedCopy,
   type RelocatedBoundaries,
   removedContentBoundaries,
   wellFormedRanges,
@@ -1698,7 +1699,9 @@ const resolveList = (
       const content =
         isAddedRevision(node) &&
         resolution.decision === REVISION_DECISIONS.ACCEPT
-          ? acceptCopyOriginAncestor(resolved.nodes)
+          ? acceptCopyOriginAncestor(resolved.nodes, undefined, (copy) =>
+              recordAcceptedCopy(resolution.relocated, copy),
+            )
           : resolved.nodes;
       if (resolved.edges?.first !== undefined)
         recordSourceSeam(out.length, resolved.edges.first);
