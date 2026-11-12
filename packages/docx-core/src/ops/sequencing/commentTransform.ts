@@ -212,7 +212,7 @@ export const moveCommentAnchor = ({
           "A concurrent deletion reached the comment's anchor.",
         );
       // A tracked deletion keeps its text, so no offset moves.
-      const length = over.revision ? 0 : over.to.offset - over.from.offset;
+      const length = 0;
       return moved(
         points.map((point) =>
           sameParagraph(point, over.from) && point.offset > over.to.offset
