@@ -173,6 +173,7 @@ const occurrenceOf = (
 ): BoundaryOccurrence => {
   const { family, side } = BOUNDARY_SIDES[item.type];
   return {
+    boundary: `${item.type}:${item.id}`,
     range: `${family}:${item.id}`,
     side,
     kept,
@@ -483,7 +484,8 @@ const wellFormKeptRangeBoundaries = (
 ): void => {
   const found = boundariesIn(tr.doc, kept);
   const plan = planWellFormedRanges(found.map(({ occurrence }) => occurrence));
-  const leaving = new Set(plan.moved.map(({ moving }) => moving));
+  const leaving = new Set(plan.dropped);
+  for (const { moving } of plan.moved) leaving.add(moving);
   const edits: BoundaryEdit[] = [];
   const byNode = new Map<number, number[]>();
   for (const [index, { position }] of found.entries())

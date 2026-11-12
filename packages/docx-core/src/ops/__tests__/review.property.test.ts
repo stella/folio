@@ -201,63 +201,41 @@ const boundariesBelow = (value: unknown): RangeBoundary[] => {
   return [];
 };
 
-const isAddedRecord = (value: object): boolean => {
-  const type: unknown = Reflect.get(value, "type");
-  return type === "insertion" || type === "moveTo";
-};
-
-type HeldBoundary = { boundary: RangeBoundary; owned: boolean };
-
-/**
- * The range boundaries below a rejected record's content, each with whether
- * a record the rejection removes owns it as a copy: one of its
- * `copyOriginAncestors`, counted from the nearest added record up, is among
- * the `added` records that hold it there.
- */
-const heldBelow = (value: unknown, added: number): HeldBoundary[] => {
-  const boundary = asRangeBoundary(value);
-  if (boundary !== undefined) {
-    const origins: unknown = Reflect.get(Object(value), "copyOriginAncestors");
-    const owned =
-      Array.isArray(origins) &&
-      origins.some(
-        (ordinal: unknown) => typeof ordinal === "number" && ordinal < added,
-      );
-    return [{ boundary, owned }];
-  }
-  if (Array.isArray(value))
-    return value.flatMap((item) => heldBelow(item, added));
-  if (typeof value !== "object" || value === null) return [];
-  const below = added + Number(isAddedRecord(value));
-  return Object.values(value).flatMap((child) => heldBelow(child, below));
-};
-
 /**
  * The range boundaries rejecting `ids` keeps from the content it removes: all
  * held in their insertions, but a comment's whole range inside one insertion,
- * which goes with its comment, and a copy an insertion it removes owns.
- * Whatever else the story holds decides nothing.
+ * which goes with its comment, and a copy of a boundary the document still
+ * holds elsewhere (of several copies, the first).
  */
 const boundariesKeptByRejecting = (
   document: Document,
   ids: ReadonlySet<number>,
 ): RangeBoundary[] => {
   const held: RangeBoundary[] = [];
+  const outside = new Set<string>();
   const visit = (value: unknown): void => {
+    const boundary = asRangeBoundary(value);
+    if (boundary !== undefined) {
+      outside.add(`${boundary.type}:${boundary.id}`);
+      return;
+    }
     if (Array.isArray(value)) {
       for (const item of value) visit(item);
       return;
     }
     if (typeof value !== "object" || value === null) return;
+    const type: unknown = Reflect.get(value, "type");
     const info: unknown = Reflect.get(value, "info");
     const id =
       typeof info === "object" && info !== null
         ? Reflect.get(info, "id")
         : undefined;
-    if (isAddedRecord(value) && typeof id === "number" && ids.has(id)) {
-      const inside = heldBelow(Reflect.get(value, "content"), 1).flatMap(
-        ({ boundary, owned }) => (owned ? [] : [boundary]),
-      );
+    if (
+      (type === "insertion" || type === "moveTo") &&
+      typeof id === "number" &&
+      ids.has(id)
+    ) {
+      const inside = boundariesBelow(Reflect.get(value, "content"));
       const whole = new Set(
         inside
           .filter(({ type: kind }) => kind === "commentRangeStart")
@@ -280,36 +258,13 @@ const boundariesKeptByRejecting = (
     for (const child of Object.values(value)) visit(child);
   };
   visit(document.package.document.content);
-  return held;
-};
-
-const boundaryKey = ({ type, id }: RangeBoundary): string => `${type}:${id}`;
-
-const occurrencesOf = (document: Document, key: string): number =>
-  boundariesBelow(document.package.document.content).filter(
-    (boundary) => boundaryKey(boundary) === key,
-  ).length;
-
-/** `document` without any occurrence of the boundaries `keys` name. */
-const withoutBoundaryKeys = (
-  document: Document,
-  keys: ReadonlySet<string>,
-): Document => {
-  const strip = (value: unknown): unknown => {
-    if (Array.isArray(value))
-      return value.flatMap((item) => {
-        const boundary = asRangeBoundary(item);
-        return boundary !== undefined && keys.has(boundaryKey(boundary))
-          ? []
-          : [strip(item)];
-      });
-    if (typeof value !== "object" || value === null) return value;
-    return Object.fromEntries(
-      Object.entries(value).map(([field, child]) => [field, strip(child)]),
-    );
-  };
-  // SAFETY: `strip` only drops boundary records from arrays of a document.
-  return strip(document) as Document;
+  const seen = new Set<string>();
+  return held.filter(({ type, id }) => {
+    const key = `${type}:${id}`;
+    if (outside.has(key) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 /** `document` with the last occurrence of each of `boundaries` taken out; each must be there. */
@@ -350,6 +305,7 @@ const expectWellFormedRanges = (
   const order = boundariesBelow(document.package.document.content);
   const multiplicities = classifyRangeMultiplicity(
     order.map(({ type, id }) => ({
+      boundary: `${type}:${id}`,
       range: `${BOUNDARY_SIDES[type].family}:${id}`,
       side: BOUNDARY_SIDES[type].side,
       kept: false,
@@ -388,29 +344,9 @@ const expectRejectedTo = ({
 }): void => {
   const kept = boundariesKeptByRejecting(tracked, new Set(ids));
   expectWellFormedRanges(rejected, kept);
-  // Of several occurrences of one boundary, nothing tells which one rejection
-  // kept: they leave both sides, and their number is checked.
-  const keptCount = (key: string): number =>
-    kept.filter((boundary) => boundaryKey(boundary) === key).length;
-  const repeated = new Set(
-    kept
-      .map(boundaryKey)
-      .filter((key) => occurrencesOf(expected, key) > 0 || keptCount(key) > 1),
-  );
-  for (const key of repeated)
-    expect({ key, occurrences: occurrencesOf(rejected, key) }).toEqual({
-      key,
-      occurrences: occurrencesOf(expected, key) + keptCount(key),
-    });
   assertExactModel(
-    projected(
-      withoutBoundaries(
-        withoutBoundaryKeys(rejected, repeated),
-        kept.filter((boundary) => !repeated.has(boundaryKey(boundary))),
-      ),
-      projection,
-    ),
-    projected(withoutBoundaryKeys(expected, repeated), projection),
+    projected(withoutBoundaries(rejected, kept), projection),
+    projected(expected, projection),
   );
 };
 
