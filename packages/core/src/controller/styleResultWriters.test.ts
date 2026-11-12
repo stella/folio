@@ -12,6 +12,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 
 import { deepFreeze } from "../__tests__/deepFreeze";
+import { sharedObjects } from "../__tests__/sharedObjects";
 import { importReferencedStyleDefinitions } from "../compare/style-resources";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { buildRunFormattingOverrideAttrs } from "../prosemirror/extensions/marks/RunFormattingOverrideExtension";
@@ -19,21 +20,6 @@ import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 import * as documentModel from "../types/documentModel";
 import { importClipboardStyles } from "./canonicalClipboardResources";
-
-/** Every object reachable from `value`. */
-const reachable = (value: unknown, seen = new Set<object>()): Set<object> => {
-  if (typeof value !== "object" || value === null || seen.has(value))
-    return seen;
-  seen.add(value);
-  for (const entry of Object.values(value)) reachable(entry, seen);
-  return seen;
-};
-
-/** The objects `result` shares with `input`. */
-const sharedObjects = (input: unknown, result: unknown): object[] => {
-  const inputs = reachable(input);
-  return [...reachable(result)].filter((object) => inputs.has(object));
-};
 
 const BORDER = {
   style: "single",
