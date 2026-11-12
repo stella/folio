@@ -47,11 +47,8 @@ import {
 import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
-import type {
-  Document,
-  StyleDefinitions,
-  Theme,
-} from "@stll/folio-core/types/document";
+import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 // Import ProseMirror CSS
 import "prosemirror-view/style/prosemirror.css";
 
@@ -75,8 +72,8 @@ const EMPTY_EXTERNAL_PLUGINS: Plugin[] = [];
 // ============================================================================
 
 export type HiddenProseMirrorProps = {
-  /** The document to edit */
-  document: Document | null;
+  /** The document model to edit; the editor reads it and never writes it. */
+  document: ReadonlyDocument | null;
   experimentalSession?: "canonical";
   suggestionModeActive?: boolean;
   suggestionAuthor?: string;
@@ -134,7 +131,7 @@ export type HiddenProseMirrorRef = HiddenEditorApi & {
   /** Internal composition availability for deferred document notifications. */
   isCanonicalComposing: () => boolean;
   /** The canonical session's own document, read without a copy. */
-  readCanonicalDocument: () => Document | null;
+  readCanonicalDocument: () => ReadonlyDocument | null;
   /** Get the off-screen host element. */
   getHostElement: () => HTMLElement | null;
 };

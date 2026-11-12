@@ -11,6 +11,7 @@ import fc from "fast-check";
 
 import {
   assertProperty,
+  propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { deepFreeze } from "../__tests__/deepFreeze";
@@ -20,19 +21,26 @@ import { getCachedNumberingMap } from "../docx/numberingParser";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { parseDocx } from "../docx/parser";
 import { resolveSectionHeaderFooterRefs } from "../layout-engine/headerFooterRefs";
+import { withFakeTextMeasure } from "../layout-engine/measure/__tests__/fakeTextMeasure";
 import { TableSelectionManager } from "../managers/TableSelectionManager";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { findInDisplayedDocument } from "../prosemirror/findReplaceSelection";
 import { singletonManager } from "../prosemirror/schema";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import type { Document } from "../types/document";
-import { readModel } from "../types/documentModel";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import { createFindSearchKey } from "../utils/findSearchKey";
 import {
   resolveEffectiveSectionProperties,
   resolveHeaderFooterContent,
 } from "../utils/headerFooter";
 import { getDocumentWatermark } from "../watermark";
+import {
+  createFreshRenderRig,
+  LOAD_LAYOUT,
+} from "./__tests__/freshRenderHarness";
+import { createCanonicalSession } from "./canonicalSession";
+import { type LayoutFontSet, waitForInitialLayoutFonts } from "./fontReadiness";
 import { createHiddenEditorState } from "./hiddenEditorManager";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
@@ -163,6 +171,102 @@ describe("readModel", () => {
         },
       ),
       { id: "host readers never write the model" },
+    );
+  });
+
+  test("the layout pipeline lays out a frozen model as it lays out a plain one", async () => {
+    const shapes = await loadShapes();
+    // The editor's model reaches the layout pipeline as it is held: lay each
+    // shape out from a frozen model and from a plain one.
+    const layOut = (model: ReadonlyDocument) => {
+      const styles = readModel(model).package.styles ?? null;
+      const doc = createHiddenEditorState({
+        document: model,
+        styles,
+        manager: singletonManager,
+      }).doc;
+      const rig = createFreshRenderRig({
+        initialDoc: doc,
+        leadingFrame: false,
+        ext: null,
+        extraDeps: () => ({ styles }),
+      });
+      rig.loadDocument(doc, { layout: LOAD_LAYOUT.immediate, document: model });
+      rig.settle();
+      return rig.committed();
+    };
+    withFakeTextMeasure(() => {
+      fc.assert(
+        fc.property(fc.constantFrom(...shapes), ({ document }) => {
+          const frozen = deepFreeze(
+            cloneDocumentWithParagraphPropertySources(document),
+          );
+          const plain = cloneDocumentWithParagraphPropertySources(document);
+          const laidOut = layOut(frozen);
+          expect(laidOut?.length).toBeGreaterThan(0);
+          expect(laidOut).toEqual(layOut(plain));
+        }),
+        propertyConfig({ numRuns: shapes.length }),
+      );
+    });
+  });
+
+  test("the initial font wait reads a frozen model as it reads a plain one", async () => {
+    const shapes = await loadShapes();
+    const fontLoads = async (model: ReadonlyDocument) => {
+      const loads: { font: string; text: string | undefined }[] = [];
+      const fontSet: LayoutFontSet = {
+        *[Symbol.iterator]() {},
+        load: (font, text) => {
+          loads.push({ font, text });
+          return Promise.resolve([]);
+        },
+        ready: Promise.resolve(),
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      };
+      const doc = createHiddenEditorState({
+        document: model,
+        styles: readModel(model).package.styles ?? null,
+        manager: singletonManager,
+      }).doc;
+      expect(await waitForInitialLayoutFonts(model, doc, fontSet)).toBe(true);
+      return loads;
+    };
+    for (const { document } of shapes) {
+      const frozen = deepFreeze(
+        cloneDocumentWithParagraphPropertySources(document),
+      );
+      const plain = cloneDocumentWithParagraphPropertySources(document);
+      expect(await fontLoads(frozen)).toEqual(await fontLoads(plain));
+    }
+  });
+
+  test("every reader a host calls reads a canonical session's own document frozen as it reads it plain", async () => {
+    const shapes = await loadShapes();
+    const sessionDocument = (document: Document) => {
+      const session = createCanonicalSession(
+        cloneDocumentWithParagraphPropertySources(document),
+      );
+      return session.isOk() ? session.value.document : null;
+    };
+    const seeded = shapes.filter(({ document }) => sessionDocument(document));
+    expect(seeded.length).toBeGreaterThan(0);
+    await assertProperty(
+      fc.property(
+        fc.constantFrom(...seeded),
+        queryArbitrary,
+        ({ document }, query) => {
+          const frozen = sessionDocument(document);
+          const plain = sessionDocument(document);
+          if (!frozen || !plain) throw new Error("A seeded shape refused.");
+          deepFreeze(frozen);
+          expect(readEverything(readModel(frozen), query)).toEqual(
+            readEverything(readModel(plain), query),
+          );
+        },
+      ),
+      { id: "host readers never write the canonical session's document" },
     );
   });
 });

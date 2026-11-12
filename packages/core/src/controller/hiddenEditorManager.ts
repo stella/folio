@@ -109,7 +109,8 @@ import {
   type CanonicalRefusalGround,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
-import type { Document, StyleDefinitions } from "../types/document";
+import type { StyleDefinitions } from "../types/document";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 import {
@@ -373,7 +374,8 @@ const HIDDEN_EDITOR_ATTRIBUTES = {
  * Otherwise falls back to the default singleton schema with no extension plugins.
  */
 export type CreateHiddenEditorStateOptions = {
-  document: Document | null;
+  /** The model; the editor state is built from it through `readModel`. */
+  document: ReadonlyDocument | null;
   styles?: StyleDefinitions | null | undefined;
   manager?: ExtensionManager | undefined;
   externalPlugins?: Plugin[] | undefined;
@@ -386,7 +388,7 @@ export function createHiddenEditorState(
   options: CreateHiddenEditorStateOptions,
 ): EditorState {
   const {
-    document,
+    document: model,
     styles,
     manager,
     externalPlugins = [],
@@ -395,6 +397,7 @@ export function createHiddenEditorState(
     reason = "mount",
   } = options;
   recordHiddenEditorStateCreate(reason);
+  const document = model && readModel(model);
 
   const activeSchema = manager?.getSchema() ?? schema;
   let localDoc = createEmptyDoc();
@@ -563,7 +566,7 @@ function syncHiddenEditorAccessibility(
 
 export type HiddenEditorManagerDeps = {
   getHost: () => HTMLElement | null;
-  getDocument: () => Document | null;
+  getDocument: () => ReadonlyDocument | null;
   getStyles: () => StyleDefinitions | null | undefined;
   getExtensionManager: () => ExtensionManager | undefined;
   getExternalPlugins: () => Plugin[];
@@ -586,7 +589,7 @@ export type HiddenEditorManagerDeps = {
    */
   getDocumentIdentity: () => string;
   /** Document context for the API's `getDocument` (PM state -> Document). */
-  getDocumentContext: () => Document | null;
+  getDocumentContext: () => ReadonlyDocument | null;
   onTransaction: (update: HiddenEditorTransactionUpdate) => void;
   /**
    * A canonical composition ended. A layout pass reads the live view, so one
@@ -665,7 +668,7 @@ export type HiddenEditorManager = {
    * it stays as read; the editor's own story managers read it and never
    * change it.
    */
-  readCanonicalDocument: () => Document | null;
+  readCanonicalDocument: () => ReadonlyDocument | null;
 };
 
 export const createHiddenEditorManager = (
@@ -696,7 +699,7 @@ export const createHiddenEditorManager = (
     if (deps.onSessionRefusal) deps.onSessionRefusal(message, ground);
     else throw new CanonicalSessionRefusalError({ ground, message });
   };
-  const seedSession = (document: Document | null): boolean => {
+  const seedSession = (document: ReadonlyDocument | null): boolean => {
     if (
       !usesCanonicalSession(
         deps.getExperimentalSession?.(),
@@ -737,15 +740,16 @@ export const createHiddenEditorManager = (
     syncCanonicalMode();
     return true;
   };
-  const canonicalState = (session: CanonicalSession) =>
-    PMEditorState.create({
+  const canonicalState = (session: CanonicalSession) => {
+    const document = readModel(session.document);
+    return PMEditorState.create({
       doc: session.projection.doc,
       plugins: [
-        createDocumentNumberingPlugin(session.document.package.numbering),
+        createDocumentNumberingPlugin(document.package.numbering),
         createParagraphChangeTrackerPlugin(),
         createNativeSelectionRefreshPlugin(),
         createDocumentStyleContextPlugin(
-          deps.getStyles() ?? session.document.package.styles,
+          deps.getStyles() ?? document.package.styles,
         ),
         new PMPlugin({
           props: { clipboardTextParser: parseCanonicalClipboardText },
@@ -783,6 +787,7 @@ export const createHiddenEditorManager = (
         ),
       ],
     });
+  };
   const publishCommit = (
     commit: CanonicalCommit,
     reportRefusal: typeof refuse = refuse,
@@ -1258,7 +1263,7 @@ export const createHiddenEditorManager = (
       if (precomputedInitialState && !collaboration)
         return precomputedInitialState;
       return createHiddenEditorState({
-        document,
+        document: document && readModel(document),
         styles,
         manager: extensionManager,
         externalPlugins,
@@ -1676,7 +1681,7 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical"
         ? canonicalState(editorSession.session)
         : createHiddenEditorState({
-            document,
+            document: document && readModel(document),
             styles: deps.getStyles(),
             manager: deps.getExtensionManager(),
             externalPlugins: deps.getExternalPlugins(),
@@ -1959,7 +1964,10 @@ export const createHiddenEditorManager = (
         if (session.isComposing)
           return fail("Section properties cannot change during composition.");
         const prepared = session.prepareOperations(view.state, [
-          createCanonicalSectionPropertiesOperation(session.document, patch),
+          createCanonicalSectionPropertiesOperation(
+            readModel(session.document),
+            patch,
+          ),
         ]);
         if (prepared.isErr()) return fail(prepared.error.message);
         let failureMessage = "The section projection could not publish.";
@@ -2005,7 +2013,7 @@ export const createHiddenEditorManager = (
           );
         let command: CanonicalCommentCommand;
         if (request.type === "create") {
-          const id = freshCommentId(session.document);
+          const id = freshCommentId(readModel(session.document));
           if (id.isErr()) return fail(id.error.message);
           let anchor: CreateCommentOp["anchor"];
           switch (request.anchor.kind) {
@@ -2045,12 +2053,15 @@ export const createHiddenEditorManager = (
               author: request.author,
               done: false,
               date: request.date ?? new Date().toISOString(),
-              content: canonicalCommentBody(session.document, request.text),
+              content: canonicalCommentBody(
+                readModel(session.document),
+                request.text,
+              ),
             },
           };
         } else command = request;
         const compiled = compileCanonicalComments({
-          document: session.document,
+          document: readModel(session.document),
           command,
         });
         if (compiled.isErr()) return fail(compiled.error.message);
