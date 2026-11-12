@@ -104,6 +104,7 @@ export {
 export {
   BATCH_REJECTION_REASONS,
   BATCH_WIRE_OP_TYPES,
+  EXCLUSIVE_PARTS,
   MAX_BATCH_WIRE_BYTES,
   BatchRejection,
   parseDocumentBatch,
@@ -111,11 +112,49 @@ export {
   validateSequencedBatch,
   type BatchRejectionReason,
   type DocumentBatch,
+  type ExclusivePart,
   type SequencedBatch,
 } from "./sequencing/envelope";
 export { transformBatch } from "./sequencing/transform";
-export { createSequencer } from "./sequencing/sequencer";
-export { createClient } from "./sequencing/client";
+export { transformPosition } from "./sequencing/position";
+export { applyBatch } from "./sequencing/applyBatch";
+export {
+  type BatchAck,
+  type BatchReject,
+  type BatchSubmission,
+  createSequencer,
+  type SequencerOptions,
+} from "./sequencing/sequencer";
+export {
+  type ClientDocumentChange,
+  type ClientNotice,
+  createClient,
+} from "./sequencing/client";
+export {
+  DEFAULT_ID_BLOCK_SIZES,
+  ID_LEASE_REFUSAL_REASONS,
+  IdLeaseRefusal,
+  type IdLeaseGrant,
+  type IdLeaseMinted,
+  type IdLeaseRefusalReason,
+  type IdLeaseState,
+} from "./sequencing/idLeases";
+export {
+  formatParaId,
+  freshLeasedIds,
+  ID_KIND_LIMITS,
+  ID_LEASE_KINDS,
+  idLeaseHolds,
+  idLeaseRemaining,
+  introducedIds,
+  leasedIdCensus,
+  trimIdLease,
+  type IdBlock,
+  type IdLease,
+  type IdLeaseKind,
+  type LeasedId,
+  type LeasedIdCensus,
+} from "./idLease";
 export {
   type BatchBlockAccess,
   compareBatchOrder,

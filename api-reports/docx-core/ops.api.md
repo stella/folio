@@ -23,7 +23,7 @@ export type AddNoteOp = {
 };
 
 // @public
-export const allocateCommentAnchorIds: (document: Document_2, op: CreateCommentOp) => Result<NewIds, DocumentOpRefusal>;
+export const allocateCommentAnchorIds: (document: Document_2, op: CreateCommentOp, lease?: IdLease) => Result<NewIds, DocumentOpRefusal>;
 
 // @public
 export type AppliedDocumentOp = {
@@ -32,6 +32,9 @@ export type AppliedDocumentOp = {
     touched: TouchedBlocks;
     revisions: readonly number[];
 };
+
+// @public
+export const applyBatch: (document: Document_2, ops: readonly DocumentOp[]) => Result<AppliedBatch, DocumentOpRefusal>;
 
 // @public
 export const applyDocumentOp: (document: Document_2, input: DocumentOp) => Result<AppliedDocumentOp, DocumentOpRefusal>;
@@ -54,10 +57,20 @@ export const BATCH_REJECTION_REASONS: {
     readonly STALE_BASE: "staleBase";
     readonly INVALID_OPERATION: "invalidOperation";
     readonly TABLE_REQUIRES_EXCLUSIVE_EDIT: "tableRequiresExclusiveEdit";
+    readonly BLOCK_CONFLICT: "blockConflict";
+    readonly PART_CONFLICT: "partConflict";
+    readonly OUTSIDE_ID_LEASE: "outsideIdLease";
 };
 
 // @public (undocumented)
 export const BATCH_WIRE_OP_TYPES: readonly string[];
+
+// @public (undocumented)
+export type BatchAck = {
+    type: "ack";
+    opId: string;
+    rev: number;
+};
 
 // @public
 export type BatchBlockAccess<Block> = {
@@ -90,16 +103,29 @@ export type BatchOrderAddress = {
 };
 
 // @public (undocumented)
+export type BatchReject = {
+    type: "reject";
+    opId: string;
+    reason: BatchRejection;
+    headRev: number;
+};
+
+// @public (undocumented)
 export class BatchRejection extends BatchRejectionBase<{
     message: string;
     reason: BatchRejectionReason;
     opId?: string;
     opType?: DocumentOpType;
     overType?: DocumentOpType;
+    idKind?: IdLeaseKind;
+    part?: ExclusivePart;
 }> {}
 
 // @public (undocumented)
 export type BatchRejectionReason = (typeof BATCH_REJECTION_REASONS)[keyof typeof BATCH_REJECTION_REASONS];
+
+// @public (undocumented)
+export type BatchSubmission = BatchAck | BatchReject;
 
 // @public
 export type BlockInsertionPoint = {
@@ -122,6 +148,19 @@ export type BoundaryOccurrence = {
 
 // @public
 export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
+
+// @public
+export type ClientDocumentChange = {
+    type: "rebased" | "replaced";
+    batch: SequencedBatch;
+};
+
+// @public (undocumented)
+export type ClientNotice = {
+    opId: string;
+    reason: BatchRejection;
+    ops: readonly DocumentOp[];
+};
 
 // @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
@@ -202,8 +241,8 @@ export const createClient: (document: Document_2) => {
     enqueue: (batch: DocumentBatch) => Result<DocumentBatch, BatchRejection>;
     nextSubmission: () => DocumentBatch | undefined;
     receiveAck: (ack: BatchAck) => void;
-    receiveReject: (rejection: BatchReject) => void;
-    receiveBroadcast: (batch: SequencedBatch) => Result<void, BatchRejection>;
+    receiveReject: (rejection: BatchReject) => readonly ClientDocumentChange[];
+    receiveBroadcast: (batch: SequencedBatch) => Result<readonly ClientDocumentChange[], BatchRejection>;
     readonly document: Document_2;
     readonly headRev: number;
     readonly pending: readonly DocumentBatch[];
@@ -221,7 +260,7 @@ export type CreateCommentOp = {
 // @public
 export const createEditorIntentIdAllocator: (input?: {
     reservedBlockIds?: ReadonlySet<string>;
-}) => (document: Document_2, intent: EditorIntentAllocation) => {
+}) => (document: Document_2, intent: EditorIntentAllocation, lease?: IdLease) => {
     revisionId: number;
     newBlockId: string;
     newIds: {
@@ -249,12 +288,18 @@ export type CreateNumberingInstanceOp = {
 };
 
 // @public
-export const createSequencer: (document: Document_2) => {
+export const createSequencer: (document: Document_2, options?: SequencerOptions) => {
     submit: (batch: DocumentBatch) => BatchSubmission;
+    grantIdLease: (actor: string) => Result<IdLease, IdLeaseRefusal>;
+    renewIdLease: (actor: string, kind: IdLeaseKind) => Result<IdBlock, IdLeaseRefusal>;
     readonly document: Document_2;
     readonly headRev: number;
     readonly broadcasts: readonly SequencedBatch[];
+    readonly idLeases: IdLeaseState;
 };
+
+// @public
+export const DEFAULT_ID_BLOCK_SIZES: Readonly<Record<IdLeaseKind, number>>;
 
 // @public
 export const defaultInsertionGap: (items: readonly InlineNode[], offset: number) => Gap;
@@ -550,6 +595,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
 // @public
 export type EditorIntentMode = {
     reservedBlockIds?: ReadonlySet<string>;
+    idLease?: IdLease;
 } & ({
     type: "editing";
     newIds?: NewIds;
@@ -579,6 +625,22 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
 
 // @public
+export const EXCLUSIVE_PARTS: Readonly<{
+    readonly NUMBERING: "numbering";
+    readonly STYLES: "styles";
+    readonly RELATIONSHIPS: "relationships";
+    readonly MEDIA: "media";
+    readonly SECTIONS: "sections";
+    readonly HEADERS_FOOTERS: "headersFooters";
+    readonly NOTES: "notes";
+    readonly SETTINGS: "settings";
+    readonly REVISIONS: "revisions";
+}>;
+
+// @public
+export type ExclusivePart = (typeof EXCLUSIVE_PARTS)[keyof typeof EXCLUSIVE_PARTS];
+
+// @public
 export type FinalBreakCandidate<Paragraph> = {
     paragraph: Paragraph;
     deleted: boolean;
@@ -602,13 +664,19 @@ export const finalBreakCarrier: <Paragraph>(before: readonly FinalBreakCandidate
 export const findStoryBody: (document: Document_2, story: OpStory) => DocumentBody | undefined;
 
 // @public
+export const formatParaId: (id: number) => string;
+
+// @public
 export function formattingEquals(a: DeepReadonly<ComparedTextFormatting> | undefined, b: DeepReadonly<ComparedTextFormatting> | undefined): boolean;
 
 // @public
 export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?: Formatting[Key] | null | undefined; };
 
 // @public
-export const freshCommentId: (document: Document_2) => Result<number, DocumentOpRefusal>;
+export const freshCommentId: (document: Document_2, lease?: IdLease) => Result<number, DocumentOpRefusal>;
+
+// @public
+export const freshLeasedIds: (input: FreshLeasedIdsOptions) => number[];
 
 // @public
 export const groupInsertionRuns: <T>(operations: readonly T[], insertionPositionOf: (operation: T) => number | null, keepsGap?: (operation: T) => boolean) => T[][];
@@ -620,7 +688,74 @@ export type HeaderFooterStory = {
 };
 
 // @public
+export const ID_KIND_LIMITS: Readonly<Record<IdLeaseKind, number>>;
+
+// @public (undocumented)
+export const ID_LEASE_KINDS: Readonly<{
+    readonly PARAGRAPH: "paragraph";
+    readonly REVISION: "revision";
+    readonly CONTROL: "control";
+    readonly COMMENT: "comment";
+}>;
+
+// @public (undocumented)
+export const ID_LEASE_REFUSAL_REASONS: Readonly<{
+    readonly EXHAUSTED: "exhausted";
+    readonly NOT_DUE: "notDue";
+    readonly INVALID_STATE: "invalidState";
+}>;
+
+// @public
+export type IdBlock = IdRange & {
+    readonly kind: IdLeaseKind;
+};
+
+// @public
 export const idKey: (id: string) => string;
+
+// @public
+export type IdLease = {
+    readonly blocks: readonly IdBlock[];
+};
+
+// @public
+export type IdLeaseGrant = {
+    readonly actor: string;
+    readonly block: IdBlock;
+};
+
+// @public
+export const idLeaseHolds: (lease: IdLease, kind: IdLeaseKind, id: number) => boolean;
+
+// @public (undocumented)
+export type IdLeaseKind = (typeof ID_LEASE_KINDS)[keyof typeof ID_LEASE_KINDS];
+
+// @public
+export type IdLeaseMinted = {
+    readonly actor: string;
+    readonly kind: IdLeaseKind;
+    readonly highest: number;
+};
+
+// @public (undocumented)
+export class IdLeaseRefusal extends IdLeaseRefusalBase<{
+    message: string;
+    reason: IdLeaseRefusalReason;
+    kind?: IdLeaseKind;
+}> {}
+
+// @public (undocumented)
+export type IdLeaseRefusalReason = (typeof ID_LEASE_REFUSAL_REASONS)[keyof typeof ID_LEASE_REFUSAL_REASONS];
+
+// @public
+export const idLeaseRemaining: (lease: IdLease, kind: IdLeaseKind) => number;
+
+// @public
+export type IdLeaseState = {
+    readonly blockSizes: Readonly<Record<IdLeaseKind, number>>;
+    readonly grants: readonly IdLeaseGrant[];
+    readonly minted: readonly IdLeaseMinted[];
+};
 
 // @public
 export const INHERIT_RUN_PROPS = "inherit";
@@ -706,6 +841,9 @@ export type InsertTextOp = {
 };
 
 // @public
+export const introducedIds: (before: LeasedIdCensus, after: LeasedIdCensus) => LeasedId[];
+
+// @public
 export const isCommentAnchorCarrierType: (type: string) => boolean;
 
 // @public
@@ -739,6 +877,18 @@ export type JoinInlineOp = {
     at: TextPosition;
     depth: number;
 };
+
+// @public
+export type LeasedId = {
+    readonly kind: IdLeaseKind;
+    readonly id: number;
+};
+
+// @public
+export type LeasedIdCensus = Readonly<Record<IdLeaseKind, ReadonlySet<number>>>;
+
+// @public
+export const leasedIdCensus: (document: Document_2) => LeasedIdCensus;
 
 // @public
 export const mapTocBookmarkPosition: (position: TextPosition, ops: readonly DocumentOp[]) => TextPosition;
@@ -1143,6 +1293,11 @@ export type SequencedBatch = DocumentBatch & {
 };
 
 // @public (undocumented)
+export type SequencerOptions = {
+    idLeases?: IdLeaseState;
+};
+
+// @public (undocumented)
 export type SetCellPropsOp = TableEditTarget & {
     type: typeof DOCUMENT_OP_TYPES.SET_CELL_PROPS;
     patch: FormattingPatch<TableCellFormatting>;
@@ -1360,6 +1515,12 @@ export type TouchedBlocks = {
 
 // @public
 export const transformBatch: (batch: DocumentBatch, over: readonly SequencedBatch[], options?: TransformOptions) => Result<DocumentBatch, BatchRejection>;
+
+// @public
+export const transformPosition: (position: TextPosition, over: readonly SequencedBatch[], affinity?: "before" | "after") => TextPosition | undefined;
+
+// @public
+export const trimIdLease: (lease: IdLease, ids: readonly LeasedId[]) => IdLease;
 
 // @public (undocumented)
 export type UpdateCommentContentOp = {

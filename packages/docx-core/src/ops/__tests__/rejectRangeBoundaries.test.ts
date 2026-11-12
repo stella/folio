@@ -163,6 +163,46 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
     ]);
   });
 
+  // Known order dependence: a kept boundary goes when the story holds another
+  // occurrence of it, and accepting a pending copy first makes that copy
+  // one. Rejecting first keeps the original, and accepting then leaves two.
+  // Remove `.failing` once both orders agree.
+  test.failing(
+    "rejecting a bookmark's insertion and accepting its copy's leaves the same, in either order",
+    () => {
+      const bookmarked = (text: string): ParagraphContent[] => [
+        { type: "bookmarkStart", id: 7, name: "_Ref7" },
+        { type: "run", content: [{ type: "text", text }] },
+        { type: "bookmarkEnd", id: 7 },
+      ];
+      const base = documentWith([
+        { type: "run", content: [{ type: "text", text: "ab" }] },
+      ]);
+      const original = insertAt(base, bookmarked("x"), 1);
+      const applied = applyDocumentOp(original, {
+        type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+        at: { ...at, offset: 3 },
+        slice: { content: bookmarked("y"), openStart: 0, openEnd: 0 },
+        revision: { id: 4, author: "A", date: "2026-03-04T05:00:04Z" },
+      });
+      if (applied.isErr()) throw applied.error;
+      const tracked = applied.value.document;
+      const accepted = (document: Document): Document => {
+        const resolved = applyDocumentOp(document, {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [4],
+          decision: REVISION_DECISIONS.ACCEPT,
+        });
+        if (resolved.isErr()) throw resolved.error;
+        return resolved.value.document;
+      };
+      expect(firstParagraph(rejectAll(accepted(tracked), [3]))).toEqual(
+        firstParagraph(accepted(rejectAll(tracked, [3]))),
+      );
+    },
+  );
+
   test("a bookmark inside a rejected insertion stays where the insertion was", () => {
     const base = documentWith([
       { type: "run", content: [{ type: "text", text: "ab" }] },

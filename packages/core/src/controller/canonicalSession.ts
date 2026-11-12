@@ -26,6 +26,7 @@ import {
   type AppliedDocumentOp,
   applyDocumentOp,
   applyDocumentOps,
+  type ClientDocumentChange,
   combineEdits,
   compileEditorIntent,
   createEditorIntentIdAllocator,
@@ -36,6 +37,10 @@ import {
   type EditorIntentMode,
   editorParagraphGroups,
   findStoryBody,
+  formatParaId,
+  freshLeasedIds,
+  ID_LEASE_KINDS,
+  type IdLease,
   normalizeForOps,
   OP_STORIES,
   type OpStory,
@@ -73,6 +78,7 @@ import {
   canonicalSelectionRange,
 } from "../prosemirror/canonicalSelectionRange";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
+import { storyConversionOptions } from "../prosemirror/conversion/storyConversionOptions";
 import {
   collectPairedBookmarkIds,
   footnoteToProseDoc,
@@ -98,6 +104,7 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
+import { CanonicalIdLease } from "./canonicalIdLease";
 import {
   canonicalNativeCells,
   InlineProjectionCache,
@@ -114,6 +121,7 @@ import {
   storyFactContributions,
   type StoryProjectionFacts,
 } from "./canonicalProjectionBlocks";
+import { rebaseHistorySteps, remoteSelection } from "./canonicalRemoteHistory";
 import {
   changedWindow,
   unsupportedEditReason,
@@ -334,15 +342,38 @@ export type CanonicalSelection = {
   anchor: TextPosition;
   head: TextPosition;
 };
-export type CanonicalOrigin = "input" | "undo" | "redo";
+export type CanonicalOrigin = "input" | "undo" | "redo" | "remote";
 /**
  * What a commit does to the session's undo history once published: `opened`
  * a new undo step, `joined` the step the previous input opened (typing on
  * within the grouping window), or walked the history back (`undo`) or
- * forward (`redo`). A host that keeps its own undo stack adds one entry per
- * `opened` commit, so both stacks stay the same length.
+ * forward (`redo`); a `remote` commit, another actor's sequenced edit, adds
+ * no step. A host that keeps its own undo stack adds one entry per `opened`
+ * commit and removes the steps `onHistoryDrop` reports, so both stacks stay
+ * the same length.
  */
-export type CanonicalHistoryEffect = "opened" | "joined" | "undo" | "redo";
+export type CanonicalHistoryEffect =
+  "opened" | "joined" | "undo" | "redo" | "remote";
+/**
+ * Local history steps a remote edit made unusable, counted from the bottom
+ * of each stack: an undo step whose inverse no longer rebases over the remote
+ * edit is dropped with every step beneath it, never forced.
+ */
+export type CanonicalHistoryDrop = { undo: number; redo: number };
+/**
+ * One published commit, as another actor would apply it: its operations
+ * against the document before it, their inverse, the session version it
+ * reached and where it came from. `opId` names the edit across actors: a
+ * fresh id for a local commit (`input`, `undo`, `redo`), the sequenced batch's
+ * own id for a `remote` one.
+ */
+export type CanonicalCommittedBatch = {
+  opId: string;
+  ops: readonly DocumentOp[];
+  inverse: readonly DocumentOp[];
+  version: number;
+  origin: CanonicalOrigin;
+};
 export type CanonicalSessionMode =
   { type: "editing" } | { type: "suggesting"; author: string };
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
@@ -1298,12 +1329,11 @@ const project = ({
   const currentStyles = Object.hasOwn(document.package, "styles")
     ? document.package.styles
     : styles;
-  const options = {
-    ...(currentStyles == null ? {} : { styles: currentStyles }),
-    ...(document.package.theme === undefined
-      ? {}
-      : { theme: document.package.theme }),
-  };
+  const options = storyConversionOptions({
+    styles: currentStyles,
+    theme: document.package.theme,
+    numbering: document.package.numbering,
+  });
   const converted = Result.try({
     try: () => {
       if (story === OP_STORIES.MAIN)
@@ -1419,7 +1449,18 @@ type AppliedJournalGroup = {
     { type: "entries" } | { type: "replayed"; inverse: readonly DocumentOp[] };
   preSelection: CanonicalSelection;
   postSelection: CanonicalSelection;
+  /**
+   * Rebased over a remote edit: its entries' documents no longer hold what
+   * the step restores, so they are not a property source.
+   */
+  rebased?: true;
 };
+
+/** The ops that undo `group`, applied to the document it left. */
+const undoOpsOf = (group: AppliedJournalGroup): readonly DocumentOp[] =>
+  group.undo.type === "replayed"
+    ? group.undo.inverse
+    : group.entries.toReversed().flatMap((entry) => entry.inverse);
 
 /** The facts that decide whether an input joins the open undo step. */
 type JournalGroupingKey = Pick<
@@ -1478,6 +1519,8 @@ type UndoneJournalEntry = {
 
 export type CanonicalCommit = {
   transaction: Transaction;
+  /** The operations the commit applies, as another actor would apply them. */
+  ops: readonly DocumentOp[];
   document: Document;
   projection: CanonicalProjection;
   bodyProjection: CanonicalProjection;
@@ -1575,6 +1618,8 @@ type StageOptions = {
   story?: OpStory;
   previousProjection?: CanonicalProjection;
   onPublish: (inverse: readonly DocumentOp[], version: number) => void;
+  /** A remote commit's sequenced id; a local commit mints a fresh one. */
+  opId?: string;
 };
 
 type JournalledOpsOptions = {
@@ -1592,6 +1637,25 @@ type CanonicalSessionSeedOptions = {
   /** Stories the session reads in its own spelling, given back as read while unedited. */
   sourceRestores?: readonly CanonicalSourceRestore[];
   caches: StoryProjectionCaches;
+  idLease?: IdLease | undefined;
+  newOpId?: (() => string) | undefined;
+};
+
+/** How a session is created. */
+export type CanonicalSessionOptions = {
+  /**
+   * The ids this author may mint, when several authors edit the document:
+   * every new paragraph, revision, content-control and comment id comes from
+   * it, and an edit introducing any other new id is refused. Without one the
+   * session mints the lowest free ids.
+   */
+  idLease?: IdLease;
+  /**
+   * Mints the id of each local commit in the committed-batch feed. It must
+   * never repeat for one author, across reloads too: an authority answers a
+   * repeated id with its first outcome. Defaults to a random UUID.
+   */
+  newOpId?: () => string;
 };
 
 type CanonicalReplaceTextInput = {
@@ -1643,6 +1707,7 @@ class CanonicalSession {
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly allocatedBlockIds = new Set<string>();
   private nextBlockId = 1;
+  private readonly leased: CanonicalIdLease | undefined;
   private readonly sourceOwners = new Map<string, Paragraph>();
   private readonly storyProjections = new Map<string, CachedStoryProjection>();
   private currentSelection: CanonicalSelection | null = null;
@@ -1652,6 +1717,13 @@ class CanonicalSession {
     type: "committed",
   };
   private readonly undone: UndoneJournalEntry[] = [];
+  private readonly historyDropListeners = new Set<
+    (drop: CanonicalHistoryDrop) => void
+  >();
+  private readonly committedListeners = new Set<
+    (batch: CanonicalCommittedBatch) => void
+  >();
+  private readonly newOpId: () => string;
   private readonly styles: DeepReadonly<StyleDefinitions> | null | undefined;
   private readonly sourceRestores: readonly CanonicalSourceRestore[];
   /** Notes the opened package held without a reference: content, kept on save. */
@@ -1665,7 +1737,14 @@ class CanonicalSession {
     styles,
     sourceRestores = [],
     caches,
+    idLease,
+    newOpId = () => crypto.randomUUID(),
   }: CanonicalSessionSeedOptions) {
+    this.newOpId = newOpId;
+    this.leased =
+      idLease === undefined
+        ? undefined
+        : new CanonicalIdLease(idLease, document);
     this.sourceRestores = sourceRestores;
     this.caches = caches;
     this.heldUnreferencedNotes = notesHeldWithoutReference(document);
@@ -1717,6 +1796,14 @@ class CanonicalSession {
   }
 
   private freshBlockId(): Result<string, CanonicalSessionError> {
+    if (this.leased !== undefined) {
+      const fresh = this.freshBlockIds([1]);
+      if (fresh.isErr()) return fresh;
+      const id = fresh.value[0]?.[0];
+      return id === undefined
+        ? refuse("The paragraph identity lease is exhausted.")
+        : Result.ok(id);
+    }
     if (this.nextBlockId > 0x7fffffff)
       return refuse("The paragraph identity space is exhausted.");
     return Result.ok(
@@ -1734,6 +1821,17 @@ class CanonicalSession {
   ): Result<string[][], CanonicalSessionError> {
     const total = counts.reduce((sum, count) => sum + count, 0);
     const ids: string[] = [];
+    if (this.leased !== undefined) {
+      const leased = freshLeasedIds({
+        lease: this.leased.lease,
+        kind: ID_LEASE_KINDS.PARAGRAPH,
+        count: total,
+        taken: (id) => this.allocatedBlockIds.has(formatParaId(id)),
+      });
+      if (leased.length < total)
+        return refuse("The paragraph identity lease is exhausted.");
+      ids.push(...leased.map(formatParaId));
+    }
     for (let candidate = this.nextBlockId; ids.length < total; candidate += 1) {
       if (candidate > 0x7fffffff)
         return refuse("The paragraph identity space is exhausted.");
@@ -1753,21 +1851,29 @@ class CanonicalSession {
     document: Document,
     intent: EditorIntent,
   ): EditorIntentMode {
+    const leased =
+      this.leased === undefined ? {} : { idLease: this.leased.lease };
     if (
       this.mode.type === "editing" &&
       !this.intentNeedsIdentityIds(document, intent)
     )
-      return { type: "editing", reservedBlockIds: this.allocatedBlockIds };
-    const ids = this.allocateIntentIds(document, intent);
+      return {
+        type: "editing",
+        reservedBlockIds: this.allocatedBlockIds,
+        ...leased,
+      };
+    const ids = this.allocateIntentIds(document, intent, this.leased?.lease);
     return this.mode.type === "editing"
       ? {
           type: "editing",
           newIds: ids.newIds,
           reservedBlockIds: this.allocatedBlockIds,
+          ...leased,
         }
       : {
           type: "suggesting",
           reservedBlockIds: this.allocatedBlockIds,
+          ...leased,
           revision: {
             id: ids.revisionId,
             author: this.mode.author,
@@ -1915,6 +2021,17 @@ class CanonicalSession {
   /** Every paragraph identity this session has read or minted, live or retired. */
   get reservedBlockIds(): ReadonlySet<string> {
     return this.allocatedBlockIds;
+  }
+  /** The ids this session may still mint, when it holds a lease. */
+  get idLease(): IdLease | undefined {
+    return this.leased?.lease;
+  }
+  /** Add blocks the authority granted; ids this session already minted stay spent. */
+  extendIdLease(lease: IdLease): Result<void, CanonicalSessionError> {
+    if (this.leased === undefined)
+      return refuse("The session was created without an id lease.");
+    this.leased.extend(lease);
+    return Result.ok(undefined);
   }
   get version(): number {
     return this.currentVersion;
@@ -2660,24 +2777,28 @@ class CanonicalSession {
           op.type !== DOCUMENT_OP_TYPES.REMOVE_NOTE
         )
           panic("A note operation batch contains only note operations.");
-        const allocation = this.allocateIntentIds(document, {
-          type: "replaceFragment",
-          from: { ...op.at, offset: 0 },
-          to: { ...op.at, offset: Number.MAX_SAFE_INTEGER },
-          paragraphs: [
-            {
-              type: "paragraph",
-              content: [
-                {
-                  type: "run",
-                  content: [{ type: "break", breakType: "page" }],
-                },
-              ],
-            },
-          ],
-          openStart: 0,
-          openEnd: 0,
-        });
+        const allocation = this.allocateIntentIds(
+          document,
+          {
+            type: "replaceFragment",
+            from: { ...op.at, offset: 0 },
+            to: { ...op.at, offset: Number.MAX_SAFE_INTEGER },
+            paragraphs: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "break", breakType: "page" }],
+                  },
+                ],
+              },
+            ],
+            openStart: 0,
+            openEnd: 0,
+          },
+          this.leased?.lease,
+        );
         const next = {
           ...op,
           ...(this.mode.type === "suggesting"
@@ -2769,6 +2890,185 @@ class CanonicalSession {
     });
   }
 
+  /**
+   * A step rebased over a remote edit keeps its inverse's preconditions, so
+   * it may no longer apply. Such a step is dropped with every step beneath
+   * it, which were recorded on top of what it would have restored.
+   */
+  private rebasedStepApplies(
+    group: AppliedJournalGroup,
+    ops: readonly DocumentOp[],
+    stack: "undo" | "redo",
+  ): Result<AppliedDocumentOp | undefined, CanonicalSessionError> {
+    if (group.rebased !== true) return Result.ok(undefined);
+    const applied = applyDocumentOps(this.currentDocument, ops);
+    if (applied.isOk()) return Result.ok(applied.value);
+    const dropped =
+      stack === "undo"
+        ? { undo: this.applied.length, redo: 0 }
+        : { undo: 0, redo: this.undone.length };
+    if (stack === "undo") this.applied.length = 0;
+    else this.undone.length = 0;
+    this.reportHistoryDrop(dropped);
+    return refuse(
+      `The ${stack} step no longer applies after a remote edit: ${applied.error.message}`,
+    );
+  }
+
+  /** Called with every history drop a remote edit causes; returns the unsubscribe. */
+  onHistoryDrop(listener: (drop: CanonicalHistoryDrop) => void): () => void {
+    this.historyDropListeners.add(listener);
+    return () => {
+      this.historyDropListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Called with every commit once it is published, after the editor and its
+   * plugins accepted the projection and the session's history recorded it;
+   * returns the unsubscribe. A collaboration binding sends exactly these.
+   */
+  onCommitted(listener: (batch: CanonicalCommittedBatch) => void): () => void {
+    this.committedListeners.add(listener);
+    return () => {
+      this.committedListeners.delete(listener);
+    };
+  }
+
+  private reportHistoryDrop(drop: CanonicalHistoryDrop): void {
+    if (drop.undo === 0 && drop.redo === 0) return;
+    for (const listener of this.historyDropListeners) listener(drop);
+  }
+
+  /**
+   * Stage another actor's sequenced edit through the same path as a local
+   * one. `change` is what the optimistic client reported: its ops apply to
+   * this session's document, already rebased over the pending local batches.
+   * It journals no undo step and opens no undo group. The local undo and redo
+   * steps are rebased over it; a step that no longer rebases is dropped with
+   * every step beneath it and reported to `onHistoryDrop`, and a `replaced`
+   * change drops them all. The selection moves by paragraph id and offset.
+   * It waits while a composition is pending; any other refusal means this
+   * session no longer follows the shared document.
+   */
+  prepareRemote(
+    state: EditorState,
+    change: ClientDocumentChange,
+    story: OpStory = OP_STORIES.MAIN,
+  ): Result<CanonicalCommit, CanonicalSessionError> {
+    const projected = this.projectStory(story);
+    if (projected.isErr()) return projected;
+    const checked = this.checkState(state, projected.value);
+    if (checked.isErr()) return checked;
+    const applied = applyDocumentOps(this.currentDocument, change.batch.ops);
+    if (applied.isErr()) return refuse(applied.error.message);
+    const shown = projected.value.selectionAt(state);
+    const before = shown.isOk() ? shown.value : this.currentSelection;
+    const selection = remoteSelection({
+      selection: before,
+      over: change.batch,
+      previous: this.currentDocument,
+      document: applied.value.document,
+      story,
+    });
+    const history = this.rebasedHistory(change, selection);
+    return this.stage({
+      state,
+      story,
+      ops: change.batch.ops,
+      selection,
+      origin: "remote",
+      history: "remote",
+      stagedApplied: applied.value,
+      previousProjection: projected.value,
+      opId: change.batch.opId,
+      onPublish: () => {
+        this.applied.splice(0, this.applied.length, ...history.applied);
+        this.undone.splice(0, this.undone.length, ...history.undone);
+        this.breakUndoGroup();
+        this.reportHistoryDrop(history.dropped);
+      },
+    });
+  }
+
+  /** Both history stacks as they stand after `change`, top steps first rebased. */
+  private rebasedHistory(
+    change: ClientDocumentChange,
+    fallback: CanonicalSelection,
+  ): {
+    applied: AppliedJournalGroup[];
+    undone: UndoneJournalEntry[];
+    dropped: CanonicalHistoryDrop;
+  } {
+    if (change.type === "replaced")
+      return {
+        applied: [],
+        undone: [],
+        dropped: { undo: this.applied.length, redo: this.undone.length },
+      };
+    const groups = this.applied.toReversed();
+    const undo = rebaseHistorySteps({
+      document: this.currentDocument,
+      over: change.batch,
+      fallback,
+      steps: groups.map((group) => ({
+        ops: undoOpsOf(group),
+        before: group.postSelection,
+        after: group.preSelection,
+      })),
+    });
+    const applied = undo.flatMap((step, index): AppliedJournalGroup[] => {
+      const group = groups.at(index);
+      return group === undefined
+        ? []
+        : [
+            {
+              entries: group.entries,
+              undo: { type: "replayed", inverse: step.ops },
+              preSelection: step.after,
+              postSelection: step.before,
+              rebased: true,
+            },
+          ];
+    });
+    const undoneSteps = this.undone.toReversed();
+    const redo = rebaseHistorySteps({
+      document: this.currentDocument,
+      over: change.batch,
+      fallback,
+      steps: undoneSteps.map(({ group, redoOps }) => ({
+        ops: redoOps,
+        before: group.preSelection,
+        after: group.postSelection,
+      })),
+    });
+    const undone = redo.flatMap((step, index): UndoneJournalEntry[] => {
+      const entry = undoneSteps.at(index);
+      return entry === undefined
+        ? []
+        : [
+            {
+              type: "undone",
+              group: {
+                ...entry.group,
+                preSelection: step.before,
+                postSelection: step.after,
+                rebased: true,
+              },
+              redoOps: step.ops,
+            },
+          ];
+    });
+    return {
+      applied: applied.toReversed(),
+      undone: undone.toReversed(),
+      dropped: {
+        undo: groups.length - applied.length,
+        redo: undoneSteps.length - undone.length,
+      },
+    };
+  }
+
   prepareUndo(
     state: EditorState,
     story: OpStory = OP_STORIES.MAIN,
@@ -2776,20 +3076,22 @@ class CanonicalSession {
     const group = this.applied.at(-1);
     if (group === undefined)
       return refuse("There is no canonical edit to undo.");
-    const propertySourceDocument = group.entries.at(0)?.preDocument;
+    const ops = undoOpsOf(group);
+    const rebased = this.rebasedStepApplies(group, ops, "undo");
+    if (rebased.isErr()) return rebased;
+    const propertySourceDocument =
+      group.rebased === true ? undefined : group.entries.at(0)?.preDocument;
     return this.stage({
       state,
       story,
-      ops:
-        group.undo.type === "replayed"
-          ? group.undo.inverse
-          : group.entries.toReversed().flatMap((entry) => entry.inverse),
+      ops,
       selection: group.preSelection,
       origin: "undo",
       history: "undo",
       ...(propertySourceDocument === undefined
         ? {}
         : { propertySourceDocument }),
+      ...(rebased.value === undefined ? {} : { stagedApplied: rebased.value }),
       onPublish: (redoOps) => {
         this.applied.pop();
         this.undone.push({ type: "undone", group, redoOps });
@@ -2805,7 +3107,16 @@ class CanonicalSession {
     const undone = this.undone.at(-1);
     if (undone === undefined)
       return refuse("There is no canonical edit to redo.");
-    const propertySourceDocument = undone.group.entries.at(-1)?.postDocument;
+    const rebased = this.rebasedStepApplies(
+      undone.group,
+      undone.redoOps,
+      "redo",
+    );
+    if (rebased.isErr()) return rebased;
+    const propertySourceDocument =
+      undone.group.rebased === true
+        ? undefined
+        : undone.group.entries.at(-1)?.postDocument;
     return this.stage({
       state,
       story,
@@ -2816,6 +3127,7 @@ class CanonicalSession {
       ...(propertySourceDocument === undefined
         ? {}
         : { propertySourceDocument }),
+      ...(rebased.value === undefined ? {} : { stagedApplied: rebased.value }),
       onPublish: (inverse) => {
         this.undone.pop();
         this.applied.push({
@@ -2823,6 +3135,7 @@ class CanonicalSession {
           undo: { type: "replayed", inverse },
           preSelection: undone.group.preSelection,
           postSelection: undone.group.postSelection,
+          ...(undone.group.rebased === true ? { rebased: true } : {}),
         });
         this.breakUndoGroup();
       },
@@ -2840,6 +3153,7 @@ class CanonicalSession {
     stagedApplied,
     story = OP_STORIES.MAIN,
     previousProjection,
+    opId,
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const previous =
       previousProjection === undefined
@@ -2873,6 +3187,16 @@ class CanonicalSession {
     );
     applied.value.document = normalized.document;
     applied.value.inverse = normalized.inverse.concat(applied.value.inverse);
+    // Judged on the result too: an edit may only introduce the ids its author leases.
+    // Another actor's edit was judged against its own lease by the authority.
+    const leaseJudgement =
+      origin === "remote"
+        ? this.leased?.admit(applied.value.document)
+        : this.leased?.judge(applied.value.document);
+    if (leaseJudgement?.type === "outside")
+      return refuse(
+        `The ${leaseJudgement.id.kind} id ${leaseJudgement.id.id} is outside this author's id lease.`,
+      );
     const changed = changedStories({
       document: applied.value.document,
       previous: this.currentDocument,
@@ -3023,6 +3347,7 @@ class CanonicalSession {
     });
     return Result.ok({
       transaction,
+      ops,
       document: applied.value.document,
       projection: held,
       bodyProjection: heldBody,
@@ -3068,6 +3393,8 @@ class CanonicalSession {
         this.currentSelection = selection;
         this.currentDocument = applied.value.document;
         this.currentProjection = heldBody;
+        if (leaseJudgement?.type === "allowed")
+          this.leased?.commit(leaseJudgement.census, leaseJudgement.ids);
         // Save changes are cumulative against originalBuffer, including undo/redo.
         // They are published with the model, never with a staged projection.
         for (const ids of [
@@ -3093,6 +3420,14 @@ class CanonicalSession {
           this.saveStructure = "changed";
         this.currentVersion = baseVersion + 1;
         onPublish(applied.value.inverse, this.currentVersion);
+        const committed: CanonicalCommittedBatch = {
+          opId: opId ?? this.newOpId(),
+          ops,
+          inverse: applied.value.inverse,
+          version: this.currentVersion,
+          origin,
+        };
+        for (const listener of this.committedListeners) listener(committed);
         return Result.ok(undefined);
       },
     });
@@ -3106,6 +3441,7 @@ export { project as projectCanonicalStory };
 export const createCanonicalSession = (
   document: ReadonlyDocument,
   styles?: DeepReadonly<StyleDefinitions> | null,
+  { idLease, newOpId }: CanonicalSessionOptions = {},
 ): Result<CanonicalSession, CanonicalSessionError> => {
   const owned = cloneDocumentWithParagraphPropertySources(document);
   const source = normalizeCanonicalSource(owned);
@@ -3131,6 +3467,8 @@ export const createCanonicalSession = (
       styles,
       sourceRestores: canonicalSourceRestores(normalized, source.normalized),
       caches,
+      idLease,
+      newOpId,
     }),
   );
 };
