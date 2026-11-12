@@ -125,11 +125,13 @@ const resolvedFormatting = (
 ): TextFormatting =>
   decision === "accept" ? { ...direct, strike: true } : direct;
 
-const expectResolved = (
-  run: Run,
-  direct: TextFormatting,
-  decision: "accept" | "reject",
-) => {
+type ExpectResolvedOptions = {
+  run: Run;
+  direct: TextFormatting;
+  decision: "accept" | "reject";
+};
+
+const expectResolved = ({ run, direct, decision }: ExpectResolvedOptions) => {
   expect(run.propertyChanges ?? []).toEqual([]);
   expect(run.formatting ?? {}).toEqual(resolvedFormatting(direct, decision));
 };
@@ -186,11 +188,11 @@ describe.each(CASES)(
               : resolveAllChanges(state, decision);
           expect(getTrackedChangesFromDoc(resolved.doc)).toEqual([]);
           const saved = await saveHarnessState(resolved, document);
-          expectResolved(
-            drawingRun(await parseShapeDocument(saved.bytes)),
+          expectResolved({
+            run: drawingRun(await parseShapeDocument(saved.bytes)),
             direct,
             decision,
-          );
+          });
         },
       );
 
@@ -205,13 +207,13 @@ describe.each(CASES)(
             : reviewer.rejectChange(REVISION),
         ).toBe(true);
         expect(reviewer.getChanges()).toEqual([]);
-        expectResolved(
-          drawingRun(
+        expectResolved({
+          run: drawingRun(
             await parseShapeDocument(new Uint8Array(await reviewer.toBuffer())),
           ),
           direct,
           decision,
-        );
+        });
       });
     }
   },

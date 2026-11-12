@@ -39,24 +39,24 @@ export const rejectedRunFormatting = ({
     marks:
       !keepsRunFormatting ||
       node.marks.some(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name))
-        ? rebuiltRunFormattingMarks(
+        ? rebuiltRunFormattingMarks({
             node,
             paragraphContext,
             previousFormatting,
             styleResolver,
-          )
+          })
         : null,
     atomRunFormatting: keepsRunFormatting ? { ...previousFormatting } : null,
   };
 };
 
 /** The pre-change run marks, against the paragraph's live style cascade. */
-const rebuiltRunFormattingMarks = (
-  node: PMNode,
-  paragraphContext: ParagraphRunStyleContext,
-  previousFormatting: RunPropertyChange["previousFormatting"],
-  styleResolver: RunStyleResolver | null | undefined,
-): readonly Mark[] => {
+const rebuiltRunFormattingMarks = ({
+  node,
+  paragraphContext,
+  previousFormatting,
+  styleResolver,
+}: RejectedRunFormattingOptions): readonly Mark[] => {
   const marks = reconcileRunFormattingMarks({
     authoredFormatting: previousFormatting ?? {},
     context: paragraphContext,
