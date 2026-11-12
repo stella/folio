@@ -5,15 +5,21 @@
  * of every story. The check of an edit's result judges only the blocks the
  * edit replaced, and the comments only when it changed their anchors or
  * definitions; after a version the session could hold, its verdict equals
- * one walk too.
+ * one walk too, also with range markers inside content controls, table
+ * cells and text boxes.
  */
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import type { BlockContent, Paragraph } from "@stll/docx-core/model";
+import type {
+  BlockContent,
+  Paragraph,
+  RunContent,
+} from "@stll/docx-core/model";
 import { OP_STORIES } from "@stll/docx-core/ops";
 
 import {
+  assertProperty,
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
@@ -108,24 +114,108 @@ type Edit =
   | { type: "replace"; at: number; block: BlockContent }
   | { type: "insert"; at: number; block: BlockContent }
   | { type: "delete"; at: number }
-  | { type: "comments"; ids: number[] };
+  | { type: "comments"; ids: number[] }
+  // Moving a block keeps every anchor and may change only their order.
+  | { type: "move"; from: number; to: number }
+  // A comment range between blocks, its start before its end.
+  | { type: "range"; id: number; from: number; to: number };
 
-const editOf: fc.Arbitrary<Edit> = fc.oneof(
-  fc.record({
-    type: fc.constant("replace" as const),
-    at: fc.nat(),
-    block: blockOf,
-  }),
-  fc.record({
-    type: fc.constant("insert" as const),
-    at: fc.nat(),
-    block: blockOf,
-  }),
-  fc.record({ type: fc.constant("delete" as const), at: fc.nat() }),
-  fc.record({
-    type: fc.constant("comments" as const),
-    ids: fc.uniqueArray(commentIds, { maxLength: 3 }),
-  }),
+const editOver = (blocks: fc.Arbitrary<BlockContent>): fc.Arbitrary<Edit> =>
+  fc.oneof(
+    fc.record({
+      type: fc.constant("replace" as const),
+      at: fc.nat(),
+      block: blocks,
+    }),
+    fc.record({
+      type: fc.constant("insert" as const),
+      at: fc.nat(),
+      block: blocks,
+    }),
+    fc.record({ type: fc.constant("delete" as const), at: fc.nat() }),
+    fc.record({
+      type: fc.constant("comments" as const),
+      ids: fc.uniqueArray(commentIds, { maxLength: 3 }),
+    }),
+  );
+
+const editOf = editOver(blockOf);
+
+/** A comment range boundary between blocks. */
+const rangeMarkerOf: fc.Arbitrary<BlockContent> = fc.record({
+  type: fc.constantFrom(
+    "commentRangeStart" as const,
+    "commentRangeEnd" as const,
+  ),
+  id: commentIds,
+});
+
+/** A text box holding these blocks, in a run of its own. */
+const textBoxRun = (content: BlockContent[]): RunContent => ({
+  type: "run",
+  content: [
+    {
+      type: "shape",
+      shape: {
+        type: "shape",
+        shapeType: "textBox",
+        size: { width: 1_000_000, height: 500_000 },
+        textBody: { content },
+      },
+    },
+  ],
+});
+
+/** A paragraph that may hold a text box of paragraphs and range markers. */
+const boxedParagraphOf: fc.Arbitrary<Paragraph> = fc
+  .tuple(
+    paragraphOf,
+    fc.option(
+      fc.array(fc.oneof(paragraphOf, rangeMarkerOf), {
+        minLength: 1,
+        maxLength: 3,
+      }),
+    ),
+    fc.nat(),
+  )
+  .map(([paragraph, box, at]): Paragraph => {
+    if (box === null) return paragraph;
+    const content = paragraph.content.slice();
+    content.splice(at % (content.length + 1), 0, textBoxRun(box));
+    // A shrunk case maps the same generated paragraph again: never change it.
+    return { type: "paragraph", content };
+  });
+
+/** A container's blocks: paragraphs and range markers between them. */
+const containedOf = fc.array(fc.oneof(boxedParagraphOf, rangeMarkerOf), {
+  minLength: 1,
+  maxLength: 3,
+});
+
+/**
+ * Blocks whose comment anchors may sit inside a content control, a table
+ * cell or a text box, range markers between blocks among them.
+ */
+const nestedBlockOf: fc.Arbitrary<BlockContent> = fc.oneof(
+  { weight: 3, arbitrary: boxedParagraphOf },
+  {
+    weight: 1,
+    arbitrary: containedOf.map((content): BlockContent => {
+      const cells = table({ rows: [["x"]] });
+      const cell = cells.rows.at(0)?.cells.at(0);
+      if (cell !== undefined) cell.content = content;
+      return cells;
+    }),
+  },
+  {
+    weight: 1,
+    arbitrary: containedOf.map((content): BlockContent => ({
+      type: "blockSdt",
+      properties: { sdtType: "richText" },
+      content,
+    })),
+  },
+  { weight: 1, arbitrary: rangeMarkerOf },
 );
 
 const commentsOf = (ids: readonly number[]) =>
@@ -156,11 +246,23 @@ const edited = (document: Document, edit: Edit, inNote: boolean): Document => {
       commentsOf(edit.ids),
     );
   const blocks = [...(inNote ? note : document.package.document.content)];
-  const at = blocks.length === 0 ? 0 : edit.at % blocks.length;
+  const index = (at: number) => (blocks.length === 0 ? 0 : at % blocks.length);
   if (edit.type === "replace" && blocks.length > 0)
-    blocks.splice(at, 1, edit.block);
-  else if (edit.type === "insert") blocks.splice(at, 0, edit.block);
-  else if (edit.type === "delete") blocks.splice(at, 1);
+    blocks.splice(index(edit.at), 1, edit.block);
+  else if (edit.type === "insert") blocks.splice(index(edit.at), 0, edit.block);
+  else if (edit.type === "delete") blocks.splice(index(edit.at), 1);
+  else if (edit.type === "range") {
+    const end = edit.to % (blocks.length + 1);
+    blocks.splice(end, 0, { type: "commentRangeEnd", id: edit.id });
+    blocks.splice(edit.from % (end + 1), 0, {
+      type: "commentRangeStart",
+      id: edit.id,
+    });
+  } else if (edit.type === "move") {
+    const [block] = blocks.splice(edit.from % Math.max(blocks.length, 1), 1);
+    if (block !== undefined)
+      blocks.splice(edit.to % (blocks.length + 1), 0, block);
+  }
   return inNote
     ? documentOf(document.package.document.content, blocks, comments)
     : documentOf(blocks, note, comments);
@@ -176,6 +278,74 @@ const changedStoriesOf = (previous: Document, document: Document) => [
     ? []
     : [{ kind: "footnote" as const, id: 1 }]),
 ];
+
+type EditStep = {
+  previous: Document;
+  document: Document;
+  stories: ReturnType<typeof changedStoriesOf>;
+};
+
+/**
+ * Each edit of a chain from a version the session could hold, with the
+ * version before it and the stories it changed. A refused edit leaves the
+ * chain on the version before it, as the session does.
+ */
+const eachEdit = (
+  [body, note, ids, edits]: [
+    BlockContent[],
+    BlockContent[],
+    number[],
+    [Edit, boolean][],
+  ],
+  judge: (step: EditStep) => void,
+): void => {
+  const plain = (): Paragraph => ({ type: "paragraph", content: [] });
+  let document = documentOf(body, note, commentsOf(ids));
+  // The session holds only documents the seed check accepts.
+  if (unsupportedSeedReasonWholeDocument(document) !== null)
+    document = documentOf([plain()], [plain()], commentsOf(ids));
+  expect(unsupportedSeedReasonWholeDocument(document)).toBeNull();
+  for (const [edit, inNote] of edits) {
+    const previous = document;
+    const next = edited(document, edit, inNote);
+    judge({
+      previous,
+      document: next,
+      stories: changedStoriesOf(previous, next),
+    });
+    if (unsupportedSeedReasonWholeDocument(next) === null) document = next;
+  }
+};
+
+const editChainOf = (blocks: fc.Arbitrary<BlockContent>) =>
+  fc.tuple(
+    fc.array(blocks, { maxLength: 5 }),
+    fc.array(blocks, { maxLength: 2 }),
+    fc.uniqueArray(commentIds, { maxLength: 3 }),
+    fc.array(
+      fc.tuple(
+        fc.oneof(
+          editOver(blocks),
+          fc.record({
+            type: fc.constant("move" as const),
+            from: fc.nat(),
+            to: fc.nat(),
+          }),
+          fc.record({
+            type: fc.constant("range" as const),
+            id: commentIds,
+            from: fc.nat(),
+            to: fc.nat(),
+          }),
+        ),
+        fc.boolean(),
+      ),
+      {
+        minLength: 1,
+        maxLength: 10,
+      },
+    ),
+  );
 
 describe("canonical seed check", () => {
   test("judges shared blocks as one walk of every story does", () => {
@@ -204,9 +374,14 @@ describe("canonical seed check", () => {
     );
   });
 
+  const judgedAsOneWalk = ({ previous, document, stories }: EditStep) =>
+    expect(unsupportedEditReason({ previous, document, stories })).toBe(
+      unsupportedSeedReasonWholeDocument(document, stories),
+    );
+
   test("judges an edit's result as one walk of every story does", () => {
     let judged = 0;
-    fc.assert(
+    assertProperty(
       fc.property(
         fc.array(blockOf, { maxLength: 5 }),
         fc.array(blockOf, { maxLength: 2 }),
@@ -215,31 +390,43 @@ describe("canonical seed check", () => {
           minLength: 1,
           maxLength: 10,
         }),
-        (body, note, ids, edits) => {
-          const plain = (): Paragraph => ({ type: "paragraph", content: [] });
-          let document = documentOf(body, note, commentsOf(ids));
-          // The session holds only documents the seed check accepts.
-          if (unsupportedSeedReasonWholeDocument(document) !== null)
-            document = documentOf([plain()], [plain()], commentsOf(ids));
-          expect(unsupportedSeedReasonWholeDocument(document)).toBeNull();
-          for (const [edit, inNote] of edits) {
-            const previous = document;
-            const next = edited(document, edit, inNote);
-            const stories = changedStoriesOf(previous, next);
-            const verdict = unsupportedSeedReasonWholeDocument(next, stories);
-            expect(
-              unsupportedEditReason({ previous, document: next, stories }),
-            ).toBe(verdict);
+        (body, note, ids, edits) =>
+          eachEdit([body, note, ids, edits], (step) => {
+            judgedAsOneWalk(step);
             judged += 1;
-            // A refused edit leaves the session on the document before it.
-            if (unsupportedSeedReasonWholeDocument(next) === null)
-              document = next;
-          }
-        },
+          }),
       ),
-      propertyConfig({ numRuns: 600 }),
+      {
+        id: "judges an edit's result as one walk of every story does",
+        numRuns: 600,
+      },
     );
     expect(judged).toBeGreaterThan(300);
+  });
+
+  test("judges an edit's result as one walk does with anchors in content controls, cells and text boxes", () => {
+    let judged = 0;
+    let commentIssues = 0;
+    assertProperty(
+      fc.property(editChainOf(nestedBlockOf), (chain) =>
+        eachEdit(chain, (step) => {
+          judgedAsOneWalk(step);
+          judged += 1;
+          const verdict = unsupportedSeedReasonWholeDocument(
+            step.document,
+            step.stories,
+          );
+          if (verdict !== null && /comment/iu.test(verdict)) commentIssues += 1;
+        }),
+      ),
+      {
+        id: "judges an edit's result as one walk with nested anchors",
+        numRuns: 400,
+      },
+    );
+    expect(judged).toBeGreaterThan(300);
+    // The chains reach comment verdicts, not only accepted edits.
+    expect(commentIssues).toBeGreaterThan(20);
   });
 
   describe("judges again an edit that changes the paragraph a marker between blocks attaches to", () => {
@@ -294,6 +481,82 @@ describe("canonical seed check", () => {
         previous,
         documentOf(
           [first, empty, start, end],
+          note,
+          previous.package.document.comments,
+        ),
+      );
+    });
+
+    test("moving a range start inside a content control past the paragraph it opened on", () => {
+      // The start waits inside the control for its paragraph; moved past it,
+      // it waits for a paragraph after the end, which closes on that one.
+      const first = text("a");
+      const empty: Paragraph = { type: "paragraph", content: [] };
+      const control = (content: BlockContent[]): BlockContent => ({
+        type: "blockSdt",
+        properties: { sdtType: "richText" },
+        content,
+      });
+      const note: BlockContent[] = [{ type: "paragraph", content: [] }];
+      const previous = documentOf(
+        [first, control([start, empty]), end],
+        note,
+        commentsOf([1]),
+      );
+      expectJudgedAsOneWalk(
+        previous,
+        documentOf(
+          [first, control([empty, start]), end],
+          note,
+          previous.package.document.comments,
+        ),
+      );
+    });
+
+    test("moving a range start from a paragraph into its text box", () => {
+      // A story's text boxes follow its body, so the start now comes after
+      // the end in the next paragraph.
+      const note: BlockContent[] = [{ type: "paragraph", content: [] }];
+      const closing: Paragraph = {
+        type: "paragraph",
+        content: [
+          { type: "run", content: [{ type: "text", text: "b" }] },
+          { type: "commentRangeEnd", id: 1 },
+        ],
+      };
+      const previous = documentOf(
+        [
+          {
+            type: "paragraph",
+            content: [
+              { type: "commentRangeStart", id: 1 },
+              { type: "run", content: [{ type: "text", text: "a" }] },
+              textBoxRun([{ type: "paragraph", content: [] }]),
+            ],
+          },
+          closing,
+        ],
+        note,
+        commentsOf([1]),
+      );
+      expectJudgedAsOneWalk(
+        previous,
+        documentOf(
+          [
+            {
+              type: "paragraph",
+              content: [
+                { type: "run", content: [{ type: "text", text: "a" }] },
+                textBoxRun([
+                  {
+                    type: "paragraph",
+                    content: [{ type: "commentRangeStart", id: 1 }],
+                  },
+                ]),
+              ],
+            },
+            closing,
+          ],
           note,
           previous.package.document.comments,
         ),
