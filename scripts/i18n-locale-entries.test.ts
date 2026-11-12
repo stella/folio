@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,7 +7,16 @@ import type { StringLiteral } from "oxc-parser";
 
 import { getFolioMessages } from "../packages/core/src/i18n/messages";
 import { FOLIO_LOCALES } from "../packages/core/src/i18n/messages/locales";
+import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  type ChildOptions,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { type Node, nodeText, parseSourceModule, walkAst } from "./lib/oxc-ast";
+
+// The slowest test runs two children in sequence.
+setDefaultTimeout(subprocessTestTimeout(2));
 
 const root = path.resolve(import.meta.dir, "..");
 const packages = ["core", "react", "vue"] as const;
@@ -203,6 +212,24 @@ test("public export patterns resolve each generated entry", async () => {
   }
 });
 
+// Node resolves exports without Bun's workspace tsconfig path aliases.
+// `tail` runs after the resolution; the check's own test uses it to break it.
+const resolveFromReact = (
+  specifier: string,
+  tail = "",
+  options: ChildOptions = {},
+) =>
+  runChild(
+    [
+      "node",
+      "--input-type=module",
+      "-e",
+      `import { createRequire } from "node:module"; process.stdout.write(createRequire(\`\${process.cwd()}/package.json\`).resolve(${JSON.stringify(specifier)}));${tail}`,
+    ],
+    { ...options, cwd: path.join(root, "packages/react") },
+  );
+const GENERATED_MESSAGES = "@stll/folio-core/i18n/messages/messages.gen";
+
 test("locale exports preserve the generated message-key type used by React", () => {
   const manifest = JSON.parse(
     readFileSync(path.join(root, "packages/core/package.json"), "utf8"),
@@ -210,20 +237,27 @@ test("locale exports preserve the generated message-key type used by React", () 
   expect(manifest.exports["./i18n/messages/*.gen"]).toBe(
     "./src/i18n/messages/*.gen.ts",
   );
-  // Node resolves exports without Bun's workspace tsconfig path aliases.
-  const result = Bun.spawnSync(
-    [
-      "node",
-      "--input-type=module",
-      "-e",
-      'import { createRequire } from "node:module"; process.stdout.write(createRequire(`${process.cwd()}/package.json`).resolve("@stll/folio-core/i18n/messages/messages.gen"));',
-    ],
-    { cwd: path.join(root, "packages/react"), stdout: "pipe", stderr: "pipe" },
-  );
-  expect(result.exitCode).toBe(0);
-  expect(result.stdout.toString()).toBe(
-    path.join(messagesDirectory("core"), "messages.gen.ts"),
-  );
+  expect(resolveFromReact(GENERATED_MESSAGES)).toMatchObject({
+    kind: "exited",
+    exitCode: 0,
+    stdout: path.join(messagesDirectory("core"), "messages.gen.ts"),
+  });
+});
+
+test("the Node export resolution check reports an unexported entry and a resolver that never exits", () => {
+  expect(
+    resolveFromReact("@stll/folio-core/i18n/messages/not-shipped.gen"),
+  ).toMatchObject({ kind: "exited", exitCode: 1, stdout: "" });
+  // A child that never exits is hung however fast the runner is, so a short
+  // guard proves the report without depending on runner speed.
+  expect(
+    resolveFromReact(GENERATED_MESSAGES, " setInterval(() => {}, 1_000);", {
+      hangTimeoutMs: scanTestTimeout(1_000),
+    }),
+  ).toMatchObject({
+    kind: "hung",
+    stdout: path.join(messagesDirectory("core"), "messages.gen.ts"),
+  });
 });
 
 test("build configurations include locale-derived entries and the discovery module", () => {
@@ -296,15 +330,13 @@ test("publish preparation preserves nested locale wildcard destinations", async 
           },
         }),
       );
-      const result = Bun.spawnSync(
-        [
+      expect(
+        runChild([
           process.execPath,
           path.join(import.meta.dir, "prepare-publish.ts"),
           packageRoot,
-        ],
-        { stderr: "pipe", stdout: "pipe" },
-      );
-      expect(result.exitCode).toBe(0);
+        ]),
+      ).toMatchObject({ kind: "exited", exitCode: 0 });
       const manifest = await Bun.file(
         path.join(packageRoot, "package.json"),
       ).json();

@@ -46,7 +46,8 @@ export type HiddenHeaderFooterPMsRef = {
 };
 
 export type HiddenHeaderFooterPMsProps = {
-  document: Document | null;
+  /** The document model; the header and footer editors only read it. */
+  document: ReadonlyDocument | null;
   readOnly?: boolean;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;

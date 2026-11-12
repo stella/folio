@@ -129,7 +129,11 @@ import type {
   Theme,
   Watermark,
 } from "../types/document";
-import type { DeepReadonly } from "../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import { getDocumentWatermark } from "../watermark";
 import { diffAgainstCommittedLayout } from "./committedLayoutDiff";
 import type { HyphenationReadiness } from "./hyphenationReadiness";
@@ -264,7 +268,8 @@ export type LayoutPipelineDeps<THfPMs> = {
   sectionHeaderFooterRefs: PageHeaderFooterRefs[] | undefined;
   theme: Theme | null | undefined;
   sectionProperties: SectionProperties | null | undefined;
-  document: Document | null;
+  /** The model; the pipeline reads it through `readModel`. */
+  document: ReadonlyDocument | null;
   defaultTabStop: number | undefined;
   mirrorMargins: boolean;
   styles: DeepReadonly<StyleDefinitions> | null | undefined;
@@ -502,7 +507,7 @@ function runLayoutPipelineMeasured<THfPMs>(
     sectionHeaderFooterRefs,
     theme: _theme,
     sectionProperties,
-    document,
+    document: model,
     defaultTabStop,
     mirrorMargins,
     styles,
@@ -523,6 +528,7 @@ function runLayoutPipelineMeasured<THfPMs>(
     showCommentHighlights = true,
     altChunkMarkerText,
   } = deps;
+  const document = model && readModel(model);
   // Reassigned to {} in the catch so a failed run returns no outcome (the
   // adapter then keeps the previously painted layout instead of advancing React
   // state/overlays to a layout we failed to paint).

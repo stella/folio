@@ -33,6 +33,7 @@ import {
   expectParagraphAttrs,
 } from "../prosemirror/attrs";
 import type { Document, TextFormatting } from "../types/document";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
 
 /** The parts of a `FontFace` layout readiness reads. */
@@ -192,13 +193,14 @@ type FontFaceResolutionContext = {
  * measured in a fallback.
  */
 export function waitForInitialLayoutFonts(
-  documentModel: Document | null,
+  model: ReadonlyDocument | null,
   pmDoc: EditorState["doc"],
   fontSet: LayoutFontSet | null = getDocumentFontSet(),
 ): Promise<boolean> {
   if (!fontSet) {
     return Promise.resolve(true);
   }
+  const documentModel = model && readModel(model);
 
   const text = collectLayoutText(documentModel, pmDoc);
   const loadChecks: string[] = [];
