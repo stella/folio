@@ -412,6 +412,25 @@ const examples: [Case][] = [
       between: ["nothing"],
     },
   ],
+  // Suggested paragraphs after a table pending deletion and after the
+  // paragraph before it.
+  [
+    {
+      anchorIsLast: false,
+      table: "removed",
+      mode: "suggested",
+      batches: [
+        {
+          insertions: [
+            { kind: "paragraph", side: "afterTable" },
+            { kind: "paragraph", side: "afterAnchor" },
+          ],
+          deletesAnchor: false,
+        },
+      ],
+      between: ["nothing"],
+    },
+  ],
 ];
 
 test(
