@@ -12,6 +12,7 @@ import {
 import { applyBatch } from "./applyBatch";
 import {
   BATCH_REJECTION_REASONS,
+  type BatchRejection,
   type DocumentBatch,
   type SequencedBatch,
   sequencedEffectType,
@@ -64,7 +65,10 @@ const apply = (document: Document, ops: readonly DocumentOp[]) => {
   return result.value.document;
 };
 /** Both orders of a concurrent pair, or the refusal of the second. */
-const pair = (first: DocumentBatch, second: DocumentBatch) => {
+const pair = (
+  first: DocumentBatch,
+  second: DocumentBatch,
+): { refused?: BatchRejection; commutes?: boolean } => {
   const document = documentOf();
   const after = transformBatch(second, [sequenced(document, first)]);
   const before = transformBatch(first, [sequenced(document, second)], {

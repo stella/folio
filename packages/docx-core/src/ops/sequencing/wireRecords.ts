@@ -729,6 +729,8 @@ export const packageResourceMedia: Validator = object({
   path: nonemptyString,
   filename: optional(string),
   mimeType: string,
+  base64: optional(string),
+  dataUrl: optional(string),
   data: array(
     (byte) =>
       typeof byte === "number" &&
