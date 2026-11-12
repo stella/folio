@@ -57,6 +57,8 @@ export const BATCH_REJECTION_REASONS: {
     readonly STALE_BASE: "staleBase";
     readonly INVALID_OPERATION: "invalidOperation";
     readonly TABLE_REQUIRES_EXCLUSIVE_EDIT: "tableRequiresExclusiveEdit";
+    readonly BLOCK_CONFLICT: "blockConflict";
+    readonly PART_CONFLICT: "partConflict";
     readonly OUTSIDE_ID_LEASE: "outsideIdLease";
 };
 
@@ -101,6 +103,7 @@ export class BatchRejection extends BatchRejectionBase<{
     opType?: DocumentOpType;
     overType?: DocumentOpType;
     idKind?: IdLeaseKind;
+    part?: ExclusivePart;
 }> {}
 
 // @public (undocumented)
@@ -595,6 +598,22 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 
 // @public
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
+
+// @public
+export const EXCLUSIVE_PARTS: Readonly<{
+    readonly NUMBERING: "numbering";
+    readonly STYLES: "styles";
+    readonly RELATIONSHIPS: "relationships";
+    readonly MEDIA: "media";
+    readonly SECTIONS: "sections";
+    readonly HEADERS_FOOTERS: "headersFooters";
+    readonly NOTES: "notes";
+    readonly SETTINGS: "settings";
+    readonly REVISIONS: "revisions";
+}>;
+
+// @public
+export type ExclusivePart = (typeof EXCLUSIVE_PARTS)[keyof typeof EXCLUSIVE_PARTS];
 
 // @public
 export type FinalBreakCandidate<Paragraph> = {
