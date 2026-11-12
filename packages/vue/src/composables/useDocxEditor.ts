@@ -1505,7 +1505,7 @@ export function useDocxEditor(
     // Legacy write-back can still owe the notes a restore or a deletion.
     if (docChangeTimer !== null) flushDocumentChangeNotification();
     const base = noteEditorManager.snapshotDocument(
-      headerFooterManager.snapshotDocument(readModel(currentDocument)),
+      headerFooterManager.snapshotDocument(currentDocument),
     );
 
     // Snapshot the editor state once, before any awaited dynamic imports, so
@@ -1650,7 +1650,7 @@ export function useDocxEditor(
     if (!document) return null;
     const live = manager.api.getDocument() ?? document;
     return noteEditorManager.snapshotDocument(
-      headerFooterManager.snapshotDocument(readModel(live)),
+      headerFooterManager.snapshotDocument(live),
     );
   }
 
