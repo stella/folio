@@ -13,17 +13,27 @@
 
 import type { FolioDocxReviewer } from "../ai-edits/headless";
 
+/** Each name's block id, as `heldBlockIds` reads it. */
+export type HeldBlockIds<Name extends string> = (
+  name: Name,
+) => string | undefined;
+
 /**
- * Each name's block id as `reviewer` reads now: the first block reading
- * exactly its words, or `undefined` where no words are given or no block
- * reads them.
+ * Each name's block id as `reviewer` reads now: the id `previous` held while
+ * the reviewer still lists it, else the first block reading exactly the
+ * name's words (a block pending deletion reads none), or `undefined` where no
+ * words are given or no block reads them.
  */
 export const heldBlockIds = <Name extends string>(
   reviewer: FolioDocxReviewer,
   words: Readonly<Record<Name, string | undefined>>,
-): ((name: Name) => string | undefined) => {
+  previous?: HeldBlockIds<Name>,
+): HeldBlockIds<Name> => {
   const blocks = reviewer.snapshot().blocks;
+  const listed = new Set(blocks.map((block) => block.id));
   return (name) => {
+    const kept = previous?.(name);
+    if (kept !== undefined && listed.has(kept)) return kept;
     const text = words[name];
     return text === undefined
       ? undefined

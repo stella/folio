@@ -38,7 +38,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { heldBlockIds } from "../__tests__/heldBlockIds";
+import { type HeldBlockIds, heldBlockIds } from "../__tests__/heldBlockIds";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
@@ -216,7 +216,7 @@ const requestedOrder = (
 };
 
 /** The block `side` puts blocks beside, as `held` reads it, and on which side. */
-const anchorOf = (held: (side: Side) => string | undefined, side: Side) => {
+const anchorOf = (held: HeldBlockIds<Side>, side: Side) => {
   const blockId = held(side);
   if (blockId === undefined) throw new Error(`No block for ${side}`);
   return { blockId, after: side !== "beforeNext" && side !== "beforeAnchor" };
@@ -296,7 +296,8 @@ const replay = async (setup: Case, mode: Mode) => {
   let reviewer = await open(setup);
   // What each side puts blocks beside, by its words: accepting can join the
   // anchor into the paragraph after it, which keeps that one's id, so the ids
-  // are read again after every resolution.
+  // are read again after every resolution (a block pending deletion reads no
+  // words, and keeps the id it had while it is listed).
   const words: Record<Side, string | undefined> = {
     beforeAnchor: ANCHOR,
     afterAnchor: ANCHOR,
@@ -317,7 +318,7 @@ const replay = async (setup: Case, mode: Mode) => {
         blockId: anchorOf(held, "beforeNext").blockId,
       },
     ]);
-    held = heldBlockIds(reviewer, words);
+    held = heldBlockIds(reviewer, words, held);
   }
   if (setup.table === "removed") {
     // Another reviewer's pending deletion, unless applied directly.
@@ -328,7 +329,7 @@ const replay = async (setup: Case, mode: Mode) => {
         blockId: anchorOf(held, "afterTable").blockId,
       },
     ]);
-    held = heldBlockIds(reviewer, words);
+    held = heldBlockIds(reviewer, words, held);
   }
   /** What stands right before the anchor, after the opening, in order. */
   const ahead: Placed[] = [];
@@ -377,7 +378,7 @@ const replay = async (setup: Case, mode: Mode) => {
     if (step === "accept" || step === "reopenAndAccept") {
       reviewer.acceptAll();
     }
-    held = heldBlockIds(reviewer, words);
+    held = heldBlockIds(reviewer, words, held);
   }
   const deleted = setup.batches.some((batch) => batch.deletesAnchor);
   const accepted = await acceptedBlocks(reviewer);

@@ -31,3 +31,10 @@ export const noResolution = () => {
   reviewer.toBuffer();
   apply(id);
 };
+
+export const readAgainKeepingListedIds = () => {
+  let held = heldBlockIds(reviewer, { anchor: "Anchor" });
+  reviewer.acceptAll();
+  held = heldBlockIds(reviewer, { anchor: "Anchor" }, held);
+  apply(held("anchor"));
+};
