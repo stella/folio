@@ -108,6 +108,47 @@ export type BatchBlockAccess<Block> = {
   removes: readonly Block[];
 };
 
+/** A paragraph before a container's final paragraph, and whether the batch deletes it. */
+export type FinalBreakCandidate<Paragraph> = {
+  paragraph: Paragraph;
+  deleted: boolean;
+};
+
+/**
+ * Which paragraph settles the deletion of a container's final paragraph:
+ *
+ * - `kept`: the nearest one before it the batch keeps. The final paragraph
+ *   goes, and its break retires onto that one.
+ * - `runStart`: the batch deletes every paragraph back to the container's
+ *   start or another block. The final paragraph stays, emptied, with the
+ *   properties of the run's first paragraph: applied right to left, the run
+ *   collapses into that one. One at a time, the final paragraph's deletion
+ *   runs while that paragraph still stands, and the paragraph's own deletion
+ *   follows it.
+ * - `none`: no paragraph precedes it; it stays, emptied, as it is.
+ */
+export type FinalBreakCarrier<Paragraph> =
+  | { type: "kept"; paragraph: Paragraph }
+  | { type: "runStart"; paragraph: Paragraph }
+  | { type: "none" };
+
+/**
+ * The carrier of a deleted final paragraph's break, from the paragraphs
+ * before it in its container, nearest first, up to the container's start or
+ * another block. The engine's batch and the one-at-a-time replay both read
+ * it from here, so they settle the deletion on the same paragraph.
+ */
+export const finalBreakCarrier = <Paragraph>(
+  before: readonly FinalBreakCandidate<Paragraph>[],
+): FinalBreakCarrier<Paragraph> => {
+  const kept = before.find(({ deleted }) => !deleted);
+  if (kept) return { type: "kept", paragraph: kept.paragraph };
+  const start = before.at(-1);
+  return start
+    ? { type: "runStart", paragraph: start.paragraph }
+    : { type: "none" };
+};
+
 /**
  * Whether deleting a block takes it out of the document. A container (a
  * story, cell, note or text box) has to end with a paragraph, so deleting its
@@ -116,8 +157,8 @@ export type BatchBlockAccess<Block> = {
  */
 export const deletionRemovesBlock = (deletion: {
   endsContainer: boolean;
-  hasKeptParagraphBefore: boolean;
-}): boolean => !deletion.endsContainer || deletion.hasKeptParagraphBefore;
+  carrier: FinalBreakCarrier<unknown>["type"];
+}): boolean => !deletion.endsContainer || deletion.carrier === "kept";
 
 /**
  * A batch equals its operations applied one at a time with every operation
