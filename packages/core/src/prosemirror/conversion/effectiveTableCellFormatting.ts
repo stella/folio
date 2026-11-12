@@ -52,7 +52,7 @@ type ResolveEffectiveTableCellFormattingOptions = {
   position: TableCellPosition;
   gridWidthPercent: number | undefined;
   defaultMargins: TableCellMarginsAttrs | undefined;
-  theme: Theme | null | undefined;
+  theme: DeepReadonly<Theme> | null | undefined;
 };
 
 const TABLE_BORDER_SIDES = [
@@ -160,7 +160,7 @@ const resolveEffectiveBackground = ({
 type ResolveBackgroundColorOptions = {
   shading: DeepReadonly<ShadingProperties>;
   source: "direct" | "style";
-  theme: Theme | null | undefined;
+  theme: DeepReadonly<Theme> | null | undefined;
 };
 
 const resolveBackgroundColor = ({
@@ -228,7 +228,9 @@ const resolveEffectiveMargins = ({
   return defaultMargins;
 };
 
-const cellMarginsToAttrs = (margins: CellMargins): TableCellMarginsAttrs => {
+const cellMarginsToAttrs = (
+  margins: DeepReadonly<CellMargins>,
+): TableCellMarginsAttrs => {
   const result: TableCellMarginsAttrs = {};
   if (margins.top?.value !== undefined) {
     result.top = margins.top.value;
@@ -247,7 +249,7 @@ const cellMarginsToAttrs = (margins: CellMargins): TableCellMarginsAttrs => {
 
 const resolveThemedBorderColors = (
   borders: DeepReadonly<TableCellBorders> | undefined,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
 ): DeepReadonly<TableCellBorders> | undefined => {
   if (!borders || !theme?.colorScheme) {
     return borders;

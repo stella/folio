@@ -1,5 +1,6 @@
 /** Reserved-value decisions for document settings and the package. */
 
+import type { RecordField } from "../../packages/docx-core/src/model/deepReadonly";
 import type {
   Document,
   DocumentSettings,
@@ -31,7 +32,7 @@ export const DOCUMENT_SETTINGS_RESERVED = {
   lineBreakRules: NO_RESERVED_VALUE,
   splitPageBreakAndParagraphMark: toggle("w:splitPgBreakAndParaMark@val"),
   endnotePr: NO_RESERVED_VALUE,
-} satisfies Record<keyof DocumentSettings, ReservedValueDisposition>;
+} satisfies Record<RecordField<DocumentSettings>, ReservedValueDisposition>;
 
 export type ExhaustiveDocumentSettingsReserved = ExhaustiveFields<
   DocumentSettings,
@@ -42,7 +43,7 @@ export const THEME_FONT_LANG_RESERVED = {
   eastAsia: NO_RESERVED_VALUE,
   bidi: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<DocumentSettings["themeFontLang"]>,
+  RecordField<NonNullable<DocumentSettings["themeFontLang"]>>,
   ReservedValueDisposition
 >;
 
@@ -56,7 +57,7 @@ export const LINE_BREAK_RULES_RESERVED = {
   noLineBreaksAfter: NO_RESERVED_VALUE,
   useLegacyEthiopicAmharicRules: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<DocumentSettings["lineBreakRules"]>,
+  RecordField<NonNullable<DocumentSettings["lineBreakRules"]>>,
   ReservedValueDisposition
 >;
 
@@ -73,7 +74,7 @@ type LineBreakRule = NonNullable<
 export const LINE_BREAK_RULE_RESERVED = {
   language: NO_RESERVED_VALUE,
   characters: NO_RESERVED_VALUE,
-} satisfies Record<keyof LineBreakRule, ReservedValueDisposition>;
+} satisfies Record<RecordField<LineBreakRule>, ReservedValueDisposition>;
 
 export type ExhaustiveLineBreakRuleReserved = ExhaustiveFields<
   LineBreakRule,
@@ -95,7 +96,7 @@ export const DOCX_PACKAGE_RESERVED = {
   relationships: NO_RESERVED_VALUE,
   media: NO_RESERVED_VALUE,
   properties: NO_RESERVED_VALUE,
-} satisfies Record<keyof DocxPackage, ReservedValueDisposition>;
+} satisfies Record<RecordField<DocxPackage>, ReservedValueDisposition>;
 
 export type ExhaustiveDocxPackageReserved = ExhaustiveFields<
   DocxPackage,
@@ -113,7 +114,7 @@ export const DOCX_PACKAGE_PROPERTIES_RESERVED = {
   created: NO_RESERVED_VALUE,
   modified: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<DocxPackage["properties"]>,
+  RecordField<NonNullable<DocxPackage["properties"]>>,
   ReservedValueDisposition
 >;
 
@@ -129,7 +130,7 @@ export const DOCUMENT_RESERVED = {
   requiredFonts: NO_RESERVED_VALUE,
   warnings: NO_RESERVED_VALUE,
   parseWarnings: NO_RESERVED_VALUE,
-} satisfies Record<keyof Document, ReservedValueDisposition>;
+} satisfies Record<RecordField<Document>, ReservedValueDisposition>;
 
 export type ExhaustiveDocumentReserved = ExhaustiveFields<
   Document,

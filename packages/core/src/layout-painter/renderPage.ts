@@ -70,6 +70,7 @@ import type {
   Theme,
   Watermark,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { cssBorderStyle } from "../utils/borderCss";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { borderToStyle } from "../utils/formatToStyle";
@@ -306,7 +307,7 @@ export type RenderPageOptions = {
     zOrder?: "front" | "back";
   };
   /** Theme for resolving border colors. */
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   /** Footnotes to render at the bottom of this page. */
   footnoteArea?: FootnoteRenderItem[];
   /**
@@ -415,7 +416,7 @@ function applyPageBorderSide(
   element: HTMLElement,
   border: BorderSpec | undefined,
   side: "Top" | "Bottom" | "Left" | "Right",
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): void {
   if (!border || statesNoBorder(border.style)) {
     return;

@@ -4,6 +4,7 @@ import type {
   TableCellBlock,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { blockCustomXmlShell } from "./blockCustomXmlShell";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import type { NumberingMap } from "./numberingParser";
@@ -28,7 +29,7 @@ export function parseTextBoxContent(
   parseParagraph: ParagraphParserFn,
   parseTable: TableParserFn | null,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,

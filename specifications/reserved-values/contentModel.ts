@@ -83,6 +83,7 @@ import type {
   WrapPolygonPoint,
 } from "../../packages/docx-core/src/model/content";
 import { RESERVED_NOTE_REFERENCE_IDS } from "../../packages/docx-core/src/model/content.ts";
+import type { RecordField } from "../../packages/docx-core/src/model/deepReadonly";
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import {
   NO_RESERVED_VALUE,
@@ -98,7 +99,7 @@ import { RESERVED_VALUE_READERS } from "./readers.ts";
 export const TEXT_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
   text: NO_RESERVED_VALUE,
-} satisfies Record<keyof TextContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<TextContent>, ReservedValueDisposition>;
 
 export type ExhaustiveTextContentReserved = ExhaustiveFields<
   TextContent,
@@ -113,7 +114,7 @@ export const POSITIONAL_TAB_RESERVED = {
     sentinel: "none",
     reader: RESERVED_VALUE_READERS.runContent,
   }),
-} satisfies Record<keyof PositionalTab, ReservedValueDisposition>;
+} satisfies Record<RecordField<PositionalTab>, ReservedValueDisposition>;
 
 export type ExhaustivePositionalTabReserved = ExhaustiveFields<
   PositionalTab,
@@ -123,7 +124,7 @@ export type ExhaustivePositionalTabReserved = ExhaustiveFields<
 export const TAB_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
   positional: NO_RESERVED_VALUE,
-} satisfies Record<keyof TabContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<TabContent>, ReservedValueDisposition>;
 
 export type ExhaustiveTabContentReserved = ExhaustiveFields<
   TabContent,
@@ -139,7 +140,7 @@ export const BREAK_CONTENT_RESERVED = {
     sentinel: "none",
     reader: RESERVED_VALUE_READERS.runContent,
   }),
-} satisfies Record<keyof BreakContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<BreakContent>, ReservedValueDisposition>;
 
 export type ExhaustiveBreakContentReserved = ExhaustiveFields<
   BreakContent,
@@ -150,7 +151,7 @@ export const SYMBOL_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
   font: NO_RESERVED_VALUE,
   char: NO_RESERVED_VALUE,
-} satisfies Record<keyof SymbolContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<SymbolContent>, ReservedValueDisposition>;
 
 export type ExhaustiveSymbolContentReserved = ExhaustiveFields<
   SymbolContent,
@@ -168,7 +169,7 @@ export const NOTE_REFERENCE_CONTENT_RESERVED = {
   customMarkFollows: toggle(
     "w:footnoteReference@customMarkFollows|w:endnoteReference@customMarkFollows",
   ),
-} satisfies Record<keyof NoteReferenceContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<NoteReferenceContent>, ReservedValueDisposition>;
 
 export type ExhaustiveNoteReferenceContentReserved = ExhaustiveFields<
   NoteReferenceContent,
@@ -181,7 +182,7 @@ export const FIELD_CHAR_CONTENT_RESERVED = {
   fldLock: toggle("w:fldChar@fldLock"),
   dirty: toggle("w:fldChar@dirty"),
   originalValue: NO_RESERVED_VALUE,
-} satisfies Record<keyof FieldCharContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<FieldCharContent>, ReservedValueDisposition>;
 
 export type ExhaustiveFieldCharContentReserved = ExhaustiveFields<
   FieldCharContent,
@@ -191,7 +192,7 @@ export type ExhaustiveFieldCharContentReserved = ExhaustiveFields<
 export const INSTR_TEXT_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
   text: NO_RESERVED_VALUE,
-} satisfies Record<keyof InstrTextContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<InstrTextContent>, ReservedValueDisposition>;
 
 export type ExhaustiveInstrTextContentReserved = ExhaustiveFields<
   InstrTextContent,
@@ -200,7 +201,7 @@ export type ExhaustiveInstrTextContentReserved = ExhaustiveFields<
 
 export const SOFT_HYPHEN_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
-} satisfies Record<keyof SoftHyphenContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<SoftHyphenContent>, ReservedValueDisposition>;
 
 export type ExhaustiveSoftHyphenContentReserved = ExhaustiveFields<
   SoftHyphenContent,
@@ -209,7 +210,7 @@ export type ExhaustiveSoftHyphenContentReserved = ExhaustiveFields<
 
 export const NO_BREAK_HYPHEN_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
-} satisfies Record<keyof NoBreakHyphenContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<NoBreakHyphenContent>, ReservedValueDisposition>;
 
 export type ExhaustiveNoBreakHyphenContentReserved = ExhaustiveFields<
   NoBreakHyphenContent,
@@ -218,7 +219,10 @@ export type ExhaustiveNoBreakHyphenContentReserved = ExhaustiveFields<
 
 export const RENDERED_PAGE_BREAK_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
-} satisfies Record<keyof RenderedPageBreakContent, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<RenderedPageBreakContent>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveRenderedPageBreakContentReserved = ExhaustiveFields<
   RenderedPageBreakContent,
@@ -237,7 +241,7 @@ export const SHAPE_CONTENT_RESERVED = {
   type: NO_RESERVED_VALUE,
   shape: NO_RESERVED_VALUE,
   alternateContent: NO_RESERVED_VALUE,
-} satisfies Record<keyof ShapeContent, ReservedValueDisposition>;
+} satisfies Record<RecordField<ShapeContent>, ReservedValueDisposition>;
 
 export type ExhaustiveShapeContentReserved = ExhaustiveFields<
   ShapeContent,
@@ -252,7 +256,7 @@ export const RUN_RESERVED = {
   // Attributes replayed as the source wrote them. A reserved value is a
   // spelling the model interprets; this slot interprets nothing.
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof Run, ReservedValueDisposition>;
+} satisfies Record<RecordField<Run>, ReservedValueDisposition>;
 
 export type ExhaustiveRunReserved = ExhaustiveFields<
   Run,
@@ -269,7 +273,7 @@ export const HYPERLINK_RESERVED = {
   history: toggle("w:hyperlink@history"),
   docLocation: NO_RESERVED_VALUE,
   children: NO_RESERVED_VALUE,
-} satisfies Record<keyof Hyperlink, ReservedValueDisposition>;
+} satisfies Record<RecordField<Hyperlink>, ReservedValueDisposition>;
 
 export type ExhaustiveHyperlinkReserved = ExhaustiveFields<
   Hyperlink,
@@ -284,7 +288,7 @@ export const BOOKMARK_START_RESERVED = {
   colFirst: NO_RESERVED_VALUE,
   colLast: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof BookmarkStart, ReservedValueDisposition>;
+} satisfies Record<RecordField<BookmarkStart>, ReservedValueDisposition>;
 
 export type ExhaustiveBookmarkStartReserved = ExhaustiveFields<
   BookmarkStart,
@@ -296,7 +300,7 @@ export const BOOKMARK_END_RESERVED = {
   copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof BookmarkEnd, ReservedValueDisposition>;
+} satisfies Record<RecordField<BookmarkEnd>, ReservedValueDisposition>;
 
 export type ExhaustiveBookmarkEndReserved = ExhaustiveFields<
   BookmarkEnd,
@@ -310,7 +314,7 @@ export const SIMPLE_FIELD_RESERVED = {
   content: NO_RESERVED_VALUE,
   fldLock: toggle("w:fldSimple@fldLock"),
   dirty: toggle("w:fldSimple@dirty"),
-} satisfies Record<keyof SimpleField, ReservedValueDisposition>;
+} satisfies Record<RecordField<SimpleField>, ReservedValueDisposition>;
 
 export type ExhaustiveSimpleFieldReserved = ExhaustiveFields<
   SimpleField,
@@ -329,7 +333,7 @@ export const COMPLEX_FIELD_RESERVED = {
   dirty: toggle("w:fldChar@dirty"),
   // A reader-computed provenance flag, not a spelling any XML slot carries.
   fieldResultIsFallback: NO_RESERVED_VALUE,
-} satisfies Record<keyof ComplexField, ReservedValueDisposition>;
+} satisfies Record<RecordField<ComplexField>, ReservedValueDisposition>;
 
 export type ExhaustiveComplexFieldReserved = ExhaustiveFields<
   ComplexField,
@@ -339,7 +343,7 @@ export type ExhaustiveComplexFieldReserved = ExhaustiveFields<
 export const IMAGE_SIZE_RESERVED = {
   width: NO_RESERVED_VALUE,
   height: NO_RESERVED_VALUE,
-} satisfies Record<keyof ImageSize, ReservedValueDisposition>;
+} satisfies Record<RecordField<ImageSize>, ReservedValueDisposition>;
 
 export type ExhaustiveImageSizeReserved = ExhaustiveFields<
   ImageSize,
@@ -361,7 +365,7 @@ export const IMAGE_WRAP_RESERVED = {
   polygon: NO_RESERVED_VALUE,
   // Which element carried the effect extent, not a value the format spells.
   effectExtentSlots: NO_RESERVED_VALUE,
-} satisfies Record<keyof ImageWrap, ReservedValueDisposition>;
+} satisfies Record<RecordField<ImageWrap>, ReservedValueDisposition>;
 
 export type ExhaustiveImageWrapReserved = ExhaustiveFields<
   ImageWrap,
@@ -371,7 +375,7 @@ export type ExhaustiveImageWrapReserved = ExhaustiveFields<
 export const WRAP_DISTANCE_SLOTS_RESERVED = {
   drawing: NO_RESERVED_VALUE,
   wrapChild: NO_RESERVED_VALUE,
-} satisfies Record<keyof WrapDistanceSlots, ReservedValueDisposition>;
+} satisfies Record<RecordField<WrapDistanceSlots>, ReservedValueDisposition>;
 
 export type ExhaustiveWrapDistanceSlotsReserved = ExhaustiveFields<
   WrapDistanceSlots,
@@ -383,7 +387,7 @@ export const WRAP_DISTANCES_RESERVED = {
   distB: NO_RESERVED_VALUE,
   distL: NO_RESERVED_VALUE,
   distR: NO_RESERVED_VALUE,
-} satisfies Record<keyof WrapDistances, ReservedValueDisposition>;
+} satisfies Record<RecordField<WrapDistances>, ReservedValueDisposition>;
 
 export type ExhaustiveWrapDistancesReserved = ExhaustiveFields<
   WrapDistances,
@@ -394,7 +398,7 @@ export const IMAGE_WRAP_POLYGON_RESERVED = {
   edited: toggle("wp:wrapPolygon@edited"),
   start: NO_RESERVED_VALUE,
   lineTo: NO_RESERVED_VALUE,
-} satisfies Record<keyof ImageWrapPolygon, ReservedValueDisposition>;
+} satisfies Record<RecordField<ImageWrapPolygon>, ReservedValueDisposition>;
 
 export type ExhaustiveImageWrapPolygonReserved = ExhaustiveFields<
   ImageWrapPolygon,
@@ -404,7 +408,7 @@ export type ExhaustiveImageWrapPolygonReserved = ExhaustiveFields<
 export const WRAP_POLYGON_POINT_RESERVED = {
   x: NO_RESERVED_VALUE,
   y: NO_RESERVED_VALUE,
-} satisfies Record<keyof WrapPolygonPoint, ReservedValueDisposition>;
+} satisfies Record<RecordField<WrapPolygonPoint>, ReservedValueDisposition>;
 
 export type ExhaustiveWrapPolygonPointReserved = ExhaustiveFields<
   WrapPolygonPoint,
@@ -414,7 +418,7 @@ export type ExhaustiveWrapPolygonPointReserved = ExhaustiveFields<
 export const IMAGE_POSITION_RESERVED = {
   horizontal: NO_RESERVED_VALUE,
   vertical: NO_RESERVED_VALUE,
-} satisfies Record<keyof ImagePosition, ReservedValueDisposition>;
+} satisfies Record<RecordField<ImagePosition>, ReservedValueDisposition>;
 
 export type ExhaustiveImagePositionReserved = ExhaustiveFields<
   ImagePosition,
@@ -426,7 +430,7 @@ export const IMAGE_POSITION_AXIS_RESERVED = {
   alignment: NO_RESERVED_VALUE,
   posOffset: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ImagePosition["horizontal"]>,
+  RecordField<NonNullable<ImagePosition["horizontal"]>>,
   ReservedValueDisposition
 >;
 
@@ -439,7 +443,7 @@ export const IMAGE_TRANSFORM_RESERVED = {
   rotation: NO_RESERVED_VALUE,
   flipH: NO_RESERVED_VALUE,
   flipV: NO_RESERVED_VALUE,
-} satisfies Record<keyof ImageTransform, ReservedValueDisposition>;
+} satisfies Record<RecordField<ImageTransform>, ReservedValueDisposition>;
 
 export type ExhaustiveImageTransformReserved = ExhaustiveFields<
   ImageTransform,
@@ -451,7 +455,7 @@ export const IMAGE_PADDING_RESERVED = {
   bottom: NO_RESERVED_VALUE,
   left: NO_RESERVED_VALUE,
   right: NO_RESERVED_VALUE,
-} satisfies Record<keyof ImagePadding, ReservedValueDisposition>;
+} satisfies Record<RecordField<ImagePadding>, ReservedValueDisposition>;
 
 export type ExhaustiveImagePaddingReserved = ExhaustiveFields<
   ImagePadding,
@@ -463,7 +467,7 @@ export const IMAGE_CROP_RESERVED = {
   top: NO_RESERVED_VALUE,
   right: NO_RESERVED_VALUE,
   bottom: NO_RESERVED_VALUE,
-} satisfies Record<keyof ImageCrop, ReservedValueDisposition>;
+} satisfies Record<RecordField<ImageCrop>, ReservedValueDisposition>;
 
 export type ExhaustiveImageCropReserved = ExhaustiveFields<
   ImageCrop,
@@ -477,7 +481,7 @@ export const IMAGE_FRAME_LOCKS_RESERVED = {
   noChangeAspect: toggle("a:graphicFrameLocks@noChangeAspect"),
   noMove: toggle("a:graphicFrameLocks@noMove"),
   noResize: toggle("a:graphicFrameLocks@noResize"),
-} satisfies Record<keyof ImageFrameLocks, ReservedValueDisposition>;
+} satisfies Record<RecordField<ImageFrameLocks>, ReservedValueDisposition>;
 
 export type ExhaustiveImageFrameLocksReserved = ExhaustiveFields<
   ImageFrameLocks,
@@ -520,7 +524,7 @@ export const IMAGE_RESERVED = {
   effects: NO_RESERVED_VALUE,
   // How a preview is backed and what it draws, not a value the format spells.
   preview: NO_RESERVED_VALUE,
-} satisfies Record<keyof Image, ReservedValueDisposition>;
+} satisfies Record<RecordField<Image>, ReservedValueDisposition>;
 
 export type ExhaustiveImageReserved = ExhaustiveFields<
   Image,
@@ -535,7 +539,7 @@ export const DRAWING_ANCHOR_RESERVED = {
   layoutInCell: toggle("wp:anchor@layoutInCell"),
   allowOverlap: toggle("wp:anchor@allowOverlap"),
   hidden: toggle("wp:anchor@hidden"),
-} satisfies Record<keyof DrawingAnchor, ReservedValueDisposition>;
+} satisfies Record<RecordField<DrawingAnchor>, ReservedValueDisposition>;
 
 export type ExhaustiveDrawingAnchorReserved = ExhaustiveFields<
   DrawingAnchor,
@@ -546,7 +550,10 @@ export const NON_VISUAL_DRAWING_NAMES_RESERVED = {
   name: NO_RESERVED_VALUE,
   alt: NO_RESERVED_VALUE,
   title: NO_RESERVED_VALUE,
-} satisfies Record<keyof NonVisualDrawingNames, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<NonVisualDrawingNames>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveNonVisualDrawingNamesReserved = ExhaustiveFields<
   NonVisualDrawingNames,
@@ -558,7 +565,7 @@ export const DRAWING_GROUP_CHILD_RESERVED = {
   path: NO_RESERVED_VALUE,
   group: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
-} satisfies Record<keyof DrawingGroupChild, ReservedValueDisposition>;
+} satisfies Record<RecordField<DrawingGroupChild>, ReservedValueDisposition>;
 
 export type ExhaustiveDrawingGroupChildReserved = ExhaustiveFields<
   DrawingGroupChild,
@@ -570,7 +577,7 @@ export const IMAGE_EFFECTS_RESERVED = {
   contrast: NO_RESERVED_VALUE,
   saturation: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<Image["effects"]>,
+  RecordField<NonNullable<Image["effects"]>>,
   ReservedValueDisposition
 >;
 
@@ -582,7 +589,10 @@ export type ExhaustiveImageEffectsReserved = ExhaustiveFields<
 export const SHAPE_GEOMETRY_ADJUSTMENT_RESERVED = {
   name: NO_RESERVED_VALUE,
   formula: NO_RESERVED_VALUE,
-} satisfies Record<keyof ShapeGeometryAdjustment, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<ShapeGeometryAdjustment>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveShapeGeometryAdjustmentReserved = ExhaustiveFields<
   ShapeGeometryAdjustment,
@@ -598,7 +608,7 @@ export const SHAPE_FILL_RESERVED = {
   rawXml: NO_RESERVED_VALUE,
   color: NO_RESERVED_VALUE,
   gradient: NO_RESERVED_VALUE,
-} satisfies Record<keyof ShapeFill, ReservedValueDisposition>;
+} satisfies Record<RecordField<ShapeFill>, ReservedValueDisposition>;
 
 export type ExhaustiveShapeFillReserved = ExhaustiveFields<
   ShapeFill,
@@ -611,7 +621,7 @@ export const SHAPE_FILL_GRADIENT_RESERVED = {
   scaled: NO_RESERVED_VALUE,
   stops: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeFill["gradient"]>,
+  RecordField<NonNullable<ShapeFill["gradient"]>>,
   ReservedValueDisposition
 >;
 
@@ -624,7 +634,7 @@ export const SHAPE_FILL_GRADIENT_STOP_RESERVED = {
   position: NO_RESERVED_VALUE,
   color: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeFill["gradient"]>["stops"][number],
+  RecordField<NonNullable<ShapeFill["gradient"]>["stops"][number]>,
   ReservedValueDisposition
 >;
 
@@ -647,7 +657,7 @@ export const SHAPE_OUTLINE_RESERVED = {
   join: NO_RESERVED_VALUE,
   headEnd: NO_RESERVED_VALUE,
   tailEnd: NO_RESERVED_VALUE,
-} satisfies Record<keyof ShapeOutline, ReservedValueDisposition>;
+} satisfies Record<RecordField<ShapeOutline>, ReservedValueDisposition>;
 
 export type ExhaustiveShapeOutlineReserved = ExhaustiveFields<
   ShapeOutline,
@@ -663,7 +673,7 @@ export const SHAPE_OUTLINE_END_RESERVED = {
   width: NO_RESERVED_VALUE,
   length: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeOutline["headEnd"]>,
+  RecordField<NonNullable<ShapeOutline["headEnd"]>>,
   ReservedValueDisposition
 >;
 
@@ -690,7 +700,7 @@ export const SHAPE_TEXT_BODY_RESERVED = {
   }),
   margins: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
-} satisfies Record<keyof ShapeTextBody, ReservedValueDisposition>;
+} satisfies Record<RecordField<ShapeTextBody>, ReservedValueDisposition>;
 
 export type ExhaustiveShapeTextBodyReserved = ExhaustiveFields<
   ShapeTextBody,
@@ -702,7 +712,7 @@ export const SHAPE_TEXT_BODY_WORD_ART_RESERVED = {
   preset: NO_RESERVED_VALUE,
   adjustments: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeTextBody["wordArt"]>,
+  RecordField<NonNullable<ShapeTextBody["wordArt"]>>,
   ReservedValueDisposition
 >;
 
@@ -717,7 +727,7 @@ export const SHAPE_TEXT_BODY_MARGINS_RESERVED = {
   left: NO_RESERVED_VALUE,
   right: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeTextBody["margins"]>,
+  RecordField<NonNullable<ShapeTextBody["margins"]>>,
   ReservedValueDisposition
 >;
 
@@ -745,7 +755,7 @@ export const SHAPE_RESERVED = {
   textBody: NO_RESERVED_VALUE,
   customGeometry: NO_RESERVED_VALUE,
   groupChild: NO_RESERVED_VALUE,
-} satisfies Record<keyof Shape, ReservedValueDisposition>;
+} satisfies Record<RecordField<Shape>, ReservedValueDisposition>;
 
 export type ExhaustiveShapeReserved = ExhaustiveFields<
   Shape,
@@ -780,7 +790,7 @@ export const TEXT_BOX_RESERVED = {
   verticalAlign: NO_RESERVED_VALUE,
   margins: NO_RESERVED_VALUE,
   groupChild: NO_RESERVED_VALUE,
-} satisfies Record<keyof TextBox, ReservedValueDisposition>;
+} satisfies Record<RecordField<TextBox>, ReservedValueDisposition>;
 
 export type ExhaustiveTextBoxReserved = ExhaustiveFields<
   TextBox,
@@ -793,7 +803,7 @@ export const TEXT_BOX_MARGINS_RESERVED = {
   left: NO_RESERVED_VALUE,
   right: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<TextBox["margins"]>,
+  RecordField<NonNullable<TextBox["margins"]>>,
   ReservedValueDisposition
 >;
 
@@ -813,7 +823,7 @@ export const TABLE_CELL_RESERVED = {
   // value is a spelling the model interprets; this slot interprets nothing.
   contentControls: NO_RESERVED_VALUE,
   carrierStack: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableCell, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableCell>, ReservedValueDisposition>;
 
 export type ExhaustiveTableCellReserved = ExhaustiveFields<
   TableCell,
@@ -839,7 +849,7 @@ export const TABLE_ROW_RESERVED = {
   bookmarks: NO_RESERVED_VALUE,
   contentControls: NO_RESERVED_VALUE,
   carrierStack: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableRow, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableRow>, ReservedValueDisposition>;
 
 export type ExhaustiveTableRowReserved = ExhaustiveFields<
   TableRow,
@@ -859,7 +869,7 @@ export const TABLE_RESERVED = {
   // BOOKMARK_START_RESERVED and BOOKMARK_END_RESERVED.
   bookmarks: NO_RESERVED_VALUE,
   carrierStack: NO_RESERVED_VALUE,
-} satisfies Record<keyof Table, ReservedValueDisposition>;
+} satisfies Record<RecordField<Table>, ReservedValueDisposition>;
 
 export type ExhaustiveTableReserved = ExhaustiveFields<
   Table,
@@ -880,7 +890,7 @@ export const COMMENT_RESERVED = {
   // Captured bytes, replayed as written. A reserved value is a spelling the
   // model interprets; this slot interprets nothing.
   preserved: NO_RESERVED_VALUE,
-} satisfies Record<keyof Comment, ReservedValueDisposition>;
+} satisfies Record<RecordField<Comment>, ReservedValueDisposition>;
 
 export type ExhaustiveCommentReserved = ExhaustiveFields<
   Comment,
@@ -891,7 +901,7 @@ export const COMMENT_RANGE_START_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof CommentRangeStart, ReservedValueDisposition>;
+} satisfies Record<RecordField<CommentRangeStart>, ReservedValueDisposition>;
 
 export type ExhaustiveCommentRangeStartReserved = ExhaustiveFields<
   CommentRangeStart,
@@ -902,7 +912,7 @@ export const COMMENT_RANGE_END_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof CommentRangeEnd, ReservedValueDisposition>;
+} satisfies Record<RecordField<CommentRangeEnd>, ReservedValueDisposition>;
 
 export type ExhaustiveCommentRangeEndReserved = ExhaustiveFields<
   CommentRangeEnd,
@@ -912,7 +922,7 @@ export type ExhaustiveCommentRangeEndReserved = ExhaustiveFields<
 export const COMMENT_REFERENCE_RESERVED = {
   type: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
-} satisfies Record<keyof CommentReference, ReservedValueDisposition>;
+} satisfies Record<RecordField<CommentReference>, ReservedValueDisposition>;
 
 export type ExhaustiveCommentReferenceReserved = ExhaustiveFields<
   CommentReference,
@@ -924,7 +934,7 @@ export const MATH_EQUATION_RESERVED = {
   display: NO_RESERVED_VALUE,
   ommlXml: NO_RESERVED_VALUE,
   plainText: NO_RESERVED_VALUE,
-} satisfies Record<keyof MathEquation, ReservedValueDisposition>;
+} satisfies Record<RecordField<MathEquation>, ReservedValueDisposition>;
 
 export type ExhaustiveMathEquationReserved = ExhaustiveFields<
   MathEquation,
@@ -939,7 +949,7 @@ export const TRACKED_CHANGE_INFO_RESERVED = {
   utcDate: NO_RESERVED_VALUE,
   // In memory only: no OOXML attribute carries it.
   suggestionId: NO_RESERVED_VALUE,
-} satisfies Record<keyof TrackedChangeInfo, ReservedValueDisposition>;
+} satisfies Record<RecordField<TrackedChangeInfo>, ReservedValueDisposition>;
 
 export type ExhaustiveTrackedChangeInfoReserved = ExhaustiveFields<
   TrackedChangeInfo,
@@ -950,7 +960,7 @@ export const TRACKED_CHANGE_UTC_DATE_RESERVED = {
   attribute: NO_RESERVED_VALUE,
   value: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<TrackedChangeInfo["utcDate"]>,
+  RecordField<NonNullable<TrackedChangeInfo["utcDate"]>>,
   ReservedValueDisposition
 >;
 
@@ -967,7 +977,7 @@ export const PROPERTY_CHANGE_INFO_RESERVED = {
   initials: NO_RESERVED_VALUE,
   utcDate: NO_RESERVED_VALUE,
   suggestionId: NO_RESERVED_VALUE,
-} satisfies Record<keyof PropertyChangeInfo, ReservedValueDisposition>;
+} satisfies Record<RecordField<PropertyChangeInfo>, ReservedValueDisposition>;
 
 export type ExhaustivePropertyChangeInfoReserved = ExhaustiveFields<
   PropertyChangeInfo,
@@ -979,7 +989,7 @@ export const INSERTION_RESERVED = {
   info: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
   resolutionJoins: NO_RESERVED_VALUE,
-} satisfies Record<keyof Insertion, ReservedValueDisposition>;
+} satisfies Record<RecordField<Insertion>, ReservedValueDisposition>;
 
 export type ExhaustiveInsertionReserved = ExhaustiveFields<
   Insertion,
@@ -991,7 +1001,7 @@ export const DELETION_RESERVED = {
   info: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
   resolutionJoins: NO_RESERVED_VALUE,
-} satisfies Record<keyof Deletion, ReservedValueDisposition>;
+} satisfies Record<RecordField<Deletion>, ReservedValueDisposition>;
 
 export type ExhaustiveDeletionReserved = ExhaustiveFields<
   Deletion,
@@ -1003,7 +1013,7 @@ export const MOVE_FROM_RESERVED = {
   info: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
   resolutionJoins: NO_RESERVED_VALUE,
-} satisfies Record<keyof MoveFrom, ReservedValueDisposition>;
+} satisfies Record<RecordField<MoveFrom>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveFromReserved = ExhaustiveFields<
   MoveFrom,
@@ -1015,7 +1025,7 @@ export const MOVE_TO_RESERVED = {
   info: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
   resolutionJoins: NO_RESERVED_VALUE,
-} satisfies Record<keyof MoveTo, ReservedValueDisposition>;
+} satisfies Record<RecordField<MoveTo>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveToReserved = ExhaustiveFields<
   MoveTo,
@@ -1032,7 +1042,7 @@ export const MOVE_FROM_RANGE_START_RESERVED = {
   colLast: NO_RESERVED_VALUE,
   date: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof MoveFromRangeStart, ReservedValueDisposition>;
+} satisfies Record<RecordField<MoveFromRangeStart>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveFromRangeStartReserved = ExhaustiveFields<
   MoveFromRangeStart,
@@ -1044,7 +1054,7 @@ export const MOVE_FROM_RANGE_END_RESERVED = {
   copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof MoveFromRangeEnd, ReservedValueDisposition>;
+} satisfies Record<RecordField<MoveFromRangeEnd>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveFromRangeEndReserved = ExhaustiveFields<
   MoveFromRangeEnd,
@@ -1061,7 +1071,7 @@ export const MOVE_TO_RANGE_START_RESERVED = {
   colLast: NO_RESERVED_VALUE,
   date: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof MoveToRangeStart, ReservedValueDisposition>;
+} satisfies Record<RecordField<MoveToRangeStart>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveToRangeStartReserved = ExhaustiveFields<
   MoveToRangeStart,
@@ -1073,7 +1083,7 @@ export const MOVE_TO_RANGE_END_RESERVED = {
   copyOriginAncestors: NO_RESERVED_VALUE,
   id: NO_RESERVED_VALUE,
   displacedByCustomXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof MoveToRangeEnd, ReservedValueDisposition>;
+} satisfies Record<RecordField<MoveToRangeEnd>, ReservedValueDisposition>;
 
 export type ExhaustiveMoveToRangeEndReserved = ExhaustiveFields<
   MoveToRangeEnd,
@@ -1086,7 +1096,7 @@ export const RUN_PROPERTY_CHANGE_RESERVED = {
   previousFormatting: NO_RESERVED_VALUE,
   currentFormatting: NO_RESERVED_VALUE,
   boundaryJoins: NO_RESERVED_VALUE,
-} satisfies Record<keyof RunPropertyChange, ReservedValueDisposition>;
+} satisfies Record<RecordField<RunPropertyChange>, ReservedValueDisposition>;
 
 export type ExhaustiveRunPropertyChangeReserved = ExhaustiveFields<
   RunPropertyChange,
@@ -1098,7 +1108,10 @@ export const PARAGRAPH_PROPERTY_CHANGE_RESERVED = {
   info: NO_RESERVED_VALUE,
   previousFormatting: NO_RESERVED_VALUE,
   currentFormatting: NO_RESERVED_VALUE,
-} satisfies Record<keyof ParagraphPropertyChange, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<ParagraphPropertyChange>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveParagraphPropertyChangeReserved = ExhaustiveFields<
   ParagraphPropertyChange,
@@ -1110,7 +1123,7 @@ export const TABLE_PROPERTY_CHANGE_RESERVED = {
   info: NO_RESERVED_VALUE,
   previousFormatting: NO_RESERVED_VALUE,
   currentFormatting: NO_RESERVED_VALUE,
-} satisfies Record<keyof TablePropertyChange, ReservedValueDisposition>;
+} satisfies Record<RecordField<TablePropertyChange>, ReservedValueDisposition>;
 
 export type ExhaustiveTablePropertyChangeReserved = ExhaustiveFields<
   TablePropertyChange,
@@ -1122,7 +1135,10 @@ export const TABLE_ROW_PROPERTY_CHANGE_RESERVED = {
   info: NO_RESERVED_VALUE,
   previousFormatting: NO_RESERVED_VALUE,
   currentFormatting: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableRowPropertyChange, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<TableRowPropertyChange>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveTableRowPropertyChangeReserved = ExhaustiveFields<
   TableRowPropertyChange,
@@ -1135,7 +1151,10 @@ export const TABLE_CELL_PROPERTY_CHANGE_RESERVED = {
   previousFormatting: NO_RESERVED_VALUE,
   currentFormatting: NO_RESERVED_VALUE,
   previousStructuralChange: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableCellPropertyChange, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<TableCellPropertyChange>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveTableCellPropertyChangeReserved = ExhaustiveFields<
   TableCellPropertyChange,
@@ -1148,7 +1167,10 @@ export const SECTION_PROPERTY_CHANGE_RESERVED = {
   previousProperties: NO_RESERVED_VALUE,
   previousReferences: NO_RESERVED_VALUE,
   currentProperties: NO_RESERVED_VALUE,
-} satisfies Record<keyof SectionPropertyChange, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<SectionPropertyChange>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveSectionPropertyChangeReserved = ExhaustiveFields<
   SectionPropertyChange,
@@ -1159,7 +1181,7 @@ export const SECTION_PROPERTY_CHANGE_REFERENCES_RESERVED = {
   headerReferences: NO_RESERVED_VALUE,
   footerReferences: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<SectionPropertyChange["previousReferences"]>,
+  RecordField<NonNullable<SectionPropertyChange["previousReferences"]>>,
   ReservedValueDisposition
 >;
 
@@ -1212,7 +1234,7 @@ export const SDT_PROPERTIES_RESERVED = {
   rawSdtChildrenBeforeContent: NO_RESERVED_VALUE,
   rawSdtChildrenAfterContent: NO_RESERVED_VALUE,
   endProperties: NO_RESERVED_VALUE,
-} satisfies Record<keyof SdtProperties, ReservedValueDisposition>;
+} satisfies Record<RecordField<SdtProperties>, ReservedValueDisposition>;
 
 export type ExhaustiveSdtPropertiesReserved = ExhaustiveFields<
   SdtProperties,
@@ -1221,7 +1243,7 @@ export type ExhaustiveSdtPropertiesReserved = ExhaustiveFields<
 
 export const SDT_END_PROPERTIES_RESERVED = {
   runProperties: NO_RESERVED_VALUE,
-} satisfies Record<keyof SdtEndProperties, ReservedValueDisposition>;
+} satisfies Record<RecordField<SdtEndProperties>, ReservedValueDisposition>;
 
 export type ExhaustiveSdtEndPropertiesReserved = ExhaustiveFields<
   SdtEndProperties,
@@ -1232,7 +1254,7 @@ export const SDT_LIST_ITEM_RESERVED = {
   displayText: NO_RESERVED_VALUE,
   value: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<SdtProperties["listItems"]>[number],
+  RecordField<NonNullable<SdtProperties["listItems"]>[number]>,
   ReservedValueDisposition
 >;
 
@@ -1245,7 +1267,7 @@ export const INLINE_SDT_RESERVED = {
   type: NO_RESERVED_VALUE,
   properties: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
-} satisfies Record<keyof InlineSdt, ReservedValueDisposition>;
+} satisfies Record<RecordField<InlineSdt>, ReservedValueDisposition>;
 
 export type ExhaustiveInlineSdtReserved = ExhaustiveFields<
   InlineSdt,
@@ -1256,7 +1278,7 @@ export const BLOCK_SDT_RESERVED = {
   type: NO_RESERVED_VALUE,
   properties: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
-} satisfies Record<keyof BlockSdt, ReservedValueDisposition>;
+} satisfies Record<RecordField<BlockSdt>, ReservedValueDisposition>;
 
 export type ExhaustiveBlockSdtReserved = ExhaustiveFields<
   BlockSdt,
@@ -1268,7 +1290,7 @@ export const PARAGRAPH_MARK_CHANGE_RESERVED = {
   info: NO_RESERVED_VALUE,
   resolutionJoin: NO_RESERVED_VALUE,
   survivor: NO_RESERVED_VALUE,
-} satisfies Record<keyof ParagraphMarkChange, ReservedValueDisposition>;
+} satisfies Record<RecordField<ParagraphMarkChange>, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphMarkChangeReserved = ExhaustiveFields<
   ParagraphMarkChange,
@@ -1290,7 +1312,7 @@ export const PARAGRAPH_RESERVED = {
   // Attributes replayed as the source wrote them. A reserved value is a
   // spelling the model interprets; this slot interprets nothing.
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof Paragraph, ReservedValueDisposition>;
+} satisfies Record<RecordField<Paragraph>, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphReserved = ExhaustiveFields<
   Paragraph,
@@ -1304,7 +1326,7 @@ export const HEADER_REFERENCE_RESERVED = {
     reader: RESERVED_VALUE_READERS.headerFooterType,
   }),
   rId: NO_RESERVED_VALUE,
-} satisfies Record<keyof HeaderReference, ReservedValueDisposition>;
+} satisfies Record<RecordField<HeaderReference>, ReservedValueDisposition>;
 
 export type ExhaustiveHeaderReferenceReserved = ExhaustiveFields<
   HeaderReference,
@@ -1318,7 +1340,7 @@ export const FOOTER_REFERENCE_RESERVED = {
     reader: RESERVED_VALUE_READERS.headerFooterType,
   }),
   rId: NO_RESERVED_VALUE,
-} satisfies Record<keyof FooterReference, ReservedValueDisposition>;
+} satisfies Record<RecordField<FooterReference>, ReservedValueDisposition>;
 
 export type ExhaustiveFooterReferenceReserved = ExhaustiveFields<
   FooterReference,
@@ -1338,7 +1360,7 @@ export const HEADER_FOOTER_RESERVED = {
   verbatimXml: NO_RESERVED_VALUE,
   verbatimFingerprint: NO_RESERVED_VALUE,
   watermarkBlockIndex: NO_RESERVED_VALUE,
-} satisfies Record<keyof HeaderFooter, ReservedValueDisposition>;
+} satisfies Record<RecordField<HeaderFooter>, ReservedValueDisposition>;
 
 export type ExhaustiveHeaderFooterReserved = ExhaustiveFields<
   HeaderFooter,
@@ -1352,7 +1374,7 @@ export const TEXT_WATERMARK_RESERVED = {
   color: NO_RESERVED_VALUE,
   diagonal: NO_RESERVED_VALUE,
   opacity: NO_RESERVED_VALUE,
-} satisfies Record<keyof TextWatermark, ReservedValueDisposition>;
+} satisfies Record<RecordField<TextWatermark>, ReservedValueDisposition>;
 
 export type ExhaustiveTextWatermarkReserved = ExhaustiveFields<
   TextWatermark,
@@ -1368,7 +1390,7 @@ export const PICTURE_WATERMARK_RESERVED = {
   widthPt: NO_RESERVED_VALUE,
   heightPt: NO_RESERVED_VALUE,
   washout: NO_RESERVED_VALUE,
-} satisfies Record<keyof PictureWatermark, ReservedValueDisposition>;
+} satisfies Record<RecordField<PictureWatermark>, ReservedValueDisposition>;
 
 export type ExhaustivePictureWatermarkReserved = ExhaustiveFields<
   PictureWatermark,
@@ -1380,7 +1402,7 @@ export const SECTION_RESERVED = {
   content: NO_RESERVED_VALUE,
   headers: NO_RESERVED_VALUE,
   footers: NO_RESERVED_VALUE,
-} satisfies Record<keyof Section, ReservedValueDisposition>;
+} satisfies Record<RecordField<Section>, ReservedValueDisposition>;
 
 export type ExhaustiveSectionReserved = ExhaustiveFields<
   Section,
@@ -1393,7 +1415,7 @@ export const DOCUMENT_BODY_RESERVED = {
   sections: NO_RESERVED_VALUE,
   finalSectionProperties: NO_RESERVED_VALUE,
   comments: NO_RESERVED_VALUE,
-} satisfies Record<keyof DocumentBody, ReservedValueDisposition>;
+} satisfies Record<RecordField<DocumentBody>, ReservedValueDisposition>;
 
 export type ExhaustiveDocumentBodyReserved = ExhaustiveFields<
   DocumentBody,
@@ -1406,7 +1428,7 @@ export const DOCUMENT_BACKGROUND_RESERVED = {
   themeTint: NO_RESERVED_VALUE,
   themeShade: NO_RESERVED_VALUE,
   drawing: NO_RESERVED_VALUE,
-} satisfies Record<keyof DocumentBackground, ReservedValueDisposition>;
+} satisfies Record<RecordField<DocumentBackground>, ReservedValueDisposition>;
 
 export type ExhaustiveDocumentBackgroundReserved = ExhaustiveFields<
   DocumentBackground,
@@ -1415,7 +1437,10 @@ export type ExhaustiveDocumentBackgroundReserved = ExhaustiveFields<
 
 export const DOCUMENT_BACKGROUND_DRAWING_RESERVED = {
   rawXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof DocumentBackgroundDrawing, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<DocumentBackgroundDrawing>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveDocumentBackgroundDrawingReserved = ExhaustiveFields<
   DocumentBackgroundDrawing,

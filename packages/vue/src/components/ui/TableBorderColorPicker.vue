@@ -17,13 +17,14 @@
 
 <script setup lang="ts">
 import type { ColorValue, Theme } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 import { useTranslation } from "../../i18n";
 import ColorPicker from "./ColorPicker.vue";
 
 defineProps<{
   disabled?: boolean;
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   /** Current border color (RGB hex without #). */
   value?: string;
 }>();

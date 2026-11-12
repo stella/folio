@@ -1,4 +1,4 @@
-import type { NonVisualDrawingNames } from "../types/document";
+import type { NonVisualDrawingNames, RecordField } from "../types/document";
 
 export const PICTURE_NAME_DOM_ATTRIBUTES: {
   readonly name: "data-picture-name";
@@ -8,7 +8,7 @@ export const PICTURE_NAME_DOM_ATTRIBUTES: {
   name: "data-picture-name",
   alt: "data-picture-alt",
   title: "data-picture-title",
-} as const satisfies Record<keyof NonVisualDrawingNames, string>;
+} as const satisfies Record<RecordField<NonVisualDrawingNames>, string>;
 
 /** Keep picture metadata separate from the containing drawing's accessibility strings. */
 export const pictureNamesFromDom = (

@@ -1,5 +1,6 @@
 /** Reserved-value decisions for styles, theme, fonts, and package resources. */
 
+import type { RecordField } from "../../packages/docx-core/src/model/deepReadonly";
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import type {
   DocDefaults,
@@ -57,7 +58,7 @@ export const STYLE_RESERVED = {
   trPr: NO_RESERVED_VALUE,
   tcPr: NO_RESERVED_VALUE,
   tblStylePr: NO_RESERVED_VALUE,
-} satisfies Record<keyof Style, ReservedValueDisposition>;
+} satisfies Record<RecordField<Style>, ReservedValueDisposition>;
 
 export type ExhaustiveStyleReserved = ExhaustiveFields<
   Style,
@@ -72,7 +73,7 @@ export const STYLE_CONDITIONAL_RESERVED = {
   trPr: NO_RESERVED_VALUE,
   tcPr: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<Style["tblStylePr"]>[number],
+  RecordField<NonNullable<Style["tblStylePr"]>[number]>,
   ReservedValueDisposition
 >;
 
@@ -84,7 +85,7 @@ export type ExhaustiveStyleConditionalReserved = ExhaustiveFields<
 export const DOC_DEFAULTS_RESERVED = {
   rPr: NO_RESERVED_VALUE,
   pPr: NO_RESERVED_VALUE,
-} satisfies Record<keyof DocDefaults, ReservedValueDisposition>;
+} satisfies Record<RecordField<DocDefaults>, ReservedValueDisposition>;
 
 export type ExhaustiveDocDefaultsReserved = ExhaustiveFields<
   DocDefaults,
@@ -95,7 +96,7 @@ export const STYLE_DEFINITIONS_RESERVED = {
   docDefaults: NO_RESERVED_VALUE,
   latentStyles: NO_RESERVED_VALUE,
   styles: NO_RESERVED_VALUE,
-} satisfies Record<keyof StyleDefinitions, ReservedValueDisposition>;
+} satisfies Record<RecordField<StyleDefinitions>, ReservedValueDisposition>;
 
 export type ExhaustiveStyleDefinitionsReserved = ExhaustiveFields<
   StyleDefinitions,
@@ -110,7 +111,7 @@ export const LATENT_STYLES_RESERVED = {
   defQFormat: toggle("w:latentStyles@defQFormat"),
   count: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<StyleDefinitions["latentStyles"]>,
+  RecordField<NonNullable<StyleDefinitions["latentStyles"]>>,
   ReservedValueDisposition
 >;
 
@@ -132,7 +133,7 @@ export const THEME_COLOR_SCHEME_RESERVED = {
   accent6: NO_RESERVED_VALUE,
   hlink: NO_RESERVED_VALUE,
   folHlink: NO_RESERVED_VALUE,
-} satisfies Record<keyof ThemeColorScheme, ReservedValueDisposition>;
+} satisfies Record<RecordField<ThemeColorScheme>, ReservedValueDisposition>;
 
 export type ExhaustiveThemeColorSchemeReserved = ExhaustiveFields<
   ThemeColorScheme,
@@ -144,7 +145,7 @@ export const THEME_FONT_RESERVED = {
   ea: NO_RESERVED_VALUE,
   cs: NO_RESERVED_VALUE,
   fonts: NO_RESERVED_VALUE,
-} satisfies Record<keyof ThemeFont, ReservedValueDisposition>;
+} satisfies Record<RecordField<ThemeFont>, ReservedValueDisposition>;
 
 export type ExhaustiveThemeFontReserved = ExhaustiveFields<
   ThemeFont,
@@ -154,7 +155,7 @@ export type ExhaustiveThemeFontReserved = ExhaustiveFields<
 export const THEME_FONT_SCHEME_RESERVED = {
   majorFont: NO_RESERVED_VALUE,
   minorFont: NO_RESERVED_VALUE,
-} satisfies Record<keyof ThemeFontScheme, ReservedValueDisposition>;
+} satisfies Record<RecordField<ThemeFontScheme>, ReservedValueDisposition>;
 
 export type ExhaustiveThemeFontSchemeReserved = ExhaustiveFields<
   ThemeFontScheme,
@@ -166,7 +167,7 @@ export const THEME_RESERVED = {
   colorScheme: NO_RESERVED_VALUE,
   fontScheme: NO_RESERVED_VALUE,
   formatScheme: NO_RESERVED_VALUE,
-} satisfies Record<keyof Theme, ReservedValueDisposition>;
+} satisfies Record<RecordField<Theme>, ReservedValueDisposition>;
 
 export type ExhaustiveThemeReserved = ExhaustiveFields<
   Theme,
@@ -176,7 +177,7 @@ export type ExhaustiveThemeReserved = ExhaustiveFields<
 export const THEME_FORMAT_SCHEME_RESERVED = {
   name: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<Theme["formatScheme"]>,
+  RecordField<NonNullable<Theme["formatScheme"]>>,
   ReservedValueDisposition
 >;
 
@@ -207,7 +208,7 @@ export const FONT_INFO_RESERVED = {
   embedBoldItalic: NO_RESERVED_VALUE,
   preserved: NO_RESERVED_VALUE,
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof FontInfo, ReservedValueDisposition>;
+} satisfies Record<RecordField<FontInfo>, ReservedValueDisposition>;
 
 export type ExhaustiveFontInfoReserved = ExhaustiveFields<
   FontInfo,
@@ -222,7 +223,7 @@ export const FONT_SIGNATURE_RESERVED = {
   csb0: NO_RESERVED_VALUE,
   csb1: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<FontInfo["sig"]>,
+  RecordField<NonNullable<FontInfo["sig"]>>,
   ReservedValueDisposition
 >;
 
@@ -235,7 +236,7 @@ export const FONT_TABLE_RESERVED = {
   fonts: NO_RESERVED_VALUE,
   preserved: NO_RESERVED_VALUE,
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof FontTable, ReservedValueDisposition>;
+} satisfies Record<RecordField<FontTable>, ReservedValueDisposition>;
 
 export type ExhaustiveFontTableReserved = ExhaustiveFields<
   FontTable,
@@ -247,7 +248,7 @@ export const RELATIONSHIP_RESERVED = {
   type: NO_RESERVED_VALUE,
   target: NO_RESERVED_VALUE,
   targetMode: NO_RESERVED_VALUE,
-} satisfies Record<keyof Relationship, ReservedValueDisposition>;
+} satisfies Record<RecordField<Relationship>, ReservedValueDisposition>;
 
 export type ExhaustiveRelationshipReserved = ExhaustiveFields<
   Relationship,
@@ -261,7 +262,7 @@ export const MEDIA_FILE_RESERVED = {
   data: NO_RESERVED_VALUE,
   base64: NO_RESERVED_VALUE,
   dataUrl: NO_RESERVED_VALUE,
-} satisfies Record<keyof MediaFile, ReservedValueDisposition>;
+} satisfies Record<RecordField<MediaFile>, ReservedValueDisposition>;
 
 export type ExhaustiveMediaFileReserved = ExhaustiveFields<
   MediaFile,

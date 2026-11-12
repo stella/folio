@@ -1,9 +1,10 @@
 import { escapeXmlAttribute } from "@stll/docx-core";
 
 import type { Theme, ThemeColorScheme, ThemeFont } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { serializePartElement } from "./partNamespaces";
 
-export const serializeThemeXml = (theme: Theme): string => {
+export const serializeThemeXml = (theme: DeepReadonly<Theme>): string => {
   const name = escapeXmlAttribute(theme.name ?? "Folio Theme");
   const elements = `${serializeColorScheme(theme.colorScheme)}${serializeFontScheme(theme)}${serializeFormatScheme(theme)}`;
   return (
@@ -19,7 +20,9 @@ export const serializeThemeXml = (theme: Theme): string => {
   );
 };
 
-const serializeColorScheme = (colors: ThemeColorScheme | undefined): string => {
+const serializeColorScheme = (
+  colors: DeepReadonly<ThemeColorScheme> | undefined,
+): string => {
   const values = {
     dk1: colors?.dk1 ?? "000000",
     lt1: colors?.lt1 ?? "FFFFFF",
@@ -43,7 +46,7 @@ const serializeColorScheme = (colors: ThemeColorScheme | undefined): string => {
   return `<a:clrScheme name="Folio">${entries}</a:clrScheme>`;
 };
 
-const serializeFontScheme = (theme: Theme): string => {
+const serializeFontScheme = (theme: DeepReadonly<Theme>): string => {
   const major = serializeThemeFont(
     theme.fontScheme?.majorFont,
     "majorFont",
@@ -58,7 +61,7 @@ const serializeFontScheme = (theme: Theme): string => {
 };
 
 const serializeThemeFont = (
-  font: ThemeFont | undefined,
+  font: DeepReadonly<ThemeFont> | undefined,
   element: "majorFont" | "minorFont",
   fallback: string,
 ): string => {
@@ -71,7 +74,7 @@ const serializeThemeFont = (
   return `<a:${element}><a:latin typeface="${escapeXmlAttribute(font?.latin ?? fallback)}"/><a:ea typeface="${escapeXmlAttribute(font?.ea ?? "")}"/><a:cs typeface="${escapeXmlAttribute(font?.cs ?? "")}"/>${scriptFonts}</a:${element}>`;
 };
 
-const serializeFormatScheme = (theme: Theme): string => {
+const serializeFormatScheme = (theme: DeepReadonly<Theme>): string => {
   const name = escapeXmlAttribute(theme.formatScheme?.name ?? "Folio");
   return `<a:fmtScheme name="${name}"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>`;
 };

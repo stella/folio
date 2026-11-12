@@ -673,6 +673,21 @@ export default library({
       },
     },
     {
+      // TypeScript compares `readonly` only on arrays, so a model record's
+      // read-only form is refused where the writable record is expected only
+      // when the record carries the `WritableRecord` mark. Every record a model
+      // declaration spells carries it (the rule skips `deepReadonly.ts`, the
+      // generated files and tests). See `.oxlint-plugins/folio-model-types.ts`
+      // and the matching test at `scripts/model-types-lint.test.ts`.
+      files: [
+        "packages/docx-core/src/model/**/*.ts",
+        "test/__fixtures__/writable-record-mark.*.ts",
+      ],
+      rules: {
+        "folio-model-types/writable-record-mark": "error",
+      },
+    },
+    {
       // An OOXML reserved value read a second time is how the sentinel gets
       // handled in one place and missed in the next. Over published source the
       // rule runs from `oxlint.reserved-values.config.ts` against a shrink-only
@@ -709,6 +724,7 @@ export default library({
             allowedFiles: [],
           },
         ],
+        "folio-typecheck-proofs/no-unchecked-field-gate": "error",
       },
     },
     {

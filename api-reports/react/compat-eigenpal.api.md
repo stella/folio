@@ -15,6 +15,7 @@ import { createDocumentWithText } from '@stll/folio-core/utils/createDocument';
 import { createEmptyDocument } from '@stll/folio-core/utils/createDocument';
 import { CreateEmptyDocumentOptions } from '@stll/folio-core/utils/createDocument';
 import { CSSProperties } from 'react';
+import { DeepReadonly } from '@stll/folio-core/types/documentModel';
 import { Dialog } from '@base-ui/react/dialog';
 import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';

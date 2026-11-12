@@ -70,7 +70,7 @@ export type ConvertFootnoteOptions = Pick<
   markupView?: DisplayMode;
   styles?: DeepReadonly<StyleDefinitions> | null;
   numbering?: NumberingDefinitions;
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   defaultSize?: number;
   fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
   measureBlocks?: MeasureBlocksFn;

@@ -28,6 +28,7 @@ import type {
   RelationshipMap,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
 import type { ParseContext } from "./parseContext";
@@ -155,7 +156,7 @@ function parseNoteId(element: XmlElement): number {
 function parseNoteBlockContent(
   element: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -225,7 +226,7 @@ function parseNoteBlockContent(
 function parseFootnote(
   element: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -267,7 +268,7 @@ function parseFootnote(
 export function parseFootnotes(
   footnotesXml: string | null,
   styles: StyleMap | null = null,
-  theme: Theme | null = null,
+  theme: DeepReadonly<Theme> | null = null,
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
@@ -369,7 +370,7 @@ function createFootnoteMap(
 function parseEndnote(
   element: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -411,7 +412,7 @@ function parseEndnote(
 export function parseEndnotes(
   endnotesXml: string | null,
   styles: StyleMap | null = null,
-  theme: Theme | null = null,
+  theme: DeepReadonly<Theme> | null = null,
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,

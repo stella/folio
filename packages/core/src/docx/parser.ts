@@ -1,5 +1,7 @@
 import { panic, TaggedError, type TaggedErrorClass } from "better-result";
 
+import type { DeepReadonly } from "../types/documentModel";
+
 const DocxParseErrorBase: TaggedErrorClass<"DocxParseError"> =
   TaggedError("DocxParseError");
 
@@ -1312,7 +1314,7 @@ function getHeaderFooterXml(
 function parseHeadersAndFooters(
   raw: RawDocxContent,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap,
   media: Map<string, MediaFile>,
@@ -1419,7 +1421,7 @@ function parseHeadersAndFooters(
 function parseNotesContent(
   raw: RawDocxContent,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap,
   media: Map<string, MediaFile>,
@@ -1474,7 +1476,7 @@ function parseNotesContent(
  * Returns a deduplicated array suitable for passing to `loadFontsWithMapping`.
  */
 function extractDocumentFontNames(
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   styleDefinitions: StyleDefinitions | undefined,
   documentBody: DocumentBody,
 ): string[] {

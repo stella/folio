@@ -21,8 +21,10 @@
  * used.
  */
 
+import type { WritableRecord } from "./deepReadonly";
+
 /** Markup the container's model does not hold, and where it sat. */
-export type PreservedChild = {
+export type PreservedChild = WritableRecord & {
   /**
    * Where the markup goes back. `0` puts it before the first modelled child;
    * the container's modelled count puts it after the last. In a property set
@@ -38,7 +40,7 @@ export type PreservedChild = {
  * the source carried, which is the state a fully modelled container is in; an
  * empty record is never written.
  */
-export type PreservedMarkup = {
+export type PreservedMarkup = WritableRecord & {
   /** Ordered by `index`, then by source order within an index. */
   children?: PreservedChild[];
 };
@@ -59,7 +61,7 @@ export type PreservedMarkup = {
  * an attribute of the element in this sense and is never in the remainder,
  * because the rebuilt part binds its own prefixes.
  */
-export type PreservedAttribute = {
+export type PreservedAttribute = WritableRecord & {
   /** Resolved namespace URI, absent for an unprefixed attribute. */
   namespace?: string;
   /** Local name, without the prefix the source happened to bind. */

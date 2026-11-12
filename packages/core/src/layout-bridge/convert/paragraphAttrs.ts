@@ -61,7 +61,7 @@ export type ParagraphListMarker = VisibleListMarker["marker"];
 
 /** What a paragraph's layout attributes read besides its own attributes and list marker. */
 type ParagraphAttrsInputs = {
-  theme: Theme | null | undefined;
+  theme: DeepReadonly<Theme> | null | undefined;
   fontAlternates: FontAlternates | undefined;
   defaultTabStopTwips: number | undefined;
   /**

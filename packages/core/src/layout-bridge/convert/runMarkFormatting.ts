@@ -39,6 +39,7 @@ import type {
   RunFormattingOverrideAttrs,
 } from "../../prosemirror/schema/marks";
 import type { ColorValue, Theme } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
@@ -168,7 +169,7 @@ const innermostBidiWrapper = (
  */
 export function extractRunFormatting(
   marks: readonly Mark[],
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
   fontAlternates?: FontAlternates,
 ): RunFormatting {
   const formatting: RunFormatting = {};

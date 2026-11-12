@@ -15,9 +15,11 @@ export default defineConfig({
     dts({
       processor: "vue",
       include: ["src/**/*"],
-      // Keep type-level conformance tests out of the published tarball.
+      // Keep type-level conformance tests and test fixtures out of the
+      // published tarball.
       exclude: [
         "src/**/__tests__/**",
+        "src/**/__fixtures__/**",
         "src/**/*.test-d.ts",
         "src/**/*.test.ts",
       ],

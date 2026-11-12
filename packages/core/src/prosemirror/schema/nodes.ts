@@ -197,7 +197,7 @@ export type ParagraphAttrs = {
    */
   lineSpacingExplicit?: boolean | "value" | "rule" | "both";
   snapToGrid?: boolean;
-  spacingExplicit?: SpacingExplicit;
+  spacingExplicit?: DeepReadonly<SpacingExplicit>;
   /** Layout provenance: document defaults survive on empty paragraphs. */
   spacingFromDocDefaults?: SpacingExplicit;
   /** Layout provenance: resolved paragraph/table-style spacing survives on empty paragraphs. */
@@ -1184,7 +1184,7 @@ export type TableAttrs = {
    */
   _resolvedCellMargins?: TableAttrs["cellMargins"];
   /** Effective table indent after style resolution. PM-only; never serialized. */
-  _resolvedIndent?: NonNullable<TableFormatting["indent"]>;
+  _resolvedIndent?: DeepReadonly<NonNullable<TableFormatting["indent"]>>;
   /** Style-derived table justification fallback. PM-only; never serialized. */
   _resolvedJustification?: NonNullable<TableFormatting["justification"]>;
   /** Effective table direction after style resolution. PM-only; never serialized. */

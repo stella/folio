@@ -11,11 +11,13 @@
  */
 
 import type {
+  RecordField,
   Theme,
   ThemeColorScheme,
   ThemeFont,
   ThemeFontScheme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import {
   findChild,
   findChildren,
@@ -418,8 +420,8 @@ export function applyThemeFontLang(
  * @returns Hex color value (6 characters, no #)
  */
 export function getThemeColor(
-  theme: Theme | null | undefined,
-  slot: keyof ThemeColorScheme,
+  theme: DeepReadonly<Theme> | null | undefined,
+  slot: RecordField<ThemeColorScheme>,
 ): string {
   if (!theme?.colorScheme) {
     return DEFAULT_COLORS[slot] ?? "000000";
@@ -436,7 +438,7 @@ export function getThemeColor(
  * @returns Font family name
  */
 export function getMajorFont(
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   script: string = "latin",
 ): string {
   if (!theme?.fontScheme?.majorFont) {
@@ -472,7 +474,7 @@ export function getMajorFont(
  * @returns Font family name
  */
 export function getMinorFont(
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   script: string = "latin",
 ): string {
   if (!theme?.fontScheme?.minorFont) {
@@ -510,7 +512,7 @@ export function getMinorFont(
  * @returns Font family name
  */
 export function resolveThemeFontRef(
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   themeRef: string,
 ): string {
   if (!themeRef) {
@@ -548,7 +550,9 @@ export function resolveThemeFontRef(
  * @param theme - Parsed theme
  * @returns Array of unique font family names
  */
-export function getThemeFonts(theme: Theme | null | undefined): string[] {
+export function getThemeFonts(
+  theme: DeepReadonly<Theme> | null | undefined,
+): string[] {
   const fonts = new Set<string>();
 
   if (theme?.fontScheme) {

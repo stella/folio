@@ -647,11 +647,13 @@ function buildCellBorderStyles(attrs: TableCellAttrs): string[] {
     return styles;
   }
 
-  const borderToCss = (border?: {
-    style?: BorderStyleValue;
-    size?: number;
-    color?: ColorValue;
-  }): string => {
+  const borderToCss = (
+    border?: DeepReadonly<{
+      style?: BorderStyleValue;
+      size?: number;
+      color?: ColorValue;
+    }>,
+  ): string => {
     if (!border || border.style === undefined || statesNoBorder(border.style)) {
       return "none";
     }
@@ -966,7 +968,7 @@ export type TableContextInfo = {
   hasMultiCellSelection?: boolean;
   canSplitCell?: boolean;
   /** Current cell's dominant border color, if any */
-  cellBorderColor?: ColorValue;
+  cellBorderColor?: DeepReadonly<ColorValue>;
   /** Current cell's background/fill color (RGB hex without #), if any */
   cellBackgroundColor?: string;
 };
