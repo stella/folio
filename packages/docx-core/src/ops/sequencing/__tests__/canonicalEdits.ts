@@ -1,18 +1,22 @@
 /**
  * Canonical edits for sequencing properties: editor intents compiled the way
  * a canonical session compiles them, and the package operations the session
- * builds directly (notes, styles, sections, headers, review decisions).
+ * builds directly (notes, styles, sections, headers, review decisions and
+ * comment threads, as the canonical comment compiler emits them).
  */
 import fc from "fast-check";
 
 import {
+  type Comment,
   type Document,
   type Paragraph,
   paragraphNumberingReference,
   type Table,
   type TableRow,
 } from "../../../model/document";
+import { applyDocumentOps } from "../../apply";
 import { storyBody, storyParagraphs } from "../../blocks";
+import { freshCommentId } from "../../comments";
 import {
   compileEditorIntent,
   createEditorIntentIdAllocator,
@@ -20,9 +24,13 @@ import {
   type EditorIntentMode,
 } from "../../editorIntent";
 import { formatParaId, type IdLease } from "../../idLease";
+import { leafSpans } from "../../leaves";
 import { paragraphLength } from "../../offsets";
 import { packageResourcesOpOf } from "../../packageResources";
+import { allocateCommentAnchorIds } from "../../plan";
 import {
+  type CommentAnchor,
+  type CreateCommentOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   OP_STORIES,
@@ -51,10 +59,17 @@ export const EDIT_KINDS = [
   "insertTable",
   "deleteTable",
   "note",
+  "deleteNote",
   "resources",
   "section",
   "header",
   "decide",
+  "comment",
+  "pointComment",
+  "reply",
+  "editComment",
+  "resolveComment",
+  "deleteComment",
 ] as const;
 export type EditKind = (typeof EDIT_KINDS)[number];
 
@@ -111,7 +126,10 @@ const cellRow = (ids: readonly string[], text: string): TableRow => ({
 
 const DATE = "2026-01-01T00:00:00Z";
 
-/** A body with plain, listed and suggested paragraphs, a table, a list and a section. */
+/**
+ * A body with plain, listed and suggested paragraphs, a table, a list, a
+ * footnote and a section.
+ */
 export const canonicalBase = (): Document => {
   const paragraphs = Array.from({ length: 6 }, (_, index) =>
     textParagraph(formatParaId(0x1000_0000 + index), `Paragraph ${index} text`),
@@ -143,7 +161,7 @@ export const canonicalBase = (): Document => {
       ),
     ),
   };
-  return {
+  const document: Document = {
     package: {
       // Fixed dates: a save stamps the current time on a package without them.
       properties: {
@@ -172,6 +190,26 @@ export const canonicalBase = (): Document => {
       styles: { styles: [{ styleId: "Normal", type: "paragraph" }] },
     },
   };
+  // The note goes in as the canonical note intent puts it there, at the end
+  // of the last paragraph.
+  const last = paragraphs.at(-1);
+  const noted = applyDocumentOps(document, [
+    {
+      type: DOCUMENT_OP_TYPES.ADD_NOTE,
+      at: {
+        story: OP_STORIES.MAIN,
+        blockId: last?.paraId ?? "",
+        offset: last === undefined ? 0 : paragraphLength(last),
+      },
+      note: {
+        type: "footnote",
+        id: 1,
+        content: [textParagraph(formatParaId(0x1000_0020), "Base note")],
+      },
+    },
+  ]);
+  if (noted.isErr()) throw noted.error;
+  return noted.value.document;
 };
 
 const pick = <Value>(
@@ -208,6 +246,45 @@ const revisionIds = (document: Document): number[] => {
   };
   visit(document.package.document.content);
   return ids;
+};
+
+// The note references of the main story, where a note deletion names them.
+const noteReferences = (
+  document: Document,
+): { at: TextPosition; id: number }[] =>
+  storyParagraphs(storyBody(document, OP_STORIES.MAIN)).flatMap(
+    ({ paragraph }) =>
+      leafSpans(paragraph.content).flatMap(({ node, before }) =>
+        node.type === "footnoteRef" && paragraph.paraId !== undefined
+          ? [
+              {
+                at: {
+                  story: OP_STORIES.MAIN,
+                  blockId: paragraph.paraId,
+                  offset: before.offset,
+                },
+                id: node.id,
+              },
+            ]
+          : [],
+      ),
+  );
+
+// The root of the thread a comment belongs to.
+const threadRoot = (
+  comments: readonly Comment[],
+  comment: Comment,
+): Comment => {
+  const byId = new Map(comments.map((record) => [record.id, record]));
+  let current = comment;
+  const seen = new Set<number>();
+  while (current.parentId !== undefined && !seen.has(current.id)) {
+    seen.add(current.id);
+    const parent = byId.get(current.parentId);
+    if (parent === undefined) break;
+    current = parent;
+  }
+  return current;
 };
 
 /**
@@ -249,6 +326,38 @@ export const compileCanonicalEdit = (
     return block?.type === "table" ? block : undefined;
   };
   const direct = (op: DocumentOp): readonly DocumentOp[] => [op];
+  // Comment commands apply as the canonical comment compiler checks them.
+  const checked = (
+    ops: readonly DocumentOp[],
+  ): readonly DocumentOp[] | undefined =>
+    applyDocumentOps(document, ops).isOk() ? ops : undefined;
+  const commentBody = (text: string): Paragraph[] => [
+    textParagraph(nextParagraphId(author.lease, serial), text),
+  ];
+  const comments = document.package.document.comments ?? [];
+  const picked = pick(comments, seed.b);
+  // Authored by the actor at a time of its own: no receiver stamps either.
+  const stamp = new Date(Date.UTC(2026, 0, 2) + serial * 1000).toISOString();
+  const createComment = (
+    anchor: CommentAnchor,
+  ): readonly DocumentOp[] | undefined => {
+    const id = freshCommentId(document, author.lease);
+    if (id.isErr()) return undefined;
+    const op: CreateCommentOp = {
+      type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+      comment: {
+        id: id.value,
+        author: author.actor,
+        date: stamp,
+        content: commentBody(`Comment ${serial}`),
+      },
+      anchor,
+    };
+    const newIds = allocateCommentAnchorIds(document, op, author.lease);
+    return newIds.isOk()
+      ? checked([{ ...op, newIds: newIds.value }])
+      : undefined;
+  };
   let intent: EditorIntent | undefined;
   switch (seed.kind) {
     case "type":
@@ -480,6 +589,58 @@ export const compileCanonicalEdit = (
         },
       });
     }
+    case "deleteNote": {
+      const reference = pick(noteReferences(document), seed.b);
+      if (reference === undefined) return undefined;
+      return direct({
+        type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+        at: reference.at,
+        story: { kind: "footnote", id: reference.id },
+      });
+    }
+    case "comment":
+      if (offset >= length) return undefined;
+      return createComment({ kind: "range", from: at(offset), to: at(end) });
+    case "pointComment":
+      return createComment({ kind: "point", at: at(offset) });
+    case "reply":
+      if (picked === undefined) return undefined;
+      return createComment({
+        kind: "reply",
+        parentId: threadRoot(comments, picked).id,
+      });
+    case "editComment":
+      if (picked === undefined) return undefined;
+      return checked([
+        {
+          type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+          id: picked.id,
+          content: commentBody(`Edit ${serial}`),
+        },
+      ]);
+    case "resolveComment":
+      if (picked === undefined) return undefined;
+      // Resolving a resolved comment reopens it.
+      return checked([
+        {
+          type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
+          id: picked.id,
+          status: picked.done === true ? "open" : "resolved",
+        },
+      ]);
+    case "deleteComment":
+      if (picked === undefined) return undefined;
+      return checked([
+        {
+          type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+          id: picked.id,
+          scope:
+            picked.parentId !== undefined &&
+            comments.some(({ id }) => id === picked.parentId)
+              ? "reply"
+              : "thread",
+        },
+      ]);
     case "resources": {
       const styles = document.package.styles ?? { styles: [] };
       return direct(
@@ -517,7 +678,14 @@ export const compileCanonicalEdit = (
         story: { kind: "header", rId: `rIdHeader${author.tag}x${serial}` },
         referenceType:
           (["default", "first", "even"] as const)[seed.b % 3] ?? "default",
-        content: [textParagraph(nextParagraphId(author.lease, serial), "")],
+        // An empty header paragraph has no run, as the header intent makes it.
+        content: [
+          {
+            type: "paragraph",
+            paraId: nextParagraphId(author.lease, serial),
+            content: [],
+          },
+        ],
       });
     case "decide": {
       const id = pick(revisionIds(document), seed.b);
