@@ -1135,114 +1135,130 @@ describe("tracked operations and their resolution", () => {
         reviewDocumentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
         (document, seeds: OpSeed[]) => {
-          let current = document;
-          const stamps: RevisionStamp[] = [];
-          const kinds: DocumentOpType[] = [];
-          let keptEarlier = false;
-          for (const [index, seed] of seeds.entries()) {
-            const op = trackedOpFor(current, seed, index);
-            const applied = applyDocumentOp(current, op);
-            if (applied.isErr()) continue;
-            const stamp = stampOf(op);
-            if (stamp === undefined) continue;
-            keptEarlier ||= keptEarlierChange(
+          let dbgCurrent = document;
+          try {
+            let current = document;
+            const stamps: RevisionStamp[] = [];
+            const kinds: DocumentOpType[] = [];
+            let keptEarlier = false;
+            for (const [index, seed] of seeds.entries()) {
+              const op = trackedOpFor(current, seed, index);
+              const applied = applyDocumentOp(current, op);
+              if (applied.isErr()) continue;
+              const stamp = stampOf(op);
+              if (stamp === undefined) continue;
+              keptEarlier ||= keptEarlierChange(
+                current,
+                op,
+                new Set(stampedIds(current, stamps)),
+              );
+              kinds.push(kindOf(op));
+              stamps.push(stamp);
+              current = applied.value.document;
+              dbgCurrent = current;
+            }
+            // An operation's revisions: every record carrying its stamp, pieces later
+            // operations cut from them included.
+            const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
+            const all = perOp.flat();
+            if (all.length === 0) return;
+            // A kind counts once its revisions reach the checks below.
+            for (const [index, ids] of perOp.entries())
+              if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
+            // The run's own revisions: at once, and one operation's at a time.
+            const rejectedAtOnce = resolved(
               current,
-              op,
-              new Set(stampedIds(current, stamps)),
+              all,
+              REVISION_DECISIONS.REJECT,
             );
-            kinds.push(kindOf(op));
-            stamps.push(stamp);
-            current = applied.value.document;
-          }
-          // An operation's revisions: every record carrying its stamp, pieces later
-          // operations cut from them included.
-          const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
-          const all = perOp.flat();
-          if (all.length === 0) return;
-          // A kind counts once its revisions reach the checks below.
-          for (const [index, ids] of perOp.entries())
-            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
-          // The run's own revisions: at once, and one operation's at a time.
-          const rejectedAtOnce = resolved(
-            current,
-            all,
-            REVISION_DECISIONS.REJECT,
-          );
-          const rejectedInTurn = resolvedInTurn(
-            current,
-            perOp.toReversed(),
-            REVISION_DECISIONS.REJECT,
-          );
-          if (
-            !Bun.deepEquals(
+            const rejectedInTurn = resolvedInTurn(
+              current,
+              perOp.toReversed(),
+              REVISION_DECISIONS.REJECT,
+            );
+            if (
+              !Bun.deepEquals(
+                projected(rejectedAtOnce, "π′"),
+                projected(rejectedInTurn, "π′"),
+                true,
+              )
+            ) {
+              const steps: unknown[] = [];
+              let cur = current;
+              for (const ids of perOp.toReversed()) {
+                cur = resolved(cur, ids, REVISION_DECISIONS.REJECT);
+                steps.push({ ids, body: cur.package.document.content });
+              }
+              console.error(
+                "L3DEBUG " +
+                  JSON.stringify({
+                    source: document.package.document.content,
+                    tracked: current.package.document.content,
+                    perOp,
+                    atOnce: rejectedAtOnce.package.document.content,
+                    steps,
+                  }),
+              );
+            }
+            assertExactModel(
               projected(rejectedAtOnce, "π′"),
               projected(rejectedInTurn, "π′"),
-              true,
-            )
-          ) {
-            const steps: unknown[] = [];
-            let cur = current;
-            for (const ids of perOp.toReversed()) {
-              cur = resolved(cur, ids, REVISION_DECISIONS.REJECT);
-              steps.push({ ids, body: cur.package.document.content });
+            );
+            // A split at a paragraph's end is given back under the new paragraph's id.
+            if (!keptEarlier) {
+              expectRejectedTo({
+                rejected: rejectedAtOnce,
+                tracked: current,
+                ids: all,
+                expected: document,
+                projection: "π′",
+              });
             }
+            // Every revision (A*, J*): the run's in turn first, or all at once.
+            const acceptedInTurn = resolvedInTurn(
+              current,
+              perOp,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
+            const turnAccepted = resolvedAll(
+              acceptedInTurn,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            if (allAccepted !== undefined && turnAccepted !== undefined) {
+              count(tally, "A*");
+              assertExactModel(
+                projected(allAccepted, "π′"),
+                projected(turnAccepted, "π′"),
+              );
+            }
+            const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
+            const originalRejected = resolvedAll(
+              document,
+              REVISION_DECISIONS.REJECT,
+            );
+            if (allRejected !== undefined && originalRejected !== undefined) {
+              count(tally, "J*");
+              expectRejectedTo({
+                rejected: allRejected,
+                tracked: current,
+                ids: all,
+                expected: originalRejected,
+                projection: "π′",
+              });
+            }
+            dbgCurrent = current;
+          } catch (error) {
             console.error(
-              "L3DEBUG " +
+              "L3DUMP " +
                 JSON.stringify({
+                  stack: String((error as Error).stack).slice(0, 3000),
+                  message: String((error as Error).message).slice(0, 3000),
                   source: document.package.document.content,
-                  tracked: current.package.document.content,
-                  perOp,
-                  atOnce: rejectedAtOnce.package.document.content,
-                  steps,
+                  tracked: dbgCurrent.package.document.content,
                 }),
             );
-          }
-          assertExactModel(
-            projected(rejectedAtOnce, "π′"),
-            projected(rejectedInTurn, "π′"),
-          );
-          // A split at a paragraph's end is given back under the new paragraph's id.
-          if (!keptEarlier) {
-            expectRejectedTo({
-              rejected: rejectedAtOnce,
-              tracked: current,
-              ids: all,
-              expected: document,
-              projection: "π′",
-            });
-          }
-          // Every revision (A*, J*): the run's in turn first, or all at once.
-          const acceptedInTurn = resolvedInTurn(
-            current,
-            perOp,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
-          const turnAccepted = resolvedAll(
-            acceptedInTurn,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          if (allAccepted !== undefined && turnAccepted !== undefined) {
-            count(tally, "A*");
-            assertExactModel(
-              projected(allAccepted, "π′"),
-              projected(turnAccepted, "π′"),
-            );
-          }
-          const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
-          const originalRejected = resolvedAll(
-            document,
-            REVISION_DECISIONS.REJECT,
-          );
-          if (allRejected !== undefined && originalRejected !== undefined) {
-            count(tally, "J*");
-            expectRejectedTo({
-              rejected: allRejected,
-              tracked: current,
-              ids: all,
-              expected: originalRejected,
-              projection: "π′",
-            });
+            throw error;
           }
         },
       );
