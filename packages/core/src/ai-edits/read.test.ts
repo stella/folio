@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
+import { buildCleanBlockText } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
   getTrackedChangesFromDoc,
@@ -132,4 +133,26 @@ test("comment quotes span unmarked runs and paragraphs after a save", () => {
 
   expect(quotes(live)).toEqual(["helloXXXworldoutsideagain"]);
   expect(quotes(reopened)).toEqual(quotes(live));
+});
+
+test("a comment quote reads line breaks and tabs as the block text does", () => {
+  const comment = schema.mark("comment", { commentId: 21 });
+  const paragraph = schema.node("paragraph", { paraId: "00000003" }, [
+    schema.text("Opening "),
+    schema.text("schedule", [comment]),
+    schema.node("hardBreak", null, null, [comment]),
+    schema.text("Notice", [comment]),
+    schema.node("tab", null, null, [comment]),
+    schema.text("period", [comment]),
+  ]);
+  const live = schema.node("doc", null, [paragraph]);
+  const blockText = buildCleanBlockText(paragraph, 0).text;
+
+  expect(blockText).toBe("Opening schedule\nNotice\tperiod");
+  expect(
+    getCommentAnchorsFromDoc(live).map(({ commentId, quote }) => ({
+      commentId,
+      quote,
+    })),
+  ).toEqual([{ commentId: 21, quote: blockText.slice("Opening ".length) }]);
 });

@@ -43,6 +43,8 @@ import {
   FIXTURES,
   IMPORTED_MOVE_FIXTURE,
   importedMoveDocument,
+  LINE_BREAK_FIXTURE,
+  lineBreakDocument,
   openReviewer,
   pinnedParaIdsOf,
   STORY_FIXTURES,
@@ -889,6 +891,7 @@ const loadFixture = ({
 }: LoadFixtureOptions): Promise<Uint8Array> => {
   if (fixture === LARGE_DOCUMENT_FIXTURE) return largeDocument();
   if (fixture === IMPORTED_MOVE_FIXTURE) return importedMoveDocument();
+  if (fixture === LINE_BREAK_FIXTURE) return lineBreakDocument();
   if (isPublicCorpusFixture(fixture)) return loadPublicCorpusFixture(fixture);
   const load = flowFixtures(kind, generation)[fixture];
   if (load === undefined) {
