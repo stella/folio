@@ -97,11 +97,12 @@ function inlineText(content: readonly ParagraphContent[]): string {
       case "run":
         out += runText(item);
         break;
+      // A link's text is its runs' and its fields' cached results.
       case "hyperlink":
         for (const child of item.children) {
-          if (child.type === "run") {
-            out += runText(child);
-          }
+          if (child.type === "run") out += runText(child);
+          else if (child.type === "complexField")
+            out += inlineText(child.fieldResult);
         }
         break;
       case "complexField":

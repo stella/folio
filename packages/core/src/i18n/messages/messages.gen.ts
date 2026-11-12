@@ -340,6 +340,7 @@ type Messages = {
     "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.";
     "editor": {
       "accessibleName": "Document editor";
+      "changeUnavailable": "This change can't be made here yet.";
       "contentLocked": "This part of the document is locked.";
       "editing": "Editing";
       "editingDescription": "Edit the document directly";

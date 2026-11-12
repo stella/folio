@@ -11,6 +11,11 @@ import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { lowerTableAttributeCommand } from "../prosemirror/canonicalTableCommands";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema, singletonManager } from "../prosemirror/schema";
+import {
+  columnResizeCommand,
+  rightEdgeResizeCommand,
+  rowResizeCommand,
+} from "../prosemirror/tableResize";
 import type { Document } from "../types/document";
 import {
   type CanonicalSession,
@@ -332,4 +337,103 @@ describe("table attribute commands in the canonical session", () => {
     if (inner?.type !== "table") return panic("No nested table.");
     expect(inner.rows[0]?.cells[0]?.formatting?.shading).toBeUndefined();
   });
+});
+
+describe("table resizes in the canonical session", () => {
+  // A drag on a column border, the table's right edge or a row border runs a
+  // resize command; the session applies what the editor would save for it.
+  const sized = (): Document => {
+    const document = tableDocument();
+    const table = document.package.document.content[1];
+    if (table?.type !== "table") return panic("No table.");
+    table.columnWidths = [2400, 2400];
+    return document;
+  };
+  const tablePosition = (state: EditorState) => {
+    let found: number | undefined;
+    state.doc.descendants((node, position) => {
+      if (found !== undefined) return false;
+      if (node.type.name === "table") found = position;
+      return found === undefined;
+    });
+    return found ?? panic("No table.");
+  };
+  const grid = (document: Document) => {
+    const table = document.package.document.content.find(
+      (block) => block.type === "table",
+    );
+    return table?.type === "table" ? table.columnWidths : undefined;
+  };
+  const RESIZES = {
+    "column border": (pmStart: number) =>
+      columnResizeCommand({
+        pmStart,
+        colIdx: 0,
+        newLeft: 3000,
+        newRight: 1800,
+      }),
+    "right edge": (pmStart: number) =>
+      rightEdgeResizeCommand({ pmStart, colIdx: 1, newWidth: 3600 }),
+    "row border": (pmStart: number) =>
+      rowResizeCommand({ pmStart, rowIdx: 1, newHeight: 900 }),
+  } as const;
+  for (const [name, resize] of Object.entries(RESIZES))
+    test(`a ${name} drag applies what the editor would save, and undoes`, async () => {
+      const source = await parseDocx(
+        (await prepareCanonicalDocxInput(await createDocx(sized()))).unwrap(),
+        { preloadFonts: false, detectVariables: false },
+      );
+      const session = createCanonicalSession(source).unwrap();
+      const state = EditorState.create({
+        schema,
+        doc: session.projection.doc,
+      });
+      const command = resize(tablePosition(state));
+      let direct = state;
+      expect(
+        command(state, (transaction) => {
+          direct = state.apply(transaction);
+        }),
+      ).toBe(true);
+      const expected = fromProseDoc(direct.doc, session.document, {
+        stylesheetSource: { type: "package" },
+      });
+      const before = session.document;
+      const intents = getCanonicalCommandIntents(command, state);
+      if (intents === undefined) return panic(`${name} has no lowering.`);
+      const commit = prepareCanonicalCommands(session, state, intents).unwrap();
+      expect(commit.publish().isOk()).toBe(true);
+      expect([tableOf(session.document), grid(session.document)]).toEqual([
+        tableOf(expected),
+        grid(expected),
+      ]);
+      const undone = session
+        .prepareUndo(state.apply(commit.transaction))
+        .unwrap();
+      expect(undone.publish().isOk()).toBe(true);
+      expect(session.document).toEqual(before);
+
+      // Suggesting, the resize is recorded as a change to review.
+      const suggesting = createCanonicalSession(source).unwrap();
+      suggesting.setMode({ type: "suggesting", author: "Reviewer" });
+      const tracked = EditorState.create({
+        schema,
+        doc: suggesting.projection.doc,
+      });
+      const trackedIntents = getCanonicalCommandIntents(
+        resize(tablePosition(tracked)),
+        tracked,
+      );
+      if (trackedIntents === undefined)
+        return panic(`${name} has no lowering.`);
+      expect(
+        prepareCanonicalCommands(suggesting, tracked, trackedIntents)
+          .unwrap()
+          .publish()
+          .isOk(),
+      ).toBe(true);
+      expect(JSON.stringify(suggesting.document.package.document)).toMatch(
+        /gridChange|PropertyChange|propertyChange/u,
+      );
+    });
 });

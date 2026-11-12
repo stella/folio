@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Esta sessão de edição foi assumida em outro lugar.",
     "editor": {
       "accessibleName": "Editor de documentos",
+      "changeUnavailable": "Ainda não é possível fazer esta alteração aqui.",
       "contentLocked": "Esta parte do documento está bloqueada.",
       "editing": "Editando",
       "editingDescription": "Edite o documento diretamente",

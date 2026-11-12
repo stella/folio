@@ -1,4 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "@stll/typescript-config/react-library.json"
+  "extends": "@stll/typescript-config/react-library.json",
+  "compilerOptions": {
+    "types": ["node"]
+  }
 }

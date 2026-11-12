@@ -1,4 +1,16 @@
+import type { NumberingDefinitions } from "../types/document";
 import { createNumericIdAllocator } from "./numericIdAllocator";
+
+/**
+ * Every `w:numId` `definitions` holds: the instances it defines and the ids a
+ * paragraph or style names without a definition, which a new list never takes.
+ */
+export const numberingNumIdsTaken = (
+  definitions: NumberingDefinitions | null | undefined,
+): number[] => [
+  ...(definitions?.nums ?? []).map(({ numId }) => numId),
+  ...(definitions?.danglingNumIds ?? []),
+];
 
 type NumberingKind = "num" | "abstract";
 

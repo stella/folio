@@ -21,6 +21,7 @@ import {
   ContentControlLockedError,
   ContentControlTypeError,
 } from "../../content-controls";
+import { readPaintedContentControlKey } from "../../utils/paintedPositions";
 import {
   findBlockSdtMatch,
   setContentControlValueTr,
@@ -109,7 +110,6 @@ export const CONTENT_CONTROL_WIDGET_EVENT_NAME = "folio:content-control-widget";
 const SDT_DATASET_KEY = {
   checked: "sdtChecked",
   listItems: "sdtListItems",
-  pmPos: "sdtPmPos",
   tag: "sdtTag",
   type: "sdtType",
 } as const;
@@ -176,7 +176,7 @@ export const handleContentControlWidgetClick = ({
   // pmPos is what addresses the clicked instance unambiguously. The
   // painter stamps it from the SdtGroup; tag is kept on the event
   // for telemetry but is no longer the addressing key.
-  const pmPosRaw = anchor.dataset[SDT_DATASET_KEY.pmPos];
+  const pmPosRaw = readPaintedContentControlKey(anchor);
   const pmPos = pmPosRaw ? Number.parseInt(pmPosRaw, 10) : Number.NaN;
   if (!sdtType || Number.isNaN(pmPos)) {
     return false;

@@ -38,12 +38,25 @@ export const createSequencer = (
   }
   let current = document;
   const journal: SequencedBatch[] = [];
-  const results = new Map<string, BatchSubmission>();
+  // A replayed outcome answers only the actor whose batch first claimed the id.
+  const results = new Map<
+    string,
+    { actor: unknown; outcome: BatchSubmission }
+  >();
 
   const submit = (batch: DocumentBatch): BatchSubmission => {
     const previous = results.get(batch.opId);
     if (previous !== undefined) {
-      return previous;
+      if (previous.actor === batch.actor) return previous.outcome;
+      return {
+        type: SUBMISSION_TYPES.REJECT,
+        opId: batch.opId,
+        reason: new BatchRejection({
+          reason: BATCH_REJECTION_REASONS.CONFLICT,
+          message: "The operation id was already submitted by another actor.",
+        }),
+        headRev: journal.length,
+      };
     }
     const reject = (reason: BatchRejection): BatchReject => {
       const outcome: BatchReject = {
@@ -52,7 +65,7 @@ export const createSequencer = (
         reason,
         headRev: journal.length,
       };
-      results.set(batch.opId, outcome);
+      results.set(batch.opId, { actor: batch.actor, outcome });
       return outcome;
     };
     const validated = validateDocumentBatch(batch);
@@ -136,7 +149,7 @@ export const createSequencer = (
       opId: batch.opId,
       rev: revision,
     };
-    results.set(batch.opId, ack);
+    results.set(batch.opId, { actor: batch.actor, outcome: ack });
     return ack;
   };
 

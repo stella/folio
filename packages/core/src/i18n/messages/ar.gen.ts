@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "فتح علامة تبويب أو نافذة أو جهاز آخر هذا المستند للتعديل، لذا تم تحرير هذه الجلسة. تم الحفاظ على التغييرات المحلية غير المحفوظة؛ أعد فتح المستند للمتابعة.",
     "editor": {
       "accessibleName": "محرر المستندات",
+      "changeUnavailable": "لا يمكن إجراء هذا التغيير هنا بعد.",
       "contentLocked": "هذا الجزء من المستند مقفل.",
       "editing": "تحرير",
       "editingDescription": "تحرير المستند مباشرةً",

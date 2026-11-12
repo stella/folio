@@ -593,3 +593,54 @@ test("document font facts cache keys use content fingerprints", () => {
     hashParagraphBlock(blockWithFacts(equalSerifFacts)),
   );
 });
+
+test("a paragraph an edit only moved keeps its cached measurement", () => {
+  withFakeTextMeasure(
+    () => {
+      const at = (shift: number) =>
+        ({
+          kind: "paragraph",
+          id: "moved",
+          pmStart: 40 + shift,
+          pmEnd: 80 + shift,
+          runs: [
+            {
+              kind: "text",
+              text: "Moved words",
+              pmStart: 41 + shift,
+              pmEnd: 52 + shift,
+            },
+            { kind: "tab", pmStart: 52 + shift, pmEnd: 53 + shift },
+            { kind: "lineBreak", pmStart: 53 + shift, pmEnd: 54 + shift },
+            {
+              kind: "field",
+              fieldType: "OTHER",
+              fallback: "7",
+              pmStart: 54 + shift,
+              pmEnd: 55 + shift,
+            },
+            {
+              kind: "text",
+              text: "after",
+              pmStart: 55 + shift,
+              pmEnd: 60 + shift,
+            },
+          ],
+        }) as const satisfies ParagraphBlock;
+      clearAllCaches();
+      const fresh = measureParagraphBlock(at(1), 200);
+      clearAllCaches();
+      const measured = measureParagraphBlock(at(0), 200);
+      expect(measured).toEqual(fresh);
+      expect(hashParagraphBlock(at(1))).toBe(hashParagraphBlock(at(0)));
+      expect(getCachedParagraphMeasure(at(1), 200)).toBe(measured);
+      const edited = {
+        ...at(1),
+        runs: [{ kind: "text", text: "Moved wordsx" }],
+      } as const satisfies ParagraphBlock;
+      expect(getCachedParagraphMeasure(edited, 200)).toBeUndefined();
+      clearAllCaches();
+    },
+    { charWidth: fixedCharWidth(7) },
+  );
+});

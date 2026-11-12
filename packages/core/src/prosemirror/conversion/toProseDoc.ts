@@ -41,6 +41,7 @@ import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   proseParagraphAttrsWithoutPropertySource,
   recreateProseNodeWithParagraphPropertySource,
+  sealParagraphFacts,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
 import {
@@ -176,8 +177,10 @@ import {
   runIdentityAttrs,
 } from "../runIdentity";
 import {
+  CarrierContinuationCache,
   continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks,
   continueSourceCarrierIdentitiesAcrossRevisions,
+  continueSourceCarrierIdentitiesKeeping,
 } from "../runIdentityAcrossRevisions";
 import {
   hasDirectRunFormatting,
@@ -214,7 +217,11 @@ import {
   canCarryTrackedRunMark,
   trackedRunInlineAtomDisposition,
 } from "../trackedRunInlineAtoms";
-import { assertValidProseMirrorDocument } from "../validation";
+import {
+  assertValidProseMirrorDocument,
+  assertValidProseMirrorDocumentKeeping,
+  type ValidatedStory,
+} from "../validation";
 import {
   resolveEffectiveTableCellFormatting,
   type TableCellMarginsAttrs,
@@ -245,6 +252,19 @@ export type ToProseDocOptions = {
    * already use. Absent means nobody is listening, not that nothing happened.
    */
   warn?: ParseContext["warn"];
+  /**
+   * Blocks converted by earlier projections of the same story, reused where
+   * nothing a block's conversion read has changed. See
+   * {@link createProjectionBlockCache}.
+   */
+  blockCache?: ProjectionBlockCache;
+  /**
+   * The salt of minted text-box anchor ids. Each conversion draws its own;
+   * a block cache keeps one for every projection it serves, and a caller
+   * comparing a cached projection with a fresh one gives the fresh one the
+   * cache's salt.
+   */
+  textBoxGroupSalt?: string;
 };
 
 /** Records that a page break is projected less than exactly. */
@@ -290,11 +310,18 @@ type TrackedRunFormattingResolvers = {
  * span carrying a guessed/copied id could collide with and hijack a real
  * text box anchored in a completely different document.
  */
-const createTextBoxGroupIdFactory = (): (() => string) => {
-  const salt = Math.random().toString(36).slice(2, 10);
-  let index = 0;
-  return () => `${salt}:${index++}`;
-};
+const newTextBoxGroupSalt = (): string =>
+  Math.random().toString(36).slice(2, 10);
+
+/** Text-box group ids under one salt, counted from `counter`. */
+const textBoxGroupIdsFrom =
+  (salt: string, counter: { value: number }): (() => string) =>
+  () =>
+    `${salt}:${counter.value++}`;
+
+const createTextBoxGroupIdFactory = (
+  salt: string = newTextBoxGroupSalt(),
+): (() => string) => textBoxGroupIdsFrom(salt, { value: 0 });
 
 type HyperlinkInstanceIndexAllocator = () => number;
 type RunIdentityIdAllocator = () => number;
@@ -368,28 +395,15 @@ type BookmarkBoundaryCount = {
 };
 
 /**
- * Find bookmark pairs across every editable inline wrapper in a document story.
- * Each endpoint is converted at its own structural position, so a range may
- * start outside a hyperlink and end inside it (or the inverse).
+ * Every bookmark boundary of a story's blocks, in the document order the
+ * conversion meets them, across every editable inline wrapper. Each endpoint
+ * is converted at its own structural position, so a range may start outside
+ * a hyperlink and end inside it (or the inverse).
  */
-export const collectPairedBookmarkIds = (
+export const visitBookmarkBoundaries = (
   blocks: readonly BlockContent[],
-): ReadonlySet<number> => {
-  const counts = new Map<number, BookmarkBoundaryCount>();
-  let position = 0;
-  const countBoundary = (id: number, type: "start" | "end"): void => {
-    const count = counts.get(id) ?? { starts: 0, ends: 0 };
-    if (type === "start") {
-      count.starts += 1;
-      count.firstStart ??= position;
-    } else {
-      count.ends += 1;
-      count.firstEnd ??= position;
-    }
-    position += 1;
-    counts.set(id, count);
-  };
-
+  countBoundary: (id: number, type: "start" | "end") => void,
+): void => {
   const countMarkersWhere = (
     markers: readonly PositionedBookmarkMarker[] | undefined,
     stands: (index: number) => boolean,
@@ -447,9 +461,8 @@ export const collectPairedBookmarkIds = (
         // A transparent wrapper the link was authored around; the bookmarks
         // and runs inside it are the link's own.
         case "inlineWrapper":
-          for (const wrapped of child.content) {
-            visitParagraphContent(wrapped);
-          }
+        case "complexField":
+          visitParagraphContent(child);
           break;
         default: {
           const unsupported: never = child;
@@ -577,7 +590,13 @@ export const collectPairedBookmarkIds = (
   };
 
   visitBlocks(blocks);
-  return new Set(
+};
+
+/** The bookmarks whose one start opens before their one end. */
+const pairedOf = (
+  counts: ReadonlyMap<number, BookmarkBoundaryCount>,
+): ReadonlySet<number> =>
+  new Set(
     [...counts].flatMap(([id, count]) =>
       count.starts === 1 &&
       count.ends === 1 &&
@@ -588,7 +607,394 @@ export const collectPairedBookmarkIds = (
         : [],
     ),
   );
+
+/** Bookmark boundaries counted in the order a story meets them. */
+class BookmarkBoundaryCounts {
+  readonly counts = new Map<number, BookmarkBoundaryCount>();
+  private position = 0;
+
+  count(id: number, type: "start" | "end"): void {
+    const count = this.counts.get(id) ?? { starts: 0, ends: 0 };
+    if (type === "start") {
+      count.starts += 1;
+      count.firstStart ??= this.position;
+    } else {
+      count.ends += 1;
+      count.firstEnd ??= this.position;
+    }
+    this.position += 1;
+    this.counts.set(id, count);
+  }
+
+  /** The bookmarks whose one start opens before their one end. */
+  paired(): ReadonlySet<number> {
+    return pairedOf(this.counts);
+  }
+}
+
+/** The bookmarks of a story's blocks whose one start opens before their one end. */
+export const collectPairedBookmarkIds = (
+  blocks: readonly BlockContent[],
+): ReadonlySet<number> => {
+  const boundaries = new BookmarkBoundaryCounts();
+  visitBookmarkBoundaries(blocks, (id, type) => boundaries.count(id, type));
+  return boundaries.paired();
 };
+
+/**
+ * What each field of the conversion context depends on: the package alone,
+ * or the story before the block being converted. A block's conversion reads
+ * the package fields freely; it reads the story fields only through a
+ * recorder, so a converted block is reused only where every story fact it
+ * read still holds. Total over the context: a field added to it does not
+ * compile until it is placed in one half or the other.
+ */
+const CONVERSION_CONTEXT_DEPENDENCY = {
+  listRenderings: "package",
+  numbering: "package",
+  theme: "package",
+  pageBreakRunSourceDescendants: "package",
+  warnPageBreakProjection: "package",
+  createMark: "package",
+  nextTextBoxGroupId: "story",
+  nextHyperlinkInstanceIndex: "story",
+  nextNoteReferenceOccurrenceId: "story",
+  pairedBookmarkIds: "story",
+  storyRangedCommentIds: "story",
+  openCommentIds: "story",
+} as const satisfies Record<keyof TableConversionContext, "package" | "story">;
+
+type ContextDependency = typeof CONVERSION_CONTEXT_DEPENDENCY;
+type PackageContextField = {
+  [K in keyof ContextDependency]: ContextDependency[K] extends "package"
+    ? K
+    : never;
+}[keyof ContextDependency];
+type StoryContextField = Exclude<
+  keyof TableConversionContext,
+  PackageContextField
+>;
+/** The conversion context a block may read without recording. */
+type PackageConversionContext = Pick<
+  TableConversionContext,
+  PackageContextField
+>;
+/** The story facts a block's conversion reads, each through its recorder. */
+type StoryConversionContext = Pick<TableConversionContext, StoryContextField>;
+
+/** Whether a story holds an id: all a block's conversion asks of a story id set. */
+type IdMembership = Pick<ReadonlySet<number>, "has">;
+
+/** A membership whose answers a block's conversion read, recorded to check later. */
+class RecordedMembership implements IdMembership {
+  readonly answers = new Map<number, boolean>();
+  private readonly source: IdMembership;
+  constructor(source: IdMembership) {
+    this.source = source;
+  }
+  has(value: number): boolean {
+    const answer = this.source.has(value);
+    this.answers.set(value, answer);
+    return answer;
+  }
+}
+
+/** One story counter, as the conversion advances it. */
+type StoryCounter = { value: number };
+
+/** The story state a block conversion starts from and advances. */
+type StoryState = {
+  textBoxGroups: StoryCounter;
+  hyperlinks: StoryCounter;
+  noteOccurrences: StoryCounter;
+  pairedBookmarkIds: IdMembership;
+  storyRangedCommentIds: IdMembership;
+  openCommentIds: Set<number>;
+};
+
+type SetReads = { answers: ReadonlyMap<number, boolean> };
+
+/** Every story fact one block's conversion read, and how far it advanced the story. */
+type StoryReads = {
+  textBoxGroups: { start: number; taken: number; used: boolean };
+  hyperlinks: { start: number; taken: number };
+  noteOccurrences: { start: number; taken: number };
+  pairedBookmarkIds: SetReads;
+  storyRangedCommentIds: SetReads;
+  /** The comments open at the block's start and end, one array when the same. */
+  openCommentIds: { start: readonly number[]; end: readonly number[] };
+};
+
+const setReadsHold = (reads: SetReads, set: IdMembership): boolean => {
+  for (const [value, answer] of reads.answers)
+    if (set.has(value) !== answer) return false;
+  return true;
+};
+
+/** Whether `set` holds exactly `ids`, in their order. */
+const holdsInOrder = (ids: readonly number[], set: ReadonlySet<number>) => {
+  if (ids.length !== set.size) return false;
+  let index = 0;
+  for (const id of set) {
+    if (ids[index] !== id) return false;
+    index += 1;
+  }
+  return true;
+};
+
+const storyReadsHold = (reads: StoryReads, state: StoryState): boolean =>
+  (!reads.textBoxGroups.used ||
+    reads.textBoxGroups.start === state.textBoxGroups.value) &&
+  (reads.hyperlinks.taken === 0 ||
+    reads.hyperlinks.start === state.hyperlinks.value) &&
+  (reads.noteOccurrences.taken === 0 ||
+    reads.noteOccurrences.start === state.noteOccurrences.value) &&
+  setReadsHold(reads.pairedBookmarkIds, state.pairedBookmarkIds) &&
+  setReadsHold(reads.storyRangedCommentIds, state.storyRangedCommentIds) &&
+  // In the set's own order: comment marks are added in it.
+  holdsInOrder(reads.openCommentIds.start, state.openCommentIds);
+
+/** Advance the story past a block whose reads hold, as converting it would. */
+const advanceStory = (reads: StoryReads, state: StoryState): void => {
+  state.textBoxGroups.value += reads.textBoxGroups.taken;
+  state.hyperlinks.value += reads.hyperlinks.taken;
+  state.noteOccurrences.value += reads.noteOccurrences.taken;
+  // The reads held, so the open comments are the start ones: a block that
+  // opened or closed none leaves them as they are.
+  if (reads.openCommentIds.end === reads.openCommentIds.start) return;
+  state.openCommentIds.clear();
+  for (const id of reads.openCommentIds.end) state.openCommentIds.add(id);
+};
+
+const setReadsOf = (set: RecordedMembership): SetReads => ({
+  answers: set.answers,
+});
+
+/**
+ * Fix the facts kept outside the fields of a block's paragraphs, a table's
+ * too: a converted block is reused while it is the same object, so they must
+ * stay the ones it was converted with.
+ */
+const sealBlockFacts = (block: Paragraph | Table): void => {
+  const visit = (blocks: readonly BlockContent[]): void => {
+    for (const child of blocks) {
+      switch (child.type) {
+        case "paragraph":
+          sealParagraphFacts(child);
+          break;
+        case "table":
+          for (const row of child.rows)
+            for (const cell of row.cells) visit(cell.content);
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          visit(child.content);
+          break;
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          break;
+        default: {
+          const _: never = child;
+          return _;
+        }
+      }
+    }
+  };
+  visit([block]);
+};
+
+type CachedBlock = {
+  nodes: readonly PMNode[];
+  reads: StoryReads;
+};
+
+type ProjectionPackageInputs = {
+  styles: StyleDefinitions | undefined;
+  theme: Theme | null;
+  numbering: NumberingDefinitions | undefined;
+  warn: ParseContext["warn"] | undefined;
+};
+
+/** One block's bookmark boundaries, in document order, and comment range starts. */
+type BlockMarkers = {
+  bookmarks: readonly (readonly [number, "start" | "end"])[];
+  commentStarts: readonly number[];
+};
+
+const NO_BLOCK_MARKERS: BlockMarkers = { bookmarks: [], commentStarts: [] };
+
+/**
+ * Converted blocks kept across projections of one story.
+ *
+ * A block is the same object in the next document when an edit left it, so
+ * its nodes can be reused where the story facts its conversion read are the
+ * same: the counters it drew from, the comments open at its start, and the
+ * bookmark and comment ids it asked about. The package inputs (styles,
+ * theme, numbering) are part of the cache: a projection over other ones
+ * starts the cache over.
+ */
+export class ProjectionBlockCache {
+  readonly salt: string = newTextBoxGroupSalt();
+  /** The story's top-level blocks as the last pass continued them. */
+  readonly carriers = new CarrierContinuationCache();
+  /** The last story document that passed validation. */
+  validated: ValidatedStory | undefined;
+  private inputs: ProjectionPackageInputs | undefined;
+  private context:
+    (PackageConversionContext & { styleResolver: StyleEngine }) | undefined;
+  private blocks = new WeakMap<Paragraph | Table, CachedBlock>();
+  /** Each top-level block's comment range starts and bookmark boundaries. */
+  private markers = new WeakMap<BlockContent, BlockMarkers>();
+
+  /**
+   * `collectPairedBookmarkIds` and `rangedCommentIds` of a story's blocks,
+   * from what each block holds, kept by the block: a block an edit left is
+   * not walked again.
+   */
+  storyMarkers(blocks: readonly BlockContent[]): {
+    pairedBookmarkIds: ReadonlySet<number>;
+    rangedCommentIds: ReadonlySet<number>;
+  } {
+    const boundaries = new BookmarkBoundaryCounts();
+    const ranged = new Set<number>();
+    for (const block of blocks) {
+      let markers = this.markers.get(block);
+      if (markers === undefined) {
+        const bookmarks: [number, "start" | "end"][] = [];
+        visitBookmarkBoundaries([block], (id, type) =>
+          bookmarks.push([id, type]),
+        );
+        const commentStarts = [...rangedCommentIds([block])];
+        markers =
+          bookmarks.length === 0 && commentStarts.length === 0
+            ? NO_BLOCK_MARKERS
+            : { bookmarks, commentStarts };
+        this.markers.set(block, markers);
+      }
+      if (markers === NO_BLOCK_MARKERS) continue;
+      for (const [id, type] of markers.bookmarks) boundaries.count(id, type);
+      for (const id of markers.commentStarts) ranged.add(id);
+    }
+    return { pairedBookmarkIds: boundaries.paired(), rangedCommentIds: ranged };
+  }
+
+  /** The package context for these inputs, the cache started over if they changed. */
+  packageContext(
+    inputs: ProjectionPackageInputs,
+  ): PackageConversionContext & { styleResolver: StyleEngine } {
+    const current = this.inputs;
+    if (
+      this.context !== undefined &&
+      current !== undefined &&
+      current.styles === inputs.styles &&
+      current.theme === inputs.theme &&
+      current.numbering === inputs.numbering &&
+      current.warn === inputs.warn
+    )
+      return this.context;
+    this.inputs = inputs;
+    this.blocks = new WeakMap();
+    this.context = {
+      styleResolver: createStyleEngine(inputs.styles),
+      listRenderings: new Map<string, ResolvedListRendering>(),
+      numbering:
+        inputs.numbering === undefined
+          ? undefined
+          : getCachedNumberingMap(inputs.numbering),
+      theme: inputs.theme,
+      // Answers per queried object, so one index serves every projection.
+      pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex([]),
+      warnPageBreakProjection: pageBreakProjectionWarn(inputs.warn),
+      createMark: createMarkInterner(schema),
+    };
+    return this.context;
+  }
+
+  /**
+   * The nodes of `paragraph` from the story state it starts at, reused when
+   * every story fact its last conversion read still holds, else converted.
+   */
+  block(
+    block: Paragraph | Table,
+    state: StoryState,
+    convert: (context: TableConversionContext) => PMNode[],
+  ): readonly PMNode[] {
+    const known = this.blocks.get(block);
+    if (known !== undefined && storyReadsHold(known.reads, state)) {
+      advanceStory(known.reads, state);
+      return known.nodes;
+    }
+    const context =
+      this.context ?? panic("A block cache converts after its package context");
+    const textBoxGroups = { start: state.textBoxGroups.value, taken: 0 };
+    const hyperlinks = { start: state.hyperlinks.value, taken: 0 };
+    const noteOccurrences = { start: state.noteOccurrences.value, taken: 0 };
+    const pairedBookmarkIds = new RecordedMembership(state.pairedBookmarkIds);
+    const storyRangedCommentIds = new RecordedMembership(
+      state.storyRangedCommentIds,
+    );
+    const openStart = [...state.openCommentIds];
+    const story: StoryConversionContext = {
+      nextTextBoxGroupId: () => {
+        textBoxGroups.taken += 1;
+        return `${this.salt}:${state.textBoxGroups.value++}`;
+      },
+      nextHyperlinkInstanceIndex: () => {
+        hyperlinks.taken += 1;
+        return state.hyperlinks.value++;
+      },
+      nextNoteReferenceOccurrenceId: () => {
+        noteOccurrences.taken += 1;
+        return `source-note:${state.noteOccurrences.value++}`;
+      },
+      pairedBookmarkIds,
+      storyRangedCommentIds,
+      openCommentIds: state.openCommentIds,
+    };
+    const blockContext: TableConversionContext = {
+      listRenderings: context.listRenderings,
+      numbering: context.numbering,
+      theme: context.theme,
+      pageBreakRunSourceDescendants: context.pageBreakRunSourceDescendants,
+      warnPageBreakProjection: context.warnPageBreakProjection,
+      createMark: context.createMark,
+      ...story,
+    };
+    const nodes = convert(blockContext);
+    // A minted text-box id carries the salt; a block holding none of them
+    // reads the same wherever its group number falls.
+    const saltMark = `"${this.salt}:`;
+    const reads: StoryReads = {
+      textBoxGroups: {
+        ...textBoxGroups,
+        used: nodes.some((node) =>
+          JSON.stringify(node.toJSON()).includes(saltMark),
+        ),
+      },
+      hyperlinks,
+      noteOccurrences,
+      pairedBookmarkIds: setReadsOf(pairedBookmarkIds),
+      storyRangedCommentIds: setReadsOf(storyRangedCommentIds),
+      openCommentIds: {
+        start: openStart,
+        end: holdsInOrder(openStart, state.openCommentIds)
+          ? openStart
+          : [...state.openCommentIds],
+      },
+    };
+    // As the conversion left them: it may record facts of its own.
+    sealBlockFacts(block);
+    this.blocks.set(block, { nodes, reads });
+    return nodes;
+  }
+}
 
 /**
  * Convert a Document to a ProseMirror document
@@ -608,32 +1014,53 @@ export function toProseDoc(
   // The save-side `w:rStyle` reconciliation relies on this: without it, an
   // unexpanded run would look like the user stripped the style's formatting
   // (eigenpal/docx-editor#833).
-  const styleResolver = createStyleEngine(
-    options?.styles ?? document.package.styles,
-  );
-  const theme = options?.theme ?? document.package.theme ?? null;
-  const nextTextBoxGroupId = createTextBoxGroupIdFactory();
-  const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const nextNoteReferenceOccurrenceId =
-    createNoteReferenceOccurrenceAllocator();
-  const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
-  const conversionContext = {
-    listRenderings: new Map<string, ResolvedListRendering>(),
-    numbering:
-      document.package.numbering === undefined
-        ? undefined
-        : getCachedNumberingMap(document.package.numbering),
-    theme,
-    nextTextBoxGroupId,
-    nextHyperlinkInstanceIndex,
-    nextNoteReferenceOccurrenceId,
-    pairedBookmarkIds,
-    pageBreakRunSourceDescendants:
-      buildPageBreakRunSourceDescendantIndex(paragraphs),
-    storyRangedCommentIds: rangedCommentIds(paragraphs),
+  const cache = options?.blockCache;
+  const packageInputs: ProjectionPackageInputs = {
+    styles: options?.styles ?? document.package.styles,
+    theme: options?.theme ?? document.package.theme ?? null,
+    numbering: document.package.numbering,
+    warn: options?.warn,
+  };
+  const shared = cache?.packageContext(packageInputs);
+  shared?.pageBreakRunSourceDescendants.include(paragraphs);
+  const styleResolver =
+    shared?.styleResolver ?? createStyleEngine(packageInputs.styles);
+  const salt =
+    cache?.salt ?? options?.textBoxGroupSalt ?? newTextBoxGroupSalt();
+  const storyMarkers = cache?.storyMarkers(paragraphs) ?? {
+    pairedBookmarkIds: collectPairedBookmarkIds(paragraphs),
+    rangedCommentIds: rangedCommentIds(paragraphs),
+  };
+  const story: StoryState = {
+    textBoxGroups: { value: 0 },
+    hyperlinks: { value: 0 },
+    noteOccurrences: { value: 0 },
+    pairedBookmarkIds: storyMarkers.pairedBookmarkIds,
+    storyRangedCommentIds: storyMarkers.rangedCommentIds,
     openCommentIds: new Set<number>(),
-    warnPageBreakProjection: pageBreakProjectionWarn(options?.warn),
-    createMark: createMarkInterner(schema),
+  };
+  const conversionContext: TableConversionContext = {
+    listRenderings:
+      shared?.listRenderings ?? new Map<string, ResolvedListRendering>(),
+    numbering:
+      shared?.numbering ??
+      (packageInputs.numbering === undefined
+        ? undefined
+        : getCachedNumberingMap(packageInputs.numbering)),
+    theme: shared?.theme ?? packageInputs.theme,
+    nextTextBoxGroupId: textBoxGroupIdsFrom(salt, story.textBoxGroups),
+    nextHyperlinkInstanceIndex: () => story.hyperlinks.value++,
+    nextNoteReferenceOccurrenceId: () =>
+      `source-note:${story.noteOccurrences.value++}`,
+    pairedBookmarkIds: story.pairedBookmarkIds,
+    pageBreakRunSourceDescendants:
+      shared?.pageBreakRunSourceDescendants ??
+      buildPageBreakRunSourceDescendantIndex(paragraphs),
+    storyRangedCommentIds: story.storyRangedCommentIds,
+    openCommentIds: story.openCommentIds,
+    warnPageBreakProjection:
+      shared?.warnPageBreakProjection ?? pageBreakProjectionWarn(options?.warn),
+    createMark: shared?.createMark ?? createMarkInterner(schema),
   };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -642,14 +1069,27 @@ export function toProseDoc(
       switch (block.type) {
         case "paragraph":
           out.push(
-            ...convertParagraphWithTextBoxes(block, styleResolver, {
-              textBoxGroupId: nextTextBoxGroupId(),
-              context: conversionContext,
-            }),
+            ...(cache === undefined
+              ? convertParagraphWithTextBoxes(block, styleResolver, {
+                  textBoxGroupId: conversionContext.nextTextBoxGroupId(),
+                  context: conversionContext,
+                })
+              : cache.block(block, story, (context) =>
+                  convertParagraphWithTextBoxes(block, styleResolver, {
+                    textBoxGroupId: context.nextTextBoxGroupId(),
+                    context,
+                  }),
+                )),
           );
           break;
         case "table":
-          out.push(convertTable(block, styleResolver, conversionContext));
+          out.push(
+            ...(cache === undefined
+              ? [convertTable(block, styleResolver, conversionContext)]
+              : cache.block(block, story, (context) => [
+                  convertTable(block, styleResolver, context),
+                ])),
+          );
           break;
         case "blockSdt":
           out.push(convertBlockSdt(block, convertBodyBlocks));
@@ -701,6 +1141,11 @@ export function toProseDoc(
   if (nodes.length === 0) {
     nodes.push(schema.node("paragraph", {}, []));
   }
+  const suggestedComments = suggestedCommentIdsOf(document);
+  if (suggestedComments.size > 0) {
+    for (const [index, node] of nodes.entries())
+      nodes[index] = withSuggestedCommentMarks(node, suggestedComments);
+  }
 
   const finalSectionStart =
     document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
@@ -718,15 +1163,73 @@ export function toProseDoc(
         _adjustLineHeightInTable: adjustLineHeightInTable,
         _doNotUseIndentAsNumberingTabStop: doNotUseIndentAsNumberingTabStop,
       },
-      [...continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(nodes)],
+      [
+        ...(cache === undefined
+          ? continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(nodes)
+          : continueSourceCarrierIdentitiesKeeping(nodes, cache.carriers)),
+      ],
     ),
   );
-  assertValidProseMirrorDocument(
-    pmDoc,
-    "Document conversion produced an invalid ProseMirror document",
-  );
+  const invalid =
+    "Document conversion produced an invalid ProseMirror document";
+  if (cache === undefined) assertValidProseMirrorDocument(pmDoc, invalid);
+  else
+    cache.validated = assertValidProseMirrorDocumentKeeping(
+      pmDoc,
+      invalid,
+      cache.validated,
+    );
   return pmDoc;
 }
+
+/** The comments pending suggestions propose, by comment id. */
+const suggestedCommentIdsOf = (document: Document): Map<number, string> => {
+  const suggested = new Map<number, string>();
+  for (const comment of document.package.document.comments ?? [])
+    if (comment.suggestionId !== undefined)
+      suggested.set(comment.id, comment.suggestionId);
+  return suggested;
+};
+
+/**
+ * Give the comment marks of a proposed comment the suggestion that proposes
+ * it, so the editor lists, accepts and rejects the comment with it. Nodes
+ * with nothing to stamp are returned as they are.
+ */
+const withSuggestedCommentMarks = (
+  node: PMNode,
+  suggested: ReadonlyMap<number, string>,
+): PMNode => {
+  let marks: readonly Mark[] = node.marks;
+  for (const mark of node.marks) {
+    if (mark.type.name !== "comment") continue;
+    const suggestionId = suggested.get(mark.attrs["commentId"]);
+    if (
+      suggestionId === undefined ||
+      mark.attrs["suggestionId"] === suggestionId
+    )
+      continue;
+    marks = node.type.schema
+      .mark(mark.type, { ...mark.attrs, suggestionId })
+      .addToSet(mark.removeFromSet(marks));
+  }
+  if (node.childCount === 0)
+    return marks === node.marks ? node : node.mark(marks);
+  const children: PMNode[] = [];
+  let changed = marks !== node.marks;
+  for (let index = 0; index < node.childCount; index += 1) {
+    const child = node.child(index);
+    const stamped = withSuggestedCommentMarks(child, suggested);
+    changed ||= stamped !== child;
+    children.push(stamped);
+  }
+  return changed
+    ? recreateProseNodeWithParagraphPropertySource(node, {
+        content: children,
+        marks,
+      })
+    : node;
+};
 
 /**
  * Carry a block folio does not model into the editor as a zero-width node.
@@ -1379,7 +1882,10 @@ function applyCommentMarks(nodes: PMNode[], commentIds: Set<number>): PMNode[] {
 }
 
 function anchorPointComment(nodes: PMNode[], commentId: number): void {
-  const commentMark = schema.marks["comment"]?.create({ commentId });
+  const commentMark = schema.marks["comment"]?.create({
+    commentId,
+    point: true,
+  });
   if (!commentMark) {
     return;
   }
@@ -1442,6 +1948,27 @@ const withTrackedRunMark = (
     return node.mark(mark.addToSet(node.marks));
   }
   return node;
+};
+
+/** A revision's info as the review surface reads it: a suggestion's says so. */
+const suggestedRevisionInfo = <Info extends { suggestionId?: string }>(
+  info: Info,
+): Info | (Info & { provenance: "suggested" }) =>
+  info.suggestionId === undefined ? info : { ...info, provenance: "suggested" };
+
+/**
+ * The mark a run's property changes ride. Changes that all belong to one
+ * pending suggestion show as that suggestion, as tracked text does.
+ */
+const runPropertyChangeMark = (changes: readonly RunPropertyChange[]): Mark => {
+  const suggestionIds = new Set(changes.map(({ info }) => info.suggestionId));
+  const [suggestionId] = suggestionIds;
+  return schema.mark("runPropertyChange", {
+    changes: [...changes],
+    ...(suggestionIds.size === 1 && suggestionId !== undefined
+      ? { provenance: "suggested", suggestionId }
+      : {}),
+  });
 };
 
 /**
@@ -1693,6 +2220,11 @@ function convertTrackedChange(
     date: change.info.date ?? null,
     utcDate: change.info.utcDate?.value ?? null,
     initials: change.info.initials ?? null,
+    // A revision of a pending suggestion shows as one, so the review surface
+    // offers it as the suggestion it is.
+    ...(change.info.suggestionId === undefined
+      ? {}
+      : { provenance: "suggested", suggestionId: change.info.suggestionId }),
     moveKind,
     _docxOuterWrapperCount: wrappedBy.length,
     _docxResolutionJoins: change.resolutionJoins ?? null,
@@ -1786,7 +2318,12 @@ function paragraphFormattingToAttrs(
   // through into PM attrs.
   if (paragraph.propertyChanges && paragraph.propertyChanges.length > 0) {
     attrs._propertyChanges = paragraph.propertyChanges.map(
-      ({ previousFormatting, ...change }) => {
+      ({ previousFormatting, ...modelChange }) => {
+        // A change of a pending suggestion shows as that suggestion.
+        const change = {
+          ...modelChange,
+          info: suggestedRevisionInfo(modelChange.info),
+        };
         // Attr and model carry the same union now; the numbering still crosses
         // through the codec, which is what keeps the two slots from trading
         // shapes the next time one of them moves.
@@ -1820,7 +2357,13 @@ function paragraphFormattingToAttrs(
     attrs._preservedAttributes = paragraph.preservedAttributes;
   }
   if (paragraph.pPrMark) {
-    attrs.pPrMark = paragraph.pPrMark;
+    attrs.pPrMark =
+      paragraph.pPrMark.info.suggestionId === undefined
+        ? paragraph.pPrMark
+        : {
+            ...paragraph.pPrMark,
+            info: suggestedRevisionInfo(paragraph.pPrMark.info),
+          };
   }
 
   // Helper: assign a value only when defined
@@ -2121,10 +2664,10 @@ type TableConversionContext = {
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
   nextNoteReferenceOccurrenceId: () => string;
-  pairedBookmarkIds: ReadonlySet<number>;
+  pairedBookmarkIds: IdMembership;
   pageBreakRunSourceDescendants: PageBreakRunSourceDescendantIndex;
   /** Comments the story opens a range for, for the point-comment question. */
-  storyRangedCommentIds: ReadonlySet<number>;
+  storyRangedCommentIds: IdMembership;
   warnPageBreakProjection: PageBreakProjectionWarn;
   /** Shares one mark instance per distinct run formatting across the conversion. */
   createMark: MarkFactory;
@@ -3207,9 +3750,7 @@ function convertField(
     resultPropertyChanges &&
     resultPropertyChanges.length > 0
   ) {
-    marks.push(
-      schema.mark("runPropertyChange", { changes: [...resultPropertyChanges] }),
-    );
+    marks.push(runPropertyChangeMark(resultPropertyChanges));
   }
   const fieldNode = schema.node(
     createStructuredField ? "structuredField" : "field",
@@ -3607,9 +4148,7 @@ function convertRun(
     createMark: runScope.createMark,
   });
   if (run.propertyChanges && run.propertyChanges.length > 0) {
-    marks.push(
-      schema.mark("runPropertyChange", { changes: [...run.propertyChanges] }),
-    );
+    marks.push(runPropertyChangeMark(run.propertyChanges));
   }
   const identity = runIdentityMark(run, runScope.nextRunIdentityId);
   if (identity) {
@@ -4056,7 +4595,7 @@ const RUN_FORMATTING_INFERENCE = {
   italic: "ordinary-toggle",
   italicCs: "structural",
   underline: "underline",
-  strike: "visible-boolean",
+  strike: "strike",
   doubleStrike: "double-strike",
   vertAlign: "visible-value",
   smallCaps: "visible-boolean",
@@ -4092,6 +4631,7 @@ const RUN_FORMATTING_INFERENCE = {
 } as const satisfies Record<
   keyof TextFormatting,
   | "color"
+  | "strike"
   | "double-strike"
   | "font-family"
   | "font-size"
@@ -4237,6 +4777,21 @@ const canReconstructAuthoredRunFormatting = ({
           Reflect.get(directValue, "color") === undefined &&
           sameFormattingValue(directValue, effectiveValue) &&
           !sameFormattingValue(directValue, inheritedValue)
+        ) {
+          continue;
+        }
+        return false;
+      case "strike":
+        // A double strike paints over a single one: the marks then show no
+        // single strike to rebuild from, whoever states the double.
+        if (directValue === false) {
+          continue;
+        }
+        if (
+          directValue === true &&
+          inheritedFormatting?.strike !== true &&
+          inheritedFormatting?.doubleStrike !== true &&
+          effectiveFormatting?.doubleStrike !== true
         ) {
           continue;
         }
@@ -5168,11 +5723,7 @@ function convertHyperlink(
           createMark: runScope.createMark,
         });
         if (child.propertyChanges && child.propertyChanges.length > 0) {
-          runMarks.push(
-            schema.mark("runPropertyChange", {
-              changes: [...child.propertyChanges],
-            }),
-          );
+          runMarks.push(runPropertyChangeMark(child.propertyChanges));
         }
         const identity = runIdentityMark(child, runScope.nextRunIdentityId);
         if (identity) {
@@ -5199,6 +5750,24 @@ function convertHyperlink(
             }),
           );
         }
+        break;
+      }
+      // A field the link holds whole: the field atom carries the link mark,
+      // as the runs beside it do. Its result is runs only, so it opens no
+      // link of its own.
+      case "complexField": {
+        const fieldNode = convertField(child, {
+          getInheritedRunFormatting,
+          styleResolver,
+          nextHyperlinkInstanceIndex: () =>
+            panic("A complex field result holds no hyperlink."),
+          runScope,
+          textBoxAnchors,
+          openCommentIds,
+        });
+        if (fieldNode)
+          childNodes.push(fieldNode.mark(linkMark.addToSet(fieldNode.marks)));
+        commentsAlreadyApplied = true;
         break;
       }
       // `Hyperlink["children"]` holds the four above and the wrapper the lift

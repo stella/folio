@@ -28,11 +28,14 @@ import {
   parseCopyOriginAncestors,
   parseParagraphMarkResolutionJoin,
   parseResolutionJoins,
+  parseSplitResolutionPiece,
+  reviewProvenanceIssue,
   ReviewResolutionProvenanceError,
   serializeBoundaryJoins,
   serializeCopyOriginAncestors,
   serializeParagraphMarkResolutionJoin,
   serializeResolutionJoins,
+  serializeSplitResolutionPiece,
 } from "./reviewResolutionProvenance";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializePartElement } from "./serializer/partNamespaces";
@@ -214,7 +217,7 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
   });
 }
 
-test("malformed and future provenance is refused instead of discarded", () => {
+test("malformed and future provenance is dropped on read and reported", () => {
   for (const encoded of [
     "not-json",
     ...[
@@ -272,9 +275,9 @@ test("malformed and future provenance is refused instead of discarded", () => {
     const node = element(
       `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:resolutionJoins="${escaped}"/>`,
     );
-    expect(() => parseResolutionJoins(node)).toThrow(
-      ReviewResolutionProvenanceError,
-    );
+    // Advisory metadata: the reader drops it, and says why.
+    expect(parseResolutionJoins(node)).toBeUndefined();
+    expect(reviewProvenanceIssue("resolutionJoins", encoded)).toBeDefined();
   }
   expect(
     parseResolutionJoins(
@@ -298,9 +301,8 @@ test("paragraph cut provenance validates private envelopes and typed projection 
     const node = element(
       `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:resolutionJoin="${escapeXmlAttribute(encoded)}"/>`,
     );
-    expect(() => parseParagraphMarkResolutionJoin(node)).toThrow(
-      ReviewResolutionProvenanceError,
-    );
+    expect(parseParagraphMarkResolutionJoin(node)).toEqual({});
+    expect(reviewProvenanceIssue("resolutionJoin", encoded)).toBeDefined();
   }
   assertExactModel(
     parseParagraphMarkResolutionJoin(
@@ -333,6 +335,94 @@ test("paragraph cut provenance validates private envelopes and typed projection 
     });
     const parsed = readParagraphAttrs(node);
     expect(parsed.ok).toBe(false);
+  }
+});
+
+test("a cut record's identity handoff has its own private attribute", () => {
+  const joins = {
+    before: 0,
+    after: 2,
+    remove: 0,
+    retainedEnclosing: [
+      {
+        levels: 1,
+        source: [{ space: "revision", id: 7 }],
+        target: [{ space: "revision", id: 2 }],
+      },
+    ],
+  } as const;
+  const written = serializeResolutionJoins(joins);
+  // Its own attribute beside the joins, never a field inside them: a reader
+  // that does not know it keeps the joins and drops only the handoff.
+  expect(written).toContain("folio:retainedEnclosing=");
+  const stored = /folio:resolutionJoins="([^"]*)"/u.exec(written)?.[1] ?? "";
+  expect(stored).not.toContain("retainedEnclosing");
+  const read = (attributes: string) =>
+    parseResolutionJoins(
+      element(
+        `<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${attributes}/>`,
+      ),
+    );
+  expect(read(written)).toEqual(joins);
+  // A split change carries it on its first piece, beside the piece's joins.
+  const piece = serializeSplitResolutionPiece({ piece: 0, pieces: 2, joins });
+  expect(piece).toContain("folio:retainedEnclosing=");
+  expect(
+    parseSplitResolutionPiece(
+      element(`<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${piece}/>`),
+    ),
+  ).toEqual({ piece: 0, pieces: 2, joins });
+  // An unreadable handoff drops only itself, and says so.
+  const { retainedEnclosing: _handoff, ...withoutHandoff } = joins;
+  for (const encoded of [
+    JSON.stringify({
+      version: 1,
+      value: [{ levels: 0, source: [], target: [] }],
+    }),
+    JSON.stringify({ version: 2, value: joins.retainedEnclosing }),
+    "levels",
+  ]) {
+    const attributes = `${serializeResolutionJoins(withoutHandoff)} folio:retainedEnclosing="${escapeXmlAttribute(encoded)}"`;
+    expect(read(attributes)).toEqual(withoutHandoff);
+    expect(reviewProvenanceIssue("retainedEnclosing", encoded)).toBeDefined();
+  }
+  // Inside the joins attribute it is not folio's own writing: dropped.
+  expect(
+    read(
+      ` folio:resolutionJoins="${escapeXmlAttribute(JSON.stringify({ version: 1, value: joins }))}"`,
+    ),
+  ).toBeUndefined();
+});
+
+test("the paragraph a rejected mark keeps has its own private attribute", () => {
+  const mark = {
+    kind: "ins",
+    info: { id: 3, author: "Reviewer" },
+    resolutionJoin: 0,
+    survivor: "first",
+  } as const;
+  const written = serializeParagraphMarkResolutionJoin(mark);
+  // Its own attribute beside the join depth, never a field inside it.
+  expect(written).toContain("folio:rejectionSurvivor=");
+  expect(written).toContain("folio:resolutionJoin=");
+  const node = element(
+    `<r xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"${written}/>`,
+  );
+  expect(parseParagraphMarkResolutionJoin(node)).toEqual({
+    resolutionJoin: 0,
+    survivor: "first",
+  });
+  // An unreadable value drops only the marker, and says so.
+  for (const encoded of [
+    JSON.stringify({ version: 1, value: "second" }),
+    JSON.stringify({ version: 2, value: "first" }),
+    "first",
+  ]) {
+    const dropped = element(
+      `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:rejectionSurvivor="${escapeXmlAttribute(encoded)}"/>`,
+    );
+    expect(parseParagraphMarkResolutionJoin(dropped)).toEqual({});
+    expect(reviewProvenanceIssue("rejectionSurvivor", encoded)).toBeDefined();
   }
 });
 
@@ -371,16 +461,25 @@ test("copy-origin ancestry uses the bounded versioned private envelope", () => {
     const node = element(
       `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:copyOriginAncestors="${escapeXmlAttribute(invalid)}"/>`,
     );
-    expect(() => parseCopyOriginAncestors(node)).toThrow(
-      ReviewResolutionProvenanceError,
-    );
+    expect(parseCopyOriginAncestors(node)).toBeUndefined();
+    expect(reviewProvenanceIssue("copyOriginAncestors", invalid)).toBeDefined();
   }
   expect(() => serializeCopyOriginAncestors([])).toThrow(
     ReviewResolutionProvenanceError,
   );
 });
 
-test("save refuses provenance requiring unsupported hyperlink repartition", () => {
+/** The paragraph read back from what the serializer wrote for it. */
+const reopened = (xml: string): Paragraph => {
+  const root = element(
+    `<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}">${xml}</root>`,
+  );
+  const paragraph = findChild(root, "w", "p");
+  if (!paragraph) throw new TypeError("The paragraph disappeared.");
+  return parseParagraph(paragraph, null, null, null);
+};
+
+test("a change holding only a link keeps its joins through a save", () => {
   const paragraph = {
     type: "paragraph",
     content: [
@@ -400,12 +499,17 @@ test("save refuses provenance requiring unsupported hyperlink repartition", () =
       },
     ],
   } satisfies Paragraph;
-  expect(() => serializeParagraph(paragraph)).toThrow(
-    ReviewResolutionProvenanceError,
-  );
+  const xml = serializeParagraph(paragraph);
+  const change = reopened(xml).content[0];
+  expect(change?.type === "insertion" && change.resolutionJoins).toEqual({
+    before: 1,
+    after: 1,
+    remove: 1,
+  });
+  expect(serializeParagraph(reopened(xml))).toBe(xml);
 });
 
-test("nested hyperlink lifting refuses enclosing resolution provenance", () => {
+test("nested hyperlink lifting splits enclosing resolution provenance and reads it back", () => {
   const paragraph = {
     type: "paragraph",
     content: [
@@ -433,9 +537,19 @@ test("nested hyperlink lifting refuses enclosing resolution provenance", () => {
       },
     ],
   } satisfies Paragraph;
-  expect(() => serializeParagraph(paragraph)).toThrow(
-    ReviewResolutionProvenanceError,
-  );
+  const xml = serializeParagraph(paragraph);
+  expectNoHyperlinkInsideRevision(xml);
+  const change = reopened(xml).content[0];
+  expect(
+    change?.type === "insertion" && {
+      joins: change.resolutionJoins,
+      kinds: change.content.map(({ type }) => type),
+    },
+  ).toEqual({
+    joins: { before: 1, after: 1, remove: 1 },
+    kinds: ["run", "deletion", "run"],
+  });
+  expect(serializeParagraph(reopened(xml))).toBe(xml);
 });
 
 type RecursiveInlineContainerKind = Extract<
@@ -458,7 +572,7 @@ const RECURSIVE_CONTAINER_KINDS = {
 } satisfies Record<RecursiveInlineContainerKind, fc.Arbitrary<string>>;
 
 test(
-  "generated nested lifting refuses provenance and unsplit revisions retain it",
+  "generated nested lifting splits provenance into pieces and reads it back",
   () => {
     assertProperty(
       fc.property(
@@ -500,7 +614,8 @@ test(
               : [leaf];
           let owners = 0;
           let exposedLink = link === "linked";
-          let refusesSegmentation = false;
+          // Owners whose joins travel as split pieces around the lifted link.
+          let splitOwners = 0;
           for (const [index, kind] of kinds.entries()) {
             const retains =
               provenance === "every" ||
@@ -521,7 +636,7 @@ test(
               case "moveTo":
                 if (retains) {
                   owners++;
-                  if (exposedLink) refusesSegmentation = true;
+                  if (exposedLink) splitOwners++;
                 }
                 content = [
                   {
@@ -535,7 +650,7 @@ test(
               case "simpleField":
                 if (retains) {
                   owners++;
-                  if (exposedLink) refusesSegmentation = true;
+                  if (exposedLink) splitOwners++;
                 }
                 content = [
                   {
@@ -604,18 +719,18 @@ test(
             },
           ];
           const paragraph: Paragraph = { type: "paragraph", content };
-          if (refusesSegmentation) {
-            expect(() => serializeParagraph(paragraph)).toThrow(
-              ReviewResolutionProvenanceError,
-            );
-            return;
-          }
           const xml = serializeParagraph(paragraph);
           expectNoHyperlinkInsideRevision(xml);
           expect(xml.match(/folio:resolutionJoins=/gu)?.length ?? 0).toBe(
-            owners,
+            owners - splitOwners,
           );
-          if (owners > 0)
+          // Each split owner's first piece carries its joins.
+          expect(
+            xml.match(
+              /folio:splitResolutionJoins="[^"]*&quot;piece&quot;:0,&quot;pieces&quot;:\d+,&quot;joins&quot;/gu,
+            )?.length ?? 0,
+          ).toBe(splitOwners);
+          if (owners > splitOwners)
             expect(xml).toContain(serializeResolutionJoins(joins));
           const parsedRoot = element(
             `<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}">${xml}</root>`,
@@ -627,6 +742,25 @@ test(
             parseParagraph(parsedParagraph, null, null, null),
           );
           expectNoHyperlinkInsideRevision(reopenedXml);
+          // Reading the pieces back rebuilds each change with its joins, so
+          // writing it again writes the same pieces. The one shape the reader
+          // keeps as markup instead is a link whose lift stops at a content
+          // control with a transparent wrapper outermost below it and a change
+          // inside that wrapper: a revision inside a wrapper inside a link.
+          const lift = kinds.indexOf("inlineSdt");
+          const lifted = lift < 0 ? [] : kinds.slice(0, lift);
+          const wrapperKinds: ReadonlySet<string> = new Set([
+            "bidiEmbedding",
+            "bidiOverride",
+            "smartTag",
+            "customXml",
+          ]);
+          const capturedByReader =
+            link === "linked" &&
+            lifted.length > 0 &&
+            wrapperKinds.has(lifted.at(-1) ?? "") &&
+            lifted.some((kind) => !wrapperKinds.has(kind));
+          if (!capturedByReader) expect(reopenedXml).toBe(xml);
           expect(reopenedXml.match(/<w:hyperlink\b/gu)?.length ?? 0).toBe(
             link === "linked" ? 1 : 0,
           );
@@ -634,7 +768,7 @@ test(
       ),
       {
         numRuns: 80,
-        id: "generated nested lifting refuses provenance and unsplit revisions retain it",
+        id: "generated nested lifting splits provenance into pieces and reads it back",
       },
     );
   },
@@ -702,13 +836,16 @@ for (const provenance of ["none", "joins"] as const) {
         },
       ],
     } satisfies Paragraph;
-    if (provenance === "joins") {
-      expect(() => serializeParagraph(paragraph)).toThrow(
-        ReviewResolutionProvenanceError,
-      );
-      return;
-    }
     const xml = serializeParagraph(paragraph);
+    if (provenance === "joins") {
+      const change = reopened(xml).content[0];
+      expect(change?.type === "insertion" && change.resolutionJoins).toEqual({
+        before: 1,
+        after: 1,
+        remove: 1,
+      });
+    }
+    expect(serializeParagraph(reopened(xml))).toBe(xml);
     expectNoHyperlinkInsideRevision(xml);
     expect(xml).toContain("<w:hyperlink");
     expect(xml).toContain('<w:dir w:val="rtl">');

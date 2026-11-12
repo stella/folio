@@ -525,6 +525,26 @@ export const PACKAGE_OP_CASES = {
       },
     };
   },
+  setRevisionInfo: (args: CaseArgs): GeneratedCase => {
+    const index = GENERATED_PACKAGE_STORIES.findIndex(
+      (story) => JSON.stringify(story) === JSON.stringify(args.story),
+    );
+    if (index < 0) return panic("Unknown package fixture story.");
+    return {
+      document: args.document,
+      op: {
+        type: "setRevisionInfo",
+        story: args.story,
+        infos: [
+          {
+            id: 100 + index,
+            author: args.seed.inherit ? "Adopter" : "Reviewer",
+            date: "2026-02-02T00:00:00Z",
+          },
+        ],
+      },
+    };
+  },
   insertTable: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
     op: {

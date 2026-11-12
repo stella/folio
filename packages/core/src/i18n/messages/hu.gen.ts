@@ -341,6 +341,7 @@ export const messages: FolioMessages = {
     "editSessionTakenOver": "Ezt a szerkesztési munkamenetet máshol vették át.",
     "editor": {
       "accessibleName": "Dokumentumszerkesztő",
+      "changeUnavailable": "Ez a módosítás itt még nem hajtható végre.",
       "contentLocked": "A dokumentum ezen része zárolva van.",
       "editing": "Szerkesztés",
       "editingDescription": "A dokumentum közvetlen szerkesztése",

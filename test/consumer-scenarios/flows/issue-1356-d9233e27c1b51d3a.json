@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 1006712943: step 1: [batchSequential] the batch (tracked-changes: insertTable, insertAfterBlock, deleteBlock) leaves otherwise than its operations one at a time",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 1006712943,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3342232032,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "412DDC7F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "5CFDAD72",
+          "text": "Agreement written warranty agreement agreement delivery.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "6FFB97E7"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "commentOnRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from collisions flow seed 1006712943"
+}

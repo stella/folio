@@ -21,7 +21,7 @@ import {
   assertValidOoxmlNumericIds,
   escapeXmlAttribute,
 } from "@stll/docx-core";
-import { OOXML_NS, type OoxmlPrefix } from "@stll/docx-utils";
+import { OOXML_NS, type OoxmlPrefix } from "@stll/docx-core/xml/namespaces";
 
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "../reviewHistoryNamespace";
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";

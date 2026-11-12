@@ -95,8 +95,13 @@ for (const story of stories) {
             expect(view.state.selection.from).toBe(nativeOffset + 1);
             expect(view.state.selection.to).toBe(nativeOffset + 1);
             expect(view.state.doc).toBe(doc);
-            // Select-all remains a model selection spanning block boundaries.
+            // Select-all remains a model selection spanning block boundaries,
+            // painted as a native range over the whole story.
             view.dispatch(view.state.tr.setSelection(new AllSelection(doc)));
+            const fullRange = document.createRange();
+            fullRange.selectNodeContents(view.dom);
+            selection?.removeAllRanges();
+            selection?.addRange(fullRange);
             expect(typeText()).toBe(true);
             expect(view.state.selection).toBeInstanceOf(AllSelection);
             // A native navigation collapse must leave the select-all model.
@@ -108,8 +113,6 @@ for (const story of stories) {
             expect(view.state.selection.to).toBe(nativeOffset + 1);
             // Navigation with the full native selection keeps select-all.
             view.dispatch(view.state.tr.setSelection(new AllSelection(doc)));
-            const fullRange = document.createRange();
-            fullRange.selectNodeContents(view.dom);
             selection?.removeAllRanges();
             selection?.addRange(fullRange);
             view.dom.dispatchEvent(new KeyboardEvent("keyup", { key: "End" }));

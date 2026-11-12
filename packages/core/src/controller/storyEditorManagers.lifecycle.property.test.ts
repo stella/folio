@@ -51,6 +51,26 @@ const sourceDocument = (): Document => ({
   package: { document: { content: [paragraph("12345678", "Body")] } },
 });
 
+// Counts the deep copies `run` makes, so following the owner can be held to
+// reading its document instead of copying it on every edit.
+const copiesDuring = (run: () => void): number => {
+  const original = globalThis.structuredClone;
+  let copies = 0;
+  globalThis.structuredClone = ((
+    value: unknown,
+    options?: StructuredSerializeOptions,
+  ) => {
+    copies += 1;
+    return original(value, options);
+  }) as typeof structuredClone;
+  try {
+    run();
+  } finally {
+    globalThis.structuredClone = original;
+  }
+  return copies;
+};
+
 const harness = () => {
   const staleHostDocument = sourceDocument();
   const session = createCanonicalSession(staleHostDocument).unwrap();
@@ -62,13 +82,14 @@ const harness = () => {
     expect(prepared.publish().isOk()).toBe(true);
     expect(bodyState.doc.eq(session.projection.doc)).toBe(true);
   };
+  const readSessionDocument = () => {
+    if (frozen) panic("A pending composition snapshot was read.");
+    return unavailable ? null : session.document;
+  };
   const api = createHiddenEditorApi({
     getView: () => null,
     getDocumentContext: () => staleHostDocument,
-    getCanonicalDocument: () => {
-      if (frozen) panic("A pending composition snapshot was read.");
-      return unavailable ? null : session.document;
-    },
+    getCanonicalDocument: () => readSessionDocument(),
     isDestroying: () => false,
     ensureView: () => {},
     isViewRequested: () => true,
@@ -82,6 +103,7 @@ const harness = () => {
         frozen || unavailable ? null : session.projectStory(story).unwrap().doc,
       getCanonicalStorySelection: () => null,
       replaceCanonicalStoryText: () => false,
+      noteCanonicalStoryView: () => {},
       applyCanonicalStoryHistory: () => false,
     },
   });
@@ -90,6 +112,7 @@ const harness = () => {
   const deps = {
     getDocument: () => staleHostDocument,
     getCanonicalApi: () => api,
+    readCanonicalDocument: readSessionDocument,
     getExperimentalSession: () => "canonical" as const,
     getHost: () => host,
     getStyles: () => null,
@@ -98,8 +121,14 @@ const harness = () => {
   const notes = createNoteEditorManager(deps);
   const parts = createHeaderFooterEditorManager(deps);
   const sync = () => {
-    notes.sync();
-    parts.sync();
+    expect(
+      copiesDuring(() => {
+        notes.sync();
+        parts.sync();
+        notes.listStories();
+        parts.listSlots();
+      }),
+    ).toBe(0);
     expect(notes.listStories()).toEqual(
       enumerateDocumentNoteStories(session.document),
     );
@@ -405,6 +434,7 @@ for (const target of [
           getHost: () => storyHost,
           getDocument: () => source,
           getCanonicalApi: () => manager.api,
+          readCanonicalDocument: () => manager.readCanonicalDocument(),
           getExperimentalSession: () => "canonical" as const,
           getStyles: () => null,
           getTheme: () => null,

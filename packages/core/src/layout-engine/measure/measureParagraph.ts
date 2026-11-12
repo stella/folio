@@ -1309,7 +1309,7 @@ export function measureParagraph(
               chunkLeadingLetterSpacing +
               WIDTH_TOLERANCE;
             const remaining = measuredWord.slice(chunkStart);
-            let bestEnd = findMaxFittingLength(
+            const bestEnd = findMaxFittingLength(
               remaining,
               style,
               spaceLeft,

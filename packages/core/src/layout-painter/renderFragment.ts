@@ -11,6 +11,7 @@ import type {
   ParagraphFragment,
   TableFragment,
 } from "../layout-engine/types";
+import { writePaintedRange } from "../utils/paintedPositions";
 import type { RenderContext } from "./renderUtils";
 import { applySdtDataAttrs } from "./sdtBoundary";
 
@@ -86,12 +87,7 @@ function renderParagraphFragmentPlaceholder(
   el.dataset["fromLine"] = String(fragment.fromLine);
   el.dataset["toLine"] = String(fragment.toLine);
 
-  if (fragment.pmStart !== undefined) {
-    el.dataset["pmStart"] = String(fragment.pmStart);
-  }
-  if (fragment.pmEnd !== undefined) {
-    el.dataset["pmEnd"] = String(fragment.pmEnd);
-  }
+  writePaintedRange(el, fragment.pmStart, fragment.pmEnd);
 
   if (fragment.continuesFromPrev) {
     el.dataset["continuesFromPrev"] = "true";
@@ -125,12 +121,7 @@ function renderTableFragmentPlaceholder(
   el.dataset["fromRow"] = String(fragment.fromRow);
   el.dataset["toRow"] = String(fragment.toRow);
 
-  if (fragment.pmStart !== undefined) {
-    el.dataset["pmStart"] = String(fragment.pmStart);
-  }
-  if (fragment.pmEnd !== undefined) {
-    el.dataset["pmEnd"] = String(fragment.pmEnd);
-  }
+  writePaintedRange(el, fragment.pmStart, fragment.pmEnd);
 
   applySdtDataAttrs(el, fragment.sdtGroups);
 
@@ -152,12 +143,7 @@ function renderImageFragmentPlaceholder(
   // Store fragment metadata
   el.dataset["blockId"] = String(fragment.blockId);
 
-  if (fragment.pmStart !== undefined) {
-    el.dataset["pmStart"] = String(fragment.pmStart);
-  }
-  if (fragment.pmEnd !== undefined) {
-    el.dataset["pmEnd"] = String(fragment.pmEnd);
-  }
+  writePaintedRange(el, fragment.pmStart, fragment.pmEnd);
 
   if (fragment.isAnchored) {
     el.dataset["anchored"] = "true";

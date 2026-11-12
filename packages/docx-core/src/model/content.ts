@@ -344,9 +344,14 @@ export type Hyperlink = {
    * run-level `w:customXml`, so an author may write `w:hyperlink > w:bdo`.
    * That is the parse leg only: the editor carries a wrapper as a mark and the
    * save leg writes the canonical order, wrapper outside the link.
+   *
+   * A complex field whose `begin` and `end` both sit inside the link is one
+   * child: a table of contents links each entry's page number, a
+   * `PAGEREF`, together with its heading text.
    */
   children: (
     | Run
+    | ComplexField
     | BookmarkStart
     | BookmarkEnd
     | CommentRangeStart
@@ -1540,6 +1545,12 @@ export type Comment = {
   /** Whether the comment is resolved/done */
   done?: boolean;
   /**
+   * The pending suggestion that proposed this comment. In memory only, never
+   * written to a file: a save leaves a proposed comment out, accepting its
+   * suggestion clears this, and rejecting it removes the comment.
+   */
+  suggestionId?: string;
+  /**
    * Body markup `content` cannot hold: a table, an equation, a content
    * control, a bookmark or range marker, a tracked-change wrapper. The
    * schema lets a comment body hold everything a document body can, and a
@@ -1643,6 +1654,13 @@ export type TrackedChangeInfo = {
    * prefix of our choosing would name one that is not there.
    */
   utcDate?: { attribute: string; value: string };
+  /**
+   * The pending suggestion this revision belongs to. A suggestion is a set of
+   * revisions proposed together and accepted or rejected together; a revision
+   * without one is an ordinary tracked change. In memory only: no OOXML
+   * attribute carries it.
+   */
+  suggestionId?: string;
 };
 
 /**
@@ -1698,11 +1716,26 @@ type TrackedResolutionJoins = {
   after: number;
   /** Exact join depth when the wrapper is removed. */
   remove: number;
+  /**
+   * Sides where the wrapper now meets accepted new content rather than a
+   * source piece: resolving it joins plain runs there and nothing else.
+   */
+  plainSides?: readonly ("before" | "after")[];
   /** A split seam survives only while all intervening insertions await rejection. */
   deferredRemove?: readonly { depth: number; blockers: readonly number[] }[];
   /** Source identities handed to the retained suffix when a deleted prefix goes. */
   retainedAfter?: readonly {
     depth: number;
+    source: readonly { space: "revision" | "control"; id: number }[];
+    target: readonly { space: "revision" | "control"; id: number }[];
+  }[];
+  /**
+   * Identities of the record `levels` above this wrapper, handed to the
+   * piece of it that an edit cut off after this wrapper, when removing this
+   * wrapper leaves that record empty. Saved as its own ignorable attribute.
+   */
+  retainedEnclosing?: readonly {
+    levels: number;
     source: readonly { space: "revision" | "control"; id: number }[];
     target: readonly { space: "revision" | "control"; id: number }[];
   }[];
@@ -2356,6 +2389,14 @@ export type ParagraphMarkChange = {
   info: TrackedChangeInfo;
   /** Exact source-cut depth for rejection; absent in ordinary imported revisions. */
   resolutionJoin?: number | undefined;
+  /**
+   * Which paragraph rejecting this inserted mark keeps: `"first"` when the
+   * paragraph after it took over the mark this one had, so this one is the
+   * paragraph that was there before. Saved as folio's own ignorable review
+   * provenance, so rejecting it after a reopen keeps the same paragraph; a
+   * reader that does not know it joins as any rejected mark does.
+   */
+  survivor?: "first" | undefined;
 };
 
 export const REVIEW_CARRIERS = {

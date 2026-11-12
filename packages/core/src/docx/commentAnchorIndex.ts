@@ -129,6 +129,86 @@ export const visitCommentMarkers = (
   visitBlocks(blocks);
 };
 
+/** A paragraph's comment markers, in document order. */
+export type ParagraphCommentMarkers = (
+  paragraph: Paragraph,
+) => readonly CommentMarker[];
+
+/** A paragraph's comment markers, read from all of its content. */
+export const paragraphCommentMarkers: ParagraphCommentMarkers = (paragraph) => {
+  const markers: CommentMarker[] = [];
+  visitInlineContentSlots(paragraph, ({ item }) => {
+    if (
+      item.type === "commentRangeStart" ||
+      item.type === "commentRangeEnd" ||
+      item.type === "commentReference"
+    )
+      markers.push(item);
+  });
+  return markers;
+};
+
+/**
+ * Each paragraph's comment markers, read once per paragraph object. Only for
+ * documents whose paragraphs are never changed in place, as a session's
+ * versions are: an edit replaces the paragraphs it changes.
+ */
+export class CommentMarkerCache {
+  private readonly known = new WeakMap<Paragraph, readonly CommentMarker[]>();
+
+  readonly read: ParagraphCommentMarkers = (paragraph) => {
+    const kept = this.known.get(paragraph);
+    if (kept !== undefined) return kept;
+    const markers = paragraphCommentMarkers(paragraph);
+    this.known.set(paragraph, markers);
+    return markers;
+  };
+}
+
+/**
+ * Every comment marker of a story's blocks in the order
+ * {@link visitCommentMarkers} visits them, each paragraph's read through
+ * `markersOf`.
+ */
+export const visitCommentMarkerItems = (
+  blocks: readonly BlockContent[],
+  markersOf: ParagraphCommentMarkers,
+  visit: (item: CommentMarker | BlockCommentMarkerSlot["item"]) => void,
+): void => {
+  for (const block of blocks) {
+    switch (block.type) {
+      case "commentRangeStart":
+      case "commentRangeEnd":
+        visit(block);
+        break;
+      case "paragraph":
+        for (const marker of markersOf(block)) visit(marker);
+        break;
+      case "table":
+        for (const row of block.rows)
+          for (const cell of row.cells)
+            visitCommentMarkerItems(cell.content, markersOf, visit);
+        break;
+      case "blockSdt":
+      case "blockCustomXml":
+        visitCommentMarkerItems(block.content, markersOf, visit);
+        break;
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+        break;
+      default: {
+        const unhandled: never = block;
+        return unhandled;
+      }
+    }
+  }
+};
+
 /** Remove every serialized anchor record for comments whose definitions are retired. */
 export const removeCommentMarkers = (
   blocks: readonly BlockContent[],
@@ -325,6 +405,7 @@ export const removeCommentMarkers = (
       case "moveFromRangeEnd":
       case "moveToRangeStart":
       case "moveToRangeEnd":
+      case "complexField":
       case "preservedInline":
         return item;
     }

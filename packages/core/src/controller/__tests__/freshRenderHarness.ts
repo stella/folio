@@ -12,7 +12,8 @@
  *   ({@link FreshRenderRig.staleCommits});
  * - once settled, the committed layout equals a from-scratch layout of the same
  *   inputs, compared as painted line boxes: each line's text and width, each
- *   fragment's position ({@link projectLayout}).
+ *   fragment's position, with block ids renamed by order
+ *   ({@link projectLayout}).
  *
  * Event kinds are pluggable ({@link defineFreshRenderEventKind}), and a rig
  * carries extension state (`ext`) with extra pipeline deps and layout-input
@@ -31,6 +32,7 @@ import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Plugin, type Transaction } from "prosemirror-state";
 
+import { renameBlockIds } from "../../__tests__/renameBlockIds";
 import type { LayoutRunReason } from "../../layout-engine/layoutInstrumentation";
 import { clearAllCaches } from "../../layout-engine/measure/cache";
 import { resetCanvasContext } from "../../layout-engine/measure/measureContainer";
@@ -44,8 +46,12 @@ import { LayoutSelectionGate } from "../../paged-layout/LayoutSelectionGate";
 import { schema } from "../../prosemirror/schema";
 import type { Document } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
-import { type LayoutOutcome, runLayoutPipeline } from "../layoutPipeline";
-import type { LayoutPipelineDeps } from "../layoutPipeline";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "../documentChangeNotification";
+import {
+  type LayoutOutcome,
+  type LayoutPipelineDeps,
+  runLayoutPipeline,
+} from "../layoutPipeline";
 import type { LayoutRunOptions } from "../layoutRunOptions";
 import { createLayoutScheduler, type SchedulerClock } from "../layoutScheduler";
 import { createLayoutSession, type LayoutSession } from "../layoutSession";
@@ -56,8 +62,6 @@ import { createLayoutSession, type LayoutSession } from "../layoutSession";
 
 /** One browser frame. */
 export const FRAME_MS = 16;
-/** The adapters' debounced document-change notification (a React re-render). */
-export const DOCUMENT_CHANGE_NOTIFY_DELAY_MS = 250;
 /** Longer than any timer the adapters arm. */
 const SETTLE_TIMERS_MS = 1000;
 const TRANSACTION_LAYOUT_DEBOUNCE_MS = 32;
@@ -204,39 +208,43 @@ export const projectLayout = ({
   for (const [index, block] of blocks.entries()) {
     blockIndex.set(block.id, index);
   }
-  return layout.pages.map((page) => ({
-    number: page.number,
-    fragments: page.fragments.map((fragment): LaidOutFragment => {
-      const base = {
-        kind: fragment.kind,
-        blockId: fragment.blockId,
-        x: fragment.x,
-        y: fragment.y,
-        width: fragment.width,
-      };
-      if (fragment.kind !== "paragraph") {
-        return base;
-      }
-      const index = blockIndex.get(fragment.blockId);
-      const block = index === undefined ? undefined : blocks[index];
-      const measure = index === undefined ? undefined : measures[index];
-      if (block?.kind !== "paragraph" || measure?.kind !== "paragraph") {
+  // Blocks are compared by what they show; their ids only name them, and a
+  // layout that kept blocks names them other than one from scratch.
+  return renameBlockIds(
+    layout.pages.map((page) => ({
+      number: page.number,
+      fragments: page.fragments.map((fragment): LaidOutFragment => {
+        const base = {
+          kind: fragment.kind,
+          blockId: fragment.blockId,
+          x: fragment.x,
+          y: fragment.y,
+          width: fragment.width,
+        };
+        if (fragment.kind !== "paragraph") {
+          return base;
+        }
+        const index = blockIndex.get(fragment.blockId);
+        const block = index === undefined ? undefined : blocks[index];
+        const measure = index === undefined ? undefined : measures[index];
+        if (block?.kind !== "paragraph" || measure?.kind !== "paragraph") {
+          return {
+            ...base,
+            lines: [{ text: "[unmeasured paragraph]", width: 0 }],
+          };
+        }
         return {
           ...base,
-          lines: [{ text: "[unmeasured paragraph]", width: 0 }],
+          lines: measure.lines
+            .slice(fragment.fromLine, fragment.toLine)
+            .map((line) => ({
+              text: lineText(block.runs, line),
+              width: line.width,
+            })),
         };
-      }
-      return {
-        ...base,
-        lines: measure.lines
-          .slice(fragment.fromLine, fragment.toLine)
-          .map((line) => ({
-            text: lineText(block.runs, line),
-            width: line.width,
-          })),
-      };
-    }),
-  }));
+      }),
+    })),
+  );
 };
 
 // ============================================================================

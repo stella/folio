@@ -65,6 +65,10 @@ import {
   tableColumnsArePinned,
 } from "../layout-engine/types";
 import { paintsCssBorder } from "../utils/borderCss";
+import {
+  writePaintedRange,
+  writePaintedTableStart,
+} from "../utils/paintedPositions";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { emuToPixels } from "../utils/units";
 import {
@@ -239,12 +243,7 @@ function renderCellContent({
       imgContainer.style.left = `${img.x}px`;
       imgContainer.style.top = `${img.y}px`;
       imgContainer.style.pointerEvents = "auto";
-      if (img.pmStart !== undefined) {
-        imgContainer.dataset["pmStart"] = String(img.pmStart);
-      }
-      if (img.pmEnd !== undefined) {
-        imgContainer.dataset["pmEnd"] = String(img.pmEnd);
-      }
+      writePaintedRange(imgContainer, img.pmStart, img.pmEnd);
 
       const imgEl = doc.createElement("img");
       applySanitizedImageSrc(imgEl, paintedImageSource(img));
@@ -555,12 +554,7 @@ export function renderNestedTable(
   // Store metadata
   tableEl.dataset["blockId"] = String(block.id);
 
-  if (block.pmStart !== undefined) {
-    tableEl.dataset["pmStart"] = String(block.pmStart);
-  }
-  if (block.pmEnd !== undefined) {
-    tableEl.dataset["pmEnd"] = String(block.pmEnd);
-  }
+  writePaintedRange(tableEl, block.pmStart, block.pmEnd);
 
   // Build row Y positions for rowSpan height calculation
   const rowYPositions: number[] = [];
@@ -941,12 +935,11 @@ function renderTableCell({
       firstBlock !== undefined && "pmStart" in firstBlock
         ? firstBlock.pmStart
         : undefined;
-    if (pmStart !== undefined) {
-      cellEl.dataset["pmStart"] = String(pmStart);
-    }
-    if (lastBlock && "pmEnd" in lastBlock) {
-      cellEl.dataset["pmEnd"] = String(lastBlock.pmEnd);
-    }
+    writePaintedRange(
+      cellEl,
+      pmStart,
+      lastBlock && "pmEnd" in lastBlock ? lastBlock.pmEnd : undefined,
+    );
   }
 
   return cellEl;
@@ -1250,12 +1243,7 @@ export function renderTableFragment(
   tableEl.dataset["fromRow"] = String(fragment.fromRow);
   tableEl.dataset["toRow"] = String(fragment.toRow);
 
-  if (fragment.pmStart !== undefined) {
-    tableEl.dataset["pmStart"] = String(fragment.pmStart);
-  }
-  if (fragment.pmEnd !== undefined) {
-    tableEl.dataset["pmEnd"] = String(fragment.pmEnd);
-  }
+  writePaintedRange(tableEl, fragment.pmStart, fragment.pmEnd);
 
   // Add column resize handles at each column boundary. For RTL tables the
   // boundary at the running left offset maps to the mirrored visual position
@@ -1284,7 +1272,7 @@ export function renderTableFragment(
       handle.dataset["bidi"] = "true";
     }
     if (fragment.pmStart !== undefined) {
-      handle.dataset["tablePmStart"] = String(fragment.pmStart);
+      writePaintedTableStart(handle, fragment.pmStart);
     }
     tableEl.append(handle);
   }
@@ -1489,7 +1477,7 @@ export function renderTableFragment(
       rowHandle.dataset["rowIndex"] = String(rowIdx);
       rowHandle.dataset["tableBlockId"] = String(fragment.blockId);
       if (fragment.pmStart !== undefined) {
-        rowHandle.dataset["tablePmStart"] = String(fragment.pmStart);
+        writePaintedTableStart(rowHandle, fragment.pmStart);
       }
       tableEl.append(rowHandle);
     }
@@ -1510,7 +1498,7 @@ export function renderTableFragment(
     bottomHandle.dataset["tableBlockId"] = String(fragment.blockId);
     bottomHandle.dataset["isEdge"] = "bottom";
     if (fragment.pmStart !== undefined) {
-      bottomHandle.dataset["tablePmStart"] = String(fragment.pmStart);
+      writePaintedTableStart(bottomHandle, fragment.pmStart);
     }
     tableEl.append(bottomHandle);
   }
@@ -1536,7 +1524,7 @@ export function renderTableFragment(
     rightHandle.dataset["tableBlockId"] = String(fragment.blockId);
     rightHandle.dataset["isEdge"] = "right";
     if (fragment.pmStart !== undefined) {
-      rightHandle.dataset["tablePmStart"] = String(fragment.pmStart);
+      writePaintedTableStart(rightHandle, fragment.pmStart);
     }
     tableEl.append(rightHandle);
   }

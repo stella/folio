@@ -120,6 +120,18 @@ type Case = {
 
 const CASES: readonly Case[] = [
   {
+    name: "delete the table",
+    command: "deleteTable",
+    selection: { type: "caret", in: "E" },
+    tracked: true,
+  },
+  {
+    name: "delete the whole selected table",
+    command: "deleteTable",
+    selection: { type: "cells", from: "A", to: "F" },
+    tracked: true,
+  },
+  {
     name: "insert a row above",
     command: "addRowAbove",
     selection: { type: "caret", in: "D" },
@@ -159,7 +171,7 @@ const CASES: readonly Case[] = [
     name: "delete a column",
     command: "deleteColumn",
     selection: { type: "caret", in: "D" },
-    tracked: false,
+    tracked: true,
   },
   {
     name: "delete two columns",
@@ -295,7 +307,52 @@ describe("table structure commands in the canonical session", () => {
       }
       expect(prepared.value.publish().isOk()).toBe(true);
       expect(JSON.stringify(session.document.package.document)).toMatch(
-        /"insertion"|"deletion"|PropertyChange|propertyChange|tableRowInsertion|tableRowDeletion|tcPrChange|tblGridChange/u,
+        /"insertion"|"deletion"|PropertyChange|propertyChange|tableRowInsertion|tableRowDeletion|tableCellDeletion|tableCellInsertion|tcPrChange|tblGridChange/u,
       );
     });
+});
+
+describe("a suggested table deletion over pending revisions", () => {
+  test("budgets a record for every piece the pending revisions cut the text into", async () => {
+    const source = tableDocument();
+    const [, table] = source.package.document.content;
+    if (table?.type !== "table") return panic("No table");
+    const pieces = Array.from({ length: 60 }, (_, index) =>
+      index % 2 === 0
+        ? {
+            type: "run" as const,
+            content: [{ type: "text" as const, text: `p${String(index)}` }],
+          }
+        : {
+            type: "insertion" as const,
+            info: {
+              id: 100 + index,
+              author: "Other",
+              date: "2026-01-01T00:00:00Z",
+            },
+            content: [
+              {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: `i${String(index)}` }],
+              },
+            ],
+          },
+    );
+    const [first] = table.rows[1]?.cells[1]?.content ?? [];
+    if (first?.type !== "paragraph") return panic("No cell paragraph");
+    first.content = pieces;
+    const session = createCanonicalSession(
+      await parseDocx(
+        (await prepareCanonicalDocxInput(await createDocx(source))).unwrap(),
+        { preloadFonts: false, detectVariables: false },
+      ),
+    ).unwrap();
+    session.setMode({ type: "suggesting", author: "Reviewer" });
+    const state = select(
+      EditorState.create({ schema, doc: session.projection.doc }),
+      { type: "caret", in: "A" },
+    );
+    const commit = run(session, state, "deleteTable");
+    expect(commit.isOk() ? "applied" : commit.error.message).toBe("applied");
+  });
 });

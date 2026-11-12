@@ -113,7 +113,6 @@ test("retains identical tables as barriers, writes an edited table whole, and re
 test("refuses range markers, relationship payloads, section endpoints and Strict splices", () => {
   for (const element of [
     "sectPr",
-    "commentRangeStart",
     "bookmarkStart",
     "drawing",
     "footnoteReference",
@@ -154,11 +153,11 @@ test("untouched image and section paragraphs remain verbatim beside inserted par
   }
 });
 
-test("refuses ranges whose endpoints in separate tables enclose a body insertion", () => {
+test("refuses bookmarks whose endpoints in separate tables enclose a body insertion", () => {
   const table = (id: number, marker: string) =>
     `<w:tbl><w:tr><w:tc>${paragraph(id).replace("</w:p>", marker + "</w:p>")}</w:tc></w:tr></w:tbl>`;
-  const start = table(1, '<w:commentRangeStart w:id="1"/>');
-  const end = table(2, '<w:commentRangeEnd w:id="1"/>');
+  const start = table(1, '<w:bookmarkStart w:id="1" w:name="b"/>');
+  const end = table(2, '<w:bookmarkEnd w:id="1"/>');
   expect(
     buildStructuralDocumentPatch({
       originalXml: wrap(start + end),
@@ -166,6 +165,42 @@ test("refuses ranges whose endpoints in separate tables enclose a body insertion
       changedIds: new Set(["00000003"]),
     }),
   ).toBeNull();
+});
+
+test("splices beside comment anchors exactly when the result carries the serialized body's anchors", () => {
+  const anchored = (id: number, marker: string) =>
+    paragraph(id).replace("</w:p>", `${marker}</w:p>`);
+  const start = anchored(1, '<w:commentRangeStart w:id="7"/>');
+  const end = anchored(
+    2,
+    '<w:commentRangeEnd w:id="7"/><w:r><w:commentReference w:id="7"/></w:r>',
+  );
+  const patch = (serialized: string, changed: readonly string[] = []) =>
+    buildStructuralDocumentPatch({
+      originalXml: wrap(`${start}<!-- kept -->${end}`),
+      serializedXml: wrap(serialized),
+      changedIds: new Set(changed),
+    });
+  // An insertion inside the commented range keeps both anchoring paragraphs
+  // as their source bytes.
+  const inserted = patch(start + paragraph(3) + end, ["00000003"]);
+  expect(inserted).toContain(start);
+  expect(inserted).toContain(end);
+  expect(inserted).toContain("<!-- kept -->");
+  expect(inserted).toContain("Paragraph 3");
+  // So does one in a range that runs from one table into another.
+  const table = (body: string) =>
+    `<w:tbl><w:tr><w:tc>${body}</w:tc></w:tr></w:tbl>`;
+  expect(
+    buildStructuralDocumentPatch({
+      originalXml: wrap(table(start) + table(end)),
+      serializedXml: wrap(table(start) + paragraph(3) + table(end)),
+      changedIds: new Set(["00000003"]),
+    }),
+  ).toContain("Paragraph 3");
+  // An anchor the serialized body moved out of an untouched paragraph would
+  // stay behind in the source bytes: the splice is refused.
+  expect(patch(paragraph(1) + paragraph(3) + end, ["00000003"])).toBeNull();
 });
 
 test("structural splices preserve valid locally bound replay paragraphs at every insertion gap", () => {
@@ -201,4 +236,21 @@ test("structural splices preserve valid locally bound replay paragraphs at every
       expect(result).toContain(`${alias}:Ignorable="id"`);
     }
   }
+});
+
+test("reads a source comment anchor's unprefixed id as the reader does", () => {
+  const anchored = (id: number, marker: string) =>
+    paragraph(id).replace("</w:p>", `${marker}</w:p>`);
+  const start = anchored(1, '<w:commentRangeStart id="7"/>');
+  const end = anchored(2, '<w:commentRangeEnd id="7"/>');
+  const serializedStart = anchored(1, '<w:commentRangeStart w:id="7"/>');
+  const serializedEnd = anchored(2, '<w:commentRangeEnd w:id="7"/>');
+  const inserted = buildStructuralDocumentPatch({
+    originalXml: wrap(start + end),
+    serializedXml: wrap(serializedStart + paragraph(3) + serializedEnd),
+    changedIds: new Set(["00000003"]),
+  });
+  expect(inserted).toContain(start);
+  expect(inserted).toContain(end);
+  expect(inserted).toContain("Paragraph 3");
 });

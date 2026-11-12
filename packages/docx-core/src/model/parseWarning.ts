@@ -76,6 +76,7 @@ export const PARSE_WARNING_CODES = {
   revisionCarrierOpaque: "revision-carrier-opaque",
   /** A row nested where the table model can only preserve it as opaque markup. */
   nestedRowOpaque: "nested-row-opaque",
+  reviewProvenanceDropped: "review-provenance-dropped",
 } as const;
 
 export const IMPORTED_ID_COLLISION_KINDS = {

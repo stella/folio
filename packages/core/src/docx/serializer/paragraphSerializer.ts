@@ -56,9 +56,9 @@ import {
 } from "../paragraphPropertySource";
 import {
   paragraphMarkResolutionJoinAttributes,
-  ReviewResolutionProvenanceError,
   serializeParagraphMarkResolutionJoin,
   serializeResolutionJoins,
+  serializeSplitResolutionPiece,
 } from "../reviewResolutionProvenance";
 import {
   DATE_UTC_ATTRIBUTE,
@@ -628,6 +628,12 @@ function serializeHyperlinkChild(
     // link it was authored inside.
     case "preservedInline":
       return child.xml;
+    // A field the link holds whole, written inside it as it was read: a
+    // table of contents entry's page number follows the entry's link.
+    case "complexField": {
+      const xml = serializeComplexField(child);
+      return spelling === "deletedText" ? rewriteRunTextAsDeleted(xml) : xml;
+    }
     default: {
       const unwritten: never = child;
       return unwritten;
@@ -1116,26 +1122,49 @@ const trackedChangeSegments = (
   const tag = TRACKED_CHANGE_ELEMENT[change.type];
   const spelling = TRACKED_CHANGE_TEXT_SPELLING[tag];
   const segments = walkTrackedInlineContent(change.content, spelling);
-  // This is the only revision-wrapping boundary. The execution's own segments
-  // decide refusal, so no separate detector can miss a nested container.
-  if (
-    change.resolutionJoins !== undefined &&
-    segments.some((segment) => segment.type === "hyperlink")
-  ) {
-    throw new ReviewResolutionProvenanceError({
-      attribute: "resolutionJoins",
-      reason: "unrepresentable",
-      message:
-        "Tracked-resolution provenance cannot be repartitioned across serialized hyperlinks.",
+  const info = serializeTrackedChangeAttributes(change.info);
+  // This is the only revision-wrapping boundary. A change holding a link is
+  // written as one element per stretch, the revision inside the link; its
+  // joins describe the whole change, so they travel as split pieces the
+  // reader puts back together rather than on any one piece.
+  const joins = change.resolutionJoins;
+  const pieces = wrappedPieceCount(segments);
+  if (pieces > 1) {
+    let piece = 0;
+    return wrapTrackedInlineSegments(segments, (xml) => {
+      const split = serializeSplitResolutionPiece(
+        piece === 0 && joins !== undefined
+          ? { piece, pieces, joins }
+          : { piece, pieces },
+      );
+      piece += 1;
+      return `<w:${tag} ${info}${split}>${xml}</w:${tag}>`;
     });
   }
-  const attrs =
-    serializeTrackedChangeAttributes(change.info) +
-    serializeResolutionJoins(change.resolutionJoins);
+  const attrs = info + serializeResolutionJoins(joins);
   return wrapTrackedInlineSegments(
     segments,
     (xml) => `<w:${tag} ${attrs}>${xml}</w:${tag}>`,
   );
+};
+
+/** How many elements {@link wrapTrackedInlineSegments} writes for these segments. */
+const wrappedPieceCount = (
+  segments: readonly TrackedInlineSegment[],
+): number => {
+  if (segments.length === 0) return 1;
+  let count = 0;
+  let plain = false;
+  for (const segment of segments) {
+    if (segment.type === "plain") {
+      if (!plain) count += 1;
+      plain = true;
+    } else {
+      count += 1;
+      plain = false;
+    }
+  }
+  return count;
 };
 
 const UnrepresentableNestedHyperlinkErrorBase: TaggedErrorClass<"UnrepresentableNestedHyperlinkError"> =
@@ -1181,14 +1210,24 @@ const walkTrackedInlineContent = (
       case "moveTo":
         segments.push(...trackedChangeSegments(item));
         break;
-      case "inlineWrapper":
+      case "inlineWrapper": {
+        const inner = walkTrackedInlineContent(item.content, spelling);
+        // A wrapper split around a lifted link marks its pieces as a split
+        // change does, so a reader rebuilds the one wrapper and the changes
+        // inside it can be rebuilt in turn.
+        const pieces = wrappedPieceCount(inner);
+        let piece = 0;
         segments.push(
-          ...wrapTrackedInlineSegments(
-            walkTrackedInlineContent(item.content, spelling),
-            (xml) => serializeInlineWrapperMarkup(item, xml),
-          ),
+          ...wrapTrackedInlineSegments(inner, (xml) => {
+            const markup = serializeInlineWrapperMarkup(item, xml);
+            if (pieces === 1) return markup;
+            const split = serializeSplitResolutionPiece({ piece, pieces });
+            piece += 1;
+            return markup.replace(/^<([^\s>/]+)/u, `<$1${split}`);
+          }),
         );
         break;
+      }
       case "inlineSdt": {
         // CT_RunTrackChange admits CT_SdtRun; its EG_PContent owns hyperlinks.
         // Emit its segments locally so a link never escapes the SDT boundary.

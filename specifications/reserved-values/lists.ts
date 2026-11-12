@@ -147,6 +147,9 @@ export const NUMBERING_DEFINITIONS_RESERVED = {
   nums: NO_RESERVED_VALUE,
   preserved: NO_RESERVED_VALUE,
   preservedAttributes: NO_RESERVED_VALUE,
+  // Ids a reference names without a definition; the "no numbering" zero
+  // reads as no reference, so it is never one of them.
+  danglingNumIds: NO_RESERVED_VALUE,
 } satisfies Record<keyof NumberingDefinitions, ReservedValueDisposition>;
 
 export type ExhaustiveNumberingDefinitionsReserved = ExhaustiveFields<

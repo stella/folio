@@ -11,135 +11,22 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import {
+  PROPERTY_SEEDS_FILE,
+  testFileForSeedFile,
+} from "../test/seed-registry";
 import focusedTests from "./ci-focused-tests.json";
-import timings from "./ci-test-timings.json";
+import {
+  discoverTestSuites,
+  plannedTestFiles,
+  planTestShards,
+  shardLoads,
+  type TestSuite,
+  type TestTimings,
+} from "./ci-test-shard-plan";
 import { parseSourceModule, staticStringValue, walkAst } from "./lib/oxc-ast";
 
-export const TEST_SHARD_COUNT = 4;
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const TEST_FILE = /(?:\.test|\.spec|_test|_spec)\.(?:[cm]?[jt]sx?)$/u;
-
-type TestSuite = { cwd: string; preloads: string[]; files: string[] };
-export type TestTimings = Record<string, number>;
-
-const median = (values: number[]) => {
-  const ordered = values.toSorted((a, b) => a - b);
-  const middle = Math.floor(ordered.length / 2);
-  if (ordered.length === 0) return 100;
-  if (ordered.length % 2 === 1) return ordered.at(middle) ?? 100;
-  return Math.round(
-    ((ordered.at(middle - 1) ?? 0) + (ordered.at(middle) ?? 0)) / 2,
-  );
-};
-
-export const discoverTestSuites = (repoRoot = REPO_ROOT): TestSuite[] => {
-  const discoverFiles = (cwd: string, roots: string[]) => {
-    const files = new Set<string>();
-    for (const root of roots) {
-      for (const file of new Bun.Glob(`${root}/**/*`).scanSync({
-        cwd: path.join(repoRoot, cwd),
-        onlyFiles: true,
-      })) {
-        if (TEST_FILE.test(file)) files.add(path.posix.join(cwd, file));
-      }
-    }
-    return [...files].toSorted();
-  };
-
-  const suites: TestSuite[] = [];
-  // The root command runs every packages/* workspace with a test script.
-  for (const manifest of new Bun.Glob("packages/*/package.json").scanSync({
-    cwd: repoRoot,
-  })) {
-    const pkg = JSON.parse(readFileSync(path.join(repoRoot, manifest), "utf8"));
-    const command = pkg.scripts?.test;
-    if (command === undefined) continue;
-    if (typeof command !== "string" || !command.startsWith("bun test ")) {
-      panic(`Unsupported test command in ${manifest}: ${command}`);
-    }
-    const cwd = path.dirname(manifest);
-    const args = command.slice("bun test ".length).split(/\s+/u);
-    const preloads: string[] = [];
-    const roots: string[] = [];
-    for (let i = 0; i < args.length; i++) {
-      const arg = args.at(i);
-      if (arg === "--preload") {
-        const preload = args.at(++i);
-        if (!preload) panic(`Missing preload in ${manifest}`);
-        preloads.push(preload);
-        continue;
-      }
-      if (!arg || arg.startsWith("-") || !/^[\w./-]+$/u.test(arg)) {
-        panic(`Unsupported test argument in ${manifest}: ${arg}`);
-      }
-      roots.push(arg);
-    }
-    const bunfig = path.join(repoRoot, cwd, "bunfig.toml");
-    if (existsSync(bunfig)) {
-      const config: unknown = Bun.TOML.parse(readFileSync(bunfig, "utf8"));
-      if (typeof config === "object" && config && "test" in config) {
-        const test = config.test;
-        if (typeof test === "object" && test && "preload" in test) {
-          const configured = test.preload;
-          if (
-            !Array.isArray(configured) ||
-            configured.some((preload) => typeof preload !== "string")
-          ) {
-            panic(
-              `Unsupported test preload in ${path.posix.join(cwd, "bunfig.toml")}`,
-            );
-          }
-          preloads.push(...configured);
-        }
-      }
-    }
-    suites.push({ cwd, preloads, files: discoverFiles(cwd, roots) });
-  }
-  for (const root of ["scripts", "benchmarks/compare"]) {
-    suites.push({ cwd: ".", preloads: [], files: discoverFiles(".", [root]) });
-  }
-  return suites.toSorted((a, b) => a.cwd.localeCompare(b.cwd));
-};
-
-// Missing measurements get a small scheduling estimate, never exclusion.
-export const assignTestShards = (
-  files: string[],
-  measurements: TestTimings = timings,
-) => {
-  const measured = new Map(Object.entries(measurements));
-  const fallback = median([...measured.values()]);
-  const weight = (file: string) => measured.get(file) ?? fallback;
-  const loads = Array.from({ length: TEST_SHARD_COUNT }, () => 0);
-  const shards = Array.from(
-    { length: TEST_SHARD_COUNT },
-    () => new Set<string>(),
-  );
-  const ordered = [...new Set(files)].toSorted(
-    (a, b) => weight(b) - weight(a) || a.localeCompare(b),
-  );
-  for (const file of ordered) {
-    const shard = loads.indexOf(Math.min(...loads));
-    const target = shards.at(shard);
-    const load = loads.at(shard);
-    if (!target || load === undefined) panic("Test shard unavailable");
-    target.add(file);
-    loads[shard] = load + weight(file);
-  }
-  return shards;
-};
-
-export const shardLoads = (
-  shards: Set<string>[],
-  measurements: TestTimings = timings,
-) => {
-  const fallback = median(Object.values(measurements));
-  return shards.map((shard) =>
-    [...shard].reduce(
-      (total, file) => total + (measurements[file] ?? fallback),
-      0,
-    ),
-  );
-};
 
 const decodeXml = (value: string) =>
   value
@@ -494,7 +381,14 @@ export const selectFastTestSuitesWithReason = ({
   repoRoot = REPO_ROOT,
   graph: suppliedGraph,
 }: FastTestSuitesOptions): FastSelection => {
-  const changed = new Set(changedFiles);
+  // A pinned seed file is read at runtime, not imported, so the module graph
+  // never reaches the test it pins: the file itself selects that test.
+  const changed = new Set([
+    ...changedFiles,
+    ...changedFiles
+      .filter((file) => file.startsWith(`${PROPERTY_SEEDS_FILE}/`))
+      .map(testFileForSeedFile),
+  ]);
   const discovered = new Set(suites.flatMap(({ files }) => files));
   const focused = new Set(
     focusedFiles.filter(
@@ -626,20 +520,25 @@ export const selectFastTestSuites = (
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const shard = Number(args.at(args.indexOf("--shard") + 1));
+  const total = Number(args.at(args.indexOf("--shards") + 1));
   const depth = args.at(args.indexOf("--depth") + 1);
   if (
     !Number.isInteger(shard) ||
+    !Number.isInteger(total) ||
     shard < 1 ||
-    shard > TEST_SHARD_COUNT ||
+    shard > total ||
     (depth !== "fast" && depth !== "full")
   ) {
     panic(
-      "Usage: bun scripts/ci-test-shards.ts --shard <1..4> --depth <fast|full>",
+      "Usage: bun scripts/ci-test-shards.ts --shard <k> --shards <n> --depth <fast|full>",
     );
   }
   const suites = discoverTestSuites();
-  const allFiles = [...suites.flatMap(({ files }) => files), ...focusedTests];
-  const shards = assignTestShards(allFiles);
+  const shards = planTestShards(plannedTestFiles());
+  // The workflow matrix comes from the same plan; a different count means the
+  // job runs against another commit's measurements.
+  if (shards.length !== total)
+    panic(`The plan has ${shards.length} test shards, the job runs ${total}`);
   const loads = shardLoads(shards);
   console.log(
     `Predicted shard loads: ${loads.map((load, index) => `${index + 1}=${load}ms`).join(", ")}`,
@@ -658,7 +557,7 @@ if (import.meta.main) {
     selectedSuites.flatMap(({ files }) => files),
   ).size;
   console.log(
-    `Shard ${shard}/${TEST_SHARD_COUNT}: changed=${changedFiles.length} selected=${selectedFileCount} reason=${fastSelection?.reason ?? "full"}${fastSelection?.cause ? ` (${fastSelection.cause})` : ""}`,
+    `Shard ${shard}/${total}: changed=${changedFiles.length} selected=${selectedFileCount} reason=${fastSelection?.reason ?? "full"}${fastSelection?.cause ? ` (${fastSelection.cause})` : ""}`,
   );
   let exitCode = 0;
   const recorded: TestTimings = {};
@@ -670,9 +569,7 @@ if (import.meta.main) {
   ] of selectedSuites.entries()) {
     const selected = files.filter((file) => assigned.has(file));
     if (selected.length === 0) continue;
-    console.log(
-      `Shard ${shard}/${TEST_SHARD_COUNT}: ${cwd} (${selected.length} files)`,
-    );
+    console.log(`Shard ${shard}/${total}: ${cwd} (${selected.length} files)`);
     const junitFile = path.join(
       resultsDirectory,
       `junit-${shard}-${suiteIndex}.xml`,

@@ -12,6 +12,10 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import type { SdtGroup } from "../layout-engine/types";
+import {
+  readPaintedContentControlKey,
+  writePaintedContentControlKey,
+} from "../utils/paintedPositions";
 
 export function applySdtDataAttrs(
   el: HTMLElement,
@@ -25,7 +29,7 @@ export function applySdtDataAttrs(
   const innermost = sdtGroups.at(-1);
   if (innermost) {
     el.dataset["sdtId"] = innermost.id;
-    el.dataset["sdtPmPos"] = String(innermost.pmPos);
+    writePaintedContentControlKey(el, innermost.pmPos);
     el.dataset["sdtType"] = innermost.sdtType;
     if (innermost.position) {
       el.dataset["sdtPosition"] = innermost.position;
@@ -116,7 +120,7 @@ export function applySdtFocus(
 ): void {
   const boxes = container.querySelectorAll<HTMLElement>("[data-sdt-boundary]");
   for (const box of boxes) {
-    const id = box.dataset["sdtPmPos"];
+    const id = readPaintedContentControlKey(box);
     const on = id != null && focusedIds.has(id);
     if (on !== box.classList.contains("is-focused")) {
       box.classList.toggle("is-focused", on);

@@ -1308,6 +1308,7 @@ export class FolioDocxReviewer {
     loadPendingSuggestions(records: readonly unknown[]): FolioPendingSuggestionLoadResult[];
     matchStoryTableGeometry(input: FolioMatchStoryTableGeometryOptions): number;
     readNumberingDefinitions(): FolioNumberingLevel[];
+    readNumberingDefinitions(story: FolioEditableDocumentStoryHandle): FolioNumberingLevel[] | null;
     readReviewedStory(options?: FolioReadReviewedStoryOptions): FolioReviewedStory | null;
     readStory(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
     rejectAll(): FolioReviewResolution;

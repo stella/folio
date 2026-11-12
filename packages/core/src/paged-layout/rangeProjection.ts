@@ -19,6 +19,7 @@ import {
 } from "../layout-bridge/dom/textStreamDom";
 import type { SelectionRect } from "../layout-bridge/engine/selectionRects";
 import type { FlowBlock, Layout, Measure } from "../layout-engine/types";
+import { readPaintedEnd, readPaintedStart } from "../utils/paintedPositions";
 
 export type ProjectableRange = { from: number; to: number };
 
@@ -52,8 +53,8 @@ const domRectsForRange = (
 ): SelectionRect[] => {
   const rects: SelectionRect[] = [];
   for (const spanEl of pmSpans) {
-    const pmStart = Number(spanEl.dataset["pmStart"]);
-    const pmEnd = Number(spanEl.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(spanEl) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(spanEl) ?? Number.NaN;
     if (!(pmEnd > from && pmStart < to)) {
       continue;
     }
@@ -235,8 +236,8 @@ export const collectRunFontsAtPmPositions = (
     if (remaining.size === 0) {
       break;
     }
-    const pmStart = Number(spanEl.dataset["pmStart"]);
-    const pmEnd = Number(spanEl.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(spanEl) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(spanEl) ?? Number.NaN;
     if (Number.isNaN(pmStart) || Number.isNaN(pmEnd)) {
       continue;
     }

@@ -6,7 +6,10 @@
 # Every extension-manager runtime also checks the document after each
 # transaction (prosemirror/plugins/transactionInvariants), so an editor test
 # whose command leaves a document the save path would refuse fails there.
+# Kept layout conversions freeze the blocks they hand out again, so code that
+# writes to a converted block fails where it writes.
 preload = [
   "../../test/installMeasureProvider.preload.ts",
   "../../test/transactionInvariants.preload.ts",
+  "../../test/freezeKeptBlocks.preload.ts",
 ]

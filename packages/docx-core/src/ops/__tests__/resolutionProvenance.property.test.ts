@@ -1348,10 +1348,19 @@ test("generated replacements preserve input affinity around zero-width leaves", 
           ..."a".repeat(width - to),
         ];
         if (kind === "bookmark" || markerAt <= from || markerAt >= to) {
-          let markerIndex = markerAt;
-          if (markerAt > from || (markerAt === from && kind === "bookmark"))
-            markerIndex = from + "edited".length + Math.max(0, markerAt - to);
-          expected.splice(markerIndex, 0, "marker");
+          // The new text takes the place of the selected text, after what the
+          // replaced range keeps; a marker at the range's end, or an opening
+          // marker at a caret, stays with what follows.
+          const follows =
+            markerAt > to ||
+            (markerAt === to && (from < to || kind === "bookmark"));
+          expected.splice(
+            follows
+              ? from + "edited".length + (markerAt - to)
+              : Math.min(markerAt, from),
+            0,
+            "marker",
+          );
         }
         expect(actual).toStrictEqual(expected);
         if (kind === "bookmark")
@@ -1566,8 +1575,10 @@ test("generated replacement retains prior removed revisions and visible inserted
           )
           .join("");
         expect(visible).toBe("edited");
+        // The selected text is already struck and stays; the new text follows
+        // it, as it follows any struck text it replaces.
         expect(paragraphLogicalText(paragraph)).toBe(
-          "a".repeat(from) + "edited" + "a".repeat(width - from),
+          "a".repeat(to) + "edited" + "a".repeat(width - to),
         );
       },
     ),

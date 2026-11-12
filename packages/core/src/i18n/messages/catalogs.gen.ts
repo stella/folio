@@ -345,6 +345,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.",
       "editor": {
         "accessibleName": "Document editor",
+        "changeUnavailable": "This change can't be made here yet.",
         "contentLocked": "This part of the document is locked.",
         "editing": "Editing",
         "editingDescription": "Edit the document directly",
@@ -1009,6 +1010,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Diese Bearbeitungssitzung wurde an anderer Stelle übernommen.",
       "editor": {
         "accessibleName": "Dokumenteditor",
+        "changeUnavailable": "Diese Änderung ist hier noch nicht möglich.",
         "contentLocked": "Dieser Teil des Dokuments ist gesperrt.",
         "editing": "Bearbeiten",
         "editingDescription": "Dokument direkt bearbeiten",
@@ -1673,6 +1675,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Cette session de modification a été reprise ailleurs.",
       "editor": {
         "accessibleName": "Éditeur de documents",
+        "changeUnavailable": "Cette modification n'est pas encore possible ici.",
         "contentLocked": "Cette partie du document est verrouillée.",
         "editing": "Modification",
         "editingDescription": "Modifier directement le document",
@@ -2337,6 +2340,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Esta sesión de edición se tomó en otro lugar.",
       "editor": {
         "accessibleName": "Editor de documentos",
+        "changeUnavailable": "Este cambio aún no se puede hacer aquí.",
         "contentLocked": "Esta parte del documento está bloqueada.",
         "editing": "Edición",
         "editingDescription": "Editar el documento directamente",
@@ -3001,6 +3005,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Tento dokument byl otevřen k úpravám v jiné kartě, okně nebo zařízení, takže byla tato relace ukončena. Neuložené místní změny zůstávají zachovány — otevřete dokument znovu a pokračujte.",
       "editor": {
         "accessibleName": "Editor dokumentů",
+        "changeUnavailable": "Tuto změnu zde zatím nelze provést.",
         "contentLocked": "Tato část dokumentu je uzamčená.",
         "editing": "Úpravy",
         "editingDescription": "Upravovat dokument přímo",
@@ -3665,6 +3670,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "فتح علامة تبويب أو نافذة أو جهاز آخر هذا المستند للتعديل، لذا تم تحرير هذه الجلسة. تم الحفاظ على التغييرات المحلية غير المحفوظة؛ أعد فتح المستند للمتابعة.",
       "editor": {
         "accessibleName": "محرر المستندات",
+        "changeUnavailable": "لا يمكن إجراء هذا التغيير هنا بعد.",
         "contentLocked": "هذا الجزء من المستند مقفل.",
         "editing": "تحرير",
         "editingDescription": "تحرير المستند مباشرةً",
@@ -4329,6 +4335,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "See muutmisseanss võeti mujal üle.",
       "editor": {
         "accessibleName": "Dokumendiredaktor",
+        "changeUnavailable": "Seda muudatust ei saa siin veel teha.",
         "contentLocked": "See dokumendi osa on lukustatud.",
         "editing": "Redigeerimine",
         "editingDescription": "Redigeerige dokumenti otse",
@@ -4993,6 +5000,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "כרטיסייה, חלון או מכשיר אחר פתחו מסמך זה לעריכה, ולכן הפעלה זו שוחררה. שינויים מקומיים שלא נשמרו נשמרו — פתח מחדש את המסמך כדי להמשיך.",
       "editor": {
         "accessibleName": "עורך מסמכים",
+        "changeUnavailable": "עדיין לא ניתן לבצע את השינוי הזה כאן.",
         "contentLocked": "חלק זה של המסמך נעול.",
         "editing": "עריכה",
         "editingDescription": "ערוך את המסמך ישירות",
@@ -5657,6 +5665,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "किसी अन्य टैब, विंडो या डिवाइस ने इस दस्तावेज़ को संपादन के लिए खोला, इसलिए यह सत्र बंद कर दिया गया। सहेजे नहीं गए स्थानीय परिवर्तन सुरक्षित हैं — जारी रखने के लिए दस्तावेज़ फिर से खोलें।",
       "editor": {
         "accessibleName": "दस्तावेज़ संपादक",
+        "changeUnavailable": "यह बदलाव अभी यहाँ नहीं किया जा सकता।",
         "contentLocked": "दस्तावेज़ का यह हिस्सा लॉक है।",
         "editing": "संपादन",
         "editingDescription": "दस्तावेज़ को सीधे संपादित करें",
@@ -6321,6 +6330,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Ezt a szerkesztési munkamenetet máshol vették át.",
       "editor": {
         "accessibleName": "Dokumentumszerkesztő",
+        "changeUnavailable": "Ez a módosítás itt még nem hajtható végre.",
         "contentLocked": "A dokumentum ezen része zárolva van.",
         "editing": "Szerkesztés",
         "editingDescription": "A dokumentum közvetlen szerkesztése",
@@ -6985,6 +6995,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Ši redagavimo sesija buvo perimta kitur.",
       "editor": {
         "accessibleName": "Dokumentų redaktorius",
+        "changeUnavailable": "Šio pakeitimo čia dar negalima atlikti.",
         "contentLocked": "Ši dokumento dalis užrakinta.",
         "editing": "Redagavimas",
         "editingDescription": "Redaguokite dokumentą tiesiogiai",
@@ -7649,6 +7660,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Šo rediģēšanas sesiju pārņēma citur.",
       "editor": {
         "accessibleName": "Dokumentu redaktors",
+        "changeUnavailable": "Šīs izmaiņas šeit vēl nevar veikt.",
         "contentLocked": "Šī dokumenta daļa ir bloķēta.",
         "editing": "Rediģēšana",
         "editingDescription": "Rediģējiet dokumentu tieši",
@@ -8313,6 +8325,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Ta sesja edycji została przejęta gdzie indziej.",
       "editor": {
         "accessibleName": "Edytor dokumentów",
+        "changeUnavailable": "Tej zmiany nie można jeszcze tu wprowadzić.",
         "contentLocked": "Ta część dokumentu jest zablokowana.",
         "editing": "Edytowanie",
         "editingDescription": "Edytuj dokument bezpośrednio",
@@ -8977,6 +8990,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Esta sessão de edição foi assumida em outro lugar.",
       "editor": {
         "accessibleName": "Editor de documentos",
+        "changeUnavailable": "Ainda não é possível fazer esta alteração aqui.",
         "contentLocked": "Esta parte do documento está bloqueada.",
         "editing": "Editando",
         "editingDescription": "Edite o documento diretamente",
@@ -9641,6 +9655,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Túto reláciu úprav prevzalo iné okno.",
       "editor": {
         "accessibleName": "Editor dokumentov",
+        "changeUnavailable": "Túto zmenu tu zatiaľ nemožno vykonať.",
         "contentLocked": "Táto časť dokumentu je uzamknutá.",
         "editing": "Úpravy",
         "editingDescription": "Upravujte dokument priamo",
@@ -10305,6 +10320,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "Başka bir sekme, pencere veya cihaz bu belgeyi düzenlemek için açtığından bu oturum sonlandırıldı. Kaydedilmemiş yerel değişiklikler korunur; devam etmek için belgeyi yeniden açın.",
       "editor": {
         "accessibleName": "Belge düzenleyici",
+        "changeUnavailable": "Bu değişiklik henüz burada yapılamıyor.",
         "contentLocked": "Belgenin bu bölümü kilitli.",
         "editing": "Düzenleme",
         "editingDescription": "Belgeyi doğrudan düzenleyin",
@@ -10969,6 +10985,7 @@ export const CATALOGS = {
       "editSessionTakenOver": "另一个标签页、窗口或设备已打开此文档进行编辑，因此本会话已释放。未保存的本地更改会保留，请重新打开文档以继续。",
       "editor": {
         "accessibleName": "文档编辑器",
+        "changeUnavailable": "暂时无法在此处进行此更改。",
         "contentLocked": "文档的这一部分已锁定。",
         "editing": "编辑",
         "editingDescription": "直接编辑文档",

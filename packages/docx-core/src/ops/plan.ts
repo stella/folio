@@ -19,6 +19,7 @@ import {
   identityKeysIn,
   type IdentitySpace,
   idKey,
+  packageIdentityKeyIndex,
   packageIdentityKeys,
 } from "./ids";
 import {
@@ -31,6 +32,7 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { isRangeBoundary, paragraphLength } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
   isAddedRevision,
@@ -119,6 +121,7 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
+    case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
       return op;
     default: {
       const unreachable: never = op;
@@ -162,12 +165,14 @@ export const trimAppliedNewIds = ({
   const touched = new Set(
     [...applied.touched.modified, ...applied.touched.inserted].map(idKey),
   );
-  const paragraphs = storyParagraphs(storyBody(applied.document, story))
-    .map(({ paragraph }) => paragraph)
-    .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
+  const body = storyBody(applied.document, story);
+  const paragraphs = [...touched].flatMap((key) => {
+    const location = findStoryParagraph(body, key);
+    return location === undefined ? [] : [location.paragraph];
+  });
   const identities = new Set(identityKeysIn(paragraphs));
   const revisions = new Set(applied.revisions);
-  const known = new Set(packageIdentityKeys(before.package));
+  const known = packageIdentityKeyIndex(before.package);
   return filterNewIds(op, (space, id) => {
     const key = `${space}:${id}`;
     return (
@@ -425,6 +430,37 @@ export const replacementDeletionSegments = ({
   return out.filter(({ records }) => records);
 };
 
+/**
+ * The leaves of a range that its direct deletion leaves standing, in
+ * document order: each one no stretch of {@link replacementDeletionSegments}
+ * removes, such as a range boundary, a comment anchor or content already on
+ * its way out. Text replacing the range goes in after the last of them.
+ */
+export const leavesKeptByDirectDeletion = ({
+  spans,
+  from,
+  to,
+}: Omit<ReplacementDeletionSegmentsOptions, "mode">): LeafSpan[] => {
+  const segments = replacementDeletionSegments({
+    spans,
+    from,
+    to,
+    mode: { type: "editing" },
+  });
+  return spans.filter((span) => {
+    const start = laterGap(span.before, from);
+    const end = earlierGap(span.after, to);
+    return (
+      compareGaps(start, end) < 0 &&
+      !segments.some(
+        (segment) =>
+          compareGaps(segment.from, start) <= 0 &&
+          compareGaps(end, segment.to) <= 0,
+      )
+    );
+  });
+};
+
 /** The range a tracked deletion covers, its stamp, and the ids its later pieces take. */
 export type PlanTrackedDeletionOptions = {
   from: TextPosition;
@@ -464,13 +500,54 @@ type TrackedPlanOptions = {
   document: Document;
   revision: RevisionStamp;
   newIds: NewIds | undefined;
+  /**
+   * Count every piece's new ids before applying it, as planning did before
+   * it applied a piece with none first. Only its reference in tests.
+   */
+  countEveryPiece?: boolean;
+  /**
+   * The record a deletion carrying the edit's own id is stamped as, when it
+   * continues the author's earlier deletion: the plan applies each piece as
+   * it will be written, so whether the deletion makes a record of its own,
+   * and so which id later pieces take, holds for the ops it gives.
+   */
+  deletionRevision?: RevisionStamp;
 };
+
+/** The story a planned piece edits. */
+const storyOf = (input: PlannedReviewOp): OpStory => {
+  switch (input.type) {
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return input.from.story;
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+      return input.at.story;
+    case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+    case DOCUMENT_OP_TYPES.REPLACE_INLINE:
+      return input.story;
+    default: {
+      const unreachable: never = input;
+      return unreachable;
+    }
+  }
+};
+
+/** Whether an operation, its unused ids trimmed, still names a new id. */
+const takesNewIds = (op: DocumentOp): boolean =>
+  "newIds" in op &&
+  op.newIds !== undefined &&
+  ((op.newIds.revision?.length ?? 0) > 0 ||
+    (op.newIds.control?.length ?? 0) > 0);
 
 /** Shared allocation and simulation for all pieces of one planned edit. */
 export const createTrackedPlan = ({
   document,
   revision,
   newIds,
+  countEveryPiece = false,
+  deletionRevision,
 }: TrackedPlanOptions): {
   append: (input: PlannedReviewOp) => Result<void, DocumentOpRefusal>;
   document: () => Document;
@@ -500,49 +577,61 @@ export const createTrackedPlan = ({
       // Source cuts consume the caller's pool in the same order as editing.
       // Additional mode-owned stamps use its other end and cannot displace them.
       let stampId = revision.id;
+      let stamp = revision;
       if (stampUsed) {
         if (remaining <= taken) return outOfIds();
         remaining -= 1;
         stampId =
           pool.at(remaining) ??
           panic("A reserved stamp has an allocated pool entry.");
-      }
-      op = { ...input, revision: { ...revision, id: stampId } };
+      } else if (
+        input.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+        deletionRevision !== undefined
+      )
+        stamp = deletionRevision;
+      op = { ...input, revision: { ...stamp, id: stampId } };
     }
-    const demand = revisionIdDemand(current, op);
-    if (demand.isErr()) return Result.err(demand.error);
-    const ids = take(demand.value);
-    if (ids === undefined) return outOfIds();
     const controls = usedIds(current, IDENTITY_SPACES.CONTROL);
-    op = withNewIds(op, {
-      revision: ids,
-      control: (newIds?.control ?? []).filter((id) => !controls.has(id)),
-    });
-    const applied = applyDocumentOp(current, op);
+    const control = (newIds?.control ?? []).filter((id) => !controls.has(id));
+    const story = storyOf(input);
+    // Most edits take no new id: applied with none, the edit is planned as
+    // it is. It took none when it used none of the content-control ids
+    // either, so counting would have found it needs none.
+    const unallocated = withNewIds(op, { revision: [], control });
+    const attempt = countEveryPiece
+      ? undefined
+      : applyDocumentOp(current, unallocated);
+    let applied: Result<AppliedDocumentOp, DocumentOpRefusal> | undefined;
+    let trimmed: DocumentOp | undefined;
+    if (attempt?.isOk() === true) {
+      trimmed = trimAppliedNewIds({
+        before: current,
+        op: unallocated,
+        applied: attempt.value,
+        story,
+      });
+      if (!takesNewIds(trimmed)) applied = attempt;
+    }
+    if (applied === undefined) {
+      trimmed = undefined;
+      const demand = revisionIdDemand(current, op);
+      if (demand.isErr()) return Result.err(demand.error);
+      const ids = take(demand.value);
+      if (ids === undefined) return outOfIds();
+      op = withNewIds(op, { revision: ids, control });
+      applied = applyDocumentOp(current, op);
+    } else {
+      op = unallocated;
+    }
     if (applied.isErr()) return Result.err(applied.error);
     stampUsed ||=
       stampOf(input) !== undefined && applied.value.revisions.length > 0;
     const before = current;
     current = applied.value.document;
-    const story = (() => {
-      switch (input.type) {
-        case DOCUMENT_OP_TYPES.DELETE_RANGE:
-        case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
-          return input.from.story;
-        case DOCUMENT_OP_TYPES.INSERT_CONTENT:
-        case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
-          return input.at.story;
-        case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
-        case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
-        case DOCUMENT_OP_TYPES.REPLACE_INLINE:
-          return input.story;
-        default: {
-          const unreachable: never = input;
-          return unreachable;
-        }
-      }
-    })();
-    ops.push(trimAppliedNewIds({ before, op, applied: applied.value, story }));
+    ops.push(
+      trimmed ??
+        trimAppliedNewIds({ before, op, applied: applied.value, story }),
+    );
     return Result.ok(undefined);
   };
   return { append, document: (): Document => current, ops };

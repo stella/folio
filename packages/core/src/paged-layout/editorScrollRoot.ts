@@ -16,6 +16,19 @@ export const scrollEditorTo = (
   getEditorScrollRoot(element)?.scrollTo(options);
 };
 
+/**
+ * Scroll a box that only clips (such as the hidden editor's wrapper) back to
+ * its origin. It is not the editor's scroll root; the browser scrolls it to
+ * reveal a caret, and nothing it shows may move with that scroll.
+ */
+export const scrollClipBoxToOrigin = (box: {
+  scrollLeft: number;
+  scrollTop: number;
+}): void => {
+  if (box.scrollLeft !== 0) box.scrollLeft = 0;
+  if (box.scrollTop !== 0) box.scrollTop = 0;
+};
+
 export const scrollEditorBy = (
   element: HTMLElement | null,
   delta: number,

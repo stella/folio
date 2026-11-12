@@ -99,7 +99,12 @@ import {
   setContentControlValueTr,
 } from "@stll/folio-core/prosemirror/commands/contentControls";
 import { setContentControlContentBlocksTr } from "@stll/folio-core/prosemirror/commands/contentControlsBlockFill";
+import {
+  commentRecordsOf,
+  recordingCommentsView,
+} from "@stll/folio-core/prosemirror/commentRecords";
 import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjection";
+import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import {
   CANONICAL_GAP,
@@ -107,6 +112,8 @@ import {
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
+import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
 
 import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
 import type { DocxEditorRef } from "../components/DocxEditor/types";
@@ -116,33 +123,52 @@ type LiveDocumentOperationUndoEntry = {
   undoHandle: FolioDocumentOperationUndoHandle;
   afterState: EditorView["state"];
   commentsBefore: Comment[];
-  commentsAfter: Comment[];
+  /** The comments the batch ended on; a host may hand back a copy. */
+  commentsAfterJson: string;
+  /** Whether the editor's records hold the comments, so undo restores them. */
+  recorded: boolean;
 };
 
 let documentOperationUndoHandleCursor = Date.now();
 
+type OperationView = Pick<EditorView, "state" | "dispatch">;
+
 type StagedOperationCommentsOptions<
   Result extends { applied: readonly { commentId?: number }[] },
 > = {
+  view: OperationView;
   createComment: (text: string) => Comment;
   publishComments: (comments: Comment[]) => void;
-  apply: (createCommentId: (text: string) => number) => Result;
+  apply: (
+    createCommentId: (text: string) => number,
+    view: OperationView,
+  ) => Result;
 };
 
-/** Publish only committed operations' comments, after the applier returns. */
+/**
+ * Run a document operation whose comments join the editor's records in the
+ * operation's own transaction, so one undo takes both back. A state without
+ * records gets only the committed operations' comments, published after the
+ * applier returns.
+ */
 export const applyWithStagedOperationComments = <
   Result extends { applied: readonly { commentId?: number }[] },
 >({
+  view,
   createComment,
   publishComments,
   apply,
 }: StagedOperationCommentsOptions<Result>): Result => {
   const created: Comment[] = [];
-  const result = apply((text) => {
-    const comment = createComment(text);
-    created.push(comment);
-    return comment.id;
-  });
+  const result = apply(
+    (text) => {
+      const comment = createComment(text);
+      created.push(comment);
+      return comment.id;
+    },
+    recordingCommentsView(view, created),
+  );
+  if (commentRecordsOf(view.state) !== null) return result;
   const appliedIds = new Set(result.applied.map(({ commentId }) => commentId));
   const accepted = created.filter(({ id }) => appliedIds.has(id));
   if (accepted.length > 0) publishComments(accepted);
@@ -211,6 +237,8 @@ export type UseDocxEditorRefApiOptions = {
   // Action handles from useDocxEditor.
   focus: () => void;
   getDocument: () => Document | null;
+  /** The session's own document in a canonical session, without a copy; otherwise null. */
+  readDocumentModel: () => ReadonlyDocument | null;
   getActiveView: () => EditorView | null;
   getExperimentalSession?: () => "canonical" | undefined;
   getActiveCanonicalStory?: () => OpStory;
@@ -279,17 +307,23 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     options?: ScrollToParaIdOptions,
   ): boolean {
     const root = opts.pagesRef.value;
-    if (!root) {
+    const doc = opts.editor.getState()?.doc;
+    if (!root || !doc) {
       return false;
     }
-    const fragments = findParagraphFragmentsByParaId(root, paraId);
-    const first = fragments.at(0);
-    if (!first) {
+    // Find the paragraph in the document, not among the painted pages: only
+    // the pages near the viewport are painted. Scrolling to its position
+    // paints its page, so its fragments exist to flash afterwards.
+    const start = findStartPosForParaId(doc, paraId);
+    if (start === null || start < 0) {
       return false;
     }
-    scrollEditorElementIntoView(first);
+    opts.scrollVisiblePositionIntoView(start);
     if (options?.highlight) {
-      flashParagraphElements(fragments, options.highlight);
+      flashParagraphElements(
+        findParagraphFragmentsByParaId(root, paraId),
+        options.highlight,
+      );
     }
     return true;
   }
@@ -414,6 +448,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     pagedEditorRef ??= {
       getEditor: () => opts.editor,
       getDocument: () => opts.editor.getDocument(),
+      readDocumentModel: opts.readDocumentModel,
       getState: () => opts.editor.getState(),
       getView: () => opts.editor.getView(),
       getActiveView: opts.getActiveView,
@@ -503,6 +538,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         })),
       };
     }
+    const activeSuggestionIds = new Set(
+      getSuggestions(view.state).map((s) => s.suggestionId),
+    );
     const canonical = opts.editor.applyCanonicalDocumentOperations({
       undefinedReferences,
       snapshot,
@@ -513,19 +551,30 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       },
       author: operationAuthor,
     });
-    if (canonical) return canonical;
-    const activeSuggestionIds = new Set(
-      getSuggestions(view.state).map((s) => s.suggestionId),
-    );
+    if (canonical) {
+      // A canonical session's suggestions are pending suggestions the host
+      // can export and restore like any other.
+      if (mode === "suggested" && canonical.status === "committed")
+        pendingSuggestionRegistry.recordApplied({
+          snapshot,
+          story: { type: "main" },
+          operations,
+          applied: canonical.applied,
+          author: operationAuthor,
+          activeSuggestionIds,
+        });
+      return canonical;
+    }
     // Through the document-operation applier, like the batch path, so a
     // result the save-time check refuses never reaches the editor.
     const { applied, skipped } = applyWithStagedOperationComments({
+      view,
       createComment: (text) => opts.createAIEditComment(text, operationAuthor),
       publishComments: opts.publishAIEditComments,
-      apply: (createCommentId) =>
+      apply: (createCommentId, recordingView) =>
         applyFolioDocumentOperations({
           undefinedReferences,
-          view,
+          view: recordingView,
           snapshot,
           batch: {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -637,40 +686,59 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           undoHandle: null,
         };
       }
+      const activeBeforeCanonical = new Set(
+        getSuggestions(view.state).map((s) => s.suggestionId),
+      );
       const canonical = opts.editor.applyCanonicalDocumentOperations({
         undefinedReferences,
         snapshot,
         batch,
         author: operationAuthor,
       });
-      if (canonical) return canonical;
+      if (canonical) {
+        // A canonical session's suggestions are pending suggestions the host
+        // can export and restore like any other.
+        if (batch.mode === "suggested" && canonical.status === "committed")
+          pendingSuggestionRegistry.recordApplied({
+            snapshot,
+            story: { type: "main" },
+            operations: batch.operations,
+            applied: canonical.applied,
+            author: operationAuthor,
+            activeSuggestionIds: activeBeforeCanonical,
+          });
+        return canonical;
+      }
       const existingUndoEntry = documentOperationUndoEntries.at(-1);
       if (
         existingUndoEntry &&
         (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
-          opts.getComments() !== existingUndoEntry.commentsAfter)
+          canonicalJson(opts.getComments()) !==
+            existingUndoEntry.commentsAfterJson)
       ) {
         documentOperationUndoEntries.length = 0;
       }
       const commentsBefore = opts.getComments();
-      const operationView = {
-        state: view.state,
+      const closingView = {
+        get state() {
+          return view.state;
+        },
         dispatch: (transaction: Parameters<EditorView["dispatch"]>[0]) => {
           view.dispatch(closeHistory(transaction));
-          operationView.state = view.state;
         },
       };
       const activeSuggestionIds = new Set(
         getSuggestions(view.state).map((s) => s.suggestionId),
       );
       const result = applyWithStagedOperationComments({
+        view: closingView,
         createComment: (text) =>
           opts.createAIEditComment(text, operationAuthor),
         publishComments: opts.publishAIEditComments,
-        apply: (createCommentId) =>
+        apply: (createCommentId, recordingView) =>
           applyFolioDocumentOperations({
             undefinedReferences,
-            view: operationView,
+            view: recordingView,
             snapshot,
             batch,
             author: operationAuthor,
@@ -696,7 +764,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           undoHandle: result.undoHandle,
           afterState: view.state,
           commentsBefore,
-          commentsAfter: opts.getComments(),
+          commentsAfterJson: canonicalJson(opts.getComments()),
+          recorded: commentRecordsOf(view.state) !== null,
         });
       }
       return result;
@@ -723,7 +792,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       }
       if (
         !view.state.doc.eq(entry.afterState.doc) ||
-        opts.getComments() !== entry.commentsAfter
+        canonicalJson(opts.getComments()) !== entry.commentsAfterJson
       ) {
         return { status: "rejected", undoHandle, reason: "documentChanged" };
       }
@@ -731,7 +800,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         return { status: "rejected", undoHandle, reason: "documentChanged" };
       }
 
-      opts.setComments(entry.commentsBefore);
+      // Undo restored records the editor holds; others are put back here.
+      if (!entry.recorded) opts.setComments(entry.commentsBefore);
       documentOperationUndoEntries.pop();
       return { status: "undone", undoHandle };
     },
@@ -953,9 +1023,16 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const appliedAs =
         getSuggestions(view.state).find((s) => s.suggestionId === suggestionId)
           ?.appliedAs ?? null;
-      const accepted = acceptSuggestion(suggestionId, {
-        author: options?.author ?? opts.author(),
-      })(view.state, view.dispatch);
+      // A canonical session journals the acceptance itself.
+      const accepted = opts.editor.getCanonicalDocument()
+        ? opts.editor.resolveCanonicalSuggestion(
+            suggestionId,
+            "accept",
+            options?.author ?? opts.author(),
+          )
+        : acceptSuggestion(suggestionId, {
+            author: options?.author ?? opts.author(),
+          })(view.state, view.dispatch);
       return { accepted, appliedAs: accepted ? appliedAs : null };
     },
     rejectSuggestion: (suggestionId) => {
@@ -963,6 +1040,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!view) {
         return false;
       }
+      if (opts.editor.getCanonicalDocument())
+        return opts.editor.resolveCanonicalSuggestion(
+          suggestionId,
+          "reject",
+          opts.author(),
+        );
       return rejectSuggestion(suggestionId)(view.state, view.dispatch);
     },
     scrollToSuggestion: (suggestionId) => {

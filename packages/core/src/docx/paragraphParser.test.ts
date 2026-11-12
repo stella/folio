@@ -91,7 +91,7 @@ describe("parseParagraph tracked-change hardening", () => {
     expect(run.content[0].text).toBe(" removed ");
   });
 
-  test("parses deletion instruction text from w:delInstrText", () => {
+  test("keeps a deleted instruction with no field as its markup, saved as w:delInstrText", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:del w:id="8" w:author="Reviewer">
@@ -114,12 +114,11 @@ describe("parseParagraph tracked-change hardening", () => {
       return;
     }
 
-    expect(run.content).toHaveLength(1);
-    expect(run.content[0].type).toBe("instrText");
-    if (run.content[0].type !== "instrText") {
-      return;
-    }
-    expect(run.content[0].text).toBe(" MERGEFIELD name ");
+    // No field reads it, so there is no model to give it: the markup is kept.
+    expect(run.content.map(({ type }) => type)).toEqual(["preservedXml"]);
+    expect(serializeParagraph(paragraph)).toContain(
+      "<w:delInstrText> MERGEFIELD name </w:delInstrText>",
+    );
   });
 
   test.each(["del", "moveFrom"] as const)(
@@ -488,10 +487,14 @@ describe("parseParagraph empty-run normalization", () => {
       return;
     }
 
-    expect(hyperlink.children).toHaveLength(5);
+    // The link holds the page number field whole.
+    const field = hyperlink.children.at(0);
+    expect(hyperlink.children).toHaveLength(1);
+    expect(field?.type).toBe("complexField");
+    if (field?.type !== "complexField") return;
     expect(
-      hyperlink.children.some(
-        (child) => child.type === "run" && child.content.length === 0,
+      [...field.fieldCode, ...field.fieldResult].some(
+        (run) => run.content.length === 0,
       ),
     ).toBe(false);
 

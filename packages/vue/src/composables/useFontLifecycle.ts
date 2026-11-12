@@ -14,7 +14,8 @@ import { loadHostFontFaces } from "../utils/hostFonts";
 
 export type UseFontLifecycleOptions = {
   isReady: Ref<boolean>;
-  getDocument: () => { originalBuffer?: ArrayBuffer | null } | null;
+  /** The bytes the current document was loaded from, if any. */
+  sourceBuffer: () => ArrayBuffer | null;
   fonts: () => ReadonlyArray<FontDefinition> | undefined;
   remeasure: () => void;
   setEmbeddedFontFamilies: (
@@ -46,10 +47,7 @@ export function useFontLifecycle(
   dependencies: FontLifecycleDependencies = DEFAULT_DEPENDENCIES,
 ): void {
   watch(
-    () =>
-      options.isReady.value
-        ? (options.getDocument()?.originalBuffer ?? null)
-        : null,
+    () => (options.isReady.value ? options.sourceBuffer() : null),
     (buffer, _previous, onCleanup) => {
       if (!buffer) {
         return;

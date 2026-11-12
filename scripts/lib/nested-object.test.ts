@@ -22,6 +22,7 @@ describe("setNestedValue", () => {
 
   test("does not descend through inherited properties", () => {
     // SAFETY: temporary own-data probe on Object.prototype for this test only.
+    // oxlint-disable-next-line no-extend-native -- the test needs an inherited key
     Object.defineProperty(Object.prototype, "inheritedLocaleBranch", {
       value: {},
       writable: true,
@@ -77,6 +78,7 @@ describe("getNestedValue", () => {
 
   test("ignores inherited properties", () => {
     // SAFETY: temporary own-data probe on Object.prototype for this test only.
+    // oxlint-disable-next-line no-extend-native -- the test needs an inherited key
     Object.defineProperty(Object.prototype, "inheritedLocaleBranch", {
       value: { leaf: "inherited" },
       writable: true,

@@ -119,3 +119,39 @@ test.each([undefined, null, "", "null", "Drawing name"])(
     }
   },
 );
+
+describe("ImageExtension sources", () => {
+  test("the editor DOM only loads local image sources, and the clipboard keeps the rest", () => {
+    const releaseDom = acquireHarnessDom();
+    try {
+      const sources = [
+        "data:image/png;base64,iVBORw0KGgo=",
+        "blob:https://folio.test/7f3c",
+        "https://images.example.test/pixel.png?t=1",
+        "http://images.example.test/pixel.png",
+        "//images.example.test/pixel.png",
+      ];
+      for (const src of sources) {
+        const host = document.createElement("div");
+        host.append(
+          DOMSerializer.fromSchema(schema).serializeNode(
+            schema.node("paragraph", null, [schema.node("image", { src })]),
+          ),
+        );
+        const element = host.querySelector("img");
+        if (element === null) throw new TypeError("Image has no element.");
+        const local = src.startsWith("data:") || src.startsWith("blob:");
+        expect(element.getAttribute("src")).toBe(local ? src : null);
+
+        const parsed =
+          DOMParser.fromSchema(schema).parseSlice(host).content.firstChild
+            ?.firstChild;
+        if (parsed?.type.name !== "image")
+          throw new TypeError("Clipboard parse lost its image.");
+        expect(expectImageAttrs(parsed).src).toBe(src);
+      }
+    } finally {
+      releaseDom();
+    }
+  });
+});

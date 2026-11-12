@@ -132,6 +132,21 @@ const randomFor = (seed: number) => {
   };
 };
 
+/** The ids of the revisions a body's records carry. */
+const revisionIdsInBody = (value: unknown, out = new Set<number>()) => {
+  if (typeof value !== "object" || value === null) return out;
+  if (Array.isArray(value)) {
+    for (const item of value) revisionIdsInBody(item, out);
+    return out;
+  }
+  const record = value as Record<string, unknown>;
+  const info = record["info"] as { id?: unknown; author?: unknown } | undefined;
+  if (typeof info?.id === "number" && typeof info.author === "string")
+    out.add(info.id);
+  for (const child of Object.values(record)) revisionIdsInBody(child, out);
+  return out;
+};
+
 /** Every schema member needs a generator decision when the operations API grows. */
 export const OP_GENERATOR_ROLES = {
   [DOCUMENT_OP_TYPES.CREATE_COMMENT]: "generated",
@@ -164,6 +179,7 @@ export const OP_GENERATOR_ROLES = {
   [DOCUMENT_OP_TYPES.INSERT_ROW]: "generated",
   [DOCUMENT_OP_TYPES.DELETE_ROW]: "generated",
   [DOCUMENT_OP_TYPES.RESOLVE_REVISION]: "generated",
+  [DOCUMENT_OP_TYPES.SET_REVISION_INFO]: "generated",
   [DOCUMENT_OP_TYPES.INSERT_COLUMN]: "generated",
   [DOCUMENT_OP_TYPES.DELETE_COLUMN]: "generated",
   [DOCUMENT_OP_TYPES.MERGE_CELLS]: "generated",
@@ -852,6 +868,22 @@ const candidate = ({
             ? REVISION_DECISIONS.ACCEPT
             : REVISION_DECISIONS.REJECT,
       };
+    // Re-attribute one revision the sequence made, as adopting a suggestion
+    // does.
+    case "setRevisionInfo": {
+      const present = revisionIdsInBody(document.package.document.content);
+      const live = revisions.filter((id) => present.has(id));
+      const pool = live.length > 0 ? live : [...present];
+      // The most recent revision: drawing nothing from the seed keeps every
+      // other family's choices where they were.
+      const id = pool.at(-1);
+      if (id === undefined) return undefined;
+      return {
+        type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+        story: OP_STORIES.MAIN,
+        infos: [{ id, author: "Corpus adopter", date: "2026-02-02T00:00:00Z" }],
+      };
+    }
     default: {
       const unreachable: never = family;
       return unreachable;

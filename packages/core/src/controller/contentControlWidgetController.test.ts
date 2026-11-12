@@ -32,6 +32,21 @@ describe("parseContentControlListItems", () => {
     ]);
   });
 
+  test("offers one choice per stored value, so every choice writes its own label", () => {
+    expect(
+      parseContentControlListItems(
+        JSON.stringify([
+          { displayText: "Approved A", value: "same" },
+          { displayText: "Approved B", value: "same" },
+          { displayText: "Rejected", value: "other" },
+        ]),
+      ),
+    ).toEqual([
+      { displayText: "Approved A", value: "same" },
+      { displayText: "Rejected", value: "other" },
+    ]);
+  });
+
   test("treats malformed input as an empty list", () => {
     expect(parseContentControlListItems("{")).toEqual([]);
     expect(parseContentControlListItems(undefined)).toEqual([]);

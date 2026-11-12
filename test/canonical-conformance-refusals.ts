@@ -15,21 +15,26 @@ const REFUSAL_ROWS = {
     message:
       "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
   },
-  hyperlinkReview: {
-    id: CANONICAL_GAP.trackedHyperlinkResolution,
-    gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message:
-      "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
-  },
-  trackedColumnDeletion: {
+  cellSelectionPlacement: {
     id: CANONICAL_GAP.commands,
     gap: CANONICAL_GAP.commands,
-    message: "A suggested column deletion is unavailable in this session.",
+    message:
+      "A note or table of contents goes at a caret, not over selected cells.",
   },
-  fieldProjection: {
-    id: CANONICAL_GAP.storyContentProjection,
-    gap: CANONICAL_GAP.storyContentProjection,
-    message: "The operations produce unsupported canonical story content.",
+  // The fixture table's third row holds a nested table, which a suggested
+  // row change has no record for.
+  suggestedNestedTableRows: {
+    id: "suggested-nested-table-rows",
+    gap: CANONICAL_GAP.trackedTableStructure,
+    message: "A suggestion cannot yet record a row that holds a nested table.",
+  },
+  // A suggested column deletion keeps its cells until accepted, so a cell
+  // spanning the deleted column and another has no record of its narrowing.
+  suggestedSpanningColumnDeletion: {
+    id: "suggested-spanning-column-deletion",
+    gap: CANONICAL_GAP.trackedTableStructure,
+    message:
+      "A suggested column deletion cannot narrow a cell that spans other columns.",
   },
 } as const satisfies Record<string, HarnessRefusalRow>;
 
@@ -38,8 +43,6 @@ const REFUSAL_ROWS = {
 const COMMAND_REFUSAL_CONTRACTS = {
   [CANONICAL_GAP.commands]: {
     operations: [
-      "command:insertTable",
-      "command:deleteTable",
       "command:autoFitContents",
       "host:addComment",
       "host:acceptChange",
@@ -75,46 +78,6 @@ export const canonicalRefusalCaseId = ({
   mode,
 }: RefusalCase) => `${shape} › ${operation} @ ${placement} [${mode}]`;
 
-export const STORY_PROJECTION_REFUSAL_CASES = [
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "key:Enter",
-    placement: "paragraph",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "paste:copied-blocks",
-    placement: "caret-end",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "key:Delete",
-    placement: "cross-paragraph",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "host:cut",
-    placement: "paragraph",
-  },
-  {
-    shape: "fields-links-bookmarks",
-    mode: "suggesting",
-    operation: "host:cut",
-    placement: "cross-paragraph",
-  },
-] as const satisfies readonly RefusalCase[];
-
-const STORY_PROJECTION_ROWS = {
-  "fields-links-bookmarks": REFUSAL_ROWS.fieldProjection,
-} as const satisfies Record<
-  (typeof STORY_PROJECTION_REFUSAL_CASES)[number]["shape"],
-  HarnessRefusalRow
->;
-
 // The fixture source/heading collector assertion binds this applicability set.
 export const TOC_HEADING_SHAPES = [
   "style-numbered-headings",
@@ -130,14 +93,33 @@ export const canonicalConformanceRefusalRows = (
       operations.some((operation) => operation === key.operation),
   );
   if (commandContract) return commandContract.rows;
-  const projection = STORY_PROJECTION_REFUSAL_CASES.find(
-    (candidate) =>
-      canonicalRefusalCaseId(candidate) === canonicalRefusalCaseId(key),
-  );
-  if (projection) return [STORY_PROJECTION_ROWS[projection.shape]];
+  if (
+    key.shape === "tables" &&
+    key.placement === "cross-paragraph" &&
+    (key.operation === "command:generateTOC" ||
+      key.operation === "command:insertFootnote" ||
+      key.operation === "command:insertEndnote")
+  )
+    return [REFUSAL_ROWS.cellSelectionPlacement];
+  // Suggestions in the fixture's table. Over the whole document the selection
+  // is in no table, so the table commands do nothing in either mode.
+  const inFixtureTable =
+    key.shape === "tables" &&
+    key.mode === "suggesting" &&
+    key.placement !== "document";
+  // Deleting the table records every row, the nested table's too.
+  if (key.operation === "command:deleteTable")
+    return inFixtureTable ? [REFUSAL_ROWS.suggestedNestedTableRows] : [];
+  // Across the focused cell and the next, the selection spans the merged
+  // block and reaches the row with the nested table; at a caret the row and
+  // column hold neither.
+  if (key.operation === "command:deleteRow")
+    return inFixtureTable && key.placement === "cross-paragraph"
+      ? [REFUSAL_ROWS.suggestedNestedTableRows]
+      : [];
   if (key.operation === "command:deleteColumn")
-    return key.mode === "suggesting" && key.shape === "tables"
-      ? [REFUSAL_ROWS.trackedColumnDeletion]
+    return inFixtureTable && key.placement === "cross-paragraph"
+      ? [REFUSAL_ROWS.suggestedSpanningColumnDeletion]
       : [];
   if (key.operation === "command:generateTOC")
     return key.mode === "suggesting" &&
@@ -161,7 +143,6 @@ export const canonicalConformanceRefusalRows = (
   // there is nothing to refuse.
   if (key.shape === "tables" && key.placement === "cross-paragraph") return [];
   if (key.mode === "suggesting") return [REFUSAL_ROWS.hyperlinkSuggestion];
-  if (key.shape === "tracked-changes") return [REFUSAL_ROWS.hyperlinkReview];
   return [];
 };
 

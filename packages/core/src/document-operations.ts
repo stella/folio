@@ -2439,7 +2439,7 @@ export type ApplyFolioDocumentOperationsOptions = {
  * operation gets a distinct id, and an operation of the batch grouping with it
  * by that id follows it.
  */
-const withDistinctSuggestionIds = (
+export const withDistinctSuggestionIds = (
   batch: FolioDocumentOperationBatch,
   pending: ReadonlySet<string>,
 ): FolioDocumentOperationBatch => {
@@ -2597,11 +2597,9 @@ export const applyFolioDocumentOperationsInPackage = ({
     const held: { transaction?: Transaction } = {};
     const commentIds: number[] = [];
     // canonical-gap: publicOps.comments
-    // canonical-gap: publicOps.suggestedMode
     // canonical-gap: publicOps.unsupportedInline
     // canonical-gap: publicOps.tableStructure
     // canonical-gap: publicOps.pendingParagraphMarkProperties
-    // canonical-gap: publicOps.secondaryStories
     // canonical-gap: pm-document-operations
     const outcome = applyFolioAIEditOperationsInPackage({
       ...common,

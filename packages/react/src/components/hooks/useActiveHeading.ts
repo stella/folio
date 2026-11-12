@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 
 /** How long a jump holds the active heading before scrolling may move it. */
 const MANUAL_ACTIVE_LOCK_MS = 900;
@@ -44,7 +45,7 @@ export const useActiveHeading = (
       const threshold = container.scrollTop + container.clientHeight / 2;
       const offsets: { pm: number; top: number }[] = [];
       for (const el of anchors) {
-        const pm = Number(el.dataset["pmStart"]);
+        const pm = readPaintedStart(el) ?? Number.NaN;
         if (!Number.isFinite(pm)) {
           continue;
         }

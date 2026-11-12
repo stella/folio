@@ -1284,8 +1284,8 @@ export type NotePartPatch =
  * dirty paragraphs. A tracked paragraph-break resolution can change that
  * shape, so it replaces the one affected note. Separator notes, unrelated
  * notes, and unaffected equal-shape paragraphs remain byte-exact.
- * `replacementXml` also supplies synthesized automatic note-reference marks,
- * which the parsed model intentionally omits.
+ * `replacementXml` gives a note new to the part its automatic reference mark;
+ * a note the part already has carries its own, or none, in the model.
  *
  * A comment can be anchored on a note's own text, so its range spans that
  * note's paragraphs and an edit inside the span moves a range half from one

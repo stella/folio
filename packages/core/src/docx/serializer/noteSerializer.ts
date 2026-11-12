@@ -191,26 +191,41 @@ function insertNoteReferenceMark({
   return `${xml.slice(0, insertAt)}${referenceRun}${xml.slice(insertAt)}`;
 }
 
-type NewNotePartOptions = {
+/** What a new note part is written for. */
+export type NewNotePartContext = {
+  /** The document the notes belong to, which says whether a note's reference shows a custom mark. */
+  document?: Document;
+  /**
+   * Notes the source package already has. Their content says whether they
+   * show a reference mark, as read, edited and resolved; only a note new to
+   * the package is given one.
+   */
+  sourceNoteIds?: ReadonlySet<number>;
+};
+
+type NewNotePartOptions = NewNotePartContext & {
   elementName: "footnote" | "endnote";
   notes: readonly (Footnote | Endnote)[];
-  document?: Document;
 };
 
 function serializeNewNotePart({
   elementName,
   notes,
   document,
+  sourceNoteIds,
 }: NewNotePartOptions): string {
   const serializedNotes = notes
-    .map((note) =>
-      insertNoteReferenceMark({
-        xml: serializeNote(elementName, note),
-        elementName,
-        note,
-        customMark: document ? noteUsesCustomMark(document, note) : false,
-      }),
-    )
+    .map((note) => {
+      const xml = serializeNote(elementName, note);
+      return sourceNoteIds?.has(note.id) === true
+        ? xml
+        : insertNoteReferenceMark({
+            xml,
+            elementName,
+            note,
+            customMark: document ? noteUsesCustomMark(document, note) : false,
+          });
+    })
     .join("");
   return serializeNotePart(
     elementName,
@@ -245,27 +260,29 @@ export function serializeEndnotes(endnotes: readonly Endnote[]): string {
 }
 
 /** Serialize a brand-new footnote part, including Word's required separators
- * and the automatic reference mark at the start of every normal note. */
+ * and the automatic reference mark at the start of every normal note new to
+ * the package. */
 export function serializeNewFootnotesPart(
   footnotes: readonly Footnote[],
-  document?: Document,
+  context: NewNotePartContext = {},
 ): string {
   return serializeNewNotePart({
+    ...context,
     elementName: "footnote",
     notes: footnotes,
-    ...(document ? { document } : {}),
   });
 }
 
 /** Serialize a brand-new endnote part, including Word's required separators
- * and the automatic reference mark at the start of every normal note. */
+ * and the automatic reference mark at the start of every normal note new to
+ * the package. */
 export function serializeNewEndnotesPart(
   endnotes: readonly Endnote[],
-  document?: Document,
+  context: NewNotePartContext = {},
 ): string {
   return serializeNewNotePart({
+    ...context,
     elementName: "endnote",
     notes: endnotes,
-    ...(document ? { document } : {}),
   });
 }

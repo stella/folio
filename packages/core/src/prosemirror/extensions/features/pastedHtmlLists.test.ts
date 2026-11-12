@@ -1,5 +1,5 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { DOMParser, Slice } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -36,6 +36,19 @@ const pasted = (html: string) => {
 };
 
 describe("HTML list paste", () => {
+  test("list markup is parsed outside the live document", () => {
+    const create = spyOn(document, "createElement");
+    try {
+      const html = flattenPastedHtmlLists(
+        '<ul><li>One<img src="data:image/png;base64,iVBORw0KGgo="></li></ul>',
+      );
+      expect(html).toContain("<img");
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      create.mockRestore();
+    }
+  });
+
   test("preserves bullet membership, nested level, and text order", () => {
     const doc = pasted(
       "<ul><li>First bullet</li><li>Second bullet<ul><li>Nested bullet</li></ul></li></ul>",

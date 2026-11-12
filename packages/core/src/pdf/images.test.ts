@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { deflateSync } from "node:zlib";
 
 import type { DisplayImageSource } from "../display-list/types";
-import { decodeImage } from "./images";
+import { decodeImage, MAX_PDF_PNG_PIXELS } from "./images";
 
 const CRC_POLYNOMIAL = 0xedb88320;
 
@@ -662,6 +662,40 @@ describe("JPEG frame modes /DCTDecode cannot represent", () => {
         expect(decoded.error.message).toContain(`0xff${marker.toString(16)}`);
         expect(decoded.error.message).toContain("/DCTDecode");
       }
+    }
+  });
+});
+
+describe("PNG pixel ceiling", () => {
+  const declaredOnly = (width: number, height: number): DisplayImageSource =>
+    asSource(
+      buildPngFromScanlines({
+        width,
+        height,
+        bitDepth: 8,
+        colorType: 6,
+        scanlines: new Uint8Array(1),
+      }),
+      width,
+      height,
+    );
+
+  test("refuses a raster above the per-image ceiling before inflating it", () => {
+    const side = Math.ceil(Math.sqrt(MAX_PDF_PNG_PIXELS)) + 1;
+    const decoded = decodeImage(declaredOnly(side, side));
+    expect(decoded.isErr()).toBe(true);
+    if (decoded.isErr()) {
+      expect(decoded.error.message).toContain(
+        `above the ${String(MAX_PDF_PNG_PIXELS)} pixels allowed`,
+      );
+    }
+  });
+
+  test("refuses a raster above the caller's remaining pixel budget", () => {
+    const decoded = decodeImage(declaredOnly(4, 4), 15);
+    expect(decoded.isErr()).toBe(true);
+    if (decoded.isErr()) {
+      expect(decoded.error.message).toContain("above the 15 pixels allowed");
     }
   });
 });

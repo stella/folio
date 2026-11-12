@@ -439,6 +439,7 @@ const runTool = async (
   return await executeWriteTool(tool, call, {
     sourcePrecondition: "required",
     destination: target,
+    scope: { type: "withinRoots", roots: context.roots },
     author: context.author,
     date: toRevisionDate(context.now()),
     repack: input["allowRepack"] === true ? "allow" : "refuse",

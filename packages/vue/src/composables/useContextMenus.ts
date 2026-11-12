@@ -33,6 +33,7 @@ import {
   NO_LIST_NUMBERING_MENU,
 } from "@stll/folio-core/prosemirror";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
+import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 
 import type {
   ImageContextMenuState,
@@ -234,7 +235,7 @@ export function useContextMenus(
     // Check if right-click is on an image
     const imageEl = findImageElement(event.target);
     if (imageEl) {
-      const pmStart = Number(imageEl.dataset["pmStart"]);
+      const pmStart = readPaintedStart(imageEl) ?? Number.NaN;
       if (!Number.isNaN(pmStart)) {
         try {
           const sel = NodeSelection.create(view.state.doc, pmStart);

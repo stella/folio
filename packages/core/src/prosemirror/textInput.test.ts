@@ -10,7 +10,12 @@ import {
 } from "bun:test";
 import fc from "fast-check";
 import { Schema } from "prosemirror-model";
-import { EditorState, Plugin, TextSelection } from "prosemirror-state";
+import {
+  AllSelection,
+  EditorState,
+  Plugin,
+  TextSelection,
+} from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
 import {
@@ -448,4 +453,131 @@ describe("text input routing", () => {
       expect(view.state.doc.textContent).toBe("A");
     },
   );
+});
+
+/** Move the DOM caret the way a key the browser handles does: no transaction. */
+const moveNativeCaret = (view: EditorView, pos: number, side: -1 | 1 = 1) => {
+  const { node, offset } = view.domAtPos(pos, side);
+  const native = view.dom.ownerDocument.getSelection();
+  native?.removeAllRanges();
+  native?.collapse(node, offset);
+};
+
+const dispatchKeyDown = (view: EditorView, key: string) => {
+  const event = new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key,
+  });
+  view.dom.dispatchEvent(event);
+  return event;
+};
+
+describe("input after the browser moved the caret", () => {
+  test("typed text lands at the caret the browser shows", () => {
+    const view = createView([schema.text("RAISEDTEXT")], {
+      selection: { from: 6 },
+    });
+
+    moveNativeCaret(view, 11);
+    dispatchBeforeInput(view, { data: "X" });
+
+    expect(view.state.doc.textContent).toBe("RAISEDTEXTX");
+    expect(view.state.selection.from).toBe(12);
+  });
+
+  test("a key handler reads the caret the browser shows", () => {
+    const seen: number[] = [];
+    const view = createView([schema.text("RAISEDTEXT")], {
+      selection: { from: 6 },
+      plugins: [
+        new Plugin({
+          props: {
+            handleKeyDown: (keyView, event) => {
+              if (event.key !== "Enter") return false;
+              seen.push(keyView.state.selection.from);
+              return true;
+            },
+          },
+        }),
+      ],
+    });
+
+    moveNativeCaret(view, 1);
+    dispatchKeyDown(view, "Enter");
+
+    expect(seen).toEqual([1]);
+  });
+
+  test("select-all the browser paints stays select-all, and a collapsed caret leaves it", () => {
+    const view = createView([schema.text("RAISEDTEXT")]);
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    const painted = document.createRange();
+    painted.selectNodeContents(view.dom);
+    const native = document.getSelection();
+    native?.removeAllRanges();
+    native?.addRange(painted);
+
+    dispatchKeyDown(view, "x");
+    expect(view.state.selection).toBeInstanceOf(AllSelection);
+
+    moveNativeCaret(view, 11);
+    dispatchKeyDown(view, "x");
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(view.state.selection.from).toBe(11);
+  });
+
+  test("a composition keeps the model selection", () => {
+    const view = createView([schema.text("RAISEDTEXT")], {
+      selection: { from: 6 },
+    });
+
+    moveNativeCaret(view, 11);
+    view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Process" }),
+    );
+
+    expect(view.state.selection.from).toBe(6);
+  });
+
+  test("a caret on either side of a mark boundary keeps the selection and its stored marks", () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            text: fc.stringMatching(/^[a-z]{1,4}$/u),
+            strong: fc.boolean(),
+          }),
+          { minLength: 1, maxLength: 5 },
+        ),
+        fc.nat(),
+        fc.constantFrom<-1 | 1>(-1, 1),
+        (runs, pick, side) => {
+          const view = createView(
+            runs.map(({ text, strong }) =>
+              schema.text(text, strong ? [schema.marks.strong.create()] : []),
+            ),
+          );
+          const size = view.state.doc.content.size;
+          const pos = 1 + (pick % (size - 1));
+          const stored = [schema.marks.italic.create()];
+          view.dispatch(
+            view.state.tr
+              .setSelection(TextSelection.create(view.state.doc, pos))
+              .setStoredMarks(stored),
+          );
+          const before = view.state;
+
+          moveNativeCaret(view, pos, side);
+          dispatchKeyDown(view, "Shift");
+
+          expect(view.state).toBe(before);
+          expect(view.state.storedMarks).toEqual(stored);
+          view.destroy();
+          views.splice(views.indexOf(view), 1);
+        },
+      ),
+      propertyConfig({ numRuns: 120 }),
+    );
+  });
 });

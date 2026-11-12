@@ -1074,6 +1074,36 @@ describe("createBilingualDocx", () => {
     );
   });
 
+  test("refuses a manifest whose target paragraph repeats its source's package id", async () => {
+    const source = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
+    source.package.document.content = [
+      paragraph("First row"),
+      paragraph("Second row"),
+    ];
+    const valid = await createBilingualDocx(await createDocx(source), {
+      targetStyleSuffix: SUFFIX,
+    });
+    const malformed = await parseDocx(valid.buffer, { preloadFonts: false });
+    const [left, right] = bodyTables(malformed).at(0)?.rows.at(1)?.cells ?? [];
+    const sourceParagraph = left?.content.at(0);
+    const targetParagraph = right?.content.at(0);
+    if (
+      sourceParagraph?.type !== "paragraph" ||
+      targetParagraph?.type !== "paragraph"
+    ) {
+      throw new Error("bilingual fixture lost its second row");
+    }
+    targetParagraph.paraId = sourceParagraph.paraId;
+
+    await expect(
+      readBilingualDocx(await createDocx(malformed)),
+    ).rejects.toThrow(
+      "Bilingual manifest structure or handles do not match the Folio AI-edit snapshot.",
+    );
+  });
+
   test("materializes a styles part when the source package has none", async () => {
     const source = await buildSource();
     // Strip word/styles.xml and its relationship: legal OOXML, and the path

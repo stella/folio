@@ -147,6 +147,14 @@ const loadFatSectorIds = (
   file: Uint8Array,
   header: CompoundHeader,
 ): number[] => {
+  // Each FAT sector is a distinct physical sector, so the declared count can
+  // never exceed the sectors the file holds.
+  const physicalSectors = Math.floor(file.length / header.sectorBytes) - 1;
+  if (header.fatSectorCount > physicalSectors) {
+    throw new Error(
+      `Declared FAT sector count ${header.fatSectorCount} exceeds the ${physicalSectors} sectors in the file`,
+    );
+  }
   const ids = [...header.headerDifat];
   // A hostile `difatSectorCount` (up to 2^32-1) would otherwise force this
   // loop to run far more times than the file could possibly contain DIFAT
@@ -180,7 +188,15 @@ const loadFatSectorIds = (
   if (ids.length < header.fatSectorCount) {
     throw new Error("DIFAT chain shorter than declared FAT sector count");
   }
-  return ids.slice(0, header.fatSectorCount);
+  const fatSectorIds = ids.slice(0, header.fatSectorCount);
+  const listed = new Set<number>();
+  for (const id of fatSectorIds) {
+    if (listed.has(id)) {
+      throw new Error(`FAT sector ${id} listed more than once`);
+    }
+    listed.add(id);
+  }
+  return fatSectorIds;
 };
 
 const loadFat = (file: Uint8Array, header: CompoundHeader): number[] => {

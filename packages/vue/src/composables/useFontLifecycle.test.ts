@@ -36,7 +36,7 @@ describe("useFontLifecycle", () => {
         useFontLifecycle(
           {
             isReady: ref(false),
-            getDocument: () => null,
+            sourceBuffer: () => null,
             fonts: () => fonts.value,
             remeasure,
             setEmbeddedFontFamilies: () => {},
@@ -107,7 +107,7 @@ describe("useFontLifecycle", () => {
         useFontLifecycle(
           {
             isReady: ref(true),
-            getDocument: () => ({ originalBuffer: new ArrayBuffer(1) }),
+            sourceBuffer: () => new ArrayBuffer(1),
             fonts: () => undefined,
             remeasure: () => {},
             setEmbeddedFontFamilies,
@@ -185,7 +185,7 @@ describe("useFontLifecycle", () => {
         useFontLifecycle(
           {
             isReady: ready,
-            getDocument: () => document,
+            sourceBuffer: () => document.originalBuffer,
             fonts: () => undefined,
             remeasure,
             setEmbeddedFontFamilies: mock(() => {}),
@@ -241,7 +241,7 @@ describe("useFontLifecycle", () => {
         useFontLifecycle(
           {
             isReady: ready,
-            getDocument: () => document,
+            sourceBuffer: () => document.originalBuffer,
             fonts: () => undefined,
             remeasure,
             setEmbeddedFontFamilies: mock(() => {}),
@@ -297,7 +297,7 @@ describe("useFontLifecycle", () => {
         useFontLifecycle(
           {
             isReady: ref(false),
-            getDocument: () => null,
+            sourceBuffer: () => null,
             fonts: () => fonts.value,
             remeasure,
             setEmbeddedFontFamilies: mock(() => {}),

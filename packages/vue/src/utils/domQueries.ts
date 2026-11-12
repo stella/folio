@@ -19,6 +19,11 @@ import type { EditorView } from "prosemirror-view";
 import { clickToPositionDom } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
 import { findBodyPmSpans } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import { scrollPagesToPmPosition } from "@stll/folio-core/paged-layout/scrollToPmPosition";
+import {
+  PAINTED_RANGE_SELECTOR,
+  readPaintedEnd,
+  readPaintedStart,
+} from "@stll/folio-core/utils/paintedPositions";
 
 import { findWordBoundaries } from "./textSelection";
 
@@ -69,13 +74,13 @@ export function findElementAtPosition(
       // the HF PM coord space, so one host suffices.
       Array.from(
         container.querySelectorAll<HTMLElement>(
-          `.layout-page-${hfSection} span[data-pm-start][data-pm-end]`,
+          `.layout-page-${hfSection} span${PAINTED_RANGE_SELECTOR}`,
         ),
       )
     : findBodyPmSpans(container);
   for (const el of els) {
-    const start = Number(el.dataset["pmStart"]);
-    const end = Number(el.dataset["pmEnd"]);
+    const start = readPaintedStart(el) ?? Number.NaN;
+    const end = readPaintedEnd(el) ?? Number.NaN;
     if (
       !Number.isNaN(start) &&
       !Number.isNaN(end) &&
@@ -127,7 +132,7 @@ export function selectWord(
   const el = findElementAtPosition(pagesContainer, pos, hfSection);
   if (!el) return;
   const text = el.textContent ?? "";
-  const pmStart = Number(el.dataset["pmStart"]) || 0;
+  const pmStart = readPaintedStart(el) || 0;
   const offset = pos - pmStart;
   const [start, end] = findWordBoundaries(text, offset);
   const from = pmStart + start;
@@ -152,8 +157,8 @@ export function selectParagraph(
   if (!el) return;
   const paragraph = el.closest<HTMLElement>(".layout-paragraph");
   if (!paragraph) return;
-  const pmStart = Number(paragraph.dataset["pmStart"]);
-  const pmEnd = Number(paragraph.dataset["pmEnd"]);
+  const pmStart = readPaintedStart(paragraph) ?? Number.NaN;
+  const pmEnd = readPaintedEnd(paragraph) ?? Number.NaN;
   if (!Number.isNaN(pmStart) && !Number.isNaN(pmEnd) && pmStart < pmEnd) {
     setPmSelection(pmStart, pmEnd);
   }

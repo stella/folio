@@ -22,7 +22,9 @@ const EnsureParaIdsErrorBase: TaggedErrorClass<"EnsureParaIdsError"> =
  * so documents carrying features folio's parser does not model come back
  * with those features byte-identical. Contract:
  *
- * - Parts covered: the officeDocument relationship target, `word/header*.xml`, `word/footer*.xml`,
+ * - Parts covered: the officeDocument relationship target, the header,
+ *   footer, footnotes, and endnotes parts its relationships name (wherever
+ *   they live), and `word/header*.xml`, `word/footer*.xml`,
  *   `word/footnotes.xml`, `word/endnotes.xml`. Paragraphs nested in table
  *   cells and in `mc:Choice` text boxes are plain `<w:p>` elements inside
  *   those parts and are covered by the same scan. The comments part mints its
@@ -31,8 +33,9 @@ const EnsureParaIdsErrorBase: TaggedErrorClass<"EnsureParaIdsError"> =
  * - Paragraphs inside `mc:Fallback` are never modified: Word regenerates the
  *   fallback branch (duplicating the `mc:Choice` ids) on save, so stamping or
  *   deduplicating there would churn on every Word round-trip.
- * - Existing ids are preserved. Only three cases get a fresh id: a missing
+ * - Existing ids are preserved. Only these cases get a fresh id: a missing
  *   `paraId`, the reserved all-zero value (Word reads `00000000` as "no id"),
+ *   a value that is not eight hex digits (the parser drops it as no id),
  *   and a duplicate of an id already seen earlier in the scan (first
  *   occurrence keeps it — the same rule `ParaIdAllocatorExtension` applies in
  *   the editor). `w14:textId` is written alongside a newly minted `paraId`
@@ -62,7 +65,7 @@ import { scanStreamingXmlElements } from "@stll/docx-core/xml";
 import { resolveNamespaceUri } from "@stll/docx-core/xml/namespaces";
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { deterministicHexId } from "../utils/hexId";
+import { deterministicHexId, isValidHexId } from "../utils/hexId";
 import { resolvePackageRelationshipTarget } from "./packageParts";
 import { spliceXml } from "./selectiveXmlPatch";
 import { loadDocxArchive } from "./server/boundedArchive";
@@ -128,6 +131,13 @@ const RESERVED_ZERO_ID_PATTERN = /^0*$/u;
 
 const PACKAGE_RELATIONSHIP_URI =
   "http://schemas.openxmlformats.org/package/2006/relationships";
+/** Relationship types, under each office namespace, whose targets are editable stories. */
+const STORY_RELATIONSHIP_TYPES = [
+  "header",
+  "footer",
+  "footnotes",
+  "endnotes",
+] as const;
 const TARGET_PART_PATTERNS = [
   /^word\/header\d*\.xml$/u,
   /^word\/footer\d*\.xml$/u,
@@ -399,7 +409,9 @@ const scanPart = ({
     }
 
     const value = paraId.value.toUpperCase();
-    const unassigned = RESERVED_ZERO_ID_PATTERN.test(value);
+    // The parser reads anything but eight hex digits as no id at all.
+    const unassigned =
+      !isValidHexId(value) || RESERVED_ZERO_ID_PATTERN.test(value);
     if (!unassigned && !seen.has(value)) {
       seen.add(value);
       continue;
@@ -509,8 +521,58 @@ const mainDocumentPart = (rels: string, entries: readonly string[]): string => {
   return name;
 };
 
+/** The `.rels` part that holds `partName`'s relationships. */
+const relationshipsPathFor = (partName: string): string => {
+  const slash = partName.lastIndexOf("/");
+  return `${partName.slice(0, slash + 1)}_rels/${partName.slice(slash + 1)}.rels`;
+};
+
+/**
+ * The header, footer, and note parts the main part's relationships name.
+ * The parser follows these relationships, so a story at a custom path
+ * (`word/custom/defaultHeader.xml`) is as editable as `word/header1.xml`.
+ */
+const relatedStoryParts = (
+  rels: string | null,
+  relsPath: string,
+  entries: readonly string[],
+): ReadonlySet<string> => {
+  const parts = new Set<string>();
+  const root = rels === null ? null : parseXmlDocument(rels);
+  if (
+    root === null ||
+    getLocalName(root.name ?? "") !== "Relationships" ||
+    getNamespaceUri(root) !== PACKAGE_RELATIONSHIP_URI
+  )
+    return parts;
+  const storyTypes = new Set<string>();
+  for (const uri of OFFICE_RELATIONSHIP_NAMESPACE_URIS)
+    for (const type of STORY_RELATIONSHIP_TYPES)
+      storyTypes.add(`${uri}/${type}`);
+  for (const element of getChildElements(root)) {
+    if (
+      getLocalName(element.name ?? "") !== "Relationship" ||
+      getNamespaceUri(element) !== PACKAGE_RELATIONSHIP_URI ||
+      !storyTypes.has(getAttribute(element, null, "Type") ?? "") ||
+      getAttribute(element, null, "TargetMode") === "External"
+    )
+      continue;
+    const target = getAttribute(element, null, "Target");
+    const partPath =
+      target === null
+        ? undefined
+        : resolvePackageRelationshipTarget(target, relsPath);
+    const name =
+      partPath === undefined
+        ? undefined
+        : entries.find((entry) => entry.toLowerCase() === partPath);
+    if (name !== undefined) parts.add(name);
+  }
+  return parts;
+};
+
 /** OPC part names are case-insensitive; compare lowercased. */
-const isTargetPart = (path: string): boolean =>
+const matchesTargetPattern = (path: string): boolean =>
   TARGET_PART_PATTERNS.some((pattern) => pattern.test(path.toLowerCase()));
 
 const toUint8Array = (docx: Uint8Array | ArrayBuffer): Uint8Array =>
@@ -547,8 +609,25 @@ const ensureParaIdsInternal = async (
   if (rels === null)
     throw createEnsureParaIdsError("Package relationships not found");
   const documentPartName = mainDocumentPart(rels, archive.entries);
+  const documentRelsPath = relationshipsPathFor(documentPartName);
+  const documentRelsName = archive.entries.find(
+    (name) => name.toLowerCase() === documentRelsPath.toLowerCase(),
+  );
+  const storyParts = relatedStoryParts(
+    documentRelsName === undefined
+      ? null
+      : await archive.readEntryString(documentRelsName),
+    documentRelsPath,
+    archive.entries,
+  );
+  const isTargetPart = (name: string): boolean =>
+    name !== documentPartName &&
+    (storyParts.has(name) || matchesTargetPattern(name));
   const xmlPartNames = archive.entries.filter(
-    (name) => name.toLowerCase().endsWith(".xml") || name === documentPartName,
+    (name) =>
+      name.toLowerCase().endsWith(".xml") ||
+      name === documentPartName ||
+      storyParts.has(name),
   );
 
   const partTexts = new Map<string, string>();
@@ -578,7 +657,7 @@ const ensureParaIdsInternal = async (
   const targetParts = [
     documentPartName,
     ...xmlPartNames
-      .filter((name) => name !== documentPartName && isTargetPart(name))
+      .filter((name) => isTargetPart(name))
       .sort((a, b) => a.localeCompare(b)),
   ];
 

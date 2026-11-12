@@ -50,11 +50,73 @@ const storyKey = (story: OpStory) => {
     : `${story.kind}:${String(story.id)}`;
 };
 
+type ControlEntry = { id: number | undefined; control: Control };
+
+/** The content controls inside one value, in document order. */
+const collectControls = (value: unknown, into: ControlEntry[]): void => {
+  if (Array.isArray(value)) {
+    for (const item of value) collectControls(item, into);
+    return;
+  }
+  if (typeof value !== "object" || value === null) return;
+  const node = value as {
+    type?: unknown;
+    properties?: { id?: number; lock?: ContentControlLock };
+    content?: unknown;
+  };
+  if (node.type === "blockSdt" || node.type === "inlineSdt")
+    into.push({
+      id: node.properties?.id,
+      control: {
+        lock: node.properties?.lock,
+        signature: signatureOf(node.content),
+      },
+    });
+  for (const child of Object.values(value)) collectControls(child, into);
+};
+
+// An operation leaves every block it does not name the same object, and never
+// changes a block in place, so a block's controls are read once. Typing then
+// reads the one block it edits instead of the whole document.
+const blockControls = new WeakMap<object, readonly ControlEntry[]>();
+const controlsInBlock = (block: object): readonly ControlEntry[] => {
+  let entries = blockControls.get(block);
+  if (entries === undefined) {
+    const collected: ControlEntry[] = [];
+    collectControls(block, collected);
+    entries = collected;
+    blockControls.set(block, entries);
+  }
+  return entries;
+};
+
 /**
  * Every content control in the document, keyed by its story and `w:id`, or by
  * its order among the controls without one.
  */
-const controlsOf = (document: Document): Map<string, Control> => {
+export const controlsOf = (document: Document): Map<string, Control> => {
+  const controls = new Map<string, Control>();
+  for (const story of documentStories(document)) {
+    const body = findStoryBody(document, story);
+    if (body === undefined) continue;
+    let anonymous = 0;
+    for (const block of body.content) {
+      for (const { id, control } of controlsInBlock(block)) {
+        const key = `${storyKey(story)}#${id === undefined ? `anonymous ${String(anonymous++)}` : String(id)}`;
+        controls.set(key, control);
+      }
+    }
+  }
+  return controls;
+};
+
+/**
+ * The same map read from the whole document in one walk, with no reuse: the
+ * reference the block reads above must equal.
+ */
+export const controlsOfWholeDocument = (
+  document: Document,
+): Map<string, Control> => {
   const controls = new Map<string, Control>();
   for (const story of documentStories(document)) {
     const body = findStoryBody(document, story);

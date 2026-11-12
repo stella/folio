@@ -127,6 +127,7 @@ import {
   resolveRelativePath,
 } from "./relsParser";
 import { normalizeRenderedPageBreakHints } from "./renderedPageBreakNormalization";
+import { diagnoseReviewProvenance } from "./reviewProvenanceDiagnostics";
 import { parseSettings } from "./settingsParser";
 import { parseStylesPackage } from "./styleParser";
 import type { StyleMap } from "./styleParser";
@@ -483,6 +484,7 @@ export async function parseDocxWithPreviewBudget(
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
     diagnoseImportedIdCollisions(raw.allXml, parseContext);
+    diagnoseReviewProvenance(raw.allXml, parseContext);
     await replaceRawDocxXmlParts(
       raw,
       normalizeBookmarkIdsInXmlParts(raw.allXml),
@@ -769,6 +771,14 @@ export async function parseDocxWithPreviewBudget(
       styles: styleDefinitions?.styles ?? [],
       numbering,
     });
+    const danglingNumIds = [
+      ...new Set([
+        ...numberingReferenceNormalization.danglingNumIds,
+        ...styleNumberingNormalization.danglingNumIds,
+      ]),
+    ].sort((left, right) => left - right);
+    if (danglingNumIds.length > 0)
+      numbering.definitions.danglingNumIds = danglingNumIds;
     for (const styleId of styleNumberingNormalization.unnumberedStyleIds) {
       parseContext.warn({
         code: UNNUMBERED_STYLE_WARNING,

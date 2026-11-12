@@ -27,8 +27,9 @@ import {
   isTrackedRunContent,
 } from "./copyOriginAncestors";
 import { structurallyEqual } from "./equality";
-import { IDENTITY_SPACES, slotKey } from "./ids";
+import { IDENTITY_SPACES, type KeyMembership, slotKey } from "./ids";
 import {
+  alikeDepth,
   childNodes,
   type Cursor,
   type Gap,
@@ -47,6 +48,7 @@ import {
   DOCUMENT_OP_REFUSAL_REASONS,
   type DocumentOpRefusalReason,
 } from "./refusal";
+import { runsMergeable } from "./runMerge";
 import { identitySlots } from "./slots";
 import {
   PARAGRAPH_MARK_FORMATTING_KEYS,
@@ -67,6 +69,9 @@ export const stampInfo = (stamp: RevisionStamp): TrackedChangeInfo => {
   };
   if (stamp.initials !== undefined) {
     info.initials = stamp.initials;
+  }
+  if (stamp.suggestionId !== undefined) {
+    info.suggestionId = stamp.suggestionId;
   }
   return info;
 };
@@ -126,7 +131,7 @@ const revisionInfosOf = (paragraph: Paragraph): TrackedChangeInfo[] => {
 export const stampedRevisionIds = (
   paragraphs: readonly Paragraph[],
   stamp: RevisionStamp,
-  known: ReadonlySet<string>,
+  known: KeyMembership,
 ): number[] => {
   const out: number[] = [];
   for (const paragraph of paragraphs) {
@@ -253,6 +258,7 @@ export const foldedParagraphPropertyChange = ({
     return paragraphPropertyChange(stampInfo(stamp), paragraph);
   const info = { ...existing.info, ...stampInfo(stamp), id: existing.info.id };
   if (stamp.initials === undefined) delete info.initials;
+  if (stamp.suggestionId === undefined) delete info.suggestionId;
   // A companion date belongs to the previous attribution, not the new stamp.
   delete info.utcDate;
   const change = { ...existing, info };
@@ -370,6 +376,79 @@ type WrapState = {
   refusal: DocumentOpRefusalReason | undefined;
 };
 
+/** Cut facts a deletion's merge can carry: the join depths at its edges and on removal. */
+const plainCutJoins = (
+  joins: TrackedWrapper["resolutionJoins"],
+): joins is { before: number; after: number; remove: number } =>
+  joins !== undefined &&
+  Object.keys(joins).every(
+    (key) => key === "before" || key === "after" || key === "remove",
+  );
+
+/**
+ * Two neighbouring deletions carrying one stamp as one record, when each was
+ * cut by an edit and records nothing but its join depths, or came with the
+ * file and records no cut at all. Resolving the one record does what
+ * resolving both does. Rejecting joins the content at each outer edge as its
+ * side's deletion did and, between them, as deeply as either did; accepting
+ * rejoins what is left either side as deeply as either removal did. A
+ * deletion that came with the file joins alike runs at its edges, so the
+ * record either one came with keeps no depths: alike runs meeting between
+ * the two are merged, as rejecting would merge them. `keep` names the
+ * wrapper whose identity stands. `undefined` when the pair records anything
+ * else.
+ */
+const mergedCutDeletions = (
+  left: TrackedWrapper,
+  right: TrackedWrapper,
+  keep: TrackedWrapper,
+): InlineNode | undefined => {
+  if (left.type !== "deletion" || right.type !== "deletion") return undefined;
+  const leftJoins = left.resolutionJoins;
+  const rightJoins = right.resolutionJoins;
+  const cut = (joins: TrackedWrapper["resolutionJoins"]) =>
+    joins === undefined || plainCutJoins(joins);
+  if (
+    !cut(leftJoins) ||
+    !cut(rightJoins) ||
+    (leftJoins === undefined && rightJoins === undefined)
+  )
+    return undefined;
+  const last = left.content.at(-1);
+  const first = right.content.at(0);
+  let depth = 0;
+  if (plainCutJoins(leftJoins) && plainCutJoins(rightJoins))
+    depth = Math.max(leftJoins.after, rightJoins.before);
+  else if (
+    last?.type === "run" &&
+    first?.type === "run" &&
+    runsMergeable(last, first)
+  )
+    depth = alikeDepth(last, first);
+  let retires = false;
+  const content = mergeLists(left.content, right.content, depth, {
+    mode: "exact",
+    onMerge: (_first, second) => {
+      retires ||= identitySlots(second).length > 0;
+    },
+  });
+  // A record merged between them would retire an identity rejecting restores.
+  if (content === undefined || retires) return undefined;
+  const merged = rebuildNode(keep, content);
+  if (merged.type !== "deletion") return undefined;
+  const { resolutionJoins: _joins, ...authored } = merged;
+  return plainCutJoins(leftJoins) && plainCutJoins(rightJoins)
+    ? {
+        ...authored,
+        resolutionJoins: {
+          before: leftJoins.before,
+          after: rightJoins.after,
+          remove: Math.max(leftJoins.remove, rightJoins.remove),
+        },
+      }
+    : authored;
+};
+
 /** Merge a created wrapper into a neighbour carrying the same stamp: the left one, else the right. */
 const mergeWithStampedNeighbour = (
   out: InlineNode[],
@@ -378,6 +457,35 @@ const mergeWithStampedNeighbour = (
 ): void => {
   const wrapper = out[index];
   if (wrapper === undefined || !isTrackedWrapper(wrapper)) return;
+  const stamped = (
+    neighbour: InlineNode | undefined,
+  ): neighbour is TrackedWrapper =>
+    neighbour !== undefined &&
+    isTrackedWrapper(neighbour) &&
+    neighbour.type === wrapper.type &&
+    !state.created.has(neighbour) &&
+    carriesStamp(neighbour.info, state.stamp);
+  const before = out[index - 1];
+  const after = out[index + 1];
+  // A deletion cut out next to one of the same stamp continues it, as
+  // consecutive deletions by one author read as one change.
+  const intoBefore = stamped(before)
+    ? mergedCutDeletions(before, wrapper, before)
+    : undefined;
+  if (intoBefore !== undefined) {
+    state.created.delete(wrapper);
+    out.splice(index - 1, 2, intoBefore);
+    return;
+  }
+  // The deletion that was there keeps its id.
+  const intoAfter = stamped(after)
+    ? mergedCutDeletions(wrapper, after, after)
+    : undefined;
+  if (intoAfter !== undefined) {
+    state.created.delete(wrapper);
+    out.splice(index, 2, intoAfter);
+    return;
+  }
   const matching = (
     neighbour: InlineNode | undefined,
   ): neighbour is TrackedWrapper =>
@@ -584,11 +692,12 @@ const wrapList = (
       case "refuse":
         state.refusal = DOCUMENT_OP_REFUSAL_REASONS.INSIDE_TRACKED_DELETION;
         return undefined;
-      case "keep":
+      case "keep": {
         const retained = retainSameStampCopyOwner(node);
         if (retained === undefined) return undefined;
         entries.push({ node: retained, covered: false });
         break;
+      }
       case "descend": {
         const end: Cursor = { ...cursor };
         cursor.position = start.position;

@@ -21,7 +21,10 @@ import {
   type ReplaceEligibility,
   replaceEligibility,
 } from "../utils/findReplace";
-import { replaceTextInDocument } from "../utils/replaceText";
+import {
+  replaceTextInDocument,
+  replaceTextRangesInDocument,
+} from "../utils/replaceText";
 
 export type FindDirection = "next" | "previous";
 
@@ -173,8 +176,6 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
     const eligibleMatches = matches.filter(
       (match) => replaceEligibility(match).status === "allowed",
     );
-    let skippedCount = matches.length - eligibleMatches.length;
-    let replacedCount = 0;
     const sortedMatches = [...eligibleMatches].toSorted((a, b) => {
       if (a.paragraphIndex !== b.paragraphIndex) {
         return b.paragraphIndex - a.paragraphIndex;
@@ -182,19 +183,17 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
       return b.startOffset - a.startOffset;
     });
 
-    let nextDocument = document;
-    for (const match of sortedMatches) {
-      try {
-        nextDocument = replaceTextInDocument(
-          nextDocument,
-          toReplaceRange(match),
-          replaceText,
-        );
-        replacedCount++;
-      } catch {
-        skippedCount++;
-      }
-    }
+    // One copy of the document for the whole batch, not one per match.
+    const {
+      document: nextDocument,
+      replacedCount,
+      failedCount,
+    } = replaceTextRangesInDocument(
+      document,
+      sortedMatches.map((match) => toReplaceRange(match)),
+      replaceText,
+    );
+    const skippedCount = matches.length - eligibleMatches.length + failedCount;
 
     if (replacedCount > 0) this.result = null;
     return { document: nextDocument, replacedCount, skippedCount };

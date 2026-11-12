@@ -73,6 +73,15 @@ export type HiddenEditorApi = {
     revisionIds: readonly number[],
     resolution: "accept" | "reject",
   ) => boolean;
+  /**
+   * Accept a pending suggestion as ordinary tracked changes by `author`, or
+   * reject it, as one journalled change.
+   */
+  resolveCanonicalSuggestion: (
+    suggestionId: string,
+    resolution: "accept" | "reject",
+    author: string,
+  ) => boolean;
   updateCanonicalInputLifecycle: (
     action: "beginComposition" | "endComposition" | "breakUndoGroup",
   ) => boolean;
@@ -92,6 +101,15 @@ export type HiddenEditorApi = {
   ) => { anchor: number; head: number } | null;
   getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
   replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
+  /**
+   * The editor a person is working in for `story`: public operations on that
+   * story read its state, so its selection maps through them, and publish to
+   * it. A later view for the story replaces it; a destroyed one is ignored.
+   */
+  noteCanonicalStoryView: (options: {
+    story: OpStory;
+    view: EditorView;
+  }) => void;
   applyCanonicalDocumentOperations: (
     options: CanonicalPublicOperationOptions,
   ) => FolioDocumentOperationResult | null;
@@ -136,6 +154,7 @@ export type HiddenEditorApiDeps = {
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
   resolveCanonicalRevisions?: HiddenEditorApi["resolveCanonicalRevisions"];
+  resolveCanonicalSuggestion?: HiddenEditorApi["resolveCanonicalSuggestion"];
   executeCanonicalCommand?: (command: Command) => boolean | undefined;
   getCanonicalHistory?: () => Pick<
     HiddenEditorApi,
@@ -149,6 +168,7 @@ export type HiddenEditorApiDeps = {
     | "applyCanonicalSectionProperties"
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
+    | "noteCanonicalStoryView"
     | "applyCanonicalStoryHistory"
     | "getCanonicalStorySelection"
     | "applyCanonicalDocumentOperations"
@@ -224,6 +244,11 @@ export const createHiddenEditorApi = (
       !deps.isDestroying() &&
       (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
 
+    resolveCanonicalSuggestion: (suggestionId, resolution, author) =>
+      !deps.isDestroying() &&
+      (deps.resolveCanonicalSuggestion?.(suggestionId, resolution, author) ??
+        false),
+
     getCanonicalComments: () => deps.getCanonicalComments?.() ?? null,
     getCanonicalCommittedVersion: () =>
       deps.getCanonicalCommittedVersion?.() ?? null,
@@ -265,6 +290,9 @@ export const createHiddenEditorApi = (
       deps.canonicalOperations?.getCanonicalStoryProjection(story) ?? null,
     replaceCanonicalStoryText: (options) =>
       deps.canonicalOperations?.replaceCanonicalStoryText(options) ?? false,
+    noteCanonicalStoryView: (options) => {
+      deps.canonicalOperations?.noteCanonicalStoryView(options);
+    },
 
     applyCanonicalDocumentOperations: (options) =>
       deps.canonicalOperations?.applyCanonicalDocumentOperations(options) ??

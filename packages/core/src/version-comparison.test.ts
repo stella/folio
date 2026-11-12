@@ -19,6 +19,7 @@ import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import type { FolioAIParagraphBlock } from "./ai-edits/types";
 import { compareContent } from "./compare/content";
+import { createFolioContentAlignmentWorkSession } from "./compare/content-alignment";
 import { parseDocx } from "./docx/parser";
 import { createDocx, repackDocx } from "./docx/rezip";
 import type {
@@ -30,6 +31,7 @@ import type {
 import { createEmptyDocument } from "./utils/createDocument";
 import {
   alignFolioBlocks,
+  alignFolioBlocksInSession,
   applyFolioVersionDiffPrivacy,
   compareDocxVersions,
   exceedsLcsBudget,
@@ -1269,6 +1271,51 @@ describe("alignFolioBlocks: non-quadratic exact anchors", () => {
     expect(insertion.block.text).toBe("Epsilon paragraph.");
     expect(gammaPair.baseBlock.text).toBe("Gamma paragraph.");
     expect(gammaPair.revisedBlock.text).toBe("Gamma paragraph.");
+  });
+});
+
+describe("alignFolioBlocksInSession", () => {
+  const block = (id: string, text: string): FolioAIParagraphBlock => ({
+    id,
+    kind: "paragraph",
+    text,
+    statedNumbering: { kind: "inherit" },
+  });
+  const base = [
+    block("seq-0001", "The tenant pays rent monthly."),
+    block("seq-0002", "The landlord repairs the roof."),
+  ];
+  const revised = [
+    block("seq-0003", "A new opening clause."),
+    block("seq-0004", "The tenant pays rent quarterly."),
+    block("seq-0005", "The landlord repairs the roof promptly."),
+  ];
+
+  test("alignments in one session draw on one allowance", () => {
+    const workSession = createFolioContentAlignmentWorkSession({ lcsCells: 6 });
+    const first = alignFolioBlocksInSession({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      workSession,
+    });
+    expect(first.map(({ type }) => type)).toEqual([
+      "revisedOnly",
+      "pair",
+      "pair",
+    ]);
+    expect(workSession.remainingLcsCells).toBe(0);
+    const second = alignFolioBlocksInSession({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      workSession,
+    });
+    // The spent allowance is not renewed: the second alignment falls back to
+    // pairing by position.
+    expect(second.map(({ type }) => type)).toEqual([
+      "pair",
+      "pair",
+      "revisedOnly",
+    ]);
   });
 });
 

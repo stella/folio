@@ -5,6 +5,7 @@ import type {
   FormattingPatch,
   ParagraphPropsPatch,
   RunPropsPatch,
+  TableBlockIntentOperation,
   TableIntentOperation,
   TableRowIntentOperation,
 } from "@stll/docx-core/ops";
@@ -53,6 +54,11 @@ export type CanonicalCommandIntent =
       targets: readonly CanonicalTableFormatTarget[];
     }
   | { type: "editTable"; at: number; edit: CanonicalTableEdit }
+  | {
+      type: "editTableBlock";
+      at: number;
+      edit: WithoutTableTarget<TableBlockIntentOperation>;
+    }
   | {
       type: "editTableRow";
       at: number;

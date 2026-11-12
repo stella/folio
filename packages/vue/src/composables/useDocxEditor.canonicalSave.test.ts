@@ -357,6 +357,8 @@ test.each(["immediate", "deferred"] as const)(
                 controlledComments.value = structuredClone(next);
             },
             reLayout: () => undefined,
+            readOnly: () => false,
+            onReadOnlyEditAttempt: () => undefined,
           });
           return () => h("div");
         },
@@ -543,6 +545,8 @@ test.each([
             canonicalTick: stateTick,
             onCommentsChange: () => undefined,
             reLayout: () => undefined,
+            readOnly: () => false,
+            onReadOnlyEditAttempt: () => undefined,
           });
           return () => h("div");
         },

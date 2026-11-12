@@ -143,6 +143,7 @@ type Comment_2 = {
     annotationReferenceFormatting?: TextFormatting;
     parentId?: number;
     done?: boolean;
+    suggestionId?: string;
     preserved?: PreservedMarkup;
 };
 export { Comment_2 as Comment }
@@ -587,7 +588,7 @@ export type Hyperlink = {
     target?: string;
     history?: boolean;
     docLocation?: string;
-    children: (Run | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | CommentReference | InlineWrapper | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | PreservedInline)[];
+    children: (Run | ComplexField | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | CommentReference | InlineWrapper | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | PreservedInline)[];
 };
 
 // @public
@@ -1044,6 +1045,7 @@ export type NumberingDefinitions = {
     nums: NumberingInstance[];
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
+    danglingNumIds?: number[];
 };
 
 // @public
@@ -1199,6 +1201,7 @@ export type ParagraphMarkChange = {
     kind: ParagraphMarkChangeKind;
     info: TrackedChangeInfo;
     resolutionJoin?: number | undefined;
+    survivor?: "first" | undefined;
 };
 
 // @public
@@ -1282,6 +1285,7 @@ export const PARSE_WARNING_CODES: {
     readonly altChunkUnsupported: "alt-chunk-unsupported";
     readonly revisionCarrierOpaque: "revision-carrier-opaque";
     readonly nestedRowOpaque: "nested-row-opaque";
+    readonly reviewProvenanceDropped: "review-provenance-dropped";
 };
 
 // @public (undocumented)
@@ -2315,6 +2319,7 @@ export type TrackedChangeInfo = {
         attribute: string;
         value: string;
     };
+    suggestionId?: string;
 };
 
 // @public

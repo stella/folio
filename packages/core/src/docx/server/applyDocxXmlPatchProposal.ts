@@ -135,25 +135,21 @@ const sha256 = (bytes: Uint8Array): string =>
 const snapshotInput = (bytes: ArrayBuffer | Uint8Array): Uint8Array =>
   Uint8Array.from(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
 
+/**
+ * A copy of the caller's archive policy, taken before the first await so a
+ * later mutation cannot change it mid-call. Every field is carried: a field
+ * left out here would silently fall back to its default.
+ */
 const snapshotArchiveOptions = (
   archive: DocxArchiveOptions | undefined,
 ): DocxArchiveOptions | undefined => {
   if (archive === undefined) {
     return undefined;
   }
+  const { xmlLimits, ...byteLimits } = archive;
   return {
-    ...(archive.maxInputBytes === undefined
-      ? {}
-      : { maxInputBytes: archive.maxInputBytes }),
-    ...(archive.maxEntryBytes === undefined
-      ? {}
-      : { maxEntryBytes: archive.maxEntryBytes }),
-    ...(archive.maxTotalBytes === undefined
-      ? {}
-      : { maxTotalBytes: archive.maxTotalBytes }),
-    ...(archive.maxEntries === undefined
-      ? {}
-      : { maxEntries: archive.maxEntries }),
+    ...byteLimits,
+    ...(xmlLimits === undefined ? {} : { xmlLimits: { ...xmlLimits } }),
   };
 };
 

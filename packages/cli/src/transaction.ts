@@ -24,6 +24,7 @@ import {
   stagePathFor,
 } from "./journal";
 import { type ChangedPart, checkPackageIntegrity } from "./package-parts";
+import { checkInScope, type WriteScope } from "./roots";
 import {
   inspectPath,
   type PathEntry,
@@ -138,6 +139,8 @@ export type CommitRequest = {
   txId: string;
   destinationPath: string;
   destination: WriteDestination;
+  /** The directory the destination resolves into must stay inside it. */
+  scope: WriteScope;
   /** The file the transaction read; re-read under the lease before anything is written. */
   sourcePath: string;
   sourceIdentity: FileIdentity;
@@ -353,6 +356,13 @@ export const commitTransaction = async (
       ),
     );
   }
+  // The rename guard holds the directory to this real path, so checking it
+  // here keeps the whole commit inside the scope the caller was given.
+  const inScope = checkInScope(
+    request.scope,
+    path.join(parentRealPath.value, path.basename(destinationPath)),
+  );
+  if (inScope.isErr()) return Result.err(inScope.error);
 
   const stagePath = stagePathFor(destinationPath, txId);
   const staged = await writeNewSidecarFile(stagePath, bytes);

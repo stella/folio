@@ -1191,10 +1191,14 @@ function quoteFontName(fontName: string): string {
   return fontName;
 }
 
+// Hex escapes are case-insensitive: `\A ` is the same newline as `\a `.
 const CSS_NEWLINE_UNESCAPES: Record<string, string> = {
   a: "\n",
+  A: "\n",
   d: "\r",
+  D: "\r",
   c: "\f",
+  C: "\f",
 };
 
 /**

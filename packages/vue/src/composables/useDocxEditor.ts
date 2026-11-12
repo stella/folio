@@ -29,6 +29,7 @@ import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   createFolioEditor,
   FOLIO_DOCX_SERIALIZATION_MODE,
@@ -82,6 +83,7 @@ import {
 } from "@stll/folio-core/docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
@@ -117,6 +119,7 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
+import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
@@ -156,12 +159,13 @@ import {
   canonicalRefusalMessage,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
-import type { Footnote } from "@stll/folio-core/types/content";
+import type { Comment, Footnote } from "@stll/folio-core/types/content";
 import type {
   Document,
   HeaderFooter,
   SectionProperties,
 } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter";
 
@@ -171,8 +175,6 @@ import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter"
 
 const DEFAULT_PAGE_GAP = 24;
 const DEFAULT_SUGGESTION_AUTHOR = "User";
-/** Delay before converting PM state back to the Folio document model. */
-const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 
 // Stable empty fallback for the template-preview entries dep. A fresh `[]` per
 // run would defeat the pipeline's identity checks.
@@ -361,6 +363,12 @@ function describeInvalidHighlightMarks(doc: EditorState["doc"]): string {
 // ============================================================================
 
 export type UseDocxEditorOptions = {
+  /**
+   * The comment threads the host keeps beside the editor. Saving writes them
+   * into the document; without it the saved document keeps the threads it was
+   * loaded with.
+   */
+  comments?: () => readonly Comment[];
   /** Container element that hosts the off-screen ProseMirror editor. */
   hiddenContainer: Ref<HTMLElement | null>;
   /** Optional separate host for persistent header/footer ProseMirror views. */
@@ -497,6 +505,28 @@ export type UseDocxEditorReturn = {
   parseError: Ref<string | null>;
   /** Computed page layout, or null before first paint. */
   layout: Ref<Layout | null>;
+  /**
+   * The document model the editor holds, to derive toolbar and overlay state
+   * from: in a canonical session the session's own document, replaced on each
+   * edit (read it, never hand it out); otherwise the document the last change
+   * notification wrote back. Reading it never builds a document.
+   */
+  modelDocument: Readonly<Ref<Document | null>>;
+  /**
+   * The session's own document in a canonical session, read without a copy
+   * (read it, never write it); otherwise null.
+   */
+  readDocumentModel: () => ReadonlyDocument | null;
+  /**
+   * The bytes the current document was loaded from: replaced when a document
+   * is loaded or set, never by an edit.
+   */
+  sourceBuffer: Readonly<Ref<ArrayBuffer | null>>;
+  /**
+   * Width in pixels of the first section's text column, for the hidden editor
+   * to lay out its content at; 0 before the first layout pass.
+   */
+  hiddenEditorWidth: Ref<number>;
   /** Flow blocks from the latest layout pass — the range-projection fallback. */
   blocks: Ref<FlowBlock[]>;
   /** Measures from the latest layout pass — the range-projection fallback. */
@@ -509,7 +539,10 @@ export type UseDocxEditorReturn = {
   loadDocument: (doc: Document) => void;
   /** Serialize the current document to a DOCX blob. */
   save: (options?: { selective?: boolean }) => Promise<Blob | null>;
-  /** Snapshot the current document model. */
+  /**
+   * Build a copy of the current document, in time proportional to its size.
+   * For a host that owns the result; derived state reads `modelDocument`.
+   */
   getDocument: () => Document | null;
   /** Publish a fresh Document object (e.g. after HF materialisation). */
   setDocument: (doc: Document) => void;
@@ -537,6 +570,7 @@ export function useDocxEditor(
   options: UseDocxEditorOptions,
 ): UseDocxEditorReturn {
   const {
+    comments,
     hiddenContainer,
     hiddenHeaderFooterContainer,
     noteEditorContainer,
@@ -579,6 +613,7 @@ export function useDocxEditor(
   // `docModel` (not `document`) so the global `document` stays reachable for the
   // FontFaceSet probe + DOM host lookups.
   const docModel = shallowRef<Document | null>(null);
+  const sourceBuffer = shallowRef<ArrayBuffer | null>(null);
   // Per-load identity for the hidden-editor manager: advanced on every document
   // swap, unchanged across internal edits (not reactive; read at sync time).
   let loadSequence = 0;
@@ -594,6 +629,7 @@ export function useDocxEditor(
   );
   const activeNoteStory = shallowRef<NoteStoryKey | null>(null);
   const layout = shallowRef<Layout | null>(null);
+  const hiddenEditorWidth = ref(0);
   // Latest flow blocks + measures — the range-projection fallback (off-screen /
   // not-yet-painted ranges) needs them; the primary DOM-rect path does not.
   const blocks = shallowRef<FlowBlock[]>([]);
@@ -618,6 +654,16 @@ export function useDocxEditor(
     isCanonicalSession()
       ? cloneDocumentWithParagraphPropertySources(document)
       : document;
+  // Both change listeners are the host's, so they share the one copy a
+  // notification makes, as the default session's listeners share its model.
+  // The canonical session's own document is never handed out.
+  const notifyHosts = (document: Document, sessionOwned: boolean) => {
+    const forHosts = sessionOwned
+      ? cloneDocumentWithParagraphPropertySources(document)
+      : cloneForHost(document);
+    onChange?.(forHosts);
+    emitter.emit("docChange", forHosts);
+  };
   const refuseCanonicalModelEdit = (gap: CanonicalGap, message: string) => {
     if (!isCanonicalSession()) return false;
     const error = new CanonicalSessionRefusalError({
@@ -725,6 +771,7 @@ export function useDocxEditor(
     getReadOnly: () => toValue(readOnly),
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
+    readCanonicalDocument: () => manager.readCanonicalDocument(),
     getExperimentalSession: () => toValue(experimentalSession),
     onSessionRefusal: (message, ground, error) => {
       parseError.value = message;
@@ -754,6 +801,7 @@ export function useDocxEditor(
     getPlugins: () => notePlugins,
     getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
     getCanonicalApi: () => manager.api,
+    readCanonicalDocument: () => manager.readCanonicalDocument(),
     getExperimentalSession: () => toValue(experimentalSession),
     onSessionRefusal: (message, ground, error) => {
       parseError.value = message;
@@ -766,13 +814,13 @@ export function useDocxEditor(
         isDirty.value = true;
         const current = docModel.value;
         if (current) {
+          const canonical = manager.readCanonicalDocument();
           const updated =
-            manager.api.getCanonicalDocument() ??
+            canonical ??
             noteEditorManagerHolder.current?.snapshotDocument(current) ??
             current;
           docModel.value = updated;
-          onChange?.(cloneForHost(updated));
-          emitter.emit("docChange", cloneForHost(updated));
+          notifyHosts(updated, canonical !== null);
         }
         scheduler.schedule();
       }
@@ -840,6 +888,7 @@ export function useDocxEditor(
     const margins = getMargins(sectionProps);
     const columns = getColumns(sectionProps);
     const contentWidth = pageSize.w - margins.left - margins.right;
+    hiddenEditorWidth.value = contentWidth;
     const styles = model?.package.styles ?? null;
     const theme = model?.package.theme ?? null;
     const defaultTabStop = model?.package.settings?.defaultTabStop;
@@ -935,7 +984,7 @@ export function useDocxEditor(
       return;
     }
     try {
-      const canonical = manager.api.getCanonicalDocument();
+      const canonical = manager.readCanonicalDocument();
       if (!canonical && isCanonicalSession()) return;
       const updated =
         canonical ??
@@ -948,8 +997,7 @@ export function useDocxEditor(
         );
       docModel.value = updated;
       syncSecondaryStoryEditors();
-      onChange?.(cloneForHost(updated));
-      emitter.emit("docChange", cloneForHost(updated));
+      notifyHosts(updated, canonical !== null);
     } catch (err) {
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
@@ -962,7 +1010,7 @@ export function useDocxEditor(
     docChangeTimer = window.setTimeout(() => {
       docChangeTimer = null;
       flushDocumentChangeNotification();
-    }, DOCUMENT_CHANGE_NOTIFY_DELAY);
+    }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
   }
 
   // ---- Hidden-editor manager ----------------------------------------------
@@ -1098,7 +1146,9 @@ export function useDocxEditor(
       noteFollower.noteBase(before);
     }
     if (docChanged) {
-      const canonical = manager.api.getCanonicalDocument();
+      // The model only reads the session's document, so it takes it without
+      // a copy; hosts get theirs when the change is notified.
+      const canonical = manager.readCanonicalDocument();
       if (canonical) {
         docModel.value = canonical;
         syncSecondaryStoryEditors();
@@ -1257,6 +1307,7 @@ export function useDocxEditor(
     // loaded document has no unsaved edits yet (mirrors React clearing its dirty
     // signals on document reset).
     loadSequence += 1;
+    sourceBuffer.value = docModel.value?.originalBuffer ?? null;
     isDirty.value = false;
     headerFooterSelection.value = null;
     activeNoteStory.value = null;
@@ -1420,9 +1471,16 @@ export function useDocxEditor(
     // read from the same snapshot. A later `view.state` read could pick up an
     // edit that landed mid-save and diff against the wrong baseline.
     const state = view.state;
+    // canonical-gap: pm-save-projection
+    const projected = fromProseDoc(state.doc, base, {
+      stylesheetSource: { type: "package" },
+    });
     const updatedDoc = withoutUnreferencedNotes(
-      // canonical-gap: pm-save-projection
-      fromProseDoc(state.doc, base, { stylesheetSource: { type: "package" } }),
+      comments
+        ? withHostCommentThreads(projected, comments(), {
+            anchoredInEditor: commentIdsNamedIn(state.doc),
+          })
+        : projected,
     );
 
     const { resolveSelectiveSaveFlags } =
@@ -1561,6 +1619,7 @@ export function useDocxEditor(
       return;
     }
     docModel.value = doc;
+    sourceBuffer.value = doc.originalBuffer ?? null;
     syncSecondaryStoryEditors();
     if (
       activeNoteStory.value &&
@@ -1645,6 +1704,7 @@ export function useDocxEditor(
     editorState.value = null;
     layout.value = null;
     docModel.value = null;
+    sourceBuffer.value = null;
     isReady.value = false;
   }
 
@@ -1669,6 +1729,10 @@ export function useDocxEditor(
     isReady,
     isDirty,
     parseError,
+    modelDocument: docModel,
+    readDocumentModel: () => manager.readCanonicalDocument(),
+    sourceBuffer,
+    hiddenEditorWidth,
     layout,
     blocks,
     measures,

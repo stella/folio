@@ -266,11 +266,9 @@ test(
             content.push(run(" Suffix"));
             const rendered = toMarkdown(doc([{ type: "paragraph", content }]));
             const read = parsedCharacters(rendered);
-            const control = parsedCharacters(
-              `Prefix First  \n${leading}Second${trailing} Suffix`,
-            );
+            // The blanks after the break are text, and read back with it.
             expect(read.map(({ char }) => char).join("")).toBe(
-              control.map(({ char }) => char).join(""),
+              `Prefix First\n${leading}Second${trailing} Suffix`,
             );
             const plainMarks = {
               bold: false,

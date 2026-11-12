@@ -268,6 +268,7 @@ describe("secondary-story paragraph property ownership", () => {
       const manager = createHeaderFooterEditorManager({
         createView: createTestEditorView,
         getDocument: () => document,
+        readCanonicalDocument: () => null,
         getHost: () => asHtmlElement(host),
         getStyles: () => undefined,
         getTheme: () => undefined,
@@ -321,6 +322,7 @@ describe("secondary-story paragraph property ownership", () => {
       const manager = createHeaderFooterEditorManager({
         createView: createTestEditorView,
         getDocument: () => document,
+        readCanonicalDocument: () => null,
         getHost: () => asHtmlElement(host),
         getStyles: () => undefined,
         getTheme: () => undefined,
@@ -379,6 +381,7 @@ describe("secondary-story paragraph property ownership", () => {
       const manager = createNoteEditorManager({
         createView: createTestEditorView,
         getDocument: () => document,
+        readCanonicalDocument: () => null,
         getHost: () => asHtmlElement(host),
         getStyles: () => undefined,
         getTheme: () => undefined,
@@ -429,6 +432,7 @@ describe("secondary-story paragraph property ownership", () => {
       const manager = createNoteEditorManager({
         createView: createTestEditorView,
         getDocument: () => document,
+        readCanonicalDocument: () => null,
         getHost: () => asHtmlElement(host),
         getStyles: () => undefined,
         getTheme: () => undefined,

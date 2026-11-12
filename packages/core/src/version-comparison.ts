@@ -83,6 +83,7 @@ import {
   createFolioContentAlignmentWorkSession,
   exceedsFolioContentLcsBudget,
   type FolioContentAlignedBlockEvent,
+  type FolioContentAlignmentWorkSession,
 } from "./compare/content-alignment";
 import type { FolioContentInlineFormattingPatch } from "./compare/content-types";
 import {
@@ -340,14 +341,33 @@ export const alignFolioBlocks = (
   const workSession = createFolioContentAlignmentWorkSession({
     lcsCells: lcsBudget.remainingCells,
   });
-  const events = alignFolioContentBlocks(baseBlocks, revisedBlocks, {
+  const events = alignFolioBlocksInSession({
+    baseBlocks,
+    revisedBlocks,
     workSession,
-    stableIdMismatch: "pair",
-    idStability: folioAIBlockIdStability,
   });
   lcsBudget.remainingCells = workSession.remainingLcsCells;
   return events;
 };
+
+export type AlignFolioBlocksInSessionOptions = {
+  baseBlocks: readonly FolioAIBlock[];
+  revisedBlocks: readonly FolioAIBlock[];
+  /** Shared by every story of one comparison, so stories draw on one allowance. */
+  workSession: FolioContentAlignmentWorkSession;
+};
+
+/** {@link alignFolioBlocks} drawing on a caller-owned work session. */
+export const alignFolioBlocksInSession = ({
+  baseBlocks,
+  revisedBlocks,
+  workSession,
+}: AlignFolioBlocksInSessionOptions): FolioAlignedBlockEvent[] =>
+  alignFolioContentBlocks(baseBlocks, revisedBlocks, {
+    workSession,
+    stableIdMismatch: "pair",
+    idStability: folioAIBlockIdStability,
+  });
 
 const legacySegments = (
   segments: readonly WordDiffSegment[],

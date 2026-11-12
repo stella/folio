@@ -1,4 +1,8 @@
-import type { PreservedInline, PreservedXmlContent } from "../types/document";
+import type {
+  PreservedInline,
+  PreservedXmlContent,
+  Run,
+} from "../types/document";
 /**
  * The run-level arm of the verbatim sink.
  *
@@ -144,4 +148,56 @@ export const preserveInlineChild = (element: XmlElement): PreservedInline => {
       end: MAX_PRESERVED_TEXT_LENGTH,
     }),
   };
+};
+
+/**
+ * Field markup that belongs to no assembled field, kept as the markup it was.
+ *
+ * `FieldCharContent` and `InstrTextContent` are parts of a `ComplexField`:
+ * `convertField` reads them off the assembled field, and one that reaches the
+ * editor's inline converter on its own is dropped. So a `w:fldChar` or a
+ * `w:instrText` whose field this paragraph could not assemble (a field code
+ * with a tracked change in it, a field spanning paragraphs, a `begin` with no
+ * `end`) loses the editor round trip, and an orphan `w:fldChar` would also lose
+ * its `w:ffData`: its name, macros, help text and checkbox state.
+ *
+ * `preservedXml` is the run's own capture member: the editor carries it as an
+ * opaque atom and the serializer replays the source bytes. With no field to
+ * read it, an instruction has no meaning folio can model, so its bytes are the
+ * whole of what there is to keep. The lists line up because `parseRunContents`
+ * walks the source children in order, so the nth `w:fldChar` child is the nth
+ * `fieldChar` content and the nth `w:instrText` child the nth `instrText`.
+ */
+const LOOSE_FIELD_MARKUP = {
+  fieldChar: "fldChar",
+  instrText: "instrText",
+} as const satisfies Partial<Record<Run["content"][number]["type"], string>>;
+
+export const withLooseFieldMarkupPreserved = (
+  run: Run,
+  runElement: XmlElement,
+): Run => {
+  const children = getChildElements(runElement);
+  const captured = new Map(
+    Object.entries(LOOSE_FIELD_MARKUP).map(([type, localName]) => [
+      type,
+      children
+        .filter((child) => getLocalName(child.name) === localName)
+        .map(preserveRunChild),
+    ]),
+  );
+  if ([...captured.values()].every((list) => list.length === 0)) {
+    return run;
+  }
+  const next = new Map<string, number>();
+  const content = run.content.map((item) => {
+    const list = captured.get(item.type);
+    if (list === undefined) {
+      return item;
+    }
+    const index = next.get(item.type) ?? 0;
+    next.set(item.type, index + 1);
+    return list[index] ?? item;
+  });
+  return { ...run, content };
 };

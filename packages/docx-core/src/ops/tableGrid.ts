@@ -47,7 +47,8 @@ export const tableGrid = (
     if (!nonnegative(position) || !nonnegative(after)) return refuse();
     const cells: GridCell[] = [];
     for (const [index, cell] of row.cells.entries()) {
-      if (cell.structuralChange?.type === "tableCellDeletion") continue;
+      // A pending cell deletion still holds its columns: the grid narrows only
+      // when the deletion is accepted.
       const span = cell.formatting?.gridSpan ?? 1;
       if (!nonnegative(span) || span === 0 || !nonnegative(position + span))
         return refuse();

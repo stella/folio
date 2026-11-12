@@ -9,6 +9,14 @@
  * share a header by rId share both the painted spans and the EditorView).
  */
 
+import {
+  hasPaintedRange,
+  PAINTED_RANGE_SELECTOR,
+  PAINTED_START_SELECTOR,
+  paintedStartSelector,
+  readPaintedEnd,
+  readPaintedStart,
+} from "../../utils/paintedPositions";
 import { findPositionInSpan } from "./clickToPositionDom";
 
 export type HfSlotKind = "header" | "footer";
@@ -72,7 +80,7 @@ export function findHfPmSpans(
     container,
     kind,
     rId,
-    "span[data-pm-start][data-pm-end]",
+    `span${PAINTED_RANGE_SELECTOR}`,
   );
 }
 
@@ -81,7 +89,7 @@ export function findHfPmAnchors(
   kind: HfSlotKind,
   rId: string,
 ): HTMLElement[] {
-  return querySlotAnchors(container, kind, rId, "[data-pm-start]");
+  return querySlotAnchors(container, kind, rId, PAINTED_START_SELECTOR);
 }
 
 export function findHfPmAnchor(
@@ -95,13 +103,13 @@ export function findHfPmAnchor(
   }
   return (
     container.querySelector<HTMLElement>(
-      `${slotSelector(kind, rId)} [data-pm-start="${String(pmStart)}"]`,
+      `${slotSelector(kind, rId)} ${paintedStartSelector(pmStart)}`,
     ) ??
     container.querySelector<HTMLElement>(
-      `${associatedSlotSelector(kind, rId)} [data-pm-start="${String(pmStart)}"]`,
+      `${associatedSlotSelector(kind, rId)} ${paintedStartSelector(pmStart)}`,
     ) ??
     container.querySelector<HTMLElement>(
-      `${associatedSlotSelector(kind, rId)}[data-pm-start="${String(pmStart)}"]`,
+      `${associatedSlotSelector(kind, rId)}${paintedStartSelector(pmStart)}`,
     )
   );
 }
@@ -137,13 +145,11 @@ export function findHfCaretSpan(
   const spans = findHfPmSpans(container, kind, rId);
   let best: HfCaretSpanHit | null = null;
   for (const span of spans) {
-    const startStr = span.dataset["pmStart"];
-    const endStr = span.dataset["pmEnd"];
-    if (startStr === undefined || endStr === undefined) {
+    const start = readPaintedStart(span);
+    const end = readPaintedEnd(span);
+    if (start === undefined || end === undefined) {
       continue;
     }
-    const start = Number.parseInt(startStr, 10);
-    const end = Number.parseInt(endStr, 10);
     if (!Number.isFinite(start) || !Number.isFinite(end)) {
       continue;
     }
@@ -214,11 +220,7 @@ export function clickToPositionInHfSlot(
     if (!slot || slot.kind !== kind || slot.rId !== rId) {
       continue;
     }
-    if (
-      el.tagName === "SPAN" &&
-      el.dataset["pmStart"] !== undefined &&
-      el.dataset["pmEnd"] !== undefined
-    ) {
+    if (el.tagName === "SPAN" && hasPaintedRange(el)) {
       return findPositionInSpan(el, clientX, clientY);
     }
   }
@@ -284,11 +286,9 @@ function findNearestSpanInHfSlots(
   }
   const rect = bestSpan.getBoundingClientRect();
   if (clientX < rect.left) {
-    const v = bestSpan.dataset["pmStart"];
-    return v ? Number(v) : null;
+    return readPaintedStart(bestSpan) ?? null;
   }
-  const v = bestSpan.dataset["pmEnd"];
-  return v ? Number(v) : null;
+  return readPaintedEnd(bestSpan) ?? null;
 }
 
 export function findHfSlotForTarget(target: Node | null): {

@@ -294,11 +294,12 @@ export const createHarnessPlugins = (
   extraPlugins: readonly Plugin[] = [],
   runtime: HarnessRuntime = "harness",
 ): Plugin[] => [
+  // First, as the editor places it: plugins read numbering while they apply.
+  createDocumentNumberingPlugin(document.package.numbering),
   ...extraPlugins,
   createSuggestionModePlugin(mode === "suggesting", HARNESS_AUTHOR),
   ...runtimePlugins(runtime),
   createDocumentStylesPlugin(document.package.styles),
-  createDocumentNumberingPlugin(document.package.numbering),
 ];
 
 /** The document a mounted editor would open for `document`. */

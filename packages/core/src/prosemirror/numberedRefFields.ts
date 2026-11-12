@@ -1,5 +1,6 @@
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 
+import { subtreeHolds } from "../internal/subtreeHolds";
 import { expectFieldAttrs, expectParagraphAttrs } from "./attrs";
 import { expectBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import {
@@ -354,13 +355,20 @@ type NumberedRefCandidate = {
   value: string;
 };
 
+const isFieldNode = (node: PMNode): boolean =>
+  node.type.name === "field" || node.type.name === "structuredField";
+
+const holdsField = subtreeHolds(isFieldNode);
+
 function collectNumberedRefCandidates(
   doc: PMNode,
   options: NumberedRefResolutionOptions,
+  skip: (node: PMNode) => boolean,
 ): NumberedRefCandidate[] {
   const fields: { node: PMNode; spec: NumberedRefSpec; cached: string }[] = [];
   doc.descendants((node) => {
-    if (node.type.name !== "field" && node.type.name !== "structuredField") {
+    if (skip(node)) return false;
+    if (!isFieldNode(node)) {
       return true;
     }
     if (fields.length >= MAX_NUMBERED_REF_FIELDS) {
@@ -502,7 +510,11 @@ const mapDocument = (
 export function stampNumberedRefFieldBaselines(doc: PMNode): PMNode {
   const baselines = new WeakMap<PMNode, string>();
   let hasBaselines = false;
-  for (const candidate of collectNumberedRefCandidates(doc, {})) {
+  for (const candidate of collectNumberedRefCandidates(
+    doc,
+    {},
+    (node) => !holdsField(node),
+  )) {
     if (isCalibratedCandidate(candidate)) {
       baselines.set(candidate.node, candidate.cached);
       hasBaselines = true;
@@ -535,8 +547,27 @@ export function resolveNumberedRefFields(
   doc: PMNode,
   options: NumberedRefResolutionOptions = {},
 ): ReadonlyMap<PMNode, string> {
+  // Subtrees without a field hold no candidate, so the field walk skips them.
+  return resolveCandidates(
+    collectNumberedRefCandidates(doc, options, (node) => !holdsField(node)),
+  );
+}
+
+/** The resolution visiting every node, skipping none: the reference for the skip. */
+export function resolveNumberedRefFieldsVisitingEveryNode(
+  doc: PMNode,
+  options: NumberedRefResolutionOptions = {},
+): ReadonlyMap<PMNode, string> {
+  return resolveCandidates(
+    collectNumberedRefCandidates(doc, options, () => false),
+  );
+}
+
+function resolveCandidates(
+  candidates: readonly NumberedRefCandidate[],
+): ReadonlyMap<PMNode, string> {
   const results = new Map<PMNode, string>();
-  for (const candidate of collectNumberedRefCandidates(doc, options)) {
+  for (const candidate of candidates) {
     if (isCalibratedCandidate(candidate)) {
       results.set(candidate.node, candidate.value);
     }

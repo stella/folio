@@ -1,7 +1,7 @@
 import { panic } from "better-result";
 
+import { OOXML_NS } from "@stll/docx-core/xml/namespaces";
 import type { ZipArchive } from "@stll/docx-core/zip";
-import { OOXML_NS } from "@stll/docx-utils";
 
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import type { Document } from "../types/document";

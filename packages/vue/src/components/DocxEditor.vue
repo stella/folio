@@ -152,13 +152,30 @@
       {{ refusalNotice }}
     </div>
 
+    <!--
+      The hidden editors stay accessible (no aria-hidden). The body editor is
+      laid out at the text column's width inside a tiny contained wrapper, so
+      its text wraps as on the page and its layout stays inside the wrapper.
+    -->
     <div
-      ref="hiddenPmRef"
-      class="docx-editor-vue__hidden-pm paged-editor__hidden-pm"
-    />
+      :class="[
+        'docx-editor-vue__hidden-pm-wrapper',
+        HIDDEN_EDITOR_WRAPPER_CLASS,
+      ]"
+    >
+      <div
+        ref="hiddenPmRef"
+        class="docx-editor-vue__hidden-pm-host paged-editor__hidden-pm"
+        :style="
+          hiddenEditorWidth > 0
+            ? { width: `${hiddenEditorWidth}px` }
+            : undefined
+        "
+      />
+    </div>
     <div
       ref="hiddenHfPmRef"
-      class="docx-editor-vue__hidden-pm paged-editor__hidden-hf-pm"
+      class="docx-editor-vue__hidden-hf-pm paged-editor__hidden-hf-pm"
     />
 
     <div
@@ -523,6 +540,7 @@ import {
   onMounted,
   ref,
   shallowRef,
+  toRaw,
   type VNodeChild,
   watch,
 } from "vue";
@@ -531,7 +549,9 @@ import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEdit
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
+import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import {
   clearAllCaches,
   resetCanvasContext,
@@ -562,6 +582,7 @@ import {
   insertTableOfContentsInView,
 } from "@stll/folio-core/prosemirror";
 import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
+import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import {
@@ -585,13 +606,14 @@ import {
   filterHeadingsByDepth,
 } from "@stll/folio-core/utils/outlineDepth";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
+import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import {
-  getDocumentWatermark,
   setDocumentWatermark,
   type Watermark,
 } from "@stll/folio-core/watermark";
 
+import { documentChrome } from "../composables/documentChrome";
 import { useColorMode } from "../composables/useColorMode";
 import { useCommentLifecycle } from "../composables/useCommentLifecycle";
 import { useCommentManagement } from "../composables/useCommentManagement";
@@ -694,25 +716,32 @@ const canonicalAuthoritySession = computed(() =>
   ),
 );
 
+/** Hand the host a document it owns; its three listeners share it. */
+function notifyHostDocument(doc: Document): void {
+  props.onChange?.(doc);
+  emit("change", doc);
+  emit("update:document", doc);
+}
+
+/**
+ * Notify the host of a document this component may still share with the
+ * editor: a canonical session hands the host one copy.
+ */
 function notifyDocumentChange(doc: Document): void {
-  if (!canonicalAuthoritySession.value) {
-    props.onChange?.(doc);
-    emit("change", doc);
-    emit("update:document", doc);
-    return;
-  }
-  props.onChange?.(cloneDocumentWithParagraphPropertySources(doc));
-  emit("change", cloneDocumentWithParagraphPropertySources(doc));
-  emit("update:document", cloneDocumentWithParagraphPropertySources(doc));
+  notifyHostDocument(
+    canonicalAuthoritySession.value
+      ? cloneDocumentWithParagraphPropertySources(doc)
+      : doc,
+  );
 }
 
 const { message: refusalNotice, show: showRefusalNotice } =
   useTransientNotice();
 
 function reportEditorError(error: Error): void {
-  // A rule the document states reads as the editor's own message.
+  // The user reads the catalog's message; the error goes to onError.
   if (CanonicalSessionRefusalError.is(error))
-    showRefusalNotice(canonicalRefusalNotice(error.ground, error.message, t));
+    showRefusalNotice(canonicalRefusalNotice(error.ground, t));
   props.onError?.(error);
   emit("error", error);
 }
@@ -909,6 +938,10 @@ useKeyboardShortcuts({
 });
 
 // ---- Pipeline -----------------------------------------------------------
+/** The host's comment threads as saving copies them: plain objects, not reactive proxies. */
+const savedComments = () =>
+  commentManagement.comments.value.map((comment) => toRaw(comment));
+
 const {
   editor,
   editorView,
@@ -920,6 +953,9 @@ const {
   isDirty,
   parseError,
   layout,
+  modelDocument,
+  sourceBuffer,
+  hiddenEditorWidth,
   blocks,
   measures,
   syncCoordinator,
@@ -927,6 +963,7 @@ const {
   loadDocument,
   save: saveDocument,
   getDocument,
+  readDocumentModel,
   setDocument,
   getHeaderFooterView,
   syncHeaderFooterViews,
@@ -937,6 +974,8 @@ const {
   reLayout,
   setEmbeddedFontFamilies,
 } = useDocxEditor({
+  // Read at save time; comment management is set up below.
+  comments: () => savedComments(),
   hiddenContainer: hiddenPmRef,
   hiddenHeaderFooterContainer: hiddenHfPmRef,
   noteEditorContainer: notePmRef,
@@ -963,7 +1002,8 @@ const {
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) =>
     props.onSlashMenuKeyAction?.(action) ?? false,
-  onChange: notifyDocumentChange,
+  // The editor's notifications already carry a copy the host owns.
+  onChange: notifyHostDocument,
   onError: reportEditorError,
   onSelectionUpdate: (state) => {
     props.onSelectionChange?.(extractSelectionState(state));
@@ -1061,7 +1101,7 @@ function remeasureForFontChange(): void {
 
 useFontLifecycle({
   isReady,
-  getDocument,
+  sourceBuffer: () => sourceBuffer.value,
   fonts: () => props.fonts,
   remeasure: remeasureForFontChange,
   setEmbeddedFontFamilies,
@@ -1108,7 +1148,14 @@ const {
   handleHyperlinkPopupRemove,
 } = useHyperlinkManagement({ editorView: activeEditorView, getCommands });
 
-const tableResize = useTableResize();
+// The body runs a resize through the editor, which applies it in the
+// session that owns the document; a header or footer view runs it directly.
+const tableResize = useTableResize({
+  runCommand: (view, command) => {
+    if (view === editorView.value) editor.executeCommand(command);
+    else command(view.state, (tr) => view.dispatch(tr), view);
+  },
+});
 
 const {
   tableInsertButton,
@@ -1270,6 +1317,8 @@ const commentManagement = useCommentManagement({
     emit("comments-change", next);
   },
   reLayout,
+  readOnly: () => readOnly.value,
+  onReadOnlyEditAttempt: reportReadonlyEditAttempt,
 });
 const comments = commentManagement.comments;
 
@@ -1280,7 +1329,6 @@ const commentLifecycle = useCommentLifecycle({
   pagesContainer: pagesRef,
   readOnly,
   createComment: commentManagement.createComment,
-  pushComment: commentManagement.pushComment,
   sessionKind: () =>
     canonicalAuthoritySession.value ? "canonical" : "prosemirror",
   createCanonicalComment: (text, range) => {
@@ -1334,20 +1382,16 @@ function handleHyperlinkPopupCopy(href: string): void {
 }
 
 // ---- Document-derived computed refs -------------------------------------
-const currentSectionProps = computed<SectionProperties | null>(() => {
-  void stateTick.value;
-  const body = getDocument()?.package.document;
-  if (!body) {
-    return null;
-  }
-  return body.finalSectionProperties ?? body.sections?.[0]?.properties ?? null;
-});
-
-const currentWatermark = computed<Watermark | undefined>(() => {
-  void stateTick.value;
-  const doc = getDocument();
-  return doc ? getDocumentWatermark(doc) : undefined;
-});
+// Read from the editor's document model: building a document here would run
+// on every keystroke, in proportion to the document.
+const currentChrome = computed(() => documentChrome(modelDocument.value));
+const currentSectionProps = computed<SectionProperties | null>(
+  () => currentChrome.value.sectionProperties,
+);
+const currentWatermark = computed<Watermark | undefined>(
+  () => currentChrome.value.watermark,
+);
+const currentStyles = computed(() => currentChrome.value.styles);
 
 const currentTableProperties = computed(() => {
   void stateTick.value;
@@ -1365,7 +1409,6 @@ const currentTableProperties = computed(() => {
 // Optional Toolbar props that must be OMITTED (not passed as `undefined`) under
 // exactOptionalPropertyTypes: bind via `v-bind` so an absent value drops the key.
 const toolbarDynamicProps = computed(() => {
-  void stateTick.value;
   const dynamic: {
     fontFamilies?: ReadonlyArray<string | FontOption>;
     documentStyles?: Style[];
@@ -1373,7 +1416,7 @@ const toolbarDynamicProps = computed(() => {
   if (props.fontFamilies !== undefined) {
     dynamic.fontFamilies = props.fontFamilies;
   }
-  const styles = getDocument()?.package.styles?.styles;
+  const styles = currentStyles.value;
   if (styles !== undefined) {
     dynamic.documentStyles = styles;
   }
@@ -1451,7 +1494,7 @@ function updateActiveHeading(): void {
   const threshold = container.scrollTop + container.clientHeight / 2;
   const offsets = anchors
     .map((el) => ({
-      pm: Number(el.dataset["pmStart"]),
+      pm: readPaintedStart(el) ?? Number.NaN,
       top: el.getBoundingClientRect().top - top + container.scrollTop,
     }))
     .filter(({ pm }) => Number.isFinite(pm))
@@ -2009,7 +2052,17 @@ const { exposed } = useDocxEditorRefApi({
     commentManagement.setComments(nextComments);
   },
   focus: () => activeEditorView.value?.focus(),
-  getDocument,
+  readDocumentModel,
+  // The editor's document carries the threads it was loaded with; the host's
+  // list is what the sidebar shows and what saving writes.
+  getDocument: () => {
+    const document = getDocument();
+    if (!document || canonicalAuthoritySession.value) return document;
+    const editorDoc = editorView.value?.state.doc;
+    return withHostCommentThreads(document, savedComments(), {
+      anchoredInEditor: editorDoc ? commentIdsNamedIn(editorDoc) : null,
+    });
+  },
   getActiveView: () => activeEditorView.value,
   getExperimentalSession: () => props.experimentalSession,
   getActiveCanonicalStory: () => {
@@ -2073,12 +2126,32 @@ defineExpose(exposed);
 .docx-editor-vue__toolbar-shell {
   flex: 0 0 auto;
 }
-.docx-editor-vue__hidden-pm {
-  position: absolute;
+.docx-editor-vue__hidden-pm-wrapper {
+  position: fixed;
+  left: -9999px;
+  top: 0;
   width: 1px;
   height: 1px;
   overflow: hidden;
   opacity: 0;
+  z-index: -1;
+  pointer-events: none;
+  contain: layout paint;
+  overflow-anchor: none;
+}
+.docx-editor-vue__hidden-pm-host {
+  position: absolute;
+  left: 0;
+  top: 0;
+  user-select: none;
+  overflow-anchor: none;
+}
+.docx-editor-vue__hidden-hf-pm {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  opacity: 0;
+  z-index: -1;
   pointer-events: none;
 }
 .docx-editor-vue__panels-row {

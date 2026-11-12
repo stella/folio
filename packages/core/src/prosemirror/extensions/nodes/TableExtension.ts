@@ -65,6 +65,8 @@ import {
   withCanonicalRowDeletion,
   withCanonicalRowInsertion,
   withCanonicalTableAttributeCommand,
+  withCanonicalTableDeletion,
+  withCanonicalTableInsertion,
 } from "../../canonicalTableCommands";
 import { mintRevisionId } from "../../plugins/revisionIds";
 import { makeRevisionInfo } from "../../plugins/suggestionMode";
@@ -3283,7 +3285,8 @@ export const TablePluginExtension: (
         ),
       },
       commands: {
-        insertTable: (rows: number, cols: number) => insertTable(rows, cols),
+        insertTable: (rows: number, cols: number) =>
+          withCanonicalTableInsertion(insertTable(rows, cols)),
         addRowAbove: () => withCanonicalRowInsertion(addRowAbove, "above"),
         addRowBelow: () => withCanonicalRowInsertion(addRowBelow, "below"),
         deleteRow: () => withCanonicalRowDeletion(deleteRow),
@@ -3292,7 +3295,7 @@ export const TablePluginExtension: (
         addColumnRight: () =>
           withCanonicalColumnInsertion(addColumnRight, "right"),
         deleteColumn: () => withCanonicalColumnDeletion(deleteColumn),
-        deleteTable: () => deleteTable,
+        deleteTable: () => withCanonicalTableDeletion(deleteTable),
         selectTable: () => selectTable,
         selectRow: () => selectRow,
         selectColumn: () => selectColumn,

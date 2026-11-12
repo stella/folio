@@ -3,10 +3,11 @@
  * must resolve, through symlinks, inside one of them. A destination that does
  * not exist yet is checked through its parent directory.
  *
- * The check resolves a path once; the write path re-checks what it opens
- * (device and inode) and the directory's real path before its rename. A
- * local process renaming directories under a root while a call runs can
- * still race the check; the package README lists this as a known limit.
+ * The check resolves a path once; a write carries the roots as its
+ * `WriteScope`, so the directory it commits into (resolved again when the
+ * transaction starts) must still be inside one, and the transaction re-checks
+ * what it opens (device and inode) and the directory's real path before its
+ * rename. The package README lists the remaining window as a known limit.
  */
 
 import { Result } from "better-result";
@@ -17,6 +18,10 @@ import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 
 /** Real paths of the allowed root directories. */
 export type AllowedRoots = readonly string[];
+
+/** Where a write may land: anywhere the caller names (the CLI), or inside allowed roots (the MCP server). */
+export type WriteScope =
+  { type: "unrestricted" } | { type: "withinRoots"; roots: AllowedRoots };
 
 /** Resolve each root to its real path; every root must be an existing directory. */
 export const resolveRoots = async (
@@ -54,6 +59,26 @@ const isWithin = (root: string, candidate: string): boolean => {
   );
 };
 
+const outsideRoots = (roots: AllowedRoots, message: string): FolioCliError =>
+  cliError({
+    code: FOLIO_CLI_ERROR_CODES.outsideRoot,
+    message,
+    hint: `Use a path under ${roots.join(", ")}, or restart the server with another --root.`,
+  });
+
+/** Refuse an already resolved real path that `scope` does not allow. */
+export const checkInScope = (
+  scope: WriteScope,
+  realPath: string,
+): Result<void, FolioCliError> => {
+  if (scope.type === "unrestricted") return Result.ok();
+  return scope.roots.some((root) => isWithin(root, realPath))
+    ? Result.ok()
+    : Result.err(
+        outsideRoots(scope.roots, `${realPath} is outside the allowed roots.`),
+      );
+};
+
 /** The real path of `target`, or of its parent joined with its name when it does not exist. */
 const realTarget = async (target: string): Promise<string | null> => {
   const real = await Result.tryPromise(() => realpath(target));
@@ -86,10 +111,9 @@ export const checkWithinRoots = async ({
     return Result.ok(real);
   }
   return Result.err(
-    cliError({
-      code: FOLIO_CLI_ERROR_CODES.outsideRoot,
-      message: `${argument} ${JSON.stringify(target)} is outside the allowed roots.`,
-      hint: `Use a path under ${roots.join(", ")}, or restart the server with another --root.`,
-    }),
+    outsideRoots(
+      roots,
+      `${argument} ${JSON.stringify(target)} is outside the allowed roots.`,
+    ),
   );
 };

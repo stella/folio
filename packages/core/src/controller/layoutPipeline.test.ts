@@ -24,6 +24,7 @@ import {
   makeStyleToggleParagraph,
 } from "../__tests__/styleToggleFlowFixture";
 import { convertHeaderFooterToContent } from "../layout-bridge/convert/headerFooterLayout";
+import { ParagraphBlockCache } from "../layout-bridge/convert/paragraphBlockCache";
 import type { LayoutInstrumentation } from "../layout-engine/layoutInstrumentation";
 import { clearAllCaches } from "../layout-engine/measure/cache";
 import {
@@ -1759,6 +1760,7 @@ describe("createLayoutSession", () => {
       lastPmDoc: null,
       lastMeasureInputs: null,
       lastTemplatePreview: { entries: [], hidden: [], mode: "plain" },
+      paragraphBlocks: expect.any(ParagraphBlockCache),
     });
   });
 });

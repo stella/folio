@@ -27,7 +27,7 @@ on:
         type: boolean
         default: false
       source-ref:
-        description: Commit or ref to build and publish (defaults to the dispatched commit)
+        description: Commit or ref to build and publish (defaults to the dispatched commit; publishing requires a commit on main)
         type: string
         required: false
         default: ""
@@ -44,9 +44,52 @@ concurrency:
 permissions: {}
 
 jobs:
+  source:
+    name: Resolve the source commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      # source-ref may name a branch or tag, which can move between jobs:
+      # resolve it once, and every pack and release step uses that commit.
+      # A run that releases takes only a commit already on main; a dry run
+      # builds any commit.
+      - name: Resolve the source commit
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SOURCE_REF: ${{ inputs.source-ref || github.sha }}
+          RELEASING: ${{ github.event_name == 'push' || inputs.publish }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SOURCE_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::source-ref '$SOURCE_REF' is not a commit or ref name."
+            exit 1
+          fi
+          sha="$(gh api "repos/$REPO/commits/$SOURCE_REF" --jq .sha)"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::source-ref '$SOURCE_REF' did not resolve to a commit."
+            exit 1
+          fi
+          if [ "$RELEASING" = "true" ]; then
+            status="$(gh api "repos/$REPO/compare/$sha...main" --jq .status)"
+            if [ "$status" != "ahead" ] && [ "$status" != "identical" ]; then
+              echo "::error::$sha is not on main (compare status: $status)."
+              exit 1
+            fi
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Source commit: $sha"
+
   pack:
     name: Build and pack ${{ matrix.pkg }}
+    needs: source
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       matrix:
         pkg:
@@ -67,7 +110,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.source-ref || github.sha }}
+          ref: ${{ needs.source.outputs.sha }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -114,20 +157,20 @@ jobs:
 
   release:
     name: Release packages
-    needs: pack
+    needs: [source, pack]
     if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish) }}
     permissions:
       actions: read # Recover exact artifacts from a verified earlier publish run.
       contents: write # Create immutable package tags and GitHub releases.
       id-token: write # npm trusted publishing; build scripts ran without this permission.
     # The repository owner publishes this versioned shared contract.
-    uses: stella/.github/.github/workflows/npm-independent-release.yml@042baebaf071329b956555c05caf5736504c278d # exact-version npm visibility wait
+    uses: stella/.github/.github/workflows/npm-independent-release.yml@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d # exact-version npm visibility wait
     with:
       artifact-pattern: npm-tarball-*
       artifact-run-id: ${{ inputs.artifact-run-id }}
       github-latest-package: "@stll/folio-core"
       github-latest-policy: canonical-package
-      source-ref: ${{ inputs.source-ref || github.sha }}
+      source-ref: ${{ needs.source.outputs.sha }}
       # npm can take about 30 minutes to list a newly published version.
       npm-visibility-timeout-minutes: 45
       package-files: |
@@ -143,23 +186,24 @@ jobs:
 
   vscode:
     name: Publish the VS Code extension
-    needs: release
+    needs: [source, release]
     # The extension's version follows @stll/folio-cli, so each release that
     # bumps the CLI publishes it; any other release is a skipped duplicate.
     # Started as its own run rather than called: a called workflow does not
     # see the open-vsx environment's OVSX_PAT, so Open VSX was skipped.
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       actions: write # Start publish-vscode.yml, which owns the registry environments.
     steps:
-      # publish-vscode.yml publishes only a full SHA already on main, and
-      # source-ref here may be a branch or tag: pass the commit it names.
+      # publish-vscode.yml publishes only a full SHA already on main: pass
+      # the commit this run released.
       - name: Start the extension publish
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SOURCE_REF: ${{ inputs.source-ref || github.sha }}
+          SOURCE_SHA: ${{ needs.source.outputs.sha }}
         run: |
-          sha="$(gh api "repos/$REPO/commits/$SOURCE_REF" --jq .sha)"
+          sha="$SOURCE_SHA"
           gh workflow run publish-vscode.yml --repo "$REPO" --ref main -f publish=true -f source-ref="$sha"
           echo "Started publish-vscode.yml for $sha: https://github.com/$REPO/actions/workflows/publish-vscode.yml"

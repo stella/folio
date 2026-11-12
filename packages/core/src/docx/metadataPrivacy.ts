@@ -4,6 +4,8 @@ import { ZipArchive, type ZipEntry, ZipError } from "@stll/docx-core/zip";
 
 import { decodeText } from "../utils/textEncoding";
 import { DOCX_MAX_COMPRESSION_RATIO } from "./archiveInflation";
+import { resolvePackageRelationshipTarget } from "./packageParts";
+import { parseRelationships, RELATIONSHIP_TYPES } from "./relsParser";
 import { elementToXml, getLocalName, parseXmlDocument } from "./xmlParser";
 
 export const FOLIO_DOCUMENT_METADATA_PROPERTIES: readonly [
@@ -182,18 +184,47 @@ const loadPrivacyArchive = async (buffer: ArrayBuffer): Promise<ZipArchive> => {
       cause,
     });
   }
-  const zip = read.value;
-  const coreProperties = findZipEntryCaseInsensitive(
+  return read.value;
+};
+
+const PACKAGE_RELATIONSHIPS_PATH = "_rels/.rels";
+
+/**
+ * Every part that holds core properties: the one the package relationship
+ * selects, which is the one a package reader follows, and the conventional
+ * `docProps/core.xml`. Each is size-checked before it is read.
+ */
+const findCorePropertiesEntries = async (
+  zip: ZipArchive,
+): Promise<ZipEntry[]> => {
+  const paths = new Set([CORE_PROPERTIES_PATH_LOWER]);
+  const packageRelationships = findZipEntryCaseInsensitive(
     zip,
-    CORE_PROPERTIES_PATH_LOWER,
+    PACKAGE_RELATIONSHIPS_PATH,
   );
-  if (coreProperties && coreProperties.size > MAX_CORE_PROPERTIES_BYTES) {
-    throw new FolioDocumentPrivacyArchiveError({
-      message: "Document privacy core properties exceeded the part-size limit",
-      reason: "core-properties-too-large",
-    });
+  if (packageRelationships) {
+    const relationships = parseRelationships(
+      await readBoundedPart(packageRelationships),
+    );
+    for (const { type, target, targetMode } of relationships.values()) {
+      if (
+        type !== RELATIONSHIP_TYPES.coreProperties ||
+        targetMode === "External"
+      )
+        continue;
+      const path = resolvePackageRelationshipTarget(
+        target,
+        PACKAGE_RELATIONSHIPS_PATH,
+      );
+      if (path !== undefined) paths.add(path);
+    }
   }
-  return zip;
+  const entries = new Map<string, ZipEntry>();
+  for (const path of paths) {
+    const entry = findZipEntryCaseInsensitive(zip, path);
+    if (entry) entries.set(entry.path, entry);
+  }
+  return [...entries.values()];
 };
 
 type RewriteCorePropertiesPrivacyResult = {
@@ -242,10 +273,16 @@ const rewriteCorePropertiesPrivacy = (
 };
 
 /**
- * Read the core-properties part. Its declared size was checked when the
- * archive loaded, and inflation stops at that size.
+ * Read a core-properties or package-relationships part: its declared size is
+ * checked first, and inflation stops at that size.
  */
-const readCoreProperties = async (entry: ZipEntry): Promise<string> => {
+const readBoundedPart = async (entry: ZipEntry): Promise<string> => {
+  if (entry.size > MAX_CORE_PROPERTIES_BYTES) {
+    throw new FolioDocumentPrivacyArchiveError({
+      message: "Document privacy core properties exceeded the part-size limit",
+      reason: "core-properties-too-large",
+    });
+  }
   const read = await Result.tryPromise({
     try: async () => await entry.bytes(),
     catch: (cause) => cause,
@@ -277,34 +314,32 @@ export const rewriteDocxMetadataPrivacy = async (
 ): Promise<RewriteDocxMetadataPrivacyResult> => {
   const appliedTransforms = resolveFolioDocumentPrivacyTransforms(transforms);
   const zip = await loadPrivacyArchive(buffer);
-  const coreProperties = findZipEntryCaseInsensitive(
-    zip,
-    CORE_PROPERTIES_PATH_LOWER,
-  );
-  if (!coreProperties) {
+  const removedPropertySet = new Set<FolioDocumentMetadataProperty>();
+  for (const coreProperties of await findCorePropertiesEntries(zip)) {
+    const rewritten = rewriteCorePropertiesPrivacy(
+      await readBoundedPart(coreProperties),
+      appliedTransforms,
+    );
+    if (rewritten.removedMetadataProperties.length === 0) continue;
+    for (const property of rewritten.removedMetadataProperties)
+      removedPropertySet.add(property);
+    // Write back under the entry's original name/casing so a non-conventional
+    // producer doesn't end up with two core-properties-shaped parts.
+    zip.set(coreProperties.path, rewritten.xml);
+  }
+  if (removedPropertySet.size === 0) {
     return {
       buffer,
       privacyReport: { appliedTransforms, removedMetadataProperties: [] },
     };
   }
-  const rewritten = rewriteCorePropertiesPrivacy(
-    await readCoreProperties(coreProperties),
-    appliedTransforms,
-  );
-  if (rewritten.removedMetadataProperties.length === 0) {
-    return {
-      buffer,
-      privacyReport: { appliedTransforms, removedMetadataProperties: [] },
-    };
-  }
-  // Write back under the entry's original name/casing so a non-conventional
-  // producer doesn't end up with two core-properties-shaped parts.
-  zip.set(coreProperties.path, rewritten.xml);
   return {
     buffer: (await zip.generate()).buffer,
     privacyReport: {
       appliedTransforms,
-      removedMetadataProperties: rewritten.removedMetadataProperties,
+      removedMetadataProperties: FOLIO_DOCUMENT_METADATA_PROPERTIES.filter(
+        (property) => removedPropertySet.has(property),
+      ),
     },
   };
 };

@@ -270,7 +270,7 @@ const createAutoBidiDetectionPlugin = (): Plugin => {
 };
 
 export const AutoBidiDetectionExtension: (
-  options?: Partial<{}> | undefined,
+  options?: Partial<Record<never, never>> | undefined,
 ) => Extension = createExtension({
   name: "autoBidiDetection",
   defaultOptions: {},

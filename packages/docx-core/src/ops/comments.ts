@@ -7,6 +7,7 @@ import {
   COMMENT_PART_RELATIONSHIPS,
   type Document,
   MAX_REVISION_ID,
+  type Paragraph,
   type ParagraphContent,
   setDocumentBodyComments,
 } from "../model/document";
@@ -57,6 +58,7 @@ import {
   type CreateCommentOp,
   DOCUMENT_OP_TYPES,
   type NewIds,
+  OP_STORIES,
   type OpStory,
   type RestoreCommentStateOp,
   type TextPosition,
@@ -79,24 +81,101 @@ const anchorId = (node: InlineNode): number | undefined => {
       return undefined;
   }
 };
-const storyBodiesIncludingTextBoxes = (
-  body: Pick<Document["package"]["document"], "content">,
-): Pick<Document["package"]["document"], "content">[] => {
-  const bodies = [body];
-  const paragraphs = storyParagraphs(body);
-  for (const location of paragraphs) {
-    for (const { node } of leafSpans(location.paragraph.content)) {
-      if (node.type !== "shape" || node.shape.textBody === undefined) continue;
-      bodies.push(
-        ...storyBodiesIncludingTextBoxes({
-          content: node.shape.textBody.content,
-        }),
-      );
-    }
+type StoryBodyContent = Pick<Document["package"]["document"], "content">;
+
+/**
+ * What a paragraph adds to its story's comment anchors, read off its own
+ * content: its anchors, where its text starts and ends, and the bodies of
+ * its text boxes, each in leaf order.
+ */
+export type ParagraphAnchorFacts = {
+  anchors: readonly LeafSpan[];
+  start: Gap;
+  end: Gap;
+  textBoxes: readonly BlockContent[][];
+};
+
+/** How the anchor walks read a paragraph's facts. */
+export type ParagraphAnchorReader = (
+  paragraph: Paragraph,
+) => ParagraphAnchorFacts;
+
+/** A paragraph's facts, read from every leaf of it. */
+export const freshParagraphAnchorFacts: ParagraphAnchorReader = (paragraph) => {
+  const spans = leafSpans(paragraph.content);
+  const anchors: LeafSpan[] = [];
+  const textBoxes: BlockContent[][] = [];
+  for (const span of spans) {
+    if (isCommentAnchor(span.node)) anchors.push(span);
+    if (span.node.type === "shape" && span.node.shape.textBody !== undefined)
+      textBoxes.push(span.node.shape.textBody.content);
   }
+  return {
+    anchors,
+    start: spans.at(0)?.before ?? { offset: 0, zeroWidthBefore: 0 },
+    end: spans.at(-1)?.after ?? { offset: 0, zeroWidthBefore: 0 },
+    textBoxes,
+  };
+};
+
+/**
+ * A paragraph's facts, read once per paragraph object. A package's
+ * paragraphs are never changed in place: an edit replaces the paragraphs it
+ * changes and keeps the rest, so a kept paragraph's facts still hold.
+ */
+const keptParagraphAnchorFacts: ParagraphAnchorReader = (() => {
+  const known = new WeakMap<Paragraph, ParagraphAnchorFacts>();
+  return (paragraph) => {
+    const cached = known.get(paragraph);
+    if (cached !== undefined) return cached;
+    const facts = freshParagraphAnchorFacts(paragraph);
+    known.set(paragraph, facts);
+    return facts;
+  };
+})();
+
+/** A story's body, then the bodies of the text boxes in it, depth first in document order. */
+const storyBodiesIncludingTextBoxes = (
+  body: StoryBodyContent,
+  facts: ParagraphAnchorReader,
+): StoryBodyContent[] => {
+  const bodies = [body];
+  const visit = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      switch (block.type) {
+        case "paragraph":
+          for (const content of facts(block).textBoxes)
+            bodies.push(...storyBodiesIncludingTextBoxes({ content }, facts));
+          break;
+        case "table":
+          for (const row of block.rows)
+            for (const cell of row.cells) visit(cell.content);
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          visit(block.content);
+          break;
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+        case "commentRangeStart":
+        case "commentRangeEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
+        case "moveToRangeStart":
+        case "moveToRangeEnd":
+          break;
+        default: {
+          const unhandled: never = block;
+          return unhandled;
+        }
+      }
+    }
+  };
+  visit(body.content);
   return bodies;
 };
-type StoryAnchorSpan = LeafSpan & {
+export type StoryAnchorSpan = LeafSpan & {
   story: OpStory;
   blockId: string;
   /** A range marker that stands between blocks rather than in a paragraph. */
@@ -107,6 +186,17 @@ type BlockCommentBoundary = Extract<
   { type: "commentRangeStart" } | { type: "commentRangeEnd" }
 >;
 
+type StoryAnchorWalk = {
+  anchors: StoryAnchorSpan[];
+  /**
+   * How many of the first anchors are range markers between blocks that
+   * waited for the first paragraph, or undefined when there is none.
+   */
+  heldForFirstParagraph: number | undefined;
+  /** How many of the last anchors are markers held past the last paragraph. */
+  heldToEnd: number;
+};
+
 /**
  * A story's comment anchors in document order. A range marker between blocks
  * is one of them, placed at the edge of the text beside it: a start at the
@@ -114,9 +204,11 @@ type BlockCommentBoundary = Extract<
  */
 const storyAnchors = (
   story: OpStory,
-  body: Pick<Document["package"]["document"], "content">,
-): StoryAnchorSpan[] => {
+  body: StoryBodyContent,
+  facts: ParagraphAnchorReader,
+): StoryAnchorWalk => {
   const anchors: StoryAnchorSpan[] = [];
+  let heldForFirstParagraph: number | undefined;
   let waiting: BlockCommentBoundary[] = [];
   let previous: { blockId: string; end: Gap } | undefined;
   const boundary = (
@@ -137,22 +229,13 @@ const storyAnchors = (
       switch (block.type) {
         case "paragraph": {
           const blockId = block.paraId ?? "";
-          const spans = leafSpans(block.content);
-          const start = spans.at(0)?.before ?? {
-            offset: 0,
-            zeroWidthBefore: 0,
-          };
+          const { anchors: own, start, end } = facts(block);
+          heldForFirstParagraph ??= waiting.length;
           for (const node of waiting)
             anchors.push(boundary(node, blockId, start));
           waiting = [];
-          for (const span of spans) {
-            if (isCommentAnchor(span.node))
-              anchors.push({ story, blockId, ...span });
-          }
-          previous = {
-            blockId,
-            end: spans.at(-1)?.after ?? { offset: 0, zeroWidthBefore: 0 },
-          };
+          for (const span of own) anchors.push({ story, blockId, ...span });
+          previous = { blockId, end };
           break;
         }
         case "table":
@@ -195,18 +278,85 @@ const storyAnchors = (
         previous?.end ?? { offset: 0, zeroWidthBefore: 0 },
       ),
     );
-  return anchors;
+  return { anchors, heldForFirstParagraph, heldToEnd: waiting.length };
 };
 
-const anchorsIn = (document: Document) => {
+/**
+ * Every comment anchor of a document, story by story, each story's text
+ * boxes after its body. `facts` is for comparing the kept reading with a
+ * fresh one.
+ */
+export const commentAnchorsIn = (
+  document: Document,
+  facts: ParagraphAnchorReader = keptParagraphAnchorFacts,
+): StoryAnchorSpan[] => {
   const anchors: StoryAnchorSpan[] = [];
   for (const story of documentStories(document)) {
     for (const body of storyBodiesIncludingTextBoxes(
       storyBody(document, story),
+      facts,
     ))
-      anchors.push(...storyAnchors(story, body));
+      anchors.push(...storyAnchors(story, body, facts).anchors);
   }
   return anchors;
+};
+
+const anchorsIn = (document: Document): StoryAnchorSpan[] =>
+  commentAnchorsIn(document);
+
+/** Stands between a block list's own anchors and those of its text boxes. */
+const TEXT_BOXES_FOLLOW = "textBoxes";
+/** A block list with no paragraph: its markers attach to the blocks around it. */
+const NO_PARAGRAPH = "noParagraph";
+/** Ends the markers that wait for a block list's first paragraph. */
+const FIRST_PARAGRAPH = "firstParagraph";
+/** Starts the markers held past a block list's last paragraph. */
+const HELD_PAST_LAST_PARAGRAPH = "heldPastLastParagraph";
+
+/**
+ * What a run of a story's blocks adds to the document's comment anchors, as
+ * {@link commentDocumentIssue} reads them: each anchor's kind and id in
+ * document order, those of the run's own blocks, then those of the text
+ * boxes inside them. A range marker between blocks attaches to a paragraph
+ * beside it, which may lie outside the run, so the sequence also marks which
+ * markers wait for the run's first paragraph and which are held past its
+ * last, or that it has no paragraph. Two runs alike here leave the issue as
+ * it was when one replaces the other in the same story, whatever blocks
+ * surround it.
+ */
+export const commentAnchorSequence = (
+  blocks: readonly BlockContent[],
+): string[] => {
+  const facts = keptParagraphAnchorFacts;
+  const [own, ...textBoxes] = storyBodiesIncludingTextBoxes(
+    { content: [...blocks] },
+    facts,
+  );
+  const sequenceOf = (body: StoryBodyContent | undefined): string[] => {
+    if (body === undefined) return [];
+    const { anchors, heldForFirstParagraph, heldToEnd } = storyAnchors(
+      OP_STORIES.MAIN,
+      body,
+      facts,
+    );
+    const entries = anchors.map(
+      ({ node }) => `${node.type}:${String(anchorId(node))}`,
+    );
+    if (heldForFirstParagraph === undefined) return [NO_PARAGRAPH, ...entries];
+    const held = entries.length - heldToEnd;
+    return [
+      ...entries.slice(0, heldForFirstParagraph),
+      FIRST_PARAGRAPH,
+      ...entries.slice(heldForFirstParagraph, held),
+      HELD_PAST_LAST_PARAGRAPH,
+      ...entries.slice(held),
+    ];
+  };
+  return [
+    ...sequenceOf(own),
+    TEXT_BOXES_FOLLOW,
+    ...textBoxes.flatMap(sequenceOf),
+  ];
 };
 
 /** A comment, the comments it replies to and the replies under it. */
@@ -291,6 +441,7 @@ const coveredCommentIds = (document: Document): Set<number> => {
   for (const story of documentStories(document)) {
     for (const body of storyBodiesIncludingTextBoxes(
       storyBody(document, story),
+      keptParagraphAnchorFacts,
     )) {
       const open = new Set<number>();
       for (const { node } of storyCoverageNodes(body)) {
@@ -423,12 +574,25 @@ export const commentDocumentIssue = (
   const anchors = anchorsIn(document);
   if (anchors.some(({ node }) => !byId.has(anchorId(node) ?? -1)))
     return "A comment anchor has no definition.";
+  // Each comment's anchors in document order, with their place in it: one
+  // pass over the anchors rather than one per comment.
+  const ownById = new Map<number, { anchor: StoryAnchorSpan; at: number }[]>();
+  for (const [at, anchor] of anchors.entries()) {
+    const id = anchorId(anchor.node) ?? -1;
+    const own = ownById.get(id);
+    if (own === undefined) ownById.set(id, [{ anchor, at }]);
+    else own.push({ anchor, at });
+  }
   for (const comment of comments) {
-    const own = anchors.filter(({ node }) => anchorId(node) === comment.id);
-    const starts = own.filter(({ node }) => node.type === "commentRangeStart");
-    const ends = own.filter(({ node }) => node.type === "commentRangeEnd");
+    const own = ownById.get(comment.id) ?? [];
+    const starts = own.filter(
+      ({ anchor }) => anchor.node.type === "commentRangeStart",
+    );
+    const ends = own.filter(
+      ({ anchor }) => anchor.node.type === "commentRangeEnd",
+    );
     const references = own.filter(
-      ({ node }) => node.type === "commentReference",
+      ({ anchor }) => anchor.node.type === "commentReference",
     );
     const start = starts.at(0);
     const end = ends.at(0);
@@ -441,8 +605,7 @@ export const commentDocumentIssue = (
     if (
       start &&
       end &&
-      (!sameStory(start.story, end.story) ||
-        anchors.indexOf(start) > anchors.indexOf(end))
+      (!sameStory(start.anchor.story, end.anchor.story) || start.at > end.at)
     )
       return "Comment range boundaries must be ordered in one story.";
     const parent =
@@ -1390,10 +1553,21 @@ export const applyCommentOp = (
     if (
       op.patch &&
       Object.keys(op.patch).some(
-        (key) => key !== "author" && key !== "initials" && key !== "date",
+        (key) =>
+          key !== "author" &&
+          key !== "initials" &&
+          key !== "date" &&
+          key !== "suggestionId",
       )
     )
       return fail(op, "A content edit cannot change comment ownership.");
+    // A comment joins a suggestion only when the suggestion proposes it.
+    if (
+      op.patch !== undefined &&
+      Object.hasOwn(op.patch, "suggestionId") &&
+      op.patch.suggestionId !== null
+    )
+      return fail(op, "Only a suggestion can propose a comment.");
     if (
       op.patch &&
       Object.hasOwn(op.patch, "author") &&
@@ -1409,6 +1583,9 @@ export const applyCommentOp = (
             ? { initials: comment.initials }
             : {}),
           ...(Object.hasOwn(comment, "date") ? { date: comment.date } : {}),
+          ...(Object.hasOwn(comment, "suggestionId")
+            ? { suggestionId: comment.suggestionId }
+            : {}),
         },
         op.patch ?? {},
       ),
@@ -1416,6 +1593,7 @@ export const applyCommentOp = (
     };
     if (op.patch?.initials === null) delete updated.initials;
     if (op.patch?.date === null) delete updated.date;
+    if (op.patch?.suggestionId === null) delete updated.suggestionId;
     return edited(
       document,
       withComments(

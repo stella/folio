@@ -3,7 +3,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "preserve",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "paths": {
       // The `@stll/folio-vue` `.` export resolves to `dist` (a build artifact).
       // Point the type layer at source so this playground typechecks without a

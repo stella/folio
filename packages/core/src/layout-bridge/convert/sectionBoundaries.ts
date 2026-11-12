@@ -148,6 +148,18 @@ type SectionDocumentGridOptions = {
   tableCellLinePitch: "sectionGrid" | undefined;
 };
 
+type GriddedBlock = {
+  readonly linePitch: number;
+  readonly tableCellLinePitch: "sectionGrid" | undefined;
+  readonly block: FlowBlock;
+};
+
+/**
+ * Each block as last stamped with a line pitch. A block kept from an earlier
+ * conversion is never written, so stamping it again gives the same block.
+ */
+const griddedBlocks = new WeakMap<FlowBlock, GriddedBlock>();
+
 export function applySectionDocumentGrid(
   blocks: FlowBlock[],
   { finalLinePitchTwips, tableCellLinePitch }: SectionDocumentGridOptions,
@@ -164,6 +176,23 @@ export function applySectionDocumentGrid(
     }
     const linePitch = twipsToPixels(linePitchTwips);
     const stampBlock = (block: FlowBlock): FlowBlock => {
+      const stamped = griddedBlocks.get(block);
+      if (
+        stamped !== undefined &&
+        stamped.linePitch === linePitch &&
+        stamped.tableCellLinePitch === tableCellLinePitch
+      ) {
+        return stamped.block;
+      }
+      const gridded = stampBlockWithoutMemo(block);
+      griddedBlocks.set(block, {
+        linePitch,
+        tableCellLinePitch,
+        block: gridded,
+      });
+      return gridded;
+    };
+    const stampBlockWithoutMemo = (block: FlowBlock): FlowBlock => {
       if (block.kind === "paragraph") {
         return {
           ...block,

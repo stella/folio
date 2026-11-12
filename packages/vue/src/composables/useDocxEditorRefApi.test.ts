@@ -1,15 +1,30 @@
 import { describe, expect, mock, test } from "bun:test";
+import { history, undo } from "prosemirror-history";
+import { EditorState, type Transaction } from "prosemirror-state";
+
+import {
+  commentRecordsOf,
+  createCommentRecordsPlugin,
+} from "@stll/folio-core/prosemirror/commentRecords";
+import { schema } from "@stll/folio-core/prosemirror/schema";
 
 import {
   applyWithStagedOperationComments,
   saveDocumentForHost,
 } from "./useDocxEditorRefApi";
 
+/** A view whose state holds no comment records: the host keeps the list. */
+const viewWithoutRecords = () => ({
+  state: EditorState.create({ schema }),
+  dispatch: () => undefined,
+});
+
 describe("applyWithStagedOperationComments", () => {
   test("publishes only applied comments after the document commits", () => {
     const events: string[] = [];
     let nextId = 0;
     const result = applyWithStagedOperationComments({
+      view: viewWithoutRecords(),
       createComment: (text) => {
         const id = ++nextId;
         events.push(`mint:${text}`);
@@ -35,9 +50,64 @@ describe("applyWithStagedOperationComments", () => {
     ]);
   });
 
+  test("records the comments the operation anchors in its own transaction", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, schema.text("Clause")),
+    ]);
+    const holder = {
+      state: EditorState.create({
+        doc,
+        plugins: [history(), createCommentRecordsPlugin([])],
+      }),
+    };
+    const view = {
+      get state() {
+        return holder.state;
+      },
+      dispatch: (transaction: Transaction) => {
+        holder.state = holder.state.apply(transaction);
+      },
+    };
+    const publishComments = mock(() => {});
+    let nextId = 40;
+    applyWithStagedOperationComments({
+      view,
+      createComment: (text) => ({
+        id: ++nextId,
+        author: "Reviewer",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text }] }],
+          },
+        ],
+      }),
+      publishComments,
+      apply: (createCommentId, recordingView) => {
+        createCommentId("refused");
+        const accepted = createCommentId("accepted");
+        recordingView.dispatch(
+          recordingView.state.tr.addMark(
+            1,
+            7,
+            schema.marks.comment.create({ commentId: accepted }),
+          ),
+        );
+        return { applied: [{ commentId: accepted }] };
+      },
+    });
+    expect(publishComments).not.toHaveBeenCalled();
+    expect(commentRecordsOf(holder.state)?.map(({ id }) => id)).toEqual([42]);
+    // One undo takes the mark and the record back together.
+    undo(holder.state, view.dispatch);
+    expect(commentRecordsOf(holder.state)).toEqual([]);
+    expect(holder.state.doc.eq(doc)).toBe(true);
+  });
+
   test("does not notify the host when every operation is refused", () => {
     const publishComments = mock(() => {});
     applyWithStagedOperationComments({
+      view: viewWithoutRecords(),
       createComment: () => ({ id: 1, author: "Reviewer", content: [] }),
       publishComments,
       apply: (createCommentId) => {

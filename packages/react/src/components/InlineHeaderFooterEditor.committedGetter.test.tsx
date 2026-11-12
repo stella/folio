@@ -52,6 +52,7 @@ test("the focus loop reads only the latest committed active-view getter", async 
   const newGetter = mock(() => null);
   const parentElement = document.createElement("div");
   const targetElement = document.createElement("div");
+  targetElement.className = "layout-page-header";
   parentElement.append(targetElement);
   const root = createRoot(document.createElement("div"));
   const render = (getter: () => null, suspend = false) => (
@@ -59,7 +60,7 @@ test("the focus loop reads only the latest committed active-view getter", async 
       <Suspense fallback={null}>
         <InlineHeaderFooterEditor
           position="header"
-          targetElement={targetElement}
+          targetSelector=".layout-page-header"
           parentElement={parentElement}
           getActiveView={getter}
           onClose={noop}

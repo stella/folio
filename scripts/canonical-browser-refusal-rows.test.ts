@@ -67,35 +67,18 @@ test("canonical browser refusal matching rejects unknown and mismatched refusals
   ).toEqual([]);
 });
 
-test("input over selected cells declares its refusal; deleting them stays strict", () => {
+test("typing, pasting and deleting over selected cells stay strict; IME replacement declares its refusal", () => {
   const cells = { selection: "cells" } as const;
-  const paste = canonicalBrowserRefusalRows(
-    { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
-    cells,
-  );
-  validateHarnessRefusalRows(paste);
+  // Typing and pasting clear every selected cell and land in the first.
   expect(
-    matchCanonicalRefusalRow({
-      rows: paste,
-      refusal: {
-        gap: CANONICAL_GAP.dispatch,
-        message:
-          "Pasting over selected cells requires a per-cell paste operation.",
-      },
-    })?.id,
-  ).toBe("selected-cells-paste");
-  // The same refusal over a text selection is a finding.
-  expect(
-    canonicalBrowserRefusalRows({
-      kind: "pasteWordHtml",
-      ...BROWSER_PASTE_PAYLOADS.pasteWordHtml,
-    }),
+    canonicalBrowserRefusalRows(
+      { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+      cells,
+    ),
   ).toEqual([]);
   expect(
-    canonicalBrowserRefusalRows({ kind: "typing", text: "alpha" }, cells).map(
-      ({ id }) => id,
-    ),
-  ).toEqual(["selected-cells-typing"]);
+    canonicalBrowserRefusalRows({ kind: "typing", text: "alpha" }, cells),
+  ).toEqual([]);
   for (const action of [
     { kind: "delete" },
     { kind: "backspace" },

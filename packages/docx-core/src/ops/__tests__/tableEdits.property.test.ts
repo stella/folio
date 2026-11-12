@@ -160,8 +160,8 @@ const slots = (table: Table) => {
     const expanded: (TableCell | undefined)[] = Array.from({
       length: row.formatting?.gridBefore ?? 0,
     });
+    // A pending cell deletion still holds its columns until it is accepted.
     for (const cell of row.cells) {
-      if (cell.structuralChange?.type === "tableCellDeletion") continue;
       const span = cell.formatting?.gridSpan ?? 1;
       expect(Number.isSafeInteger(span) && span > 0).toBe(true);
       for (let offset = 0; offset < span; offset++) expanded.push(cell);
@@ -837,12 +837,18 @@ describe("semantic table edit properties", () => {
                 break;
               case 5:
                 operation =
+                  // A suggested deletion keeps the grid, so it cannot narrow a
+                  // cell spanning the column; such tables insert instead.
                   width > 3 &&
+                  // ...and needs a cell in the column to mark.
+                  before.rows.some(
+                    (row) => (row.formatting?.gridBefore ?? 0) === 0,
+                  ) &&
                   before.rows.every(
                     (row) =>
                       (row.formatting?.gridBefore ?? 0) > 0 ||
-                      row.cells.length > 1 ||
-                      (row.cells.at(0)?.formatting?.gridSpan ?? 1) > 1,
+                      (row.cells.length > 1 &&
+                        (row.cells.at(0)?.formatting?.gridSpan ?? 1) === 1),
                   )
                     ? {
                         ...address,

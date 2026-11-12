@@ -30,7 +30,12 @@ import { redo as historyRedo, undo as historyUndo } from "prosemirror-history";
  */
 import type { Node as PMNode } from "prosemirror-model";
 import { NodeSelection, TextSelection } from "prosemirror-state";
-import type { EditorState, Plugin, Transaction } from "prosemirror-state";
+import type {
+  Command,
+  EditorState,
+  Plugin,
+  Transaction,
+} from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 
@@ -39,6 +44,7 @@ import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type {
   FolioEditor,
@@ -176,6 +182,7 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
+import { FOLIO_INPUT_HIDDEN_ATTRIBUTE } from "@stll/folio-core/paged-layout/selectionViewportRect";
 import { resizeColumnPair } from "@stll/folio-core/paged-layout/tableColumnResize";
 import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInsertButtonGeometry";
 // Table commands (for quick-action insert buttons)
@@ -213,10 +220,10 @@ import type {
 import { getTemplateSlashMenu } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import {
   clampRowResizeDelta,
-  commitColumnResize,
-  commitRightEdgeResize,
-  commitRowResize,
+  columnResizeCommand,
   MIN_ROW_HEIGHT_TWIPS,
+  rightEdgeResizeCommand,
+  rowResizeCommand,
 } from "@stll/folio-core/prosemirror/tableResize";
 import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
@@ -235,16 +242,24 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import {
   closestHtmlElement,
   htmlQueryAll,
   queryHtmlElement,
 } from "@stll/folio-core/utils/domGuards";
+import {
+  hasPaintedStart,
+  PAINTED_START_SELECTOR,
+  readPaintedStart,
+  readPaintedTableStart,
+} from "@stll/folio-core/utils/paintedPositions";
 
 import { HiddenHeaderFooterPMs } from "../components/HiddenHeaderFooterPMs";
 import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterPMs";
 import { NoteStoryEditor } from "../components/NoteStoryEditor";
 import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
+import { structurallyEqual, useEqualState } from "../hooks/keepEqual";
 import { containedHandler } from "../utils/contained-handler";
 // Internal components
 import { AISuggestionRectsOverlay } from "./AISuggestionRectsOverlay";
@@ -281,6 +296,18 @@ import { useVisualLineNavigation } from "./useVisualLineNavigation";
 // =============================================================================
 // TYPES
 // =============================================================================
+
+/** A settled change: the editor's document model and the host's document. */
+export type DocumentChange = {
+  /**
+   * The editor's document model: in a canonical session the session's own
+   * document (read it, never write it), otherwise the document built from the
+   * editor state.
+   */
+  model: ReadonlyDocument;
+  /** A document the host owns: a copy of the model in a canonical session. */
+  forHost: Document;
+};
 
 export type PagedEditorProps = {
   /** Accessible name announced for the editor or read-only document. */
@@ -346,8 +373,11 @@ export type PagedEditorProps = {
   showMarginGuides?: boolean;
   /** CSS color used for margin guides. */
   marginGuideColor?: string;
-  /** Callback when document changes. */
-  onDocumentChange?: (document: Document) => void;
+  /**
+   * Callback when the document changes, once the edits settle: the editor's
+   * document model, and the document the host owns.
+   */
+  onDocumentChange?: (change: DocumentChange) => void;
   /** Callback when a readonly user action would mutate the document. */
   onReadOnlyEditAttempt?: () => void;
   /** Fires when the editor receives a copy event. */
@@ -455,6 +485,11 @@ export type PagedEditorRef = {
   getEditor: () => FolioEditor;
   /** Get the current document. */
   getDocument: () => Document | null;
+  /**
+   * The editor's document model, without a copy: in a canonical session the
+   * session's own document (read it, never write it); otherwise null.
+   */
+  readDocumentModel: () => ReadonlyDocument | null;
   /** Get the ProseMirror EditorState. */
   getState: () => EditorState | null;
   /** Get the ProseMirror EditorView. */
@@ -553,10 +588,24 @@ export const DEFAULT_PAGE_GAP = 24;
 const TABLE_INSERT_EDGE_PROXIMITY = 30;
 /** Delay in ms before hiding the insert button when cursor moves away */
 const TABLE_INSERT_HIDE_DELAY = 200;
-/** Delay before converting PM state back to the Folio document model. */
-const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 /** Keep the visual caret hidden briefly while typed content relayouts. */
 const SELECTION_REVEAL_AFTER_INPUT_DELAY = 120;
+
+/**
+ * Hide the selection overlay while typed content lays out again. It is a DOM
+ * write, not a state change: a keystroke must not render the editor, since
+ * every commit with the editor focused reads its whole DOM.
+ */
+const hideSelectionOverlay = (overlay: HTMLElement | null): void => {
+  overlay?.setAttribute(FOLIO_INPUT_HIDDEN_ATTRIBUTE, "");
+  overlay?.style.setProperty("visibility", "hidden");
+};
+
+const showSelectionOverlay = (overlay: HTMLElement | null): void => {
+  if (!overlay?.hasAttribute(FOLIO_INPUT_HIDDEN_ATTRIBUTE)) return;
+  overlay.removeAttribute(FOLIO_INPUT_HIDDEN_ATTRIBUTE);
+  overlay.style.removeProperty("visibility");
+};
 /**
  * Readability floor for the autocomplete ghost width: with the caret at the
  * right content boundary, an unfloored width plus `overflow-wrap: anywhere`
@@ -809,12 +858,12 @@ function HfCaretOverlay({
   };
   zoom: number;
 }) {
-  const [caretProjection, setCaretProjection] = useState<{
+  const [caretProjection, setCaretProjection] = useEqualState<{
     caret: { x: number; y: number; height: number } | null;
     pagesContainer: HTMLDivElement | null;
   }>({ caret: null, pagesContainer: null });
   const { caret, pagesContainer: portalTarget } = caretProjection;
-  const [rangeRects, setRangeRects] = useState<
+  const [rangeRects, setRangeRects] = useEqualState<
     { x: number; y: number; width: number; height: number }[]
   >([]);
 
@@ -889,7 +938,17 @@ function HfCaretOverlay({
     // actually changes; otherwise every handleHfPmTransaction-driven
     // setHfCaretSelection allocates a new object and we'd churn the
     // DOM lookup + getBoundingClientRect chain on every keystroke.
-  }, [rId, kind, from, to, pageNumber, getSurface, zoom]);
+  }, [
+    rId,
+    kind,
+    from,
+    to,
+    pageNumber,
+    getSurface,
+    zoom,
+    setCaretProjection,
+    setRangeRects,
+  ]);
 
   if (!portalTarget) {
     return null;
@@ -1114,7 +1173,7 @@ const RemoteSelectionOverlay = ({
   remoteSelection,
   zoom,
 }: RemoteSelectionOverlayProps) => {
-  const [geometry, setGeometry] = useState<RemoteSelectionGeometry | null>(
+  const [geometry, setGeometry] = useEqualState<RemoteSelectionGeometry | null>(
     null,
   );
 
@@ -1190,6 +1249,7 @@ const RemoteSelectionOverlay = ({
     remoteSelection.anchor,
     remoteSelection.head,
     zoom,
+    setGeometry,
   ]);
 
   if (!geometry) {
@@ -1691,11 +1751,16 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     );
     const pendingInitialFontReadyLayoutRef = useRef(false);
     const [isFocused, setIsFocused] = useState(false);
-    const [selectionRects, setSelectionRects] = useState<SelectionRect[]>([]);
-    const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(
-      null,
+    const [selectionRects, setSelectionRects] = useEqualState<SelectionRect[]>(
+      [],
     );
-    const [anonymizationRectGroups, setAnonymizationRectGroups] = useState<
+    const [caretPosition, setCaretPositionState] =
+      useEqualState<CaretPosition | null>(null);
+    /** The selection overlay, hidden without a render while typing. */
+    const selectionOverlayRef = useRef<HTMLDivElement>(null);
+    /** The caret the overlay last painted. */
+    const committedCaretRef = useRef<CaretPosition | null>(null);
+    const [anonymizationRectGroups, setAnonymizationRectGroups] = useEqualState<
       AnonymizationRectGroup[]
     >([]);
     // Plain ref to the latest match list so the recompute effect
@@ -1716,22 +1781,22 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     });
     const [autocompleteOverlayRequestGate] = useState(createLatestRequestGate);
     const [autocompleteCaret, setAutocompleteCaret] =
-      useState<AutocompleteCaretRect | null>(null);
-    const [autocompleteText, setAutocompleteText] = useState<string>("");
+      useEqualState<AutocompleteCaretRect | null>(null);
+    const [autocompleteText, setAutocompleteText] = useEqualState<string>("");
     const [autocompleteIsStreaming, setAutocompleteIsStreaming] =
       useState<boolean>(false);
-    const [directiveProjection, setDirectiveProjection] = useState<{
+    const [directiveProjection, setDirectiveProjection] = useEqualState<{
       groups: DirectiveRectGroup[];
       ranges: readonly DirectiveRange[];
     }>({ groups: [], ranges: [] });
     const directiveRectGroups = directiveProjection.groups;
     const [directiveGutter, setDirectiveGutter] =
-      useState<DirectiveGutterGeometry | null>(null);
+      useEqualState<DirectiveGutterGeometry | null>(null);
     // Caret/selection head PM position, kept only while a template document has
     // block directives — drives the innermost-block rail emphasis in the overlay.
-    const [directiveCaretPos, setDirectiveCaretPos] = useState<number | null>(
-      null,
-    );
+    const [directiveCaretPos, setDirectiveCaretPos] = useEqualState<
+      number | null
+    >(null);
     const directivesRef = useRef<readonly DirectiveRange[]>([]);
     const [directivesOverlayRequestGate] = useState(createLatestRequestGate);
     // Template fill preview — the hidden editor's plugin keeps marker↔value
@@ -1751,7 +1816,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     });
     // AI suggestion review — same pattern for the suggestion list and the
     // focused suggestion's in-text diff preview.
-    const [aiSuggestionRectGroups, setAiSuggestionRectGroups] = useState<
+    const [aiSuggestionRectGroups, setAiSuggestionRectGroups] = useEqualState<
       AISuggestionRectGroup[]
     >([]);
     const aiSuggestionsRef = useRef<{
@@ -1769,17 +1834,41 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       from: number;
       to: number;
     } | null>(null);
-    const [passageHighlightRects, setPassageHighlightRects] = useState<
+    const [passageHighlightRects, setPassageHighlightRects] = useEqualState<
       SelectionRect[]
     >([]);
     const [passageHighlightOverlayRequestGate] = useState(
       createLatestRequestGate,
     );
-    const [remoteSelections, setRemoteSelections] = useState<
+    const [remoteSelections, setRemoteSelections] = useEqualState<
       HiddenProseMirrorRemoteSelection[]
     >([]);
     const suppressSelectionOverlayRef = useRef(false);
     const revealSelectionOverlayTimerRef = useRef<number | null>(null);
+    /**
+     * Write the caret. While typed content lays out again the overlay is
+     * hidden instead of cleared, so a keystroke renders nothing for it; the
+     * first caret written after that shows the overlay again, once the caret
+     * it holds is the one painted.
+     */
+    const setCaretPosition = useCallback(
+      (next: CaretPosition | null) => {
+        setCaretPositionState(next);
+        if (
+          !suppressSelectionOverlayRef.current &&
+          structurallyEqual(committedCaretRef.current, next)
+        ) {
+          showSelectionOverlay(selectionOverlayRef.current);
+        }
+      },
+      [setCaretPositionState],
+    );
+    useLayoutEffect(() => {
+      committedCaretRef.current = caretPosition;
+      if (!suppressSelectionOverlayRef.current) {
+        showSelectionOverlay(selectionOverlayRef.current);
+      }
+    }, [caretPosition]);
     const [selectionOverlayRequestGate] = useState(createLatestRequestGate);
 
     const validPrecomputedInitialState = useMemo(() => {
@@ -1811,7 +1900,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
 
     // Image selection state
     const [selectedImageInfo, setSelectedImageInfo] =
-      useState<ImageSelectionInfo | null>(null);
+      useEqualState<ImageSelectionInfo | null>(null);
     const isImageInteractingRef = useRef(false);
 
     /** Build ImageSelectionInfo from a DOM element with data-pm-start */
@@ -2022,7 +2111,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       cellPmPos: number;
     };
     const [tableInsertButton, setTableInsertButton] =
-      useState<TableInsertButtonState | null>(null);
+      useEqualState<TableInsertButtonState | null>(null);
     const tableInsertHideTimerRef = useRef<ReturnType<
       typeof setTimeout
     > | null>(null);
@@ -2370,6 +2459,29 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       noteFollower.reset();
     }, [documentIdentity, noteFollower]);
 
+    /**
+     * The settled document: in a canonical session the session's own document
+     * as the model and one copy for the host; otherwise one document built
+     * from the editor state, which is both.
+     */
+    const settledDocumentChange = useCallback((): DocumentChange | null => {
+      const hidden = hiddenPMRef.current;
+      if (usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)) {
+        const model = hidden?.readCanonicalDocument() ?? null;
+        return model === null
+          ? null
+          : {
+              model,
+              forHost: cloneDocumentWithParagraphPropertySources(model),
+            };
+      }
+      const built = hidden?.getDocument();
+      const body = hidden?.getState()?.doc;
+      if (!built) return null;
+      const reconciled = body ? noteFollower.reconcile(built, body) : built;
+      return { model: reconciled, forHost: reconciled };
+    }, [experimentalSession, noteFollower]);
+
     const flushDocumentChangeNotification = useCallback(() => {
       const flush = () => {
         if (documentChangeNotifyTimerRef.current !== null) {
@@ -2393,34 +2505,19 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         compositionNotificationRetryRef.current?.();
         compositionNotificationRetryRef.current = null;
 
-        let newDoc = hiddenPMRef.current?.getDocument();
-        const body = hiddenPMRef.current?.getState()?.doc;
-        if (
-          newDoc &&
-          body &&
-          !usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)
-        ) {
-          newDoc = noteFollower.reconcile(newDoc, body);
-        }
-        if (newDoc) {
-          onDocumentChangeRef.current?.(
-            usesCanonicalSession(experimentalSession, CANONICAL_GAP.save)
-              ? cloneDocumentWithParagraphPropertySources(newDoc)
-              : newDoc,
-          );
-          folioEmitterRef.current.emit(
-            "docChange",
-            usesCanonicalSession(
-              experimentalSession,
-              CANONICAL_GAP.authorityRouting,
-            )
-              ? cloneDocumentWithParagraphPropertySources(newDoc)
-              : newDoc,
-          );
+        const change = settledDocumentChange();
+        if (change) {
+          onDocumentChangeRef.current?.(change);
+          folioEmitterRef.current.emit("docChange", change.forHost);
         }
       };
       flush();
-    }, [experimentalSession, noteFollower, getActiveEditorStory]);
+    }, [getActiveEditorStory, settledDocumentChange]);
+
+    const readCanonicalDocument = useCallback(
+      () => hiddenPMRef.current?.readCanonicalDocument() ?? null,
+      [],
+    );
 
     const scheduleDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
@@ -2430,7 +2527,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       documentChangeNotifyTimerRef.current = window.setTimeout(() => {
         documentChangeNotifyTimerRef.current = null;
         flushDocumentChangeNotification();
-      }, DOCUMENT_CHANGE_NOTIFY_DELAY);
+      }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
     }, [flushDocumentChangeNotification]);
 
     // Thin adapter over the framework-agnostic scheduler. Repeated calls in the
@@ -2548,14 +2645,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           onSelectionTextChangeRef.current({ from, to, text });
         }
 
+        // While typing hides the overlay, the anchor stays where it is: the
+        // reveal moves it to the new caret, and resetting it in between would
+        // send a composition started meanwhile to the unanchored position.
         if (suppressSelectionOverlayRef.current) {
-          setCaretPosition(null);
           setSelectionRects([]);
-          syncImeCaretAnchor({
-            hiddenHost: hiddenPMRef.current?.getHostElement(),
-            editorView: hiddenPMRef.current?.getView(),
-            visibleCaret: null,
-          });
           return;
         }
 
@@ -2587,9 +2681,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
               ".layout-table-cell",
             );
             for (const cellEl of allCells) {
-              const pmStartAttr = cellEl.dataset["pmStart"];
-              if (pmStartAttr !== undefined) {
-                const pmPos = Number(pmStartAttr);
+              const pmPos = readPaintedStart(cellEl);
+              if (pmPos !== undefined) {
                 for (const [start, end] of selectedRanges) {
                   if (pmPos >= start && pmPos < end) {
                     cellEl.classList.add("layout-table-cell-selected");
@@ -2795,6 +2888,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         selectionOverlayRequestGate,
         zoom,
         markupView,
+        setSelectionRects,
+        setCaretPosition,
+        setDirectiveCaretPos,
       ],
       // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
     );
@@ -2952,7 +3048,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         },
         () => undefined,
       );
-    }, [anonymizationOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      anonymizationOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setAnonymizationRectGroups,
+    ]);
 
     // Project the autocomplete suggestion's anchor onto container
     // coordinates so {@link AutocompleteCaretOverlay} can paint the
@@ -3038,7 +3141,15 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         },
         () => undefined,
       );
-    }, [autocompleteOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      autocompleteOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setAutocompleteText,
+      setAutocompleteCaret,
+    ]);
 
     // Project template-directive ranges (kept in sync by the
     // templateDirectives plugin) onto container-space rects. Shares
@@ -3078,7 +3189,15 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           });
         }
       })();
-    }, [directivesOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      directivesOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setDirectiveProjection,
+      setDirectiveGutter,
+    ]);
 
     // Project pending AI suggestions (kept in sync by the
     // aiSuggestionDecorations plugin) onto container-space rects: dotted
@@ -3129,7 +3248,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           })),
         );
       })();
-    }, [aiSuggestionsOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      aiSuggestionsOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setAiSuggestionRectGroups,
+    ]);
 
     // Project the current passage-highlight range (held in a ref, pushed via
     // the ref method) onto container-space rects. Shares the projection pipeline
@@ -3155,7 +3281,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         }
         setPassageHighlightRects(projected.at(0)?.rects ?? []);
       })();
-    }, [passageHighlightOverlayRequestGate, layout, blocks, measures, zoom]);
+    }, [
+      passageHighlightOverlayRequestGate,
+      layout,
+      blocks,
+      measures,
+      zoom,
+      setPassageHighlightRects,
+    ]);
 
     const setPassageHighlightImpl = useCallback(
       (range: { from: number; to: number } | null) => {
@@ -3167,14 +3300,18 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         }
         updatePassageHighlightOverlay();
       },
-      [passageHighlightOverlayRequestGate, updatePassageHighlightOverlay],
+      [
+        passageHighlightOverlayRequestGate,
+        updatePassageHighlightOverlay,
+        setPassageHighlightRects,
+      ],
     );
 
     const hideSelectionOverlayDuringInput = useCallback(
       (state: EditorState) => {
         selectionOverlayRequestGate.invalidate();
         suppressSelectionOverlayRef.current = true;
-        setCaretPosition(null);
+        hideSelectionOverlay(selectionOverlayRef.current);
         setSelectionRects([]);
 
         if (revealSelectionOverlayTimerRef.current !== null) {
@@ -3187,7 +3324,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           updateSelectionOverlay(hiddenPMRef.current?.getState() ?? state);
         }, SELECTION_REVEAL_AFTER_INPUT_DELAY);
       },
-      [selectionOverlayRequestGate, updateSelectionOverlay],
+      [selectionOverlayRequestGate, updateSelectionOverlay, setSelectionRects],
     );
 
     useEffect(
@@ -3365,6 +3502,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         scheduleLayout,
         scheduleDocumentChangeNotification,
         hideSelectionOverlayDuringInput,
+        setPassageHighlightRects,
         updateSelectionOverlay,
         updateAnonymizationOverlay,
         updateAutocompleteOverlay,
@@ -3393,7 +3531,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
      *      `renderHfFromContentOrPm` on the next layout tick.
      */
     const [hfCaretSelection, setHfCaretSelection] =
-      useState<HfCaretSelection | null>(null);
+      useEqualState<HfCaretSelection | null>(null);
     const [previousHfEditMode, setPreviousHfEditMode] = useState(hfEditMode);
     if (previousHfEditMode !== hfEditMode) {
       setPreviousHfEditMode(hfEditMode);
@@ -3470,6 +3608,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         ensureHiddenEditorView,
         experimentalSession,
         scheduleDocumentChangeNotification,
+        setHfCaretSelection,
       ],
     );
 
@@ -3488,26 +3627,16 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     );
 
     const handleNoteDocumentChange = useCallback(
+      // A note story's snapshot is already a document the host owns; in a
+      // canonical session the model is the session's own document.
       (updated: Document) => {
-        onDocumentChangeRef.current?.(
-          usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? cloneDocumentWithParagraphPropertySources(updated)
-            : updated,
-        );
-        folioEmitterRef.current.emit(
-          "docChange",
-          usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? cloneDocumentWithParagraphPropertySources(updated)
-            : updated,
-        );
+        onDocumentChangeRef.current?.({
+          model: hiddenPMRef.current?.readCanonicalDocument() ?? updated,
+          forHost: updated,
+        });
+        folioEmitterRef.current.emit("docChange", updated);
       },
-      [experimentalSession],
+      [],
     );
 
     // Clear HF caret state + cross-surface drag state on any hfEditMode
@@ -3570,7 +3699,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           }
         });
       },
-      [updateSelectionOverlay, buildImageSelectionInfo, syncCoordinator],
+      [
+        updateSelectionOverlay,
+        buildImageSelectionInfo,
+        syncCoordinator,
+        setSelectionRects,
+        setCaretPosition,
+        setSelectedImageInfo,
+      ],
     );
 
     /**
@@ -3704,7 +3840,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           "layout-page-floating-image",
         ];
         const isImageContainer = (el: HTMLElement) =>
-          !!el.dataset["pmStart"] &&
+          hasPaintedStart(el) &&
           IMAGE_CONTAINER_CLASSES.some((c) => el.classList.contains(c));
 
         // Inline images: <img class="layout-run layout-run-image" data-pm-start="X">
@@ -4109,10 +4245,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             10,
           );
           resizeColumnIndexRef.current = colIndex;
-          resizeTablePmStartRef.current = Number.parseInt(
-            target.dataset["tablePmStart"] ?? "0",
-            10,
-          );
+          resizeTablePmStartRef.current = readPaintedTableStart(target) ?? 0;
 
           const view = resizeViewForRead;
           if (view) {
@@ -4166,10 +4299,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             10,
           );
           resizeRowIndexRef.current = rowIndex;
-          resizeRowTablePmStartRef.current = Number.parseInt(
-            target.dataset["tablePmStart"] ?? "0",
-            10,
-          );
+          resizeRowTablePmStartRef.current = readPaintedTableStart(target) ?? 0;
 
           const view = resizeViewForRead;
           if (view) {
@@ -4226,10 +4356,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             10,
           );
           resizeRightEdgeColIndexRef.current = colIndex;
-          resizeRightEdgePmStartRef.current = Number.parseInt(
-            target.dataset["tablePmStart"] ?? "0",
-            10,
-          );
+          resizeRightEdgePmStartRef.current =
+            readPaintedTableStart(target) ?? 0;
 
           // Get current last column width from ProseMirror doc
           const view = resizeViewForRead;
@@ -4257,9 +4385,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           e.preventDefault();
           e.stopPropagation();
 
-          const pmStart = imageEl.dataset["pmStart"];
+          const pmStart = readPaintedStart(imageEl);
           if (pmStart !== undefined) {
-            const pos = Number.parseInt(pmStart, 10);
+            const pos = pmStart;
             // HF edit mode + image inside an HF slot: NodeSelect on the
             // matching HF PM. Otherwise selection would land on body at
             // an HF-doc position, which doesn't address a valid node and
@@ -4321,6 +4449,10 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         buildImageSelectionInfo,
         findImageElement,
         findCellPosInDoc,
+        setSelectionRects,
+        setCaretPosition,
+        setSelectedImageInfo,
+        setTableInsertButton,
       ],
     );
 
@@ -4591,6 +4723,19 @@ export const PagedEditor: React.ForwardRefExoticComponent<
      * Handle mouseup - end drag selection.
      */
     const handleMouseUp = useCallback(() => {
+      // A resize runs as a command in the view it started in: a header or
+      // footer view directly, the body through the editor, which applies it
+      // in the session that owns the document.
+      const runTableResize = (command: Command): void => {
+        const surface = resizingHfSurfaceRef.current;
+        resizingHfSurfaceRef.current = null;
+        if (surface) {
+          const view = hfPMsRef.current?.getView(surface.rId);
+          if (view) command(view.state, (tr) => view.dispatch(tr), view);
+          return;
+        }
+        hiddenPMRef.current?.executeCommand(command);
+      };
       // Commit column resize
       if (isResizingColumnRef.current) {
         isResizingColumnRef.current = false;
@@ -4599,21 +4744,17 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           resizeHandleRef.current = null;
         }
 
-        // Update ProseMirror document with new column widths. Commit on the
-        // HF view if the resize started inside an HF slot, else body.
-        const view =
-          (resizingHfSurfaceRef.current
-            ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
-            : hiddenPMRef.current?.getView()) ?? null;
-        resizingHfSurfaceRef.current = null;
-        if (view) {
-          const pmStart = resizeTablePmStartRef.current;
-          const colIdx = resizeColumnIndexRef.current;
-          const { left: newLeft, right: newRight } =
-            resizeOrigWidthsRef.current;
-
-          commitColumnResize(view, { pmStart, colIdx, newLeft, newRight });
-        }
+        // Update the document with the new column widths, in the HF view
+        // if the resize started inside an HF slot, else in the body.
+        const { left: newLeft, right: newRight } = resizeOrigWidthsRef.current;
+        runTableResize(
+          columnResizeCommand({
+            pmStart: resizeTablePmStartRef.current,
+            colIdx: resizeColumnIndexRef.current,
+            newLeft,
+            newRight,
+          }),
+        );
         return;
       }
 
@@ -4625,18 +4766,13 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           resizeRowHandleRef.current = null;
         }
 
-        const view =
-          (resizingHfSurfaceRef.current
-            ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
-            : hiddenPMRef.current?.getView()) ?? null;
-        resizingHfSurfaceRef.current = null;
-        if (view) {
-          const pmStart = resizeRowTablePmStartRef.current;
-          const rowIdx = resizeRowIndexRef.current;
-          const newHeight = resizeRowOrigHeightRef.current;
-
-          commitRowResize(view, { pmStart, rowIdx, newHeight });
-        }
+        runTableResize(
+          rowResizeCommand({
+            pmStart: resizeRowTablePmStartRef.current,
+            rowIdx: resizeRowIndexRef.current,
+            newHeight: resizeRowOrigHeightRef.current,
+          }),
+        );
         return;
       }
 
@@ -4648,18 +4784,13 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           resizeRightEdgeHandleRef.current = null;
         }
 
-        const view =
-          (resizingHfSurfaceRef.current
-            ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
-            : hiddenPMRef.current?.getView()) ?? null;
-        resizingHfSurfaceRef.current = null;
-        if (view) {
-          const pmStart = resizeRightEdgePmStartRef.current;
-          const colIdx = resizeRightEdgeColIndexRef.current;
-          const newWidth = resizeRightEdgeOrigWidthRef.current;
-
-          commitRightEdgeResize(view, { pmStart, colIdx, newWidth });
-        }
+        runTableResize(
+          rightEdgeResizeCommand({
+            pmStart: resizeRightEdgePmStartRef.current,
+            colIdx: resizeRightEdgeColIndexRef.current,
+            newWidth: resizeRightEdgeOrigWidthRef.current,
+          }),
+        );
         return;
       }
 
@@ -4809,7 +4940,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
 
         /** Extract PM position from a cell element */
         const getCellPmPos = (el: HTMLElement | null): number =>
-          el ? Number(el.dataset["pmStart"]) || 0 : 0;
+          el ? readPaintedStart(el) || 0 : 0;
 
         // Show button centered on the hovered row (left edge hover)
         if (nearLeftEdge) {
@@ -4885,7 +5016,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           }, TABLE_INSERT_HIDE_DELAY);
         }
       },
-      [readOnly, clearTableInsertTimer, zoom],
+      [readOnly, clearTableInsertTimer, zoom, setTableInsertButton],
     );
 
     /**
@@ -4922,7 +5053,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         setTableInsertButton(null);
         hiddenPMRef.current.focus();
       },
-      [tableInsertButton],
+      [tableInsertButton, setTableInsertButton],
     );
 
     /**
@@ -6171,6 +6302,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         getEditor() {
           return folioEditor;
         },
+        readDocumentModel() {
+          return hiddenPMRef.current?.readCanonicalDocument() ?? null;
+        },
         getDocument() {
           // A write-back still pending may owe the notes a restore or a
           // deletion: write it back now, and read the notes it wrote even
@@ -6334,15 +6468,16 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           let bestNumber: number | null = null;
           let bestStart = Number.NEGATIVE_INFINITY;
           for (const shell of shells) {
-            const anchors =
-              shell.querySelectorAll<HTMLElement>("[data-pm-start]");
+            const anchors = shell.querySelectorAll<HTMLElement>(
+              PAINTED_START_SELECTOR,
+            );
             if (anchors.length === 0) {
               continue;
             }
             let pageStart = Number.POSITIVE_INFINITY;
             let pageEnd = Number.NEGATIVE_INFINITY;
             for (const el of anchors) {
-              const pm = Number(el.dataset["pmStart"]);
+              const pm = readPaintedStart(el) ?? Number.NaN;
               if (!Number.isFinite(pm)) {
                 continue;
               }
@@ -6553,6 +6688,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           readOnly={readOnly}
           onTransaction={handleHfPmTransaction}
           getCanonicalApi={getCanonicalApi}
+          readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
           {...(!usesCanonicalSession(
             experimentalSession,
@@ -6569,6 +6705,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           document={document}
           onActiveChange={handleActiveNoteStoryChange}
           getCanonicalApi={getCanonicalApi}
+          readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
           {...(!usesCanonicalSession(
             experimentalSession,
@@ -6706,6 +6843,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
               isFocused={isFocused}
               pageGap={pageGap}
               markCaretRect
+              overlayRef={selectionOverlayRef}
             />
             {/* HF caret overlay — draws the caret + selection rects for the
               focused persistent hidden HF EditorView. Painted DOM is the

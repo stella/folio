@@ -192,6 +192,39 @@ describe("journal boundary", () => {
     ).toBeUndefined();
   });
 
+  test("a retry committed after a discard of the same txId replays the newer receipt", async () => {
+    (
+      await appendJournal(
+        journalPath,
+        commitLine({ txId: "tx-retry", destinationVersionBefore: null }),
+      )
+    ).unwrap();
+    (
+      await appendJournal(journalPath, {
+        type: "recovery",
+        txId: "tx-retry",
+        path: documentPath,
+        time: now,
+        action: "discarded",
+        reason: "leaseLost",
+      })
+    ).unwrap();
+    expect(
+      (await findCommit(journalPath, "tx-retry")).unwrap(),
+    ).toBeUndefined();
+
+    const retried = commitLine({
+      txId: "tx-retry",
+      destinationVersionBefore: fileVersionOf(original),
+      toVersion: "retried-version",
+    });
+    (await appendJournal(journalPath, retried)).unwrap();
+
+    expect(
+      (await findCommit(journalPath, "tx-retry")).unwrap()?.toVersion,
+    ).toBe("retried-version");
+  });
+
   test("refuses to write or read through a symlinked .folio or journal", async () => {
     const { dir: elsewhere, cleanup: cleanupElsewhere } = await makeTempDir();
     try {

@@ -53,6 +53,7 @@ import {
   resolveHeaderFooterContent,
   saveHeaderFooterContent,
 } from "@stll/folio-core/utils/headerFooter";
+import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 
 import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
 import type { HyperlinkPopupData } from "../components/ui/hyperlinkPopupTypes";
@@ -772,7 +773,7 @@ export function usePagesPointer(
     if (imageEl) {
       event.preventDefault();
       event.stopPropagation();
-      const pmStart = Number(imageEl.dataset["pmStart"]);
+      const pmStart = readPaintedStart(imageEl) ?? Number.NaN;
       if (!Number.isNaN(pmStart)) {
         try {
           view.dispatch(

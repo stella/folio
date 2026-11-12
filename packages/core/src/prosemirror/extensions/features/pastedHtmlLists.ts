@@ -30,12 +30,15 @@ export const flattenPastedHtmlLists = (html: string): string => {
   if (!/<(?:ul|ol)\b/iu.test(html)) {
     return html;
   }
-  const host = document.createElement("div");
+  // An inert document: markup parsed into the live one loads its images
+  // and runs its inline handlers before the paste is even inserted.
+  const owner = document.implementation.createHTMLDocument("");
+  const host = owner.createElement("div");
   host.innerHTML = html;
   let nextGroup = 0;
 
   const flatten = (list: Element, level: number): DocumentFragment => {
-    const fragment = document.createDocumentFragment();
+    const fragment = owner.createDocumentFragment();
     const group = ++nextGroup;
     const kind = list.localName === "ul" ? "bullet" : "numbered";
     const rawStart = Number(list.getAttribute("start"));
@@ -46,7 +49,7 @@ export const flattenPastedHtmlLists = (html: string): string => {
       if (item.localName !== "li") {
         continue;
       }
-      let paragraph = document.createElement("p");
+      let paragraph = owner.createElement("p");
       let emitted = false;
       const mark = (element: Element): void => {
         element.setAttribute("data-folio-list-group", String(group));
@@ -65,7 +68,7 @@ export const flattenPastedHtmlLists = (html: string): string => {
         }
         mark(paragraph);
         fragment.append(paragraph);
-        paragraph = document.createElement("p");
+        paragraph = owner.createElement("p");
         emitted = true;
       };
 

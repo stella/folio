@@ -29,6 +29,16 @@ export const registerParagraphPropertySnapshot = ({
   snapshots.set(paragraph, { effective: paragraph.formatting, snapshot });
 };
 
+/**
+ * The registration a paragraph's snapshot stands on, as an opaque token: the
+ * same object while nothing registers or transfers another one for it. A pass
+ * that registered a snapshot can tell from it that registering again would
+ * change nothing.
+ */
+export const paragraphPropertySnapshotToken = (
+  paragraph: Paragraph,
+): object | undefined => snapshots.get(paragraph);
+
 type TransferParagraphPropertySnapshotOptions = {
   source: object;
   target: object;

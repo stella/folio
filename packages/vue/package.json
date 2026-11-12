@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-vue",
-  "version": "0.27.0",
+  "version": "0.28.1",
   "description": "Vue 3 editor for folio: a Word-document (.docx) editor for the browser, built on @stll/folio-core and ProseMirror.",
   "keywords": [
     "document-editor",
@@ -76,7 +76,7 @@
     "prepack": "bun run build",
     "pack:dry-run": "bun pm pack --dry-run",
     "typecheck": "vue-tsc --noEmit -p tsconfig.build.json",
-    "test": "bun test --preload ./test/vueDom.preload.ts src"
+    "test": "bun test --preload ./test/vueDom.preload.ts --preload ../../test/freezeKeptBlocks.preload.ts src"
   },
   "dependencies": {
     "@stll/folio-core": "workspace:^",
@@ -92,7 +92,7 @@
     "prosemirror-model": "^1.25.9",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
-    "prosemirror-view": "^1.42.8",
+    "prosemirror-view": "^1.42.9",
     "vite": "8.3.5",
     "vite-plugin-dts": "^5.1.2",
     "vue": "^3.5.44",

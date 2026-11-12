@@ -8,7 +8,9 @@ import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymi
 import { App } from 'vue';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
+import { Command } from 'prosemirror-state';
 import { CommandMap } from '@stll/folio-core/prosemirror/extensions/types';
+import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComputedRef } from 'vue';
 import { createSelectionFromDOM } from '@stll/folio-core/managers/ClipboardManager';
 import { createVisualLineState } from '@stll/folio-core/prosemirror/utils/visualLineNavigation';
@@ -40,6 +42,7 @@ import { NoteStoryKey } from '@stll/folio-core/controller/noteEditorManager';
 import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRenderer';
 import { ParsedClipboardContent } from '@stll/folio-core/utils/clipboard';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
+import { ReadonlyDocument } from '@stll/folio-core/types/documentModel';
 import { Ref } from 'vue';
 import { ReplaceAllSummary } from '@stll/folio-core/utils/findReplace';
 import { runsToClipboardContent } from '@stll/folio-core/utils/clipboard';
@@ -133,6 +136,7 @@ export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
 
 // @public (undocumented)
 export type UseDocxEditorOptions = {
+    comments?: () => readonly Comment_2[];
     hiddenContainer: Ref<HTMLElement | null>;
     hiddenHeaderFooterContainer?: Ref<HTMLElement | null>;
     noteEditorContainer?: Ref<HTMLElement | null>;
@@ -181,6 +185,10 @@ export type UseDocxEditorReturn = {
     isDirty: Ref<boolean>;
     parseError: Ref<string | null>;
     layout: Ref<Layout | null>;
+    modelDocument: Readonly<Ref<Document_2 | null>>;
+    readDocumentModel: () => ReadonlyDocument | null;
+    sourceBuffer: Readonly<Ref<ArrayBuffer | null>>;
+    hiddenEditorWidth: Ref<number>;
     blocks: Ref<FlowBlock[]>;
     measures: Ref<Measure[]>;
     syncCoordinator: LayoutSelectionGate;
@@ -309,7 +317,12 @@ export type UseSelectionHighlightReturn = {
 };
 
 // @public (undocumented)
-export function useTableResize(): UseTableResizeReturn;
+export function useTableResize(input: UseTableResizeOptions): UseTableResizeReturn;
+
+// @public (undocumented)
+export type UseTableResizeOptions = {
+    runCommand: (view: EditorView, command: Command) => void;
+};
 
 // @public (undocumented)
 export type UseTableResizeReturn = {

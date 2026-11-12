@@ -182,7 +182,9 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
         await new Promise((resolve) => setTimeout(resolve, 800));
       });
       expect(changes.length).toBeGreaterThan(startChanges);
-      expect(typing.some((count) => count > 0)).toBe(true);
+      // The counter sees commits: every selection change commits, so typing
+      // that counts none committed nothing.
+      expect(selection.some((count) => count > 0)).toBe(true);
       for (const count of [...typing, ...selection]) {
         expect(count).toBeLessThanOrEqual(RENDER_BUDGET.perOperation);
       }

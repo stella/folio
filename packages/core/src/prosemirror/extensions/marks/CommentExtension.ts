@@ -22,6 +22,10 @@ export const CommentExtension: (
     attrs: {
       /** Comment ID (matches Comment.id) */
       commentId: { default: 0 },
+      /** Shown at a point comment's reference; see `CommentAttrs.point`. */
+      point: { default: false },
+      /** The pending suggestion proposing it; see `CommentAttrs.suggestionId`. */
+      suggestionId: { default: null },
     },
     inclusive: false,
     parseDOM: [

@@ -534,7 +534,9 @@ describe("canonical session", () => {
     });
     const calls = apply.mock.calls.length;
     apply.mockRestore();
-    expect(calls).toBe(2);
+    // The typed text comes back applied from its compilation; only the
+    // paragraph change is applied here, and staging applies nothing again.
+    expect(calls).toBe(1);
     const commit = prepared.unwrap();
     expect(session.document).toBe(original);
     expect(commit.transaction.selection.head).toBe(3);
@@ -1671,7 +1673,7 @@ describe("canonical session", () => {
     expect(session.version).toBe(3);
   });
 
-  test("activation rejects absent/duplicate identities, secondary stories and unsupported leaves", () => {
+  test("activation rejects absent/duplicate identities and unsupported leaves", () => {
     const unsupported: Document[] = [
       {
         package: {
@@ -1688,19 +1690,27 @@ describe("canonical session", () => {
           },
         },
       },
-      {
-        package: {
-          ...seed().package,
-          headers: new Map([
-            ["rId1", { type: "header", hdrFtrType: "default", content: [] }],
-          ]),
-        },
-      },
       seed("bad\ud800"),
       seed("bad\u0000"),
     ];
     for (const document of unsupported)
       expect(createCanonicalSession(document).isErr()).toBe(true);
+  });
+
+  test("activation gives a header with no blocks the empty paragraph a caret goes in", () => {
+    const session = createCanonicalSession({
+      package: {
+        ...seed().package,
+        headers: new Map([
+          ["rId1", { type: "header", hdrFtrType: "default", content: [] }],
+        ]),
+      },
+    }).unwrap();
+    expect(
+      session.document.package.headers
+        ?.get("rId1")
+        ?.content.map(({ type }) => type),
+    ).toEqual(["paragraph"]);
   });
 
   test("activation refuses list paragraphs inside an unsupported block before normalization", () => {

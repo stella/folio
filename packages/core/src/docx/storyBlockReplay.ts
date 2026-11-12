@@ -23,6 +23,28 @@ import {
   type XmlNamespaceScope,
 } from "./xmlParser";
 
+/**
+ * What a block saves as, for telling whether it changed: the block without
+ * the list marker a paragraph's numbering computes, which no save writes. An
+ * edit elsewhere in the list renumbers it; the paragraph itself is unchanged
+ * and keeps its source.
+ */
+const savedFingerprint = (value: unknown): string => {
+  if (value === null || value === undefined) return "null";
+  if (Array.isArray(value)) return `[${value.map(savedFingerprint).join(",")}]`;
+  if (typeof value !== "object") return JSON.stringify(value) ?? "null";
+  const paragraph = "type" in value && value.type === "paragraph";
+  const entries = Object.entries(value)
+    .filter(
+      ([key, entry]) =>
+        entry !== undefined && !(paragraph && key === "listRendering"),
+    )
+    .toSorted(([left], [right]) => left.localeCompare(right));
+  return `{${entries
+    .map(([key, entry]) => `${JSON.stringify(key)}:${savedFingerprint(entry)}`)
+    .join(",")}}`;
+};
+
 const BLOCK_ELEMENT_NAMES = {
   paragraph: "p",
   table: "tbl",
@@ -326,7 +348,7 @@ const replayBlocks = (
   )
     return null;
   const generatedRoot = scope?.generatedRoot ?? generated.root;
-  const fingerprints = baselineContent.map(canonicalJson);
+  const fingerprints = baselineContent.map(savedFingerprint);
   const identities = new Map<string, CandidateQueue>();
   const byFingerprint = new Map<string, CandidateQueue>();
   for (const [index, block] of baselineContent.entries()) {
@@ -340,7 +362,7 @@ const replayBlocks = (
   const used = new Set<number>();
   const fragments: string[] = [];
   for (const [index, block] of currentContent.entries()) {
-    const fingerprint = canonicalJson(block);
+    const fingerprint = savedFingerprint(block);
     const identity = paragraphIdentity(block);
     let originalIndex =
       takeCandidate(

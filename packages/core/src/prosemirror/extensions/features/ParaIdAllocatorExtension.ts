@@ -636,7 +636,7 @@ const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
   });
 
 export const ParaIdAllocatorExtension: (
-  options?: Partial<{}> | undefined,
+  options?: Partial<Record<never, never>> | undefined,
 ) => Extension = createExtension({
   name: "paraIdAllocator",
   defaultOptions: {},

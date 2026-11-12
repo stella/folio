@@ -178,3 +178,54 @@ describe("applyDocxXmlPatchProposal", () => {
     );
   });
 });
+
+describe("applyDocxXmlPatchProposal archive policy", () => {
+  test("holds the package to the caller's XML structure limits", async () => {
+    const fixture = await packageFixture();
+    const call = (maxElementsPerPart: number | undefined) =>
+      applyDocxXmlPatchProposal({
+        bytes: fixture.bytes,
+        proposal: proposalFor(fixture.documentSha256),
+        allowedParts: [DOCUMENT_PATH],
+        validationProfile: FOLIO_DOCX_CONFORMANCE_PROFILE,
+        ...(maxElementsPerPart === undefined
+          ? {}
+          : { archive: { xmlLimits: { maxElementsPerPart } } }),
+      });
+
+    expect((await call(undefined)).status).toBe("applied");
+    const limited = await call(2).catch((error: unknown) => error);
+    expect(limited).not.toMatchObject({ status: "applied" });
+  });
+
+  test("holds the package to the caller's compression ratio", async () => {
+    const fixture = await packageFixture();
+    const zip = await ZipArchive.read(fixture.bytes);
+    // About four inflated bytes per compressed byte, and past the size under
+    // which ratios are not checked.
+    const alphabet = "ACGT";
+    let seed = 1;
+    const filler = Array.from({ length: 5 * 1024 * 1024 }, () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return alphabet[(seed >>> 16) % alphabet.length];
+    }).join("");
+    const padded = `${fixture.stylesXml}<!--${filler}-->`;
+    zip.set(STYLES_PATH, padded);
+    const compressed = await zip.generate({ compression: "deflate" });
+    const call = (maxCompressionRatio: number | undefined) =>
+      applyDocxXmlPatchProposal({
+        bytes: compressed,
+        proposal: proposalFor(fixture.documentSha256),
+        allowedParts: [DOCUMENT_PATH],
+        validationProfile: FOLIO_DOCX_CONFORMANCE_PROFILE,
+        ...(maxCompressionRatio === undefined
+          ? {}
+          : { archive: { maxCompressionRatio } }),
+      });
+
+    const unlimited = await call(undefined).catch((error: unknown) => error);
+    const limited = await call(2).catch((error: unknown) => error);
+    expect(unlimited).toMatchObject({ status: "applied" });
+    expect(limited).not.toMatchObject({ status: "applied" });
+  });
+});

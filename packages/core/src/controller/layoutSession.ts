@@ -1,6 +1,7 @@
 import type { EditorState } from "prosemirror-state";
 
 import type { FontAlternates } from "../fonts/fontAlternates";
+import { ParagraphBlockCache } from "../layout-bridge/convert/paragraphBlockCache";
 import type { FlowBlock, Measure } from "../layout-engine/types";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import type {
@@ -58,6 +59,8 @@ export type LayoutSession = {
   lastPmDoc: EditorState["doc"] | null;
   lastMeasureInputs: LayoutMeasureInputs | null;
   lastTemplatePreview: LayoutTemplatePreview;
+  /** Body paragraph blocks kept from earlier layout runs, so an edit converts only what it changed. */
+  paragraphBlocks: ParagraphBlockCache;
 };
 
 export const createLayoutSession = (): LayoutSession => ({
@@ -66,4 +69,5 @@ export const createLayoutSession = (): LayoutSession => ({
   lastPmDoc: null,
   lastMeasureInputs: null,
   lastTemplatePreview: { entries: [], hidden: [], mode: "plain" },
+  paragraphBlocks: new ParagraphBlockCache(),
 });

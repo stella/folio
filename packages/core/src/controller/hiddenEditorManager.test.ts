@@ -18,6 +18,7 @@ import * as documentOps from "@stll/docx-core/ops";
 import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
+import { acquireHarnessDom } from "../../../../test/harnessDom";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -952,6 +953,7 @@ test.each(["body", "story"] as const)(
       // Synchronization must defer before either snapshot source is read.
       getDocument: () => manager.api.getDocument(),
       getCanonicalApi: () => manager.api,
+      readCanonicalDocument: () => manager.readCanonicalDocument(),
       getExperimentalSession: () => "canonical" as const,
       getStyles: () => null,
       getTheme: () => null,
@@ -1905,11 +1907,11 @@ const secondaryParagraph = (paraId: string): Paragraph => ({
 });
 
 test.each([
-  { atomic: true, dryRun: false, status: "rejected" },
+  { atomic: true, dryRun: false, status: "committed" },
   { atomic: false, dryRun: false, status: "committed" },
   { atomic: true, dryRun: true, status: "previewed" },
 ] as const)(
-  "canonical public secondary story refusals preserve state (%j)",
+  "canonical public operations edit each secondary story and undo it (%j)",
   ({ atomic, dryRun, status }) => {
     GlobalRegistrator.register();
     const exercised = new Set<string>();
@@ -1998,23 +2000,32 @@ test.each([
             },
           });
           expect(result?.status).toBe(status);
-          expect(result?.applied).toEqual([]);
-          expect(result?.skipped).toMatchObject(
-            [0, 1].map((index) => ({
-              id: `replace-${index}`,
-              reason: "unsupportedBlock",
-              canonicalRefusal: { gap: CANONICAL_GAP.publicSecondaryStories },
-            })),
-          );
-          expect(result?.undoHandle).toBeNull();
-          expect(view.state).toBe(bodyState);
+          expect(result?.skipped).toEqual([]);
+          const storyText = () =>
+            manager.api.getCanonicalStoryProjection(story)?.textContent;
+          if (dryRun) {
+            expect(result?.undoHandle).toBeNull();
+            expect(view.state).toBe(bodyState);
+            expect(
+              manager.api.getCanonicalStoryProjection(story)?.eq(projection),
+            ).toBe(true);
+            assertExactModel(manager.api.getCanonicalDocument(), before);
+            continue;
+          }
+          // Both paragraphs of the story changed; the body is untouched.
+          expect(result?.applied.map(({ id }) => id)).toEqual([
+            "replace-0",
+            "replace-1",
+          ]);
+          expect(storyText()).toBe("ChangedChanged");
+          expect(view.state.doc.textContent).toBe(bodyState.doc.textContent);
+          // Undo restores the story as it was read.
+          const handle = result?.undoHandle ?? panic("Missing undo handle");
           expect(
-            manager.api.getCanonicalStoryProjection(story)?.eq(projection),
-          ).toBe(true);
+            manager.api.undoCanonicalDocumentOperations(handle)?.status,
+          ).toBe("undone");
+          expect(storyText()).toBe(projection.textContent);
           assertExactModel(manager.api.getCanonicalDocument(), before);
-          assertExactModel(manager.api.getDocument(), before);
-          expect(manager.api.canUndo()).toBe(false);
-          expect(manager.api.canRedo()).toBe(false);
         } finally {
           manager.destroyView();
           host.remove();
@@ -2102,6 +2113,7 @@ test.each([
       getHost: () => noteHost,
       getDocument: () => source,
       getCanonicalApi: () => manager.api,
+      readCanonicalDocument: () => manager.readCanonicalDocument(),
       getExperimentalSession: () => "canonical",
       getStyles: () => null,
       getTheme: () => null,
@@ -2247,5 +2259,90 @@ test("read-only switches synchronize DOM editability without changing the author
   } finally {
     manager.destroyView();
     GlobalRegistrator.unregister();
+  }
+});
+
+test("typing after the browser moved the caret lands there in both session modes", () => {
+  const releaseDom = acquireHarnessDom();
+  try {
+    for (const session of ["legacy", "canonical"] as const) {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const source = createEmptyDocument({ initialText: "RAISEDTEXT" });
+      const refusals: string[] = [];
+      const { deps } = makeDeps({
+        getHost: () => host,
+        getDocument: () => source,
+        getDocumentContext: () => source,
+        getExtensionManager: () => singletonManager,
+        getExperimentalSession: () => session,
+        onSessionRefusal: (reason) => refusals.push(reason),
+      });
+      const manager = createHiddenEditorManager(deps);
+      try {
+        manager.ensureView();
+        const view = manager.getView() ?? panic("Missing typing view");
+        view.dispatch(
+          view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)),
+        );
+        // End moves the DOM caret; ProseMirror has not observed it yet.
+        const { node, offset } = view.domAtPos(11, 1);
+        const native = document.getSelection();
+        native?.removeAllRanges();
+        native?.collapse(node, offset);
+        view.dom.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            key: "X",
+          }),
+        );
+        view.dom.dispatchEvent(
+          new InputEvent("beforeinput", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "insertText",
+            data: "X",
+          }),
+        );
+        expect(refusals).toEqual([]);
+        expect(view.state.doc.textContent).toBe("RAISEDTEXTX");
+        expect(view.state.selection.from).toBe(12);
+      } finally {
+        manager.destroyView();
+        host.remove();
+      }
+    }
+  } finally {
+    releaseDom();
+  }
+});
+
+test("a canonical body view comes from the host's sync, never from a story read", () => {
+  const releaseDom = acquireHarnessDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Start" });
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    // Reading a story answers from the session it finds and creates nothing.
+    expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).toBeNull();
+    expect(manager.getView()).toBeNull();
+    // The host's sync is what brings the view the session lives in.
+    manager.syncExternalDocument();
+    expect(manager.getView()).not.toBeNull();
+    expect(
+      manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN),
+    ).not.toBeNull();
+  } finally {
+    manager.destroyView();
+    host.remove();
+    releaseDom();
   }
 });

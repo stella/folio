@@ -139,9 +139,9 @@ const restoredNote = <TNote extends Footnote | Endnote>(
     schema,
     doc,
     plugins: [
+      createDocumentNumberingPlugin(numbering),
       ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
       createDocumentStylesPlugin(styles),
-      createDocumentNumberingPlugin(numbering),
     ],
   });
   rejectAIEditRevision(revisions)(state, (transaction) => {

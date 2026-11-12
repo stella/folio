@@ -197,8 +197,22 @@ type ParagraphRetentionFacts = {
 const collectParagraphRetentionFacts = (
   items: readonly ParagraphContent[],
   facts: ParagraphRetentionFacts,
+  onceAccepted = false,
 ): void => {
   for (const item of items) {
+    // What accepting takes away has no width; a zero-width item in it may
+    // stand outside it once accepted, so it still counts.
+    if (
+      onceAccepted &&
+      (item.type === "deletion" || item.type === "moveFrom")
+    ) {
+      collectParagraphRetentionFacts(
+        childrenOf(item),
+        { width: 0, zeroWidthItems: facts.zeroWidthItems },
+        true,
+      );
+      continue;
+    }
     if (item.type === "commentReference") {
       facts.zeroWidthItems.push(item.type);
       continue;
@@ -208,7 +222,7 @@ const collectParagraphRetentionFacts = (
       continue;
     }
     if (isInlineContainer(item)) {
-      collectParagraphRetentionFacts(childrenOf(item), facts);
+      collectParagraphRetentionFacts(childrenOf(item), facts, onceAccepted);
       continue;
     }
     facts.width += inlineWidth(item);
@@ -221,6 +235,18 @@ export const paragraphHoldsContent = (
 ): ParagraphContentVerdict => {
   const facts: ParagraphRetentionFacts = { width: 0, zeroWidthItems: [] };
   collectParagraphRetentionFacts(paragraph.content, facts);
+  return paragraphContentVerdict(facts);
+};
+
+/**
+ * Whether a paragraph still holds content once every change in it is
+ * accepted: what its pending deletions and moves away hold does not count.
+ */
+export const paragraphHoldsContentOnceAccepted = (
+  paragraph: Paragraph,
+): ParagraphContentVerdict => {
+  const facts: ParagraphRetentionFacts = { width: 0, zeroWidthItems: [] };
+  collectParagraphRetentionFacts(paragraph.content, facts, true);
   return paragraphContentVerdict(facts);
 };
 
@@ -334,6 +360,7 @@ const HYPERLINK_CHILD_TYPES = {
   moveToRangeEnd: true,
   inlineWrapper: true,
   preservedInline: true,
+  complexField: true,
 } as const satisfies Record<HyperlinkChild["type"], true>;
 
 const TRACKED_CHILD_TYPES = {

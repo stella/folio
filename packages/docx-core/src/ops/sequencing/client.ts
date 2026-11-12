@@ -333,6 +333,18 @@ export const createClient = (
           }),
         );
       }
+      const local = entries.find(
+        ({ batch: pendingBatch }) => pendingBatch.opId === next.opId,
+      );
+      if (local !== undefined && local.batch.actor !== next.actor) {
+        return Result.err(
+          new BatchRejection({
+            reason: BATCH_REJECTION_REASONS.CONFLICT,
+            message:
+              "A broadcast reuses a pending operation id under another actor.",
+          }),
+        );
+      }
       if (localIds.has(next.opId)) {
         entries = entries.filter(
           ({ batch: pendingBatch }) => pendingBatch.opId !== next.opId,

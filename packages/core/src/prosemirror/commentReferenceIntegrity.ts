@@ -115,7 +115,8 @@ const surveyCommentReferences = (doc: PMNode): CommentReferenceSurvey => {
       return true;
     }
     for (const mark of node.marks) {
-      if (mark.type.name !== "comment") {
+      // A point comment's mark only shows it: its reference is its anchor.
+      if (mark.type.name !== "comment" || mark.attrs["point"] === true) {
         continue;
       }
       const commentId = mark.attrs["commentId"];

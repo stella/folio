@@ -9,6 +9,8 @@
 
 import type { EditorState } from "prosemirror-state";
 
+import { readPaintedStart } from "../utils/paintedPositions";
+
 type CellSelectionLike = {
   $anchorCell?: unknown;
   forEachCell?: (cb: (node: { nodeSize: number }, pos: number) => void) => void;
@@ -65,9 +67,8 @@ export function applyCellSelectionHighlight(
 
   const allCells = pagesContainer.querySelectorAll<HTMLElement>(scopeSelector);
   for (const cellEl of Array.from(allCells)) {
-    const pmStartAttr = cellEl.dataset["pmStart"];
-    if (pmStartAttr === undefined) continue;
-    const pmPos = Number(pmStartAttr);
+    const pmPos = readPaintedStart(cellEl);
+    if (pmPos === undefined) continue;
     for (const [start, end] of selectedRanges) {
       if (pmPos >= start && pmPos < end) {
         cellEl.classList.add("layout-table-cell-selected");

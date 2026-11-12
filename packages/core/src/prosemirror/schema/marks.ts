@@ -120,6 +120,18 @@ export type FootnoteRefAttrs = {
 
 export type CommentAttrs = {
   commentId: number;
+  /**
+   * The comment was authored at a point (a bare `w:commentReference`): this
+   * mark only shows it on the text before the reference. The comment lives
+   * as long as its reference does, and saves as a point again.
+   */
+  point?: boolean;
+  /**
+   * The pending suggestion that proposed this comment. A proposed comment
+   * is never saved: it is accepted with its suggestion, which clears this,
+   * or removed when the suggestion is rejected.
+   */
+  suggestionId?: string;
 };
 
 /**

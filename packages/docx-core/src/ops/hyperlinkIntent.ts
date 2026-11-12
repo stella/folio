@@ -4,16 +4,25 @@ import { sanitizeExternalUrl } from "../markdown/href";
 import type {
   Document,
   Hyperlink,
+  Paragraph,
   ParagraphContent,
   Run,
+  TrackedRunChange,
 } from "../model/document";
 import { applyDocumentOps } from "./apply";
 import type { EditorIntentMode } from "./editorIntent";
 import { structurallyEqual } from "./equality";
 import { resolveGap } from "./gaps";
-import { idKey } from "./ids";
+import { freshenIdentities } from "./identity";
+import {
+  countKeys,
+  identityKeysIn,
+  idKey,
+  packageIdentityKeys,
+  reservedIdentityKeysIn,
+} from "./ids";
 import { asParagraphContent, partitionContent } from "./leaves";
-import { paragraphLength } from "./offsets";
+import { isTrackedChild, paragraphLength } from "./offsets";
 import { selectedParagraphRuns } from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, type TextPosition } from "./types";
@@ -53,12 +62,22 @@ const refuse = (
     }),
   );
 
-/** Cutting these records cannot duplicate review identities or unmodeled wrappers. */
+/**
+ * Records a link edit can cut. A run's pending formatting change and a
+ * tracked change are cut with it, and the halves after the first take fresh
+ * ids; wrappers it cannot model (controls, opaque captures) are not cut.
+ */
 const editable = (items: readonly ParagraphContent[]): boolean =>
   items.every((item) => {
     switch (item.type) {
       case "run":
-        return (item.propertyChanges?.length ?? 0) === 0;
+        return true;
+      // The link goes inside the change, as the file nests it.
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        return editable(item.content);
       // Fields and zero-width markers stay where they are, between the linked runs.
       case "simpleField":
       case "complexField":
@@ -75,6 +94,18 @@ const editable = (items: readonly ParagraphContent[]): boolean =>
         return false;
     }
   });
+
+/** Content rebuilt inside a tracked change, which admits every kind it held. */
+const trackedContent = (
+  items: readonly ParagraphContent[],
+): TrackedRunChange["content"] =>
+  items.map((item) =>
+    isTrackedChild(item)
+      ? item
+      : panic(
+          "A link edit put a record into a tracked change that it cannot hold.",
+        ),
+  );
 
 const HYPERLINK_STYLE_ID = "Hyperlink";
 
@@ -120,6 +151,15 @@ const linkedChildren = (
       case "commentReference":
       case "preservedInline":
         children.push(item);
+        break;
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+        children.push({
+          ...item,
+          content: trackedContent(linkedChildren(item.content, intent)),
+        });
         break;
       case "hyperlink":
         if (item.children.length === 0) {
@@ -168,9 +208,68 @@ const wrapLinkedChildren = (
       continue;
     }
     link = undefined;
+    // A change's own text is linked inside it.
+    if (
+      child.type === "insertion" ||
+      child.type === "deletion" ||
+      child.type === "moveFrom" ||
+      child.type === "moveTo"
+    ) {
+      result.push({
+        ...child,
+        content: trackedContent(wrapLinkedChildren(intent, child.content)),
+      });
+      continue;
+    }
     result.push(child);
   }
   return result;
+};
+
+/**
+ * The edited paragraphs with fresh ids where a cut left two records sharing
+ * one: a run's pending formatting change or a tracked change cut at a link's
+ * edge keeps its id on the first half, and the halves after it take the
+ * mode's new ids, as any cut does.
+ */
+const freshenedParagraphs = (
+  document: Document,
+  edited: readonly { paragraph: Paragraph; content: ParagraphContent[] }[],
+  mode: EditorIntentMode,
+): Result<Paragraph[], DocumentOpRefusal> => {
+  const before = edited.map(({ paragraph }) => paragraph);
+  const freshened = freshenIdentities({
+    before,
+    after: edited.map(({ paragraph, content }) => ({ ...paragraph, content })),
+    newIds: mode.newIds ?? {},
+    usedElsewhere: () => {
+      const counts = countKeys(packageIdentityKeys(document.package));
+      for (const key of identityKeysIn(before))
+        counts.set(key, (counts.get(key) ?? 1) - 1);
+      return new Set(
+        [...counts].flatMap(([key, count]) => (count > 0 ? [key] : [])),
+      );
+    },
+    reserved: new Set(reservedIdentityKeysIn(document.package)),
+  });
+  switch (freshened.kind) {
+    case "fresh":
+      return Result.ok(freshened.paragraphs);
+    case "needsIds":
+      return refuse(
+        `The hyperlink edit needs ${String(freshened.missing)} additional revision ids.`,
+        DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+      );
+    case "invalidId":
+      return refuse(
+        `Revision id ${String(freshened.id)} is not available.`,
+        DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+      );
+    default: {
+      const unhandled: never = freshened;
+      return unhandled;
+    }
+  }
 };
 
 type CompileHyperlinkIntentOptions = {
@@ -218,7 +317,7 @@ export const compileHyperlinkIntent = (
   for (const { paragraph } of locations) {
     if (!editable(paragraph.content))
       return refuse(
-        "Hyperlink edits cannot cut pending review identities or unsupported inline wrappers.",
+        "Hyperlink edits cannot cut a content control or markup folio does not model.",
       );
     const blockId = paragraph.paraId ?? "";
     const from =
@@ -265,8 +364,8 @@ export const compileHyperlinkIntent = (
       after: asParagraphContent(after),
     });
   }
-  // The serializer rejects resolutionJoins repartitioned across hyperlink wrappers.
-  // Preserve exact review provenance by refusing before any operation is published.
+  // Applying or removing a link compiles to direct content operations, which
+  // have no tracked form; refuse before any operation is published.
   if (mode.type === "suggesting")
     return refuse(
       "Hyperlink suggestions require serializable wrapper review provenance.",
@@ -304,6 +403,12 @@ export const compileHyperlinkIntent = (
       content,
       asParagraphContent(after),
     );
+    const freshened = freshenedParagraphs(
+      applied.value.document,
+      [{ paragraph, content: replacement }],
+      mode,
+    );
+    if (freshened.isErr()) return Result.err(freshened.error);
     return Result.ok({
       ops: deletion.value.ops.concat([
         {
@@ -311,7 +416,7 @@ export const compileHyperlinkIntent = (
           story: at.story,
           blockId: at.blockId,
           expected: paragraph.content,
-          content: replacement,
+          content: freshened.value[0]?.content ?? replacement,
         },
       ]),
       selection: {
@@ -321,7 +426,7 @@ export const compileHyperlinkIntent = (
       },
     });
   }
-  const ops: DocumentOp[] = [];
+  const edited: { paragraph: Paragraph; content: ParagraphContent[] }[] = [];
   for (const piece of pieces) {
     if (piece.from.offset === piece.to.offset) continue;
     const children = linkedChildren(piece.middle, intent);
@@ -330,13 +435,21 @@ export const compileHyperlinkIntent = (
         ? wrapLinkedChildren(intent, children)
         : children;
     if (structurallyEqual(piece.middle, replacement)) continue;
-    ops.push({
-      type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
-      story: intent.from.story,
-      blockId: piece.from.blockId,
-      expected: piece.paragraph.content,
+    edited.push({
+      paragraph: piece.paragraph,
       content: piece.before.concat(replacement, piece.after),
     });
   }
+  const freshened = freshenedParagraphs(document, edited, mode);
+  if (freshened.isErr()) return Result.err(freshened.error);
+  const ops: DocumentOp[] = freshened.value.map((paragraph, index) => ({
+    type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+    story: intent.from.story,
+    blockId: paragraph.paraId ?? "",
+    expected:
+      edited[index]?.paragraph.content ??
+      panic("A freshened paragraph has no edited source."),
+    content: paragraph.content,
+  }));
   return Result.ok({ ops, selection: intent.to });
 };

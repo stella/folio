@@ -55,7 +55,7 @@ const createPastedTableEndPlugin = (): Plugin =>
   });
 
 export const JoinedRunStyleExtension: (
-  options?: Partial<{}> | undefined,
+  options?: Partial<Record<never, never>> | undefined,
 ) => Extension = createExtension({
   name: "joinedRunStyle",
   defaultOptions: {},

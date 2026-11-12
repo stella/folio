@@ -75,6 +75,10 @@ import { resolveFontFamily } from "../utils/fontResolver";
 import { borderToStyle } from "../utils/formatToStyle";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
 import {
+  shiftPaintedPositions,
+  writePaintedRange,
+} from "../utils/paintedPositions";
+import {
   pageHorizontalColumns,
   paragraphInlinePictureViewport,
 } from "../utils/paragraphInlineLayout";
@@ -86,7 +90,9 @@ import {
   resolveAnchoredImagePosition as resolveAnchoredImagePositionShared,
 } from "./anchoredImagePosition";
 import type { BlockLookup } from "./index";
+import { applyPageShellStyles } from "./pageShellStyles";
 import { paintedImageSource } from "./previewSvg";
+import { reconcileRenderedContent } from "./reconcileRenderedContent";
 import { renderFragment } from "./renderFragment";
 import {
   applyImageVisualAttrs,
@@ -361,30 +367,7 @@ function applyPageStyles(
   height: number,
   options: RenderPageOptions,
 ): void {
-  element.style.position = "relative";
-  element.style.width = `${width}px`;
-  element.style.height = `${height}px`;
-  element.style.backgroundColor =
-    options.backgroundColor ?? "var(--doc-canvas, #ffffff)";
-  element.style.color = "var(--doc-canvas-text, #1f2937)";
-  element.style.overflow = "hidden";
-  element.style.border = "none";
-  element.style.boxShadow = "none";
-  element.style.outline = "none";
-
-  // Set default font styles (matches Word default: 11pt Calibri).
-  // Keep this fallback chain aligned with canvas measurement so text widths
-  // do not drift when Calibri is unavailable and Carlito is used instead.
-  element.style.fontFamily = resolveFontFamily(
-    DEFAULT_FONT_FAMILY,
-    options,
-  ).cssFallback;
-  // Use pixels to match Canvas-based measurements (11pt = 11 * 96/72 ≈ 14.67px)
-  element.style.fontSize = `${(11 * 96) / 72}px`;
-  element.style.color = "var(--doc-canvas-text, #000)";
-
-  // Page borders are painted as a separate overlay (see renderPageBorderOverlay)
-  // so they can honor OOXML offsetFrom/zOrder/display and remain text-relative.
+  applyPageShellStyles(element, width, height, options);
 }
 
 function pageBorderShouldRender(
@@ -1071,12 +1054,7 @@ export function renderFloatingImagesLayer(
     container.style.pointerEvents = "auto"; // Make images clickable
     container.style.top = `${floatImg.y}px`;
     container.style.left = `${floatImg.x}px`;
-    if (floatImg.pmStart !== undefined) {
-      container.dataset["pmStart"] = String(floatImg.pmStart);
-    }
-    if (floatImg.pmEnd !== undefined) {
-      container.dataset["pmEnd"] = String(floatImg.pmEnd);
-    }
+    writePaintedRange(container, floatImg.pmStart, floatImg.pmEnd);
 
     const img = doc.createElement("img");
     applySanitizedImageSrc(img, paintedImageSource(floatImg));
@@ -1416,12 +1394,7 @@ function renderHeaderFooterContent(
     // branch and no NodeSelection could be created on the HF view
     // (Codex #487 P2 follow-up: 20:52 review).
     img.classList.add("layout-run", "layout-run-image");
-    if (floatImg.pmStart !== undefined) {
-      img.dataset["pmStart"] = String(floatImg.pmStart);
-    }
-    if (floatImg.pmEnd !== undefined) {
-      img.dataset["pmEnd"] = String(floatImg.pmEnd);
-    }
+    writePaintedRange(img, floatImg.pmStart, floatImg.pmEnd);
 
     img.style.position = "absolute";
     img.style.display = "block";
@@ -3983,8 +3956,10 @@ function repopulatePageContent(
     } else if (oldFontStyle) {
       removeRenderedPage(oldFontStyle);
     }
-    // Replace only the content area — header/footer stay untouched
-    replaceRenderedPageElement(oldContentEl, newContentEl);
+    // Update only the content area — header/footer stay untouched — and in
+    // it only the nodes the fresh rendering shows differently.
+    if (!reconcileRenderedContent(oldContentEl, newContentEl))
+      replaceRenderedPageElement(oldContentEl, newContentEl);
     syncPageWatermarkOverlay(
       shell,
       data.page,
@@ -4015,13 +3990,7 @@ function syncRenderedPmPositionData(
     return true;
   }
 
-  for (const element of shell.querySelectorAll<HTMLElement>(
-    "[data-pm-start], [data-pm-end], [data-table-pm-start]",
-  )) {
-    shiftNumericDatasetValue(element, "pmStart", delta);
-    shiftNumericDatasetValue(element, "pmEnd", delta);
-    shiftNumericDatasetValue(element, "tablePmStart", delta);
-  }
+  shiftPaintedPositions(shell, delta);
   return true;
 }
 
@@ -4081,24 +4050,6 @@ function readPositionDelta(
     return null;
   }
   return next - previous;
-}
-
-function shiftNumericDatasetValue(
-  element: HTMLElement,
-  key: "pmEnd" | "pmStart" | "tablePmStart",
-  delta: number,
-): void {
-  const value = element.dataset[key];
-  if (value === undefined) {
-    return;
-  }
-
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return;
-  }
-
-  element.dataset[key] = String(numeric + delta);
 }
 
 function syncPageShellFingerprints(

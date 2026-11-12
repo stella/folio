@@ -36,6 +36,7 @@ import {
   createNumberingIdAllocator,
   mintNumberingId,
   type NumberingIdsInUse,
+  numberingNumIdsTaken,
 } from "./numberingIds";
 
 /** The two kinds of list a command can create. */
@@ -171,10 +172,7 @@ const nextNumId = (
 ): number =>
   mintNumberingId({
     kind: "num",
-    existingIds: [
-      ...(definitions?.nums ?? []).map(({ numId }) => numId),
-      ...elsewhere.numIds,
-    ],
+    existingIds: [...numberingNumIdsTaken(definitions), ...elsewhere.numIds],
   });
 
 /** A fresh `w:abstractNumId` for `definitions`. */

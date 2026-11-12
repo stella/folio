@@ -64,3 +64,99 @@ test("suggestion batches share bounded revision allocation with editor commands"
   }
   expect(ids.has(mintRevisionId())).toBe(false);
 });
+
+test("overlapping suggestions never change text outside the range each one covers", () => {
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, [schema.text("abcdef")]),
+  ]);
+  const view = {
+    state: EditorState.create({ doc }),
+    dispatch: (tr: Transaction) => {
+      view.state = view.state.apply(tr);
+    },
+  };
+  const base = {
+    topic: "Text",
+    severity: "style",
+    status: "pending",
+    rationale: "Edit",
+  } as const;
+  const replaceBc = {
+    ...base,
+    id: "replace-bc",
+    range: { from: 2, to: 4 },
+    originalText: "bc",
+    suggestedText: "BC",
+    contextBefore: "a",
+    contextAfter: "def",
+  } satisfies AISuggestion;
+  const deleteCd = {
+    ...base,
+    id: "delete-cd",
+    range: { from: 3, to: 5 },
+    originalText: "cd",
+    suggestedText: "",
+    contextBefore: "ab",
+    contextAfter: "ef",
+  } satisfies AISuggestion;
+
+  const result = applySuggestions({
+    view,
+    suggestions: [replaceBc, deleteCd],
+    mode: "direct",
+    author: "Reviewer",
+  });
+
+  expect(result).toEqual({ applied: ["delete-cd"], stale: ["replace-bc"] });
+  expect(view.state.doc.textContent).toBe("abef");
+});
+
+test("an insertion and a replacement at one start both apply, in either order", () => {
+  const base = {
+    topic: "Text",
+    severity: "style",
+    status: "pending",
+    rationale: "Edit",
+  } as const;
+  const insert = {
+    ...base,
+    id: "insert",
+    range: { from: 3, to: 3 },
+    originalText: "",
+    suggestedText: "X",
+    contextBefore: "ab",
+    contextAfter: "cdef",
+  } satisfies AISuggestion;
+  const replace = {
+    ...base,
+    id: "replace",
+    range: { from: 3, to: 5 },
+    originalText: "cd",
+    suggestedText: "CD",
+    contextBefore: "ab",
+    contextAfter: "ef",
+  } satisfies AISuggestion;
+  for (const suggestions of [
+    [insert, replace],
+    [replace, insert],
+  ]) {
+    const view = {
+      state: EditorState.create({
+        doc: schema.node("doc", null, [
+          schema.node("paragraph", null, [schema.text("abcdef")]),
+        ]),
+      }),
+      dispatch: (tr: Transaction) => {
+        view.state = view.state.apply(tr);
+      },
+    };
+    const result = applySuggestions({
+      view,
+      suggestions,
+      mode: "direct",
+      author: "Reviewer",
+    });
+    expect(result.stale).toEqual([]);
+    expect(view.state.doc.textContent).toBe("abXCDef");
+  }
+});

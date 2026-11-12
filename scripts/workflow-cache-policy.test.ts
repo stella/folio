@@ -29,7 +29,7 @@ const hasPublishToken = (workflow: unknown, job: unknown) => {
       (key) =>
         permissions[key] === "write" ||
         (typeof permissions[key] === "string" &&
-          permissions[key].includes("$" + "{{")),
+          permissions[key].includes("${{")),
     )
   );
 };
@@ -90,6 +90,13 @@ const publishingJobNames = (workflow: unknown) => {
   return protectedJobs;
 };
 
+/** The repository's own Bun setup, at the root checkout or a nested one. */
+const LOCAL_BUN_SETUP = /^\.\/(?:[\w.-]+\/)*\.github\/actions\/bun$/u;
+const isLocalBunSetup = (uses: unknown): uses is string =>
+  typeof uses === "string" && LOCAL_BUN_SETUP.test(uses);
+const localInput = (step: Record<string, unknown>, name: string) =>
+  isRecord(step["with"]) ? step["with"][name] : undefined;
+
 const cacheProblems = (workflow: unknown): string[] => {
   if (!isRecord(workflow) || !isRecord(workflow["jobs"]))
     panic("Invalid workflow jobs");
@@ -112,6 +119,8 @@ const cacheProblems = (workflow: unknown): string[] => {
         const uses = step["uses"];
         return (
           uses === "./.github/actions/safe-chain" ||
+          (isLocalBunSetup(uses) &&
+            (localInput(step, "install-cache") ?? "none") === "none") ||
           (typeof uses === "string" &&
             /(?:oven-sh\/setup-bun|stella\/\.github\/actions\/setup-bun-cached)@/u.test(
               uses,
@@ -127,6 +136,24 @@ const cacheProblems = (workflow: unknown): string[] => {
       if (!protectedInstall && uses.startsWith("oven-sh/setup-bun@")) {
         problems.push(
           `${name}: raw Bun setup needs the shared install-cache action`,
+        );
+      }
+      if (
+        protectedInstall &&
+        isLocalBunSetup(uses) &&
+        localInput(step, "install-cache") === "actions"
+      ) {
+        problems.push(
+          `${name}: shared install cache changes protected download policy`,
+        );
+      }
+      if (
+        (defaultScope || publishing.has(name)) &&
+        isLocalBunSetup(uses) &&
+        localInput(step, "binary-cache") !== "read-only"
+      ) {
+        problems.push(
+          `${name}: a protected job restores the Bun binary cache read-only`,
         );
       }
       if (protectedInstall && uses.includes("setup-bun-cached@")) {
@@ -159,6 +186,7 @@ const cacheProblems = (workflow: unknown): string[] => {
 };
 
 const raw = { uses: "oven-sh/setup-bun@fixture" };
+const BUN_SETUP_ACTION = ".github/actions/bun/action.yml";
 const cached = { uses: "stella/.github/actions/setup-bun-cached@fixture" };
 
 test("ordinary jobs use the cache owner and preserve protected runtime setup", () => {
@@ -192,6 +220,54 @@ test("ordinary jobs use the cache owner and preserve protected runtime setup", (
   expect(
     cacheProblems({
       jobs: { fixture: { steps: [{ ...cached, with: { "no-cache": true } }] } },
+    }),
+  ).toHaveLength(1);
+});
+
+test("the repository's Bun setup restores read-only in protected jobs and keeps their install policy", () => {
+  const local = (inputs: Record<string, string>) => ({
+    uses: "./.github/actions/bun",
+    with: inputs,
+  });
+  const nested = { ...local({}), uses: "./base/.github/actions/bun" };
+  // Ordinary jobs: either install policy, and the binary cache read-write.
+  for (const step of [local({}), local({ "install-cache": "actions" })])
+    expect(cacheProblems({ jobs: { fixture: { steps: [step] } } })).toEqual([]);
+  // A job keeping its own download policy takes no shared install cache.
+  expect(
+    cacheProblems({
+      jobs: {
+        fixture: {
+          steps: [
+            { uses: "./.github/actions/safe-chain" },
+            local({ "install-cache": "actions" }),
+          ],
+        },
+      },
+    }),
+  ).toHaveLength(1);
+  for (const on of ["workflow_run", ["pull_request_target"]]) {
+    for (const step of [local({}), nested])
+      expect(
+        cacheProblems({ on, jobs: { fixture: { steps: [step] } } }),
+      ).toEqual([
+        "fixture: a protected job restores the Bun binary cache read-only",
+      ]);
+    expect(
+      cacheProblems({
+        on,
+        jobs: { fixture: { steps: [local({ "binary-cache": "read-only" })] } },
+      }),
+    ).toEqual([]);
+  }
+  expect(
+    cacheProblems({
+      jobs: {
+        publish: {
+          permissions: { contents: "write" },
+          steps: [local({})],
+        },
+      },
     }),
   ).toHaveLength(1);
 });
@@ -251,6 +327,8 @@ test("every committed workflow and composite action follows the shared cache pol
   for (const file of new Bun.Glob(
     ".github/actions/**/action.{yml,yaml}",
   ).scanSync({ cwd: root })) {
+    // The Bun setup action owns the binary and install caches it moves.
+    if (file === BUN_SETUP_ACTION) continue;
     const action: unknown = Bun.YAML.parse(
       readFileSync(`${root}/${file}`, "utf8"),
     );
@@ -282,7 +360,13 @@ test("the guard rejects reverting every committed shared setup to raw Bun setup"
       for (const [index, step] of job["steps"].entries()) {
         if (!isRecord(step) || typeof step["uses"] !== "string") continue;
         if (
-          !step["uses"].startsWith("stella/.github/actions/setup-bun-cached@")
+          !step["uses"].startsWith(
+            "stella/.github/actions/setup-bun-cached@",
+          ) &&
+          !(
+            isLocalBunSetup(step["uses"]) &&
+            localInput(step, "install-cache") === "actions"
+          )
         )
           continue;
         const steps = job["steps"].map(
@@ -464,4 +548,108 @@ test("every committed job installs Playwright through the shared action", () => 
   }
   expect(problems).toEqual([]);
   expect(shared).toBeGreaterThan(0);
+});
+
+// The shared action is the only place that downloads browsers, so it carries
+// the bound: one install step, a limit per attempt and a single retry. A job
+// that uses it leaves room for both attempts within its own timeout.
+const boundedInstallProblems = (action: unknown): string[] => {
+  if (!isRecord(action) || !isRecord(action["runs"]))
+    return ["the action has no runs mapping"];
+  const steps = action["runs"]["steps"];
+  const installs = Array.isArray(steps)
+    ? steps.filter(
+        (step): step is Record<string, unknown> =>
+          isRecord(step) &&
+          typeof step["run"] === "string" &&
+          /\bplaywright\s+install\b/u.test(step["run"]),
+      )
+    : [];
+  if (installs.length !== 1)
+    return [`expected one install step, found ${installs.length}`];
+  const [install] = installs;
+  const env = install?.["env"];
+  const seconds = isRecord(env) ? Number(env["ATTEMPT_SECONDS"]) : Number.NaN;
+  const run = String(install?.["run"]);
+  const problems: string[] = [];
+  if (!Number.isInteger(seconds) || seconds <= 0)
+    problems.push("the install step sets no ATTEMPT_SECONDS");
+  if ((run.match(/^\s*attempt\s*$/gmu) ?? []).length !== 1)
+    problems.push("the install retries other than exactly once");
+  if (!/^\s*if ! attempt; then$/mu.test(run))
+    problems.push("the install does not start with one bounded attempt");
+  if (!/kill -TERM -- "-\$install"/u.test(run))
+    problems.push("the limit does not stop the attempt's process group");
+  return problems;
+};
+
+const attemptMinutes = (action: unknown): number => {
+  if (!isRecord(action) || !isRecord(action["runs"])) return Number.NaN;
+  const steps = action["runs"]["steps"];
+  const install = Array.isArray(steps)
+    ? steps.find(
+        (step) =>
+          isRecord(step) &&
+          isRecord(step["env"]) &&
+          step["env"]["ATTEMPT_SECONDS"],
+      )
+    : undefined;
+  return isRecord(install) && isRecord(install["env"])
+    ? Number(install["env"]["ATTEMPT_SECONDS"]) / 60
+    : Number.NaN;
+};
+
+const readPlaywrightAction = (): unknown =>
+  Bun.YAML.parse(
+    readFileSync(
+      fileURLToPath(new URL(`../${PLAYWRIGHT_ACTION_FILE}`, import.meta.url)),
+      "utf8",
+    ),
+  );
+
+test("the shared action bounds each install attempt and retries once", () => {
+  const action = readPlaywrightAction();
+  expect(boundedInstallProblems(action)).toEqual([]);
+  const broken = structuredClone(action);
+  if (!isRecord(broken) || !isRecord(broken["runs"]))
+    panic("Invalid Playwright action");
+  const steps = broken["runs"]["steps"];
+  if (!Array.isArray(steps)) panic("Invalid Playwright action steps");
+  // The clone is this test's own copy, so the install step is edited in place.
+  for (const step of steps) {
+    if (!isRecord(step) || !isRecord(step["env"])) continue;
+    if (!("ATTEMPT_SECONDS" in step["env"])) continue;
+    delete step["env"]["ATTEMPT_SECONDS"];
+    step["run"] = "bunx playwright install chromium";
+  }
+  expect(boundedInstallProblems(broken)).toEqual([
+    "the install step sets no ATTEMPT_SECONDS",
+    "the install retries other than exactly once",
+    "the install does not start with one bounded attempt",
+    "the limit does not stop the attempt's process group",
+  ]);
+});
+
+test("every job that installs Playwright has room for both attempts", () => {
+  const minutes = attemptMinutes(readPlaywrightAction());
+  expect(minutes).toBeGreaterThan(0);
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const tight: string[] = [];
+  for (const file of new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync({
+    cwd: root,
+  })) {
+    const workflow: unknown = Bun.YAML.parse(
+      readFileSync(`${root}/${file}`, "utf8"),
+    );
+    if (!isRecord(workflow) || !isRecord(workflow["jobs"])) continue;
+    for (const [name, job] of Object.entries(workflow["jobs"])) {
+      if (!isRecord(job) || !Array.isArray(job["steps"])) continue;
+      const installs = job["steps"].some(
+        (step) => isRecord(step) && step["uses"] === PLAYWRIGHT_ACTION,
+      );
+      if (installs && !(Number(job["timeout-minutes"]) > 2 * minutes))
+        tight.push(`${file}: ${name}`);
+    }
+  }
+  expect(tight).toEqual([]);
 });

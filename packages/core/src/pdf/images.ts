@@ -75,6 +75,20 @@ const EIGHT_BIT = 8;
 /** IHDR interlace method 1: the only one PNG defines besides "none". */
 const ADAM7_INTERLACE = 1;
 
+/**
+ * Largest PNG raster decoded for one image. A PNG's IDAT can compress an
+ * empty raster about a thousandfold, so the encoded size says little about
+ * the decode: 64 MP of RGBA is 256 MB per raster copy before the alpha split
+ * and the re-deflate. Matches the per-image TIFF ceiling at import.
+ */
+export const MAX_PDF_PNG_PIXELS = 64_000_000;
+
+/**
+ * Pixels decoded across every PNG in one PDF. The per-image ceiling bounds a
+ * single decode; without a running total many large images still add up.
+ */
+export const MAX_PDF_DOCUMENT_PNG_PIXELS = 256_000_000;
+
 const toHex = (bytes: Uint8Array): string => {
   let out = "";
   for (const byte of bytes) {
@@ -426,6 +440,7 @@ const expandIndices = ({
 
 const decodePng = (
   bytes: Uint8Array,
+  maxPixels: number,
 ): Result<PdfImageSamples, PdfImageError> => {
   const chunks = readPngChunks(bytes);
   if (chunks.isErr()) {
@@ -446,6 +461,14 @@ const decodePng = (
   if (width === 0 || height === 0) {
     return Result.err(
       new PdfImageError({ message: "PNG has a zero dimension" }),
+    );
+  }
+  const pixelLimit = Math.min(maxPixels, MAX_PDF_PNG_PIXELS);
+  if (width * height > pixelLimit) {
+    return Result.err(
+      new PdfImageError({
+        message: `PNG is ${String(width)}x${String(height)} pixels, above the ${String(pixelLimit)} pixels allowed`,
+      }),
     );
   }
   if (interlace !== 0 && interlace !== ADAM7_INTERLACE) {
@@ -788,12 +811,17 @@ const decodeJpeg = (
   return Result.err(new PdfImageError({ message: "JPEG has no frame header" }));
 };
 
+/**
+ * Decode one image for painting. `maxPngPixels` is what remains of the
+ * document's PNG pixel budget; JPEG passes through undecoded and spends none.
+ */
 export const decodeImage = (
   source: DisplayImageSource,
+  maxPngPixels: number = MAX_PDF_PNG_PIXELS,
 ): Result<PdfImageSamples, PdfImageError> => {
   switch (source.format) {
     case "png":
-      return decodePng(source.bytes);
+      return decodePng(source.bytes, maxPngPixels);
     case "jpeg":
       return decodeJpeg(source.bytes);
     case "svg":

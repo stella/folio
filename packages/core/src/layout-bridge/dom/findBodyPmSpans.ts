@@ -1,9 +1,15 @@
+import {
+  PAINTED_RANGE_SELECTOR,
+  PAINTED_START_SELECTOR,
+  paintedStartSelector,
+} from "../../utils/paintedPositions";
+
 const BODY_SCOPE = ".layout-page-content";
 
 export function findBodyPmSpans(container: ParentNode): HTMLElement[] {
   return Array.from(
     container.querySelectorAll<HTMLElement>(
-      `${BODY_SCOPE} span[data-pm-start][data-pm-end]`,
+      `${BODY_SCOPE} span${PAINTED_RANGE_SELECTOR}`,
     ),
   );
 }
@@ -16,7 +22,9 @@ export function findBodyEmptyRuns(container: ParentNode): HTMLElement[] {
 
 export function findBodyPmAnchors(container: ParentNode): HTMLElement[] {
   return Array.from(
-    container.querySelectorAll<HTMLElement>(`${BODY_SCOPE} [data-pm-start]`),
+    container.querySelectorAll<HTMLElement>(
+      `${BODY_SCOPE} ${PAINTED_START_SELECTOR}`,
+    ),
   );
 }
 
@@ -28,6 +36,6 @@ export function findBodyPmAnchor(
     return null;
   }
   return container.querySelector<HTMLElement>(
-    `${BODY_SCOPE} [data-pm-start="${String(pmStart)}"]`,
+    `${BODY_SCOPE} ${paintedStartSelector(pmStart)}`,
   );
 }

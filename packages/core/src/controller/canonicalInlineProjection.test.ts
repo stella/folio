@@ -51,7 +51,10 @@ test("structured field payloads validate text without refusing authored instruct
     content: [run("L"), field, run("R")],
   } satisfies Paragraph;
   expect(createCanonicalSession(documentFor(source)).isOk()).toBe(true);
-  for (const text of ["\u0001", "\t", "\n"]) {
+  // A literal tab reads as a tab element; the cache keeps every other check.
+  field.fieldResult = [run("\t")];
+  expect(createCanonicalSession(documentFor(source)).isOk()).toBe(true);
+  for (const text of ["\u0001", "\n"]) {
     field.fieldResult = [run(text)];
     const result = createCanonicalSession(documentFor(source));
     expect(result.isErr()).toBe(true);

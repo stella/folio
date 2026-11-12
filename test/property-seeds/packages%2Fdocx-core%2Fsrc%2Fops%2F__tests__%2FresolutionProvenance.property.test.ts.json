@@ -266,6 +266,12 @@
       "path": "0:0:1:1:1:1:1:1:1",
       "note": "Replay the observed source-seam or revision allocation failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1424656352,
+      "path": "1:0:0:1:1:1:2:2:2:2:1:1:1:1",
+      "note": "Typed text continuing an inline container: both modes must continue it the same way.",
+      "date": "2026-11-08"
     }
   ],
   "overlapping formatting rejection preserves authored runs in either resolution order": [

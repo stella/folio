@@ -61,10 +61,13 @@ describe("bun.lock workspace self-version synchronization", () => {
     ]);
   });
 
-  test("release versioning synchronizes lock and all generated workspace artifacts", () => {
+  test("release versioning formats the changelogs it writes and synchronizes lock and all generated workspace artifacts", () => {
     const command = packageJson.scripts["changeset:version"];
 
     expect(command).not.toMatch(/\brm\b/);
+    expect(command).toContain(
+      "changeset version && bun fmt 'packages/*/CHANGELOG.md' && ",
+    );
     expect(command).toContain("sync-docx-kernel-version.ts --write");
     expect(command).toContain("check-lockfile-workspace-versions.ts --write");
     expect(command).toContain("bun install --frozen-lockfile");

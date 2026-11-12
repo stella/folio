@@ -169,6 +169,11 @@ const OPS: readonly DocumentOp[] = [
     revision: stamp(80),
   },
   {
+    type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+    story: OP_STORIES.MAIN,
+    infos: [{ id: 80, author: "Adopter", date: "2026-02-02T00:00:00Z" }],
+  },
+  {
     type: DOCUMENT_OP_TYPES.INSERT_TEXT,
     at: at("00000001", 3),
     text: "X",

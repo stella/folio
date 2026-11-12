@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import {
   PAGED_SCROLL_NAVIGATION_CASES,
   SCROLL_NAVIGATION_CASES,
+  SCROLL_TARGET_PARA_ID,
 } from "../../packages/playground/src/scrollParityBridge";
 import { buildScrollRootDocument } from "../support/scrollRootDocument";
 import {
@@ -53,9 +54,9 @@ for (const handle of ["document", "paged"] as const) {
 const openScrollFixture = async (
   page: Page,
   adapter: AdapterFixture,
-  readyScroll = false,
+  { readyScroll = false, fillerPages = 0 } = {},
 ) => {
-  const bytes = await buildScrollRootDocument();
+  const bytes = await buildScrollRootDocument({ fillerPages });
   await page.route("**/fixtures/scroll-root.docx", (route) =>
     route.fulfill({
       contentType:
@@ -137,6 +138,28 @@ for (const { method } of Object.values(SCROLL_NAVIGATION_CASES)) {
   );
 }
 
+// Only the pages near the viewport are painted: a paragraph on a far page is
+// found in the document, and scrolling to it paints its page.
+forEachAdapter(
+  "scrollToParaId reveals a paragraph on a page not painted yet",
+  async (adapter, { page }) => {
+    await openScrollFixture(page, adapter, { fillerPages: 30 });
+    expect(
+      await page.evaluate(
+        (paraId) =>
+          document.querySelector(`.layout-paragraph[data-para-id="${paraId}"]`),
+        SCROLL_TARGET_PARA_ID,
+      ),
+    ).toBeNull();
+    expect(
+      await page.evaluate(() =>
+        window.__folioScrollParity?.navigate("scrollToParaId"),
+      ),
+    ).toBe(true);
+    await expectTargetInScrollRoot(page, "scrollToParaId");
+  },
+);
+
 for (const { method } of Object.values(PAGED_SCROLL_NAVIGATION_CASES)) {
   forEachAdapter(
     `paged ${method} reveals page-three target in the scroll root`,
@@ -156,7 +179,7 @@ for (const { method } of Object.values(PAGED_SCROLL_NAVIGATION_CASES)) {
 forEachAdapter(
   "host scroll in onEditorViewReady survives document readiness",
   async (adapter, { page }) => {
-    await openScrollFixture(page, adapter, true);
+    await openScrollFixture(page, adapter, { readyScroll: true });
     const before = await page.evaluate(() =>
       window.__folioScrollParity?.readReady(),
     );

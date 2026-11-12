@@ -13,6 +13,8 @@ import type { Watermark } from "../types/document";
 import type { BlockLookup } from "./index";
 import { renderPages } from "./renderPage";
 
+let fakeElementCount = 0;
+
 class FakeElement {
   className = "";
   dataset: Record<string, string> = {};
@@ -36,6 +38,13 @@ class FakeElement {
       },
     };
   }
+
+  /**
+   * Distinct per element: these fakes cannot be compared node by node, so a
+   * repainted page's content is replaced whole, which is what this suite
+   * covers.
+   */
+  readonly localName = `fake-${String((fakeElementCount += 1))}`;
 
   get firstChild(): FakeElement | null {
     return this.children.at(0) ?? null;

@@ -6,6 +6,7 @@
  * Adjacent carriers under the same revision state keep their source identities.
  */
 
+import { panic } from "better-result";
 import { Fragment, Mark, type Node as PMNode } from "prosemirror-model";
 
 import { expectHyperlinkMarkAttrs, expectRunIdentityMarkAttrs } from "./attrs";
@@ -235,25 +236,105 @@ export const continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks = (
   let changed = false;
   const result: PMNode[] = [];
   for (const block of blocks) {
-    let next = block;
-    if (!block.isTextblock && !block.isLeaf && !block.inlineContent) {
-      const children = childrenOf(block);
-      const continued =
-        continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(children);
-      if (continued !== children) {
-        next = block.copy(Fragment.fromArray([...continued]));
-      }
-    }
-    const previous = result.at(-1);
-    if (
-      previous !== undefined &&
-      next.type.name === "paragraph" &&
-      endsWithInsertedMark(previous)
-    ) {
-      next = continueAcrossInsertedMark(previous, next);
-    }
+    const next = continuedBlock(result.at(-1), block);
     changed ||= next !== block;
     result.push(next);
   }
   return changed ? result : blocks;
+};
+
+/** `block` as it stands after `previous`, the block before it as continued. */
+const continuedBlock = (
+  previous: PMNode | undefined,
+  block: PMNode,
+  containers?: WeakMap<PMNode, PMNode>,
+): PMNode => {
+  let next = block;
+  if (!block.isTextblock && !block.isLeaf && !block.inlineContent) {
+    const known = containers?.get(block);
+    if (known === undefined) {
+      const children = childrenOf(block);
+      const continued =
+        continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(children);
+      if (continued !== children)
+        next = block.copy(Fragment.fromArray([...continued]));
+      containers?.set(block, next);
+    } else next = known;
+  }
+  if (
+    previous !== undefined &&
+    next.type.name === "paragraph" &&
+    endsWithInsertedMark(previous)
+  ) {
+    next = continueAcrossInsertedMark(previous, next);
+  }
+  return next;
+};
+
+/** One pass of the continuation over a story's top-level blocks. */
+export type ContinuedBlocks = {
+  blocks: readonly PMNode[];
+  continued: readonly PMNode[];
+};
+
+/**
+ * Kept across passes over one story: the last pass and each container
+ * continued inside, so a container a pass left is not walked again.
+ */
+export class CarrierContinuationCache {
+  last: ContinuedBlocks | undefined;
+  readonly containers = new WeakMap<PMNode, PMNode>();
+}
+
+/**
+ * {@link continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks} over a
+ * story's top-level blocks, keeping what the last pass gave the blocks it
+ * left. A block's continuation reads only the block and the one continued
+ * before it, so the run of blocks from the start that the last pass was given
+ * keeps its result, and a block of the run to the end keeps its result once
+ * the block before it continued to what it did then.
+ */
+export const continueSourceCarrierIdentitiesKeeping = (
+  blocks: readonly PMNode[],
+  cache: CarrierContinuationCache,
+): readonly PMNode[] => {
+  const last = cache.last;
+  const before = last?.blocks ?? [];
+  const kept = last?.continued ?? [];
+  let start = 0;
+  while (
+    start < blocks.length &&
+    start < before.length &&
+    blocks[start] === before[start]
+  )
+    start += 1;
+  let after = 0;
+  while (
+    after < blocks.length - start &&
+    after < before.length - start &&
+    blocks[blocks.length - 1 - after] === before[before.length - 1 - after]
+  )
+    after += 1;
+  const shift = before.length - blocks.length;
+  const continued: PMNode[] = kept.slice(0, start);
+  for (let index = start; index < blocks.length; index += 1) {
+    const at = index + shift;
+    if (
+      index >= blocks.length - after &&
+      continued[index - 1] === (at === 0 ? undefined : kept[at - 1])
+    ) {
+      for (let rest = at; rest < kept.length; rest += 1)
+        continued.push(kept[rest] ?? panic("Missing continued block"));
+      break;
+    }
+    continued.push(
+      continuedBlock(
+        continued[index - 1],
+        blocks[index] ?? panic("Missing block"),
+        cache.containers,
+      ),
+    );
+  }
+  cache.last = { blocks, continued };
+  return continued;
 };

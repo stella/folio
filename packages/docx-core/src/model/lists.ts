@@ -332,4 +332,10 @@ export type NumberingDefinitions = {
   preserved?: PreservedMarkup;
   /** Attributes of `w:numbering` the model has no field for. */
   preservedAttributes?: PreservedAttribute[];
+  /**
+   * `w:numId` values a paragraph or style names that resolve to no list, in
+   * ascending order. The reader shows those paragraphs unnumbered, while a
+   * paragraph saved as read still names the id: a new list never takes one.
+   */
+  danglingNumIds?: number[];
 };

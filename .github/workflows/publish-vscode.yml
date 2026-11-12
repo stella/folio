@@ -54,6 +54,7 @@ jobs:
   package:
     name: Build and package the .vsix
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read # No id-token while dependency and build scripts run.
     outputs:
@@ -130,6 +131,7 @@ jobs:
     needs: package
     if: inputs.publish
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -180,6 +182,7 @@ jobs:
     # publish. Only the publish steps wait for the `publish` input.
     if: inputs.marketplace
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     environment: vscode-marketplace
     permissions:
       contents: read
@@ -278,6 +281,7 @@ jobs:
     needs: package
     if: inputs.publish && inputs.open-vsx
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     environment: open-vsx
     permissions:
       contents: read

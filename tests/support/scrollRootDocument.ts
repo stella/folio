@@ -8,8 +8,17 @@ import {
 } from "../../packages/playground/src/scrollParityBridge";
 import { generateDocxFixture } from "./validatedDocxFixture";
 
-/** Explicit page boundaries and OOXML paragraph identifiers make navigation targets stable. */
-export const buildScrollRootDocument = () => {
+/**
+ * Explicit page boundaries and OOXML paragraph identifiers make navigation
+ * targets stable. `fillerPages` adds that many pages before the target's, so
+ * the target starts on a page far from the first.
+ */
+export const buildScrollRootDocument = ({ fillerPages = 0 } = {}) => {
+  const filler = Array.from(
+    { length: fillerPages },
+    (_, index) =>
+      `<w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Filler page ${String(index + 1)}</w:t></w:r></w:p>`,
+  ).join("");
   const zip = new ZipArchive();
   const options = { modified: new Date("2026-01-01T00:00:00Z") };
   zip.set(
@@ -26,7 +35,7 @@ export const buildScrollRootDocument = () => {
     "word/document.xml",
     `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body>
 <w:p w14:paraId="13300100"><w:r><w:t>First page</w:t></w:r></w:p>
-<w:p w14:paraId="13300200"><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Second page</w:t></w:r></w:p>
+<w:p w14:paraId="13300200"><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Second page</w:t></w:r></w:p>${filler}
 <w:p w14:paraId="${SCROLL_TARGET_PARA_ID}"><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>${SCROLL_TARGET_TEXT}</w:t></w:r><w:ins w:id="${SCROLL_REVISION_ID}" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"><w:r><w:t> revised</w:t></w:r></w:ins></w:p>
 <w:sdt><w:sdtPr><w:id w:val="1330"/><w:tag w:val="${SCROLL_CONTROL_TAG}"/><w:text/></w:sdtPr><w:sdtContent><w:p w14:paraId="13300301"><w:r><w:t>Content control destination</w:t></w:r></w:p></w:sdtContent></w:sdt>
 <w:p w14:paraId="13300400"><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Fourth page</w:t></w:r></w:p>

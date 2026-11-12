@@ -52,8 +52,7 @@ import {
   TITLE_FORMAT,
   TITLE_PREFIX,
 } from "./fuzz-failure-issues";
-import type { Issue } from "./fuzz-issue-classes";
-import { fileClasses, type IssueStore } from "./fuzz-issue-classes";
+import { fileClasses, type Issue, type IssueStore } from "./fuzz-issue-classes";
 
 const marker = (seed: number, message = "step 3: no comment") =>
   failureMarker({

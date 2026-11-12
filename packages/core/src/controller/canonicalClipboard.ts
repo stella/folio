@@ -10,7 +10,10 @@ import {
 } from "@stll/docx-core/model";
 import { type DocumentOp, packageResourcesOpOf } from "@stll/docx-core/ops";
 
-import { createNumberingIdAllocator } from "../docx/numberingIds";
+import {
+  createNumberingIdAllocator,
+  numberingNumIdsTaken,
+} from "../docx/numberingIds";
 import { copyParagraphIndentationProjection } from "../docx/paragraphPropertySource";
 import {
   visitInlineContentSlots,
@@ -205,7 +208,7 @@ const importNumbering = ({
   }
   const numAllocator = createNumberingIdAllocator(
     "num",
-    (destination?.nums ?? []).map(({ numId }) => numId),
+    numberingNumIdsTaken(destination),
   );
   const abstractAllocator = createNumberingIdAllocator(
     "abstract",
@@ -434,18 +437,30 @@ export const prepareCanonicalPaste = ({
   }
   if (moveTarget === undefined && (plain || sourceDocument === undefined))
     flattenClipboardStyleReferences(paragraphs);
-  if (state.selection instanceof CellSelection)
+  // Over selected cells the paste clears every cell and lands in the first.
+  const overCells =
+    state.selection instanceof CellSelection &&
+    pasteTarget === undefined &&
+    moveSource === undefined &&
+    moveTarget === undefined;
+  if (state.selection instanceof CellSelection && !overCells)
     return refuse(
       "Pasting over selected cells requires a per-cell paste operation.",
     );
-  const selectionRange = canonicalSelectionRange(state);
-  const from = session.projection.addressAt(
-    pasteTarget ?? moveSource?.from ?? selectionRange.from,
-  );
+  const selectionRange = overCells
+    ? { from: state.selection.from, to: state.selection.to }
+    : canonicalSelectionRange(state);
+  const from = overCells
+    ? Result.ok(undefined)
+    : session.projection.addressAt(
+        pasteTarget ?? moveSource?.from ?? selectionRange.from,
+      );
   if (from.isErr()) return from;
-  const to = session.projection.addressAt(
-    pasteTarget ?? moveSource?.to ?? selectionRange.to,
-  );
+  const to = overCells
+    ? Result.ok(undefined)
+    : session.projection.addressAt(
+        pasteTarget ?? moveSource?.to ?? selectionRange.to,
+      );
   if (to.isErr()) return to;
   let styles = session.document.package.styles;
   let styleIds: ReadonlyMap<string, string> | undefined;
@@ -775,12 +790,27 @@ export const prepareCanonicalPaste = ({
       packageResourcesOpOf({ before: session.document, after: imported }),
     );
   }
+  const openStart = importedSlice.openStart === 0 ? 0 : 1;
+  const openEnd = importedSlice.openEnd === 0 ? 0 : 1;
+  if (from.value === undefined || to.value === undefined)
+    return session.prepareCellSelectionStructure(
+      state,
+      (at) => ({
+        type: "replaceFragment",
+        from: at,
+        to: at,
+        paragraphs,
+        openStart,
+        openEnd,
+      }),
+      { resourceOps, semantic: "paste" },
+    );
   const fragment = {
     from: from.value,
     to: to.value,
     paragraphs,
-    openStart: importedSlice.openStart === 0 ? 0 : 1,
-    openEnd: importedSlice.openEnd === 0 ? 0 : 1,
+    openStart,
+    openEnd,
   } as const;
   if (moveTarget === undefined)
     return session.prepareIntents(state, {

@@ -13,13 +13,25 @@ import {
   storyParagraphs,
 } from "./blocks";
 import type { DocumentEdit } from "./edits";
+import { structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
+import { asMoveHalf } from "./moves";
 import { paragraphLength } from "./offsets";
+import { isBlockBoundary } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { stampInfo, WRAP_KINDS, wrapTracked } from "./review";
 import { DOCUMENT_OP_TYPES, type InsertBlocksOp } from "./types";
+
+const sameFormatting = (
+  left: Paragraph["formatting"],
+  right: Paragraph["formatting"],
+): boolean =>
+  structurallyEqual(
+    finalizeParagraphFormatting(left) ?? {},
+    finalizeParagraphFormatting(right) ?? {},
+  );
 
 type BlockInsertionOptions = {
   document: Document;
@@ -73,17 +85,42 @@ export const insertBlocks = ({
     op.at.type === "after" && following?.type === "paragraph"
       ? following
       : location.paragraph;
-  if (op.revision !== undefined && !before) {
+  // With no paragraph after the anchor, a tracked insertion is recorded as
+  // a reader reads it: the anchor's mark is the inserted one, and the last
+  // new paragraph holds the mark the anchor had, with the anchor's paragraph
+  // properties as its prior ones. Rejecting removes the new text and the
+  // anchor's mark, which leaves the anchor as it was; accepting leaves both.
+  // Before a table the new paragraph's own mark can be the inserted one, as
+  // the default editor records it, since resolving it runs into the table.
+  // At the end of the list, before a range boundary between blocks that no
+  // resolution may carry content across, or before any other block, such as
+  // a content control, there is no mark after the new paragraph's for it to
+  // resolve against, so the anchor's mark is the inserted one.
+  const takesOverMark =
+    op.revision !== undefined &&
+    !before &&
+    (following === undefined ||
+      isBlockBoundary(following) ||
+      following.type !== "table");
+  if (
+    takesOverMark &&
+    (location.paragraph.pPrMark !== undefined ||
+      location.paragraph.reviewCarrier !== undefined ||
+      (location.paragraph.propertyChanges?.length ?? 0) > 0)
+  ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      "Tracked insertion requires a following paragraph in the same block list.",
+      "A tracked insertion after a paragraph no paragraph follows needs the anchor's mark free of review records.",
     );
   }
-  const replacement = (blocks: readonly Paragraph[]) => ({
+  const replacement = (
+    blocks: readonly Paragraph[],
+    replacedAnchor: Paragraph = anchor,
+  ) => ({
     type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
     story: op.story,
     expected: [anchor],
-    blocks: before ? [...blocks, anchor] : [anchor, ...blocks],
+    blocks: before ? [...blocks, replacedAnchor] : [replacedAnchor, ...blocks],
   });
   const canonicalBlocks = op.blocks.map((paragraph) => {
     if (finalizeParagraphFormatting(paragraph.formatting) !== undefined)
@@ -120,7 +157,11 @@ export const insertBlocks = ({
     );
   }
   const touched = {
-    modified: [],
+    // The anchor's mark becomes the inserted one when it takes over.
+    modified:
+      takesOverMark && location.paragraph.paraId !== undefined
+        ? [location.paragraph.paraId]
+        : [],
     inserted: op.blocks.flatMap(({ paraId }) =>
       paraId === undefined ? [] : [paraId],
     ),
@@ -133,8 +174,11 @@ export const insertBlocks = ({
       "Tracked insertion of identified review or content-control records is unsupported.",
     );
   }
+  const revision = op.revision;
+  // A move's destination marks its paragraphs moved to, not inserted.
+  const markKind = op.move === true ? "moveTo" : "ins";
   const blocks: Paragraph[] = [];
-  for (const paragraph of canonicalBlocks) {
+  for (const [index, paragraph] of canonicalBlocks.entries()) {
     const wrapped = wrapTracked({
       items: paragraph.content,
       from: { offset: 0, zeroWidthBefore: 0 },
@@ -148,15 +192,65 @@ export const insertBlocks = ({
     if (wrapped.kind === "refused") {
       return refuse(wrapped.reason, "The inserted content cannot be tracked.");
     }
+    const wrappedContent =
+      wrapped.kind === "wrapped" ? wrapped.content : paragraph.content;
+    const content =
+      op.move === true
+        ? asMoveHalf(wrappedContent, revision.id, "to")
+        : wrappedContent;
+    if (!takesOverMark || index < canonicalBlocks.length - 1) {
+      blocks.push({
+        ...paragraph,
+        content,
+        pPrMark: {
+          kind: markKind,
+          info: stampInfo(revision),
+          // After a final paragraph each new break is rejected into the
+          // paragraph before it, which ends up being the anchor, as the
+          // anchor's own new break is.
+          ...(takesOverMark ? { survivor: "first" as const } : {}),
+        },
+      });
+      continue;
+    }
+    // The anchor's former mark: its properties before are the anchor's.
+    const previous = location.paragraph.formatting;
+    const current = finalizeParagraphFormatting(paragraph.formatting);
     blocks.push({
       ...paragraph,
-      content: wrapped.kind === "wrapped" ? wrapped.content : paragraph.content,
-      pPrMark: { kind: "ins", info: stampInfo(op.revision) },
+      content,
+      ...(sameFormatting(previous, current)
+        ? {}
+        : {
+            propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: stampInfo(revision),
+                ...(previous === undefined
+                  ? {}
+                  : { previousFormatting: previous }),
+              },
+            ],
+          }),
     });
   }
+  const anchorBlocks: Paragraph[] = takesOverMark
+    ? [
+        {
+          ...location.paragraph,
+          pPrMark: {
+            kind: markKind,
+            info: stampInfo(revision),
+            survivor: "first",
+          },
+        },
+      ]
+    : [];
+  // The anchor's own records are carried over and keep their ids; only the
+  // records this insertion creates take new ones.
   const fresh = freshenIdentities({
-    before: [],
-    after: blocks,
+    before: takesOverMark ? [location.paragraph] : [],
+    after: [...anchorBlocks, ...blocks],
     newIds: op.newIds ?? {},
     usedElsewhere: () => new Set(packageIdentityKeys(document.package)),
   });
@@ -172,7 +266,12 @@ export const insertBlocks = ({
         "An inserted review record has an invalid revision id.",
       );
     case "fresh": {
-      const tracked = applyOps(document, [replacement(fresh.paragraphs)]);
+      const [replacedAnchor, ...inserted] = takesOverMark
+        ? fresh.paragraphs
+        : [anchor, ...fresh.paragraphs];
+      const tracked = applyOps(document, [
+        replacement(inserted, replacedAnchor),
+      ]);
       return tracked.isErr()
         ? Result.err(
             new DocumentOpRefusal({

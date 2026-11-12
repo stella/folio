@@ -418,6 +418,28 @@ describe("w:altChunk", () => {
     expect(text.split("Unsupported w:altChunk content").length - 1).toBe(2);
   });
 
+  test("text/plain payloads read back as literal text in Markdown", async () => {
+    const payload =
+      "# Not a heading\n<img src=x>\n* not a list\n[label](https://example.test)";
+    const topLevel = await docxToMarkdown(
+      await buildDocx(CHUNK, { contentType: "text/plain", payload }),
+    );
+    expect(topLevel).toContain("\\# Not a heading");
+    expect(topLevel).toContain("\\<img src=x>");
+    expect(topLevel).toContain("\\* not a list");
+    expect(topLevel).toContain("\\[label\\](https://example.test)");
+
+    const mergedCellTable =
+      '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/></w:tblGrid>' +
+      `<w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr>${CHUNK}<w:p/></w:tc></w:tr></w:tbl>`;
+    const htmlTable = await docxToMarkdown(
+      await buildDocx(mergedCellTable, { contentType: "text/plain", payload }),
+    );
+    expect(htmlTable).toContain("<table>");
+    expect(htmlTable).toContain("&lt;img src=x&gt;");
+    expect(htmlTable).not.toContain("<img");
+  });
+
   test("extracts nested and Strict text/plain parts, and refuses external, oversized, or invalid UTF-8 payloads", async () => {
     const nested =
       '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid>' +

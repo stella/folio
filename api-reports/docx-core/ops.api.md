@@ -143,6 +143,9 @@ export type CommentAnchor = {
 };
 
 // @public
+export const commentAnchorSequence: (blocks: readonly BlockContent[]) => string[];
+
+// @public
 export const commentDocumentIssue: (document: Document_2, allowedOrphans?: ReadonlySet<number> | "all") => string | undefined;
 
 // @public (undocumented)
@@ -215,7 +218,9 @@ export type CreateCommentOp = {
 };
 
 // @public
-export const createEditorIntentIdAllocator: () => (document: Document_2, intent: EditorIntentAllocation) => {
+export const createEditorIntentIdAllocator: (input?: {
+    reservedBlockIds?: ReadonlySet<string>;
+}) => (document: Document_2, intent: EditorIntentAllocation) => {
     revisionId: number;
     newBlockId: string;
     newIds: {
@@ -259,6 +264,7 @@ export type DeleteBlocksOp = {
     story: OpStory;
     blockIds: readonly string[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
@@ -386,6 +392,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
     readonly REPLACE_INLINE: "replaceInline";
     readonly RESOLVE_REVISION: "resolveRevision";
+    readonly SET_REVISION_INFO: "setRevisionInfo";
     readonly INSERT_TABLE: "insertTable";
     readonly DELETE_TABLE: "deleteTable";
     readonly SET_CONTAINER_BLOCKS: "setContainerBlocks";
@@ -418,7 +425,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
+export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | SetRevisionInfoOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -458,6 +465,21 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "tableRow";
     operation: TableRowIntentOperation;
 } | {
+    type: "tableBlock";
+    operation: TableBlockIntentOperation;
+} | {
+    type: "insertParagraphs";
+    story: OpStory;
+    at: BlockInsertionPoint;
+    paragraphs: readonly Paragraph[];
+    move?: true;
+    newList?: NewListInstance;
+} | {
+    type: "deleteParagraphs";
+    story: OpStory;
+    blockIds: readonly string[];
+    move?: true;
+} | {
     type: "replaceFragment";
     from: TextPosition;
     to: TextPosition;
@@ -479,6 +501,10 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     text: string;
     runProps?: TextFormatting;
     runPropsPatch?: RunPropsPatch;
+    inside?: {
+        start?: boolean;
+        end?: boolean;
+    };
 } | {
     type: "formatRun";
     from: TextPosition;
@@ -488,6 +514,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "formatParagraph";
     at: TextPosition;
     patch: ParagraphPropsPatch;
+    newList?: NewListInstance;
 } | {
     type: "setList";
     items: readonly {
@@ -516,6 +543,7 @@ export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     story: OpStory;
     blockId: string;
     nextBlockId: string;
+    survivor?: SplitHalf;
 };
 
 // @public
@@ -597,6 +625,7 @@ export type InsertBlocksOp = {
     at: BlockInsertionPoint;
     blocks: readonly Paragraph[];
     revision?: RevisionStamp;
+    move?: true;
     newIds?: NewIds;
 };
 
@@ -716,6 +745,12 @@ export type NewIds = {
 };
 
 // @public
+export type NewListInstance = {
+    num: NumberingInstance;
+    abstractNum?: AbstractNumbering;
+};
+
+// @public
 export const normalizeForOps: (document: Document_2) => Document_2;
 
 // @public (undocumented)
@@ -828,11 +863,13 @@ export const paragraphLogicalText: (paragraph: Paragraph) => string;
 
 // @public
 export const paragraphMarkOutcome: (input: {
-    follows: "paragraph" | "table" | "nothing";
+    follows: "paragraph" | "table" | "block" | "nothing";
     holdsContent: ParagraphContentVerdict;
     markWasAdded: boolean;
     containerStillEndsWithParagraph: boolean;
     followingTableCanReceiveRunIn: boolean;
+    holdsContentOnceAccepted?: ParagraphContentVerdict;
+    followingBlockCanReceiveRunIn?: boolean;
     needsFollowingCommentHost?: boolean;
     tableRemovalIsTrackable?: boolean;
     removedSectionProperties?: boolean;
@@ -850,6 +887,9 @@ export const paragraphMarkOutcome: (input: {
     kind: "refuse";
     reason: "untrackable";
 } & SectionTransfer);
+
+// @public
+export const paragraphPropertySnapshotToken: (paragraph: Paragraph) => object | undefined;
 
 // @public
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
@@ -876,6 +916,9 @@ export const paragraphVisibleText: (paragraph: Paragraph) => string;
 export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRejection>;
 
 // @public
+export const pendingSuggestionIdsIn: (document: Document_2) => Set<string>;
+
+// @public
 export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: number) => number;
 
 // @public
@@ -897,6 +940,7 @@ export const planTrackedReplace: (document: Document_2, options: PlanTrackedRepl
 
 // @public
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+    deletionRevision?: RevisionStamp;
     sourceContainerPolicy: "join" | "separate";
     seamPolicy?: Extract<DocumentOp, {
         type: "insertContent";
@@ -960,6 +1004,9 @@ export type ReplaceInlineOp = {
     content: readonly ParagraphContent[];
 };
 
+// @public (undocumented)
+export const replaceStoryBody: (input: ReplaceStoryBodyOptions) => Document_2;
+
 // @public
 export type ResolveRevisionOp = {
     type: typeof DOCUMENT_OP_TYPES.RESOLVE_REVISION;
@@ -997,11 +1044,18 @@ export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION
 export const revisionIdDemand: (document: Document_2, op: DocumentOp) => Result<number, DocumentOpRefusal>;
 
 // @public
+export const revisionSpan: (items: readonly InlineNode[], revisionIds: ReadonlySet<number>) => {
+    from: number;
+    to: number;
+} | undefined;
+
+// @public
 export type RevisionStamp = {
     id: number;
     author: string;
     date: string;
     initials?: string;
+    suggestionId?: string;
 };
 
 // @public
@@ -1233,7 +1287,26 @@ export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content"
 export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
+export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
+
+// @public
+export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];
+
+// @public
+export const suggestionRevisionInfos: (document: Document_2, story: OpStory, suggestionId: string) => TrackedChangeInfo[];
+
+// @public
 export const survivingComments: (document: Document_2, projectedRootIds?: ReadonlySet<number>) => Comment_2[];
+
+// @public
+export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds" | "expected"> | {
+    type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
+    story: OpStory;
+    blockId: string;
+    table: Table;
+    side?: "after" | "before";
+    separated?: boolean;
+};
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;
@@ -1272,7 +1345,7 @@ export type UpdateCommentContentOp = {
     type: typeof DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT;
     id: number;
     content: readonly Paragraph[];
-    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date">>;
+    patch?: FormattingPatch<Pick<Comment_2, "author" | "initials" | "date" | "suggestionId">>;
 };
 
 // @public
@@ -1299,6 +1372,15 @@ export const withBodyContent: (body: DocumentBody, content: BlockContent[]) => D
 
 // @public
 export const withoutCommentThreads: (comments: readonly Comment_2[], removedRootIds: ReadonlySet<number>) => Comment_2[];
+
+// @public
+export const withoutPendingSuggestions: (document: Document_2) => Result<Document_2, DocumentOpRefusal>;
+
+// @public
+export const withParagraphCopies: (input: WithParagraphCopiesOptions) => Document_2;
+
+// @public
+export const withParagraphRenderings: (input: WithParagraphRenderingsOptions) => Document_2 | undefined;
 
 // @public
 export type ZeroWidthItem = keyof typeof ZERO_WIDTH_ITEMS_HOLD_CONTENT;

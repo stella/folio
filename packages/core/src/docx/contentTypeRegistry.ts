@@ -2,7 +2,7 @@ import { panic } from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
 /** Register a package part without rewriting authored content-type entries. */
-import { OOXML_NS } from "@stll/docx-utils";
+import { OOXML_NS } from "@stll/docx-core/xml/namespaces";
 
 import { resolvePackageRelationshipTarget } from "./packageParts";
 import { spliceXml } from "./selectiveXmlPatch";

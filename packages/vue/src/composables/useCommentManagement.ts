@@ -16,7 +16,15 @@
  */
 
 import type { EditorView } from "prosemirror-view";
-import { computed, type ComputedRef, type Ref, ref, toRaw, watch } from "vue";
+import {
+  computed,
+  type ComputedRef,
+  type Ref,
+  ref,
+  shallowRef,
+  toRaw,
+  watch,
+} from "vue";
 
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
@@ -32,6 +40,15 @@ import {
   seedCommentAllocator,
 } from "@stll/folio-core/prosemirror/commentIdAllocator";
 import { createComment as coreCreateComment } from "@stll/folio-core/prosemirror/commentOps";
+import {
+  type CommentRecords,
+  commentRecordsOf,
+  commentThreadIds,
+  deleteCommentThread,
+  editCommentRecords,
+  subscribeCommentRecords,
+  syncCommentRecords,
+} from "@stll/folio-core/prosemirror/commentRecords";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 
@@ -48,6 +65,10 @@ export type UseCommentManagementOptions = {
   canonicalTick?: Ref<number>;
   /** Re-run layout after a mutation that changed marks in the document. */
   reLayout: () => void;
+  /** Whether the editor is read-only; user comment edits are then refused. */
+  readOnly: () => boolean;
+  /** Report a refused edit to the host. */
+  onReadOnlyEditAttempt: () => void;
 };
 
 export type UseCommentManagementReturn = {
@@ -114,6 +135,58 @@ export function useCommentManagement(
   }
 
   const isControlled = computed(() => options.commentsProp() !== undefined);
+
+  // The body editor's records, when its state holds them (the default
+  // session). Uncontrolled, they are the list; a controlled prop stays the
+  // list and is written into them, so undo and redo work on the value the
+  // host accepted and report what they restore as a request.
+  const records = shallowRef<Comment[] | null>(null);
+  watch(
+    options.editorView,
+    (view, _previous, onCleanup) => {
+      if (!view) {
+        records.value = null;
+        return;
+      }
+      const mirror = (next: CommentRecords | null) => {
+        records.value = next === null ? null : [...next];
+        return records.value;
+      };
+      mirror(commentRecordsOf(view.state));
+      onCleanup(
+        subscribeCommentRecords(view, (next, origin) => {
+          const list = mirror(next);
+          if (origin === "sync" || list === null) return;
+          markCommentsDirty();
+          options.onCommentsChange(list);
+        }),
+      );
+    },
+    { immediate: true, flush: "sync" },
+  );
+
+  // Records that differ from a controlled prop take it: an edit the host did
+  // not accept is withdrawn, and a newly loaded document takes it too.
+  watch(
+    [() => options.commentsProp(), records],
+    ([requested, current]) => {
+      const view = options.editorView.value;
+      if (requested === undefined || current === null || !view) return;
+      if (JSON.stringify(current) === JSON.stringify(requested)) return;
+      const transaction = syncCommentRecords(view.state, toRaw(requested));
+      if (transaction) view.dispatch(transaction);
+    },
+    { flush: "post", deep: true },
+  );
+
+  /** An edit to the records, when the editor holds them. */
+  function editRecords(next: Comment[]): boolean {
+    const view = options.editorView.value;
+    if (!view || commentRecordsOf(view.state) === null) return false;
+    const transaction = editCommentRecords(view.state, toRaw(next));
+    if (transaction) view.dispatch(transaction);
+    return true;
+  }
   const canonicalComments = computed(() => {
     void options.canonicalTick?.value;
     return options.editor?.getCanonicalComments() ?? null;
@@ -123,7 +196,7 @@ export function useCommentManagement(
       canonicalComments.value ??
       (isControlled.value
         ? (options.commentsProp() ?? [])
-        : internalComments.value),
+        : (records.value ?? internalComments.value)),
   );
 
   const lastCanonicalComments = ref<string | null>(null);
@@ -201,6 +274,8 @@ export function useCommentManagement(
       comments: toRaw(next),
     });
     if (result !== null && result !== undefined) return true;
+    // The records report the edit themselves.
+    if (editRecords(next)) return false;
     if (!isControlled.value) internalComments.value = next;
     options.onCommentsChange(next);
     return false;
@@ -244,7 +319,23 @@ export function useCommentManagement(
     // Reset to the loaded document's comments (empty when it has none) so a
     // document swap does not leak the previous document's comments into the
     // sidebar. Matches React, which clears comments on document reset.
-    setComments(bodyComments && bodyComments.length > 0 ? bodyComments : []);
+    const loaded = bodyComments && bodyComments.length > 0 ? bodyComments : [];
+    const view = options.editorView.value;
+    if (view && commentRecordsOf(view.state) !== null) {
+      // The loaded state brought its records; writing them is no edit.
+      const transaction = syncCommentRecords(view.state, loaded);
+      if (transaction) view.dispatch(transaction);
+      options.onCommentsChange(loaded);
+      return;
+    }
+    setComments(loaded);
+  }
+
+  /** The legacy session has no read-only gate of its own for comment state. */
+  function refuseReadOnly(): boolean {
+    if (!options.readOnly()) return false;
+    options.onReadOnlyEditAttempt();
+    return true;
   }
 
   function handleReply(parentId: number, text: string): void {
@@ -255,6 +346,7 @@ export function useCommentManagement(
       anchor: { kind: "reply", parentId },
     });
     if (result !== null && result !== undefined) return;
+    if (refuseReadOnly()) return;
     pushComment(createComment(text, parentId));
   }
 
@@ -265,6 +357,7 @@ export function useCommentManagement(
       status: "resolved",
     });
     if (result !== null && result !== undefined) return;
+    if (refuseReadOnly()) return;
     markCommentsDirty();
     setComments(
       comments.value.map((c) =>
@@ -280,6 +373,7 @@ export function useCommentManagement(
       status: "open",
     });
     if (result !== null && result !== undefined) return;
+    if (refuseReadOnly()) return;
     markCommentsDirty();
     setComments(
       comments.value.map((c) =>
@@ -294,15 +388,18 @@ export function useCommentManagement(
       id: commentId,
     });
     if (result !== null && result !== undefined) return;
-    // Drop the comment and any direct replies threaded under it (matches React's
-    // onCommentDelete). The orphaned comment mark left in the doc is pruned at
-    // save time.
+    if (refuseReadOnly()) return;
+    // The thread's record, every reply under it and its anchors go in one
+    // edit (as React's onCommentDelete).
+    const view = options.editorView.value;
+    if (view && commentRecordsOf(view.state) !== null) {
+      const deleted = deleteCommentThread(view.state, commentId);
+      if (deleted) view.dispatch(deleted);
+      return;
+    }
     markCommentsDirty();
-    setComments(
-      comments.value.filter(
-        (c) => c.id !== commentId && c.parentId !== commentId,
-      ),
-    );
+    const thread = commentThreadIds(comments.value, commentId);
+    setComments(comments.value.filter(({ id }) => !thread.has(id)));
   }
 
   function handleTrackedChangeReply(revisionId: number, text: string): void {
@@ -313,6 +410,7 @@ export function useCommentManagement(
       anchor: { kind: "revision", story: "main", revisionId },
     });
     if (result !== null && result !== undefined) return;
+    if (refuseReadOnly()) return;
     pushComment(createComment(text, revisionId));
   }
 

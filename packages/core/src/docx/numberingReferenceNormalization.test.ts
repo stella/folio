@@ -53,7 +53,10 @@ describe("normalizeNumberingReferences", () => {
       numbering: parseNumbering(null),
     });
 
-    expect(result).toEqual({ unnumberedDanglingReferences: 1 });
+    expect(result).toEqual({
+      unnumberedDanglingReferences: 1,
+      danglingNumIds: new Set([2]),
+    });
     const block = documentBody.content.at(0);
     expect(block?.type).toBe("paragraph");
     if (block?.type !== "paragraph") {
@@ -84,7 +87,10 @@ describe("normalizeNumberingReferences", () => {
       numbering: createNumberingMap(NUMBERING),
     });
 
-    expect(result).toEqual({ unnumberedDanglingReferences: 1 });
+    expect(result).toEqual({
+      unnumberedDanglingReferences: 1,
+      danglingNumIds: new Set([7]),
+    });
     expect(documentBody.content.at(0)?.formatting?.numPr).toEqual({
       kind: "none",
     });
@@ -128,7 +134,10 @@ describe("normalizeNumberingReferences", () => {
 
     // The numbering owner resolves the override as a level of its own, so the
     // parse boundary must not unnumber what every reader shows as a list.
-    expect(result).toEqual({ unnumberedDanglingReferences: 0 });
+    expect(result).toEqual({
+      unnumberedDanglingReferences: 0,
+      danglingNumIds: new Set(),
+    });
     expect(documentBody.content.at(0)?.formatting?.numPr).toEqual({
       kind: "reference",
       numId: 8,
@@ -152,7 +161,10 @@ describe("normalizeNumberingReferences", () => {
       numbering: parseNumbering(null),
     });
 
-    expect(result).toEqual({ unnumberedDanglingReferences: 0 });
+    expect(result).toEqual({
+      unnumberedDanglingReferences: 0,
+      danglingNumIds: new Set(),
+    });
     expect(documentBody.content.at(0)?.formatting?.numPr).toEqual({
       kind: "none",
     });
@@ -181,7 +193,10 @@ describe("normalizeNumberingReferences", () => {
       numbering: parseNumbering(null),
     });
 
-    expect(result).toEqual({ unnumberedDanglingReferences: 1 });
+    expect(result).toEqual({
+      unnumberedDanglingReferences: 1,
+      danglingNumIds: new Set([2]),
+    });
     expect(
       documentBody.comments?.at(0)?.content.at(0)?.formatting?.numPr,
     ).toEqual({
@@ -272,7 +287,10 @@ describe("normalizeStyleNumberingReferences", () => {
       numbering: createNumberingMap(NUMBERING),
     });
 
-    expect(result).toEqual({ unnumberedStyleIds: ["Dangling"] });
+    expect(result).toEqual({
+      unnumberedStyleIds: ["Dangling"],
+      danglingNumIds: new Set([4]),
+    });
     expect(styles.at(0)?.pPr?.numPr).toEqual({ kind: "none" });
   });
 
@@ -290,7 +308,10 @@ describe("normalizeStyleNumberingReferences", () => {
       numbering: createNumberingMap(NUMBERING),
     });
 
-    expect(result).toEqual({ unnumberedStyleIds: ["NoAbstract"] });
+    expect(result).toEqual({
+      unnumberedStyleIds: ["NoAbstract"],
+      danglingNumIds: new Set([7]),
+    });
     expect(styles.at(0)?.pPr?.numPr).toEqual({ kind: "none" });
   });
 
@@ -314,7 +335,10 @@ describe("normalizeStyleNumberingReferences", () => {
       numbering: createNumberingMap(NUMBERING),
     });
 
-    expect(result).toEqual({ unnumberedStyleIds: [] });
+    expect(result).toEqual({
+      unnumberedStyleIds: [],
+      danglingNumIds: new Set(),
+    });
     expect(styles.at(0)?.pPr?.numPr).toEqual({ kind: "none" });
     expect(styles.at(1)?.pPr?.numPr).toEqual({
       kind: "reference",
@@ -338,7 +362,10 @@ describe("normalizeStyleNumberingReferences", () => {
       numbering: undefined,
     });
 
-    expect(result).toEqual({ unnumberedStyleIds: ["Dangling"] });
+    expect(result).toEqual({
+      unnumberedStyleIds: ["Dangling"],
+      danglingNumIds: new Set([1]),
+    });
     expect(styles.at(0)?.pPr?.numPr).toEqual({ kind: "none" });
   });
 

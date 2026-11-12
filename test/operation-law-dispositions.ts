@@ -39,6 +39,7 @@ export const OPERATION_LAW_DISPOSITIONS = {
   setParagraphReview: "holds",
   replaceInline: "holds",
   resolveRevision: "holds",
+  setRevisionInfo: "holds",
   insertTable: "holds",
   deleteTable: "holds",
   setContainerBlocks: "holds",

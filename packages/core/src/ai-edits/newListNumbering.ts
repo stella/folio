@@ -11,18 +11,24 @@ import { panic } from "better-result";
  * defines it in the saved package (see `docx/listNumberingInstances.ts`).
  */
 
+import type { NewListInstance } from "@stll/docx-core/ops";
+
 import type { FolioContentStatedNumbering } from "../compare/content-types";
 import {
   type ListKind,
   mintListInstance,
 } from "../docx/listNumberingInstances";
-import type { NumberingIdsInUse } from "../docx/numberingIds";
+import {
+  NO_NUMBERING_IDS_IN_USE,
+  type NumberingIdsInUse,
+} from "../docx/numberingIds";
 import { createNumberingMap, type NumberingMap } from "../docx/numberingParser";
 import { paragraphNumberingReference } from "../docx/numberingReference";
-import type { NumberingDefinitions } from "../types/document";
+import type { Document, NumberingDefinitions } from "../types/document";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditOperation,
+  FolioAIListKind,
   FolioAIListNumbering,
   FolioAINewListReference,
   FolioAIResolvedEditOperation,
@@ -274,5 +280,36 @@ export const resolveNewListOperations = (
     operations: resolved,
     numbering:
       minted && definitions ? createNumberingMap(definitions) : numbering,
+  };
+};
+
+/** A list one operation starts: its instance id and the definitions it adds. */
+export type MintedList = { numId: number; newList: NewListInstance };
+
+/**
+ * Mints new lists for one batch of a canonical session, each after the ones
+ * before it. The document is read at the first mint, so a batch that starts
+ * no list never reads it.
+ */
+export const createBatchListMinter = (document: () => Document) => {
+  let definitions: Document["package"]["numbering"] | null = null;
+  return (format: FolioAIListKind): MintedList => {
+    definitions ??= document().package.numbering;
+    const minted = mintListInstance(
+      definitions,
+      { kind: format },
+      NO_NUMBERING_IDS_IN_USE,
+    );
+    definitions = minted.definitions;
+    const num =
+      minted.definitions.nums.find(({ numId }) => numId === minted.numId) ??
+      panic("A minted list is missing its instance.");
+    const abstractNum = minted.definitions.abstractNums.find(
+      ({ abstractNumId }) => abstractNumId === num.abstractNumId,
+    );
+    return {
+      numId: minted.numId,
+      newList: { num, ...(abstractNum === undefined ? {} : { abstractNum }) },
+    };
   };
 };

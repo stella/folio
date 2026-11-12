@@ -1,7 +1,13 @@
 /** Whole-paragraph deletion within one block list, including its final paragraph. */
 import { Result } from "better-result";
 
-import type { Document, Paragraph, ParagraphContent } from "../model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  ParagraphContent,
+  Table,
+} from "../model/document";
 import {
   blockListAt,
   sameBlockList,
@@ -13,13 +19,17 @@ import type { DocumentEdit } from "./edits";
 import { freshenIdentities } from "./identity";
 import { identityKeysIn, idKey, packageIdentityKeys } from "./ids";
 import { asParagraphContent, type InlineNode } from "./leaves";
+import { asMoveHalf } from "./moves";
 import {
   isRangeBoundary,
   type ParagraphContentVerdict,
   paragraphHoldsContent,
   paragraphLength,
 } from "./offsets";
-import { withBoundariesOutsideDeletion } from "./rangeBoundaries";
+import {
+  isBlockBoundary,
+  withBoundariesOutsideDeletion,
+} from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
@@ -85,6 +95,108 @@ const DIRECT_DELETION_STAMP: RevisionStamp = {
   date: "",
 };
 
+/** The paragraph a table offers a mark running into it, and the tables on its path. */
+export type TableRunInTarget = {
+  receiver: Paragraph;
+  tables: readonly Table[];
+};
+
+/**
+ * The paragraph that receives `paragraph`'s content when its mark runs into
+ * the following `table`: the first paragraph of its first cell, through
+ * nested tables, where no pending row or cell change stands in the way.
+ */
+export const paragraphTableRunInTarget = (
+  paragraph: Paragraph,
+  table: Table,
+): TableRunInTarget | undefined => {
+  if (paragraph.sectionProperties !== undefined) return undefined;
+  const tables: Table[] = [];
+  let current = table;
+  for (;;) {
+    const row = current.rows.at(0);
+    const cell = row?.cells.at(0);
+    if (!row || !cell) return undefined;
+    if (
+      row.structuralChange?.type === "tableRowInsertion" ||
+      row.structuralChange?.type === "tableRowDeletion" ||
+      cell.structuralChange !== undefined
+    ) {
+      return undefined;
+    }
+    tables.push(current);
+    const target = cell.content.at(0);
+    if (target?.type === "paragraph")
+      return target.sectionProperties === undefined
+        ? { receiver: target, tables }
+        : undefined;
+    if (target?.type !== "table") return undefined;
+    current = target;
+  }
+};
+
+/**
+ * Whether the mark of `paragraph`, which `table` follows in `blocks`, can be
+ * resolved away: the block list goes on ending with a paragraph, and the
+ * table has a paragraph to receive what runs in. A tracked deletion before a
+ * table is admitted only where this holds, so each decision on it resolves.
+ */
+export const markBeforeTableResolves = ({
+  blocks,
+  paragraph,
+  table,
+}: {
+  blocks: readonly BlockContent[];
+  paragraph: Paragraph;
+  table: Table;
+}): boolean =>
+  blocks.at(-1)?.type === "paragraph" &&
+  paragraphTableRunInTarget(paragraph, table) !== undefined;
+
+/**
+ * Whether `block`, following a paragraph, is a block that paragraph's mark
+ * neither joins nor runs into: a block content control, custom XML or a
+ * preserved block. Resolving the mark away removes the paragraph only when
+ * nothing is left in it ({@link paragraphMarkOutcome}).
+ */
+export const isOpaqueFollower = (block: BlockContent | undefined): boolean =>
+  block !== undefined &&
+  block.type !== "paragraph" &&
+  block.type !== "table" &&
+  !isBlockBoundary(block);
+
+/** The paragraph a block offers a mark running into it. */
+export type BlockRunInTarget = { receiver: Paragraph };
+
+/**
+ * The paragraph that receives `paragraph`'s content when its mark runs into
+ * the following `block`, a block content control or custom XML: its first
+ * paragraph, through nested ones. A control whose content is locked, or one
+ * that starts with anything else, offers none.
+ */
+export const paragraphBlockRunInTarget = (
+  paragraph: Paragraph,
+  block: BlockContent,
+): BlockRunInTarget | undefined => {
+  if (paragraph.sectionProperties !== undefined) return undefined;
+  if (block.type !== "blockSdt" && block.type !== "blockCustomXml")
+    return undefined;
+  if (
+    block.type === "blockSdt" &&
+    (block.properties.lock === "contentLocked" ||
+      block.properties.lock === "sdtContentLocked")
+  )
+    return undefined;
+  const first = block.content.at(0);
+  if (first?.type !== "paragraph")
+    return first === undefined
+      ? undefined
+      : paragraphBlockRunInTarget(paragraph, first);
+  return first.sectionProperties === undefined
+    ? { receiver: first }
+    : undefined;
+};
+
 type BlockDeletionOptions = {
   document: Document;
   op: DeleteBlocksOp;
@@ -98,23 +210,36 @@ export const paragraphMarkOutcome = ({
   markWasAdded,
   containerStillEndsWithParagraph,
   followingTableCanReceiveRunIn,
+  holdsContentOnceAccepted = holdsContent,
+  followingBlockCanReceiveRunIn = false,
   needsFollowingCommentHost = false,
   tableRemovalIsTrackable = true,
   removedSectionProperties = false,
   precedingSectionOwner = "unavailable",
   followingHasSectionProperties = false,
 }: {
-  follows: "paragraph" | "table" | "nothing";
+  /** `block` is a follower {@link isOpaqueFollower} admits. */
+  follows: "paragraph" | "table" | "block" | "nothing";
   /** From {@link paragraphHoldsContent} or the editor's view of the same rule, never re-derived. */
   holdsContent: ParagraphContentVerdict;
   markWasAdded: boolean;
   /**
-   * Read only when nothing follows: whether the block BEFORE this paragraph,
-   * which becomes the container's last block once this one is removed, is a
-   * paragraph. Never the container's current last child, which is this one.
+   * Read when nothing or a block follows. When nothing does: whether the
+   * block BEFORE this paragraph, which becomes the container's last block
+   * once this one is removed, is a paragraph; never the container's current
+   * last child, which is this one. When a block does: whether the container's
+   * last block is a paragraph.
    */
   containerStillEndsWithParagraph: boolean;
   followingTableCanReceiveRunIn: boolean;
+  /**
+   * Read when a block follows: whether the paragraph still holds content
+   * once every change in it is accepted, from
+   * {@link paragraphHoldsContentOnceAccepted}.
+   */
+  holdsContentOnceAccepted?: ParagraphContentVerdict;
+  /** Read when a block follows: whether it offers a {@link paragraphBlockRunInTarget}. */
+  followingBlockCanReceiveRunIn?: boolean;
   needsFollowingCommentHost?: boolean;
   tableRemovalIsTrackable?: boolean;
   removedSectionProperties?: boolean;
@@ -157,6 +282,21 @@ export const paragraphMarkOutcome = ({
           : { kind: "remove", sectionDestination };
       }
       return followingTableCanReceiveRunIn
+        ? { kind: "run-in", sectionDestination }
+        : { kind: "keep", sectionDestination };
+    case "block":
+      // An accepted deletion's paragraph goes once nothing is left in it,
+      // and what accepting will take from it still runs into the block, so
+      // resolving its content before or after its mark ends the same. What
+      // stays once accepted keeps the paragraph, without its mark.
+      if (removalWouldDropSection)
+        return { kind: "keep", sectionDestination: "none" };
+      if (markWasAdded) return { kind: "keep", sectionDestination };
+      if (!holdsContent)
+        return containerStillEndsWithParagraph
+          ? { kind: "remove", sectionDestination }
+          : { kind: "keep", sectionDestination };
+      return !holdsContentOnceAccepted && followingBlockCanReceiveRunIn
         ? { kind: "run-in", sectionDestination }
         : { kind: "keep", sectionDestination };
     case "nothing":
@@ -223,7 +363,27 @@ export const deleteBlocks = ({
   const list = blockListAt(body.content, first.list);
   const following = list[last.index + 1];
   const terminal = last.index === list.length - 1;
-  if (following?.type !== "paragraph" && !terminal) {
+  // Tracked, a paragraph a table or another block follows loses its words
+  // and its own mark, as the default editor records it; accepting removes
+  // it, which needs what resolving that mark needs.
+  const trackedBeforeTable =
+    op.revision !== undefined &&
+    following?.type === "table" &&
+    markBeforeTableResolves({
+      blocks: list,
+      paragraph: last.paragraph,
+      table: following,
+    });
+  const trackedBeforeBlock =
+    op.revision !== undefined &&
+    isOpaqueFollower(following) &&
+    list.at(-1)?.type === "paragraph";
+  if (
+    following?.type !== "paragraph" &&
+    !terminal &&
+    !trackedBeforeTable &&
+    !trackedBeforeBlock
+  ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "Deletion requires a following paragraph or a container-final paragraph.",
@@ -358,7 +518,30 @@ export const deleteBlocks = ({
       },
     });
   }
-  if (affected.some(({ pPrMark }) => pPrMark !== undefined)) {
+  const revision = op.revision;
+  // The paragraphs whose own mark the tracked deletion records deleted.
+  const losesMark = (paragraph: Paragraph) =>
+    !terminal || paragraph !== last.paragraph;
+  // A mark the same author's pending insertion or move added goes outright,
+  // joining its paragraph to the next one, as deleting over one's own
+  // insertion removes it; no deletion of an addition is recorded. Before a
+  // table, the last paragraph has none to join and keeps the refusal.
+  const joinsNext = new Set(
+    affected.filter(
+      (paragraph) =>
+        losesMark(paragraph) &&
+        (paragraph !== last.paragraph || following?.type === "paragraph") &&
+        (paragraph.pPrMark?.kind === "ins" ||
+          paragraph.pPrMark?.kind === "moveTo") &&
+        paragraph.pPrMark.info.author === revision.author,
+    ),
+  );
+  if (
+    affected.some(
+      (paragraph) =>
+        paragraph.pPrMark !== undefined && !joinsNext.has(paragraph),
+    )
+  ) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
       "Deletion would overwrite a paragraph review record.",
@@ -382,12 +565,25 @@ export const deleteBlocks = ({
           "The selected paragraph content cannot be tracked.",
         );
       if (form.kind === "deleted")
-        next = { ...paragraph, content: form.content };
+        next = {
+          ...paragraph,
+          content:
+            op.move === true
+              ? asMoveHalf(form.content, op.revision.id, "from")
+              : form.content,
+        };
     }
-    if (!terminal || paragraph !== last.paragraph) {
+    if (joinsNext.has(paragraph)) {
+      const { pPrMark: _removed, ...unmarked } = next;
+      next = unmarked;
+    } else if (losesMark(paragraph)) {
       next = {
         ...next,
-        pPrMark: { kind: "del", info: stampInfo(op.revision) },
+        // A move's source marks its paragraph moved from, not deleted.
+        pPrMark: {
+          kind: op.move === true ? "moveFrom" : "del",
+          info: stampInfo(op.revision),
+        },
       };
     } else if (!sameParagraphProperties(next.formatting, survivor.formatting)) {
       const review = reviewFieldsOf(next);
@@ -429,22 +625,42 @@ export const deleteBlocks = ({
         "Paragraph deletion received an invalid revision id.",
       );
     case "fresh": {
-      const blocks =
+      const marked =
         following?.type === "paragraph"
           ? [...fresh.paragraphs, following]
           : fresh.paragraphs;
+      const original =
+        following?.type === "paragraph" ? [...affected, following] : affected;
+      const changed =
+        following?.type === "paragraph" ? [...tracked, following] : tracked;
+      // Each paragraph whose mark went joins the one after it, which keeps
+      // its own identity and properties.
+      const blocks: Paragraph[] = [];
+      const removed: string[] = [];
+      const modified = new Set<string>();
+      let carried: ParagraphContent[] | undefined;
+      for (const [index, paragraph] of marked.entries()) {
+        const source = original[index];
+        if (source !== undefined && joinsNext.has(source)) {
+          carried = [...(carried ?? []), ...paragraph.content];
+          removed.push(paragraph.paraId ?? "");
+          continue;
+        }
+        const joined =
+          carried === undefined
+            ? paragraph
+            : { ...paragraph, content: [...carried, ...paragraph.content] };
+        if (carried !== undefined || changed[index] !== source)
+          modified.add(joined.paraId ?? "");
+        carried = undefined;
+        blocks.push(joined);
+      }
       const result = applyOps(document, [replacement(blocks)]);
       if (result.isErr())
         return refuse(result.error.reason, result.error.message);
       return Result.ok({
         ...result.value,
-        touched: {
-          modified: tracked
-            .filter((paragraph, index) => paragraph !== affected[index])
-            .map(({ paraId }) => paraId ?? ""),
-          inserted: [],
-          removed: [],
-        },
+        touched: { modified: [...modified], inserted: [], removed },
       });
     }
     default: {

@@ -4,6 +4,7 @@
 
 ```ts
 
+import { Attrs } from 'prosemirror-model';
 import { ColorValue } from '@stll/docx-core/model';
 import { Command } from 'prosemirror-state';
 import { EditorState } from 'prosemirror-state';
@@ -760,6 +761,8 @@ export type ToProseDocOptions = {
     numbering?: import__stll_docx_core_model.NumberingDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
     warn?: ParseContext["warn"];
+    blockCache?: ProjectionBlockCache;
+    textBoxGroupSalt?: string;
 };
 
 // @public

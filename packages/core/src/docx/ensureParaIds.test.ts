@@ -237,6 +237,53 @@ describe("ensureParaIds", () => {
     expect(collectTextIds(xml)[0]).toBe(id);
   });
 
+  test("a paraId that is not eight hex digits is replaced, and the parser reads the replacement", async () => {
+    const input = await buildDocx({
+      "word/document.xml": documentXml(
+        PARA("Malformed", ' w14:paraId="NOTHEX" w14:textId="NOTHEX"'),
+        ID_NS,
+      ),
+    });
+
+    const result = await ensureParaIds(input);
+    expect(result.alreadyComplete).toBe(false);
+    expect(result.assigned).toBe(1);
+
+    const id = collectIds(await getPart(result.docx, "word/document.xml"))[0];
+    expect(id).toMatch(/^[0-9A-F]{8}$/u);
+    const { docx } = result;
+    const parsed = await parseDocx(
+      docx.buffer.slice(docx.byteOffset, docx.byteOffset + docx.byteLength),
+      { detectVariables: false, preloadFonts: false },
+    );
+    const paragraph = parsed.package.document.content[0];
+    expect(paragraph?.type === "paragraph" && paragraph.paraId).toBe(id!);
+  });
+
+  test("covers a header that the document relationships place at a custom path", async () => {
+    const headerPath = "word/customHeaders/defaultHeader.xml";
+    const input = await buildDocx({
+      "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="customHeaders/defaultHeader.xml"/></Relationships>`,
+      "word/document.xml": documentXml(
+        PARA("Body", ' w14:paraId="1A2B3C4D" w14:textId="1A2B3C4D"'),
+        ID_NS,
+      ),
+      [headerPath]: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr ${W_NS}>${PARA("Header text")}</w:hdr>`,
+    });
+
+    const result = await ensureParaIds(input);
+    expect(result.alreadyComplete).toBe(false);
+    expect(result.assigned).toBe(1);
+    const headerIds = collectIds(await getPart(result.docx, headerPath));
+    expect(headerIds).toHaveLength(1);
+    expect(headerIds[0]).not.toBe("1A2B3C4D");
+
+    const again = await ensureParaIds(result.docx);
+    expect(again.alreadyComplete).toBe(true);
+  });
+
   test("reassigns later duplicates; the first occurrence keeps the id", async () => {
     const input = await buildDocx({
       "word/document.xml": documentXml(

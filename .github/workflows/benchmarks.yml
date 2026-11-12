@@ -31,9 +31,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -50,7 +51,11 @@ jobs:
 
   benchmarks:
     name: Benchmarks
+    # Results upload under the repository's CodSpeed identity, so only main
+    # publishes them. Scale complexity above runs on any ref.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     # Least privilege: read the checkout, and mint an OIDC token for CodSpeed.
     permissions:
       contents: read
@@ -60,9 +65,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          binary-cache: read-only
 
       # CodSpeed instruments Node, so the bench files must also run there. Bun
       # only installs the dependency tree.
@@ -79,7 +85,7 @@ jobs:
       # tsx is a pinned dev dependency, so this runs the committed version and
       # never resolves a fresh one from the registry at benchmark time.
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@78102a468f96d8e0ccb92d0ec49425753fc42062 # v5.6.0
+        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
         env:
           FOLIO_BENCH_CORPUS: ${{ inputs.corpus || 'fast' }}
         with:

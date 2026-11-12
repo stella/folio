@@ -72,12 +72,12 @@ import {
 } from "@stll/folio-core/controller/folioEditor";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
-import { setDocumentBodyComments } from "@stll/folio-core/docx/canonicalModel";
 import {
   CanonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
@@ -200,6 +200,16 @@ import {
   CLIPBOARD_READ_ERROR_EVENT,
   pastePlainTextSlice,
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
+import {
+  clearPendingComment,
+  commentIdsNamedIn,
+  commentRecordsOf,
+  commentThreadIds,
+  commitCommentThread,
+  deleteCommentThread,
+  markPendingComment,
+  recordingCommentsView,
+} from "@stll/folio-core/prosemirror/commentRecords";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   executeEditorCommand,
@@ -259,6 +269,7 @@ import {
 } from "@stll/folio-core/utils/outlineDepth";
 import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 import { resolveOutlineHeadings } from "@stll/folio-core/utils/outlineHeadings";
+import { paintedStartSelector } from "@stll/folio-core/utils/paintedPositions";
 import type { TableAction } from "@stll/folio-core/utils/tableOperations";
 import { readBlobText } from "@stll/folio-core/utils/textEncoding";
 import {
@@ -266,25 +277,24 @@ import {
   twipsToPixels,
 } from "@stll/folio-core/utils/units";
 
+import { useEqualState } from "../hooks/keepEqual";
 import { useDocumentHistory } from "../hooks/useHistory";
 import { useTableSelection } from "../hooks/useTableSelection";
 import { useWheelZoom } from "../hooks/useWheelZoom";
 import { PagedEditor, VIEWPORT_PADDING_TOP } from "../paged-editor/PagedEditor";
-import type { PagedEditorRef } from "../paged-editor/PagedEditor";
+import type {
+  DocumentChange,
+  PagedEditorRef,
+} from "../paged-editor/PagedEditor";
 import { DEFAULT_COMPONENTS, FolioUIProvider } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
 import { resolveCommentCreationRange } from "./commentAnchors";
 import {
-  applyCommentMarkRange,
-  collectCommentIdsFromSources,
   countOpenCommentThreads,
   EMPTY_ANCHOR_POSITIONS,
   findSelectionYPosition,
   getCommentAuthorKey,
   getFallbackCommentYPosition,
-  PENDING_COMMENT_ID,
-  pruneOrphanedComments,
-  removePendingCommentMarkRange,
 } from "./commentsHelpers";
 import type { TrackedChangeEntry } from "./CommentsSidebar";
 import { ContentControlWidgetsOverlay } from "./ContentControlWidgetsOverlay";
@@ -395,24 +405,11 @@ const preventMouseDownDefault = (event: React.MouseEvent) =>
 type LiveDocumentOperationUndoEntry = {
   undoHandle: FolioDocumentOperationUndoHandle;
   afterState: EditorView["state"];
-  commentsBefore: Comment[];
+  /** The comment records the batch ended on; a host may hand back a copy. */
   commentsAfterJson: string;
 };
 
 let documentOperationUndoHandleCursor = Date.now();
-
-/**
- * The comments a batch's applied operations own. A run whose result the
- * save-time check refused allocated comments nothing in the document names;
- * they stay out of the comment list.
- */
-const appliedOperationComments = (
-  created: readonly Comment[],
-  applied: readonly { commentId?: number }[],
-): Comment[] => {
-  const appliedIds = new Set(applied.map(({ commentId }) => commentId));
-  return created.filter((comment) => appliedIds.has(comment.id));
-};
 
 function isDisplayMode(value: unknown): value is DisplayMode {
   return (
@@ -472,7 +469,9 @@ function areTableContextsEqual(
   }
   return (
     a.isInTable === b.isInTable &&
-    a.table === b.table &&
+    // Only the table's attributes are read (the properties dialog): typing in
+    // a cell makes a new table node with the same attributes.
+    a.table?.attrs === b.table?.attrs &&
     a.tablePos === b.tablePos &&
     a.rowIndex === b.rowIndex &&
     a.columnIndex === b.columnIndex &&
@@ -524,8 +523,6 @@ function areActiveTrackedChangesEqual(
     a.type === b.type &&
     a.author === b.author &&
     a.date === b.date &&
-    a.from === b.from &&
-    a.to === b.to &&
     a.heldByLock.accept === b.heldByLock.accept &&
     a.heldByLock.reject === b.heldByLock.reject
   );
@@ -748,20 +745,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     );
     // Document outline sidebar state
     const [showOutline, setShowOutline] = useState(showOutlineProp);
-    const [outlineHeadings, setHeadingInfos] = useState<HeadingInfo[]>([]);
+    const [outlineHeadings, setHeadingInfos] = useEqualState<HeadingInfo[]>([]);
 
-    const [, setTrackedChangeEntries] = useState<TrackedChangeEntry[]>([]);
+    const [, setTrackedChangeEntries] = useEqualState<TrackedChangeEntry[]>([]);
     // Mirrors the tracked-change entries so the sidebar accept/reject handlers
     // can resolve a specific `revisionId` from a (from, to) range without
     // subscribing to the state value (avoids extra re-renders / dep churn).
     const trackedChangesRef = useRef<TrackedChangeEntry[]>([]);
-    const setTrackedChanges = useCallback((entries: TrackedChangeEntry[]) => {
-      trackedChangesRef.current = entries;
-      setTrackedChangeEntries(entries);
-    }, []);
-    const [anchorPositions, setAnchorPositions] = useState<Map<string, number>>(
-      EMPTY_ANCHOR_POSITIONS,
+    const setTrackedChanges = useCallback(
+      (entries: TrackedChangeEntry[]) => {
+        trackedChangesRef.current = entries;
+        setTrackedChangeEntries(entries);
+      },
+      [setTrackedChangeEntries],
     );
+    const [anchorPositions, setAnchorPositions] = useEqualState<
+      Map<string, number>
+    >(EMPTY_ANCHOR_POSITIONS);
 
     const {
       editingMode,
@@ -1092,6 +1092,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // the document loads; readers of its state, such as the outline's heading
     // collection, re-run when it appears.
     const [bodyViewEpoch, setBodyViewEpoch] = useState(0);
+    const [bodyEditorView, setBodyEditorView] = useState<EditorView | null>(
+      null,
+    );
     // The view starts from the mode the editor mounted with, and it is made at
     // the first click or replaced by a new document. Whatever was chosen since
     // has had no view to reach, so a view takes the mode as it appears.
@@ -1110,11 +1113,20 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (view) {
           syncSuggestionMode(view);
           syncCanonicalMode();
+          // A canonical session holds its own copy of the loaded document:
+          // hold that copy as the model from the start, so the document state
+          // (and the styles layout reads from it) is the session's from the
+          // first pass rather than from the first settled edit.
+          const model = pagedEditorRef.current?.readDocumentModel();
+          if (model && model !== history.state) {
+            history.reset(model as Document);
+          }
         }
         reportEditorViewReady(view);
+        setBodyEditorView(view);
         setBodyViewEpoch((epoch) => epoch + 1);
       },
-      [reportEditorViewReady, syncCanonicalMode, syncSuggestionMode],
+      [history, reportEditorViewReady, syncCanonicalMode, syncSuggestionMode],
     );
 
     // Outline headings follow completed layouts: each pass collects the
@@ -1146,7 +1158,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       };
       refresh(pagedEditor.getLayout());
       return pagedEditor.getEditor().on("layoutComplete", refresh);
-    }, [showOutline, bodyViewEpoch]);
+    }, [showOutline, bodyViewEpoch, setHeadingInfos]);
 
     // Refs
 
@@ -1293,6 +1305,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       getCommentsDirty,
       setCommentsDirty,
       resetLoadedComments,
+      resetComments,
       showCommentsSidebar,
       setShowCommentsSidebar,
       setVisibleCommentAuthors,
@@ -1318,6 +1331,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       commentsProp,
       onCommentsChange,
       committedComments: canonicalComments,
+      bodyView: bodyEditorView,
     });
     const comments = canonicalComments ?? legacyComments;
     const commentDraftMode = usesCanonicalSession(
@@ -1376,10 +1390,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       onZoomChange: setZoomWithViewportAnchor,
       keyboardShortcuts: "none",
     });
-    const [bodyHistoryAvailability, setBodyHistoryAvailability] = useState({
-      canRedo: false,
-      canUndo: false,
-    });
+    const [bodyHistoryAvailability, setBodyHistoryAvailability] =
+      useEqualState<{
+        canRedo: boolean;
+        canUndo: boolean;
+      }>({
+        canRedo: false,
+        canUndo: false,
+      });
     const [activeNoteStory, setActiveNoteStory] = useState<NoteStoryKey | null>(
       null,
     );
@@ -1402,7 +1420,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           ? prev
           : { canUndo, canRedo },
       );
-    }, []);
+    }, [setBodyHistoryAvailability]);
 
     // Header/footer editing state + content resolution + mutation callbacks
     const {
@@ -1670,7 +1688,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         }
         setCommentsDirty(false);
         resetLoadedComments();
-        setComments([]);
+        resetComments();
         setTrackedChanges([]);
         setVisibleCommentAuthors(null);
         setActiveCommentId(null);
@@ -1690,16 +1708,18 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       }, [
         setCommentsDirty,
         resetLoadedComments,
+        resetComments,
         setActiveCommentId,
         setAddCommentYPosition,
         setCommentSelectionRange,
-        setComments,
         setTrackedChanges,
         setFloatingCommentBtn,
         setHfEditPosition,
         setIsAddingComment,
         setShowCommentsSidebar,
         setVisibleCommentAuthors,
+        setHeadingInfos,
+        setAnchorPositions,
       ]),
       setDocumentLoadState: useCallback((documentLoad: DocumentLoadState) => {
         setState((prev) => ({ ...prev, documentLoad }));
@@ -1775,31 +1795,43 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     }, [syncSuggestionMode]);
 
     // Handle document change
-    const handleDocumentChange = useCallback(
-      (newDocument: Document) => {
+    /**
+     * Take a change: hold the editor's document model as the document state,
+     * hand the host its own document. A document built outside the paged
+     * editor's notification arrives as `built` and is the model; in a
+     * canonical session the host gets a copy of it, as it does of the model.
+     */
+    const applyDocumentChange = useCallback(
+      (change: DocumentChange | { built: Document }) => {
         const canonical = usesCanonicalSession(
           experimentalSession,
           CANONICAL_GAP.authorityRouting,
         );
-        const currentComments = commentsRef.current;
-        const documentWithComments = canonical
-          ? newDocument
-          : {
-              ...newDocument,
-              package: {
-                ...newDocument.package,
-                document: {
-                  ...newDocument.package.document,
-                  comments: currentComments,
-                },
+        if (canonical) {
+          // The session never writes a document it has handed out, and the
+          // editor only reads its document state: one model, held as is.
+          if ("built" in change) {
+            pushDocument(change.built);
+            onChange?.(cloneDocumentWithParagraphPropertySources(change.built));
+          } else {
+            pushDocument(change.model as Document);
+            onChange?.(change.forHost);
+          }
+        } else {
+          const forHost = "built" in change ? change.built : change.forHost;
+          const documentWithComments = {
+            ...forHost,
+            package: {
+              ...forHost.package,
+              document: {
+                ...forHost.package.document,
+                comments: commentsRef.current,
               },
-            };
-        pushDocument(documentWithComments);
-        onChange?.(
-          canonical
-            ? cloneDocumentWithParagraphPropertySources(documentWithComments)
-            : documentWithComments,
-        );
+            },
+          };
+          pushDocument(documentWithComments);
+          onChange?.(documentWithComments);
+        }
         // Re-extract tracked changes after document change (debounced to avoid
         // full-document walk on every keystroke in suggestion mode)
         if (extractTrackedChangesTimerRef.current) {
@@ -1819,6 +1851,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         commentsRef,
         experimentalSession,
       ],
+    );
+    /** A document changed outside the paged editor's own notification. */
+    const handleDocumentChange = useCallback(
+      (newDocument: Document) => applyDocumentChange({ built: newDocument }),
+      [applyDocumentChange],
     );
 
     const buildCurrentDocument = useCallback(() => {
@@ -1890,28 +1927,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         flushBag(doc.package.headers);
         flushBag(doc.package.footers);
       }
-      // Drop comment threads whose anchor text has been edited away. The
-      // in-memory `comments` array can outlive its in-body anchors (PM
-      // removes the mark when its text is deleted, but the array entry
-      // stays put), and serializing the unfiltered array writes
-      // unanchored threads into `comments.xml` that no reader can
-      // resolve.
-      // Collect anchors from every part of the doc that can carry a
-      // comment marker — body, headers, footers, footnotes, endnotes.
-      // A body-only walk would prune legitimate header/footer/note
-      // comments because their anchors live outside `document.content`.
-      const referencedCommentIds = collectCommentIdsFromSources(
-        doc.package.document.content,
-        doc.package.headers,
-        doc.package.footers,
-        doc.package.footnotes,
-        doc.package.endnotes,
-      );
-      setDocumentBodyComments(
-        doc.package.document,
-        pruneOrphanedComments(commentsRef.current, referencedCommentIds),
-      );
-      return doc;
+      // The threads are the host's list; the editor's document carries the
+      // ones it was loaded with.
+      // Uncontrolled, the list mirrors the editor's records; controlled, it
+      // is the host's accepted value.
+      const editorDoc = pagedEditorRef.current?.getView()?.state.doc;
+      return withHostCommentThreads(doc, commentsRef.current, {
+        anchoredInEditor: editorDoc ? commentIdsNamedIn(editorDoc) : null,
+      });
     }, [commentsRef, experimentalSession]);
 
     const applyCanonicalComment = useCallback(
@@ -2168,9 +2191,18 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         // and active tracked-change at the cursor live in pure helpers so the
         // logic is unit-tested without spinning up a real component.
         const pmImageCtx = view ? detectImageContext(view.state) : null;
-        const trackedChange = view
+        const detectedChange = view
           ? detectActiveTrackedChange(view.state)
           : null;
+        const trackedChange: EditorState["activeTrackedChange"] =
+          detectedChange === null
+            ? null
+            : {
+                type: detectedChange.type,
+                author: detectedChange.author,
+                date: detectedChange.date,
+                heldByLock: detectedChange.heldByLock,
+              };
 
         if (!selectionState) {
           setFloatingCommentBtn(null);
@@ -3487,10 +3519,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               yPos ?? getFallbackCommentYPosition(scrollContainerRef.current);
             setCommentSelectionRange({ from, to });
             if (commentDraftMode === "prosemirror") {
-              const marked = applyCommentMarkRange(
+              const marked = markPendingComment(
                 view,
                 { from, to },
-                PENDING_COMMENT_ID,
                 {
                   selectEnd: true,
                 },
@@ -3876,8 +3907,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const handleEditorError = useCallback(
       (error: Error) => {
         if (CanonicalSessionRefusalError.is(error))
-          // A rule the document states reads as the editor's own message.
-          toast(canonicalRefusalNotice(error.ground, error.message, t));
+          // The user reads the catalog's message; the error goes to onError.
+          toast(canonicalRefusalNotice(error.ground, t));
         onError?.(error);
       },
       [onError, t],
@@ -3990,6 +4021,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             };
           }
 
+          // Suggestions already pending before the batch, as the default
+          // path reads them, so the registry records only the new ones.
+          const activeBeforeCanonical = new Set(
+            getSuggestions(view.state).map((s) => s.suggestionId),
+          );
           const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations(
             {
               undefinedReferences,
@@ -3998,23 +4034,38 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               author: operationAuthor,
             },
           );
-          if (canonical) return canonical;
+          if (canonical) {
+            // A canonical session's suggestions are pending suggestions the
+            // host can export and restore like any other.
+            if (batch.mode === "suggested" && canonical.status === "committed")
+              pendingSuggestionRegistryRef.current.recordApplied({
+                snapshot,
+                story: { type: "main" },
+                operations: batch.operations,
+                applied: canonical.applied,
+                author: operationAuthor,
+                activeSuggestionIds: activeBeforeCanonical,
+              });
+            return canonical;
+          }
           const existingUndoEntry =
             documentOperationUndoEntriesRef.current.at(-1);
           if (
             existingUndoEntry &&
             (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
-              canonicalJson(commentsRef.current) !==
+              canonicalJson(commentRecordsOf(view.state)) !==
                 existingUndoEntry.commentsAfterJson)
           ) {
             documentOperationUndoEntriesRef.current.length = 0;
           }
-          const commentsBefore = commentsRef.current;
           const createdComments: Comment[] = [];
+          // The comments the batch anchors join the records in its own
+          // transaction, so one undo takes both back.
+          const recordingView = recordingCommentsView(view, createdComments);
           const operationView = {
             state: view.state,
             dispatch: (transaction: Parameters<EditorView["dispatch"]>[0]) => {
-              view.dispatch(closeHistory(transaction));
+              recordingView.dispatch(closeHistory(transaction));
               operationView.state = view.state;
             },
           };
@@ -4049,22 +4100,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             });
           }
 
-          const batchComments = appliedOperationComments(
-            createdComments,
-            result.applied,
-          );
-          const commentsAfter =
-            batchComments.length > 0
-              ? [...commentsRef.current, ...batchComments]
-              : commentsRef.current;
-          if (batchComments.length > 0) replaceComments(commentsAfter);
-
           if (result.undoHandle !== null) {
             documentOperationUndoEntriesRef.current.push({
               undoHandle: result.undoHandle,
               afterState: view.state,
-              commentsBefore,
-              commentsAfterJson: canonicalJson(commentsAfter),
+              commentsAfterJson: canonicalJson(commentRecordsOf(view.state)),
             });
           }
 
@@ -4096,7 +4136,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           }
           if (
             !view.state.doc.eq(entry.afterState.doc) ||
-            canonicalJson(commentsRef.current) !== entry.commentsAfterJson
+            canonicalJson(commentRecordsOf(view.state)) !==
+              entry.commentsAfterJson
           ) {
             return {
               status: "rejected",
@@ -4118,7 +4159,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             };
           }
 
-          replaceComments(entry.commentsBefore);
           entries.pop();
           requestAnimationFrame(refreshBodyHistoryAvailability);
           return { status: "undone", undoHandle };
@@ -4141,6 +4181,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             };
           }
 
+          const activeSuggestionIds = new Set(
+            getSuggestions(view.state).map((s) => s.suggestionId),
+          );
           const canonical = getCanonicalApi()?.applyCanonicalDocumentOperations(
             {
               undefinedReferences,
@@ -4153,15 +4196,25 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               author: operationAuthor,
             },
           );
-          if (canonical) return canonical;
+          if (canonical) {
+            // A canonical session's suggestions are pending suggestions the
+            // host can export and restore like any other.
+            if (mode === "suggested" && canonical.status === "committed")
+              pendingSuggestionRegistryRef.current.recordApplied({
+                snapshot,
+                story: { type: "main" },
+                operations,
+                applied: canonical.applied,
+                author: operationAuthor,
+                activeSuggestionIds,
+              });
+            return canonical;
+          }
 
           const createdComments: Comment[] = [];
-          const activeSuggestionIds = new Set(
-            getSuggestions(view.state).map((s) => s.suggestionId),
-          );
           const { applied, skipped } = applyFolioDocumentOperations({
             undefinedReferences,
-            view,
+            view: recordingCommentsView(view, createdComments),
             snapshot,
             batch: {
               version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -4175,17 +4228,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               return comment.id;
             },
           });
-
-          const batchComments = appliedOperationComments(
-            createdComments,
-            applied,
-          );
-          if (batchComments.length > 0) {
-            updateComments((currentComments) => [
-              ...currentComments,
-              ...batchComments,
-            ]);
-          }
 
           if (mode === "suggested") {
             pendingSuggestionRegistryRef.current.recordApplied({
@@ -4461,7 +4503,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               const createdComments: Comment[] = [];
               const result = applyFolioDocumentOperations({
                 undefinedReferences: "refuse",
-                view,
+                view: recordingCommentsView(view, createdComments),
                 snapshot,
                 batch: {
                   version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -4475,16 +4517,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   return comment.id;
                 },
               });
-              const appliedComments = appliedOperationComments(
-                createdComments,
-                result.applied,
-              );
-              if (appliedComments.length > 0) {
-                updateComments((currentComments) => [
-                  ...currentComments,
-                  ...appliedComments,
-                ]);
-              }
               return { applied: result.applied, skipped: result.skipped };
             },
             activeSuggestionIds: () => {
@@ -4507,9 +4539,17 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             getSuggestions(view.state).find(
               (s) => s.suggestionId === suggestionId,
             )?.appliedAs ?? null;
-          const accepted = acceptSuggestion(suggestionId, {
-            author: options?.author ?? author,
-          })(view.state, view.dispatch);
+          // A canonical session journals the acceptance itself.
+          const editor = pagedEditorRef.current?.getEditor();
+          const accepted = editor?.getCanonicalDocument()
+            ? editor.resolveCanonicalSuggestion(
+                suggestionId,
+                "accept",
+                options?.author ?? author,
+              )
+            : acceptSuggestion(suggestionId, {
+                author: options?.author ?? author,
+              })(view.state, view.dispatch);
           return { accepted, appliedAs: accepted ? appliedAs : null };
         },
         rejectSuggestion: (suggestionId) => {
@@ -4517,6 +4557,13 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           if (!view) {
             return false;
           }
+          const editor = pagedEditorRef.current?.getEditor();
+          if (editor?.getCanonicalDocument())
+            return editor.resolveCanonicalSuggestion(
+              suggestionId,
+              "reject",
+              author,
+            );
           return rejectSuggestion(suggestionId)(view.state, view.dispatch);
         },
         scrollToSuggestion: (suggestionId) => {
@@ -5154,13 +5201,22 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           null
         )
           return;
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         updateComments((previous) =>
           previous.map((comment) =>
             comment.id === id ? { ...comment, done: true } : comment,
           ),
         );
       },
-      [applyCanonicalComment, updateComments],
+      [
+        applyCanonicalComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
+        updateComments,
+      ],
     );
     const handleCommentDelete = useCallback(
       (id: number) => {
@@ -5170,11 +5226,21 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             setActiveCommentId(null);
           return;
         }
-        updateComments((previous) =>
-          previous.filter(
-            (comment) => comment.id !== id && comment.parentId !== id,
-          ),
-        );
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
+        // The thread's record, its replies and its anchors go in one edit.
+        const view = pagedEditorRef.current?.getView();
+        if (view && commentRecordsOf(view.state) !== null) {
+          const deleted = deleteCommentThread(view.state, id);
+          if (deleted) view.dispatch(deleted);
+        } else {
+          const thread = commentThreadIds(commentsRef.current, id);
+          updateComments((previous) =>
+            previous.filter((comment) => !thread.has(comment.id)),
+          );
+        }
         if (activeCommentId === id) {
           setActiveCommentId(null);
         }
@@ -5182,6 +5248,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       [
         activeCommentId,
         applyCanonicalComment,
+        commentsRef,
+        notifyReadonlyEditAttempt,
+        readOnly,
         setActiveCommentId,
         updateComments,
       ],
@@ -5197,12 +5266,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           }) !== null
         )
           return;
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         updateComments((previous) => [
           ...previous,
           createComment(text, author, id),
         ]);
       },
-      [applyCanonicalComment, author, createComment, updateComments],
+      [
+        applyCanonicalComment,
+        author,
+        createComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
+        updateComments,
+      ],
     );
     const handleAddComment = useCallback(
       (addText: string) => {
@@ -5238,16 +5318,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           setAddCommentYPosition(null);
           return true;
         }
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return false;
+        }
         const comment = createComment(addText, author);
-        const marked = applyCommentMarkRange(
-          view,
-          commentSelectionRange,
-          comment.id,
-          {
-            replacePending: true,
-          },
-        );
-        if (!marked) {
+        if (!commitCommentThread(view, commentSelectionRange, comment)) {
           return false;
         }
         const commentAuthor = getCommentAuthorKey(comment.author);
@@ -5260,7 +5336,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           return next;
         });
         setActiveCommentId(comment.id);
-        updateComments((previous) => [...previous, comment]);
         pagedEditorRef.current?.relayout();
         requestAnimationFrame(() => {
           syncCommentHighlightStyles();
@@ -5276,13 +5351,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         applyCanonicalComment,
         commentSelectionRange,
         createComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
         setActiveCommentId,
         setAddCommentYPosition,
         setCommentSelectionRange,
         setIsAddingComment,
         setVisibleCommentAuthors,
         syncCommentHighlightStyles,
-        updateComments,
       ],
     );
     const handleTrackedChangeReply = useCallback(
@@ -5296,17 +5372,28 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           }) !== null
         )
           return;
+        if (readOnly) {
+          notifyReadonlyEditAttempt();
+          return;
+        }
         updateComments((previous) => [
           ...previous,
           createComment(text, author, revisionId),
         ]);
       },
-      [applyCanonicalComment, author, createComment, updateComments],
+      [
+        applyCanonicalComment,
+        author,
+        createComment,
+        notifyReadonlyEditAttempt,
+        readOnly,
+        updateComments,
+      ],
     );
     const handleCancelAddComment = useCallback(() => {
       const view = pagedEditorRef.current?.getView();
       if (view && commentSelectionRange && commentDraftMode === "prosemirror") {
-        removePendingCommentMarkRange(view, commentSelectionRange);
+        clearPendingComment(view, commentSelectionRange);
       }
       setIsAddingComment(false);
       setCommentSelectionRange(null);
@@ -5533,7 +5620,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           return;
         }
         const element = container.querySelector<HTMLElement>(
-          `.layout-page-content [data-pm-start="${String(pmPos)}"]`,
+          `.layout-page-content ${paintedStartSelector(pmPos)}`,
         );
         if (element) {
           delete element.dataset["folioOutlineFlash"];
@@ -6095,7 +6182,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             )
                               ? {}
                               : { experimentalSession })}
-                            onDocumentChange={handleDocumentChange}
+                            onDocumentChange={applyDocumentChange}
                             extensionManager={extensionManager}
                             suggestionModeActive={editingMode === "suggesting"}
                             suggestionAuthor={author}
@@ -6149,6 +6236,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                               >
                                 <button
                                   type="button"
+                                  aria-label="Add comment"
                                   onMouseDown={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -6181,10 +6269,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                                     }
                                     setCommentSelectionRange(safeRange);
                                     if (commentDraftMode === "prosemirror") {
-                                      const marked = applyCommentMarkRange(
+                                      const marked = markPendingComment(
                                         view,
                                         safeRange,
-                                        PENDING_COMMENT_ID,
                                         { selectEnd: true },
                                       );
                                       if (!marked) {
@@ -6284,21 +6371,19 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                               if (!activeHf) {
                                 return null;
                               }
-                              const targetEl =
-                                editorContentElement?.querySelector<HTMLElement>(
-                                  hfEditPosition === "header"
-                                    ? ".layout-page-header"
-                                    : ".layout-page-footer",
-                                );
                               const parentEl = editorContentElement;
-                              if (!targetEl || !parentEl) {
+                              if (!parentEl) {
                                 return null;
                               }
                               return (
                                 <InlineHeaderFooterEditor
                                   ref={hfEditorRef}
                                   position={hfEditPosition}
-                                  targetElement={targetEl}
+                                  targetSelector={
+                                    hfEditPosition === "header"
+                                      ? ".layout-page-header"
+                                      : ".layout-page-footer"
+                                  }
                                   parentElement={parentEl}
                                   getActiveView={getActiveHfView}
                                   onClose={handleBodyClick}

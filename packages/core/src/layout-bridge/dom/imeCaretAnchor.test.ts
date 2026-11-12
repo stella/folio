@@ -46,8 +46,55 @@ describe("syncImeCaretAnchor", () => {
     expect(host.style.transform).toBe("translate3d(10319px, 240px, 0)");
   });
 
-  test("measures from the untransformed baseline on repeated updates", () => {
+  test("measures with the current translation in place and takes it off", () => {
     const host = createHost("translate3d(10319px, 240px, 0)");
+    const editorView = mockEditorView();
+    let measuredTransform: string | undefined;
+    editorView.coordsAtPos = () => {
+      measuredTransform = host.style.transform;
+      // The hidden caret stands where the current translation put it.
+      return { left: -9999 + 10319, top: 240 };
+    };
+
+    syncImeCaretAnchor({
+      hiddenHost: host,
+      editorView,
+      visibleCaret: { left: 321, top: 241 },
+    });
+
+    expect(measuredTransform).toBe("translate3d(10319px, 240px, 0)");
+    expect(host.style.transform).toBe("translate3d(10320px, 241px, 0)");
+  });
+
+  test("does not write the transform when the offset is unchanged", () => {
+    let writes = 0;
+    let transform = "translate3d(10319px, 240px, 0px)";
+    const host = {
+      style: {
+        get transform() {
+          return transform;
+        },
+        set transform(value: string) {
+          writes += 1;
+          transform = value;
+        },
+      },
+    };
+    const editorView = mockEditorView();
+    editorView.coordsAtPos = () => ({ left: -9999 + 10319, top: 240 });
+
+    syncImeCaretAnchor({
+      hiddenHost: host,
+      editorView,
+      visibleCaret: { left: 320, top: 240 },
+    });
+
+    expect(writes).toBe(0);
+    expect(transform).toBe("translate3d(10319px, 240px, 0px)");
+  });
+
+  test("measures from no offset when the host carries another transform", () => {
+    const host = createHost("scale(2)");
     const editorView = mockEditorView();
     editorView.coordsAtPos = () => {
       expect(host.style.transform).toBe("");
@@ -57,10 +104,23 @@ describe("syncImeCaretAnchor", () => {
     syncImeCaretAnchor({
       hiddenHost: host,
       editorView,
-      visibleCaret: { left: 321, top: 241 },
+      visibleCaret: { left: 320, top: 240 },
     });
 
-    expect(host.style.transform).toBe("translate3d(10320px, 241px, 0)");
+    expect(host.style.transform).toBe("translate3d(10319px, 240px, 0)");
+  });
+
+  test("leaves a host that was never anchored without a transform", () => {
+    const host = createHost();
+
+    syncImeCaretAnchor({
+      hiddenHost: host,
+      editorView: mockEditorView({ empty: false }),
+      visibleCaret: null,
+    });
+    resetImeCaretAnchor(host);
+
+    expect(host.style.transform).toBe("");
   });
 
   test("resets the anchor for range selections and unfocused editors", () => {
@@ -73,7 +133,7 @@ describe("syncImeCaretAnchor", () => {
         visibleCaret: { left: 10, top: 20 },
       }),
     ).toBe(false);
-    expect(host.style.transform).toBe("");
+    expect(host.style.transform).toBe("translate3d(0px, 0px, 0)");
 
     host.style.transform = "translate3d(10px, 20px, 0)";
     expect(
@@ -83,7 +143,7 @@ describe("syncImeCaretAnchor", () => {
         visibleCaret: { left: 10, top: 20 },
       }),
     ).toBe(false);
-    expect(host.style.transform).toBe("");
+    expect(host.style.transform).toBe("translate3d(0px, 0px, 0)");
   });
 
   test("preserves the anchor while composition is active", () => {
@@ -99,7 +159,7 @@ describe("syncImeCaretAnchor", () => {
     expect(host.style.transform).toBe("translate3d(10px, 20px, 0)");
 
     resetImeCaretAnchor(host);
-    expect(host.style.transform).toBe("");
+    expect(host.style.transform).toBe("translate3d(0px, 0px, 0)");
   });
 
   test("restores the previous anchor when native caret measurement fails", () => {

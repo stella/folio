@@ -275,6 +275,22 @@ const hasReview = (table: Table) =>
       ),
   );
 
+/** A review other than a pending cell deletion. */
+const hasReviewBesidesCellDeletions = (table: Table) =>
+  table.formatting?.gridChange !== undefined ||
+  table.propertyChanges !== undefined ||
+  table.rows.some(
+    (row) =>
+      row.structuralChange !== undefined ||
+      row.propertyChanges !== undefined ||
+      row.cells.some(
+        (cell) =>
+          (cell.structuralChange !== undefined &&
+            cell.structuralChange.type !== "tableCellDeletion") ||
+          cell.propertyChanges !== undefined,
+      ),
+  );
+
 /** Multiple physical review records always get distinct, explicitly supplied ids. */
 const stampsFor = (
   op: TableEditOp,
@@ -343,7 +359,12 @@ const columnEdit = ({
       message:
         "Indexed table markup must be relocated before changing columns.",
     });
-  if (hasReview(table))
+  // Another suggested column deletion may join pending ones: each keeps its
+  // own cells and grid entry until it is resolved.
+  const suggestedDeletion = !insert && op.revision !== undefined;
+  if (
+    suggestedDeletion ? hasReviewBesidesCellDeletions(table) : hasReview(table)
+  )
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
@@ -371,7 +392,31 @@ const columnEdit = ({
       message: "Tracked column edits require an explicit previous grid.",
     });
   }
-  const stamps = stampsFor(op, table.rows.length + 2);
+  // A suggested deletion keeps the grid while it is pending: the deleted
+  // cells stay in their columns, and accepting removes them with their grid
+  // entries.
+  const trackedDeletion = !insert && op.revision !== undefined;
+  // A suggested deletion stamps only the rows whose cells it marks; another
+  // edit stamps every row, and the grid and table properties.
+  const markedRows = new Map<number, number>();
+  if (trackedDeletion)
+    for (const [rowIndex, row] of table.rows.entries()) {
+      const before = row.formatting?.gridBefore ?? 0;
+      const after = grid.width - (row.formatting?.gridAfter ?? 0);
+      if (op.column >= before && op.column < after)
+        markedRows.set(rowIndex, markedRows.size);
+    }
+  if (trackedDeletion && markedRows.size === 0)
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      message:
+        "A suggested column deletion needs a cell in the column to mark.",
+    });
+  const stamps = stampsFor(
+    op,
+    trackedDeletion ? markedRows.size : table.rows.length + 2,
+  );
   if (stamps.isErr()) return Result.err(stamps.error);
   let freshIndex = 0;
   const rows: TableRow[] = [];
@@ -380,6 +425,12 @@ const columnEdit = ({
     if (entries === undefined) return mismatch(op, "The grid row is missing.");
     const before = row.formatting?.gridBefore ?? 0;
     const after = grid.width - (row.formatting?.gridAfter ?? 0);
+    if (trackedDeletion && (op.column < before || op.column >= after)) {
+      // The column is outside this row's cells; accepting narrows its
+      // omission with the grid.
+      rows.push(row);
+      continue;
+    }
     if (op.column < before) {
       const next = withOmission(row, "gridBefore", before + (insert ? 1 : -1));
       const stamp = stamps.value[rowIndex];
@@ -465,6 +516,22 @@ const columnEdit = ({
             message:
               "Resolve dependent anchors and review records before removing this cell.",
           });
+        if (
+          trackedDeletion &&
+          entry.cell.structuralChange?.type === "tableCellDeletion"
+        )
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+            message: "The column's cells are already suggested for deletion.",
+          });
+        if (trackedDeletion && entry.end - entry.start > 1)
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            message:
+              "A suggested column deletion cannot narrow a cell that spans other columns.",
+          });
         if (entry.end - entry.start > 1) {
           const next = withSpan(entry.cell, entry.end - entry.start - 1);
           const stamp = stamps.value[rowIndex];
@@ -481,7 +548,10 @@ const columnEdit = ({
           cells.push(next);
           continue;
         }
-        const stamp = stamps.value[rowIndex];
+        const stamp =
+          stamps.value[
+            trackedDeletion ? (markedRows.get(rowIndex) ?? -1) : rowIndex
+          ];
         if (stamp !== undefined)
           cells.push({
             ...entry.cell,
@@ -521,6 +591,7 @@ const columnEdit = ({
       });
     rows.push({ ...row, cells });
   }
+  if (trackedDeletion) return Result.ok({ ...table, rows });
   const columnWidths =
     table.columnWidths === undefined ? undefined : [...table.columnWidths];
   if (columnWidths !== undefined) {

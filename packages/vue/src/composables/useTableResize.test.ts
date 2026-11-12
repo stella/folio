@@ -38,7 +38,11 @@ const resizedRowHeight = (height: number, pointerDelta: number): number => {
   layoutTable.append(handle);
   container.append(layoutTable);
 
-  const resize = useTableResize();
+  const resize = useTableResize({
+    runCommand: (target, command) => {
+      command(target.state, (tr) => target.dispatch(tr), target);
+    },
+  });
   let mouseDown: MouseEvent | undefined;
   handle.addEventListener("mousedown", (event) => {
     mouseDown = event;

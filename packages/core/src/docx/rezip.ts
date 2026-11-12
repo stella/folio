@@ -21,9 +21,9 @@ import {
 } from "@stll/docx-core/xml";
 import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
 
-import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
 import {
   consumeTrackedSectionEndpointRemoval,
+  type RemovedSectionReference,
   type TrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
 import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
@@ -3229,10 +3229,10 @@ async function serializeHeadersFootersToZip({
  * Full repack has no change-tracking signal, so "edited" is detected by
  * comparing the current model's note serialization against a BASELINE that
  * re-parses and re-serializes the original part. Both go through the same
- * (lossy) parse+serialize — e.g. the in-note `w:footnoteRef` auto-number mark
- * the model does not represent is dropped on both sides — so an unedited note
- * matches its baseline and is left verbatim (mark intact); only a genuine body
- * edit differs and is spliced.
+ * parse+serialize, so an unedited note matches its baseline and is left
+ * verbatim; only a genuine body edit differs and is spliced. A note the part
+ * already has carries its own reference mark, or none, in the model; only a
+ * note new to the part is given one.
  */
 type SerializeNotesToZipOptions = {
   doc: Document;
@@ -3260,9 +3260,16 @@ async function serializeNotesToZip({
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/footnotes.xml",
         currentXml: serializeFootnotes(footnotes),
-        replacementXml: serializeNewFootnotesPart(footnotes, doc),
-        baselineFrom: (xml) =>
-          serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
+        fromOriginal: (xml) => {
+          const source = parseFootnotes(xml).getNormalFootnotes();
+          return {
+            baselineXml: serializeFootnotes(source),
+            replacementXml: serializeNewFootnotesPart(footnotes, {
+              document: doc,
+              sourceNoteIds: new Set(source.map(({ id }) => id)),
+            }),
+          };
+        },
         elementName: "footnote",
         changedNoteParaIds,
         originalZip,
@@ -3276,7 +3283,7 @@ async function serializeNotesToZip({
         newZip,
         partPath: "word/footnotes.xml",
         relationshipType: RELATIONSHIP_TYPES.footnotes,
-        serializedPart: serializeNewFootnotesPart(footnotes, doc),
+        serializedPart: serializeNewFootnotesPart(footnotes, { document: doc }),
         compressionLevel,
       });
     }
@@ -3292,9 +3299,16 @@ async function serializeNotesToZip({
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/endnotes.xml",
         currentXml: serializeEndnotes(endnotes),
-        replacementXml: serializeNewEndnotesPart(endnotes, doc),
-        baselineFrom: (xml) =>
-          serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
+        fromOriginal: (xml) => {
+          const source = parseEndnotes(xml).getNormalEndnotes();
+          return {
+            baselineXml: serializeEndnotes(source),
+            replacementXml: serializeNewEndnotesPart(endnotes, {
+              document: doc,
+              sourceNoteIds: new Set(source.map(({ id }) => id)),
+            }),
+          };
+        },
         elementName: "endnote",
         changedNoteParaIds,
         originalZip,
@@ -3308,7 +3322,7 @@ async function serializeNotesToZip({
         newZip,
         partPath: "word/endnotes.xml",
         relationshipType: RELATIONSHIP_TYPES.endnotes,
-        serializedPart: serializeNewEndnotesPart(endnotes, doc),
+        serializedPart: serializeNewEndnotesPart(endnotes, { document: doc }),
         compressionLevel,
       });
     }
@@ -3737,8 +3751,15 @@ async function serializeAddedStylesIntoZip(
 type PatchNotePartIntoZipOptions = {
   conventionalLowerPath: string;
   currentXml: string;
-  replacementXml: string;
-  baselineFrom: (originalXml: string) => string;
+  /**
+   * The source part re-read and re-written (the baseline an unedited note
+   * matches), and the model's part as a new one would be written, which marks
+   * only the notes the source part does not have.
+   */
+  fromOriginal: (originalXml: string) => {
+    baselineXml: string;
+    replacementXml: string;
+  };
   elementName: "footnote" | "endnote";
   changedNoteParaIds: ReadonlySet<string> | undefined;
   originalZip: ZipArchive;
@@ -3814,8 +3835,7 @@ const notePartXmlFor = ({
 async function patchNotePartIntoZip({
   conventionalLowerPath,
   currentXml,
-  replacementXml,
-  baselineFrom,
+  fromOriginal,
   elementName,
   changedNoteParaIds,
   originalZip,
@@ -3829,7 +3849,7 @@ async function patchNotePartIntoZip({
   const originalXml = await file
     .bytes()
     .then((bytes) => decodeText(bytes, { ignoreBOM: true }));
-  const baselineXml = baselineFrom(originalXml);
+  const { baselineXml, replacementXml } = fromOriginal(originalXml);
   const effectiveChangedNoteParaIds =
     changedNoteParaIds ?? collectChangedNoteParaIds(baselineXml, currentXml);
   const currentParaIds = collectParaIds(currentXml);

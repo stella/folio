@@ -10,6 +10,51 @@ import type { XmlElement, XmlNamespaceScope } from "./xmlElement";
 export const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
 
 /**
+ * The OOXML namespaces a WordprocessingML package binds, by their customary
+ * prefix. The same table as `OOXML_NS` in `@stll/docx-utils`, so code reading
+ * either agrees on every URI.
+ */
+export const OOXML_NS: {
+  readonly w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  readonly a: "http://schemas.openxmlformats.org/drawingml/2006/main";
+  readonly r: "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+  readonly wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+  readonly wp14: "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing";
+  readonly wps: "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+  readonly wpc: "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
+  readonly wpg: "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
+  readonly pic: "http://schemas.openxmlformats.org/drawingml/2006/picture";
+  readonly m: "http://schemas.openxmlformats.org/officeDocument/2006/math";
+  readonly mc: "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  readonly v: "urn:schemas-microsoft-com:vml";
+  readonly o: "urn:schemas-microsoft-com:office:office";
+  readonly w14: "http://schemas.microsoft.com/office/word/2010/wordml";
+  readonly w15: "http://schemas.microsoft.com/office/word/2012/wordml";
+  readonly ct: "http://schemas.openxmlformats.org/package/2006/content-types";
+  readonly pr: "http://schemas.openxmlformats.org/package/2006/relationships";
+} = {
+  w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+  a: "http://schemas.openxmlformats.org/drawingml/2006/main",
+  r: "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+  wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+  wp14: "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
+  wps: "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+  wpc: "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas",
+  wpg: "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
+  pic: "http://schemas.openxmlformats.org/drawingml/2006/picture",
+  m: "http://schemas.openxmlformats.org/officeDocument/2006/math",
+  mc: "http://schemas.openxmlformats.org/markup-compatibility/2006",
+  v: "urn:schemas-microsoft-com:vml",
+  o: "urn:schemas-microsoft-com:office:office",
+  w14: "http://schemas.microsoft.com/office/word/2010/wordml",
+  w15: "http://schemas.microsoft.com/office/word/2012/wordml",
+  ct: "http://schemas.openxmlformats.org/package/2006/content-types",
+  pr: "http://schemas.openxmlformats.org/package/2006/relationships",
+};
+
+export type OoxmlPrefix = keyof typeof OOXML_NS;
+
+/**
  * Reserved by the XML Namespaces recommendation (§3): every document binds
  * this prefix to this URI whether or not it declares `xmlns:xml`, and no
  * document may bind it to anything else. A source that omits the declaration

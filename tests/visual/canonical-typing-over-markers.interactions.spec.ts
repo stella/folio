@@ -36,9 +36,10 @@ const textOf = (node: unknown, withDeleted: boolean): string => {
     : "";
 };
 
-const firstParagraph = async (page: Page) => {
+/** The main story's paragraphs, in order. */
+const paragraphs = async (page: Page) => {
   const current = await snapshot(page);
-  return current?.document?.package.document.content.find(
+  return (current?.document?.package.document.content ?? []).filter(
     (block) => block.type === "paragraph",
   );
 };
@@ -65,8 +66,9 @@ for (const [adapter, port] of [
       await page.keyboard.press(`${MODIFIER}+a`);
       await page.keyboard.type("xyz");
       await expectNoRefusals(page);
-      const paragraph = await firstParagraph(page);
-      expect(textOf(paragraph, false)).toBe("xyz");
-      // Suggesting, the typed run stays whole before the struck text.
-      expect(textOf(paragraph, true).startsWith("xyz")).toBe(true);
+      const story = await paragraphs(page);
+      expect(story.map((block) => textOf(block, false)).join("")).toBe("xyz");
+      // Suggesting, the typed run stays whole after the struck text, as a
+      // redline reads.
+      expect(textOf(story.at(-1), true).endsWith("xyz")).toBe(true);
     });

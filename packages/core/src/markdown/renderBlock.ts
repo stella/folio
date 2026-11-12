@@ -17,6 +17,7 @@ import {
 } from "../docx/opaqueCarrier";
 import { projectAcceptedBlocks } from "../internal/acceptedBlockProjection";
 import type { BlockContent, DocxPackage } from "../types/document";
+import { escapePlainTextBlock } from "./escape";
 import { pushWarning } from "./internals";
 import {
   type RenderedParagraph,
@@ -74,7 +75,7 @@ export function renderBlocks(
           markdown =
             block.readerText === undefined
               ? ALT_CHUNK_READER_DIAGNOSTIC
-              : `${ALT_CHUNK_READER_DIAGNOSTIC}\n\n${block.readerText}`;
+              : `${ALT_CHUNK_READER_DIAGNOSTIC}\n\n${escapePlainTextBlock(block.readerText)}`;
         } else if (opaqueRevisionCarrierName(block.xml) !== undefined) {
           markdown = OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC;
         } else if (isOpaqueNestedRowMarkup(block.xml)) {

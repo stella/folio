@@ -323,6 +323,7 @@ export const saveDocumentBytes = async (
       txId,
       destinationPath,
       destination,
+      scope: { type: "unrestricted" },
       sourcePath,
       sourceIdentity: expectedIdentity,
       fromVersion: source.value.fileVersion,

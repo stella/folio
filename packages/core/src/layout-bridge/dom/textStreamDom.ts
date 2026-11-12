@@ -1,3 +1,5 @@
+import { readPaintedEnd, readPaintedStart } from "../../utils/paintedPositions";
+
 export type TextBoundary = { node: Text; offset: number };
 
 export type PaintedSpanRangeMeasurement =
@@ -116,8 +118,8 @@ export const measurePaintedSpanRange = (
   from: number,
   to: number,
 ): PaintedSpanRangeMeasurement => {
-  const pmStart = Number(element.dataset["pmStart"]);
-  const pmEnd = Number(element.dataset["pmEnd"]);
+  const pmStart = readPaintedStart(element) ?? Number.NaN;
+  const pmEnd = readPaintedEnd(element) ?? Number.NaN;
   if (
     !Number.isFinite(pmStart) ||
     !Number.isFinite(pmEnd) ||

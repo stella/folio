@@ -1,5 +1,6 @@
 import { panic, Result } from "better-result";
 import type { EditorState } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import {
   headingOutlineLevel,
@@ -63,8 +64,8 @@ const currentSectionEndpoint = (paragraph: Paragraph) => {
   return { type: "omitted" } as const;
 };
 
-export const TRACKED_COLUMN_DELETION_REFUSAL =
-  "A suggested column deletion is unavailable in this session.";
+export const CELL_SELECTION_PLACEMENT_REFUSAL =
+  "A note or table of contents goes at a caret, not over selected cells.";
 
 const refuse = (message: string) =>
   Result.err(
@@ -303,6 +304,18 @@ export const prepareCanonicalCommands = (
   state: EditorState,
   commands: readonly CanonicalCommandIntent[],
 ): Result<CanonicalCommit, CanonicalSessionError> => {
+  // A note reference or a table of contents goes at one caret; selected
+  // cells have none.
+  if (
+    state.selection instanceof CellSelection &&
+    commands.some(
+      ({ type }) =>
+        type === "generateTOC" ||
+        type === "insertNote" ||
+        type === "deleteNote",
+    )
+  )
+    return refuse(CELL_SELECTION_PLACEMENT_REFUSAL);
   const intents: EditorIntent[] = [];
   const sectionCommands = commands.filter(
     (command) =>
@@ -505,6 +518,19 @@ export const prepareCanonicalCommands = (
         }
         break;
       }
+      case "editTableBlock": {
+        const at = session.projection.addressAt(command.at);
+        if (at.isErr()) return at;
+        intents.push({
+          type: "tableBlock",
+          operation: {
+            ...command.edit,
+            story: at.value.story,
+            blockId: at.value.blockId,
+          },
+        });
+        break;
+      }
       case "editTableRow": {
         const at = session.projection.addressAt(command.at);
         if (at.isErr()) return at;
@@ -519,14 +545,6 @@ export const prepareCanonicalCommands = (
         break;
       }
       case "editTable": {
-        // The engine records a column deletion by narrowing the grid while the
-        // deleted cells stay, so the pending table has more cell columns than
-        // grid columns.
-        if (
-          command.edit.type === DOCUMENT_OP_TYPES.DELETE_COLUMN &&
-          session.suggesting
-        )
-          return refuse(TRACKED_COLUMN_DELETION_REFUSAL);
         const at = session.projection.addressAt(command.at);
         if (at.isErr()) return at;
         intents.push({

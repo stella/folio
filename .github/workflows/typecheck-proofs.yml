@@ -17,9 +17,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
@@ -37,10 +38,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
-          no-cache: true
+          package-json: "package.json"
 
       - run: bun scripts/ci-scoped-install.ts typecheck-budget
 

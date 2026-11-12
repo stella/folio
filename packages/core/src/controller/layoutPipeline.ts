@@ -84,6 +84,7 @@ import {
   installCanvasMeasureProvider,
   resetCanvasContext,
 } from "../layout-engine/measure/measureContainer";
+import { forgetTableMeasures } from "../layout-engine/measure/tableMeasureMemo";
 import { columnBalancingForCompatibility } from "../layout-engine/noColumnBalanceCompatibility";
 import { resolveEffectiveParagraphSpacingTree } from "../layout-engine/paragraphSpacing";
 import { resolveTableIndentCompatibility } from "../layout-engine/tableIndentCompatibility";
@@ -579,6 +580,13 @@ function runLayoutPipelineMeasured<THfPMs>(
       showCommentHighlights: displayCommentHighlights,
       ...(altChunkMarkerText === undefined ? {} : { altChunkMarkerText }),
     };
+    // A table's measure is reused across passes only while what measuring
+    // reads stays as it was.
+    if (
+      session.lastMeasureInputs &&
+      !sameMeasureInputs(session.lastMeasureInputs, measureInputs)
+    )
+      forgetTableMeasures();
     const flowOpts: ToFlowBlocksOptions = {
       showCommentHighlights: displayCommentHighlights,
       ...(altChunkMarkerText === undefined ? {} : { altChunkMarkerText }),
@@ -588,6 +596,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       fontAlternates,
       ...(styles ? { styles } : {}),
       ...(document === null ? {} : { defaultSize: WORD_UNSPECIFIED_FONT_SIZE }),
+      paragraphBlocks: session.paragraphBlocks,
     };
     if (_theme !== undefined) {
       flowOpts.theme = _theme;

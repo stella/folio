@@ -63,6 +63,8 @@ type NormalizeNumberingReferencesInput = {
 
 type NormalizeNumberingReferencesResult = {
   unnumberedDanglingReferences: number;
+  /** The ids the repaired references named. */
+  danglingNumIds: ReadonlySet<number>;
 };
 
 export const normalizeNumberingReferences = ({
@@ -74,6 +76,7 @@ export const normalizeNumberingReferences = ({
   endnotes,
 }: NormalizeNumberingReferencesInput): NormalizeNumberingReferencesResult => {
   let unnumberedDanglingReferences = 0;
+  const danglingNumIds = new Set<number>();
 
   visitDocxParagraphs(
     { documentBody, headers, footers, footnotes, endnotes },
@@ -87,6 +90,7 @@ export const normalizeNumberingReferences = ({
       ) {
         return;
       }
+      danglingNumIds.add(numId);
       formatting.numPr = NO_PARAGRAPH_NUMBERING;
       // The reference is the paragraph's own now, whatever tier stated it.
       delete formatting.numPrFromStyle;
@@ -95,7 +99,7 @@ export const normalizeNumberingReferences = ({
     },
   );
 
-  return { unnumberedDanglingReferences };
+  return { unnumberedDanglingReferences, danglingNumIds };
 };
 
 type NormalizeStyleNumberingReferencesInput = {
@@ -106,6 +110,8 @@ type NormalizeStyleNumberingReferencesInput = {
 type NormalizeStyleNumberingReferencesResult = {
   /** Style ids whose dangling reference became the "no numbering" sentinel. */
   unnumberedStyleIds: string[];
+  /** The ids the repaired references named. */
+  danglingNumIds: ReadonlySet<number>;
 };
 
 export const normalizeStyleNumberingReferences = ({
@@ -113,6 +119,7 @@ export const normalizeStyleNumberingReferences = ({
   numbering,
 }: NormalizeStyleNumberingReferencesInput): NormalizeStyleNumberingReferencesResult => {
   const unnumberedStyleIds: string[] = [];
+  const danglingNumIds = new Set<number>();
 
   for (const style of styles) {
     const pPr = style.pPr;
@@ -120,9 +127,10 @@ export const normalizeStyleNumberingReferences = ({
     if (!pPr || numId === undefined || resolvesNumbering(numId, numbering)) {
       continue;
     }
+    danglingNumIds.add(numId);
     pPr.numPr = NO_PARAGRAPH_NUMBERING;
     unnumberedStyleIds.push(style.styleId);
   }
 
-  return { unnumberedStyleIds };
+  return { unnumberedStyleIds, danglingNumIds };
 };

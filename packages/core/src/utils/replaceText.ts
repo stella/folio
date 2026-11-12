@@ -30,13 +30,56 @@ export function replaceTextInDocument(
   formatting?: TextFormatting,
 ): Document {
   const newDoc = cloneDocumentWithParagraphPropertySources(doc);
-  const body = newDoc.package.document;
-  const { start, end } = range;
+  replaceRangeInPlace(newDoc.package.document, range, text, formatting);
+  return newDoc;
+}
 
+type ReplaceRangesResult = {
+  document: Document;
+  replacedCount: number;
+  failedCount: number;
+};
+
+/**
+ * Replace every range with `text` in one copy of the document. `ranges` must
+ * run from the end of the document backwards, so each replacement leaves the
+ * offsets of the ones after it valid.
+ */
+export function replaceTextRangesInDocument(
+  doc: Document,
+  ranges: readonly ReplaceRange[],
+  text: string,
+): ReplaceRangesResult {
+  let newDoc: Document;
+  try {
+    newDoc = cloneDocumentWithParagraphPropertySources(doc);
+  } catch {
+    return { document: doc, replacedCount: 0, failedCount: ranges.length };
+  }
+  let replacedCount = 0;
+  let failedCount = 0;
+  for (const range of ranges) {
+    try {
+      if (replaceRangeInPlace(newDoc.package.document, range, text))
+        replacedCount++;
+      else failedCount++;
+    } catch {
+      failedCount++;
+    }
+  }
+  return { document: newDoc, replacedCount, failedCount };
+}
+
+const replaceRangeInPlace = (
+  body: DocumentBody,
+  { start, end }: ReplaceRange,
+  text: string,
+  formatting?: TextFormatting,
+): boolean => {
   if (start.paragraphIndex === end.paragraphIndex) {
     const paragraph = getParagraphByIndex(body, start.paragraphIndex);
     if (!paragraph) {
-      return newDoc;
+      return false;
     }
 
     replaceTextInParagraph({
@@ -49,7 +92,7 @@ export function replaceTextInDocument(
   } else {
     const startParagraph = getParagraphByIndex(body, start.paragraphIndex);
     if (!startParagraph) {
-      return newDoc;
+      return false;
     }
     const startText = getFindParagraphText(startParagraph);
 
@@ -73,9 +116,8 @@ export function replaceTextInDocument(
       }
     }
   }
-
-  return newDoc;
-}
+  return true;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers (extracted from the former agent/executor)

@@ -26,9 +26,15 @@ import {
   totalTextLength,
 } from "../../layout-bridge/dom/textStreamDom";
 import { scrollEditorElementIntoView } from "../../paged-layout/editorScrollRoot";
+import {
+  hasPaintedStart,
+  PAINTED_RANGE_SELECTOR,
+  readPaintedEnd,
+  readPaintedStart,
+} from "../../utils/paintedPositions";
 
 const CONTENT_LINE_SELECTOR = ".layout-page-content .layout-line";
-const PM_SPAN_SELECTOR = "span[data-pm-start][data-pm-end]";
+const PM_SPAN_SELECTOR = `span${PAINTED_RANGE_SELECTOR}`;
 
 /**
  * Where the previous vertical step left the caret: the column later steps keep
@@ -83,8 +89,8 @@ export function getCaretClientX(
   const collapsedTarget = findCollapsedLineEdgeCaretTarget(spans, pmPos);
   if (collapsedTarget) return collapsedTarget.geometry.left;
   for (const spanEl of spans) {
-    const pmStart = Number(spanEl.dataset["pmStart"]);
-    const pmEnd = Number(spanEl.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(spanEl) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(spanEl) ?? Number.NaN;
     if (spanEl.classList.contains("layout-run-tab")) {
       if (pmPos >= pmStart && pmPos < pmEnd)
         return spanEl.getBoundingClientRect().left;
@@ -100,8 +106,8 @@ export function getCaretClientX(
   for (const emptyRun of findBodyEmptyRuns(container)) {
     const paragraph = emptyRun.closest(".layout-paragraph") as HTMLElement;
     if (!paragraph) continue;
-    const pmStart = Number(paragraph.dataset["pmStart"]);
-    const pmEnd = Number(paragraph.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(paragraph) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(paragraph) ?? Number.NaN;
     if (pmPos >= pmStart && pmPos <= pmEnd)
       return emptyRun.getBoundingClientRect().left;
   }
@@ -117,8 +123,8 @@ const lineCarriesPosition = (lineEl: HTMLElement, pmPos: number): boolean => {
   for (const span of Array.from(
     lineEl.querySelectorAll<HTMLElement>(PM_SPAN_SELECTOR),
   )) {
-    const start = Number(span.dataset["pmStart"]);
-    const end = Number(span.dataset["pmEnd"]);
+    const start = readPaintedStart(span) ?? Number.NaN;
+    const end = readPaintedEnd(span) ?? Number.NaN;
     if (pmPos >= start && pmPos <= end) return true;
   }
   return false;
@@ -138,8 +144,8 @@ export function findLineElementAtPosition(
   for (const lineEl of Array.from(allLines)) {
     const paragraph = lineEl.closest(".layout-paragraph") as HTMLElement;
     if (!paragraph) continue;
-    const pStart = Number(paragraph.dataset["pmStart"]);
-    const pEnd = Number(paragraph.dataset["pmEnd"]);
+    const pStart = readPaintedStart(paragraph) ?? Number.NaN;
+    const pEnd = readPaintedEnd(paragraph) ?? Number.NaN;
     if (pmPos >= pStart && pmPos <= pEnd) {
       const firstLineOfParagraph = paragraph.querySelector(".layout-line");
       if (firstLineOfParagraph === lineEl) return lineEl;
@@ -153,27 +159,28 @@ export function findPositionOnLineAtClientX(
   lineEl: HTMLElement,
   clientX: number,
 ): number | null {
-  const spans = lineEl.querySelectorAll("span[data-pm-start][data-pm-end]");
+  const spans = lineEl.querySelectorAll(`span${PAINTED_RANGE_SELECTOR}`);
   const emptyRun = lineEl.querySelector<HTMLElement>(".layout-empty-run");
   if (emptyRun) {
-    const emptyRunStart = emptyRun.dataset["pmStart"];
-    if (emptyRunStart !== undefined) return Number(emptyRunStart);
+    const emptyRunStart = readPaintedStart(emptyRun);
+    if (emptyRunStart !== undefined) return emptyRunStart;
 
     const paragraph = emptyRun.closest<HTMLElement>(".layout-paragraph");
-    const paragraphStart = paragraph?.dataset["pmStart"];
-    return paragraphStart === undefined ? null : Number(paragraphStart) + 1;
+    const paragraphStart =
+      paragraph === null ? undefined : readPaintedStart(paragraph);
+    return paragraphStart === undefined ? null : paragraphStart + 1;
   }
   if (spans.length === 0) {
     const paragraph = lineEl.closest(".layout-paragraph") as HTMLElement;
-    if (paragraph?.dataset["pmStart"])
-      return Number(paragraph.dataset["pmStart"]) + 1;
+    if (paragraph !== null && hasPaintedStart(paragraph))
+      return (readPaintedStart(paragraph) ?? Number.NaN) + 1;
     return null;
   }
   for (const span of Array.from(spans)) {
     const spanEl = span as HTMLElement;
     const rect = spanEl.getBoundingClientRect();
-    const pmStart = Number(spanEl.dataset["pmStart"]);
-    const pmEnd = Number(spanEl.dataset["pmEnd"]);
+    const pmStart = readPaintedStart(spanEl) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(spanEl) ?? Number.NaN;
     if (spanEl.classList.contains("layout-run-tab")) {
       if (clientX >= rect.left && clientX <= rect.right) {
         const mid = (rect.left + rect.right) / 2;
@@ -226,8 +233,8 @@ export function findPositionOnLineAtClientX(
   if (!closestSpan) return null;
   const rect = closestSpan.getBoundingClientRect();
   return clientX < rect.left
-    ? Number(closestSpan.dataset["pmStart"])
-    : Number(closestSpan.dataset["pmEnd"]);
+    ? (readPaintedStart(closestSpan) ?? Number.NaN)
+    : (readPaintedEnd(closestSpan) ?? Number.NaN);
 }
 
 type ResolveStepOptions = {

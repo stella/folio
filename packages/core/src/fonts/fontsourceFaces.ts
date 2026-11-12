@@ -1,4 +1,5 @@
 import { bytesToDataUrl } from "../utils/base64";
+import { cssString } from "../utils/cssString";
 /**
  * Faces from the `@fontsource` packages, for a caller that measures and paints
  * without a browser's font stack: a PDF export, a server-rendered preview, a
@@ -218,19 +219,7 @@ const formatRangeList = (ranges: readonly CodePointRange[]): string =>
     )
     .join(",");
 
-/**
- * A CSS `<string>` token, quoted and escaped. A family name comes from an
- * authored document and is emitted into a `<style>` element, so the
- * backslash is escaped first, then the quote, and line terminators become hex
- * escapes, which CSS strings require.
- */
-export const cssString = (value: string): string =>
-  `"${value
-    .replaceAll("\\", "\\\\")
-    .replaceAll('"', '\\"')
-    .replaceAll("\n", "\\A ")
-    .replaceAll("\r", "\\D ")
-    .replaceAll("\f", "\\C ")}"`;
+export { cssString };
 
 const FACE_VARIANTS = [
   { weight: REGULAR_WEIGHT, italic: false },

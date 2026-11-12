@@ -15,6 +15,24 @@ import { scanTestTimeout } from "../test/scan-timeout";
 setDefaultTimeout(scanTestTimeout(30_000));
 
 const repo = path.resolve(import.meta.dir, "..");
+
+/**
+ * Runs a command in a fixture repository as it would run outside CI.
+ *
+ * The outer run's CI context (its event, the event's base commit, whether it
+ * is a push or a schedule) describes this repository, not the fixture. A
+ * checker that inherits it judges the fixture's dated entries against a base
+ * commit the fixture does not have, so the fixture's verdict would change with
+ * the calendar and the outer event instead of with what the test wrote.
+ */
+const fixtureEnvironment = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([name]) => name !== "CI" && !name.startsWith("GITHUB_"),
+  ),
+);
+const runInFixture = (command, directory) =>
+  Bun.spawnSync(command, { cwd: directory, env: fixtureEnvironment });
+
 const workflow = Bun.YAML.parse(
   readFileSync(path.join(repo, ".github/workflows/ci.yml"), "utf8"),
 );
@@ -365,7 +383,7 @@ describe("required shared toolchain policy", () => {
     const action = policy.actions["actions/checkout"];
     const workflowFile = path.join(directory, ".github/workflows/example.yml");
     const checker = path.join(repo, "node_modules/.bin/stll-toolchain-check");
-    const check = () => Bun.spawnSync(["bun", checker], { cwd: directory });
+    const check = () => runInFixture(["bun", checker], directory);
     const writeWorkflow = (selector) =>
       writeFileSync(
         workflowFile,
@@ -546,10 +564,9 @@ describe("published Node minimum", () => {
       const directory = mkdtempSync(path.join(tmpdir(), "folio-node-minimum-"));
       const checker = path.join(repo, "node_modules/.bin/stll-toolchain-check");
       const projection = path.join(repo, "scripts/consumer-node-minimum.mjs");
-      const shared = () =>
-        Bun.spawnSync([process.execPath, checker], { cwd: directory });
+      const shared = () => runInFixture([process.execPath, checker], directory);
       const project = (mode) =>
-        Bun.spawnSync([process.execPath, projection, mode], { cwd: directory });
+        runInFixture([process.execPath, projection, mode], directory);
       const check = () => {
         const result = shared();
         return result.exitCode === 0 ? project("--check") : result;

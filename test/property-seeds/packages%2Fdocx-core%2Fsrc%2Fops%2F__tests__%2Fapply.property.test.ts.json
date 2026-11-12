@@ -297,6 +297,78 @@
       "path": "31:0:0:0:0:0:0:0:0:8:6:6:6:6:7:7:7:7:7:7:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:11:10:10:9:9:9:10:9:12:12:11:11:13:13:13:13:13:13:13:13",
       "note": "Direct and accepted tracked editor intents must agree for hyperlink marker seams around reviewed math atoms in table paragraphs.",
       "date": "2026-10-04"
+    },
+    {
+      "seed": 1004,
+      "path": "54:0:0:0:0:0:0:0:1:5:3:4:4:4:7:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:10:9:9:8:10:8:8:8:8:8:8:14:9:8:9:8:9:9:9:9:9:9:9:9:9",
+      "date": "2026-11-09",
+      "note": "A direct replacement over a range holding a range boundary inside a wrapper continues the wrapper the boundary stays in, as accepting the tracked replacement does."
+    },
+    {
+      "seed": -1779341018,
+      "path": "8:0:0:0:0:4:3:3:3:3:3:3:3:4:4:4:4:4:4:4:5:3:4:4:4:4:4:4:4:4",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": 890015111,
+      "path": "39:1:2:3:3:3:3:4:5:6:5:6:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": -1421555387,
+      "path": "54:0:0:0:0:0:0:0:0:0:0:0:0:0:4:5:5:5:5:7:2:4:4:4:4:4:4:4:4:4:4:4:3:4:3:3:5:7:3:4:3:4:4:4:3:3:3:3:4:4:4:4:4:4:4:4",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": 911836647,
+      "path": "80:0:0:0:0:0:0:0:0:3:2:2:2:2:3:2:3:7:6:7:6:8:7:7:8:8:8:8:8:8:8:8:8:8:8:8:8:11:9:9:9:9:9:9:9:9",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": -52467527,
+      "path": "19:0:0:0:0:0:0:0:0:3:1:4:5:5:5:5:5:5:5:5:5:7:5:6:6:6:6:6:6:6:6:6",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": -1916229849,
+      "path": "86:1:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": -828462562,
+      "path": "25:0:0:0:0:0:0:0:2:3:4:3:4:4:4:4:7:9:8:10:10:10:11:11:11:11:11:11:11:11:11:11:13:11:38:38:38:38:38:38:38:38:38",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": 1827977322,
+      "path": "32:0:0:0:0:0:4:6:4:6:6:6:6:6:9:10:9:11:10:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": -1055088661,
+      "path": "12:0:0:0:0:0:0:0:0:4:2:2:3:6:5:5:5:5:5:5:5:5:5:5:5:5:7:4:4:4:5:5:4:5:4:4:4:4:4:5:8:5:4:5:5:5:5:5:5:5:5:5",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": -308193971,
+      "path": "17:2:2:2:2:2:2:2:3:5:6:7:6:6:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
+    },
+    {
+      "seed": -957367983,
+      "path": "81:1:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "#2473: direct and accepted tracked results differed",
+      "date": "2026-11-11"
     }
   ],
   "the same operation on equal documents gives equal results": [

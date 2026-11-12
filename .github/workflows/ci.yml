@@ -5,6 +5,9 @@ env:
   HAWK_RUST_TOOLCHAIN: "1.97.1"
   HAWK_VERSION: "0.1.11"
   HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256: "8380db63360ae94f9890d7e426cce00e479d884f516614cea998c85d5f30ab6d"
+  # The crates.io package of the same release, built when the release
+  # archive cannot be downloaded.
+  HAWK_CRATE_SHA256: "584421e8a97b7bbd33f4db455f53d95bc351a893d15f534c30240ac0969c248e"
 
 on:
   push:
@@ -29,11 +32,19 @@ jobs:
     name: Changeset present for published package src changes
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # need history to compute the merge base with main
           persist-credentials: false
+
+      - name: Refuse changesets a release already published
+        # A merge of the released main into an older branch brings back the
+        # notes the release deleted; publishing them again repeats them.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/check-released-changesets.sh origin/main "origin/$BASE_REF" HEAD
 
       - name: Enforce release intent
         # The repository owner publishes this versioned shared contract.
@@ -125,6 +136,7 @@ jobs:
       docx_kernel_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).docx_kernel) }}
       interactions_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions) }}
       differential_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential) }}
+      test_shards: ${{ steps.test-shards.outputs.test_shards }}
       packaged_consumer_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.packaged_consumer_required == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer) }}
     steps:
       - name: Find successful merge-group coverage
@@ -156,11 +168,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: package.json
-          no-cache: true
+          package-json: package.json
       - run: bun scripts/ci-scoped-install.ts ci-plan
+      - name: Plan the test shards
+        id: test-shards
+        run: bun scripts/ci-test-shard-plan.ts
       - name: Detect shared toolchain changes
         id: toolchain
         shell: bash
@@ -221,9 +235,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: package.json
+          package-json: package.json
+          install-cache: actions
       - run: bun install --frozen-lockfile
       - &source-lint-cache
         name: Cache shared Rust source lint
@@ -248,10 +263,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: package.json
-          no-cache: true
+          package-json: package.json
       - run: bun scripts/ci-scoped-install.ts browser-discovery
       - name: Discover every Node Playwright project without browsers
         run: bun scripts/ci-browser-discovery.ts
@@ -269,10 +283,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
-          no-cache: true
+          package-json: "package.json"
 
       - name: Format check
         run: bun fmt --check
@@ -289,9 +302,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
@@ -488,9 +502,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
@@ -512,9 +527,10 @@ jobs:
           fetch-depth: 0 # compare generated declarations with the base commit
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
@@ -553,33 +569,42 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  tests-1:
-    name: Focused and full tests (1/4)
+  # One job per planned shard: scripts/ci-test-shard-plan.ts picks the fewest
+  # shards whose measured load fits its budget, and the matrix follows it.
+  tests:
+    name: Focused and full tests (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.ci-plan.outputs.test_shards) }}
     env:
       # A generated property case found by the commit's seed reports here
       # instead of failing; pinned seeds, examples and every other test still
       # fail (test/property-exploration.ts).
       FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
       FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
+      TEST_SHARD: ${{ matrix.shard }}
+      TEST_SHARDS: ${{ strategy.job-total }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
       - name: Focused unit tests
         if: needs.ci-plan.outputs.suite_depth == 'fast'
-        run: bun scripts/ci-test-shards.ts --shard 1 --depth fast
+        run: bun scripts/ci-test-shards.ts --shard "$TEST_SHARD" --shards "$TEST_SHARDS" --depth fast
         env:
           CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
 
@@ -589,14 +614,14 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p test-results
-          bun scripts/ci-test-shards.ts --shard 1 --depth full 2>&1 | tee test-results/full-test-suite.log
+          bun scripts/ci-test-shards.ts --shard "$TEST_SHARD" --shards "$TEST_SHARDS" --depth full 2>&1 | tee test-results/full-test-suite.log
 
       - name: Upload per-file test timings
         if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: test-timings-${{ github.run_id }}-1
-          path: test-results/test-timings-1.json
+          name: test-timings-${{ github.run_id }}-${{ matrix.shard }}
+          path: test-results/test-timings-${{ matrix.shard }}.json
           retention-days: 14
           if-no-files-found: error
 
@@ -605,7 +630,7 @@ jobs:
         if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: fuzz-log-full-test-suite-1
+          name: fuzz-log-full-test-suite-${{ matrix.shard }}
           path: test-results/full-test-suite.log
           retention-days: 7
           if-no-files-found: error
@@ -615,208 +640,7 @@ jobs:
         if: always() && github.event_name == 'merge_group'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: fuzz-exploration-1
-          path: test-results/fuzz-exploration
-          retention-days: 7
-          if-no-files-found: ignore
-
-  tests-2:
-    name: Focused and full tests (2/4)
-    needs: ci-plan
-    if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      # A generated property case found by the commit's seed reports here
-      # instead of failing; pinned seeds, examples and every other test still
-      # fail (test/property-exploration.ts).
-      FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
-      FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # fast-depth selection diffs the PR merge base
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      - name: Focused unit tests
-        if: needs.ci-plan.outputs.suite_depth == 'fast'
-        run: bun scripts/ci-test-shards.ts --shard 2 --depth fast
-        env:
-          CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
-
-      - name: Full test suite
-        id: full-suite
-        if: needs.ci-plan.outputs.suite_depth == 'full'
-        run: |
-          set -o pipefail
-          mkdir -p test-results
-          bun scripts/ci-test-shards.ts --shard 2 --depth full 2>&1 | tee test-results/full-test-suite.log
-
-      - name: Upload per-file test timings
-        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: test-timings-${{ github.run_id }}-2
-          path: test-results/test-timings-2.json
-          retention-days: 14
-          if-no-files-found: error
-
-      # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
-      - name: Keep the test log of a failed merge group
-        if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: fuzz-log-full-test-suite-2
-          path: test-results/full-test-suite.log
-          retention-days: 7
-          if-no-files-found: error
-
-      # Filed by fuzz-ejection-replay.yml once the group's run completes.
-      - name: Keep the exploration findings of a merge group
-        if: always() && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: fuzz-exploration-2
-          path: test-results/fuzz-exploration
-          retention-days: 7
-          if-no-files-found: ignore
-
-  tests-3:
-    name: Focused and full tests (3/4)
-    needs: ci-plan
-    if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      # A generated property case found by the commit's seed reports here
-      # instead of failing; pinned seeds, examples and every other test still
-      # fail (test/property-exploration.ts).
-      FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
-      FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # fast-depth selection diffs the PR merge base
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      - name: Focused unit tests
-        if: needs.ci-plan.outputs.suite_depth == 'fast'
-        run: bun scripts/ci-test-shards.ts --shard 3 --depth fast
-        env:
-          CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
-
-      - name: Full test suite
-        id: full-suite
-        if: needs.ci-plan.outputs.suite_depth == 'full'
-        run: |
-          set -o pipefail
-          mkdir -p test-results
-          bun scripts/ci-test-shards.ts --shard 3 --depth full 2>&1 | tee test-results/full-test-suite.log
-
-      - name: Upload per-file test timings
-        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: test-timings-${{ github.run_id }}-3
-          path: test-results/test-timings-3.json
-          retention-days: 14
-          if-no-files-found: error
-
-      # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
-      - name: Keep the test log of a failed merge group
-        if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: fuzz-log-full-test-suite-3
-          path: test-results/full-test-suite.log
-          retention-days: 7
-          if-no-files-found: error
-
-      # Filed by fuzz-ejection-replay.yml once the group's run completes.
-      - name: Keep the exploration findings of a merge group
-        if: always() && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: fuzz-exploration-3
-          path: test-results/fuzz-exploration
-          retention-days: 7
-          if-no-files-found: ignore
-
-  tests-4:
-    name: Focused and full tests (4/4)
-    needs: ci-plan
-    if: needs.ci-plan.outputs.code_required == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      # A generated property case found by the commit's seed reports here
-      # instead of failing; pinned seeds, examples and every other test still
-      # fail (test/property-exploration.ts).
-      FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
-      FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # fast-depth selection diffs the PR merge base
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      - name: Focused unit tests
-        if: needs.ci-plan.outputs.suite_depth == 'fast'
-        run: bun scripts/ci-test-shards.ts --shard 4 --depth fast
-        env:
-          CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
-
-      - name: Full test suite
-        id: full-suite
-        if: needs.ci-plan.outputs.suite_depth == 'full'
-        run: |
-          set -o pipefail
-          mkdir -p test-results
-          bun scripts/ci-test-shards.ts --shard 4 --depth full 2>&1 | tee test-results/full-test-suite.log
-
-      - name: Upload per-file test timings
-        if: ${{ always() && steps.full-suite.outcome != 'skipped' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: test-timings-${{ github.run_id }}-4
-          path: test-results/test-timings-4.json
-          retention-days: 14
-          if-no-files-found: error
-
-      # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
-      - name: Keep the test log of a failed merge group
-        if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: fuzz-log-full-test-suite-4
-          path: test-results/full-test-suite.log
-          retention-days: 7
-          if-no-files-found: error
-
-      # Filed by fuzz-ejection-replay.yml once the group's run completes.
-      - name: Keep the exploration findings of a merge group
-        if: always() && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: fuzz-exploration-4
+          name: fuzz-exploration-${{ matrix.shard }}
           path: test-results/fuzz-exploration
           retention-days: 7
           if-no-files-found: ignore
@@ -832,9 +656,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
@@ -859,6 +684,7 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.docx_kernel_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       CARGO_NET_RETRY: "5"
       CARGO_HTTP_TIMEOUT: "120"
@@ -871,32 +697,68 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
       - name: Install pinned Rust toolchain and WebAssembly target
         run: rustup show active-toolchain && rustup target add wasm32-unknown-unknown
 
+      - name: Restore pinned Hawk
+        id: hawk-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/cargo-hawk
+          key: cargo-hawk-${{ runner.os }}-${{ runner.arch }}-${{ env.HAWK_VERSION }}-${{ env.HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256 }}-${{ env.HAWK_CRATE_SHA256 }}
+
+      # The release archive, checked against its pinned digest. When the
+      # release host does not answer, the same release builds from crates.io
+      # against the pinned toolchain, its package checked against its pinned
+      # digest and its dependencies against the lockfile it ships.
       - name: Install pinned Hawk
         shell: bash
+        env:
+          HAWK_CACHE_HIT: ${{ steps.hawk-cache.outputs.cache-hit }}
         run: |
           set -euo pipefail
           expected_hawk_script="cargo +${HAWK_RUST_TOOLCHAIN} hawk check --target-dir target/hawk -D warnings -A hawk::dead_public -A hawk::unnecessary_public"
           jq -e --arg expected "$expected_hawk_script" \
             '.scripts["rust:hawk"] == $expected' package.json >/dev/null
-          archive="$RUNNER_TEMP/cargo-hawk.tar.gz"
-          install_dir="$RUNNER_TEMP/cargo-hawk"
-          curl --proto '=https' --tlsv1.2 --retry 3 -fsSL \
-            -o "$archive" \
-            "https://github.com/astral-sh/hawk/releases/download/${HAWK_VERSION}/cargo-hawk-x86_64-unknown-linux-gnu.tar.gz"
-          echo "${HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256}  ${archive}" | sha256sum --check
-          mkdir -p "$install_dir"
-          tar -xzf "$archive" -C "$install_dir" --strip-components=1
-          echo "$install_dir" >> "$GITHUB_PATH"
+          install_dir="$HOME/.cache/cargo-hawk"
           rustup toolchain install 1.97.1 --profile minimal # cargo-hawk exception tracked in stll-toolchain.json
+          if [ "$HAWK_CACHE_HIT" != "true" ]; then
+            archive="$RUNNER_TEMP/cargo-hawk.tar.gz"
+            mkdir -p "$install_dir"
+            if curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL \
+              -o "$archive" \
+              "https://github.com/astral-sh/hawk/releases/download/${HAWK_VERSION}/cargo-hawk-x86_64-unknown-linux-gnu.tar.gz"; then
+              echo "${HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256}  ${archive}" | sha256sum --check
+              tar -xzf "$archive" -C "$install_dir" --strip-components=1
+            else
+              echo "::warning::The Hawk release host did not answer; building cargo-hawk ${HAWK_VERSION} from crates.io"
+              rustup component add rustc-dev --toolchain 1.97.1 # cargo-hawk exception tracked in stll-toolchain.json
+              build_root="$RUNNER_TEMP/cargo-hawk-build"
+              RUSTC_BOOTSTRAP=1 cargo +1.97.1 install cargo-hawk --version "=${HAWK_VERSION}" --locked --root "$build_root" # cargo-hawk exception tracked in stll-toolchain.json
+              package=$(find "$HOME/.cargo/registry/cache" -name "cargo-hawk-${HAWK_VERSION}.crate" -print -quit)
+              if [ -z "$package" ]; then
+                echo "::error::cargo did not keep the cargo-hawk ${HAWK_VERSION} package it built"
+                exit 1
+              fi
+              echo "${HAWK_CRATE_SHA256}  ${package}" | sha256sum --check
+              cp "$build_root/bin/"* "$install_dir/"
+            fi
+          fi
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Save pinned Hawk
+        if: steps.hawk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/cargo-hawk
+          key: cargo-hawk-${{ runner.os }}-${{ runner.arch }}-${{ env.HAWK_VERSION }}-${{ env.HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256 }}-${{ env.HAWK_CRATE_SHA256 }}
 
       - *source-lint-cache
       - *source-lint-install
@@ -986,9 +848,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
@@ -1012,15 +875,17 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
       - run: bun install --frozen-lockfile
       - name: Install Playwright Chromium
         uses: ./.github/actions/playwright-deps
@@ -1043,14 +908,16 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
@@ -1100,16 +967,18 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.differential_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: "8.0.425"
 
@@ -1131,14 +1000,16 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       # The scenarios run under Node, as an integrator runs the packages.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -1203,14 +1074,16 @@ jobs:
     needs: [ci-plan, consumer-scenarios]
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       # The published CLI support range owns this job's exact minimum runtime.
       # stll-toolchain.json scopes this engine floor to this package and job.
@@ -1247,14 +1120,16 @@ jobs:
     needs: ci-plan
     if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: stella/.github/actions/setup-bun-cached@042baebaf071329b956555c05caf5736504c278d
+      - uses: ./.github/actions/bun
         with:
-          bun-version-file: "package.json"
+          package-json: "package.json"
+          install-cache: actions
 
       - run: bun install --frozen-lockfile
 
@@ -1315,10 +1190,7 @@ jobs:
       - typecheck
       - build-api
       - browser-discovery
-      - tests-1
-      - tests-2
-      - tests-3
-      - tests-4
+      - tests
       - container-contract
       - docx-kernel
       - browser-input-pinned
@@ -1350,10 +1222,7 @@ jobs:
             "warm-main-caches":{"event":"push","reuse":"required","warm":"required"},
             "typecheck":{"area":"code_required"},
             "build-api":{"area":"api_required"},
-            "tests-1":{"area":"code_required"},
-            "tests-2":{"area":"code_required"},
-            "tests-3":{"area":"code_required"},
-            "tests-4":{"area":"code_required"},
+            "tests":{"area":"code_required"},
             "container-contract":{"area":"container_contract_required","depth":"full"},
             "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
             "browser-input-pinned":{"area":"interactions_required"},

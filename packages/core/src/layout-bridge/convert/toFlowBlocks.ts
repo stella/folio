@@ -9,6 +9,7 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
 import { buildPageBreakRunDescendantIndex } from "../../internal/pageBreakRunDescendantIndex";
+import { noteTableOrigin } from "../../layout-engine/measure/tableMeasureMemo";
 import type {
   ColumnBreakBlock,
   FlowBlock,
@@ -20,6 +21,7 @@ import type {
   TableBlock,
   TextBoxBlock,
 } from "../../layout-engine/types";
+import { shiftFlowBlockPmAnchors } from "../../layout-engine/types";
 import { getPageNumbering } from "../../paged-layout/sectionGeometry";
 import {
   expectBlockSdtAttrs,
@@ -44,8 +46,11 @@ import {
   suppressFinalParagraphInRepeatedEmptySuffix,
 } from "./flowBlockPostprocessing";
 import {
+  freshBlockIdsFrom,
   nextBlockId,
+  preferBlockIds,
   resetBlockIdCounter,
+  takeHandedOutBlockIds,
   twipsToPixels,
 } from "./flowConversionShared";
 import type {
@@ -55,7 +60,12 @@ import type {
 import { convertImage } from "./imageConversion";
 import { collectNoteRefs } from "./noteReferences";
 import { splitParagraphAtPageBreaks } from "./pageBreakSplitting";
-import { convertParagraph, drawsParagraphBorder } from "./paragraphConversion";
+import type { ParagraphListMarker } from "./paragraphAttrs";
+import {
+  convertParagraphWithListMarker,
+  drawsParagraphBorder,
+  paragraphListMarker,
+} from "./paragraphConversion";
 import { groupParagraphFrames } from "./paragraphFrames";
 import type { PageBreakRunProjection } from "./paragraphRuns";
 import {
@@ -66,6 +76,17 @@ import {
   readFinalSectionStart,
 } from "./sectionBoundaries";
 import { convertTable, convertTextBoxNode } from "./tableConversion";
+import {
+  type ConversionCheckpoint,
+  convertsWithOtherNodes,
+  freezeKeptBlock,
+  freezesKeptBlocks,
+  restoreListCounterState,
+  sameCheckpoint,
+  type SectionMarginsTwips,
+  takeCheckpoint,
+  type TopLevelConversion,
+} from "./topLevelConversion";
 
 export {
   formatCounter,
@@ -99,8 +120,6 @@ export function toFlowBlocks(
     doc,
     "Cannot layout invalid ProseMirror document",
   );
-
-  resetBlockIdCounter();
 
   const listCounters = options.listCounters ?? new Map<number, number[]>();
   const originalListCounters =
@@ -153,10 +172,32 @@ export function toFlowBlocks(
     }),
   };
 
+  const paragraphBlocks = options.paragraphBlocks;
+  paragraphBlocks?.use(opts);
+  // Counters handed in continue another story's lists: the kept conversions
+  // started from none.
+  const seeded =
+    options.listCounters !== undefined ||
+    options.listAbstractCounters !== undefined ||
+    options.listSeenNumIds !== undefined ||
+    options.originalListCounters !== undefined ||
+    options.originalListAbstractCounters !== undefined ||
+    options.originalListSeenNumIds !== undefined;
+  /** Whether this conversion is kept for the next one. */
+  const recording = paragraphBlocks !== undefined && !seeded;
+  const lastConversion = recording
+    ? paragraphBlocks?.lastConversion(doc)
+    : undefined;
+  // A block keeps its id across conversions: fresh ids start above the ones
+  // the last conversion handed out, which the nodes converting again reuse.
+  resetBlockIdCounter(lastConversion?.freshFrom ?? 0);
+  const hasFontResolutionContext =
+    options.embeddedFontFamilyMap !== undefined ||
+    options.documentFontFacts !== undefined;
+
   const blocks: FlowBlock[] = [];
   const offset = 0; // Start at document beginning; kept for clarity.
-  void offset;
-  let lastSectionMarginsTwips = {
+  let lastSectionMarginsTwips: SectionMarginsTwips = {
     top: 1440,
     bottom: 1440,
     left: 1440,
@@ -182,16 +223,38 @@ export function toFlowBlocks(
 
   const trackedPush = (block: FlowBlock): void => {
     tagBlockWithSdtStack(block);
+    if (hasFontResolutionContext) attachFontResolutionContext(block, options);
     blocks.push(block);
   };
+
+  /** The marker of the last paragraph projected whole. */
+  let projectedMarker: { marker: ParagraphListMarker } | undefined;
 
   const pushParagraphProjection = (
     node: PMNode,
     pos: number,
     stripLeadingLineBreak = false,
   ): void => {
+    const listMarker = paragraphListMarker(node, opts);
+    if (!stripLeadingLineBreak) {
+      projectedMarker = { marker: listMarker };
+      const kept = paragraphBlocks?.take(node, pos, listMarker, nextBlockId);
+      if (kept) {
+        trackedPush(kept);
+        return;
+      }
+    }
     const pageBreaks: PageBreakRunProjection[] = [];
-    const paragraph = convertParagraph(node, pos, opts, pageBreaks);
+    const paragraph = convertParagraphWithListMarker(
+      node,
+      pos,
+      opts,
+      listMarker,
+      pageBreaks,
+    );
+    if (!stripLeadingLineBreak && pageBreaks.length === 0) {
+      paragraphBlocks?.keep(node, pos, listMarker, paragraph);
+    }
 
     if (stripLeadingLineBreak && paragraph.runs.at(0)?.kind === "lineBreak") {
       paragraph.runs.shift();
@@ -279,6 +342,7 @@ export function toFlowBlocks(
       return;
     }
     tagBlockWithSdtStack(textBox);
+    if (hasFontResolutionContext) attachFontResolutionContext(textBox, options);
     const heldBack = textBoxesBeforePageBreak.get(pageBreak);
     if (heldBack) {
       heldBack.push(textBox);
@@ -690,10 +754,214 @@ export function toFlowBlocks(
     }
   };
 
-  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-  doc.forEach((node, nodeOffset) => {
-    visit(node, offset + nodeOffset);
+  // The state converting the next node starts from, when the live state has
+  // not been brought up to it: blocks kept from the last conversion were
+  // handed out without converting their nodes.
+  let pending: ConversionCheckpoint | undefined;
+  /** The live state as a checkpoint, `previous` itself when it holds the same. */
+  const checkpoint = (
+    previous: ConversionCheckpoint | undefined,
+  ): ConversionCheckpoint => {
+    const live = takeLiveCheckpointView();
+    return previous !== undefined && sameCheckpoint(live, previous)
+      ? previous
+      : takeCheckpoint(
+          listCounterState,
+          originalListCounterState,
+          lastSectionMarginsTwips,
+          blocks.length - sectionStartBlockCount,
+        );
+  };
+  /** The live state, read in place: valid until the next node converts. */
+  const takeLiveCheckpointView = (): ConversionCheckpoint => ({
+    final: listCounterState,
+    original: originalListCounterState,
+    margins: lastSectionMarginsTwips,
+    sectionBlocks: blocks.length - sectionStartBlockCount,
   });
+  const startsFrom = (state: ConversionCheckpoint): boolean =>
+    sameCheckpoint(pending ?? takeLiveCheckpointView(), state);
+  const bringLiveStateUpToDate = (): ConversionCheckpoint | undefined => {
+    const state = pending;
+    if (state === undefined) return undefined;
+    restoreListCounterState(listCounterState, state.final);
+    restoreListCounterState(originalListCounterState, state.original);
+    lastSectionMarginsTwips = state.margins;
+    sectionStartBlockCount = blocks.length - state.sectionBlocks;
+    pending = undefined;
+    return state;
+  };
+
+  // The last conversion's nodes the document starts and ends with.
+  const kept = lastConversion?.nodes ?? [];
+  const nodeCount = doc.childCount;
+  let keptStart = 0;
+  while (
+    keptStart < nodeCount &&
+    keptStart < kept.length &&
+    kept[keptStart]?.node === doc.child(keptStart)
+  )
+    keptStart += 1;
+  let keptEnd = 0;
+  while (
+    keptEnd < nodeCount - keptStart &&
+    keptEnd < kept.length - keptStart &&
+    kept[kept.length - 1 - keptEnd]?.node === doc.child(nodeCount - 1 - keptEnd)
+  )
+    keptEnd += 1;
+  const keptIndex = (index: number): number | undefined => {
+    if (index < keptStart) return index;
+    if (index >= nodeCount - keptEnd) return index - nodeCount + kept.length;
+    return undefined;
+  };
+  const stateAfter = (index: number): ConversionCheckpoint | undefined =>
+    kept[index + 1]?.before ?? lastConversion?.end;
+  // The changed range's nodes the last conversion converted too, each paired
+  // once with its own earlier conversion, in document order: a node an edit
+  // moved within the range takes back its own ids, not those of the node now
+  // at its old place.
+  const changedEnd = kept.length - keptEnd;
+  const survivors = new Map<number, number>();
+  if (changedEnd > keptStart && nodeCount - keptEnd > keptStart) {
+    const earlier = new Map<PMNode, number[]>();
+    for (let at = keptStart; at < changedEnd; at += 1) {
+      const node = kept[at]?.node;
+      if (node === undefined) continue;
+      const places = earlier.get(node);
+      if (places === undefined) earlier.set(node, [at]);
+      else places.push(at);
+    }
+    for (let index = keptStart; index < nodeCount - keptEnd; index += 1) {
+      const at = earlier.get(doc.child(index))?.shift();
+      if (at !== undefined) survivors.set(index, at);
+    }
+  }
+  const survivorPlaces = new Set(survivors.values());
+  /**
+   * The last conversion's node whose block ids converting `index` takes back:
+   * the same node at either end, the same node in the changed range between
+   * them, and else the node at the same place in that range that no surviving
+   * node took. Each one is taken at most once.
+   */
+  const predecessor = (index: number): TopLevelConversion | undefined => {
+    const at = keptIndex(index) ?? survivors.get(index);
+    if (at !== undefined) return kept[at];
+    return index < changedEnd && !survivorPlaces.has(index)
+      ? kept[index]
+      : undefined;
+  };
+
+  const converted: TopLevelConversion[] = [];
+  let lastBefore: ConversionCheckpoint | undefined;
+  let pos = offset;
+  for (let index = 0; index < nodeCount; index += 1) {
+    const node = doc.child(index);
+    const keptAt = keptIndex(index);
+    const previous = keptAt === undefined ? undefined : kept[keptAt];
+    if (
+      keptAt !== undefined &&
+      previous !== undefined &&
+      !convertsWithOtherNodes(node) &&
+      startsFrom(previous.before)
+    ) {
+      if (previous.pos === pos && previous.firstSdt === sdtSeq) {
+        // The node converts as it did: the same blocks.
+        for (const block of previous.blocks) blocks.push(block);
+        sdtSeq += previous.sdts;
+        converted.push(previous);
+        lastBefore = previous.before;
+        pending = stateAfter(keptAt);
+        pos += node.nodeSize;
+        continue;
+      }
+      const moved =
+        previous.paragraphMarker !== undefined &&
+        previous.ids.length === 1 &&
+        previous.sdts === 0
+          ? paragraphBlocks?.take(
+              node,
+              pos,
+              previous.paragraphMarker.marker,
+              () => previous.ids[0] ?? nextBlockId(),
+            )
+          : undefined;
+      if (moved !== undefined) {
+        // The node converts as it did, moved: its paragraph moved.
+        trackedPush(moved);
+        converted.push({
+          ...previous,
+          pos,
+          firstSdt: sdtSeq,
+          blocks: [moved],
+        });
+        lastBefore = previous.before;
+        pending = stateAfter(keptAt);
+        pos += node.nodeSize;
+        continue;
+      }
+      if (node.type.name === "table" && previous.sdts === 0) {
+        // The table converts as it did, moved: its blocks move with it, ids
+        // and all, instead of converting every cell again.
+        const delta = pos - previous.pos;
+        const shifted = previous.blocks.map((block) => {
+          const copy = shiftFlowBlockPmAnchors(block, delta);
+          if (block.kind === "table" && copy.kind === "table")
+            noteTableOrigin(copy, block);
+          return copy;
+        });
+        for (const block of shifted) blocks.push(block);
+        converted.push({
+          ...previous,
+          pos,
+          firstSdt: sdtSeq,
+          blocks: shifted,
+        });
+        lastBefore = previous.before;
+        pending = stateAfter(keptAt);
+        pos += node.nodeSize;
+        continue;
+      }
+    }
+    const resumed = bringLiveStateUpToDate();
+    if (!recording) {
+      visit(node, pos);
+      pos += node.nodeSize;
+      continue;
+    }
+    const before = resumed ?? checkpoint(lastBefore);
+    const firstSdt = sdtSeq;
+    const firstBlock = blocks.length;
+    projectedMarker = undefined;
+    preferBlockIds(predecessor(index)?.ids ?? []);
+    visit(node, pos);
+    const ids = takeHandedOutBlockIds();
+    const projected = blocks.slice(firstBlock);
+    converted.push({
+      node,
+      pos,
+      ids,
+      firstSdt,
+      sdts: sdtSeq - firstSdt,
+      before,
+      blocks: projected,
+      ...(projectedMarker !== undefined &&
+      node.type.name === "paragraph" &&
+      projected.length === 1 &&
+      projected[0]?.kind === "paragraph"
+        ? { paragraphMarker: projectedMarker }
+        : {}),
+    });
+    lastBefore = before;
+    pos += node.nodeSize;
+  }
+  if (recording) {
+    paragraphBlocks?.recordConversion({
+      doc,
+      nodes: converted,
+      end: pending ?? checkpoint(lastBefore),
+      freshFrom: freshBlockIdsFrom(),
+    });
+  }
   releaseTextBoxesBeforePageBreaks();
 
   reserveLeadingEmptyOutlineHeight(blocks);
@@ -726,74 +994,81 @@ export function toFlowBlocks(
     options.splitPageBreakAndParagraphMark === true,
     sectionBreaksWithoutMarker,
   );
-  const result = groupParagraphFrames(reconciledBlocks, nextBlockId);
-  if (
-    options.embeddedFontFamilyMap !== undefined ||
-    options.documentFontFacts !== undefined
-  ) {
-    attachFontResolutionContext(result, options);
+  const result = groupParagraphFrames(reconciledBlocks);
+  if (recording && freezesKeptBlocks()) {
+    for (const node of converted)
+      for (const block of node.blocks) freezeKeptBlock(block);
+    for (const block of result) freezeKeptBlock(block);
   }
   return result;
 }
 
-/** Attach editor-owned resolution to freshly derived blocks without changing authored data. */
+type FontResolutionContext = Pick<
+  ToFlowBlocksOptions,
+  "embeddedFontFamilyMap" | "documentFontFacts"
+>;
+
+/**
+ * Attach editor-owned resolution to a freshly derived block without changing
+ * authored data. Blocks kept from an earlier conversion under the same
+ * constants already carry it.
+ */
 const attachFontResolutionContext = (
-  blocks: FlowBlock[],
-  options: Pick<
-    ToFlowBlocksOptions,
-    "embeddedFontFamilyMap" | "documentFontFacts"
-  >,
+  block: FlowBlock,
+  options: FontResolutionContext,
 ): void => {
-  for (const block of blocks) {
-    switch (block.kind) {
-      case "paragraph":
-        for (const run of block.runs) {
-          if (run.kind !== "image" && run.kind !== "lineBreak") {
-            if (options.embeddedFontFamilyMap !== undefined) {
-              run.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
-            }
-            if (options.documentFontFacts !== undefined) {
-              run.documentFontFacts = options.documentFontFacts;
-            }
-          }
-        }
-        block.attrs ??= {};
-        if (options.embeddedFontFamilyMap !== undefined) {
-          block.attrs.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
-        }
-        if (options.documentFontFacts !== undefined) {
-          block.attrs.documentFontFacts = options.documentFontFacts;
-        }
-        if (block.attrs.listMarkerFormatting) {
+  switch (block.kind) {
+    case "paragraph":
+      for (const run of block.runs) {
+        if (run.kind !== "image" && run.kind !== "lineBreak") {
           if (options.embeddedFontFamilyMap !== undefined) {
-            block.attrs.listMarkerFormatting.embeddedFontFamilyMap =
-              options.embeddedFontFamilyMap;
+            run.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
           }
           if (options.documentFontFacts !== undefined) {
-            block.attrs.listMarkerFormatting.documentFontFacts =
-              options.documentFontFacts;
+            run.documentFontFacts = options.documentFontFacts;
           }
         }
-        break;
-      case "table":
-        for (const row of block.rows) {
-          for (const cell of row.cells) {
-            attachFontResolutionContext(cell.blocks, options);
-          }
-        }
-        break;
-      case "textBox":
-        attachFontResolutionContext(block.content, options);
-        break;
-      case "image":
-      case "sectionBreak":
-      case "pageBreak":
-      case "columnBreak":
-        break;
-      default: {
-        const exhaustive: never = block;
-        return exhaustive;
       }
+      block.attrs ??= {};
+      if (options.embeddedFontFamilyMap !== undefined) {
+        block.attrs.embeddedFontFamilyMap = options.embeddedFontFamilyMap;
+      }
+      if (options.documentFontFacts !== undefined) {
+        block.attrs.documentFontFacts = options.documentFontFacts;
+      }
+      if (block.attrs.listMarkerFormatting) {
+        // A new object: the converted one may be kept for later conversions.
+        block.attrs.listMarkerFormatting = {
+          ...block.attrs.listMarkerFormatting,
+          ...(options.embeddedFontFamilyMap === undefined
+            ? {}
+            : { embeddedFontFamilyMap: options.embeddedFontFamilyMap }),
+          ...(options.documentFontFacts === undefined
+            ? {}
+            : { documentFontFacts: options.documentFontFacts }),
+        };
+      }
+      break;
+    case "table":
+      for (const row of block.rows) {
+        for (const cell of row.cells) {
+          for (const cellBlock of cell.blocks)
+            attachFontResolutionContext(cellBlock, options);
+        }
+      }
+      break;
+    case "textBox":
+      for (const contentBlock of block.content)
+        attachFontResolutionContext(contentBlock, options);
+      break;
+    case "image":
+    case "sectionBreak":
+    case "pageBreak":
+    case "columnBreak":
+      break;
+    default: {
+      const exhaustive: never = block;
+      return exhaustive;
     }
   }
 };

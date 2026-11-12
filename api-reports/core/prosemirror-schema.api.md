@@ -75,6 +75,8 @@ export type CharacterStyleAttrs = {
 // @public (undocumented)
 export type CommentAttrs = {
     commentId: number;
+    point?: boolean;
+    suggestionId?: string;
 };
 
 // @public (undocumented)

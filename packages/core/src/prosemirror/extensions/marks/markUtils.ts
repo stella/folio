@@ -53,10 +53,8 @@ import { hasRunFormattingOverrideAttrs } from "../../runFormattingProvenance";
 import {
   COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
   type ComplexScriptRunPropertyKey,
-} from "../../schema/marks";
-import type {
-  FontFamilyAttrs,
-  RunFormattingOverrideAttrs,
+  type FontFamilyAttrs,
+  type RunFormattingOverrideAttrs,
 } from "../../schema/marks";
 import {
   applyRunFormattingOverrideMark,

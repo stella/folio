@@ -44,6 +44,7 @@ import {
   type HiddenProseMirrorCollaboration,
   type HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
+import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
@@ -132,6 +133,8 @@ export type HiddenProseMirrorProps = {
 export type HiddenProseMirrorRef = HiddenEditorApi & {
   /** Internal composition availability for deferred document notifications. */
   isCanonicalComposing: () => boolean;
+  /** The canonical session's own document, read without a copy. */
+  readCanonicalDocument: () => Document | null;
   /** Get the off-screen host element. */
   getHostElement: () => HTMLElement | null;
 };
@@ -418,6 +421,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
       getHostElement: () => hostRef.current,
       isCanonicalComposing: () =>
         managerRef.current?.isCanonicalComposing() ?? false,
+      readCanonicalDocument: () =>
+        managerRef.current?.readCanonicalDocument() ?? null,
     }),
     [],
   );
@@ -439,10 +444,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   // ========================================================================
 
   return (
-    <div
-      className="paged-editor__hidden-pm-wrapper"
-      style={HIDDEN_WRAPPER_STYLES}
-    >
+    <div className={HIDDEN_EDITOR_WRAPPER_CLASS} style={HIDDEN_WRAPPER_STYLES}>
       <div
         ref={hostRef}
         className="paged-editor__hidden-pm"

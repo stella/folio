@@ -10,6 +10,7 @@ import {
   parseSourceModule,
   walkAst,
 } from "../../../../scripts/lib/oxc-ast";
+import { createCommentRecordsPlugin } from "./commentRecords";
 import { AutoBidiDetectionExtension } from "./extensions/features/AutoBidiDetectionExtension";
 import { EmptyParagraphFormatExtension } from "./extensions/features/EmptyParagraphFormatExtension";
 import { ImageDragExtension } from "./extensions/features/ImageDragExtension";
@@ -45,6 +46,7 @@ import { templateSlashMenuPlugin } from "./plugins/templateSlashMenu";
 import * as slashMenu from "./plugins/templateSlashMenu";
 import { createTransactionInvariantPlugin } from "./plugins/transactionInvariants";
 import { schema } from "./schema";
+import { createTextInputPlugin } from "./textInput";
 
 // Bun caches query-string imports by their source path. Give the real plugin
 // body a distinct file, while preserving the original imports and shared peers.
@@ -112,6 +114,8 @@ const FACTORIES = {
   paraIdAllocator: [() => extensionPlugin(ParaIdAllocatorExtension())],
   paragraphChangeTracker: [createParagraphChangeTrackerPlugin],
   runIdentityStrip: [() => extensionPlugin(RunIdentityExtension())],
+  commentRecords: [() => createCommentRecordsPlugin([])],
+  typingInComments: [createTextInputPlugin],
 };
 
 // Functions, methods, accessors and signatures: everything that owns parameters.

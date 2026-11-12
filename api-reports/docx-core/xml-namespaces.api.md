@@ -10,6 +10,30 @@ export const attachXmlNamespaceContext: (element: XmlElement, inheritedNamespace
 // @public (undocumented)
 export const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope;
 
+// @public
+export const OOXML_NS: {
+    readonly w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    readonly a: "http://schemas.openxmlformats.org/drawingml/2006/main";
+    readonly r: "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    readonly wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+    readonly wp14: "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing";
+    readonly wps: "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+    readonly wpc: "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
+    readonly wpg: "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
+    readonly pic: "http://schemas.openxmlformats.org/drawingml/2006/picture";
+    readonly m: "http://schemas.openxmlformats.org/officeDocument/2006/math";
+    readonly mc: "http://schemas.openxmlformats.org/markup-compatibility/2006";
+    readonly v: "urn:schemas-microsoft-com:vml";
+    readonly o: "urn:schemas-microsoft-com:office:office";
+    readonly w14: "http://schemas.microsoft.com/office/word/2010/wordml";
+    readonly w15: "http://schemas.microsoft.com/office/word/2012/wordml";
+    readonly ct: "http://schemas.openxmlformats.org/package/2006/content-types";
+    readonly pr: "http://schemas.openxmlformats.org/package/2006/relationships";
+};
+
+// @public (undocumented)
+export type OoxmlPrefix = keyof typeof OOXML_NS;
+
 // @public (undocumented)
 export const resolveNamespaceUri: (scope: XmlNamespaceScope | undefined, prefix: string) => string | undefined;
 

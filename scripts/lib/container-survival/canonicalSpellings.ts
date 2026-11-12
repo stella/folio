@@ -355,6 +355,8 @@ export const canonicalSpellingsFor = (
           subject.value !== undefined &&
           entry.authored.includes(subject.value)
         );
+      default:
+        return entry satisfies never;
     }
   });
 };

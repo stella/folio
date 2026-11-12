@@ -13,6 +13,7 @@ import type {
   ImageMeasure,
 } from "../layout-engine/types";
 import { imageLuminanceFilter } from "../utils/imageLuminance";
+import { writePaintedRange } from "../utils/paintedPositions";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { anchorTargetAttrs, sanitizeExternalUrl } from "../utils/urlSecurity";
 import { paintedImageSource } from "./previewSvg";
@@ -265,12 +266,7 @@ export function renderImageFragment(
   // Store metadata
   containerEl.dataset["blockId"] = String(fragment.blockId);
 
-  if (fragment.pmStart !== undefined) {
-    containerEl.dataset["pmStart"] = String(fragment.pmStart);
-  }
-  if (fragment.pmEnd !== undefined) {
-    containerEl.dataset["pmEnd"] = String(fragment.pmEnd);
-  }
+  writePaintedRange(containerEl, fragment.pmStart, fragment.pmEnd);
 
   // Create the actual image element. Only local data:/blob: sources are
   // painted — remote or executable schemes are dropped (src left unset).

@@ -211,6 +211,9 @@ export function floatingTextBoxWrapsText(block: TextBoxFlowAttrs): boolean;
 export type FlowBlock = ParagraphBlock | TableBlock | ImageBlock | TextBoxBlock | SectionBreakBlock | PageBreakBlock | ColumnBreakBlock;
 
 // @public
+export type FlowBlockAnchorKeys = "pmStart" | "pmEnd" | "pmPos" | "fixedPosition";
+
+// @public
 export const FOOTNOTE_ENTRY_MARGIN_BOTTOM = 0;
 
 // @public
@@ -733,6 +736,7 @@ export type ParagraphAttrs = {
         date?: string;
         revisionId?: number;
     };
+    formattingRevision?: true;
     listMarkerSecondSlotOffsetTwips?: number;
     defaultFontSize?: number;
     defaultFontFamily?: string;
@@ -979,6 +983,12 @@ export type SectionState = {
     pendingOrientation: "portrait" | "landscape" | null;
     hasAnyPages: boolean;
 };
+
+// @public
+export function shiftFlowBlockPmAnchors(block: FlowBlock, delta: number): FlowBlock;
+
+// @public
+export function shiftParagraphPmAnchors(block: ParagraphBlock, delta: number): ParagraphBlock;
 
 // @public
 export function stripFlowBlockPmAnchors(block: FlowBlock): FlowBlock;

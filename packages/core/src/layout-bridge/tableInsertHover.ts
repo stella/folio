@@ -1,3 +1,5 @@
+import { readPaintedStart } from "../utils/paintedPositions";
+
 /**
  * Table-insert "+" hover hit-test.
  *
@@ -116,7 +118,7 @@ export function detectTableInsertHover(
   if (rows.length === 0) return null;
 
   const getCellPmPos = (el: HTMLElement | null): number =>
-    el ? Number(el.dataset["pmStart"]) || 0 : 0;
+    el ? readPaintedStart(el) || 0 : 0;
 
   if (nearLeftEdge) {
     for (const row of Array.from(rows)) {

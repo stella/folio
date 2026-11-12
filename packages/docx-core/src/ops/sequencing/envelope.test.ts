@@ -304,6 +304,18 @@ test("each supported operation validates every supplied field and nested payload
       revision: { id: 1, author: "A", date: 0 },
     },
     {
+      type: "insertText",
+      at: { story: "main", blockId: "00000001", offset: 0 },
+      text: "A",
+      runProps: "inherit",
+      revision: {
+        id: 1,
+        author: "A",
+        date: "2026-01-01T00:00:00Z",
+        suggestionId: 7,
+      },
+    },
+    {
       type: "insertContent",
       at: { story: "main", blockId: "00000001", offset: 0 },
       slice: {
@@ -322,6 +334,25 @@ test("each supported operation validates every supplied field and nested payload
   ];
   for (const op of malformed)
     expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
+});
+
+test("wire validation accepts a revision stamp naming its suggestion", () => {
+  expect(
+    validateDocumentBatch(
+      withOp({
+        type: "insertText",
+        at: { story: "main", blockId: "00000001", offset: 0 },
+        text: "A",
+        runProps: "inherit",
+        revision: {
+          id: 1,
+          author: "A",
+          date: "2026-01-01T00:00:00Z",
+          suggestionId: "s1",
+        },
+      }),
+    ).isOk(),
+  ).toBe(true);
 });
 
 test("wire validation refuses non-JSON data without executing getters", () => {

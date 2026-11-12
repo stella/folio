@@ -1,6 +1,11 @@
 import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import type { Document } from "@stll/docx-core";
+import {
+  idKey,
+  packageParagraphIds,
+  withoutPendingSuggestions,
+} from "@stll/docx-core/ops";
 
 import { withoutUnreferencedNotes } from "../prosemirror/noteReferenceReview";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
@@ -19,6 +24,7 @@ import type { SaveDiagnostic } from "./saveDiagnostics";
 import type { FolioSelectiveSaveFlags } from "./selectiveSaveFlags";
 import { resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
 import type { TripwireResult } from "./selectiveSaveTripwire";
+import { withoutUnusedSessionLists } from "./sessionListPruning";
 
 const CanonicalSaveDiagnosticErrorBase: TaggedErrorClass<"CanonicalSaveDiagnosticError"> =
   TaggedError("CanonicalSaveDiagnosticError");
@@ -48,7 +54,15 @@ export const serializeCanonicalSave = async ({
   diagnostics: SaveDiagnostic[];
   tripwireResult: TripwireResult | null;
 }> => {
-  const document = withoutUnreferencedNotes(snapshot.document);
+  // A pending suggestion is the host's proposal, not a change in the file:
+  // the file is written as if every one were rejected. A suggestion the
+  // engine cannot reject refuses the save rather than reach the file as an
+  // ordinary tracked change.
+  const withoutSuggestions = withoutPendingSuggestions(snapshot.document);
+  if (withoutSuggestions.isErr()) throw withoutSuggestions.error;
+  const document = withoutUnusedSessionLists(
+    withoutUnreferencedNotes(withoutSuggestions.value),
+  );
   // Package-resource operations conservatively retain structural save work through undo.
   const replacementPart =
     snapshot.structure === "changed"
@@ -67,6 +81,17 @@ export const serializeCanonicalSave = async ({
       gap: CANONICAL_GAP.resourceReplacement,
       diagnostic,
     });
+  }
+  // A paragraph a pending suggestion adds is not in the file, so it is no
+  // change to write: rejecting the suggestion only ever removes paragraphs
+  // the suggestion itself added.
+  const heldBack = new Set<string>();
+  if (withoutSuggestions.value !== snapshot.document) {
+    const kept = new Set(
+      packageParagraphIds(withoutSuggestions.value.package).map(idKey),
+    );
+    for (const id of packageParagraphIds(snapshot.document.package))
+      if (!kept.has(idKey(id))) heldBack.add(idKey(id));
   }
   const baseline = document.originalBuffer;
   const flags = resolveSelectiveSaveFlags(featureFlags);
@@ -89,7 +114,9 @@ export const serializeCanonicalSave = async ({
     const { attemptSelectiveSave } = await import("./selectiveSave");
     selectiveBuffer = await attemptSelectiveSave(document, baseline, {
       bodyAuthority: "canonical",
-      changedParaIds: new Set(snapshot.changedBlockIds),
+      changedParaIds: new Set(
+        snapshot.changedBlockIds.filter((id) => !heldBack.has(idKey(id))),
+      ),
       structuralChange: snapshot.structure === "changed",
       hasUntrackedChanges: false,
       maxBytes: flags.selectiveSaveMaxBytes,

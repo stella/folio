@@ -32,7 +32,7 @@ import type {
   TrackedRunContent,
 } from "../types/document";
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
-import { escapeTableCell } from "./escape";
+import { escapeTableCell, inlineBreaksToHtml } from "./escape";
 import { registerImage } from "./images";
 import { numberNoteReference, pushWarning } from "./internals";
 import { renderParagraph } from "./renderParagraph";
@@ -343,7 +343,7 @@ function renderHtmlCell(
             parts.push(
               item.readerText === undefined
                 ? ALT_CHUNK_READER_DIAGNOSTIC
-                : `${ALT_CHUNK_READER_DIAGNOSTIC} ${item.readerText}`,
+                : `${ALT_CHUNK_READER_DIAGNOSTIC} ${inlineBreaksToHtml(escapeHtml(item.readerText))}`,
             );
           } else if (opaqueRevisionCarrierName(item.xml) !== undefined) {
             parts.push(OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC);

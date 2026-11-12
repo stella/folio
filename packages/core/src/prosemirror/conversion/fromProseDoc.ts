@@ -102,6 +102,7 @@ import {
   isStyleSourcedParagraphNumbering,
   modelParagraphFormattingEmission,
 } from "../../internal/paragraphFormattingSerialization";
+import { recordDocumentBuilt } from "../../layout-engine/layoutInstrumentation";
 import { createStyleEngine, type StyleEngine } from "../../style-engine";
 import type {
   EffectExtentSlots,
@@ -998,6 +999,7 @@ export function fromProseDoc(
   baseDocument: Document | undefined,
   { stylesheetSource, reuse = "none" }: FromProseDocOptions,
 ): Document {
+  recordDocumentBuilt("conversion");
   assertNoteReferenceOccurrences(pmDoc);
   switch (reuse) {
     case "none": {
@@ -1148,8 +1150,16 @@ const hasSuggestedInsertion = (marks: readonly Mark[]): boolean =>
   marks.some((mark) => mark.type.name === "insertion" && isSuggestedMark(mark));
 
 /**
+ * A comment a pending suggestion proposes: it has no range in the file until
+ * the suggestion is accepted, so the save's orphan pruning leaves it out too.
+ */
+const isSuggestedCommentMark = (mark: Mark): boolean =>
+  mark.type.name === "comment" &&
+  typeof mark.attrs["suggestionId"] === "string";
+
+/**
  * Compute the mark set an inline node should keep once its suggested tracked
- * changes are stripped. Suggested deletions are dropped so their text survives
+ * changes and proposed comments are stripped. Suggested deletions are dropped so their text survives
  * as plain content; a suggested `runPropertyChange` is dropped and the run's
  * live formatting is reverted to the recorded `previousFormatting`.
  *
@@ -1166,16 +1176,22 @@ function stripSuggestedInlineMarks(
   const suggestedRunPropertyChange = marks.find(
     (mark) => mark.type.name === "runPropertyChange" && isSuggestedMark(mark),
   );
-  if (!hasSuggestedDeletion && !suggestedRunPropertyChange) {
+  const hasSuggestedComment = marks.some(isSuggestedCommentMark);
+  if (
+    !hasSuggestedDeletion &&
+    !suggestedRunPropertyChange &&
+    !hasSuggestedComment
+  ) {
     return marks;
   }
 
   let next: readonly Mark[] = marks.filter(
     (mark) =>
       !(
-        (mark.type.name === "deletion" ||
+        ((mark.type.name === "deletion" ||
           mark.type.name === "runPropertyChange") &&
-        isSuggestedMark(mark)
+          isSuggestedMark(mark)) ||
+        isSuggestedCommentMark(mark)
       ),
   );
 
@@ -4295,6 +4311,27 @@ function extractParagraphContent(
 
     const fieldUnderLink =
       node.type.name === "field" || node.type.name === "structuredField";
+    if (linkMark && fieldUnderLink) {
+      // A complex field the link holds whole, such as a table of contents
+      // entry's page number, goes back inside the link. A simple field has no
+      // place in a link and stands beside it.
+      const field = createFieldFromNode(node, {
+        ...formattingContext,
+        marks: node.marks,
+        textBoxAnchorMarkers,
+      });
+      if (field.type === "complexField") {
+        const linkKey = getLinkKey(linkMark);
+        if (!currentHyperlink || currentHyperlinkKey !== linkKey) {
+          flushCurrentInline();
+          currentHyperlink = createIndexedHyperlink(linkMark);
+          currentHyperlinkKey = linkKey;
+        }
+        currentHyperlink.children.push(field);
+        syncStructuredCommentExit(node, offset);
+        return;
+      }
+    }
     if (linkMark && !fieldUnderLink) {
       // Start or continue hyperlink
       const linkKey = getLinkKey(linkMark);
@@ -4603,9 +4640,11 @@ function createEmptyHyperlink(
 function getCommentMarkIds(marks: readonly Mark[]): Set<number> {
   const commentIds = new Set<number>();
   for (const mark of marks) {
-    if (mark.type.name === "comment") {
-      commentIds.add(expectCommentMarkAttrs(mark).commentId);
-    }
+    if (mark.type.name !== "comment") continue;
+    const attrs = expectCommentMarkAttrs(mark);
+    // A point comment only shows on its neighbouring text: it saves as the
+    // bare reference it was, not as a range over that text.
+    if (attrs.point !== true) commentIds.add(attrs.commentId);
   }
   return commentIds;
 }

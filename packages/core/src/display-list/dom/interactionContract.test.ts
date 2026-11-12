@@ -107,11 +107,13 @@ describe("the interaction layer reads nothing the display list cannot emit", () 
   }
 
   test("every accounted hook the display list emits is emitted by name", () => {
-    // The comment-anchor attributes are spelled once, in the writer both this
-    // backend and the layout painter call, so the producer surface is both.
+    // The comment-anchor attributes and the painted positions are spelled
+    // once, in the writers both this backend and the layout painter call, so
+    // the producer surface includes them.
     const backend =
       sourceOf("./renderDisplayListToDom.ts") +
-      sourceOf("../../render-dom/commentAnchorAttributes.ts");
+      sourceOf("../../render-dom/commentAnchorAttributes.ts") +
+      sourceOf("../../utils/paintedPositions.ts");
     const missing = Object.entries(SOURCES).flatMap(([hook, source]) => {
       if (source === "container" || source.startsWith("not emitted")) {
         return [];

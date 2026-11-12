@@ -882,6 +882,37 @@ const remapListRendering = (
   };
 };
 
+/**
+ * The editable ids that name exactly one body paragraph. A package id that
+ * several paragraphs repeat is not a handle: the snapshot keeps it for the
+ * first and renumbers the rest, so a manifest row could point at the wrong
+ * paragraph.
+ */
+const uniqueParagraphHandles = (
+  content: readonly BlockContent[],
+  editableParagraphIds: ReadonlySet<string>,
+): ReadonlySet<string> => {
+  const counts = new Map<string, number>();
+  const visit = (blocks: readonly BlockContent[]): void => {
+    for (const item of blocks) {
+      if (item.type === "paragraph") {
+        if (item.paraId !== undefined)
+          counts.set(item.paraId, (counts.get(item.paraId) ?? 0) + 1);
+      } else if (item.type === "table") {
+        for (const row of item.rows)
+          for (const cell of row.cells) visit(cell.content);
+      } else if (item.type === "blockSdt" || item.type === "blockCustomXml") {
+        visit(item.content);
+      }
+    }
+  };
+  visit(content);
+  const handles = new Set<string>();
+  for (const id of editableParagraphIds)
+    if ((counts.get(id) ?? 0) <= 1) handles.add(id);
+  return handles;
+};
+
 const collectTableParagraphs = (table: Table): Paragraph[] => {
   const out: Paragraph[] = [];
   const collectBlocks = (blocks: readonly BlockContent[]): void => {
@@ -1276,6 +1307,10 @@ export function readBilingualDocument(
   document: Document,
   editableParagraphIds: ReadonlySet<string>,
 ): BilingualRow[] {
+  const handles = uniqueParagraphHandles(
+    document.package.document.content,
+    editableParagraphIds,
+  );
   const styleById = new Map(
     (document.package.styles?.styles ?? []).map((style) => [
       style.styleId,
@@ -1322,14 +1357,14 @@ export function readBilingualDocument(
           }
           const paragraphs: BilingualParagraphRef[] = [];
           for (const [index, source] of sourceParagraphs.entries()) {
-            if (!isTranslatableParagraph(source, editableParagraphIds)) {
+            if (!isTranslatableParagraph(source, handles)) {
               continue;
             }
             const target = targetParagraphs.at(index);
             if (
               target?.paraId === undefined ||
               target.paraId === source.paraId ||
-              !editableParagraphIds.has(target.paraId)
+              !handles.has(target.paraId)
             ) {
               missingHandleCount += 1;
               continue;
@@ -1354,9 +1389,7 @@ export function readBilingualDocument(
           continue;
         }
         const paragraphs = collectTableParagraphs(sourceTable)
-          .filter((paragraph) =>
-            isTranslatableParagraph(paragraph, editableParagraphIds),
-          )
+          .filter((paragraph) => isTranslatableParagraph(paragraph, handles))
           .map((paragraph) => ({
             paraId: paragraph.paraId,
             sourceText: getParagraphText(paragraph),
@@ -1379,8 +1412,8 @@ export function readBilingualDocument(
         continue;
       }
       const sourceMissing =
-        source.paraId === undefined || !editableParagraphIds.has(source.paraId);
-      const targetMissing = !editableParagraphIds.has(target.paraId);
+        source.paraId === undefined || !handles.has(source.paraId);
+      const targetMissing = !handles.has(target.paraId);
       if (sourceMissing) {
         missingHandleCount += 1;
       }

@@ -8,6 +8,7 @@ import {
   descendantTextNodes,
   totalTextLength,
 } from "../layout-bridge/dom/textStreamDom";
+import { readPaintedEnd, readPaintedStart } from "../utils/paintedPositions";
 
 const CARET_CLASS = "folio-hf-selection-caret";
 const RANGE_CLASS = "folio-hf-selection-rect";
@@ -72,8 +73,8 @@ export const resolveHeaderFooterSelectionGeometry = (
     let left = hit.edge === "right" ? anchorRect.right : anchorRect.left;
     let top = anchorRect.top;
     let height = anchorRect.height || 16;
-    const pmStart = Number.parseInt(hit.element.dataset["pmStart"] ?? "", 10);
-    const pmEnd = Number.parseInt(hit.element.dataset["pmEnd"] ?? "", 10);
+    const pmStart = readPaintedStart(hit.element) ?? Number.NaN;
+    const pmEnd = readPaintedEnd(hit.element) ?? Number.NaN;
     const textNodes = descendantTextNodes(hit.element);
     if (
       textNodes.length > 0 &&
@@ -108,8 +109,8 @@ export const resolveHeaderFooterSelectionGeometry = (
   const to = Math.max(selection.from, selection.to);
   const ranges: HeaderFooterSelectionRect[] = [];
   for (const span of findHfPmSpans(pageScope, selection.kind, selection.rId)) {
-    const spanStart = Number.parseInt(span.dataset["pmStart"] ?? "", 10);
-    const spanEnd = Number.parseInt(span.dataset["pmEnd"] ?? "", 10);
+    const spanStart = readPaintedStart(span) ?? Number.NaN;
+    const spanEnd = readPaintedEnd(span) ?? Number.NaN;
     if (!Number.isFinite(spanStart) || !Number.isFinite(spanEnd)) continue;
     if (spanEnd <= from || spanStart >= to) continue;
 

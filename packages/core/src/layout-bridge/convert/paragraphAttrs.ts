@@ -20,6 +20,7 @@ import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import {
   advanceVisibleListMarker,
   type ListCounterStreams,
+  type VisibleListMarker,
 } from "../../prosemirror/listMarker";
 import {
   effectiveParagraphNumberingReference,
@@ -54,16 +55,23 @@ import {
   resolveWesternThemeFont,
 } from "./textFormattingConversion";
 
-type ConvertParagraphAttrsOptions = {
+/** The marker the list counters give a paragraph where it sits in its story. */
+export type ParagraphListMarker = VisibleListMarker["marker"];
+
+/** What a paragraph's layout attributes read besides its own attributes and list marker. */
+type ParagraphAttrsInputs = {
   theme: Theme | null | undefined;
   fontAlternates: FontAlternates | undefined;
-  listCounterStreams: ListCounterStreams;
   defaultTabStopTwips: number | undefined;
   /**
    * Resolved paragraph-mark run properties, the base of the list marker's
    * typography. Lazy: only paragraphs that paint a marker resolve them.
    */
   paragraphMarkFormatting: () => TextFormatting | undefined;
+};
+
+type ConvertParagraphAttrsOptions = ParagraphAttrsInputs & {
+  listCounterStreams: ListCounterStreams;
 };
 
 type FlowAlignment = NonNullable<ParagraphAttrs["alignment"]>;
@@ -112,15 +120,31 @@ const resolveFlowAlignment = (
   }
 };
 
+/** A paragraph's layout attributes, advancing the list counters past it. */
 export function convertParagraphAttrs(
   pmAttrs: PMParagraphAttrs,
+  { listCounterStreams, ...inputs }: ConvertParagraphAttrsOptions,
+): ParagraphAttrs {
+  return paragraphAttrsWithListMarker(
+    pmAttrs,
+    advanceVisibleListMarker(pmAttrs, listCounterStreams).marker,
+    inputs,
+  );
+}
+
+/**
+ * A paragraph's layout attributes given the marker the list counters give it.
+ * The marker is the only input that depends on the paragraphs before it.
+ */
+export function paragraphAttrsWithListMarker(
+  pmAttrs: PMParagraphAttrs,
+  listMarker: ParagraphListMarker,
   {
     theme,
     fontAlternates,
-    listCounterStreams,
     defaultTabStopTwips,
     paragraphMarkFormatting,
-  }: ConvertParagraphAttrsOptions,
+  }: ParagraphAttrsInputs,
 ): ParagraphAttrs {
   const attrs: ParagraphAttrs = {};
 
@@ -466,9 +490,8 @@ export function convertParagraphAttrs(
       }
     }
   }
-  const visibleMarker = advanceVisibleListMarker(pmAttrs, listCounterStreams);
   const resolvedMarker = applyMarkerAllCaps(
-    visibleMarker.marker,
+    listMarker,
     pmAttrs.listMarkerAllCaps,
   );
   if (resolvedMarker !== null) {
