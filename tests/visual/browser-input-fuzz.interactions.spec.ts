@@ -1,7 +1,5 @@
 import { expect, type Page, test, type TestInfo } from "@playwright/test";
 import fc from "fast-check";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
@@ -54,11 +52,7 @@ import {
 } from "./browserInputTrace";
 import type {} from "./browserTestBridge";
 import { clipboardHtmlProjection } from "./clipboardHtmlProjection";
-import {
-  PINNED_REPLAY_FONT_DELAYS_MS,
-  PINNED_REPLAY_OUTCOMES_ENV,
-  pinnedReplayOutcomeFile,
-} from "./pinnedReplayRepeats";
+import { PINNED_REPLAY_FONT_DELAYS_MS } from "./pinnedReplayRepeats";
 
 declare global {
   var __folioPlayground:
@@ -822,20 +816,17 @@ test.describe("pinned browser input", () => {
     test(
       `regression seed ${seed} path ${path} / ${fingerprint}`,
       { tag: PINNED_BROWSER_INPUT_TAG },
-      async ({ page }, testInfo) => {
-        // Each repeat delivers the fonts later, so a target read from paint a
-        // late face moves shows as a different observation.
-        const fontDelay =
-          PINNED_REPLAY_FONT_DELAYS_MS[
-            testInfo.repeatEachIndex % PINNED_REPLAY_FONT_DELAYS_MS.length
-          ] ?? 0;
-        if (fontDelay > 0)
-          await page.route(/\.woff2(?:\?|$)/u, async (route) => {
+      async ({ page }) => {
+        // The replay runs once per font timing, the fonts arriving as served
+        // and then after the editor has painted, and must observe the same
+        // each time: a target read from paint a late face moves is read
+        // differently. Routing also keeps the cache from serving the fonts.
+        let fontDelay = 0;
+        await page.route(/\.woff2(?:\?|$)/u, async (route) => {
+          if (fontDelay > 0)
             await new Promise((resolve) => setTimeout(resolve, fontDelay));
-            await route.continue();
-          });
-        const observations: unknown[] = [];
-        replayObservations = observations;
+          await route.continue();
+        });
         const replay = async () => {
           const source = await shapeArrayBuffer(trace.shape);
           const baseline = project(await FolioDocxReviewer.fromBuffer(source));
@@ -852,30 +843,21 @@ test.describe("pinned browser input", () => {
           }
           await checkDefaultEditorTrace({ page, source, baseline, trace });
         };
-        const outcomes = process.env[PINNED_REPLAY_OUTCOMES_ENV];
-        let failure: unknown;
-        await replay().catch((error: unknown) => {
-          failure = error;
-        });
-        replayObservations = null;
-        if (outcomes !== undefined && outcomes !== "") {
-          const file = pinnedReplayOutcomeFile({
-            directory: outcomes,
-            title: testInfo.title,
-            repeat: testInfo.repeatEachIndex,
-          });
-          await mkdir(dirname(file), { recursive: true });
-          await writeFile(
-            file,
-            JSON.stringify({
-              title: testInfo.title,
-              repeat: testInfo.repeatEachIndex,
-              outcome: failure === undefined ? "passed" : "failed",
-              observations,
-            }),
-          );
+        const observed: { delay: number; observations: unknown[] }[] = [];
+        for (const delay of PINNED_REPLAY_FONT_DELAYS_MS) {
+          fontDelay = delay;
+          const observations: unknown[] = [];
+          replayObservations = observations;
+          await test.step(`fonts delivered after ${String(delay)} ms`, replay);
+          replayObservations = null;
+          observed.push({ delay, observations });
         }
-        if (failure !== undefined) throw failure;
+        const [first] = observed;
+        for (const { delay, observations } of observed)
+          expect({ delay, observations }).toEqual({
+            delay,
+            observations: first?.observations,
+          });
       },
     );
   }
