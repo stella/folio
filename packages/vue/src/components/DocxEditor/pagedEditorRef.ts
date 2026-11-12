@@ -25,9 +25,8 @@ export type PagedEditorRef = {
   /** The headless editor controller (imperative API + events; Seam 6). */
   getEditor: () => FolioEditor;
   /**
-   * The current document, never copied: it shares every part no edit reached
-   * with the editor's model. Read it; a writer copies it first
-   * (`cloneDocumentWithParagraphPropertySources`).
+   * The current document, built over the editor's model and sharing its
+   * parts: read it, never write it (`DocxEditorRef.getDocument` hands a copy).
    */
   getDocument: () => ReadonlyDocument | null;
   /**
