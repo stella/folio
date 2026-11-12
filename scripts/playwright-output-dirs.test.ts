@@ -9,10 +9,14 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { PLAYWRIGHT_RESULTS_ROOT } from "../tests/support/playwrightOutput";
 
-setDefaultTimeout(scanTestTimeout(60_000));
+setDefaultTimeout(subprocessTestTimeout());
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const WORKFLOWS = path.join(REPO_ROOT, ".github", "workflows");
@@ -73,9 +77,11 @@ const uploadedDirectories = (): string[] =>
     });
 
 const trackedConfigs = (): string[] => {
-  const listed = Bun.spawnSync(["git", "ls-files", "-z"], { cwd: REPO_ROOT });
+  const listed = expectExited(
+    runChild(["git", "ls-files", "-z"], { cwd: REPO_ROOT }),
+  );
   if (listed.exitCode !== 0)
-    throw new TypeError(`git ls-files failed: ${listed.stderr.toString()}`);
+    throw new TypeError(`git ls-files failed: ${listed.stderr}`);
   return listed.stdout
     .toString()
     .split("\0")
