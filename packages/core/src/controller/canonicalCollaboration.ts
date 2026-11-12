@@ -251,7 +251,8 @@ export const connectCanonicalRoom = async (
       // A repeated delivery of a revision already applied.
       if (batch.revision <= client.headRev) return true;
       if (awaiting?.opId === batch.opId) awaiting = undefined;
-      if (fault === "unrebasedRemote") unrebased.set(batch.revision, batch);
+      if (fault === undefined || fault === "unrebasedRemote")
+        unrebased.set(batch.revision, batch);
       const received = client.receiveBroadcast(batch);
       if (received.isErr()) {
         diverge(received.error.message, received.error);
