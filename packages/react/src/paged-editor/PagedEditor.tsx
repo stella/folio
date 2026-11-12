@@ -2317,6 +2317,22 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const laidOutLayoutInputSignatureRef = useRef<string | null>(null);
     const runLayoutPipeline = useCallback(
       (state: EditorState, options: LayoutRunOptions = {}) => {
+        // SCRATCH DIAGNOSTICS
+        {
+          const runs: unknown[] =
+            (Reflect.get(globalThis, "__folioLayoutRuns") as
+              unknown[] | undefined) ?? [];
+          Reflect.set(globalThis, "__folioLayoutRuns", runs);
+          runs.push({
+            reason: options.reason ?? "unset",
+            fontWaitPending: pendingInitialFontReadyLayoutRef.current,
+            at: Math.round(performance.now()),
+            stack: new Error("layout").stack
+              ?.split("\n")
+              .slice(2, 7)
+              .join(" | "),
+          });
+        }
         const outcome = runLayoutPipelineCompute(
           {
             contentWidth,

@@ -214,6 +214,18 @@ export function waitForInitialLayoutFonts(
     );
   }
 
+  // SCRATCH DIAGNOSTICS
+  const diagStart = performance.now();
+  const diag: Record<string, unknown> = {
+    faces: [...loadChecks],
+    textLength: text.length,
+    startedAt: Math.round(diagStart),
+  };
+  const diagList: unknown[] =
+    (Reflect.get(globalThis, "__folioFontWaitDiag") as unknown[] | undefined) ??
+    [];
+  Reflect.set(globalThis, "__folioFontWaitDiag", diagList);
+  diagList.push(diag);
   let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
   const loadFonts = Promise.allSettled(
     loadChecks.map((check) => fontSet.load(check, text)),
@@ -228,7 +240,13 @@ export function waitForInitialLayoutFonts(
         INITIAL_LAYOUT_FONT_TIMEOUT_MS,
       );
     }),
-  ]).finally(() => globalThis.clearTimeout(timeout));
+  ])
+    .then((loaded) => {
+      diag["outcome"] = loaded ? "resolved" : "timeout";
+      diag["elapsedMs"] = Math.round(performance.now() - diagStart);
+      return loaded;
+    })
+    .finally(() => globalThis.clearTimeout(timeout));
 }
 
 /**

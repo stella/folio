@@ -129,7 +129,9 @@ const FolioEditorApp = ({
           <DocxEditor
             accessibleName={accessibleName}
             ref={editorRef}
-            experimentalSession="canonical"
+            {...(Reflect.get(globalThis, "__folioScratchEngine") === "legacy"
+              ? {}
+              : { experimentalSession: "canonical" as const })}
             author={author}
             mode={mode}
             onModeChange={onModeChange}
