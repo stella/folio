@@ -1791,8 +1791,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       [],
     );
     const pendingInitialFontReadyLayoutRef = useRef(false);
-    /** A pass was asked for during the initial font wait and has not run. */
-    const layoutDeferredByFontWaitRef = useRef(false);
     const [isFocused, setIsFocused] = useState(false);
     const [selectionRects, setSelectionRects] = useEqualState<SelectionRect[]>(
       [],
@@ -2296,15 +2294,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const laidOutLayoutInputSignatureRef = useRef<string | null>(null);
     const runLayoutPipeline = useCallback(
       (state: EditorState, options: LayoutRunOptions = {}) => {
-        // Nothing paints before the initial font wait ends; a pass asked for
-        // meanwhile runs, on the state current then, once it has.
-        if (
-          pendingInitialFontReadyLayoutRef.current &&
-          options.reason !== "initial"
-        ) {
-          layoutDeferredByFontWaitRef.current = true;
-          return;
-        }
         const outcome = runLayoutPipelineCompute(
           {
             contentWidth,
@@ -2413,19 +2402,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     useLayoutEffect(() => {
       runLayoutPipelineRef.current = runLayoutPipeline;
     }, [runLayoutPipeline]);
-    /** Runs the pass the initial font wait held back, once no wait is pending. */
-    const runLayoutDeferredByFontWait = useCallback(() => {
-      if (
-        !layoutDeferredByFontWaitRef.current ||
-        pendingInitialFontReadyLayoutRef.current
-      )
-        return;
-      layoutDeferredByFontWaitRef.current = false;
-      const state =
-        hiddenPMRef.current?.getState() ??
-        layoutSessionRef.current.lastEditorState;
-      if (state) runLayoutPipelineRef.current(state, { reason: "manual" });
-    }, []);
 
     const documentIORef = useRef(documentIO);
     useLayoutEffect(() => {
@@ -5947,7 +5923,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         updateSelectionOverlay(initialState);
         updateAnonymizationOverlay();
         updateDirectivesOverlay();
-        runLayoutDeferredByFontWait();
       };
 
       void waitForInitialLayoutFonts(document, initialState.doc).then(
@@ -5958,16 +5933,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       return () => {
         cancelled = true;
         pendingInitialFontReadyLayoutRef.current = false;
-        // A wait this effect starts again takes the held pass over; without
-        // one, it runs now.
-        queueMicrotask(runLayoutDeferredByFontWait);
       };
     }, [
       collaboration,
       document,
       validPrecomputedInitialState,
       runLayoutPipeline,
-      runLayoutDeferredByFontWait,
       shouldCreateHiddenEditorView,
       updateAnonymizationOverlay,
       updateDirectivesOverlay,
@@ -6065,7 +6036,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           pendingInitialFontReadyLayoutRef.current = false;
           const currentView = hiddenPMRef.current?.getView();
           if (currentView !== view) {
-            runLayoutDeferredByFontWait();
             return;
           }
           recordLayoutPhase(
@@ -6076,7 +6046,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           resetCanvasContext();
           clearAllCaches();
           runInitialLayout(currentView);
-          runLayoutDeferredByFontWait();
         };
         void waitForInitialLayoutFonts(document, view.state.doc).then(
           runAfterFontWait,
@@ -6089,7 +6058,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       [
         applyPendingHiddenEditorInput,
         runLayoutPipeline,
-        runLayoutDeferredByFontWait,
         updateSelectionOverlay,
         updateAnonymizationOverlay,
         updateDirectivesOverlay,
