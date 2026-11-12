@@ -82,7 +82,8 @@ jobs:
       - name: Property test suite
         run: |
           set -o pipefail
-          bun scripts/property-areas.ts --all --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}" --timings "test-results/property-timings-${PROPERTY_SHARD}.json" 2>&1 | tee "property-test-${PROPERTY_SHARD}.log"
+          mkdir -p test-results
+          bun scripts/property-areas.ts --all --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}" --timings "test-results/property-timings-${PROPERTY_SHARD}.json" 2>&1 | tee test-results/property-test-"${PROPERTY_SHARD}".log
         env:
           FOLIO_DOCUMENT_OPS_RANDOM: "1"
           PROPERTY_SHARD: ${{ matrix.shard }}
@@ -97,7 +98,7 @@ jobs:
         working-directory: packages/core
         run: |
           set -o pipefail
-          bun test src/__tests__/documentOpsDifferential.property.test.ts -t 'PM and Document ops agree after every generated text and formatting step' 2>&1 | tee -a "../../property-test-${PROPERTY_SHARD}.log"
+          bun test src/__tests__/documentOpsDifferential.property.test.ts -t 'PM and Document ops agree after every generated text and formatting step' 2>&1 | tee -a ../../test-results/property-test-"${PROPERTY_SHARD}".log
         env:
           FOLIO_DOCUMENT_OPS_RANDOM: "1"
           PROPERTY_SHARD: ${{ matrix.shard }}
@@ -120,7 +121,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: property-test-log-${{ matrix.shard }}
-          path: property-test-${{ matrix.shard }}.log
+          path: test-results/property-test-${{ matrix.shard }}.log
           retention-days: 14
           if-no-files-found: ignore
 

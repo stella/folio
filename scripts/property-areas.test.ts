@@ -679,14 +679,18 @@ describe("extended property shards", () => {
     expect(suite.run).toContain(
       '--all --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}"',
     );
-    expect(suite.run).toContain('tee "property-test-${PROPERTY_SHARD}.log"');
+    expect(suite.run).toContain(
+      'tee test-results/property-test-"${PROPERTY_SHARD}".log',
+    );
     expect(suite.env.PROPERTY_SHARD_COUNT).toBe("${{ strategy.job-total }}");
     const upload = job.steps.find(
       (step: { name?: string }) =>
         step.name === "Keep the log for the failure report",
     );
     expect(upload.with.name).toBe("property-test-log-${{ matrix.shard }}");
-    expect(upload.with.path).toBe("property-test-${{ matrix.shard }}.log");
+    expect(upload.with.path).toBe(
+      "test-results/property-test-${{ matrix.shard }}.log",
+    );
     const report = workflow.jobs["report-property"];
     expect(report.needs).toBe("property-test");
     const download = report.steps.find(
