@@ -24,6 +24,7 @@ const marker = (
   range: `${BOUNDARY_SIDES[type].family}:3`,
   side: BOUNDARY_SIDES[type].side,
   kept,
+  copied: false,
 });
 
 test("standing duplicate ends remain ambiguous when a rejection keeps their start", () => {
@@ -36,6 +37,44 @@ test("standing duplicate ends remain ambiguous when a rejection keeps their star
     type: "ambiguous",
   });
   expect(planWellFormedRanges(occurrences)).toEqual({ dropped: [], moved: [] });
+});
+
+test("a boundary kept beside a copy an added revision owns stays, and the copy orders nothing", () => {
+  const copy = (type: keyof typeof BOUNDARY_SIDES): BoundaryOccurrence => ({
+    ...marker(type, false),
+    copied: true,
+  });
+  // Rejecting the copy's revision takes the copy away, so the kept start is
+  // the range's own whichever is resolved first.
+  expect(
+    planWellFormedRanges([
+      copy("bookmarkStart"),
+      marker("bookmarkStart", true),
+    ]),
+  ).toEqual({ dropped: [], moved: [] });
+  // Of a kept copy and a kept original, the original stays.
+  expect(
+    planWellFormedRanges([
+      { ...marker("bookmarkStart", true), copied: true },
+      marker("bookmarkStart", true),
+    ]).dropped,
+  ).toEqual([0]);
+  // A standing original still holds the boundary.
+  expect(
+    planWellFormedRanges([
+      marker("bookmarkStart", false),
+      copy("bookmarkStart"),
+      marker("bookmarkStart", true),
+    ]).dropped,
+  ).toEqual([2]);
+  // The kept start closes on the end, not on the copy before it.
+  expect(
+    planWellFormedRanges([
+      copy("bookmarkStart"),
+      marker("bookmarkEnd", false),
+      marker("bookmarkStart", true),
+    ]).moved,
+  ).toEqual([{ moving: 2, anchor: 1, side: "before" }]);
 });
 
 test("a unique reversed pair moves only the kept half", () => {
@@ -82,12 +121,14 @@ const occurrenceArbitrary = fc
     definition: fc.constantFrom(...Object.entries(BOUNDARY_SIDES)),
     id: fc.integer({ min: 0, max: 5 }),
     kept: fc.boolean(),
+    copied: fc.boolean(),
   })
-  .map(({ definition: [type, { family, side }], id, kept }) => ({
+  .map(({ definition: [type, { family, side }], id, kept, copied }) => ({
     boundary: `${type}:${id}`,
     range: `${family}:${id}`,
     side,
     kept,
+    copied,
   }));
 
 test("normalization preserves standing occurrences, retained quotas, and reaches a fixed point", () => {
@@ -105,17 +146,34 @@ test("normalization preserves standing occurrences, retained quotas, and reaches
           const source = occurrences.filter(
             (item) => item.boundary === boundary,
           );
-          const standing = source.filter(({ kept }) => !kept).length;
-          const expectedCount = standing > 0 ? standing : 1;
+          const standing = source.filter(({ kept }) => !kept);
+          const held = standing.some(({ copied }) => !copied);
+          const kept = normalized.filter(
+            (item) => item.boundary === boundary && item.kept,
+          );
+          // A copy an added revision owns holds nothing: one kept boundary
+          // stays beside it, and one that is no copy when there is one.
+          expect(kept.length).toBe(
+            held || standing.length === source.length ? 0 : 1,
+          );
+          if (source.some((item) => item.kept && !item.copied))
+            expect(kept.every(({ copied }) => !copied)).toBe(true);
           expect(
             normalized.filter((item) => item.boundary === boundary).length,
-          ).toBe(expectedCount);
+          ).toBe(standing.length + kept.length);
         }
         const keptRanges = new Set(
           normalized.filter(({ kept }) => kept).map(({ range }) => range),
         );
+        // A copy an added revision owns orders no range.
+        const ownedCopies = new Set(
+          normalized.flatMap(({ kept, copied }, index) =>
+            !kept && copied ? [index] : [],
+          ),
+        );
         for (const [range, multiplicity] of classifyRangeMultiplicity(
           normalized,
+          ownedCopies,
         )) {
           if (multiplicity.type !== "pair" || !keptRanges.has(range)) continue;
           expect(multiplicity.start).toBeLessThan(multiplicity.end);
