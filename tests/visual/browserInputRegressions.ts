@@ -1400,7 +1400,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2596 (mixed-lists), replayed in the canonical session. */
+/** A legacy-editor finding of #2596 (mixed-lists), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
   authority: "canonical",
   seed: 1794465004,
