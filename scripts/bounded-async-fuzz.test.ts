@@ -21,7 +21,7 @@ test("browser fuzz budgets leave time for setup and durable reporting", () => {
   ).toBeLessThan(BROWSER_FUZZ_BUDGET.testMs);
 });
 
-test("the default editor's seeds cannot take more than 15 of the step's 35 minutes", () => {
+test("the default editor's seeds cannot take more than 15 minutes of the fuzz step", () => {
   const workflow = Bun.YAML.parse(
     readFileSync(
       new URL(

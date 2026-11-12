@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       actions: read
+      checks: read
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,7 +38,8 @@ jobs:
       - run: bun install --frozen-lockfile
 
       # The full suite's timings come from five successful full runs; the
-      # extended property timings from the last five extended runs on main.
+      # extended property timings from the last five extended runs on main;
+      # job and step durations from each workflow's recent runs.
       - name: Download the recent timing sets
         id: measurements
         env:
@@ -69,7 +71,12 @@ jobs:
           }
           refresh tests scripts/ci-test-timings.json
           refresh properties scripts/property-test-timings.json
-          if git diff --quiet -- scripts/ci-test-timings.json scripts/property-test-timings.json; then
+          # Job and step durations for the workflow time limit rule
+          # (scripts/workflow-timeouts.test.ts).
+          bun scripts/workflow-durations.ts \
+            --repository "$GITHUB_REPOSITORY" \
+            --output scripts/workflow-durations.json
+          if git diff --quiet -- scripts/ci-test-timings.json scripts/property-test-timings.json scripts/workflow-durations.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -103,6 +110,7 @@ jobs:
             --graphql-request "$request" \
             --timings scripts/ci-test-timings.json \
             --property-timings scripts/property-test-timings.json \
+            --workflow-durations scripts/workflow-durations.json \
             --repository "$GITHUB_REPOSITORY" \
             --branch "$TIMING_BRANCH" \
             --base "$base"
@@ -110,5 +118,5 @@ jobs:
           if [[ -z "$(gh pr list --head "$TIMING_BRANCH" --state open --json number --jq '.[0].number // ""')" ]]; then
             gh pr create --base "$DEFAULT_BRANCH" --head "$TIMING_BRANCH" \
               --title "perf(ci): refresh measured test timings" \
-              --body "Refreshes per-file test duration medians from recent full-suite and extended property runs so shard scheduling follows current measurements."
+              --body "Refreshes per-file test duration medians from recent full-suite and extended property runs so shard scheduling follows current measurements, and the job and step durations that workflow time limits are checked against."
           fi

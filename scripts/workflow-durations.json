@@ -1,0 +1,444 @@
+{
+  ".github/workflows/audit-image.yml": {
+    "build": {
+      "job": {
+        "p95Seconds": 306,
+        "samples": 48
+      }
+    }
+  },
+  ".github/workflows/benchmarks.yml": {
+    "benchmarks": {
+      "job": {
+        "p95Seconds": 318,
+        "samples": 44
+      }
+    },
+    "scale-complexity": {
+      "job": {
+        "p95Seconds": 86,
+        "samples": 47
+      }
+    }
+  },
+  ".github/workflows/cancel-stale-merge-groups.yml": {
+    "cancel": {
+      "job": {
+        "p95Seconds": 5,
+        "samples": 18
+      }
+    }
+  },
+  ".github/workflows/canonical-wasm.yml": {
+    "canonical-wasm": {
+      "job": {
+        "p95Seconds": 259,
+        "samples": 47
+      }
+    },
+    "footprint": {
+      "job": {
+        "p95Seconds": 184,
+        "samples": 1
+      }
+    }
+  },
+  ".github/workflows/ci.yml": {
+    "browser-discovery": {
+      "job": {
+        "p95Seconds": 33,
+        "samples": 20
+      }
+    },
+    "browser-input-pinned": {
+      "job": {
+        "p95Seconds": 337,
+        "samples": 33
+      },
+      "steps": {
+        "Run only standing browser input regressions": {
+          "p95Seconds": 299,
+          "samples": 33
+        }
+      }
+    },
+    "build-api": {
+      "job": {
+        "p95Seconds": 370,
+        "samples": 31
+      }
+    },
+    "canonical-evaluation-regressions": {
+      "job": {
+        "p95Seconds": 129,
+        "samples": 39
+      }
+    },
+    "changeset": {
+      "job": {
+        "p95Seconds": 14,
+        "samples": 32
+      }
+    },
+    "ci-plan": {
+      "job": {
+        "p95Seconds": 21,
+        "samples": 47
+      }
+    },
+    "ci-result": {
+      "job": {
+        "p95Seconds": 7,
+        "samples": 32
+      }
+    },
+    "consumer-scenarios": {
+      "job": {
+        "p95Seconds": 483,
+        "samples": 33
+      }
+    },
+    "consumer-scenarios-minimum": {
+      "job": {
+        "p95Seconds": 619,
+        "samples": 29
+      }
+    },
+    "container-contract": {
+      "job": {
+        "p95Seconds": 155,
+        "samples": 22
+      }
+    },
+    "differential": {
+      "job": {
+        "p95Seconds": 146,
+        "samples": 22
+      }
+    },
+    "docx-kernel": {
+      "job": {
+        "p95Seconds": 320,
+        "samples": 21
+      }
+    },
+    "interactions": {
+      "job": {
+        "p95Seconds": 655,
+        "samples": 19
+      }
+    },
+    "lint": {
+      "job": {
+        "p95Seconds": 252,
+        "samples": 38
+      }
+    },
+    "packaged-consumer": {
+      "job": {
+        "p95Seconds": 168,
+        "samples": 37
+      }
+    },
+    "tests": {
+      "job": {
+        "p95Seconds": 732,
+        "samples": 218
+      }
+    },
+    "typecheck": {
+      "job": {
+        "p95Seconds": 90,
+        "samples": 39
+      }
+    },
+    "warm-main-caches": {
+      "job": {
+        "p95Seconds": 25,
+        "samples": 1
+      }
+    }
+  },
+  ".github/workflows/cla.yml": {
+    "cla": {
+      "job": {
+        "p95Seconds": 6,
+        "samples": 22
+      }
+    }
+  },
+  ".github/workflows/continuous-fuzz.yml": {
+    "consumer-fuzz": {
+      "job": {
+        "p95Seconds": 1549,
+        "samples": 1
+      },
+      "steps": {
+        "Fuzz for the budget": {
+          "p95Seconds": 1515,
+          "samples": 1
+        }
+      }
+    },
+    "property-fuzz": {
+      "job": {
+        "p95Seconds": 1969,
+        "samples": 32
+      },
+      "steps": {
+        "Property suite": {
+          "p95Seconds": 1955,
+          "samples": 32
+        }
+      }
+    },
+    "report": {
+      "job": {
+        "p95Seconds": 45,
+        "samples": 2
+      }
+    }
+  },
+  ".github/workflows/corpus-proofs.yml": {
+    "editor-round-trip": {
+      "job": {
+        "p95Seconds": 108,
+        "samples": 21
+      }
+    },
+    "shard": {
+      "job": {
+        "p95Seconds": 1812,
+        "samples": 4
+      }
+    },
+    "tier2": {
+      "job": {
+        "p95Seconds": 2121,
+        "samples": 4
+      }
+    }
+  },
+  ".github/workflows/dependency-review.yml": {
+    "dependency-review": {
+      "job": {
+        "p95Seconds": 12,
+        "samples": 50
+      }
+    }
+  },
+  ".github/workflows/fuzz-ejection-replay.yml": {
+    "exploration": {
+      "job": {
+        "p95Seconds": 21,
+        "samples": 8
+      }
+    }
+  },
+  ".github/workflows/fuzz-failure-report.yml": {
+    "report": {
+      "job": {
+        "p95Seconds": 56,
+        "samples": 158
+      }
+    }
+  },
+  ".github/workflows/nightly-browser-input-fuzzer.yml": {
+    "browser-input-fuzzer": {
+      "job": {
+        "p95Seconds": 412,
+        "samples": 3
+      },
+      "steps": {
+        "Host API flow fuzz": {
+          "p95Seconds": 44,
+          "samples": 46
+        },
+        "Random AI and human revision interleaving": {
+          "p95Seconds": 92,
+          "samples": 46
+        },
+        "Run nightly browser fuzzer": {
+          "p95Seconds": 1795,
+          "samples": 46
+        }
+      }
+    }
+  },
+  ".github/workflows/nightly-corpus-gate.yml": {
+    "edit-fuzz": {
+      "job": {
+        "p95Seconds": 4657,
+        "samples": 200
+      }
+    }
+  },
+  ".github/workflows/nightly-long-fuzz.yml": {
+    "long-fuzz": {
+      "job": {
+        "p95Seconds": 3794,
+        "samples": 86
+      }
+    }
+  },
+  ".github/workflows/nightly-parity-e2e.yml": {
+    "parity-e2e": {
+      "job": {
+        "p95Seconds": 75,
+        "samples": 34
+      },
+      "steps": {
+        "Generated four-host differential": {
+          "p95Seconds": 37,
+          "samples": 34
+        }
+      }
+    }
+  },
+  ".github/workflows/nightly-property-test.yml": {
+    "consumer-fuzz": {
+      "job": {
+        "p95Seconds": 895,
+        "samples": 11
+      }
+    }
+  },
+  ".github/workflows/nightly-public-corpus-flows.yml": {
+    "corpus-flows": {
+      "job": {
+        "p95Seconds": 97,
+        "samples": 23
+      }
+    }
+  },
+  ".github/workflows/nightly-swarm-fuzz.yml": {
+    "swarm": {
+      "job": {
+        "p95Seconds": 1242,
+        "samples": 2
+      }
+    }
+  },
+  ".github/workflows/oracle-mutation-check.yml": {
+    "oracle-mutations": {
+      "job": {
+        "p95Seconds": 152,
+        "samples": 8
+      }
+    }
+  },
+  ".github/workflows/property-proofs.yml": {
+    "conformance-full": {
+      "job": {
+        "p95Seconds": 1676,
+        "samples": 4
+      }
+    },
+    "docx-kernel-property": {
+      "job": {
+        "p95Seconds": 54,
+        "samples": 13
+      }
+    },
+    "property-areas": {
+      "job": {
+        "p95Seconds": 1048,
+        "samples": 45
+      }
+    },
+    "property-plan": {
+      "job": {
+        "p95Seconds": 25,
+        "samples": 2
+      }
+    },
+    "property-test": {
+      "job": {
+        "p95Seconds": 5766,
+        "samples": 6
+      }
+    },
+    "report-conformance": {
+      "job": {
+        "p95Seconds": 31,
+        "samples": 3
+      }
+    }
+  },
+  ".github/workflows/publish-crate.yml": {
+    "package": {
+      "job": {
+        "p95Seconds": 33,
+        "samples": 50
+      }
+    },
+    "publish": {
+      "job": {
+        "p95Seconds": 27,
+        "samples": 50
+      }
+    }
+  },
+  ".github/workflows/publish-vscode.yml": {
+    "github-release": {
+      "job": {
+        "p95Seconds": 16,
+        "samples": 12
+      }
+    },
+    "marketplace": {
+      "job": {
+        "p95Seconds": 36,
+        "samples": 31
+      }
+    },
+    "open-vsx": {
+      "job": {
+        "p95Seconds": 26,
+        "samples": 33
+      }
+    },
+    "package": {
+      "job": {
+        "p95Seconds": 48,
+        "samples": 34
+      }
+    }
+  },
+  ".github/workflows/publish.yml": {
+    "pack": {
+      "job": {
+        "p95Seconds": 54,
+        "samples": 353
+      }
+    },
+    "source": {
+      "job": {
+        "p95Seconds": 4,
+        "samples": 2
+      }
+    },
+    "vscode": {
+      "job": {
+        "p95Seconds": 8,
+        "samples": 28
+      }
+    }
+  },
+  ".github/workflows/test-timing-refresh.yml": {
+    "refresh": {
+      "job": {
+        "p95Seconds": 48,
+        "samples": 24
+      }
+    }
+  },
+  ".github/workflows/vscode-extension.yml": {
+    "package": {
+      "job": {
+        "p95Seconds": 81,
+        "samples": 47
+      }
+    }
+  }
+}
