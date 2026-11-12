@@ -765,15 +765,11 @@ export const classifyRangeMultiplicity = (
 /**
  * The one rule that makes every range a rejection kept boundaries of
  * well-formed, for the engine's model and the editor's document alike. A
- * kept boundary that is no copy stays, whatever else the story holds: it is
- * the boundary itself, and an accepted copy of it stands as a direct
- * insertion of that copy would, so dropping either would make the result
- * depend on which was resolved first. A kept boundary that is still an added
- * revision's copy goes where the story holds the boundary otherwise (of
- * several such and nothing else, the first stays). A copy an added revision
- * still owns holds nothing: rejecting its revision takes it away, so a
- * boundary kept beside it stays whichever is resolved first, and it counts
- * for no range's order.
+ * kept copy of a boundary the story still holds is no boundary of its own and
+ * goes (of several kept copies, the first one that is no added revision's
+ * copy stays, else the first). A copy an added revision still owns holds
+ * nothing: rejecting its revision takes it away, so a boundary kept beside
+ * it stays whichever is resolved first, and it counts for no range's order.
  * Then, where such a range's end comes before its start, the half the
  * rejection kept closes on the other: a kept end moves to just after the
  * start, or else a kept start to just before the end. A boundary that was
@@ -796,14 +792,16 @@ export const planWellFormedRanges = (
   const dropped = new Set<number>();
   for (const group of copies.values()) {
     if (group.length < 2) continue;
-    const keptCopies = group.filter((member) => {
+    const kept = group.filter((member) => occurrences[member]?.kept === true);
+    const held = group.some((member) => {
       const occurrence = occurrences[member];
-      return occurrence?.kept === true && occurrence.copied;
+      return occurrence?.kept === false && !occurrence.copied;
     });
-    const held = group.some((member) => occurrences[member]?.copied === false);
-    const survivor = held ? undefined : keptCopies.at(0);
-    for (const member of keptCopies)
-      if (member !== survivor) dropped.add(member);
+    const survivor = held
+      ? undefined
+      : (kept.find((member) => occurrences[member]?.copied === false) ??
+        kept.at(0));
+    for (const member of kept) if (member !== survivor) dropped.add(member);
   }
   const ownedCopies = occurrences.flatMap(({ kept, copied }, index) =>
     !kept && copied ? [index] : [],
