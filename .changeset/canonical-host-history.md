@@ -5,3 +5,5 @@
 ---
 
 A canonical commit reports what it does to the session's undo history (`history`: `opened`, `joined`, `undo` or `redo`), and the React `DocxEditor` passes it to `onCanonicalHistory` after each published edit, undo or redo, so a host that keeps its own undo stack can mirror the session's steps. With `hostShortcuts` including `"history"`, the undo and redo keys no longer undo in a canonical session's views; the host undoes through the editor's API.
+
+A layout-input change that arrives while the React editor waits for the document's fonts before its first paint is laid out after the initial pass, instead of painting the pages before the fonts load.

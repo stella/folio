@@ -1807,6 +1807,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       [],
     );
     const pendingInitialFontReadyLayoutRef = useRef(false);
+    /** A layout-input change arrived during the initial font wait. */
+    const layoutInputDeferredByFontWaitRef = useRef(false);
     const [isFocused, setIsFocused] = useState(false);
     const [selectionRects, setSelectionRects] = useEqualState<SelectionRect[]>(
       [],
@@ -2425,6 +2427,23 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     useLayoutEffect(() => {
       runLayoutPipelineRef.current = runLayoutPipeline;
     }, [runLayoutPipeline]);
+    /**
+     * Lays out a layout-input change the initial font wait held back, once an
+     * initial pass has painted and no wait is pending.
+     */
+    const runLayoutInputDeferredByFontWait = useCallback(() => {
+      if (
+        !layoutInputDeferredByFontWaitRef.current ||
+        pendingInitialFontReadyLayoutRef.current
+      )
+        return;
+      layoutInputDeferredByFontWaitRef.current = false;
+      const state =
+        hiddenPMRef.current?.getView()?.state ??
+        layoutSessionRef.current.lastEditorState;
+      if (state)
+        runLayoutPipelineRef.current(state, { reason: "layout-input" });
+    }, []);
 
     const documentIORef = useRef(documentIO);
     useLayoutEffect(() => {
@@ -5953,6 +5972,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         updateSelectionOverlay(initialState);
         updateAnonymizationOverlay();
         updateDirectivesOverlay();
+        runLayoutInputDeferredByFontWait();
       };
 
       void waitForInitialLayoutFonts(document, initialState.doc).then(
@@ -5969,6 +5989,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       document,
       readPrecomputedInitialState,
       runLayoutPipeline,
+      runLayoutInputDeferredByFontWait,
       shouldCreateHiddenEditorView,
       updateAnonymizationOverlay,
       updateDirectivesOverlay,
@@ -6048,6 +6069,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           updateAnonymizationOverlay();
           updateDirectivesOverlay();
           updateAISuggestionsOverlay();
+          runLayoutInputDeferredByFontWait();
           focusReadyView();
           return;
         }
@@ -6076,6 +6098,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           resetCanvasContext();
           clearAllCaches();
           runInitialLayout(currentView);
+          runLayoutInputDeferredByFontWait();
         };
         void waitForInitialLayoutFonts(document, view.state.doc).then(
           runAfterFontWait,
@@ -6088,6 +6111,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       [
         applyPendingHiddenEditorInput,
         runLayoutPipeline,
+        runLayoutInputDeferredByFontWait,
         updateSelectionOverlay,
         updateAnonymizationOverlay,
         updateDirectivesOverlay,
@@ -6329,6 +6353,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           laidOutLayoutInputSignatureRef.current === layoutInputSignature &&
           state.doc === layoutSessionRef.current.lastPmDoc
         ) {
+          return;
+        }
+        // The initial font wait lays out the inputs current when it ends.
+        if (pendingInitialFontReadyLayoutRef.current) {
+          layoutInputDeferredByFontWaitRef.current = true;
           return;
         }
         runLayoutPipelineRef.current(state, { reason: "layout-input" });
