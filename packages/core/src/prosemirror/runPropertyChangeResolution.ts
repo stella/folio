@@ -1,6 +1,6 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
-import type { RunPropertyChange } from "../types/document";
+import type { RunPropertyChange, TextFormatting } from "../types/document";
 import { expectRunIdentityMarkAttrs } from "./attrs";
 import { runFormattingInlineAtomDisposition } from "./runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
@@ -61,6 +61,54 @@ export const reconstructRejectedRunFormattingMarks = ({
       }),
     ),
   ];
+};
+
+type RejectedRunFormattingOptions = {
+  node: PMNode;
+  /** Read only when the node carries formatting marks to rebuild. */
+  paragraphContext: () => ParagraphRunStyleContext;
+  previousFormatting: RunPropertyChange["previousFormatting"];
+  styleResolver?: RunStyleResolver | null;
+};
+
+type RejectedRunFormatting = {
+  /**
+   * The run formatting record a picture, a shape or a text box anchor keeps
+   * in its `_docxRunFormatting` attr, as it was before the change; null for a
+   * node that keeps none.
+   */
+  atomRunFormatting: TextFormatting | null;
+  /** The formatting marks to put back, or null when there are none to rebuild. */
+  marks: readonly Mark[] | null;
+};
+
+/**
+ * What rejecting a tracked run formatting change restores on `node`: its
+ * marks and, for a node that keeps its run's formatting in its attrs, that
+ * record. The range commands and the whole-story resolver both read it, so
+ * neither can restore one and leave the other changed.
+ */
+export const rejectedRunFormatting = ({
+  node,
+  paragraphContext,
+  previousFormatting,
+  styleResolver,
+}: RejectedRunFormattingOptions): RejectedRunFormatting => {
+  const keepsRunFormatting = Object.hasOwn(node.attrs, "_docxRunFormatting");
+  const rebuildsMarks =
+    !keepsRunFormatting ||
+    node.marks.some(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name));
+  return {
+    atomRunFormatting: keepsRunFormatting ? { ...previousFormatting } : null,
+    marks: rebuildsMarks
+      ? reconstructRejectedRunFormattingMarks({
+          node,
+          paragraphContext: paragraphContext(),
+          previousFormatting,
+          ...(styleResolver !== undefined ? { styleResolver } : {}),
+        })
+      : null,
+  };
 };
 
 type RestoreHistoricalRunFormattingOptions = {
