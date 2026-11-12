@@ -21,10 +21,20 @@ const REFUSAL_ROWS = {
     message:
       "A note or table of contents goes at a caret, not over selected cells.",
   },
-  trackedTableDeletion: {
-    id: CANONICAL_GAP.dispatch,
-    gap: CANONICAL_GAP.dispatch,
-    message: "The rows contain an unsupported tracked structure.",
+  // The fixture table's third row holds a nested table, which a suggested
+  // row change has no record for.
+  suggestedNestedTableRows: {
+    id: "suggested-nested-table-rows",
+    gap: CANONICAL_GAP.trackedTableStructure,
+    message: "A suggestion cannot yet record a row that holds a nested table.",
+  },
+  // A suggested column deletion keeps its cells until accepted, so a cell
+  // spanning the deleted column and another has no record of its narrowing.
+  suggestedSpanningColumnDeletion: {
+    id: "suggested-spanning-column-deletion",
+    gap: CANONICAL_GAP.trackedTableStructure,
+    message:
+      "A suggested column deletion cannot narrow a cell that spans other columns.",
   },
 } as const satisfies Record<string, HarnessRefusalRow>;
 
@@ -91,10 +101,25 @@ export const canonicalConformanceRefusalRows = (
       key.operation === "command:insertEndnote")
   )
     return [REFUSAL_ROWS.cellSelectionPlacement];
-  // The fixture table's merged cells have no tracked row deletion record.
+  // Suggestions in the fixture's table. Over the whole document the selection
+  // is in no table, so the table commands do nothing in either mode.
+  const inFixtureTable =
+    key.shape === "tables" &&
+    key.mode === "suggesting" &&
+    key.placement !== "document";
+  // Deleting the table records every row, the nested table's too.
   if (key.operation === "command:deleteTable")
-    return key.mode === "suggesting" && key.shape === "tables"
-      ? [REFUSAL_ROWS.trackedTableDeletion]
+    return inFixtureTable ? [REFUSAL_ROWS.suggestedNestedTableRows] : [];
+  // Across the focused cell and the next, the selection spans the merged
+  // block and reaches the row with the nested table; at a caret the row and
+  // column hold neither.
+  if (key.operation === "command:deleteRow")
+    return inFixtureTable && key.placement === "cross-paragraph"
+      ? [REFUSAL_ROWS.suggestedNestedTableRows]
+      : [];
+  if (key.operation === "command:deleteColumn")
+    return inFixtureTable && key.placement === "cross-paragraph"
+      ? [REFUSAL_ROWS.suggestedSpanningColumnDeletion]
       : [];
   if (key.operation === "command:generateTOC")
     return key.mode === "suggesting" &&

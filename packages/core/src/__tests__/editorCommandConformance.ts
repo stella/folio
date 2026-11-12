@@ -377,11 +377,25 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   insertTable: [registryCommand("insertTable", [2, 3])],
   addRowAbove: [registryCommand("addRowAbove")],
   addRowBelow: [registryCommand("addRowBelow")],
-  deleteRow: [registryCommand("deleteRow")],
+  // Across cells the selection reaches merged and nested-table rows.
+  deleteRow: [
+    registryCommand("deleteRow", [], {
+      placements: ["caret-middle", "cross-paragraph"],
+    }),
+  ],
   addColumnLeft: [registryCommand("addColumnLeft")],
   addColumnRight: [registryCommand("addColumnRight")],
-  deleteColumn: [registryCommand("deleteColumn")],
-  deleteTable: [registryCommand("deleteTable")],
+  deleteColumn: [
+    registryCommand("deleteColumn", [], {
+      placements: ["caret-middle", "cross-paragraph"],
+    }),
+  ],
+  // Over the whole document the selection is in no table.
+  deleteTable: [
+    registryCommand("deleteTable", [], {
+      placements: ["caret-middle", "document"],
+    }),
+  ],
   selectTable: [registryCommand("selectTable")],
   selectRow: [registryCommand("selectRow")],
   selectColumn: [registryCommand("selectColumn")],

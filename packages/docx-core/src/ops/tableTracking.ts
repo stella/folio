@@ -154,6 +154,15 @@ const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
     }
   });
 
+/** A table anywhere in the blocks, inside content controls and custom XML too. */
+const holdsTable = (blocks: readonly BlockContent[]): boolean =>
+  blocks.some(
+    (block) =>
+      block.type === "table" ||
+      ((block.type === "blockSdt" || block.type === "blockCustomXml") &&
+        holdsTable(block.content)),
+  );
+
 type TrackTableRowsOptions = {
   document: Document;
   op: TrackingOp;
@@ -220,7 +229,11 @@ export const trackTableRows = ({
     return refused({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "The rows contain an unsupported tracked structure.",
+      message: rows.some((row) =>
+        row.cells.some((cell) => holdsTable(cell.content)),
+      )
+        ? "A suggestion cannot yet record a row that holds a nested table."
+        : "The rows contain an unsupported tracked structure.",
     });
   }
   if ([...finals].some((paragraph) => paragraph.pPrMark !== undefined)) {
