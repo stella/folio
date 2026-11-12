@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import type { Document } from "../../../model/document";
 import { equalForStaleness } from "../../equality";
-import { formatParaId, type IdLease, idLeaseHolds } from "../../idLease";
+import {
+  formatParaId,
+  type IdLease,
+  idLeaseHolds,
+  leasedIdCensus,
+} from "../../idLease";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
   type DocumentOp,
@@ -40,9 +45,9 @@ const batch = (
   ops,
 });
 
-const split = (newBlockId: string): DocumentOp => ({
+const split = (newBlockId: string, blockId = FIRST): DocumentOp => ({
   type: "splitBlock",
-  at: { story: OP_STORIES.MAIN, blockId: FIRST, offset: 2 },
+  at: { story: OP_STORIES.MAIN, blockId, offset: 2 },
   newBlockId,
   newHalf: "second",
 });
@@ -136,12 +141,13 @@ describe("sequencer id leases", () => {
     expect(
       sequencer.submit(
         batch("first", "delete", 0, [
-          { type: "deleteBlocks", story: OP_STORIES.MAIN, blockIds: [SECOND] },
+          { type: "deleteBlocks", story: OP_STORIES.MAIN, blockIds: [FIRST] },
         ]),
-      ).type,
-    ).toBe("ack");
+      ),
+    ).toMatchObject({ type: "ack" });
+    expect(leasedIdCensus(sequencer.document).paragraph.has(1)).toBe(false);
     expect(
-      sequencer.submit(batch("second", "restore", 1, [split(SECOND)])),
+      sequencer.submit(batch("second", "restore", 1, [split(FIRST, SECOND)])),
     ).toMatchObject({ type: "ack" });
   });
 
