@@ -197,7 +197,17 @@ test("deleting a split's second half retracts the break whatever pending propert
           liveRows: rowsOf(sequential),
           mode: "tracked-changes",
         })) {
-          const result = apply(sequential, "tracked-changes", group);
+          const result = apply(
+            sequential,
+            "tracked-changes",
+            group.map(({ id }) => {
+              const operation = operations.find(
+                (candidate) => candidate.id === id,
+              );
+              assert.ok(operation, `${context}: ${id} is the batch's`);
+              return operation;
+            }),
+          );
           assert.deepEqual(result.skipped, [], context);
         }
         assert.deepEqual(
