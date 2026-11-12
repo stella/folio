@@ -1,3 +1,5 @@
+import type { HeaderFooterEditorManager } from "../src/controller/headerFooterEditorManager";
+import type { NoteEditorManager } from "../src/controller/noteEditorManager";
 import type { TableSelectionManager } from "../src/managers/TableSelectionManager";
 import type { Document } from "../src/types/document";
 import type { ReadonlyDocument } from "../src/types/documentModel";
@@ -41,4 +43,17 @@ export const effectiveSectionProperties = (
     false,
   );
   if (plain) plain.marginTop = 0;
+};
+
+export const storySnapshots = (
+  notes: NoteEditorManager,
+  parts: HeaderFooterEditorManager,
+  model: ReadonlyDocument,
+): void => {
+  const noted = notes.snapshotDocument(model);
+  // @ts-expect-error a note snapshot shares what no edit touched with the model
+  noted.package.document.content.length = 0;
+  const parted = parts.snapshotDocument(model);
+  // @ts-expect-error a part snapshot shares what no edit touched with the model
+  parted.package.headers?.clear();
 };

@@ -829,9 +829,7 @@ export function useDocxEditor(
         if (current) {
           docModel.value =
             manager.readCanonicalDocument() ??
-            noteEditorManagerHolder.current?.snapshotDocument(
-              readModel(current),
-            ) ??
+            noteEditorManagerHolder.current?.snapshotDocument(current) ??
             current;
           // The host hears of a note edit once it settles, as of a body edit.
           scheduleNoteChangeNotification();
@@ -1512,7 +1510,7 @@ export function useDocxEditor(
     // edit that landed mid-save and diff against the wrong baseline.
     const state = view.state;
     // canonical-gap: pm-save-projection
-    const projected = fromProseDoc(state.doc, base, {
+    const projected = fromProseDoc(state.doc, readModel(base), {
       stylesheetSource: { type: "package" },
     });
     const updatedDoc = withoutUnreferencedNotes(
