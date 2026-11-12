@@ -22,8 +22,8 @@ import {
 import {
   expandRunFormattingCarrier,
   runFormattingCarrierReviewText,
+  runFormattingInlineAtomCleanText,
   runFormattingInlineAtomDisposition,
-  runFormattingInlineAtomResultText,
 } from "../prosemirror/runFormattingInlineCarriers";
 import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
 import {
@@ -852,18 +852,20 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
         });
       }
     }
-    // A field reads as its result. One with its result in runs adds them as its
+    // An inline atom reads as the block text reads it: a field as its result,
+    // a line break or a tab as its character, so a quote taken from a block
+    // reads back as quoted. A field with its result in runs adds them as its
     // children, but a comment over the field marks the field, not them.
     const isStructuredField = node.type.name === "structuredField";
-    const fieldText = isStructuredField
+    const atomText = isStructuredField
       ? node.textContent
-      : runFormattingInlineAtomResultText(node);
-    if (!node.isInline || (node.text === undefined && fieldText === null)) {
+      : runFormattingInlineAtomCleanText(node);
+    if (!node.isInline || (node.text === undefined && atomText === null)) {
       return undefined;
     }
     const text =
       node.text === undefined
-        ? (fieldText ?? "")
+        ? (atomText ?? "")
         : readerTextOf(node, noteReferences);
     const end = bodyText.length + text.length;
     for (const mark of node.marks) {
