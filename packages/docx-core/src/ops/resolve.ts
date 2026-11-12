@@ -1167,6 +1167,114 @@ const trackedWithin = (nodes: readonly InlineNode[]): TrackedWrapper[] =>
     ...trackedWithin(childNodes(node) ?? []),
   ]);
 
+type DeferredRemovalGroup = NonNullable<
+  NonNullable<TrackedWrapper["resolutionJoins"]>["deferredRemove"]
+>[number];
+
+/**
+ * The ids of the pending insertions in `nodes`, at any depth, that can hold a
+ * deferred seam: the only records a deferred seam may name as its blockers.
+ */
+const seamHolderIds = (nodes: readonly InlineNode[]): Set<number> =>
+  new Set(
+    trackedWithin(nodes).flatMap((node) =>
+      isAddedRevision(node) && node.resolutionJoins !== undefined
+        ? [node.info.id]
+        : [],
+    ),
+  );
+
+/**
+ * The ids a seam join retires, each with the id that takes its place: where
+ * `left` and `right` met as `merged`, a tracked piece on the right's facing
+ * edge merged into the left's piece at its level, whose id the merge kept.
+ */
+const rejoinedPieceIds = ({
+  left,
+  right,
+  merged,
+}: {
+  left: InlineNode;
+  right: InlineNode;
+  merged: InlineNode;
+}): [number, number][] => {
+  const kept = new Set(trackedWithin([merged]).map((node) => node.info.id));
+  const leftChain = edgeChain(left, "end");
+  return edgeChain(right, "start").flatMap((piece, level) => {
+    const into = leftChain.at(level);
+    return isTrackedWrapper(piece) &&
+      into !== undefined &&
+      isTrackedWrapper(into) &&
+      piece.info.id !== into.info.id &&
+      !kept.has(piece.info.id) &&
+      kept.has(into.info.id)
+      ? [[piece.info.id, into.info.id]]
+      : [];
+  });
+};
+
+/**
+ * `nodes` once seam joins retired the ids `retired` maps to the ids that took
+ * their place: a deferred seam naming a retired piece names the piece it
+ * merged into, as the validation of a later resolution reads blockers. A
+ * piece merged into a record that can hold no seam blocks none.
+ */
+const withRejoinedBlockers = ({
+  nodes,
+  retired,
+  resolution,
+}: {
+  nodes: readonly InlineNode[];
+  retired: ReadonlyMap<number, number>;
+  resolution: Resolution;
+}): InlineNode[] => {
+  const successor = (id: number): number => {
+    let current = id;
+    for (let next = retired.get(current); next !== undefined;) {
+      current = next;
+      next = retired.get(current);
+    }
+    return current;
+  };
+  const holders = seamHolderIds(nodes);
+  const renamed = (
+    groups: readonly DeferredRemovalGroup[],
+  ): DeferredRemovalGroup[] =>
+    groups.flatMap((group) => {
+      const blockers = [
+        ...new Set(
+          group.blockers.flatMap((id) => {
+            const into = successor(id);
+            return into === id || holders.has(into) ? [into] : [];
+          }),
+        ),
+      ];
+      return blockers.length === 0 ? [] : [{ depth: group.depth, blockers }];
+    });
+  const rewrite = (node: InlineNode): InlineNode => {
+    const children = childNodes(node);
+    const rewritten = children?.map(rewrite);
+    let next =
+      rewritten === undefined ||
+      rewritten.every((child, index) => child === children?.at(index))
+        ? node
+        : rebuildNode(node, rewritten);
+    if (isTrackedWrapper(next) && next.resolutionJoins !== undefined) {
+      const own = next.resolutionJoins.deferredRemove ?? [];
+      const held = canonicalDeferredGroups(renamed(own));
+      if (!structurallyEqual(held, own)) {
+        const joins = Object.assign({}, next.resolutionJoins);
+        delete joins.deferredRemove;
+        if (held.length > 0) joins.deferredRemove = held;
+        next = Object.assign({}, next, { resolutionJoins: joins });
+      }
+    }
+    if (next !== node) carryResolutionState(resolution, node, next);
+    return next;
+  };
+  return nodes.map(rewrite);
+};
+
 type CutReach = {
   /** The cut's levels that stay once the resolution is done. */
   levels: number;
@@ -1787,6 +1895,8 @@ const resolveList = (
     return carried;
   };
   const merges = new Set(seams);
+  /** Ids seam joins retired, each with the id of the piece it merged into. */
+  const retired = new Map<number, number>();
   for (const recorded of [
     ...new Set([...seams, ...exactSeams.keys(), ...folds]),
   ].toSorted((left, right) => right - left)) {
@@ -2013,6 +2123,8 @@ const resolveList = (
     }
     if (met.length === 1) {
       const merged = met.at(0) ?? panic("A single merged record exists.");
+      for (const [id, into] of rejoinedPieceIds({ left, right, merged }))
+        retired.set(id, into);
       const outerEdges: CutEdges = {};
       const first = resolution.cutEdges.get(left)?.first;
       const last = resolution.cutEdges.get(right)?.last;
@@ -2058,6 +2170,15 @@ const resolveList = (
         ),
       );
     }
+  }
+  if (retired.size > 0) {
+    const rejoined = withRejoinedBlockers({
+      nodes: out.map(({ node }) => node),
+      retired,
+      resolution,
+    });
+    for (const [index, node] of rejoined.entries())
+      out[index] = occurrenceOf(node, out[index]);
   }
   const first = out.at(0)?.node;
   const last = out.at(-1)?.node;
@@ -2841,19 +2962,9 @@ export const planRevisionResolution = ({
     );
   }
 
-  const blockerIds = new Set<number>();
-  const collectBlockers = (nodes: readonly InlineNode[]): void => {
-    for (const node of nodes) {
-      if (
-        isTrackedWrapper(node) &&
-        isAddedRevision(node) &&
-        node.resolutionJoins !== undefined
-      )
-        blockerIds.add(node.info.id);
-      collectBlockers(childNodes(node) ?? []);
-    }
-  };
-  for (const { paragraph } of paragraphs) collectBlockers(paragraph.content);
+  const blockerIds = seamHolderIds(
+    paragraphs.flatMap(({ paragraph }) => paragraph.content),
+  );
   const validProvenance = (nodes: readonly InlineNode[]): boolean =>
     nodes.every(
       (node) =>

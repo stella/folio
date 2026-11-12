@@ -19,6 +19,16 @@
  *   bun scripts/property-areas.ts [--base <ref>] [--factor <n>] [--dry-run]
  *   bun scripts/property-areas.ts --all            (every property file)
  *   bun scripts/property-areas.ts --shard 1/4      (one partition of the selection)
+ *   bun scripts/property-areas.ts --all --plan     (the extended shard matrix)
+ *   bun scripts/property-areas.ts --all --shard 1/4 --timings <file>
+ *
+ * Shards come from the measured planner in scripts/ci-test-shard-plan.ts. A
+ * file weighs its measured time per unit of factor
+ * (scripts/property-test-timings.json) times the factor, or, when unmeasured,
+ * its stated base budgets times the factor. `--plan` picks the fewest `--all`
+ * shards whose longest planned load fits EXTENDED_PROPERTY_SHARD_BUDGET_MS;
+ * `--timings` records each file's measured time per unit of factor so the
+ * timing refresh can keep the plan current.
  *
  * `--base` (default `origin/main`) is diffed from its merge base with HEAD.
  * `--factor` defaults to `PROPERTY_TEST_NUM_RUNS_FACTOR`, else 5 for a change
@@ -28,7 +38,14 @@
 
 import { panic } from "better-result";
 import { $ } from "bun";
-import { readdirSync, readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import type { CallExpression } from "oxc-parser";
 
@@ -37,7 +54,15 @@ import {
   testFileForSeedFile,
 } from "../test/seed-registry";
 import { subprocessBudgetBaseMs } from "../test/subprocess";
+import {
+  assignTestShards,
+  planTestShards,
+  shardLoads,
+  type TestTimings,
+} from "./ci-test-shard-plan";
+import { junitFileTimings } from "./ci-test-shards";
 import { type Node, nodeText, parseSourceModule, walkAst } from "./lib/oxc-ast";
+import measuredPropertyTimings from "./property-test-timings.json";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
@@ -394,10 +419,48 @@ export const selectPropertyFiles = (
 
 type PropertyShard = { index: number; total: number };
 
-/** Longest-first greedy bin packing retains the complete selection and every property run. */
+/**
+ * Planned measured load per extended shard. Measured file times leave out
+ * checkout, install and process start, so the shard's job keeps a fifth of its
+ * timeout-minutes free (scripts/property-areas.test.ts checks the workflow).
+ */
+export const EXTENDED_PROPERTY_SHARD_BUDGET_MS = 120 * 60_000;
+
+/**
+ * Each file's planned time at a run factor: its measured time per unit of
+ * factor when recorded, else its stated base budgets. An unmeasured estimate
+ * never plans past one shard, so a new file runs alone until it is measured.
+ */
+export const propertyShardTimings = (
+  files: readonly PropertyFile[],
+  factor: number,
+  measured: TestTimings = measuredPropertyTimings,
+) => {
+  const timings: TestTimings = {};
+  const unmeasured: string[] = [];
+  for (const file of files) {
+    if (!Number.isFinite(file.weightMs) || file.weightMs <= 0)
+      return panic(
+        `Property scheduling weight must be finite and positive: ${file.file}`,
+      );
+    const perFactor = measured[file.file];
+    if (perFactor === undefined) {
+      unmeasured.push(file.file);
+      timings[file.file] = Math.min(
+        Math.ceil(file.weightMs * factor),
+        EXTENDED_PROPERTY_SHARD_BUDGET_MS,
+      );
+    } else timings[file.file] = Math.ceil(perFactor * factor);
+  }
+  return { timings, unmeasured };
+};
+
+/** One partition of the selection, assigned by the shared shard planner. */
 export const shardPropertyFiles = (
   files: readonly PropertyFile[],
   { index, total }: PropertyShard,
+  factor = 1,
+  measured: TestTimings = measuredPropertyTimings,
 ): PropertyFile[] => {
   if (
     !Number.isSafeInteger(total) ||
@@ -409,26 +472,32 @@ export const shardPropertyFiles = (
     return panic(
       "Property shard must be an integer index/total with 1 ≤ index ≤ total.",
     );
-  const shards = Array.from({ length: total }, () => ({
-    files: files.slice(0, 0),
-    weightMs: 0,
-  }));
-  for (const file of files.toSorted(
-    (a, b) => b.weightMs - a.weightMs || a.file.localeCompare(b.file),
-  )) {
-    if (!Number.isFinite(file.weightMs) || file.weightMs <= 0)
-      return panic(
-        `Property scheduling weight must be finite and positive: ${file.file}`,
-      );
-    let target = shards.at(0) ?? panic("Property scheduling requires a shard");
-    for (const shard of shards)
-      if (shard.weightMs < target.weightMs) target = shard;
-    target.files.push(file);
-    target.weightMs += file.weightMs;
-  }
-  return (
-    shards.at(index - 1) ?? panic("Requested property shard is unavailable")
-  ).files.toSorted((a, b) => a.file.localeCompare(b.file));
+  const { timings } = propertyShardTimings(files, factor, measured);
+  const assigned = assignTestShards(
+    files.map(({ file }) => file),
+    total,
+    timings,
+  ).at(index - 1);
+  if (!assigned) return panic("Requested property shard is unavailable");
+  return files
+    .filter(({ file }) => assigned.has(file))
+    .toSorted((a, b) => a.file.localeCompare(b.file));
+};
+
+/** The fewest `--all` shards whose longest planned load fits the budget. */
+export const planExtendedPropertyShards = (
+  files: readonly PropertyFile[],
+  factor: number,
+  measured: TestTimings = measuredPropertyTimings,
+  budget = EXTENDED_PROPERTY_SHARD_BUDGET_MS,
+) => {
+  const { timings, unmeasured } = propertyShardTimings(files, factor, measured);
+  const shards = planTestShards(
+    files.map(({ file }) => file),
+    timings,
+    budget,
+  );
+  return { shards, loads: shardLoads(shards, timings), unmeasured };
 };
 
 const parseArgs = (argv: readonly string[]) => {
@@ -436,6 +505,8 @@ const parseArgs = (argv: readonly string[]) => {
   let factor: number | undefined;
   let dryRun = false;
   let all = false;
+  let plan = false;
+  let timings: string | undefined;
   let shard: PropertyShard | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -443,6 +514,8 @@ const parseArgs = (argv: readonly string[]) => {
     else if (arg === "--factor") factor = Number(argv[++index]);
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--all") all = true;
+    else if (arg === "--plan") plan = true;
+    else if (arg === "--timings") timings = argv[++index];
     else if (arg === "--shard") {
       const parts = (argv[++index] ?? "").split("/");
       if (parts.length !== 2)
@@ -458,7 +531,9 @@ const parseArgs = (argv: readonly string[]) => {
       : Number(envFactor);
   if (!Number.isFinite(factor) || factor < 1)
     throw new Error("the factor must be a number ≥ 1");
-  return { base, factor, dryRun, all, shard };
+  if (plan && !all) throw new Error("--plan plans the --all selection");
+  if (timings === "") throw new Error("--timings needs a file");
+  return { base, factor, dryRun, all, plan, timings, shard };
 };
 
 const changedFiles = async (base: string): Promise<string[]> => {
@@ -471,8 +546,12 @@ const changedFiles = async (base: string): Promise<string[]> => {
   return diff.split("\n").filter((line) => line !== "");
 };
 
-if (import.meta.main) {
-  const { base, factor, dryRun, all, shard } = parseArgs(process.argv.slice(2));
+const minutes = (ms: number) => (ms / 60_000).toFixed(1);
+
+const main = async () => {
+  const { base, factor, dryRun, all, plan, timings, shard } = parseArgs(
+    process.argv.slice(2),
+  );
   let selected: PropertyFile[];
   if (all) {
     selected = propertyFiles();
@@ -487,28 +566,60 @@ if (import.meta.main) {
       `${String(changed.length)} changed files vs ${base}; ${String(selected.length)} property files in ${String(areas.length)} areas at factor ${String(factor)}${areas.length > 0 ? `: ${areas.join(", ")}` : ""}`,
     );
   }
+  if (all && (plan || shard !== undefined)) {
+    const planned = planExtendedPropertyShards(selected, factor);
+    console.log(
+      `Planned ${String(planned.shards.length)} property shards within ${minutes(EXTENDED_PROPERTY_SHARD_BUDGET_MS)} min: ${planned.loads.map((load, index) => `${String(index + 1)}=${minutes(load)} min`).join(", ")}; ${String(planned.unmeasured.length)} unmeasured files planned from stated budgets`,
+    );
+    for (const file of planned.unmeasured) console.log(`  unmeasured: ${file}`);
+    if (plan) {
+      const matrix = JSON.stringify(
+        planned.shards.map((_, index) => index + 1),
+      );
+      const output = process.env["GITHUB_OUTPUT"];
+      if (output) appendFileSync(output, `property_shards=${matrix}\n`);
+      else console.log(`property_shards=${matrix}`);
+      return;
+    }
+    if (shard !== undefined && planned.shards.length !== shard.total)
+      panic(
+        `The plan has ${String(planned.shards.length)} property shards, the job runs ${String(shard.total)}`,
+      );
+  }
   if (shard !== undefined) {
-    selected = shardPropertyFiles(selected, shard);
+    selected = shardPropertyFiles(selected, shard, factor);
     console.log(
       `Shard ${String(shard.index)}/${String(shard.total)}: ${String(selected.length)} property files`,
     );
   }
+  const resultsDirectory = path.join(REPO_ROOT, "test-results");
+  if (timings !== undefined) mkdirSync(resultsDirectory, { recursive: true });
+  const recorded: TestTimings = {};
   if (dryRun || selected.length === 0) {
     for (const { file } of selected) console.log(`  ${file}`);
   } else {
     // Two bounded workers can share one large package's property workload.
     // Stream progress and counterexamples so cancellation retains diagnostics.
+    let batchIndex = 0;
     const exitCodes = await runPropertyBatches(
       propertyBatches(selected),
       async ({ packageDir, files }) => {
         const relative = files.map(({ file }) =>
           path.relative(packageDir, file),
         );
+        const junitFile = path.join(
+          resultsDirectory,
+          `property-junit-${String(++batchIndex)}.xml`,
+        );
+        const reporter =
+          timings === undefined
+            ? []
+            : ["--reporter=junit", `--reporter-outfile=${junitFile}`];
         const started = performance.now();
         console.log(
           `${packageDir}: starting ${String(files.length)} files: ${relative.join(", ")}`,
         );
-        const run = await $`bun test ${relative} 2>&1`
+        const run = await $`bun test ${reporter} ${relative} 2>&1`
           .cwd(path.join(REPO_ROOT, packageDir))
           .env({
             ...process.env,
@@ -519,6 +630,13 @@ if (import.meta.main) {
         console.log(
           `${packageDir}: ${String(files.length)} files in ${seconds}s, exit ${String(run.exitCode)}`,
         );
+        if (timings !== undefined && existsSync(junitFile)) {
+          // Recorded per unit of factor, so any run factor can plan from it.
+          for (const [file, ms] of Object.entries(
+            junitFileTimings(readFileSync(junitFile, "utf8"), packageDir),
+          ))
+            recorded[file] = Math.max(1, Math.round(ms / factor));
+        }
         return run.exitCode;
       },
     );
@@ -526,4 +644,11 @@ if (import.meta.main) {
     // asynchronously, and exiting here cut a failing run's log short.
     process.exitCode = exitCodes.every((code) => code === 0) ? 0 : 1;
   }
-}
+  if (timings !== undefined)
+    writeFileSync(
+      timings,
+      `${JSON.stringify({ runId: process.env["GITHUB_RUN_ID"] ?? "local", timings: recorded }, null, 2)}\n`,
+    );
+};
+
+if (import.meta.main) await main();
