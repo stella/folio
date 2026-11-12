@@ -37,6 +37,7 @@ jobs:
         env:
           FOLIO_ZZ_LIR011: ${{ runner.temp }}/LIR011.docx
           FOLIO_ZZ_ROUND: cpu
+          FOLIO_ZZ_DOCS: lir011
           FOLIO_ZZ_PROFILE: ${{ runner.temp }}/cpu/profiles
           FOLIO_ZZ_OUT: ${{ runner.temp }}/cpu/profile-pass.jsonl
         run: |

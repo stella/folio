@@ -312,7 +312,28 @@ for (const name of documents) {
         );
         const saves =
           name === "lir011" || process.env["FOLIO_ZZ_SAVE_ALL"] === "1"
-            ? await save(page)
+            ? await (async () => {
+                const saveCdp = PROFILE
+                  ? await page.context().newCDPSession(page)
+                  : undefined;
+                if (saveCdp) {
+                  await saveCdp.send("Profiler.enable");
+                  await saveCdp.send("Profiler.setSamplingInterval", {
+                    interval: 200,
+                  });
+                  await saveCdp.send("Profiler.start");
+                }
+                const times = await save(page);
+                if (saveCdp && PROFILE) {
+                  const { profile } = await saveCdp.send("Profiler.stop");
+                  writeFileSync(
+                    join(PROFILE, `${name}-${mode}-${engine}-save.cpuprofile`),
+                    JSON.stringify(profile),
+                  );
+                  await saveCdp.detach();
+                }
+                return times;
+              })()
             : [];
         const line = {
           round: ROUND,
