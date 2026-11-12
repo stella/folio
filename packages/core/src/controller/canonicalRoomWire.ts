@@ -179,13 +179,14 @@ export const decodeLeaseRenewal = (
  * room closed or stopped following its journal before the authority
  * answered. Both lease decoders read it as an `unavailable` refusal.
  */
-export const UNAVAILABLE_LEASE_ANSWER = {
+export const UNAVAILABLE_LEASE_ANSWER: CanonicalWireLeaseGrant &
+  CanonicalWireLeaseRenewal = {
   ok: false,
   refusal: {
     reason: ID_LEASE_REFUSAL_REASONS.UNAVAILABLE,
     message: "The room closed before its authority answered.",
   },
-} as const satisfies CanonicalWireLeaseGrant & CanonicalWireLeaseRenewal;
+};
 
 /**
  * A value as JSON carries it: what a structured clone or a Yjs document

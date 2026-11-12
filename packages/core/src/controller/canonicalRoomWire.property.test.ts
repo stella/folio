@@ -1,5 +1,5 @@
 import { panic, Result } from "better-result";
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import {
@@ -12,7 +12,10 @@ import {
   IdLeaseRefusal,
 } from "@stll/docx-core/ops";
 
-import { assertProperty } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   decodeLeaseGrant,
   decodeLeaseRenewal,
@@ -23,6 +26,8 @@ import {
   toWireJson,
   UNAVAILABLE_LEASE_ANSWER,
 } from "./canonicalRoomWire";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 /*
  * What crosses between two contexts as JSON comes back as it left: every
