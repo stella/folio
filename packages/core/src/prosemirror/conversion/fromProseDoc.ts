@@ -2779,7 +2779,9 @@ function paragraphAttrsToFormatting(
     assignBooleanToggle(result, attrs, orig, "suppressAutoHyphens");
     if (attrs.spacingExplicit !== orig.spacingExplicit) {
       if (attrs.spacingExplicit) {
-        result.spacingExplicit = attrs.spacingExplicit;
+        result.spacingExplicit = writableCopy<
+          NonNullable<ParagraphFormatting["spacingExplicit"]>
+        >(attrs.spacingExplicit);
       } else {
         delete result.spacingExplicit;
       }
@@ -2931,7 +2933,9 @@ function paragraphAttrsToFormatting(
     f.snapToGrid = snapToGrid;
   }
   if (attrs.spacingExplicit) {
-    f.spacingExplicit = attrs.spacingExplicit;
+    f.spacingExplicit = writableCopy<
+      NonNullable<ParagraphFormatting["spacingExplicit"]>
+    >(attrs.spacingExplicit);
   }
   if (indentLeft !== undefined) {
     f.indentLeft = indentLeft;

@@ -4,6 +4,7 @@
  * Types for document-level definitions that don't form the content tree.
  */
 
+import type { WritableRecord } from "./deepReadonly";
 import type {
   ParagraphFormatting,
   TableCellFormatting,
@@ -25,7 +26,7 @@ export type StyleType = "paragraph" | "character" | "numbering" | "table";
 /**
  * Style definition
  */
-export type Style = {
+export type Style = WritableRecord & {
   /** Style ID */
   styleId: string;
   /** Style type */
@@ -89,7 +90,7 @@ export type Style = {
 /**
  * Document defaults (w:docDefaults)
  */
-export type DocDefaults = {
+export type DocDefaults = WritableRecord & {
   /** Default run properties */
   rPr?: TextFormatting;
   /** Default paragraph properties */
@@ -99,7 +100,7 @@ export type DocDefaults = {
 /**
  * Style definitions from styles.xml
  */
-export type StyleDefinitions = {
+export type StyleDefinitions = WritableRecord & {
   /** Document defaults */
   docDefaults?: DocDefaults;
   /** Latent styles */
@@ -122,7 +123,7 @@ export type StyleDefinitions = {
 /**
  * Theme color scheme (a:clrScheme)
  */
-export type ThemeColorScheme = {
+export type ThemeColorScheme = WritableRecord & {
   /** Dark 1 color (usually black) */
   dk1?: string;
   /** Light 1 color (usually white) */
@@ -147,7 +148,7 @@ export type ThemeColorScheme = {
 /**
  * Theme font (with script variants)
  */
-export type ThemeFont = {
+export type ThemeFont = WritableRecord & {
   /** Latin font */
   latin?: string;
   /** East Asian font */
@@ -161,7 +162,7 @@ export type ThemeFont = {
 /**
  * Theme font scheme (a:fontScheme)
  */
-export type ThemeFontScheme = {
+export type ThemeFontScheme = WritableRecord & {
   /** Major font (headings) */
   majorFont?: ThemeFont;
   /** Minor font (body text) */
@@ -171,7 +172,7 @@ export type ThemeFontScheme = {
 /**
  * Theme (from theme1.xml)
  */
-export type Theme = {
+export type Theme = WritableRecord & {
   /** Theme name */
   name?: string;
   /** Color scheme */
@@ -194,7 +195,7 @@ export type Theme = {
  * Two attributes of one element rather than two fields on the font, because
  * `w:charset` is the thing that carries both and a producer may write either.
  */
-export type FontCharset = {
+export type FontCharset = WritableRecord & {
   /** `w:val`: the code page as a two-digit hexadecimal number. */
   val?: string;
   /** `w:characterSet`: the same set named (`ANSI_CHARSET`) rather than numbered. */
@@ -208,7 +209,7 @@ export type FontCharset = {
  * GUID the `.odttf` is obfuscated with, so a package that keeps the id and
  * drops the key keeps a pointer to bytes nothing can decode.
  */
-export type EmbeddedFontRef = {
+export type EmbeddedFontRef = WritableRecord & {
   /** `r:id` of the relationship to the font binary, in `word/_rels/fontTable.xml.rels`. */
   id: string;
   /** `w:fontKey`: the obfuscation GUID, e.g. `{XXXXXXXX-…}`. */
@@ -220,7 +221,7 @@ export type EmbeddedFontRef = {
 /**
  * Font info from fontTable.xml
  */
-export type FontInfo = {
+export type FontInfo = WritableRecord & {
   /** Font name */
   name: string;
   /** Alternate names */
@@ -256,7 +257,7 @@ export type FontInfo = {
 /**
  * Font table from fontTable.xml
  */
-export type FontTable = {
+export type FontTable = WritableRecord & {
   fonts: FontInfo[];
   /** Children of `w:fonts` that are not `w:font`, in source position. */
   preserved?: PreservedMarkup;
@@ -282,7 +283,7 @@ export type RelationshipType = string;
 /**
  * Relationship entry
  */
-export type Relationship = {
+export type Relationship = WritableRecord & {
   /** Relationship ID (e.g., "rId1") */
   id: string;
   /** Relationship type URI */
@@ -305,7 +306,7 @@ export type RelationshipMap = Map<string, Relationship>;
 /**
  * Media file from word/media/
  */
-export type MediaFile = {
+export type MediaFile = WritableRecord & {
   /** File path in ZIP */
   path: string;
   /** Original filename */

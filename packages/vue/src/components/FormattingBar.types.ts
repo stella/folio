@@ -7,6 +7,7 @@
  */
 
 import type { ColorValue, Theme } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 import type { ListState } from "../utils/listState";
 import type { ParagraphAlignment } from "./ui/AlignmentButtons.types";
@@ -76,5 +77,5 @@ export type FormattingBarProps = {
   /** Document styles for the style picker (Vue `StylePicker` option shape). */
   documentStyles?: StyleOption[];
   /** Document theme — feeds the color picker's theme-color matrix. */
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
 };

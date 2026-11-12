@@ -8,7 +8,7 @@
  * `level` and `numId` are not here: they travel in `numPr`.
  */
 
-import type { ListRendering } from "../types/document";
+import type { ListRendering, RecordField } from "../types/document";
 import {
   effectiveParagraphNumberingReference,
   type ParagraphNumberingBoundarySources,
@@ -18,7 +18,7 @@ import type { ParagraphAttrs } from "./schema/nodes";
 
 /** `ListRendering` fields that have their own editor attr. */
 export type ListRenderingAttrField = Exclude<
-  keyof ListRendering,
+  RecordField<ListRendering>,
   "level" | "numId"
 >;
 

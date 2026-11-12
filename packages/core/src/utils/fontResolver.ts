@@ -12,6 +12,7 @@ import {
   documentFontInfoOf,
 } from "../fonts/documentFontFacts";
 import type { ThemeFont, ThemeFontScheme } from "../types";
+import type { DeepReadonly } from "../types/documentModel";
 
 /**
  * Result of resolving a font family
@@ -1276,7 +1277,7 @@ export function parseFontFamilyList(list: string): string[] {
  */
 export function resolveThemeFont(
   themeRef: string,
-  fontScheme?: ThemeFontScheme,
+  fontScheme?: DeepReadonly<ThemeFontScheme>,
 ): string | null {
   if (!fontScheme) {
     return null;
@@ -1284,7 +1285,7 @@ export function resolveThemeFont(
 
   // Parse the theme reference
   const isMajor = themeRef.toLowerCase().startsWith("major");
-  const themeFont: ThemeFont | undefined = isMajor
+  const themeFont: DeepReadonly<ThemeFont> | undefined = isMajor
     ? fontScheme.majorFont
     : fontScheme.minorFont;
 

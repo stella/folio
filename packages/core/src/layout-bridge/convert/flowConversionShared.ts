@@ -51,7 +51,7 @@ export type ToFlowBlocksOptions = {
   /** Default font size in points. */
   defaultSize?: number;
   /** Theme for resolving theme colors. */
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   /** Document styles used to resolve character-style toggles without per-run copies. */
   styles?: DeepReadonly<StyleDefinitions>;
   /** Document-scoped OOXML primary-font to `w:altName` lookup. */

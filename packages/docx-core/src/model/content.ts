@@ -10,6 +10,7 @@
  */
 
 import type { BorderSpec, ColorValue } from "./colors";
+import type { WritableRecord } from "./deepReadonly";
 import type {
   ParagraphFormatting,
   TableCellFormatting,
@@ -37,7 +38,7 @@ import type { ThemeColorValue } from "./themeColor";
 /**
  * Plain text content
  */
-export type TextContent = {
+export type TextContent = WritableRecord & {
   type: "text";
   /** The text string */
   text: string;
@@ -46,13 +47,13 @@ export type TextContent = {
 /**
  * Tab character
  */
-export type PositionalTab = {
+export type PositionalTab = WritableRecord & {
   relativeTo?: "margin" | "indent";
   alignment?: "left" | "center" | "right";
   leader?: "none" | "dot" | "hyphen" | "underscore" | "middleDot";
 };
 
-export type TabContent = {
+export type TabContent = WritableRecord & {
   type: "tab";
   /** Word positional-tab properties (`w:ptab`); absent for a regular `w:tab`. */
   positional?: PositionalTab;
@@ -61,28 +62,30 @@ export type TabContent = {
 /**
  * Line break
  */
-export type BreakContent =
-  | {
-      type: "break";
-      /** The distinct carriage-return element, which cannot carry break attributes. */
-      sourceElement: "cr";
-      breakType?: never;
-      clear?: never;
-    }
-  | {
-      type: "break";
-      /** Absent and `br` both serialize as the standard break element. */
-      sourceElement?: "br";
-      /** Break type */
-      breakType?: "page" | "column" | "textWrapping";
-      /** Clear type for text wrapping break */
-      clear?: "none" | "left" | "right" | "all";
-    };
+export type BreakContent = WritableRecord &
+  (
+    | {
+        type: "break";
+        /** The distinct carriage-return element, which cannot carry break attributes. */
+        sourceElement: "cr";
+        breakType?: never;
+        clear?: never;
+      }
+    | {
+        type: "break";
+        /** Absent and `br` both serialize as the standard break element. */
+        sourceElement?: "br";
+        /** Break type */
+        breakType?: "page" | "column" | "textWrapping";
+        /** Clear type for text wrapping break */
+        clear?: "none" | "left" | "right" | "all";
+      }
+  );
 
 /**
  * Symbol character (special font character)
  */
-export type SymbolContent = {
+export type SymbolContent = WritableRecord & {
   type: "symbol";
   /** Font name */
   font: string;
@@ -99,7 +102,7 @@ export const isOoxmlSymbolCharacter = (value: string): boolean =>
 /**
  * Footnote or endnote reference
  */
-export type NoteReferenceContent = {
+export type NoteReferenceContent = WritableRecord & {
   type: "footnoteRef" | "endnoteRef";
   /** Note ID */
   id: number;
@@ -108,7 +111,7 @@ export type NoteReferenceContent = {
 };
 
 /** The authored automatic reference mark inside a note body (w:footnoteRef/w:endnoteRef). */
-export type NoteMarkerContent = {
+export type NoteMarkerContent = WritableRecord & {
   type: "noteMarker";
   kind: "footnote" | "endnote";
 };
@@ -123,7 +126,7 @@ export const isNoteReferenceId = (id: number): boolean =>
 /**
  * Field character (begin/separate/end)
  */
-export type FieldCharContent = {
+export type FieldCharContent = WritableRecord & {
   type: "fieldChar";
   /** Field character type */
   charType: "begin" | "separate" | "end";
@@ -144,7 +147,7 @@ export type FieldCharContent = {
 /**
  * Field instruction text
  */
-export type InstrTextContent = {
+export type InstrTextContent = WritableRecord & {
   type: "instrText";
   /** Field instruction */
   text: string;
@@ -153,19 +156,19 @@ export type InstrTextContent = {
 /**
  * Soft hyphen
  */
-export type SoftHyphenContent = {
+export type SoftHyphenContent = WritableRecord & {
   type: "softHyphen";
 };
 
 /**
  * Non-breaking hyphen
  */
-export type NoBreakHyphenContent = {
+export type NoBreakHyphenContent = WritableRecord & {
   type: "noBreakHyphen";
 };
 
 /** Cached pagination boundary emitted by a previous layout pass. */
-export type RenderedPageBreakContent = {
+export type RenderedPageBreakContent = WritableRecord & {
   type: "renderedPageBreak";
 };
 
@@ -179,7 +182,7 @@ export type RenderedPageBreakContent = {
  * save 2 differs from save 1. Holding the markup in the model is what makes
  * parse∘serialize a fixed point for the whole class at once.
  */
-export type PreservedXmlContent = {
+export type PreservedXmlContent = WritableRecord & {
   type: "preservedXml";
   /** Replayable markup for one run child, as `captureVerbatimXml` wrote it. */
   xml: string;
@@ -203,36 +206,38 @@ export type DrawingRawXmlMode =
   (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
 
 /** Drawing/image reference with replayable XML required for preservation-only content. */
-export type DrawingContent =
-  | {
-      type: "drawing";
-      /** Image data */
-      image: Image;
-      /** Original OOXML for package-preserving round-trips while the editable image is unchanged. */
-      rawXml?: string;
-      /** Editable image projection fingerprint when `rawXml` was captured, used to invalidate replay after model edits. */
-      rawImageFingerprint?: string;
-      rawXmlMode?: never;
-    }
-  | {
-      type: "drawing";
-      /** Image data */
-      image: Image;
-      /** Original OOXML required to replay a drawing without an editable projection. */
-      rawXml: string;
-      /** Explicitly classifies raw XML that has no editable projected representation. */
-      rawXmlMode: typeof DRAWING_RAW_XML_MODES.PRESERVE_ONLY;
-    }
-  | {
-      type: "drawing";
-      /** A render of `rawXml`, not a projection of it: editing it cannot describe the drawing. */
-      image: Image;
-      /** Original OOXML, the only faithful representation of the drawing. */
-      rawXml: string;
-      /** Required: a stale fingerprint is what marks the preview unsaveable rather than regenerable. */
-      rawImageFingerprint: string;
-      rawXmlMode: typeof DRAWING_RAW_XML_MODES.PREVIEW_ONLY;
-    };
+export type DrawingContent = WritableRecord &
+  (
+    | {
+        type: "drawing";
+        /** Image data */
+        image: Image;
+        /** Original OOXML for package-preserving round-trips while the editable image is unchanged. */
+        rawXml?: string;
+        /** Editable image projection fingerprint when `rawXml` was captured, used to invalidate replay after model edits. */
+        rawImageFingerprint?: string;
+        rawXmlMode?: never;
+      }
+    | {
+        type: "drawing";
+        /** Image data */
+        image: Image;
+        /** Original OOXML required to replay a drawing without an editable projection. */
+        rawXml: string;
+        /** Explicitly classifies raw XML that has no editable projected representation. */
+        rawXmlMode: typeof DRAWING_RAW_XML_MODES.PRESERVE_ONLY;
+      }
+    | {
+        type: "drawing";
+        /** A render of `rawXml`, not a projection of it: editing it cannot describe the drawing. */
+        image: Image;
+        /** Original OOXML, the only faithful representation of the drawing. */
+        rawXml: string;
+        /** Required: a stale fingerprint is what marks the preview unsaveable rather than regenerable. */
+        rawImageFingerprint: string;
+        rawXmlMode: typeof DRAWING_RAW_XML_MODES.PREVIEW_ONLY;
+      }
+  );
 
 /**
  * The `mc:AlternateContent` element a shape was read from.
@@ -243,7 +248,7 @@ export type DrawingContent =
  * the shape is unedited. A text-only edit updates both branches; other edits
  * regenerate the Choice and drop the Fallback rather than replaying stale geometry.
  */
-export type ShapeAlternateContent = {
+export type ShapeAlternateContent = WritableRecord & {
   /** The whole element, every branch included, as `captureVerbatimXml` wrote it. */
   verbatimXml: string;
   /** Fingerprint of the modeled shape when the element was captured. */
@@ -254,7 +259,7 @@ export type ShapeAlternateContent = {
 /**
  * Shape reference
  */
-export type ShapeContent = {
+export type ShapeContent = WritableRecord & {
   type: "shape";
   /** Shape data */
   shape: Shape;
@@ -288,7 +293,7 @@ export type RunContent =
 /**
  * A run is a contiguous region of text with the same formatting
  */
-export type Run = {
+export type Run = WritableRecord & {
   type: "run";
   /** Text formatting properties */
   formatting?: TextFormatting;
@@ -314,7 +319,7 @@ export type Run = {
 /**
  * Hyperlink (w:hyperlink)
  */
-export type Hyperlink = {
+export type Hyperlink = WritableRecord & {
   type: "hyperlink";
   /** Relationship ID for external link */
   rId?: string;
@@ -381,7 +386,7 @@ export type DisplacedByCustomXml = "next" | "prev";
  * is the element's attribute set rather than a hand-picked subset of it. Every
  * marker that lost attributes on save lost them by declaring its own fields.
  */
-export type MarkupRangeMarker = {
+export type MarkupRangeMarker = WritableRecord & {
   /** Pairs a start with its end (`w:id`). */
   id: number;
   displacedByCustomXml?: DisplacedByCustomXml;
@@ -390,7 +395,7 @@ export type MarkupRangeMarker = {
 /** Added-revision ancestors that own a copied bookmark or move boundary. */
 type CopyOriginAncestorOrdinals = readonly [number, ...number[]];
 
-type CopyOriginMarker = {
+type CopyOriginMarker = WritableRecord & {
   /** Nearest added revision ancestor is ordinal 0. */
   copyOriginAncestors?: CopyOriginAncestorOrdinals;
 };
@@ -420,13 +425,17 @@ export type MoveBookmarkMarker = BookmarkRangeMarker & {
 /**
  * Bookmark start marker (w:bookmarkStart)
  */
-export type BookmarkStart = { type: "bookmarkStart" } & BookmarkRangeMarker &
+export type BookmarkStart = WritableRecord & {
+  type: "bookmarkStart";
+} & BookmarkRangeMarker &
   CopyOriginMarker;
 
 /**
  * Bookmark end marker (w:bookmarkEnd)
  */
-export type BookmarkEnd = { type: "bookmarkEnd" } & MarkupRangeMarker &
+export type BookmarkEnd = WritableRecord & {
+  type: "bookmarkEnd";
+} & MarkupRangeMarker &
   CopyOriginMarker;
 
 /**
@@ -445,7 +454,7 @@ export type BookmarkEnd = { type: "bookmarkEnd" } & MarkupRangeMarker &
  * which is the same honest cost {@link TableRow.preserved} carries and the
  * reason {@link BlockContent} admits the marker as a member wherever it can.
  */
-export type PositionedBookmarkMarker = {
+export type PositionedBookmarkMarker = WritableRecord & {
   /** Modelled siblings (rows for a table, cells for a row) that preceded it. */
   index: number;
   marker: BookmarkStart | BookmarkEnd;
@@ -519,7 +528,7 @@ export type FieldType =
 /**
  * Simple field (w:fldSimple)
  */
-export type SimpleField = {
+export type SimpleField = WritableRecord & {
   type: "simpleField";
   /** Field instruction (e.g., "PAGE \\* MERGEFORMAT") */
   instruction: string;
@@ -544,7 +553,7 @@ export type SimpleField = {
 /**
  * Complex field (w:fldChar begin/separate/end with w:instrText)
  */
-export type ComplexField = {
+export type ComplexField = WritableRecord & {
   type: "complexField";
   /** Field instruction */
   instruction: string;
@@ -586,7 +595,7 @@ export type Field = SimpleField | ComplexField;
 /**
  * Image size specification
  */
-export type ImageSize = {
+export type ImageSize = WritableRecord & {
   /** Width in EMUs (English Metric Units) */
   width: number;
   /** Height in EMUs */
@@ -597,7 +606,7 @@ export type ImageSize = {
  * The four wrap insets, in EMU. Tri-state per key: absent is the element having
  * stated none, which OOXML reads as zero only once no other carrier states one.
  */
-export type WrapDistances = {
+export type WrapDistances = WritableRecord & {
   distT?: number;
   distB?: number;
   distL?: number;
@@ -613,7 +622,7 @@ export type WrapDistances = {
  * writes each inset back on the element that stated it instead of collecting
  * them all onto the drawing.
  */
-export type WrapDistanceSlots = {
+export type WrapDistanceSlots = WritableRecord & {
   /** `wp:inline`, or `wp:anchor` for a floating drawing. */
   drawing?: WrapDistances;
   /** The `wp:wrap*` child of an anchor. */
@@ -630,7 +639,7 @@ export type WrapDistanceSlots = {
  * records rather than one, so a rebuild writes each back on the element that
  * stated it instead of collecting both onto the drawing.
  */
-export type EffectExtentSlots = {
+export type EffectExtentSlots = WritableRecord & {
   /** `wp:inline`, or `wp:anchor` for a floating drawing. */
   drawing?: ImagePadding;
   /** The `wp:wrapSquare` or `wp:wrapTopAndBottom` child of an anchor. */
@@ -638,7 +647,7 @@ export type EffectExtentSlots = {
 };
 
 /** A point on a wrap polygon. */
-export type WrapPolygonPoint = { x: number; y: number };
+export type WrapPolygonPoint = WritableRecord & { x: number; y: number };
 
 /**
  * `CT_WrapPath`: the outline text flows around a tight or through wrap.
@@ -646,7 +655,7 @@ export type WrapPolygonPoint = { x: number; y: number };
  * The coordinates are the type's own relative space (a 21600-unit box over the
  * drawing's extent), not EMU, and are kept exactly as authored.
  */
-export type ImageWrapPolygon = {
+export type ImageWrapPolygon = WritableRecord & {
   /** `@edited`: absent states nothing, `false` is an explicit "generated". */
   edited?: boolean;
   /** `wp:start`, which `CT_WrapPath` requires. */
@@ -658,7 +667,7 @@ export type ImageWrapPolygon = {
 /**
  * Image wrap type for floating images
  */
-export type ImageWrap = {
+export type ImageWrap = WritableRecord & {
   type:
     | "inline"
     | "square"
@@ -687,7 +696,7 @@ export type ImageWrap = {
  * `wp:docPr`, `pic:cNvPr` and `wps:cNvPr` each have their own set, and they are
  * the object's accessible name and alt text rather than folio's to mint.
  */
-export type NonVisualDrawingNames = {
+export type NonVisualDrawingNames = WritableRecord & {
   /** `@name`, schema-required, so `""` means the object was never named. */
   name?: string;
   /** `@descr`: alt text, accessibility content. */
@@ -708,7 +717,7 @@ export type NonVisualDrawingNames = {
  * rebuild then writes OOXML's own default for the five `CT_Anchor` requires
  * rather than a value folio chose.
  */
-export type DrawingAnchor = {
+export type DrawingAnchor = WritableRecord & {
   /** `@simplePos`: position from `wp:simplePos` rather than `positionH`/`positionV`. */
   useSimplePosition?: boolean;
   /** `wp:simplePos` itself, in EMUs. */
@@ -728,7 +737,7 @@ export type DrawingAnchor = {
 /**
  * Position for floating images
  */
-export type ImagePosition = {
+export type ImagePosition = WritableRecord & {
   /** Horizontal positioning */
   horizontal: {
     relativeTo:
@@ -762,7 +771,7 @@ export type ImagePosition = {
 /**
  * Image transformation
  */
-export type ImageTransform = {
+export type ImageTransform = WritableRecord & {
   /** Rotation in degrees */
   rotation?: number;
   /** Flip horizontal */
@@ -774,7 +783,7 @@ export type ImageTransform = {
 /**
  * Image padding/margins
  */
-export type ImagePadding = {
+export type ImagePadding = WritableRecord & {
   top?: number;
   bottom?: number;
   left?: number;
@@ -788,7 +797,7 @@ export type ImagePadding = {
  *
  * eigenpal #424 (image-crop subset).
  */
-export type ImageCrop = {
+export type ImageCrop = WritableRecord & {
   left?: number;
   top?: number;
   right?: number;
@@ -800,7 +809,7 @@ export type ImageCrop = {
  * attribute order. A field is undefined when the authored XML omits the
  * attribute, so a round-trip never materializes a lock the author never wrote.
  */
-export type ImageFrameLocks = {
+export type ImageFrameLocks = WritableRecord & {
   noGrp?: boolean;
   noDrilldown?: boolean;
   noSelect?: boolean;
@@ -813,12 +822,12 @@ export type ImageFrameLocks = {
  * A `wp:docPr` link as authored. `rId` is the target it named, so comparing it
  * with the model's tells a retargeted link from an untouched one.
  */
-export type ImageDocPrLink = { xml: string; rId?: string };
+export type ImageDocPrLink = WritableRecord & { xml: string; rId?: string };
 
 /**
  * Embedded image (w:drawing)
  */
-export type Image = {
+export type Image = WritableRecord & {
   type: "image";
   /** Unique ID */
   id?: string;
@@ -1114,7 +1123,7 @@ export type ShapeType =
   | "textBox";
 
 /** Authored adjustment formula for a preset DrawingML geometry. */
-export type ShapeGeometryAdjustment = {
+export type ShapeGeometryAdjustment = WritableRecord & {
   name: string;
   formula: string;
 };
@@ -1122,7 +1131,7 @@ export type ShapeGeometryAdjustment = {
 /**
  * Shape fill type
  */
-export type ShapeFill = {
+export type ShapeFill = WritableRecord & {
   type: "none" | "solid" | "gradient" | "pattern" | "picture";
   /**
    * Authored DrawingML retained when the normalized projection is incomplete.
@@ -1150,7 +1159,7 @@ export type ShapeFill = {
 /**
  * Shape outline/stroke
  */
-export type ShapeOutline = {
+export type ShapeOutline = WritableRecord & {
   /**
    * Authored DrawingML retained for lossless round-trips. Serializers prefer
    * this value; callers modifying structured outline fields must omit it.
@@ -1189,7 +1198,7 @@ export type ShapeOutline = {
 /**
  * Text body inside a shape
  */
-export type ShapeTextBody = {
+export type ShapeTextBody = WritableRecord & {
   /** Authored DrawingML WordArt metadata. */
   wordArt?: {
     /** Authored `wps:bodyPr/@fromWordArt`; omitted when the source omitted it. */
@@ -1229,7 +1238,7 @@ export type ShapeTextBody = {
  * than a drawing of its own: a writer puts the text back into the group and
  * writes no second drawing for it.
  */
-export type DrawingGroupChild = {
+export type DrawingGroupChild = WritableRecord & {
   /**
    * Element indices from the `wpg:wgp` down to the `wps:wsp`, one per level,
    * passing through any nested `wpg:grpSp`.
@@ -1244,7 +1253,7 @@ export type DrawingGroupChild = {
 /**
  * Shape/drawing object (wps:wsp)
  */
-export type Shape = {
+export type Shape = WritableRecord & {
   type: "shape";
   /** Shape type preset */
   shapeType: ShapeType;
@@ -1289,7 +1298,7 @@ export type Shape = {
 /**
  * Text box (floating text container)
  */
-export type TextBox = {
+export type TextBox = WritableRecord & {
   type: "textBox";
   /** Unique ID */
   id?: string;
@@ -1341,7 +1350,7 @@ export type TextBox = {
 /**
  * Table cell
  */
-export type TableCell = {
+export type TableCell = WritableRecord & {
   type: "tableCell";
   /** Authored cell identifier (`w:tc/@w:id`). */
   id?: string;
@@ -1375,7 +1384,7 @@ export type TableCell = {
  * marker inside its authored wrapper and prevents one control from being
  * rebuilt as two wrappers around the children on either side of it.
  */
-export type TablePreservedMarkup = {
+export type TablePreservedMarkup = WritableRecord & {
   children?: (PreservedChild & {
     contentControls?: SdtProperties[];
     carrierStack?: TableContentCarrier[];
@@ -1383,7 +1392,7 @@ export type TablePreservedMarkup = {
 };
 
 /** Replayable shell for a transparent custom-XML wrapper around table structure. */
-export type TableCustomXmlWrapper = {
+export type TableCustomXmlWrapper = WritableRecord & {
   /** Parser-assigned identity; equal shell markup can still name distinct wrappers. */
   id: number;
   openingXml: string;
@@ -1391,14 +1400,16 @@ export type TableCustomXmlWrapper = {
 };
 
 /** Ordered transparent carrier stack on table, row and cell children. */
-export type TableContentCarrier =
-  | { type: "customXml"; wrapper: TableCustomXmlWrapper }
-  | { type: "sdt"; properties: SdtProperties };
+export type TableContentCarrier = WritableRecord &
+  (
+    | { type: "customXml"; wrapper: TableCustomXmlWrapper }
+    | { type: "sdt"; properties: SdtProperties }
+  );
 
 /**
  * Table row
  */
-export type TableRow = {
+export type TableRow = WritableRecord & {
   type: "tableRow";
   /** Row formatting */
   formatting?: TableRowFormatting;
@@ -1483,7 +1494,7 @@ export type TableRow = {
 /**
  * Table (w:tbl)
  */
-export type Table = {
+export type Table = WritableRecord & {
   type: "table";
   /** Table formatting */
   formatting?: TableFormatting;
@@ -1525,7 +1536,7 @@ export type Table = {
 /**
  * A comment (w:comment) from comments.xml
  */
-export type Comment = {
+export type Comment = WritableRecord & {
   /** Comment ID (matches commentRangeStart/End) */
   id: number;
   /** Whether the author selected content or placed a point annotation. */
@@ -1563,20 +1574,22 @@ export type Comment = {
 /**
  * Comment range start marker in paragraph content
  */
-export type CommentRangeStart = {
+export type CommentRangeStart = WritableRecord & {
   type: "commentRangeStart";
 } & MarkupRangeMarker;
 
 /**
  * Comment range end marker in paragraph content
  */
-export type CommentRangeEnd = { type: "commentRangeEnd" } & MarkupRangeMarker;
+export type CommentRangeEnd = WritableRecord & {
+  type: "commentRangeEnd";
+} & MarkupRangeMarker;
 
 /**
  * Point comment reference (w:commentReference without an explicit range).
  * Word sometimes stores comments this way; we anchor them to nearby text for display.
  */
-export type CommentReference = {
+export type CommentReference = WritableRecord & {
   type: "commentReference";
   id: number;
 };
@@ -1588,7 +1601,7 @@ export type CommentReference = {
 /**
  * Math equation content (m:oMath or m:oMathPara)
  */
-export type MathEquation = {
+export type MathEquation = WritableRecord & {
   type: "mathEquation";
   /** Whether this is a block (oMathPara) or inline (oMath) equation */
   display: "inline" | "block";
@@ -1635,7 +1648,7 @@ export function normalizeRevisionId(id: number): number {
 /**
  * Tracked change metadata (w:ins, w:del attributes)
  */
-export type TrackedChangeInfo = {
+export type TrackedChangeInfo = WritableRecord & {
   /** Revision ID */
   id: number;
   /** Author who made the change */
@@ -1666,7 +1679,7 @@ export type TrackedChangeInfo = {
 /**
  * Generic tracked property-change wrapper metadata (w:*PrChange)
  */
-export type PropertyChangeInfo = {
+export type PropertyChangeInfo = WritableRecord & {
   /** Optional revision session ID */
   rsid?: string;
 } & TrackedChangeInfo;
@@ -1708,7 +1721,7 @@ export const INSERTION_SEAM_POLICIES = {
 } as const;
 
 /** Operation-created seams only; source OOXML has no such provenance. */
-type TrackedResolutionJoins = {
+type TrackedResolutionJoins = WritableRecord & {
   /** Editor text acceptance joins only the inserted payload's plain-run seams. */
   acceptance?: typeof INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS;
   /** Exact join depths when the wrapper is retained and unwrapped. */
@@ -1744,7 +1757,7 @@ type TrackedResolutionJoins = {
 /**
  * Insertion wrapper (w:ins) — runs inserted by tracked changes
  */
-export type Insertion = {
+export type Insertion = WritableRecord & {
   type: "insertion";
   /** In-memory cut provenance; imported OOXML wrappers omit this field. */
   resolutionJoins?: TrackedResolutionJoins;
@@ -1757,7 +1770,7 @@ export type Insertion = {
 /**
  * Deletion wrapper (w:del) — runs deleted by tracked changes
  */
-export type Deletion = {
+export type Deletion = WritableRecord & {
   type: "deletion";
   /** In-memory cut provenance; imported OOXML wrappers omit this field. */
   resolutionJoins?: TrackedResolutionJoins;
@@ -1770,7 +1783,7 @@ export type Deletion = {
 /**
  * Move-from wrapper (w:moveFrom) â€” content moved away from this position
  */
-export type MoveFrom = {
+export type MoveFrom = WritableRecord & {
   type: "moveFrom";
   /** In-memory cut provenance; imported OOXML wrappers omit this field. */
   resolutionJoins?: TrackedResolutionJoins;
@@ -1783,7 +1796,7 @@ export type MoveFrom = {
 /**
  * Move-to wrapper (w:moveTo) â€” content moved into this position
  */
-export type MoveTo = {
+export type MoveTo = WritableRecord & {
   type: "moveTo";
   /** In-memory cut provenance; imported OOXML wrappers omit this field. */
   resolutionJoins?: TrackedResolutionJoins;
@@ -1834,49 +1847,51 @@ export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
  * - `smartTag` is `w:smartTag` — §17.5.1.9.
  * - `customXml` is the run-level `w:customXml` — §17.5.1.6.
  */
-export type InlineWrapper =
-  | {
-      type: "inlineWrapper";
-      kind: "bidi";
-      control: BidiControl;
-      /** `w:val`; absent in the source means the wrapper states no direction. */
-      direction?: "ltr" | "rtl";
-      content: ParagraphContent[];
-    }
-  | {
-      type: "inlineWrapper";
-      kind: "smartTag";
-      /** `w:element`: the local name of the tagged element. */
-      element: string;
-      /** `w:uri`; absent means the tag names no namespace. */
-      uri?: string;
-      /**
-       * `w:smartTagPr` verbatim: an attribute bag (`w:attr` children) whose
-       * meaning belongs to the producer that wrote it, so folio replays the
-       * bytes rather than modelling them. See
-       * `docs/verbatim-markup-trust-boundary.md` for what that obliges a
-       * writer that builds a document from scratch to check.
-       */
-      propertiesXml?: string;
-      content: ParagraphContent[];
-    }
-  | {
-      type: "inlineWrapper";
-      kind: "customXml";
-      /** `w:element`: the local name of the tagged element. */
-      element: string;
-      /** `w:uri`; absent means the tag names no namespace. */
-      uri?: string;
-      /** `w:customXmlPr` verbatim; see the `smartTag` branch. */
-      propertiesXml?: string;
-      content: ParagraphContent[];
-    };
+export type InlineWrapper = WritableRecord &
+  (
+    | {
+        type: "inlineWrapper";
+        kind: "bidi";
+        control: BidiControl;
+        /** `w:val`; absent in the source means the wrapper states no direction. */
+        direction?: "ltr" | "rtl";
+        content: ParagraphContent[];
+      }
+    | {
+        type: "inlineWrapper";
+        kind: "smartTag";
+        /** `w:element`: the local name of the tagged element. */
+        element: string;
+        /** `w:uri`; absent means the tag names no namespace. */
+        uri?: string;
+        /**
+         * `w:smartTagPr` verbatim: an attribute bag (`w:attr` children) whose
+         * meaning belongs to the producer that wrote it, so folio replays the
+         * bytes rather than modelling them. See
+         * `docs/verbatim-markup-trust-boundary.md` for what that obliges a
+         * writer that builds a document from scratch to check.
+         */
+        propertiesXml?: string;
+        content: ParagraphContent[];
+      }
+    | {
+        type: "inlineWrapper";
+        kind: "customXml";
+        /** `w:element`: the local name of the tagged element. */
+        element: string;
+        /** `w:uri`; absent means the tag names no namespace. */
+        uri?: string;
+        /** `w:customXmlPr` verbatim; see the `smartTag` branch. */
+        propertiesXml?: string;
+        content: ParagraphContent[];
+      }
+  );
 
 /**
  * Move-from range start marker (w:moveFromRangeStart) — ECMA-376 §17.13.5.22
  * Pairs with moveFromRangeEnd to delimit the source of a move in the document.
  */
-export type MoveFromRangeStart = {
+export type MoveFromRangeStart = WritableRecord & {
   type: "moveFromRangeStart";
 } & MoveBookmarkMarker &
   CopyOriginMarker;
@@ -1884,7 +1899,7 @@ export type MoveFromRangeStart = {
 /**
  * Move-from range end marker (w:moveFromRangeEnd)
  */
-export type MoveFromRangeEnd = {
+export type MoveFromRangeEnd = WritableRecord & {
   type: "moveFromRangeEnd";
 } & MarkupRangeMarker &
   CopyOriginMarker;
@@ -1893,7 +1908,7 @@ export type MoveFromRangeEnd = {
  * Move-to range start marker (w:moveToRangeStart) — ECMA-376 §17.13.5.24
  * Pairs with moveToRangeEnd to delimit the destination of a move.
  */
-export type MoveToRangeStart = {
+export type MoveToRangeStart = WritableRecord & {
   type: "moveToRangeStart";
 } & MoveBookmarkMarker &
   CopyOriginMarker;
@@ -1901,7 +1916,9 @@ export type MoveToRangeStart = {
 /**
  * Move-to range end marker (w:moveToRangeEnd)
  */
-export type MoveToRangeEnd = { type: "moveToRangeEnd" } & MarkupRangeMarker &
+export type MoveToRangeEnd = WritableRecord & {
+  type: "moveToRangeEnd";
+} & MarkupRangeMarker &
   CopyOriginMarker;
 
 /**
@@ -1912,7 +1929,7 @@ export type TrackedRunChange = Insertion | Deletion | MoveFrom | MoveTo;
 /**
  * Run property change (w:rPrChange)
  */
-export type RunPropertyChange = {
+export type RunPropertyChange = WritableRecord & {
   type: "runPropertyChange";
   /** Cuts created by this action; omitted on imported OOXML records. */
   boundaryJoins?: readonly ("before" | "after")[];
@@ -1927,7 +1944,7 @@ export type RunPropertyChange = {
 /**
  * Paragraph property change (w:pPrChange)
  */
-export type ParagraphPropertyChange = {
+export type ParagraphPropertyChange = WritableRecord & {
   type: "paragraphPropertyChange";
   /** Tracked change metadata */
   info: PropertyChangeInfo;
@@ -1940,7 +1957,7 @@ export type ParagraphPropertyChange = {
 /**
  * Table property change (w:tblPrChange)
  */
-export type TablePropertyChange = {
+export type TablePropertyChange = WritableRecord & {
   type: "tablePropertyChange";
   /** Tracked change metadata */
   info: PropertyChangeInfo;
@@ -1957,7 +1974,7 @@ export type TablePropertyChange = {
  * subset and is written as a different element in a different container. A
  * shared discriminator would let one reach the other's serializer.
  */
-export type TablePropertyExceptionChange = {
+export type TablePropertyExceptionChange = WritableRecord & {
   type: "tablePropertyExceptionChange";
   /** Tracked change metadata */
   info: PropertyChangeInfo;
@@ -1970,7 +1987,7 @@ export type TablePropertyExceptionChange = {
 /**
  * Table row property change (w:trPrChange)
  */
-export type TableRowPropertyChange = {
+export type TableRowPropertyChange = WritableRecord & {
   type: "tableRowPropertyChange";
   /** Tracked change metadata */
   info: PropertyChangeInfo;
@@ -1983,7 +2000,7 @@ export type TableRowPropertyChange = {
 /**
  * Table cell property change (w:tcPrChange)
  */
-export type TableCellPropertyChange = {
+export type TableCellPropertyChange = WritableRecord & {
   type: "tableCellPropertyChange";
   /** Tracked change metadata */
   info: PropertyChangeInfo;
@@ -2006,7 +2023,7 @@ export type TableCellPropertyChange = {
 /**
  * Section property change (w:sectPrChange)
  */
-export type SectionPropertyChange = {
+export type SectionPropertyChange = WritableRecord & {
   type: "sectionPropertyChange";
   /** Tracked change metadata */
   info: PropertyChangeInfo;
@@ -2072,25 +2089,27 @@ export const PROPERTY_REVISION_KINDS: Readonly<{
 /**
  * Table structural tracked change metadata (row/cell insert/delete/merge)
  */
-export type TableStructuralChangeInfo =
-  | {
-      type:
-        | "tableRowInsertion"
-        | "tableRowDeletion"
-        | "tableCellInsertion"
-        | "tableCellDeletion";
-      /** Tracked change metadata */
-      info: TrackedChangeInfo;
-    }
-  | {
-      type: "tableCellMerge";
-      /** Tracked change metadata */
-      info: TrackedChangeInfo;
-      /** Vertical merge state applied by the revision. */
-      verticalMerge?: "continue" | "rest";
-      /** Vertical merge state that existed before the revision. */
-      verticalMergeOriginal?: "continue" | "rest";
-    };
+export type TableStructuralChangeInfo = WritableRecord &
+  (
+    | {
+        type:
+          | "tableRowInsertion"
+          | "tableRowDeletion"
+          | "tableCellInsertion"
+          | "tableCellDeletion";
+        /** Tracked change metadata */
+        info: TrackedChangeInfo;
+      }
+    | {
+        type: "tableCellMerge";
+        /** Tracked change metadata */
+        info: TrackedChangeInfo;
+        /** Vertical merge state applied by the revision. */
+        verticalMerge?: "continue" | "rest";
+        /** Vertical merge state that existed before the revision. */
+        verticalMergeOriginal?: "continue" | "rest";
+      }
+  );
 
 // ============================================================================
 // STRUCTURED DOCUMENT TAGS (SDT / Content Controls)
@@ -2122,7 +2141,7 @@ export type SdtType =
  * sequence gives them. Together the two are the whole element: the serializer
  * writes both halves and nothing replays the source's bytes whole.
  */
-export type SdtProperties = {
+export type SdtProperties = WritableRecord & {
   /** SDT type (a projection of the control-kind element the set holds). */
   sdtType: SdtType;
   /** Numeric id (`w:id/@w:val`). */
@@ -2204,7 +2223,7 @@ export type SdtProperties = {
  * absent element does not, which is why presence is the record rather than a
  * flag on {@link SdtProperties}.
  */
-export type SdtEndProperties = {
+export type SdtEndProperties = WritableRecord & {
   /** `w:sdtEndPr/w:rPr`, absent when the element declared none. */
   runProperties?: TextFormatting;
 };
@@ -2227,7 +2246,7 @@ export type SdtEndProperties = {
  * `EG_RangeMarkupElements` and retain their authored position inside the
  * control when the editor resolves nearby content.
  */
-export type InlineSdt = {
+export type InlineSdt = WritableRecord & {
   type: "inlineSdt";
   /** SDT properties */
   properties: SdtProperties;
@@ -2264,7 +2283,7 @@ export type InlineSdt = {
  * OOXML allows block SDTs to nest — e.g. a repeating-section control
  * whose row is itself a content control.
  */
-export type BlockSdt = {
+export type BlockSdt = WritableRecord & {
   type: "blockSdt";
   /** SDT properties; `properties.preserved` carries what the model does not. */
   properties: SdtProperties;
@@ -2273,7 +2292,7 @@ export type BlockSdt = {
 };
 
 /** Transparent block-level `w:customXml` wrapper. */
-export type BlockCustomXml = {
+export type BlockCustomXml = WritableRecord & {
   type: "blockCustomXml";
   /** Replayable start tag, including attributes and in-scope namespace bindings. */
   openingXml: string;
@@ -2307,7 +2326,7 @@ export type BlockCustomXml = {
  * markup puts on the line, which is empty for everything except a transparent
  * wrapper such as `w:customXml`.
  */
-export type PreservedInline = {
+export type PreservedInline = WritableRecord & {
   type: "preservedInline";
   /** Replayable markup for one child, as `captureVerbatimXml` wrote it. */
   xml: string;
@@ -2384,7 +2403,7 @@ export type ParagraphMarkChangeKind =
   (typeof PARAGRAPH_MARK_CHANGE_KINDS)[number];
 
 /** A paragraph-mark tracked change, written under `<w:pPr><w:rPr>`. */
-export type ParagraphMarkChange = {
+export type ParagraphMarkChange = WritableRecord & {
   kind: ParagraphMarkChangeKind;
   info: TrackedChangeInfo;
   /** Exact source-cut depth for rejection; absent in ordinary imported revisions. */
@@ -2408,7 +2427,7 @@ export type ReviewCarrier =
   (typeof REVIEW_CARRIERS)[keyof typeof REVIEW_CARRIERS];
 
 /** Paragraph (w:p) */
-export type Paragraph = {
+export type Paragraph = WritableRecord & {
   type: "paragraph";
   /** Unique paragraph ID */
   paraId?: string;
@@ -2456,12 +2475,12 @@ export type HeaderFooterType = "default" | "first" | "even";
 /**
  * Header or footer reference
  */
-export type HeaderReference = {
+export type HeaderReference = WritableRecord & {
   type: HeaderFooterType;
   rId: string;
 };
 
-export type FooterReference = {
+export type FooterReference = WritableRecord & {
   type: HeaderFooterType;
   rId: string;
 };
@@ -2469,7 +2488,7 @@ export type FooterReference = {
 /**
  * Header or footer content
  */
-export type HeaderFooter = {
+export type HeaderFooter = WritableRecord & {
   type: "header" | "footer";
   /** Header/footer type */
   hdrFtrType: HeaderFooterType;
@@ -2518,7 +2537,7 @@ export type HeaderFooter = {
  */
 export type Watermark = TextWatermark | PictureWatermark;
 
-export type TextWatermark = {
+export type TextWatermark = WritableRecord & {
   kind: "text";
   /** Visible string. Required. */
   text: string;
@@ -2543,7 +2562,7 @@ export type TextWatermark = {
   opacity?: number;
 };
 
-export type PictureWatermark = {
+export type PictureWatermark = WritableRecord & {
   kind: "picture";
   /** Relationship id of the image part in `word/_rels/header*.xml.rels`. */
   imageRId: string;
@@ -2605,7 +2624,7 @@ export type NoteNumberRestart = "continuous" | "eachSect" | "eachPage";
 /**
  * Footnote properties
  */
-export type FootnoteProperties = {
+export type FootnoteProperties = WritableRecord & {
   position?: FootnotePosition;
   numFmt?: NumberFormat;
   /** `w:numFmt/@w:format`, as authored. */
@@ -2617,7 +2636,7 @@ export type FootnoteProperties = {
 /**
  * Endnote properties
  */
-export type EndnoteProperties = {
+export type EndnoteProperties = WritableRecord & {
   position?: EndnotePosition;
   numFmt?: NumberFormat;
   /** `w:numFmt/@w:format`, as authored. */
@@ -2629,7 +2648,7 @@ export type EndnoteProperties = {
 /**
  * Footnote (w:footnote)
  */
-export type Footnote = {
+export type Footnote = WritableRecord & {
   type: "footnote";
   /** Footnote ID */
   id: number;
@@ -2649,7 +2668,7 @@ export type Footnote = {
 /**
  * Endnote (w:endnote)
  */
-export type Endnote = {
+export type Endnote = WritableRecord & {
   type: "endnote";
   /** Endnote ID */
   id: number;
@@ -2691,7 +2710,7 @@ export type LineNumberRestart = "continuous" | "newPage" | "newSection";
 /**
  * Column definition
  */
-export type Column = {
+export type Column = WritableRecord & {
   /** Column width in twips */
   width?: number;
   /** Space after column in twips */
@@ -2701,7 +2720,7 @@ export type Column = {
 /**
  * Section properties (w:sectPr)
  */
-export type SectionProperties = {
+export type SectionProperties = WritableRecord & {
   // Page size
   /** Page width in twips */
   pageWidth?: number;
@@ -2866,7 +2885,7 @@ export type SectionProperties = {
  * looking for any of those may skip it, and every walker that rebuilds block
  * content must write it back.
  */
-export type PreservedBlock = {
+export type PreservedBlock = WritableRecord & {
   type: "preservedBlock";
   /** Replayable markup for one child, as `captureVerbatimXml` wrote it. */
   xml: string;
@@ -2913,7 +2932,7 @@ export type TableCellBlock = BlockContent;
 /**
  * Section (implicit or explicit based on sectPr)
  */
-export type Section = {
+export type Section = WritableRecord & {
   /** Section properties */
   properties: SectionProperties;
   /** Content in this section */
@@ -2931,13 +2950,13 @@ export type Section = {
  * inventing an editable projection for legacy VML/DrawingML page art while the
  * surrounding background attributes remain typed.
  */
-export type DocumentBackgroundDrawing = {
+export type DocumentBackgroundDrawing = WritableRecord & {
   /** Replayable `w:drawing` markup, as the source wrote it. */
   rawXml: string;
 };
 
 /** Page background declared directly under `w:document`. */
-export type DocumentBackground = {
+export type DocumentBackground = WritableRecord & {
   /** Direct colour or the `auto` sentinel. */
   color?: ColorValue;
   /** Theme colour token, including the explicit `none` cancellation. */
@@ -2953,7 +2972,7 @@ export type DocumentBackground = {
 /**
  * Document body (w:body)
  */
-export type DocumentBody = {
+export type DocumentBody = WritableRecord & {
   /** Optional `w:document/w:background`, serialized before the body. */
   background?: DocumentBackground;
   /** All content (paragraphs, tables) */

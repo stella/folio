@@ -16,6 +16,7 @@
  * Every consumer reads the same map, so the DrawingML spelling appears once.
  */
 
+import type { DeepReadonly, WritableRecord } from "./deepReadonly";
 import {
   type ClrSchemeMappingKey,
   SCHEME_COLOR_VALUES,
@@ -206,7 +207,7 @@ export const THEME_COLOR_BY_SCHEME_COLOR_VALUE: {
  * treatment `w:val` on `CT_Border` already gets for a style outside
  * `ST_Border`.
  */
-export type UnrecognisedThemeColor = {
+export type UnrecognisedThemeColor = WritableRecord & {
   readonly kind: "unrecognised";
   readonly raw: string;
 };
@@ -247,7 +248,7 @@ export const themeColorToken = (value: ThemeColorValue): string =>
 
 /** The schema token, or `undefined` for one the model only carries verbatim. */
 export const knownThemeColor = (
-  value: ThemeColorValue,
+  value: DeepReadonly<ThemeColorValue>,
 ): ThemeColor | undefined => (typeof value === "string" ? value : undefined);
 
 /**
@@ -257,7 +258,7 @@ export const knownThemeColor = (
  * a token the schema does not enumerate.
  */
 export const themeColorSlot = (
-  value: ThemeColorValue,
+  value: DeepReadonly<ThemeColorValue>,
 ): SchemeColorSlot | undefined => {
   const known = knownThemeColor(value);
   if (known === undefined) {

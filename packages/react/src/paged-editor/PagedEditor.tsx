@@ -346,7 +346,7 @@ export type PagedEditorProps = {
    */
   fonts?: ReadonlyArray<FontDefinition>;
   /** Theme for styling. */
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   /**
    * Whether the first page has its own header and footer, inferred from the
    * header and footer references: merged into the section properties (page
@@ -1105,7 +1105,7 @@ type LayoutInputSignatureOptions = {
   pageSize: { h: number; w: number };
   sectionProperties: SectionProperties | null | undefined;
   styles: DeepReadonly<StyleDefinitions> | null | undefined;
-  theme: Theme | null | undefined;
+  theme: DeepReadonly<Theme> | null | undefined;
 };
 
 const getPageOverlayOffset = (pagesContainer: HTMLDivElement, zoom: number) => {

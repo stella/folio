@@ -263,8 +263,8 @@ function languageEquals(
  * Compare underline settings
  */
 function underlineEquals(
-  a: TextFormatting["underline"],
-  b: TextFormatting["underline"],
+  a: DeepReadonly<TextFormatting["underline"]>,
+  b: DeepReadonly<TextFormatting["underline"]>,
 ): boolean {
   if (!a && !b) {
     return true;
@@ -283,8 +283,8 @@ function underlineEquals(
  * Compare color values
  */
 function colorEquals(
-  a: TextFormatting["color"],
-  b: TextFormatting["color"],
+  a: DeepReadonly<TextFormatting["color"]>,
+  b: DeepReadonly<TextFormatting["color"]>,
 ): boolean {
   if (!a && !b) {
     return true;

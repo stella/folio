@@ -37,6 +37,7 @@ import type {
   RelationshipMap,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { parseBlockContent } from "./blockContentParser";
 import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import type { NumberingMap } from "./numberingParser";
@@ -97,7 +98,7 @@ export function parseHeader(
   headerXml: string,
   hdrFtrType: HeaderFooterType = "default",
   styles: StyleMap | null = null,
-  theme: Theme | null = null,
+  theme: DeepReadonly<Theme> | null = null,
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
@@ -188,7 +189,7 @@ export function parseFooter(
   footerXml: string,
   hdrFtrType: HeaderFooterType = "default",
   styles: StyleMap | null = null,
-  theme: Theme | null = null,
+  theme: DeepReadonly<Theme> | null = null,
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
@@ -253,7 +254,7 @@ export function parseHeaderFooter(
   isHeader: boolean,
   hdrFtrType: HeaderFooterType = "default",
   styles: StyleMap | null = null,
-  theme: Theme | null = null,
+  theme: DeepReadonly<Theme> | null = null,
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
@@ -325,7 +326,7 @@ export function buildHeaderFooterMap(
   xmlContents: Map<string, string>,
   isHeader: boolean,
   styles: StyleMap | null = null,
-  theme: Theme | null = null,
+  theme: DeepReadonly<Theme> | null = null,
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,

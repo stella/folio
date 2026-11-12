@@ -110,8 +110,8 @@ export type FootnotePropertiesMount = {
     footnotePr: FootnoteProperties,
     endnotePr: EndnoteProperties,
   ) => void;
-  footnotePr: FootnoteProperties | undefined;
-  endnotePr: EndnoteProperties | undefined;
+  footnotePr: DeepReadonly<FootnoteProperties> | undefined;
+  endnotePr: DeepReadonly<EndnoteProperties> | undefined;
 };
 
 export type InsertSymbolMount = {

@@ -1,4 +1,5 @@
 /** Every admitted undefined patch value can also be held by the model. */
+import type { RecordField } from "../../src/model/deepReadonly";
 import type {
   ParagraphFormatting,
   TextFormatting,
@@ -6,7 +7,7 @@ import type {
 import type { FormattingPatch } from "../../src/ops/types";
 
 type PatchPresence<Formatting> = {
-  [Key in keyof Formatting]-?: {
+  [Key in RecordField<Formatting>]-?: {
     [Field in Key]-?: undefined;
   } extends Formatting
     ? true

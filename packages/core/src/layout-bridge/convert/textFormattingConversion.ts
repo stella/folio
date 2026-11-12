@@ -32,7 +32,7 @@ type ThemeFontAttributes = Omit<
 
 export const resolveWesternThemeFont = (
   fontFamily: ThemeFontAttributes,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): string | undefined => {
   const themeRef = fontFamily.asciiTheme ?? fontFamily.hAnsiTheme;
   const themedFont = themeRef
@@ -43,7 +43,7 @@ export const resolveWesternThemeFont = (
 
 export const resolveHAnsiThemeFont = (
   fontFamily: ThemeFontAttributes,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): string | undefined => {
   const themedFont = fontFamily.hAnsiTheme
     ? resolveThemeFont(fontFamily.hAnsiTheme, theme?.fontScheme)
@@ -53,7 +53,7 @@ export const resolveHAnsiThemeFont = (
 
 export const resolveComplexScriptThemeFont = (
   fontFamily: ThemeFontAttributes,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): string | undefined => {
   // OOXML spells this attribute all-lowercase (`w:cstheme`), but the
   // canonical model uses the camelCase `csTheme` field.
@@ -65,7 +65,7 @@ export const resolveComplexScriptThemeFont = (
 
 export const resolveEastAsiaThemeFont = (
   fontFamily: ThemeFontAttributes,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): string | undefined => {
   const themedFont = fontFamily.eastAsiaTheme
     ? resolveThemeFont(fontFamily.eastAsiaTheme, theme?.fontScheme)
@@ -73,14 +73,16 @@ export const resolveEastAsiaThemeFont = (
   return themedFont ?? fontFamily.eastAsia ?? undefined;
 };
 
-export function isAutomaticTextColorValue(color: ColorValue): boolean {
+export function isAutomaticTextColorValue(
+  color: DeepReadonly<ColorValue>,
+): boolean {
   const rgb = color.rgb?.trim().toLowerCase();
   return color.auto === true || rgb === "auto" || (!rgb && !color.themeColor);
 }
 
 function textFormattingToRunFormatting(
   defaultTextFormatting: DeepReadonly<TextFormatting> | undefined,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
   fontAlternates?: FontAlternates,
 ): RunFormatting {
   if (!defaultTextFormatting) {
@@ -270,7 +272,7 @@ const LIST_MARKER_FORMATTING_KEYS = [
 export function listMarkerFormattingFor(
   levelFormatting: DeepReadonly<TextFormatting> | undefined,
   paragraphMarkFormatting: DeepReadonly<TextFormatting> | undefined,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   fontAlternates: FontAlternates | undefined,
 ): ListMarkerFormatting | undefined {
   const runFormatting = textFormattingToRunFormatting(
@@ -289,7 +291,7 @@ export function listMarkerFormattingFor(
 
 export function paragraphRunDefaults(
   pmAttrs: PMParagraphAttrs,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
   fontAlternates?: FontAlternates,
 ): RunFormatting {
   return textFormattingToRunFormatting(

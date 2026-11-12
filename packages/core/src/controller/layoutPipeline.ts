@@ -266,7 +266,7 @@ export type LayoutPipelineDeps<THfPMs> = {
   firstPageHeaderContentRId: string | null | undefined;
   firstPageFooterContentRId: string | null | undefined;
   sectionHeaderFooterRefs: PageHeaderFooterRefs[] | undefined;
-  theme: Theme | null | undefined;
+  theme: DeepReadonly<Theme> | null | undefined;
   sectionProperties: SectionProperties | null | undefined;
   /** The model; the pipeline reads it through `readModel`. */
   document: ReadonlyDocument | null;

@@ -2,7 +2,11 @@ import type { Mark } from "prosemirror-model";
 
 import type { RunPropsPatch } from "@stll/docx-core/ops";
 
-import type { ColorValue, TextFormatting } from "../types/document";
+import type {
+  ColorValue,
+  RecordField,
+  TextFormatting,
+} from "../types/document";
 import { type DeepReadonly, writableCopy } from "../types/documentModel";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
@@ -86,7 +90,7 @@ const RUN_FORMATTING_VISUAL_GROUPS = {
   cs: null,
   styleId: null,
   preserved: null,
-} as const satisfies Record<keyof TextFormatting, string | null>;
+} as const satisfies Record<RecordField<TextFormatting>, string | null>;
 
 type VisualFormattingGroup = Exclude<
   (typeof RUN_FORMATTING_VISUAL_GROUPS)[keyof typeof RUN_FORMATTING_VISUAL_GROUPS],
@@ -130,14 +134,16 @@ const RUN_FORMATTING_FAST_PATH_DISPOSITION = {
   // it must not take the fast path that rebuilds the run from marks alone.
   preserved: "structural",
 } as const satisfies Record<
-  keyof TextFormatting,
+  RecordField<TextFormatting>,
   "character-style" | "structural" | "visual"
 >;
 
 const hasOnlyCarrierlessVisualFormatting = (
   formatting: DeepReadonly<TextFormatting>,
 ): boolean => {
-  for (const property of Object.keys(formatting) as (keyof TextFormatting)[]) {
+  for (const property of Object.keys(
+    formatting,
+  ) as RecordField<TextFormatting>[]) {
     if (RUN_FORMATTING_FAST_PATH_DISPOSITION[property] !== "visual") {
       return false;
     }
@@ -147,7 +153,7 @@ const hasOnlyCarrierlessVisualFormatting = (
 
 const visibleUnderline = (
   formatting: DeepReadonly<TextFormatting> | undefined,
-): TextFormatting["underline"] | undefined => {
+): DeepReadonly<TextFormatting["underline"]> | undefined => {
   const underline = formatting?.underline;
   return underline?.style === "none" ? undefined : underline;
 };
@@ -163,7 +169,7 @@ const visibleStrike = (
 
 const visibleColor = (
   formatting: DeepReadonly<TextFormatting> | undefined,
-): TextFormatting["color"] | undefined =>
+): DeepReadonly<TextFormatting["color"]> | undefined =>
   formatting?.color?.auto === true ? undefined : formatting?.color;
 
 const visibleValue = <Value>(
@@ -414,7 +420,7 @@ export const runFormattingPatchFromMarks = (
   const changed = changedVisualFormattingGroups(after, before);
   const patch: RunPropsPatch =
     before.styleId === after.styleId ? {} : { styleId: after.styleId ?? null };
-  const isFormattingKey = (key: string): key is keyof TextFormatting =>
+  const isFormattingKey = (key: string): key is RecordField<TextFormatting> =>
     Object.hasOwn(RUN_FORMATTING_VISUAL_GROUPS, key);
   for (const [key, group] of Object.entries(RUN_FORMATTING_VISUAL_GROUPS)) {
     if (!isFormattingKey(key) || group === null || !changed.has(group))
@@ -424,7 +430,9 @@ export const runFormattingPatchFromMarks = (
   return patch;
 };
 
-const VISUAL_BOOLEAN_FORMATTING_PROPERTIES = new Set<keyof TextFormatting>([
+const VISUAL_BOOLEAN_FORMATTING_PROPERTIES = new Set<
+  RecordField<TextFormatting>
+>([
   "allCaps",
   "bold",
   "doubleStrike",
@@ -490,7 +498,7 @@ const DIRECT_OVERRIDE_FORMATTING_PROPERTIES = [
   "smallCaps",
   "strike",
   "underline",
-] as const satisfies readonly (keyof TextFormatting &
+] as const satisfies readonly (RecordField<TextFormatting> &
   keyof RunFormattingOverrideAttrs)[];
 
 const POSITIVE_OVERRIDE_PROPERTIES_REPRESENTED_BY_VISUAL_MARKS = new Set<
@@ -657,7 +665,7 @@ const reconcileAuthoredFormatting = ({
   );
   const reconciled: TextFormatting = { ...authoredFormatting };
   for (const property of Object.keys(RUN_FORMATTING_VISUAL_GROUPS) as Array<
-    keyof TextFormatting
+    RecordField<TextFormatting>
   >) {
     const group = RUN_FORMATTING_VISUAL_GROUPS[property];
     if (group === null || !changedGroups.has(group)) {

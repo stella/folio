@@ -13,6 +13,8 @@
  * `Document` may be produced by anything that builds this model.
  */
 
+import type { WritableRecord } from "./deepReadonly";
+
 /**
  * Every normalisation the parse boundary is allowed to make.
  *
@@ -100,7 +102,7 @@ export type ParseWarningCode =
   (typeof PARSE_WARNING_CODES)[keyof typeof PARSE_WARNING_CODES];
 
 /** Where a warning happened, as precisely as the part can say. */
-export type ParseWarningLocation = {
+export type ParseWarningLocation = WritableRecord & {
   /** The package part, e.g. `word/document.xml`. `package` for the container. */
   part: string;
   /** The element as written, prefix included, when one is known. */
@@ -113,7 +115,7 @@ export type ParseWarningLocation = {
   at?: string;
 };
 
-export type ParseWarning = {
+export type ParseWarning = WritableRecord & {
   code: ParseWarningCode;
   /** The identity domain, for imported collision diagnostics. */
   identityKind?: ImportedIdCollisionKind;

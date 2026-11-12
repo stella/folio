@@ -42,6 +42,7 @@ import type {
   Footnote,
   HeaderFooter,
 } from "./content";
+import type { WritableRecord } from "./deepReadonly";
 import type { NumberingDefinitions } from "./lists";
 import type { ParseWarning } from "./parseWarning";
 import type {
@@ -64,7 +65,7 @@ export {
 
 // Field-level totality gate shared by the serializers and the reserved-value
 // registry.
-export type { DeepReadonly } from "./deepReadonly";
+export type { DeepReadonly, RecordField, WritableRecord } from "./deepReadonly";
 export type { ExhaustiveFields } from "./exhaustiveFields";
 
 // `w:numPr`: the stated and resolved unions, the cascade fold, and the one
@@ -414,7 +415,7 @@ export const DEFAULT_TAB_STOP_TWIPS = 720;
  * Document-wide settings parsed from `word/settings.xml`.
  * Extend as more settings.xml fields enter the layout pipeline.
  */
-export type DocumentSettings = {
+export type DocumentSettings = WritableRecord & {
   /**
    * Application compatibility generation from
    * `w:compat/w:compatSetting[@w:name="compatibilityMode"]`.
@@ -500,7 +501,7 @@ export type DocxConformanceClass =
   (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeof DOCX_CONFORMANCE_CLASSES];
 
 /** Complete DOCX package structure. */
-export type DocxPackage = {
+export type DocxPackage = WritableRecord & {
   /** Conformance class detected from the main document namespace. */
   conformanceClass?: DocxConformanceClass;
   /** Document body */
@@ -544,7 +545,7 @@ export type DocxPackage = {
 /**
  * Complete parsed DOCX document
  */
-export type Document = {
+export type Document = WritableRecord & {
   /** DOCX package with all parsed content */
   package: DocxPackage;
   /** Original ArrayBuffer for round-trip */

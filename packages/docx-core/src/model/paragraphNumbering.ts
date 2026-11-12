@@ -1,5 +1,7 @@
 import { panic } from "better-result";
 
+import type { WritableRecord } from "./deepReadonly";
+
 /**
  * `w:numPr`: what a tier states about a paragraph's numbering, and what the
  * cascade resolves that to.
@@ -73,7 +75,7 @@ const IMPLICIT_NUMBERING_LEVEL = 0;
  * bytes, so `ilvl` stays optional inside `reference`: collapsing it turns an
  * untouched save into a document that states something its source did not.
  */
-export type ParagraphNumberingSlots = {
+export type ParagraphNumberingSlots = WritableRecord & {
   numId?: number;
   ilvl?: number;
 };

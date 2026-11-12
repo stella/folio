@@ -11,6 +11,7 @@ import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../reviewHistoryLimits";
 import type {
   Insertion,
   ParagraphMarkChange,
+  RecordField,
   RunPropertyChange,
 } from "../types/document";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
@@ -43,7 +44,7 @@ const JOIN_FIELDS = {
   acceptance: true,
   plainSides: true,
   retainedEnclosing: true,
-} as const satisfies Record<keyof ResolutionJoins, true>;
+} as const satisfies Record<RecordField<ResolutionJoins>, true>;
 type EnclosingHandoff = NonNullable<
   ResolutionJoins["retainedEnclosing"]
 >[number];
@@ -71,7 +72,7 @@ const PARAGRAPH_MARK_FIELDS = {
   // marker, and joins the paragraphs as any rejected mark.
   survivor: { type: "private", attribute: "rejectionSurvivor" },
 } as const satisfies Record<
-  keyof ParagraphMarkChange,
+  RecordField<ParagraphMarkChange>,
   { type: "ooxml" } | { type: "private"; attribute: string }
 >;
 
