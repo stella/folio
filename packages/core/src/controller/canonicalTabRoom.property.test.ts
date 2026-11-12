@@ -449,7 +449,7 @@ const leaderSkipsReplay: JournalFault = () => {
 };
 
 test("tabs sharing a room converge on the authority's document across leader handoffs", async () => {
-  await assertProperty(law(undefined, emptyCoverage()), {
+  await assertProperty(law(leaderSkipsReplay, emptyCoverage()), {
     numRuns: 12,
     examples: EXAMPLES,
     id: "canonical tab room convergence",
