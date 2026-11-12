@@ -113,12 +113,12 @@ const collaborationEnabled = query.has("collaboration");
 // ProseMirror-owned engine and `?session=canonical` states the default.
 // Collaboration still requires the legacy engine.
 const requestedSession = query.get("session");
-const experimentalSession =
+const selectedSession =
   requestedSession === "legacy" || requestedSession === "canonical"
     ? requestedSession
-    : collaborationEnabled
-      ? "legacy"
-      : undefined;
+    : undefined;
+const experimentalSession =
+  selectedSession ?? (collaborationEnabled ? "legacy" : undefined);
 const editorMode = ref<EditorMode>(
   query.get("mode") === "suggesting" ? "suggesting" : "editing",
 );
