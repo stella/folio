@@ -552,7 +552,7 @@ const emptyCoverage = (): YjsCoverage => ({
 });
 
 test("peers of a Yjs-carried room converge on the authority's document", async () => {
-  await assertProperty(law(undefined, emptyCoverage()), {
+  await assertProperty(law("acceptForeignJournal", emptyCoverage()), {
     numRuns: 12,
     examples: EXAMPLES,
     id: "canonical yjs room convergence",
