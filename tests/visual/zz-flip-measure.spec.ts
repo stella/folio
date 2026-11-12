@@ -125,16 +125,21 @@ const prepare = (page: Page) =>
     if (!ref || !editor || !view) throw new TypeError("No editor view.");
     const paragraphs: number[] = [];
     view.state.doc.descendants((node, position) => {
-      if (node.type.name === "paragraph" && node.textContent.length > 4)
+      if (node.type.name === "paragraph" && node.textContent.length > 0)
         paragraphs.push(position);
       return true;
     });
     const middle = paragraphs[Math.floor(paragraphs.length / 2)];
     if (middle === undefined) throw new TypeError("No paragraph to type in.");
-    const pageNumber = ref.getEditorRef()?.getPageNumberForPmPos(middle + 3);
+    const pageNumber = ref.getEditorRef()?.getPageNumberForPmPos(middle + 1);
     if (pageNumber !== undefined && pageNumber !== null)
       ref.scrollToPage(pageNumber);
-    editor.setSelection(middle + 3, middle + 3);
+    // Two characters in, or at the end of a shorter paragraph (LIR011 holds numbers).
+    const offset = Math.min(
+      2,
+      view.state.doc.nodeAt(middle)?.textContent.length ?? 0,
+    );
+    editor.setSelection(middle + 1 + offset, middle + 1 + offset);
     const paraId: unknown = view.state.doc.nodeAt(middle)?.attrs["paraId"];
     if (typeof paraId === "string") ref.scrollToParaId(paraId);
     editor.focus();
