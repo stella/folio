@@ -1264,6 +1264,20 @@ const resolveRunPropertyChange = ({
 
   const previousFormatting: RunPropertyChange["previousFormatting"] =
     matches.at(0)?.previousFormatting;
+  if (Object.hasOwn(node.attrs, "_docxRunFormatting")) {
+    // A drawing, a shape or a text box anchor keeps its run's formatting in
+    // its attrs, not in marks: rejecting restores that record.
+    const current = tr.doc.nodeAt(from);
+    if (!current) panic("A resolved run atom has no node at its position");
+    tr.setNodeMarkup(from, undefined, {
+      ...current.attrs,
+      _docxRunFormatting: previousFormatting ?? {},
+    });
+    if (
+      !node.marks.some(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name))
+    )
+      return;
+  }
   const styleContext = paragraphRunStyleContextAt({
     doc: tr.doc,
     pos: from,
