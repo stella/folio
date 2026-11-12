@@ -30,6 +30,7 @@ import {
   getNamespacePrefix,
   getNamespaceUri,
   NAMESPACES,
+  parseXml,
   parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
@@ -237,44 +238,100 @@ export type ScannedParagraph = ParagraphOffsets & {
 type TrackedContainerKey =
   "fallback" | "alternateContent" | "textBox" | "tableCell";
 
+/** How many containers of each tracked kind are open at a point of a scan. */
+type ContainerDepth = Readonly<Record<TrackedContainerKey, number>>;
+
+const NO_CONTAINERS: ContainerDepth = {
+  fallback: 0,
+  alternateContent: 0,
+  textBox: 0,
+  tableCell: 0,
+};
+
+/** Where a paragraph scan stands between two tags. */
+type ParagraphScanState = {
+  readonly depth: ContainerDepth;
+  /** Paragraphs opened and not yet closed. */
+  readonly openParagraphs: number;
+};
+
+const sameScanState = (a: ParagraphScanState, b: ParagraphScanState): boolean =>
+  a.openParagraphs === b.openParagraphs &&
+  a.depth.fallback === b.depth.fallback &&
+  a.depth.alternateContent === b.depth.alternateContent &&
+  a.depth.textBox === b.depth.textBox &&
+  a.depth.tableCell === b.depth.tableCell;
+
+type ParagraphScanOptions = {
+  /** The `mc` prefixes of the part the scanned XML belongs to. */
+  mcPrefixes: readonly string[];
+  /** The containers open where the scanned XML begins. */
+  entry?: ContainerDepth;
+  /** Offsets, ascending, at which to record the scan's state. */
+  checkpoints?: readonly number[] | undefined;
+};
+
+type ParagraphScan = {
+  paragraphs: ScannedParagraph[];
+  /**
+   * The state at each checkpoint: what the scan had read of every tag that
+   * starts before it and of none that starts at or after it. `null` where a
+   * tag the scan read runs past the checkpoint, or the scan stopped first.
+   */
+  checkpoints: ReadonlyMap<number, ParagraphScanState | null>;
+  /** The state after the last tag. */
+  end: ParagraphScanState;
+  /** Whether the scan stopped at a tag with no `>`, leaving the rest unread. */
+  stopped: boolean;
+};
+
 /**
- * Every `<w:p>` element of `xml`, in the document order of its opening tags,
- * with the `w14:paraId` that tag carries and the containers around it.
- *
- * Document order is what makes the array an ordinal space: within one story
- * (see {@link ParagraphContainer}), the *n*th paragraph of the source part and
- * the *n*th paragraph of the model's serialization name the same paragraph,
- * which is the only way to address a paragraph the producer gave no id. A
- * `<w:p>` nested inside another (inside `mc:AlternateContent`, a text box) is
- * one entry of its own, exactly as {@link countParagraphElements} counts it.
- * An unterminated paragraph keeps `end === start`: it occupies its ordinal but
- * no splice can be built from it.
+ * The one paragraph scan: {@link scanParagraphs} over a whole part, or a
+ * stretch of one entered with its containers already open. The scan reads a
+ * tag only from its own `<` onwards and keeps no other state than
+ * {@link ParagraphScanState}, so two scans in the same state over the same
+ * text read it the same way.
  */
-export function scanParagraphs(xml: string): ScannedParagraph[] {
-  const resolution = resolveSelectiveScanPrefixes(xml);
-  const mcPrefixes =
-    resolution.type === "resolved" ? resolution.prefixes.mc : ["mc"];
+const scanParagraphElements = (
+  xml: string,
+  { mcPrefixes, entry = NO_CONTAINERS, checkpoints = [] }: ParagraphScanOptions,
+): ParagraphScan => {
   const paragraphs: ScannedParagraph[] = [];
   const open: number[] = [];
-  const depth: Record<TrackedContainerKey, number> = {
-    fallback: 0,
-    alternateContent: 0,
-    textBox: 0,
-    tableCell: 0,
-  };
+  const depth: Record<TrackedContainerKey, number> = { ...entry };
   const containers = [
     { key: "fallback", prefixes: mcPrefixes, name: "Fallback" },
     { key: "alternateContent", prefixes: mcPrefixes, name: "AlternateContent" },
     { key: "textBox", prefixes: ["w"], name: "txbxContent" },
     { key: "tableCell", prefixes: ["w"], name: "tc" },
   ] as const;
+  const states = new Map<number, ParagraphScanState | null>();
+  let checkpoint = 0;
+  const state = (): ParagraphScanState => ({
+    depth: { ...depth },
+    openParagraphs: open.length,
+  });
+  // Record every checkpoint at or before `tagStart`, the next tag the scan reads.
+  const recordUntil = (tagStart: number, pos: number): void => {
+    while (
+      checkpoint < checkpoints.length &&
+      (checkpoints[checkpoint] ?? Infinity) <= tagStart
+    ) {
+      // SAFETY: checkpoint < checkpoints.length
+      const offset = checkpoints[checkpoint]!;
+      states.set(offset, pos <= offset ? state() : null);
+      checkpoint += 1;
+    }
+  };
   let pos = 0;
+  let stopped = false;
 
   scan: while (pos < xml.length) {
     const tagStart = xml.indexOf("<", pos);
     if (tagStart === -1) {
       break;
     }
+    recordUntil(tagStart, pos);
 
     if (xml.startsWith("</w:p>", tagStart)) {
       const slot = open.pop();
@@ -297,6 +354,7 @@ export function scanParagraphs(xml: string): ScannedParagraph[] {
       if (matchOpenTag(xml, tagStart, prefixes, name) !== -1) {
         const tagEnd = xml.indexOf(">", tagStart);
         if (tagEnd === -1) {
+          stopped = true;
           break scan;
         }
         if (xml[tagEnd - 1] !== "/") {
@@ -317,6 +375,7 @@ export function scanParagraphs(xml: string): ScannedParagraph[] {
 
     const tagEnd = xml.indexOf(">", tagStart);
     if (tagEnd === -1) {
+      stopped = true;
       break;
     }
     const openTag = xml.slice(tagStart, tagEnd + 1);
@@ -340,7 +399,33 @@ export function scanParagraphs(xml: string): ScannedParagraph[] {
     pos = tagEnd + 1;
   }
 
-  return paragraphs;
+  if (!stopped) recordUntil(Infinity, pos);
+  for (const offset of checkpoints.slice(checkpoint)) states.set(offset, null);
+  return { paragraphs, checkpoints: states, end: state(), stopped };
+};
+
+/** The `mc` prefixes {@link scanParagraphs} reads `xml`'s containers under. */
+const scanMcPrefixes = (xml: string): readonly string[] => {
+  const resolution = resolveSelectiveScanPrefixes(xml);
+  return resolution.type === "resolved" ? resolution.prefixes.mc : ["mc"];
+};
+
+/**
+ * Every `<w:p>` element of `xml`, in the document order of its opening tags,
+ * with the `w14:paraId` that tag carries and the containers around it.
+ *
+ * Document order is what makes the array an ordinal space: within one story
+ * (see {@link ParagraphContainer}), the *n*th paragraph of the source part and
+ * the *n*th paragraph of the model's serialization name the same paragraph,
+ * which is the only way to address a paragraph the producer gave no id. A
+ * `<w:p>` nested inside another (inside `mc:AlternateContent`, a text box) is
+ * one entry of its own, exactly as {@link countParagraphElements} counts it.
+ * An unterminated paragraph keeps `end === start`: it occupies its ordinal but
+ * no splice can be built from it.
+ */
+export function scanParagraphs(xml: string): ScannedParagraph[] {
+  return scanParagraphElements(xml, { mcPrefixes: scanMcPrefixes(xml) })
+    .paragraphs;
 }
 
 /**
@@ -434,19 +519,26 @@ const sameContainer = (a: ParagraphContainer, b: ParagraphContainer): boolean =>
   a.textBoxDepth === b.textBoxDepth &&
   a.tableDepth === b.tableDepth;
 
-/** The paragraphs of one part a splice may address, indexed the ways routing asks for them. */
+/** The paragraphs of one part a splice may address, read the ways routing asks for them. */
 type AddressableParagraphs = {
-  stories: ReadonlyMap<Story, readonly ScannedParagraph[]>;
-  /** Each paragraph's ordinal within its story. */
-  ordinals: ReadonlyMap<ScannedParagraph, number>;
-  byParaId: ReadonlyMap<string, readonly ScannedParagraph[]>;
+  /** The addressable paragraphs of one story, in document order. */
+  story: (story: Story) => readonly ScannedParagraph[];
+  /** A paragraph's ordinal within its story, or -1 when it is not one of this part's. */
+  ordinal: (paragraph: ScannedParagraph) => number;
+  /** The addressable paragraphs whose open tag carries `paraId`. */
+  named: (paraId: string) => readonly ScannedParagraph[];
+  /** A paragraph's XML in this part. */
+  text: (paragraph: ScannedParagraph) => string;
 };
 
-const addressableParagraphs = (xml: string): AddressableParagraphs => {
+const addressableParagraphs = (
+  xml: string,
+  paragraphs: readonly ScannedParagraph[],
+): AddressableParagraphs => {
   const stories = new Map<Story, ScannedParagraph[]>();
   const ordinals = new Map<ScannedParagraph, number>();
   const byParaId = new Map<string, ScannedParagraph[]>();
-  for (const paragraph of scanParagraphs(xml)) {
+  for (const paragraph of paragraphs) {
     if (paragraph.container.inFallback) {
       continue;
     }
@@ -461,18 +553,237 @@ const addressableParagraphs = (xml: string): AddressableParagraphs => {
       byParaId.set(paragraph.paraId, named);
     }
   }
-  return { stories, ordinals, byParaId };
+  return {
+    story: (story) => stories.get(story) ?? [],
+    ordinal: (paragraph) => ordinals.get(paragraph) ?? -1,
+    named: (paraId) => byParaId.get(paraId) ?? [],
+    text: ({ start, end }) => xml.slice(start, end),
+  };
 };
 
 /** The paraIds written on `<w:p>` elements inside `mc:Fallback`. */
-const fallbackParaIds = (xml: string): ReadonlySet<string> =>
+const fallbackParaIds = (
+  paragraphs: readonly ScannedParagraph[],
+): ReadonlySet<string> =>
   new Set(
-    scanParagraphs(xml)
+    paragraphs
       .filter(
         ({ container, paraId }) => container.inFallback && paraId !== undefined,
       )
       .map(({ paraId }) => paraId as string),
   );
+
+/**
+ * A `word/document.xml` written as the part it is saved over with some of the
+ * body's blocks replaced, as the canonical save's block replay writes it.
+ */
+export type BodyReplay = {
+  /** The part the blocks were replayed onto. */
+  readonly source: string;
+  /**
+   * The replaced regions of `source`, ascending and disjoint. Each replaces
+   * whole children of the source's `w:body` (or inserts between them), and
+   * applying them to `source` gives the written part.
+   */
+  readonly splices: readonly XmlSplice[];
+};
+
+/** A serialized part and, when it was written by a {@link BodyReplay}, that replay. */
+export type SerializedPart = {
+  readonly xml: string;
+  readonly replay: BodyReplay | undefined;
+};
+
+/** The body of a parsed part, when it has exactly one. */
+const bodyOf = (root: XmlElement): XmlElement | undefined => {
+  const bodies = getChildElements(root).filter(
+    (child) =>
+      getLocalName(child.name) === "body" &&
+      WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? ""),
+  );
+  return bodies.length === 1 ? bodies[0] : undefined;
+};
+
+/** Whether `xml` reads as content of `body`: the reader would accept it there. */
+const readsInBody = (xml: string, body: XmlElement): boolean => {
+  try {
+    // Two wrappers stand for the root and its body: same nesting, same scope.
+    parseXml(`<root><body>${xml}</body></root>`, body.namespaceScope);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** The first index of `paragraphs` (in document order) that starts at or after `offset`. */
+const firstStartingAt = (
+  paragraphs: readonly ScannedParagraph[],
+  offset: number,
+): number => {
+  let low = 0;
+  let high = paragraphs.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    // SAFETY: low <= middle < high <= paragraphs.length
+    if (paragraphs[middle]!.start < offset) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+};
+
+type ReplayedParagraphsOptions = {
+  original: AddressableParagraphs;
+  originalScan: ParagraphScan;
+  mcPrefixes: readonly string[];
+  originalRoot: XmlElement;
+  splices: readonly XmlSplice[];
+};
+
+/**
+ * The paragraphs of the part a {@link BodyReplay} wrote, read from the scan of
+ * the part it replayed onto and a scan of each replacement alone, so the
+ * written part is never scanned or parsed whole.
+ *
+ * The written part is the original outside the splices, and a scan reads a
+ * stretch the same way whenever it enters it in the same state (see
+ * {@link scanParagraphElements}). So the written part's paragraphs are the
+ * original's outside the replaced regions and each replacement's, scanned
+ * from the state the original's scan had where the region starts, exactly
+ * when every replacement leaves the scan in the state the original's scan has
+ * where the region ends. A region a tag runs into, a paragraph left open
+ * across a boundary, or a replacement the reader would not accept inside the
+ * body answers null: the caller then scans the written part itself.
+ */
+const replayedParagraphs = ({
+  original,
+  originalScan,
+  mcPrefixes,
+  originalRoot,
+  splices,
+}: ReplayedParagraphsOptions): AddressableParagraphs | null => {
+  const body = bodyOf(originalRoot);
+  if (!body) return null;
+  type Region = {
+    start: number;
+    end: number;
+    paragraphs: readonly ScannedParagraph[];
+  };
+  const regions: Region[] = [];
+  const replacementXml = new Map<ScannedParagraph, string>();
+  const replacementNamed = new Map<string, ScannedParagraph[]>();
+  let previousEnd = 0;
+  for (const { start, end, newXml } of splices) {
+    if (start < previousEnd || end < start) return null;
+    previousEnd = end;
+    const entry = originalScan.checkpoints.get(start);
+    const exit = originalScan.checkpoints.get(end);
+    if (
+      !entry ||
+      !exit ||
+      entry.openParagraphs !== 0 ||
+      exit.openParagraphs !== 0 ||
+      !readsInBody(newXml, body)
+    )
+      return null;
+    const replacement = scanParagraphElements(newXml, {
+      mcPrefixes,
+      entry: entry.depth,
+    });
+    if (replacement.stopped || !sameScanState(replacement.end, exit))
+      return null;
+    const paragraphs = replacement.paragraphs.filter(
+      ({ container }) => !container.inFallback,
+    );
+    for (const paragraph of paragraphs) {
+      replacementXml.set(paragraph, newXml);
+      if (paragraph.paraId !== undefined) {
+        const named = replacementNamed.get(paragraph.paraId) ?? [];
+        named.push(paragraph);
+        replacementNamed.set(paragraph.paraId, named);
+      }
+    }
+    regions.push({ start, end, paragraphs });
+  }
+
+  /** How many regions start at or before `offset`. */
+  const regionsUpTo = (offset: number): number => {
+    let low = 0;
+    let high = regions.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      // SAFETY: low <= middle < high <= regions.length
+      if (regions[middle]!.start <= offset) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  const replaced = ({ start }: ScannedParagraph): boolean => {
+    const region = regions[regionsUpTo(start) - 1];
+    return region !== undefined && start < region.end;
+  };
+
+  type StoryView = {
+    sequence: readonly ScannedParagraph[];
+    /** After each region, how far the written part's ordinals run ahead of the original's. */
+    shifts: readonly number[];
+    replacementOrdinals: ReadonlyMap<ScannedParagraph, number>;
+  };
+  const stories = new Map<Story, StoryView>();
+  const storyView = (story: Story): StoryView => {
+    const cached = stories.get(story);
+    if (cached) return cached;
+    const own = original.story(story);
+    const sequence: ScannedParagraph[] = [];
+    const shifts: number[] = [];
+    const replacementOrdinals = new Map<ScannedParagraph, number>();
+    let next = 0;
+    for (const region of regions) {
+      const first = firstStartingAt(own, region.start);
+      const after = firstStartingAt(own, region.end);
+      for (let index = next; index < first; index += 1) {
+        // SAFETY: index < first <= own.length
+        sequence.push(own[index]!);
+      }
+      for (const paragraph of region.paragraphs) {
+        if (storyOf(paragraph.container) !== story) continue;
+        replacementOrdinals.set(paragraph, sequence.length);
+        sequence.push(paragraph);
+      }
+      next = Math.max(next, after);
+      shifts.push(sequence.length - next);
+    }
+    for (let index = next; index < own.length; index += 1) {
+      // SAFETY: index < own.length
+      sequence.push(own[index]!);
+    }
+    const view = { sequence, shifts, replacementOrdinals };
+    stories.set(story, view);
+    return view;
+  };
+
+  return {
+    story: (story) => storyView(story).sequence,
+    ordinal: (paragraph) => {
+      const view = storyView(storyOf(paragraph.container));
+      if (replacementXml.has(paragraph))
+        return view.replacementOrdinals.get(paragraph) ?? -1;
+      const ordinal = original.ordinal(paragraph);
+      if (ordinal === -1 || replaced(paragraph)) return -1;
+      const before = regionsUpTo(paragraph.start);
+      return ordinal + (before === 0 ? 0 : (view.shifts[before - 1] ?? 0));
+    },
+    named: (paraId) => [
+      ...original.named(paraId).filter((paragraph) => !replaced(paragraph)),
+      ...(replacementNamed.get(paraId) ?? []),
+    ],
+    text: (paragraph) => {
+      const xml = replacementXml.get(paragraph);
+      return xml === undefined
+        ? original.text(paragraph)
+        : xml.slice(paragraph.start, paragraph.end);
+    },
+  };
+};
 
 /**
  * The prefix of the part's root element. The scan reads WordprocessingML by
@@ -493,17 +804,17 @@ const nearestSharedParaId = (
   paragraph: ScannedParagraph,
   step: -1 | 1,
 ): string | null => {
-  const sequence = own.stories.get(storyOf(paragraph.container)) ?? [];
+  const sequence = own.story(storyOf(paragraph.container));
   for (
-    let ordinal = (own.ordinals.get(paragraph) ?? -1) + step;
+    let ordinal = own.ordinal(paragraph) + step;
     ordinal >= 0 && ordinal < sequence.length;
     ordinal += step
   ) {
     const paraId = sequence[ordinal]?.paraId;
     if (
       paraId !== undefined &&
-      own.byParaId.get(paraId)?.length === 1 &&
-      other.byParaId.get(paraId)?.length === 1
+      own.named(paraId).length === 1 &&
+      other.named(paraId).length === 1
     ) {
       return paraId;
     }
@@ -537,10 +848,15 @@ const nearestSharedParaId = (
  * - an authored paragraph whose nearest shared neighbours differ, i.e. that
  *   moved within its story;
  * - an id-less paragraph whose story's ordinals do not line up.
+ *
+ * A serialization the canonical block replay wrote onto this same part says
+ * which regions it replaced ({@link BodyReplay}); the routing then reads the
+ * serialized side from the original's scan and those regions
+ * ({@link replayedParagraphs}) and does not scan or parse the serialized part.
  */
 const routeChangedParagraphs = (
   originalXml: string,
-  serializedXml: string,
+  serialized: string | SerializedPart,
   changedIds: ReadonlySet<string>,
 ): ParagraphRouting => {
   // The scan reads `<w:p` / `w14:paraId` literally and the splice writes the
@@ -555,20 +871,42 @@ const routeChangedParagraphs = (
     };
   }
 
-  const original = addressableParagraphs(originalXml);
-  const serialized = addressableParagraphs(serializedXml);
+  const serializedXml =
+    typeof serialized === "string" ? serialized : serialized.xml;
+  const replay = typeof serialized === "string" ? undefined : serialized.replay;
+  const replayedSplices =
+    replay?.source === originalXml ? replay.splices : undefined;
+  const mcPrefixes = scanMcPrefixes(originalXml);
+  const originalScan = scanParagraphElements(originalXml, {
+    mcPrefixes,
+    checkpoints: replayedSplices?.flatMap(({ start, end }) => [start, end]),
+  });
+  const original = addressableParagraphs(originalXml, originalScan.paragraphs);
+  const originalRoot =
+    replayedSplices === undefined ? undefined : parseXmlDocument(originalXml);
+  const fromReplay =
+    replayedSplices !== undefined && originalRoot
+      ? replayedParagraphs({
+          original,
+          originalScan,
+          mcPrefixes,
+          originalRoot,
+          splices: replayedSplices,
+        })
+      : null;
+  const serializedParagraphs =
+    fromReplay ??
+    addressableParagraphs(serializedXml, scanParagraphs(serializedXml));
   let originalFallbackIds: ReadonlySet<string> | undefined;
   const storyAlignment = new Map<Story, boolean>();
   const storyAligned = (story: Story): boolean => {
     let aligned = storyAlignment.get(story);
     if (aligned === undefined) {
       aligned = resolveParagraphIdentities({
-        sourceParaIds: (original.stories.get(story) ?? []).map(
-          ({ paraId }) => paraId,
-        ),
-        serializedParaIds: (serialized.stories.get(story) ?? []).map(
-          ({ paraId }) => paraId,
-        ),
+        sourceParaIds: original.story(story).map(({ paraId }) => paraId),
+        serializedParaIds: serializedParagraphs
+          .story(story)
+          .map(({ paraId }) => paraId),
       }).ordinalsAligned;
       storyAlignment.set(story, aligned);
     }
@@ -577,8 +915,8 @@ const routeChangedParagraphs = (
 
   const splices: XmlSplice[] = [];
   for (const id of changedIds) {
-    const inOriginal = original.byParaId.get(id) ?? [];
-    const inSerialized = serialized.byParaId.get(id) ?? [];
+    const inOriginal = original.named(id);
+    const inSerialized = serializedParagraphs.named(id);
     if (inOriginal.length > 1) {
       return { type: "refused", reason: `duplicate-paraId-in-original: ${id}` };
     }
@@ -602,14 +940,14 @@ const routeChangedParagraphs = (
     if (replacement.end <= replacement.start) {
       return { type: "refused", reason: `unterminated-paragraph: ${id}` };
     }
-    const newXml = serializedXml.slice(replacement.start, replacement.end);
+    const newXml = serializedParagraphs.text(replacement);
 
     const authored = inOriginal[0];
     let source: ScannedParagraph;
     if (authored) {
       source = authored;
     } else {
-      originalFallbackIds ??= fallbackParaIds(originalXml);
+      originalFallbackIds ??= fallbackParaIds(originalScan.paragraphs);
       if (originalFallbackIds.has(id)) {
         return { type: "refused", reason: `paraId-only-in-fallback: ${id}` };
       }
@@ -622,9 +960,7 @@ const routeChangedParagraphs = (
         };
       }
       const positional =
-        original.stories.get(story)?.[
-          serialized.ordinals.get(replacement) ?? -1
-        ];
+        original.story(story)[serializedParagraphs.ordinal(replacement)];
       if (!positional) {
         return {
           type: "refused",
@@ -648,19 +984,20 @@ const routeChangedParagraphs = (
     }
     if (
       authored &&
-      (nearestSharedParaId(original, serialized, source, -1) !==
-        nearestSharedParaId(serialized, original, replacement, -1) ||
-        nearestSharedParaId(original, serialized, source, 1) !==
-          nearestSharedParaId(serialized, original, replacement, 1))
+      (nearestSharedParaId(original, serializedParagraphs, source, -1) !==
+        nearestSharedParaId(serializedParagraphs, original, replacement, -1) ||
+        nearestSharedParaId(original, serializedParagraphs, source, 1) !==
+          nearestSharedParaId(serializedParagraphs, original, replacement, 1))
     ) {
       return { type: "refused", reason: `paragraph-moved: ${id}` };
     }
 
-    const sourceXml = originalXml.slice(source.start, source.end);
     splices.push({
       start: source.start,
       end: source.end,
-      newXml: authored ? newXml : withoutMintedIds(newXml, sourceXml),
+      newXml: authored
+        ? newXml
+        : withoutMintedIds(newXml, original.text(source)),
     });
   }
 
@@ -669,6 +1006,10 @@ const routeChangedParagraphs = (
       originalXml,
       serializedXml,
       fragments: splices.map(({ newXml }) => newXml),
+      // A replay keeps the original's root start tag: every splice lies in
+      // its body, and every replacement reads there (replayedParagraphs).
+      ...(originalRoot ? { originalRoot } : {}),
+      ...(fromReplay && originalRoot ? { serializedRoot: originalRoot } : {}),
     })
   ) {
     return { type: "refused", reason: "root-namespace-requirements-changed" };
@@ -722,20 +1063,20 @@ export function validatePatchSafety(
  * {@link validatePatchSafety}) or {@link spliceXml} refuses the result; the
  * caller then falls back to a full repack, whose parts are all re-serialized
  * from one model.
+ *
+ * A serialization written by the canonical block replay comes with that
+ * replay ({@link SerializedPart}), so the routing reads it from the original
+ * part and the replaced regions instead of scanning and parsing it again.
  */
 export function buildPatchedDocumentXml(
   originalXml: string,
-  serializedXml: string,
+  serialized: string | SerializedPart,
   changedIds: Set<string>,
 ): string | null {
   if (changedIds.size === 0) {
     return originalXml;
   }
-  const routing = routeChangedParagraphs(
-    originalXml,
-    serializedXml,
-    changedIds,
-  );
+  const routing = routeChangedParagraphs(originalXml, serialized, changedIds);
   return routing.type === "refused" ? null : routing.xml;
 }
 
