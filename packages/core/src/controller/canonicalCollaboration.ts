@@ -305,8 +305,7 @@ export const connectCanonicalRoom = async (
         diverge(received.error.message, received.error);
         return false;
       }
-      presence?.applied(before, client.headRev);
-      return received.value.every((change) => {
+      const shown = received.value.every((change) => {
         const sequenced = unrebased.get(change.batch.revision);
         // The defect: the sequenced ops as sequenced, not as rebased over
         // the pending local batches.
@@ -316,6 +315,10 @@ export const connectCanonicalRoom = async (
             : change,
         );
       });
+      // Peers' selections move once the editor shows the batches, so a host
+      // reading them on change resolves them in the projection it shows.
+      if (shown) presence?.applied(before, client.headRev);
+      return shown;
     }
     const { outcome } = item;
     if (outcome.type === "disconnected") return true;

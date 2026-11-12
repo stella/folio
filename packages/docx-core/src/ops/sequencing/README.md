@@ -176,7 +176,14 @@ actor and operation id, and removes the request. Only the authority writes
 the journal, under its own Yjs client id (`CANONICAL_YJS_AUTHORITY` unless
 the host picks another): a client refuses an entry any other Yjs client
 wrote (`foreignJournalEntry`) and goes on, and stops following the room if
-an authority entry is deleted or two claim one revision. The host persists
+an authority entry is deleted or two claim one revision. Every Yjs client
+picks its own client id, so this check catches a client that writes the
+journal by mistake, not one that writes it under the authority's id on
+purpose: the room trusts its participants, and a host that does not trust
+one drops that client's updates touching the journal, the answers or the
+room map before it relays them. A lease call that the room can no longer
+forward, because the transport closed or stopped following the journal, is
+answered with an `unavailable` refusal. The host persists
 the document's updates before it sends them on, so a restarted authority
 finds every entry a client saw. The module imports no Yjs code; it works on
 the host's own document and awareness. A serverless room (y-webrtc) has no

@@ -31,6 +31,7 @@ import {
   encodeLeaseGrant,
   encodeLeaseRenewal,
   encodeRoomSubmission,
+  UNAVAILABLE_LEASE_ANSWER,
 } from "./canonicalRoomWire";
 
 /*
@@ -262,7 +263,9 @@ export const openCanonicalTabRoom = ({
   const subscriptions = new Set<(batch: SequencedBatch) => void>();
   const connectionListeners = new Set<(connected: boolean) => void>();
   const leaseRequests = new Map<string, LeaseRequest>();
-  const connected = () => !closed && term > 0;
+  // Whether a leader of `term` is known to be leading.
+  let following = false;
+  const connected = () => !closed && following;
 
   const notifyConnection = (next: boolean): void => {
     for (const listener of [...connectionListeners]) listener(next);
@@ -277,8 +280,9 @@ export const openCanonicalTabRoom = ({
 
   const followLeader = (next: number, announcedHead: number): void => {
     if (next <= term) return;
-    if (term > 0) loseConnection();
+    if (following) loseConnection();
     term = next;
+    following = true;
     headRev = Math.max(headRev, announcedHead);
     notifyConnection(true);
     for (const request of leaseRequests.values()) send(request.message(term));
@@ -333,6 +337,10 @@ export const openCanonicalTabRoom = ({
           return true;
         },
       };
+      if (closed) {
+        pending.settle(UNAVAILABLE_LEASE_ANSWER);
+        return;
+      }
       leaseRequests.set(request, pending);
       if (connected()) send(pending.message(term));
     });
@@ -368,7 +376,16 @@ export const openCanonicalTabRoom = ({
       "The room's journal could not be written.",
       stored.error,
     );
+    const stepped = leading;
     stepDown();
+    // This tab no longer follows the term it led: its unanswered calls are
+    // lost, and it stands again, so a later leader (this tab or another)
+    // rebuilds from the journal and announces a higher term.
+    if (following && term === stepped) {
+      following = false;
+      loseConnection();
+    }
+    if (!closed) void contend();
     return false;
   };
 
@@ -673,6 +690,9 @@ export const openCanonicalTabRoom = ({
       stepDown();
       if (refresh !== undefined) clearInterval(refresh);
       if (wasConnected) loseConnection();
+      const waiting = [...leaseRequests.values()];
+      leaseRequests.clear();
+      for (const request of waiting) request.settle(UNAVAILABLE_LEASE_ANSWER);
       offMessage();
       channel.close();
     },

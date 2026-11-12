@@ -30,6 +30,7 @@ import {
   encodeLeaseRenewal,
   encodeRoomSubmission,
   toWireJson,
+  UNAVAILABLE_LEASE_ANSWER,
 } from "./canonicalRoomWire";
 
 /*
@@ -47,6 +48,13 @@ import {
  *
  * A room needs its authority. A serverless room (y-webrtc) has none: give it
  * one, a peer that is always present or a server that joins the room.
+ *
+ * The journal check compares Yjs client ids, and every Yjs client picks its
+ * own: it catches a client that writes the journal by mistake, not one that
+ * writes it under the authority's id on purpose. The room trusts its
+ * participants. A host that does not trust a participant drops that
+ * client's updates touching the journal, the answers or the room map before
+ * it relays them.
  */
 
 /** The Yjs client id the authority writes the journal under, unless the host picks another. */
@@ -381,11 +389,18 @@ export const openCanonicalYjsRoom = ({
     for (const [, resolve] of lost) resolve({ type: "disconnected", opId: "" });
     for (const listener of [...connectionListeners]) listener(false);
   };
+  /** Answer every waiting lease call: no authority answer can reach it now. */
+  const abandonLeases = (): void => {
+    const unanswered = [...leaseRequests.values()];
+    leaseRequests.clear();
+    for (const answer of unanswered) answer(UNAVAILABLE_LEASE_ANSWER);
+  };
   const fail = (error: CanonicalYjsRoomError): void => {
     if (failure !== undefined) return;
     const wasConnected = connected();
     failure = error;
     onError(error);
+    abandonLeases();
     if (wasConnected) loseConnection();
   };
 
@@ -502,14 +517,19 @@ export const openCanonicalYjsRoom = ({
     decode: (answer: unknown) => T | undefined,
   ): Promise<T> =>
     new Promise((resolve) => {
-      const request = crypto.randomUUID();
-      const key = leaseKey(actor, request);
-      leaseRequests.set(key, (answer) => {
+      const answerLease = (answer: unknown): boolean => {
         const decoded = decode(answer);
         if (decoded === undefined) return false;
         resolve(decoded);
         return true;
-      });
+      };
+      if (closed || failure !== undefined) {
+        answerLease(UNAVAILABLE_LEASE_ANSWER);
+        return;
+      }
+      const request = crypto.randomUUID();
+      const key = leaseKey(actor, request);
+      leaseRequests.set(key, answerLease);
       doc.transact(() => {
         inbox.push([
           {
@@ -661,6 +681,7 @@ export const openCanonicalYjsRoom = ({
       answers.unobserve(watchAnswers);
       room.unobserve(watchRoom);
       offConnection();
+      abandonLeases();
       if (wasConnected) loseConnection();
     },
   };

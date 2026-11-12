@@ -505,3 +505,75 @@ test("a leader with no journal does not lead", async () => {
   expect(browser.leader).toBeUndefined();
   opened.close();
 });
+
+/** Settle `promise`, or give up after a bounded number of turns. */
+const within = async <T>(promise: Promise<T>): Promise<T | "unsettled"> =>
+  Promise.race([
+    promise,
+    (async () => {
+      for (let round = 0; round < 40; round += 1) await settle();
+      return "unsettled" as const;
+    })(),
+  ]);
+
+test("a lone tab whose journal write fails stands again and answers", async () => {
+  const browser = createBrowser();
+  const room = await createRoomPeers(emptyRoomCoverage());
+  const tab: SimTab = { alive: true };
+  const journal = browser.journal(tab);
+  const errors: CanonicalTabRoomError[] = [];
+  let failures = 1;
+  const opened = openCanonicalTabRoom({
+    room: "flaky",
+    snapshot: room.snapshot,
+    document: room.base,
+    journal: {
+      ...journal,
+      append: (records) => {
+        if (failures === 0) return journal.append(records);
+        failures -= 1;
+        return Promise.reject(new Error("The store is full."));
+      },
+    },
+    idBlockSizes: ROOM_BLOCK_SIZES,
+    environment: browser.environment(tab),
+    presenceRefreshMs: 0,
+    onError: (error) => errors.push(error),
+  });
+  for (let round = 0; round < 4; round += 1) await settle();
+  expect(opened.connected).toBe(true);
+  // The first lease grant cannot be stored: the leader steps down without
+  // answering, stands again and answers the request under its next term.
+  const granted = await within(opened.grantIdLease("actor-0"));
+  expect(granted !== "unsettled" && granted.isOk()).toBe(true);
+  expect(errors.map(({ reason }) => reason)).toEqual(["journalUnavailable"]);
+  expect(opened.leading).toBe(true);
+  expect(opened.connected).toBe(true);
+  expect(browser.stored.length).toBeGreaterThan(0);
+  opened.close();
+});
+
+test("closing a tab settles its waiting lease calls", async () => {
+  const browser = createBrowser();
+  const room = await createRoomPeers(emptyRoomCoverage());
+  const tab: SimTab = { alive: true };
+  const opened = openCanonicalTabRoom({
+    room: "unanswered",
+    snapshot: room.snapshot,
+    document: room.base,
+    // No leader ever takes over: the journal never loads.
+    journal: { ...browser.journal(tab), load: () => new Promise(() => {}) },
+    environment: browser.environment(tab),
+    presenceRefreshMs: 0,
+  });
+  const waiting = opened.grantIdLease("actor-0");
+  await settle();
+  opened.close();
+  for (const answer of [
+    await within(waiting),
+    await within(opened.renewIdLease("actor-0", "paragraph")),
+  ])
+    expect(
+      answer !== "unsettled" && answer.isErr() && answer.error.reason,
+    ).toBe("unavailable");
+});

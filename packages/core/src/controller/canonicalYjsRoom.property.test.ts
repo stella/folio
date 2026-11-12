@@ -587,3 +587,32 @@ test("an authority refuses a room seeded from another document", async () => {
   });
   expect(other.isErr() && other.error.reason).toBe("snapshotMismatch");
 });
+
+test("a Yjs room that closes or fails settles its waiting lease calls", async () => {
+  const room = await createRoomPeers(emptyRoomCoverage());
+  // No authority serves either document: only the room can answer.
+  const closing = openCanonicalYjsRoom({
+    doc: new Y.Doc(),
+    snapshot: room.snapshot,
+  });
+  const beforeClose = closing.grantIdLease("actor-0");
+  closing.close();
+  const errors: CanonicalYjsRoomError[] = [];
+  const doc = new Y.Doc();
+  const failing = openCanonicalYjsRoom({
+    doc,
+    snapshot: room.snapshot,
+    onError: (error) => errors.push(error),
+  });
+  const beforeFailure = failing.renewIdLease("actor-0", "paragraph");
+  doc.getMap("folio.canonical.room").set("snapshot", "another");
+  for (const answer of [
+    await beforeClose,
+    await closing.grantIdLease("actor-0"),
+    await beforeFailure,
+    await failing.grantIdLease("actor-0"),
+  ])
+    expect(answer.isErr() && answer.error.reason).toBe("unavailable");
+  expect(errors.map(({ reason }) => reason)).toEqual(["snapshotMismatch"]);
+  expect(failing.connected).toBe(false);
+});

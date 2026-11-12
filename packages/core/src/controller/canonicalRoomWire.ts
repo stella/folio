@@ -5,6 +5,7 @@ import {
   BATCH_REJECTION_REASONS,
   BatchRejection,
   DOCUMENT_OP_TYPES,
+  EXCLUSIVE_PARTS,
   ID_LEASE_KINDS,
   ID_LEASE_REFUSAL_REASONS,
   type IdBlock,
@@ -32,6 +33,7 @@ const REJECTION = v.object({
   opType: v.exactOptional(v.picklist(Object.values(DOCUMENT_OP_TYPES))),
   overType: v.exactOptional(v.picklist(Object.values(DOCUMENT_OP_TYPES))),
   idKind: v.exactOptional(LEASE_KINDS),
+  part: v.exactOptional(v.picklist(Object.values(EXCLUSIVE_PARTS))),
 });
 
 const SUBMISSION = v.variant("type", [
@@ -91,6 +93,7 @@ export const encodeRoomSubmission = (
             ? {}
             : { overType: reason.overType }),
           ...(reason.idKind === undefined ? {} : { idKind: reason.idKind }),
+          ...(reason.part === undefined ? {} : { part: reason.part }),
         },
       };
     }
@@ -170,6 +173,19 @@ export const decodeLeaseRenewal = (
     ? Result.ok(answer.block)
     : Result.err(new IdLeaseRefusal(answer.refusal));
 };
+
+/**
+ * The answer a transport gives a lease call it can no longer forward: the
+ * room closed or stopped following its journal before the authority
+ * answered. Both lease decoders read it as an `unavailable` refusal.
+ */
+export const UNAVAILABLE_LEASE_ANSWER = {
+  ok: false,
+  refusal: {
+    reason: ID_LEASE_REFUSAL_REASONS.UNAVAILABLE,
+    message: "The room closed before its authority answered.",
+  },
+} as const satisfies CanonicalWireLeaseGrant & CanonicalWireLeaseRenewal;
 
 /**
  * A value as JSON carries it: what a structured clone or a Yjs document
