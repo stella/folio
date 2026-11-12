@@ -49,6 +49,7 @@ test.each(["header", "footer"] as const)(
       defineComponent({
         setup() {
           holder.pointer = usePagesPointer({
+            getExperimentalSession: () => "legacy",
             editorView: shallowRef(null),
             pagesRef: ref(null),
             pagesViewportRef: ref(null),

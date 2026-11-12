@@ -35,7 +35,9 @@ for (const renderer of ["legacy", "display-list"]) {
         content: [{ type: "text", text: "Aé\u0301漢1" }],
       },
     ];
-    await page.goto(`/?file=sample.docx&pageRenderer=${renderer}`);
+    await page.goto(
+      `/?session=legacy&file=sample.docx&pageRenderer=${renderer}`,
+    );
     await page.waitForSelector(".layout-page");
     await page.evaluate(
       (document) =>

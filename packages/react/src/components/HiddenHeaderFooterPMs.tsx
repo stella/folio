@@ -22,7 +22,10 @@ import type {
   HeaderFooterPartKind,
 } from "@stll/folio-core/controller/headerFooterEditorManager";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
-import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
+import type {
+  CanonicalRefusalGround,
+  EditorSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
 import type {
   Document,
   HeaderFooter,
@@ -49,7 +52,7 @@ export type HiddenHeaderFooterPMsProps = {
   /** The document model; the header and footer editors only read it. */
   document: ReadonlyDocument | null;
   readOnly?: boolean;
-  experimentalSession?: "canonical";
+  experimentalSession?: EditorSession;
   getCanonicalApi?: () => HiddenEditorApi | null;
   /**
    * The canonical session's own document, read without a copy; null outside

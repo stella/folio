@@ -36,6 +36,7 @@ import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import {
   CANONICAL_GAP,
   type CanonicalRefusalGround,
+  type EditorSession,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type {
@@ -79,7 +80,7 @@ export type NoteEditorManagerDeps = {
    * `HiddenEditorManager.readCanonicalDocument`); null outside a session.
    */
   readCanonicalDocument: () => ReadonlyDocument | null;
-  getExperimentalSession?: (() => "canonical" | undefined) | undefined;
+  getExperimentalSession?: (() => EditorSession | undefined) | undefined;
   onSessionRefusal?:
     | ((reason: string, ground: CanonicalRefusalGround, error?: Error) => void)
     | undefined;

@@ -210,38 +210,38 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   expect(hostIsolation.hostOutline).toBe("3px");
   await folioIdentity.dispose();
 
-  // Subscribe before the transaction: a document edit schedules a repaint that
-  // replaces layout nodes. Model state changing does not mean the paint committed.
-  const folioEdit = await page.evaluate(async () => {
-    const editor = globalThis.__folioSmoke?.getEditorRef();
-    const view = editor?.getEditorRef()?.getView();
-    if (!editor || !view) throw new Error("Folio view is unavailable");
-    const before = view.state.doc.textContent;
-    const insertedText = "Folio edit ";
-    const painted = new Promise<void>((resolve) => {
-      const unsubscribe = editor.onLayoutChange(() => {
-        if (
-          !document
-            .querySelector(".layout-paragraph")
-            ?.textContent?.includes(insertedText)
-        )
-          return;
-        unsubscribe();
-        resolve();
-      });
-    });
-    view.dispatch(view.state.tr.insertText(insertedText, 1));
-    await painted;
-    return {
-      edited: view.state.doc.textContent !== before,
-      rendered: document
-        .querySelector(".layout-paragraph")
-        ?.textContent?.includes(insertedText),
-      sameView:
-        editor.getEditorRef()?.getView() === view && view.dom.isConnected,
-    };
+  // Typing goes through the editor's default engine, the canonical session. A
+  // document edit schedules a repaint that replaces layout nodes, so wait for
+  // the painted text, not the model.
+  const insertedText = "Folio edit ";
+  const viewBeforeEdit = await page.evaluateHandle(() => {
+    const view = globalThis.__folioSmoke
+      ?.getEditorRef()
+      ?.getEditorRef()
+      ?.getView();
+    if (!view) throw new Error("Folio view is unavailable");
+    return view;
   });
-  expect(folioEdit).toEqual({ edited: true, rendered: true, sameView: true });
+  const editedParagraph = page.locator(".layout-paragraph").first();
+  await editedParagraph.scrollIntoViewIfNeeded();
+  await editedParagraph.click();
+  await page.keyboard.type(insertedText);
+  await expect(editedParagraph).toContainText(insertedText);
+  const folioEdit = await page.evaluate(
+    ({ view, text }) => {
+      const current = globalThis.__folioSmoke
+        ?.getEditorRef()
+        ?.getEditorRef()
+        ?.getView();
+      return {
+        edited: current?.state.doc.textContent.includes(text) ?? false,
+        sameView: current === view && view.dom.isConnected,
+      };
+    },
+    { view: viewBeforeEdit, text: insertedText },
+  );
+  await viewBeforeEdit.dispose();
+  expect(folioEdit).toEqual({ edited: true, sameView: true });
 
   const paragraph = page.locator(".layout-paragraph").first();
   await paragraph.scrollIntoViewIfNeeded();

@@ -31,7 +31,7 @@ const MOD = isMac ? "Meta" : "Control";
 
 /** Mount a fixture and force the (deferred) editor view to materialise. */
 async function mountFixture(page: Page, fixture: string): Promise<void> {
-  await page.goto(`/?file=${encodeURIComponent(fixture)}`);
+  await page.goto(`/?session=legacy&file=${encodeURIComponent(fixture)}`);
   await page.waitForSelector('[data-testid="folio-editor"]', {
     timeout: 15_000,
   });
@@ -112,14 +112,14 @@ function firstRowCellCount(page: Page): Promise<number> {
 test("showcase document loads from the recording URL and playground control", async ({
   page,
 }) => {
-  await page.goto("/?showcase");
+  await page.goto("/?session=legacy&showcase");
   await expect(page.locator(".pg-filename")).toHaveText("folio-showcase.docx");
   await expect(page.getByRole("status")).toHaveText("1 of 5");
   await expect(
     page.getByText("MASTER SERVICES AGREEMENT", { exact: true }),
   ).toBeVisible();
 
-  await page.goto("/");
+  await page.goto("/?session=legacy");
   await page.getByRole("button", { name: "Showcase", exact: true }).click();
   await expect(page.locator(".pg-filename")).toHaveText("folio-showcase.docx");
   await expect(page.getByRole("status")).toHaveText("1 of 5");
@@ -128,7 +128,7 @@ test("showcase document loads from the recording URL and playground control", as
 test("fixture load failures expose a machine-readable error state", async ({
   page,
 }) => {
-  await page.goto("/?file=missing-parity-fixture.docx");
+  await page.goto("/?session=legacy&file=missing-parity-fixture.docx");
 
   await expect(page.locator(PLAYGROUND_ERROR_STATUS_SELECTOR)).toHaveText(
     "Fixture not found: missing-parity-fixture.docx",

@@ -94,6 +94,7 @@ const makeDeps = (
     getReadOnly: () => false,
     getDocumentIdentity: () => "0",
     getDocumentContext: () => null,
+    getExperimentalSession: () => "legacy",
     onTransaction: () => {
       spies["onTransaction"].calls += 1;
     },

@@ -122,9 +122,9 @@ const saveAndReopen = async (page: Page): Promise<SavedComments> => {
   return savedComments(bytes);
 };
 
-/** Each flow runs in the default session and in the canonical one. */
+/** Each flow runs in the legacy session and in the canonical one. */
 const SESSIONS = [
-  { title: "", query: "" },
+  { title: " in the legacy session", query: "/?session=legacy" },
   { title: " in the canonical session", query: "/?session=canonical" },
 ] as const;
 

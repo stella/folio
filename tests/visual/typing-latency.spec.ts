@@ -102,7 +102,7 @@ const DOCUMENTS = {
   "numbered list, 3,500 items": () => numberedList(3500),
 } as const;
 
-const ENGINES = ["default", "canonical"] as const;
+const ENGINES = ["legacy", "canonical"] as const;
 const PAINTERS = ["stock", "display-list"] as const;
 /** The React playground serves every painter; the Vue one the stock painter. */
 const HOSTS = [
@@ -117,7 +117,7 @@ const load = async (page: Page, bytes: number[]) => {
     const ref = globalThis.__folioPlayground?.getEditorRef();
     if (!ref) throw new TypeError("The playground editor is not ready.");
     await ref.loadDocumentBuffer(new Uint8Array(data));
-    // The default engine creates its editor view on first use.
+    // The legacy engine creates its editor view on first use.
     ref.ensureEditorView();
   }, bytes);
   await page.waitForFunction(
@@ -255,7 +255,7 @@ for (const [name, markdown] of Object.entries(DOCUMENTS)) {
             ...new Uint8Array(await createDocx(fromMarkdown(markdown()))),
           ];
           const query = new URLSearchParams({ mode: MODE });
-          if (engine === "canonical") query.set("session", "canonical");
+          query.set("session", engine);
           if (painter === "display-list") query.set("pageRenderer", painter);
           // Counts what each layout pass measured, through the layout
           // instrumentation hook the editor already calls.

@@ -165,8 +165,8 @@ const bodyLinesInsideNotes = (page: Page): Promise<string[]> =>
   });
 
 for (const [painter, url] of [
-  ["the default painter", "/"],
-  ["the display-list painter", "/?pageRenderer=display-list"],
+  ["the default painter", "/?session=legacy"],
+  ["the display-list painter", "/?session=legacy&pageRenderer=display-list"],
 ] as const) {
   for (const [shape, note] of [
     ["the next page", { count: 150, bodyLines: 0 }],

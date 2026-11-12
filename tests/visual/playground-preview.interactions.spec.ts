@@ -59,7 +59,7 @@ for (const server of servers) {
       (await request.get(`${server.url}/fixtures/missing.docx`)).status(),
     ).toBe(404);
 
-    await page.goto(`${server.url}/?file=sample.docx`);
+    await page.goto(`${server.url}/?session=legacy&file=sample.docx`);
     await expect(page.locator(".paged-editor__pages").first()).toBeVisible();
     await expect(page.locator(".paged-editor__pages").first()).toContainText(
       /\S/u,

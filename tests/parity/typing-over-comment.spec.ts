@@ -8,6 +8,7 @@ import {
   expect,
   forEachAdapter,
 } from "./parity-fixture";
+import { withLegacyEngine } from "./playgroundHosts";
 
 /**
  * Typing over exactly the words a comment covers keeps the typed words inside
@@ -62,7 +63,7 @@ const load = async (page: Page, bytes: number[]): Promise<void> => {
 };
 
 const open = async (page: Page, adapter: AdapterFixture): Promise<void> => {
-  await page.goto(adapter.baseUrl);
+  await page.goto(withLegacyEngine(`${adapter.baseUrl}/`));
   await expect
     .poll(() => page.evaluate(() => window.__folioParity !== undefined), {
       timeout: 30_000,

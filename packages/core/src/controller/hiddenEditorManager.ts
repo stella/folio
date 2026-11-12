@@ -107,6 +107,7 @@ import {
   CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalRefusalGround,
+  type EditorSession,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type { StyleDefinitions } from "../types/document";
@@ -578,7 +579,7 @@ export type HiddenEditorManagerDeps = {
   getCollaborationModules: () => CollaborationModules | null;
   getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
-  getExperimentalSession?: () => "canonical" | undefined;
+  getExperimentalSession?: () => EditorSession | undefined;
   getEditingMode?: () => EditorMode;
   getSuggestionAuthor?: () => string;
   onSessionRefusal?: (

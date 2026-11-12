@@ -9,7 +9,7 @@ test("Vue inherits locale and reactive system color mode from the host", async (
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto(
-    `${VUE_PLAYGROUND}/?file=sample.docx&locale=de&colorMode=system`,
+    `${VUE_PLAYGROUND}/?session=legacy&file=sample.docx&locale=de&colorMode=system`,
   );
 
   const editor = page.locator(".docx-editor-vue");

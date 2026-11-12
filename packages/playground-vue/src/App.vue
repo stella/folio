@@ -108,8 +108,13 @@ const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const findResultNotifications: (FindResult | null)[] = [];
 const query = new URLSearchParams(window.location.search);
+// The canonical session is the editor's default; `?session=legacy` selects the
+// ProseMirror-owned engine and `?session=canonical` states the default.
+const requestedSession = query.get("session");
 const experimentalSession =
-  query.get("session") === "canonical" ? "canonical" : undefined;
+  requestedSession === "legacy" || requestedSession === "canonical"
+    ? requestedSession
+    : undefined;
 const editorMode = ref<EditorMode>(
   query.get("mode") === "suggesting" ? "suggesting" : "editing",
 );

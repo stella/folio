@@ -71,7 +71,7 @@ type Landing = {
 };
 
 const open = async (page: Page, renderer: string): Promise<void> => {
-  await page.goto(`/?file=${FIXTURE}&pageRenderer=${renderer}`, {
+  await page.goto(`/?session=legacy&file=${FIXTURE}&pageRenderer=${renderer}`, {
     timeout: 60_000,
   });
   await page.waitForSelector('[data-testid="folio-editor"]');

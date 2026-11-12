@@ -28,7 +28,7 @@ for (const fixture of fixtures) {
   test.describe(fixture, () => {
     test(`renders correctly`, async ({ page }) => {
       // Load the fixture via query param
-      await page.goto(`/?file=${encodeURIComponent(fixture)}`);
+      await page.goto(`/?session=legacy&file=${encodeURIComponent(fixture)}`);
 
       // Wait for the editor to finish rendering
       // The editor sets data-testid="folio-editor" on the root element

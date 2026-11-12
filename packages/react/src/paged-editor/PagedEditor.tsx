@@ -231,6 +231,7 @@ import { resolveHeaderFooterSelectionGeometry } from "@stll/folio-core/render-do
 import {
   CANONICAL_GAP,
   type CanonicalRefusalGround,
+  type EditorSession,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Footnote } from "@stll/folio-core/types/content";
@@ -328,7 +329,7 @@ export type PagedEditorProps = {
   accessibleName: string;
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
-  experimentalSession?: "canonical";
+  experimentalSession?: EditorSession;
   /** Adapter-owned document I/O exposed through the shared controller. */
   documentIO: FolioEditorDocumentIO;
   /**

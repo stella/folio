@@ -1,6 +1,6 @@
 /**
  * A point comment (a bare `w:commentReference`, with no range) lives as long
- * as its reference does. The default editor shows it on the text before the
+ * as its reference does. The legacy editor shows it on the text before the
  * reference; deleting that text and accepting the deletion keeps the comment
  * at its reference, as rejecting does, and the save writes it back as a
  * point. Both engines end a review with the same comments.

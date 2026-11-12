@@ -228,7 +228,7 @@ const managerDeps = ({
   host: HTMLElement;
   source: Document;
   readOnly: () => boolean;
-  sessionKind: "canonical" | "default";
+  sessionKind: "canonical" | "legacy";
   onRefusal: (message: string, ground: CanonicalRefusalGround) => void;
   onDestroy?: () => void;
 }) =>
@@ -242,8 +242,7 @@ const managerDeps = ({
     getCollaborationModules: () => null,
     getPrecomputedInitialState: () => null,
     getReadOnly: readOnly,
-    getExperimentalSession: () =>
-      sessionKind === "canonical" ? "canonical" : undefined,
+    getExperimentalSession: () => sessionKind,
     getDocumentIdentity: () => "section-fixture",
     getDocumentContext: () => source,
     onTransaction: () => undefined,
@@ -343,7 +342,7 @@ test("manager section patches refuse read-only and composition without changing 
           notePresence: "absent",
         }),
         readOnly: () => false,
-        sessionKind: "default",
+        sessionKind: "legacy",
         onRefusal: () => undefined,
       }),
     );

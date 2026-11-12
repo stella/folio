@@ -19,6 +19,7 @@ import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorSession } from '@stll/folio-core/types/canonicalCapabilities';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { extractTrackedChanges } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
@@ -142,7 +143,7 @@ export type UseDocxEditorOptions = {
     noteEditorContainer?: Ref<HTMLElement | null>;
     pagesContainer: Ref<HTMLElement | null>;
     readOnly?: MaybeRefOrGetter<boolean>;
-    experimentalSession?: MaybeRefOrGetter<"canonical" | undefined>;
+    experimentalSession?: MaybeRefOrGetter<EditorSession | undefined>;
     pageGap?: number;
     pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
     markupView?: MaybeRefOrGetter<DisplayMode>;

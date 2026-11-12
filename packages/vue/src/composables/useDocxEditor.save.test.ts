@@ -37,6 +37,7 @@ test.each(["settled", "overlapping"])(
       defineComponent({
         setup() {
           holder.editor = useDocxEditor({
+            experimentalSession: "legacy",
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
             onError: (error) => errors.push(error),

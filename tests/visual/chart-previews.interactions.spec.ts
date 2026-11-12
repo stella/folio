@@ -145,8 +145,11 @@ const pixelsOfColour = async (
 };
 
 for (const { painter, query } of [
-  { painter: "default", query: "" },
-  { painter: "display-list", query: "?pageRenderer=display-list" },
+  { painter: "default", query: "?session=legacy" },
+  {
+    painter: "display-list",
+    query: "?session=legacy&pageRenderer=display-list",
+  },
 ]) {
   test(`charts paint and keep their frames on the ${painter} painter`, async ({
     page,
@@ -179,7 +182,7 @@ for (const { painter, query } of [
 test("a painted chart is an image the browser could decode", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?session=legacy");
   await page.locator("#file-input").setInputFiles({
     name: "charts.docx",
     mimeType:

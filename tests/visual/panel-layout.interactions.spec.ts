@@ -42,9 +42,9 @@ const loadDocument = async (
       route.fulfill({ body: Buffer.from(bytes) }),
     );
     // The fixture path starts with no document and loads through documentBuffer.
-    await page.goto("/?file=panel-layout.docx");
+    await page.goto("/?session=legacy&file=panel-layout.docx");
   } else {
-    await page.goto("/");
+    await page.goto("/?session=legacy");
     await page.waitForFunction(
       () => globalThis.__folioPlayground?.getEditorRef() != null,
     );

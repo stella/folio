@@ -92,6 +92,7 @@ test.each(["header", "footer"] as const)(
     };
     let readOnly = false;
     const manager = createHeaderFooterEditorManager({
+      getExperimentalSession: () => "legacy",
       getDocument: () => model,
       readCanonicalDocument: () => null,
       getReadOnly: () => readOnly,

@@ -1,5 +1,5 @@
 /**
- * The hidden editor's `getDocument` builds the default session's document
+ * The hidden editor's `getDocument` builds the legacy session's document
  * from the editor state over the model: the parts no edit reaches (section
  * properties, styles, theme, fonts, the original package) are the model's
  * own, so the document is handed out read-only and a writer copies it first.
@@ -116,7 +116,7 @@ const expectDocumentContract = (
   }).not.toThrow();
 };
 
-describe("the hidden editor's document in the default session", () => {
+describe("the hidden editor's document in the legacy session", () => {
   test("is built over the model: it holds the model's own section properties", () => {
     const model = deepFreeze(
       cloneDocumentWithParagraphPropertySources(

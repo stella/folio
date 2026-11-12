@@ -40,7 +40,7 @@ const REPAIRED_LINE_BUDGET_RATIO = 0.02;
 
 /** Load a document into the playground and wait for the first page to paint. */
 async function openFixture(page: Page, fixture: string): Promise<void> {
-  await page.goto(`/?file=${encodeURIComponent(fixture)}`);
+  await page.goto(`/?session=legacy&file=${encodeURIComponent(fixture)}`);
   await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
   // Web fonts change advances, so a comparison taken mid-swap is meaningless.
   await page.evaluate(async () => {

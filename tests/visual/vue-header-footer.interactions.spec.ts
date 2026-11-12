@@ -5,7 +5,7 @@ import { VUE_ADAPTER } from "../parity/parity-fixture";
 test("Vue header editing uses the shared persistent view and saves outside the body", async ({
   page,
 }) => {
-  await page.goto(`${VUE_ADAPTER.baseUrl}/?file=sample.docx`);
+  await page.goto(`${VUE_ADAPTER.baseUrl}/?session=legacy&file=sample.docx`);
   await expect(page.locator(".layout-page-header").first()).toBeVisible({
     timeout: 30_000,
   });

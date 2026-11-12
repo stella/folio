@@ -2,7 +2,7 @@
  * Numbering a session added and nothing uses any more.
  *
  * The canonical session defines a list when a command starts one, while the
- * default editor derives definitions from the paragraphs that use them when it
+ * legacy editor derives definitions from the paragraphs that use them when it
  * saves. Once a rejection or a later edit leaves such a list unused, the
  * session would still write its definition. The save drops the instances and
  * abstract definitions the source package did not have and no paragraph,

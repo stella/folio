@@ -46,7 +46,10 @@ import {
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
-import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
+import type {
+  CanonicalRefusalGround,
+  EditorSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
 import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
 import type {
   DeepReadonly,
@@ -77,7 +80,7 @@ const EMPTY_EXTERNAL_PLUGINS: Plugin[] = [];
 export type HiddenProseMirrorProps = {
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
-  experimentalSession?: "canonical";
+  experimentalSession?: EditorSession;
   suggestionModeActive?: boolean;
   suggestionAuthor?: string;
   onSessionRefusal?: (

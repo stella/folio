@@ -57,7 +57,7 @@ const source = async () =>
 
 const SEEDS = [1, 7, 42, 2026];
 
-for (const engine of ["default", "canonical"] as const) {
+for (const engine of ["legacy", "canonical"] as const) {
   test.each(SEEDS)(
     `${engine}: once edits settle, the model's toolbar values equal those of a built document (seed %i)`,
     async (seed) => {
@@ -74,9 +74,7 @@ for (const engine of ["default", "canonical"] as const) {
             holder.editor = useDocxEditor({
               hiddenContainer: shallowRef(hidden),
               pagesContainer: shallowRef(pages),
-              ...(engine === "canonical"
-                ? { experimentalSession: "canonical" as const }
-                : {}),
+              experimentalSession: engine,
               onError: (error) => panic(error.message),
             });
             return () => h("div");

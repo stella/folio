@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 
 import { ensureLiveView } from "../parity/parity-fixture";
+import { withLegacyEngine } from "../parity/playgroundHosts";
 
 test("deferred view readiness requests follow the current bridge", async ({
   page,
 }) => {
-  await page.goto("/?paragraphs=12");
+  await page.goto("/?session=legacy&paragraphs=12");
   await expect
     .poll(() => page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0))
     .toBeGreaterThan(0);
@@ -30,7 +31,7 @@ for (const query of ["", "?paragraphs=12", "?file=sample.docx&paragraphs=12"]) {
   test(`playground initializes its document and keeps the scroll bridge through rerenders (${query || "default"})`, async ({
     page,
   }) => {
-    await page.goto(`/${query}`);
+    await page.goto(withLegacyEngine(`/${query}`));
     await expect
       .poll(() =>
         page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0),
@@ -79,7 +80,7 @@ for (const query of ["", "?paragraphs=12", "?file=sample.docx&paragraphs=12"]) {
 test("collaboration startup mounts its editor branch", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/?collaboration=1");
+  await page.goto("/?session=legacy&collaboration=1");
   await expect(page.locator(".pg-collab-header")).toContainText(
     "folio collaboration demo",
   );

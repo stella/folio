@@ -68,7 +68,7 @@ const expectTrackingOn = (page: Page) =>
 for (const { route, turnOn } of ROUTES) {
   test.describe(`tracking turned on through ${route} before the first click`, () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto("/");
+      await page.goto("/?session=legacy");
       await open(page);
       await turnOn(page);
       await expectTrackingOn(page);
@@ -110,7 +110,7 @@ for (const { route, turnOn } of ROUTES) {
 test("an editor mounted with tracking on tracks the first edit", async ({
   page,
 }) => {
-  await page.goto("/?mode=suggesting");
+  await page.goto("/?session=legacy&mode=suggesting");
   await open(page);
   await expectTrackingOn(page);
   await word(page, "Alpha beta gamma").click();
@@ -124,7 +124,7 @@ test("an editor mounted with tracking on tracks the first edit", async ({
 test("tracking stays on for a document opened while it is on", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?session=legacy");
   await open(page);
   await page
     .getByRole("button", { name: "Track Changes", exact: true })
@@ -143,7 +143,7 @@ test("tracking stays on for a document opened while it is on", async ({
 test("tracking turned off before the first click leaves edits direct", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?session=legacy");
   await open(page);
   const toggle = page.getByRole("button", { name: "Toggle Track Changes" });
   await toggle.click();

@@ -16,7 +16,7 @@ declare global {
 test("Vue collaboration seeds and synchronizes the shared document", async ({
   page,
 }) => {
-  await page.goto(`${VUE_ADAPTER.baseUrl}/?collaboration=1`);
+  await page.goto(`${VUE_ADAPTER.baseUrl}/?session=legacy&collaboration=1`);
   await ensureLiveView(page);
   await expect
     .poll(() =>
