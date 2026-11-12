@@ -96,11 +96,7 @@ import type {
   Paragraph,
   StyleDefinitions,
 } from "../types/document";
-import {
-  type DeepReadonly,
-  readModel,
-  type ReadonlyDocument,
-} from "../types/documentModel";
+import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
 import {
   canonicalNativeCells,
   InlineProjectionCache,
@@ -3074,10 +3070,7 @@ export const createCanonicalSession = (
   document: ReadonlyDocument,
   styles?: DeepReadonly<StyleDefinitions> | null,
 ): Result<CanonicalSession, CanonicalSessionError> => {
-  // The session shares the document it opens rather than copying it: no step
-  // of a seed or an edit writes into a document, each makes a new version
-  // sharing what it left as it was, as the versions it hands out already do.
-  const owned = readModel(document);
+  const owned = cloneDocumentWithParagraphPropertySources(document);
   const source = normalizeCanonicalSource(owned);
   const unsupported = unsupportedSeedReason(source.document);
   if (unsupported !== null) return refuse(unsupported);
