@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "title": "PINNED #1350, reported seed 322836536: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked)",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 322836536,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1522566679,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1BF99289",
+          "text": "Invoice clause period clause."
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 3666262177
+    },
+    {
+      "action": "accept all",
+      "seed": 1706813970
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3538379783,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1BF99289",
+          "text": "Goods goods delivery.",
+          "alignment": "right"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "1BF99289",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "1BF99289"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "insertAfterBlock",
+    "deleteBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 322836536"
+}
