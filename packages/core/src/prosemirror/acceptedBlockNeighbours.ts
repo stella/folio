@@ -73,9 +73,12 @@ export const insertionGapStart = (doc: PMNode, position: number): number => {
   let first = $position.index();
   while (first > 0 && goesWhole(parent.child(first - 1))) first -= 1;
   const reached = parent.maybeChild(first - 1);
-  const joinReaches =
-    reached?.type.name === "paragraph" &&
-    expectParagraphAttrs(reached).pPrMark?.kind === "del";
+  // Accepting removes a break pending deletion, or a move's source.
+  const reachedMark =
+    reached?.type.name === "paragraph"
+      ? expectParagraphAttrs(reached).pPrMark?.kind
+      : undefined;
+  const joinReaches = reachedMark === "del" || reachedMark === "moveFrom";
   let at = position;
   for (let index = $position.index(); index > first; index--) {
     const before = parent.child(index - 1);
