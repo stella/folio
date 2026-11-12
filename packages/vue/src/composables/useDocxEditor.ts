@@ -1464,8 +1464,8 @@ export function useDocxEditor(
     parseError.value = null;
     // A host's document may hold reactive proxies; the model is its raw
     // data, which the copies the host is handed can clone.
+    heldNotes = heldUnreferencedNotes(doc);
     docModel.value = rawDocument(doc);
-    heldNotes = heldUnreferencedNotes(docModel.value);
     noteFollower.reset();
     remountForNewDocument();
   }
