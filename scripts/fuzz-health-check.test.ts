@@ -5,6 +5,11 @@ import fc from "fast-check";
 import { HEALTH_MARKER } from "../test/consumer-scenarios/support/fuzz-health";
 import { classifyFuzzRun } from "../test/fuzz-health";
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { parseConsumerArgs } from "./consumer-scenario-args";
 import { checkFuzzHealth } from "./fuzz-health-check";
 
@@ -13,27 +18,31 @@ setDefaultTimeout(propertyTestTimeout(5_000));
 const line = (value: unknown) => `${HEALTH_MARKER}${JSON.stringify(value)}`;
 
 describe("fuzz infrastructure health", () => {
-  test("Bun's actual leading separator argv still selects the requested scenario", async () => {
-    const process = Bun.spawn(
-      [
-        Bun.which("bun") ?? panic("Bun executable unavailable"),
-        "scripts/consumer-scenario-args.ts",
-        "--",
+  test(
+    "Bun's actual leading separator argv still selects the requested scenario",
+    () => {
+      const child = expectExited(
+        runChild([
+          Bun.which("bun") ?? panic("Bun executable unavailable"),
+          "scripts/consumer-scenario-args.ts",
+          "--",
+          "continuous-fuzz.test.ts",
+        ]),
+      );
+      expect(child.exitCode).toBe(0);
+      expect(JSON.parse(child.stdout).files).toEqual([
         "continuous-fuzz.test.ts",
-      ],
-      { stdout: "pipe" },
-    );
-    const output = await new Response(process.stdout).text();
-    expect(await process.exited).toBe(0);
-    expect(JSON.parse(output).files).toEqual(["continuous-fuzz.test.ts"]);
-    expect(
-      parseConsumerArgs(["continuous-fuzz.test.ts"], "/repo").files,
-    ).toEqual(["continuous-fuzz.test.ts"]);
-    expect(
-      parseConsumerArgs(["--", "continuous-fuzz.test.ts"], "/repo").files,
-    ).toEqual(["continuous-fuzz.test.ts"]);
-    expect(() => parseConsumerArgs(["--unknown"], "/repo")).toThrow();
-  });
+      ]);
+      expect(
+        parseConsumerArgs(["continuous-fuzz.test.ts"], "/repo").files,
+      ).toEqual(["continuous-fuzz.test.ts"]);
+      expect(
+        parseConsumerArgs(["--", "continuous-fuzz.test.ts"], "/repo").files,
+      ).toEqual(["continuous-fuzz.test.ts"]);
+      expect(() => parseConsumerArgs(["--unknown"], "/repo")).toThrow();
+    },
+    subprocessTestTimeout(),
+  );
 
   test("fast-check 4's actual errorInstance survives reporting", () => {
     const details = fc.check(

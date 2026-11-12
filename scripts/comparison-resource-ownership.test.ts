@@ -1,8 +1,12 @@
-import { expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import {
   declaresBindings,
   type Node,
@@ -11,6 +15,15 @@ import {
   staticMemberName,
   walkAst,
 } from "./lib/oxc-ast";
+
+setDefaultTimeout(subprocessTestTimeout());
+
+/** Git's output for `args`; git must exit cleanly. */
+const git = (args: string[]): string => {
+  const run = expectExited(runChild(["git", ...args], { cwd: ROOT }));
+  expect(run.exitCode).toBe(0);
+  return run.stdout;
+};
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const OWNERS = new Set([
@@ -60,10 +73,7 @@ test("resource import steps cannot escape the shared sequence through aliases", 
 });
 
 test("production resource imports use the shared numbering and style owner", () => {
-  const files = execFileSync("git", ["ls-files", "packages/core/src"], {
-    cwd: ROOT,
-  })
-    .toString()
+  const files = git(["ls-files", "packages/core/src"])
     .trim()
     .split("\n")
     .filter(

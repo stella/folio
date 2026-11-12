@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
@@ -14,6 +14,11 @@ import {
   failureMarker,
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import {
   consumerReplaySettings,
   consumerSeed,
@@ -32,6 +37,8 @@ import {
   signatureOf,
 } from "./fuzz-failure-issues";
 import type { Issue } from "./fuzz-issue-classes";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const property = (fields: Record<string, unknown>): string =>
   `2026-09-29T10:00:00Z PROPERTY_FAILURE ${JSON.stringify({
@@ -409,29 +416,27 @@ test("report evidence requires a completed replay tied to the pinned main and gr
     expect(() => readReplayAttempts({ ...options, baseSha: groupSha })).toThrow(
       "does not match",
     );
-    const cli = Bun.spawnSync(
-      [
-        "bun",
-        "scripts/fuzz-ejection.ts",
-        "report",
-        "--queue-logs",
-        root,
-        "--base-logs",
-        path.join(root, "missing"),
-        "--group-sha",
-        groupSha,
-        "--base-sha",
-        mainSha,
-        "--dry-run",
-      ],
-      {
-        cwd: path.resolve(import.meta.dir, ".."),
-        stdout: "pipe",
-        stderr: "pipe",
-      },
+    const cli = expectExited(
+      runChild(
+        [
+          "bun",
+          "scripts/fuzz-ejection.ts",
+          "report",
+          "--queue-logs",
+          root,
+          "--base-logs",
+          path.join(root, "missing"),
+          "--group-sha",
+          groupSha,
+          "--base-sha",
+          mainSha,
+          "--dry-run",
+        ],
+        { cwd: path.resolve(import.meta.dir, "..") },
+      ),
     );
     expect(cli.exitCode).not.toBe(0);
-    expect(cli.stderr.toString()).toContain("Main replay did not complete");
+    expect(cli.stderr).toContain("Main replay did not complete");
   });
 });
 

@@ -1,17 +1,29 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { exportedConstAssertionsWithoutTypes } from "./lib/exported-const-assertions";
 
 setDefaultTimeout(scanTestTimeout(30_000));
 
 describe("exported const assertion guard", () => {
-  test("published package sources satisfy the ratchet", async () => {
-    const result = await Bun.$`bun scripts/check-exported-const-assertions.ts`
-      .quiet()
-      .nothrow();
-    expect(result.exitCode).toBe(0);
-  });
+  test(
+    "published package sources satisfy the ratchet",
+    () => {
+      const result = expectExited(
+        runChild([
+          process.execPath,
+          "scripts/check-exported-const-assertions.ts",
+        ]),
+      );
+      expect(result.exitCode).toBe(0);
+    },
+    subprocessTestTimeout(),
+  );
 
   test("rejects the source-carrier declaration without its explicit type", () => {
     const findings = exportedConstAssertionsWithoutTypes(

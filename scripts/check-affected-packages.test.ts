@@ -1,9 +1,17 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { affectedPackagePlan, changedWorkingTreePaths } from "./ci-api-plan";
+
+// The largest test here runs 12 children one after another.
+setDefaultTimeout(subprocessTestTimeout(12));
 
 const fixtures = new Set<string>();
 afterEach(() => {
@@ -37,13 +45,9 @@ test("working-tree paths include committed, staged, unstaged, and untracked file
   const repoRoot = mkdtempSync(path.join(tmpdir(), "folio-affected-packages-"));
   fixtures.add(repoRoot);
   const git = (...args: string[]) => {
-    const result = Bun.spawnSync(["git", ...args], {
-      cwd: repoRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    if (result.exitCode !== 0) throw new TypeError(result.stderr.toString());
-    return result.stdout.toString().trim();
+    const result = expectExited(runChild(["git", ...args], { cwd: repoRoot }));
+    if (result.exitCode !== 0) throw new TypeError(result.stderr);
+    return result.stdout.trim();
   };
   const write = (file: string, contents: string) => {
     const destination = path.join(repoRoot, file);

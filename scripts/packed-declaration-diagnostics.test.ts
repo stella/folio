@@ -4,6 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { declarationResolutionDiagnostics } from "./lib/packed-declaration-diagnostics";
 
 setDefaultTimeout(scanTestTimeout(30_000));
@@ -73,12 +78,11 @@ test(
         "lib",
         "packed-declaration-diagnostics.ts",
       );
-      const refused = Bun.spawnSync([process.execPath, checker, projectFile], {
-        stdout: "pipe",
-        stderr: "pipe",
-      });
+      const refused = expectExited(
+        runChild([process.execPath, checker, projectFile]),
+      );
       expect(refused.exitCode).toBe(1);
-      expect(refused.stderr.toString()).toContain("model/private");
+      expect(refused.stderr).toContain("model/private");
       await writeFile(
         path.join(editor, "index.d.ts"),
         'export type { Missing } from "model";',
@@ -118,5 +122,6 @@ test(
       await rm(consumer, { recursive: true, force: true });
     }
   },
-  scanTestTimeout(30_000),
+  // The declaration checks run in this process; the refusal is one child.
+  subprocessTestTimeout(1, 30_000),
 );

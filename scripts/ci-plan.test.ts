@@ -16,7 +16,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import editorWebPlaywright from "../packages/editor-web/playwright.config";
-import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import {
   BROWSER_INPUT_REGRESSIONS,
   PINNED_BROWSER_INPUT_TAG,
@@ -42,7 +46,7 @@ import {
 } from "./ci-test-shards";
 import type { ModuleGraph } from "./ci-test-shards";
 
-setDefaultTimeout(scanTestTimeout(30_000));
+setDefaultTimeout(subprocessTestTimeout(14));
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
@@ -175,9 +179,9 @@ describe("CI plan", () => {
       changedTypecheckPaths({
         repoRoot: REPO_ROOT,
         base: "f".repeat(40),
-        head: Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT })
-          .stdout.toString()
-          .trim(),
+        head: expectExited(
+          runChild(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT }),
+        ).stdout.trim(),
         fallbackOnMissingBase: true,
       }),
     ).toEqual(["package.json"]);
@@ -188,13 +192,11 @@ describe("CI plan", () => {
       path.join(tmpdir(), "folio-typecheck-diff-"),
     );
     const git = (...args: string[]) => {
-      const result = Bun.spawnSync(["git", ...args], {
-        cwd: fixtureRoot,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
+      const result = expectExited(
+        runChild(["git", ...args], { cwd: fixtureRoot }),
+      );
       expect(result.exitCode).toBe(0);
-      return result.stdout.toString().trim();
+      return result.stdout.trim();
     };
     const commit = (message: string) =>
       git(
@@ -272,12 +274,11 @@ describe("CI plan", () => {
   });
 
   test("discovery covers every committed Bun test outside declared Playwright directories", () => {
-    const tracked = Bun.spawnSync(
-      ["git", "ls-files", "--", "packages", "scripts", "benchmarks/compare"],
-      {
-        cwd: REPO_ROOT,
-        stdout: "pipe",
-      },
+    const tracked = expectExited(
+      runChild(
+        ["git", "ls-files", "--", "packages", "scripts", "benchmarks/compare"],
+        { cwd: REPO_ROOT },
+      ),
     );
     expect(tracked.exitCode).toBe(0);
     const testDir = editorWebPlaywright.testDir;
@@ -548,13 +549,11 @@ describe("CI plan", () => {
   test("changed-path discovery excludes deleted tests and deleted source before selection", () => {
     const fixtureRoot = mkdtempSync(path.join(tmpdir(), "folio-ci-diff-"));
     const git = (...args: string[]) => {
-      const result = Bun.spawnSync(["git", ...args], {
-        cwd: fixtureRoot,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
+      const result = expectExited(
+        runChild(["git", ...args], { cwd: fixtureRoot }),
+      );
       expect(result.exitCode).toBe(0);
-      return result.stdout.toString().trim();
+      return result.stdout.trim();
     };
     const write = (file: string, text: string) => {
       const target = path.join(fixtureRoot, file);
@@ -798,19 +797,21 @@ describe("CI plan", () => {
         5,
       );
 
-      const listing = Bun.spawnSync(
-        [
-          "bunx",
-          "playwright",
-          "test",
-          "--project=browser-input-pinned",
-          "--list",
-          "--reporter=json",
-        ],
-        { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
+      const listing = expectExited(
+        runChild(
+          [
+            "bunx",
+            "playwright",
+            "test",
+            "--project=browser-input-pinned",
+            "--list",
+            "--reporter=json",
+          ],
+          { cwd: REPO_ROOT },
+        ),
       );
-      expect(listing.exitCode, listing.stderr.toString()).toBe(0);
-      const report: unknown = JSON.parse(listing.stdout.toString());
+      expect(listing.exitCode, listing.stderr).toBe(0);
+      const report: unknown = JSON.parse(listing.stdout);
       if (!isRecord(report))
         throw new TypeError("Invalid pinned project report");
       expect(report["errors"]).toEqual([]);
@@ -849,7 +850,7 @@ describe("CI plan", () => {
       );
       expect(titles.length).toBeGreaterThan(0);
     },
-    scanTestTimeout(30_000),
+    subprocessTestTimeout(),
   );
 
   test("benchmarks and extended proofs run only on demand", () => {

@@ -1,6 +1,5 @@
-import { afterEach, describe, test } from "bun:test";
+import { afterEach, describe, setDefaultTimeout, test } from "bun:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -15,14 +14,32 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { ensurePlaygroundBuild } from "./playground-build";
 
+// The largest test here runs 21 children one after another.
+setDefaultTimeout(subprocessTestTimeout(21));
+
 const temporaryRoots: string[] = [];
+
+/** How git ended for `args` in the fixture repository. */
+const git = (repoRoot: string, args: string[]) =>
+  expectExited(runChild(["git", ...args], { cwd: repoRoot }));
+
+/** Run git in the fixture repository; it must exit cleanly. */
+const gitOk = (repoRoot: string, args: string[]): void => {
+  const run = git(repoRoot, args);
+  assert.equal(run.exitCode, 0, run.stderr);
+};
 
 const createRepository = (): { repoRoot: string; packageDir: string } => {
   const repoRoot = mkdtempSync(join(tmpdir(), "folio-playground-build-"));
   temporaryRoots.push(repoRoot);
-  execFileSync("git", ["init", "--quiet"], { cwd: repoRoot });
+  gitOk(repoRoot, ["init", "--quiet"]);
   const packageDir = join(repoRoot, "packages", "playground");
   mkdirSync(packageDir, { recursive: true });
   writeFileSync(
@@ -37,7 +54,7 @@ const createRepository = (): { repoRoot: string; packageDir: string } => {
     "dist/\npackages/playground/.env.production.local\n",
   );
   writeFileSync(join(packageDir, "index.html"), "<main>fixture</main>");
-  execFileSync("git", ["add", "-A"], { cwd: repoRoot });
+  gitOk(repoRoot, ["add", "-A"]);
   return { repoRoot, packageDir };
 };
 
@@ -93,10 +110,7 @@ describe("incremental playground build cache", () => {
     const { repoRoot, packageDir } = createRepository();
     const envPath = join(packageDir, ".env.production.local");
     writeFileSync(envPath, "VITE_FEATURE=one");
-    execFileSync("git", ["check-ignore", "--quiet", envPath], {
-      cwd: repoRoot,
-      stdio: "ignore",
-    });
+    gitOk(repoRoot, ["check-ignore", "--quiet", envPath]);
     const ensureBuild = (build: () => void) =>
       ensurePlaygroundBuild({ repoRoot, packageDir, build, log: () => {} });
 
@@ -312,10 +326,7 @@ describe("run output in the checkout", () => {
     assert.ok(written.has("fuzz-artifacts/browser/browser-fuzz.log"));
     assert.ok(written.has("fuzz-playwright/browser"));
     const tracked = [...written].filter((path) => {
-      const { status } = spawnSync("git", ["check-ignore", "-q", path], {
-        cwd: repoRoot,
-      });
-      return status !== 0;
+      return git(repoRoot, ["check-ignore", "-q", path]).exitCode !== 0;
     });
     assert.deepEqual(tracked, []);
   });

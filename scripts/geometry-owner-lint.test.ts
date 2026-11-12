@@ -5,6 +5,11 @@ import { z } from "zod";
 
 import { IMAGE_RESIZE_ADAPTERS } from "../.oxlint-plugins/folio-geometry-owners";
 import { IMAGE_RESIZE_HANDLES } from "../packages/core/src/utils/imageResize";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const RULE = "folio-geometry-owners(image-resize-owner)";
@@ -117,87 +122,96 @@ const CASES = {
   },
 };
 
-test("image resize ownership covers React and Vue adapter paths and bypass forms", () => {
-  const fixtureRoot = path.join(
-    REPOSITORY_ROOT,
-    "test",
-    "__fixtures__",
-    "geometry-owner",
-  );
-  mkdirSync(fixtureRoot, { recursive: true });
-  const directory = mkdtempSync(path.join(fixtureRoot, "run-"));
-  const fixtures: Array<{ filename: string; count: number; other: string[] }> =
-    [];
-
-  try {
-    for (const [adapterName, adapter] of Object.entries(
-      IMAGE_RESIZE_ADAPTERS,
-    )) {
-      for (const [caseName, fixture] of Object.entries(CASES)) {
-        const { prelude, body, count } = fixture;
-        const filename = path.join(
-          directory,
-          `${adapterName}-${caseName}`,
-          adapter.file,
-        );
-        const script = `${prelude}\n\nconst ${adapter.handler} = () => { ${body} };\nvoid ${adapter.handler};`;
-        const source = adapter.file.endsWith(".vue")
-          ? `<script setup lang="ts">\n${script}\n</script>`
-          : script;
-        mkdirSync(path.dirname(filename), { recursive: true });
-        writeFileSync(filename, source);
-        const other = "other" in fixture ? fixture.other : [];
-        fixtures.push({
-          filename,
-          count,
-          other: typeof other === "function" ? other(adapter.file) : other,
-        });
-      }
-    }
-
-    const result = Bun.spawnSync(
-      [
-        "bun",
-        "--bun",
-        "oxlint",
-        "-c",
-        "oxlint.fixtures.config.ts",
-        "--no-ignore",
-        "--format",
-        "json",
-        directory,
-      ],
-      { cwd: REPOSITORY_ROOT },
+test(
+  "image resize ownership covers React and Vue adapter paths and bypass forms",
+  () => {
+    const fixtureRoot = path.join(
+      REPOSITORY_ROOT,
+      "test",
+      "__fixtures__",
+      "geometry-owner",
     );
-    const output = `${result.stdout.toString()}${result.stderr.toString()}`;
-    expect(output).not.toContain("Failed to load");
-    expect(output).not.toContain("Failed to parse");
-    const { diagnostics } = z
-      .object({
-        diagnostics: z.array(
-          z.object({ code: z.string(), filename: z.string() }),
-        ),
-      })
-      .parse(JSON.parse(result.stdout.toString()));
+    mkdirSync(fixtureRoot, { recursive: true });
+    const directory = mkdtempSync(path.join(fixtureRoot, "run-"));
+    const fixtures: Array<{
+      filename: string;
+      count: number;
+      other: string[];
+    }> = [];
 
-    for (const fixture of fixtures) {
-      const codes = diagnostics
-        .filter(
-          ({ filename }) =>
-            path.resolve(REPOSITORY_ROOT, filename) === fixture.filename,
-        )
-        .map(({ code }) => code);
-      expect(
-        codes.filter((code) => code === RULE),
-        fixture.filename,
-      ).toHaveLength(fixture.count);
-      expect(
-        codes.filter((code) => code !== RULE).sort(),
-        fixture.filename,
-      ).toEqual([...fixture.other].sort());
+    try {
+      for (const [adapterName, adapter] of Object.entries(
+        IMAGE_RESIZE_ADAPTERS,
+      )) {
+        for (const [caseName, fixture] of Object.entries(CASES)) {
+          const { prelude, body, count } = fixture;
+          const filename = path.join(
+            directory,
+            `${adapterName}-${caseName}`,
+            adapter.file,
+          );
+          const script = `${prelude}\n\nconst ${adapter.handler} = () => { ${body} };\nvoid ${adapter.handler};`;
+          const source = adapter.file.endsWith(".vue")
+            ? `<script setup lang="ts">\n${script}\n</script>`
+            : script;
+          mkdirSync(path.dirname(filename), { recursive: true });
+          writeFileSync(filename, source);
+          const other = "other" in fixture ? fixture.other : [];
+          fixtures.push({
+            filename,
+            count,
+            other: typeof other === "function" ? other(adapter.file) : other,
+          });
+        }
+      }
+
+      const result = expectExited(
+        runChild(
+          [
+            "bun",
+            "--bun",
+            "oxlint",
+            "-c",
+            "oxlint.fixtures.config.ts",
+            "--no-ignore",
+            "--format",
+            "json",
+            directory,
+          ],
+          { cwd: REPOSITORY_ROOT },
+        ),
+      );
+      const output = `${result.stdout}${result.stderr}`;
+      expect(output).not.toContain("Failed to load");
+      expect(output).not.toContain("Failed to parse");
+      const { diagnostics } = z
+        .object({
+          diagnostics: z.array(
+            z.object({ code: z.string(), filename: z.string() }),
+          ),
+        })
+        .parse(JSON.parse(result.stdout));
+
+      for (const fixture of fixtures) {
+        const codes = diagnostics
+          .filter(
+            ({ filename }) =>
+              path.resolve(REPOSITORY_ROOT, filename) === fixture.filename,
+          )
+          .map(({ code }) => code);
+        expect(
+          codes.filter((code) => code === RULE),
+          fixture.filename,
+        ).toHaveLength(fixture.count);
+        expect(
+          codes.filter((code) => code !== RULE).sort(),
+          fixture.filename,
+        ).toEqual([...fixture.other].sort());
+      }
+      expect(result.exitCode).toBe(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
-    expect(result.exitCode).toBe(1);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-}, 30_000);
+  },
+  subprocessTestTimeout(),
+);

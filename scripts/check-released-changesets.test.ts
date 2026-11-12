@@ -1,10 +1,19 @@
 // A change must not add a changeset a release already published: each case
 // builds a small repository with a main line, a release that deletes the
 // changesets it publishes, and a change, then runs the check against it.
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+// The largest test here runs 17 children one after another.
+setDefaultTimeout(subprocessTestTimeout(17));
 
 const SCRIPT = path.join(import.meta.dir, "check-released-changesets.sh");
 
@@ -19,19 +28,21 @@ const repository = () => {
   const directory = mkdtempSync(path.join(tmpdir(), "released-changesets-"));
   repositories.push(directory);
   const git = (...args: string[]) => {
-    const run = Bun.spawnSync(["git", ...args], {
-      cwd: directory,
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: "Fixture",
-        GIT_AUTHOR_EMAIL: "fixture@example.com",
-        GIT_COMMITTER_NAME: "Fixture",
-        GIT_COMMITTER_EMAIL: "fixture@example.com",
-      },
-    });
+    const run = expectExited(
+      runChild(["git", ...args], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "Fixture",
+          GIT_AUTHOR_EMAIL: "fixture@example.com",
+          GIT_COMMITTER_NAME: "Fixture",
+          GIT_COMMITTER_EMAIL: "fixture@example.com",
+        },
+      }),
+    );
     if (run.exitCode !== 0)
-      throw new Error(`git ${args.join(" ")}: ${run.stderr.toString()}`);
-    return run.stdout.toString().trim();
+      throw new Error(`git ${args.join(" ")}: ${run.stderr}`);
+    return run.stdout.trim();
   };
   const write = (file: string, text = "---\n---\n\nA note.\n") => {
     mkdirSync(path.dirname(path.join(directory, file)), { recursive: true });
@@ -42,10 +53,10 @@ const repository = () => {
     git("commit", "--quiet", "--allow-empty", "-m", message);
   };
   const check = (base = "main") => {
-    const run = Bun.spawnSync(["bash", SCRIPT, "main", base, "HEAD"], {
-      cwd: directory,
-    });
-    return { code: run.exitCode, out: run.stdout.toString() };
+    const run = expectExited(
+      runChild(["bash", SCRIPT, "main", base, "HEAD"], { cwd: directory }),
+    );
+    return { code: run.exitCode, out: run.stdout };
   };
   git("init", "--quiet", "--initial-branch=main");
   write("README.md", "fixture\n");

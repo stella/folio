@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import {
   mkdirSync,
@@ -16,6 +16,11 @@ import {
   shellQuote,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import {
   CONSUMER_SCENARIO_REPLAY_INPUTS,
   consumerScenarioInputs,
@@ -53,6 +58,8 @@ import {
   TITLE_PREFIX,
 } from "./fuzz-failure-issues";
 import { fileClasses, type Issue, type IssueStore } from "./fuzz-issue-classes";
+
+setDefaultTimeout(subprocessTestTimeout(2));
 
 const marker = (seed: number, message = "step 3: no comment") =>
   failureMarker({
@@ -1483,29 +1490,31 @@ test("a malformed signature body fails instead of opening a duplicate", async ()
 
 test("a failed run without markers still files one issue per lane, and stays red", () => {
   const run = (laneName: string) =>
-    Bun.spawnSync(
-      [
-        "bun",
-        "scripts/fuzz-failure-issues.ts",
-        "--dry-run",
-        "--lane",
-        laneName,
-        "--result",
-        "failure",
-        "--trigger",
-        "scheduled",
-        "--run-url",
-        "https://example.test/runs/1",
-      ],
-      { cwd: path.join(import.meta.dir, "..") },
+    expectExited(
+      runChild(
+        [
+          "bun",
+          "scripts/fuzz-failure-issues.ts",
+          "--dry-run",
+          "--lane",
+          laneName,
+          "--result",
+          "failure",
+          "--trigger",
+          "scheduled",
+          "--run-url",
+          "https://example.test/runs/1",
+        ],
+        { cwd: path.join(import.meta.dir, "..") },
+      ),
     );
   const browser = run("browser");
-  const output = browser.stdout.toString();
+  const output = browser.stdout;
   expect(browser.exitCode).not.toBe(0);
   expect(output).toContain("fuzz lane browser");
   expect(output).toContain("The run failed without checking anything");
   expect(output).toContain("https://example.test/runs/1");
-  expect(browser.stderr.toString()).toContain("0 FOLIO_FAILURE fingerprints");
+  expect(browser.stderr).toContain("0 FOLIO_FAILURE fingerprints");
   const [first] = brokenRunFindings("browser", "a");
   const [again] = brokenRunFindings("browser", "b");
   const [other] = brokenRunFindings("cross-host", "a");
@@ -1565,28 +1574,26 @@ test("artifact discovery keeps matrix logs separate and scopes shared browser ar
     ]);
     const empty = path.join(root, "empty.log");
     writeFileSync(empty, "failed before emitting a marker");
-    const cli = Bun.spawnSync(
-      [
-        "bun",
-        "scripts/fuzz-failure-issues.ts",
-        "--log",
-        empty,
-        "--lane",
-        "nightly-swarm-fuzz",
-        "--result",
-        "failure",
-        "--trigger",
-        "scheduled",
-        "--dry-run",
-      ],
-      {
-        cwd: path.resolve(import.meta.dir, ".."),
-        stdout: "pipe",
-        stderr: "pipe",
-      },
+    const cli = expectExited(
+      runChild(
+        [
+          "bun",
+          "scripts/fuzz-failure-issues.ts",
+          "--log",
+          empty,
+          "--lane",
+          "nightly-swarm-fuzz",
+          "--result",
+          "failure",
+          "--trigger",
+          "scheduled",
+          "--dry-run",
+        ],
+        { cwd: path.resolve(import.meta.dir, "..") },
+      ),
     );
     expect(cli.exitCode).not.toBe(0);
-    expect(cli.stderr.toString()).toContain("0 FOLIO_FAILURE fingerprints");
+    expect(cli.stderr).toContain("0 FOLIO_FAILURE fingerprints");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
