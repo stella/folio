@@ -1,0 +1,95 @@
+name: Scratch measure (canonical open, one conversion)
+
+on:
+  push:
+    branches: [scratch/canonical-open-single-conversion-measure]
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      # The main commit the branch is cut from: the "main" side is the branch with
+      # its changed source files restored from this commit.
+      BASE_SHA: 4710b3d571bb2f604b348a9a9b7cf4609d468896
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+      - run: bun install --frozen-lockfile
+      - name: Install Playwright Chromium
+        uses: ./.github/actions/playwright-deps
+      - name: Fetch LIR011
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/LIR011.docx" https://raw.githubusercontent.com/sergey-tihon/Clippit/9dde33e87ec2a7853b47817a6531146da9ea59f8/TestFiles/LIR011-en-US-00001.docx
+          echo "081b67114122d684ae6dcc4bf249964ba0e3b908c3fb58be70db30592cd0d4c9  $RUNNER_TEMP/LIR011.docx" | sha256sum -c -
+      - name: Build the branch and main playgrounds
+        run: |
+          set -eu
+          bun --filter @stll/playground build
+          mv packages/playground/dist packages/playground/dist-branch
+          changed=$(git diff --name-only --diff-filter=M "$BASE_SHA" HEAD~1 -- packages ':!**/*.test.ts' ':!**/*.test.tsx')
+          echo "restored from $BASE_SHA: $changed"
+          git checkout "$BASE_SHA" -- $changed
+          git status --short -uno
+          bun --filter @stll/playground build
+          mv packages/playground/dist packages/playground/dist-main
+          git checkout HEAD -- $changed
+          (cd packages/playground/dist-branch && find . -type f -name '*.js' | sort | xargs sha256sum | sha256sum)
+          (cd packages/playground/dist-main && find . -type f -name '*.js' | sort | xargs sha256sum | sha256sum)
+      - name: Serve both
+        run: |
+          cd packages/playground
+          (FOLIO_PLAYGROUND_PORT=4200 bunx vite preview --outDir dist-main > "$RUNNER_TEMP/preview-main.log" 2>&1 &)
+          (FOLIO_PLAYGROUND_PORT=4201 bunx vite preview --outDir dist-branch > "$RUNNER_TEMP/preview-branch.log" 2>&1 &)
+          for port in 4200 4201; do
+            for i in $(seq 1 60); do curl -sf "http://localhost:$port" > /dev/null && break; sleep 2; done
+            curl -sf "http://localhost:$port" > /dev/null
+          done
+      - name: Rounds
+        env:
+          FOLIO_ZZ_LIR011: ${{ runner.temp }}/LIR011.docx
+        run: bash scripts/zz-splice/rounds.sh "$RUNNER_TEMP/splice" 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: oneconv-timings
+          path: ${{ runner.temp }}/splice
+          retention-days: 7
+
+  break:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BASE_SHA: 4710b3d571bb2f604b348a9a9b7cf4609d468896
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+      - run: bun install --frozen-lockfile
+      - name: Conversion test, branch code
+        working-directory: packages/react
+        run: bun test src/components/DocxEditor.canonicalOpenConversions.test.tsx
+      - name: Conversion test, main's eager precompute restored (must fail)
+        working-directory: packages/react
+        run: |
+          set +e
+          git checkout "$BASE_SHA" -- src/paged-editor/PagedEditor.tsx src/paged-editor/HiddenProseMirror.tsx ../core/src/controller/hiddenEditorManager.ts
+          git status --short -uno
+          bun test src/components/DocxEditor.canonicalOpenConversions.test.tsx > "$RUNNER_TEMP/break.log" 2>&1
+          rc=$?
+          cat "$RUNNER_TEMP/break.log"
+          if [ "$rc" = 0 ]; then echo "BREAK NOT DETECTED"; exit 1; fi
+          grep -E "Expected|Received|\(fail\)|\(pass\)" "$RUNNER_TEMP/break.log"
+          echo "BREAK DETECTED"
