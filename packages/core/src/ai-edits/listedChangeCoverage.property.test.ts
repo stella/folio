@@ -48,7 +48,7 @@ describe("the change list reaches every revision", () => {
             if (applied.isErr()) throw applied.error;
             expect(coverageProblem(applied.value.document)).toBeNull();
           }),
-          { numRuns: 20, id: `the change list reaches a tracked ${kind}` },
+          { numRuns: 20, id: "the change list reaches a tracked operation" },
         );
       },
       propertyTestTimeout(60_000),
