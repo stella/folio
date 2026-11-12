@@ -200,6 +200,10 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
     ["CANONICAL_GAP", "CANONICAL_CAPABILITIES"],
   ],
   ["packages/core/src/docx/canonicalSave", ["serializeCanonicalSave"]],
+  // A host resolves the ids its change list shows, so the lists only choose
+  // what to resolve; what stays pending is read from the model's own census.
+  ["packages/core/src/ai-edits/read", ["getTrackedChangesFromDoc"]],
+  ["packages/core/src/ai-edits/headless", ["FolioDocxReviewer"]],
   [
     "packages/core/src/__tests__/editorHarness",
     [
