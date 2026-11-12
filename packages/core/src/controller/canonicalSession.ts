@@ -78,6 +78,7 @@ import {
   canonicalSelectionRange,
 } from "../prosemirror/canonicalSelectionRange";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
+import { storyConversionOptions } from "../prosemirror/conversion/storyConversionOptions";
 import {
   collectPairedBookmarkIds,
   footnoteToProseDoc,
@@ -1327,12 +1328,11 @@ const project = ({
   const currentStyles = Object.hasOwn(document.package, "styles")
     ? document.package.styles
     : styles;
-  const options = {
-    ...(currentStyles == null ? {} : { styles: currentStyles }),
-    ...(document.package.theme === undefined
-      ? {}
-      : { theme: document.package.theme }),
-  };
+  const options = storyConversionOptions({
+    styles: currentStyles,
+    theme: document.package.theme,
+    numbering: document.package.numbering,
+  });
   const converted = Result.try({
     try: () => {
       if (story === OP_STORIES.MAIN)

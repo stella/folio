@@ -16,6 +16,7 @@ import {
   visitParagraphRuns,
 } from "../docx/paragraphTraversal";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { storyConversionOptions } from "../prosemirror/conversion/storyConversionOptions";
 import {
   footnoteToProseDoc,
   type ToProseDocOptions,
@@ -273,11 +274,7 @@ export const createNoteEditorManager = (
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
-    const proseOptions: ToProseDocOptions = {
-      ...(styles ? { styles } : {}),
-      ...(theme !== undefined ? { theme } : {}),
-      ...(numbering !== undefined ? { numbering } : {}),
-    };
+    const proseOptions = storyConversionOptions({ styles, theme, numbering });
     const externalPlugins = deps.getPlugins?.() ?? EMPTY_PLUGINS;
     const wanted = new Map(
       enumerateDocumentNoteStories(document).map(
@@ -537,13 +534,11 @@ export const createNoteEditorManager = (
         // A list started in this story defined its instance on its paragraphs.
         const lists = storyListNumbering(story.view.state, numbering);
         numbering = lists.numbering;
-        const proseOptions: ToProseDocOptions = {
-          ...(story.appliedStyles ? { styles: story.appliedStyles } : {}),
-          ...(story.appliedTheme !== undefined
-            ? { theme: story.appliedTheme }
-            : {}),
-          ...(numbering !== undefined ? { numbering } : {}),
-        };
+        const proseOptions = storyConversionOptions({
+          styles: story.appliedStyles,
+          theme: story.appliedTheme,
+          numbering,
+        });
         if (story.note.kind === "footnote") {
           const index =
             footnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;

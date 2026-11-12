@@ -6,9 +6,12 @@ import { storyBody, storyParagraphs } from "../blocks";
 import { paragraphLength } from "../offsets";
 import type { DocumentOpRefusal } from "../refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, SPLIT_HALVES } from "../types";
-import { NO_SEQUENCED_EFFECT, type SequencedBatch } from "./envelope";
-
-const TOUCHED_BLOCKS_EFFECT = "touchedBlocks";
+import {
+  NO_SEQUENCED_EFFECT,
+  type SequencedBatch,
+  sequencedEffectType,
+} from "./envelope";
+import { blockScopedEffect, TOUCHED_BLOCKS_EFFECT } from "./scope";
 
 type AppliedBatch = {
   document: Document;
@@ -67,6 +70,13 @@ export const applyBatch = (
         type: TOUCHED_BLOCKS_EFFECT,
         blockIds: [...new Set([...modified, ...inserted, ...removed])],
       };
+    } else if (sequencedEffectType(op.type) === TOUCHED_BLOCKS_EFFECT) {
+      effect = blockScopedEffect(
+        current,
+        applied.value.document,
+        op,
+        applied.value.touched,
+      );
     }
     current = applied.value.document;
     inverses.push(applied.value.inverse);
