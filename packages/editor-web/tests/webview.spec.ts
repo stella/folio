@@ -172,11 +172,15 @@ test("the VS Code bundle round-trips a document under the webview policy", async
                 typeof m === "object" &&
                 m !== null &&
                 "type" in m &&
-                String((m as { type: string }).type).startsWith("serializ"),
+                String((m as { type: string }).type).length > 0,
             )
             .map((m) => JSON.stringify(m).slice(0, 2000)),
         ),
       ),
+  );
+  console.log(
+    "WEBVIEWERRORS " +
+      JSON.stringify({ consoleErrors, pageErrors }).slice(0, 8000),
   );
   await waitForSent(page, { type: "serialized", requestId: 1 });
   const [firstSave] = await sentOfType(page, "serialized");
