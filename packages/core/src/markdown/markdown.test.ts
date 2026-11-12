@@ -868,6 +868,31 @@ describe("toMarkdown — tables", () => {
     expect(md([table])).toBe("| A | B |\n| --- | --- |\n| 1 | 2 |");
   });
 
+  test("a heading or quote in a cell writes its text, as a cell holds inline content", () => {
+    // GFM reads `## ` and `> ` inside a cell as literal text, so the cell
+    // would show words the readers that list the paragraph do not.
+    for (const styleId of ["Heading1", "Heading2", "Heading3", "Quote"]) {
+      const table: BlockContent = {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [para([run("Price")], { styleId })],
+              },
+              { type: "tableCell", content: [para([run("12 months")])] },
+            ],
+          },
+        ],
+      };
+      expect(md([table])).toBe("| Price | 12 months |\n| --- | --- |");
+      // The same paragraph outside the table keeps its block syntax.
+      expect(md([para([run("Price")], { styleId })])).not.toBe("Price");
+    }
+  });
+
   test("a literal pipe in a cell is encoded so it is not a column break", () => {
     const table: BlockContent = {
       type: "table",

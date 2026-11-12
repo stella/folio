@@ -53,7 +53,7 @@ export function renderBlocks(
         // A hidden-marker (`w:vanish`) list paragraph renders as plain prose,
         // and a numbered heading as a heading, so neither joins a run of list
         // items (neither may suppress the blank line around one).
-        return renderParagraphBlock(ctx, pkg, block);
+        return renderParagraphBlock(ctx, pkg, block, "flow");
       }
       case "table": {
         ctx.listIndentWidths = [];
