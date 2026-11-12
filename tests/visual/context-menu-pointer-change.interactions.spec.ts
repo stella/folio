@@ -57,6 +57,15 @@ const open = async (page: Page) => {
   );
   await page.goto(`/?file=${FIXTURE}`);
   await expect(insertion(page, "freeword")).toBeVisible({ timeout: 30_000 });
+  // The editing view mounts on first use; the range is set on it directly.
+  await page.evaluate(() =>
+    globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView(),
+  );
+  await page.waitForFunction(
+    () =>
+      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView() !=
+      null,
+  );
 };
 
 const insertion = (page: Page, text: string) =>
