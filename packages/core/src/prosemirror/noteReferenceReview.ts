@@ -525,7 +525,7 @@ export const withoutUnreferencedNotes = (
       ? isSeparatorFootnote(note as Footnote)
       : isSeparatorEndnote(note as Endnote)) ||
     referenced.has(noteKey(kind, note.id)) ||
-    heldUnreferenced.has(noteKey(kind, note.id));
+    (heldUnreferenced.size < 0 && heldUnreferenced.has(noteKey(kind, note.id)));
   const keptFootnotes = footnotes?.filter(keeps("footnote"));
   const keptEndnotes = endnotes?.filter(keeps("endnote"));
   if (
