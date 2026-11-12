@@ -263,7 +263,7 @@ test("durations are credited to the job that declares them", () => {
             strategy: { matrix: { pkg: ["a", "b"] } },
             "timeout-minutes": 10,
           },
-          call: { name: "Report", uses: "./callee.yml" },
+          call: { name: "Report", uses: "./.github/workflows/callee.yml" },
           // Same displayed name twice: not credited to either.
           twin: { name: "Twin", "timeout-minutes": 5 },
           twin2: { name: "Twin", "timeout-minutes": 5 },
@@ -271,7 +271,7 @@ test("durations are credited to the job that declares them", () => {
       },
     ],
     [
-      "callee.yml",
+      ".github/workflows/callee.yml",
       { jobs: { file: { name: "File issues", "timeout-minutes": 5 } } },
     ],
   ]);
@@ -295,7 +295,9 @@ test("durations are credited to the job that declares them", () => {
     },
   ];
   expect(aggregateWorkflowDurations(runs, workflows)).toEqual({
-    "callee.yml": { file: { job: { p95Seconds: 20, samples: 1 } } },
+    ".github/workflows/callee.yml": {
+      file: { job: { p95Seconds: 20, samples: 1 } },
+    },
     "caller.yml": {
       matrix: {
         job: { p95Seconds: 200, samples: 2 },
