@@ -1,0 +1,43 @@
+name: Scratch profile (canonical flip)
+
+on:
+  push:
+    branches: [scratch/profile-canonical-flip]
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+      - run: bun install --frozen-lockfile
+      - name: Install Playwright Chromium
+        uses: ./.github/actions/playwright-deps
+      - name: Fetch LIR011
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/LIR011.docx" https://raw.githubusercontent.com/sergey-tihon/Clippit/9dde33e87ec2a7853b47817a6531146da9ea59f8/TestFiles/LIR011-en-US-00001.docx
+          echo "081b67114122d684ae6dcc4bf249964ba0e3b908c3fb58be70db30592cd0d4c9  $RUNNER_TEMP/LIR011.docx" | sha256sum -c -
+      - name: Build and serve the React playground
+        run: |
+          bun scripts/playground-build.ts packages/playground
+          (bun --filter @stll/playground preview > "$RUNNER_TEMP/preview.log" 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://localhost:4200 > /dev/null && break; sleep 2; done
+          curl -sf http://localhost:4200 > /dev/null
+      - name: Rounds
+        env:
+          FOLIO_ZZ_LIR011: ${{ runner.temp }}/LIR011.docx
+        run: bash scripts/zz-flip/rounds.sh "$RUNNER_TEMP/flip" 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: flip-timings
+          path: ${{ runner.temp }}/flip
+          retention-days: 7
