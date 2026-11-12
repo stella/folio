@@ -1,8 +1,8 @@
+import type { SectionProperties, Style } from "@stll/folio-core/types/document";
 import type {
-  Document,
-  SectionProperties,
-  Style,
-} from "@stll/folio-core/types/document";
+  DeepReadonly,
+  ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 import {
   getDocumentWatermark,
   type Watermark,
@@ -14,12 +14,14 @@ import {
  * built for the purpose, so deriving them costs nothing per keystroke.
  */
 export type DocumentChrome = {
-  sectionProperties: SectionProperties | null;
-  watermark: Watermark | undefined;
-  styles: Style[] | undefined;
+  sectionProperties: DeepReadonly<SectionProperties> | null;
+  watermark: DeepReadonly<Watermark> | undefined;
+  styles: DeepReadonly<Style[]> | undefined;
 };
 
-export const documentChrome = (document: Document | null): DocumentChrome => {
+export const documentChrome = (
+  document: ReadonlyDocument | null,
+): DocumentChrome => {
   if (!document) {
     return { sectionProperties: null, watermark: undefined, styles: undefined };
   }

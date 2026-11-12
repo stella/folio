@@ -30,13 +30,15 @@ import {
 import { changedTypecheckPaths, typecheckPlanForPaths } from "./ci-plan";
 import runContract from "./ci-run-contract.json";
 import {
-  assignTestShards,
-  changedTestPaths,
   discoverTestSuites,
+  plannedTestFiles,
+  planTestShards,
+} from "./ci-test-shard-plan";
+import {
+  changedTestPaths,
   focusedTestFiles,
   selectFastTestSuites,
   selectFullTestSuites,
-  TEST_SHARD_COUNT,
 } from "./ci-test-shards";
 import type { ModuleGraph } from "./ci-test-shards";
 
@@ -392,7 +394,7 @@ describe("CI plan", () => {
       const discovered = suites.flatMap(({ files: suiteFiles }) => suiteFiles);
       expect(discovered.toSorted()).toEqual(files.toSorted());
       expect(
-        assignTestShards(discovered)
+        planTestShards(discovered)
           .flatMap((shard) => Array.from(shard))
           .toSorted(),
       ).toEqual(files.toSorted());
@@ -482,7 +484,7 @@ describe("CI plan", () => {
     const selectedFiles = selected.flatMap(({ files }) => files);
     expect(new Set(selectedFiles).size).toBe(selectedFiles.length);
     expect(
-      assignTestShards(selectedFiles)
+      planTestShards(selectedFiles)
         .flatMap((shard) => Array.from(shard))
         .toSorted(),
     ).toEqual(selectedFiles.toSorted());
@@ -618,21 +620,21 @@ describe("CI plan", () => {
 
   test("every discovered and focused test belongs to exactly one deterministic shard", () => {
     const suites = discoverTestSuites();
-    const files = [
+    const files = plannedTestFiles();
+    expect(files).toEqual([
       ...suites.flatMap(({ files: suiteFiles }) => suiteFiles),
       ...focusedTestFiles,
-    ];
-    const shards = assignTestShards(files);
-    expect(shards).toHaveLength(TEST_SHARD_COUNT);
+    ]);
+    const shards = planTestShards(files);
     const exercised = shards.flatMap((shard) => Array.from(shard));
     expect(exercised.toSorted()).toEqual([...new Set(files)].toSorted());
     expect(shards.map((shard) => Array.from(shard))).toEqual(
-      assignTestShards(files.toReversed()).map((shard) => Array.from(shard)),
+      planTestShards(files.toReversed()).map((shard) => Array.from(shard)),
     );
     // An unmeasured file receives exactly one assignment.
     const future = "packages/core/src/new-area/new-detector.property.test.ts";
     expect(
-      assignTestShards([...files, future]).filter((shard) => shard.has(future)),
+      planTestShards([...files, future]).filter((shard) => shard.has(future)),
     ).toHaveLength(1);
     expect(suites.find(({ cwd }) => cwd === "packages/vue")?.preloads).toEqual([
       "./test/vueDom.preload.ts",
@@ -645,81 +647,96 @@ describe("CI plan", () => {
     expect(root.scripts.test).toBe(
       "bun --filter '*' test && bun test scripts && bun test benchmarks/compare",
     );
-    for (let shard = 1; shard <= TEST_SHARD_COUNT; shard++) {
-      const id = `tests-${shard}`;
-      expect(jobs[id]?.if).toBe(
-        "needs.ci-plan.outputs.code_required == 'true'",
-      );
-      const steps = jobs[id]?.steps;
-      if (!Array.isArray(steps)) throw new Error(`Missing steps for ${id}`);
-      const checkout = steps.find(
-        (step) =>
-          isRecord(step) &&
-          typeof step["uses"] === "string" &&
-          step["uses"].startsWith("actions/checkout@"),
-      );
-      if (!isRecord(checkout) || !isRecord(checkout["with"]))
-        throw new Error(`Missing checkout for ${id}`);
-      expect(checkout["with"]["fetch-depth"]).toBe(0);
-      const fast = steps.find(
-        (step) =>
-          isRecord(step) &&
-          step["run"] ===
-            `bun scripts/ci-test-shards.ts --shard ${shard} --depth fast`,
-      );
-      if (!isRecord(fast) || !isRecord(fast["env"]))
-        throw new Error(`Missing fast selection for ${id}`);
-      expect(fast["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'fast'");
-      const full = steps.find(
-        (step) => isRecord(step) && step["id"] === "full-suite",
-      );
-      if (!isRecord(full)) throw new Error(`Missing full selection for ${id}`);
-      expect(full["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'full'");
-      expect(fast["env"]["CI_TEST_BASE"]).toBe(
-        "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}",
-      );
-      const uploads = steps.filter(
-        (step) =>
-          isRecord(step) &&
-          typeof step["uses"] === "string" &&
-          step["uses"].startsWith("actions/upload-artifact@"),
-      );
-      expect(uploads).toHaveLength(3);
-      // Generated property failures report on pull requests and merge
-      // groups; their records go to the exploration filer.
-      const env = jobs[id]?.env;
-      if (!isRecord(env)) throw new Error(`Missing env for ${id}`);
-      expect(env["FOLIO_FUZZ_EXPLORATION"]).toBe(
-        "${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}",
-      );
-      expect(env["FOLIO_FUZZ_EXPLORATION_DIR"]).toBe(
-        "${{ github.workspace }}/test-results/fuzz-exploration",
-      );
-      const exploration = uploads.find(
-        (step) =>
-          isRecord(step["with"]) &&
-          step["with"]["name"] === `fuzz-exploration-${shard}`,
-      );
-      if (!isRecord(exploration) || !isRecord(exploration["with"]))
-        throw new Error(`Missing exploration upload for ${id}`);
-      expect(exploration["if"]).toBe(
-        "always() && github.event_name == 'merge_group'",
-      );
-      expect(exploration["with"]["path"]).toBe("test-results/fuzz-exploration");
-      const upload = uploads.find(
-        (step) =>
-          isRecord(step["with"]) &&
-          step["with"]["name"] === `fuzz-log-full-test-suite-${shard}`,
-      );
-      if (!isRecord(upload) || !isRecord(upload["with"]))
-        throw new Error(`Missing upload for ${id}`);
-      expect(upload["if"]).toBe(
-        "failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'",
-      );
-    }
-    expect(
-      Object.keys(jobs).filter((job) => /^tests-\d+$/u.test(job)),
-    ).toHaveLength(TEST_SHARD_COUNT);
+    // One matrix job runs every planned shard; no job lists shards by hand.
+    expect(Object.keys(jobs).filter((job) => /^tests-\d+$/u.test(job))).toEqual(
+      [],
+    );
+    const id = "tests";
+    expect(jobs[id]?.if).toBe("needs.ci-plan.outputs.code_required == 'true'");
+    expect(jobs[id]?.strategy).toEqual({
+      "fail-fast": false,
+      matrix: { shard: "${{ fromJSON(needs.ci-plan.outputs.test_shards) }}" },
+    });
+    expect(planOutputs["test_shards"]).toBe(
+      "${{ steps.test-shards.outputs.test_shards }}",
+    );
+    const planJobSteps = jobs[PLAN_JOB]?.steps;
+    const planStep = Array.isArray(planJobSteps)
+      ? planJobSteps.find(
+          (step) => isRecord(step) && step["id"] === "test-shards",
+        )
+      : undefined;
+    if (!isRecord(planStep)) throw new Error("Missing test shard plan step");
+    expect(planStep["run"]).toBe("bun scripts/ci-test-shard-plan.ts");
+    expect(planStep["if"]).toBeUndefined();
+    const steps = jobs[id]?.steps;
+    if (!Array.isArray(steps)) throw new Error(`Missing steps for ${id}`);
+    const checkout = steps.find(
+      (step) =>
+        isRecord(step) &&
+        typeof step["uses"] === "string" &&
+        step["uses"].startsWith("actions/checkout@"),
+    );
+    if (!isRecord(checkout) || !isRecord(checkout["with"]))
+      throw new Error(`Missing checkout for ${id}`);
+    expect(checkout["with"]["fetch-depth"]).toBe(0);
+    const fast = steps.find(
+      (step) =>
+        isRecord(step) &&
+        step["run"] ===
+          'bun scripts/ci-test-shards.ts --shard "$TEST_SHARD" --shards "$TEST_SHARDS" --depth fast',
+    );
+    if (!isRecord(fast) || !isRecord(fast["env"]))
+      throw new Error(`Missing fast selection for ${id}`);
+    expect(fast["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'fast'");
+    const full = steps.find(
+      (step) => isRecord(step) && step["id"] === "full-suite",
+    );
+    if (!isRecord(full)) throw new Error(`Missing full selection for ${id}`);
+    expect(full["if"]).toBe("needs.ci-plan.outputs.suite_depth == 'full'");
+    expect(fast["env"]["CI_TEST_BASE"]).toBe(
+      "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}",
+    );
+    const uploads = steps.filter(
+      (step) =>
+        isRecord(step) &&
+        typeof step["uses"] === "string" &&
+        step["uses"].startsWith("actions/upload-artifact@"),
+    );
+    expect(uploads).toHaveLength(3);
+    // Generated property failures report on pull requests and merge
+    // groups; their records go to the exploration filer.
+    const env = jobs[id]?.env;
+    if (!isRecord(env)) throw new Error(`Missing env for ${id}`);
+    expect(env["TEST_SHARD"]).toBe("${{ matrix.shard }}");
+    expect(env["TEST_SHARDS"]).toBe("${{ strategy.job-total }}");
+    expect(env["FOLIO_FUZZ_EXPLORATION"]).toBe(
+      "${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}",
+    );
+    expect(env["FOLIO_FUZZ_EXPLORATION_DIR"]).toBe(
+      "${{ github.workspace }}/test-results/fuzz-exploration",
+    );
+    const exploration = uploads.find(
+      (step) =>
+        isRecord(step["with"]) &&
+        step["with"]["name"] === "fuzz-exploration-${{ matrix.shard }}",
+    );
+    if (!isRecord(exploration) || !isRecord(exploration["with"]))
+      throw new Error(`Missing exploration upload for ${id}`);
+    expect(exploration["if"]).toBe(
+      "always() && github.event_name == 'merge_group'",
+    );
+    expect(exploration["with"]["path"]).toBe("test-results/fuzz-exploration");
+    const upload = uploads.find(
+      (step) =>
+        isRecord(step["with"]) &&
+        step["with"]["name"] === "fuzz-log-full-test-suite-${{ matrix.shard }}",
+    );
+    if (!isRecord(upload) || !isRecord(upload["with"]))
+      throw new Error(`Missing upload for ${id}`);
+    expect(upload["if"]).toBe(
+      "failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'",
+    );
   });
 
   // Path planning stays scoped; a shared toolchain change promotes the whole suite.

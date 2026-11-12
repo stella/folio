@@ -85,6 +85,7 @@ import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMar
 import {
   CANONICAL_GAP,
   CANONICAL_RULE,
+  type CanonicalGap,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
@@ -164,6 +165,42 @@ const noChange = (message: string) =>
       reason: "noChange",
     }),
   );
+
+/**
+ * What the session says for an intent the compiler or the engine refused. A
+ * change the engine cannot record belongs to the capability that would record
+ * it: review provenance for hyperlinks, and the tracked table records for a
+ * suggested row, column or table change. Every other refusal is unclassified.
+ */
+const intentRefusal = (
+  intent: EditorIntent,
+  mode: CanonicalSessionMode,
+  { reason, message }: { reason: string; message: string },
+) => {
+  if (reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE)
+    return noChange(message);
+  if (reason !== DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE)
+    return refuse(message);
+  let gap: CanonicalGap;
+  switch (intent.type) {
+    case "setHyperlink":
+    case "removeHyperlink":
+    case "insertHyperlink":
+      gap = CANONICAL_GAP.trackedHyperlinkResolution;
+      break;
+    case "table":
+    case "tableRow":
+    case "tableBlock":
+      if (mode.type !== "suggesting") return refuse(message);
+      gap = CANONICAL_GAP.trackedTableStructure;
+      break;
+    default:
+      return refuse(message);
+  }
+  return Result.err(
+    new CanonicalSessionError({ ground: { gap }, message, reason: "refused" }),
+  );
+};
 
 const COMMENT_OPERATION_TYPES: ReadonlySet<DocumentOp["type"]> = new Set([
   DOCUMENT_OP_TYPES.CREATE_COMMENT,
@@ -2202,33 +2239,15 @@ class CanonicalSession {
         mode: this.intentMode(document, intent),
         firstBlockId: this.nextBlockId,
       });
-      if (compiled.isErr()) {
-        if (compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE)
-          return noChange(compiled.error.message);
-        if (
-          compiled.error.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE &&
-          (intent.type === "setHyperlink" ||
-            intent.type === "removeHyperlink" ||
-            intent.type === "insertHyperlink")
-        )
-          return Result.err(
-            new CanonicalSessionError({
-              ground: { gap: CANONICAL_GAP.trackedHyperlinkResolution },
-              reason: "refused",
-              message: compiled.error.message,
-            }),
-          );
-        return refuse(compiled.error.message);
-      }
+      if (compiled.isErr())
+        return intentRefusal(intent, this.mode, compiled.error);
       // The compiler's own application of exactly these ops, when it made one.
       const applied =
         compiled.value.applied === undefined
           ? applyDocumentOps(document, compiled.value.ops)
           : Result.ok(compiled.value.applied);
       if (applied.isErr())
-        return applied.error.reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE
-          ? noChange(applied.error.message)
-          : refuse(applied.error.message);
+        return intentRefusal(intent, this.mode, applied.error);
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);

@@ -22,6 +22,7 @@ import type { CSSProperties } from "react";
 import { useTranslations } from "use-intl";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import {
   formatPx,
   pixelsToTwips,
@@ -34,7 +35,7 @@ import {
 
 export type VerticalRulerProps = {
   /** Section properties for page layout */
-  sectionProps?: SectionProperties | null;
+  sectionProps?: DeepReadonly<SectionProperties> | null;
   /** Zoom level (1.0 = 100%) */
   zoom?: number;
   /** Whether margins can be dragged to adjust */

@@ -3,6 +3,7 @@ export const CANONICAL_GAP = {
   authorityRouting: "authority-routing",
   commands: "command-descriptors",
   trackedHyperlinkResolution: "tracked-hyperlink-resolution",
+  trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
   comments: "comment-model-edits",
   modelEdits: "direct-model-edits",
@@ -119,6 +120,12 @@ export const CANONICAL_CAPABILITIES: {
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Hyperlink and TOC suggestions and edits intersecting review identities require serializable wrapper review provenance.";
+  };
+  readonly "tracked-table-structure": {
+    readonly owner: "controller";
+    readonly kind: "refusal";
+    readonly adapters: readonly ["react", "vue"];
+    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express.";
   };
   readonly "story-content-projection": {
     readonly owner: "controller";
@@ -273,6 +280,13 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Hyperlink and TOC suggestions and edits intersecting review identities require serializable wrapper review provenance.",
+  },
+  [CANONICAL_GAP.trackedTableStructure]: {
+    owner: "controller",
+    kind: "refusal",
+    adapters: ["react", "vue"],
+    summary:
+      "Suggested row, column and table changes refuse content the tracked table records cannot express.",
   },
   [CANONICAL_GAP.storyContentProjection]: {
     owner: "controller",

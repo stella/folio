@@ -72,6 +72,7 @@
 import type { EditorView } from "prosemirror-view";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import type { Watermark } from "@stll/folio-core/watermark";
 
@@ -102,7 +103,7 @@ defineProps<{
   view: EditorView | null;
   bookmarks: BookmarkOption[];
   selectedImagePmPos: number | null;
-  sectionProperties: SectionProperties | null;
+  sectionProperties: DeepReadonly<SectionProperties> | null;
   showFindReplace: boolean;
   showHyperlink: boolean;
   showInsertSymbol: boolean;
@@ -111,7 +112,7 @@ defineProps<{
   showTableProperties: boolean;
   showWatermark: boolean;
   showNumberingValue: boolean;
-  currentWatermark: Watermark | undefined;
+  currentWatermark: DeepReadonly<Watermark> | undefined;
   tableProperties: TablePropertiesCommand;
 }>();
 

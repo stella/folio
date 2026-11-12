@@ -17,6 +17,7 @@ import type {
   SectionProperties,
   Watermark,
 } from "../types/document";
+import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
 
 export type {
   Watermark,
@@ -52,7 +53,13 @@ export function isAllowedExternalWatermarkImageUrl(target: string): boolean {
  * the first watermark encountered (header insertion order). Returns
  * `undefined` when no header carries one.
  */
-export function getDocumentWatermark(doc: Document): Watermark | undefined {
+export function getDocumentWatermark(doc: Document): Watermark | undefined;
+export function getDocumentWatermark(
+  doc: ReadonlyDocument,
+): DeepReadonly<Watermark> | undefined;
+export function getDocumentWatermark(
+  doc: ReadonlyDocument,
+): DeepReadonly<Watermark> | undefined {
   const headers = doc.package.headers;
   if (!headers) {
     return undefined;

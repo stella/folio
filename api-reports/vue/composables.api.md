@@ -185,7 +185,7 @@ export type UseDocxEditorReturn = {
     isDirty: Ref<boolean>;
     parseError: Ref<string | null>;
     layout: Ref<Layout | null>;
-    modelDocument: Readonly<Ref<Document_2 | null>>;
+    modelDocument: Readonly<Ref<ReadonlyDocument | null>>;
     readDocumentModel: () => ReadonlyDocument | null;
     sourceBuffer: Readonly<Ref<ArrayBuffer | null>>;
     hiddenEditorWidth: Ref<number>;
@@ -198,6 +198,7 @@ export type UseDocxEditorReturn = {
         selective?: boolean;
     }) => Promise<Blob | null>;
     getDocument: () => Document_2 | null;
+    readDocument: () => ReadonlyDocument | null;
     setDocument: (doc: Document_2) => void;
     getHeaderFooterView: (rId: string) => EditorView | null;
     syncHeaderFooterViews: () => void;

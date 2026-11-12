@@ -4,10 +4,17 @@
 
 ```ts
 
+import { Comment as Comment_2 } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 
 // @public
-export const cloneDocumentWithParagraphPropertySources: (document: import__stll_docx_core_model.Document) => import__stll_docx_core_model.Document;
+export const carryParseFacts: (target: object, source: object) => void;
+
+// @public
+export const cloneCommentsWithParagraphPropertySources: (comments: ReadonlyDocument["package"]["document"]["comments"]) => Comment_2[];
+
+// @public
+export const cloneDocumentWithParagraphPropertySources: (model: ReadonlyDocument) => import__stll_docx_core_model.Document;
 
 // (No @packageDocumentation comment for this package)
 

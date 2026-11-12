@@ -117,6 +117,7 @@ export default library({
     "./.oxlint-plugins/folio-asset-urls.ts",
     "./.oxlint-plugins/folio-page-resources.ts",
     "./.oxlint-plugins/folio-base64.ts",
+    "./.oxlint-plugins/folio-read-model.ts",
     "./.oxlint-plugins/folio-editor-commands.ts",
     "./.oxlint-plugins/folio-deletion-marks.ts",
     "./.oxlint-plugins/folio-run-record.ts",
@@ -465,6 +466,35 @@ export default library({
       ],
       rules: {
         "folio-base64/no-hand-rolled-base64": "error",
+      },
+    },
+    {
+      // A host holds its document model as `ReadonlyDocument`, shared with the
+      // session, its caches and the undo history. `readModel` is the one
+      // place it is read as a plain `Document`, for readers a deep-freeze test
+      // covers; a writer copies the model first. Any other cast to the model
+      // `Document` hides a writer from the compiler. See
+      // `.oxlint-plugins/folio-read-model.ts` and the matching test at
+      // `scripts/read-model-lint.test.ts`, which lints the `test/__fixtures__`
+      // files covered here.
+      files: [
+        "packages/*/src/**/*.{ts,tsx,vue}",
+        "test/__fixtures__/read-model-cast.*.{ts,vue}",
+      ],
+      rules: {
+        "folio-read-model/no-model-document-cast": "error",
+      },
+    },
+    {
+      // The owner itself, and tests, which cast fixture literals they build
+      // rather than a model they were handed.
+      files: [
+        "packages/core/src/types/documentModel.ts",
+        "packages/*/src/**/*.test.{ts,tsx}",
+        "packages/*/src/**/__tests__/**",
+      ],
+      rules: {
+        "folio-read-model/no-model-document-cast": "off",
       },
     },
     {

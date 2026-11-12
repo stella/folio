@@ -5,6 +5,7 @@
 ```ts
 
 import { CSSProperties } from 'react';
+import { DeepReadonly } from '@stll/folio-core/types/documentModel';
 import { EndnoteProperties } from '@stll/folio-core/types/document';
 import { FindMatch } from '@stll/folio-core/utils/findReplace';
 import { FindOptions } from '@stll/folio-core/utils/findReplace';
@@ -194,7 +195,7 @@ export type PageSetupDialogProps = {
     isOpen: boolean;
     onClose: () => void;
     onApply: (props: Partial<SectionProperties>) => void;
-    currentProps?: SectionProperties;
+    currentProps?: DeepReadonly<SectionProperties>;
 };
 
 // @public (undocumented)

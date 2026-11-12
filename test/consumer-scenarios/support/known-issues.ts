@@ -113,8 +113,6 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   // The separate patch intentionally refuses pendingParagraphMarkDeletion;
   // known-issues.test.ts asserts the refusal and unchanged document explicitly.
   "restyle-paragraph-pending-deletion.json": [1],
-  // A paragraph between a pending join and the table that stops it is refused.
-  "issue-1757-paragraph-before-table-after-pending-join.json": [2],
   // Renumbering the preceding mark after terminal deletion has the same refusal.
   "renumber-after-terminal-delete.json": [1],
   // The recorded seed now draws atomic=true; the overlapping split refuses

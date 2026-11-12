@@ -52,6 +52,7 @@ import { createFolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { createStellaStyleDocumentPreset } from '@stll/folio-core/style-sets/stellaStyle';
 import { createStellaStyleSet } from '@stll/folio-core/style-sets/stellaStyle';
 import { CSSProperties } from 'react';
+import { DeepReadonly } from '@stll/folio-core/types/documentModel';
 import { DEFAULT_AI_SUGGESTION_PRESETS } from '@stll/folio-core/ai-suggestions/types';
 import { DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { deriveBlockId } from '@stll/folio-core/types/block-id';
@@ -920,7 +921,7 @@ export type PageSetupDialogProps = {
     isOpen: boolean;
     onClose: () => void;
     onApply: (props: Partial<SectionProperties>) => void;
-    currentProps?: SectionProperties;
+    currentProps?: DeepReadonly<SectionProperties>;
 };
 
 // @public

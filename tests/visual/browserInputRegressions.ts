@@ -1015,6 +1015,21 @@ export const BROWSER_NOTES_LIST_PASTE_SEED_29 = {
   trace: BrowserInputTrace;
 };
 
+/** A composition right after a list pasted before a bookmarked heading. */
+export const CANONICAL_COMPOSITION_AFTER_LIST_PASTE_SEED_11 = {
+  authority: "canonical",
+  seed: 11,
+  path: "3:2:1:1",
+  fingerprint: "9b669b5c44effff2",
+  trace: {
+    shape: "fields-links-bookmarks",
+    actions: [
+      { kind: "pasteListHtml", ...BROWSER_PASTE_PAYLOADS.pasteListHtml },
+      { kind: "imeReplacement", updates: ["alpha"], completion: "commit" },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 /** Enter over a selected list item, then Delete over the paragraphs. */
 export const CANONICAL_DELETE_AFTER_SPLIT_LIST_ITEM_SEED_131 = {
   authority: "canonical",
@@ -1427,6 +1442,7 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_TYPING_OVER_EVERYTHING,
   CANONICAL_TYPING_OVER_CELLS,
   BROWSER_NOTES_LIST_PASTE_SEED_29,
+  CANONICAL_COMPOSITION_AFTER_LIST_PASTE_SEED_11,
   CANONICAL_DELETE_AFTER_SPLIT_LIST_ITEM_SEED_131,
   CANONICAL_SELECT_ALL_AFTER_PASTE_BESIDE_DELETIONS_SEED_197,
   CANONICAL_LIST_PASTE_OVER_PASTED_SECTIONS_SEED_347,

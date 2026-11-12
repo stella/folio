@@ -17,7 +17,12 @@ import {
 
 export const INSTALL_SCOPES = {
   "ci-plan": {
-    roots: ["@stll/oxlint-config", "oxlint", "oxlint-tsgolint"],
+    roots: [
+      "@stll/oxlint-config",
+      "better-result",
+      "oxlint",
+      "oxlint-tsgolint",
+    ],
     workspaces: "none",
   },
   "browser-discovery": {

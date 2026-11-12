@@ -598,6 +598,10 @@ import type {
   SectionProperties,
   Style,
 } from "@stll/folio-core/types/document";
+import {
+  type DeepReadonly,
+  readModel,
+} from "@stll/folio-core/types/documentModel";
 import type { FindResult } from "@stll/folio-core/utils/findReplace";
 import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
@@ -724,15 +728,11 @@ function notifyHostDocument(doc: Document): void {
 }
 
 /**
- * Notify the host of a document this component may still share with the
- * editor: a canonical session hands the host one copy.
+ * Notify the host of a document the editor now holds as its model: the host
+ * gets one copy, in both sessions.
  */
 function notifyDocumentChange(doc: Document): void {
-  notifyHostDocument(
-    canonicalAuthoritySession.value
-      ? cloneDocumentWithParagraphPropertySources(doc)
-      : doc,
-  );
+  notifyHostDocument(cloneDocumentWithParagraphPropertySources(doc));
 }
 
 const { message: refusalNotice, show: showRefusalNotice } =
@@ -963,6 +963,7 @@ const {
   loadDocument,
   save: saveDocument,
   getDocument,
+  readDocument,
   readDocumentModel,
   setDocument,
   getHeaderFooterView,
@@ -1032,6 +1033,15 @@ const {
     ? (result) => props.onSelectiveSaveTripwire?.(result)
     : undefined,
 });
+
+/**
+ * The current document for this component's own readers: never a host copy,
+ * so reading it costs no copy. Read it, never write it or hand it on.
+ */
+const readCurrentDocument = (): Document | null => {
+  const document = readDocument();
+  return document && readModel(document);
+};
 
 // A passage highlight is a pointer into the pre-edit document; once the user
 // edits, drop it rather than remapping it (mirrors React's clear-on-docChanged
@@ -1385,10 +1395,10 @@ function handleHyperlinkPopupCopy(href: string): void {
 // Read from the editor's document model: building a document here would run
 // on every keystroke, in proportion to the document.
 const currentChrome = computed(() => documentChrome(modelDocument.value));
-const currentSectionProps = computed<SectionProperties | null>(
+const currentSectionProps = computed<DeepReadonly<SectionProperties> | null>(
   () => currentChrome.value.sectionProperties,
 );
-const currentWatermark = computed<Watermark | undefined>(
+const currentWatermark = computed<DeepReadonly<Watermark> | undefined>(
   () => currentChrome.value.watermark,
 );
 const currentStyles = computed(() => currentChrome.value.styles);
@@ -1411,7 +1421,7 @@ const currentTableProperties = computed(() => {
 const toolbarDynamicProps = computed(() => {
   const dynamic: {
     fontFamilies?: ReadonlyArray<string | FontOption>;
-    documentStyles?: Style[];
+    documentStyles?: DeepReadonly<Style[]>;
   } = {};
   if (props.fontFamilies !== undefined) {
     dynamic.fontFamilies = props.fontFamilies;
@@ -1587,7 +1597,7 @@ const {
   handleInsertSectionBreakContinuous,
 } = useFormattingActions({
   editorView: activeEditorView,
-  getDocument,
+  getDocument: readCurrentDocument,
 });
 
 // Insert flow: prefer the host `onInsert*` prop when provided, otherwise fall
@@ -1685,7 +1695,8 @@ const {
   readOnly,
   stateTick,
   reLayout,
-  onChange: notifyDocumentChange,
+  // The page setup writes the copy `getDocument` made, which is the host's.
+  onChange: notifyHostDocument,
   applySectionProperties: (properties) => {
     const result = editor.applyCanonicalSectionProperties(properties);
     if (result === null) return "unhandled";
@@ -1905,7 +1916,7 @@ watch(isReady, (ready) => {
   commentManagement.seedFromDocument();
 
   // Surface the parsed document's editing-compatibility report (once per load).
-  const doc = getDocument();
+  const doc = readCurrentDocument();
   if (doc) {
     props.onCompatibilityChange?.(inspectDocxCompatibility(doc));
   }
@@ -1974,7 +1985,7 @@ const documentSearch = useFindReplace({
   editorView,
   pagesRef,
   getDocument: () => {
-    const document = getDocument();
+    const document = readCurrentDocument();
     if (!document) return null;
     return {
       ...document,

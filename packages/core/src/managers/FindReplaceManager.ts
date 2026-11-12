@@ -16,6 +16,7 @@ import type { OpStory } from "@stll/docx-core/ops";
 
 import type { FindMatchPosition } from "../prosemirror/findReplaceSelection";
 import type { Document } from "../types/document";
+import type { ReadonlyDocument } from "../types/documentModel";
 import {
   type ReplaceAllSummary,
   type ReplaceEligibility,
@@ -34,7 +35,14 @@ export type FindReplaceResult<TMatch> = {
   currentIndex: number;
 };
 
-export type ReplaceAllOutcome = ReplaceAllSummary & { document: Document };
+/**
+ * A replace-all's counts and the document it wrote. `document` is null when
+ * the document could not be copied: nothing was replaced and every match
+ * counts as skipped.
+ */
+export type ReplaceAllOutcome = ReplaceAllSummary & {
+  document: Document | null;
+};
 
 /**
  * The cursor index after stepping `direction` over `totalCount` matches,
@@ -136,7 +144,10 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
    * Replace the current match's text. Returns the new document, or null when
    * there is no current match or the replace fails.
    */
-  replaceCurrent(document: Document, replaceText: string): Document | null {
+  replaceCurrent(
+    document: ReadonlyDocument,
+    replaceText: string,
+  ): Document | null {
     const result = this.result;
     if (!result || result.matches.length === 0) {
       return null;
@@ -165,7 +176,7 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
    * when there is nothing to replace.
    */
   replaceAll(
-    document: Document,
+    document: ReadonlyDocument,
     matches: readonly TMatch[],
     replaceText: string,
   ): ReplaceAllOutcome | null {

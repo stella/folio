@@ -5,6 +5,7 @@ import type {
   FootnoteProperties,
   SectionProperties,
 } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import type { ReplaceAllSummary } from "@stll/folio-core/utils/findReplace";
 
 import type {
@@ -99,7 +100,7 @@ export type PageSetupMount = {
   isOpen: boolean;
   onClose: () => void;
   onApply: (props: Partial<SectionProperties>) => void;
-  currentProps: SectionProperties | undefined;
+  currentProps: DeepReadonly<SectionProperties> | undefined;
 };
 
 export type FootnotePropertiesMount = {
