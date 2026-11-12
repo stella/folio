@@ -29,6 +29,7 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 
 import "prosemirror-view/style/prosemirror.css";
 
@@ -50,7 +51,7 @@ export type HiddenHeaderFooterPMsProps = {
    * The canonical session's own document, read without a copy; null outside
    * a session. The editor's story managers only read it.
    */
-  readCanonicalDocument: () => Document | null;
+  readCanonicalDocument: () => ReadonlyDocument | null;
   onSessionRefusal?: (
     reason: string,
     ground: CanonicalRefusalGround,

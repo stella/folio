@@ -46,6 +46,7 @@ import type {
   StyleDefinitions,
   Theme,
 } from "../types/document";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
@@ -69,14 +70,14 @@ export type HeaderFooterEditorManagerDeps = {
   createView?:
     | ((mountNode: HTMLElement, props: DirectEditorProps) => EditorView)
     | undefined;
-  getDocument: () => Document | null;
+  getDocument: () => ReadonlyDocument | null;
   getReadOnly?: (() => boolean) | undefined;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
   /**
    * The canonical session's own document, read without a copy (see
    * `HiddenEditorManager.readCanonicalDocument`); null outside a session.
    */
-  readCanonicalDocument: () => Document | null;
+  readCanonicalDocument: () => ReadonlyDocument | null;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
   onSessionRefusal?:
     | ((reason: string, ground: CanonicalRefusalGround, error?: Error) => void)
@@ -238,7 +239,7 @@ export const createHeaderFooterEditorManager = (
     mounted.clear();
   };
 
-  const getOwnedDocument = (): Document | null =>
+  const getOwnedDocument = (): ReadonlyDocument | null =>
     usesCanonicalSession(
       deps.getExperimentalSession?.(),
       CANONICAL_GAP.authorityRouting,
@@ -276,7 +277,8 @@ export const createHeaderFooterEditorManager = (
     )
       return;
 
-    const document = getOwnedDocument();
+    const owned = getOwnedDocument();
+    const document = owned && readModel(owned);
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;

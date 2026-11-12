@@ -41,6 +41,7 @@ import type {
   Paragraph,
   Run,
 } from "../types/document";
+import { readModel } from "../types/documentModel";
 import { bytesToDataUrl } from "../utils/base64";
 import { base64ToBytes } from "../utils/textEncoding";
 import {
@@ -462,12 +463,14 @@ export const prepareCanonicalPaste = ({
         pasteTarget ?? moveSource?.to ?? selectionRange.to,
       );
   if (to.isErr()) return to;
-  let styles = session.document.package.styles;
+  // The session's own document, read to build the paste's operations.
+  const destination = readModel(session.document);
+  let styles = destination.package.styles;
   let styleIds: ReadonlyMap<string, string> | undefined;
   let extraIds: ReadonlySet<number> | undefined;
   if (sourceDocument !== undefined && moveTarget === undefined && !plain) {
     const importedStyles = importClipboardStyles({
-      destination: session.document,
+      destination,
       source: sourceDocument,
       paragraphs,
     });
@@ -484,7 +487,7 @@ export const prepareCanonicalPaste = ({
       state.schema.topNodeType.create(null, importedSlice.content),
     );
   const importedNumbering = importNumbering({
-    destination: session.document.package.numbering,
+    destination: destination.package.numbering,
     source: sourceNumbering,
     paragraphs,
     mode: moveTarget === undefined ? "copy" : "move",
@@ -515,8 +518,8 @@ export const prepareCanonicalPaste = ({
       });
     }
   }
-  const relationships = new Map(session.document.package.relationships);
-  const media = new Map(session.document.package.media);
+  const relationships = new Map(destination.package.relationships);
+  const media = new Map(destination.package.media);
   let importedResource = false;
   let imageIndex = 1;
   let relationshipIndex = 1;
@@ -774,20 +777,20 @@ export const prepareCanonicalPaste = ({
   const resourceOps: DocumentOp[] = [];
   if (
     importedResource ||
-    numbering !== session.document.package.numbering ||
-    styles !== session.document.package.styles
+    numbering !== destination.package.numbering ||
+    styles !== destination.package.styles
   ) {
     const imported = {
-      ...session.document,
+      ...destination,
       package: {
-        ...session.document.package,
+        ...destination.package,
         ...(numbering === undefined ? {} : { numbering }),
         ...(styles === undefined ? {} : { styles }),
         ...(importedResource ? { relationships, media } : {}),
       },
     };
     resourceOps.push(
-      packageResourcesOpOf({ before: session.document, after: imported }),
+      packageResourcesOpOf({ before: destination, after: imported }),
     );
   }
   const openStart = importedSlice.openStart === 0 ? 0 : 1;

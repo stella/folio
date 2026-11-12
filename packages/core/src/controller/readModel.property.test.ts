@@ -33,6 +33,7 @@ import {
   resolveHeaderFooterContent,
 } from "../utils/headerFooter";
 import { getDocumentWatermark } from "../watermark";
+import { createCanonicalSession } from "./canonicalSession";
 import { createHiddenEditorState } from "./hiddenEditorManager";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
@@ -163,6 +164,34 @@ describe("readModel", () => {
         },
       ),
       { id: "host readers never write the model" },
+    );
+  });
+
+  test("every reader a host calls reads a canonical session's own document frozen as it reads it plain", async () => {
+    const shapes = await loadShapes();
+    const sessionDocument = (document: Document) => {
+      const session = createCanonicalSession(
+        cloneDocumentWithParagraphPropertySources(document),
+      );
+      return session.isOk() ? session.value.document : null;
+    };
+    const seeded = shapes.filter(({ document }) => sessionDocument(document));
+    expect(seeded.length).toBeGreaterThan(0);
+    await assertProperty(
+      fc.property(
+        fc.constantFrom(...seeded),
+        queryArbitrary,
+        ({ document }, query) => {
+          const frozen = sessionDocument(document);
+          const plain = sessionDocument(document);
+          if (!frozen || !plain) throw new Error("A seeded shape refused.");
+          deepFreeze(frozen);
+          expect(readEverything(readModel(frozen), query)).toEqual(
+            readEverything(readModel(plain), query),
+          );
+        },
+      ),
+      { id: "host readers never write the canonical session's document" },
     );
   });
 });

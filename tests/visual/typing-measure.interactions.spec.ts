@@ -111,9 +111,7 @@ const HOSTS = [
 const ENGINES = ["default", "canonical"] as const;
 const MODES = ["editing", "suggesting"] as const;
 
-// Every traced action snapshots these long documents; the counts and the
-// assertion explain a failure without a trace.
-test.use({ viewport: { width: 1280, height: 900 }, trace: "off" });
+test.use({ viewport: { width: 1280, height: 900 } });
 
 /** Put the caret in the middle of a paragraph halfway through the document. */
 const placeCaret = (page: Page) =>

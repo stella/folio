@@ -52,6 +52,7 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 // Import ProseMirror CSS
 import "prosemirror-view/style/prosemirror.css";
 
@@ -134,7 +135,7 @@ export type HiddenProseMirrorRef = HiddenEditorApi & {
   /** Internal composition availability for deferred document notifications. */
   isCanonicalComposing: () => boolean;
   /** The canonical session's own document, read without a copy. */
-  readCanonicalDocument: () => Document | null;
+  readCanonicalDocument: () => ReadonlyDocument | null;
   /** Get the off-screen host element. */
   getHostElement: () => HTMLElement | null;
 };
