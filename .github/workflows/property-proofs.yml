@@ -47,7 +47,9 @@ jobs:
     name: Property tests (extended budget) (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: property-plan
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # One file, apply.property.test.ts, measures about 96 minutes at factor
+    # 10, so a shard needs this long to keep a fifth of its timeout free.
+    timeout-minutes: 150
     permissions:
       contents: read
     strategy:

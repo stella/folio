@@ -411,7 +411,7 @@ type PropertyShard = { index: number; total: number };
  * checkout, install and process start, so the shard's job keeps a fifth of its
  * timeout-minutes free (scripts/property-areas.test.ts checks the workflow).
  */
-export const EXTENDED_PROPERTY_SHARD_BUDGET_MS = 96 * 60_000;
+export const EXTENDED_PROPERTY_SHARD_BUDGET_MS = 120 * 60_000;
 
 /**
  * Each file's planned time at a run factor: its measured time per unit of

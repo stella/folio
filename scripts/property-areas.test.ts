@@ -140,13 +140,13 @@ describe("property areas", () => {
         expect(shardPropertyFiles(inventory.toReversed(), shard)).toEqual(
           files,
         );
-        const totalWeight = inventory.reduce(
-          (sum, file) => sum + file.weightMs,
-          0,
-        );
-        const heaviest = Math.max(...inventory.map(({ weightMs }) => weightMs));
+        // The planner's weights: measured where recorded, else budgets.
+        const { timings } = propertyShardTimings(inventory, 1);
+        const weights = Object.values(timings);
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        const heaviest = Math.max(...weights);
         expect(
-          files.reduce((sum, file) => sum + file.weightMs, 0),
+          files.reduce((sum, { file }) => sum + (timings[file] ?? 0), 0),
         ).toBeLessThanOrEqual(Math.ceil(totalWeight / total) + heaviest);
         for (const { file } of files) exercised.push(file);
       }
@@ -211,8 +211,9 @@ describe("property areas", () => {
     for (const [position, file] of equal
       .toSorted((a, b) => a.file.localeCompare(b.file))
       .entries())
+      // Unmeasured, so the stated budgets tie and filenames break the tie.
       expect(
-        shardPropertyFiles(equal, { index: position + 1, total: 4 }),
+        shardPropertyFiles(equal, { index: position + 1, total: 4 }, 1, {}),
       ).toEqual([file]);
   });
 
