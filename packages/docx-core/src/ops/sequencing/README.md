@@ -19,22 +19,61 @@ in the broadcast journal. A rejection leaves the document and journal unchanged.
 Sequenced effects record document-dependent split identities and join lengths,
 so replay does not infer positions from a later document.
 
+Each authoritative answer returns how the client's document moved: a `rebased`
+change, transformable like a sequenced batch, or a `replaced` change, exact
+for the document only, when a pending batch was dropped or the rebased change
+would not reach the document the replay did. `transformPosition`
+moves a position across sequenced batches by paragraph id and offset, so an
+editor maps its selection and history without its own coordinates.
+
 `transformBatch` refuses operation pairs whose effects cannot be mapped safely.
 An inverse keeps its staleness preconditions: an invalid undo must be dropped,
 never applied by removing those preconditions. Supported story addresses derive
 from the operation contract; this schema has no `addComment` primitive.
 
-The unknown-input decoder accepts a bounded subset of model records: scalar
-formatting, language properties, plain runs and basic inline atoms. It refuses
-unsupported embedded records and operation kinds. `BATCH_WIRE_OP_TYPES` declares
-the accepted kinds; `validateDocumentBatch` normalizes optional undefined object
-fields, and `validateSequencedBatch` checks assigned revisions and effects.
+The unknown-input decoder accepts every operation kind except comment
+operations (`UNSENT_OP_TYPES`); `BATCH_WIRE_OP_TYPES` declares the accepted
+kinds, and a kind added to the schema without a wire form or an unsent entry
+stops the decoder compiling. Embedded model records are validated within the
+decoder's JSON depth and byte bounds: every content node's kind is one the
+model defines for its slot, every record carries only the fields its model
+type declares, paragraph ids are well formed, scalar formatting values have
+their model types and nested content is checked recursively. Deep property
+records (borders, shading, drawings, style, numbering-level and section
+details) are bounded by the JSON checks alone. `validateDocumentBatch`
+normalizes optional undefined object fields, and `validateSequencedBatch`
+checks assigned revisions and that each effect is the one its operation kind
+records.
 
-The initial transform supports text insertions, direct deletions, formatting,
-paragraph splits and joins, anchored paragraph insertion, and repeated revision
-decisions. Numbering and table structure require exclusive edits. Overlapping
-revision decisions with opposite outcomes reject. Unspecified pairs reject.
-Rich inverse preconditions stay intact and may refuse an undo after another edit.
+The position transform rebases text insertions, direct deletions, run and
+paragraph formatting, paragraph splits and joins, anchored paragraph
+insertion and repeated revision decisions. Overlapping revision decisions with
+opposite outcomes reject. Text inherited at a paragraph's start takes the run
+after it, so a concurrent format from the start covers it in either order.
+
+Every other operation is block-scoped: paragraph replacement, inline
+replacement and paragraph review, inline splits and joins, content insertion,
+paragraph deletion, table insertion, deletion and structure edits, numbering
+instances, section endpoints and properties, package resources, headers and
+footers, story-part restoration, notes and revision metadata. Its footprint is
+the paragraphs it addresses, reads or creates and the package parts it
+writes; when it is sequenced, its effect records every paragraph it changed,
+inserted or removed (`touchedBlocks`), and for a table structure edit every
+paragraph of that table. A batch passes a concurrent block-scoped operation
+unchanged when it addresses none of those paragraphs, and is refused with
+`blockConflict` when it does. A table structure edit is refused with
+`tableRequiresExclusiveEdit` only when the concurrent one restructured the
+same table; typing in that table's cells passes. Package parts
+(`EXCLUSIVE_PARTS`: numbering, styles, relationships, media, sections, headers
+and footers, notes, settings and revision metadata) conflict when one
+operation writes a part both name, by entry where the operation names one
+(a numbering instance, a relationship id, a note): `partConflict`, with the
+part. Pairs of position-rebased operations the transform cannot map safely
+reject with `unsupportedPair`.
+
+Undo inverses are operations of the same kinds and follow the same rules.
+Rich inverse preconditions stay intact and may refuse an undo after another
+edit.
 
 Partially overlapping writes to the same run property require additional
 structural effects and currently reject. Nonzero marker-gap changes and
@@ -42,3 +81,60 @@ identified ranges crossing a split also reject. Inserting within tracked-deleted
 is refused by the apply contract. A join can preserve two adjacent runs; text
 insertion at that boundary requires an affinity the current text operation
 does not express, so the transform refuses ambiguous boundary insertion.
+
+## Id leases
+
+Concurrent actors must never mint the same paragraph (`w14:paraId`), revision
+(`w:id`), content-control or comment id. The sequencer leases each actor
+disjoint blocks of each kind (`grantIdLease`): by default 4096 paragraph ids,
+4096 revision ids, 1024 content-control ids and 1024 comment ids. Revision,
+content-control and comment ids share one numeric space, so their blocks never
+overlap either. A granted block holds no id the room has held. An actor mints
+upward through its lease and never mints an id twice; without a lease, the
+allocators keep minting the lowest free ids.
+
+The sequencer rejects a batch that introduces an id outside its actor's lease
+(`outsideIdLease`, with the id kind). An id the room held before is accepted
+from any actor, as is an id at or below what its lessee already minted: both
+are restorations, such as an undo, that nobody can mint again.
+
+`grantIdLease` is idempotent: it returns the actor's remaining blocks, so a
+reloading actor gets its lease back. `renewIdLease` adds one block of a kind
+while the actor holds at most one block of unused ids of it, and refuses with
+`notDue` otherwise. The lease table (`idLeases`) is part of the sequenced
+state: it is stored with the journal and passed back to `createSequencer` on a
+restart. A restart from a compacted document forgets ids that were removed
+before it; restoring such an id is refused rather than risking a collision.
+
+Paragraph ids stay below 0x80000000 and `w:id` within a signed 32-bit integer.
+When no free block is left below that limit, granting or renewing refuses with
+`exhausted`; ids never wrap. An actor whose lease runs out cannot mint: its
+edits that need new ids are refused until the room is compacted into a new
+base document.
+
+## Joining a canonical session to a room
+
+`@stll/folio-core` binds one canonical editing session to a room
+(`joinCanonicalRoom`, controller/canonicalCollaboration.ts) over a transport
+that carries batches and leases only (`CanonicalRoomTransport`): the room's
+base snapshot identity (the SHA-256 of the DOCX it was seeded from, which
+revision 0 is), its head revision, `submit` answering an acknowledgement or
+a rejection, a subscription delivering the journal after a revision, and the
+actor's id lease. `createCanonicalMemoryRoom` is the in-memory reference
+transport around `createSequencer`.
+
+A session joins only the room seeded from the DOCX it opened, refusing any
+other snapshot, and only before it is edited; it creates its session with the
+granted lease and replays the journal from revision 0. Each commit the
+session publishes (its committed-batch feed, `onCommitted`) is enqueued on the
+optimistic client under the commit's operation id, at the client's head
+revision, and submitted one at a time. A sequenced batch goes to the client
+first, which rebases the pending batches over it, and the change the client
+reports enters the session through `prepareRemote`. Deliveries may repeat or
+arrive out of order: revisions already applied are ignored and later ones
+wait for the gap. A rejected batch, or a pending batch the client dropped, is
+taken back the same way and reported to the host (`localEditRefused`), never
+lost silently. After a disconnection the unanswered batch is submitted again
+under the same operation id, so the sequencer answers it once. The controller
+asks for another lease block when a kind runs low. A remote batch waits while
+a composition is pending. Rooms hold no Yjs state.

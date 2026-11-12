@@ -15,6 +15,7 @@ import { replaceParagraphs, storyParagraphs } from "./blocks";
 import { contractViolation } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
+import { freshLeasedIds, ID_LEASE_KINDS, type IdLease } from "./idLease";
 import {
   IDENTITY_SPACES,
   identityKeysIn,
@@ -632,16 +633,27 @@ export const commentDocumentIssue = (
   return undefined;
 };
 
-/** Allocate from the package's annotation domains without a hidden mutable counter. */
+/**
+ * Allocate from the package's annotation domains without a hidden mutable
+ * counter: one past every annotation id, or, for an author holding a lease,
+ * the lowest leased comment id no annotation carries.
+ */
 export const freshCommentId = (
   document: Document,
+  lease?: IdLease,
 ): Result<number, DocumentOpRefusal> => {
   let maximum = -1;
+  const taken = new Set<number>();
   for (const comment of document.package.document.comments ?? []) {
     maximum = Math.max(maximum, comment.id, comment.parentId ?? -1);
+    taken.add(comment.id);
+    if (comment.parentId !== undefined) taken.add(comment.parentId);
   }
-  for (const { node } of anchorsIn(document))
-    maximum = Math.max(maximum, anchorId(node) ?? -1);
+  for (const { node } of anchorsIn(document)) {
+    const id = anchorId(node);
+    maximum = Math.max(maximum, id ?? -1);
+    if (id !== undefined) taken.add(id);
+  }
   for (const key of packageIdentityKeys(document.package)) {
     if (
       !Object.values(IDENTITY_SPACES).some((space) =>
@@ -649,7 +661,26 @@ export const freshCommentId = (
       )
     )
       continue;
-    maximum = Math.max(maximum, Number(key.slice(key.lastIndexOf(":") + 1)));
+    const id = Number(key.slice(key.lastIndexOf(":") + 1));
+    maximum = Math.max(maximum, id);
+    taken.add(id);
+  }
+  if (lease !== undefined) {
+    const leased = freshLeasedIds({
+      lease,
+      kind: ID_LEASE_KINDS.COMMENT,
+      count: 1,
+      taken: (id) => taken.has(id),
+    }).at(0);
+    return leased === undefined
+      ? Result.err(
+          new DocumentOpRefusal({
+            opType: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+            message: "The comment id lease is exhausted.",
+          }),
+        )
+      : Result.ok(leased);
   }
   if (!Number.isInteger(maximum) || maximum >= MAX_REVISION_ID)
     return Result.err(

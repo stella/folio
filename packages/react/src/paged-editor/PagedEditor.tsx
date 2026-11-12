@@ -476,6 +476,12 @@ export type PagedEditorProps = {
     x: number;
     y: number;
     hasSelection: boolean;
+    /**
+     * The position under the pointer in the story the menu acts on (a
+     * header or footer in their edit mode, else the body), or null when the
+     * pointer is on none.
+     */
+    position: number | null;
   }) => void;
   /** Callback with pre-computed Y positions for comment/tracked-change anchors (for sidebar positioning without DOM queries). */
   onAnchorPositionsChange?: (positions: Map<string, number>) => void;
@@ -5538,6 +5544,13 @@ export const PagedEditor: React.ForwardRefExoticComponent<
                 x: e.clientX,
                 y: e.clientY,
                 hasSelection: after.from !== after.to,
+                position:
+                  pmPos === null
+                    ? null
+                    : Math.max(
+                        0,
+                        Math.min(pmPos, hfView.state.doc.content.size),
+                      ),
               });
               return;
             }
@@ -5563,7 +5576,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           ? updatedState.selection.from !== updatedState.selection.to
           : false;
 
-        onContextMenu({ x: e.clientX, y: e.clientY, hasSelection });
+        onContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          hasSelection,
+          position: pmPos,
+        });
       },
       [hfEditMode, onContextMenu, getPositionFromMouse, readOnly],
     );
