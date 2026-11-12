@@ -428,6 +428,7 @@ type ParagraphChain = {
     | { type: "bookmarks"; content: Fragment }
   )[];
   position: number;
+  /** The chain's first paragraph before this level resolved anything. */
   before: PMNode;
   joinBoundaries: { closing: number; bookmarks: Fragment }[];
 };
@@ -457,19 +458,31 @@ const resolveStructure = ({
     tableRanges: context.tableRanges.length,
     bookmarkJoins: context.bookmarkJoins.length,
   };
-  const entries: { node: PMNode | null; original: PMNode; position: number }[] =
-    [];
-  node.forEach((child, offset) =>
+  /**
+   * Each child as its own resolution left it (`resolved`) and as this level
+   * has it so far (`node`). A later sibling can rewrite an earlier one (its
+   * section break or comment anchors move there), so what this level changed
+   * is always read against `resolved`, never against `node`.
+   */
+  const entries: {
+    node: PMNode | null;
+    readonly resolved: PMNode | null;
+    original: PMNode;
+    position: number;
+  }[] = [];
+  node.forEach((child, offset) => {
+    const resolved = resolveStructure({
+      node: child,
+      position: position + 1 + offset,
+      context,
+    });
     entries.push({
-      node: resolveStructure({
-        node: child,
-        position: position + 1 + offset,
-        context,
-      }),
+      node: resolved,
+      resolved,
       original: child,
       position: position + 1 + offset,
-    }),
-  );
+    });
+  });
   const reversed: PMNode[] = [];
   let chain: ParagraphChain | null = null;
   let pendingBookmarks: PMNode[] = [];
@@ -518,7 +531,7 @@ const resolveStructure = ({
       }
       final = rebuild(chain.node, { content: Fragment.fromArray(children) });
     }
-    if (!chain.before.sameMarkup(final))
+    if (!chain.before.eq(final))
       context.changedRanges.push({
         from: chain.position,
         to: chain.position + chain.before.nodeSize,
@@ -579,6 +592,9 @@ const resolveStructure = ({
       if (!filler) continue;
       paragraph = filler;
     }
+    // What stood here before this level resolved anything, the baseline every
+    // change to this paragraph is recorded against.
+    const before = entry.resolved ?? paragraph;
     if (paragraph.type.name !== "paragraph") {
       if (isBlockBoundaryNode(paragraph)) {
         pendingBookmarks.push(paragraph);
@@ -656,9 +672,9 @@ const resolveStructure = ({
         position: entry.position,
       });
       chain.position = entry.position;
-      chain.before = paragraph;
+      chain.before = before;
       chain.joinBoundaries.push({
-        closing: entry.position + paragraph.nodeSize - 1,
+        closing: entry.position + before.nodeSize - 1,
         bookmarks,
       });
       removedEndpoint(paragraph, context);
@@ -758,7 +774,7 @@ const resolveStructure = ({
         { type: "paragraph", source: resolved, position: entry.position },
       ],
       position: entry.position,
-      before: paragraph,
+      before,
       joinBoundaries: [],
     };
     followingContainerChild = true;
