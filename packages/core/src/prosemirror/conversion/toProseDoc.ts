@@ -5296,7 +5296,10 @@ function withRunBoundaryMarks(
     RUN_BOUNDARY_MARK_NAMES.has(type.name),
   );
   if (!ownsWrapperOrSourceRun) {
-    return node;
+    // The run's tracked formatting has no other carrier: its formatting
+    // rides in the node's attrs, but the revision is a change of its own.
+    const change = marks.find(({ type }) => type.name === "runPropertyChange");
+    return change ? node.mark([change]) : node;
   }
 
   return node.mark(marks);

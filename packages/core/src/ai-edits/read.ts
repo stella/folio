@@ -339,6 +339,28 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   const noteReferences = collectNoteReferenceLabels(doc);
   let currentBlockId: string | null = null;
 
+  const listFormatting = (
+    changes: Iterable<RunPropertyChange>,
+    text: string,
+  ) => {
+    for (const change of changes) {
+      const key = `${currentBlockId ?? ""}:formatting:${String(change.info.id)}`;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.text += text;
+        continue;
+      }
+      grouped.set(key, {
+        id: change.info.id,
+        type: "formatting",
+        author: change.info.author,
+        date: change.info.date ?? null,
+        text,
+        blockId: currentBlockId,
+      });
+    }
+  };
+
   doc.descendants((node, pos) => {
     if (node.type.name === "commentReference") {
       transparentInlineEnds.set(pos, pos + node.nodeSize);
@@ -545,25 +567,23 @@ const getTrackedChangeGroupsFromProjectedDoc = (
             }
           }
         }
-        if (changesById) {
-          const text = runFormattingCarrierReviewText(formattingCarrier);
-          for (const change of changesById.values()) {
-            const key = `${currentBlockId ?? ""}:formatting:${String(change.info.id)}`;
-            const existing = grouped.get(key);
-            if (existing) {
-              existing.text += text;
-              continue;
-            }
-            grouped.set(key, {
-              id: change.info.id,
-              type: "formatting",
-              author: change.info.author,
-              date: change.info.date ?? null,
-              text,
-              blockId: currentBlockId,
-            });
-          }
-        }
+        if (changesById)
+          listFormatting(
+            changesById.values(),
+            runFormattingCarrierReviewText(formattingCarrier),
+          );
+      } else if (disposition === "not-a-run") {
+        // A drawing, a shape or a text box anchor is no editor run, but it
+        // sits in a run of the model, and that run's tracked formatting is
+        // a change of its own.
+        const changeMark = node.marks.find(
+          (mark) => mark.type.name === "runPropertyChange",
+        );
+        if (changeMark)
+          listFormatting(
+            expectRunPropertyChangeMarkAttrs(changeMark).changes,
+            readerTextOf(node, noteReferences),
+          );
       }
     }
 
