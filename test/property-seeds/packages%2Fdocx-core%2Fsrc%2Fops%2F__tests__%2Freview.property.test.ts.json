@@ -310,6 +310,26 @@
       "date": "2026-11-12"
     }
   ],
+  "L3: rejecting a run's revisions at once equals rejecting each operation's in any order": [
+    {
+      "seed": 33710121,
+      "path": "161:2:2:3:3:3:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:6:7:2:8:3:11:11:11:12:11:11:21:11:11:17:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:19:20:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21",
+      "note": "a control piece rejecting text emptied stayed apart from its other piece when the content that cut the control was rejected later",
+      "date": "2026-11-12"
+    },
+    {
+      "seed": 309447594,
+      "path": "166:1:7:3:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:6:6:6:6:6:6:6:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:5:5:5:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:9:7:5:8:18:7:7:7:7:8:8:8:8:1:5:6:5:5:5:5:5:5:7:7:6:5:7:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:7:7:7:7:7:7:7",
+      "note": "#2603: rejecting at once and rejecting each operation in another order read differently",
+      "date": "2026-11-12"
+    },
+    {
+      "seed": 820967557,
+      "path": "0:7:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:8:7:7:7:7:7:5:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:20:5:4:7:8:4:6:6:6:8:7:6:6:7:6:6:7:6:6:6:7:10:6:6:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:13:13:13:13:13:13:13:13:13:13:13:13",
+      "note": "A pull request run found this rejection order dependence; it replays here with the emptied-piece fold.",
+      "date": "2026-11-12"
+    }
+  ],
   "L4: a run of tracked operations is undone exactly, in reverse and as a batch": [
     {
       "seed": 249128062,
