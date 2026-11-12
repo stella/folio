@@ -456,6 +456,7 @@ test(
                 ctx,
                 converted.package,
                 para,
+                "flow",
               );
               expect(
                 markdownLabel,
@@ -714,9 +715,9 @@ const assertSparseReaders = async ({
   converted.package.document.content.forEach((block, index) => {
     if (block.type !== "paragraph") throw new Error("Expected paragraph");
     const label = expected.at(index);
-    expect(renderParagraph(ctx, converted.package, block).trimStart()).toBe(
-      label === undefined ? "item" : `${label} item`,
-    );
+    expect(
+      renderParagraph(ctx, converted.package, block, "flow").trimStart(),
+    ).toBe(label === undefined ? "item" : `${label} item`);
   });
   expect(
     createFolioAIEditSnapshot(pm).blocks.map((block) =>

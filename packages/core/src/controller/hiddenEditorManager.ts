@@ -2043,7 +2043,10 @@ export const createHiddenEditorManager = (
           );
         let command: CanonicalCommentCommand;
         if (request.type === "create") {
-          const id = freshCommentId(readModel(session.document));
+          const id = freshCommentId(
+            readModel(session.document),
+            session.idLease,
+          );
           if (id.isErr()) return fail(id.error.message);
           let anchor: CreateCommentOp["anchor"];
           switch (request.anchor.kind) {
@@ -2086,6 +2089,7 @@ export const createHiddenEditorManager = (
               content: canonicalCommentBody(
                 readModel(session.document),
                 request.text,
+                session.idLease,
               ),
             },
           };
@@ -2093,6 +2097,7 @@ export const createHiddenEditorManager = (
         const compiled = compileCanonicalComments({
           document: readModel(session.document),
           command,
+          idLease: session.idLease,
         });
         if (compiled.isErr()) return fail(compiled.error.message);
         if (compiled.value.ops.length > 0) {

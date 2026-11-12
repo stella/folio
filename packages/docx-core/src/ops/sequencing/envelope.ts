@@ -4,6 +4,7 @@ import { encodeUtf8 } from "@stll/utf8-boundaries";
 
 import type { ParagraphFormatting, TextFormatting } from "../../model/document";
 import { PARAGRAPH_ALIGNMENTS } from "../../model/ooxmlEnumerations.gen";
+import type { IdLeaseKind } from "../idLease";
 import { cloneModel } from "../modelClone";
 import {
   type DeleteRowOp,
@@ -57,6 +58,8 @@ export const BATCH_REJECTION_REASONS = {
   STALE_BASE: "staleBase",
   INVALID_OPERATION: "invalidOperation",
   TABLE_REQUIRES_EXCLUSIVE_EDIT: "tableRequiresExclusiveEdit",
+  /** The batch introduces an id its actor does not lease. */
+  OUTSIDE_ID_LEASE: "outsideIdLease",
 } as const;
 
 export type BatchRejectionReason =
@@ -71,6 +74,8 @@ export class BatchRejection extends BatchRejectionBase<{
   opId?: string;
   opType?: DocumentOpType;
   overType?: DocumentOpType;
+  /** The kind of the id an out-of-lease batch introduces. */
+  idKind?: IdLeaseKind;
 }> {}
 
 /** Table edits and their structural inverses require exclusive editing until transforms exist. */

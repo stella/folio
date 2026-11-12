@@ -739,6 +739,9 @@ const batchAgainstOneAtATime = async ({
     }
   }
   const finalBlocks = batch.snapshot().blocks;
+  // Asserts that the blocks no operation names keep their ids through
+  // accepting; `named` covers the ones a join leaves under another id.
+  // oxlint-disable-next-line folio-held-block-ids/reread-after-resolution -- the held ids are the claim under test
   for (const [block, blockId] of blockIds.entries()) {
     const text = finalBlocks.find(
       (candidate) => candidate.id === blockId,

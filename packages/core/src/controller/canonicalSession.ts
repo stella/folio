@@ -37,6 +37,10 @@ import {
   type EditorIntentMode,
   editorParagraphGroups,
   findStoryBody,
+  formatParaId,
+  freshLeasedIds,
+  ID_LEASE_KINDS,
+  type IdLease,
   normalizeForOps,
   OP_STORIES,
   type OpStory,
@@ -98,6 +102,7 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
+import { CanonicalIdLease } from "./canonicalIdLease";
 import {
   canonicalNativeCells,
   InlineProjectionCache,
@@ -1615,6 +1620,18 @@ type CanonicalSessionSeedOptions = {
   /** Stories the session reads in its own spelling, given back as read while unedited. */
   sourceRestores?: readonly CanonicalSourceRestore[];
   caches: StoryProjectionCaches;
+  idLease?: IdLease | undefined;
+};
+
+/** How a session is created. */
+export type CanonicalSessionOptions = {
+  /**
+   * The ids this author may mint, when several authors edit the document:
+   * every new paragraph, revision, content-control and comment id comes from
+   * it, and an edit introducing any other new id is refused. Without one the
+   * session mints the lowest free ids.
+   */
+  idLease?: IdLease;
 };
 
 type CanonicalReplaceTextInput = {
@@ -1666,6 +1683,7 @@ class CanonicalSession {
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly allocatedBlockIds = new Set<string>();
   private nextBlockId = 1;
+  private readonly leased: CanonicalIdLease | undefined;
   private readonly sourceOwners = new Map<string, Paragraph>();
   private readonly storyProjections = new Map<string, CachedStoryProjection>();
   private currentSelection: CanonicalSelection | null = null;
@@ -1689,7 +1707,12 @@ class CanonicalSession {
     styles,
     sourceRestores = [],
     caches,
+    idLease,
   }: CanonicalSessionSeedOptions) {
+    this.leased =
+      idLease === undefined
+        ? undefined
+        : new CanonicalIdLease(idLease, document);
     this.sourceRestores = sourceRestores;
     this.caches = caches;
     this.currentDocument = document;
@@ -1740,6 +1763,14 @@ class CanonicalSession {
   }
 
   private freshBlockId(): Result<string, CanonicalSessionError> {
+    if (this.leased !== undefined) {
+      const fresh = this.freshBlockIds([1]);
+      if (fresh.isErr()) return fresh;
+      const id = fresh.value[0]?.[0];
+      return id === undefined
+        ? refuse("The paragraph identity lease is exhausted.")
+        : Result.ok(id);
+    }
     if (this.nextBlockId > 0x7fffffff)
       return refuse("The paragraph identity space is exhausted.");
     return Result.ok(
@@ -1757,6 +1788,17 @@ class CanonicalSession {
   ): Result<string[][], CanonicalSessionError> {
     const total = counts.reduce((sum, count) => sum + count, 0);
     const ids: string[] = [];
+    if (this.leased !== undefined) {
+      const leased = freshLeasedIds({
+        lease: this.leased.lease,
+        kind: ID_LEASE_KINDS.PARAGRAPH,
+        count: total,
+        taken: (id) => this.allocatedBlockIds.has(formatParaId(id)),
+      });
+      if (leased.length < total)
+        return refuse("The paragraph identity lease is exhausted.");
+      ids.push(...leased.map(formatParaId));
+    }
     for (let candidate = this.nextBlockId; ids.length < total; candidate += 1) {
       if (candidate > 0x7fffffff)
         return refuse("The paragraph identity space is exhausted.");
@@ -1776,21 +1818,29 @@ class CanonicalSession {
     document: Document,
     intent: EditorIntent,
   ): EditorIntentMode {
+    const leased =
+      this.leased === undefined ? {} : { idLease: this.leased.lease };
     if (
       this.mode.type === "editing" &&
       !this.intentNeedsIdentityIds(document, intent)
     )
-      return { type: "editing", reservedBlockIds: this.allocatedBlockIds };
-    const ids = this.allocateIntentIds(document, intent);
+      return {
+        type: "editing",
+        reservedBlockIds: this.allocatedBlockIds,
+        ...leased,
+      };
+    const ids = this.allocateIntentIds(document, intent, this.leased?.lease);
     return this.mode.type === "editing"
       ? {
           type: "editing",
           newIds: ids.newIds,
           reservedBlockIds: this.allocatedBlockIds,
+          ...leased,
         }
       : {
           type: "suggesting",
           reservedBlockIds: this.allocatedBlockIds,
+          ...leased,
           revision: {
             id: ids.revisionId,
             author: this.mode.author,
@@ -1937,6 +1987,17 @@ class CanonicalSession {
   /** Every paragraph identity this session has read or minted, live or retired. */
   get reservedBlockIds(): ReadonlySet<string> {
     return this.allocatedBlockIds;
+  }
+  /** The ids this session may still mint, when it holds a lease. */
+  get idLease(): IdLease | undefined {
+    return this.leased?.lease;
+  }
+  /** Add blocks the authority granted; ids this session already minted stay spent. */
+  extendIdLease(lease: IdLease): Result<void, CanonicalSessionError> {
+    if (this.leased === undefined)
+      return refuse("The session was created without an id lease.");
+    this.leased.extend(lease);
+    return Result.ok(undefined);
   }
   get version(): number {
     return this.currentVersion;
@@ -2682,24 +2743,28 @@ class CanonicalSession {
           op.type !== DOCUMENT_OP_TYPES.REMOVE_NOTE
         )
           panic("A note operation batch contains only note operations.");
-        const allocation = this.allocateIntentIds(document, {
-          type: "replaceFragment",
-          from: { ...op.at, offset: 0 },
-          to: { ...op.at, offset: Number.MAX_SAFE_INTEGER },
-          paragraphs: [
-            {
-              type: "paragraph",
-              content: [
-                {
-                  type: "run",
-                  content: [{ type: "break", breakType: "page" }],
-                },
-              ],
-            },
-          ],
-          openStart: 0,
-          openEnd: 0,
-        });
+        const allocation = this.allocateIntentIds(
+          document,
+          {
+            type: "replaceFragment",
+            from: { ...op.at, offset: 0 },
+            to: { ...op.at, offset: Number.MAX_SAFE_INTEGER },
+            paragraphs: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "break", breakType: "page" }],
+                  },
+                ],
+              },
+            ],
+            openStart: 0,
+            openEnd: 0,
+          },
+          this.leased?.lease,
+        );
         const next = {
           ...op,
           ...(this.mode.type === "suggesting"
@@ -3074,6 +3139,16 @@ class CanonicalSession {
     );
     applied.value.document = normalized.document;
     applied.value.inverse = normalized.inverse.concat(applied.value.inverse);
+    // Judged on the result too: an edit may only introduce the ids its author leases.
+    // Another actor's edit was judged against its own lease by the authority.
+    const leaseJudgement =
+      origin === "remote"
+        ? this.leased?.admit(applied.value.document)
+        : this.leased?.judge(applied.value.document);
+    if (leaseJudgement?.type === "outside")
+      return refuse(
+        `The ${leaseJudgement.id.kind} id ${leaseJudgement.id.id} is outside this author's id lease.`,
+      );
     const changed = changedStories({
       document: applied.value.document,
       previous: this.currentDocument,
@@ -3270,6 +3345,8 @@ class CanonicalSession {
         this.currentSelection = selection;
         this.currentDocument = applied.value.document;
         this.currentProjection = heldBody;
+        if (leaseJudgement?.type === "allowed")
+          this.leased?.commit(leaseJudgement.census, leaseJudgement.ids);
         // Save changes are cumulative against originalBuffer, including undo/redo.
         // They are published with the model, never with a staged projection.
         for (const ids of [
@@ -3308,6 +3385,7 @@ export { project as projectCanonicalStory };
 export const createCanonicalSession = (
   document: ReadonlyDocument,
   styles?: DeepReadonly<StyleDefinitions> | null,
+  { idLease }: CanonicalSessionOptions = {},
 ): Result<CanonicalSession, CanonicalSessionError> => {
   const owned = cloneDocumentWithParagraphPropertySources(document);
   const source = normalizeCanonicalSource(owned);
@@ -3333,6 +3411,7 @@ export const createCanonicalSession = (
       styles,
       sourceRestores: canonicalSourceRestores(normalized, source.normalized),
       caches,
+      idLease,
     }),
   );
 };

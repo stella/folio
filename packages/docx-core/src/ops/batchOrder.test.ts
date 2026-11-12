@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   deletionRemovesBlock,
+  finalBreakCarrier,
   groupInsertionRuns,
   orderAddressingBeforeRemoval,
 } from "./batchOrder";
@@ -118,24 +119,45 @@ describe("orderAddressingBeforeRemoval", () => {
 });
 
 describe("deletionRemovesBlock", () => {
-  test("only a container's last paragraph with nothing to take its break stays", () => {
+  test("only a container's last paragraph with nothing kept to take its break stays", () => {
     expect(
-      deletionRemovesBlock({
-        endsContainer: true,
-        hasKeptParagraphBefore: false,
-      }),
+      deletionRemovesBlock({ endsContainer: true, carrier: "runStart" }),
     ).toBe(false);
+    expect(deletionRemovesBlock({ endsContainer: true, carrier: "none" })).toBe(
+      false,
+    );
+    expect(deletionRemovesBlock({ endsContainer: true, carrier: "kept" })).toBe(
+      true,
+    );
     expect(
-      deletionRemovesBlock({
-        endsContainer: true,
-        hasKeptParagraphBefore: true,
-      }),
+      deletionRemovesBlock({ endsContainer: false, carrier: "none" }),
     ).toBe(true);
-    expect(
-      deletionRemovesBlock({
-        endsContainer: false,
-        hasKeptParagraphBefore: false,
-      }),
-    ).toBe(true);
+  });
+});
+
+describe("finalBreakCarrier", () => {
+  const run = (deleted: readonly boolean[]) =>
+    deleted.map((isDeleted, index) => ({
+      paragraph: `p${index}`,
+      deleted: isDeleted,
+    }));
+
+  test("the nearest kept paragraph takes the break, past deleted ones", () => {
+    expect(finalBreakCarrier(run([true, true, false, true]))).toEqual({
+      type: "kept",
+      paragraph: "p2",
+    });
+  });
+
+  test("a run deleted back to its start settles on the run's first paragraph", () => {
+    for (let length = 1; length <= 5; length++) {
+      expect(
+        finalBreakCarrier(run(Array.from({ length }, () => true))),
+      ).toEqual({ type: "runStart", paragraph: `p${length - 1}` });
+    }
+  });
+
+  test("a paragraph with none before it has no carrier", () => {
+    expect(finalBreakCarrier(run([]))).toEqual({ type: "none" });
   });
 });

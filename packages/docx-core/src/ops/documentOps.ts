@@ -116,13 +116,41 @@ export {
 export { transformBatch } from "./sequencing/transform";
 export { transformPosition } from "./sequencing/position";
 export { applyBatch } from "./sequencing/applyBatch";
-export { createSequencer } from "./sequencing/sequencer";
+export { createSequencer, type SequencerOptions } from "./sequencing/sequencer";
 export { type ClientDocumentChange, createClient } from "./sequencing/client";
+export {
+  DEFAULT_ID_BLOCK_SIZES,
+  ID_LEASE_REFUSAL_REASONS,
+  IdLeaseRefusal,
+  type IdLeaseGrant,
+  type IdLeaseMinted,
+  type IdLeaseRefusalReason,
+  type IdLeaseState,
+} from "./sequencing/idLeases";
+export {
+  formatParaId,
+  freshLeasedIds,
+  ID_KIND_LIMITS,
+  ID_LEASE_KINDS,
+  idLeaseHolds,
+  idLeaseRemaining,
+  introducedIds,
+  leasedIdCensus,
+  trimIdLease,
+  type IdBlock,
+  type IdLease,
+  type IdLeaseKind,
+  type LeasedId,
+  type LeasedIdCensus,
+} from "./idLease";
 export {
   type BatchBlockAccess,
   compareBatchOrder,
   contentRank,
   deletionRemovesBlock,
+  type FinalBreakCandidate,
+  type FinalBreakCarrier,
+  finalBreakCarrier,
   groupInsertionRuns,
   orderAddressingBeforeRemoval,
   orderBatchOperations,

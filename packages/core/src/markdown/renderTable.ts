@@ -176,7 +176,7 @@ function renderGfmCell(
     for (const item of content) {
       switch (item.type) {
         case "paragraph": {
-          const md = renderParagraph(ctx, pkg, item);
+          const md = renderParagraph(ctx, pkg, item, "tableCell");
           if (md.trim()) {
             blocks.push(md);
           }

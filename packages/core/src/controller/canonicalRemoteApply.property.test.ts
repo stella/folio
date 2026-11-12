@@ -4,6 +4,7 @@ import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import {
+  BATCH_REJECTION_REASONS,
   type ClientDocumentChange,
   createClient,
   createSequencer,
@@ -145,7 +146,6 @@ type Peer = {
   /** A pending batch was dropped: the caret's continuity is not promised. */
   replaced: boolean;
   typed: number;
-  splits: number;
   ops: number;
 };
 
@@ -251,20 +251,24 @@ const simulate = async (
 ): Promise<void> => {
   const bytes = await seed();
   const peers: Peer[] = [];
-  let sequencer: Sequencer | undefined;
+  const parse = () =>
+    parseDocx(bytes, { preloadFonts: false, detectVariables: false });
+  // The room starts from the document a session reads from the saved file.
+  const room: Sequencer = createSequencer(
+    createCanonicalSession(await parse()).unwrap().document,
+  );
   for (let index = 0; index < peersCount; index += 1) {
-    const parsed = await parseDocx(bytes, {
-      preloadFonts: false,
-      detectVariables: false,
-    });
-    const session = createCanonicalSession(parsed).unwrap();
+    const actor = `actor-${index}`;
+    // Every actor mints ids only from the blocks the room leases it.
+    const session = createCanonicalSession(await parse(), undefined, {
+      idLease: room.grantIdLease(actor).unwrap(),
+    }).unwrap();
     const home = paragraphs(session.document).at(index)?.paraId;
     if (home === undefined) return panic("The seed has a paragraph per peer.");
-    sequencer ??= createSequencer(session.document);
     const doc = session.projection.doc;
     const peer: Peer = {
       index,
-      actor: `actor-${index}`,
+      actor,
       home,
       session,
       client: createClient(session.document),
@@ -278,7 +282,6 @@ const simulate = async (
       history: [],
       replaced: false,
       typed: 0,
-      splits: 0,
       ops: 0,
     };
     // The host mirror drops what the session drops, from the bottom.
@@ -288,8 +291,6 @@ const simulate = async (
     });
     peers.push(peer);
   }
-  if (sequencer === undefined) return panic("A room has a peer.");
-  const room = sequencer;
   const batches = new Map<string, BatchMeta>();
   const deliveries: Delivery[] = [];
 
@@ -475,10 +476,8 @@ const simulate = async (
         const owner = choice % 2 === 0 ? peer : other;
         const target = paragraphOf(document, owner.home);
         if (target === undefined) return;
-        // A distinct id block per actor stands in for the authority's leases.
-        const newBlockId = (0x70000000 + peer.index * 0x100000 + peer.splits++)
-          .toString(16)
-          .toUpperCase();
+        const newBlockId = peer.session.freshBlockIds([1]).unwrap()[0]?.[0];
+        if (newBlockId === undefined) return;
         const commit = commitLocal(
           peer,
           peer.session.prepareOps(
@@ -561,6 +560,10 @@ const simulate = async (
     const result = room.submit(batch);
     deliveries.push({ peer: peer.index, type: "result", result });
     if (result.type === "reject") {
+      // Leased ids never collide, so no batch leaves its actor's lease.
+      expect(result.reason.reason).not.toBe(
+        BATCH_REJECTION_REASONS.OUTSIDE_ID_LEASE,
+      );
       coverage.rejected += 1;
       return;
     }

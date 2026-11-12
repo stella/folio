@@ -68,6 +68,7 @@ import {
 } from "./offsets";
 import {
   isBlockBoundary,
+  isBoundary,
   noRelocatedBoundaries,
   pairedCommentRanges,
   paragraphRemains,
@@ -76,6 +77,7 @@ import {
   removedContentBoundaries,
   wellFormedRanges,
   withBoundariesAtEdge,
+  withSeamBoundariesInside,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
@@ -903,10 +905,22 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
   return joins.retainedAfter.every(validEntry);
 };
 
-/** Update an explicit pending seam before removing any of its blocking revisions. */
-const prepareDeferredRemovals = (
+/** A range boundary standing on its own in a list, held by no record. */
+const isStandingBoundary = (node: InlineNode | undefined): boolean =>
+  node !== undefined && isBoundary(node);
+
+/** What has become of a deferred seam's blocker. */
+type BlockerFate = "pending" | "accepted" | "removed";
+
+/**
+ * The one rule for a deferred seam whose blockers leave the story. An
+ * accepted blocker retires the seam; a removed one, rejected or emptied by
+ * resolving the changes it held, no longer stands between the pieces, and
+ * once none stands the seam joins when its holder is removed.
+ */
+const settleDeferredRemovals = (
   nodes: readonly InlineNode[],
-  resolution: Resolution,
+  fateOf: (blocker: number) => BlockerFate,
 ): readonly InlineNode[] => {
   let changed = false;
   const out: InlineNode[] = [];
@@ -919,21 +933,20 @@ const prepareDeferredRemovals = (
       const groups = node.resolutionJoins.deferredRemove;
       if (
         groups.some((group) =>
-          group.blockers.some((id) => resolution.ids.has(id)),
+          group.blockers.some((id) => fateOf(id) !== "pending"),
         )
       ) {
         const joins = Object.assign({}, node.resolutionJoins);
-        const remainingGroups: NonNullable<
-          typeof joins.deferredRemove
-        >[number][] = [];
+        const remainingGroups: DeferredRemovalGroup[] = [];
         for (const group of groups) {
-          if (!group.blockers.some((id) => resolution.ids.has(id))) {
+          const fates = group.blockers.map(fateOf);
+          if (fates.every((fate) => fate === "pending")) {
             remainingGroups.push(group);
             continue;
           }
-          if (resolution.decision === REVISION_DECISIONS.ACCEPT) continue;
+          if (fates.includes("accepted")) continue;
           const remaining = group.blockers.filter(
-            (id) => !resolution.ids.has(id),
+            (_, index) => fates[index] === "pending",
           );
           if (remaining.length === 0)
             joins.remove = Math.max(joins.remove, group.depth);
@@ -947,17 +960,29 @@ const prepareDeferredRemovals = (
       }
     }
     const children = childNodes(next);
-    const prepared =
+    const settled =
       children === undefined
         ? children
-        : prepareDeferredRemovals(children, resolution);
-    if (children !== undefined && prepared !== children)
-      next = rebuildNode(next, prepared ?? []);
+        : settleDeferredRemovals(children, fateOf);
+    if (children !== undefined && settled !== children)
+      next = rebuildNode(next, settled ?? []);
     changed ||= next !== node;
     out.push(next);
   }
   return changed ? out : nodes;
 };
+
+/** Update an explicit pending seam before removing any of its blocking revisions. */
+const prepareDeferredRemovals = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): readonly InlineNode[] =>
+  settleDeferredRemovals(nodes, (id) => {
+    if (!resolution.ids.has(id)) return "pending";
+    return resolution.decision === REVISION_DECISIONS.ACCEPT
+      ? "accepted"
+      : "removed";
+  });
 
 type CutEdges = { first?: number; last?: number };
 /** A handoff waiting for the record `levels` above the list to be emptied. */
@@ -1465,11 +1490,32 @@ const resolveList = (
    */
   const cutLevelsOnceResolved = (node: InlineNode, index: number): number => {
     if (!isTrackedWrapper(node)) return 0;
-    const depth = node.resolutionJoins?.remove ?? 0;
-    const before = index > 0 ? pending.at(index - 1) : undefined;
-    const after = pending.at(index + 1);
-    if (depth === 0 || before === undefined || after === undefined)
-      return depth;
+    const joins = node.resolutionJoins;
+    const depth = joins?.remove ?? 0;
+    if (depth === 0) return 0;
+    // A change this resolution removes that holds no record either side
+    // (its joins on keeping are 0) cut only the records beyond the changes
+    // later edits put beside it; those go with this resolution too, so the
+    // cut is read against what then meets at its seam.
+    const reachesPast =
+      resolution.ids.has(node.info.id) &&
+      removesContent(node, resolution.decision) &&
+      joins?.before === 0 &&
+      joins.after === 0;
+    const goes = (candidate: InlineNode | undefined): boolean =>
+      reachesPast &&
+      candidate !== undefined &&
+      isTrackedWrapper(candidate) &&
+      resolution.ids.has(candidate.info.id) &&
+      removesContent(candidate, resolution.decision);
+    let beforeIndex = index - 1;
+    while (beforeIndex >= 0 && goes(pending.at(beforeIndex))) beforeIndex -= 1;
+    let afterIndex = index + 1;
+    while (afterIndex < pending.length && goes(pending.at(afterIndex)))
+      afterIndex += 1;
+    const before = beforeIndex >= 0 ? pending.at(beforeIndex) : undefined;
+    const after = pending.at(afterIndex);
+    if (before === undefined || after === undefined) return depth;
     return cutReach({
       before: edgeChain(before, "end"),
       after: edgeChain(after, "start"),
@@ -1954,6 +2000,33 @@ const resolveList = (
     carryResolutionState(resolution, node, carried);
     return carried;
   };
+  // Boundaries an earlier rejection kept at a seam still stand between the
+  // pieces it joins: they float there as the ones this resolution kept do,
+  // so rejecting first and joining later places them as the other order.
+  for (const [recorded, depth] of [...exactSeams]) {
+    if (floating.has(recorded)) continue;
+    const standingAt = (from: number, step: 1 | -1): number => {
+      let count = 0;
+      while (isStandingBoundary(out[from + step * count]?.node)) count += 1;
+      return count;
+    };
+    const after = standingAt(recorded, 1);
+    const before = after > 0 ? 0 : standingAt(recorded - 1, -1);
+    const seam = recorded + after;
+    const count = after + before;
+    const left = out[seam - count - 1];
+    const right = out[seam];
+    if (count === 0 || left === undefined || right === undefined) continue;
+    exactSeams.delete(recorded);
+    exactSeams.set(seam, Math.max(exactSeams.get(seam) ?? 0, depth));
+    floating.set(seam, {
+      count,
+      depth,
+      before: left.owner,
+      after: right.owner,
+      spanning: [],
+    });
+  }
   const merges = new Set(seams);
   /** Ids seam joins retired, each with the id of the piece it merged into. */
   const retired = new Map<number, number>();
@@ -2571,11 +2644,18 @@ const joinOps = (
         ? mergedAtSeam(paragraph.content, next.content, emptied)
         : joinParagraphSeam(paragraph.content, next.content);
     } else {
-      const seam = deferSplitSeam({
-        left: paragraph.content,
-        right: next.content,
-        depth,
-      });
+      const seam = deferSplitSeam(
+        depth > 0
+          ? {
+              ...withSeamBoundariesInside({
+                left: paragraph.content,
+                right: next.content,
+                depth,
+              }),
+              depth,
+            }
+          : { left: paragraph.content, right: next.content, depth },
+      );
       const left = seam.left.at(-1);
       const right = seam.right.at(0);
       if (depth > 0 && left !== undefined && right !== undefined) {
@@ -3118,6 +3198,16 @@ export const planRevisionResolution = ({
       type: "retained-range-boundaries",
       receiver: paragraph,
     });
+  }
+  // A blocker the resolution emptied away, unnamed, leaves the story too.
+  const standing = seamHolderIds([...resolvedContents.values()].flat());
+  for (const [key, content] of resolvedContents) {
+    const settled = settleDeferredRemovals(content, (id) =>
+      standing.has(id) ? "pending" : "removed",
+    );
+    if (settled === content) continue;
+    resolvedContents.set(key, settled);
+    resolvedChanged.add(key);
   }
   for (const { paragraph } of preparedContents) {
     const paraId = paragraph.paraId ?? "";

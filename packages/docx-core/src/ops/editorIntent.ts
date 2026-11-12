@@ -42,6 +42,14 @@ import {
   type HyperlinkEditorIntent,
 } from "./hyperlinkIntent";
 import {
+  formatParaId,
+  freshLeasedIds,
+  ID_KIND_LIMITS,
+  ID_LEASE_KINDS,
+  type IdLease,
+  type IdLeaseKind,
+} from "./idLease";
+import {
   IDENTITY_SPACES,
   idKey,
   packageIdentityKeys,
@@ -304,6 +312,8 @@ const newListOps = (newList: NewListInstance | undefined): DocumentOp[] =>
 export type EditorIntentMode = {
   /** Identities consumed during this editor lifetime, including undone insertions. */
   reservedBlockIds?: ReadonlySet<string>;
+  /** The only ids the compiler may mint, when the author holds a lease. */
+  idLease?: IdLease;
 } & (
   | { type: "editing"; newIds?: NewIds }
   | { type: "suggesting"; revision: RevisionStamp; newIds: NewIds }
@@ -440,6 +450,7 @@ export const createEditorIntentIdAllocator = ({
   return (
     document: Document,
     intent: EditorIntentAllocation,
+    lease?: IdLease,
   ): {
     revisionId: number;
     newBlockId: string;
@@ -513,13 +524,14 @@ export const createEditorIntentIdAllocator = ({
     const fresh = (
       occupied: { has: (id: number) => boolean },
       count: number,
-    ) => {
-      const ids: number[] = [];
-      for (let id = 1; id <= MAX_REVISION_ID && ids.length < count; id += 1) {
-        if (!occupied.has(id)) ids.push(id);
-      }
-      return ids;
-    };
+      kind: IdLeaseKind,
+    ) =>
+      freshLeasedIds({
+        lease,
+        kind,
+        count,
+        taken: (id) => occupied.has(id),
+      });
     if (intent.type === "insertParagraphs") {
       // Each paragraph's mark and content wrappers, the anchor's mark, and
       // the property change the paragraph that takes over that mark records.
@@ -600,18 +612,32 @@ export const createEditorIntentIdAllocator = ({
         }
       }
     }
-    const revision = fresh(census.revisions, demand + 1);
-    let nextParagraph = 1;
+    const revision = fresh(
+      census.revisions,
+      demand + 1,
+      ID_LEASE_KINDS.REVISION,
+    );
     const taken = (id: string) =>
       census.paragraphs.has(id) || (reservedBlockIds?.has(id) ?? false);
-    while (taken(nextParagraph.toString(16).padStart(8, "0").toUpperCase()))
-      nextParagraph += 1;
+    // An exhausted space or lease gives ids no operation accepts, so the edit
+    // is refused rather than handed an id that wraps or collides.
+    const paragraph = freshLeasedIds({
+      lease,
+      kind: ID_LEASE_KINDS.PARAGRAPH,
+      count: 1,
+      taken: (id) => taken(formatParaId(id)),
+    }).at(0);
+    const newBlockId = formatParaId(paragraph ?? ID_KIND_LIMITS.paragraph);
     return {
       revisionId: revision.at(0) ?? MAX_REVISION_ID + 1,
-      newBlockId: nextParagraph.toString(16).padStart(8, "0").toUpperCase(),
+      newBlockId,
       newIds: {
         revision: revision.slice(1),
-        control: fresh(census.controls, intent.type === "table" ? 0 : demand),
+        control: fresh(
+          census.controls,
+          intent.type === "table" ? 0 : demand,
+          ID_LEASE_KINDS.CONTROL,
+        ),
       },
     };
   };
@@ -621,6 +647,7 @@ export const createEditorIntentIdAllocator = ({
 export const allocateEditorIntentIds: (
   document: Document,
   intent: EditorIntentAllocation,
+  lease?: IdLease,
 ) => {
   revisionId: number;
   newBlockId: string;
@@ -935,11 +962,13 @@ const modeAfterOps = (
     ...(revisionIds === undefined ? {} : { revision: revisionIds }),
     ...(controlIds === undefined ? {} : { control: controlIds }),
   };
-  if (mode.type === "editing") return { type: "editing", newIds };
+  const leased = mode.idLease === undefined ? {} : { idLease: mode.idLease };
+  if (mode.type === "editing") return { type: "editing", newIds, ...leased };
   if (!occupied.has(`${IDENTITY_SPACES.REVISION}:${mode.revision.id}`))
-    return { type: "suggesting", revision: mode.revision, newIds };
+    return { type: "suggesting", revision: mode.revision, newIds, ...leased };
   const id = newIds.revision?.at(0) ?? MAX_REVISION_ID + 1;
   return {
+    ...leased,
     type: "suggesting",
     revision: { ...mode.revision, id },
     newIds: {
@@ -1064,22 +1093,43 @@ const identifyClipboardParagraphs = ({
   const nextInSpace = new Map<string, number>();
   let nextBlock = firstBlockId ?? 1;
   const freshBlock = () => {
-    while (
-      nextBlock <= 0x7fffffff &&
-      blockIds.has(nextBlock.toString(16).padStart(8, "0").toUpperCase())
-    )
-      nextBlock += 1;
-    if (nextBlock > 0x7fffffff) return undefined;
-    const id = nextBlock.toString(16).padStart(8, "0").toUpperCase();
+    const fresh = freshLeasedIds({
+      lease: mode.idLease,
+      kind: ID_LEASE_KINDS.PARAGRAPH,
+      count: 1,
+      from: nextBlock,
+      taken: (candidate) => blockIds.has(formatParaId(candidate)),
+    }).at(0);
+    if (fresh === undefined) return undefined;
+    const id = formatParaId(fresh);
     blockIds.add(id);
-    nextBlock += 1;
+    nextBlock = fresh + 1;
     return id;
   };
+  // A leased author mints revision and content-control ids from its lease.
+  let leaseExhausted = false;
   const freshId = (space: string, oldId: number) => {
     const key = `${space}:${oldId}`;
     const existing = remapped.get(key);
     if (existing !== undefined) return existing;
     let id = nextInSpace.get(space) ?? 1;
+    if (
+      mode.idLease !== undefined &&
+      (space === IDENTITY_SPACES.REVISION || space === IDENTITY_SPACES.CONTROL)
+    ) {
+      const leased = freshLeasedIds({
+        lease: mode.idLease,
+        kind:
+          space === IDENTITY_SPACES.REVISION
+            ? ID_LEASE_KINDS.REVISION
+            : ID_LEASE_KINDS.CONTROL,
+        count: 1,
+        from: id,
+        taken: (candidate) => occupied.has(`${space}:${candidate}`),
+      }).at(0);
+      if (leased === undefined) leaseExhausted = true;
+      id = leased ?? MAX_REVISION_ID + 1;
+    }
     while (
       space === "bookmark" ? markers.has(id) : occupied.has(`${space}:${id}`)
     )
@@ -1134,6 +1184,14 @@ const identifyClipboardParagraphs = ({
         value.id = freshId("bookmark", value.id);
     }
   });
+  if (leaseExhausted)
+    return Result.err(
+      new DocumentOpRefusal({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+        message: "The pasted content needs more ids than the lease holds.",
+        opType: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      }),
+    );
   // Only split-off paragraphs need new IDs; the inline tail keeps its
   // destination identity, including when the session has exhausted block IDs.
   for (const [index, paragraph] of copy.entries()) {
@@ -2116,6 +2174,7 @@ export const compileEditorIntent = (
       const fresh = freshParagraphIds({
         document,
         reserved: mode.reservedBlockIds,
+        lease: mode.idLease,
         count: demand.value,
         opType: operation.type,
       });
@@ -2188,6 +2247,7 @@ export const compileEditorIntent = (
         const fresh = freshParagraphIds({
           document,
           reserved: mode.reservedBlockIds,
+          lease: mode.idLease,
           count: rowParagraphCount(operation.row),
           opType: operation.type,
         });
@@ -2262,6 +2322,7 @@ export const compileEditorIntent = (
       const fresh = freshParagraphIds({
         document,
         reserved: mode.reservedBlockIds,
+        lease: mode.idLease,
         count: intent.paragraphs.length,
         opType: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
       });
@@ -2302,6 +2363,7 @@ export const compileEditorIntent = (
         const fresh = freshParagraphIds({
           document,
           reserved: mode.reservedBlockIds,
+          lease: mode.idLease,
           count:
             storyParagraphs({ content: [{ type: "table", rows: table.rows }] })
               .length + (intent.operation.separated === true ? 2 : 1),
@@ -3428,6 +3490,7 @@ const cutsBesideRemoval = (
 type FreshParagraphIdsOptions = {
   document: Document;
   reserved: ReadonlySet<string> | undefined;
+  lease: IdLease | undefined;
   count: number;
   opType: DocumentOp["type"];
 };
@@ -3436,26 +3499,31 @@ type FreshParagraphIdsOptions = {
 const freshParagraphIds = ({
   document,
   reserved,
+  lease,
   count,
   opType,
 }: FreshParagraphIdsOptions): Result<string[], DocumentOpRefusal> => {
   const occupied = new Set(
     [...packageParagraphIds(document.package), ...(reserved ?? [])].map(idKey),
   );
-  const ids: string[] = [];
-  for (let nextId = 1; ids.length < count; nextId += 1) {
-    if (nextId >= 0x8000_0000)
-      return Result.err(
-        new DocumentOpRefusal({
-          opType,
-          reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-          message: "The paragraph identity space is exhausted.",
-        }),
-      );
-    const id = nextId.toString(16).padStart(8, "0").toUpperCase();
-    if (!occupied.has(idKey(id))) ids.push(id);
-  }
-  return Result.ok(ids);
+  const ids = freshLeasedIds({
+    lease,
+    kind: ID_LEASE_KINDS.PARAGRAPH,
+    count,
+    taken: (id) => occupied.has(formatParaId(id)),
+  });
+  if (ids.length < count)
+    return Result.err(
+      new DocumentOpRefusal({
+        opType,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+        message:
+          lease === undefined
+            ? "The paragraph identity space is exhausted."
+            : "The paragraph identity lease is exhausted.",
+      }),
+    );
+  return Result.ok(ids.map(formatParaId));
 };
 
 const rowParagraphCount = (row: TableRow): number =>
