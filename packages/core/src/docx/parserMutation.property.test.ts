@@ -38,7 +38,6 @@ setDefaultTimeout(subprocessTestTimeout());
 
 const MAX_MUTATED_BYTES = 512 * 1024;
 const BASE_RUNS = 12;
-const SEQUENCE_RUNS = Number(process.env["PARSER_FUZZ_RUNS"] ?? BASE_RUNS);
 const DEFAULT_SEED = 20_260_927;
 
 const FIXTURES = {
@@ -353,10 +352,10 @@ test(
       {
         ...localSeed(),
         id: "seeded parser mutation sequences refuse or round-trip",
-        numRuns: SEQUENCE_RUNS,
+        numRuns: Number(process.env["PARSER_FUZZ_RUNS"] ?? BASE_RUNS),
       },
     );
   },
   // Each generated sequence runs one case child.
-  subprocessTestTimeout(SEQUENCE_RUNS),
+  subprocessTestTimeout(BASE_RUNS),
 );
