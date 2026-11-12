@@ -6749,12 +6749,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           getCanonicalApi={getCanonicalApi}
           readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
-          {...(!usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? {}
-            : { experimentalSession })}
+          experimentalSession={
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+              ? "canonical"
+              : "legacy"
+          }
           {...(styles !== undefined ? { styles } : {})}
           {...(_theme !== undefined ? { theme: _theme } : {})}
         />
@@ -6766,12 +6768,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           getCanonicalApi={getCanonicalApi}
           readCanonicalDocument={readCanonicalDocument}
           onSessionRefusal={handleSessionRefusal}
-          {...(!usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? {}
-            : { experimentalSession })}
+          experimentalSession={
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+              ? "canonical"
+              : "legacy"
+          }
           onDocumentChange={handleNoteDocumentChange}
           onStoryChange={handleNoteStoryTransaction}
           plugins={noteStoryPlugins}
@@ -6786,12 +6790,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           ref={hiddenPMRef}
           document={document}
           documentIdentity={documentIdentity}
-          {...(!usesCanonicalSession(
-            experimentalSession,
-            CANONICAL_GAP.authorityRouting,
-          )
-            ? {}
-            : { experimentalSession })}
+          experimentalSession={
+            usesCanonicalSession(
+              experimentalSession,
+              CANONICAL_GAP.authorityRouting,
+            )
+              ? "canonical"
+              : "legacy"
+          }
           onSessionRefusal={handleSessionRefusal}
           {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           suggestionModeActive={suggestionModeActive}
