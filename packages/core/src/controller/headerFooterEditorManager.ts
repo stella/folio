@@ -16,6 +16,7 @@ import { OP_STORIES } from "@stll/docx-core/ops";
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { storyConversionOptions } from "../prosemirror/conversion/storyConversionOptions";
 import {
   headerFooterToProseDoc,
   type ToProseDocOptions,
@@ -154,16 +155,7 @@ const buildInitialState = (
   numbering: NumberingDefinitions | null | undefined,
   manager: ExtensionManager,
 ): EditorStateT => {
-  const proseDocOptions: ToProseDocOptions = {};
-  if (styles) {
-    proseDocOptions.styles = styles;
-  }
-  if (theme !== undefined) {
-    proseDocOptions.theme = theme;
-  }
-  if (numbering != null) {
-    proseDocOptions.numbering = numbering;
-  }
+  const proseDocOptions = storyConversionOptions({ styles, theme, numbering });
   const document =
     headerFooter.watermarkBlockIndex === undefined
       ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
