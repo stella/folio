@@ -11,6 +11,7 @@ import { MAX_REVIEW_HISTORY_ATTRIBUTE_LENGTH } from "../reviewHistoryLimits";
 import type {
   Insertion,
   ParagraphMarkChange,
+  RecordField,
   RunPropertyChange,
 } from "../types/document";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
@@ -26,14 +27,14 @@ type BoundaryJoins = NonNullable<RunPropertyChange["boundaryJoins"]>;
 type RetainedIdentity = NonNullable<ResolutionJoins["retainedAfter"]>[number];
 type IdentitySlot = RetainedIdentity["source"][number];
 const SLOT_FIELDS = { space: true, id: true } as const satisfies Record<
-  keyof IdentitySlot,
+  RecordField<IdentitySlot>,
   true
 >;
 const RETAINED_FIELDS = {
   depth: true,
   source: true,
   target: true,
-} as const satisfies Record<keyof RetainedIdentity, true>;
+} as const satisfies Record<RecordField<RetainedIdentity>, true>;
 const JOIN_FIELDS = {
   before: true,
   after: true,
@@ -43,7 +44,7 @@ const JOIN_FIELDS = {
   acceptance: true,
   plainSides: true,
   retainedEnclosing: true,
-} as const satisfies Record<keyof ResolutionJoins, true>;
+} as const satisfies Record<RecordField<ResolutionJoins>, true>;
 type EnclosingHandoff = NonNullable<
   ResolutionJoins["retainedEnclosing"]
 >[number];
@@ -51,7 +52,7 @@ const ENCLOSING_FIELDS = {
   levels: true,
   source: true,
   target: true,
-} as const satisfies Record<keyof EnclosingHandoff, true>;
+} as const satisfies Record<RecordField<EnclosingHandoff>, true>;
 /**
  * Saved as its own attribute: a reader that does not know it keeps the
  * joins and drops only the handoff.
@@ -71,14 +72,14 @@ const PARAGRAPH_MARK_FIELDS = {
   // marker, and joins the paragraphs as any rejected mark.
   survivor: { type: "private", attribute: "rejectionSurvivor" },
 } as const satisfies Record<
-  keyof ParagraphMarkChange,
+  RecordField<ParagraphMarkChange>,
   { type: "ooxml" } | { type: "private"; attribute: string }
 >;
 
 const DEFERRED_REMOVAL_FIELDS = {
   depth: true,
   blockers: true,
-} as const satisfies Record<keyof DeferredRemoval, true>;
+} as const satisfies Record<RecordField<DeferredRemoval>, true>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

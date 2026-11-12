@@ -46,6 +46,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { builtinModules } from "node:module";
 import path from "node:path";
 import type { CallExpression } from "oxc-parser";
 
@@ -379,6 +380,91 @@ export const propertyFiles = (): PropertyFile[] => {
   return [...packages, ...rootTests].toSorted((a, b) =>
     a.file.localeCompare(b.file),
   );
+};
+
+const CODE_FILE = /\.[cm]?[jt]sx?$/u;
+const DECLARATION_FILE = /\.d\.[cm]?ts$/u;
+const transpilerLoader = (file: string): "js" | "jsx" | "ts" | "tsx" => {
+  const extension = path.extname(file).replace(/^\.[cm]?/u, "");
+  return extension === "js" || extension === "jsx" || extension === "tsx"
+    ? extension
+    : "ts";
+};
+
+/**
+ * Every runtime import a planned property file cannot load, as
+ * `<importer>: <specifier>`. The runner starts `bun test` in the file's
+ * `packageDir`, but Bun resolves each import from the importing file's own
+ * directory: a file under the repository's root test directories loads only
+ * the packages the root manifest declares, however many workspaces use them.
+ * The scan follows the file's in-repository imports, as the test would load
+ * them; type-only imports never load and are not followed.
+ */
+export const unrunnablePropertyImports = (
+  files: readonly Pick<PropertyFile, "file" | "packageDir">[],
+  repoRoot = REPO_ROOT,
+): string[] => {
+  const failures = new Set<string>();
+  const transpilers = new Map<string, Bun.Transpiler>();
+  const scanned = new Set<string>();
+  const pending: string[] = [];
+  const relative = (file: string) =>
+    path.relative(repoRoot, file).replaceAll("\\", "/");
+  for (const { file, packageDir } of files) {
+    const absolute = path.join(repoRoot, file);
+    const fromPackage = path.relative(
+      path.join(repoRoot, packageDir),
+      absolute,
+    );
+    if (fromPackage.startsWith("..") || path.isAbsolute(fromPackage))
+      failures.add(`${file}: planned to run from ${packageDir}`);
+    pending.push(absolute);
+  }
+  while (pending.length > 0) {
+    const importer = pending.pop();
+    if (importer === undefined || scanned.has(importer)) continue;
+    scanned.add(importer);
+    const loader = transpilerLoader(importer);
+    let transpiler = transpilers.get(loader);
+    if (transpiler === undefined) {
+      transpiler = new Bun.Transpiler({ loader });
+      transpilers.set(loader, transpiler);
+    }
+    let imports: ReturnType<Bun.Transpiler["scanImports"]>;
+    try {
+      imports = transpiler.scanImports(
+        readFileSync(importer, "utf8").replace(/^#![^\n]*\n/u, ""),
+      );
+    } catch {
+      failures.add(`${relative(importer)}: source could not be scanned`);
+      continue;
+    }
+    for (const { path: specifier } of imports) {
+      if (
+        specifier.startsWith("bun:") ||
+        specifier.startsWith("node:") ||
+        builtinModules.includes(specifier)
+      )
+        continue;
+      let resolved: string;
+      try {
+        resolved = Bun.resolveSync(specifier, path.dirname(importer));
+      } catch {
+        failures.add(`${relative(importer)}: ${specifier}`);
+        continue;
+      }
+      const inRepository = relative(resolved);
+      if (
+        path.isAbsolute(resolved) &&
+        !inRepository.startsWith("../") &&
+        !inRepository.split("/").includes("node_modules") &&
+        CODE_FILE.test(resolved) &&
+        !DECLARATION_FILE.test(resolved)
+      )
+        pending.push(resolved);
+    }
+  }
+  return [...failures].toSorted();
 };
 
 /** The areas a set of changed repo paths touches. */

@@ -17,6 +17,7 @@
  * field pretending to describe it.
  */
 
+import type { WritableRecord } from "./deepReadonly";
 import {
   PRESET_LINE_DASH_VALS,
   type PresetLineDashVal,
@@ -30,7 +31,7 @@ import {
  * it through `ParseContext` so the normalisation is visible, and the
  * serializer writes `raw` back unchanged.
  */
-export type UnrecognisedPresetLineDash = {
+export type UnrecognisedPresetLineDash = WritableRecord & {
   readonly kind: "unrecognised";
   readonly raw: string;
 };

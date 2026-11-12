@@ -52,8 +52,8 @@ export type FootnotePropertiesDialogProps = {
     isOpen: boolean;
     onClose: () => void;
     onApply: (footnoteProps: FootnoteProperties, endnoteProps: EndnoteProperties) => void;
-    footnotePr?: FootnoteProperties;
-    endnotePr?: EndnoteProperties;
+    footnotePr?: DeepReadonly<FootnoteProperties>;
+    endnotePr?: DeepReadonly<EndnoteProperties>;
 };
 
 // @public (undocumented)

@@ -34,6 +34,7 @@ import type {
   TextContent,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { parseFieldState } from "./fieldState";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { FieldTypeSchema, narrowEnum } from "./parserEnums";
@@ -310,7 +311,7 @@ export function hasMergeFormat(instruction: ParsedFieldInstruction): boolean {
 export function parseSimpleField(
   node: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
 ): SimpleField {
   const instruction = getAttribute(node, "w", "instr") ?? "";
   const fieldType = parseFieldType(instruction);

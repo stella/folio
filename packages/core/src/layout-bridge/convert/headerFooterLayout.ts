@@ -787,7 +787,7 @@ export type ConvertHeaderFooterOptions = {
   altChunkMarkerText?: string;
   styles?: DeepReadonly<StyleDefinitions> | null;
   numbering?: NumberingDefinitions;
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   defaultSize?: number;
   fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;

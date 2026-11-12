@@ -23,6 +23,8 @@ import {
   statesNoBorder,
 } from "@stll/docx-core/model";
 
+import type { DeepReadonly } from "../types/documentModel";
+
 /** The CSS `border-style` keywords folio paints a border with, in one tuple. */
 export const CSS_BORDER_STYLE_VALUES = [
   "none",
@@ -479,7 +481,7 @@ export const paintsCssBorder = (style: CssBorderStyle | undefined): boolean =>
  * kept for the round trip, but nothing can be inferred about how it draws.
  */
 export const cssBorderStyle = (
-  style: BorderStyleValue | undefined,
+  style: DeepReadonly<BorderStyleValue> | undefined,
 ): CssBorderStyle => {
   if (style === undefined) {
     return "solid";

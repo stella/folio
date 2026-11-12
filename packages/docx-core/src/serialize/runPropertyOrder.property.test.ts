@@ -16,7 +16,8 @@
  * writers. So the property is stated against the generated list rather than
  * against the validator, which cannot see this class of defect at all.
  *
- * The sample map is `satisfies Record<keyof TextFormatting, …>`: a field the
+ * The sample map (`__fixtures__/runPropertySamples.ts`) is
+ * `satisfies Record<RecordField<TextFormatting>, …>`: a field the
  * model gains cannot reach this property without somebody stating what it
  * looks like, and the subset generator then puts it in front of every other
  * field the writer emits.
@@ -33,52 +34,14 @@ import type { Document } from "../model/document";
 import type { TextFormatting } from "../model/formatting";
 import { SEQUENCE_CHILDREN } from "../schema/sequenceChildren";
 import { ZipArchive } from "../zip/archive";
+import { RUN_PROPERTY_SAMPLES } from "./__fixtures__/runPropertySamples";
 import { serializeDocumentToDocx } from "./docx";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-/** One minimal `TextFormatting` per model field, each stating that field. */
-const SAMPLES = {
-  bold: { bold: true },
-  boldCs: { boldCs: false },
-  italic: { italic: true },
-  italicCs: { italicCs: false },
-  underline: { underline: { style: "single" } },
-  strike: { strike: true },
-  doubleStrike: { doubleStrike: true },
-  vertAlign: { vertAlign: "superscript" },
-  smallCaps: { smallCaps: true },
-  allCaps: { allCaps: true },
-  hidden: { hidden: true },
-  noProof: { noProof: true },
-  color: { color: { rgb: "1F4E79" } },
-  highlight: { highlight: "yellow" },
-  shading: { shading: { pattern: "clear", fill: { rgb: "D9D9D9" } } },
-  fontSize: { fontSize: 24 },
-  fontSizeCs: { fontSizeCs: 26 },
-  fontFamily: {
-    fontFamily: { ascii: "Georgia", hAnsi: "Georgia", cs: "Amiri" },
-  },
-  language: { language: { val: "cs-CZ" } },
-  spacing: { spacing: 20 },
-  position: { position: 6 },
-  scale: { scale: 110 },
-  kerning: { kerning: 18 },
-  effect: { effect: "shimmer" },
-  emphasisMark: { emphasisMark: "dot" },
-  emboss: { emboss: true },
-  imprint: { imprint: true },
-  outline: { outline: true },
-  shadow: { shadow: true },
-  rtl: { rtl: true },
-  cs: { cs: true },
-  styleId: { styleId: "Emphasis" },
-  // Keeps this map total; the compiled writer has no capture channel, so this
-  // sample contributes no child to its emitted `w:rPr`.
-  preserved: { preserved: { children: [{ index: 0, xml: "<w:bdr/>" }] } },
-} as const satisfies Record<keyof TextFormatting, TextFormatting>;
-
-const FIELDS = Object.keys(SAMPLES) as (keyof typeof SAMPLES)[];
+const FIELDS = Object.keys(
+  RUN_PROPERTY_SAMPLES,
+) as (keyof typeof RUN_PROPERTY_SAMPLES)[];
 
 const documentWith = (formatting: TextFormatting): Document => ({
   package: {
@@ -130,7 +93,7 @@ test("a compiled run property set is written in the schema's child order", async
     fc.asyncProperty(fc.subarray(FIELDS, { minLength: 2 }), async (fields) => {
       const formatting = Object.assign(
         {},
-        ...fields.map((field) => SAMPLES[field]),
+        ...fields.map((field) => RUN_PROPERTY_SAMPLES[field]),
       );
       const positions = declaredPositions(
         await readDocumentXml(

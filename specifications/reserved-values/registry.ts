@@ -4,7 +4,7 @@
  * This is the single place the reserved-value lint and
  * `scripts/check-reserved-value-coverage.ts` read, so neither mirrors the
  * decisions by hand. Every model type is gated at compile time by the
- * `satisfies Record<keyof T, ReservedValueDisposition>` on its own map; this
+ * `satisfies Record<RecordField<T>, ReservedValueDisposition>` on its own map; this
  * table is what the tooling walks at runtime.
  */
 

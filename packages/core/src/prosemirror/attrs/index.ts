@@ -33,7 +33,7 @@ import {
   type ProseMirrorAttrIssue,
   type ReadProseMirrorAttrsResult,
 } from "../../internal/prosemirrorAttrBoundary";
-import type { ParagraphFormatting } from "../../types/document";
+import type { ParagraphFormatting, RecordField } from "../../types/document";
 import {
   COUNTER_FORMAT_VALUES,
   EMPHASIS_MARK_VALUES,
@@ -4938,7 +4938,7 @@ const PARAGRAPH_FORMATTING_BOOLEAN_KEYS = [
   "pageBreakBefore",
   "contextualSpacing",
   "runInWithNext",
-] as const satisfies readonly (keyof ParagraphFormatting)[];
+] as const satisfies readonly RecordField<ParagraphFormatting>[];
 
 const PARAGRAPH_FORMATTING_NUMBER_KEYS = [
   "spaceBefore",
@@ -4947,7 +4947,7 @@ const PARAGRAPH_FORMATTING_NUMBER_KEYS = [
   "indentLeft",
   "indentRight",
   "indentFirstLine",
-] as const satisfies readonly (keyof ParagraphFormatting)[];
+] as const satisfies readonly RecordField<ParagraphFormatting>[];
 
 type ValidatedParagraphFormattingKey =
   | (typeof PARAGRAPH_FORMATTING_BOOLEAN_KEYS)[number]
@@ -4971,7 +4971,7 @@ type ValidatedParagraphFormattingKey =
   | "spacingPreservedAttributes";
 
 const paragraphFormattingValidationIsTotal: Record<
-  Exclude<keyof ParagraphFormatting, ValidatedParagraphFormattingKey>,
+  Exclude<RecordField<ParagraphFormatting>, ValidatedParagraphFormattingKey>,
   never
 > = {};
 void paragraphFormattingValidationIsTotal;

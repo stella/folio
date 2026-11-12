@@ -8,6 +8,7 @@ import type {
   FootnoteProperties,
   SectionProperties,
 } from "../../packages/docx-core/src/model/content";
+import type { RecordField } from "../../packages/docx-core/src/model/deepReadonly";
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import {
   NO_RESERVED_VALUE,
@@ -66,7 +67,7 @@ export const SECTION_PROPERTIES_RESERVED = {
   // value is a spelling the model interprets; these slots interpret nothing.
   preserved: NO_RESERVED_VALUE,
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof SectionProperties, ReservedValueDisposition>;
+} satisfies Record<RecordField<SectionProperties>, ReservedValueDisposition>;
 
 export type ExhaustiveSectionPropertiesReserved = ExhaustiveFields<
   SectionProperties,
@@ -76,7 +77,7 @@ export type ExhaustiveSectionPropertiesReserved = ExhaustiveFields<
 export const COLUMN_RESERVED = {
   width: NO_RESERVED_VALUE,
   space: NO_RESERVED_VALUE,
-} satisfies Record<keyof Column, ReservedValueDisposition>;
+} satisfies Record<RecordField<Column>, ReservedValueDisposition>;
 
 export type ExhaustiveColumnReserved = ExhaustiveFields<
   Column,
@@ -90,7 +91,7 @@ export const SECTION_LINE_NUMBERS_RESERVED = {
   countBy: NO_RESERVED_VALUE,
   distance: NO_RESERVED_VALUE,
   restart: NO_RESERVED_VALUE,
-} satisfies Record<keyof SectionLineNumbers, ReservedValueDisposition>;
+} satisfies Record<RecordField<SectionLineNumbers>, ReservedValueDisposition>;
 
 export type ExhaustiveSectionLineNumbersReserved = ExhaustiveFields<
   SectionLineNumbers,
@@ -104,7 +105,7 @@ export const SECTION_PAGE_NUMBERING_RESERVED = {
   start: NO_RESERVED_VALUE,
   chapterStyle: NO_RESERVED_VALUE,
   chapterSeparator: NO_RESERVED_VALUE,
-} satisfies Record<keyof SectionPageNumbering, ReservedValueDisposition>;
+} satisfies Record<RecordField<SectionPageNumbering>, ReservedValueDisposition>;
 
 export type ExhaustiveSectionPageNumberingReserved = ExhaustiveFields<
   SectionPageNumbering,
@@ -126,7 +127,7 @@ export const SECTION_PAGE_BORDERS_RESERVED = {
     reason:
       "`front` is the attribute's XSD default, so an absent `@w:zOrder` and an explicit `front` mean the same thing. folio paints page borders above the page background either way and never consults the field, so `back` renders as `front`.",
   }),
-} satisfies Record<keyof SectionPageBorders, ReservedValueDisposition>;
+} satisfies Record<RecordField<SectionPageBorders>, ReservedValueDisposition>;
 
 export type ExhaustiveSectionPageBordersReserved = ExhaustiveFields<
   SectionPageBorders,
@@ -140,7 +141,7 @@ export const SECTION_BACKGROUND_RESERVED = {
   themeColor: NO_RESERVED_VALUE,
   themeTint: NO_RESERVED_VALUE,
   themeShade: NO_RESERVED_VALUE,
-} satisfies Record<keyof SectionBackground, ReservedValueDisposition>;
+} satisfies Record<RecordField<SectionBackground>, ReservedValueDisposition>;
 
 export type ExhaustiveSectionBackgroundReserved = ExhaustiveFields<
   SectionBackground,
@@ -158,7 +159,7 @@ export const SECTION_DOC_GRID_RESERVED = {
   }),
   linePitch: NO_RESERVED_VALUE,
   charSpace: NO_RESERVED_VALUE,
-} satisfies Record<keyof SectionDocGrid, ReservedValueDisposition>;
+} satisfies Record<RecordField<SectionDocGrid>, ReservedValueDisposition>;
 
 export type ExhaustiveSectionDocGridReserved = ExhaustiveFields<
   SectionDocGrid,
@@ -184,14 +185,14 @@ const NOTE_RESERVED = {
     evidence: "note-ids-minus-one-and-zero-are-reserved",
   }),
   content: NO_RESERVED_VALUE,
-} satisfies Record<keyof Footnote, ReservedValueDisposition>;
+} satisfies Record<RecordField<Footnote>, ReservedValueDisposition>;
 
 export const FOOTNOTE_RESERVED = NOTE_RESERVED satisfies Record<
-  keyof Footnote,
+  RecordField<Footnote>,
   ReservedValueDisposition
 >;
 export const ENDNOTE_RESERVED = NOTE_RESERVED satisfies Record<
-  keyof Endnote,
+  RecordField<Endnote>,
   ReservedValueDisposition
 >;
 
@@ -207,7 +208,7 @@ export const FOOTNOTE_PROPERTIES_RESERVED = {
   numFmtFormat: NO_RESERVED_VALUE,
   numStart: NO_RESERVED_VALUE,
   numRestart: NO_RESERVED_VALUE,
-} satisfies Record<keyof FootnoteProperties, ReservedValueDisposition>;
+} satisfies Record<RecordField<FootnoteProperties>, ReservedValueDisposition>;
 
 export type ExhaustiveFootnotePropertiesReserved = ExhaustiveFields<
   FootnoteProperties,
@@ -220,7 +221,7 @@ export const ENDNOTE_PROPERTIES_RESERVED = {
   numFmtFormat: NO_RESERVED_VALUE,
   numStart: NO_RESERVED_VALUE,
   numRestart: NO_RESERVED_VALUE,
-} satisfies Record<keyof EndnoteProperties, ReservedValueDisposition>;
+} satisfies Record<RecordField<EndnoteProperties>, ReservedValueDisposition>;
 
 export type ExhaustiveEndnotePropertiesReserved = ExhaustiveFields<
   EndnoteProperties,

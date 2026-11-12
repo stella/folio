@@ -448,6 +448,231 @@ const checkInCheckOnModel = (
   });
 };
 
+// --- Rule 3: writable-record-mark ------------------------------------------
+//
+// TypeScript compares `readonly` only on arrays, so a model record's
+// `DeepReadonly` form is refused where the writable record is expected only
+// because the record carries `WritableRecord` (see `deepReadonly.ts`). A record
+// declared without the mark is a read-only value a writer can be handed
+// unnoticed. Every object type a model declaration spells (a named record, an
+// inline record inside one, an index-signature `Record<…>` and a `Pick<…>`,
+// which drops the mark it picks from) is intersected with `WritableRecord`.
+// A record whose fields are all `readonly` needs no mark, and neither does a
+// phantom brand.
+
+type MarkContext = {
+  filename: string;
+  getSourceCode?: () => { text?: unknown };
+  report: (descriptor: {
+    node: unknown;
+    messageId: "unmarkedRecord";
+    data: { kind: string };
+  }) => void;
+  sourceCode?: { text?: unknown };
+};
+
+const WRITABLE_RECORD = "WritableRecord";
+
+// Generic wrappers that map every field of their argument, the mark among
+// them, so a marked argument gives a marked result.
+const MARK_PRESERVING_GENERICS = new Set([
+  "OwnFieldPresence",
+  "Partial",
+  "Readonly",
+  "NonNullable",
+]);
+
+// Generic references that build a record without the mark of anything they
+// are given.
+const MARK_DROPPING_GENERICS = new Set(["Record", "Pick"]);
+
+// Nodes below which a type literal is not a model record: a function's
+// parameters and results, a type query, a type parameter's constraint.
+const NON_RECORD_ANCESTORS = new Set([
+  "TSFunctionType",
+  "TSConstructorType",
+  "TSMethodSignature",
+  "TSTypeQuery",
+  "TSTypeParameter",
+  "TSTypePredicate",
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+  "VariableDeclarator",
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+]);
+
+const referenceName = (node: unknown): string | null => {
+  if (!isAstNode(node) || node.type !== "TSTypeReference") {
+    return null;
+  }
+  const typeName = node["typeName"];
+  return isAstNode(typeName) &&
+    typeName.type === "Identifier" &&
+    typeof typeName["name"] === "string"
+    ? typeName["name"]
+    : null;
+};
+
+const isMarkReference = (node: unknown): boolean =>
+  referenceName(node) === WRITABLE_RECORD;
+
+/** Whether the node, read up through unions, intersections, parentheses and
+ * mark-preserving generics, meets an intersection with `WritableRecord`. */
+const isMarked = (ancestors: readonly AstNode[]): boolean => {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const ancestor = ancestors[index];
+    if (ancestor === undefined) {
+      return false;
+    }
+    if (ancestor.type === "TSIntersectionType") {
+      const members = ancestor["types"];
+      if (Array.isArray(members) && members.some(isMarkReference)) {
+        return true;
+      }
+      continue;
+    }
+    if (
+      ancestor.type === "TSUnionType" ||
+      ancestor.type === "TSParenthesizedType" ||
+      ancestor.type === "TSTypeParameterInstantiation"
+    ) {
+      continue;
+    }
+    const name = referenceName(ancestor);
+    if (name !== null && MARK_PRESERVING_GENERICS.has(name)) {
+      continue;
+    }
+    return false;
+  }
+  return false;
+};
+
+/** Whether the node sits in a model type declaration, as a record of it. */
+const isInRecordDeclaration = (ancestors: readonly AstNode[]): boolean => {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const ancestor = ancestors[index];
+    if (ancestor === undefined) {
+      return false;
+    }
+    if (NON_RECORD_ANCESTORS.has(ancestor.type)) {
+      return false;
+    }
+    if (
+      ancestor.type === "TSTypeAliasDeclaration" ||
+      ancestor.type === "TSInterfaceDeclaration"
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const isReadonlyMember = (member: unknown, brands: Set<string>): boolean => {
+  if (!isAstNode(member)) {
+    return false;
+  }
+  if (
+    member.type === "TSPropertySignature" ||
+    member.type === "TSIndexSignature"
+  ) {
+    if (member["readonly"] === true) {
+      return true;
+    }
+    const key = member["key"];
+    return (
+      member["computed"] === true &&
+      isAstNode(key) &&
+      key.type === "Identifier" &&
+      typeof key["name"] === "string" &&
+      brands.has(key["name"])
+    );
+  }
+  return false;
+};
+
+/** A record that hands out nothing to write: every field `readonly`, or
+ * keyed by a declared `unique symbol` (a phantom brand). */
+const isImmutableLiteral = (members: unknown, brands: Set<string>): boolean =>
+  Array.isArray(members) &&
+  members.length > 0 &&
+  members.every((member) => isReadonlyMember(member, brands));
+
+const checkWritableRecordMarks = (
+  program: AstNode,
+  context: MarkContext,
+): void => {
+  const source =
+    typeof context.sourceCode?.text === "string"
+      ? context.sourceCode.text
+      : context.getSourceCode?.().text;
+  const brands = new Set(
+    [
+      ...(typeof source === "string" ? source : "").matchAll(
+        /\b(?:declare\s+)?const\s+(?<name>[$\w]+)\s*:\s*unique\s+symbol\b/gu,
+      ),
+    ].flatMap(({ groups }) =>
+      groups?.["name"] === undefined ? [] : [groups["name"]],
+    ),
+  );
+  const ancestors: AstNode[] = [];
+  const visit = (node: AstNode): void => {
+    if (node.type === "TSTypeLiteral") {
+      if (
+        isInRecordDeclaration(ancestors) &&
+        !isMarked(ancestors) &&
+        !isImmutableLiteral(node["members"], brands)
+      ) {
+        context.report({
+          node,
+          messageId: "unmarkedRecord",
+          data: { kind: "record" },
+        });
+      }
+    } else if (node.type === "TSTypeReference") {
+      const name = referenceName(node);
+      if (
+        name !== null &&
+        MARK_DROPPING_GENERICS.has(name) &&
+        isInRecordDeclaration(ancestors) &&
+        !isMarked(ancestors)
+      ) {
+        context.report({
+          node,
+          messageId: "unmarkedRecord",
+          data: { kind: `\`${name}<…>\`` },
+        });
+      }
+    } else if (node.type === "TSInterfaceDeclaration") {
+      const heritage = node["extends"];
+      const body = node["body"];
+      const extendsMark =
+        Array.isArray(heritage) &&
+        heritage.some(
+          (clause) =>
+            isAstNode(clause) &&
+            isAstNode(clause["expression"]) &&
+            clause["expression"]["name"] === WRITABLE_RECORD,
+        );
+      if (
+        !extendsMark &&
+        !(isAstNode(body) && isImmutableLiteral(body["body"], brands))
+      ) {
+        context.report({
+          node,
+          messageId: "unmarkedRecord",
+          data: { kind: "interface" },
+        });
+      }
+    }
+    ancestors.push(node);
+    forEachChild(node, visit);
+    ancestors.pop();
+  };
+  visit(program);
+};
+
 export default {
   meta: { name: "folio-model-types" },
   rules: {
@@ -524,6 +749,33 @@ export default {
               forEachChild(child, visit);
             };
             visit(node);
+          },
+        };
+      },
+    },
+    "writable-record-mark": {
+      meta: {
+        type: "problem",
+        messages: {
+          unmarkedRecord:
+            "This model {{kind}} carries no `WritableRecord` mark, so its `DeepReadonly` form " +
+            "passes where the writable type is expected: TypeScript compares `readonly` only " +
+            "on arrays. Intersect it with `WritableRecord` (see `deepReadonly.ts`), or declare " +
+            "every field `readonly` when nothing in it is ever written.",
+        },
+      },
+      create(context: MarkContext) {
+        const filename = context.filename.replaceAll("\\", "/");
+        // The mark's own module, generated tables and tests declare no records.
+        const exempt =
+          filename.endsWith("/deepReadonly.ts") ||
+          filename.endsWith(".gen.ts") ||
+          filename.endsWith(".test.ts");
+        return {
+          Program: (node: unknown) => {
+            if (!exempt && isAstNode(node)) {
+              checkWritableRecordMarks(node, context);
+            }
           },
         };
       },

@@ -4,6 +4,7 @@
  * Types for bullet lists, numbered lists, and numbering definitions.
  */
 
+import type { WritableRecord } from "./deepReadonly";
 import type { ParagraphFormatting, TextFormatting } from "./formatting";
 import {
   NUMBER_FORMATS,
@@ -121,7 +122,7 @@ export type LevelSuffix = "tab" | "space" | "nothing";
  * an absent flag and an explicit `w:legacy="0"` are different states and the
  * element is recorded by presence.
  */
-export type LevelLegacy = {
+export type LevelLegacy = WritableRecord & {
   legacy?: boolean;
   legacySpace?: number;
   legacyIndent?: number;
@@ -130,7 +131,7 @@ export type LevelLegacy = {
 /**
  * List level definition
  */
-export type ListLevel = {
+export type ListLevel = WritableRecord & {
   /** Level index (0-8) */
   ilvl: number;
   /** `w:tplc`: the template code Word keys the level's gallery entry by. */
@@ -177,7 +178,7 @@ export type ListLevel = {
 /**
  * Abstract numbering definition (w:abstractNum)
  */
-export type AbstractNumbering = {
+export type AbstractNumbering = WritableRecord & {
   /** Abstract numbering ID */
   abstractNumId: number;
   /**
@@ -207,7 +208,7 @@ export type AbstractNumbering = {
 };
 
 /** One `w:lvlOverride`: what a concrete instance changes about one level. */
-export type LevelOverride = {
+export type LevelOverride = WritableRecord & {
   ilvl: number;
   startOverride?: number;
   lvl?: ListLevel;
@@ -220,7 +221,7 @@ export type LevelOverride = {
 /**
  * Numbering instance (w:num)
  */
-export type NumberingInstance = {
+export type NumberingInstance = WritableRecord & {
   /** Numbering ID (referenced by paragraphs) */
   numId: number;
   /** Reference to abstract numbering */
@@ -234,24 +235,25 @@ export type NumberingInstance = {
 };
 
 /** Typography from numbering-level `w:rPr` that applies to the marker glyphs. */
-export type ListMarkerFormatting = Pick<
-  TextFormatting,
-  | "fontFamily"
-  | "fontSize"
-  | "fontSizeCs"
-  | "bold"
-  | "boldCs"
-  | "italic"
-  | "italicCs"
-  | "rtl"
-  | "cs"
-  | "color"
->;
+export type ListMarkerFormatting = WritableRecord &
+  Pick<
+    TextFormatting,
+    | "fontFamily"
+    | "fontSize"
+    | "fontSizeCs"
+    | "bold"
+    | "boldCs"
+    | "italic"
+    | "italicCs"
+    | "rtl"
+    | "cs"
+    | "color"
+  >;
 
 /**
  * Computed list rendering info
  */
-export type ListRendering = {
+export type ListRendering = WritableRecord & {
   /** Computed marker text (e.g., "1.", "a)", "•") */
   marker: string;
   /** Source `w:lvlText` pattern retained so newly inserted siblings can be numbered. */
@@ -323,7 +325,7 @@ export type ListRendering = {
 /**
  * Complete numbering definitions
  */
-export type NumberingDefinitions = {
+export type NumberingDefinitions = WritableRecord & {
   /** Abstract numbering definitions */
   abstractNums: AbstractNumbering[];
   /** Numbering instances */

@@ -8,6 +8,7 @@ import type { Command, EditorState } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
 import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
+import type { RecordField } from "../../../types/document";
 import {
   anchorTargetAttrs,
   normalizeUserUrl,
@@ -152,7 +153,7 @@ export const HyperlinkExtension: (
       history: { default: null },
       docLocation: { default: null },
       _docxHyperlinkIndex: { default: null },
-    } as const satisfies Record<keyof HyperlinkAttrs, AttributeSpec>,
+    } as const satisfies Record<RecordField<HyperlinkAttrs>, AttributeSpec>,
     inclusive: false,
     parseDOM: [
       {

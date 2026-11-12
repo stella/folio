@@ -5,13 +5,14 @@
  */
 
 import type { BorderStyleValue } from "./borderStyle";
+import type { WritableRecord } from "./deepReadonly";
 import type { PreservedAttribute } from "./preservedMarkup";
 import type { ThemeColorValue } from "./themeColor";
 
 /**
  * Color value - can be direct RGB, theme reference, or auto
  */
-export type ColorValue = {
+export type ColorValue = WritableRecord & {
   /** RGB hex value without # (e.g., "FF0000") */
   rgb?: string;
   /**
@@ -30,7 +31,7 @@ export type ColorValue = {
 /**
  * Border specification for any border (paragraph, table, page)
  */
-export type BorderSpec = {
+export type BorderSpec = WritableRecord & {
   /**
    * `w:val`: an `ST_Border` member, or the raw token when the file wrote one
    * the schema does not declare. Ask `statesNoBorder`/`isBorderNone`/
@@ -74,7 +75,7 @@ export type BorderSpec = {
 /**
  * Shading/background properties
  */
-export type ShadingProperties = {
+export type ShadingProperties = WritableRecord & {
   /** Pattern fill color */
   color?: ColorValue;
   /** Background fill color */

@@ -10,6 +10,7 @@ import type {
   TextBoxGradientFill,
 } from "../../layout-engine/types";
 import type { ShapeFill, Theme } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { resolveColor } from "../../utils/colorResolver";
 
 const EMUS_PER_PIXEL = 9525;
@@ -56,7 +57,7 @@ const GRADIENT_POSITION_SCALE = 100_000;
  */
 export function resolveLinearGradientFill(
   fill: ShapeFill | undefined,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
 ): TextBoxGradientFill | undefined {
   const gradient = fill?.gradient;
   if (

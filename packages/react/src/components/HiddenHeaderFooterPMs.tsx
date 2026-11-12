@@ -62,7 +62,7 @@ export type HiddenHeaderFooterPMsProps = {
     error?: Error,
   ) => void;
   styles?: DeepReadonly<StyleDefinitions> | null;
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   defaultTabStopTwips?: number | null;
   onTransaction?: (
     rId: string,

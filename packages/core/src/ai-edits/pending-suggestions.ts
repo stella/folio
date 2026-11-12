@@ -4,7 +4,10 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   parseFolioDocumentOperationBatch,
 } from "../document-operations";
-import { rejectAllSuggestions } from "../prosemirror/commands/comments";
+import {
+  getSuggestions,
+  rejectAllSuggestions,
+} from "../prosemirror/commands/comments";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -128,16 +131,45 @@ export const withoutPendingSuggestionCommentMarks = (
   return transaction.docChanged ? state.apply(transaction) : state;
 };
 
+/**
+ * The story with every pending suggestion rejected: what a save writes, what a
+ * read of the saved package shows and what rejecting every change starts from.
+ *
+ * One rejection resolves each suggestion's revisions against a story the
+ * others still stand in. Where a paragraph break it takes out joins into, or
+ * is displaced onto, another rejected suggestion's paragraph, that suggestion
+ * is left holding a break of its own; the rejection runs again until no
+ * suggestion is left, so the story never keeps a rejected break.
+ */
+export const rejectEverySuggestion = (state: EditorState): EditorState => {
+  let settled = state;
+  // Every round that changes the story resolves at least one suggestion.
+  for (let rounds = getSuggestions(state).length; rounds >= 0; rounds -= 1) {
+    const next = rejectSuggestionsOnce(settled);
+    if (next === null) return settled;
+    settled = next;
+  }
+  return settled;
+};
+
+/** One `rejectAllSuggestions` over `state`; `null` when nothing was left to reject. */
+const rejectSuggestionsOnce = (state: EditorState): EditorState | null => {
+  let settled = state;
+  const rejected = rejectAllSuggestions()(state, (transaction) => {
+    settled = state.apply(transaction);
+  });
+  return rejected ? settled : null;
+};
+
 /** The saved package's story, with all pending proposals removed. */
 export const createPendingSuggestionSourceSnapshot = (
   state: EditorState,
   commentIds: ReadonlySet<number>,
 ): FolioAIEditSnapshot => {
-  let source = state;
-  rejectAllSuggestions()(state, (transaction) => {
-    source = state.apply(transaction);
-  });
-  source = withoutPendingSuggestionCommentMarks(source, commentIds);
+  const source = withoutPendingSuggestionCommentMarks(
+    rejectEverySuggestion(state),
+    commentIds,
+  );
   return createFolioAIEditSnapshotWithStyleResolver(
     source.doc,
     getDocumentStyleResolver(source),

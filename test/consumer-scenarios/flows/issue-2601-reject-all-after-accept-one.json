@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "suggested",
+  "seed": 99690512,
+  "title": "PINNED #2601: reject all after accepting one of the insertions before a deleted block leaves the original paragraphs",
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 4266775414,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "3CEFFC83",
+          "text": "Period written supplier invoice."
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1043655867,
+      "operations": [
+        { "type": "deleteBlock", "blockId": "412DDC7F" },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "First added clause."
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Second added clause."
+        }
+      ]
+    },
+    { "action": "accept one", "seed": 2243386010 },
+    {
+      "action": "core batch",
+      "seed": 2555515695,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@2",
+          "text": "Term agreement party invoice.",
+          "alignment": "right"
+        }
+      ]
+    },
+    { "action": "reject all", "seed": 2867645380 }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from collisions flow seed 99690512"
+}

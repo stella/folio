@@ -16,8 +16,8 @@ import { resolveThemeFont } from "../utils/fontResolver";
 export type ImportReferencedStyleDefinitionsOptions = {
   sourceStyles: StyleDefinitions | undefined;
   destinationStyles: StyleDefinitions | undefined;
-  sourceTheme: Theme | undefined;
-  destinationTheme: Theme | undefined;
+  sourceTheme: DeepReadonly<Theme> | undefined;
+  destinationTheme: DeepReadonly<Theme> | undefined;
   referencedStyleIds: readonly string[];
   reservedStyleIds?: readonly string[];
   materializeDefaultParagraphStyle?: boolean;
@@ -71,8 +71,8 @@ export const styleClosureNumberingReferences = (
 };
 
 const themesMatch = (
-  sourceTheme: Theme | undefined,
-  destinationTheme: Theme | undefined,
+  sourceTheme: DeepReadonly<Theme> | undefined,
+  destinationTheme: DeepReadonly<Theme> | undefined,
 ): boolean => canonicalJson(sourceTheme) === canonicalJson(destinationTheme);
 
 const hasThemeReference = (value: unknown): boolean => {
@@ -85,9 +85,9 @@ const hasThemeReference = (value: unknown): boolean => {
 };
 
 const materializeThemeColor = (
-  color: ColorValue | undefined,
-  theme: Theme | undefined,
-): ColorValue | undefined => {
+  color: DeepReadonly<ColorValue> | undefined,
+  theme: DeepReadonly<Theme> | undefined,
+): DeepReadonly<ColorValue> | undefined => {
   if (!color || !color.themeColor) return color;
   const rgb = resolveColorToHex(color, theme);
   if (!rgb) return undefined;
@@ -135,7 +135,7 @@ const resolveThemeFontForFormatting = ({
 }: {
   formatting: DeepReadonly<TextFormatting>;
   slot: ThemeFontSlot;
-  theme: Theme | undefined;
+  theme: DeepReadonly<Theme> | undefined;
   themeRef: string;
 }): string | null => {
   const script = scriptForLanguage(
@@ -154,7 +154,7 @@ type MaterializedTextFormattingResult =
 
 const materializeThemeTextFormatting = (
   formatting: DeepReadonly<TextFormatting> | undefined,
-  theme: Theme | undefined,
+  theme: DeepReadonly<Theme> | undefined,
   materializeThemeReferences: boolean,
 ): MaterializedTextFormattingResult => {
   if (!formatting) return { status: "ok", formatting };
@@ -252,7 +252,7 @@ const materializeEffectiveStyle = ({
 }: {
   style: Style;
   styles: StyleDefinitions;
-  theme: Theme | undefined;
+  theme: DeepReadonly<Theme> | undefined;
   materializeThemeReferences: boolean;
 }): MaterializedStyleResult => {
   if (style.type === "numbering") return { status: "unalignable" };
@@ -323,7 +323,7 @@ const materializeEffectiveDefaultParagraphStyle = ({
 }: {
   styles: StyleDefinitions;
   destinationStyles: StyleDefinitions;
-  theme: Theme | undefined;
+  theme: DeepReadonly<Theme> | undefined;
   styleId: string;
   materializeThemeReferences: boolean;
 }): MaterializedStyleResult => {
@@ -395,8 +395,8 @@ const effectiveDefaultParagraphFormattingMatches = ({
 }: {
   sourceStyles: StyleDefinitions;
   destinationStyles: StyleDefinitions;
-  sourceTheme: Theme | undefined;
-  destinationTheme: Theme | undefined;
+  sourceTheme: DeepReadonly<Theme> | undefined;
+  destinationTheme: DeepReadonly<Theme> | undefined;
   materializeThemeReferences: boolean;
 }): boolean => {
   const sourceResolved =

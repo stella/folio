@@ -1,5 +1,6 @@
 /** Reserved-value decisions for numbering definitions and computed list rendering. */
 
+import type { RecordField } from "../../packages/docx-core/src/model/deepReadonly";
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import type {
   AbstractNumbering,
@@ -66,7 +67,7 @@ export const LIST_LEVEL_RESERVED = {
   }),
   isLgl: NO_RESERVED_VALUE,
   legacy: NO_RESERVED_VALUE,
-} satisfies Record<keyof ListLevel, ReservedValueDisposition>;
+} satisfies Record<RecordField<ListLevel>, ReservedValueDisposition>;
 
 export type ExhaustiveListLevelReserved = ExhaustiveFields<
   ListLevel,
@@ -94,7 +95,7 @@ export const ABSTRACT_NUMBERING_RESERVED = {
   tmpl: NO_RESERVED_VALUE,
   preserved: NO_RESERVED_VALUE,
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof AbstractNumbering, ReservedValueDisposition>;
+} satisfies Record<RecordField<AbstractNumbering>, ReservedValueDisposition>;
 
 export type ExhaustiveAbstractNumberingReserved = ExhaustiveFields<
   AbstractNumbering,
@@ -112,7 +113,7 @@ export const NUMBERING_INSTANCE_RESERVED = {
   levelOverrides: NO_RESERVED_VALUE,
   preserved: NO_RESERVED_VALUE,
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof NumberingInstance, ReservedValueDisposition>;
+} satisfies Record<RecordField<NumberingInstance>, ReservedValueDisposition>;
 
 export type ExhaustiveNumberingInstanceReserved = ExhaustiveFields<
   NumberingInstance,
@@ -135,7 +136,7 @@ export const LEVEL_OVERRIDE_RESERVED = {
   lvl: NO_RESERVED_VALUE,
   preserved: NO_RESERVED_VALUE,
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof LevelOverride, ReservedValueDisposition>;
+} satisfies Record<RecordField<LevelOverride>, ReservedValueDisposition>;
 
 export type ExhaustiveLevelOverrideReserved = ExhaustiveFields<
   LevelOverride,
@@ -150,7 +151,7 @@ export const NUMBERING_DEFINITIONS_RESERVED = {
   // Ids a reference names without a definition; the "no numbering" zero
   // reads as no reference, so it is never one of them.
   danglingNumIds: NO_RESERVED_VALUE,
-} satisfies Record<keyof NumberingDefinitions, ReservedValueDisposition>;
+} satisfies Record<RecordField<NumberingDefinitions>, ReservedValueDisposition>;
 
 export type ExhaustiveNumberingDefinitionsReserved = ExhaustiveFields<
   NumberingDefinitions,
@@ -196,7 +197,7 @@ export const LIST_RENDERING_RESERVED = {
   startOverride: NO_RESERVED_VALUE,
   implicitChildLevelAdvances: NO_RESERVED_VALUE,
   markerSecondSlotOffsetTwips: NO_RESERVED_VALUE,
-} satisfies Record<keyof ListRendering, ReservedValueDisposition>;
+} satisfies Record<RecordField<ListRendering>, ReservedValueDisposition>;
 
 export type ExhaustiveListRenderingReserved = ExhaustiveFields<
   ListRendering,

@@ -15,6 +15,7 @@
 import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
 
 import type { ParagraphFormatting, TabStop, Theme } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { hangingFirstLineIndent } from "../utils/units";
 import { readAttributeBag } from "./attributeRemainder";
 import { parseBorderSpec } from "./borderParser";
@@ -416,7 +417,7 @@ const PARAGRAPH_PROPERTY_HANDLERS = {
  */
 export function parseParagraphProperties(
   pPr: XmlElement | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
 ): ParagraphFormatting | undefined {
   if (!pPr) {
     return undefined;
