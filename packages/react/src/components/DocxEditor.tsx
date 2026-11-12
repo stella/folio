@@ -654,6 +654,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       onReadonlyEditAttempt,
       onCompatibilityChange,
       onEditorViewReady,
+      onCanonicalHistory,
       onAnonymizationMatchesChange,
       onAnonymizationTermClick,
       selectedAnonymizationCanonical = null,
@@ -6201,6 +6202,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             accessibleName={accessibleName}
                             ref={attachPagedEditor}
                             document={history.state}
+                            historyShortcuts={historyShortcuts}
+                            {...(onCanonicalHistory === undefined
+                              ? {}
+                              : { onCanonicalHistory })}
                             documentIO={documentIO}
                             documentIdentity={loadedDocumentIdentity}
                             markupView={displayMode}

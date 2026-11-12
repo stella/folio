@@ -6,17 +6,22 @@
  *
  * The anchor may be the story's last paragraph, or have a paragraph after
  * it, with a table between the two that stays or that a first batch deletes
- * (as a tracked change still pending, unless applied directly). Every batch puts one to five blocks of
+ * (as a tracked change still pending, unless applied directly); or the
+ * paragraph after it ends the story and a first batch deletes it, so the
+ * anchor's break is pending removal. Every batch puts one to five blocks of
  * mixed kinds (a paragraph, two paragraphs from one text, a paragraph
  * starting a new list, a table or a signature table, whichever the mode has;
- * no operation inserts a block content control) after the anchor, after the
- * table, or before the next paragraph. The last batch may delete the anchor
- * too. Between batches the reviewer may save and reopen the package, accept
- * every change, or both.
+ * no operation inserts a block content control) before or after the anchor,
+ * after the table, or before the next paragraph. A paragraph asks for a
+ * heading style, an alignment or nothing. The last batch may delete the
+ * anchor too. Between batches the reviewer may save and reopen the package,
+ * accept every change, or both.
  *
  * A block put after a block lands right after it; one put before a block
  * lands before the blocks right before it that accepting removes whole. The
- * blocks a batch puts at one place keep the batch's order (`requestedOrder`).
+ * blocks a batch puts at one place keep the batch's order (`requestedOrder`),
+ * and each keeps the properties it asked for: one that asked for none reads
+ * as the anchor, never as another block of the batch.
  *
  * A case saves and reopens a package a few times, about 50 ms; the budget is
  * 120 s for the stated runs, scaled by the nightly factor.
@@ -40,25 +45,36 @@ import { FolioDocxReviewer } from "./headless";
 
 type Mode = "direct" | "tracked-changes" | "suggested";
 type Kind = "paragraph" | "paragraphs" | "newList" | "table" | "signature";
-type Side = "afterAnchor" | "afterTable" | "beforeNext";
+type Side = "beforeAnchor" | "afterAnchor" | "afterTable" | "beforeNext";
 type Between = "nothing" | "reopen" | "accept" | "reopenAndAccept";
-type Insertion = { kind: Kind; side: Side };
+/** What a paragraph asks for: a heading style, an alignment, or nothing. */
+type Look = "plain" | "heading" | "centered";
+type Insertion = { kind: Kind; side: Side; look: Look };
 type Batch = { insertions: Insertion[]; deletesAnchor: boolean };
 type Case = {
   anchorIsLast: boolean;
   /** A table between the anchor and the next paragraph, and what happens to it. */
   table: "none" | "kept" | "removed";
+  /** The next paragraph ends the story, and a first batch deletes it. */
+  nextRemoved: boolean;
   mode: Exclude<Mode, "direct">;
   batches: Batch[];
   between: Between[];
 };
 
-/** A block once accepted: its words, and whether a table holds it. */
-type Block = { text: string; inTable: boolean };
+/** A block once accepted: its words, whether a table holds it, and how it looks. */
+type Block = {
+  text: string;
+  inTable: boolean;
+  styleId: string | undefined;
+  alignment: string | undefined;
+};
 /** What the requested order names: an insertion, or a block that was there. */
 type Placed = { label: string; table: boolean };
 
 const OPENING = "Opening clause.";
+/** The style the opening heading defines, which a paragraph may ask for. */
+const HEADING = "Heading2";
 const ANCHOR = "Anchor clause.";
 const NEXT = "Next clause.";
 const TABLE = "TBL";
@@ -80,8 +96,19 @@ const labelsOf = (blocks: readonly Block[]): string[] => {
   return labels;
 };
 
+const looking = (look: Look) => {
+  switch (look) {
+    case "plain":
+      return {};
+    case "heading":
+      return { styleId: HEADING };
+    case "centered":
+      return { alignment: "center" } as const;
+  }
+};
+
 const insertionOf = (
-  kind: Kind,
+  { kind, look }: Insertion,
   label: string,
   anchor: { blockId: string; after: boolean },
 ): FolioDocumentOperation => {
@@ -93,9 +120,16 @@ const insertionOf = (
   } as const;
   switch (kind) {
     case "paragraph":
-      return { id, ...beside, text: `${label} alone.`, alignment: "right" };
+      return { id, ...beside, text: `${label} alone.`, ...looking(look) };
     case "paragraphs":
-      return { id, ...beside, text: `${label} first.\n${label} second.` };
+      return {
+        id,
+        ...beside,
+        text: `${label} first.\n${label} second.`,
+        ...looking(look),
+        // Both paragraphs ask for the look, so both are checked for it.
+        formattingScope: "allParagraphs",
+      };
     case "newList":
       return {
         id,
@@ -124,6 +158,26 @@ const insertionOf = (
 
 /** What stands between the anchor and the next paragraph, in order. */
 type Stretch = (Placed & { isTable?: true })[];
+
+/**
+ * Each inserted paragraph reads as it asked: in the heading style when it
+ * asked for it, centered when it asked for that, and otherwise as the plain
+ * anchor, whatever the other blocks of its batch asked for.
+ */
+const looksOf = (blocks: readonly Block[], looks: ReadonlyMap<string, Look>) =>
+  blocks.flatMap((block) => {
+    const named = LABEL.exec(block.text)?.[0];
+    const look = named === undefined ? undefined : looks.get(named);
+    if (look === undefined || block.inTable) return [];
+    return [
+      {
+        label: named,
+        asked: look,
+        heading: block.styleId === HEADING,
+        centered: block.alignment === "center",
+      },
+    ];
+  });
 
 /**
  * The places a batch puts `insertions` at, read before it runs, then each
@@ -158,7 +212,7 @@ const requestedOrder = (
 
 const open = async (setup: Case): Promise<FolioDocxReviewer> => {
   const texts = [
-    OPENING,
+    `## ${OPENING}`,
     ANCHOR,
     ...(setup.table === "none"
       ? []
@@ -188,7 +242,12 @@ const acceptedBlocks = async (
   return (await reopen(reviewer))
     .snapshot()
     .blocks.filter((block) => block.text.length > 0)
-    .map((block) => ({ text: block.text, inTable: block.table !== undefined }));
+    .map((block) => ({
+      text: block.text,
+      inTable: block.table !== undefined,
+      styleId: block.styleId ?? undefined,
+      alignment: block.directAlignment ?? undefined,
+    }));
 };
 
 /** Apply `operations` in `mode`, accepting what it suggests as tracked changes. */
@@ -235,6 +294,12 @@ const replay = async (setup: Case, mode: Mode) => {
     setup.table === "none"
       ? []
       : [{ label: TABLE, table: true, isTable: true }];
+  if (setup.nextRemoved && nextId !== undefined) {
+    // The story's last paragraph, deleted: the anchor's break goes instead.
+    applyBatch(reviewer, mode === "direct" ? "direct" : "tracked-changes", [
+      { id: "delete-next", type: "deleteBlock", blockId: nextId },
+    ]);
+  }
   if (setup.table === "removed" && tableId !== undefined) {
     // Another reviewer's pending deletion, unless applied directly.
     applyBatch(reviewer, mode === "direct" ? "direct" : "tracked-changes", [
@@ -242,6 +307,7 @@ const replay = async (setup: Case, mode: Mode) => {
     ]);
   }
   const anchors: Record<Side, string | undefined> = {
+    beforeAnchor: anchorId,
     afterAnchor: anchorId,
     afterTable: tableId,
     beforeNext: nextId,
@@ -249,22 +315,37 @@ const replay = async (setup: Case, mode: Mode) => {
   const anchorOf = (side: Side) => {
     const blockId = anchors[side];
     if (blockId === undefined) throw new Error(`No block for ${side}`);
-    return { blockId, after: side !== "beforeNext" };
+    return { blockId, after: side !== "beforeNext" && side !== "beforeAnchor" };
   };
+  /** What stands right before the anchor, after the opening, in order. */
+  const ahead: Placed[] = [];
+  const looks = new Map<string, Look>();
   for (const [index, batch] of setup.batches.entries()) {
     const placed = batch.insertions.map(({ kind, side }, at) => ({
       label: `B${index}I${at}`,
       table: kind === "table" || kind === "signature",
       side,
     }));
-    const operations = batch.insertions.map(({ kind, side }, at) =>
-      insertionOf(kind, `B${index}I${at}`, anchorOf(side)),
+    for (const [at, insertion] of batch.insertions.entries()) {
+      if (insertion.kind === "paragraph" || insertion.kind === "paragraphs")
+        looks.set(`B${index}I${at}`, insertion.look);
+    }
+    const operations = batch.insertions.map((insertion, at) =>
+      insertionOf(insertion, `B${index}I${at}`, anchorOf(insertion.side)),
     );
     if (batch.deletesAnchor) {
       operations.push({ id: "delete", type: "deleteBlock", blockId: anchorId });
     }
     applyBatch(reviewer, mode, operations);
-    stretch = requestedOrder(stretch, placed, setup.table === "removed");
+    // Before the anchor is one gap, after what earlier batches put there.
+    for (const { side, label: name, table } of placed) {
+      if (side === "beforeAnchor") ahead.push({ label: name, table });
+    }
+    stretch = requestedOrder(
+      stretch,
+      placed.filter(({ side }) => side !== "beforeAnchor"),
+      setup.table === "removed",
+    );
     const step = setup.between[index] ?? "nothing";
     if (step === "reopen" || step === "reopenAndAccept") {
       reviewer = await reopen(reviewer);
@@ -274,17 +355,24 @@ const replay = async (setup: Case, mode: Mode) => {
     }
   }
   const deleted = setup.batches.some((batch) => batch.deletesAnchor);
+  const accepted = await acceptedBlocks(reviewer);
   return {
-    accepted: await acceptedBlocks(reviewer),
+    accepted,
+    looks: looksOf(accepted, looks),
     /** What stands between the anchor and the next paragraph while pending. */
     pending: stretch.map(({ label, table }) => ({ label, table })),
+    /** What stands before the anchor, after the opening. */
+    ahead,
     requested: [
       { label: OPENING, table: false },
+      ...ahead,
       ...(deleted ? [] : [{ label: ANCHOR, table: false }]),
       ...stretch
         .filter((entry) => !(entry.isTable && setup.table === "removed"))
         .map(({ label, table }) => ({ label, table })),
-      ...(setup.anchorIsLast ? [] : [{ label: NEXT, table: false }]),
+      ...(setup.anchorIsLast || setup.nextRemoved
+        ? []
+        : [{ label: NEXT, table: false }]),
     ],
   };
 };
@@ -307,28 +395,49 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
     // a paragraph.
     (mode === "suggested" ? fc.constant(false) : fc.boolean()).chain(
       (anchorIsLast) =>
-        fc.record({
-          anchorIsLast: fc.constant(anchorIsLast),
-          table: anchorIsLast
-            ? fc.constant<Case["table"]>("none")
-            : fc.constantFrom<Case["table"][]>("none", "kept", "removed"),
-          mode: fc.constant(mode),
-        }),
+        fc
+          .record({
+            anchorIsLast: fc.constant(anchorIsLast),
+            table: anchorIsLast
+              ? fc.constant<Case["table"]>("none")
+              : fc.constantFrom<Case["table"][]>("none", "kept", "removed"),
+            mode: fc.constant(mode),
+          })
+          .chain((setup) =>
+            fc.record({
+              anchorIsLast: fc.constant(setup.anchorIsLast),
+              table: fc.constant(setup.table),
+              mode: fc.constant(setup.mode),
+              // Tracked only: a suggestion beside what then ends the story
+              // fails to accept, as above.
+              nextRemoved:
+                setup.anchorIsLast ||
+                setup.table !== "none" ||
+                setup.mode === "suggested"
+                  ? fc.constant(false)
+                  : fc.boolean(),
+            }),
+          ),
     ),
   )
-  .chain(({ anchorIsLast, table, mode }) => {
+  .chain(({ anchorIsLast, table, mode, nextRemoved }) => {
     // A suggestion is refused beside a block pending deletion.
     const besideTable =
       table === "kept" || (table === "removed" && mode !== "suggested");
     const sides: Side[] = [
+      "beforeAnchor",
       "afterAnchor",
       ...(besideTable ? (["afterTable"] as const) : []),
-      ...(anchorIsLast ? [] : (["beforeNext"] as const)),
+      ...(anchorIsLast || nextRemoved ? [] : (["beforeNext"] as const)),
     ];
     return fc
       .array(
         fc.array(
-          fc.record({ kind: kindsIn(mode), side: fc.constantFrom(...sides) }),
+          fc.record({
+            kind: kindsIn(mode),
+            side: fc.constantFrom(...sides),
+            look: fc.constantFrom<Look[]>("plain", "heading", "centered"),
+          }),
           { minLength: 1, maxLength: 5 },
         ),
         { minLength: 1, maxLength: 3 },
@@ -338,11 +447,25 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
           anchorIsLast: fc.constant(anchorIsLast),
           table: fc.constant(table),
           mode: fc.constant(mode),
-          batches: fc.boolean().map((deletes) =>
-            batches.map((insertions, index) => ({
-              insertions,
-              deletesAnchor: deletes && index === batches.length - 1,
-            })),
+          nextRemoved: fc.constant(nextRemoved),
+          // The anchor's own break pending removal is not deleted again.
+          batches: (nextRemoved ? fc.constant(false) : fc.boolean()).map(
+            (deletes) =>
+              batches.map((insertions, index) => {
+                const deletesAnchor = deletes && index === batches.length - 1;
+                return {
+                  // A suggestion is refused beside a block pending deletion.
+                  insertions:
+                    deletesAnchor && mode === "suggested"
+                      ? insertions.map((insertion) =>
+                          insertion.side === "beforeAnchor"
+                            ? { ...insertion, side: "afterAnchor" as const }
+                            : insertion,
+                        )
+                      : insertions,
+                  deletesAnchor,
+                };
+              }),
           ),
           // Accepting the table's deletion takes away the table blocks are
           // put after.
@@ -379,16 +502,19 @@ const examples: [Case][] = [
     {
       anchorIsLast: true,
       table: "none",
+      nextRemoved: false,
       mode: "tracked-changes",
       batches: [
         {
-          insertions: [{ kind: "paragraph", side: "afterAnchor" }],
+          insertions: [
+            { kind: "paragraph", side: "afterAnchor", look: "centered" },
+          ],
           deletesAnchor: false,
         },
         {
           insertions: [
-            { kind: "paragraph", side: "afterAnchor" },
-            { kind: "table", side: "afterAnchor" },
+            { kind: "paragraph", side: "afterAnchor", look: "centered" },
+            { kind: "table", side: "afterAnchor", look: "plain" },
           ],
           deletesAnchor: true,
         },
@@ -402,12 +528,34 @@ const examples: [Case][] = [
     {
       anchorIsLast: false,
       table: "removed",
+      nextRemoved: false,
       mode: "tracked-changes",
       batches: [
         {
           insertions: [
-            { kind: "paragraph", side: "afterTable" },
-            { kind: "table", side: "afterAnchor" },
+            { kind: "paragraph", side: "afterTable", look: "centered" },
+            { kind: "table", side: "afterAnchor", look: "plain" },
+          ],
+          deletesAnchor: false,
+        },
+      ],
+      between: ["nothing"],
+    },
+  ],
+  // The story's last paragraph deleted, so the anchor's break goes; then a
+  // heading after the anchor and a plain paragraph before it in one batch.
+  // The plain one reads as the anchor, not as the heading.
+  [
+    {
+      anchorIsLast: false,
+      table: "none",
+      nextRemoved: true,
+      mode: "tracked-changes",
+      batches: [
+        {
+          insertions: [
+            { kind: "paragraph", side: "afterAnchor", look: "heading" },
+            { kind: "paragraph", side: "beforeAnchor", look: "plain" },
           ],
           deletesAnchor: false,
         },
@@ -428,6 +576,13 @@ test(
             readsApart([...reviewed.pending, { label: NEXT, table: false }]),
         );
         expect(labelsOf(reviewed.accepted)).toEqual(label(reviewed.requested));
+        expect(reviewed.looks).toEqual(
+          reviewed.looks.map((look) => ({
+            ...look,
+            heading: look.asked === "heading",
+            centered: look.asked === "centered",
+          })),
+        );
         // Applied directly, a removed table is gone before anything is put
         // after it.
         const afterRemovedTable =

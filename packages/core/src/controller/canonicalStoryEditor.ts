@@ -41,10 +41,16 @@ export const createCanonicalStoryEditor = ({
     else
       throw new CanonicalSessionError({ ground, message, reason: "refused" });
   };
+  // Only the undo keys reach this; the host's own undo goes through the API.
   const history = (direction: "undo" | "redo") => {
     const view = getView();
     const accepted =
-      getApi()?.applyCanonicalStoryHistory({ view, story, direction }) ?? false;
+      getApi()?.applyCanonicalStoryHistory({
+        view,
+        story,
+        direction,
+        shortcut: true,
+      }) ?? false;
     if (accepted && !view.isDestroyed) onSelectionChange();
     return accepted;
   };

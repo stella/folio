@@ -2,6 +2,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -1253,9 +1254,7 @@ describe("semantic table edit properties", () => {
   test("invalid geometry, colliding identities, tracked edits and stale inverses refuse atomically", () => {
     // Silent continue would hide a universally refusing implementation. Positive laws above require success;
     // here the complete declared refusal set is counted and each generated case must refuse exactly once.
-    const tallies = new Map<string, number>();
-    let attempts = 0;
-    assertProperty(
+    const law = (tallies: Map<string, number>, counts: { attempts: number }) =>
       fc.property(shape, (value) => {
         const f = fixture({ ...value, variant: 0 });
         const address = target(f.target);
@@ -1345,19 +1344,24 @@ describe("semantic table edit properties", () => {
         for (const { document, op, reason } of cases) {
           const snapshot = structuredClone(document);
           const result = applyDocumentOp(document, op);
-          attempts++;
+          counts.attempts++;
           if (result.isOk())
             throw new Error(`Expected ${reason} for ${op.type}.`);
           expect(result.error.reason).toBe(reason);
           tallies.set(reason, (tallies.get(reason) ?? 0) + 1);
           exact(document, snapshot);
         }
-      }),
-      {
-        numRuns: NUM_RUNS,
-        id: "invalid geometry, colliding identities, tracked edits and stale inverses refuse atomically",
-      },
-    );
+      });
+    assertProperty(law(new Map(), { attempts: 0 }), {
+      numRuns: NUM_RUNS,
+      id: "invalid geometry, colliding identities, tracked edits and stale inverses refuse atomically",
+    });
+    // Every run refuses the same six cases, so a few runs show every share.
+    const COVERAGE_RUNS = 16;
+    const tallies = new Map<string, number>();
+    const counts = { attempts: 0 };
+    checkCoverageSample(law(tallies, counts), COVERAGE_RUNS);
+    const { attempts } = counts;
     expect([...tallies.keys()].sort()).toEqual(
       [
         DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,

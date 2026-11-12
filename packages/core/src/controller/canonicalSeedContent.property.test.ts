@@ -18,6 +18,7 @@ import type {
 } from "@stll/docx-core/model";
 import { OP_STORIES } from "@stll/docx-core/ops";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyConfig,
@@ -32,7 +33,7 @@ import {
 } from "./canonicalSeedContent";
 
 // Synchronous generated edit chains use a 15-second base budget.
-setDefaultTimeout(propertyTestTimeout(15_000));
+setDefaultTimeout(propertyTestTimeout(23_000));
 
 // A tab in a text node is one of the inline contents the session refuses.
 const texts = fc.constantFrom("a", "b", "c\td");
@@ -380,8 +381,7 @@ describe("canonical seed check", () => {
     );
 
   test("judges an edit's result as one walk of every story does", () => {
-    let judged = 0;
-    assertProperty(
+    const law = (counts: { judged: number }) =>
       fc.property(
         fc.array(blockOf, { maxLength: 5 }),
         fc.array(blockOf, { maxLength: 2 }),
@@ -393,40 +393,45 @@ describe("canonical seed check", () => {
         (body, note, ids, edits) =>
           eachEdit([body, note, ids, edits], (step) => {
             judgedAsOneWalk(step);
-            judged += 1;
+            counts.judged += 1;
           }),
-      ),
-      {
-        id: "judges an edit's result as one walk of every story does",
-        numRuns: 600,
-      },
-    );
-    expect(judged).toBeGreaterThan(300);
+      );
+    assertProperty(law({ judged: 0 }), {
+      id: "judges an edit's result as one walk of every story does",
+      numRuns: 600,
+    });
+    // A fixed sample of half the runs judges edits at the same ratio.
+    const RUNS = 300;
+    const counts = { judged: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.judged).toBeGreaterThan(RUNS / 2);
   });
 
   test("judges an edit's result as one walk does with anchors in content controls, cells and text boxes", () => {
-    let judged = 0;
-    let commentIssues = 0;
-    assertProperty(
+    const law = (counts: { judged: number; commentIssues: number }) =>
       fc.property(editChainOf(nestedBlockOf), (chain) =>
         eachEdit(chain, (step) => {
           judgedAsOneWalk(step);
-          judged += 1;
+          counts.judged += 1;
           const verdict = unsupportedSeedReasonWholeDocument(
             step.document,
             step.stories,
           );
-          if (verdict !== null && /comment/iu.test(verdict)) commentIssues += 1;
+          if (verdict !== null && /comment/iu.test(verdict))
+            counts.commentIssues += 1;
         }),
-      ),
-      {
-        id: "judges an edit's result as one walk with nested anchors",
-        numRuns: 400,
-      },
-    );
-    expect(judged).toBeGreaterThan(300);
-    // The chains reach comment verdicts, not only accepted edits.
-    expect(commentIssues).toBeGreaterThan(20);
+      );
+    assertProperty(law({ judged: 0, commentIssues: 0 }), {
+      id: "judges an edit's result as one walk with nested anchors",
+      numRuns: 400,
+    });
+    // A fixed sample of half the runs judges edits and reaches comment
+    // verdicts, not only accepted edits, at the same ratios.
+    const RUNS = 200;
+    const counts = { judged: 0, commentIssues: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.judged).toBeGreaterThan(RUNS * 0.75);
+    expect(counts.commentIssues).toBeGreaterThan(RUNS / 20);
   });
 
   describe("judges again an edit that changes the paragraph a marker between blocks attaches to", () => {

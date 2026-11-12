@@ -16,6 +16,7 @@ import fc from "fast-check";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -203,8 +204,7 @@ const bodyAfterLockedParagraph = async (
 
 describe("resolving around a change a lock holds", () => {
   test("the rest of the story resolves as it does in one pass", async () => {
-    let held = 0;
-    await assertProperty(
+    const law = (counts: { held: number }) =>
       fc.asyncProperty(caseArbitrary, async ({ paragraphs, intents, mode }) => {
         const source = await createDocx(
           LOCKED_PARAGRAPH +
@@ -227,7 +227,7 @@ describe("resolving around a change a lock holds", () => {
         const lockedResult =
           mode === "accept" ? locked.acceptAll() : locked.rejectAll();
         expect(lockedResult.skipped.map(({ id }) => id)).toEqual([900]);
-        held += 1;
+        counts.held += 1;
 
         const unlockedZip = await ZipArchive.read(pending);
         const documentXml =
@@ -255,9 +255,16 @@ describe("resolving around a change a lock holds", () => {
             .blocks.slice(1)
             .map(({ text }) => text),
         );
-      }),
-      { id: "resolving around a held change equals one pass", numRuns: 150 },
-    );
-    expect(held).toBeGreaterThan(0);
+      });
+    await assertProperty(law({ held: 0 }), {
+      id: "resolving around a held change equals one pass",
+      numRuns: 150,
+    });
+    // A fixed sample reaches a held change; each case opens and saves the
+    // document several times, and one case is enough.
+    const RUNS = 5;
+    const counts = { held: 0 };
+    await checkCoverageSample(law(counts), RUNS);
+    expect(counts.held).toBeGreaterThan(0);
   });
 });

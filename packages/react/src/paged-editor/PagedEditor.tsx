@@ -44,6 +44,7 @@ import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
+import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type {
@@ -188,6 +189,7 @@ import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInse
 // Table commands (for quick-action insert buttons)
 import { addColumnRight, addRowBelow } from "@stll/folio-core/prosemirror";
 import { expectImageAttrs } from "@stll/folio-core/prosemirror/attrs";
+import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
   commitImageFloatMove,
@@ -330,6 +332,8 @@ export type PagedEditorProps = {
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
   experimentalSession?: EditorSession;
+  /** Who answers the undo and redo keys; the editor when unset. */
+  historyShortcuts?: HistoryShortcutOwner;
   /** Adapter-owned document I/O exposed through the shared controller. */
   documentIO: FolioEditorDocumentIO;
   /**
@@ -422,6 +426,8 @@ export type PagedEditorProps = {
   }) => void;
   /** Callback when the hidden body EditorView is created or destroyed. */
   onEditorViewReady?: (view: EditorView | null) => void;
+  /** A canonical commit was published, with what it did to the undo history. */
+  onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /** External ProseMirror plugins. */
   externalPlugins?: Plugin[];
   /** Paint the template-directive overlay. Toggling this hides the chips even
@@ -616,6 +622,20 @@ const SELECTION_REVEAL_AFTER_INPUT_DELAY = 120;
  * write, not a state change: a keystroke must not render the editor, since
  * every commit with the editor focused reads its whole DOM.
  */
+/** Reads no hidden editor state: a view holds the document, or there is none. */
+const readNoHiddenEditorState = (): EditorState | null => null;
+
+/** Converts the hidden editor state on the first read and returns it after. */
+const readHiddenEditorStateOnce = (
+  options: Parameters<typeof createHiddenEditorState>[0],
+): (() => EditorState) => {
+  let state: EditorState | undefined;
+  return () => {
+    state ??= createHiddenEditorState(options);
+    return state;
+  };
+};
+
 const hideSelectionOverlay = (overlay: HTMLElement | null): void => {
   overlay?.setAttribute(FOLIO_INPUT_HIDDEN_ATTRIBUTE, "");
   overlay?.style.setProperty("visibility", "hidden");
@@ -1556,6 +1576,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       documentIO,
       documentIdentity,
       experimentalSession,
+      historyShortcuts,
       fonts: hostFonts,
       theme: _theme,
       hasTitlePg = false,
@@ -1584,6 +1605,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       onSelectionChange,
       onSelectionTextChange,
       onEditorViewReady,
+      onCanonicalHistory,
       externalPlugins = EMPTY_PLUGINS,
       showTemplateDirectives = true,
       collaboration,
@@ -1775,7 +1797,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       collaboration !== undefined,
     );
     const layoutSessionRef = useRef(createLayoutSession());
-    const precomputedInitialStateRef = useRef<EditorState | null>(null);
+    const readPrecomputedInitialStateRef = useRef<() => EditorState | null>(
+      readNoHiddenEditorState,
+    );
     const precomputedInitialDocumentRef = useRef<ReadonlyDocument | null>(null);
     const preHiddenInitialLayoutDoneRef = useRef(false);
     const pendingHiddenEditorSelectionRef =
@@ -1783,7 +1807,13 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const queuedInputBeforeHiddenEditorRef = useRef<QueuedHiddenEditorInput[]>(
       [],
     );
-    const pendingInitialFontReadyLayoutRef = useRef(false);
+    /**
+     * The initial font waits in flight, one token each: the pre-view wait and
+     * the body view's wait can overlap, and ending one must not end the other.
+     */
+    const pendingInitialFontWaitsRef = useRef(new Set<object>());
+    /** A layout-input change arrived during the initial font wait. */
+    const layoutInputDeferredByFontWaitRef = useRef(false);
     const [isFocused, setIsFocused] = useState(false);
     const [selectionRects, setSelectionRects] = useEqualState<SelectionRect[]>(
       [],
@@ -1905,14 +1935,21 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     }, [caretPosition]);
     const [selectionOverlayRequestGate] = useState(createLatestRequestGate);
 
-    const validPrecomputedInitialState = useMemo(() => {
+    /**
+     * Reads the hidden editor state converted from the document for the pages
+     * while no view holds the document, converting it on the first read. A view
+     * that holds the document never reads it: a canonical session seeds its view
+     * with its own projection, so its open converts the document once, and only
+     * a refused seed (or a view not created yet) pays for this conversion.
+     */
+    const readPrecomputedInitialState = useMemo(() => {
       if (
         shouldCreateHiddenEditorView ||
         collaboration !== undefined ||
         !document
       )
-        return null;
-      return createHiddenEditorState({
+        return readNoHiddenEditorState;
+      return readHiddenEditorStateOnce({
         document,
         styles,
         manager: extensionManager,
@@ -1929,8 +1966,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       externalPlugins,
     ]);
     useLayoutEffect(() => {
-      precomputedInitialStateRef.current = validPrecomputedInitialState;
-    }, [validPrecomputedInitialState]);
+      readPrecomputedInitialStateRef.current = readPrecomputedInitialState;
+    }, [readPrecomputedInitialState]);
 
     // Image selection state
     const [selectedImageInfo, setSelectedImageInfo] =
@@ -2395,6 +2432,23 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     useLayoutEffect(() => {
       runLayoutPipelineRef.current = runLayoutPipeline;
     }, [runLayoutPipeline]);
+    /**
+     * Lays out a layout-input change the initial font wait held back, once an
+     * initial pass has painted and no wait is pending.
+     */
+    const runLayoutInputDeferredByFontWait = useCallback(() => {
+      if (
+        !layoutInputDeferredByFontWaitRef.current ||
+        pendingInitialFontWaitsRef.current.size > 0
+      )
+        return;
+      layoutInputDeferredByFontWaitRef.current = false;
+      const state =
+        hiddenPMRef.current?.getView()?.state ??
+        layoutSessionRef.current.lastEditorState;
+      if (state)
+        runLayoutPipelineRef.current(state, { reason: "layout-input" });
+    }, []);
 
     const documentIORef = useRef(documentIO);
     useLayoutEffect(() => {
@@ -2423,7 +2477,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           onError: (error) => onErrorRef.current?.(error),
         },
         readState: () =>
-          hiddenPMRef.current?.getState() ?? precomputedInitialStateRef.current,
+          hiddenPMRef.current?.getState() ??
+          readPrecomputedInitialStateRef.current(),
       });
     }, [runtime]);
     // Eagerly request the hidden editor when collaborating (matches the former
@@ -3621,7 +3676,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           // the view's state.
           if (
             !hiddenPMRef.current?.getState() &&
-            !precomputedInitialStateRef.current
+            !readPrecomputedInitialStateRef.current()
           ) {
             ensureHiddenEditorView({ sync: true });
           }
@@ -4048,7 +4103,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           } else {
             endPos = Math.max(
               0,
-              (precomputedInitialStateRef.current?.doc.content.size ?? 1) - 1,
+              (readPrecomputedInitialStateRef.current()?.doc.content.size ??
+                1) - 1,
             );
             queueHiddenEditorSelection({ type: "text", anchor: endPos });
           }
@@ -5887,7 +5943,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         return undefined;
       }
 
-      const initialState = validPrecomputedInitialState;
+      // A view that already holds the document lays the pages out from its own
+      // state: the hidden editor creates it before this effect runs, as a
+      // seeded canonical session does. Only without one (a view not requested
+      // yet, or a refused seed) is the document converted for the pages here.
+      const initialState =
+        hiddenPMRef.current?.getView()?.state ?? readPrecomputedInitialState();
       if (!initialState) return undefined;
       precomputedInitialDocumentRef.current = document;
       anonymizationMatchesRef.current =
@@ -5896,14 +5957,15 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         templateDirectivesKey.getState(initialState)?.ranges ?? [];
 
       let cancelled = false;
-      pendingInitialFontReadyLayoutRef.current = true;
+      const fontWait = {};
+      pendingInitialFontWaitsRef.current.add(fontWait);
       const fontWaitStartedAt = performance.now();
       const runAfterFontWait = () => {
         if (cancelled) {
           return;
         }
 
-        pendingInitialFontReadyLayoutRef.current = false;
+        pendingInitialFontWaitsRef.current.delete(fontWait);
         preHiddenInitialLayoutDoneRef.current = true;
         recordLayoutPhase(
           "initial",
@@ -5916,6 +5978,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         updateSelectionOverlay(initialState);
         updateAnonymizationOverlay();
         updateDirectivesOverlay();
+        runLayoutInputDeferredByFontWait();
       };
 
       void waitForInitialLayoutFonts(document, initialState.doc).then(
@@ -5925,13 +5988,17 @@ export const PagedEditor: React.ForwardRefExoticComponent<
 
       return () => {
         cancelled = true;
-        pendingInitialFontReadyLayoutRef.current = false;
+        pendingInitialFontWaitsRef.current.delete(fontWait);
+        // A wait started again (or the body view's) takes the held change
+        // over; with none in flight it runs now.
+        queueMicrotask(runLayoutInputDeferredByFontWait);
       };
     }, [
       collaboration,
       document,
-      validPrecomputedInitialState,
+      readPrecomputedInitialState,
       runLayoutPipeline,
+      runLayoutInputDeferredByFontWait,
       shouldCreateHiddenEditorView,
       updateAnonymizationOverlay,
       updateDirectivesOverlay,
@@ -6011,6 +6078,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           updateAnonymizationOverlay();
           updateDirectivesOverlay();
           updateAISuggestionsOverlay();
+          runLayoutInputDeferredByFontWait();
           focusReadyView();
           return;
         }
@@ -6023,12 +6091,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           updateAISuggestionsOverlay();
         };
 
-        pendingInitialFontReadyLayoutRef.current = true;
+        const fontWait = {};
+        pendingInitialFontWaitsRef.current.add(fontWait);
         const fontWaitStartedAt = performance.now();
         const runAfterFontWait = () => {
-          pendingInitialFontReadyLayoutRef.current = false;
+          pendingInitialFontWaitsRef.current.delete(fontWait);
           const currentView = hiddenPMRef.current?.getView();
           if (currentView !== view) {
+            runLayoutInputDeferredByFontWait();
             return;
           }
           recordLayoutPhase(
@@ -6039,6 +6109,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           resetCanvasContext();
           clearAllCaches();
           runInitialLayout(currentView);
+          runLayoutInputDeferredByFontWait();
         };
         void waitForInitialLayoutFonts(document, view.state.doc).then(
           runAfterFontWait,
@@ -6051,6 +6122,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       [
         applyPendingHiddenEditorInput,
         runLayoutPipeline,
+        runLayoutInputDeferredByFontWait,
         updateSelectionOverlay,
         updateAnonymizationOverlay,
         updateDirectivesOverlay,
@@ -6160,7 +6232,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             layoutSessionRef.current.lastMeasureInputs?.fontSet ?? null,
           relayout: () => {
             // The initial layout still to come measures in the current set.
-            if (pendingInitialFontReadyLayoutRef.current) {
+            if (pendingInitialFontWaitsRef.current.size > 0) {
               return;
             }
             // Before the hidden view exists the pages come from a pre-view
@@ -6292,6 +6364,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           laidOutLayoutInputSignatureRef.current === layoutInputSignature &&
           state.doc === layoutSessionRef.current.lastPmDoc
         ) {
+          return;
+        }
+        // The initial font wait lays out the inputs current when it ends.
+        if (pendingInitialFontWaitsRef.current.size > 0) {
+          layoutInputDeferredByFontWaitRef.current = true;
           return;
         }
         runLayoutPipelineRef.current(state, { reason: "layout-input" });
@@ -6798,11 +6875,13 @@ export const PagedEditor: React.ForwardRefExoticComponent<
               ? "canonical"
               : "legacy"
           }
+          {...(historyShortcuts === undefined ? {} : { historyShortcuts })}
+          {...(onCanonicalHistory === undefined ? {} : { onCanonicalHistory })}
           onSessionRefusal={handleSessionRefusal}
           {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           suggestionModeActive={suggestionModeActive}
           widthPx={contentWidth}
-          precomputedInitialState={validPrecomputedInitialState}
+          getPrecomputedInitialState={readPrecomputedInitialState}
           readOnly={readOnly}
           onTransaction={handleTransaction}
           onCanonicalCompositionEnd={scheduleLayout}

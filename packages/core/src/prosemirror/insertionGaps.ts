@@ -106,6 +106,20 @@ export class InsertionGapOrder {
     return before?.at ?? after?.at;
   }
 
+  holdsBlockIn(tr: Transaction, from: number, to: number): boolean {
+    // Whether a block the batch put in starts at `from` or after it, before
+    // `to`, in `tr.doc`.
+    for (const entries of this.#gaps.values()) {
+      for (const landed of entries) {
+        const mapping = tr.mapping.slice(landed.steps);
+        const start = mapping.map(landed.from, 1);
+        if (mapping.map(landed.to, -1) <= start) continue;
+        if (start >= from && start < to) return true;
+      }
+    }
+    return false;
+  }
+
   record(
     tr: Transaction,
     gap: number,

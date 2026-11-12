@@ -1,5 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
+import { playwrightOutputDir } from "../../tests/support/playwrightOutput";
 import { withBoundedProtocolCapture } from "../../tests/support/playwrightProtocolCapture";
 
 // Runs the built VS Code bundle (`bun run build` first; `test:e2e` does both)
@@ -8,6 +9,7 @@ import { withBoundedProtocolCapture } from "../../tests/support/playwrightProtoc
 export default withBoundedProtocolCapture(
   defineConfig({
     testDir: "./tests",
+    outputDir: playwrightOutputDir("editor-web"),
     timeout: 90_000,
     use: {
       browserName: "chromium",

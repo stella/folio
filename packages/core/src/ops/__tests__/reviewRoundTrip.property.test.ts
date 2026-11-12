@@ -14,6 +14,7 @@ import {
   type RevisionDecision,
 } from "@stll/docx-core/ops";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -163,8 +164,10 @@ describe("tracked model round trip and resolution oracle", () => {
     });
 
     test(`L9: ${kind} reports model and editor resolution differences`, async () => {
-      let attempted = 0;
-      await assertProperty(
+      const law = (
+        tally: { attempted: number },
+        record: typeof recordOutcome,
+      ) =>
         fc.asyncProperty(seedArbitrary, async (seed) => {
           const document = await fixture(seed);
           const applied = applyDocumentOp(
@@ -179,14 +182,14 @@ describe("tracked model round trip and resolution oracle", () => {
             );
             switch (outcome.type) {
               case "match":
-                recordOutcome(kind, outcome);
-                attempted += 1;
+                record(kind, outcome);
+                tally.attempted += 1;
                 break;
               case "disagreement":
               case "refused":
               case "editor-failed":
-                recordOutcome(kind, outcome);
-                attempted += 1;
+                record(kind, outcome);
+                tally.attempted += 1;
                 break;
               case "invalid":
               case "no-revisions":
@@ -198,13 +201,20 @@ describe("tracked model round trip and resolution oracle", () => {
                 outcome satisfies never;
             }
           }
-        }),
-        {
-          numRuns: 20,
-          id: "L9: ${kind} reports model and editor resolution differences",
-        },
+        });
+      await assertProperty(law({ attempted: 0 }, recordOutcome), {
+        numRuns: 20,
+        id: "L9: ${kind} reports model and editor resolution differences",
+      });
+      // A fixed sample reaches resolution; one case is enough. Its outcomes
+      // stay out of the report, which counts the property's cases.
+      const RUNS = 5;
+      const tally = { attempted: 0 };
+      await checkCoverageSample(
+        law(tally, () => undefined),
+        RUNS,
       );
-      expect(attempted).toBeGreaterThan(0);
+      expect(tally.attempted).toBeGreaterThan(0);
     });
   }
 

@@ -539,7 +539,11 @@ describe("pinned regression seeds", () => {
       fc.asyncProperty(fc.nat(), async () => {
         runs += 1;
       }),
-      { numRuns: 2, id: "replay the pinned seeds for an async property too" },
+      {
+        numRuns: 2,
+        seed: 5,
+        id: "replay the pinned seeds for an async property too",
+      },
     );
     expect(runs).toBe(2 * 2);
   });

@@ -2945,6 +2945,11 @@ type PendingJoinSurvivorOptions = {
   cleanText: string;
   noteReferences: NoteReferenceLabels;
   removedBreakPositions?: ReadonlySet<number>;
+  /**
+   * Whether a block the running batch put in starts in `[from, to)`: a join
+   * does not run past one (see `pendingJoinSurvivor`).
+   */
+  batchBlockIn?: (from: number, to: number) => boolean;
 };
 
 /**
@@ -2952,7 +2957,9 @@ type PendingJoinSurvivorOptions = {
  * break is pending removal while its words stay, accepting runs them into the
  * paragraph the join leaves, which already carries the joined paragraph's
  * properties (see `carryParagraphProperties`). Null when the paragraph stands
- * alone, or goes whole as a pending deletion.
+ * alone, or goes whole as a pending deletion. A block the running batch put
+ * between the two takes the break pending removal once the batch is done, and
+ * the paragraph then stands alone too: it reads as itself, not as the block.
  */
 const pendingJoinSurvivor = ({
   doc,
@@ -2960,6 +2967,7 @@ const pendingJoinSurvivor = ({
   cleanText,
   noteReferences,
   removedBreakPositions,
+  batchBlockIn,
 }: PendingJoinSurvivorOptions): number | null => {
   const paragraph = doc.nodeAt(paragraphPos);
   if (
@@ -2976,6 +2984,9 @@ const pendingJoinSurvivor = ({
   });
   const left = survivor === null ? null : doc.nodeAt(survivor);
   if (survivor === null || left?.type !== paragraph.type) return null;
+  if (batchBlockIn?.(paragraphPos + paragraph.nodeSize, survivor + 1)) {
+    return null;
+  }
   // A paragraph that is itself wholly pending deletion, its break too, is
   // gone once accepted: the words stay in the paragraph they stood in.
   return isDeletedPPrMark(left.attrs["pPrMark"]) &&
@@ -2999,6 +3010,8 @@ type InsertionFormattingAnchorOptions = {
   noteReferences: NoteReferenceLabels;
   /** Breaks this batch's final deletions will retire: the join reads past them. */
   removedBreakPositions: ReadonlySet<number>;
+  /** The blocks the batch has put in so far: the join stops at them. */
+  gapOrder: InsertionGapOrder;
 };
 
 /**
@@ -3006,7 +3019,10 @@ type InsertionFormattingAnchorOptions = {
  * its anchor: a paragraph a pending join runs into another reads as that one,
  * as the joined paragraph does when the merge is applied directly. A
  * suggestion is read against the document as it stands, where the join has
- * not run anything together yet, so it copies the paragraph it names.
+ * not run anything together yet, so it copies the paragraph it names. The
+ * blocks the batch already put in are not that paragraph: each insertion
+ * reads the properties it asked for, and an insertion that asked for none
+ * reads the anchor, never another insertion of the batch.
  */
 const insertionFormattingAnchor = ({
   item,
@@ -3014,6 +3030,7 @@ const insertionFormattingAnchor = ({
   mode,
   noteReferences,
   removedBreakPositions,
+  gapOrder,
 }: InsertionFormattingAnchorOptions): ResolvedOperation => {
   if (mode === "suggested") return item;
   const position = sinceRead(tr, item).map(item.blockFrom, 1);
@@ -3028,6 +3045,7 @@ const insertionFormattingAnchor = ({
     }).text,
     noteReferences,
     removedBreakPositions,
+    batchBlockIn: (from, to) => gapOrder.holdsBlockIn(tr, from, to),
   });
   const source = survivor === null ? null : tr.doc.nodeAt(survivor);
   return source ? { ...item, blockNode: source } : item;
@@ -6279,6 +6297,7 @@ const applyFolioAIEditOperationsInternal = ({
             tr,
             deletedFinalParagraphs,
           ),
+          gapOrder,
         });
         const built = buildInsertedParagraphs({
           item: formatted,
@@ -6801,6 +6820,7 @@ const applyFolioAIEditOperationsInternal = ({
             tr,
             deletedFinalParagraphs,
           ),
+          gapOrder,
         });
         const built = buildInsertedParagraphs({
           item: formatted,

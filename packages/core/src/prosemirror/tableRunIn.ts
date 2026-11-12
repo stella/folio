@@ -31,6 +31,8 @@ import {
   recreateProseNodeWithParagraphPropertySource as rebuild,
 } from "../docx/paragraphPropertySource";
 import { expectParagraphAttrs } from "./attrs";
+import { expectCommentReferenceAttrs } from "./commentReferenceAttrs";
+import { COMMENT_REFERENCE_NODE_NAME } from "./extensions/nodes/CommentReferenceExtension";
 import {
   paragraphRemainsOf,
   REVISION_MARK_NAMES,
@@ -253,7 +255,59 @@ type RunsIntoFollowingTableOptions = {
   mode: ResolutionMode;
 };
 
-/** Whether resolving every change in `mode` leaves nothing of this paragraph. */
+/** The comments whose marks the inline content of `paragraph` carries; point comments mark nothing. */
+const markedCommentIds = (paragraph: PMNode): Set<number> => {
+  const ids = new Set<number>();
+  paragraph.descendants((node) => {
+    if (!node.isInline || node.type.name === COMMENT_REFERENCE_NODE_NAME)
+      return true;
+    for (const mark of node.marks) {
+      const commentId: unknown = mark.attrs["commentId"];
+      if (
+        mark.type.name === "comment" &&
+        mark.attrs["point"] !== true &&
+        typeof commentId === "number"
+      )
+        ids.add(commentId);
+    }
+    return true;
+  });
+  return ids;
+};
+
+/**
+ * `left`, what resolving leaves of `paragraph`, without the comment references
+ * the resolution orphans: those of comments whose marked content here it
+ * removes, all of it. A comment's reference follows what the comment still
+ * covers, or goes with the comment, so it keeps nothing of the paragraph, as
+ * removing the same content directly keeps nothing.
+ */
+const withoutOrphanedCommentReferences = (
+  paragraph: PMNode,
+  left: PMNode,
+): PMNode => {
+  const kept = markedCommentIds(left);
+  const orphaned = new Set(
+    [...markedCommentIds(paragraph)].filter((id) => !kept.has(id)),
+  );
+  if (orphaned.size === 0) return left;
+  return left.copy(
+    Fragment.fromArray(
+      left.children.filter(
+        (child) =>
+          child.type.name !== COMMENT_REFERENCE_NODE_NAME ||
+          !orphaned.has(expectCommentReferenceAttrs(child).commentId),
+      ),
+    ),
+  );
+};
+
+/**
+ * Whether resolving every change in `mode` leaves nothing of this paragraph:
+ * its mark goes, and so does everything in it, the references of comments it
+ * takes all the marked content of included. This is the one reading of a
+ * block removed whole that pending joins, gaps and deletions share.
+ */
 export const paragraphGoes = (
   paragraph: PMNode,
   mode: ResolutionMode,
@@ -264,7 +318,10 @@ export const paragraphGoes = (
     expectParagraphAttrs(paragraph)._sectionProperties != null
   )
     return false;
-  const left = paragraphAfterContentRemoval(paragraph, mode);
+  const left = withoutOrphanedCommentReferences(
+    paragraph,
+    paragraphAfterContentRemoval(paragraph, mode),
+  );
   if (paragraphContentOf(left)) return false;
   const remains = paragraphRemainsOf(left);
   return (

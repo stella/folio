@@ -21,6 +21,7 @@ import type {
   SetContentControlContentInput,
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
+import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
@@ -349,6 +350,14 @@ export type DocxEditorProps = {
    * (decoration meta, apply, scroll-to) from outside the editor.
    */
   onEditorViewReady?: (view: EditorView | null) => void;
+  /**
+   * With the canonical session: called after each edit, undo or redo is
+   * published in any story, with what it did to the session's undo history.
+   * A host that keeps its own undo stack (and owns `hostShortcuts`'
+   * `"history"`) adds one entry per `opened` and sends undo / redo back
+   * through `DocxEditorRef.undo` / `redo`.
+   */
+  onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /**
    * Host ProseMirror plugins for the body editor, retained across document
    * replacements. Keep the array and plugin instances stable for a mounted

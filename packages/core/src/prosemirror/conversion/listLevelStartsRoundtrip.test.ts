@@ -21,6 +21,7 @@ import {
   paragraphVisibleText,
 } from "@stll/docx-core/ops";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -208,8 +209,7 @@ describe("listRendering.levelStarts round-trip", () => {
       paragraph?.type === "paragraph" ? paragraph.listRendering : undefined;
     if (rendering === undefined)
       throw new TypeError("Expected parsed list rendering.");
-    let cases = 0;
-    await assertProperty(
+    const law = (counts: { cases: number }) =>
       fc.property(
         fc.record({
           marker: fc.string(),
@@ -228,7 +228,7 @@ describe("listRendering.levelStarts round-trip", () => {
           ),
         }),
         (local) => {
-          cases += 1;
+          counts.cases += 1;
           const changed = { ...structuredClone(rendering), ...local };
           expect(listRenderingDefinitionsMatch(rendering, changed)).toBe(true);
           expect(
@@ -260,12 +260,15 @@ describe("listRendering.levelStarts round-trip", () => {
             }
           }
         },
-      ),
-      {
-        id: "definition matching excludes generated paragraph counter and folded-field metadata",
-      },
-    );
-    expect(cases).toBeGreaterThan(0);
+      );
+    await assertProperty(law({ cases: 0 }), {
+      id: "definition matching excludes generated paragraph counter and folded-field metadata",
+    });
+    // A fixed sample runs the check; one case is enough.
+    const RUNS = 1;
+    const counts = { cases: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.cases).toBeGreaterThan(0);
   });
 
   test("same reference recomputes cached rendering when its definition changes", async () => {

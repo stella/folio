@@ -28,6 +28,7 @@ import type { EditorView } from "prosemirror-view";
 import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
+import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
@@ -420,6 +421,8 @@ export type UseDocxEditorOptions = {
   externalPlugins?: readonly Plugin[];
   /** Who answers the undo and redo keys. Read once, when the editor is created. */
   historyShortcuts?: HistoryShortcutOwner;
+  /** A canonical commit was published, with what it did to the undo history. */
+  onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /** Reactive Yjs collaboration owner and the ProseMirror binding plugins. */
   collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | undefined>;
   /**
@@ -606,6 +609,7 @@ export function useDocxEditor(
     author,
     externalPlugins = [],
     historyShortcuts = "editor",
+    onCanonicalHistory,
     collaboration,
     onAnonymizationMatchesChange,
     showTemplateDirectives,
@@ -1073,6 +1077,8 @@ export function useDocxEditor(
     getPrecomputedInitialState: () => null,
     getReadOnly: () => toValue(readOnly),
     getExperimentalSession: () => toValue(experimentalSession),
+    getHistoryShortcuts: () => historyShortcuts,
+    onCanonicalHistory: (effect) => onCanonicalHistory?.(effect),
     getEditingMode: () => toValue(editorMode) ?? "editing",
     getSuggestionAuthor,
     onSessionRefusal: (message, ground, error) => {

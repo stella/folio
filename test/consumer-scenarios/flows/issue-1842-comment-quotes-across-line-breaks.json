@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lineBreaks",
+  "mode": "tracked-changes",
+  "seed": 2116006477,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3755748699,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "1B0E5A11",
+          "quote": "schedule\n",
+          "comment": { "text": "Party payment delivery warranty period." }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1840211,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "1B0E5A11",
+          "quote": "terms\nNotice",
+          "comment": { "text": "Notice term." }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1840212,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "1B0E5A11",
+          "comment": { "text": "Whole schedule." }
+        }
+      ]
+    }
+  ],
+  "origin": "comment quotes that end in or cross a line break",
+  "title": "a comment's anchored text reads a line break as the block text does"
+}

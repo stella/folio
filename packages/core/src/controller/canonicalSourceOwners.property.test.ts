@@ -2,6 +2,7 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -99,12 +100,11 @@ test("repeated undo restores every removed paragraph's original source ownership
 test(
   "cross-paragraph history preserves exact owners while reopening establishes fresh captures",
   async () => {
-    let cases = 0;
-    await assertProperty(
+    const law = (counts: { cases: number }) =>
       fc.asyncProperty(text, text, async (initial, replacement) => {
         // Exercise both property-source classes on every generated case.
         for (const sourceKind of ["captured", "uncaptured"] as const) {
-          cases += 1;
+          counts.cases += 1;
           const document = createEmptyDocument({ initialText: `a${initial}` });
           const first = document.package.document.content.at(0);
           if (first?.type !== "paragraph")
@@ -217,13 +217,17 @@ test(
             ).toBe(true);
           }
         }
-      }),
-      {
-        numRuns: 24,
-        id: "cross-paragraph history preserves exact owners while reopening establishes fresh captures",
-      },
-    );
-    expect(cases).toBeGreaterThan(0);
+      });
+    await assertProperty(law({ cases: 0 }), {
+      numRuns: 24,
+      id: "cross-paragraph history preserves exact owners while reopening establishes fresh captures",
+    });
+    // A fixed sample runs the check; each case parses and reopens documents,
+    // and one case is enough.
+    const RUNS = 3;
+    const counts = { cases: 0 };
+    await checkCoverageSample(law(counts), RUNS);
+    expect(counts.cases).toBeGreaterThan(0);
   },
-  propertyTestTimeout(30_000),
+  propertyTestTimeout(34_000),
 );

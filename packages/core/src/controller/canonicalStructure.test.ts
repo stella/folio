@@ -11,6 +11,7 @@ import {
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -473,8 +474,7 @@ test("note-reference descriptors delete beside a caret or across a range with ex
 });
 
 test("list-level commands preserve plain paragraphs and refuse all-plain selections without history", async () => {
-  let cases = 0;
-  await assertProperty(
+  const law = (counts: { cases: number }) =>
     fc.property(
       fc.record({
         indent: fc.integer({ min: 1, max: 4000 }),
@@ -482,7 +482,7 @@ test("list-level commands preserve plain paragraphs and refuse all-plain selecti
         reverse: fc.boolean(),
       }),
       ({ indent: generatedIndent, level, reverse }) => {
-        cases += 1;
+        counts.cases += 1;
         for (const indent of [undefined, 0, generatedIndent]) {
           for (const direction of ["increase", "decrease"] as const) {
             for (const kind of ["plain", "mixed"] as const) {
@@ -560,12 +560,16 @@ test("list-level commands preserve plain paragraphs and refuse all-plain selecti
           }
         }
       },
-    ),
-    {
-      id: "list-level commands preserve plain paragraphs and refuse all-plain selections without history",
-    },
-  );
-  expect(cases).toBeGreaterThan(0);
+    );
+  await assertProperty(law({ cases: 0 }), {
+    id: "list-level commands preserve plain paragraphs and refuse all-plain selections without history",
+  });
+  // A fixed sample runs the check; each case runs twelve command sequences,
+  // and one case is enough.
+  const RUNS = 3;
+  const counts = { cases: 0 };
+  checkCoverageSample(law(counts), RUNS);
+  expect(counts.cases).toBeGreaterThan(0);
 });
 
 const autoformatMarkerArbitrary = fc.oneof(
