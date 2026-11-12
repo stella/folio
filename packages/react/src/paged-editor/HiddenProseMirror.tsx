@@ -45,6 +45,7 @@ import {
   type HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
+import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
@@ -78,6 +79,8 @@ export type HiddenProseMirrorProps = {
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
   experimentalSession?: "canonical";
+  /** Who answers the undo and redo keys; the editor when unset. */
+  historyShortcuts?: HistoryShortcutOwner;
   suggestionModeActive?: boolean;
   suggestionAuthor?: string;
   onSessionRefusal?: (
@@ -191,6 +194,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     document,
     documentIdentity,
     experimentalSession,
+    historyShortcuts = "editor",
     suggestionModeActive = false,
     suggestionAuthor = "User",
     onSessionRefusal,
@@ -239,6 +243,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   // accessor functions, so it always sees the latest committed value.
   const readOnlyRef = useRef(readOnly);
   const experimentalSessionRef = useRef(experimentalSession);
+  const historyShortcutsRef = useRef(historyShortcuts);
   const suggestionModeActiveRef = useRef(suggestionModeActive);
   const suggestionAuthorRef = useRef(suggestionAuthor);
   const onSessionRefusalRef = useRef(onSessionRefusal);
@@ -275,6 +280,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     // Keep refs in sync
     readOnlyRef.current = readOnly;
     experimentalSessionRef.current = experimentalSession;
+    historyShortcutsRef.current = historyShortcuts;
     suggestionModeActiveRef.current = suggestionModeActive;
     suggestionAuthorRef.current = suggestionAuthor;
     onSessionRefusalRef.current = onSessionRefusal;
@@ -311,6 +317,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getPrecomputedInitialState: () => precomputedInitialStateRef.current,
         getReadOnly: () => readOnlyRef.current,
         getExperimentalSession: () => experimentalSessionRef.current,
+        getHistoryShortcuts: () => historyShortcutsRef.current,
         getEditingMode: () =>
           suggestionModeActiveRef.current ? "suggesting" : "editing",
         getSuggestionAuthor: () => suggestionAuthorRef.current,

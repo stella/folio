@@ -7,64 +7,114 @@ import {
   expect,
   test,
 } from "bun:test";
-import { closeHistory, history, redo, undo } from "prosemirror-history";
-import { Schema } from "prosemirror-model";
+import { history, undoDepth } from "prosemirror-history";
 import { EditorState, Plugin } from "prosemirror-state";
-import type { Command } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
+
+import {
+  type CanonicalCommit,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "@stll/folio-core/controller/canonicalSession";
+import { schema } from "@stll/folio-core/prosemirror/schema";
+import type { Document } from "@stll/folio-core/types/document";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
 import { createHistoryBridgePlugin } from "./historyBridge";
 import type { HistoryChange } from "./historyBridge";
 
-const schema = new Schema({
-  nodes: {
-    doc: { content: "paragraph+" },
-    paragraph: { content: "text*", toDOM: () => ["p", 0] },
-    text: {},
-  },
-});
+const fail = (message: string): never => {
+  throw new Error(message);
+};
 
-/** Like folio's paraId allocator: a follow-up change kept out of history. */
-const appendOutsideHistory = new Plugin({
-  appendTransaction: (transactions, _old, state) =>
-    transactions.some((transaction) => transaction.getMeta("append") === true)
-      ? state.tr.insertText("+", 1).setMeta("addToHistory", false)
-      : null,
-});
+/** Longer than the session's undo grouping window. */
+const PAUSE_MS = 1_000;
+
+const seed = (): Document => {
+  const document = createEmptyDocument({ initialText: "Start" });
+  const paragraph = document.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") fail("Expected a paragraph.");
+  paragraph.paraId = "12345678";
+  return document;
+};
+
+/**
+ * What the bridge did before the canonical session: a new step whenever
+ * ProseMirror's own history grew. The session keeps its commits out of that
+ * history, so this one never sees a step.
+ */
+const createProseMirrorHistoryBridge = (
+  onChange: (change: HistoryChange) => void,
+): Plugin =>
+  new Plugin({
+    view: () => ({
+      update: (view, previous) => {
+        if (view.state.doc === previous.doc) return;
+        onChange(
+          undoDepth(view.state) === undoDepth(previous)
+            ? "sameStep"
+            : "newStep",
+        );
+      },
+    }),
+  });
 
 const views: EditorView[] = [];
 
-const createEditor = (depth = 100) => {
+const createEditor = (bridge = createHistoryBridgePlugin) => {
+  const session = createCanonicalSession(seed()).unwrap();
   const changes: HistoryChange[] = [];
-  const plugins = [
-    history({ depth }),
-    appendOutsideHistory,
-    createHistoryBridgePlugin((change) => changes.push(change)),
-  ];
-  const emptyState = () =>
-    EditorState.create({
-      schema,
-      doc: schema.node("doc", null, [schema.node("paragraph")]),
-      plugins,
-    });
+  const plugins = [history(), bridge((change) => changes.push(change))];
+  const freshState = () =>
+    EditorState.create({ schema, doc: session.projection.doc, plugins });
   const mount = document.createElement("div");
   document.body.append(mount);
-  const view = new EditorView(mount, { state: emptyState() });
+  const view = new EditorView(mount, { state: freshState() });
   views.push(view);
-  const run = (command: Command) => command(view.state, view.dispatch);
+  // As the editor publishes: the session accepts the projection, then the
+  // view takes the state it staged.
+  const publish = (commit: CanonicalCommit) =>
+    view.updateState(
+      publishCanonicalProjection({
+        state: view.state,
+        commit,
+        session,
+      }).unwrap().state,
+    );
+  let time = 0;
 
   return {
+    session,
     view,
     changes,
-    /** Type into a new undo step, as after a pause. */
-    typeStep: (text: string) =>
-      view.dispatch(closeHistory(view.state.tr.insertText(text))),
-    /** Type into the open undo step, as while typing on. */
-    typeOn: (text: string) => view.dispatch(view.state.tr.insertText(text)),
-    undo: () => run(undo),
-    redo: () => run(redo),
-    reload: () => view.updateState(emptyState()),
+    /** Type at the caret, after a pause or while typing on. */
+    type: (text: string, { pause }: { pause: boolean }) => {
+      time += pause ? PAUSE_MS : 1;
+      const at = view.state.selection.head;
+      publish(
+        session
+          .prepareReplace(view.state, {
+            from: at,
+            to: at,
+            text,
+            semantic: "typing",
+            time,
+          })
+          .unwrap(),
+      );
+    },
+    undo: () => publish(session.prepareUndo(view.state).unwrap()),
+    redo: () => publish(session.prepareRedo(view.state).unwrap()),
+    reload: () => view.updateState(freshState()),
   };
+};
+
+/** Type three undo steps, the second one in two keystrokes. */
+const typeThreeSteps = (editor: ReturnType<typeof createEditor>) => {
+  editor.type("a", { pause: true });
+  editor.type("b", { pause: true });
+  editor.type("c", { pause: false });
+  editor.type("d", { pause: true });
 };
 
 beforeAll(() => GlobalRegistrator.register());
@@ -80,14 +130,14 @@ afterEach(() => {
 afterAll(() => GlobalRegistrator.unregister());
 
 describe("createHistoryBridgePlugin", () => {
-  test("reports one new step per undo step, and undo / redo apart", () => {
+  test("reports one new step per undo step the session opens, and undo / redo apart", () => {
     const editor = createEditor();
-    editor.typeStep("a");
-    editor.typeOn("b");
-    editor.typeStep("c");
-    expect(editor.undo()).toBe(true);
-    expect(editor.redo()).toBe(true);
+    typeThreeSteps(editor);
+    editor.undo();
+    editor.redo();
+
     expect(editor.changes).toEqual([
+      "newStep",
       "newStep",
       "sameStep",
       "newStep",
@@ -96,55 +146,35 @@ describe("createHistoryBridgePlugin", () => {
     ]);
   });
 
-  test("a change another plugin appends joins the step that caused it", () => {
+  test("the host's stack walks the session's steps one for one", () => {
     const editor = createEditor();
-    editor.view.dispatch(
-      closeHistory(
-        editor.view.state.tr.insertText("a").setMeta("append", true),
-      ),
-    );
-    expect(editor.view.state.doc.textContent).toBe("+a");
-    expect(editor.changes).toEqual(["newStep"]);
-  });
+    typeThreeSteps(editor);
+    const steps = editor.changes.filter((change) => change === "newStep");
 
-  test("a change kept out of history opens no step", () => {
-    const editor = createEditor();
-    editor.view.dispatch(
-      editor.view.state.tr.insertText("a").setMeta("addToHistory", false),
-    );
-    expect(editor.changes).toEqual(["sameStep"]);
-  });
-
-  test("steps the history keeps line up with the host's stack past the depth limit", () => {
-    const depth = 3;
-    const editor = createEditor(depth);
-    const steps = 40;
-    for (let step = 0; step < steps; step += 1) {
-      editor.typeStep("x");
-    }
-    expect(editor.changes).toEqual(
-      Array.from({ length: steps }, () => "newStep"),
-    );
-
-    // The host's stack is `steps` long. The editor trims its own to `depth`
-    // once it overflows, so it can walk back only part of it; an undo past
-    // that finds nothing to undo and changes nothing.
     let undone = 0;
-    while (editor.undo()) {
+    while (editor.session.canUndo) {
+      editor.undo();
       undone += 1;
     }
-    expect(undone).toBeGreaterThanOrEqual(depth);
-    expect(undone).toBeLessThan(steps);
-    expect(editor.changes.slice(steps)).toEqual(
-      Array.from({ length: undone }, () => "undoRedo"),
-    );
+    expect(undone).toBe(steps.length);
+    expect(editor.view.state.doc.textContent).toBe("Start");
   });
 
-  test("loading a new document is not an edit", () => {
+  test("a bridge that reads ProseMirror's history sees none of the session's steps", () => {
+    const bridged = createEditor();
+    const mirrored = createEditor(createProseMirrorHistoryBridge);
+    typeThreeSteps(bridged);
+    typeThreeSteps(mirrored);
+
+    expect(mirrored.changes).not.toContain("newStep");
+    expect(mirrored.changes).not.toEqual(bridged.changes);
+  });
+
+  test("a reload is not an edit", () => {
     const editor = createEditor();
-    editor.typeStep("a");
+    editor.type("a", { pause: true });
     editor.reload();
-    editor.typeStep("b");
-    expect(editor.changes).toEqual(["newStep", "newStep"]);
+
+    expect(editor.changes).toEqual(["newStep"]);
   });
 });

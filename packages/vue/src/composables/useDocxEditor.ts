@@ -1068,6 +1068,7 @@ export function useDocxEditor(
     getPrecomputedInitialState: () => null,
     getReadOnly: () => toValue(readOnly),
     getExperimentalSession: () => toValue(experimentalSession),
+    getHistoryShortcuts: () => historyShortcuts,
     getEditingMode: () => toValue(editorMode) ?? "editing",
     getSuggestionAuthor,
     onSessionRefusal: (message, ground, error) => {

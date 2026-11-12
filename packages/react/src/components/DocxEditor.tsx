@@ -6199,6 +6199,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             accessibleName={accessibleName}
                             ref={attachPagedEditor}
                             document={history.state}
+                            historyShortcuts={historyShortcuts}
                             documentIO={documentIO}
                             documentIdentity={loadedDocumentIdentity}
                             markupView={displayMode}

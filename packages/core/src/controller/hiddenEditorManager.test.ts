@@ -576,6 +576,81 @@ test("canonical manager refuses transaction bypasses and shares one input journa
   }
 });
 
+for (const owner of ["editor", "host"] as const) {
+  test(`canonical undo keys belong to the ${owner} that owns history shortcuts`, () => {
+    const releaseDom = acquireHarnessDom();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = createEmptyDocument({ initialText: "Start" });
+    const paragraph = source.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+    paragraph.paraId = "12345678";
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExperimentalSession: () => "canonical",
+      getHistoryShortcuts: () => owner,
+    });
+    const manager = createHiddenEditorManager(deps);
+    try {
+      manager.ensureView();
+      const view = manager.getView() ?? panic("Expected a body view");
+      manager.api.setSelection(6);
+      view.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          inputType: "insertText",
+          data: "!",
+          cancelable: true,
+          bubbles: true,
+        }),
+      );
+      expect(view.state.doc.textContent).toBe("Start!");
+      const shortcuts = [
+        new KeyboardEvent("keydown", {
+          key: "z",
+          ctrlKey: true,
+          cancelable: true,
+          bubbles: true,
+        }),
+        new InputEvent("beforeinput", {
+          inputType: "historyUndo",
+          cancelable: true,
+          bubbles: true,
+        }),
+      ];
+      for (const event of shortcuts) {
+        view.dom.dispatchEvent(event);
+        // The browser's own history never runs over the canonical projection.
+        expect(event.defaultPrevented).toBe(true);
+        if (owner === "editor") {
+          expect(view.state.doc.textContent).toBe("Start");
+          expect(manager.api.redo()).toBe(true);
+        }
+        expect(view.state.doc.textContent).toBe("Start!");
+      }
+      // A story view's undo keys come through the API marked as keys.
+      expect(
+        manager.api.applyCanonicalStoryHistory({
+          view,
+          story: OP_STORIES.MAIN,
+          direction: "undo",
+          shortcut: true,
+        }),
+      ).toBe(owner === "editor");
+      if (owner === "editor") expect(manager.api.redo()).toBe(true);
+      expect(view.state.doc.textContent).toBe("Start!");
+      // The host undoes through the API either way.
+      expect(manager.api.undo()).toBe(true);
+      expect(view.state.doc.textContent).toBe("Start");
+    } finally {
+      manager.destroyView();
+      host.remove();
+      releaseDom();
+    }
+  });
+}
+
 test("canonical public batches publish the saved document and share human undo", () => {
   GlobalRegistrator.register();
   const host = document.createElement("div");

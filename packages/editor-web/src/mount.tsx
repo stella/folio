@@ -134,6 +134,7 @@ const FolioEditorApp = ({
           <DocxEditor
             accessibleName={accessibleName}
             ref={editorRef}
+            experimentalSession="canonical"
             author={author}
             mode={mode}
             onModeChange={onModeChange}

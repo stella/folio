@@ -188,6 +188,7 @@ import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInse
 // Table commands (for quick-action insert buttons)
 import { addColumnRight, addRowBelow } from "@stll/folio-core/prosemirror";
 import { expectImageAttrs } from "@stll/folio-core/prosemirror/attrs";
+import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
   commitImageFloatMove,
@@ -329,6 +330,8 @@ export type PagedEditorProps = {
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
   experimentalSession?: "canonical";
+  /** Who answers the undo and redo keys; the editor when unset. */
+  historyShortcuts?: HistoryShortcutOwner;
   /** Adapter-owned document I/O exposed through the shared controller. */
   documentIO: FolioEditorDocumentIO;
   /**
@@ -1555,6 +1558,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       documentIO,
       documentIdentity,
       experimentalSession,
+      historyShortcuts,
       fonts: hostFonts,
       theme: _theme,
       hasTitlePg = false,
@@ -6791,6 +6795,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           )
             ? {}
             : { experimentalSession })}
+          {...(historyShortcuts === undefined ? {} : { historyShortcuts })}
           onSessionRefusal={handleSessionRefusal}
           {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           suggestionModeActive={suggestionModeActive}
