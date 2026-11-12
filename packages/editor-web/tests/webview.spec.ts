@@ -159,6 +159,25 @@ test("the VS Code bundle round-trips a document under the webview policy", async
 
   // Save: a paragraph break forces a full repack.
   await postToWebview(page, { type: "serialize", requestId: 1 });
+  await page.waitForTimeout(20_000);
+  console.log(
+    "WEBVIEWDEBUG " +
+      JSON.stringify(
+        await page.evaluate(() =>
+          (
+            globalThis as unknown as { __folio: { sent: unknown[] } }
+          ).__folio.sent
+            .filter(
+              (m) =>
+                typeof m === "object" &&
+                m !== null &&
+                "type" in m &&
+                String((m as { type: string }).type).startsWith("serializ"),
+            )
+            .map((m) => JSON.stringify(m).slice(0, 2000)),
+        ),
+      ),
+  );
   await waitForSent(page, { type: "serialized", requestId: 1 });
   const [firstSave] = await sentOfType(page, "serialized");
   expect(firstSave?.fileVersion).toBe("v1");
