@@ -2187,6 +2187,13 @@ const goesWhole = (row: ModelRow): boolean =>
  * and the row whose gap that is. An insertion after one block and one before
  * the next land in one gap, in batch order, past the blocks between them that
  * accepting removes whole. A block a pending join runs through stops that.
+ *
+ * This is the engine's rule, read on the model rather than imported, since
+ * the scenarios run against published packages: a block put after a block,
+ * paragraph or table, lands right after it, one put before a block at the
+ * start of the gap (`insertionGap`), and each lands behind the blocks the
+ * batch put into that gap before it (`InsertionGapOrder`), which `gap.push`
+ * says here.
  */
 const gapOf = (
   model: Model,
