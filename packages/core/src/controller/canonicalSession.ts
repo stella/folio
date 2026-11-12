@@ -334,6 +334,14 @@ export type CanonicalSelection = {
   head: TextPosition;
 };
 export type CanonicalOrigin = "input" | "undo" | "redo";
+/**
+ * What a commit does to the session's undo history once published: `opened`
+ * a new undo step, `joined` the step the previous input opened (typing on
+ * within the grouping window), or walked the history back (`undo`) or
+ * forward (`redo`). A host that keeps its own undo stack adds one entry per
+ * `opened` commit, so both stacks stay the same length.
+ */
+export type CanonicalHistoryEffect = "opened" | "joined" | "undo" | "redo";
 export type CanonicalSessionMode =
   { type: "editing" } | { type: "suggesting"; author: string };
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
@@ -1412,9 +1420,20 @@ type AppliedJournalGroup = {
   postSelection: CanonicalSelection;
 };
 
+/** The facts that decide whether an input joins the open undo step. */
+type JournalGroupingKey = Pick<
+  AppliedJournalEntry,
+  | "semantic"
+  | "grouping"
+  | "time"
+  | "boundary"
+  | "preSelection"
+  | "postSelection"
+>;
+
 const continuesGroup = (
   previous: AppliedJournalEntry,
-  next: AppliedJournalEntry,
+  next: JournalGroupingKey,
 ): boolean => {
   switch (next.semantic) {
     case "typing":
@@ -1465,6 +1484,8 @@ export type CanonicalCommit = {
   touched: TouchedBlocks;
   version: number;
   origin: CanonicalOrigin;
+  /** What publishing does to the session's undo history. */
+  history: CanonicalHistoryEffect;
   /** Revisions a content control lock held back; they stay pending. */
   lockHeld?: readonly number[];
   /** Publish only after every projection/plugin transaction has been accepted. */
@@ -1547,6 +1568,7 @@ type StageOptions = {
   ops: readonly DocumentOp[];
   selection: CanonicalSelection;
   origin: CanonicalOrigin;
+  history: CanonicalHistoryEffect;
   propertySourceDocument?: Document;
   stagedApplied?: AppliedDocumentOp;
   story?: OpStory;
@@ -2082,12 +2104,30 @@ class CanonicalSession {
           deletion.value.from === from &&
           deletion.value.to === to));
     const grouping = run ? "run" : "isolated";
+    const groupingKey = {
+      preSelection: preSelection.value,
+      postSelection,
+      semantic,
+      grouping:
+        compositionPhase === "correction" ? "compositionCorrection" : grouping,
+      time,
+      boundary: this.groupingBoundary,
+    } as const satisfies JournalGroupingKey;
+    // Decided now: publishing refuses once the version or the grouping
+    // boundary moved, so the open step is still the one read here.
+    const group = this.applied.at(-1);
+    const previous = group?.entries.at(-1);
+    const joins =
+      group !== undefined &&
+      previous !== undefined &&
+      continuesGroup(previous, groupingKey);
     return this.stage({
       state,
       story,
       ops,
       selection: postSelection,
       origin: "input",
+      history: joins ? "joined" : "opened",
       // The compiler's own application of exactly these ops, when it made one.
       ...(compiled.value.applied === undefined
         ? {}
@@ -2097,27 +2137,13 @@ class CanonicalSession {
           type: "applied",
           ops,
           inverse,
-          preSelection: preSelection.value,
-          postSelection,
+          ...groupingKey,
           preDocument,
           postDocument: this.currentDocument,
           version,
           origin: "input",
-          semantic,
-          grouping:
-            compositionPhase === "correction"
-              ? "compositionCorrection"
-              : grouping,
-          time,
-          boundary: this.groupingBoundary,
         } as const satisfies AppliedJournalEntry;
-        const group = this.applied.at(-1);
-        const previous = group?.entries.at(-1);
-        if (
-          group !== undefined &&
-          previous !== undefined &&
-          continuesGroup(previous, entry)
-        ) {
+        if (group !== undefined && joins) {
           group.entries.push(entry);
           group.postSelection = postSelection;
         } else {
@@ -2319,6 +2345,7 @@ class CanonicalSession {
       ops,
       selection: postSelection,
       origin: "input",
+      history: "opened",
       ...(stagedApplied === undefined ? {} : { stagedApplied }),
       onPublish: (inverse, version) => {
         const entry = {
@@ -2708,6 +2735,7 @@ class CanonicalSession {
       ops: preparedOps,
       selection: postSelection,
       origin: "input",
+      history: "opened",
       onPublish: (inverse, version) => {
         this.applied.push({
           entries: [
@@ -2753,6 +2781,7 @@ class CanonicalSession {
           : group.entries.toReversed().flatMap((entry) => entry.inverse),
       selection: group.preSelection,
       origin: "undo",
+      history: "undo",
       ...(propertySourceDocument === undefined
         ? {}
         : { propertySourceDocument }),
@@ -2778,6 +2807,7 @@ class CanonicalSession {
       ops: undone.redoOps,
       selection: undone.group.postSelection,
       origin: "redo",
+      history: "redo",
       ...(propertySourceDocument === undefined
         ? {}
         : { propertySourceDocument }),
@@ -2799,6 +2829,7 @@ class CanonicalSession {
     ops,
     selection,
     origin,
+    history,
     onPublish,
     propertySourceDocument,
     stagedApplied,
@@ -2994,6 +3025,7 @@ class CanonicalSession {
       touched: applied.value.touched,
       version: baseVersion + 1,
       origin,
+      history,
       publish: () => {
         if (this.isComposing || this.groupingBoundary !== baseBoundary)
           return refuse(

@@ -39,6 +39,8 @@ type CanonicalStoryHistoryOptions = {
   view: EditorView;
   story: OpStory;
   direction: "undo" | "redo";
+  /** The undo keys in the story's view asked; ignored when the host owns them. */
+  shortcut?: true;
 };
 type CanonicalStoryTextOptions = {
   view: EditorView;
