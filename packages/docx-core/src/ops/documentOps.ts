@@ -104,6 +104,7 @@ export {
 export {
   BATCH_REJECTION_REASONS,
   BATCH_WIRE_OP_TYPES,
+  EXCLUSIVE_PARTS,
   MAX_BATCH_WIRE_BYTES,
   BatchRejection,
   parseDocumentBatch,
@@ -111,6 +112,7 @@ export {
   validateSequencedBatch,
   type BatchRejectionReason,
   type DocumentBatch,
+  type ExclusivePart,
   type SequencedBatch,
 } from "./sequencing/envelope";
 export { transformBatch } from "./sequencing/transform";

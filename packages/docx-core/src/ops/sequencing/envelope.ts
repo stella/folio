@@ -2,11 +2,11 @@ import { Result, TaggedError, type TaggedErrorClass } from "better-result";
 
 import { encodeUtf8 } from "@stll/utf8-boundaries";
 
-import type { ParagraphFormatting, TextFormatting } from "../../model/document";
-import { PARAGRAPH_ALIGNMENTS } from "../../model/ooxmlEnumerations.gen";
+import { INSERTION_SEAM_POLICIES } from "../../model/content";
 import type { IdLeaseKind } from "../idLease";
 import { cloneModel } from "../modelClone";
 import {
+  type CommentOp,
   type DeleteRowOp,
   type DeleteTableOp,
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -18,11 +18,58 @@ import {
   type SetTableOp,
   type SetTableRowsOp,
   type SplitHalf,
+  type StoryParts,
   type TableEditOp,
   type TextPosition,
 } from "../types";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
 import { isOpStory } from "./address";
+import {
+  abstractNumbering,
+  array,
+  blockContent,
+  blockId,
+  boundedJson,
+  documentSettings,
+  type Fields,
+  headerFooter,
+  inlineContent,
+  isRecord,
+  literal,
+  mapEntries,
+  natural,
+  nonemptyString,
+  note,
+  nullable,
+  number,
+  numberingDefinitions,
+  numberingInstance,
+  object,
+  optional,
+  packageResourceMedia,
+  paragraph,
+  paragraphMarkChange,
+  paragraphPropertyFields,
+  paragraphReviewFields,
+  presence,
+  properties,
+  relationship,
+  runPropertyFields,
+  sectionProperties,
+  sectionPropertyFields,
+  sectionViewChange,
+  sectionViewState,
+  splitParagraphFields,
+  string,
+  styleDefinitions,
+  table,
+  tableCellFormattingFields,
+  tableFormattingFields,
+  tableRow,
+  tableRowFormattingFields,
+  trackedChangeInfo,
+  type Validator,
+} from "./wireRecords";
 
 /** A batch applies atomically, in array order, against its stated revision. */
 export type DocumentBatch = {
@@ -42,7 +89,16 @@ export const NO_SEQUENCED_EFFECT = "none";
 export type SequencedOpEffect =
   | { type: "splitBlock"; newHalf: SplitHalf }
   | { type: "joinBlocks"; firstLength: number }
-  | { type: "touchedBlocks"; blockIds: readonly string[] }
+  | {
+      type: "touchedBlocks";
+      /** Paragraphs the operation changed, inserted or removed. */
+      blockIds: readonly string[];
+      /**
+       * For a table structure edit, every paragraph of the table before and
+       * after it: another structure edit of that table conflicts with it.
+       */
+      tableBlockIds?: readonly string[];
+    }
   | { type: typeof NO_SEQUENCED_EFFECT };
 
 export type SequencedBatch = DocumentBatch & {
@@ -57,13 +113,49 @@ export const BATCH_REJECTION_REASONS = {
   CONFLICT: "conflict",
   STALE_BASE: "staleBase",
   INVALID_OPERATION: "invalidOperation",
+  /** A concurrent operation restructured the table this one restructures. */
   TABLE_REQUIRES_EXCLUSIVE_EDIT: "tableRequiresExclusiveEdit",
+  /** A concurrent operation changed a paragraph this one addresses. */
+  BLOCK_CONFLICT: "blockConflict",
+  /** A concurrent operation wrote a package part this one uses (`part`). */
+  PART_CONFLICT: "partConflict",
   /** The batch introduces an id its actor does not lease. */
   OUTSIDE_ID_LEASE: "outsideIdLease",
 } as const;
 
 export type BatchRejectionReason =
   (typeof BATCH_REJECTION_REASONS)[keyof typeof BATCH_REJECTION_REASONS];
+
+/**
+ * Package parts an operation reads or writes besides the paragraphs it
+ * addresses. Concurrent operations conflict on a part when one writes it and
+ * both name the same entry, or one names the whole part.
+ */
+export const EXCLUSIVE_PARTS: Readonly<{
+  readonly NUMBERING: "numbering";
+  readonly STYLES: "styles";
+  readonly RELATIONSHIPS: "relationships";
+  readonly MEDIA: "media";
+  readonly SECTIONS: "sections";
+  readonly HEADERS_FOOTERS: "headersFooters";
+  readonly NOTES: "notes";
+  readonly SETTINGS: "settings";
+  readonly REVISIONS: "revisions";
+}> = Object.freeze({
+  NUMBERING: "numbering",
+  STYLES: "styles",
+  RELATIONSHIPS: "relationships",
+  MEDIA: "media",
+  SECTIONS: "sections",
+  HEADERS_FOOTERS: "headersFooters",
+  NOTES: "notes",
+  SETTINGS: "settings",
+  REVISIONS: "revisions",
+} as const);
+
+/** One of {@link EXCLUSIVE_PARTS}. */
+export type ExclusivePart =
+  (typeof EXCLUSIVE_PARTS)[keyof typeof EXCLUSIVE_PARTS];
 
 const BatchRejectionBase: TaggedErrorClass<"BatchRejection"> =
   TaggedError("BatchRejection");
@@ -76,9 +168,15 @@ export class BatchRejection extends BatchRejectionBase<{
   overType?: DocumentOpType;
   /** The kind of the id an out-of-lease batch introduces. */
   idKind?: IdLeaseKind;
+  /** The package part a part conflict names. */
+  part?: ExclusivePart;
 }> {}
 
-/** Table edits and their structural inverses require exclusive editing until transforms exist. */
+/**
+ * Table structure edits and their structural inverses. Two of them that
+ * restructure the same table concurrently conflict; one of them passes
+ * concurrent edits of other tables and of paragraphs it does not address.
+ */
 export const TABLE_EXCLUSIVE_OP_TYPES: {
   readonly insertTable: true;
   readonly deleteTable: true;
@@ -125,8 +223,79 @@ export const TABLE_EXCLUSIVE_OP_TYPES: {
   true
 >;
 
-type Validator = (value: unknown) => boolean;
-type Fields = Readonly<Record<string, Validator>>;
+/**
+ * Operation kinds with no wire form in this schema, each with the reason.
+ * Every other kind is sendable: {@link BATCH_WIRE_OP_TYPES}.
+ */
+export const UNSENT_OP_TYPES: Readonly<Record<CommentOp["type"], string>> =
+  Object.freeze({
+    createComment: "Comment threads are not yet sequenced.",
+    updateCommentContent: "Comment threads are not yet sequenced.",
+    setCommentResolution: "Comment threads are not yet sequenced.",
+    deleteComment: "Comment threads are not yet sequenced.",
+    restoreCommentState: "Comment threads are not yet sequenced.",
+  });
+
+type WireOpType = Exclude<DocumentOpType, CommentOp["type"]>;
+
+/**
+ * The effect the sequencer records for each sendable kind: none for an
+ * operation the position transform rebases by its own fields, the split half
+ * or join length a position needs, or the paragraphs a block-scoped
+ * operation touched.
+ */
+export const SEQUENCED_EFFECT_TYPES: Readonly<
+  Record<WireOpType, SequencedOpEffect["type"]>
+> = Object.freeze({
+  insertText: NO_SEQUENCED_EFFECT,
+  deleteRange: NO_SEQUENCED_EFFECT,
+  setRunProps: NO_SEQUENCED_EFFECT,
+  setParagraphProps: NO_SEQUENCED_EFFECT,
+  insertBlocks: NO_SEQUENCED_EFFECT,
+  splitBlock: "splitBlock",
+  joinBlocks: "joinBlocks",
+  resolveRevision: "touchedBlocks",
+  deleteBlocks: "touchedBlocks",
+  insertContent: "touchedBlocks",
+  splitInline: "touchedBlocks",
+  joinInline: "touchedBlocks",
+  replaceBlocks: "touchedBlocks",
+  setParagraphReview: "touchedBlocks",
+  replaceInline: "touchedBlocks",
+  setRevisionInfo: "touchedBlocks",
+  insertTable: "touchedBlocks",
+  deleteTable: "touchedBlocks",
+  setContainerBlocks: "touchedBlocks",
+  insertRow: "touchedBlocks",
+  deleteRow: "touchedBlocks",
+  setTableRows: "touchedBlocks",
+  insertColumn: "touchedBlocks",
+  deleteColumn: "touchedBlocks",
+  mergeCells: "touchedBlocks",
+  splitCell: "touchedBlocks",
+  setTableGrid: "touchedBlocks",
+  setCellProps: "touchedBlocks",
+  setRowProps: "touchedBlocks",
+  setTableProps: "touchedBlocks",
+  setTable: "touchedBlocks",
+  createNumberingInstance: "touchedBlocks",
+  deleteNumberingInstance: "touchedBlocks",
+  setSectionEndpoint: "touchedBlocks",
+  setSectionProps: "touchedBlocks",
+  setPackageResources: "touchedBlocks",
+  createHeaderFooter: "touchedBlocks",
+  removeHeaderFooter: "touchedBlocks",
+  restoreStoryParts: "touchedBlocks",
+  addNote: "touchedBlocks",
+  removeNote: "touchedBlocks",
+});
+
+/** The effect type a sequenced operation of this kind must record. */
+export const sequencedEffectType = (
+  type: DocumentOpType,
+): SequencedOpEffect["type"] | undefined =>
+  Object.entries(SEQUENCED_EFFECT_TYPES).find(([kind]) => kind === type)?.[1];
+
 type CommonOperationFields = Pick<DocumentOp, "undefinedFields">;
 type OperationFields<Type extends DocumentOpType> = {
   [
@@ -137,110 +306,9 @@ type OperationFields<Type extends DocumentOpType> = {
   ]-?: Validator;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-const string: Validator = (value) => typeof value === "string";
-const nonemptyString: Validator = (value) =>
-  typeof value === "string" && value.length > 0;
-const boolean: Validator = (value) => typeof value === "boolean";
-const number: Validator = (value) =>
-  typeof value === "number" && Number.isFinite(value);
-const natural: Validator = (value) =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-const blockId: Validator = (value) =>
-  typeof value === "string" && /^[0-9A-F]{8}$/u.test(value);
-const absent: Validator = (value) => value === undefined;
-const optional =
-  (check: Validator): Validator =>
-  (value) =>
-    value === undefined || check(value);
-const nullable =
-  (check: Validator): Validator =>
-  (value) =>
-    value === null || check(value);
-const literal =
-  (...values: readonly unknown[]): Validator =>
-  (value) =>
-    values.includes(value);
-const array =
-  (check: Validator): Validator =>
-  (value) =>
-    Array.isArray(value) && value.every(check);
 const commonOperationFields = {
   undefinedFields: optional(array(array(nonemptyString))),
 } satisfies Record<keyof CommonOperationFields, Validator>;
-const object =
-  (fields: Fields): Validator =>
-  (value) =>
-    isRecord(value) &&
-    Object.keys(value).every((key) => Object.hasOwn(fields, key)) &&
-    Object.entries(fields).every(([key, check]) => check(value[key]));
-const properties = (fields: Fields, patch = false): Validator =>
-  object(
-    Object.fromEntries(
-      Object.entries(fields).map(([key, check]) => [
-        key,
-        optional(patch ? nullable(check) : check),
-      ]),
-    ),
-  );
-
-const runPropertyFields = {
-  bold: boolean,
-  boldCs: boolean,
-  italic: boolean,
-  italicCs: boolean,
-  strike: boolean,
-  doubleStrike: boolean,
-  smallCaps: boolean,
-  allCaps: boolean,
-  hidden: boolean,
-  noProof: boolean,
-  emboss: boolean,
-  imprint: boolean,
-  outline: boolean,
-  shadow: boolean,
-  rtl: boolean,
-  cs: boolean,
-  fontSize: number,
-  fontSizeCs: number,
-  spacing: number,
-  position: number,
-  scale: number,
-  kerning: number,
-  styleId: string,
-  vertAlign: literal("baseline", "superscript", "subscript"),
-  language: object({
-    val: optional(string),
-    eastAsia: optional(string),
-    bidi: optional(string),
-  }),
-} satisfies Partial<Record<keyof TextFormatting, Validator>>;
-const paragraphPropertyFields = {
-  alignment: literal(...PARAGRAPH_ALIGNMENTS),
-  bidi: boolean,
-  kinsoku: boolean,
-  autoSpaceDE: boolean,
-  autoSpaceDN: boolean,
-  overflowPunctuation: boolean,
-  spaceBefore: number,
-  spaceAfter: number,
-  lineSpacing: number,
-  lineSpacingRule: literal("auto", "exact", "atLeast"),
-  snapToGrid: boolean,
-  beforeAutospacing: boolean,
-  afterAutospacing: boolean,
-  indentLeft: number,
-  indentRight: number,
-  indentFirstLine: number,
-  hangingIndent: boolean,
-  keepNext: boolean,
-  keepLines: boolean,
-  widowControl: boolean,
-  pageBreakBefore: boolean,
-  contextualSpacing: boolean,
-  styleId: string,
-} satisfies Partial<Record<keyof ParagraphFormatting, Validator>>;
 const positionFields = {
   story: isOpStory,
   blockId,
@@ -268,67 +336,83 @@ const whenEmpty = optional(literal("omit", "keep"));
 const blockAnchor = object({ type: literal("before", "after"), blockId });
 const runProps = properties(runPropertyFields);
 const runPatch = properties(runPropertyFields, true);
-const paragraphProps = properties(paragraphPropertyFields);
 const paragraphPatch = properties(paragraphPropertyFields, true);
-const runContent: Validator = (value) => {
-  if (!isRecord(value)) return false;
-  switch (value["type"]) {
-    case "text":
-      return object({ type: literal("text"), text: string })(value);
-    case "tab":
-      return object({ type: literal("tab") })(value);
-    case "softHyphen":
-    case "noBreakHyphen":
-    case "renderedPageBreak":
-      return object({ type: literal(value["type"]) })(value);
-    case "break":
-      return object({
-        type: literal("break"),
-        breakType: optional(literal("page", "column", "textWrapping")),
-        clear: optional(literal("none", "left", "right", "all")),
-        sourceElement: optional(literal("br")),
-      })(value);
-    default:
-      return false;
-  }
-};
-const inline = object({
-  type: literal("run"),
-  formatting: optional(runProps),
-  content: array(runContent),
-});
 const slice = object({
-  content: array(inline),
+  content: array(inlineContent),
   openStart: natural,
   openEnd: natural,
 });
-const paragraph = object({
-  type: literal("paragraph"),
-  paraId: blockId,
-  textId: optional(blockId),
-  formatting: optional(paragraphProps),
-  content: array(inline),
+const noteStory = object({ kind: literal("footnote", "endnote"), id: natural });
+const headerFooterStory = object({
+  kind: literal("header", "footer"),
+  rId: nonemptyString,
 });
-const note = object({
-  type: literal("footnote", "endnote"),
-  id: natural,
-  noteType: optional(
-    literal(
-      "normal",
-      "separator",
-      "continuationSeparator",
-      "continuationNotice",
+const headerFooterType = literal("default", "first", "even");
+const tableTarget = { story: isOpStory, blockId, revision, newIds };
+const numberingPartState = presence("definitions", numberingDefinitions);
+const resourceEntry =
+  (value: Validator): Validator =>
+  (entry) =>
+    object({ type: literal("absent") })(entry) ||
+    object({ type: literal("present"), value })(entry);
+const resourceMapChange = (value: Validator): Validator =>
+  object({
+    expected: literal("omitted", "undefined", "present"),
+    next: literal("omitted", "undefined", "present"),
+    entries: array(
+      object({
+        key: nonemptyString,
+        expected: resourceEntry(value),
+        next: resourceEntry(value),
+      }),
+    ),
+  });
+const packageResources = object({
+  styles: presence("present", styleDefinitions),
+  numbering: presence("present", numberingDefinitions),
+});
+const sectionMap = nullable(mapEntries(headerFooterType, headerFooter));
+const partMap = nullable(mapEntries(nonemptyString, headerFooter));
+const storyParts: Validator = object({
+  undefinedFields: optional(
+    array(
+      object({
+        target: literal("body", "package", "section"),
+        index: optional(natural),
+        keys: array(nonemptyString),
+      }),
     ),
   ),
-  content: array(paragraph),
-});
-const noteStory = object({ kind: literal("footnote", "endnote"), id: natural });
+  body: optional(
+    object({
+      background: boundedJson,
+      content: optional(array(blockContent)),
+      finalSectionProperties: optional(nullable(sectionProperties)),
+      comments: boundedJson,
+    }),
+  ),
+  sections: optional(
+    array(
+      object({
+        index: natural,
+        properties: optional(sectionProperties),
+        headers: optional(sectionMap),
+        footers: optional(sectionMap),
+      }),
+    ),
+  ),
+  headers: optional(partMap),
+  footers: optional(partMap),
+  footnotes: optional(nullable(array(note))),
+  endnotes: optional(nullable(array(note))),
+  settings: optional(nullable(documentSettings)),
+} satisfies Record<keyof StoryParts, Validator>);
 
 /**
- * The unknown-input decoder accepts these operation kinds with scalar
- * formatting, language properties, plain runs and basic inline atoms.
- * Other embedded model records and inverse preconditions are refused;
- * table operations require exclusive editing in both typed and wire batches.
+ * The unknown-input decoder accepts every operation kind except comment
+ * operations ({@link UNSENT_OP_TYPES}). Embedded model records are checked
+ * by `wireRecords.ts`: their kinds, their declared fields, paragraph ids and
+ * scalar formatting values, within the decoder's JSON bounds.
  */
 const operationFields = {
   insertText: {
@@ -359,7 +443,7 @@ const operationFields = {
     joinEnd: optional(natural),
     newIds,
     revision,
-    propertyReview: absent,
+    propertyReview: optional(literal("append")),
   } satisfies OperationFields<"setRunProps">,
   setParagraphProps: {
     type: literal("setParagraphProps"),
@@ -375,10 +459,10 @@ const operationFields = {
     at: position,
     newBlockId: blockId,
     newHalf: half,
-    newParagraph: absent,
-    firstMark: absent,
-    firstSectionProperties: absent,
-    sectionView: absent,
+    newParagraph: optional(splitParagraphFields),
+    firstMark: optional(paragraphMarkChange),
+    firstSectionProperties: optional(sectionProperties),
+    sectionView: optional(sectionViewChange),
     newIds,
     revision,
   } satisfies OperationFields<"splitBlock">,
@@ -389,10 +473,10 @@ const operationFields = {
     nextBlockId: blockId,
     depth: optional(natural),
     survivor: half,
-    expectedRetired: absent,
-    expectedSurvivor: absent,
-    sectionBoundary: absent,
-    sectionView: absent,
+    expectedRetired: optional(splitParagraphFields),
+    expectedSurvivor: optional(paragraphReviewFields),
+    sectionBoundary: optional(literal("remove")),
+    sectionView: optional(sectionViewChange),
     newIds,
     revision,
   } satisfies OperationFields<"joinBlocks">,
@@ -425,28 +509,174 @@ const operationFields = {
     slice,
     newIds,
     revision,
-    seamPolicy: absent,
+    seamPolicy: optional(literal(INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS)),
   } satisfies OperationFields<"insertContent">,
-  splitInline: undefined,
-  joinInline: undefined,
-  replaceBlocks: undefined,
-  setParagraphReview: undefined,
-  replaceInline: undefined,
-  insertTable: undefined,
-  deleteTable: undefined,
-  setContainerBlocks: undefined,
-  insertRow: undefined,
-  deleteRow: undefined,
-  setTableRows: undefined,
-  createNumberingInstance: undefined,
-  deleteNumberingInstance: undefined,
-  setSectionEndpoint: undefined,
-  createComment: undefined,
-  updateCommentContent: undefined,
-  setCommentResolution: undefined,
-  deleteComment: undefined,
-  restoreCommentState: undefined,
-  setPackageResources: undefined,
+  splitInline: {
+    type: literal("splitInline"),
+    at: position,
+    depth: natural,
+    newIds,
+  } satisfies OperationFields<"splitInline">,
+  joinInline: {
+    type: literal("joinInline"),
+    at: position,
+    depth: natural,
+  } satisfies OperationFields<"joinInline">,
+  replaceBlocks: {
+    type: literal("replaceBlocks"),
+    story: isOpStory,
+    expected: array(paragraph),
+    blocks: array(paragraph),
+    sectionBoundaries: optional(literal("replace")),
+    sectionView: optional(sectionViewChange),
+  } satisfies OperationFields<"replaceBlocks">,
+  setParagraphReview: {
+    type: literal("setParagraphReview"),
+    story: isOpStory,
+    blockId,
+    expected: paragraphReviewFields,
+    review: paragraphReviewFields,
+  } satisfies OperationFields<"setParagraphReview">,
+  replaceInline: {
+    type: literal("replaceInline"),
+    story: isOpStory,
+    blockId,
+    expected: array(inlineContent),
+    content: array(inlineContent),
+  } satisfies OperationFields<"replaceInline">,
+  setRevisionInfo: {
+    type: literal("setRevisionInfo"),
+    story: isOpStory,
+    infos: array(trackedChangeInfo),
+  } satisfies OperationFields<"setRevisionInfo">,
+  insertTable: {
+    type: literal("insertTable"),
+    story: isOpStory,
+    at: blockAnchor,
+    table,
+    revision,
+    newIds,
+    terminal: optional(object({ beforeBlockId: blockId })),
+  } satisfies OperationFields<"insertTable">,
+  deleteTable: {
+    type: literal("deleteTable"),
+    ...tableTarget,
+    expected: optional(table),
+  } satisfies OperationFields<"deleteTable">,
+  setContainerBlocks: {
+    type: literal("setContainerBlocks"),
+    story: isOpStory,
+    blockId,
+    expected: array(blockContent),
+    blocks: array(blockContent),
+  } satisfies OperationFields<"setContainerBlocks">,
+  insertRow: {
+    type: literal("insertRow"),
+    ...tableTarget,
+    at: natural,
+    row: tableRow,
+  } satisfies OperationFields<"insertRow">,
+  deleteRow: {
+    type: literal("deleteRow"),
+    ...tableTarget,
+    expected: optional(tableRow),
+  } satisfies OperationFields<"deleteRow">,
+  setTableRows: {
+    type: literal("setTableRows"),
+    story: isOpStory,
+    blockId,
+    expected: array(tableRow),
+    rows: array(tableRow),
+  } satisfies OperationFields<"setTableRows">,
+  insertColumn: {
+    type: literal("insertColumn"),
+    ...tableTarget,
+    column: natural,
+    width: number,
+    newBlockIds: array(blockId),
+  } satisfies OperationFields<"insertColumn">,
+  deleteColumn: {
+    type: literal("deleteColumn"),
+    ...tableTarget,
+    column: natural,
+  } satisfies OperationFields<"deleteColumn">,
+  mergeCells: {
+    type: literal("mergeCells"),
+    ...tableTarget,
+    top: natural,
+    bottom: natural,
+    left: natural,
+    right: natural,
+    newBlockIds: array(blockId),
+  } satisfies OperationFields<"mergeCells">,
+  splitCell: {
+    type: literal("splitCell"),
+    ...tableTarget,
+    newBlockIds: array(blockId),
+  } satisfies OperationFields<"splitCell">,
+  setTableGrid: {
+    type: literal("setTableGrid"),
+    ...tableTarget,
+    columnWidths: array(number),
+  } satisfies OperationFields<"setTableGrid">,
+  setCellProps: {
+    type: literal("setCellProps"),
+    ...tableTarget,
+    patch: properties(tableCellFormattingFields, true),
+  } satisfies OperationFields<"setCellProps">,
+  setRowProps: {
+    type: literal("setRowProps"),
+    ...tableTarget,
+    patch: properties(tableRowFormattingFields, true),
+  } satisfies OperationFields<"setRowProps">,
+  setTableProps: {
+    type: literal("setTableProps"),
+    ...tableTarget,
+    patch: properties(tableFormattingFields, true),
+  } satisfies OperationFields<"setTableProps">,
+  setTable: {
+    type: literal("setTable"),
+    story: isOpStory,
+    blockId,
+    expected: table,
+    table,
+  } satisfies OperationFields<"setTable">,
+  createNumberingInstance: {
+    type: literal("createNumberingInstance"),
+    num: numberingInstance,
+    abstractNum: optional(abstractNumbering),
+    expected: optional(numberingPartState),
+    restore: optional(numberingPartState),
+  } satisfies OperationFields<"createNumberingInstance">,
+  deleteNumberingInstance: {
+    type: literal("deleteNumberingInstance"),
+    num: numberingInstance,
+    abstractNum: optional(abstractNumbering),
+    expected: optional(numberingPartState),
+    restore: optional(numberingPartState),
+  } satisfies OperationFields<"deleteNumberingInstance">,
+  setSectionEndpoint: {
+    type: literal("setSectionEndpoint"),
+    endpoint: (value) =>
+      object({ type: literal("paragraph"), blockId })(value) ||
+      object({ type: literal("final") })(value),
+    expected: optional(presence("present", sectionProperties)),
+    properties: presence("present", sectionProperties),
+    expectedSectionMetadata: optional(sectionViewState),
+    sectionMetadata: optional(sectionViewState),
+  } satisfies OperationFields<"setSectionEndpoint">,
+  setSectionProps: {
+    type: literal("setSectionProps"),
+    sectionIndex: natural,
+    patch: properties(sectionPropertyFields, true),
+  } satisfies OperationFields<"setSectionProps">,
+  setPackageResources: {
+    type: literal("setPackageResources"),
+    expected: packageResources,
+    resources: packageResources,
+    relationships: resourceMapChange(relationship),
+    media: resourceMapChange(packageResourceMedia),
+  } satisfies OperationFields<"setPackageResources">,
   addNote: {
     type: literal("addNote"),
     at: position,
@@ -454,8 +684,6 @@ const operationFields = {
     revision,
     newIds,
   } satisfies OperationFields<"addNote">,
-  createHeaderFooter: undefined,
-  removeHeaderFooter: undefined,
   removeNote: {
     type: literal("removeNote"),
     at: position,
@@ -463,24 +691,28 @@ const operationFields = {
     revision,
     newIds,
   } satisfies OperationFields<"removeNote">,
-  restoreStoryParts: undefined,
-  setSectionProps: undefined,
-  insertColumn: undefined,
-  deleteColumn: undefined,
-  mergeCells: undefined,
-  splitCell: undefined,
-  setTableGrid: undefined,
-  setCellProps: undefined,
-  setRowProps: undefined,
-  setTableProps: undefined,
-  setTable: undefined,
-  setRevisionInfo: undefined,
-} satisfies Record<DocumentOpType, Fields | undefined>;
+  createHeaderFooter: {
+    type: literal("createHeaderFooter"),
+    sectionIndex: natural,
+    story: headerFooterStory,
+    referenceType: headerFooterType,
+    content: array(blockContent),
+  } satisfies OperationFields<"createHeaderFooter">,
+  removeHeaderFooter: {
+    type: literal("removeHeaderFooter"),
+    sectionIndex: natural,
+    story: headerFooterStory,
+    referenceType: headerFooterType,
+  } satisfies OperationFields<"removeHeaderFooter">,
+  restoreStoryParts: {
+    type: literal("restoreStoryParts"),
+    expected: storyParts,
+    parts: storyParts,
+  } satisfies OperationFields<"restoreStoryParts">,
+} satisfies Record<WireOpType, Fields>;
 
 export const BATCH_WIRE_OP_TYPES: readonly string[] = Object.freeze(
-  Object.entries(operationFields)
-    .filter(([, fields]) => fields !== undefined)
-    .map(([type]) => type),
+  Object.keys(operationFields),
 );
 
 const isDocumentOp = (value: unknown): value is DocumentOp => {
@@ -491,7 +723,6 @@ const isDocumentOp = (value: unknown): value is DocumentOp => {
   const fields = entry?.at(1);
   return (
     typeof fields === "object" &&
-    fields !== null &&
     object({ ...fields, ...commonOperationFields })(value)
   );
 };
@@ -574,6 +805,7 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
             return object({
               type: literal("touchedBlocks"),
               blockIds: array(blockId),
+              tableBlockIds: optional(array(blockId)),
             })(effect);
           default:
             return false;
@@ -646,23 +878,6 @@ const decodeDocumentBatch = (
       }),
     );
   }
-  if (
-    Array.isArray(value["ops"]) &&
-    value["ops"].some(
-      (op: unknown) =>
-        isRecord(op) &&
-        typeof op["type"] === "string" &&
-        Object.hasOwn(TABLE_EXCLUSIVE_OP_TYPES, op["type"]),
-    )
-  ) {
-    return Result.err(
-      new BatchRejection({
-        reason: BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
-        message:
-          "Table operations require exclusive editing until sequencing transforms are available",
-      }),
-    );
-  }
   if (!Array.isArray(value["ops"]) || !value["ops"].every(isDocumentOp)) {
     return Result.err(
       new BatchRejection({
@@ -688,16 +903,9 @@ const decodeDocumentBatch = (
       !effects.every((effect: unknown, index: number) => {
         if (!isRecord(effect)) return false;
         const op = value.ops.at(index);
-        if (effect["type"] === NO_SEQUENCED_EFFECT)
-          return (
-            op?.type !== "splitBlock" &&
-            op?.type !== "joinBlocks" &&
-            op?.type !== "deleteBlocks" &&
-            op?.type !== "resolveRevision"
-          );
-        if (effect["type"] === "touchedBlocks")
-          return op?.type === "deleteBlocks" || op?.type === "resolveRevision";
-        return effect["type"] === op?.type;
+        return (
+          op !== undefined && effect["type"] === sequencedEffectType(op.type)
+        );
       })
     ) {
       return Result.err(

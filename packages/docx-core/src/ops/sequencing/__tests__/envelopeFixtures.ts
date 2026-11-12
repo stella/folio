@@ -1,8 +1,13 @@
 import path from "node:path";
 
+import { envelopes } from "../../__tests__/wireFixtures";
 import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES } from "../../types";
 import { captureDocumentOp } from "../../wire";
-import type { DocumentBatch, SequencedBatch } from "../envelope";
+import {
+  BATCH_WIRE_OP_TYPES,
+  type DocumentBatch,
+  type SequencedBatch,
+} from "../envelope";
 
 const at = (offset: number) => ({
   story: OP_STORIES.MAIN,
@@ -11,7 +16,7 @@ const at = (offset: number) => ({
 });
 const revision = { id: 42, author: "Editor", date: "2026-01-01T00:00:00Z" };
 
-export const envelopeFixtures = [
+export const baseFixtures = [
   {
     schema: DOCUMENT_OP_SCHEMA_VERSION,
     opId: "01JTESTBATCH000000000000001",
@@ -141,6 +146,27 @@ export const envelopeFixtures = [
     ],
   },
 ] as const satisfies readonly DocumentBatch[];
+
+// One production-shaped operation of every other sendable kind.
+const covered = new Set<string>(
+  baseFixtures.flatMap(({ ops }) => ops.map(({ type }) => type)),
+);
+const wideOps = envelopes().flatMap(({ op }) => {
+  if (covered.has(op.type) || !BATCH_WIRE_OP_TYPES.includes(op.type)) return [];
+  covered.add(op.type);
+  return [op];
+});
+
+export const envelopeFixtures: readonly DocumentBatch[] = [
+  ...baseFixtures,
+  {
+    schema: DOCUMENT_OP_SCHEMA_VERSION,
+    opId: "01JTESTBATCH000000000000005",
+    actor: "actor-1",
+    baseRev: 0,
+    ops: wideOps,
+  },
+];
 
 export const sequencedFixture = {
   schema: DOCUMENT_OP_SCHEMA_VERSION,

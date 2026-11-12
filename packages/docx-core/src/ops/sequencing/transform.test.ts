@@ -617,7 +617,7 @@ describe("property and structural policies", () => {
   });
 });
 
-test("story lifecycle operation pairs refuse sequencing in both directions", () => {
+test("story lifecycle operations pass text edits of other paragraphs and conflict with each other", () => {
   const lifecycle = new Set([
     DOCUMENT_OP_TYPES.ADD_NOTE,
     DOCUMENT_OP_TYPES.REMOVE_NOTE,
@@ -627,19 +627,22 @@ test("story lifecycle operation pairs refuse sequencing in both directions", () 
     DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
   ]);
   const exercised = new Set<string>();
+  const elsewhere = { ...insertion(0, "X"), at: at(0, "0000ABCD") };
   for (const { op } of envelopes()) {
     if (![...lifecycle].some((type) => type === op.type)) continue;
     exercised.add(op.type);
     for (const result of [
-      transformBatch(batch(op), [sequenced(insertion(0, "X"))]),
-      transformBatch(batch(insertion(0, "X")), [sequenced(op)]),
-    ]) {
-      expect(result.isErr()).toBe(true);
-      if (result.isErr())
-        expect(result.error.reason).toBe(
-          BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
-        );
-    }
+      transformBatch(batch(op), [sequenced(elsewhere)]),
+      transformBatch(batch(elsewhere), [sequenced(op)]),
+    ])
+      expect(result.isOk()).toBe(true);
+    const same = transformBatch(batch(op), [sequenced(op)]);
+    expect(same.isErr()).toBe(true);
+    if (same.isErr())
+      expect([
+        BATCH_REJECTION_REASONS.PART_CONFLICT,
+        BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
+      ]).toContain(same.error.reason);
   }
   expect([...exercised].toSorted()).toEqual([...lifecycle].toSorted());
 });
