@@ -1806,7 +1806,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const queuedInputBeforeHiddenEditorRef = useRef<QueuedHiddenEditorInput[]>(
       [],
     );
-    const pendingInitialFontReadyLayoutRef = useRef(false);
+    /**
+     * The initial font waits in flight, one token each: the pre-view wait and
+     * the body view's wait can overlap, and ending one must not end the other.
+     */
+    const pendingInitialFontWaitsRef = useRef(new Set<object>());
     /** A layout-input change arrived during the initial font wait. */
     const layoutInputDeferredByFontWaitRef = useRef(false);
     const [isFocused, setIsFocused] = useState(false);
@@ -2434,7 +2438,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const runLayoutInputDeferredByFontWait = useCallback(() => {
       if (
         !layoutInputDeferredByFontWaitRef.current ||
-        pendingInitialFontReadyLayoutRef.current
+        pendingInitialFontWaitsRef.current.size > 0
       )
         return;
       layoutInputDeferredByFontWaitRef.current = false;
@@ -5952,14 +5956,15 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         templateDirectivesKey.getState(initialState)?.ranges ?? [];
 
       let cancelled = false;
-      pendingInitialFontReadyLayoutRef.current = true;
+      const fontWait = {};
+      pendingInitialFontWaitsRef.current.add(fontWait);
       const fontWaitStartedAt = performance.now();
       const runAfterFontWait = () => {
         if (cancelled) {
           return;
         }
 
-        pendingInitialFontReadyLayoutRef.current = false;
+        pendingInitialFontWaitsRef.current.delete(fontWait);
         preHiddenInitialLayoutDoneRef.current = true;
         recordLayoutPhase(
           "initial",
@@ -5982,7 +5987,10 @@ export const PagedEditor: React.ForwardRefExoticComponent<
 
       return () => {
         cancelled = true;
-        pendingInitialFontReadyLayoutRef.current = false;
+        pendingInitialFontWaitsRef.current.delete(fontWait);
+        // A wait started again (or the body view's) takes the held change
+        // over; with none in flight it runs now.
+        queueMicrotask(runLayoutInputDeferredByFontWait);
       };
     }, [
       collaboration,
@@ -6082,12 +6090,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           updateAISuggestionsOverlay();
         };
 
-        pendingInitialFontReadyLayoutRef.current = true;
+        const fontWait = {};
+        pendingInitialFontWaitsRef.current.add(fontWait);
         const fontWaitStartedAt = performance.now();
         const runAfterFontWait = () => {
-          pendingInitialFontReadyLayoutRef.current = false;
+          pendingInitialFontWaitsRef.current.delete(fontWait);
           const currentView = hiddenPMRef.current?.getView();
           if (currentView !== view) {
+            runLayoutInputDeferredByFontWait();
             return;
           }
           recordLayoutPhase(
@@ -6221,7 +6231,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             layoutSessionRef.current.lastMeasureInputs?.fontSet ?? null,
           relayout: () => {
             // The initial layout still to come measures in the current set.
-            if (pendingInitialFontReadyLayoutRef.current) {
+            if (pendingInitialFontWaitsRef.current.size > 0) {
               return;
             }
             // Before the hidden view exists the pages come from a pre-view
@@ -6356,7 +6366,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           return;
         }
         // The initial font wait lays out the inputs current when it ends.
-        if (pendingInitialFontReadyLayoutRef.current) {
+        if (pendingInitialFontWaitsRef.current.size > 0) {
           layoutInputDeferredByFontWaitRef.current = true;
           return;
         }
