@@ -72,7 +72,7 @@ type CSSProperties = Properties<string | number>;
  */
 export function textToStyle(
   formatting: TextFormatting | undefined | null,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): CSSProperties {
   if (!formatting) {
     return {};
@@ -320,7 +320,7 @@ export function textToStyle(
  */
 export function paragraphToStyle(
   formatting: DeepReadonly<ParagraphFormatting> | undefined | null,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): CSSProperties {
   if (!formatting) {
     return {};
@@ -489,7 +489,7 @@ export function paragraphToStyle(
 export function borderToStyle(
   border: DeepReadonly<BorderSpec> | undefined | null,
   side: "Top" | "Bottom" | "Left" | "Right" | "" = "",
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): CSSProperties {
   if (!border || statesNoBorder(border.style)) {
     return {};
@@ -548,9 +548,9 @@ function percentageShadingRatio(
 }
 
 type ResolvePatternHexOptions = {
-  color: ColorValue | undefined;
+  color: DeepReadonly<ColorValue> | undefined;
   fallback: string;
-  theme: Theme | null | undefined;
+  theme: DeepReadonly<Theme> | null | undefined;
 };
 
 function resolvePatternHex({
@@ -602,7 +602,7 @@ function blendShadingColors({
  */
 export function resolveShadingFill(
   shading: DeepReadonly<ShadingProperties> | undefined | null,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): string {
   if (!shading) {
     return "";
@@ -886,7 +886,7 @@ export function tableCellToStyle(
       }
     | undefined
     | null,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): CSSProperties {
   if (!formatting) {
     return {};
@@ -1000,7 +1000,7 @@ export function sectionToStyle(
       }
     | undefined
     | null,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): CSSProperties {
   if (!sectionProps) {
     return {};

@@ -14,6 +14,7 @@ import type {
   Theme,
   TrackedRunChange,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { pixelsToEmu } from "../utils/units";
 import {
   groupTextContentFingerprint,
@@ -294,7 +295,7 @@ export const enrichParagraphTextBoxes = (
   paragraph: Paragraph,
   paraXml: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -509,7 +510,7 @@ type EnrichTextBoxRunsParams = {
   content: ParagraphContent[];
   xmlChildren: XmlElement[];
   styles: StyleMap | null;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   numbering: NumberingMap | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
@@ -767,7 +768,7 @@ const enrichTextBoxRuns = ({
 
 type VmlTextBoxShapeParsers = {
   styles: StyleMap | null;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   numbering: NumberingMap | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;

@@ -39,7 +39,6 @@ import { isNumberingReference } from "../docx/numberingReference";
 import { formattingEquals } from "../docx/runConsolidator";
 import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
 import {
-  insertionGapStart,
   joinEndsBeforeTable,
   paragraphMergeLeaves,
   type PendingJoinEnd,
@@ -77,6 +76,7 @@ import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/Jo
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
+import { insertionGap, InsertionGapOrder } from "../prosemirror/insertionGaps";
 import {
   blockBoundariesOf,
   carriesCommentAnchor,
@@ -588,6 +588,12 @@ type ResolvedOperationFields = {
   joinSide?: "before" | "after";
   /** Where the batch read the join to put the block, which `boundaryComments` describes. */
   joinAt?: number;
+  /**
+   * The gap a block insertion lands in, as the batch read it: where it puts
+   * the block. The batch's blocks of one gap land in the order it names them
+   * (`InsertionGapOrder`).
+   */
+  gap?: number;
   tableRowInsertion?: TableRowInsertion;
   /**
    * The comments running across the new row's place as the batch read it.
@@ -3185,9 +3191,7 @@ const insertionAt = ({
     paragraphPos: position,
     noteReferences,
   });
-  return item.joinSide === "after"
-    ? bounds.after
-    : insertionGapStart(tr.doc, bounds.before);
+  return insertionGap(tr.doc, bounds[item.joinSide], item.joinSide);
 };
 
 /**
@@ -5799,6 +5803,9 @@ const applyFolioAIEditOperationsInternal = ({
     resolved.push({
       ...resolution.operation,
       batchBlockFrom: resolution.operation.blockFrom,
+      ...(BLOCK_INSERTION_TYPES.has(resolution.operation.operation.type) && {
+        gap: resolution.operation.joinAt ?? resolution.operation.from,
+      }),
       originalIndex: index,
       ...(commentText !== undefined && { commentText }),
     });
@@ -5889,6 +5896,42 @@ const applyFolioAIEditOperationsInternal = ({
   }
 
   let tr = view.state.tr;
+  /** The blocks the batch has put into each gap so far. */
+  const gapOrder = new InsertionGapOrder();
+  /**
+   * Where `items`, block insertions of one gap, land next to the blocks of
+   * their gap already in; undefined while none is, and they land where they
+   * are placed, at `placed`.
+   */
+  const gapLanding = (
+    items: readonly ResolvedOperation[],
+    placed: number,
+  ): number | undefined => {
+    const gap = items[0]?.gap;
+    if (gap === undefined) return undefined;
+    const orders = items
+      .map(({ originalIndex }) => originalIndex)
+      .toSorted((left, right) => left - right);
+    return gapOrder.landing(tr, gap, orders, placed);
+  };
+  /** Note `items` (document order) just put at `at`, as `blocks` each. */
+  const gapLanded = (
+    items: readonly ResolvedOperation[],
+    blocks: readonly (PMNode | readonly PMNode[])[],
+    at: number,
+  ): void => {
+    const gap = items[0]?.gap;
+    if (gap === undefined) return;
+    gapOrder.record(
+      tr,
+      gap,
+      items.map((landed, index) => ({
+        order: landed.originalIndex,
+        size: Fragment.from(blocks[index] as PMNode | PMNode[]).size,
+      })),
+      at,
+    );
+  };
   /** The pending joins before the batch: see `withJoinsEndingWhereTheyDid`. */
   const joinsBefore = isSuggested ? [] : pendingJoinsOf(view.state.doc);
   /** Revision ids of the breaks a tracked `deleteBlock` deleted. */
@@ -6274,14 +6317,17 @@ const applyFolioAIEditOperationsInternal = ({
       }
       // The run lands on one boundary, so it takes the comments running
       // across it as the batch read them, as a single insertion does.
+      const placed = insertionAt({ item, tr, noteReferences });
+      const runAt = gapLanding(insertionRun, placed) ?? placed;
       tr = insertBlocksInsideComments({
         tr,
-        at: insertionAt({ item, tr, noteReferences }),
+        at: runAt,
         blocks: nodes,
         ...(item.boundaryComments !== undefined && {
           carriedComments: item.boundaryComments,
         }),
       });
+      gapLanded(insertionRun.toReversed(), nodeGroups.toReversed(), runAt);
       applied.push(...runApplied);
       continue;
     }
@@ -6776,14 +6822,19 @@ const applyFolioAIEditOperationsInternal = ({
           appliedRevisionIds = built.revisionIds;
         }
         const placement = insertionPlacement({ item, tr, noteReferences });
+        const landed = gapLanding([item], placement.at);
+        // Beside blocks of its gap already in, it carries what the batch read
+        // across that gap, as they do.
+        const comments =
+          landed === undefined ? placement.comments : item.boundaryComments;
+        const insertedAt = landed ?? placement.at;
         tr = insertBlocksInsideComments({
           tr,
-          at: placement.at,
+          at: insertedAt,
           blocks: built.nodes,
-          ...(placement.comments !== undefined && {
-            carriedComments: placement.comments,
-          }),
+          ...(comments !== undefined && { carriedComments: comments }),
         });
+        gapLanded([item], [built.nodes], insertedAt);
         break;
       }
       case "insertSignatureTable": {
@@ -6832,7 +6883,10 @@ const applyFolioAIEditOperationsInternal = ({
           );
           appliedRevisionIds = [revisionId];
         }
-        tr = tr.insert(insertionAt({ item, tr, noteReferences }), node);
+        const placed = insertionAt({ item, tr, noteReferences });
+        const insertedAt = gapLanding([item], placed) ?? placed;
+        tr = tr.insert(insertedAt, node);
+        gapLanded([item], [node], insertedAt);
         break;
       }
       case "insertTableRow": {
@@ -7424,11 +7478,19 @@ const applyFolioAIEditOperationsInternal = ({
           item.from === item.blockTo &&
           liveBlockResult(tr, item, 1).deletedAcross;
         const placement = insertionPlacement({ item, tr, noteReferences });
-        let at = usesRetractedSplit
-          ? sinceRead(tr, item).map(item.blockFrom, -1)
-          : placement.at;
-        let insertionComments = carriedComments ?? placement.comments;
-        if (!usesRetractedSplit) {
+        // Beside blocks of its gap already in, it lands by the order the
+        // batch names them (`InsertionGapOrder`), wherever they went.
+        const landed = gapLanding([item], placement.at);
+        let at =
+          landed ??
+          (usesRetractedSplit
+            ? sinceRead(tr, item).map(item.blockFrom, -1)
+            : placement.at);
+        let insertionComments =
+          landed === undefined
+            ? (carriedComments ?? placement.comments)
+            : item.boundaryComments;
+        if (landed === undefined && !usesRetractedSplit) {
           const boundary = tr.doc.resolve(at);
           const before = boundary.nodeBefore;
           const finalDeleted = deletedFinalParagraphAfter(
@@ -7472,6 +7534,7 @@ const applyFolioAIEditOperationsInternal = ({
             carriedComments: insertionComments,
           }),
         });
+        gapLanded([item], [table], at);
         markStructuralChange(tr);
         break;
       }
@@ -10034,8 +10097,11 @@ const resolveOperationTarget = ({
     joinAt?: number;
   };
   // A block beside the outermost table its anchor sits in.
-  const besideTable = (boundary: number): Placement => {
-    const at = insertionGapStart(doc, boundary);
+  const besideTable = (
+    boundary: number,
+    side: "before" | "after",
+  ): Placement => {
+    const at = insertionGap(doc, boundary, side);
     return { from: at, at };
   };
   // A block beside the anchor: `from` is the anchor's own gap, `at` where a
@@ -10046,12 +10112,9 @@ const resolveOperationTarget = ({
     // they leave the join's end. A block before it orders by where it lands,
     // ahead of the paragraphs the join takes in: edits inside them run first
     // and keep the positions they were read at.
-    // Either side of the blocks accepting removes whole is one gap, so a
-    // block before a paragraph lands before those right before it
-    // (`insertionGapStart`). A block after a paragraph lands right after
-    // it, even one accepting removes: the batch named that place.
-    const gap = (position: number): number =>
-      side === "after" ? position : insertionGapStart(doc, position);
+    // Either side of the blocks accepting removes whole is one gap
+    // (`insertionGap`).
+    const gap = (position: number): number => insertionGap(doc, position, side);
     const plain = gap(
       side === "after"
         ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
@@ -10137,7 +10200,7 @@ const resolveOperationTarget = ({
     // After a paragraph is after the text boxes drawn in it too: a block
     // between the two is read after the boxes once the package is saved.
     const placed = tableBoundary
-      ? besideTable(tableBoundary[side])
+      ? besideTable(tableBoundary[side], side)
       : beside(side);
     if (
       joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences })
@@ -10177,7 +10240,7 @@ const resolveOperationTarget = ({
     const position = operation.position ?? "after";
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const placed = tableBoundary
-      ? besideTable(tableBoundary[position])
+      ? besideTable(tableBoundary[position], position)
       : beside(position);
     return {
       type: "resolved",
@@ -10438,7 +10501,7 @@ const resolveOperationTarget = ({
       (operation.position ?? "after") === "after" ? "after" : "before";
     const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const placed = tableBoundary
-      ? besideTable(tableBoundary[side])
+      ? besideTable(tableBoundary[side], side)
       : beside(side);
     return {
       type: "resolved",

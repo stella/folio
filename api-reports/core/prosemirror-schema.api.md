@@ -282,7 +282,7 @@ export type ParagraphAttrs = {
     lineSpacingRule?: import__stll_docx_core_model.LineSpacingRule;
     lineSpacingExplicit?: boolean | "value" | "rule" | "both";
     snapToGrid?: boolean;
-    spacingExplicit?: SpacingExplicit;
+    spacingExplicit?: DeepReadonly<SpacingExplicit>;
     spacingFromDocDefaults?: SpacingExplicit;
     spacingFromImplicitDefaultStyle?: SpacingExplicit;
     indentLeft?: number;
@@ -569,7 +569,7 @@ export type TableAttrs = {
     look?: import__stll_docx_core_model.TableLook;
     borders?: import__stll_docx_core_model.TableBorders;
     _resolvedCellMargins?: TableAttrs["cellMargins"];
-    _resolvedIndent?: NonNullable<import__stll_docx_core_model.TableFormatting["indent"]>;
+    _resolvedIndent?: DeepReadonly<NonNullable<import__stll_docx_core_model.TableFormatting["indent"]>>;
     _resolvedJustification?: NonNullable<import__stll_docx_core_model.TableFormatting["justification"]>;
     _resolvedBidi?: boolean;
     _originalFormatting?: import__stll_docx_core_model.TableFormatting;

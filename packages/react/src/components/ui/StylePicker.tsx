@@ -35,7 +35,7 @@ export type StylePickerProps = {
   displayLabel?: string | undefined;
   displayLabelStyle?: React.CSSProperties | undefined;
   styles?: DeepReadonly<Style[]> | undefined;
-  theme?: Theme | null | undefined;
+  theme?: DeepReadonly<Theme> | null | undefined;
   disabled?: boolean | undefined;
   className?: string | undefined;
   width?: number | string | undefined;

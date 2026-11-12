@@ -781,9 +781,12 @@ describe("CI plan", () => {
       expect(
         commands.filter((command) => command.includes("playwright test")),
       ).toEqual([
-        "bunx playwright test --project=browser-input-pinned --workers=1",
+        "bunx playwright test --project=browser-input-pinned --workers=1 --shard=${{ matrix.shard }}/3",
       ]);
-      expect(pinned?.strategy).toBeUndefined();
+      const shards = ((
+        pinned?.strategy as { matrix?: { shard?: unknown } } | undefined
+      )?.matrix?.shard ?? []) as unknown[];
+      expect(shards).toEqual([1, 2, 3]);
       // The replays have a tight limit of their own; the job's limit covers a
       // cold browser install, so a cancelled job never leaves the cache cold.
       expect(pinned?.["timeout-minutes"]).toBe(25);
@@ -796,6 +799,13 @@ describe("CI plan", () => {
       expect(isRecord(replays) ? replays["timeout-minutes"] : undefined).toBe(
         5,
       );
+      // A replay takes about 3.6 s in CI (69 replays in 4.1 minutes); at a
+      // 4 s ceiling each shard's share must stay within 80% of the step's
+      // 5 minutes, or the registry has outgrown its shards.
+      const perShard = Math.ceil(
+        BROWSER_INPUT_REGRESSIONS.length / shards.length,
+      );
+      expect(perShard * 4).toBeLessThanOrEqual(0.8 * 5 * 60);
 
       const listing = expectExited(
         runChild(
@@ -849,6 +859,27 @@ describe("CI plan", () => {
         ).toSorted(),
       );
       expect(titles.length).toBeGreaterThan(0);
+
+      // Sharding splits the replays per test, so the first shard holds its
+      // share rather than the whole file.
+      const firstShard = expectExited(
+        runChild(
+          [
+            "bunx",
+            "playwright",
+            "test",
+            "--project=browser-input-pinned",
+            "--list",
+            "--shard=1/3",
+          ],
+          { cwd: REPO_ROOT },
+        ),
+      );
+      expect(firstShard.exitCode, firstShard.stderr).toBe(0);
+      const listed = firstShard.stdout
+        .split("\n")
+        .filter((line) => line.includes("regression seed")).length;
+      expect(listed).toBeLessThanOrEqual(Math.ceil(titles.length / 3));
     },
     subprocessTestTimeout(),
   );

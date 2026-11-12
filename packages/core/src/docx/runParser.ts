@@ -22,6 +22,7 @@ import type {
   TextFormatting,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 /**
  * Run Parser - Parse text runs (w:r) with complete formatting
  *
@@ -278,7 +279,7 @@ const lastOccurrences = (rPr: XmlElement): ReadonlyMap<string, XmlElement> => {
 /** What a `w:rPr` handler reads into, and the statements that won. */
 type RunPropertyReadContext = {
   formatting: TextFormatting;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   winner: ReadonlyMap<string, XmlElement>;
 };
 
@@ -364,7 +365,7 @@ export const isBaselineVertAlign = (
  */
 const readFontFamily = (
   rFonts: XmlElement,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   formatting: TextFormatting,
 ): boolean => {
   const fontFamily: NonNullable<TextFormatting["fontFamily"]> = {};
@@ -695,7 +696,7 @@ const RUN_PROPERTY_HANDLERS = {
  */
 export function parseRunProperties(
   rPr: XmlElement | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   owner: RunPropertyOwner,
 ): TextFormatting | undefined {
   if (!rPr) {
@@ -746,7 +747,7 @@ export function parseRunProperties(
 
 function parseRunPropertyChanges(
   rPr: XmlElement | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   currentFormatting: TextFormatting | undefined,
 ): RunPropertyChange[] | undefined {
   if (!rPr) {
@@ -1462,7 +1463,7 @@ function parseRunContents(
 export function parseRun(
   node: XmlElement,
   _styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
   rootXmlns: Record<string, string> = {},

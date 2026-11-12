@@ -5,6 +5,7 @@ import type {
   ColorValue,
   ShadingProperties,
 } from "../../packages/docx-core/src/model/colors";
+import type { RecordField } from "../../packages/docx-core/src/model/deepReadonly";
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import {
   NO_RESERVED_VALUE,
@@ -56,7 +57,7 @@ export const COLOR_VALUE_RESERVED = {
     reader: RESERVED_VALUE_READERS.color,
     evidence: "hex-color-auto-is-context-dependent",
   }),
-} satisfies Record<keyof ColorValue, ReservedValueDisposition>;
+} satisfies Record<RecordField<ColorValue>, ReservedValueDisposition>;
 
 export type ExhaustiveColorValueReserved = ExhaustiveFields<
   ColorValue,
@@ -85,7 +86,7 @@ export const BORDER_SPEC_RESERVED = {
   bottomLeftArtRelationshipId: NO_RESERVED_VALUE,
   bottomRightArtRelationshipId: NO_RESERVED_VALUE,
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof BorderSpec, ReservedValueDisposition>;
+} satisfies Record<RecordField<BorderSpec>, ReservedValueDisposition>;
 
 export type ExhaustiveBorderSpecReserved = ExhaustiveFields<
   BorderSpec,
@@ -101,7 +102,7 @@ export const SHADING_PROPERTIES_RESERVED = {
     reader: RESERVED_VALUE_READERS.shading,
   }),
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof ShadingProperties, ReservedValueDisposition>;
+} satisfies Record<RecordField<ShadingProperties>, ReservedValueDisposition>;
 
 export type ExhaustiveShadingPropertiesReserved = ExhaustiveFields<
   ShadingProperties,

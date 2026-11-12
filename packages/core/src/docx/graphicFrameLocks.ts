@@ -7,7 +7,7 @@
  * directions carry it.
  */
 
-import type { ImageFrameLocks } from "../types/document";
+import type { ImageFrameLocks, RecordField } from "../types/document";
 import { findChild, getAttribute, parseOnOffValue } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -22,7 +22,7 @@ const GRAPHIC_FRAME_LOCK_ATTRIBUTES = {
   noChangeAspect: "noChangeAspect",
   noMove: "noMove",
   noResize: "noResize",
-} as const satisfies Record<keyof ImageFrameLocks, string>;
+} as const satisfies Record<RecordField<ImageFrameLocks>, string>;
 
 const isGraphicFrameLockKey = (
   key: string,
@@ -30,7 +30,7 @@ const isGraphicFrameLockKey = (
   key in GRAPHIC_FRAME_LOCK_ATTRIBUTES;
 
 /** Every modeled lock, in schema order: the total map above keeps it exhaustive. */
-export const GRAPHIC_FRAME_LOCK_KEYS: readonly (keyof ImageFrameLocks)[] =
+export const GRAPHIC_FRAME_LOCK_KEYS: readonly RecordField<ImageFrameLocks>[] =
   Object.keys(GRAPHIC_FRAME_LOCK_ATTRIBUTES).filter(isGraphicFrameLockKey);
 
 const DRAWINGML_NAMESPACE =

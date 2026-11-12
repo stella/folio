@@ -172,7 +172,7 @@ export type DocxEditorProps = {
    */
   fonts?: ReadonlyArray<FontDefinition>;
   /** Theme for styling */
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   /** Whether to show toolbar (default: true) */
   showToolbar?: boolean;
   /** Whether to show zoom control (default: true) */

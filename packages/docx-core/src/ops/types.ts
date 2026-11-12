@@ -40,6 +40,7 @@ import type {
   ParagraphFormatting,
   ParagraphMarkChange,
   ParagraphPropertyChange,
+  RecordField,
   Section,
   SectionProperties,
   Table,
@@ -1033,7 +1034,9 @@ export type StoryParts = {
       }
   )[];
   body?: {
-    [Key in keyof Omit<DocumentBody, "sections">]?: Key extends "content"
+    [
+      Key in Exclude<RecordField<DocumentBody>, "sections">
+    ]?: Key extends "content"
       ? DocumentBody[Key]
       : Exclude<DocumentBody[Key], undefined> | null;
   };

@@ -731,24 +731,20 @@ export const projectCanonicalInline = ({
     insertionOrdinals.set(offset, ordinal);
     return ordinal;
   };
-  const extents = new Map<string, CanonicalSeamExtent>();
+  // Parallel to `boundaries`: a gap at an offset and editor position is one
+  // entry of its offset's list, and its seam sits at the same index, so a
+  // gap finds its seam by the entry it already looked up.
+  const seams: CanonicalSeamExtent[][] = Array.from(
+    { length: text.length + 1 },
+    () => [],
+  );
   const addGap = (
     position: number,
     gap: { offset: number; zeroWidthBefore: number },
   ) => {
-    const key = `${gap.offset}:${position}`;
-    const extent = extents.get(key);
-    if (extent === undefined)
-      extents.set(key, {
-        first: gap.zeroWidthBefore,
-        last: gap.zeroWidthBefore,
-      });
-    else {
-      extent.first = Math.min(extent.first, gap.zeroWidthBefore);
-      extent.last = Math.max(extent.last, gap.zeroWidthBefore);
-    }
     const gaps = boundaries.at(gap.offset);
-    if (!gaps)
+    const extents = seams.at(gap.offset);
+    if (!gaps || !extents)
       panic(
         `Source leaf offset ${gap.offset} exceeds paragraph ${source.paraId}.`,
       );
@@ -756,8 +752,12 @@ export const projectCanonicalInline = ({
     const entry = { position, zeroWidthBefore: gap.zeroWidthBefore };
     if (existing < 0) {
       gaps.push(entry);
+      extents.push({ first: gap.zeroWidthBefore, last: gap.zeroWidthBefore });
       return;
     }
+    const extent = extents[existing] ?? panic("Missing canonical seam extent");
+    extent.first = Math.min(extent.first, gap.zeroWidthBefore);
+    extent.last = Math.max(extent.last, gap.zeroWidthBefore);
     // Erased source leaves share a native seam. The seam stands for the gap
     // typed text takes there (`defaultInsertionGap`: after closing markers,
     // before opening ones), so a caret the editor places and a caret an
@@ -965,13 +965,6 @@ export const projectCanonicalInline = ({
     );
   if (boundaries.some((gaps) => gaps.length === 0))
     return refuse("Canonical editing lost a source character boundary.");
-  const seams = boundaries.map((gaps, offset) =>
-    gaps.map(
-      ({ position }) =>
-        extents.get(`${offset}:${position}`) ??
-        panic("A canonical gap lost its seam"),
-    ),
-  );
   return Result.ok({ text, boundaries, seams });
 };
 

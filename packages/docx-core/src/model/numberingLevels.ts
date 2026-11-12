@@ -1,15 +1,16 @@
+import type { WritableRecord } from "./deepReadonly";
 import type { CounterFormat, ListLevel, NumberingDefinitions } from "./lists";
 
 const MIN_NUMBERING_LEVEL = 0;
 const MAX_NUMBERING_LEVEL = 8;
 
 export type NumberingLevelResolution =
-  | {
+  | (WritableRecord & {
       kind: "level";
       level: ListLevel;
       source: "abstract" | "override" | "styleLink";
-    }
-  | {
+    })
+  | (WritableRecord & {
       kind: "undefined";
       reason:
         | "levelOutOfRange"
@@ -17,9 +18,9 @@ export type NumberingLevelResolution =
         | "noAbstract"
         | "unresolvedStyleLink"
         | "levelNotDefined";
-    };
+    });
 
-export type NumberingLevelEntry = {
+export type NumberingLevelEntry = WritableRecord & {
   numId: number;
   ilvl: number;
   level: ListLevel;

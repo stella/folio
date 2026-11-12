@@ -97,6 +97,7 @@ import type {
   PreservedAttribute,
   PreservedBlock,
   PreservedInline,
+  RecordField,
   Run,
   RunContent,
   RunPropertyChange,
@@ -251,7 +252,7 @@ export type ToProseDocOptions = {
   /** Package definitions used to recompute secondary-story list rendering. */
   numbering?: NumberingDefinitions;
   /** Theme used when converting themed table/cell values in nested content. */
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   /**
    * Where a projection approximation is reported, on the channel the parsers
    * already use. Absent means nobody is listening, not that nothing happened.
@@ -823,7 +824,7 @@ type CachedBlock = {
 
 type ProjectionPackageInputs = {
   styles: DeepReadonly<StyleDefinitions> | undefined;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   numbering: NumberingDefinitions | undefined;
   warn: ParseContext["warn"] | undefined;
 };
@@ -2714,7 +2715,7 @@ function resolveTextFormatting(
 type TableConversionContext = {
   listRenderings: Map<string, ResolvedListRendering>;
   numbering: NumberingMap | undefined;
-  theme: Theme | null | undefined;
+  theme: DeepReadonly<Theme> | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
   nextNoteReferenceOccurrenceId: () => string;
@@ -4683,7 +4684,7 @@ const RUN_FORMATTING_INFERENCE = {
   // field with no mark still reaches this loop, and a missing rule would be an
   // implicit `any` rather than a decision.
 } as const satisfies Record<
-  keyof TextFormatting,
+  RecordField<TextFormatting>,
   | "color"
   | "strike"
   | "double-strike"
@@ -4780,7 +4781,7 @@ const canReconstructAuthoredRunFormatting = ({
   }
   for (const property of Object.keys(
     directFormatting ?? {},
-  ) as (keyof TextFormatting)[]) {
+  ) as RecordField<TextFormatting>[]) {
     const directValue = directFormatting?.[property];
     if (directValue === undefined || property === "styleId") {
       continue;
@@ -5011,7 +5012,7 @@ const ORDINARY_STYLE_TOGGLE_KEYS = [
   "imprint",
   "shadow",
   "outline",
-] as const satisfies readonly (keyof TextFormatting)[];
+] as const satisfies readonly RecordField<TextFormatting>[];
 
 type GetRunFormattingOverridesOptions = {
   directFormatting: TextFormatting | undefined;
@@ -5702,7 +5703,7 @@ function convertHyperlink(
     history: hyperlink.history,
     docLocation: hyperlink.docLocation,
     _docxHyperlinkIndex: hyperlinkIndex,
-  } as const satisfies Record<keyof HyperlinkAttrs, unknown>);
+  } as const satisfies Record<RecordField<HyperlinkAttrs>, unknown>);
 
   // A wrapper authored inside the link rides its leaves as the `inlineWrapper`
   // mark. Its provenance says which suffix of the wrapper stack belongs below

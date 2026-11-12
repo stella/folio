@@ -29,6 +29,7 @@ import type {
   Run,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
 import {
   CAPTURE,
@@ -132,7 +133,7 @@ export function parseHyperlink(
   node: XmlElement,
   rels: RelationshipMap | null,
   styles: StyleMap | null = null,
-  theme: Theme | null = null,
+  theme: DeepReadonly<Theme> | null = null,
   media: Map<string, MediaFile> | null = null,
   rootXmlns: Record<string, string> = {},
   previews: PreviewLedger = standalonePreviewLedger(),
@@ -265,7 +266,7 @@ export type HyperlinkChildContext = {
   /** Where a parsed or captured child lands, in source order. */
   push: (child: Hyperlink["children"][number]) => void;
   styles: StyleMap | null;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
   previews: PreviewLedger;

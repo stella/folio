@@ -214,7 +214,7 @@ function resolveDeletedListMarker(
 export function applyDeletedListMarkerAttrs(
   attrs: ParagraphAttrs,
   change: ListPropertyChange & { previousFormatting: ListPropertyFormatting },
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   fontAlternates: FontAlternates | undefined,
   paragraphMarkFormatting: () => DeepReadonly<TextFormatting> | undefined,
 ): void {

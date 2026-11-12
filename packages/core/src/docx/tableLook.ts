@@ -13,7 +13,11 @@
  * and nowhere else.
  */
 
-import type { ExhaustiveFields, TableLook } from "../types/document";
+import type {
+  ExhaustiveFields,
+  RecordField,
+  TableLook,
+} from "../types/document";
 
 /**
  * Every flag, in the order `CT_TblLook` declares them.
@@ -59,7 +63,7 @@ export const TABLE_LOOK_BITS: {
  */
 export type ResolvedTableLook = ExhaustiveFields<
   Record<TableLookFlag, boolean>,
-  Exclude<keyof TableLook, "val">
+  Exclude<RecordField<TableLook>, "val">
 >;
 
 const tableLookMask = (val: string | undefined): number => {

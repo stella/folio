@@ -10,6 +10,7 @@ import {
 import { serializeParagraphFormatting } from "../docx/serializer/paragraphSerializer";
 import type { ParagraphFormatting } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
+import { COMPLETE_PARAGRAPH_FORMATTING } from "./__fixtures__/completeParagraphFormatting";
 import {
   isStyleSourcedParagraphNumbering,
   type ModeledParagraphFormattingEmission,
@@ -17,42 +18,6 @@ import {
 } from "./paragraphFormattingSerialization";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
-
-const COMPLETE_FORMATTING = {
-  alignment: "center",
-  bidi: false,
-  kinsoku: true,
-  overflowPunctuation: false,
-  spaceBefore: 0,
-  spaceAfter: 120,
-  lineSpacing: 240,
-  lineSpacingRule: "auto",
-  snapToGrid: false,
-  beforeAutospacing: true,
-  afterAutospacing: false,
-  spacingExplicit: { before: true, after: false },
-  indentLeft: 720,
-  indentRight: 0,
-  indentFirstLine: -360,
-  hangingIndent: true,
-  borders: { bottom: { style: "single", size: 8 } },
-  shading: { fill: { rgb: "E0E0E0" }, pattern: "clear" },
-  tabs: [{ position: 720, alignment: "left", leader: "dot" }],
-  keepNext: true,
-  keepLines: false,
-  widowControl: true,
-  pageBreakBefore: false,
-  contextualSpacing: true,
-  numPr: { kind: "reference", numId: 7, ilvl: 1 },
-  numPrFromStyle: { kind: "reference", numId: 7, ilvl: 1 },
-  outlineLevel: { kind: "heading", level: 2 },
-  styleId: "BodyText",
-  frame: { dropCap: "drop", lines: 2 },
-  suppressLineNumbers: false,
-  suppressAutoHyphens: true,
-  runProperties: { bold: true },
-  runInWithNext: false,
-} as const satisfies Required<ParagraphFormatting>;
 
 // `runInWithNext: false` is not here: it emits the explicit off, which is a
 // value like any other rather than a no-op.
@@ -95,12 +60,14 @@ const markPropertiesXml = (
 
 describe("paragraph formatting emission model", () => {
   test("models every independent field and resolves dependent numbering provenance", () => {
-    const modeled = modelParagraphFormattingEmission(COMPLETE_FORMATTING);
+    const modeled = modelParagraphFormattingEmission(
+      COMPLETE_PARAGRAPH_FORMATTING,
+    );
 
-    expect(Object.keys(COMPLETE_FORMATTING).length).toBe(33);
+    expect(Object.keys(COMPLETE_PARAGRAPH_FORMATTING).length).toBe(40);
     expect(modeled).toEqual({
       propertiesXml:
-        '<w:pStyle w:val="BodyText"/><w:keepNext/><w:keepLines w:val="0"/><w:pageBreakBefore w:val="0"/><w:framePr w:dropCap="drop" w:lines="2"/><w:widowControl/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr><w:suppressLineNumbers w:val="0"/><w:pBdr><w:bottom w:val="single" w:sz="8"/></w:pBdr><w:shd w:val="clear" w:fill="E0E0E0"/><w:tabs><w:tab w:val="left" w:pos="720" w:leader="dot"/></w:tabs><w:suppressAutoHyphens/><w:kinsoku/><w:overflowPunct w:val="0"/><w:bidi w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="120" w:line="240" w:lineRule="auto" w:beforeAutospacing="1" w:afterAutospacing="0"/><w:ind w:left="720" w:right="0" w:hanging="360"/><w:contextualSpacing/><w:jc w:val="center"/><w:outlineLvl w:val="2"/>',
+        '<w:pStyle w:val="BodyText"/><w:keepNext/><w:keepLines w:val="0"/><w:pageBreakBefore w:val="0"/><w:framePr w:dropCap="drop" w:lines="2"/><w:widowControl/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/><w:numberingChange w:id="1" w:author="Author" w:date="2026-01-01T00:00:00Z" w:original="%1."/><w:ins w:id="2" w:author="Author" w:date="2026-01-01T00:00:00Z"/></w:numPr><w:suppressLineNumbers w:val="0"/><w:pBdr><w:bottom w:val="single" w:sz="8"/></w:pBdr><w:shd w:val="clear" w:fill="E0E0E0"/><w:tabs><w:tab w:val="left" w:pos="720" w:leader="dot"/></w:tabs><w:suppressAutoHyphens/><w:kinsoku/><w:overflowPunct w:val="0"/><w:autoSpaceDE w:val="0"/><w:autoSpaceDN/><w:bidi w:val="0"/><w:snapToGrid w:val="0"/><w:spacing w:before="0" w:after="120" w:line="240" w:lineRule="auto" w:beforeAutospacing="1" w:afterAutospacing="0" w:beforeLines="100"/><w:ind w:left="720" w:right="0" w:hanging="360" w:startChars="200"/><w:contextualSpacing/><w:jc w:val="center"/><w:outlineLvl w:val="2"/><w:cnfStyle w:val="000000000000"/>',
       paragraphMarkPropertiesInnerXml: '<w:b/><w:specVanish w:val="0"/>',
     });
   });

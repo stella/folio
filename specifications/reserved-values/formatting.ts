@@ -1,5 +1,6 @@
 /** Reserved-value decisions for run, paragraph, and table formatting. */
 
+import type { RecordField } from "../../packages/docx-core/src/model/deepReadonly";
 import type { ExhaustiveFields } from "../../packages/docx-core/src/model/exhaustiveFields";
 import type {
   CellMargins,
@@ -89,7 +90,7 @@ export const TEXT_FORMATTING_RESERVED = {
   }),
   // Children replayed as the source wrote them; nothing interprets a spelling.
   preserved: NO_RESERVED_VALUE,
-} satisfies Record<keyof TextFormatting, ReservedValueDisposition>;
+} satisfies Record<RecordField<TextFormatting>, ReservedValueDisposition>;
 
 export type ExhaustiveTextFormattingReserved = ExhaustiveFields<
   TextFormatting,
@@ -105,7 +106,7 @@ export const UNDERLINE_RESERVED = {
     reader: RESERVED_VALUE_READERS.underline,
   }),
   color: NO_RESERVED_VALUE,
-} satisfies Record<keyof Underline, ReservedValueDisposition>;
+} satisfies Record<RecordField<Underline>, ReservedValueDisposition>;
 
 export type ExhaustiveUnderlineReserved = ExhaustiveFields<
   Underline,
@@ -129,7 +130,7 @@ export const FONT_FAMILY_RESERVED = {
   hAnsiTheme: NO_RESERVED_VALUE,
   eastAsiaTheme: NO_RESERVED_VALUE,
   csTheme: NO_RESERVED_VALUE,
-} satisfies Record<keyof FontFamily, ReservedValueDisposition>;
+} satisfies Record<RecordField<FontFamily>, ReservedValueDisposition>;
 
 export type ExhaustiveFontFamilyReserved = ExhaustiveFields<
   FontFamily,
@@ -142,7 +143,7 @@ export const RUN_LANGUAGE_RESERVED = {
   val: NO_RESERVED_VALUE,
   eastAsia: NO_RESERVED_VALUE,
   bidi: NO_RESERVED_VALUE,
-} satisfies Record<keyof RunLanguage, ReservedValueDisposition>;
+} satisfies Record<RecordField<RunLanguage>, ReservedValueDisposition>;
 
 export type ExhaustiveRunLanguageReserved = ExhaustiveFields<
   RunLanguage,
@@ -230,7 +231,7 @@ export const PARAGRAPH_FORMATTING_RESERVED = {
   preserved: NO_RESERVED_VALUE,
   indentPreservedAttributes: NO_RESERVED_VALUE,
   spacingPreservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof ParagraphFormatting, ReservedValueDisposition>;
+} satisfies Record<RecordField<ParagraphFormatting>, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphFormattingReserved = ExhaustiveFields<
   ParagraphFormatting,
@@ -281,7 +282,7 @@ export const PARAGRAPH_NUMBERING_RESERVED = {
 export const SPACING_EXPLICIT_RESERVED = {
   before: NO_RESERVED_VALUE,
   after: NO_RESERVED_VALUE,
-} satisfies Record<keyof SpacingExplicit, ReservedValueDisposition>;
+} satisfies Record<RecordField<SpacingExplicit>, ReservedValueDisposition>;
 
 export type ExhaustiveSpacingExplicitReserved = ExhaustiveFields<
   SpacingExplicit,
@@ -313,7 +314,7 @@ export const PARAGRAPH_FRAME_RESERVED = {
     reader: RESERVED_VALUE_READERS.paragraphProperties,
   }),
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof ParagraphFrame, ReservedValueDisposition>;
+} satisfies Record<RecordField<ParagraphFrame>, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphFrameReserved = ExhaustiveFields<
   ParagraphFrame,
@@ -333,7 +334,7 @@ export const TAB_STOP_RESERVED = {
     reader: RESERVED_VALUE_READERS.tabStops,
   }),
   preservedAttributes: NO_RESERVED_VALUE,
-} satisfies Record<keyof TabStop, ReservedValueDisposition>;
+} satisfies Record<RecordField<TabStop>, ReservedValueDisposition>;
 
 export type ExhaustiveTabStopReserved = ExhaustiveFields<
   TabStop,
@@ -357,7 +358,7 @@ export const TABLE_MEASUREMENT_RESERVED = {
     reader: RESERVED_VALUE_READERS.tableWidth,
     evidence: "table-width-auto-makes-the-number-meaningless",
   }),
-} satisfies Record<keyof TableMeasurement, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableMeasurement>, ReservedValueDisposition>;
 
 export type ExhaustiveTableMeasurementReserved = ExhaustiveFields<
   TableMeasurement,
@@ -372,7 +373,7 @@ export const TABLE_BORDERS_RESERVED = {
   right: NO_RESERVED_VALUE,
   insideH: NO_RESERVED_VALUE,
   insideV: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableBorders, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableBorders>, ReservedValueDisposition>;
 
 export type ExhaustiveTableBordersReserved = ExhaustiveFields<
   TableBorders,
@@ -383,7 +384,7 @@ export const TABLE_CELL_BORDERS_RESERVED = {
   ...TABLE_BORDERS_RESERVED,
   topLeftToBottomRight: NO_RESERVED_VALUE,
   topRightToBottomLeft: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableCellBorders, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableCellBorders>, ReservedValueDisposition>;
 
 export type ExhaustiveTableCellBordersReserved = ExhaustiveFields<
   TableCellBorders,
@@ -395,7 +396,7 @@ export const CELL_MARGINS_RESERVED = {
   bottom: NO_RESERVED_VALUE,
   left: NO_RESERVED_VALUE,
   right: NO_RESERVED_VALUE,
-} satisfies Record<keyof CellMargins, ReservedValueDisposition>;
+} satisfies Record<RecordField<CellMargins>, ReservedValueDisposition>;
 
 export type ExhaustiveCellMarginsReserved = ExhaustiveFields<
   CellMargins,
@@ -429,7 +430,7 @@ export const TABLE_LOOK_RESERVED = {
   lastRow: tableLookFlag("lastRow"),
   noHBand: tableLookFlag("noHBand"),
   noVBand: tableLookFlag("noVBand"),
-} satisfies Record<keyof TableLook, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableLook>, ReservedValueDisposition>;
 
 export type ExhaustiveTableLookReserved = ExhaustiveFields<
   TableLook,
@@ -447,7 +448,10 @@ export const FLOATING_TABLE_PROPERTIES_RESERVED = {
   bottomFromText: NO_RESERVED_VALUE,
   leftFromText: NO_RESERVED_VALUE,
   rightFromText: NO_RESERVED_VALUE,
-} satisfies Record<keyof FloatingTableProperties, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<FloatingTableProperties>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveFloatingTablePropertiesReserved = ExhaustiveFields<
   FloatingTableProperties,
@@ -457,7 +461,7 @@ export type ExhaustiveFloatingTablePropertiesReserved = ExhaustiveFields<
 export const TABLE_GRID_CHANGE_RESERVED = {
   id: NO_RESERVED_VALUE,
   columnWidths: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableGridChange, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableGridChange>, ReservedValueDisposition>;
 
 export type ExhaustiveTableGridChangeReserved = ExhaustiveFields<
   TableGridChange,
@@ -502,7 +506,7 @@ export const TABLE_FORMATTING_RESERVED = {
   gridSourceXml: NO_RESERVED_VALUE,
   gridChange: NO_RESERVED_VALUE,
   sourceXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableFormatting, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableFormatting>, ReservedValueDisposition>;
 
 export type ExhaustiveTableFormattingReserved = ExhaustiveFields<
   TableFormatting,
@@ -527,7 +531,7 @@ export const TABLE_ROW_FORMATTING_RESERVED = {
   conditionalFormat: NO_RESERVED_VALUE,
   preserved: NO_RESERVED_VALUE,
   sourceXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableRowFormatting, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableRowFormatting>, ReservedValueDisposition>;
 
 export type ExhaustiveTableRowFormattingReserved = ExhaustiveFields<
   TableRowFormatting,
@@ -548,7 +552,10 @@ export const CONDITIONAL_FORMAT_STYLE_RESERVED = {
   neCell: NO_RESERVED_VALUE,
   swCell: NO_RESERVED_VALUE,
   seCell: NO_RESERVED_VALUE,
-} satisfies Record<keyof ConditionalFormatStyle, ReservedValueDisposition>;
+} satisfies Record<
+  RecordField<ConditionalFormatStyle>,
+  ReservedValueDisposition
+>;
 
 export type ExhaustiveConditionalFormatStyleReserved = ExhaustiveFields<
   ConditionalFormatStyle,
@@ -582,7 +589,7 @@ export const TABLE_CELL_FORMATTING_RESERVED = {
   conditionalFormat: NO_RESERVED_VALUE,
   preserved: NO_RESERVED_VALUE,
   sourceXml: NO_RESERVED_VALUE,
-} satisfies Record<keyof TableCellFormatting, ReservedValueDisposition>;
+} satisfies Record<RecordField<TableCellFormatting>, ReservedValueDisposition>;
 
 export type ExhaustiveTableCellFormattingReserved = ExhaustiveFields<
   TableCellFormatting,

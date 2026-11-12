@@ -27,6 +27,7 @@ import type {
   TextFormatting,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { commentThreadParaId } from "./commentThreadKey";
 import {
   CAPTURE,
@@ -80,7 +81,7 @@ const normalizeAnnotationReferenceFormatting = (
 const normalizeFirstCommentParagraph = (
   paragraphElement: XmlElement,
   paragraph: Paragraph,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
 ): ParsedFirstCommentParagraph => {
   const firstContentElement = getChildElements(paragraphElement).find(
     (element) => getLocalName(element.name) !== "pPr",
@@ -229,7 +230,7 @@ export function parseCommentsExtended(
 /** One comment's body as it is read, and the parts it is read against. */
 type CommentBodyWalk = {
   styles: StyleMap | null;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   rels: RelationshipMap;
   media: Map<string, MediaFile>;
   previews: PreviewLedger;
@@ -304,7 +305,7 @@ const COMMENT_BODY_HANDLERS = {
 export function parseComments(
   commentsXml: string | null,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   rels: RelationshipMap,
   media: Map<string, MediaFile>,
   commentsExtensibleXml?: string | null,

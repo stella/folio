@@ -103,7 +103,6 @@ import {
   acceptSuggestion,
   getSuggestions,
   rejectAIEditRevision,
-  rejectAllSuggestions,
   rejectSuggestion,
   resolveAllChangesInHeadlessState,
   revisionResolutionLockViolation,
@@ -193,6 +192,7 @@ import {
   type FolioPendingSuggestionLoadResult,
   type FolioPendingSuggestionRecord,
   FolioPendingSuggestionRegistry,
+  rejectEverySuggestion,
   withoutPendingSuggestionCommentMarks,
 } from "./pending-suggestions";
 import {
@@ -918,19 +918,6 @@ const resolveReviewedState = (
     state,
     view === "original" ? "reject" : "accept",
   );
-};
-
-/**
- * Reject suggestions before resolving all ordinary revisions. A suggested
- * whole-paragraph or table insert is flagged on the node; its flag must stay
- * intact until that suggestion is explicitly accepted or rejected.
- */
-const rejectSuggestions = (state: EditorState): EditorState => {
-  let settled = state;
-  rejectAllSuggestions()(state, (transaction) => {
-    settled = state.apply(transaction);
-  });
-  return settled;
 };
 
 const createHeadlessPlugins = (
@@ -3144,7 +3131,7 @@ export class FolioDocxReviewer {
       let resolvedState = state;
       if (mode === "reject") {
         resolvedState = resolveAllChangesInHeadlessState(
-          rejectSuggestions(state),
+          rejectEverySuggestion(state),
           mode,
         );
       } else if (ordinaryCount > 0) {
@@ -3230,7 +3217,7 @@ export class FolioDocxReviewer {
 
     // The ordinary resolver must see the complete story in one pass: resolving
     // revision ids separately can change paragraph joins and list ownership.
-    let clean = rejectSuggestions(state);
+    let clean = rejectEverySuggestion(state);
     const restagedCommentIds = new Set(
       records.flatMap(({ commentId }) =>
         commentId === undefined ? [] : [commentId],
@@ -3391,13 +3378,13 @@ export class FolioDocxReviewer {
     const snapshot = {
       ...authored,
       mainState: withoutPendingSuggestionCommentMarks(
-        rejectSuggestions(authored.mainState),
+        rejectEverySuggestion(authored.mainState),
         pendingCommentIds,
       ),
       secondaryStoryStates: authored.secondaryStoryStates.map((entry) => ({
         ...entry,
         state: withoutPendingSuggestionCommentMarks(
-          rejectSuggestions(entry.state),
+          rejectEverySuggestion(entry.state),
           pendingCommentIds,
         ),
       })),
@@ -4059,7 +4046,7 @@ export class FolioDocxReviewer {
   ) {
     return state
       ? proseDocToBlocks(
-          rejectSuggestions(state).doc,
+          rejectEverySuggestion(state).doc,
           source.content,
           this.baseDocument.package.styles,
         )

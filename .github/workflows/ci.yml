@@ -835,10 +835,16 @@ jobs:
           if-no-files-found: error
 
   browser-input-pinned:
-    name: Pinned browser input replays
+    name: Pinned browser input replays (${{ matrix.shard }}/3)
     needs: ci-plan
     if: needs.ci-plan.outputs.interactions_required == 'true'
     runs-on: ubuntu-24.04
+    # Each shard replays a third of the standing registry inside the replay
+    # step's limit; scripts/ci-plan.test.ts checks the registry still fits.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     # The job covers a cold Playwright install, which can take over 15
     # minutes on a slow package mirror, so the browser cache is saved and the
     # next run is warm. The replays carry their own limit below.
@@ -860,13 +866,13 @@ jobs:
 
       - name: Run only standing browser input regressions
         timeout-minutes: 5
-        run: bunx playwright test --project=browser-input-pinned --workers=1
+        run: bunx playwright test --project=browser-input-pinned --workers=1 --shard=${{ matrix.shard }}/3
 
       - name: Upload failed pinned replay artifacts
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-pinned-browser-input-failure
+          name: playwright-pinned-browser-input-failure-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
 
