@@ -155,8 +155,11 @@ const count = (tally: Tally, key: DocumentOpType | "refused"): void => {
  * the property's own seed drew, or how far its run got, decides nothing.
  */
 const COVERAGE_RUNS = GENERATED_OP_KINDS.length * 20;
-/** Sequences of two to eight operations: fewer runs give each kind as many turns. */
-const SEQUENCE_COVERAGE_RUNS = GENERATED_OP_KINDS.length * 4;
+/**
+ * Sequences of two to eight operations. Each run's first operation takes its
+ * turn too, so every kind also meets an unedited document as often as above.
+ */
+const SEQUENCE_COVERAGE_RUNS = COVERAGE_RUNS;
 
 /** The `index`th seed of a coverage sample, of the kind whose turn it is. */
 const inTurn = (seed: OpSeed, index: number): OpSeed => ({
@@ -2858,7 +2861,7 @@ describe("document operations", () => {
       checkCoverageSample(law(tally), SEQUENCE_COVERAGE_RUNS, {
         map: ([document, seeds], index) => [
           document,
-          seeds.map((seed, offset) => inTurn(seed, index * 8 + offset)),
+          seeds.map((seed, offset) => inTurn(seed, index + offset)),
         ],
       });
       expectEveryKindApplied(tally);
