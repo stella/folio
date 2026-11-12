@@ -15,6 +15,7 @@
 import type { Page } from "../../layout-engine/types";
 import type { RenderPageOptions } from "../../layout-painter/renderPage";
 import type { BorderSpec, Theme } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { cssBorderStyle } from "../../utils/borderCss";
 import { resolveColor } from "../../utils/colorResolver";
 import { eighthsToPixels, pointsToPixels } from "../../utils/units";
@@ -57,7 +58,7 @@ const spacePx = (border: BorderSpec | undefined): number =>
 
 const strokeOf = (
   border: BorderSpec | undefined,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   context: BuildContext,
 ): DisplayStroke | undefined => {
   if (!border) {
@@ -84,7 +85,7 @@ const strokeOf = (
 export type PageBorderPaintOptions = {
   readonly page: Page;
   readonly borders: PageBorders;
-  readonly theme?: Theme | null;
+  readonly theme?: DeepReadonly<Theme> | null;
   readonly context: BuildContext;
 };
 

@@ -45,6 +45,7 @@ import { computed, watch } from "vue";
 
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import type { Theme } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 import TableBorderColorPicker from "./TableBorderColorPicker.vue";
 import TableBorderPicker from "./TableBorderPicker.vue";
@@ -83,7 +84,7 @@ const props = defineProps<{
   getCommands: () => Record<string, CommandFactory>;
   stateTick: number;
   /** Document theme — fed through to the border/fill color pickers. */
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
 }>();
 
 const emit = defineEmits<{

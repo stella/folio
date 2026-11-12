@@ -5,6 +5,13 @@ import {
   type ThemeColor,
   themeColorSlot,
 } from "@stll/docx-core/model";
+
+import type {
+  ColorValue,
+  SchemeColorSlot,
+  Theme,
+  ThemeColorScheme,
+} from "../types/document";
 /**
  * Color Resolver - Convert OOXML colors to CSS
  *
@@ -25,13 +32,7 @@ import {
  * - Shade makes color darker (blend with black)
  * - Value is in hex (00-FF), converted to 0-1 for calculation
  */
-
-import type {
-  ColorValue,
-  SchemeColorSlot,
-  Theme,
-  ThemeColorScheme,
-} from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { sliceText } from "./sliceText";
 
 /**
@@ -223,7 +224,7 @@ function applyShade(hex: string, shade: number): string {
  * the package carries no `theme1.xml` or leaves the slot empty.
  */
 function getThemeColorValue(
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   slot: SchemeColorSlot,
 ): string {
   return theme?.colorScheme?.[slot] ?? DEFAULT_THEME_COLORS[slot];
@@ -254,8 +255,8 @@ function resolveThemeColorName(colorName: string): ThemeColor | undefined {
  * @returns CSS color string (e.g., "#FF0000" or "inherit")
  */
 export function resolveColor(
-  color: ColorValue | undefined | null,
-  theme: Theme | null | undefined,
+  color: DeepReadonly<ColorValue> | undefined | null,
+  theme: DeepReadonly<Theme> | null | undefined,
   defaultColor: string = "000000",
 ): string {
   // `defaultColor` is normally a hardcoded literal, but validate it too
@@ -319,8 +320,8 @@ export function resolveColor(
  * need a normalized hex (e.g. comparing a cell fill against a swatch).
  */
 export function resolveColorToHex(
-  color: ColorValue | undefined | null,
-  theme: Theme | null | undefined,
+  color: DeepReadonly<ColorValue> | undefined | null,
+  theme: DeepReadonly<Theme> | null | undefined,
 ): string | undefined {
   if (!color || color.auto) return undefined;
 
@@ -353,8 +354,8 @@ export function resolveHighlightColor(highlight: string | undefined): string {
  * @returns CSS color string
  */
 export function resolveShadingColor(
-  color: ColorValue | undefined | null,
-  theme: Theme | null | undefined,
+  color: DeepReadonly<ColorValue> | undefined | null,
+  theme: DeepReadonly<Theme> | null | undefined,
 ): string {
   if (!color) {
     return "";
@@ -377,7 +378,7 @@ export function resolveShadingColor(
  */
 export function isBlack(
   color: ColorValue | undefined | null,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
 ): boolean {
   if (!color) {
     return false;
@@ -405,7 +406,7 @@ export function isBlack(
  */
 export function isWhite(
   color: ColorValue | undefined | null,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
 ): boolean {
   if (!color) {
     return false;
@@ -430,7 +431,7 @@ export function isWhite(
  */
 export function getContrastingColor(
   backgroundColor: ColorValue | undefined | null,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
 ): string {
   if (!backgroundColor) {
     return "#000000";
@@ -548,7 +549,7 @@ export function createRgbColor(hex: string): ColorValue {
  */
 export function darkenColor(
   color: ColorValue | undefined | null,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   percent: number,
 ): string {
   const resolved = resolveColor(color, theme);
@@ -567,7 +568,7 @@ export function darkenColor(
  */
 export function lightenColor(
   color: ColorValue | undefined | null,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   percent: number,
 ): string {
   const resolved = resolveColor(color, theme);
@@ -589,7 +590,7 @@ export function blendColors(
   color1: ColorValue | undefined | null,
   color2: ColorValue | undefined | null,
   ratio: number,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
 ): string {
   const resolved1 = resolveColor(color1, theme).replace(/^#/u, "");
   const resolved2 = resolveColor(color2, theme).replace(/^#/u, "");
@@ -728,7 +729,7 @@ export function getThemeTintShadeHex(
  * @returns 6 rows × 10 columns of ThemeMatrixCell
  */
 export function generateThemeTintShadeMatrix(
-  colorScheme?: ThemeColorScheme | null,
+  colorScheme?: DeepReadonly<ThemeColorScheme> | null,
 ): ThemeMatrixCell[][] {
   const scheme = colorScheme ?? DEFAULT_THEME_COLORS;
 
@@ -777,7 +778,7 @@ export function generateThemeTintShadeMatrix(
 export function colorsEqual(
   color1: ColorValue | undefined | null,
   color2: ColorValue | undefined | null,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
 ): boolean {
   if (!color1 && !color2) {
     return true;

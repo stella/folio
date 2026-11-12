@@ -33,6 +33,7 @@ import type { TableAttrs } from "../../prosemirror/schema/nodes";
 import { textBoxHostParagraph } from "../../prosemirror/textBoxHostParagraph";
 import type { Theme } from "../../types/document";
 import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
+import type { DeepReadonly } from "../../types/documentModel";
 import { convertAltChunkPlaceholder } from "./altChunkPlaceholder";
 import { fixedTableColumnWidths } from "./fixedTableColumnWidths";
 import { convertBorderSpecToLayout } from "./flowBorders";
@@ -65,7 +66,7 @@ type TablePaddingSide = keyof typeof DEFAULT_TABLE_CELL_MARGIN_TWIPS;
  */
 function extractCellBorders(
   borders: Record<string, ConvertibleBorder> | null | undefined,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): CellBorders | undefined {
   if (!borders) {
     return undefined;

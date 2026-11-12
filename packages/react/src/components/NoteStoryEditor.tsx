@@ -71,7 +71,7 @@ export type NoteStoryEditorProps = {
   suggestionAuthor?: string;
   suggestionModeActive?: boolean;
   styles?: DeepReadonly<StyleDefinitions> | null;
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
 };
 
 const panelStyle: CSSProperties = {

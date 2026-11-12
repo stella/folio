@@ -16,6 +16,7 @@ import type {
   RelationshipMap,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { blockCustomXmlShell } from "./blockCustomXmlShell";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import {
@@ -114,7 +115,7 @@ const BLOCK_CHILD_OWNERS = {
 export const parseBlockContent = (
   parent: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -137,7 +138,7 @@ export const parseBlockContent = (
 /** The parts and maps a block sequence is read against. */
 type BlockContentResources = {
   styles: StyleMap | null;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   numbering: NumberingMap | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
@@ -179,7 +180,7 @@ const BLOCK_CONTENT_UNDECLARED = {
 const parseBlockCustomXml = (
   child: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -427,7 +428,7 @@ export const BLOCK_CONTENT_HANDLERS: {
 const parseBlockContentWithState = (
   parent: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -457,7 +458,7 @@ const parseBlockContentWithState = (
 const parseBlockSdt = (
   child: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,

@@ -47,14 +47,10 @@ import {
 } from "../docx/xmlParser";
 import { schema } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import type {
-  Document,
-  DrawingContent,
-  Image,
-  Paragraph,
-} from "../types/document";
+import type { Document, DrawingContent, Paragraph } from "../types/document";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { canonicalJson } from "../utils/canonicalJson";
+import { AUTHORED_IMAGE_FACTS } from "./__fixtures__/authoredImageFacts";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 import { createCanonicalSession } from "./canonicalSession";
 
@@ -612,18 +608,7 @@ test("parser-derived enrichment preserves every authored field and the equality 
     resource: "dataUrl",
     offset: 0,
   });
-  const authored = {
-    id: "12345",
-    filename: "authored.png",
-    mimeType: "image/png",
-    pictureNames: {
-      name: "Authored picture",
-      alt: "Alternative",
-      title: "Authored title",
-    },
-  } satisfies Required<
-    Pick<Image, keyof ReturnType<typeof imageDerivedFactsOf>>
-  >;
+  const authored = structuredClone(AUTHORED_IMAGE_FACTS);
   const document = structuredClone(
     driver.session.captureSaveSnapshot().document,
   );

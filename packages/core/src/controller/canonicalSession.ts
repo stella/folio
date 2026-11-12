@@ -1645,8 +1645,9 @@ class CanonicalSession {
     this.caches = caches;
     this.currentDocument = document;
     this.currentProjection = projection;
-    this.sourceBlockIds = new Set(packageParagraphIds(document.package));
-    for (const blockId of packageParagraphIds(document.package))
+    const blockIds = packageParagraphIds(document.package);
+    this.sourceBlockIds = new Set(blockIds);
+    for (const blockId of blockIds)
       this.allocatedBlockIds.add(blockId.toUpperCase());
     this.advanceBlockId();
     this.styles = styles == null ? styles : structuredClone(styles);

@@ -136,9 +136,13 @@ export const normalizeCanonicalSource = (
 ): { document: Document; normalized: NormalizedStory[] } => {
   let current = document;
   const normalized: NormalizedStory[] = [];
-  const used = new Set(
-    packageParagraphIds(document.package).map((id) => id.toUpperCase()),
-  );
+  // Only a story left with no paragraph needs a fresh id; the package's ids
+  // are read when one does.
+  let used: Set<string> | undefined;
+  const takenIds = (): Set<string> =>
+    (used ??= new Set(
+      packageParagraphIds(document.package).map((id) => id.toUpperCase()),
+    ));
   for (const story of documentStories(document)) {
     const body = findStoryBody(current, story);
     if (body === undefined) continue;
@@ -148,7 +152,7 @@ export const normalizeCanonicalSource = (
     if (content.length === 0 && !isSeparatorNote(document, story)) {
       const paragraph: Paragraph = {
         type: "paragraph",
-        paraId: freshParaId(used),
+        paraId: freshParaId(takenIds()),
         content: [],
       };
       content = [paragraph];

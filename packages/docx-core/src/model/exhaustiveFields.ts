@@ -1,3 +1,5 @@
+import type { RecordField } from "./deepReadonly";
+
 /**
  * Compile-time totality over every field of a model type.
  *
@@ -12,5 +14,5 @@
  * type ExhaustiveBorder = ExhaustiveFields<BorderSpec, ClassifiedBorderField>;
  * ```
  */
-export type ExhaustiveFields<Source, Classified extends keyof Source> =
-  Exclude<keyof Source, Classified> extends never ? Source : never;
+export type ExhaustiveFields<Source, Classified extends RecordField<Source>> =
+  Exclude<RecordField<Source>, Classified> extends never ? Source : never;

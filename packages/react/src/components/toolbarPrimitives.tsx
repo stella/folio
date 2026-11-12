@@ -154,7 +154,7 @@ export type ToolbarProps = {
   /** Document styles for the style picker */
   documentStyles?: DeepReadonly<Style[]> | undefined;
   /** Theme for the style picker */
-  theme?: Theme | null | undefined;
+  theme?: DeepReadonly<Theme> | null | undefined;
   /** Callback for print action */
   onPrint?: (() => void) | undefined;
   /** Whether to show print button (default: true) */
@@ -216,7 +216,7 @@ export type ToolbarProps = {
     columnCount?: number | undefined;
     canSplitCell?: boolean | undefined;
     hasMultiCellSelection?: boolean | undefined;
-    cellBorderColor?: ColorValue | undefined;
+    cellBorderColor?: DeepReadonly<ColorValue> | undefined;
     cellBackgroundColor?: string | undefined;
   } | null;
   /** Callback when a table action is triggered */

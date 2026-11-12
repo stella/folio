@@ -89,7 +89,7 @@ export type HeaderFooterEditorManagerDeps = {
     | undefined;
   getHost: () => HTMLElement | null;
   getStyles: () => DeepReadonly<StyleDefinitions> | null | undefined;
-  getTheme: () => Theme | null | undefined;
+  getTheme: () => DeepReadonly<Theme> | null | undefined;
   onTransaction?:
     ((transaction: HeaderFooterEditorTransaction) => void) | undefined;
 };
@@ -117,7 +117,7 @@ type MountedView = {
   appliedHeaderFooter: HeaderFooter;
   appliedNumbering: NumberingDefinitions | null | undefined;
   appliedStyles: DeepReadonly<StyleDefinitions> | null | undefined;
-  appliedTheme: Theme | null | undefined;
+  appliedTheme: DeepReadonly<Theme> | null | undefined;
   dirty: boolean;
   kind: HeaderFooterPartKind;
   manager: ExtensionManager;
@@ -151,7 +151,7 @@ const headerFooterToProseDocWithDetachedWatermarkHost = (
 const buildInitialState = (
   headerFooter: HeaderFooter,
   styles: DeepReadonly<StyleDefinitions> | null | undefined,
-  theme: Theme | null | undefined,
+  theme: DeepReadonly<Theme> | null | undefined,
   numbering: NumberingDefinitions | null | undefined,
   manager: ExtensionManager,
 ): EditorStateT => {

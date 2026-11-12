@@ -1296,6 +1296,51 @@ const edgeChain = (node: InlineNode, edge: "start" | "end"): InlineNode[] => {
 };
 
 /**
+ * Two records meeting at a cut recorded `depth` levels deep, folded as
+ * {@link foldAtSeam} folds an emptied piece into the piece across from it.
+ * The cut split the containers on its facing edges down to that depth, so
+ * one of them holding nothing is a piece a rejection emptied: this
+ * resolution (one `emptied` holds) or an earlier one, which left it beside
+ * the change that cut it. Read from the pieces themselves rather than from
+ * the resolution that emptied them, the fold is the same whichever pass
+ * emptied the piece, so rejecting a run's revisions at once and in any order
+ * leave the same records.
+ */
+const foldAtCut = ({
+  left,
+  right,
+  depth,
+  emptied,
+}: {
+  left: InlineNode;
+  right: InlineNode;
+  depth: number;
+  emptied: Emptied;
+}): InlineNode[] => {
+  const pieces = new Set<InlineNode>();
+  const before = edgeChain(left, "end");
+  const after = edgeChain(right, "start");
+  for (let level = 0; level < depth; level += 1) {
+    const near = before.at(level);
+    const far = after.at(level);
+    if (near === undefined || far === undefined || near.type === "run") break;
+    const nearChildren = childNodes(near);
+    const farChildren = childNodes(far);
+    if (
+      nearChildren === undefined ||
+      farChildren === undefined ||
+      !sameOwnFields(near, far)
+    )
+      break;
+    if (nearChildren.length === 0) pieces.add(near);
+    if (farChildren.length === 0) pieces.add(far);
+  }
+  return foldAtSeam(left, right, {
+    has: (node) => emptied.has(node) || pieces.has(node),
+  });
+};
+
+/**
  * Where a cut recorded `depth` levels deep reaches, once `resolution` is
  * done, into the records either side of it, given as the chains of records
  * at their edges facing the cut, as the list held them before the
@@ -2105,9 +2150,15 @@ const resolveList = (
     } else if (exactDepth === undefined) {
       met = foldAtSeam(left, right, resolution.emptied);
     } else {
-      // Earlier inline resolution can empty an original cut fragment. Its
-      // surviving identity folds back before measuring the remaining depth.
-      const folded = foldAtSeam(left, right, resolution.emptied);
+      // A resolution, this one or an earlier, can empty an original cut
+      // fragment. Its surviving identity folds back before measuring the
+      // remaining depth.
+      const folded = foldAtCut({
+        left,
+        right,
+        depth: exactDepth,
+        emptied: resolution.emptied,
+      });
       if (folded.length === 1) met = folded;
       else {
         const deferred = deferRunReviewSeam({ left, right, depth: exactDepth });
@@ -2513,7 +2564,7 @@ const joinOps = (
       const left = seam.left.at(-1);
       const right = seam.right.at(0);
       if (depth > 0 && left !== undefined && right !== undefined) {
-        const folded = foldAtSeam(left, right, emptied);
+        const folded = foldAtCut({ left, right, depth, emptied });
         const met =
           folded.length === 1
             ? folded

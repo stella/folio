@@ -1,4 +1,5 @@
-import type { TextFormatting } from "../types/document";
+import type { RecordField, TextFormatting } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 
 type FontFamily = NonNullable<TextFormatting["fontFamily"]>;
 
@@ -20,8 +21,8 @@ const isFontFamilyPairKey = (key: string): boolean =>
   key === "csTheme";
 
 export function mergeFontFamily(
-  target: FontFamily | undefined,
-  source: FontFamily,
+  target: DeepReadonly<FontFamily> | undefined,
+  source: DeepReadonly<FontFamily>,
 ): FontFamily {
   const result: Record<string, unknown> = {};
   const src = source as Record<string, unknown>;
@@ -34,7 +35,7 @@ export function mergeFontFamily(
   const replacesCs = source.cs !== undefined || source.csTheme !== undefined;
 
   if (target) {
-    for (const key of Object.keys(target) as (keyof FontFamily)[]) {
+    for (const key of Object.keys(target) as RecordField<FontFamily>[]) {
       if (
         (replacesAscii && (key === "ascii" || key === "asciiTheme")) ||
         (replacesHAnsi && (key === "hAnsi" || key === "hAnsiTheme")) ||

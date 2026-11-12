@@ -207,6 +207,7 @@ import {
 } from "vue";
 
 import type { ColorValue, Theme } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import {
   generateThemeTintShadeMatrix,
   resolveColor,
@@ -226,7 +227,7 @@ const props = withDefaults(
     // `| undefined` so callers may pass a possibly-absent selected color under
     // exactOptionalPropertyTypes (e.g. the toolbar's `currentTextColorHex`).
     value?: ColorValue | string | undefined;
-    theme?: Theme | null;
+    theme?: DeepReadonly<Theme> | null;
     disabled?: boolean;
     className?: string;
     style?: CSSProperties;

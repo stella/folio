@@ -58,7 +58,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 export type ToProseDocOptions = {
     styles?: DeepReadonly<import__stll_docx_core_model.StyleDefinitions>;
     numbering?: import__stll_docx_core_model.NumberingDefinitions;
-    theme?: import__stll_docx_core_model.Theme | null;
+    theme?: DeepReadonly<import__stll_docx_core_model.Theme> | null;
     warn?: ParseContext["warn"];
     blockCache?: ProjectionBlockCache;
     textBoxGroupSalt?: string;

@@ -251,8 +251,8 @@ const canonicalRemainderKeys = (
     .sort();
 
 function languageEquals(
-  a: TextFormatting["language"],
-  b: TextFormatting["language"],
+  a: DeepReadonly<TextFormatting["language"]>,
+  b: DeepReadonly<TextFormatting["language"]>,
 ): boolean {
   return (
     a?.val === b?.val && a?.eastAsia === b?.eastAsia && a?.bidi === b?.bidi
@@ -263,8 +263,8 @@ function languageEquals(
  * Compare underline settings
  */
 function underlineEquals(
-  a: TextFormatting["underline"],
-  b: TextFormatting["underline"],
+  a: DeepReadonly<TextFormatting["underline"]>,
+  b: DeepReadonly<TextFormatting["underline"]>,
 ): boolean {
   if (!a && !b) {
     return true;
@@ -283,8 +283,8 @@ function underlineEquals(
  * Compare color values
  */
 function colorEquals(
-  a: TextFormatting["color"],
-  b: TextFormatting["color"],
+  a: DeepReadonly<TextFormatting["color"]>,
+  b: DeepReadonly<TextFormatting["color"]>,
 ): boolean {
   if (!a && !b) {
     return true;
@@ -333,8 +333,8 @@ function shadingEquals(
  * Compare font family settings
  */
 function fontFamilyEquals(
-  a: TextFormatting["fontFamily"],
-  b: TextFormatting["fontFamily"],
+  a: DeepReadonly<TextFormatting["fontFamily"]>,
+  b: DeepReadonly<TextFormatting["fontFamily"]>,
 ): boolean {
   if (!a && !b) {
     return true;

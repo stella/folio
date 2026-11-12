@@ -10,7 +10,7 @@
  * is the same device for the same reason.
  */
 
-import type { ParagraphFormatting } from "../types/document";
+import type { ParagraphFormatting, RecordField } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
 import type { MergedParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import type { ParagraphAttrs } from "./schema/nodes";
@@ -272,7 +272,10 @@ export const PARAGRAPH_FORMATTING_WRITE_BACK: {
   // command sets. They ride `_originalFormatting` and go back where the
   // element they were read from goes.
   preserved: { kind: "original-only" },
-} as const satisfies Record<keyof ParagraphFormatting, ParagraphFieldWriteBack>;
+} as const satisfies Record<
+  RecordField<ParagraphFormatting>,
+  ParagraphFieldWriteBack
+>;
 
 export type StyleResolvedParagraphField = {
   [

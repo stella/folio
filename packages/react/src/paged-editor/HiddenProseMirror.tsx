@@ -96,7 +96,7 @@ export type HiddenProseMirrorProps = {
   /** Document styles for style resolution */
   styles?: DeepReadonly<StyleDefinitions> | null;
   /** Theme for styling */
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   /** Width in pixels (should match document content width) */
   widthPx?: number;
   /** Whether the editor is read-only */

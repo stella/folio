@@ -41,6 +41,7 @@ import type {
   TrackedChangeInfo,
   TrackedRunChange,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { isValidHexId } from "../utils/hexId";
 import { attributeRemainder } from "./attributeRemainder";
 import {
@@ -416,7 +417,7 @@ function normalizeDeletionContentElement(node: XmlElement): XmlElement {
 
 export function parseParagraphPropertyChanges(
   pPr: XmlElement | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   currentFormatting: ParagraphFormatting | undefined,
 ): ParagraphPropertyChange[] | undefined {
   if (!pPr) {
@@ -661,7 +662,7 @@ function parseHyperlink(
   node: XmlElement,
   rels: RelationshipMap | null,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   media: Map<string, MediaFile> | null,
   rootXmlns: Record<string, string>,
   previews: PreviewLedger,
@@ -835,7 +836,7 @@ const linkWithFields = (
   children: readonly XmlElement[],
   rels: RelationshipMap | null,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   media: Map<string, MediaFile> | null,
   rootXmlns: Record<string, string>,
   previews: PreviewLedger,
@@ -887,7 +888,7 @@ function parseHyperlinkParagraphContents(
   node: XmlElement,
   rels: RelationshipMap | null,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   media: Map<string, MediaFile> | null,
   rootXmlns: Record<string, string>,
   previews: PreviewLedger,
@@ -1021,7 +1022,7 @@ function parseBookmarkEnd(node: XmlElement): BookmarkEnd {
 function parseSimpleField(
   node: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
   rootXmlns: Record<string, string>,
@@ -1078,7 +1079,7 @@ type SimpleFieldChildContext = {
   /** Where a parsed or captured child lands, in source order. */
   push: (child: SimpleField["content"][number]) => void;
   styles: StyleMap | null;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
   previews: PreviewLedger;
@@ -1411,7 +1412,7 @@ type InlineParseScope = "paragraph" | "hyperlink";
 type ParagraphContentsWalk = {
   inlineScope: InlineParseScope;
   styles: StyleMap | null;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
   previews: PreviewLedger;
@@ -2343,7 +2344,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
 function parseParagraphContents(
   paraElement: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   _numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -2587,7 +2588,7 @@ type ParseParagraphOptions = {
 export function parseParagraph(
   node: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,

@@ -37,6 +37,7 @@ import type {
   TextBox,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { emuToPixels } from "../utils/units";
 import {
   parseDrawingAnchor,
@@ -235,7 +236,7 @@ export function extractTextBoxContentElements(txbxContent: XmlElement | null): {
 export type ParagraphParserFn = (
   node: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -248,7 +249,7 @@ export type ParagraphParserFn = (
 export type TableParserFn = (
   node: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,

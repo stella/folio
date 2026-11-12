@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { seedFileFor } from "../test/seed-registry";
@@ -18,6 +27,7 @@ import {
   selectPropertyFiles,
   shardPropertyFiles,
   touchedAreas,
+  unrunnablePropertyImports,
 } from "./property-areas";
 
 const makePropertyFile = (repoPath: string, weightMs = 5_000) => ({
@@ -333,6 +343,54 @@ describe("property areas", () => {
       ),
     ).toBe(true);
     expect(found.map(({ file }) => file)).toEqual(actualPropertyDrivers());
+  });
+
+  test("every planned property file loads its imports from where the runner starts it", () => {
+    expect(unrunnablePropertyImports(propertyFiles())).toEqual([]);
+  }, 60_000);
+
+  test("an import the importing file's manifest leaves out is reported through helpers", () => {
+    // Resolution returns real paths; a symlinked temporary root would hide helpers.
+    const repoRoot = realpathSync(
+      mkdtempSync(path.join(tmpdir(), "property-imports-")),
+    );
+    try {
+      const write = (file: string, text: string) => {
+        mkdirSync(path.dirname(path.join(repoRoot, file)), { recursive: true });
+        writeFileSync(path.join(repoRoot, file), text);
+      };
+      mkdirSync(path.join(repoRoot, "node_modules"));
+      write(
+        "tests/trace.test.ts",
+        [
+          'import "./helper";',
+          'import { readFileSync } from "node:fs";',
+          'import path from "path";',
+          'import { test } from "bun:test";',
+          'import type { Unloaded } from "folio-type-only-package";',
+          "test('t', () => [readFileSync, path]);",
+        ].join("\n"),
+      );
+      write(
+        "tests/helper.ts",
+        'export { value } from "folio-undeclared-package";\n',
+      );
+      write("packages/a/src/area.test.ts", 'import "../../../tests/helper";\n');
+      expect(
+        unrunnablePropertyImports(
+          [
+            { file: "tests/trace.test.ts", packageDir: "." },
+            { file: "packages/a/src/area.test.ts", packageDir: "packages/b" },
+          ],
+          repoRoot,
+        ),
+      ).toEqual([
+        "packages/a/src/area.test.ts: planned to run from packages/b",
+        "tests/helper.ts: folio-undeclared-package",
+      ]);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 
   test("a root script change selects its properties", () => {

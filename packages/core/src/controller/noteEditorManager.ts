@@ -87,7 +87,7 @@ export type NoteEditorManagerDeps = {
   getHost: () => HTMLElement | null;
   getPlugins?: (() => Plugin[]) | undefined;
   getStyles: () => DeepReadonly<StyleDefinitions> | null | undefined;
-  getTheme: () => Theme | null | undefined;
+  getTheme: () => DeepReadonly<Theme> | null | undefined;
   onTransaction?: ((transaction: NoteEditorTransaction) => void) | undefined;
 };
 
@@ -121,7 +121,7 @@ type MountedView = {
   appliedPlugins: Plugin[];
   appliedProseDocument: PMNode;
   appliedStyles: DeepReadonly<StyleDefinitions> | null | undefined;
-  appliedTheme: Theme | null | undefined;
+  appliedTheme: DeepReadonly<Theme> | null | undefined;
   dirty: boolean;
   manager: ExtensionManager;
   mountNode: HTMLElement;

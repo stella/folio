@@ -29,6 +29,7 @@ import type {
   TableRowFormatting,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { writableCopy } from "../types/documentModel";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
@@ -211,7 +212,7 @@ function parseCellMargins(
  */
 function parseTableProperties(
   tblPr: XmlElement | null,
-  _theme: Theme | null,
+  _theme: DeepReadonly<Theme> | null,
 ): TableFormatting | undefined {
   if (!tblPr) {
     return undefined;
@@ -381,7 +382,7 @@ function parseTableRowProperties(
  */
 function parseTableCellProperties(
   tcPr: XmlElement | null,
-  _theme: Theme | null,
+  _theme: DeepReadonly<Theme> | null,
 ): TableCellFormatting | undefined {
   if (!tcPr) {
     return undefined;
@@ -568,7 +569,10 @@ function collectStyleChildren(styleEl: XmlElement): StyleChildren {
 /**
  * Parse a single style element (w:style)
  */
-function parseStyle(styleEl: XmlElement, theme: Theme | null): Style {
+function parseStyle(
+  styleEl: XmlElement,
+  theme: DeepReadonly<Theme> | null,
+): Style {
   const rawType = getAttribute(styleEl, "w", "type");
   const style: Style = {
     styleId: getAttribute(styleEl, "w", "styleId") ?? "",
@@ -778,7 +782,7 @@ function parseStyle(styleEl: XmlElement, theme: Theme | null): Style {
  */
 function parseDocDefaults(
   docDefaults: XmlElement | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
 ): DocDefaults | undefined {
   if (!docDefaults) {
     return undefined;
@@ -943,7 +947,10 @@ function mergeSides<T extends object>(
  * @param theme - Parsed theme for resolving theme references
  * @returns StyleMap with resolved inheritance
  */
-export function parseStyles(stylesXml: string, theme: Theme | null): StyleMap {
+export function parseStyles(
+  stylesXml: string,
+  theme: DeepReadonly<Theme> | null,
+): StyleMap {
   const doc = parseXmlDocument(stylesXml);
   if (!doc) {
     return new Map();
@@ -954,7 +961,7 @@ export function parseStyles(stylesXml: string, theme: Theme | null): StyleMap {
 
 function parseStylesFromDocument(
   doc: XmlElement,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
 ): StyleMap {
   const styleMap: StyleMap = new Map();
 
@@ -989,7 +996,7 @@ function parseStylesFromDocument(
  */
 export function parseStyleDefinitions(
   stylesXml: string,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   resolvedStyles?: StyleMap,
 ): StyleDefinitions {
   const doc = parseXmlDocument(stylesXml);
@@ -1002,7 +1009,7 @@ export function parseStyleDefinitions(
 
 function parseStyleDefinitionsFromDocument(
   doc: XmlElement,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   resolvedStyles?: StyleMap,
 ): StyleDefinitions {
   const result: StyleDefinitions = {
@@ -1063,7 +1070,7 @@ function parseStyleDefinitionsFromDocument(
 
 export function parseStylesPackage(
   stylesXml: string,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
 ): ParsedStylesPackage {
   const doc = parseXmlDocument(stylesXml);
   if (!doc) {

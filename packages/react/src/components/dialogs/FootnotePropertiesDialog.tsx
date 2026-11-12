@@ -16,6 +16,7 @@ import type {
   NoteNumberRestart,
   NumberFormat,
 } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import { useCloseOnDialogOpenChange } from "./dialogChrome";
@@ -31,8 +32,8 @@ export type FootnotePropertiesDialogProps = {
     footnoteProps: FootnoteProperties,
     endnoteProps: EndnoteProperties,
   ) => void;
-  footnotePr?: FootnoteProperties;
-  endnotePr?: EndnoteProperties;
+  footnotePr?: DeepReadonly<FootnoteProperties>;
+  endnotePr?: DeepReadonly<EndnoteProperties>;
 };
 
 // ============================================================================
