@@ -310,6 +310,13 @@
       "date": "2026-11-12"
     }
   ],
+  "L3: rejecting a run's revisions at once equals rejecting each operation's in any order": [
+    {
+      "seed": 33710121,
+      "note": "a control piece rejecting text emptied stayed apart from its other piece when the content that cut the control was rejected later",
+      "date": "2026-11-12"
+    }
+  ],
   "L4: a run of tracked operations is undone exactly, in reverse and as a batch": [
     {
       "seed": 249128062,

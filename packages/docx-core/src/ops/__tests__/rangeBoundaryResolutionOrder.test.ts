@@ -9,10 +9,12 @@ import { expect, test } from "bun:test";
 import type {
   BlockContent,
   Document,
+  InlineSdt,
   ParagraphContent,
   Run,
 } from "../../model/document";
 import { applyDocumentOp } from "../apply";
+import { structurallyEqual } from "../equality";
 import { childNodes, type InlineNode } from "../leaves";
 import { isTrackedWrapper } from "../review";
 import {
@@ -655,4 +657,156 @@ test("an insertion's pieces a rejection joins again inside a control around a bo
   expect(body(atOnce)).toEqual(body(source));
   for (const order of orders(perOp))
     expect(body(rejectedInOrder(tracked, order))).toEqual(body(atOnce));
+});
+
+/** Whether `nodes` hold a content control or link with nothing in it, at any depth. */
+const holdsEmptyContainer = (nodes: readonly InlineNode[]): boolean =>
+  nodes.some(
+    (node) =>
+      ((node.type === "inlineSdt" || node.type === "hyperlink") &&
+        (childNodes(node)?.length ?? 0) === 0) ||
+      holdsEmptyContainer(childNodes(node) ?? []),
+  );
+
+test("a control piece a rejection empties folds into its other piece, whichever order rejects the run", () => {
+  // What the control holds, with its width.
+  const holdings: [string, InlineSdt["content"], number][] = [
+    ["a tab", [tab()], 1],
+    [
+      "a field result",
+      [
+        {
+          type: "complexField",
+          instruction: "DATE",
+          fieldType: "DATE",
+          fieldCode: [
+            { type: "run", content: [{ type: "instrText", text: " DATE " }] },
+          ],
+          fieldResult: [
+            { type: "run", content: [{ type: "text", text: "3" }] },
+          ],
+        },
+      ],
+      1,
+    ],
+    [
+      "a simple field",
+      [
+        {
+          type: "simpleField",
+          instruction: "PAGE",
+          fieldType: "PAGE",
+          content: [{ type: "run", content: [{ type: "text", text: "3" }] }],
+        },
+      ],
+      1,
+    ],
+    ["a bookmark", [{ type: "bookmarkStart", id: 1, name: "_Ref1" }], 0],
+    [
+      "a link holding a tab",
+      [
+        {
+          type: "hyperlink",
+          rId: "rId9",
+          href: "https://example.org",
+          children: [tab()],
+        },
+      ],
+      1,
+    ],
+  ];
+  const failures: string[] = [];
+  let cases = 0;
+  let emptiedFirst = 0;
+  for (const [holding, content, width] of holdings) {
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                {
+                  type: "inlineSdt",
+                  properties: { sdtType: "richText", id: 1, tag: "clause" },
+                  content,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const at = (offset: number) => ({
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      offset,
+    });
+    for (let xAt = 0; xAt <= width; xAt += 1) {
+      for (let runAt = 0; runAt <= width + 1; runAt += 1) {
+        const label = `${holding}, x at ${String(xAt)}, run at ${String(runAt)}`;
+        const tracked = opsOn(source, [
+          (index) => ({
+            type: "insertText",
+            at: at(xAt),
+            text: "x",
+            runProps: {},
+            newIds: NEW_IDS,
+            revision: revision(index),
+          }),
+          (index) => ({
+            type: "insertContent",
+            at: at(runAt),
+            slice: {
+              content: [
+                { type: "run", content: [{ type: "text", text: "a" }] },
+              ],
+              openStart: 0,
+              openEnd: 0,
+            },
+            newIds: { revision: [710, 711, 712, 713], control: [810, 811] },
+            revision: revision(index),
+          }),
+        ]);
+        cases += 1;
+        const perOp = dated(tracked, 2);
+        const [textIds = []] = perOp;
+        const firstRejected = body(
+          resolve(tracked, textIds, REVISION_DECISIONS.REJECT),
+        );
+        if (
+          firstRejected.some(
+            (block) =>
+              block.type === "paragraph" && holdsEmptyContainer(block.content),
+          )
+        )
+          emptiedFirst += 1;
+        const atOnce = resolve(
+          tracked,
+          perOp.flat(),
+          REVISION_DECISIONS.REJECT,
+        );
+        if (!structurallyEqual(body(atOnce), body(source)))
+          failures.push(`${label}: at once`);
+        for (const order of orders(perOp)) {
+          if (
+            !structurallyEqual(
+              body(rejectedInOrder(tracked, order)),
+              body(atOnce),
+            )
+          )
+            failures.push(
+              `${label}: ${order[0] === textIds ? "x first" : "run first"}`,
+            );
+        }
+      }
+    }
+  }
+  // The shapes include a control piece rejecting the text alone empties.
+  expect({ failures, cases, emptied: emptiedFirst > 0 }).toEqual({
+    failures: [],
+    cases: 26,
+    emptied: true,
+  });
 });
