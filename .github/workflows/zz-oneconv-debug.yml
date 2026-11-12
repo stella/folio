@@ -19,6 +19,20 @@ jobs:
         with:
           package-json: "package.json"
       - run: bun install --frozen-lockfile
-      - name: Conversion test with call stacks
+      - name: Conversion test, branch code
         working-directory: packages/react
         run: bun test src/components/DocxEditor.canonicalOpenConversions.test.tsx
+      - name: Conversion test, main's eager precompute restored (must fail)
+        working-directory: packages/react
+        env:
+          BASE_SHA: 4710b3d571bb2f604b348a9a9b7cf4609d468896
+        run: |
+          set +e
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git checkout "$BASE_SHA" -- src/paged-editor/PagedEditor.tsx src/paged-editor/HiddenProseMirror.tsx ../core/src/controller/hiddenEditorManager.ts
+          git status --short -uno
+          bun test src/components/DocxEditor.canonicalOpenConversions.test.tsx > "$RUNNER_TEMP/break.log" 2>&1
+          rc=$?
+          cat "$RUNNER_TEMP/break.log"
+          if [ "$rc" = 0 ]; then echo "BREAK NOT DETECTED"; exit 1; fi
+          echo "BREAK DETECTED"
