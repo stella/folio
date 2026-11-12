@@ -1173,6 +1173,30 @@ describe("tracked operations and their resolution", () => {
             perOp.toReversed(),
             REVISION_DECISIONS.REJECT,
           );
+          if (
+            !Bun.deepEquals(
+              projected(rejectedAtOnce, "π′"),
+              projected(rejectedInTurn, "π′"),
+              true,
+            )
+          ) {
+            const steps: unknown[] = [];
+            let cur = current;
+            for (const ids of perOp.toReversed()) {
+              cur = resolved(cur, ids, REVISION_DECISIONS.REJECT);
+              steps.push({ ids, body: cur.package.document.content });
+            }
+            console.error(
+              "L3DEBUG " +
+                JSON.stringify({
+                  source: document.package.document.content,
+                  tracked: current.package.document.content,
+                  perOp,
+                  atOnce: rejectedAtOnce.package.document.content,
+                  steps,
+                }),
+            );
+          }
           assertExactModel(
             projected(rejectedAtOnce, "π′"),
             projected(rejectedInTurn, "π′"),
