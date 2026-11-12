@@ -116,6 +116,7 @@ export type BoundaryOccurrence = {
     range: string;
     side: "start" | "end";
     kept: boolean;
+    copied: boolean;
     keptFrom?: string;
 };
 

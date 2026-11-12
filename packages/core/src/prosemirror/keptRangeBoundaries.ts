@@ -177,6 +177,8 @@ const occurrenceOf = (
     range: `${family}:${item.id}`,
     side,
     kept,
+    copied:
+      "copyOriginAncestors" in item && item.copyOriginAncestors !== undefined,
     ...(kept && keptFrom !== undefined ? { keptFrom } : {}),
   };
 };

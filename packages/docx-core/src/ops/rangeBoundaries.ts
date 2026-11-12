@@ -29,7 +29,10 @@ import type {
   Paragraph,
   PositionedBookmarkMarker,
 } from "../model/document";
-import { rejectCopyOriginAncestorsInNodes } from "./copyOriginAncestors";
+import {
+  copyOriginAncestorsOf,
+  rejectCopyOriginAncestorsInNodes,
+} from "./copyOriginAncestors";
 import {
   childNodes,
   type CommentAnchorCarrier,
@@ -650,6 +653,12 @@ export type BoundaryOccurrence = {
   /** Whether a rejection kept it from removed content. */
   kept: boolean;
   /**
+   * Whether it is a copy an added revision still owns (its
+   * `copyOriginAncestors`): rejecting that revision takes it away, so it is
+   * never the boundary itself, only a copy that may go.
+   */
+  copied: boolean;
+  /**
    * The date of the revision a kept boundary came from. Of a kept start and
    * end out of order, the one kept from the later revision moves: that edit
    * put it out of order, and the earlier one stays where it was.
@@ -670,7 +679,7 @@ type RangeMultiplicity =
   | { type: "pair"; start: number; end: number };
 
 export const classifyRangeMultiplicity = (
-  occurrences: readonly BoundaryOccurrence[],
+  occurrences: readonly Pick<BoundaryOccurrence, "range" | "side">[],
   dropped: ReadonlySet<number> = new Set(),
 ): ReadonlyMap<string, RangeMultiplicity> => {
   const grouped = new Map<string, { starts: number[]; ends: number[] }>();
@@ -703,11 +712,15 @@ export const classifyRangeMultiplicity = (
  * The one rule that makes every range a rejection kept boundaries of
  * well-formed, for the engine's model and the editor's document alike. A
  * kept copy of a boundary the story still holds is no boundary of its own and
- * goes (of several kept copies, the first stays); then, where such a range's
- * end comes before its start, the half the rejection kept closes on the
- * other: a kept end moves to just after the start, or else a kept start to
- * just before the end. A boundary that was standing never moves, and a range
- * still with more than one start or end is left as it is.
+ * goes (of several kept copies, the first one that is no added revision's
+ * copy stays, else the first). A copy an added revision still owns holds
+ * nothing: rejecting its revision takes it away, so a boundary kept beside
+ * it stays whichever is resolved first, and it counts for no range's order.
+ * Then, where such a range's end comes before its start, the half the
+ * rejection kept closes on the other: a kept end moves to just after the
+ * start, or else a kept start to just before the end. A boundary that was
+ * standing never moves, and a range still with more than one start or end is
+ * left as it is.
  */
 export const planWellFormedRanges = (
   occurrences: readonly BoundaryOccurrence[],
@@ -725,14 +738,25 @@ export const planWellFormedRanges = (
   const dropped = new Set<number>();
   for (const group of copies.values()) {
     if (group.length < 2) continue;
-    const held = group.some((member) => occurrences[member]?.kept === false);
-    for (const member of held
-      ? group.filter((candidate) => occurrences[candidate]?.kept === true)
-      : group.slice(1))
-      dropped.add(member);
+    const kept = group.filter((member) => occurrences[member]?.kept === true);
+    const held = group.some((member) => {
+      const occurrence = occurrences[member];
+      return occurrence?.kept === false && !occurrence.copied;
+    });
+    const survivor = held
+      ? undefined
+      : (kept.find((member) => occurrences[member]?.copied === false) ??
+        kept.at(0));
+    for (const member of kept) if (member !== survivor) dropped.add(member);
   }
+  const ownedCopies = occurrences.flatMap(({ kept, copied }, index) =>
+    !kept && copied ? [index] : [],
+  );
   const moved: WellFormedRangePlan["moved"] = [];
-  const multiplicities = classifyRangeMultiplicity(occurrences, dropped);
+  const multiplicities = classifyRangeMultiplicity(
+    occurrences,
+    new Set([...dropped, ...ownedCopies]),
+  );
   for (const range of ranges) {
     const multiplicity = multiplicities.get(range);
     if (multiplicity?.type !== "pair") continue;
@@ -792,6 +816,7 @@ export const wellFormedRanges = ({
         range: rangeKey(node),
         side: BOUNDARY_SIDES[node.type].side,
         kept: keptFrom !== undefined,
+        copied: copyOriginAncestorsOf(node) !== undefined,
         ...(keptFrom === undefined ? {} : { keptFrom }),
       };
     }),
