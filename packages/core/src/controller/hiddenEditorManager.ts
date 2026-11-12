@@ -63,6 +63,7 @@ import {
 } from "../prosemirror/commentRecords";
 import { createEmptyDoc, toProseDoc } from "../prosemirror/conversion";
 import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand";
+import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import {
@@ -128,6 +129,7 @@ import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import {
   type CanonicalCommit,
+  type CanonicalHistoryEffect,
   type CanonicalSession,
   type CanonicalSessionMode,
   createCanonicalSession,
@@ -585,6 +587,18 @@ export type HiddenEditorManagerDeps = {
   getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
   getExperimentalSession?: () => "canonical" | undefined;
+  /**
+   * Who answers the undo and redo keys in a canonical session; the editor's
+   * when unset. With `"host"`, the keys change nothing in any story's view and
+   * the host undoes through the API.
+   */
+  getHistoryShortcuts?: () => HistoryShortcutOwner;
+  /**
+   * A canonical commit was published in any story, with what it did to the
+   * session's undo history; for a host that mirrors the steps in its own
+   * undo stack.
+   */
+  onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   getEditingMode?: () => EditorMode;
   getSuggestionAuthor?: () => string;
   onSessionRefusal?: (
@@ -822,8 +836,11 @@ export const createHiddenEditorManager = (
       docChanged: true,
     });
     deps.onSelectionChange(staged.state);
+    deps.onCanonicalHistory?.(commit.history);
     return true;
   };
+  const editorOwnsHistoryShortcuts = (): boolean =>
+    (deps.getHistoryShortcuts?.() ?? "editor") === "editor";
   const history = (direction: "undo" | "redo"): boolean => {
     if (!view || deps.getReadOnly() || editorSession.type !== "canonical")
       return false;
@@ -1223,8 +1240,9 @@ export const createHiddenEditorManager = (
           caret: view.state.selection.head,
         };
     },
-    undo: () => history("undo"),
-    redo: () => history("redo"),
+    // Only the undo keys reach these; the host's own undo goes through the API.
+    undo: () => editorOwnsHistoryShortcuts() && history("undo"),
+    redo: () => editorOwnsHistoryShortcuts() && history("redo"),
     refuse,
   });
   let isDestroying = false;
@@ -1799,6 +1817,7 @@ export const createHiddenEditorManager = (
       docChanged: true,
     });
     deps.onSelectionChange(view.state);
+    deps.onCanonicalHistory?.(commit.history);
     return true;
   };
 
@@ -2125,7 +2144,13 @@ export const createHiddenEditorManager = (
           ? { anchor: anchor.value, head: head.value }
           : null;
       },
-      applyCanonicalStoryHistory: ({ view: storyView, story, direction }) => {
+      applyCanonicalStoryHistory: ({
+        view: storyView,
+        story,
+        direction,
+        shortcut,
+      }) => {
+        if (shortcut === true && !editorOwnsHistoryShortcuts()) return false;
         if (story === OP_STORIES.MAIN && storyView === view)
           return history(direction);
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly())

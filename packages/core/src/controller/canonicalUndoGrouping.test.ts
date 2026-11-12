@@ -11,6 +11,7 @@ import { schema } from "../prosemirror/schema";
 import type { Document } from "../types/document";
 import {
   type CanonicalCommit,
+  type CanonicalHistoryEffect,
   type CanonicalInputSemantic,
   type CanonicalSession,
   CanonicalSessionError,
@@ -51,6 +52,17 @@ const accept = (
   state: EditorState,
   commit: CanonicalCommit,
 ) => publishCanonicalProjection({ session, state, commit }).unwrap().state;
+
+/** Publish `commit` after checking the history effect it reports. */
+const acceptWithEffect = (
+  session: CanonicalSession,
+  state: EditorState,
+  commit: CanonicalCommit,
+  expected: CanonicalHistoryEffect,
+) => {
+  expect(commit.history).toBe(expected);
+  return accept(session, state, commit);
+};
 
 const semanticCases = {
   typing: "typing",
@@ -253,7 +265,7 @@ describe("canonical semantic undo partition", () => {
                 previous.caret === state.selection.head &&
                 time >= previous.time &&
                 time - previous.time <= 500;
-              state = accept(
+              state = acceptWithEffect(
                 session,
                 state,
                 session
@@ -265,6 +277,7 @@ describe("canonical semantic undo partition", () => {
                     time,
                   })
                   .unwrap(),
+                joins ? "joined" : "opened",
               );
               const after = session.document;
               const postSelection = state.selection.toJSON();
@@ -292,10 +305,11 @@ describe("canonical semantic undo partition", () => {
             }
             expect([...exercised].sort()).toEqual([...semantics].sort());
             for (const group of groups.toReversed()) {
-              state = accept(
+              state = acceptWithEffect(
                 session,
                 state,
                 session.prepareUndo(state).unwrap(),
+                "undo",
               );
               expect(session.document).toStrictEqual(group.before);
               expect(state.selection.toJSON()).toEqual(group.preSelection);
@@ -303,10 +317,11 @@ describe("canonical semantic undo partition", () => {
             expect(session.canUndo).toBe(false);
             expect(session.document).toStrictEqual(initial);
             for (const group of groups) {
-              state = accept(
+              state = acceptWithEffect(
                 session,
                 state,
                 session.prepareRedo(state).unwrap(),
+                "redo",
               );
               expect(session.document).toStrictEqual(group.after);
               expect(state.selection.toJSON()).toEqual(group.postSelection);
@@ -319,6 +334,32 @@ describe("canonical semantic undo partition", () => {
         numRuns: 75,
         id: "generated intent sequences restore every group exactly without projection adjacency",
       },
+    );
+  });
+
+  test("a structural edit opens its own step", () => {
+    const session = createCanonicalSession(seed()).unwrap();
+    let state = EditorState.create({ schema, doc: session.projection.doc });
+    const caret = state.selection.head;
+    state = acceptWithEffect(
+      session,
+      state,
+      session
+        .prepareReplace(state, {
+          from: caret,
+          to: caret,
+          text: "X",
+          semantic: "typing",
+          time: 0,
+        })
+        .unwrap(),
+      "opened",
+    );
+    state = acceptWithEffect(
+      session,
+      state,
+      session.prepareSplit(state).unwrap(),
+      "opened",
     );
   });
 

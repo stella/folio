@@ -6,6 +6,7 @@
 
 import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
+import { CanonicalHistoryEffect } from '@stll/folio-core/controller/canonicalSession';
 import { Checkbox } from '@base-ui/react/checkbox';
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComponentProps } from 'react';

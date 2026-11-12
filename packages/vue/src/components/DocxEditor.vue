@@ -994,6 +994,7 @@ const {
   marginGuideColor: () => props.marginGuideColor,
   externalPlugins,
   historyShortcuts: historyShortcutOwner(props.hostShortcuts ?? []),
+  onCanonicalHistory: (effect) => props.onCanonicalHistory?.(effect),
   collaboration: () => props.collaboration,
   // Anonymization highlights + template directives are driven by the overlay
   // components below; these thread the plugin callbacks and the directive gate.

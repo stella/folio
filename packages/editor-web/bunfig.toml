@@ -1,0 +1,4 @@
+[test]
+# The editor measures text through a provider a composition root installs; the
+# tests install the canvas one, as @stll/folio-react's do.
+preload = ["../../test/installMeasureProvider.preload.ts"]

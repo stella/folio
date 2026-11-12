@@ -27,6 +27,7 @@
       "mode",
       "onAnonymizationMatchesChange",
       "onAnonymizationTermClick",
+      "onCanonicalHistory",
       "onChange",
       "onCommentsChange",
       "onCompatibilityChange",
