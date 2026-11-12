@@ -121,7 +121,9 @@ type Edit =
   | { type: "replace"; at: number; block: BlockContent }
   | { type: "insert"; at: number; block: BlockContent }
   | { type: "delete"; at: number }
-  | { type: "comments"; ids: number[] };
+  | { type: "comments"; ids: number[] }
+  // Moving a block keeps every anchor and may change only their order.
+  | { type: "move"; from: number; to: number };
 
 const editOver = (blocks: fc.Arbitrary<BlockContent>): fc.Arbitrary<Edit> =>
   fc.oneof(
@@ -254,6 +256,11 @@ const edited = (document: Document, edit: Edit, inNote: boolean): Document => {
     blocks.splice(at, 1, edit.block);
   else if (edit.type === "insert") blocks.splice(at, 0, edit.block);
   else if (edit.type === "delete") blocks.splice(at, 1);
+  else if (edit.type === "move") {
+    const [block] = blocks.splice(edit.from % Math.max(blocks.length, 1), 1);
+    if (block !== undefined)
+      blocks.splice(edit.to % (blocks.length + 1), 0, block);
+  }
   return inNote
     ? documentOf(document.package.document.content, blocks, comments)
     : documentOf(blocks, note, comments);
@@ -313,10 +320,23 @@ const editChainOf = (blocks: fc.Arbitrary<BlockContent>) =>
     fc.array(blocks, { maxLength: 5 }),
     fc.array(blocks, { maxLength: 2 }),
     fc.uniqueArray(commentIds, { maxLength: 3 }),
-    fc.array(fc.tuple(editOver(blocks), fc.boolean()), {
-      minLength: 1,
-      maxLength: 10,
-    }),
+    fc.array(
+      fc.tuple(
+        fc.oneof(
+          editOver(blocks),
+          fc.record({
+            type: fc.constant("move" as const),
+            from: fc.nat(),
+            to: fc.nat(),
+          }),
+        ),
+        fc.boolean(),
+      ),
+      {
+        minLength: 1,
+        maxLength: 10,
+      },
+    ),
   );
 
 describe("canonical seed check", () => {
