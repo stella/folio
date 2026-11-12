@@ -14,6 +14,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import type { Document } from "../types/document";
+import type { CanonicalPresenceChannel } from "./canonicalPresence";
 
 /**
  * A submission the transport lost to a disconnection: it may or may not have
@@ -59,6 +60,8 @@ export type CanonicalRoomTransport = {
     actor: string,
     kind: IdLeaseKind,
   ): Promise<Result<IdBlock, IdLeaseRefusal>>;
+  /** Where the room's peers share their selections, when the transport has one. */
+  readonly presence?: CanonicalPresenceChannel;
 };
 
 /** A room's base snapshot identity: the SHA-256 of the DOCX bytes, in hex. */
