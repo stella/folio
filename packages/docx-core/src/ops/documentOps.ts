@@ -116,8 +116,18 @@ export {
 export { transformBatch } from "./sequencing/transform";
 export { transformPosition } from "./sequencing/position";
 export { applyBatch } from "./sequencing/applyBatch";
-export { createSequencer, type SequencerOptions } from "./sequencing/sequencer";
-export { type ClientDocumentChange, createClient } from "./sequencing/client";
+export {
+  type BatchAck,
+  type BatchReject,
+  type BatchSubmission,
+  createSequencer,
+  type SequencerOptions,
+} from "./sequencing/sequencer";
+export {
+  type ClientDocumentChange,
+  type ClientNotice,
+  createClient,
+} from "./sequencing/client";
 export {
   DEFAULT_ID_BLOCK_SIZES,
   ID_LEASE_REFUSAL_REASONS,

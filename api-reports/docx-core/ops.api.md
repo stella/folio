@@ -63,6 +63,13 @@ export const BATCH_REJECTION_REASONS: {
 // @public (undocumented)
 export const BATCH_WIRE_OP_TYPES: readonly string[];
 
+// @public (undocumented)
+export type BatchAck = {
+    type: "ack";
+    opId: string;
+    rev: number;
+};
+
 // @public
 export type BatchBlockAccess<Block> = {
     addresses: readonly Block[];
@@ -94,6 +101,14 @@ export type BatchOrderAddress = {
 };
 
 // @public (undocumented)
+export type BatchReject = {
+    type: "reject";
+    opId: string;
+    reason: BatchRejection;
+    headRev: number;
+};
+
+// @public (undocumented)
 export class BatchRejection extends BatchRejectionBase<{
     message: string;
     reason: BatchRejectionReason;
@@ -105,6 +120,9 @@ export class BatchRejection extends BatchRejectionBase<{
 
 // @public (undocumented)
 export type BatchRejectionReason = (typeof BATCH_REJECTION_REASONS)[keyof typeof BATCH_REJECTION_REASONS];
+
+// @public (undocumented)
+export type BatchSubmission = BatchAck | BatchReject;
 
 // @public
 export type BlockInsertionPoint = {
@@ -132,6 +150,13 @@ export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 export type ClientDocumentChange = {
     type: "rebased" | "replaced";
     batch: SequencedBatch;
+};
+
+// @public (undocumented)
+export type ClientNotice = {
+    opId: string;
+    reason: BatchRejection;
+    ops: readonly DocumentOp[];
 };
 
 // @public
