@@ -20,9 +20,12 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { deepFreeze } from "../__tests__/deepFreeze";
+import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { schema } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document, Paragraph } from "../types/document";
+import { readModel } from "../types/documentModel";
 import {
   type CanonicalCommit,
   CanonicalSessionError,
@@ -84,7 +87,9 @@ const harness = () => {
   };
   const readSessionDocument = () => {
     if (frozen) panic("A pending composition snapshot was read.");
-    return unavailable ? null : session.document;
+    // The story managers read the session's own document: each version is
+    // frozen as it is handed out, so a manager that wrote to it would throw.
+    return unavailable ? null : deepFreeze(session.document);
   };
   const api = createHiddenEditorApi({
     getView: () => null,
@@ -130,19 +135,15 @@ const harness = () => {
       }),
     ).toBe(0);
     expect(notes.listStories()).toEqual(
-      enumerateDocumentNoteStories(session.document),
+      enumerateDocumentNoteStories(readModel(session.document)),
     );
     expect(parts.listSlots()).toEqual(
-      enumerateDocumentHeaderFooterParts(session.document),
+      enumerateDocumentHeaderFooterParts(readModel(session.document)),
     );
-    assertExactModel(
-      notes.snapshotDocument(staleHostDocument),
-      session.document,
-    );
-    assertExactModel(
-      parts.snapshotDocument(staleHostDocument),
-      session.document,
-    );
+    // A snapshot is the host's copy of the (frozen) session document.
+    const owned = cloneDocumentWithParagraphPropertySources(session.document);
+    assertExactModel(notes.snapshotDocument(staleHostDocument), owned);
+    assertExactModel(parts.snapshotDocument(staleHostDocument), owned);
     for (const story of notes.listStories()) {
       const view = notes.activate(story);
       if (!view) panic("An owned canonical note did not mount.");
@@ -434,7 +435,11 @@ for (const target of [
           getHost: () => storyHost,
           getDocument: () => source,
           getCanonicalApi: () => manager.api,
-          readCanonicalDocument: () => manager.readCanonicalDocument(),
+          // Frozen as handed out: native story edits never write it.
+          readCanonicalDocument: () => {
+            const owned = manager.readCanonicalDocument();
+            return owned && deepFreeze(owned);
+          },
           getExperimentalSession: () => "canonical" as const,
           getStyles: () => null,
           getTheme: () => null,

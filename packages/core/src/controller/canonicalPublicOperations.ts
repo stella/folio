@@ -91,6 +91,7 @@ import type {
   ParagraphFormatting,
   Run,
 } from "../types/document";
+import { readModel } from "../types/documentModel";
 import {
   canonicalCommentBody,
   compileCanonicalComments,
@@ -848,7 +849,7 @@ export class CanonicalPublicOperations {
         : withDistinctSuggestionIds(
             parsed,
             new Set([
-              ...pendingSuggestionIdsIn(session.document),
+              ...pendingSuggestionIdsIn(readModel(session.document)),
               ...(options.pendingSuggestionIds ?? []),
             ]),
           );
@@ -860,11 +861,11 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
     const resolved: ResolvedOperation[] = [];
-    const mintList = createBatchListMinter(() => session.document);
+    const mintList = createBatchListMinter(() => readModel(session.document));
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
     if (!session.isComposing && options.revisionStamp === undefined) {
-      for (const currentStory of documentStories(session.document)) {
+      for (const currentStory of documentStories(readModel(session.document))) {
         const currentProjection = session.projectStory(currentStory);
         if (currentProjection.isOk())
           nextRevisionId = Math.max(
@@ -1112,7 +1113,7 @@ export class CanonicalPublicOperations {
       (left, right) =>
         right.from - left.from || left.to - left.from - (right.to - right.from),
     );
-    let document = session.document;
+    let document = readModel(session.document);
     const ops: DocumentOp[] = [];
     const appliedById = new Map<
       string,
@@ -1899,7 +1900,7 @@ export class CanonicalPublicOperations {
           newHalf: "second",
           newBlockId: createEditorIntentIdAllocator({
             reservedBlockIds: this.options.session.reservedBlockIds,
-          })(this.options.session.document, {
+          })(readModel(this.options.session.document), {
             type: "splitParagraph",
             at: from.value,
             to: to.value,
