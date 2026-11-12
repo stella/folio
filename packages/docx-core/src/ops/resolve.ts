@@ -1455,11 +1455,34 @@ const resolveList = (
     });
   };
   /**
-   * The cut a pending insertion recorded, once this resolution is done: a
-   * container it split that this resolution resolves away is a level of it no
-   * more. Kept as it was, a later resolution of the insertion would read the
-   * cut one level deeper than resolving both at once does. `undefined` when
-   * the cut stays as recorded.
+   * How many levels of the cut `node` recorded for its removal remain once
+   * this resolution is done, read against the records either side of it as
+   * the list held them: a container it split that this resolution resolves
+   * away is a level of it no more, and one whose content goes takes the cut
+   * with it. The one reading of a recorded removal cut, for a change this
+   * resolution removes and for one it leaves pending alike, so the cut joins
+   * the same records whichever resolution removes the pieces it split.
+   */
+  const cutLevelsOnceResolved = (node: InlineNode, index: number): number => {
+    if (!isTrackedWrapper(node)) return 0;
+    const depth = node.resolutionJoins?.remove ?? 0;
+    const before = index > 0 ? pending.at(index - 1) : undefined;
+    const after = pending.at(index + 1);
+    if (depth === 0 || before === undefined || after === undefined)
+      return depth;
+    return cutReach({
+      before: edgeChain(before, "end"),
+      after: edgeChain(after, "start"),
+      depth,
+      spanning: trackedWithin(node.content),
+      resolution,
+    }).levels;
+  };
+  /**
+   * The cut a pending insertion recorded, once this resolution is done (see
+   * {@link cutLevelsOnceResolved}). Kept as it was, a later resolution of the
+   * insertion would read the cut one level deeper than resolving both at once
+   * does. `undefined` when the cut stays as recorded.
    */
   const remainingCut = (
     node: InlineNode,
@@ -1467,19 +1490,8 @@ const resolveList = (
   ): number | undefined => {
     if (!isAddedRevision(node) || resolution.ids.has(node.info.id))
       return undefined;
-    const depth = node.resolutionJoins?.remove ?? 0;
-    const before = index > 0 ? pending.at(index - 1) : undefined;
-    const after = pending.at(index + 1);
-    if (depth === 0 || before === undefined || after === undefined)
-      return undefined;
-    const { levels } = cutReach({
-      before: edgeChain(before, "end"),
-      after: edgeChain(after, "start"),
-      depth,
-      spanning: trackedWithin(node.content),
-      resolution,
-    });
-    return levels < depth ? levels : undefined;
+    const levels = cutLevelsOnceResolved(node, index);
+    return levels < (node.resolutionJoins?.remove ?? 0) ? levels : undefined;
   };
   const appendUnowned = (items: readonly InlineNode[]): void => {
     out.push(...items.map((node) => ({ node, owner: undefined })));
@@ -1624,8 +1636,11 @@ const resolveList = (
         else if ((node.resolutionJoins.plainSides?.length ?? 0) > 0)
           plainSeams.add(out.length);
         else {
-          recordSourceSeam(out.length, node.resolutionJoins.remove);
-          if (node.resolutionJoins.remove > 0) removalSeams.add(out.length);
+          // Pieces of the cut this resolution also removes take that level
+          // of it with them: the cut joins only what remains of what it split.
+          const removalCut = cutLevelsOnceResolved(node, index);
+          recordSourceSeam(out.length, removalCut);
+          if (removalCut > 0) removalSeams.add(out.length);
         }
         continue;
       }
