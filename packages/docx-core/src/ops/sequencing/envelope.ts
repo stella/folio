@@ -236,9 +236,9 @@ export const TABLE_EXCLUSIVE_OP_TYPES: {
 
 /**
  * The effect the sequencer records for each kind: none for an operation the
- * position transform rebases by its own fields or that changes no paragraph,
- * the split half or join length a position needs, or the paragraphs a
- * block-scoped operation or a comment's anchors touched.
+ * position transform rebases by its own fields, the split half or join length
+ * a position needs, or the paragraphs a block-scoped operation or a comment's
+ * anchors touched.
  */
 export const SEQUENCED_EFFECT_TYPES: Readonly<
   Record<DocumentOpType, SequencedOpEffect["type"]>
@@ -285,8 +285,8 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
   addNote: "touchedBlocks",
   removeNote: "touchedBlocks",
   createComment: "touchedBlocks",
-  updateCommentContent: NO_SEQUENCED_EFFECT,
-  setCommentResolution: NO_SEQUENCED_EFFECT,
+  updateCommentContent: "touchedBlocks",
+  setCommentResolution: "touchedBlocks",
   deleteComment: "touchedBlocks",
   restoreCommentState: "touchedBlocks",
 });

@@ -568,73 +568,77 @@ describe("canonical sequencing", () => {
     propertyTestTimeout(180_000),
   );
 
-  test("a comment id outside the submitter's lease is refused", () => {
-    assertProperty(
-      fc.property(
-        fc.nat({ max: 1023 }),
-        fc.constantFrom("comment" as const, "pointComment" as const),
-        (offset, kind) => {
-          const base = canonicalBase();
-          const sequencer = createSequencer(base);
-          const own = sequencer.grantIdLease("actor-0");
-          const other = sequencer.grantIdLease("actor-1");
-          if (own.isErr()) throw own.error;
-          if (other.isErr()) throw other.error;
-          const block = other.value.blocks.find(
-            ({ kind: leased }) => leased === ID_LEASE_KINDS.COMMENT,
-          );
-          if (block === undefined) throw new Error("No comment lease block.");
-          const ops = compileCanonicalEdit(
-            base,
-            {
-              actor: "actor-0",
-              tag: "0",
-              lease: own.value,
-              allocate: createEditorIntentIdAllocator(),
-            },
-            { kind, a: 24, b: 0, suggest: false },
-            1,
-          );
-          const created = ops?.at(0);
-          if (created?.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT)
-            throw new Error("The comment edit did not compile.");
-          // The same comment under an id another actor leases.
-          const forged = {
-            ...created,
-            comment: {
-              ...created.comment,
-              id: block.start + (offset % (block.end - block.start)),
-            },
-          };
-          const result = sequencer.submit(
-            wire({
-              schema: DOCUMENT_OP_SCHEMA_VERSION,
-              opId: "forged",
-              actor: "actor-0",
-              baseRev: 0,
-              ops: [forged],
-            }),
-          );
-          expect(result.type).toBe("reject");
-          if (result.type !== "reject") return;
-          expect(result.reason.reason).toBe(
-            BATCH_REJECTION_REASONS.OUTSIDE_ID_LEASE,
-          );
-          expect(result.reason.idKind).toBe(ID_LEASE_KINDS.COMMENT);
-          // The honest comment is accepted.
-          const honest = sequencer.submit(
-            wire({
-              schema: DOCUMENT_OP_SCHEMA_VERSION,
-              opId: "honest",
-              actor: "actor-0",
-              baseRev: 0,
-              ops: [created],
-            }),
-          );
-          expect(honest.type).toBe("ack");
-        },
-      ),
-      { numRuns: 20 },
-    );
-  });
+  test(
+    "a comment id outside the submitter's lease is refused",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.nat({ max: 1023 }),
+          fc.constantFrom("comment" as const, "pointComment" as const),
+          (offset, kind) => {
+            const base = canonicalBase();
+            const sequencer = createSequencer(base);
+            const own = sequencer.grantIdLease("actor-0");
+            const other = sequencer.grantIdLease("actor-1");
+            if (own.isErr()) throw own.error;
+            if (other.isErr()) throw other.error;
+            const block = other.value.blocks.find(
+              ({ kind: leased }) => leased === ID_LEASE_KINDS.COMMENT,
+            );
+            if (block === undefined) throw new Error("No comment lease block.");
+            const ops = compileCanonicalEdit(
+              base,
+              {
+                actor: "actor-0",
+                tag: "0",
+                lease: own.value,
+                allocate: createEditorIntentIdAllocator(),
+              },
+              { kind, a: 24, b: 0, suggest: false },
+              1,
+            );
+            const created = ops?.at(0);
+            if (created?.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT)
+              throw new Error("The comment edit did not compile.");
+            // The same comment under an id another actor leases.
+            const forged = {
+              ...created,
+              comment: {
+                ...created.comment,
+                id: block.start + (offset % (block.end - block.start)),
+              },
+            };
+            const result = sequencer.submit(
+              wire({
+                schema: DOCUMENT_OP_SCHEMA_VERSION,
+                opId: "forged",
+                actor: "actor-0",
+                baseRev: 0,
+                ops: [forged],
+              }),
+            );
+            expect(result.type).toBe("reject");
+            if (result.type !== "reject") return;
+            expect(result.reason.reason).toBe(
+              BATCH_REJECTION_REASONS.OUTSIDE_ID_LEASE,
+            );
+            expect(result.reason.idKind).toBe(ID_LEASE_KINDS.COMMENT);
+            // The honest comment is accepted.
+            const honest = sequencer.submit(
+              wire({
+                schema: DOCUMENT_OP_SCHEMA_VERSION,
+                opId: "honest",
+                actor: "actor-0",
+                baseRev: 0,
+                ops: [created],
+              }),
+            );
+            expect(honest.type).toBe("ack");
+          },
+        ),
+        { numRuns: 20, id: "comment ids outside the submitter's lease" },
+      );
+    },
+    propertyTestTimeout(60_000),
+  );
 });
