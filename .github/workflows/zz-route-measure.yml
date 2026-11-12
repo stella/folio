@@ -1,0 +1,150 @@
+name: Scratch measure (canonical save routing)
+
+on:
+  push:
+    branches: [scratch/canonical-save-routing-measure]
+
+permissions:
+  contents: read
+
+env:
+  # The main commit the branch is cut from: the "main" side is the branch with
+  # its changed source files restored from this commit.
+  BASE_SHA: 8ed22671821ae0f197994e688977cd68d2c25bb2
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+      - run: bun install --frozen-lockfile
+      - name: Install Playwright Chromium
+        uses: ./.github/actions/playwright-deps
+      - name: Fetch LIR011
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/LIR011.docx" https://raw.githubusercontent.com/sergey-tihon/Clippit/9dde33e87ec2a7853b47817a6531146da9ea59f8/TestFiles/LIR011-en-US-00001.docx
+          echo "081b67114122d684ae6dcc4bf249964ba0e3b908c3fb58be70db30592cd0d4c9  $RUNNER_TEMP/LIR011.docx" | sha256sum -c -
+      - name: Build the branch and main playgrounds
+        run: |
+          set -eu
+          bun --filter @stll/playground build
+          mv packages/playground/dist packages/playground/dist-branch
+          changed=$(git diff --name-only --diff-filter=M "$BASE_SHA" HEAD~1 -- packages ':!**/*.test.ts' ':!**/*.test.tsx')
+          echo "restored from $BASE_SHA: $changed"
+          git checkout "$BASE_SHA" -- $changed
+          git status --short -uno
+          bun --filter @stll/playground build
+          mv packages/playground/dist packages/playground/dist-main
+          git checkout HEAD -- $changed
+          (cd packages/playground/dist-branch && find . -type f -name '*.js' | sort | xargs sha256sum | sha256sum)
+          (cd packages/playground/dist-main && find . -type f -name '*.js' | sort | xargs sha256sum | sha256sum)
+      - name: Serve both
+        run: |
+          cd packages/playground
+          (FOLIO_PLAYGROUND_PORT=4200 bunx vite preview --outDir dist-main > "$RUNNER_TEMP/preview-main.log" 2>&1 &)
+          (FOLIO_PLAYGROUND_PORT=4201 bunx vite preview --outDir dist-branch > "$RUNNER_TEMP/preview-branch.log" 2>&1 &)
+          for port in 4200 4201; do
+            for i in $(seq 1 60); do curl -sf "http://localhost:$port" > /dev/null && break; sleep 2; done
+            curl -sf "http://localhost:$port" > /dev/null
+          done
+      - name: Rounds
+        env:
+          FOLIO_ZZ_LIR011: ${{ runner.temp }}/LIR011.docx
+          FOLIO_ZZ_SAVE_ALL: "1"
+        run: bash scripts/zz-splice/rounds.sh "$RUNNER_TEMP/save" 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: save-timings
+          path: ${{ runner.temp }}/save
+          retention-days: 7
+
+  flip:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+      - run: bun install --frozen-lockfile
+      - name: Install Playwright Chromium
+        uses: ./.github/actions/playwright-deps
+      - name: Fetch LIR011
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/LIR011.docx" https://raw.githubusercontent.com/sergey-tihon/Clippit/9dde33e87ec2a7853b47817a6531146da9ea59f8/TestFiles/LIR011-en-US-00001.docx
+          echo "081b67114122d684ae6dcc4bf249964ba0e3b908c3fb58be70db30592cd0d4c9  $RUNNER_TEMP/LIR011.docx" | sha256sum -c -
+      - name: Build and serve the React playground (main's code)
+        run: |
+          set -eu
+          changed=$(git diff --name-only --diff-filter=M "$BASE_SHA" HEAD~1 -- packages ':!**/*.test.ts' ':!**/*.test.tsx')
+          echo "restored from $BASE_SHA: $changed"
+          git checkout "$BASE_SHA" -- $changed
+          git status --short -uno
+          bun scripts/playground-build.ts packages/playground
+          (bun --filter @stll/playground preview > "$RUNNER_TEMP/preview.log" 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://localhost:4200 > /dev/null && break; sleep 2; done
+          curl -sf http://localhost:4200 > /dev/null
+      - name: Rounds
+        env:
+          FOLIO_ZZ_LIR011: ${{ runner.temp }}/LIR011.docx
+          FOLIO_ZZ_SAVE_ALL: "1"
+        run: bash scripts/zz-splice/flip-rounds.sh "$RUNNER_TEMP/flip" 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: flip-timings
+          path: ${{ runner.temp }}/flip
+          retention-days: 7
+
+  break:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+      - run: bun install --frozen-lockfile
+      - name: Routing tests, branch code
+        working-directory: packages/core
+        run: bun test src/docx/selectiveXmlPatchReplay.property.test.ts src/docx/documentBlockReplay.property.test.ts
+      - name: Reads, the replay ignored by the router (must fail)
+        working-directory: packages/core
+        run: |
+          set +e
+          grep -n 'replay?.source === originalXml ? replay.splices : undefined' src/docx/selectiveXmlPatch.ts || { echo "planted line missing"; exit 1; }
+          sed -i 's/replay?.source === originalXml ? replay.splices : undefined/undefined/' src/docx/selectiveXmlPatch.ts
+          git diff --stat
+          bun test src/docx/selectiveXmlPatchReplay.property.test.ts -t "work per routed save" > "$RUNNER_TEMP/break-reads.log" 2>&1
+          rc=$?
+          grep -E "\(fail\)|\(pass\)|Expected|Received" "$RUNNER_TEMP/break-reads.log" | head -40
+          git checkout HEAD -- src/docx/selectiveXmlPatch.ts
+          if [ "$rc" = 0 ]; then echo "BREAK NOT DETECTED"; exit 1; fi
+          echo "BREAK DETECTED"
+      - name: Bytes, a replacement's end state not compared (must fail)
+        working-directory: packages/core
+        run: |
+          set +e
+          grep -n '!sameScanState(replacement.end, exit)' src/docx/selectiveXmlPatch.ts || { echo "planted line missing"; exit 1; }
+          sed -i 's/!sameScanState(replacement.end, exit)/false/' src/docx/selectiveXmlPatch.ts
+          git diff --stat
+          bun test src/docx/selectiveXmlPatchReplay.property.test.ts -t "routing a replayed document part" > "$RUNNER_TEMP/break-bytes.log" 2>&1
+          rc=$?
+          grep -E "\(fail\)|\(pass\)|Expected|Received|Counterexample|seed" "$RUNNER_TEMP/break-bytes.log" | head -60
+          git checkout HEAD -- src/docx/selectiveXmlPatch.ts
+          if [ "$rc" = 0 ]; then echo "BREAK NOT DETECTED"; exit 1; fi
+          echo "BREAK DETECTED"
