@@ -358,14 +358,6 @@ export const transformByFootprint = ({
   const touched = effect?.type === TOUCHED_BLOCKS_EFFECT ? effect : undefined;
   const changed = keys([...theirs.blocks, ...(touched?.blockIds ?? [])]);
   const addressed = mine.blocks.map(idKey);
-  if (
-    restructuresTable(op) &&
-    addressed.some((id) => keys(touched?.tableBlockIds ?? []).has(id))
-  )
-    return refuse(
-      BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
-      "A concurrent operation restructured the same table.",
-    );
   if (addressed.some((id) => changed.has(id)))
     return refuse(
       BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
