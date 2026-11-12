@@ -5,6 +5,7 @@
 ```ts
 
 import { Attrs } from 'prosemirror-model';
+import { DeepReadonly } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { ImportedIdCollisionKind } from '@stll/docx-core/model';
 import { Mark } from 'prosemirror-model';
@@ -55,7 +56,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 
 // @public
 export type ToProseDocOptions = {
-    styles?: import__stll_docx_core_model.StyleDefinitions;
+    styles?: DeepReadonly<import__stll_docx_core_model.StyleDefinitions>;
     numbering?: import__stll_docx_core_model.NumberingDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
     warn?: ParseContext["warn"];
