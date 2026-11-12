@@ -127,6 +127,8 @@ const insertionOf = (
         ...beside,
         text: `${label} first.\n${label} second.`,
         ...looking(look),
+        // Both paragraphs ask for the look, so both are checked for it.
+        formattingScope: "allParagraphs",
       };
     case "newList":
       return {
