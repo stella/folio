@@ -16,7 +16,13 @@ import type {
   Paragraph,
   RunContent,
 } from "@stll/docx-core/model";
-import { OP_STORIES } from "@stll/docx-core/ops";
+import {
+  commentAnchorSequence,
+  commentDocumentIssue,
+  documentStories,
+  findStoryBody,
+  OP_STORIES,
+} from "@stll/docx-core/ops";
 
 import {
   assertProperty,
@@ -26,6 +32,7 @@ import {
 import { table } from "../docx/server/build";
 import type { Document } from "../types/document";
 import {
+  changedWindow,
   unsupportedEditReason,
   unsupportedSeedReason,
   unsupportedSeedReasonWholeDocument,
@@ -552,4 +559,112 @@ describe("canonical seed check", () => {
       verdict,
     );
   });
+});
+
+// Deliberate breaks of the decision to skip the comment check, each run
+// against the pinned case and both properties. A break is caught when it
+// skips the check on a result the comment check refuses.
+const ATTACHMENT_MARKERS = new Set([
+  "noParagraph",
+  "firstParagraph",
+  "heldPastLastParagraph",
+]);
+type Sequence = (blocks: readonly BlockContent[]) => string[];
+const keptBy =
+  (
+    sequence: Sequence,
+    { definitions = true, storyCount = true } = {},
+  ): ((step: EditStep) => boolean) =>
+  ({ previous, document, stories }) =>
+    (!definitions ||
+      document.package.document.comments ===
+        previous.package.document.comments) &&
+    (!storyCount ||
+      documentStories(document).length === documentStories(previous).length) &&
+    stories.every((story) => {
+      const { removed, added } = changedWindow(
+        findStoryBody(previous, story)?.content ?? [],
+        findStoryBody(document, story)?.content ?? [],
+      );
+      const left = sequence(removed);
+      const right = sequence(added);
+      return (
+        left.length === right.length &&
+        left.every((entry, index) => entry === right[index])
+      );
+    });
+const flatten = (blocks: readonly BlockContent[]): BlockContent[] =>
+  blocks.map((block) =>
+    block.type === "table" || block.type === "blockSdt"
+      ? { type: "paragraph", content: [] }
+      : block,
+  );
+const breaks: [string, (step: EditStep) => boolean][] = [
+  ["unchanged decision", keptBy(commentAnchorSequence)],
+  [
+    "no paragraph attachment markers",
+    keptBy((blocks) =>
+      commentAnchorSequence(blocks).filter(
+        (entry) => !ATTACHMENT_MARKERS.has(entry),
+      ),
+    ),
+  ],
+  [
+    "text boxes ignored",
+    keptBy((blocks) => {
+      const sequence = commentAnchorSequence(blocks);
+      return sequence.slice(0, sequence.indexOf("textBoxes"));
+    }),
+  ],
+  [
+    "content controls and cells ignored",
+    keptBy((blocks) => commentAnchorSequence(flatten(blocks))),
+  ],
+  [
+    "anchors compared as a set",
+    keptBy((blocks) => commentAnchorSequence(blocks).toSorted()),
+  ],
+  [
+    "definitions ignored",
+    keptBy(commentAnchorSequence, { definitions: false }),
+  ],
+  ["story count ignored", keptBy(commentAnchorSequence, { storyCount: false })],
+];
+test("deliberate breaks of the comment skip", () => {
+  const rows: string[] = [];
+  for (const [name, kept] of breaks) {
+    const judge = (step: EditStep) => {
+      if (
+        kept(step) &&
+        commentDocumentIssue(step.document, "all") !== undefined
+      )
+        throw new Error("skipped a refused comment state");
+    };
+    const original = fc.property(
+      fc.array(blockOf, { maxLength: 5 }),
+      fc.array(blockOf, { maxLength: 2 }),
+      fc.uniqueArray(commentIds, { maxLength: 3 }),
+      fc.array(fc.tuple(editOf, fc.boolean()), {
+        minLength: 1,
+        maxLength: 10,
+      }),
+      (body, note, ids, edits) => eachEdit([body, note, ids, edits], judge),
+    );
+    const pinned = fc.check(original, {
+      seed: -71963594,
+      path: "428:2:4:5:6:5:6:6:6:6:6",
+    }).failed;
+    const generated = fc.check(original, { numRuns: 600, seed: 1 }).failed;
+    const nested = fc.check(
+      fc.property(editChainOf(nestedBlockOf), (chain) =>
+        eachEdit(chain, judge),
+      ),
+      { numRuns: 400, seed: 1 },
+    ).failed;
+    rows.push(
+      `BREAK ${name}: pinned=${String(pinned)} property=${String(generated)} nested=${String(nested)}`,
+    );
+  }
+  console.log(rows.join("\n"));
+  expect(rows.length).toBe(breaks.length);
 });
