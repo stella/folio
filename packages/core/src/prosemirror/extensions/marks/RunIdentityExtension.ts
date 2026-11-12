@@ -5,9 +5,9 @@
  * Ordinary formatting marks cannot tell two adjacent source runs with
  * identical properties apart, so the save leg would fold them into one and
  * discard whichever record it did not keep. This mark is what keeps them
- * apart: it is in `getMarksKey`, so a change of identity is a run boundary,
- * and `joinsOwnedSourceRun` rejoins the leaves a page break cut out of one
- * authored run.
+ * apart: the save leg's `lineRunKey` keys on an identity that carries a
+ * record, so a change of it is a run boundary, and `joinRun` rejoins the
+ * leaves a page break cut out of one authored run.
  *
  * `inclusive: false` settles the edges. The interior is settled by the strip
  * below: ProseMirror's stored marks at a position inside a span include every

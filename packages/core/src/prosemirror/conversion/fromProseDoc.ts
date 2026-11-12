@@ -3434,7 +3434,6 @@ function extractParagraphContent(
 
   // Track current run being built
   let currentRun: Run | null = null;
-  let currentMarksKey: string | null = null;
   let currentHyperlink: Hyperlink | null = null;
   let currentHyperlinkKey: string | null = null;
   let currentTrackedChange:
@@ -3451,7 +3450,7 @@ function extractParagraphContent(
         hyperlinkKey: string;
       }
     | undefined;
-  const sourceRunOwners = new WeakMap<Run, number>();
+  const runJoins: RunJoins = { owners: new WeakMap(), lineKeys: new WeakMap() };
   const sourceHyperlinkIndices = new WeakMap<Hyperlink, number>();
   const revisionOuterWrapperCounts = new WeakMap<TrackedRunWrapper, number>();
   const revisionAncestorsByWrapper = new WeakMap<
@@ -3509,7 +3508,6 @@ function extractParagraphContent(
     if (currentRun) {
       content.push(currentRun);
       currentRun = null;
-      currentMarksKey = null;
     }
     if (currentHyperlink) {
       content.push(currentHyperlink);
@@ -3518,66 +3516,20 @@ function extractParagraphContent(
     }
   };
 
-  const appendDirectRun = (
-    node: PMNode,
-    run: Run,
-    coalescePlainText = false,
-  ): void => {
+  const appendDirectRun = (node: PMNode, run: Run): void => {
     // A run outside the open hyperlink follows it: close the hyperlink first,
     // or `flushCurrentInline` writes the run ahead of the hyperlink it follows.
     if (currentHyperlink) {
       flushCurrentInline();
     }
-    const marksKey = getMarksKey(
-      node.marks.filter((mark) => {
-        if (mark.type.name !== RUN_IDENTITY_MARK_NAME) return true;
-        const { emptyFormatting, preservedAttributes, preserved } =
-          expectRunIdentityMarkAttrs(mark);
-        // Empty-property presence belongs to the modeled formatting, not a run boundary.
-        return (
-          emptyFormatting !== true ||
-          (preservedAttributes?.length ?? 0) > 0 ||
-          (preserved?.children?.length ?? 0) > 0
-        );
-      }),
-    );
-    const ownerId = runIdentityId(node);
-    const currentOwnerId = currentRun
-      ? sourceRunOwners.get(currentRun)
-      : undefined;
-    const currentRunIsPlainText = currentRun?.content.every(isTextLeafContent);
-    const joinsOwnedSourceRun =
-      ownerId !== undefined &&
-      ownerId === currentOwnerId &&
-      currentRun !== null &&
-      runsShareProperties(currentRun, run);
-    const joinsOrdinaryText =
-      coalescePlainText &&
-      currentRun !== null &&
-      runsShareProperties(currentRun, run) &&
-      currentRunIsPlainText === true &&
-      currentMarksKey === marksKey;
-
-    if (currentRun && (joinsOwnedSourceRun || joinsOrdinaryText)) {
-      if (joinsOrdinaryText) {
-        for (const runContent of run.content) {
-          if (runContent.type === "text") {
-            appendTextToRun(currentRun, runContent.text);
-          } else {
-            currentRun.content.push(runContent);
-          }
-        }
-      } else {
-        currentRun.content.push(...run.content);
-      }
+    if (currentRun && joinRun({ previous: currentRun, run, node, runJoins })) {
       return;
     }
     if (currentRun) {
       content.push(currentRun);
     }
     currentRun = run;
-    currentMarksKey = marksKey;
-    rememberSourceRunOwner(run, node, sourceRunOwners);
+    rememberRunJoins(run, node, runJoins);
   };
 
   const trackedBoundary = (node: PMNode) => {
@@ -4214,7 +4166,7 @@ function extractParagraphContent(
             ...formattingContext,
             hyperlink: currentTrackedChange.hyperlink,
             node,
-            sourceRunOwners,
+            runJoins,
           });
           return;
         }
@@ -4240,7 +4192,7 @@ function extractParagraphContent(
             currentTrackedChange.hyperlink,
             run,
             node,
-            sourceRunOwners,
+            runJoins,
           );
         }
         return;
@@ -4303,7 +4255,7 @@ function extractParagraphContent(
           currentTrackedChange.wrapper,
           run,
           node,
-          sourceRunOwners,
+          runJoins,
         );
       }
       return;
@@ -4320,7 +4272,7 @@ function extractParagraphContent(
               node,
             })));
     if (ownedRun) {
-      appendDirectRun(node, ownedRun, node.isText);
+      appendDirectRun(node, ownedRun);
       return;
     }
 
@@ -4372,18 +4324,13 @@ function extractParagraphContent(
         currentHyperlinkKey = linkKey;
       }
       if (anchorRun) {
-        appendRunToHyperlink(
-          currentHyperlink,
-          anchorRun,
-          node,
-          sourceRunOwners,
-        );
+        appendRunToHyperlink(currentHyperlink, anchorRun, node, runJoins);
       } else {
         addNodeToHyperlink({
           ...formattingContext,
           hyperlink: currentHyperlink,
           node,
-          sourceRunOwners,
+          runJoins,
         });
       }
       return;
@@ -4406,7 +4353,6 @@ function extractParagraphContent(
           marks: node.marks,
           text: node.text || "",
         }),
-        true,
       );
     } else if (node.type.name === "pageBreakRun") {
       const { clear } = expectPageBreakRunAttrs(node);
@@ -4435,9 +4381,8 @@ function extractParagraphContent(
           : createPreservedXmlRun(node, node.marks, formattingContext),
       );
     } else if (node.type.name === "hardBreak") {
-      // Hard break ends current run
-      flushCurrentInline();
-      content.push(
+      appendDirectRun(
+        node,
         createBreakRun(
           expectHardBreakAttrs(node),
           node.marks,
@@ -4453,9 +4398,7 @@ function extractParagraphContent(
       flushCurrentInline();
       content.push(createShapeRun(node));
     } else if (node.type.name === "tab") {
-      // Tab ends current run
-      flushCurrentInline();
-      content.push(createTabRun(node, node.marks, formattingContext));
+      appendDirectRun(node, createTabRun(node, node.marks, formattingContext));
     } else if (node.type.name === "renderedPageBreak") {
       flushCurrentInline();
       content.push(createRenderedPageBreakRun());
@@ -4775,7 +4718,7 @@ function createHyperlink(linkMark: Mark): Hyperlink {
 type AddNodeToHyperlinkOptions = RunFormattingContext & {
   hyperlink: Hyperlink;
   node: PMNode;
-  sourceRunOwners: WeakMap<Run, number>;
+  runJoins: RunJoins;
 };
 
 function addNodeToHyperlink({
@@ -4784,7 +4727,7 @@ function addNodeToHyperlink({
   inheritedFormatting,
   node,
   paragraphMarkFormatting,
-  sourceRunOwners,
+  runJoins,
   styleResolver,
 }: AddNodeToHyperlinkOptions): void {
   if (node.type.name === "bookmarkBoundary") {
@@ -4811,7 +4754,7 @@ function addNodeToHyperlink({
           node,
         });
   if (ownedRun) {
-    appendRunToHyperlink(hyperlink, ownedRun, node, sourceRunOwners);
+    appendRunToHyperlink(hyperlink, ownedRun, node, runJoins);
     return;
   }
 
@@ -4837,7 +4780,7 @@ function addNodeToHyperlink({
       styleResolver,
       text: node.text,
     });
-    hyperlink.children.push(run);
+    appendRunToHyperlink(hyperlink, run, node, runJoins);
     return;
   }
 
@@ -4878,13 +4821,15 @@ function addNodeToHyperlink({
   }
 
   if (node.type.name === "hardBreak") {
-    hyperlink.children.push(
-      createBreakRun(expectHardBreakAttrs(node), nonLinkMarks, {
-        baseParagraphFormatting,
-        inheritedFormatting,
-        paragraphMarkFormatting,
-        styleResolver,
-      }),
+    appendRunToHyperlink(
+      hyperlink,
+      createBreakRun(
+        expectHardBreakAttrs(node),
+        nonLinkMarks,
+        formattingContext,
+      ),
+      node,
+      runJoins,
     );
     return;
   }
@@ -4902,13 +4847,11 @@ function addNodeToHyperlink({
   }
 
   if (node.type.name === "tab") {
-    hyperlink.children.push(
-      createTabRun(node, nonLinkMarks, {
-        baseParagraphFormatting,
-        inheritedFormatting,
-        paragraphMarkFormatting,
-        styleResolver,
-      }),
+    appendRunToHyperlink(
+      hyperlink,
+      createTabRun(node, nonLinkMarks, formattingContext),
+      node,
+      runJoins,
     );
     return;
   }
@@ -5212,10 +5155,12 @@ function runsShareProperties(left: Run, right: Run): boolean {
 /**
  * The authored `w:r` this leaf came from, when it names one.
  *
- * Two leaves that share an id are two pieces of one authored run — the cut a
- * page-break atom makes — and the save leg rejoins them. Two leaves with
- * different ids are two runs however alike their formatting, which is what
- * keeps both sides' `w:rsid*` alive across a paragraph the editor rebuilt.
+ * Two leaves that share an id are two pieces of one authored run (the cut a
+ * page-break atom makes), and the save leg rejoins them. Two leaves whose ids
+ * carry an attribute remainder or a property sink are two runs however alike
+ * their formatting, which is what keeps both sides' `w:rsid*` alive across a
+ * paragraph the editor rebuilt; see {@link lineRunKey} for the ids that carry
+ * neither.
  */
 function runIdentityId(node: PMNode): number | undefined {
   const mark = node.marks.find(
@@ -5224,27 +5169,115 @@ function runIdentityId(node: PMNode): number | undefined {
   return mark ? expectRunIdentityMarkAttrs(mark).id : undefined;
 }
 
-function canJoinOwnedRuns(
-  previous: Run | undefined,
-  run: Run,
-  node: PMNode,
-  sourceRunOwners: WeakMap<Run, number>,
-): previous is Run {
-  if (!previous || !runsShareProperties(previous, run)) {
-    return false;
-  }
-  const ownerId = runIdentityId(node);
-  return ownerId !== undefined && sourceRunOwners.get(previous) === ownerId;
+/** What the save leg records of each run it starts, so a later leaf can continue it. */
+type RunJoins = {
+  /** The authored run identity a written run was started from. */
+  owners: WeakMap<Run, number>;
+  /** The {@link lineRunKey} of the leaf a written run was started from. */
+  lineKeys: WeakMap<Run, string>;
+};
+
+/** Run content a line of text is made of: text, tabs and line breaks. */
+function isLineContent(content: RunContent): boolean {
+  return (
+    isTextLeafContent(content) ||
+    content.type === "tab" ||
+    (content.type === "break" && content.breakType !== "page")
+  );
 }
 
-function rememberSourceRunOwner(
-  run: Run,
-  node: PMNode,
-  sourceRunOwners: WeakMap<Run, number>,
-): void {
+/**
+ * The key under which `node` continues a run without naming it, or
+ * `undefined` when it continues only the authored run its identity names.
+ *
+ * Text, tabs and line breaks write into one `w:r` when nothing the package
+ * records tells their runs apart: the same properties and the same marks. A
+ * run identity carrying a `w:r` attribute remainder or a `w:rPr` sink is such
+ * a record, and only the leaves of that one run continue it. An identity
+ * without either records nothing. It only groups the leaves of one authored
+ * run, and a save that cuts the run, as a property change over part of it
+ * does, writes pieces that read back without it: a piece of text alone mints
+ * no identity. Keying on it would rejoin the pieces in the editor that cut
+ * them and keep them apart in the reopened package, so resolving the change
+ * would give two different documents.
+ */
+function lineRunKey(node: PMNode): string | undefined {
+  // A page break is a `pageBreakRun` node, never a `hardBreak`.
+  const lineLeaf =
+    node.isText || node.type.name === "tab" || node.type.name === "hardBreak";
+  if (!lineLeaf) return undefined;
+  const marks: Mark[] = [];
+  for (const mark of node.marks) {
+    if (mark.type.name !== RUN_IDENTITY_MARK_NAME) {
+      marks.push(mark);
+      continue;
+    }
+    // Empty-property presence is the run's modeled formatting, which
+    // `runsShareProperties` compares; it is no run boundary of its own.
+    const { preservedAttributes, preserved } = expectRunIdentityMarkAttrs(mark);
+    if (
+      (preservedAttributes?.length ?? 0) > 0 ||
+      (preserved?.children?.length ?? 0) > 0
+    ) {
+      return undefined;
+    }
+  }
+  return getMarksKey(marks);
+}
+
+type JoinRunOptions = {
+  previous: Run;
+  run: Run;
+  /** The leaf `run` was written from. */
+  node: PMNode;
+  runJoins: RunJoins;
+};
+
+/**
+ * Append `run` to `previous` when the two write one `w:r`, and say whether it
+ * did. The one decision every container (paragraph, hyperlink, revision)
+ * takes about whether a leaf starts a run.
+ *
+ * Two leaves continue one run when they state the same properties and either
+ * both are line leaves under one {@link lineRunKey}, or both are pieces of the
+ * authored run one identity names (the cut a page-break atom makes).
+ */
+function joinRun({ previous, run, node, runJoins }: JoinRunOptions): boolean {
+  if (!runsShareProperties(previous, run)) {
+    return false;
+  }
+  const lineKey = lineRunKey(node);
+  if (
+    lineKey !== undefined &&
+    runJoins.lineKeys.get(previous) === lineKey &&
+    previous.content.every(isLineContent)
+  ) {
+    for (const runContent of run.content) {
+      if (runContent.type === "text") {
+        appendTextToRun(previous, runContent.text);
+      } else {
+        previous.content.push(runContent);
+      }
+    }
+    return true;
+  }
+  const ownerId = runIdentityId(node);
+  if (ownerId !== undefined && runJoins.owners.get(previous) === ownerId) {
+    previous.content.push(...run.content);
+    return true;
+  }
+  return false;
+}
+
+/** Record what a later leaf needs to continue `run`, which `node` started. */
+function rememberRunJoins(run: Run, node: PMNode, runJoins: RunJoins): void {
   const ownerId = runIdentityId(node);
   if (ownerId !== undefined) {
-    sourceRunOwners.set(run, ownerId);
+    runJoins.owners.set(run, ownerId);
+  }
+  const lineKey = lineRunKey(node);
+  if (lineKey !== undefined) {
+    runJoins.lineKeys.set(run, lineKey);
   }
 }
 
@@ -5252,36 +5285,28 @@ function appendRunToTrackedWrapper(
   wrapper: TrackedRunWrapper,
   run: Run,
   node: PMNode,
-  sourceRunOwners: WeakMap<Run, number>,
+  runJoins: RunJoins,
 ): void {
   const previous = wrapper.content.at(-1);
-  if (
-    previous?.type === "run" &&
-    canJoinOwnedRuns(previous, run, node, sourceRunOwners)
-  ) {
-    previous.content.push(...run.content);
+  if (previous?.type === "run" && joinRun({ previous, run, node, runJoins })) {
     return;
   }
   wrapper.content.push(run);
-  rememberSourceRunOwner(run, node, sourceRunOwners);
+  rememberRunJoins(run, node, runJoins);
 }
 
 function appendRunToHyperlink(
   hyperlink: Hyperlink,
   run: Run,
   node: PMNode,
-  sourceRunOwners: WeakMap<Run, number>,
+  runJoins: RunJoins,
 ): void {
   const previous = hyperlink.children.at(-1);
-  if (
-    previous?.type === "run" &&
-    canJoinOwnedRuns(previous, run, node, sourceRunOwners)
-  ) {
-    previous.content.push(...run.content);
+  if (previous?.type === "run" && joinRun({ previous, run, node, runJoins })) {
     return;
   }
   hyperlink.children.push(run);
-  rememberSourceRunOwner(run, node, sourceRunOwners);
+  rememberRunJoins(run, node, runJoins);
 }
 
 type CreatePageBreakCarrierRunOptions = RunFormattingContext & {
