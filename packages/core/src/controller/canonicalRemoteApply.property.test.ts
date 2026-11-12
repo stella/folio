@@ -8,6 +8,7 @@ import {
   createClient,
   createSequencer,
   DOCUMENT_OP_SCHEMA_VERSION,
+  INHERIT_RUN_PROPS,
   OP_STORIES,
   paragraphLength,
   paragraphLogicalText,
@@ -17,6 +18,7 @@ import {
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyConfig,
@@ -49,11 +51,16 @@ setDefaultTimeout(propertyTestTimeout(120_000));
  * paragraph again. Characters are unique per keystroke, so the final
  * document says which edit survived.
  *
- * The generator leaves out the operations whose wire form or transform the
- * sequencing contract does not define yet: undo of anything but typing
- * (insertContent, replaceInline and setParagraphReview inverses, and
- * setRunProps / setParagraphProps inverses with preconditions), tables,
- * numbering, comments, notes, package resources, sections and suggestions.
+ * The generator leaves out what the sequencing contract cannot send or
+ * transform yet. Typing, split and join intents compile to insertContent with
+ * joinInline, and to splitBlock / joinBlocks carrying fields the wire form
+ * lacks, so the peers commit those edits as the wire-form ops (insertText,
+ * plain splitBlock and joinBlocks) through the session's journalled `prepareOps`.
+ * Deletion and formatting go through intents. Left out entirely: undo of
+ * anything but typing (insertContent, replaceInline and setParagraphReview
+ * inverses, and setRunProps / setParagraphProps inverses with preconditions),
+ * tables, numbering, comments, notes, package resources, sections and
+ * suggestions.
  */
 
 const HOME_TEXT = "AAAABBBB";
@@ -219,11 +226,20 @@ const foreignCounts = (
   return counts;
 };
 
+/** Every part's bytes; the save time is the one part of a save not its content. */
 const partsOf = async (buffer: ArrayBuffer) => {
   const archive = await ZipArchive.read(buffer);
   const parts = new Map<string, string>();
   for (const entry of archive.entries())
-    parts.set(entry.path, Buffer.from(await entry.bytes()).toString("hex"));
+    parts.set(
+      entry.path,
+      entry.path === "docProps/core.xml"
+        ? (await entry.text()).replace(
+            /<dcterms:modified\b[^>]*>[^<]*<\/dcterms:modified>/u,
+            "",
+          )
+        : Buffer.from(await entry.bytes()).toString("hex"),
+    );
   return parts;
 };
 
@@ -361,16 +377,21 @@ const simulate = async (
         const char = String.fromCodePoint(
           FIRST_CHAR + peer.index * PEER_CHARS + peer.typed++,
         );
-        const head = peer.state.selection.head;
+        const next = { ...caret.head, offset: caret.head.offset + char.length };
         const commit = commitLocal(
           peer,
-          peer.session.prepareReplace(peer.state, {
-            from: head,
-            to: head,
-            text: char,
-            semantic: "typing",
-            time: peer.typed * 1000,
-          }),
+          peer.session.prepareOps(
+            peer.state,
+            [
+              {
+                type: "insertText",
+                at: caret.head,
+                text: char,
+                runProps: INHERIT_RUN_PROPS,
+              },
+            ],
+            { type: "text", anchor: next, head: next },
+          ),
           { peer: peer.index, kind: "typing", chars: [char] },
         );
         if (commit === undefined) return;
@@ -381,22 +402,38 @@ const simulate = async (
           peer.history.push({ kind: "typing", chars: [char], rebased: false });
         return;
       }
-      case "prefix":
+      case "prefix": {
+        const commit = commitLocal(
+          peer,
+          peer.session.prepareOps(
+            peer.state,
+            [
+              {
+                type: "insertText",
+                at: at(other.home, 0),
+                text: String(peer.index),
+                runProps: INHERIT_RUN_PROPS,
+              },
+            ],
+            caret,
+          ),
+          { peer: peer.index, kind: "other" },
+        );
+        if (commit === undefined) return;
+        peer.history.push({ kind: "other", rebased: false });
+        return;
+      }
       case "deleteFiller": {
         const target = paragraphOf(document, other.home);
         if (target === undefined) return;
-        if (
-          kind === "deleteFiller" &&
-          paragraphLogicalText(target).at(0) !== FILLER
-        )
-          return;
+        if (paragraphLogicalText(target).at(0) !== FILLER) return;
         const commit = commitLocal(
           peer,
           peer.session.prepareIntent(peer.state, {
             type: "replaceText",
             from: at(other.home, 0),
-            to: at(other.home, kind === "prefix" ? 0 : 1),
-            text: kind === "prefix" ? String(peer.index) : "",
+            to: at(other.home, 1),
+            text: "",
           }),
           { peer: peer.index, kind: "other" },
         );
@@ -444,17 +481,22 @@ const simulate = async (
           .toUpperCase();
         const commit = commitLocal(
           peer,
-          peer.session.prepareIntent(peer.state, {
-            type: "splitParagraph",
-            at: at(owner.home, paragraphLength(target)),
-            newBlockId,
-            newHalf: "second",
-          }),
+          peer.session.prepareOps(
+            peer.state,
+            [
+              {
+                type: "splitBlock",
+                at: at(owner.home, paragraphLength(target)),
+                newBlockId,
+                newHalf: "second",
+              },
+            ],
+            caret,
+          ),
           { peer: peer.index, kind: "other" },
         );
         if (commit === undefined) return;
         peer.history.push({ kind: "other", rebased: false });
-        restore();
         return;
       }
       case "join": {
@@ -469,18 +511,23 @@ const simulate = async (
           return;
         const commit = commitLocal(
           peer,
-          peer.session.prepareIntent(peer.state, {
-            type: "joinParagraphs",
-            story: OP_STORIES.MAIN,
-            blockId: previous.paraId,
-            nextBlockId: next.paraId,
-            survivor: "first",
-          }),
+          peer.session.prepareOps(
+            peer.state,
+            [
+              {
+                type: "joinBlocks",
+                story: OP_STORIES.MAIN,
+                blockId: previous.paraId,
+                nextBlockId: next.paraId,
+                survivor: "first",
+              },
+            ],
+            caret,
+          ),
           { peer: peer.index, kind: "other" },
         );
         if (commit === undefined) return;
         peer.history.push({ kind: "other", rebased: false });
-        restore();
         return;
       }
       case "undo": {
@@ -577,8 +624,12 @@ const simulate = async (
     expect(peer.client.pending).toHaveLength(0);
     expect(peer.client.headRev).toBe(room.headRev);
     expect(documentText(peer.session.document)).toBe(finalText);
+    // A full save: a selective save splices the blocks a session never
+    // touched from the source, and which blocks a session touched depends
+    // on the order it saw the edits in.
     const saved = await serializeCanonicalSave({
       snapshot: peer.session.captureSaveSnapshot(),
+      featureFlags: { selectiveSave: false },
     });
     saves.push(await partsOf(saved.buffer));
   }
@@ -623,6 +674,34 @@ const law = (strategy: RemoteStrategy, coverage: Coverage) =>
       simulate(peersCount, commands, strategy, coverage),
   );
 
+/**
+ * Peer 0 types, peer 1 types and submits, peer 0 receives that batch (the
+ * second delivery: the submitter's result comes first) and undoes.
+ */
+const UNDO_AFTER_REMOTE: readonly Command[] = [
+  { type: "local", peer: 0, kind: "type", seed: 0 },
+  { type: "local", peer: 1, kind: "type", seed: 0 },
+  { type: "submit", peer: 1 },
+  { type: "deliver", seed: 1 },
+  { type: "local", peer: 0, kind: "undo", seed: 0 },
+];
+
+/**
+ * Peer 0 types, peer 1 puts a digit at the start of peer 0's paragraph,
+ * peer 0 receives it and types on: the caret must still follow its text.
+ */
+const TYPE_AFTER_REMOTE_EDIT: readonly Command[] = [
+  { type: "local", peer: 0, kind: "type", seed: 0 },
+  { type: "local", peer: 1, kind: "prefix", seed: 0 },
+  { type: "submit", peer: 1 },
+  { type: "deliver", seed: 1 },
+  { type: "local", peer: 0, kind: "type", seed: 0 },
+];
+const EXAMPLES: [number, Command[]][] = [
+  [2, [...UNDO_AFTER_REMOTE]],
+  [2, [...TYPE_AFTER_REMOTE_EDIT]],
+];
+
 const emptyCoverage = (): Coverage => ({
   remoteApplied: 0,
   undoAfterRemote: 0,
@@ -631,10 +710,18 @@ const emptyCoverage = (): Coverage => ({
 });
 
 test("peers applying remote batches through the session converge and keep their own history", async () => {
-  const coverage = emptyCoverage();
-  await assertProperty(law("session", coverage), {
+  await assertProperty(law("session", emptyCoverage()), {
     numRuns: 40,
+    examples: EXAMPLES,
     id: "canonical remote apply convergence",
+  });
+  // On a fixed sample: remote batches arrive and undo follows them.
+  const coverage = emptyCoverage();
+  await checkCoverageSample(law("session", coverage), 15, {
+    map: ([peersCount, commands]) => [
+      peersCount,
+      [...UNDO_AFTER_REMOTE, ...commands],
+    ],
   });
   expect(coverage.remoteApplied).toBeGreaterThan(0);
   expect(coverage.undoAfterRemote).toBeGreaterThan(0);
@@ -643,7 +730,7 @@ test("peers applying remote batches through the session converge and keep their 
 test("the property catches a remote batch journaled as a local undo step", async () => {
   const result = await fc.check(
     law("journaledLocal", emptyCoverage()),
-    propertyConfig({ numRuns: 100, endOnFailure: true }),
+    propertyConfig({ numRuns: 100, endOnFailure: true, examples: EXAMPLES }),
   );
   expect(result.failed).toBe(true);
 });
@@ -651,7 +738,7 @@ test("the property catches a remote batch journaled as a local undo step", async
 test("the property catches a selection mapped by editor position", async () => {
   const result = await fc.check(
     law("editorPosition", emptyCoverage()),
-    propertyConfig({ numRuns: 100, endOnFailure: true }),
+    propertyConfig({ numRuns: 100, endOnFailure: true, examples: EXAMPLES }),
   );
   expect(result.failed).toBe(true);
 });

@@ -34,6 +34,9 @@ export type AppliedDocumentOp = {
 };
 
 // @public
+export const applyBatch: (document: Document_2, ops: readonly DocumentOp[]) => Result<AppliedBatch, DocumentOpRefusal>;
+
+// @public
 export const applyDocumentOp: (document: Document_2, input: DocumentOp) => Result<AppliedDocumentOp, DocumentOpRefusal>;
 
 // @public
@@ -124,6 +127,12 @@ export type BoundaryOccurrence = {
 export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 
 // @public
+export type ClientDocumentChange = {
+    type: "rebased" | "replaced";
+    batch: SequencedBatch;
+};
+
+// @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
 
 // @public
@@ -202,8 +211,8 @@ export const createClient: (document: Document_2) => {
     enqueue: (batch: DocumentBatch) => Result<DocumentBatch, BatchRejection>;
     nextSubmission: () => DocumentBatch | undefined;
     receiveAck: (ack: BatchAck) => void;
-    receiveReject: (rejection: BatchReject) => void;
-    receiveBroadcast: (batch: SequencedBatch) => Result<void, BatchRejection>;
+    receiveReject: (rejection: BatchReject) => readonly ClientDocumentChange[];
+    receiveBroadcast: (batch: SequencedBatch) => Result<readonly ClientDocumentChange[], BatchRejection>;
     readonly document: Document_2;
     readonly headRev: number;
     readonly pending: readonly DocumentBatch[];
@@ -325,7 +334,7 @@ export type DeleteTableOp = {
 // @public
 export const deletionRemovesBlock: (deletion: {
     endsContainer: boolean;
-    hasKeptParagraphBefore: boolean;
+    carrier: FinalBreakCarrier<unknown>["type"];
 }) => boolean;
 
 // @public
@@ -577,6 +586,26 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 
 // @public
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
+
+// @public
+export type FinalBreakCandidate<Paragraph> = {
+    paragraph: Paragraph;
+    deleted: boolean;
+};
+
+// @public
+export type FinalBreakCarrier<Paragraph> = {
+    type: "kept";
+    paragraph: Paragraph;
+} | {
+    type: "runStart";
+    paragraph: Paragraph;
+} | {
+    type: "none";
+};
+
+// @public
+export const finalBreakCarrier: <Paragraph>(before: readonly FinalBreakCandidate<Paragraph>[]) => FinalBreakCarrier<Paragraph>;
 
 // @public (undocumented)
 export const findStoryBody: (document: Document_2, story: OpStory) => DocumentBody | undefined;
@@ -1340,6 +1369,9 @@ export type TouchedBlocks = {
 
 // @public
 export const transformBatch: (batch: DocumentBatch, over: readonly SequencedBatch[], options?: TransformOptions) => Result<DocumentBatch, BatchRejection>;
+
+// @public
+export const transformPosition: (position: TextPosition, over: readonly SequencedBatch[], affinity?: "before" | "after") => TextPosition | undefined;
 
 // @public (undocumented)
 export type UpdateCommentContentOp = {

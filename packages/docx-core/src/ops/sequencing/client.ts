@@ -46,8 +46,9 @@ export type ClientNotice = {
  * `rebased`: a foreign revision rebased over every pending local batch, or a
  * refused local batch's inverse rebased over the ones after it, so positions
  * and history can be transformed over it. `replaced`: a pending batch could not
- * be rebased, so the change undoes every pending batch, applies what the
- * authority sequenced and replays the survivors; only the document is exact.
+ * be rebased, or the rebased change would not reach the replayed document, so
+ * the change undoes every pending batch, applies what the authority sequenced
+ * and replays the survivors; only the document is exact.
  */
 export type ClientDocumentChange = {
   type: "rebased" | "replaced";
@@ -116,6 +117,14 @@ export const createClient = (
         effects: applied.value.effects,
       },
     };
+  };
+
+  // A rebased change is trusted only when it lands where the replay did: a
+  // transform that does not commute for some pair then costs the history,
+  // never a document that differs from the authority's.
+  const lands = (previous: Document, change: SequencedBatch): boolean => {
+    const applied = applyBatch(previous, change.ops);
+    return applied.isOk() && equalForStaleness(applied.value.document, current);
   };
 
   const replay = (): void => {
@@ -337,7 +346,7 @@ export const createClient = (
       revision: headRev + 1,
     };
     return [
-      notices.length === noticesAfterDrop
+      notices.length === noticesAfterDrop && lands(previous, inverse)
         ? { type: "rebased", batch: inverse }
         : replacement(previous, previousEntries, [], source),
     ];
@@ -481,7 +490,12 @@ export const createClient = (
       history.set(headRev, next);
       replay();
       // An own batch coming back moves nothing the client had not shown.
-      if (notices.length > noticesBefore)
+      if (
+        notices.length > noticesBefore ||
+        (rebasedRemote !== undefined &&
+          previousEntries.length > 0 &&
+          !lands(previous, rebasedRemote))
+      )
         changes.push(
           replacement(previous, previousEntries, next.ops, {
             opId: next.opId,
