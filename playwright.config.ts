@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 import { PLAYGROUND_HOSTS } from "./tests/parity/playgroundHosts";
+import { withBoundedProtocolCapture } from "./tests/support/playwrightProtocolCapture";
 import { PINNED_BROWSER_INPUT_TAG } from "./tests/visual/browserInputRegressions";
 
 const vuePlaygroundPort = new URL(PLAYGROUND_HOSTS.vue).port;
@@ -146,7 +147,9 @@ if (serverMode !== "managed-preview" && serverMode !== "existing-preview") {
 }
 export const PLAYGROUND_SERVER_MODE = serverMode;
 
-export default defineConfig({
-  ...managedConfig,
-  webServer: serverMode === "managed-preview" ? PLAYGROUND_SERVERS : [],
-});
+export default withBoundedProtocolCapture(
+  defineConfig({
+    ...managedConfig,
+    webServer: serverMode === "managed-preview" ? PLAYGROUND_SERVERS : [],
+  }),
+);

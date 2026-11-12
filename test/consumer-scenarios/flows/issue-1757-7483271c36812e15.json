@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, reported seed 842862122: step 8: the result is not what was asked (insertTableColumn, deleteTable)",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 10585378,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2867715363,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "412DDC7F",
+          "separator": " "
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "core batch",
+      "seed": 2,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ],
+      "atomic": false
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1398436299,
+      "operations": [
+        {
+          "type": "deleteTable",
+          "blockId": "31617F9A"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from swap+splice of f6cdf6c88ad64c9a"
+}

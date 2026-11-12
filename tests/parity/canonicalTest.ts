@@ -1,12 +1,16 @@
 import { type Frame, test as base } from "@playwright/test";
-import { readFile } from "node:fs/promises";
 
+import {
+  attachProtocolEvidence,
+  protocolEvidenceOffset,
+} from "../support/playwrightProtocolCapture";
 import { observeCanonicalPageNavigation } from "../visual/canonicalPageNavigation";
 
 /** Preserve navigation evidence when an evaluation loses its document context. */
 export const test = base.extend<{ canonicalNavigationEvidence: void }>({
   canonicalNavigationEvidence: [
     async ({ page }, use, testInfo) => {
+      const protocolOffset = protocolEvidenceOffset();
       observeCanonicalPageNavigation(page);
       const cdp = await page.context().newCDPSession(page);
       const contexts: {
@@ -59,12 +63,11 @@ export const test = base.extend<{ canonicalNavigationEvidence: void }>({
             body: JSON.stringify(contexts, null, 2),
             contentType: "application/json",
           });
-          const protocolPath = process.env["FOLIO_CANONICAL_PROTOCOL_LOG"];
-          if (protocolPath)
-            await testInfo.attach("canonical-protocol", {
-              body: await readFile(protocolPath),
-              contentType: "application/x-ndjson",
-            });
+          await attachProtocolEvidence(
+            testInfo,
+            "canonical-protocol",
+            protocolOffset,
+          );
         }
       } finally {
         page.off("framenavigated", record);

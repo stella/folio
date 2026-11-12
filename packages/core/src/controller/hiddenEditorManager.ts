@@ -1263,7 +1263,7 @@ export const createHiddenEditorManager = (
       if (precomputedInitialState && !collaboration)
         return precomputedInitialState;
       return createHiddenEditorState({
-        document,
+        document: document && readModel(document),
         styles,
         manager: extensionManager,
         externalPlugins,
@@ -1681,7 +1681,7 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical"
         ? canonicalState(editorSession.session)
         : createHiddenEditorState({
-            document,
+            document: document && readModel(document),
             styles: deps.getStyles(),
             manager: deps.getExtensionManager(),
             externalPlugins: deps.getExternalPlugins(),
