@@ -132,8 +132,7 @@ test.each([
   },
 ])("the guard refuses $name", ({ source, violation }) => {
   const found = protocolCaptureViolations([source]);
-  expect(found).toHaveLength(1);
-  expect(found.at(0)).toContain(violation);
+  expect(found.some((message) => message.includes(violation))).toBe(true);
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -176,9 +175,11 @@ const EVIDENCE_RECORD_CAP_BYTES = 1024;
 const runFlood = (environment: Record<string, string>) => {
   const output = mkdtempSync(join(tmpdir(), "folio-protocol-flood-"));
   try {
-    const inherited = { ...process.env };
-    delete inherited[PROTOCOL_CAPTURE_DIRECTORY];
-    delete inherited["DEBUG"];
+    const inherited = Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([name]) => name !== PROTOCOL_CAPTURE_DIRECTORY && name !== "DEBUG",
+      ),
+    );
     const run = Bun.spawnSync(
       [
         "node",

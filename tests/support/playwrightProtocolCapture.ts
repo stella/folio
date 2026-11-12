@@ -119,8 +119,9 @@ const installWorkerCapture = () => {
   const forward = debug.log;
   appendFileSync(path, "");
   debug.log = function (this: unknown, ...args: unknown[]) {
+    // `debug` calls the logger with the debugger function itself as `this`.
     const namespace =
-      this !== null && typeof this === "object" && "namespace" in this
+      typeof this === "function" && "namespace" in this
         ? this.namespace
         : undefined;
     if (namespace !== PROTOCOL_NAMESPACE) return forward.apply(this, args);
