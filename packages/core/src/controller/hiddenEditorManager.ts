@@ -129,6 +129,7 @@ import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import { restoreCanonicalSelection } from "./canonicalSelection";
 import {
   type CanonicalCommit,
+  type CanonicalHistoryEffect,
   type CanonicalSession,
   type CanonicalSessionMode,
   createCanonicalSession,
@@ -586,6 +587,12 @@ export type HiddenEditorManagerDeps = {
    * the host undoes through the API.
    */
   getHistoryShortcuts?: () => HistoryShortcutOwner;
+  /**
+   * A canonical commit was published in any story, with what it did to the
+   * session's undo history; for a host that mirrors the steps in its own
+   * undo stack.
+   */
+  onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   getEditingMode?: () => EditorMode;
   getSuggestionAuthor?: () => string;
   onSessionRefusal?: (
@@ -823,6 +830,7 @@ export const createHiddenEditorManager = (
       docChanged: true,
     });
     deps.onSelectionChange(staged.state);
+    deps.onCanonicalHistory?.(commit.history);
     return true;
   };
   const editorOwnsHistoryShortcuts = (): boolean =>
@@ -1802,6 +1810,7 @@ export const createHiddenEditorManager = (
       docChanged: true,
     });
     deps.onSelectionChange(view.state);
+    deps.onCanonicalHistory?.(commit.history);
     return true;
   };
 

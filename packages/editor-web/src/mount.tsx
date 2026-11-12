@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import type { EditorState } from "prosemirror-state";
 import { IntlProvider, useTranslations } from "use-intl";
 
+import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import type { HostShortcut } from "@stll/folio-core/managers/editorShortcuts";
 import {
   hasStructuralChanges,
@@ -21,8 +22,6 @@ import { DocxEditor } from "@stll/folio-react";
 import type { DocxEditorRef } from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
 
-import { createHistoryBridgePlugin } from "./historyBridge";
-import type { HistoryChange } from "./historyBridge";
 import type {
   FolioEditorDocument,
   FolioEditorHandle,
@@ -61,7 +60,7 @@ export const mountFolioEditor = (
         modeStore={session.mode}
         author={host.init.author}
         locale={host.init.locale}
-        onHistoryChange={session.onHistoryChange}
+        onCanonicalHistory={session.onCanonicalHistory}
         onModeChange={session.onModeChange}
         onEditorViewReady={session.onEditorViewReady}
         onError={session.onError}
@@ -90,7 +89,7 @@ type FolioEditorAppProps = {
   modeStore: Session["mode"];
   author: string;
   locale: string;
-  onHistoryChange: Session["onHistoryChange"];
+  onCanonicalHistory: Session["onCanonicalHistory"];
   onModeChange: Session["onModeChange"];
   onEditorViewReady: Session["onEditorViewReady"];
   onError: Session["onError"];
@@ -111,16 +110,12 @@ const FolioEditorApp = ({
   modeStore,
   author,
   locale: hostLocale,
-  onHistoryChange,
+  onCanonicalHistory,
   onModeChange,
   onEditorViewReady,
   onError,
 }: FolioEditorAppProps) => {
   const mode = useSyncExternalStore(modeStore.subscribe, modeStore.get);
-  // One plugin instance for the editor's lifetime, as `plugins` requires.
-  const [plugins] = useState(() => [
-    createHistoryBridgePlugin(onHistoryChange),
-  ]);
   const [locale] = useState(() => canonicalLocale(hostLocale));
 
   return (
@@ -139,7 +134,7 @@ const FolioEditorApp = ({
             mode={mode}
             onModeChange={onModeChange}
             hostShortcuts={HOST_SHORTCUTS}
-            plugins={plugins}
+            onCanonicalHistory={onCanonicalHistory}
             onEditorViewReady={onEditorViewReady}
             onError={onError}
             preserveDocumentWhileLoading={true}
@@ -253,8 +248,8 @@ const createSession = (host: FolioEditorHost) => {
     if (inFlight(generation) === null) return;
     loadState = { type: "loaded", generation };
     loaded = document;
-    // Create the body view now rather than on the first click, so the history
-    // bridge and the save path see every edit from the first keystroke.
+    // Create the body view now rather than on the first click, so the host's
+    // undo stack and the save path see every edit from the first keystroke.
     ref.ensureEditorView({ focus: false });
     setDirty(false);
     host.onLoaded(document.fileVersion);
@@ -293,9 +288,11 @@ const createSession = (host: FolioEditorHost) => {
     mode,
     load,
     serialize,
-    onHistoryChange: (change: HistoryChange) => {
+    // The host's undo stack gains one entry per undo step the session
+    // opens; its undo and redo come back through the handle.
+    onCanonicalHistory: (effect: CanonicalHistoryEffect) => {
       if (loadState.type !== "loaded") return;
-      if (change === "newStep") host.onEdit();
+      if (effect === "opened") host.onEdit();
       setDirty(editor.current?.hasPendingChanges() ?? false);
     },
     onEditorViewReady: (view: { state: EditorState } | null) => {

@@ -579,6 +579,7 @@ test("canonical manager refuses transaction bypasses and shares one input journa
 for (const owner of ["editor", "host"] as const) {
   test(`canonical undo keys belong to the ${owner} that owns history shortcuts`, () => {
     const releaseDom = acquireHarnessDom();
+    const effects: string[] = [];
     const host = document.createElement("div");
     document.body.append(host);
     const source = createEmptyDocument({ initialText: "Start" });
@@ -591,6 +592,7 @@ for (const owner of ["editor", "host"] as const) {
       getDocumentContext: () => source,
       getExperimentalSession: () => "canonical",
       getHistoryShortcuts: () => owner,
+      onCanonicalHistory: (effect) => effects.push(effect),
     });
     const manager = createHiddenEditorManager(deps);
     try {
@@ -643,6 +645,12 @@ for (const owner of ["editor", "host"] as const) {
       // The host undoes through the API either way.
       expect(manager.api.undo()).toBe(true);
       expect(view.state.doc.textContent).toBe("Start");
+      // Every published commit tells the host what it did to the history.
+      expect(effects).toEqual(
+        owner === "editor"
+          ? ["opened", "undo", "redo", "undo", "redo", "undo", "redo", "undo"]
+          : ["opened", "undo"],
+      );
     } finally {
       manager.destroyView();
       host.remove();

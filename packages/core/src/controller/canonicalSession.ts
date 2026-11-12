@@ -346,35 +346,6 @@ export type CanonicalSessionMode =
   { type: "editing" } | { type: "suggesting"; author: string };
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
 
-type CanonicalProjectionMeta = {
-  type: "canonical";
-  origin: CanonicalOrigin;
-  version: number;
-  history: CanonicalHistoryEffect;
-};
-
-const HISTORY_EFFECTS: ReadonlySet<unknown> = new Set<CanonicalHistoryEffect>([
-  "opened",
-  "joined",
-  "undo",
-  "redo",
-]);
-
-/**
- * The undo history effect of a transaction a canonical session staged, read
- * by plugins that see the transaction; `null` for any other transaction.
- */
-export const canonicalHistoryEffect = (
-  transaction: Transaction,
-): CanonicalHistoryEffect | null => {
-  const meta: unknown = transaction.getMeta(CANONICAL_PROJECTION_META);
-  if (typeof meta !== "object" || meta === null) return null;
-  const history: unknown = Reflect.get(meta, "history");
-  return HISTORY_EFFECTS.has(history)
-    ? (history as CanonicalHistoryEffect)
-    : null;
-};
-
 /**
  * Which source gap an editor position names where invisible markers (comment
  * ranges, bookmarks, permission ranges, proofing marks) share it: a caret
@@ -1513,7 +1484,7 @@ export type CanonicalCommit = {
   touched: TouchedBlocks;
   version: number;
   origin: CanonicalOrigin;
-  /** What publishing does to the undo history; also on the transaction's meta. */
+  /** What publishing does to the session's undo history. */
   history: CanonicalHistoryEffect;
   /** Revisions a content control lock held back; they stay pending. */
   lockHeld?: readonly number[];
@@ -3034,8 +3005,7 @@ class CanonicalSession {
       type: "canonical",
       origin,
       version: this.version + 1,
-      history,
-    } satisfies CanonicalProjectionMeta);
+    });
     if (ops.some(operationChangesPackage)) markPackageChange(transaction);
     transaction.setMeta("addToHistory", false);
     const baseVersion = this.version;

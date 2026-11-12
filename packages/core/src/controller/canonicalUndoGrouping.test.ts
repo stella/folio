@@ -12,7 +12,6 @@ import type { Document } from "../types/document";
 import {
   type CanonicalCommit,
   type CanonicalHistoryEffect,
-  canonicalHistoryEffect,
   type CanonicalInputSemantic,
   type CanonicalSession,
   CanonicalSessionError,
@@ -54,7 +53,7 @@ const accept = (
   commit: CanonicalCommit,
 ) => publishCanonicalProjection({ session, state, commit }).unwrap().state;
 
-/** Publish `commit` after checking the history effect it and its transaction report. */
+/** Publish `commit` after checking the history effect it reports. */
 const acceptWithEffect = (
   session: CanonicalSession,
   state: EditorState,
@@ -62,7 +61,6 @@ const acceptWithEffect = (
   expected: CanonicalHistoryEffect,
 ) => {
   expect(commit.history).toBe(expected);
-  expect(canonicalHistoryEffect(commit.transaction)).toBe(expected);
   return accept(session, state, commit);
 };
 
@@ -339,7 +337,7 @@ describe("canonical semantic undo partition", () => {
     );
   });
 
-  test("a structural edit opens its own step, and a transaction the session did not stage has no effect", () => {
+  test("a structural edit opens its own step", () => {
     const session = createCanonicalSession(seed()).unwrap();
     let state = EditorState.create({ schema, doc: session.projection.doc });
     const caret = state.selection.head;
@@ -363,7 +361,6 @@ describe("canonical semantic undo partition", () => {
       session.prepareSplit(state).unwrap(),
       "opened",
     );
-    expect(canonicalHistoryEffect(state.tr.insertText("Y"))).toBeNull();
   });
 
   test("history replay and a caret roundtrip close an otherwise adjacent typing run", () => {

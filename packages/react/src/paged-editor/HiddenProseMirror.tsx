@@ -33,6 +33,7 @@ import { panic } from "better-result";
 import type { EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import {
@@ -117,6 +118,8 @@ export type HiddenProseMirrorProps = {
   extensionManager?: ExtensionManager;
   /** Callback when EditorView is ready */
   onEditorViewReady?: (view: EditorView) => void;
+  /** A canonical commit was published, with what it did to the undo history. */
+  onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /** Initial state already built by the parent for pre-view layout. */
   precomputedInitialState?: EditorState | null;
   /** Callback when EditorView is destroyed */
@@ -209,6 +212,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     collaboration,
     extensionManager,
     onEditorViewReady,
+    onCanonicalHistory,
     onEditorViewDestroy,
     onKeyDown,
     onCopy,
@@ -262,6 +266,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const onCanonicalCompositionEndRef = useRef(onCanonicalCompositionEnd);
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onEditorViewReadyRef = useRef(onEditorViewReady);
+  const onCanonicalHistoryRef = useRef(onCanonicalHistory);
   const onEditorViewDestroyRef = useRef(onEditorViewDestroy);
   const onKeyDownRef = useRef(onKeyDown);
   const onCopyRef = useRef(onCopy);
@@ -292,6 +297,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onCanonicalCompositionEndRef.current = onCanonicalCompositionEnd;
     onSelectionChangeRef.current = onSelectionChange;
     onEditorViewReadyRef.current = onEditorViewReady;
+    onCanonicalHistoryRef.current = onCanonicalHistory;
     onEditorViewDestroyRef.current = onEditorViewDestroy;
     onKeyDownRef.current = onKeyDown;
     onCopyRef.current = onCopy;
@@ -318,6 +324,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getReadOnly: () => readOnlyRef.current,
         getExperimentalSession: () => experimentalSessionRef.current,
         getHistoryShortcuts: () => historyShortcutsRef.current,
+        onCanonicalHistory: (effect) => onCanonicalHistoryRef.current?.(effect),
         getEditingMode: () =>
           suggestionModeActiveRef.current ? "suggesting" : "editing",
         getSuggestionAuthor: () => suggestionAuthorRef.current,
