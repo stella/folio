@@ -55,6 +55,7 @@ jobs:
     # publishes them. Scale complexity above runs on any ref.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     # Least privilege: read the checkout, and mint an OIDC token for CodSpeed.
     permissions:
       contents: read
