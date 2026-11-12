@@ -3,7 +3,7 @@
     {
       "seed": -103757238,
       "path": "121:5:1:1:1:1:1:1:2",
-      "note": "#2621: accepting a deletion of the story's last paragraph keeps the anchor's identity, so a later batch still finds it.",
+      "note": "#2621: accepting a deletion of the story's last paragraph joins the anchor into it, which keeps that paragraph's id; the next batch reads the anchor again by its words.",
       "date": "2026-11-12"
     }
   ]

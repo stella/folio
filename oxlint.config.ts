@@ -68,6 +68,7 @@ export default library({
     "folio-editor-commands/table-resize-owner": "error",
     "folio-canonical-load/evaluation-owner": "error",
     "folio-deletion-marks/preserve-pending-deletions": "error",
+    "folio-held-block-ids/reread-after-resolution": "error",
     // AST rules that oxlint delegates to the (dormant) type-aware pass in the
     // monorepo, so folio's source was never held to them. Folio's fork style
     // uses non-null assertions; keep parity with the rule set it conforms to.
@@ -120,6 +121,7 @@ export default library({
     "./.oxlint-plugins/folio-read-model.ts",
     "./.oxlint-plugins/folio-editor-commands.ts",
     "./.oxlint-plugins/folio-deletion-marks.ts",
+    "./.oxlint-plugins/folio-held-block-ids.ts",
     "./.oxlint-plugins/folio-run-record.ts",
     "./.oxlint-plugins/folio-fragment-ownership.ts",
     "./.oxlint-plugins/folio-find-navigation.ts",
