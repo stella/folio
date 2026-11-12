@@ -27,7 +27,7 @@ export type Autofix = {
 export type BlockContent = Paragraph | Table | BlockSdt | BlockCustomXml | PreservedBlock | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd;
 
 // @public
-export type BreakContent = {
+export type BreakContent = WritableRecord & ({
     type: "break";
     sourceElement: "cr";
     breakType?: never;
@@ -37,7 +37,7 @@ export type BreakContent = {
     sourceElement?: "br";
     breakType?: "page" | "column" | "textWrapping";
     clear?: "none" | "left" | "right" | "all";
-};
+});
 
 // @public (undocumented)
 export type CompiledLegalDocument = {
@@ -57,7 +57,7 @@ export const compileLegalSourceToDocx: (source: string, options?: LegalSourceCom
 export const compileMarkdownToContent: (markdown: string) => MarkdownContent;
 
 // @public
-type Document_2 = {
+type Document_2 = WritableRecord & {
     package: DocxPackage;
     originalBuffer?: ArrayBuffer;
     templateVariables?: string[];
@@ -68,7 +68,7 @@ type Document_2 = {
 export { Document_2 as Document }
 
 // @public
-export type DocumentBackground = {
+export type DocumentBackground = WritableRecord & {
     color?: ColorValue;
     themeColor?: ThemeColorValue;
     themeTint?: string;
@@ -77,12 +77,12 @@ export type DocumentBackground = {
 };
 
 // @public
-export type DocumentBackgroundDrawing = {
+export type DocumentBackgroundDrawing = WritableRecord & {
     rawXml: string;
 };
 
 // @public
-export type DocumentBody = {
+export type DocumentBody = WritableRecord & {
     background?: DocumentBackground;
     content: BlockContent[];
     sections?: Section[] | undefined;
@@ -112,7 +112,7 @@ export const DOCX_PACKAGE_ISSUE_CODES: {
 export type DocxConformanceClass = (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeof DOCX_CONFORMANCE_CLASSES];
 
 // @public
-export type DocxPackage = {
+export type DocxPackage = WritableRecord & {
     conformanceClass?: DocxConformanceClass;
     document: DocumentBody;
     settings?: DocumentSettings;
@@ -266,7 +266,7 @@ export const mayContainOoxmlNumericIds: (xml: string) => boolean;
 export const ooxmlNumericIdDomain: (input: NumericIdAttributeOptions) => "signed32" | "unsigned32" | undefined;
 
 // @public
-export type Paragraph = {
+export type Paragraph = WritableRecord & {
     type: "paragraph";
     paraId?: string;
     textId?: string;
@@ -290,7 +290,7 @@ export const parseLegalSource: (source: string, options?: {
 }) => LegalSourceParseResult;
 
 // @public
-export type PositionalTab = {
+export type PositionalTab = WritableRecord & {
     relativeTo?: "margin" | "indent";
     alignment?: "left" | "center" | "right";
     leader?: "none" | "dot" | "hyphen" | "underscore" | "middleDot";
@@ -303,7 +303,7 @@ export const pushOnOffElement: (parts: string[], value: boolean | undefined, nam
 export const requiresXmlSpacePreserve: (text: string) => boolean;
 
 // @public
-export type Run = {
+export type Run = WritableRecord & {
     type: "run";
     formatting?: TextFormatting;
     propertyChanges?: RunPropertyChange[];
@@ -321,7 +321,7 @@ export const sanitizeExternalUrl: (rawUrl: string | undefined) => string | undef
 export const sanitizeXmlCharacters: (value: string) => string;
 
 // @public
-export type SectionProperties = {
+export type SectionProperties = WritableRecord & {
     pageWidth?: number;
     pageHeight?: number;
     orientation?: PageOrientation;
@@ -401,7 +401,7 @@ export const serializeOnOffElement: (value: boolean | undefined, name: string) =
 export const setDocumentBodyComments: (body: DocumentBody, comments: Comment_2[]) => void;
 
 // @public
-export type Style = {
+export type Style = WritableRecord & {
     styleId: string;
     type: StyleType;
     name?: string;
@@ -431,7 +431,7 @@ export type Style = {
 };
 
 // @public
-export type Table = {
+export type Table = WritableRecord & {
     type: "table";
     formatting?: TableFormatting;
     propertyChanges?: TablePropertyChange[];
@@ -443,7 +443,7 @@ export type Table = {
 };
 
 // @public
-export type TableCell = {
+export type TableCell = WritableRecord & {
     type: "tableCell";
     id?: string;
     formatting?: TableCellFormatting;
@@ -455,7 +455,7 @@ export type TableCell = {
 };
 
 // @public
-export type TableRow = {
+export type TableRow = WritableRecord & {
     type: "tableRow";
     formatting?: TableRowFormatting;
     tablePropertyExceptions?: TablePropertyExceptionFormatting;
@@ -471,7 +471,7 @@ export type TableRow = {
 };
 
 // @public
-export type TextContent = {
+export type TextContent = WritableRecord & {
     type: "text";
     text: string;
 };

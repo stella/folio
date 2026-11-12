@@ -4,6 +4,7 @@
 
 ```ts
 
+import { DeepReadonly } from '@stll/docx-core/model';
 import { FontInfo } from '@stll/docx-core/model';
 import { ImagePosition } from '@stll/docx-core/model';
 import { ImageWrap } from '@stll/docx-core/model';

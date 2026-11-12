@@ -108,7 +108,7 @@ export const styleResults = (styles: StyleDefinitions): void => {
   }
 };
 
-// The mark costs a writer nothing: a writable value still passes where a
+// The mark asks nothing of a writer: a writable value still passes where a
 // read-only one is expected, and an object literal needs no mark.
 export const writableStaysAssignable = (formatting: TextFormatting): void => {
   const readOnly: DeepReadonly<TextFormatting> = formatting;
