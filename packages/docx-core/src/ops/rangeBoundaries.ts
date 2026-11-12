@@ -601,6 +601,54 @@ export const withBoundariesAtEdge = (
   );
 };
 
+/**
+ * Two lists a join meets at a seam `depth` containers deep, with the range
+ * boundaries standing between them (at the end of `left` or the start of
+ * `right`, held by no record) moved inside the piece the join merges: the
+ * start of `right`'s first record, else the end of `left`'s last. A
+ * boundary a rejection kept there then lands where it lands when the join
+ * happens first. Lists are returned as they are when no record either side
+ * can hold the boundaries.
+ */
+export const withSeamBoundariesInside = ({
+  left,
+  right,
+  depth,
+}: {
+  left: readonly InlineNode[];
+  right: readonly InlineNode[];
+  depth: number;
+}): { left: readonly InlineNode[]; right: readonly InlineNode[] } => {
+  let leftEnd = left.length;
+  while (leftEnd > 0 && isStandingBoundary(left[leftEnd - 1])) leftEnd -= 1;
+  let rightStart = 0;
+  while (rightStart < right.length && isStandingBoundary(right[rightStart]))
+    rightStart += 1;
+  const boundaries = [...left.slice(leftEnd), ...right.slice(0, rightStart)];
+  const before = left.at(leftEnd - 1);
+  const after = right.at(rightStart);
+  if (boundaries.length === 0 || leftEnd === 0 || after === undefined)
+    return { left, right };
+  const intoAfter = withBoundariesAtEdge(after, boundaries, depth, "start");
+  if (intoAfter !== undefined)
+    return {
+      left: left.slice(0, leftEnd),
+      right: [intoAfter, ...right.slice(rightStart + 1)],
+    };
+  const intoBefore =
+    before === undefined
+      ? undefined
+      : withBoundariesAtEdge(before, boundaries, depth, "end");
+  if (intoBefore === undefined) return { left, right };
+  return {
+    left: [...left.slice(0, leftEnd - 1), intoBefore],
+    right: right.slice(rightStart),
+  };
+};
+
+const isStandingBoundary = (node: InlineNode | undefined): boolean =>
+  node !== undefined && isBoundary(node);
+
 type Occurrence = { paragraph: string; node: Boundary };
 
 /**
