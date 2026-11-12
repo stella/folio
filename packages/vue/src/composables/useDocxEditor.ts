@@ -134,6 +134,7 @@ import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/Starte
 import type { CommandMap } from "@stll/folio-core/prosemirror/extensions/types";
 import {
   createNoteReferenceFollower,
+  heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
