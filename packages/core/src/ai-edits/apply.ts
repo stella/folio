@@ -2588,7 +2588,7 @@ type BuildTableNodeOptions = {
  * consumer that reads only run-level revisions keeps the text of a rejected
  * insertion when the row marker stands alone.
  */
-const buildTableNode = ({
+export const buildTableNode = ({
   schema,
   rows,
   revision,
