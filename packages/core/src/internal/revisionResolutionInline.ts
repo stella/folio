@@ -32,7 +32,7 @@ import { resolvedPreservedXmlAttrs } from "../prosemirror/preservedXmlReview";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
-  reconstructRejectedRunFormattingMarks,
+  rejectedRunFormatting,
   restoreHistoricalRunFormatting,
 } from "../prosemirror/runPropertyChangeResolution";
 import {
@@ -163,22 +163,25 @@ const resolveInlineNode = ({
         context.mode === "reject" &&
         (!resolvedRuns || resolvedRuns.visibleFormattingChanged)
       ) {
-        marks = marks.filter(
-          (mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name),
-        );
-        const previousFormatting = resolvedRuns
-          ? resolvedRuns.visibleFormatting
-          : changes.at(0)?.previousFormatting;
-        for (const previousMark of reconstructRejectedRunFormattingMarks({
+        const rejected = rejectedRunFormatting({
           node,
           paragraphContext: resolveParagraphRunStyleScope(
             paragraphScope,
             context.styleResolver,
           ),
-          previousFormatting,
+          previousFormatting: resolvedRuns
+            ? resolvedRuns.visibleFormatting
+            : changes.at(0)?.previousFormatting,
           styleResolver: context.styleResolver,
-        })) {
-          marks = previousMark.addToSet(marks);
+        });
+        if (rejected.atomRunFormatting !== null)
+          attrs = { ...attrs, _docxRunFormatting: rejected.atomRunFormatting };
+        if (rejected.marks !== null) {
+          marks = marks.filter(
+            (mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name),
+          );
+          for (const previousMark of rejected.marks)
+            marks = previousMark.addToSet(marks);
         }
       }
     }
