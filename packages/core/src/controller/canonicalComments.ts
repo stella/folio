@@ -13,6 +13,11 @@ import {
   type CreateCommentOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  formatParaId,
+  freshLeasedIds,
+  ID_KIND_LIMITS,
+  ID_LEASE_KINDS,
+  type IdLease,
   packageParagraphIds,
   type UpdateCommentContentOp,
 } from "@stll/docx-core/ops";
@@ -49,11 +54,14 @@ export type CanonicalCommentCommand =
 type CompileCanonicalCommentsOptions = {
   document: Document;
   command: CanonicalCommentCommand;
+  /** The ids the author may mint, when it holds a lease. */
+  idLease?: IdLease | undefined;
 };
 
 export const compileCanonicalComments = ({
   document,
   command,
+  idLease,
 }: CompileCanonicalCommentsOptions):
   | Err<never, CanonicalCommentError>
   | Ok<
@@ -232,7 +240,7 @@ export const compileCanonicalComments = ({
   for (const op of ops) {
     const materialized = (() => {
       if (op.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT) return Result.ok(op);
-      const allocation = allocateCommentAnchorIds(draft, op);
+      const allocation = allocateCommentAnchorIds(draft, op, idLease);
       if (allocation.isErr()) return Result.err(allocation.error);
       return Result.ok({ ...op, newIds: allocation.value });
     })();
@@ -248,16 +256,23 @@ export const compileCanonicalComments = ({
 export const canonicalCommentBody = (
   document: Document,
   text: string,
+  lease?: IdLease,
 ): Comment["content"] => {
   const occupied = new Set(
     packageParagraphIds(document.package).map((id) => id.toUpperCase()),
   );
-  let id = 1;
-  while (occupied.has(id.toString(16).padStart(8, "0").toUpperCase())) id += 1;
+  // An exhausted lease gives an id no operation accepts: the edit is refused.
+  const id =
+    freshLeasedIds({
+      lease,
+      kind: ID_LEASE_KINDS.PARAGRAPH,
+      count: 1,
+      taken: (candidate) => occupied.has(formatParaId(candidate)),
+    }).at(0) ?? ID_KIND_LIMITS.paragraph;
   return [
     {
       type: "paragraph",
-      paraId: id.toString(16).padStart(8, "0").toUpperCase(),
+      paraId: formatParaId(id),
       content: [{ type: "run", content: [{ type: "text", text }] }],
     },
   ];
