@@ -126,7 +126,16 @@ const waitForPaintedText = async (container: HTMLElement, text: string) => {
 
 test("a canonical open converts the document to ProseMirror once", async () => {
   const restoreCanvas = stubCanvas();
-  const conversions = spyOn(conversion, "toProseDoc");
+  const original = conversion.toProseDoc;
+  const conversions = spyOn(conversion, "toProseDoc").mockImplementation(
+    (...args) => {
+      console.log(
+        "ZZSTACK",
+        new Error().stack?.split("\n").slice(1, 40).join("\n"),
+      );
+      return original(...args);
+    },
+  );
   const errors: Error[] = [];
   const mounted = await mountCanonicalEditor("First open", errors);
   try {

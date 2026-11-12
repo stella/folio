@@ -1,0 +1,24 @@
+name: Scratch debug (canonical open conversions)
+
+on:
+  push:
+    branches: [scratch/canonical-open-single-conversion-debug]
+
+permissions:
+  contents: read
+
+jobs:
+  stacks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+      - run: bun install --frozen-lockfile
+      - name: Conversion test with call stacks
+        working-directory: packages/react
+        run: bun test src/components/DocxEditor.canonicalOpenConversions.test.tsx
