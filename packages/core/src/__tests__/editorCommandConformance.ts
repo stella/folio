@@ -43,6 +43,7 @@ import {
   saveCanonicalHarnessDocument,
 } from "../../../../test/canonicalEditorHarness";
 import { assertExactModel } from "../../../../test/exactModel";
+import { listedChangeCoverageProblem } from "../../../../test/listedChangeCoverage";
 import { assertValidFolioDocumentModel } from "../docx/modelValidation";
 import { createNote } from "../docx/noteReferenceMark";
 import { getCachedNumberingMap } from "../docx/numberingParser";
@@ -786,7 +787,9 @@ export type ViolationKind =
   | "reject-mismatch"
   | "accept-mismatch"
   /** Resolving the listed changes left a revision a host cannot reach. */
-  | "resolve-pending";
+  | "resolve-pending"
+  /** The change list a host reads misses a revision the model holds. */
+  | "unlisted-revision";
 
 export type Violation = {
   kind: ViolationKind;
@@ -1363,6 +1366,11 @@ const checkChangedState = async (
       mode,
       detail: gridIssues.join("; "),
     });
+  }
+  if (run.authority === "canonical") {
+    const unlisted = listedChangeCoverageProblem(base, after.doc);
+    if (unlisted)
+      violations.push({ kind: "unlisted-revision", mode, detail: unlisted });
   }
   let saved: Awaited<ReturnType<typeof saveHarnessState>> | null = null;
   try {

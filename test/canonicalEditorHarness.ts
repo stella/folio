@@ -531,6 +531,9 @@ export const resolveReopenedCanonicalHarnessDocument = async (
   source: Document,
   decision: ReviewDecision,
 ): Promise<ListedResolution> => {
+  // Nothing to list: the reopened file resolves to itself, so skip the reopen.
+  if (storyRevisionIds(source).length === 0)
+    return resolveListedChanges(source, () => [], decision);
   const { bytes } = await saveCanonicalHarnessDocument(source);
   const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
   const listed = reviewer.getChanges().map(({ id }) => id);
