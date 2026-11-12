@@ -6,6 +6,7 @@ import { statesNoBorder } from "@stll/docx-core/model";
 
 import type { BorderStyle } from "../../layout-engine/types";
 import type { BorderStyleValue, ColorValue, Theme } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { cssBorderStyle } from "../../utils/borderCss";
 import { resolveColor } from "../../utils/colorResolver";
 import { pointsToPixels } from "../../utils/units";
@@ -19,12 +20,12 @@ function borderWidthToPixels(eighthsOfPoint: number): number {
 }
 
 /** A parsed border, or the same shape read off ProseMirror attributes. */
-export type ConvertibleBorder = {
+export type ConvertibleBorder = DeepReadonly<{
   style?: BorderStyleValue;
   size?: number;
   space?: number;
   color?: ColorValue;
-};
+}>;
 
 /**
  * Convert an OOXML BorderSpec to a layout-engine BorderStyle.
@@ -32,7 +33,7 @@ export type ConvertibleBorder = {
  */
 export function convertBorderSpecToLayout(
   border: ConvertibleBorder,
-  theme?: Theme | null,
+  theme?: DeepReadonly<Theme> | null,
 ): BorderStyle | undefined {
   if (border.style === undefined || statesNoBorder(border.style)) {
     return undefined;

@@ -35,7 +35,7 @@ export type LayoutMeasureInputs = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   documentFontFactsCacheIdentity: string | undefined;
   styles: DeepReadonly<StyleDefinitions> | null | undefined;
-  theme: Theme | null | undefined;
+  theme: DeepReadonly<Theme> | null | undefined;
   defaultTabStop: number | undefined;
   pageContentHeight: number;
   /**

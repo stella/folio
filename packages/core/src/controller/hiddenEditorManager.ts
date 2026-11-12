@@ -578,6 +578,12 @@ export type HiddenEditorManagerDeps = {
   getExternalPlugins: () => Plugin[];
   getCollaboration: () => HiddenProseMirrorCollaboration | undefined;
   getCollaborationModules: () => CollaborationModules | null;
+  /**
+   * The state the adapter converted from the document for its pages before a
+   * view existed. Read only when the view is built from the document: a
+   * canonical session seeds the view with its own projection, so an adapter
+   * that converts on this read converts the document once per open.
+   */
   getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
   getExperimentalSession?: () => "canonical" | undefined;
@@ -1271,7 +1277,6 @@ export const createHiddenEditorManager = (
       return;
     }
 
-    const precomputedInitialState = deps.getPrecomputedInitialState();
     const document = deps.getDocument();
     const styles = deps.getStyles();
     const extensionManager = deps.getExtensionManager();
@@ -1282,8 +1287,10 @@ export const createHiddenEditorManager = (
     const initialState = (() => {
       if (editorSession.type === "canonical")
         return canonicalState(editorSession.session);
-      if (precomputedInitialState && !collaboration)
-        return precomputedInitialState;
+      const precomputedInitialState = collaboration
+        ? null
+        : deps.getPrecomputedInitialState();
+      if (precomputedInitialState) return precomputedInitialState;
       return createHiddenEditorState({
         document: document && readModel(document),
         styles,

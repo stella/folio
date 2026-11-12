@@ -406,7 +406,7 @@ export type DocxEditorProps = {
     onFontsLoaded?: () => void;
     fontFamilies?: ReadonlyArray<string | FontOption>;
     fonts?: ReadonlyArray<FontDefinition>;
-    theme?: Theme | null;
+    theme?: DeepReadonly<Theme> | null;
     showToolbar?: boolean;
     showZoomControl?: boolean;
     showReviewControls?: boolean;
@@ -699,7 +699,7 @@ export type FormattingBarProps = {
     showAlignmentButtons?: boolean;
     showListButtons?: boolean;
     documentStyles?: StyleOption[];
-    theme?: Theme | null;
+    theme?: DeepReadonly<Theme> | null;
 };
 
 export { fromMarkdown }

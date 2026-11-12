@@ -14,6 +14,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -27,7 +28,7 @@ import {
 } from "./__tests__/canonicalEditRuns";
 import { createCanonicalSession } from "./canonicalSession";
 
-setDefaultTimeout(propertyTestTimeout(240_000));
+setDefaultTimeout(propertyTestTimeout(320_000));
 
 describe("canonical document versions", () => {
   test("a write into a frozen version throws", async () => {
@@ -42,8 +43,7 @@ describe("canonical document versions", () => {
 
   test("edits never write into a version handed out before them", async () => {
     const sources = await parsedSources();
-    let versions = 0;
-    await assertProperty(
+    const law = (counts: { versions: number }) =>
       fc.property(
         fc.constantFrom(...sources),
         fc.array(editArbitrary, { minLength: 1, maxLength: 16 }),
@@ -59,17 +59,21 @@ describe("canonical document versions", () => {
           for (const edit of edits) {
             const handedOut = session.document;
             state = applyEdit(session, state, edit);
-            if (session.document !== handedOut) versions += 1;
+            if (session.document !== handedOut) counts.versions += 1;
             // The host now holds this version too.
             deepFreeze(session.document);
           }
         },
-      ),
-      {
-        id: "canonical edits leave handed-out versions unwritten",
-        numRuns: 150,
-      },
-    );
-    expect(versions).toBeGreaterThan(150);
+      );
+    await assertProperty(law({ versions: 0 }), {
+      id: "canonical edits leave handed-out versions unwritten",
+      numRuns: 150,
+    });
+    // A fixed sample hands out more than one new version a case. Each case
+    // replays up to 16 edits, so a third of the runs, at the same ratio.
+    const RUNS = 50;
+    const counts = { versions: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.versions).toBeGreaterThan(RUNS);
   });
 });

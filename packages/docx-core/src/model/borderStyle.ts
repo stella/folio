@@ -16,6 +16,7 @@
  */
 
 import { BORDER_STYLES, type BorderStyle } from "./borderStyle.gen";
+import type { DeepReadonly, WritableRecord } from "./deepReadonly";
 
 /**
  * A `w:val` the schema does not declare, kept exactly as the file spelled it.
@@ -25,7 +26,7 @@ import { BORDER_STYLES, type BorderStyle } from "./borderStyle.gen";
  * parser reports it through `ParseContext` so the normalisation is visible,
  * and the serializer writes `raw` back unchanged.
  */
-export type UnrecognisedBorderStyle = {
+export type UnrecognisedBorderStyle = WritableRecord & {
   readonly kind: "unrecognised";
   readonly raw: string;
 };
@@ -48,12 +49,14 @@ export const borderStyleToken = (style: BorderStyleValue): string =>
   typeof style === "string" ? style : style.raw;
 
 /** `none`: the author cancelled a border inherited from the container. */
-export const isBorderNone = (style: BorderStyleValue | undefined): boolean =>
-  style === "none";
+export const isBorderNone = (
+  style: DeepReadonly<BorderStyleValue> | undefined,
+): boolean => style === "none";
 
 /** `nil`: the author stated no border. */
-export const isBorderNil = (style: BorderStyleValue | undefined): boolean =>
-  style === "nil";
+export const isBorderNil = (
+  style: DeepReadonly<BorderStyleValue> | undefined,
+): boolean => style === "nil";
 
 /**
  * Whether the edge paints nothing, by either reserved member.
@@ -63,5 +66,6 @@ export const isBorderNil = (style: BorderStyleValue | undefined): boolean =>
  * draw. Which one was written still matters on the way back out, which is why
  * the value keeps it.
  */
-export const statesNoBorder = (style: BorderStyleValue | undefined): boolean =>
-  isBorderNone(style) || isBorderNil(style);
+export const statesNoBorder = (
+  style: DeepReadonly<BorderStyleValue> | undefined,
+): boolean => isBorderNone(style) || isBorderNil(style);

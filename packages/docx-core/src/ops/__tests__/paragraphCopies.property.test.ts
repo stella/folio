@@ -13,6 +13,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -41,10 +42,11 @@ const copyOf = (paragraph: Paragraph): Paragraph => {
 
 describe("paragraph copies", () => {
   test("stand in their paragraphs' places and keep the contract", () => {
-    let copied = 0;
-    let unchecked = 0;
-    let viewed = 0;
-    assertProperty(
+    const law = (counts: {
+      copied: number;
+      unchecked: number;
+      viewed: number;
+    }) =>
       fc.property(
         documentArbitrary,
         fc.nat(),
@@ -101,27 +103,32 @@ describe("paragraph copies", () => {
                   bodyAfter.content[body.content.indexOf(block)] !== block,
               )
             )
-              viewed += 1;
+              counts.viewed += 1;
           }
           expect(knownToMeetContract(result)).toBe(
             knownToMeetContract(document),
           );
           if (checked) expect(contractViolation(result)).toBeUndefined();
-          else unchecked += 1;
-          copied += copies.size;
+          else counts.unchecked += 1;
+          counts.copied += copies.size;
         },
-      ),
-      { id: "paragraph copies keep places and the contract", numRuns: 300 },
-    );
-    expect(copied).toBeGreaterThan(300);
-    expect(unchecked).toBeGreaterThan(50);
+      );
+    assertProperty(law({ copied: 0, unchecked: 0, viewed: 0 }), {
+      id: "paragraph copies keep places and the contract",
+      numRuns: 300,
+    });
+    // The property's run count, which the thresholds were set for.
+    const COVERAGE_RUNS = 300;
+    const counts = { copied: 0, unchecked: 0, viewed: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.copied).toBeGreaterThan(300);
+    expect(counts.unchecked).toBeGreaterThan(50);
     // Section views held copied paragraphs, so their check ran.
-    expect(viewed).toBeGreaterThan(20);
+    expect(counts.viewed).toBeGreaterThan(20);
   });
 
   test("a broken unchecked document stays refused, and false copies are refused", () => {
-    let refused = 0;
-    assertProperty(
+    const law = (counts: { refused: number }) =>
       fc.property(
         documentArbitrary,
         fc.nat(),
@@ -163,7 +170,7 @@ describe("paragraph copies", () => {
           });
           expect(knownToMeetContract(result)).toBe(false);
           expect(validateOpsDocument(result).isErr()).toBe(true);
-          refused += 1;
+          counts.refused += 1;
           // A copy that changes a field is no copy.
           expect(() =>
             withParagraphCopies({
@@ -190,9 +197,15 @@ describe("paragraph copies", () => {
             }),
           ).toThrow("must replace a paragraph of its story");
         },
-      ),
-      { id: "paragraph copies of a broken document", numRuns: 100 },
-    );
-    expect(refused).toBeGreaterThan(20);
+      );
+    assertProperty(law({ refused: 0 }), {
+      id: "paragraph copies of a broken document",
+      numRuns: 100,
+    });
+    // The property's run count, which the threshold was set for.
+    const COVERAGE_RUNS = 100;
+    const counts = { refused: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.refused).toBeGreaterThan(20);
   });
 });

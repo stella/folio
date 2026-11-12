@@ -12,6 +12,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -79,8 +80,7 @@ const renderedOf = (paragraph: Paragraph, rendering: Rendering): Paragraph => {
 
 describe("normalized list renderings", () => {
   test("stand in their paragraphs' places and keep the contract", () => {
-    let rendered = 0;
-    assertProperty(
+    const law = (counts: { rendered: number }) =>
       fc.property(
         documentArbitrary,
         fc.nat(),
@@ -125,20 +125,22 @@ describe("normalized list renderings", () => {
             knownToMeetContract(document),
           );
           if (checked) expect(contractViolation(result)).toBeUndefined();
-          rendered += renderings.size;
+          counts.rendered += renderings.size;
         },
-      ),
-      {
-        id: "normalized list renderings keep places and the contract",
-        numRuns: 300,
-      },
-    );
-    expect(rendered).toBeGreaterThan(300);
+      );
+    assertProperty(law({ rendered: 0 }), {
+      id: "normalized list renderings keep places and the contract",
+      numRuns: 300,
+    });
+    // The property's run count, which the threshold was set for.
+    const COVERAGE_RUNS = 300;
+    const counts = { rendered: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.rendered).toBeGreaterThan(300);
   });
 
   test("a replacement that changes any other field is refused", () => {
-    let refused = 0;
-    assertProperty(
+    const law = (counts: { refused: number }) =>
       fc.property(documentArbitrary, fc.nat(), (document, at) => {
         const paragraphs = storyParagraphs(
           storyBody(document, OP_STORIES.MAIN),
@@ -171,11 +173,17 @@ describe("normalized list renderings", () => {
             keepNext: paragraph.formatting?.keepNext !== true,
           },
         });
-        refused += 1;
-      }),
-      { id: "normalized list renderings refuse other changes", numRuns: 100 },
-    );
-    expect(refused).toBeGreaterThan(50);
+        counts.refused += 1;
+      });
+    assertProperty(law({ refused: 0 }), {
+      id: "normalized list renderings refuse other changes",
+      numRuns: 100,
+    });
+    // The property's run count, which the threshold was set for.
+    const COVERAGE_RUNS = 100;
+    const counts = { refused: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.refused).toBeGreaterThan(50);
   });
 
   test("leave a paragraph that stands at two places to be replaced by place", () => {

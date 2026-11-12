@@ -10,6 +10,7 @@ import {
   type Mark,
   type MarkType,
   type Node as PMNode,
+  type ResolvedPos,
 } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
@@ -836,6 +837,21 @@ function resolveChangeUnguarded(
         const boundaries: PMNode[] = [];
         while (nextPos < tr.doc.content.size) {
           const boundary = tr.doc.nodeAt(nextPos);
+          // A whole suggested block this rejection takes out is gone before
+          // the break joins: the words run into the block that stays, under
+          // its mark, never into the one rejecting removes.
+          if (
+            boundary !== null &&
+            boundary.attrs["pPrMark"] == null &&
+            rejectionRemovesWholeNode(boundary, {
+              mode,
+              resolves: (revisionId) => revisionSet?.has(revisionId) === true,
+            }) &&
+            !endsItsContainer(tr.doc.resolve(nextPos))
+          ) {
+            tr.delete(nextPos, nextPos + boundary.nodeSize);
+            continue;
+          }
           if (boundary === null || !isBlockBoundaryNode(boundary)) break;
           boundaries.push(boundary);
           nextPos += boundary.nodeSize;
@@ -2475,6 +2491,27 @@ const readStructuralSuggestion = (
   return null;
 };
 
+/**
+ * Whether a rejection takes `node` out whole: a wholly suggested paragraph or
+ * table whose insertion it rejects. The suggestion rejections remove it, and
+ * a paragraph break the same rejection takes out joins past it.
+ */
+const rejectionRemovesWholeNode = (
+  node: PMNode,
+  selection: { mode: ResolveMode; resolves: (revisionId: number) => boolean },
+): boolean => {
+  const structural = readStructuralSuggestion(node);
+  return (
+    selection.mode === "reject" &&
+    structural?.isNodeInsert === true &&
+    selection.resolves(structural.revisionId)
+  );
+};
+
+/** Whether the node at `at` is its parent's last child. */
+const endsItsContainer = (at: ResolvedPos): boolean =>
+  at.index() >= at.parent.childCount - 1;
+
 type SuggestionAccumulator = {
   segments: { from: number; to: number }[];
   kinds: Set<SuggestionKind>;
@@ -3795,11 +3832,16 @@ export function rejectSuggestion(suggestionId: string): Command {
 
     // Phase 2: drop this suggestion's remaining whole-node inserts.
     const positions: number[] = [];
+    const rejected = {
+      mode: "reject",
+      resolves: (revisionId: number) => entry.revisionIds.has(revisionId),
+    } as const;
+    // A revision id may repeat across suggestions until save renumbers it, so
+    // a whole node goes only when it is this suggestion's own insertion.
     workingTr.doc.descendants((node, pos) => {
-      const structural = readStructuralSuggestion(node);
       if (
-        structural?.isNodeInsert &&
-        structural.suggestionId === suggestionId
+        rejectionRemovesWholeNode(node, rejected) &&
+        readStructuralSuggestion(node)?.suggestionId === suggestionId
       ) {
         positions.push(pos);
       }
@@ -3877,8 +3919,12 @@ export function rejectAllSuggestions(): Command {
     // Drop any remaining whole-node inserts (empty inserted paragraphs whose
     // inline text the resolve just removed, and whole inserted tables).
     const positions: number[] = [];
+    const rejected = {
+      mode: "reject",
+      resolves: (revisionId: number) => revisionIds.has(revisionId),
+    } as const;
     workingTr.doc.descendants((node, pos) => {
-      if (readStructuralSuggestion(node)?.isNodeInsert) {
+      if (rejectionRemovesWholeNode(node, rejected)) {
         positions.push(pos);
       }
       return undefined;

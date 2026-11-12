@@ -1,3 +1,4 @@
+import type { SdtProperties } from "./content";
 /**
  * What a content control's `w:lock` (ECMA-376 Part 1, §17.5.2.23) permits.
  *
@@ -11,7 +12,7 @@
  * `contentFrom`..`contentTo`, and the stretch a change touches on the same
  * scale. A refused change applies nothing.
  */
-import type { SdtProperties } from "./content";
+import type { WritableRecord } from "./deepReadonly";
 
 export type ContentControlLock = NonNullable<SdtProperties["lock"]>;
 
@@ -53,7 +54,7 @@ export const contentControlLockAllows = (
 };
 
 /** A content control, on the caller's position scale. */
-export type LockedControlSpan = {
+export type LockedControlSpan = WritableRecord & {
   lock: ContentControlLock;
   /** Before the control. */
   from: number;
@@ -72,14 +73,14 @@ export type LockedControlSpan = {
  * standing (a text edit across a whole control rewrites its content). An
  * insertion is an `edit` whose `from` equals `to`.
  */
-export type LockedControlTouch = {
+export type LockedControlTouch = WritableRecord & {
   from: number;
   to: number;
   effect: "remove" | "edit";
 };
 
 /** Why a lock refuses a change. */
-export type LockedControlViolation = {
+export type LockedControlViolation = WritableRecord & {
   lock: ContentControlLock;
   change: ContentControlChange;
 };

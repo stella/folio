@@ -19,6 +19,7 @@ import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
 import { acquireHarnessDom } from "../../../../test/harnessDom";
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -1758,9 +1759,9 @@ test(
   "canonical undescribed commands preserve non-document effects and refuse raw mutations",
   () => {
     GlobalRegistrator.register();
-    const counts = { selection: 0, probe: 0, mutation: 0 };
+    type Counts = { selection: number; probe: number; mutation: number };
     try {
-      assertProperty(
+      const law = (counts: Counts) =>
         fc.property(
           fc.record({
             text: fc.string({ minLength: 1, maxLength: 16 }),
@@ -1845,18 +1846,22 @@ test(
               host.remove();
             }
           },
-        ),
-        {
-          id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
-        },
-      );
+        );
+      assertProperty(law({ selection: 0, probe: 0, mutation: 0 }), {
+        id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
+      });
+      // Every case runs each kind of command; a few cases of a fixed sample
+      // show it.
+      const RUNS = 3;
+      const counts: Counts = { selection: 0, probe: 0, mutation: 0 };
+      checkCoverageSample(law(counts), RUNS);
       for (const count of Object.values(counts))
         expect(count).toBeGreaterThan(0);
     } finally {
       GlobalRegistrator.unregister();
     }
   },
-  propertyTestTimeout(30_000),
+  propertyTestTimeout(31_000),
 );
 
 test("canonical command execution reports descriptor refusals without mutation", () => {

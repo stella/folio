@@ -23,6 +23,7 @@ import type {
   Table,
   Theme,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { parseBlockContent } from "./blockContentParser";
 import type { NumberingMap } from "./numberingParser";
 import { getParagraphText } from "./paragraphParser";
@@ -339,7 +340,7 @@ function parseDocumentBackground(
 export function parseDocumentBody(
   xml: string,
   styles: StyleMap | null = null,
-  theme: Theme | null = null,
+  theme: DeepReadonly<Theme> | null = null,
   numbering: NumberingMap | null = null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
@@ -362,7 +363,7 @@ export function parseDocumentBody(
 type ParsedDocumentBodyOptions = {
   doc: XmlElement;
   styles: StyleMap | null;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   numbering: NumberingMap | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;

@@ -3,6 +3,7 @@ import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyConfig,
@@ -175,8 +176,7 @@ describe("all-story operation laws", () => {
   });
 
   test("the existing rich operation generator exercises every other story with the same inverse and locality oracle", () => {
-    let appliedCount = 0;
-    assertProperty(
+    const law = (counts: { applied: number }) =>
       fc.property(documentArbitrary, opSeedArbitrary, (source, seed) => {
         const stories = [
           { kind: "header", rId: "rIdGenerated" },
@@ -260,7 +260,7 @@ describe("all-story operation laws", () => {
             ),
           );
           if (result.isErr()) continue;
-          appliedCount += 1;
+          counts.applied += 1;
           const applied = expectExact(document, op);
           const touchedNotes = noteStoriesTouchedByReferences(
             document,
@@ -275,13 +275,16 @@ describe("all-story operation laws", () => {
             );
           }
         }
-      }),
-      {
-        numRuns: 100,
-        id: "the existing rich operation generator exercises every other story with the same inverse and locality oracle",
-      },
-    );
-    expect(appliedCount).toBeGreaterThan(50);
+      });
+    assertProperty(law({ applied: 0 }), {
+      numRuns: 100,
+      id: "the existing rich operation generator exercises every other story with the same inverse and locality oracle",
+    });
+    // The property's run count, which the threshold was set for.
+    const COVERAGE_RUNS = 100;
+    const counts = { applied: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.applied).toBeGreaterThan(50);
   });
 
   test("generated header/footer variants, note references and section properties have exact inverses", () => {

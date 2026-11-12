@@ -5,7 +5,7 @@
 ```ts
 
 // @public
-export type AbstractNumbering = {
+export type AbstractNumbering = WritableRecord & {
     abstractNumId: number;
     nsid?: string;
     multiLevelType?: "hybridMultilevel" | "multilevel" | "singleLevel";
@@ -31,7 +31,7 @@ export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
 export type BlockContent = Paragraph | Table | BlockSdt | BlockCustomXml | PreservedBlock | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd;
 
 // @public
-export type BlockCustomXml = {
+export type BlockCustomXml = WritableRecord & {
     type: "blockCustomXml";
     openingXml: string;
     closingXml: string;
@@ -39,7 +39,7 @@ export type BlockCustomXml = {
 };
 
 // @public
-export type BlockSdt = {
+export type BlockSdt = WritableRecord & {
     type: "blockSdt";
     properties: SdtProperties;
     content: BlockContent[];
@@ -49,19 +49,19 @@ export type BlockSdt = {
 export const BODY_TEXT_OUTLINE_LEVEL: OutlineLevel;
 
 // @public
-export type BookmarkEnd = {
+export type BookmarkEnd = WritableRecord & {
     type: "bookmarkEnd";
 } & MarkupRangeMarker & CopyOriginMarker;
 
 // @public
-export type BookmarkRangeMarker = MarkupRangeMarker & {
+export type BookmarkRangeMarker = MarkupRangeMarker & WritableRecord & {
     name: string;
     colFirst?: number;
     colLast?: number;
 };
 
 // @public
-export type BookmarkStart = {
+export type BookmarkStart = WritableRecord & {
     type: "bookmarkStart";
 } & BookmarkRangeMarker & CopyOriginMarker;
 
@@ -69,7 +69,7 @@ export type BookmarkStart = {
 export const BORDER_STYLES: readonly ["nil", "none", "single", "thick", "double", "dotted", "dashed", "dotDash", "dotDotDash", "triple", "thinThickSmallGap", "thickThinSmallGap", "thinThickThinSmallGap", "thinThickMediumGap", "thickThinMediumGap", "thinThickThinMediumGap", "thinThickLargeGap", "thickThinLargeGap", "thinThickThinLargeGap", "wave", "doubleWave", "dashSmallGap", "dashDotStroked", "threeDEmboss", "threeDEngrave", "outset", "inset", "apples", "archedScallops", "babyPacifier", "babyRattle", "balloons3Colors", "balloonsHotAir", "basicBlackDashes", "basicBlackDots", "basicBlackSquares", "basicThinLines", "basicWhiteDashes", "basicWhiteDots", "basicWhiteSquares", "basicWideInline", "basicWideMidline", "basicWideOutline", "bats", "birds", "birdsFlight", "cabins", "cakeSlice", "candyCorn", "celticKnotwork", "certificateBanner", "chainLink", "champagneBottle", "checkedBarBlack", "checkedBarColor", "checkered", "christmasTree", "circlesLines", "circlesRectangles", "classicalWave", "clocks", "compass", "confetti", "confettiGrays", "confettiOutline", "confettiStreamers", "confettiWhite", "cornerTriangles", "couponCutoutDashes", "couponCutoutDots", "crazyMaze", "creaturesButterfly", "creaturesFish", "creaturesInsects", "creaturesLadyBug", "crossStitch", "cup", "decoArch", "decoArchColor", "decoBlocks", "diamondsGray", "doubleD", "doubleDiamonds", "earth1", "earth2", "earth3", "eclipsingSquares1", "eclipsingSquares2", "eggsBlack", "fans", "film", "firecrackers", "flowersBlockPrint", "flowersDaisies", "flowersModern1", "flowersModern2", "flowersPansy", "flowersRedRose", "flowersRoses", "flowersTeacup", "flowersTiny", "gems", "gingerbreadMan", "gradient", "handmade1", "handmade2", "heartBalloon", "heartGray", "hearts", "heebieJeebies", "holly", "houseFunky", "hypnotic", "iceCreamCones", "lightBulb", "lightning1", "lightning2", "mapPins", "mapleLeaf", "mapleMuffins", "marquee", "marqueeToothed", "moons", "mosaic", "musicNotes", "northwest", "ovals", "packages", "palmsBlack", "palmsColor", "paperClips", "papyrus", "partyFavor", "partyGlass", "pencils", "people", "peopleWaving", "peopleHats", "poinsettias", "postageStamp", "pumpkin1", "pushPinNote2", "pushPinNote1", "pyramids", "pyramidsAbove", "quadrants", "rings", "safari", "sawtooth", "sawtoothGray", "scaredCat", "seattle", "shadowedSquares", "sharksTeeth", "shorebirdTracks", "skyrocket", "snowflakeFancy", "snowflakes", "sombrero", "southwest", "stars", "starsTop", "stars3d", "starsBlack", "starsShadowed", "sun", "swirligig", "tornPaper", "tornPaperBlack", "trees", "triangleParty", "triangles", "triangle1", "triangle2", "triangleCircle1", "triangleCircle2", "shapes1", "shapes2", "twistedLines1", "twistedLines2", "vine", "waveline", "weavingAngles", "weavingBraid", "weavingRibbon", "weavingStrips", "whiteFlowers", "woodwork", "xIllusions", "zanyTriangles", "zigZag", "zigZagStitch", "custom"];
 
 // @public
-export type BorderSpec = {
+export type BorderSpec = WritableRecord & {
     style: BorderStyleValue;
     color?: ColorValue;
     size?: number;
@@ -97,7 +97,7 @@ export const borderStyleToken: (style: BorderStyleValue) => string;
 export type BorderStyleValue = BorderStyle | UnrecognisedBorderStyle;
 
 // @public
-export type BreakContent = {
+export type BreakContent = WritableRecord & ({
     type: "break";
     sourceElement: "cr";
     breakType?: never;
@@ -107,10 +107,10 @@ export type BreakContent = {
     sourceElement?: "br";
     breakType?: "page" | "column" | "textWrapping";
     clear?: "none" | "left" | "right" | "all";
-};
+});
 
 // @public
-export type CellMargins = {
+export type CellMargins = WritableRecord & {
     top?: TableMeasurement;
     bottom?: TableMeasurement;
     left?: TableMeasurement;
@@ -118,7 +118,7 @@ export type CellMargins = {
 };
 
 // @public
-export type ColorValue = {
+export type ColorValue = WritableRecord & {
     rgb?: string;
     themeColor?: ThemeColorValue;
     themeTint?: string;
@@ -127,13 +127,13 @@ export type ColorValue = {
 };
 
 // @public
-export type Column = {
+export type Column = WritableRecord & {
     width?: number;
     space?: number;
 };
 
 // @public
-type Comment_2 = {
+type Comment_2 = WritableRecord & {
     id: number;
     anchorKind?: "point" | "range";
     author: string;
@@ -161,23 +161,23 @@ export const COMMENT_PART_RELATIONSHIPS: {
 };
 
 // @public
-export type CommentRangeEnd = {
+export type CommentRangeEnd = WritableRecord & {
     type: "commentRangeEnd";
 } & MarkupRangeMarker;
 
 // @public
-export type CommentRangeStart = {
+export type CommentRangeStart = WritableRecord & {
     type: "commentRangeStart";
 } & MarkupRangeMarker;
 
 // @public
-export type CommentReference = {
+export type CommentReference = WritableRecord & {
     type: "commentReference";
     id: number;
 };
 
 // @public
-export type ComplexField = {
+export type ComplexField = WritableRecord & {
     type: "complexField";
     instruction: string;
     fieldType: FieldType;
@@ -191,7 +191,7 @@ export type ComplexField = {
 };
 
 // @public
-export type ConditionalFormatStyle = {
+export type ConditionalFormatStyle = WritableRecord & {
     firstRow?: boolean;
     lastRow?: boolean;
     firstColumn?: boolean;
@@ -225,13 +225,13 @@ export const COUNTER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "
 export type CounterFormat = (typeof COUNTER_FORMATS)[number];
 
 // @public
-export type DeepReadonly<Value> = Value extends ((...args: never[]) => unknown) ? Value : Value extends ArrayBuffer | Date ? Value : Value extends ReadonlyMap<infer Key, infer Entry> ? ReadonlyMap<DeepReadonly<Key>, DeepReadonly<Entry>> : Value extends ReadonlySet<infer Entry> ? ReadonlySet<DeepReadonly<Entry>> : Value extends readonly (infer Element)[] ? readonly DeepReadonly<Element>[] : Value extends object ? { readonly [Key in keyof Value]: DeepReadonly<Value[Key]>; } : Value;
+export type DeepReadonly<Value> = Value extends ((...args: never[]) => unknown) ? Value : Value extends ArrayBuffer ? Value : Value extends Date ? ReadonlyDate : Value extends ReadonlyMap<infer Key, infer Entry> ? ReadonlyMap<DeepReadonly<Key>, DeepReadonly<Entry>> : Value extends ReadonlySet<infer Entry> ? ReadonlySet<DeepReadonly<Entry>> : Value extends readonly (infer Element)[] ? readonly DeepReadonly<Element>[] : Value extends object ? { readonly [Key in keyof Value]: DeepReadonly<Value[Key]>; } : Value;
 
 // @public
 export const DEFAULT_TAB_STOP_TWIPS = 720;
 
 // @public
-export type Deletion = {
+export type Deletion = WritableRecord & {
     type: "deletion";
     resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
@@ -242,13 +242,13 @@ export type Deletion = {
 export type DisplacedByCustomXml = "next" | "prev";
 
 // @public
-export type DocDefaults = {
+export type DocDefaults = WritableRecord & {
     rPr?: TextFormatting;
     pPr?: ParagraphFormatting;
 };
 
 // @public
-type Document_2 = {
+type Document_2 = WritableRecord & {
     package: DocxPackage;
     originalBuffer?: ArrayBuffer;
     templateVariables?: string[];
@@ -259,7 +259,7 @@ type Document_2 = {
 export { Document_2 as Document }
 
 // @public
-export type DocumentBackground = {
+export type DocumentBackground = WritableRecord & {
     color?: ColorValue;
     themeColor?: ThemeColorValue;
     themeTint?: string;
@@ -268,12 +268,12 @@ export type DocumentBackground = {
 };
 
 // @public
-export type DocumentBackgroundDrawing = {
+export type DocumentBackgroundDrawing = WritableRecord & {
     rawXml: string;
 };
 
 // @public
-export type DocumentBody = {
+export type DocumentBody = WritableRecord & {
     background?: DocumentBackground;
     content: BlockContent[];
     sections?: Section[] | undefined;
@@ -282,7 +282,7 @@ export type DocumentBody = {
 };
 
 // @public
-export type DocumentSettings = {
+export type DocumentSettings = WritableRecord & {
     compatibilityMode?: number;
     noColumnBalance?: boolean;
     defaultTabStop: number;
@@ -291,7 +291,7 @@ export type DocumentSettings = {
     adjustLineHeightInTable?: true;
     doNotUseIndentAsNumberingTabStop?: true;
     updateFields?: boolean;
-    themeFontLang?: {
+    themeFontLang?: WritableRecord & {
         eastAsia?: string;
         bidi?: string;
     };
@@ -299,12 +299,12 @@ export type DocumentSettings = {
     doNotHyphenateCaps?: boolean;
     consecutiveHyphenLimit?: number;
     hyphenationZoneTwips?: number;
-    lineBreakRules?: {
-        noLineBreaksBefore?: {
+    lineBreakRules?: WritableRecord & {
+        noLineBreaksBefore?: WritableRecord & {
             language?: string;
             characters: string;
         };
-        noLineBreaksAfter?: {
+        noLineBreaksAfter?: WritableRecord & {
             language?: string;
             characters: string;
         };
@@ -325,7 +325,7 @@ export const DOCX_CONFORMANCE_CLASSES: Readonly<{
 export type DocxConformanceClass = (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeof DOCX_CONFORMANCE_CLASSES];
 
 // @public
-export type DocxPackage = {
+export type DocxPackage = WritableRecord & {
     conformanceClass?: DocxConformanceClass;
     document: DocumentBody;
     settings?: DocumentSettings;
@@ -339,7 +339,7 @@ export type DocxPackage = {
     footers?: Map<string, HeaderFooter>;
     relationships?: RelationshipMap | undefined;
     media?: Map<string, MediaFile> | undefined;
-    properties?: {
+    properties?: WritableRecord & {
         title?: string;
         subject?: string;
         creator?: string;
@@ -359,9 +359,9 @@ export const DRAWING_RAW_XML_MODES: {
 };
 
 // @public
-export type DrawingAnchor = {
+export type DrawingAnchor = WritableRecord & {
     useSimplePosition?: boolean;
-    simplePosition?: {
+    simplePosition?: WritableRecord & {
         x: number;
         y: number;
     };
@@ -373,7 +373,7 @@ export type DrawingAnchor = {
 };
 
 // @public
-export type DrawingContent = {
+export type DrawingContent = WritableRecord & ({
     type: "drawing";
     image: Image_2;
     rawXml?: string;
@@ -390,10 +390,10 @@ export type DrawingContent = {
     rawXml: string;
     rawImageFingerprint: string;
     rawXmlMode: typeof DRAWING_RAW_XML_MODES.PREVIEW_ONLY;
-};
+});
 
 // @public
-export type DrawingGroupChild = {
+export type DrawingGroupChild = WritableRecord & {
     path: number[];
     group: string;
     content: string;
@@ -403,13 +403,13 @@ export type DrawingGroupChild = {
 export type DrawingRawXmlMode = (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
 
 // @public
-export type EffectExtentSlots = {
+export type EffectExtentSlots = WritableRecord & {
     drawing?: ImagePadding;
     wrapChild?: ImagePadding;
 };
 
 // @public
-export type EmbeddedFontRef = {
+export type EmbeddedFontRef = WritableRecord & {
     id: string;
     fontKey?: string;
     subsetted?: boolean;
@@ -419,7 +419,7 @@ export type EmbeddedFontRef = {
 export type EmphasisMark = "none" | "dot" | "comma" | "circle" | "underDot";
 
 // @public
-export type Endnote = {
+export type Endnote = WritableRecord & {
     type: "endnote";
     id: number;
     noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
@@ -430,7 +430,7 @@ export type Endnote = {
 export type EndnotePosition = "sectEnd" | "docEnd";
 
 // @public
-export type EndnoteProperties = {
+export type EndnoteProperties = WritableRecord & {
     position?: EndnotePosition;
     numFmt?: NumberFormat;
     numFmtFormat?: string;
@@ -439,13 +439,13 @@ export type EndnoteProperties = {
 };
 
 // @public
-export type ExhaustiveFields<Source, Classified extends keyof Source> = Exclude<keyof Source, Classified> extends never ? Source : never;
+export type ExhaustiveFields<Source, Classified extends RecordField<Source>> = Exclude<RecordField<Source>, Classified> extends never ? Source : never;
 
 // @public (undocumented)
 export type Field = SimpleField | ComplexField;
 
 // @public
-export type FieldCharContent = {
+export type FieldCharContent = WritableRecord & {
     type: "fieldChar";
     charType: "begin" | "separate" | "end";
     fldLock?: boolean;
@@ -463,7 +463,7 @@ export const finalizeParagraphFormatting: (formatting: ParagraphFormatting | und
 export const firstLockedControlViolation: (controls: Iterable<LockedControlSpan>, touches: readonly LockedControlTouch[]) => LockedControlViolation | null;
 
 // @public
-export type FloatingTableProperties = {
+export type FloatingTableProperties = WritableRecord & {
     horzAnchor?: "margin" | "page" | "text";
     vertAnchor?: "margin" | "page" | "text";
     tblpX?: number;
@@ -477,29 +477,29 @@ export type FloatingTableProperties = {
 };
 
 // @public
-export type FoldedListNumber = {
+export type FoldedListNumber = (WritableRecord & {
     kind: "field";
     field: ComplexField;
-} | {
+}) | (WritableRecord & {
     kind: "tab";
     run: Run;
-};
+});
 
 // @public
-export type FontCharset = {
+export type FontCharset = WritableRecord & {
     val?: string;
     characterSet?: string;
 };
 
 // @public
-export type FontInfo = {
+export type FontInfo = WritableRecord & {
     name: string;
     altName?: string;
     panose1?: string;
     charset?: FontCharset;
     family?: "decorative" | "modern" | "roman" | "script" | "swiss" | "auto";
     pitch?: "default" | "fixed" | "variable";
-    sig?: {
+    sig?: WritableRecord & {
         usb0?: string;
         usb1?: string;
         usb2?: string;
@@ -516,20 +516,20 @@ export type FontInfo = {
 };
 
 // @public
-export type FontTable = {
+export type FontTable = WritableRecord & {
     fonts: FontInfo[];
     preserved?: PreservedMarkup;
     preservedAttributes?: PreservedAttribute[];
 };
 
 // @public (undocumented)
-export type FooterReference = {
+export type FooterReference = WritableRecord & {
     type: HeaderFooterType;
     rId: string;
 };
 
 // @public
-export type Footnote = {
+export type Footnote = WritableRecord & {
     type: "footnote";
     id: number;
     noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
@@ -540,7 +540,7 @@ export type Footnote = {
 export type FootnotePosition = "pageBottom" | "beneathText" | "sectEnd" | "docEnd";
 
 // @public
-export type FootnoteProperties = {
+export type FootnoteProperties = WritableRecord & {
     position?: FootnotePosition;
     numFmt?: NumberFormat;
     numFmtFormat?: string;
@@ -552,7 +552,7 @@ export type FootnoteProperties = {
 export const getSingularRunPropertyChange: (propertyChanges: readonly RunPropertyChange[] | undefined) => RunPropertyChange | undefined;
 
 // @public
-export type HeaderFooter = {
+export type HeaderFooter = WritableRecord & {
     type: "header" | "footer";
     hdrFtrType: HeaderFooterType;
     content: BlockContent[];
@@ -567,7 +567,7 @@ export type HeaderFooter = {
 export type HeaderFooterType = "default" | "first" | "even";
 
 // @public
-export type HeaderReference = {
+export type HeaderReference = WritableRecord & {
     type: HeaderFooterType;
     rId: string;
 };
@@ -582,7 +582,7 @@ export type HeadingOutlineLevel = (typeof HEADING_OUTLINE_LEVELS)[number];
 export const headingOutlineLevel: (level: number) => OutlineLevel | undefined;
 
 // @public
-export type Hyperlink = {
+export type Hyperlink = WritableRecord & {
     type: "hyperlink";
     rId?: string;
     href?: string;
@@ -595,7 +595,7 @@ export type Hyperlink = {
 };
 
 // @public
-type Image_2 = {
+type Image_2 = WritableRecord & {
     type: "image";
     id?: string;
     rId?: RelationshipId;
@@ -625,7 +625,7 @@ type Image_2 = {
     hlinkClickSource?: ImageDocPrLink;
     hlinkHoverXml?: string;
     outline?: ShapeOutline;
-    effects?: {
+    effects?: WritableRecord & {
         brightness?: number;
         contrast?: number;
         saturation?: number;
@@ -634,7 +634,7 @@ type Image_2 = {
 export { Image_2 as Image }
 
 // @public
-export type ImageCrop = {
+export type ImageCrop = WritableRecord & {
     left?: number;
     top?: number;
     right?: number;
@@ -642,13 +642,13 @@ export type ImageCrop = {
 };
 
 // @public
-export type ImageDocPrLink = {
+export type ImageDocPrLink = WritableRecord & {
     xml: string;
     rId?: string;
 };
 
 // @public
-export type ImageFrameLocks = {
+export type ImageFrameLocks = WritableRecord & {
     noGrp?: boolean;
     noDrilldown?: boolean;
     noSelect?: boolean;
@@ -658,7 +658,7 @@ export type ImageFrameLocks = {
 };
 
 // @public
-export type ImagePadding = {
+export type ImagePadding = WritableRecord & {
     top?: number;
     bottom?: number;
     left?: number;
@@ -666,13 +666,13 @@ export type ImagePadding = {
 };
 
 // @public
-export type ImagePosition = {
-    horizontal: {
+export type ImagePosition = WritableRecord & {
+    horizontal: WritableRecord & {
         relativeTo: "character" | "column" | "insideMargin" | "leftMargin" | "margin" | "outsideMargin" | "page" | "rightMargin";
         alignment?: "left" | "right" | "center" | "inside" | "outside";
         posOffset?: number;
     };
-    vertical: {
+    vertical: WritableRecord & {
         relativeTo: "insideMargin" | "line" | "margin" | "outsideMargin" | "page" | "paragraph" | "topMargin" | "bottomMargin";
         alignment?: "top" | "bottom" | "center" | "inside" | "outside";
         posOffset?: number;
@@ -680,20 +680,20 @@ export type ImagePosition = {
 };
 
 // @public
-export type ImageSize = {
+export type ImageSize = WritableRecord & {
     width: number;
     height: number;
 };
 
 // @public
-export type ImageTransform = {
+export type ImageTransform = WritableRecord & {
     rotation?: number;
     flipH?: boolean;
     flipV?: boolean;
 };
 
 // @public
-export type ImageWrap = {
+export type ImageWrap = WritableRecord & {
     type: "inline" | "square" | "tight" | "through" | "topAndBottom" | "behind" | "inFront";
     wrapText?: "bothSides" | "left" | "right" | "largest";
     distT?: number;
@@ -706,7 +706,7 @@ export type ImageWrap = {
 };
 
 // @public
-export type ImageWrapPolygon = {
+export type ImageWrapPolygon = WritableRecord & {
     edited?: boolean;
     start: WrapPolygonPoint;
     lineTo: WrapPolygonPoint[];
@@ -731,14 +731,14 @@ export const IMPORTED_ID_COLLISION_KINDS: {
 export type ImportedIdCollisionKind = (typeof IMPORTED_ID_COLLISION_KINDS)[keyof typeof IMPORTED_ID_COLLISION_KINDS];
 
 // @public
-export type InlineSdt = {
+export type InlineSdt = WritableRecord & {
     type: "inlineSdt";
     properties: SdtProperties;
     content: (Run | Hyperlink | BookmarkStart | BookmarkEnd | CommentRangeStart | CommentRangeEnd | CommentReference | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | SimpleField | ComplexField | InlineSdt | InlineWrapper | Insertion | Deletion | MoveFrom | MoveTo | MathEquation | PreservedInline)[];
 };
 
 // @public
-export type InlineWrapper = {
+export type InlineWrapper = WritableRecord & ({
     type: "inlineWrapper";
     kind: "bidi";
     control: BidiControl;
@@ -758,10 +758,10 @@ export type InlineWrapper = {
     uri?: string;
     propertiesXml?: string;
     content: ParagraphContent[];
-};
+});
 
 // @public
-export type Insertion = {
+export type Insertion = WritableRecord & {
     type: "insertion";
     resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
@@ -769,16 +769,16 @@ export type Insertion = {
 };
 
 // @public
-export type InstrTextContent = {
+export type InstrTextContent = WritableRecord & {
     type: "instrText";
     text: string;
 };
 
 // @public
-export const isBorderNil: (style: BorderStyleValue | undefined) => boolean;
+export const isBorderNil: (style: DeepReadonly<BorderStyleValue> | undefined) => boolean;
 
 // @public
-export const isBorderNone: (style: BorderStyleValue | undefined) => boolean;
+export const isBorderNone: (style: DeepReadonly<BorderStyleValue> | undefined) => boolean;
 
 // @public
 export const isBorderStyle: (value: string) => value is BorderStyle;
@@ -805,17 +805,17 @@ export const isSchemeColorValue: (value: string) => value is SchemeColorValue;
 export const isThemeColor: (value: string) => value is ThemeColor;
 
 // @public
-export const knownThemeColor: (value: ThemeColorValue) => ThemeColor | undefined;
+export const knownThemeColor: (value: DeepReadonly<ThemeColorValue>) => ThemeColor | undefined;
 
 // @public
-export type LevelLegacy = {
+export type LevelLegacy = WritableRecord & {
     legacy?: boolean;
     legacySpace?: number;
     legacyIndent?: number;
 };
 
 // @public
-export type LevelOverride = {
+export type LevelOverride = WritableRecord & {
     ilvl: number;
     startOverride?: number;
     lvl?: ListLevel;
@@ -836,7 +836,7 @@ export type LineNumberRestart = "continuous" | "newPage" | "newSection";
 export type LineSpacingRule = "auto" | "exact" | "atLeast";
 
 // @public
-export type ListLevel = {
+export type ListLevel = WritableRecord & {
     ilvl: number;
     tplc?: string;
     tentative?: boolean;
@@ -859,10 +859,10 @@ export type ListLevel = {
 };
 
 // @public
-export type ListMarkerFormatting = Pick<TextFormatting, "fontFamily" | "fontSize" | "fontSizeCs" | "bold" | "boldCs" | "italic" | "italicCs" | "rtl" | "cs" | "color">;
+export type ListMarkerFormatting = WritableRecord & Pick<TextFormatting, "fontFamily" | "fontSize" | "fontSizeCs" | "bold" | "boldCs" | "italic" | "italicCs" | "rtl" | "cs" | "color">;
 
 // @public
-export type ListRendering = {
+export type ListRendering = WritableRecord & {
     marker: string;
     markerTemplate?: string;
     foldedMarkerSuffix?: string;
@@ -889,7 +889,7 @@ export type ListRendering = {
 export const lockedControlMessage: (input: LockedControlViolation) => string;
 
 // @public
-export type LockedControlSpan = {
+export type LockedControlSpan = WritableRecord & {
     lock: ContentControlLock;
     from: number;
     to: number;
@@ -898,14 +898,14 @@ export type LockedControlSpan = {
 };
 
 // @public
-export type LockedControlTouch = {
+export type LockedControlTouch = WritableRecord & {
     from: number;
     to: number;
     effect: "remove" | "edit";
 };
 
 // @public
-export type LockedControlViolation = {
+export type LockedControlViolation = WritableRecord & {
     lock: ContentControlLock;
     change: ContentControlChange;
 };
@@ -920,13 +920,13 @@ export const locksContent: (lock: ContentControlLock | null | undefined) => lock
 export const locksControl: (lock: ContentControlLock | null | undefined) => lock is "sdtLocked" | "sdtContentLocked";
 
 // @public
-export type MarkupRangeMarker = {
+export type MarkupRangeMarker = WritableRecord & {
     id: number;
     displacedByCustomXml?: DisplacedByCustomXml;
 };
 
 // @public
-export type MathEquation = {
+export type MathEquation = WritableRecord & {
     type: "mathEquation";
     display: "inline" | "block";
     ommlXml: string;
@@ -940,7 +940,7 @@ export const MAX_RETAINED_PARSE_WARNINGS_PER_CODE = 20;
 export const MAX_REVISION_ID = 2147483647;
 
 // @public
-export type MediaFile = {
+export type MediaFile = WritableRecord & {
     path: string;
     filename?: string;
     mimeType: string;
@@ -956,13 +956,13 @@ export const mergeParagraphNumbering: (inherited: ParagraphNumberingOverride | u
 export const mintRelationshipId: (ordinal: number) => RelationshipId;
 
 // @public
-export type MoveBookmarkMarker = BookmarkRangeMarker & {
+export type MoveBookmarkMarker = BookmarkRangeMarker & WritableRecord & {
     author: string;
     date?: string;
 };
 
 // @public
-export type MoveFrom = {
+export type MoveFrom = WritableRecord & {
     type: "moveFrom";
     resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
@@ -970,17 +970,17 @@ export type MoveFrom = {
 };
 
 // @public
-export type MoveFromRangeEnd = {
+export type MoveFromRangeEnd = WritableRecord & {
     type: "moveFromRangeEnd";
 } & MarkupRangeMarker & CopyOriginMarker;
 
 // @public
-export type MoveFromRangeStart = {
+export type MoveFromRangeStart = WritableRecord & {
     type: "moveFromRangeStart";
 } & MoveBookmarkMarker & CopyOriginMarker;
 
 // @public
-export type MoveTo = {
+export type MoveTo = WritableRecord & {
     type: "moveTo";
     resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
@@ -988,12 +988,12 @@ export type MoveTo = {
 };
 
 // @public
-export type MoveToRangeEnd = {
+export type MoveToRangeEnd = WritableRecord & {
     type: "moveToRangeEnd";
 } & MarkupRangeMarker & CopyOriginMarker;
 
 // @public
-export type MoveToRangeStart = {
+export type MoveToRangeStart = WritableRecord & {
     type: "moveToRangeStart";
 } & MoveBookmarkMarker & CopyOriginMarker;
 
@@ -1006,12 +1006,12 @@ export const NO_PARAGRAPH_NUMBERING: {
 };
 
 // @public
-export type NoBreakHyphenContent = {
+export type NoBreakHyphenContent = WritableRecord & {
     type: "noBreakHyphen";
 };
 
 // @public
-export type NonVisualDrawingNames = {
+export type NonVisualDrawingNames = WritableRecord & {
     name?: string;
     alt?: string;
     title?: string;
@@ -1021,7 +1021,7 @@ export type NonVisualDrawingNames = {
 export function normalizeRevisionId(id: number): number;
 
 // @public
-export type NoteMarkerContent = {
+export type NoteMarkerContent = WritableRecord & {
     type: "noteMarker";
     kind: "footnote" | "endnote";
 };
@@ -1030,7 +1030,7 @@ export type NoteMarkerContent = {
 export type NoteNumberRestart = "continuous" | "eachSect" | "eachPage";
 
 // @public
-export type NoteReferenceContent = {
+export type NoteReferenceContent = WritableRecord & {
     type: "footnoteRef" | "endnoteRef";
     id: number;
     customMarkFollows?: boolean;
@@ -1043,7 +1043,7 @@ export const NUMBER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "u
 export type NumberFormat = "decimal" | "upperRoman" | "lowerRoman" | "upperLetter" | "lowerLetter" | "ordinal" | "cardinalText" | "ordinalText" | "hex" | "chicago" | "ideographDigital" | "japaneseCounting" | "aiueo" | "iroha" | "decimalFullWidth" | "decimalHalfWidth" | "japaneseLegal" | "japaneseDigitalTenThousand" | "decimalEnclosedCircle" | "decimalFullWidth2" | "aiueoFullWidth" | "irohaFullWidth" | "decimalZero" | "bullet" | "ganada" | "chosung" | "decimalEnclosedFullstop" | "decimalEnclosedParen" | "decimalEnclosedCircleChinese" | "ideographEnclosedCircle" | "ideographTraditional" | "ideographZodiac" | "ideographZodiacTraditional" | "taiwaneseCounting" | "ideographLegalTraditional" | "taiwaneseCountingThousand" | "taiwaneseDigital" | "chineseCounting" | "chineseLegalSimplified" | "chineseCountingThousand" | "koreanDigital" | "koreanCounting" | "koreanLegal" | "koreanDigital2" | "vietnameseCounting" | "russianLower" | "russianUpper" | "none" | "numberInDash" | "hebrew1" | "hebrew2" | "arabicAlpha" | "arabicAbjad" | "hindiVowels" | "hindiConsonants" | "hindiNumbers" | "hindiCounting" | "thaiLetters" | "thaiNumbers" | "thaiCounting" | "bahtText" | "dollarText" | "custom";
 
 // @public
-export type NumberingDefinitions = {
+export type NumberingDefinitions = WritableRecord & {
     abstractNums: AbstractNumbering[];
     nums: NumberingInstance[];
     preserved?: PreservedMarkup;
@@ -1052,7 +1052,7 @@ export type NumberingDefinitions = {
 };
 
 // @public
-export type NumberingInstance = {
+export type NumberingInstance = WritableRecord & {
     numId: number;
     abstractNumId: number;
     levelOverrides?: LevelOverride[];
@@ -1067,7 +1067,7 @@ export const numberingInstanceResolves: (definitions: NumberingDefinitions, numI
 export const numberingLevelEntries: (definitions: NumberingDefinitions) => NumberingLevelEntry[];
 
 // @public (undocumented)
-export type NumberingLevelEntry = {
+export type NumberingLevelEntry = WritableRecord & {
     numId: number;
     ilvl: number;
     level: ListLevel;
@@ -1079,14 +1079,14 @@ export const numberingLevelHasMarkerSlot: (level: {
 }, isLegal?: boolean) => boolean;
 
 // @public (undocumented)
-export type NumberingLevelResolution = {
+export type NumberingLevelResolution = (WritableRecord & {
     kind: "level";
     level: ListLevel;
     source: "abstract" | "override" | "styleLink";
-} | {
+}) | (WritableRecord & {
     kind: "undefined";
     reason: "levelOutOfRange" | "noInstance" | "noAbstract" | "unresolvedStyleLink" | "levelNotDefined";
-};
+});
 
 // @public
 export type OutlineLevel = {
@@ -1106,7 +1106,7 @@ export const outlineLevelStatedValue: (outlineLevel: OutlineLevel) => number;
 export type PageOrientation = "portrait" | "landscape";
 
 // @public
-export type Paragraph = {
+export type Paragraph = WritableRecord & {
     type: "paragraph";
     paraId?: string;
     textId?: string;
@@ -1134,7 +1134,7 @@ export type ParagraphAlignment = "start" | "center" | "end" | "both" | "mediumKa
 export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | InlineWrapper | MathEquation | PreservedInline;
 
 // @public (undocumented)
-export type ParagraphFormatting = OwnFieldPresence<{
+export type ParagraphFormatting = WritableRecord & OwnFieldPresence<{
     alignment?: ParagraphAlignment;
     bidi?: boolean;
     kinsoku?: boolean;
@@ -1155,7 +1155,7 @@ export type ParagraphFormatting = OwnFieldPresence<{
     indentFirstLine?: number;
     hangingIndent?: boolean;
     indentPreservedAttributes?: PreservedAttribute[];
-    borders?: {
+    borders?: WritableRecord & {
         top?: BorderSpec;
         bottom?: BorderSpec;
         left?: BorderSpec;
@@ -1176,7 +1176,7 @@ export type ParagraphFormatting = OwnFieldPresence<{
     numberingInsertionXml?: string;
     outlineLevel?: OutlineLevel;
     styleId?: string;
-    frame?: {
+    frame?: WritableRecord & {
         dropCap?: "none" | "drop" | "margin";
         lines?: number;
         width?: number;
@@ -1200,7 +1200,7 @@ export type ParagraphFormatting = OwnFieldPresence<{
 }>;
 
 // @public
-export type ParagraphMarkChange = {
+export type ParagraphMarkChange = WritableRecord & {
     kind: ParagraphMarkChangeKind;
     info: TrackedChangeInfo;
     resolutionJoin?: number | undefined;
@@ -1242,7 +1242,7 @@ export const paragraphNumberingReference: <const NumId extends number, const Lev
 export const paragraphNumberingReferenceId: (numbering: ParagraphNumberingOverride | undefined) => number | undefined;
 
 // @public
-export type ParagraphNumberingSlots = {
+export type ParagraphNumberingSlots = WritableRecord & {
     numId?: number;
     ilvl?: number;
 };
@@ -1251,7 +1251,7 @@ export type ParagraphNumberingSlots = {
 export const paragraphNumberingSlots: (numbering: ParagraphNumberingOverride) => ParagraphNumberingSlots;
 
 // @public
-export type ParagraphPropertyChange = {
+export type ParagraphPropertyChange = WritableRecord & {
     type: "paragraphPropertyChange";
     info: PropertyChangeInfo;
     previousFormatting?: ParagraphFormatting;
@@ -1292,7 +1292,7 @@ export const PARSE_WARNING_CODES: {
 };
 
 // @public (undocumented)
-export type ParseWarning = {
+export type ParseWarning = WritableRecord & {
     code: ParseWarningCode;
     identityKind?: ImportedIdCollisionKind;
     location: ParseWarningLocation;
@@ -1305,14 +1305,14 @@ export type ParseWarning = {
 export type ParseWarningCode = (typeof PARSE_WARNING_CODES)[keyof typeof PARSE_WARNING_CODES];
 
 // @public
-export type ParseWarningLocation = {
+export type ParseWarningLocation = WritableRecord & {
     part: string;
     element?: string;
     at?: string;
 };
 
 // @public (undocumented)
-export type PictureWatermark = {
+export type PictureWatermark = WritableRecord & {
     kind: "picture";
     imageRId: string;
     imageTarget?: string;
@@ -1324,14 +1324,14 @@ export type PictureWatermark = {
 };
 
 // @public
-export type PositionalTab = {
+export type PositionalTab = WritableRecord & {
     relativeTo?: "margin" | "indent";
     alignment?: "left" | "center" | "right";
     leader?: "none" | "dot" | "hyphen" | "underscore" | "middleDot";
 };
 
 // @public
-export type PositionedBookmarkMarker = {
+export type PositionedBookmarkMarker = WritableRecord & {
     index: number;
     marker: BookmarkStart | BookmarkEnd;
     contentControls?: SdtProperties[];
@@ -1339,27 +1339,27 @@ export type PositionedBookmarkMarker = {
 };
 
 // @public
-export type PreservedAttribute = {
+export type PreservedAttribute = WritableRecord & {
     namespace?: string;
     name: string;
     value: string;
 };
 
 // @public
-export type PreservedBlock = {
+export type PreservedBlock = WritableRecord & {
     type: "preservedBlock";
     xml: string;
     readerText?: string;
 };
 
 // @public
-export type PreservedChild = {
+export type PreservedChild = WritableRecord & {
     index: number;
     xml: string;
 };
 
 // @public
-export type PreservedInline = {
+export type PreservedInline = WritableRecord & {
     type: "preservedInline";
     xml: string;
     text: string;
@@ -1367,12 +1367,12 @@ export type PreservedInline = {
 };
 
 // @public
-export type PreservedMarkup = {
+export type PreservedMarkup = WritableRecord & {
     children?: PreservedChild[];
 };
 
 // @public
-export type PreservedXmlContent = {
+export type PreservedXmlContent = WritableRecord & {
     type: "preservedXml";
     xml: string;
     text: string;
@@ -1437,7 +1437,7 @@ export const PROPERTY_REVISION_KINDS: Readonly<{
 export type PropertyChange = RunPropertyChange | ParagraphPropertyChange | SectionPropertyChange | TablePropertyChange | TablePropertyExceptionChange | TableRowPropertyChange | TableCellPropertyChange;
 
 // @public
-export type PropertyChangeInfo = {
+export type PropertyChangeInfo = WritableRecord & {
     rsid?: string;
 } & TrackedChangeInfo;
 
@@ -1448,7 +1448,10 @@ export type PropertyRevisionKind = PropertyChange["type"];
 export const readThemeColor: (raw: string | null | undefined) => ThemeColorValue | undefined;
 
 // @public
-export type Relationship = {
+export type RecordField<Value> = Exclude<keyof Value, keyof WritableRecord>;
+
+// @public
+export type Relationship = WritableRecord & {
     id: string;
     type: RelationshipType;
     target: string;
@@ -1491,7 +1494,7 @@ export const REVIEW_CARRIERS: {
 export type ReviewCarrier = (typeof REVIEW_CARRIERS)[keyof typeof REVIEW_CARRIERS];
 
 // @public
-export type Run = {
+export type Run = WritableRecord & {
     type: "run";
     formatting?: TextFormatting;
     propertyChanges?: RunPropertyChange[];
@@ -1503,7 +1506,7 @@ export type Run = {
 export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | NoteMarkerContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | PreservedXmlContent | DrawingContent | ShapeContent;
 
 // @public
-export type RunPropertyChange = {
+export type RunPropertyChange = WritableRecord & {
     type: "runPropertyChange";
     boundaryJoins?: readonly ("before" | "after")[];
     info: PropertyChangeInfo;
@@ -1545,12 +1548,12 @@ export type SchemeColorSlot = "dk1" | "lt1" | "dk2" | "lt2" | "accent1" | "accen
 export type SchemeColorValue = "bg1" | "tx1" | "bg2" | "tx2" | "accent1" | "accent2" | "accent3" | "accent4" | "accent5" | "accent6" | "hlink" | "folHlink" | "phClr" | "dk1" | "lt1" | "dk2" | "lt2";
 
 // @public
-export type SdtEndProperties = {
+export type SdtEndProperties = WritableRecord & {
     runProperties?: TextFormatting;
 };
 
 // @public
-export type SdtProperties = {
+export type SdtProperties = WritableRecord & {
     sdtType: SdtType;
     id?: number;
     alias?: string;
@@ -1560,10 +1563,10 @@ export type SdtProperties = {
     showingPlaceholder?: boolean;
     dateFormat?: string;
     dateValueISO?: string;
-    listItems?: {
+    listItems?: (WritableRecord & {
         displayText: string;
         value: string;
-    }[];
+    })[];
     dropdownLastValue?: string;
     checked?: boolean;
     preserved?: PreservedMarkup;
@@ -1577,7 +1580,7 @@ export type SdtProperties = {
 export type SdtType = "richText" | "plainText" | "date" | "dropdown" | "comboBox" | "checkbox" | "picture" | "buildingBlockGallery" | "group" | "unknown";
 
 // @public
-export type Section = {
+export type Section = WritableRecord & {
     properties: SectionProperties;
     content: BlockContent[];
     headers?: Map<HeaderFooterType, HeaderFooter> | undefined;
@@ -1585,7 +1588,7 @@ export type Section = {
 };
 
 // @public
-export type SectionProperties = {
+export type SectionProperties = WritableRecord & {
     pageWidth?: number;
     pageHeight?: number;
     orientation?: PageOrientation;
@@ -1609,19 +1612,19 @@ export type SectionProperties = {
     footerReferences?: FooterReference[];
     titlePg?: boolean;
     evenAndOddHeaders?: boolean;
-    lineNumbers?: {
+    lineNumbers?: WritableRecord & {
         start?: number;
         countBy?: number;
         distance?: number;
         restart?: LineNumberRestart;
     };
-    pageNumbering?: {
+    pageNumbering?: WritableRecord & {
         format?: NumberFormat;
         start?: number;
         chapterStyle?: number;
         chapterSeparator?: string;
     };
-    pageBorders?: {
+    pageBorders?: WritableRecord & {
         top?: BorderSpec;
         bottom?: BorderSpec;
         left?: BorderSpec;
@@ -1630,7 +1633,7 @@ export type SectionProperties = {
         offsetFrom?: "page" | "text";
         zOrder?: "front" | "back";
     };
-    background?: {
+    background?: WritableRecord & {
         color?: ColorValue;
         themeColor?: ThemeColorValue;
         themeTint?: string;
@@ -1639,7 +1642,7 @@ export type SectionProperties = {
     footnotePr?: FootnoteProperties;
     footnoteColumns?: number;
     endnotePr?: EndnoteProperties;
-    docGrid?: {
+    docGrid?: WritableRecord & {
         type?: "default" | "lines" | "linesAndChars" | "snapToChars";
         linePitch?: number;
         charSpace?: number;
@@ -1656,11 +1659,11 @@ export type SectionProperties = {
 };
 
 // @public
-export type SectionPropertyChange = {
+export type SectionPropertyChange = WritableRecord & {
     type: "sectionPropertyChange";
     info: PropertyChangeInfo;
     previousProperties?: SectionProperties;
-    previousReferences?: {
+    previousReferences?: WritableRecord & {
         headerReferences?: HeaderReference[];
         footerReferences?: FooterReference[];
     };
@@ -1674,7 +1677,7 @@ export type SectionStart = "continuous" | "nextPage" | "oddPage" | "evenPage" | 
 export const setDocumentBodyComments: (body: DocumentBody, comments: Comment_2[]) => void;
 
 // @public
-export type ShadingProperties = {
+export type ShadingProperties = WritableRecord & {
     color?: ColorValue;
     fill?: ColorValue;
     pattern?: "clear" | "solid" | "horzStripe" | "vertStripe" | "reverseDiagStripe" | "diagStripe" | "horzCross" | "diagCross" | "thinHorzStripe" | "thinVertStripe" | "thinReverseDiagStripe" | "thinDiagStripe" | "thinHorzCross" | "thinDiagCross" | "pct5" | "pct10" | "pct12" | "pct15" | "pct20" | "pct25" | "pct30" | "pct35" | "pct37" | "pct40" | "pct45" | "pct50" | "pct55" | "pct60" | "pct62" | "pct65" | "pct70" | "pct75" | "pct80" | "pct85" | "pct87" | "pct90" | "pct95" | "nil";
@@ -1682,7 +1685,7 @@ export type ShadingProperties = {
 };
 
 // @public
-export type Shape = {
+export type Shape = WritableRecord & {
     type: "shape";
     shapeType: ShapeType;
     geometryAdjustments?: ShapeGeometryAdjustment[];
@@ -1704,55 +1707,55 @@ export type Shape = {
 };
 
 // @public
-export type ShapeAlternateContent = {
+export type ShapeAlternateContent = WritableRecord & {
     verbatimXml: string;
     verbatimFingerprint: string;
     verbatimStructureFingerprint?: string;
 };
 
 // @public
-export type ShapeContent = {
+export type ShapeContent = WritableRecord & {
     type: "shape";
     shape: Shape;
     alternateContent?: ShapeAlternateContent;
 };
 
 // @public
-export type ShapeFill = {
+export type ShapeFill = WritableRecord & {
     type: "none" | "solid" | "gradient" | "pattern" | "picture";
     rawXml?: string;
     color?: ColorValue;
-    gradient?: {
+    gradient?: WritableRecord & {
         type: "linear" | "radial" | "rectangular" | "path";
         angle?: number;
         scaled?: boolean;
-        stops: {
+        stops: (WritableRecord & {
             position: number;
             color: ColorValue;
-        }[];
+        })[];
     };
 };
 
 // @public
-export type ShapeGeometryAdjustment = {
+export type ShapeGeometryAdjustment = WritableRecord & {
     name: string;
     formula: string;
 };
 
 // @public
-export type ShapeOutline = {
+export type ShapeOutline = WritableRecord & {
     rawXml?: string;
     width?: number;
     color?: ColorValue;
     dash?: PresetLineDashValue;
     cap?: "flat" | "round" | "square";
     join?: "bevel" | "miter" | "round";
-    headEnd?: {
+    headEnd?: WritableRecord & {
         type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
         width?: "sm" | "med" | "lg";
         length?: "sm" | "med" | "lg";
     };
-    tailEnd?: {
+    tailEnd?: WritableRecord & {
         type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
         width?: "sm" | "med" | "lg";
         length?: "sm" | "med" | "lg";
@@ -1760,8 +1763,8 @@ export type ShapeOutline = {
 };
 
 // @public
-export type ShapeTextBody = {
-    wordArt?: {
+export type ShapeTextBody = WritableRecord & {
+    wordArt?: WritableRecord & {
         fromWordArt?: boolean;
         preset?: string;
         adjustments?: ShapeGeometryAdjustment[];
@@ -1772,7 +1775,7 @@ export type ShapeTextBody = {
     anchorCenter?: boolean;
     autoFit?: "none" | "normal" | "shape";
     textWrap?: "square" | "none";
-    margins?: {
+    margins?: WritableRecord & {
         top?: number;
         bottom?: number;
         left?: number;
@@ -1785,7 +1788,7 @@ export type ShapeTextBody = {
 export type ShapeType = "rect" | "roundRect" | "ellipse" | "triangle" | "rtTriangle" | "parallelogram" | "trapezoid" | "pentagon" | "hexagon" | "heptagon" | "octagon" | "decagon" | "dodecagon" | "star4" | "star5" | "star6" | "star7" | "star8" | "star10" | "star12" | "star16" | "star24" | "star32" | "line" | "straightConnector1" | "bentConnector2" | "bentConnector3" | "bentConnector4" | "bentConnector5" | "curvedConnector2" | "curvedConnector3" | "curvedConnector4" | "curvedConnector5" | "rightArrow" | "leftArrow" | "upArrow" | "downArrow" | "leftRightArrow" | "upDownArrow" | "quadArrow" | "leftRightUpArrow" | "bentArrow" | "uturnArrow" | "leftUpArrow" | "bentUpArrow" | "curvedRightArrow" | "curvedLeftArrow" | "curvedUpArrow" | "curvedDownArrow" | "stripedRightArrow" | "notchedRightArrow" | "homePlate" | "chevron" | "rightArrowCallout" | "downArrowCallout" | "leftArrowCallout" | "upArrowCallout" | "leftRightArrowCallout" | "quadArrowCallout" | "circularArrow" | "flowChartProcess" | "flowChartAlternateProcess" | "flowChartDecision" | "flowChartInputOutput" | "flowChartPredefinedProcess" | "flowChartInternalStorage" | "flowChartDocument" | "flowChartMultidocument" | "flowChartTerminator" | "flowChartPreparation" | "flowChartManualInput" | "flowChartManualOperation" | "flowChartConnector" | "flowChartOffpageConnector" | "flowChartPunchedCard" | "flowChartPunchedTape" | "flowChartSummingJunction" | "flowChartOr" | "flowChartCollate" | "flowChartSort" | "flowChartExtract" | "flowChartMerge" | "flowChartOnlineStorage" | "flowChartDelay" | "flowChartMagneticTape" | "flowChartMagneticDisk" | "flowChartMagneticDrum" | "flowChartDisplay" | "wedgeRectCallout" | "wedgeRoundRectCallout" | "wedgeEllipseCallout" | "cloudCallout" | "borderCallout1" | "borderCallout2" | "borderCallout3" | "accentCallout1" | "accentCallout2" | "accentCallout3" | "callout1" | "callout2" | "callout3" | "accentBorderCallout1" | "accentBorderCallout2" | "accentBorderCallout3" | "actionButtonBlank" | "actionButtonHome" | "actionButtonHelp" | "actionButtonInformation" | "actionButtonBackPrevious" | "actionButtonForwardNext" | "actionButtonBeginning" | "actionButtonEnd" | "actionButtonReturn" | "actionButtonDocument" | "actionButtonSound" | "actionButtonMovie" | "irregularSeal1" | "irregularSeal2" | "frame" | "halfFrame" | "corner" | "diagStripe" | "chord" | "arc" | "bracketPair" | "bracePair" | "leftBracket" | "rightBracket" | "leftBrace" | "rightBrace" | "can" | "cube" | "bevel" | "donut" | "noSmoking" | "blockArc" | "foldedCorner" | "smileyFace" | "heart" | "lightningBolt" | "sun" | "moon" | "cloud" | "snip1Rect" | "snip2SameRect" | "snip2DiagRect" | "snipRoundRect" | "round1Rect" | "round2SameRect" | "round2DiagRect" | "plaque" | "teardrop" | "mathPlus" | "mathMinus" | "mathMultiply" | "mathDivide" | "mathEqual" | "mathNotEqual" | "gear6" | "gear9" | "funnel" | "pieWedge" | "pie" | "leftCircularArrow" | "leftRightCircularArrow" | "swooshArrow" | "textBox";
 
 // @public
-export type SimpleField = {
+export type SimpleField = WritableRecord & {
     type: "simpleField";
     instruction: string;
     fieldType: FieldType;
@@ -1795,21 +1798,21 @@ export type SimpleField = {
 };
 
 // @public
-export type SoftHyphenContent = {
+export type SoftHyphenContent = WritableRecord & {
     type: "softHyphen";
 };
 
 // @public
-export type SpacingExplicit = {
+export type SpacingExplicit = WritableRecord & {
     before?: boolean;
     after?: boolean;
 };
 
 // @public
-export const statesNoBorder: (style: BorderStyleValue | undefined) => boolean;
+export const statesNoBorder: (style: DeepReadonly<BorderStyleValue> | undefined) => boolean;
 
 // @public
-export type Style = {
+export type Style = WritableRecord & {
     styleId: string;
     type: StyleType;
     name?: string;
@@ -1828,20 +1831,20 @@ export type Style = {
     tblPr?: TableFormatting;
     trPr?: TableRowFormatting;
     tcPr?: TableCellFormatting;
-    tblStylePr?: {
+    tblStylePr?: (WritableRecord & {
         type: "band1Horz" | "band1Vert" | "band2Horz" | "band2Vert" | "firstCol" | "firstRow" | "lastCol" | "lastRow" | "neCell" | "nwCell" | "seCell" | "swCell" | "wholeTable";
         pPr?: ParagraphFormatting;
         rPr?: TextFormatting;
         tblPr?: TableFormatting;
         trPr?: TableRowFormatting;
         tcPr?: TableCellFormatting;
-    }[];
+    })[];
 };
 
 // @public
-export type StyleDefinitions = {
+export type StyleDefinitions = WritableRecord & {
     docDefaults?: DocDefaults;
-    latentStyles?: {
+    latentStyles?: WritableRecord & {
         defLockedState?: boolean;
         defUIPriority?: number;
         defSemiHidden?: boolean;
@@ -1856,7 +1859,7 @@ export type StyleDefinitions = {
 export type StyleType = "paragraph" | "character" | "numbering" | "table";
 
 // @public
-export type SymbolContent = {
+export type SymbolContent = WritableRecord & {
     type: "symbol";
     font: string;
     char: string;
@@ -1866,13 +1869,13 @@ export type SymbolContent = {
 export const TAB_STOP_ALIGNMENTS: readonly ["clear", "start", "center", "end", "decimal", "bar", "num", "left", "right"];
 
 // @public (undocumented)
-export type TabContent = {
+export type TabContent = WritableRecord & {
     type: "tab";
     positional?: PositionalTab;
 };
 
 // @public
-export type Table = {
+export type Table = WritableRecord & {
     type: "table";
     formatting?: TableFormatting;
     propertyChanges?: TablePropertyChange[];
@@ -1893,7 +1896,7 @@ export type TabLeader = "none" | "dot" | "hyphen" | "underscore" | "heavy" | "mi
 export type TableAlignment = "center" | "end" | "left" | "right" | "start";
 
 // @public
-export type TableBorders = {
+export type TableBorders = WritableRecord & {
     top?: BorderSpec;
     bottom?: BorderSpec;
     left?: BorderSpec;
@@ -1903,7 +1906,7 @@ export type TableBorders = {
 };
 
 // @public
-export type TableCell = {
+export type TableCell = WritableRecord & {
     type: "tableCell";
     id?: string;
     formatting?: TableCellFormatting;
@@ -1918,13 +1921,13 @@ export type TableCell = {
 export type TableCellBlock = BlockContent;
 
 // @public
-export type TableCellBorders = TableBorders & {
+export type TableCellBorders = TableBorders & WritableRecord & {
     topLeftToBottomRight?: BorderSpec;
     topRightToBottomLeft?: BorderSpec;
 };
 
 // @public
-export type TableCellFormatting = {
+export type TableCellFormatting = WritableRecord & {
     width?: TableMeasurement;
     borders?: TableCellBorders;
     margins?: CellMargins;
@@ -1942,7 +1945,7 @@ export type TableCellFormatting = {
 };
 
 // @public
-export type TableCellPropertyChange = {
+export type TableCellPropertyChange = WritableRecord & {
     type: "tableCellPropertyChange";
     info: PropertyChangeInfo;
     previousFormatting?: TableCellFormatting;
@@ -1951,23 +1954,23 @@ export type TableCellPropertyChange = {
 };
 
 // @public
-export type TableContentCarrier = {
+export type TableContentCarrier = WritableRecord & ({
     type: "customXml";
     wrapper: TableCustomXmlWrapper;
 } | {
     type: "sdt";
     properties: SdtProperties;
-};
+});
 
 // @public
-export type TableCustomXmlWrapper = {
+export type TableCustomXmlWrapper = WritableRecord & {
     id: number;
     openingXml: string;
     closingXml: string;
 };
 
 // @public
-export type TableFormatting = {
+export type TableFormatting = WritableRecord & {
     width?: TableMeasurement;
     justification?: TableAlignment;
     cellSpacing?: TableMeasurement;
@@ -1992,13 +1995,13 @@ export type TableFormatting = {
 };
 
 // @public
-export type TableGridChange = {
+export type TableGridChange = WritableRecord & {
     id: number;
     columnWidths: readonly (number | undefined)[];
 };
 
 // @public
-export type TableLook = {
+export type TableLook = WritableRecord & {
     val?: string;
     firstColumn?: boolean;
     firstRow?: boolean;
@@ -2009,21 +2012,21 @@ export type TableLook = {
 };
 
 // @public
-export type TableMeasurement = {
+export type TableMeasurement = WritableRecord & {
     value: number;
     type: TableWidthType;
 };
 
 // @public
-export type TablePreservedMarkup = {
-    children?: (PreservedChild & {
+export type TablePreservedMarkup = WritableRecord & {
+    children?: (PreservedChild & WritableRecord & {
         contentControls?: SdtProperties[];
         carrierStack?: TableContentCarrier[];
     })[];
 };
 
 // @public
-export type TablePropertyChange = {
+export type TablePropertyChange = WritableRecord & {
     type: "tablePropertyChange";
     info: PropertyChangeInfo;
     previousFormatting?: TableFormatting;
@@ -2031,7 +2034,7 @@ export type TablePropertyChange = {
 };
 
 // @public
-export type TablePropertyExceptionChange = {
+export type TablePropertyExceptionChange = WritableRecord & {
     type: "tablePropertyExceptionChange";
     info: PropertyChangeInfo;
     previousFormatting?: TablePropertyExceptionFormatting;
@@ -2039,10 +2042,10 @@ export type TablePropertyExceptionChange = {
 };
 
 // @public
-export type TablePropertyExceptionFormatting = Pick<TableFormatting, "width" | "justification" | "cellSpacing" | "indent" | "borders" | "shading" | "layout" | "cellMargins" | "look" | "preserved" | "sourceXml">;
+export type TablePropertyExceptionFormatting = WritableRecord & Pick<TableFormatting, "width" | "justification" | "cellSpacing" | "indent" | "borders" | "shading" | "layout" | "cellMargins" | "look" | "preserved" | "sourceXml">;
 
 // @public
-export type TableRow = {
+export type TableRow = WritableRecord & {
     type: "tableRow";
     formatting?: TableRowFormatting;
     tablePropertyExceptions?: TablePropertyExceptionFormatting;
@@ -2058,7 +2061,7 @@ export type TableRow = {
 };
 
 // @public
-export type TableRowFormatting = {
+export type TableRowFormatting = WritableRecord & {
     gridBefore?: number;
     widthBefore?: TableMeasurement;
     gridAfter?: number;
@@ -2075,7 +2078,7 @@ export type TableRowFormatting = {
 };
 
 // @public
-export type TableRowPropertyChange = {
+export type TableRowPropertyChange = WritableRecord & {
     type: "tableRowPropertyChange";
     info: PropertyChangeInfo;
     previousFormatting?: TableRowFormatting;
@@ -2083,7 +2086,7 @@ export type TableRowPropertyChange = {
 };
 
 // @public
-export type TableStructuralChangeInfo = {
+export type TableStructuralChangeInfo = WritableRecord & ({
     type: "tableRowInsertion" | "tableRowDeletion" | "tableCellInsertion" | "tableCellDeletion";
     info: TrackedChangeInfo;
 } | {
@@ -2091,13 +2094,13 @@ export type TableStructuralChangeInfo = {
     info: TrackedChangeInfo;
     verticalMerge?: "continue" | "rest";
     verticalMergeOriginal?: "continue" | "rest";
-};
+});
 
 // @public
 export type TableWidthType = "auto" | "dxa" | "nil" | "pct";
 
 // @public
-export type TabStop = {
+export type TabStop = WritableRecord & {
     position: number;
     alignment: TabStopAlignment;
     leader?: TabLeader;
@@ -2130,7 +2133,7 @@ export const TEXT_DIRECTION_FLOWS: readonly ["tb", "rl", "lr", "tbV", "rlV", "lr
 export const TEXT_DIRECTIONS: readonly ["tb", "rl", "lr", "tbV", "rlV", "lrV", "btLr", "lrTb", "lrTbV", "tbLrV", "tbRl", "tbRlV"];
 
 // @public
-export type TextBox = {
+export type TextBox = WritableRecord & {
     type: "textBox";
     id?: string;
     name?: string;
@@ -2148,7 +2151,7 @@ export type TextBox = {
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];
     verticalAlign?: ShapeTextBody["anchor"];
-    margins?: {
+    margins?: WritableRecord & {
         top?: number;
         bottom?: number;
         left?: number;
@@ -2158,7 +2161,7 @@ export type TextBox = {
 };
 
 // @public
-export type TextContent = {
+export type TextContent = WritableRecord & {
     type: "text";
     text: string;
 };
@@ -2173,12 +2176,12 @@ export type TextDirectionFlow = "tb" | "rl" | "lr" | "tbV" | "rlV" | "lrV";
 export type TextEffect = "none" | "blinkBackground" | "lights" | "antsBlack" | "antsRed" | "shimmer" | "sparkle";
 
 // @public
-export type TextFormatting = OwnFieldPresence<{
+export type TextFormatting = WritableRecord & OwnFieldPresence<{
     bold?: boolean;
     boldCs?: boolean;
     italic?: boolean;
     italicCs?: boolean;
-    underline?: {
+    underline?: WritableRecord & {
         style: UnderlineStyle;
         color?: ColorValue;
     };
@@ -2194,7 +2197,7 @@ export type TextFormatting = OwnFieldPresence<{
     shading?: ShadingProperties;
     fontSize?: number;
     fontSizeCs?: number;
-    fontFamily?: {
+    fontFamily?: WritableRecord & {
         ascii?: string;
         hAnsi?: string;
         eastAsia?: string;
@@ -2205,7 +2208,7 @@ export type TextFormatting = OwnFieldPresence<{
         eastAsiaTheme?: string;
         csTheme?: string;
     };
-    language?: {
+    language?: WritableRecord & {
         val?: string;
         eastAsia?: string;
         bidi?: string;
@@ -2227,7 +2230,7 @@ export type TextFormatting = OwnFieldPresence<{
 }>;
 
 // @public (undocumented)
-export type TextWatermark = {
+export type TextWatermark = WritableRecord & {
     kind: "text";
     text: string;
     font?: string;
@@ -2237,11 +2240,11 @@ export type TextWatermark = {
 };
 
 // @public
-export type Theme = {
+export type Theme = WritableRecord & {
     name?: string;
     colorScheme?: ThemeColorScheme;
     fontScheme?: ThemeFontScheme;
-    formatScheme?: {
+    formatScheme?: WritableRecord & {
         name?: string;
     };
 };
@@ -2274,7 +2277,7 @@ export const THEME_COLORS: readonly ["dark1", "light1", "dark2", "light2", "acce
 export type ThemeColor = "dark1" | "light1" | "dark2" | "light2" | "accent1" | "accent2" | "accent3" | "accent4" | "accent5" | "accent6" | "hyperlink" | "followedHyperlink" | "none" | "background1" | "text1" | "background2" | "text2";
 
 // @public
-export type ThemeColorScheme = {
+export type ThemeColorScheme = WritableRecord & {
     dk1?: string;
     lt1?: string;
     dk2?: string;
@@ -2290,7 +2293,7 @@ export type ThemeColorScheme = {
 };
 
 // @public
-export const themeColorSlot: (value: ThemeColorValue) => SchemeColorSlot | undefined;
+export const themeColorSlot: (value: DeepReadonly<ThemeColorValue>) => SchemeColorSlot | undefined;
 
 // @public
 export const themeColorToken: (value: ThemeColorValue) => string;
@@ -2299,26 +2302,26 @@ export const themeColorToken: (value: ThemeColorValue) => string;
 export type ThemeColorValue = ThemeColor | UnrecognisedThemeColor;
 
 // @public
-export type ThemeFont = {
+export type ThemeFont = WritableRecord & {
     latin?: string;
     ea?: string;
     cs?: string;
-    fonts?: Record<string, string>;
+    fonts?: WritableRecord & Record<string, string>;
 };
 
 // @public
-export type ThemeFontScheme = {
+export type ThemeFontScheme = WritableRecord & {
     majorFont?: ThemeFont;
     minorFont?: ThemeFont;
 };
 
 // @public
-export type TrackedChangeInfo = {
+export type TrackedChangeInfo = WritableRecord & {
     id: number;
     author: string;
     date?: string;
     initials?: string;
-    utcDate?: {
+    utcDate?: WritableRecord & {
         attribute: string;
         value: string;
     };
@@ -2335,19 +2338,19 @@ export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | 
 export type UnderlineStyle = "none" | "single" | "words" | "double" | "thick" | "dotted" | "dottedHeavy" | "dash" | "dashedHeavy" | "dashLong" | "dashLongHeavy" | "dotDash" | "dashDotHeavy" | "dotDotDash" | "dashDotDotHeavy" | "wave" | "wavyHeavy" | "wavyDouble";
 
 // @public
-export type UnrecognisedBorderStyle = {
+export type UnrecognisedBorderStyle = WritableRecord & {
     readonly kind: "unrecognised";
     readonly raw: string;
 };
 
 // @public
-export type UnrecognisedPresetLineDash = {
+export type UnrecognisedPresetLineDash = WritableRecord & {
     readonly kind: "unrecognised";
     readonly raw: string;
 };
 
 // @public
-export type UnrecognisedThemeColor = {
+export type UnrecognisedThemeColor = WritableRecord & {
     readonly kind: "unrecognised";
     readonly raw: string;
 };
@@ -2359,7 +2362,7 @@ export type VerticalAlign = "top" | "center" | "both" | "bottom";
 export type Watermark = TextWatermark | PictureWatermark;
 
 // @public
-export type WrapDistances = {
+export type WrapDistances = WritableRecord & {
     distT?: number;
     distB?: number;
     distL?: number;
@@ -2367,15 +2370,20 @@ export type WrapDistances = {
 };
 
 // @public
-export type WrapDistanceSlots = {
+export type WrapDistanceSlots = WritableRecord & {
     drawing?: WrapDistances;
     wrapChild?: WrapDistances;
 };
 
 // @public
-export type WrapPolygonPoint = {
+export type WrapPolygonPoint = WritableRecord & {
     x: number;
     y: number;
+};
+
+// @public
+export type WritableRecord = {
+    readonly [writableRecord]?: unknown[];
 };
 
 // (No @packageDocumentation comment for this package)

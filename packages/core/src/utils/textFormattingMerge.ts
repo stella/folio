@@ -1,4 +1,8 @@
-import type { ColorValue, TextFormatting } from "../types/document";
+import type {
+  ColorValue,
+  RecordField,
+  TextFormatting,
+} from "../types/document";
 import type { DeepReadonly, OwnRecord } from "../types/documentModel";
 import { mergeFontFamily } from "./fontFamilyMerge";
 
@@ -29,7 +33,7 @@ export const STYLE_TOGGLE_KEYS: readonly [
   "smallCaps",
   "strike",
   "hidden",
-] as const satisfies readonly (keyof TextFormatting)[];
+] as const satisfies readonly RecordField<TextFormatting>[];
 
 /**
  * Merge one style's own run-formatting declarations onto its already-resolved
@@ -118,7 +122,7 @@ export function mergeTextFormatting(
 
   const result: Record<string, unknown> = { ...withoutPreserved(target) };
 
-  for (const key of Object.keys(source) as (keyof TextFormatting)[]) {
+  for (const key of Object.keys(source) as RecordField<TextFormatting>[]) {
     const value = source[key];
     if (value === undefined || key === "preserved") {
       continue;

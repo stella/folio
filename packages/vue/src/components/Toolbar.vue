@@ -627,7 +627,7 @@ const props = withDefaults(
       (properties button) renders inline inside the pill. */
     imageContext?: ImageToolbarContext | null;
     /** Document theme — feeds the color picker's theme-color matrix. */
-    theme?: Theme | null;
+    theme?: DeepReadonly<Theme> | null;
     /** Optional custom font list matching React's `fontFamilies` prop. */
     fontFamilies?: ReadonlyArray<string | FontOption>;
     /**

@@ -516,6 +516,32 @@ export const importedMoveDocument = (): Promise<Uint8Array> => {
   return packFixture(document);
 };
 
+export const LINE_BREAK_FIXTURE = "lineBreaks";
+
+/** A paragraph whose lines end in line breaks, between plain paragraphs. */
+export const lineBreakDocument = (): Promise<Uint8Array> => {
+  const document = fromMarkdown("Opening clause.");
+  document.package.document.content.push(
+    {
+      ...paragraph([
+        {
+          type: "run",
+          content: [
+            { type: "text", text: "Delivery schedule" },
+            { type: "break" },
+            { type: "text", text: "Payment terms" },
+            { type: "break" },
+            { type: "text", text: "Notice period" },
+          ],
+        },
+      ]),
+      paraId: "1B0E5A11",
+    },
+    paragraph("Closing clause."),
+  );
+  return packFixture(document);
+};
+
 /** Emoji outside the Basic Multilingual Plane, a modifier and a ZWJ sequence, next to words. */
 export const EMOJI_TEXTS = [
   "Approved 👍🏽 by the family 👨‍👩‍👧 today.",

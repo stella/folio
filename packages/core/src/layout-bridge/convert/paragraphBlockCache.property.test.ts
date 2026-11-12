@@ -17,6 +17,7 @@ import { TextSelection } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -39,7 +40,7 @@ import { ParagraphBlockCache } from "./paragraphBlockCache";
 import { toFlowBlocks, WORD_UNSPECIFIED_FONT_SIZE } from "./toFlowBlocks";
 import type { RecordedConversion } from "./topLevelConversion";
 
-setDefaultTimeout(propertyTestTimeout(120_000));
+setDefaultTimeout(propertyTestTimeout(160_000));
 
 const SHAPES = DOCUMENT_SHAPES.filter(({ id }) =>
   [
@@ -429,10 +430,8 @@ describe("paragraph block cache", () => {
         structuresPackage,
       ].map(async (build) => parseShapeDocument(await build())),
     );
-    let reused = 0;
-    let handedOutAgain = 0;
-    let keptIds = 0;
-    await assertProperty(
+    type Counts = { reused: number; handedOutAgain: number; keptIds: number };
+    const law = (counts: Counts) =>
       fc.asyncProperty(
         fc.integer({ min: 0, max: documents.length - 1 }),
         fc.boolean(),
@@ -455,7 +454,8 @@ describe("paragraph block cache", () => {
               kept,
               toFlowBlocks(view.state.doc, constants),
             );
-            for (const block of kept) if (last.has(block)) handedOutAgain += 1;
+            for (const block of kept)
+              if (last.has(block)) counts.handedOutAgain += 1;
             last = new Set(kept);
             deepFreeze(kept);
             // The blocks each node projected, before the passes over the list.
@@ -476,16 +476,23 @@ describe("paragraph block cache", () => {
             convert();
             const step = cache.lastStep();
             if (step !== undefined)
-              keptIds += survivingNodesKeepTheirIds(...step).kept;
+              counts.keptIds += survivingNodesKeepTheirIds(...step).kept;
           }
-          reused += cache.reused;
+          counts.reused += cache.reused;
         },
-      ),
-      { id: "paragraph-block-cache-equals-full-conversion", numRuns: 60 },
-    );
-    expect(reused).toBeGreaterThan(0);
-    expect(handedOutAgain).toBeGreaterThan(0);
-    expect(keptIds).toBeGreaterThan(0);
+      );
+    await assertProperty(law({ reused: 0, handedOutAgain: 0, keptIds: 0 }), {
+      id: "paragraph-block-cache-equals-full-conversion",
+      numRuns: 60,
+    });
+    // A fixed sample reuses blocks, hands them out again and keeps ids. Each
+    // case converts the document after every edit, so a third of the runs.
+    const RUNS = 20;
+    const counts: Counts = { reused: 0, handedOutAgain: 0, keptIds: 0 };
+    await checkCoverageSample(law(counts), RUNS);
+    expect(counts.reused).toBeGreaterThan(0);
+    expect(counts.handedOutAgain).toBeGreaterThan(0);
+    expect(counts.keptIds).toBeGreaterThan(0);
   });
 
   test("a cross-reference to a later list item shows the number the list gives now", async () => {

@@ -350,7 +350,7 @@ export type PagedEditorProps = {
    */
   fonts?: ReadonlyArray<FontDefinition>;
   /** Theme for styling. */
-  theme?: Theme | null;
+  theme?: DeepReadonly<Theme> | null;
   /**
    * Whether the first page has its own header and footer, inferred from the
    * header and footer references: merged into the section properties (page
@@ -621,6 +621,20 @@ const SELECTION_REVEAL_AFTER_INPUT_DELAY = 120;
  * write, not a state change: a keystroke must not render the editor, since
  * every commit with the editor focused reads its whole DOM.
  */
+/** Reads no hidden editor state: a view holds the document, or there is none. */
+const readNoHiddenEditorState = (): EditorState | null => null;
+
+/** Converts the hidden editor state on the first read and returns it after. */
+const readHiddenEditorStateOnce = (
+  options: Parameters<typeof createHiddenEditorState>[0],
+): (() => EditorState) => {
+  let state: EditorState | undefined;
+  return () => {
+    state ??= createHiddenEditorState(options);
+    return state;
+  };
+};
+
 const hideSelectionOverlay = (overlay: HTMLElement | null): void => {
   overlay?.setAttribute(FOLIO_INPUT_HIDDEN_ATTRIBUTE, "");
   overlay?.style.setProperty("visibility", "hidden");
@@ -1111,7 +1125,7 @@ type LayoutInputSignatureOptions = {
   pageSize: { h: number; w: number };
   sectionProperties: SectionProperties | null | undefined;
   styles: DeepReadonly<StyleDefinitions> | null | undefined;
-  theme: Theme | null | undefined;
+  theme: DeepReadonly<Theme> | null | undefined;
 };
 
 const getPageOverlayOffset = (pagesContainer: HTMLDivElement, zoom: number) => {
@@ -1782,7 +1796,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       collaboration !== undefined,
     );
     const layoutSessionRef = useRef(createLayoutSession());
-    const precomputedInitialStateRef = useRef<EditorState | null>(null);
+    const readPrecomputedInitialStateRef = useRef<() => EditorState | null>(
+      readNoHiddenEditorState,
+    );
     const precomputedInitialDocumentRef = useRef<ReadonlyDocument | null>(null);
     const preHiddenInitialLayoutDoneRef = useRef(false);
     const pendingHiddenEditorSelectionRef =
@@ -1912,14 +1928,21 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     }, [caretPosition]);
     const [selectionOverlayRequestGate] = useState(createLatestRequestGate);
 
-    const validPrecomputedInitialState = useMemo(() => {
+    /**
+     * Reads the hidden editor state converted from the document for the pages
+     * while no view holds the document, converting it on the first read. A view
+     * that holds the document never reads it: a canonical session seeds its view
+     * with its own projection, so its open converts the document once, and only
+     * a refused seed (or a view not created yet) pays for this conversion.
+     */
+    const readPrecomputedInitialState = useMemo(() => {
       if (
         shouldCreateHiddenEditorView ||
         collaboration !== undefined ||
         !document
       )
-        return null;
-      return createHiddenEditorState({
+        return readNoHiddenEditorState;
+      return readHiddenEditorStateOnce({
         document,
         styles,
         manager: extensionManager,
@@ -1936,8 +1959,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       externalPlugins,
     ]);
     useLayoutEffect(() => {
-      precomputedInitialStateRef.current = validPrecomputedInitialState;
-    }, [validPrecomputedInitialState]);
+      readPrecomputedInitialStateRef.current = readPrecomputedInitialState;
+    }, [readPrecomputedInitialState]);
 
     // Image selection state
     const [selectedImageInfo, setSelectedImageInfo] =
@@ -2430,7 +2453,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           onError: (error) => onErrorRef.current?.(error),
         },
         readState: () =>
-          hiddenPMRef.current?.getState() ?? precomputedInitialStateRef.current,
+          hiddenPMRef.current?.getState() ??
+          readPrecomputedInitialStateRef.current(),
       });
     }, [runtime]);
     // Eagerly request the hidden editor when collaborating (matches the former
@@ -3628,7 +3652,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           // the view's state.
           if (
             !hiddenPMRef.current?.getState() &&
-            !precomputedInitialStateRef.current
+            !readPrecomputedInitialStateRef.current()
           ) {
             ensureHiddenEditorView({ sync: true });
           }
@@ -4055,7 +4079,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           } else {
             endPos = Math.max(
               0,
-              (precomputedInitialStateRef.current?.doc.content.size ?? 1) - 1,
+              (readPrecomputedInitialStateRef.current()?.doc.content.size ??
+                1) - 1,
             );
             queueHiddenEditorSelection({ type: "text", anchor: endPos });
           }
@@ -5894,7 +5919,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         return undefined;
       }
 
-      const initialState = validPrecomputedInitialState;
+      // A view that already holds the document lays the pages out from its own
+      // state: the hidden editor creates it before this effect runs, as a
+      // seeded canonical session does. Only without one (a view not requested
+      // yet, or a refused seed) is the document converted for the pages here.
+      const initialState =
+        hiddenPMRef.current?.getView()?.state ?? readPrecomputedInitialState();
       if (!initialState) return undefined;
       precomputedInitialDocumentRef.current = document;
       anonymizationMatchesRef.current =
@@ -5937,7 +5967,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     }, [
       collaboration,
       document,
-      validPrecomputedInitialState,
+      readPrecomputedInitialState,
       runLayoutPipeline,
       shouldCreateHiddenEditorView,
       updateAnonymizationOverlay,
@@ -6805,7 +6835,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           suggestionModeActive={suggestionModeActive}
           widthPx={contentWidth}
-          precomputedInitialState={validPrecomputedInitialState}
+          getPrecomputedInitialState={readPrecomputedInitialState}
           readOnly={readOnly}
           onTransaction={handleTransaction}
           onCanonicalCompositionEnd={scheduleLayout}

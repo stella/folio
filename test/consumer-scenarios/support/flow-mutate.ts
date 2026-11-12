@@ -124,6 +124,26 @@ const mutateOnce = (
 };
 
 /**
+ * `steps` with a pinned expected applied count only where the mutant replays
+ * its parent's own history: the step and every step before it are the
+ * parent's. A count states what applies after exactly that history; once an
+ * earlier step moves, goes or changes, a block or a quote a pinned operation
+ * names may no longer be there, and the engine rightly skips it. From the
+ * first changed step on, steps keep their pinned operations but not the count.
+ */
+const keepCountsOnParentHistory = (
+  parent: readonly FlowStep[],
+  steps: readonly FlowStep[],
+): FlowStep[] => {
+  const shared = steps.findIndex((step, index) => step !== parent[index]);
+  return steps.map((step, index) => {
+    if (shared === -1 || index < shared) return step;
+    const { expectedApplied: _expectedApplied, ...rest } = step;
+    return rest;
+  });
+};
+
+/**
  * A mutant of `flow`: one to three mutations, at most `maxSteps` steps,
  * never empty. `donors` are the flows a splice may take a tail from.
  */
@@ -164,7 +184,7 @@ export const mutateFlow = (
       fixture: flow.fixture,
       mode: flow.mode,
       seed: flow.seed,
-      steps,
+      steps: keepCountsOnParentHistory(flow.steps, steps),
       ...(flow.swarm === undefined ? {} : { swarm: flow.swarm }),
       ...(flow.weights === undefined ? {} : { weights: flow.weights }),
       origin: `${applied.join("+")} of ${flowId(flow)}`,

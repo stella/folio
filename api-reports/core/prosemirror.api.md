@@ -404,7 +404,7 @@ export type ParagraphAttrs = {
     lineSpacingRule?: import__stll_docx_core_model.LineSpacingRule;
     lineSpacingExplicit?: boolean | "value" | "rule" | "both";
     snapToGrid?: boolean;
-    spacingExplicit?: SpacingExplicit;
+    spacingExplicit?: DeepReadonly<SpacingExplicit>;
     spacingFromDocDefaults?: SpacingExplicit;
     spacingFromImplicitDefaultStyle?: SpacingExplicit;
     indentLeft?: number;
@@ -706,7 +706,7 @@ export type TableContextInfo = {
     columnCount?: number;
     hasMultiCellSelection?: boolean;
     canSplitCell?: boolean;
-    cellBorderColor?: ColorValue;
+    cellBorderColor?: DeepReadonly<ColorValue>;
     cellBackgroundColor?: string;
 };
 
@@ -760,7 +760,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 export type ToProseDocOptions = {
     styles?: DeepReadonly<import__stll_docx_core_model.StyleDefinitions>;
     numbering?: import__stll_docx_core_model.NumberingDefinitions;
-    theme?: import__stll_docx_core_model.Theme | null;
+    theme?: DeepReadonly<import__stll_docx_core_model.Theme> | null;
     warn?: ParseContext["warn"];
     blockCache?: ProjectionBlockCache;
     textBoxGroupSalt?: string;

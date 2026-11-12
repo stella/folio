@@ -1,25 +1,4 @@
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
-/**
- * Table Parser - Parse tables with full OOXML structure
- *
- * OOXML tables consist of:
- * - w:tbl - Table element
- * - w:tblPr - Table properties (width, borders, style)
- * - w:tblGrid - Column width definitions
- * - w:tr - Table rows
- * - w:trPr - Row properties (height, header)
- * - w:tc - Table cells
- * - w:tcPr - Cell properties (width, borders, merge)
- *
- * Cell merging:
- * - Horizontal: w:gridSpan (how many grid columns this cell spans)
- * - Vertical: w:vMerge (restart = start of merge, continue = continuation)
- *
- * OOXML Reference:
- * - w:tbl contains w:tblPr, w:tblGrid, and w:tr elements
- * - w:tr contains w:trPr and w:tc elements
- * - w:tc contains w:tcPr and content (paragraphs, tables)
- */
 
 import type {
   BlockContent,
@@ -58,6 +37,28 @@ import type {
   TableWidthType,
   Theme,
 } from "../types/document";
+/**
+ * Table Parser - Parse tables with full OOXML structure
+ *
+ * OOXML tables consist of:
+ * - w:tbl - Table element
+ * - w:tblPr - Table properties (width, borders, style)
+ * - w:tblGrid - Column width definitions
+ * - w:tr - Table rows
+ * - w:trPr - Row properties (height, header)
+ * - w:tc - Table cells
+ * - w:tcPr - Cell properties (width, borders, merge)
+ *
+ * Cell merging:
+ * - Horizontal: w:gridSpan (how many grid columns this cell spans)
+ * - Vertical: w:vMerge (restart = start of merge, continue = continuation)
+ *
+ * OOXML Reference:
+ * - w:tbl contains w:tblPr, w:tblGrid, and w:tr elements
+ * - w:tr contains w:trPr and w:tc elements
+ * - w:tc contains w:tcPr and content (paragraphs, tables)
+ */
+import type { DeepReadonly } from "../types/documentModel";
 import {
   attributeRemainder,
   NO_MODELLED_ATTRIBUTES,
@@ -1610,7 +1611,7 @@ function withContainerXmlns(
 /** The parts and maps a table's content is read against. */
 type TableParseResources = {
   styles: StyleMap | null;
-  theme: Theme | null;
+  theme: DeepReadonly<Theme> | null;
   numbering: NumberingMap | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
@@ -1951,7 +1952,7 @@ const parseCellChildren = ({
 function parseCellContent(
   tcElement: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -1983,7 +1984,7 @@ function parseCellContent(
 export function parseTableCell(
   tcElement: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -2274,7 +2275,7 @@ const dispatchRowChildren = (
 export function parseTableRow(
   trElement: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
@@ -2741,7 +2742,7 @@ const dispatchTableChildren = (
 export function parseTable(
   tblElement: XmlElement,
   styles: StyleMap | null,
-  theme: Theme | null,
+  theme: DeepReadonly<Theme> | null,
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,

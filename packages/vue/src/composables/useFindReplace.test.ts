@@ -31,10 +31,7 @@ import type {
 } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
-import type {
-  FindOptions,
-  FindResult,
-} from "@stll/folio-core/utils/findReplace";
+import type { FindResult } from "@stll/folio-core/utils/findReplace";
 import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
 
 import {
@@ -42,6 +39,7 @@ import {
   surroundHiddenBoundary,
   ZERO_SEARCH_TEXT_BOUNDARY_FIXTURES,
 } from "../../../../test/findReplacementBoundaryFixtures";
+import { matchingOptionFixtures } from "./__fixtures__/matchingOptionFixtures";
 import type { UseFindReplaceReturn } from "./useFindReplace";
 
 const {
@@ -507,43 +505,6 @@ test.each(["current", "all"] as const)(
     });
   },
 );
-
-type MatchingOptionFixture = {
-  text: string;
-  query: string;
-  initialOptions: Partial<FindOptions>;
-  change: (search: UseFindReplaceReturn) => void;
-};
-
-const matchingOptionFixtures = {
-  matchCase: {
-    text: "Hit",
-    query: "hit",
-    initialOptions: {},
-    change: (search) => {
-      search.options.matchCase = true;
-    },
-  },
-  matchWholeWord: {
-    text: "hitched",
-    query: "hit",
-    initialOptions: {},
-    change: (search) => {
-      search.options.matchWholeWord = true;
-    },
-  },
-  useRegex: {
-    text: "hit",
-    query: "^hit",
-    initialOptions: { useRegex: true },
-    change: (search) => {
-      search.options.useRegex = false;
-    },
-  },
-} satisfies Record<
-  keyof Pick<FindOptions, "matchCase" | "matchWholeWord" | "useRegex">,
-  MatchingOptionFixture
->;
 
 for (const [option, fixture] of Object.entries(matchingOptionFixtures)) {
   test.each(["current", "all"] as const)(

@@ -22,6 +22,7 @@ import {
   selectSectionHeaderFooterRIds,
 } from "../../layout-painter/renderPage";
 import type { Theme, Watermark } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import type { DisplayPrimitive } from "../types";
 import type { BuildContext } from "./buildContext";
 import { paintHeaderFooter } from "./headerFooterPrimitives";
@@ -46,7 +47,7 @@ export type PageFurnitureInputs = {
    */
   readonly pageBorders?: PageBorders;
   /** Resolves `w:themeColor` on a page border. Absent: authored colours only. */
-  readonly theme?: Theme | null;
+  readonly theme?: DeepReadonly<Theme> | null;
   /**
    * The watermark for every page with no more specific match in
    * {@link watermarkByHeaderRId}. Absent with that map also absent: no

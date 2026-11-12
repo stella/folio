@@ -844,3 +844,64 @@ test("story-owned eligibility preserves unpaired and cross-paragraph bookmark so
     },
   );
 });
+
+/** Lookups and writes on any `Map` while `measured` runs. */
+const mapOperationsDuring = (measured: () => void): number => {
+  const prototype = Map.prototype;
+  const { get, set, has } = prototype;
+  let operations = 0;
+  prototype.get = function (this: Map<unknown, unknown>, key: unknown) {
+    operations += 1;
+    return get.call(this, key);
+  };
+  prototype.set = function (
+    this: Map<unknown, unknown>,
+    key: unknown,
+    value: unknown,
+  ) {
+    operations += 1;
+    return set.call(this, key, value);
+  };
+  prototype.has = function (this: Map<unknown, unknown>, key: unknown) {
+    operations += 1;
+    return has.call(this, key);
+  };
+  try {
+    measured();
+  } finally {
+    prototype.get = get;
+    prototype.set = set;
+    prototype.has = has;
+  }
+  return operations;
+};
+
+test("a paragraph's gaps and seams are projected with as many map operations however long its text", () => {
+  // Opening a document projects every paragraph, so work per character
+  // there is work per character of the document: each gap finds its seam by
+  // its own entry, never by a key looked up per character.
+  const operationsFor = (length: number) => {
+    const source = {
+      type: "paragraph",
+      paraId: "12345678",
+      content: [run("a".repeat(length)), run("bc")],
+    } satisfies Paragraph;
+    const paragraph = toProseDoc(documentFor(source)).child(0);
+    let seams = 0;
+    let gaps = 0;
+    const operations = mapOperationsDuring(() => {
+      const projected = projectCanonicalInline({
+        source,
+        paragraph,
+        pairedBookmarkIds: new Set(),
+      }).unwrap();
+      seams = projected.seams.flat().length;
+      gaps = projected.boundaries.flat().length;
+    });
+    // Every gap still has its seam.
+    expect(seams).toBe(gaps);
+    expect(gaps).toBeGreaterThan(length);
+    return operations;
+  };
+  expect(operationsFor(2000)).toBe(operationsFor(20));
+});

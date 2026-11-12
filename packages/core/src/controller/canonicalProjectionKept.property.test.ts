@@ -13,6 +13,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -34,7 +35,7 @@ import {
   projectCanonicalStory,
 } from "./canonicalSession";
 
-setDefaultTimeout(propertyTestTimeout(240_000));
+setDefaultTimeout(propertyTestTimeout(300_000));
 
 const EDGES: readonly CanonicalAddressEdge[] = [
   "caret",
@@ -139,8 +140,7 @@ const keepsBlocks = (
 describe("a projection keeping the blocks of the one before", () => {
   test("equals a projection walking every block over session edits", async () => {
     const sources = await parsedSources();
-    let kept = 0;
-    await assertProperty(
+    const law = (counts: { kept: number }) =>
       fc.property(
         fc.constantFrom(...sources),
         fc.array(editArbitrary, { minLength: 1, maxLength: 16 }),
@@ -157,7 +157,7 @@ describe("a projection keeping the blocks of the one before", () => {
             state = applyEdit(session, state, edit);
             const projection = session.projection;
             if (projection !== previous && keepsBlocks(projection, previous))
-              kept += 1;
+              counts.kept += 1;
             const full = projectCanonicalStory({
               document: session.document,
               styles: session.document.package.styles,
@@ -165,20 +165,23 @@ describe("a projection keeping the blocks of the one before", () => {
             expect(answersOf(projection, full)).toEqual(answersOf(full, full));
           }
         },
-      ),
-      {
-        id: "kept projection equals full projection over session edits",
-        numRuns: 200,
-      },
-    );
-    // The runs reached the projection that keeps blocks, not only the full walk.
-    expect(kept).toBeGreaterThan(200);
+      );
+    await assertProperty(law({ kept: 0 }), {
+      id: "kept projection equals full projection over session edits",
+      numRuns: 200,
+    });
+    // A fixed sample reached the projection that keeps blocks, not only the
+    // full walk. Each case projects every edit twice, so a quarter of the
+    // runs, at the same ratio.
+    const RUNS = 50;
+    const counts = { kept: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.kept).toBeGreaterThan(RUNS);
   });
 
   test("equals a projection walking every block over story versions", async () => {
     const sources = await parsedSources();
-    let kept = 0;
-    await assertProperty(
+    const law = (counts: { kept: number }) =>
       fc.property(
         fc.constantFrom(...sources),
         fc.array(modelEditArbitrary, { minLength: 1, maxLength: 16 }),
@@ -204,19 +207,22 @@ describe("a projection keeping the blocks of the one before", () => {
               previous !== undefined &&
               keepsBlocks(projected.value, previous)
             )
-              kept += 1;
+              counts.kept += 1;
             expect(answersOf(projected.value, full.value)).toEqual(
               answersOf(full.value, full.value),
             );
             previous = projected.value;
           }
         },
-      ),
-      {
-        id: "kept projection equals full projection over story versions",
-        numRuns: 300,
-      },
-    );
-    expect(kept).toBeGreaterThan(300);
+      );
+    await assertProperty(law({ kept: 0 }), {
+      id: "kept projection equals full projection over story versions",
+      numRuns: 300,
+    });
+    // As above: a quarter of the runs, at the same ratio.
+    const RUNS = 75;
+    const counts = { kept: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.kept).toBeGreaterThan(RUNS);
   });
 });

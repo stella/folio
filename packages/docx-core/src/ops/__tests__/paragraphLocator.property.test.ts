@@ -11,6 +11,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -31,6 +32,9 @@ import {
 } from "./documentArbitraries";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
+
+/** The property's run count, which the threshold was set for. */
+const COVERAGE_RUNS = 300;
 
 /**
  * Every story of a version answers as a walk does, for the ids it holds, ids
@@ -93,8 +97,7 @@ const rotated = (document: Document): Document => {
 
 describe("finding a story paragraph through the kept locator", () => {
   test("equals a walk of the story over a run of edits", async () => {
-    let asked = 0;
-    await assertProperty(
+    const law = (counts: { asked: number }) =>
       fc.property(
         fc.oneof(documentArbitrary, reviewDocumentArbitrary),
         fc.array(
@@ -113,17 +116,17 @@ describe("finding a story paragraph through the kept locator", () => {
           let document = generated;
           const versions = [document];
           const seen = new Set<string>();
-          asked += expectLocatorOf(document, seen);
+          counts.asked += expectLocatorOf(document, seen);
           edits.forEach(({ seed, tracked, story: at, back, rotate }, index) => {
             if (back !== null) {
               document = versions[back % versions.length] ?? document;
-              asked += expectLocatorOf(document, seen);
+              counts.asked += expectLocatorOf(document, seen);
               return;
             }
             if (rotate) {
               document = rotated(document);
               versions.push(document);
-              asked += expectLocatorOf(document, seen);
+              counts.asked += expectLocatorOf(document, seen);
               return;
             }
             const stories = documentStories(document);
@@ -136,16 +139,17 @@ describe("finding a story paragraph through the kept locator", () => {
             if (applied.isErr()) return;
             document = applied.value.document;
             versions.push(document);
-            asked += expectLocatorOf(document, seen);
+            counts.asked += expectLocatorOf(document, seen);
           });
         },
-      ),
-      {
-        id: "kept paragraph locator equals a walk of the story",
-        numRuns: 300,
-      },
-    );
-    expect(asked).toBeGreaterThan(1000);
+      );
+    await assertProperty(law({ asked: 0 }), {
+      id: "kept paragraph locator equals a walk of the story",
+      numRuns: 300,
+    });
+    const counts = { asked: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.asked).toBeGreaterThan(1000);
   });
 
   test("equals a walk of the story along a chain longer than one index keeps", () => {

@@ -398,7 +398,7 @@ export type DocxEditorProps = {
     onFontsLoaded?: () => void;
     fontFamilies?: ReadonlyArray<string | FontOption>;
     fonts?: ReadonlyArray<FontDefinition>;
-    theme?: Theme | null;
+    theme?: DeepReadonly<Theme> | null;
     showToolbar?: boolean;
     showZoomControl?: boolean;
     showReviewControls?: boolean;
@@ -692,8 +692,8 @@ export type FootnotePropertiesDialogProps = {
     isOpen: boolean;
     onClose: () => void;
     onApply: (footnoteProps: FootnoteProperties, endnoteProps: EndnoteProperties) => void;
-    footnotePr?: FootnoteProperties;
-    endnotePr?: EndnoteProperties;
+    footnotePr?: DeepReadonly<FootnoteProperties>;
+    endnotePr?: DeepReadonly<EndnoteProperties>;
 };
 
 // @public (undocumented)

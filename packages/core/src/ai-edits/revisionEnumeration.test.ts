@@ -19,11 +19,13 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Paragraph, Table } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import {
+  REVIEW_COMMENT_FIELD_CENSUS,
+  REVIEW_COMMENT_REPLY_FIELD_CENSUS,
+} from "./__fixtures__/reviewCommentFieldCensus";
+import {
   FOLIO_RESOLVED_REVIEWED_VIEWS,
   FolioDocxReviewer,
   type FolioEditableDocumentStoryHandle,
-  type FolioReviewComment,
-  type FolioReviewCommentReply,
   getFolioDocxComparisonAccess,
 } from "./headless";
 import {
@@ -502,28 +504,6 @@ const makeRevisionMatrixDocx = async (
 
 const storyKey = (story: FolioEditableDocumentStoryHandle): string =>
   JSON.stringify(story);
-
-const REVIEW_COMMENT_FIELD_CENSUS = {
-  id: "id",
-  author: "author",
-  date: "date",
-  text: "text",
-  anchoredText: "anchoredText",
-  blockId: "blockId",
-  story: "story",
-  replies: "replies",
-  done: "done",
-} as const satisfies Record<keyof FolioReviewComment, keyof FolioReviewComment>;
-
-const REVIEW_COMMENT_REPLY_FIELD_CENSUS = {
-  id: "id",
-  author: "author",
-  date: "date",
-  text: "text",
-} as const satisfies Record<
-  keyof FolioReviewCommentReply,
-  keyof FolioReviewCommentReply
->;
 
 const commentProjection = (reviewer: FolioDocxReviewer) =>
   reviewer

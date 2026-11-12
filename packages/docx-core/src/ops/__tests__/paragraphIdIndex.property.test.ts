@@ -10,6 +10,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -30,6 +31,9 @@ import {
 } from "./documentArbitraries";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
+
+/** The property's run count, which the threshold was set for. */
+const COVERAGE_RUNS = 120;
 
 const withBody = (
   document: Document,
@@ -90,8 +94,7 @@ const expectIndexed = (document: Document, listed: boolean): void => {
 
 describe("the paragraph id index of a package", () => {
   test("equals a census of every paragraph, repeated ids included, over a run of edits", async () => {
-    let repeatedSeen = 0;
-    await assertProperty(
+    const law = (counts: { repeatedSeen: number }) =>
       fc.property(
         fc.oneof(documentArbitrary, reviewDocumentArbitrary),
         fc.array(
@@ -134,7 +137,7 @@ describe("the paragraph id index of a package", () => {
                 expect(refused.isErr() && refused.error.reason).toBe(
                   DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_BLOCK_ID,
                 );
-                repeatedSeen += 1;
+                counts.repeatedSeen += 1;
               }
             }
             const stories = documentStories(document);
@@ -154,10 +157,14 @@ describe("the paragraph id index of a package", () => {
           // Every version again, after later ones were found from them.
           for (const version of versions) expectIndexed(version, true);
         },
-      ),
-      { id: "paragraph id index follows edits soundly", numRuns: 120 },
-    );
-    expect(repeatedSeen).toBeGreaterThan(100);
+      );
+    await assertProperty(law({ repeatedSeen: 0 }), {
+      id: "paragraph id index follows edits soundly",
+      numRuns: 120,
+    });
+    const counts = { repeatedSeen: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.repeatedSeen).toBeGreaterThan(100);
   });
 });
 

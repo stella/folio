@@ -1,6 +1,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -27,6 +28,9 @@ import {
 import { expectOccupancyOf } from "./occupancyProbe";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
+
+/** Every run checks its starting documents, so a few runs show the checks run. */
+const COVERAGE_RUNS = 4;
 
 /**
  * The identity counts one process answers, while it edits several documents
@@ -67,8 +71,7 @@ describe("identity counts across documents", () => {
     expect((await freshIds()).packageIdentityKeyIndex).not.toBe(
       packageIdentityKeyIndex,
     );
-    let checked = 0;
-    await assertProperty(
+    const law = (counts: { checked: number }) =>
       fc.asyncProperty(
         fc.array(fc.oneof(documentArbitrary, reviewDocumentArbitrary), {
           minLength: 2,
@@ -110,7 +113,7 @@ describe("identity counts across documents", () => {
             expect(packageParagraphIds(document.package).length).toBe(
               fresh.packageParagraphIds(document.package).length,
             );
-            checked += 1;
+            counts.checked += 1;
           };
           for (const document of documents) await check(document);
           for (const {
@@ -138,9 +141,13 @@ describe("identity counts across documents", () => {
             await check(applied.value.document);
           }
         },
-      ),
-      { numRuns: 40, id: "identity counts across documents" },
-    );
-    expect(checked).toBeGreaterThan(0);
+      );
+    await assertProperty(law({ checked: 0 }), {
+      numRuns: 40,
+      id: "identity counts across documents",
+    });
+    const counts = { checked: 0 };
+    await checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.checked).toBeGreaterThan(0);
   });
 });

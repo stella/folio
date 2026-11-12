@@ -21,6 +21,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyConfig,
@@ -389,8 +390,6 @@ const caseArbitrary = fc.record({
   intents: fc.array(intentArbitrary, { minLength: 1, maxLength: 5 }),
 });
 
-let comparedWithDirect = 0;
-
 test("reject restores heading properties when an insertion interrupts a pending merge", async () => {
   const original = read(await open());
   const reviewer = await open();
@@ -569,9 +568,8 @@ test("reject removes tables inserted around an inserted terminal paragraph", asy
 describe("resolving random tracked work", () => {
   test("reject restores, accept equals direct, and both survive a save", async () => {
     const original = read(await open());
-    const resolutionProperty = fc.asyncProperty(
-      caseArbitrary,
-      async ({ mode, intents }) => {
+    const resolutionProperty = (counts: { comparedWithDirect: number }) =>
+      fc.asyncProperty(caseArbitrary, async ({ mode, intents }) => {
         const reviewer = await open();
         const steps = run(reviewer, mode, intents);
         const pending = read(reviewer);
@@ -617,23 +615,26 @@ describe("resolving random tracked work", () => {
         expect(read(savedAccepted)).toEqual(accepted);
         expect(anchors(savedAccepted)).toEqual(acceptedAnchors);
         if (direct) {
-          comparedWithDirect++;
+          counts.comparedWithDirect++;
           expect(accepted).toEqual(read(direct));
         }
         if (reopened) {
           reopened.acceptAll();
           expect(read(reopened)).toEqual(accepted);
         }
-      },
-    );
+      });
     // The seeds this property once failed on replay first, from
     // test/property-seeds/.
-    await assertProperty(resolutionProperty, {
+    await assertProperty(resolutionProperty({ comparedWithDirect: 0 }), {
       numRuns: 100,
       id: "reject restores, accept equals direct, and both survive a save",
     });
-    // The direct comparison must not pass vacuously.
-    expect(comparedWithDirect).toBeGreaterThan(0);
+    // The direct comparison must not pass vacuously, on a fixed sample. Each
+    // case opens and saves the document several times, so a fifth of the runs.
+    const RUNS = 20;
+    const counts = { comparedWithDirect: 0 };
+    await checkCoverageSample(resolutionProperty(counts), RUNS);
+    expect(counts.comparedWithDirect).toBeGreaterThan(0);
   });
 
   test("a comment reads the same across a save, whatever tracked edits follow it", async () => {

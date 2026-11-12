@@ -19,6 +19,7 @@ import {
   type OpStory,
 } from "@stll/docx-core/ops";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -38,7 +39,7 @@ import {
   preservePropertySourcesWholeStories,
 } from "./propertySourcePreservation";
 
-setDefaultTimeout(propertyTestTimeout(240_000));
+setDefaultTimeout(propertyTestTimeout(320_000));
 
 /** A block as a new object holding no captures, its paragraphs new too. */
 const uncaptured = (block: BlockContent): BlockContent => {
@@ -114,8 +115,7 @@ const outcomeOf = (document: Document, target: Document) =>
 describe("carrying paragraph source captures over an edit", () => {
   test("equals carrying them over every paragraph", async () => {
     const sources = await parsedSources();
-    let compared = 0;
-    await assertProperty(
+    const law = (counts: { compared: number }) =>
       fc.property(
         fc.constantFrom(...sources),
         fc.array(editArbitrary, { minLength: 1, maxLength: 12 }),
@@ -178,15 +178,19 @@ describe("carrying paragraph source captures over an edit", () => {
                 ) as unknown,
               ]),
             );
-            compared += 1;
+            counts.compared += 1;
           }
         },
-      ),
-      {
-        id: "property source carry over changed blocks equals the whole walk",
-        numRuns: 150,
-      },
-    );
-    expect(compared).toBeGreaterThan(100);
+      );
+    await assertProperty(law({ compared: 0 }), {
+      id: "property source carry over changed blocks equals the whole walk",
+      numRuns: 150,
+    });
+    // A fixed sample compares enough edits that changed the document. Each
+    // case replays up to 12 edits, so a third of the runs, at the same ratio.
+    const RUNS = 50;
+    const counts = { compared: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.compared).toBeGreaterThan((RUNS * 2) / 3);
   });
 });

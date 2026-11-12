@@ -1,4 +1,4 @@
-import type { ListRendering } from "../types/document";
+import type { ListRendering, RecordField } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
 import { computeListRendering, type NumberingMap } from "./numberingParser";
 
@@ -31,7 +31,7 @@ const RENDERING_FIELDS = {
   abstractNumId: { key: "abstractNumId", source: "definition" },
   startOverride: { key: "startOverride", source: "definition" },
 } as const satisfies {
-  [Key in keyof ListRendering]-?: {
+  [Key in RecordField<ListRendering>]-?: {
     key: Key;
     source: "paragraph" | "definition";
   };

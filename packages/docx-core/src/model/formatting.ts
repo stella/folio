@@ -6,6 +6,7 @@
  */
 
 import type { BorderSpec, ColorValue, ShadingProperties } from "./colors";
+import type { WritableRecord } from "./deepReadonly";
 import type {
   ParagraphAlignment,
   TableAlignment,
@@ -68,154 +69,155 @@ export type EmphasisMark = "none" | "dot" | "comma" | "circle" | "underDot";
 /**
  * Complete text formatting properties (w:rPr)
  */
-export type TextFormatting = OwnFieldPresence<{
-  // Basic formatting
-  /** Bold (w:b) */
-  bold?: boolean;
-  /** Bold complex script (w:bCs) */
-  boldCs?: boolean;
-  /** Italic (w:i) */
-  italic?: boolean;
-  /** Italic complex script (w:iCs) */
-  italicCs?: boolean;
+export type TextFormatting = WritableRecord &
+  OwnFieldPresence<{
+    // Basic formatting
+    /** Bold (w:b) */
+    bold?: boolean;
+    /** Bold complex script (w:bCs) */
+    boldCs?: boolean;
+    /** Italic (w:i) */
+    italic?: boolean;
+    /** Italic complex script (w:iCs) */
+    italicCs?: boolean;
 
-  // Underline & strikethrough
-  /** Underline style and color (w:u) */
-  underline?: {
-    style: UnderlineStyle;
+    // Underline & strikethrough
+    /** Underline style and color (w:u) */
+    underline?: WritableRecord & {
+      style: UnderlineStyle;
+      color?: ColorValue;
+    };
+    /** Strikethrough (w:strike) */
+    strike?: boolean;
+    /** Double strikethrough (w:dstrike) */
+    doubleStrike?: boolean;
+
+    // Vertical alignment
+    /** Superscript/subscript (w:vertAlign) */
+    vertAlign?: "baseline" | "superscript" | "subscript";
+
+    // Capitalization
+    /** Small caps (w:smallCaps) */
+    smallCaps?: boolean;
+    /** All caps (w:caps) */
+    allCaps?: boolean;
+
+    // Visibility
+    /** Hidden text (w:vanish) */
+    hidden?: boolean;
+    /** Exclude this run from spellchecking (w:noProof). */
+    noProof?: boolean;
+
+    // Colors and highlighting
+    /** Text color (w:color) */
     color?: ColorValue;
-  };
-  /** Strikethrough (w:strike) */
-  strike?: boolean;
-  /** Double strikethrough (w:dstrike) */
-  doubleStrike?: boolean;
+    /** Highlight/background color (w:highlight) */
+    highlight?:
+      | "black"
+      | "blue"
+      | "cyan"
+      | "darkBlue"
+      | "darkCyan"
+      | "darkGray"
+      | "darkGreen"
+      | "darkMagenta"
+      | "darkRed"
+      | "darkYellow"
+      | "green"
+      | "lightGray"
+      | "magenta"
+      | "none"
+      | "red"
+      | "white"
+      | "yellow";
+    /** Character shading (w:shd) */
+    shading?: ShadingProperties;
 
-  // Vertical alignment
-  /** Superscript/subscript (w:vertAlign) */
-  vertAlign?: "baseline" | "superscript" | "subscript";
+    // Font properties
+    /** Font size in half-points (w:sz) - e.g., 24 = 12pt */
+    fontSize?: number;
+    /** Font size complex script (w:szCs) */
+    fontSizeCs?: number;
+    /** Font family (w:rFonts) */
+    fontFamily?: WritableRecord & {
+      ascii?: string;
+      hAnsi?: string;
+      eastAsia?: string;
+      cs?: string;
+      /** Script slot Word should prefer when selecting a glyph font (w:hint). */
+      hint?: "default" | "eastAsia" | "cs";
+      /** Theme font reference */
+      asciiTheme?:
+        | "majorAscii"
+        | "majorHAnsi"
+        | "majorEastAsia"
+        | "majorBidi"
+        | "minorAscii"
+        | "minorHAnsi"
+        | "minorEastAsia"
+        | "minorBidi";
+      hAnsiTheme?: string;
+      eastAsiaTheme?: string;
+      csTheme?: string;
+    };
+    /** Run language metadata (`w:lang`) used by spelling and line breaking. */
+    language?: WritableRecord & {
+      val?: string;
+      eastAsia?: string;
+      bidi?: string;
+    };
 
-  // Capitalization
-  /** Small caps (w:smallCaps) */
-  smallCaps?: boolean;
-  /** All caps (w:caps) */
-  allCaps?: boolean;
+    // Spacing and position
+    /** Character spacing in twips (w:spacing) */
+    spacing?: number;
+    /** Raised/lowered text position in half-points (w:position) */
+    position?: number;
+    /** Horizontal text scale percentage (w:w) */
+    scale?: number;
+    /** Kerning threshold in half-points (w:kern) */
+    kerning?: number;
 
-  // Visibility
-  /** Hidden text (w:vanish) */
-  hidden?: boolean;
-  /** Exclude this run from spellchecking (w:noProof). */
-  noProof?: boolean;
+    // Effects
+    /** Text effect animation (w:effect) */
+    effect?: TextEffect;
+    /** Emphasis mark (w:em) */
+    emphasisMark?: EmphasisMark;
+    /** Emboss effect (w:emboss) */
+    emboss?: boolean;
+    /** Imprint/engrave effect (w:imprint) */
+    imprint?: boolean;
+    /** Outline effect (w:outline) */
+    outline?: boolean;
+    /** Shadow effect (w:shadow) */
+    shadow?: boolean;
 
-  // Colors and highlighting
-  /** Text color (w:color) */
-  color?: ColorValue;
-  /** Highlight/background color (w:highlight) */
-  highlight?:
-    | "black"
-    | "blue"
-    | "cyan"
-    | "darkBlue"
-    | "darkCyan"
-    | "darkGray"
-    | "darkGreen"
-    | "darkMagenta"
-    | "darkRed"
-    | "darkYellow"
-    | "green"
-    | "lightGray"
-    | "magenta"
-    | "none"
-    | "red"
-    | "white"
-    | "yellow";
-  /** Character shading (w:shd) */
-  shading?: ShadingProperties;
+    // Complex script
+    /** Right-to-left text (w:rtl) */
+    rtl?: boolean;
+    /** Complex script formatting (w:cs) */
+    cs?: boolean;
 
-  // Font properties
-  /** Font size in half-points (w:sz) - e.g., 24 = 12pt */
-  fontSize?: number;
-  /** Font size complex script (w:szCs) */
-  fontSizeCs?: number;
-  /** Font family (w:rFonts) */
-  fontFamily?: {
-    ascii?: string;
-    hAnsi?: string;
-    eastAsia?: string;
-    cs?: string;
-    /** Script slot Word should prefer when selecting a glyph font (w:hint). */
-    hint?: "default" | "eastAsia" | "cs";
-    /** Theme font reference */
-    asciiTheme?:
-      | "majorAscii"
-      | "majorHAnsi"
-      | "majorEastAsia"
-      | "majorBidi"
-      | "minorAscii"
-      | "minorHAnsi"
-      | "minorEastAsia"
-      | "minorBidi";
-    hAnsiTheme?: string;
-    eastAsiaTheme?: string;
-    csTheme?: string;
-  };
-  /** Run language metadata (`w:lang`) used by spelling and line breaking. */
-  language?: {
-    val?: string;
-    eastAsia?: string;
-    bidi?: string;
-  };
+    // Style reference
+    /** Character style ID (w:rStyle) */
+    styleId?: string;
 
-  // Spacing and position
-  /** Character spacing in twips (w:spacing) */
-  spacing?: number;
-  /** Raised/lowered text position in half-points (w:position) */
-  position?: number;
-  /** Horizontal text scale percentage (w:w) */
-  scale?: number;
-  /** Kerning threshold in half-points (w:kern) */
-  kerning?: number;
-
-  // Effects
-  /** Text effect animation (w:effect) */
-  effect?: TextEffect;
-  /** Emphasis mark (w:em) */
-  emphasisMark?: EmphasisMark;
-  /** Emboss effect (w:emboss) */
-  emboss?: boolean;
-  /** Imprint/engrave effect (w:imprint) */
-  imprint?: boolean;
-  /** Outline effect (w:outline) */
-  outline?: boolean;
-  /** Shadow effect (w:shadow) */
-  shadow?: boolean;
-
-  // Complex script
-  /** Right-to-left text (w:rtl) */
-  rtl?: boolean;
-  /** Complex script formatting (w:cs) */
-  cs?: boolean;
-
-  // Style reference
-  /** Character style ID (w:rStyle) */
-  styleId?: string;
-
-  /**
-   * The `w:rPr` children folio does not model, in the order the schema
-   * declares them.
-   *
-   * The sink records a capture's schema ordinal rather than a count of
-   * modelled siblings, because the writer puts every child at the place the
-   * declared list gives its name; see `containerChildren.ts`. One field serves
-   * all four owners of a run property set — a run, the paragraph mark, and the
-   * snapshot inside either one's `w:rPrChange` — because one reader fills it
-   * and one writer empties it.
-   *
-   * It belongs to the element that was parsed, and to no other. A style's
-   * captured bytes are not a run's direct formatting, so style resolution and
-   * `mergeTextFormatting` drop it rather than inheriting it.
-   */
-  preserved?: PreservedMarkup;
-}>;
+    /**
+     * The `w:rPr` children folio does not model, in the order the schema
+     * declares them.
+     *
+     * The sink records a capture's schema ordinal rather than a count of
+     * modelled siblings, because the writer puts every child at the place the
+     * declared list gives its name; see `containerChildren.ts`. One field serves
+     * all four owners of a run property set — a run, the paragraph mark, and the
+     * snapshot inside either one's `w:rPrChange` — because one reader fills it
+     * and one writer empties it.
+     *
+     * It belongs to the element that was parsed, and to no other. A style's
+     * captured bytes are not a run's direct formatting, so style resolution and
+     * `mergeTextFormatting` drop it rather than inheriting it.
+     */
+    preserved?: PreservedMarkup;
+  }>;
 
 // ============================================================================
 // PARAGRAPH FORMATTING (Paragraph Properties - pPr)
@@ -251,7 +253,7 @@ export type TabLeader =
 /**
  * Tab stop definition
  */
-export type TabStop = {
+export type TabStop = WritableRecord & {
   /** Position in twips from left margin */
   position: number;
   /** Alignment at tab stop */
@@ -273,201 +275,205 @@ export type { ParagraphAlignment };
 /**
  * Complete paragraph formatting properties (w:pPr)
  */
-export type SpacingExplicit = { before?: boolean; after?: boolean };
+export type SpacingExplicit = WritableRecord & {
+  before?: boolean;
+  after?: boolean;
+};
 
-export type ParagraphFormatting = OwnFieldPresence<{
-  // Alignment
-  /** Paragraph alignment (w:jc) */
-  alignment?: ParagraphAlignment;
-  /** Text direction (w:bidi) */
-  bidi?: boolean;
-  /** Apply East Asian first/last-character line-breaking rules (w:kinsoku). */
-  kinsoku?: boolean;
-  autoSpaceDE?: boolean;
-  autoSpaceDN?: boolean;
-  /** Allow punctuation to hang beyond the text margin (w:overflowPunct). */
-  overflowPunctuation?: boolean;
+export type ParagraphFormatting = WritableRecord &
+  OwnFieldPresence<{
+    // Alignment
+    /** Paragraph alignment (w:jc) */
+    alignment?: ParagraphAlignment;
+    /** Text direction (w:bidi) */
+    bidi?: boolean;
+    /** Apply East Asian first/last-character line-breaking rules (w:kinsoku). */
+    kinsoku?: boolean;
+    autoSpaceDE?: boolean;
+    autoSpaceDN?: boolean;
+    /** Allow punctuation to hang beyond the text margin (w:overflowPunct). */
+    overflowPunctuation?: boolean;
 
-  // Spacing
-  /** Spacing before in twips (w:spacing/@w:before) */
-  spaceBefore?: number;
-  /** Spacing after in twips (w:spacing/@w:after) */
-  spaceAfter?: number;
-  /** Line spacing value (w:spacing/@w:line) */
-  lineSpacing?: number;
-  /** Line spacing rule (w:spacing/@w:lineRule) */
-  lineSpacingRule?: LineSpacingRule;
-  /** Whether the paragraph participates in the section document grid (w:snapToGrid). */
-  snapToGrid?: boolean;
-  /** Auto space before (w:spacing/@w:beforeAutospacing) */
-  beforeAutospacing?: boolean;
-  /** Auto space after (w:spacing/@w:afterAutospacing) */
-  afterAutospacing?: boolean;
-  /** Which spacing sides came from this paragraph's own pPr. */
-  spacingExplicit?: SpacingExplicit;
-  /**
-   * `w:spacing` attributes this model has no field for: `w:beforeLines` and
-   * `w:afterLines`, which count lines where the modelled pair counts twips.
-   *
-   * The remainder rides the record that holds the element's modelled fields.
-   * For `w:framePr` and `w:shd` that record is the element's own; `w:spacing`
-   * and `w:ind` were flattened into this one, so this is theirs, one
-   * remainder per flattened element rather than one for the set.
-   */
-  spacingPreservedAttributes?: PreservedAttribute[];
+    // Spacing
+    /** Spacing before in twips (w:spacing/@w:before) */
+    spaceBefore?: number;
+    /** Spacing after in twips (w:spacing/@w:after) */
+    spaceAfter?: number;
+    /** Line spacing value (w:spacing/@w:line) */
+    lineSpacing?: number;
+    /** Line spacing rule (w:spacing/@w:lineRule) */
+    lineSpacingRule?: LineSpacingRule;
+    /** Whether the paragraph participates in the section document grid (w:snapToGrid). */
+    snapToGrid?: boolean;
+    /** Auto space before (w:spacing/@w:beforeAutospacing) */
+    beforeAutospacing?: boolean;
+    /** Auto space after (w:spacing/@w:afterAutospacing) */
+    afterAutospacing?: boolean;
+    /** Which spacing sides came from this paragraph's own pPr. */
+    spacingExplicit?: SpacingExplicit;
+    /**
+     * `w:spacing` attributes this model has no field for: `w:beforeLines` and
+     * `w:afterLines`, which count lines where the modelled pair counts twips.
+     *
+     * The remainder rides the record that holds the element's modelled fields.
+     * For `w:framePr` and `w:shd` that record is the element's own; `w:spacing`
+     * and `w:ind` were flattened into this one, so this is theirs, one
+     * remainder per flattened element rather than one for the set.
+     */
+    spacingPreservedAttributes?: PreservedAttribute[];
 
-  // Indentation
-  /** Left indent in twips (w:ind/@w:left) */
-  indentLeft?: number;
-  /** Right indent in twips (w:ind/@w:right) */
-  indentRight?: number;
-  /** First line indent in twips - positive for indent, negative for hanging (w:ind/@w:firstLine or @w:hanging) */
-  indentFirstLine?: number;
-  /** Whether first line is hanging indent */
-  hangingIndent?: boolean;
-  /**
-   * `w:ind` attributes this model has no field for: the six character-unit
-   * spellings, from `w:leftChars` to `w:firstLineChars`, which count
-   * characters where the modelled attributes count twips. See
-   * {@link ParagraphFormatting.spacingPreservedAttributes}.
-   */
-  indentPreservedAttributes?: PreservedAttribute[];
+    // Indentation
+    /** Left indent in twips (w:ind/@w:left) */
+    indentLeft?: number;
+    /** Right indent in twips (w:ind/@w:right) */
+    indentRight?: number;
+    /** First line indent in twips - positive for indent, negative for hanging (w:ind/@w:firstLine or @w:hanging) */
+    indentFirstLine?: number;
+    /** Whether first line is hanging indent */
+    hangingIndent?: boolean;
+    /**
+     * `w:ind` attributes this model has no field for: the six character-unit
+     * spellings, from `w:leftChars` to `w:firstLineChars`, which count
+     * characters where the modelled attributes count twips. See
+     * {@link ParagraphFormatting.spacingPreservedAttributes}.
+     */
+    indentPreservedAttributes?: PreservedAttribute[];
 
-  // Borders
-  /** Paragraph borders (w:pBdr) */
-  borders?: {
-    top?: BorderSpec;
-    bottom?: BorderSpec;
-    left?: BorderSpec;
-    right?: BorderSpec;
-    between?: BorderSpec;
-    bar?: BorderSpec;
-  };
+    // Borders
+    /** Paragraph borders (w:pBdr) */
+    borders?: WritableRecord & {
+      top?: BorderSpec;
+      bottom?: BorderSpec;
+      left?: BorderSpec;
+      right?: BorderSpec;
+      between?: BorderSpec;
+      bar?: BorderSpec;
+    };
 
-  // Background
-  /** Paragraph shading (w:shd) */
-  shading?: ShadingProperties;
+    // Background
+    /** Paragraph shading (w:shd) */
+    shading?: ShadingProperties;
 
-  // Tab stops
-  /** Custom tab stops (w:tabs) */
-  tabs?: TabStop[];
+    // Tab stops
+    /** Custom tab stops (w:tabs) */
+    tabs?: TabStop[];
 
-  // Page break control
-  /** Keep with next paragraph (w:keepNext) */
-  keepNext?: boolean;
-  /** Keep lines together (w:keepLines) */
-  keepLines?: boolean;
-  /** Widow/orphan control (w:widowControl) */
-  widowControl?: boolean;
-  /** Page break before (w:pageBreakBefore) */
-  pageBreakBefore?: boolean;
-  /** Contextual spacing — suppress space between paragraphs of the same style (w:contextualSpacing) */
-  contextualSpacing?: boolean;
+    // Page break control
+    /** Keep with next paragraph (w:keepNext) */
+    keepNext?: boolean;
+    /** Keep lines together (w:keepLines) */
+    keepLines?: boolean;
+    /** Widow/orphan control (w:widowControl) */
+    widowControl?: boolean;
+    /** Page break before (w:pageBreakBefore) */
+    pageBreakBefore?: boolean;
+    /** Contextual spacing — suppress space between paragraphs of the same style (w:contextualSpacing) */
+    contextualSpacing?: boolean;
 
-  // Numbering/List
-  /**
-   * The stated `w:numPr` (17.3.1.19). Absent means the tier states nothing and
-   * inherits whatever the tier below it states; {@link ParagraphNumberingOverride}
-   * carries the rest, so neither the reserved `w:numId w:val="0"` nor a level
-   * stated without an id has a spelling any consumer has to recognise.
-   */
-  numPr?: ParagraphNumberingOverride;
-  /**
-   * When `numPr` was resolved from the paragraph STYLE's pPr rather than the
-   * paragraph's own `<w:numPr>`, this records the style-sourced value. The
-   * serializer omits `numPr` while it still equals this value — writing it as
-   * direct formatting would flip Word's indent precedence (a directly
-   * referenced level's indents beat the style's; a style-referenced level's
-   * do not) and break the document on save/reload. Cleared the moment the
-   * user changes the numbering (values diverge).
-   */
-  numPrFromStyle?: ParagraphNumberingOverride;
-  /**
-   * The `w:numberingChange` inside the paragraph's `w:numPr`, verbatim.
-   *
-   * It records the numbering a paragraph carried before a reviewer changed it,
-   * with the author and date of that change. Nothing in the current model
-   * derives it, and a rebuilt `w:numPr` that omits it discards a tracked
-   * revision without telling anyone. The element is a historical snapshot, so
-   * it travels as markup rather than as a parsed shape.
-   */
-  numberingChangeXml?: string;
-  /**
-   * The `w:ins` revision record inside the paragraph's `w:numPr`, verbatim.
-   *
-   * It records who inserted the numbering properties and when. Nothing in the
-   * editable model derives it, so it travels as markup beside the historical
-   * numbering-change snapshot.
-   */
-  numberingInsertionXml?: string;
+    // Numbering/List
+    /**
+     * The stated `w:numPr` (17.3.1.19). Absent means the tier states nothing and
+     * inherits whatever the tier below it states; {@link ParagraphNumberingOverride}
+     * carries the rest, so neither the reserved `w:numId w:val="0"` nor a level
+     * stated without an id has a spelling any consumer has to recognise.
+     */
+    numPr?: ParagraphNumberingOverride;
+    /**
+     * When `numPr` was resolved from the paragraph STYLE's pPr rather than the
+     * paragraph's own `<w:numPr>`, this records the style-sourced value. The
+     * serializer omits `numPr` while it still equals this value — writing it as
+     * direct formatting would flip Word's indent precedence (a directly
+     * referenced level's indents beat the style's; a style-referenced level's
+     * do not) and break the document on save/reload. Cleared the moment the
+     * user changes the numbering (values diverge).
+     */
+    numPrFromStyle?: ParagraphNumberingOverride;
+    /**
+     * The `w:numberingChange` inside the paragraph's `w:numPr`, verbatim.
+     *
+     * It records the numbering a paragraph carried before a reviewer changed it,
+     * with the author and date of that change. Nothing in the current model
+     * derives it, and a rebuilt `w:numPr` that omits it discards a tracked
+     * revision without telling anyone. The element is a historical snapshot, so
+     * it travels as markup rather than as a parsed shape.
+     */
+    numberingChangeXml?: string;
+    /**
+     * The `w:ins` revision record inside the paragraph's `w:numPr`, verbatim.
+     *
+     * It records who inserted the numbering properties and when. Nothing in the
+     * editable model derives it, so it travels as markup beside the historical
+     * numbering-change snapshot.
+     */
+    numberingInsertionXml?: string;
 
-  // Outline level (for TOC)
-  /**
-   * The stated `w:outlineLvl` (17.3.1.20). Absent means the paragraph states
-   * none and inherits one; {@link OutlineLevel} carries the rest, so the
-   * reserved `w:val="9"` cannot be mistaken for a tenth heading level.
-   */
-  outlineLevel?: OutlineLevel;
+    // Outline level (for TOC)
+    /**
+     * The stated `w:outlineLvl` (17.3.1.20). Absent means the paragraph states
+     * none and inherits one; {@link OutlineLevel} carries the rest, so the
+     * reserved `w:val="9"` cannot be mistaken for a tenth heading level.
+     */
+    outlineLevel?: OutlineLevel;
 
-  // Style reference
-  /** Paragraph style ID (w:pStyle) */
-  styleId?: string;
+    // Style reference
+    /** Paragraph style ID (w:pStyle) */
+    styleId?: string;
 
-  // Frame properties
-  /** Text frame properties (w:framePr) */
-  frame?: {
-    dropCap?: "none" | "drop" | "margin";
-    lines?: number;
-    width?: number;
-    height?: number;
-    hSpace?: number;
-    vSpace?: number;
-    hAnchor?: "text" | "margin" | "page";
-    vAnchor?: "text" | "margin" | "page";
-    x?: number;
-    y?: number;
-    xAlign?: "left" | "center" | "right" | "inside" | "outside";
-    yAlign?: "top" | "center" | "bottom" | "inside" | "outside" | "inline";
-    wrap?: "around" | "auto" | "none" | "notBeside" | "through" | "tight";
-    /** `CT_FramePr` attributes this record has no field for; see {@link BorderSpec}. */
-    preservedAttributes?: PreservedAttribute[];
-  };
+    // Frame properties
+    /** Text frame properties (w:framePr) */
+    frame?: WritableRecord & {
+      dropCap?: "none" | "drop" | "margin";
+      lines?: number;
+      width?: number;
+      height?: number;
+      hSpace?: number;
+      vSpace?: number;
+      hAnchor?: "text" | "margin" | "page";
+      vAnchor?: "text" | "margin" | "page";
+      x?: number;
+      y?: number;
+      xAlign?: "left" | "center" | "right" | "inside" | "outside";
+      yAlign?: "top" | "center" | "bottom" | "inside" | "outside" | "inline";
+      wrap?: "around" | "auto" | "none" | "notBeside" | "through" | "tight";
+      /** `CT_FramePr` attributes this record has no field for; see {@link BorderSpec}. */
+      preservedAttributes?: PreservedAttribute[];
+    };
 
-  // Suppress
-  /** Suppress line numbers (w:suppressLineNumbers) */
-  suppressLineNumbers?: boolean;
-  /** Suppress auto hyphens (w:suppressAutoHyphens) */
-  suppressAutoHyphens?: boolean;
+    // Suppress
+    /** Suppress line numbers (w:suppressLineNumbers) */
+    suppressLineNumbers?: boolean;
+    /** Suppress auto hyphens (w:suppressAutoHyphens) */
+    suppressAutoHyphens?: boolean;
 
-  // Default run properties for this paragraph
-  /** Run properties to apply to all runs (w:rPr) */
-  runProperties?: TextFormatting;
+    // Default run properties for this paragraph
+    /** Run properties to apply to all runs (w:rPr) */
+    runProperties?: TextFormatting;
 
-  /**
-   * Run-in heading: this paragraph's mark carries `<w:specVanish/>`
-   * and the next paragraph should render inline on the same line.
-   */
-  runInWithNext?: boolean;
+    /**
+     * Run-in heading: this paragraph's mark carries `<w:specVanish/>`
+     * and the next paragraph should render inline on the same line.
+     */
+    runInWithNext?: boolean;
 
-  /**
-   * The `w:pPr` children folio does not model, in the order the schema
-   * declares them.
-   *
-   * The sink records a capture's schema ordinal rather than a count of
-   * modelled siblings, because the writer puts every child at the place the
-   * declared list gives its name; see `containerChildren.ts`. One field serves
-   * all four owners of a paragraph property set — a paragraph, a style, a
-   * numbering level, and the `CT_PPrBase` snapshot inside `w:pPrChange` —
-   * because one reader fills it and one writer empties it.
-   *
-   * It belongs to the element that was parsed, and to no other. A style's
-   * captured bytes are not a paragraph's direct formatting, so style
-   * resolution and `mergeParagraphFormatting` drop it rather than inheriting
-   * it: writing an inherited value back as direct formatting would outrank the
-   * tier it came from.
-   */
-  preserved?: PreservedMarkup;
-}>;
+    /**
+     * The `w:pPr` children folio does not model, in the order the schema
+     * declares them.
+     *
+     * The sink records a capture's schema ordinal rather than a count of
+     * modelled siblings, because the writer puts every child at the place the
+     * declared list gives its name; see `containerChildren.ts`. One field serves
+     * all four owners of a paragraph property set — a paragraph, a style, a
+     * numbering level, and the `CT_PPrBase` snapshot inside `w:pPrChange` —
+     * because one reader fills it and one writer empties it.
+     *
+     * It belongs to the element that was parsed, and to no other. A style's
+     * captured bytes are not a paragraph's direct formatting, so style
+     * resolution and `mergeParagraphFormatting` drop it rather than inheriting
+     * it: writing an inherited value back as direct formatting would outrank the
+     * tier it came from.
+     */
+    preserved?: PreservedMarkup;
+  }>;
 
 // ============================================================================
 // TABLE FORMATTING (w:tblPr, w:trPr, w:tcPr)
@@ -481,7 +487,7 @@ export type TableWidthType = "auto" | "dxa" | "nil" | "pct";
 /**
  * Table measurement (width or height)
  */
-export type TableMeasurement = {
+export type TableMeasurement = WritableRecord & {
   /** Value in twips (for dxa) or fifths of a percent (for pct) */
   value: number;
   /** Measurement type */
@@ -491,7 +497,7 @@ export type TableMeasurement = {
 /**
  * Table borders
  */
-export type TableBorders = {
+export type TableBorders = WritableRecord & {
   top?: BorderSpec;
   bottom?: BorderSpec;
   left?: BorderSpec;
@@ -504,15 +510,16 @@ export type TableBorders = {
  * Table cell borders, including w:tl2br (top-left to bottom-right) and
  * w:tr2bl (top-right to bottom-left).
  */
-export type TableCellBorders = TableBorders & {
-  topLeftToBottomRight?: BorderSpec;
-  topRightToBottomLeft?: BorderSpec;
-};
+export type TableCellBorders = TableBorders &
+  WritableRecord & {
+    topLeftToBottomRight?: BorderSpec;
+    topRightToBottomLeft?: BorderSpec;
+  };
 
 /**
  * Cell margins
  */
-export type CellMargins = {
+export type CellMargins = WritableRecord & {
   top?: TableMeasurement;
   bottom?: TableMeasurement;
   left?: TableMeasurement;
@@ -531,7 +538,7 @@ export type CellMargins = {
  *
  * Read one with `resolveTableLook`, never on its own.
  */
-export type TableLook = {
+export type TableLook = WritableRecord & {
   /**
    * `w:val`, the legacy `ST_ShortHexNumber` bitmask, kept as the author spelled
    * it. Producers older than the attribute form write only this.
@@ -548,7 +555,7 @@ export type TableLook = {
 /**
  * Floating table properties
  */
-export type FloatingTableProperties = {
+export type FloatingTableProperties = WritableRecord & {
   /** Horizontal anchor */
   horzAnchor?: "margin" | "page" | "text";
   /** Vertical anchor */
@@ -579,7 +586,7 @@ export type FloatingTableProperties = {
  * a column of width zero: `undefined` is what says the snapshot recorded a
  * column and no measure for it.
  */
-export type TableGridChange = {
+export type TableGridChange = WritableRecord & {
   /** `@w:id`: a physical revision id, re-minted on every save. */
   id: number;
   /** One entry per `w:gridCol`, in source order. */
@@ -589,7 +596,7 @@ export type TableGridChange = {
 /**
  * Table formatting properties (w:tblPr)
  */
-export type TableFormatting = {
+export type TableFormatting = WritableRecord & {
   /** Table width */
   width?: TableMeasurement;
   /** Table placement (`w:tblPr/w:jc`) */
@@ -662,25 +669,26 @@ export type TableFormatting = {
 };
 
 /** Table properties a row may override in `w:tblPrEx`. */
-export type TablePropertyExceptionFormatting = Pick<
-  TableFormatting,
-  | "width"
-  | "justification"
-  | "cellSpacing"
-  | "indent"
-  | "borders"
-  | "shading"
-  | "layout"
-  | "cellMargins"
-  | "look"
-  | "preserved"
-  | "sourceXml"
->;
+export type TablePropertyExceptionFormatting = WritableRecord &
+  Pick<
+    TableFormatting,
+    | "width"
+    | "justification"
+    | "cellSpacing"
+    | "indent"
+    | "borders"
+    | "shading"
+    | "layout"
+    | "cellMargins"
+    | "look"
+    | "preserved"
+    | "sourceXml"
+  >;
 
 /**
  * Table row formatting properties (w:trPr)
  */
-export type TableRowFormatting = {
+export type TableRowFormatting = WritableRecord & {
   /** Number of table grid columns omitted before the first cell */
   gridBefore?: number;
   /** Preferred width of the omitted leading grid columns */
@@ -725,7 +733,7 @@ export type TableRowFormatting = {
 /**
  * Conditional format style
  */
-export type ConditionalFormatStyle = {
+export type ConditionalFormatStyle = WritableRecord & {
   /** First row */
   firstRow?: boolean;
   /** Last row */
@@ -755,7 +763,7 @@ export type ConditionalFormatStyle = {
 /**
  * Table cell formatting properties (w:tcPr)
  */
-export type TableCellFormatting = {
+export type TableCellFormatting = WritableRecord & {
   /** Cell width */
   width?: TableMeasurement;
   /** Cell borders */

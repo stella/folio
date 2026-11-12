@@ -255,6 +255,7 @@ import {
 import type { CanonicalCommentRequest } from "@stll/folio-core/types/canonicalComments";
 import type { Comment } from "@stll/folio-core/types/content";
 import type {
+  BorderStyleValue,
   Document,
   EndnoteProperties,
   FootnoteProperties,
@@ -264,6 +265,7 @@ import type {
 import {
   readModel,
   type ReadonlyDocument,
+  writableCopy,
 } from "@stll/folio-core/types/documentModel";
 import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
 import { resolveColor } from "@stll/folio-core/utils/colorResolver";
@@ -2818,7 +2820,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                         const bs = b[side];
                         if (bs) {
                           const borderEntry: TableCellBorderCommandSpec = {
-                            style: bs.style,
+                            style: writableCopy<BorderStyleValue>(bs.style),
                           };
                           if (bs.size !== undefined) {
                             borderEntry.size = bs.size;

@@ -8,11 +8,13 @@ import {
   TextSelection,
   type Transaction,
 } from "prosemirror-state";
+import { Step } from "prosemirror-transform";
 
 import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
 import {
   getChangeTrackerState,
   ParagraphChangeTrackerExtension,
@@ -257,6 +259,58 @@ describe("resolve-all command equivalence", () => {
     },
     propertyTestTimeout(30_000),
   );
+
+  test("records the paragraph that receives a rejected added mark's section", () => {
+    // Rejecting an added mark that ends a section joins its paragraph into
+    // the next one and hands the section to the paragraph before it. That
+    // paragraph is changed: the tracker must see it, and the step must
+    // replay the change rather than only carry it in its cached result.
+    for (const mark of ["ins", "moveTo"] as const) {
+      const plain = {
+        mark: "none",
+        inline: "plain",
+        paragraphProperty: false,
+        sectionProperty: false,
+      } satisfies ParagraphCase;
+      const blocks = [
+        plain,
+        plain,
+        { ...plain, mark, sectionProperty: true },
+        plain,
+      ].map(paragraph);
+      blocks.splice(1, 0, table("none", "none"));
+      const doc = schema.node("doc", null, blocks);
+      const state = EditorState.create({
+        schema,
+        doc,
+        plugins: [trackerPlugin],
+      });
+      expectEquivalent(state);
+
+      const dispatched: Transaction[] = [];
+      expect(
+        rejectAllChanges()(state, (tr) => {
+          dispatched.push(tr);
+        }),
+      ).toBe(true);
+      const [tr] = dispatched;
+      if (!tr) throw new Error("Expected the resolution to dispatch.");
+      const receiver = tr.doc.child(2);
+      expect(receiver.attrs["paraId"]).toBe("00000002");
+      expect(receiver.attrs["_sectionProperties"] ?? null).not.toBeNull();
+      expect(
+        getChangeTrackerState(state.apply(tr))?.changedParaIds.has("00000002"),
+      ).toBe(true);
+
+      const [step] = tr.steps;
+      expect(step).toBeInstanceOf(RevisionResolutionStep);
+      if (!step) throw new Error("Expected the resolution step.");
+      const replayed = Step.fromJSON(schema, step.toJSON()).apply(state.doc);
+      expect(replayed.doc?.toJSON()).toEqual(
+        step.apply(state.doc).doc?.toJSON(),
+      );
+    }
+  });
 
   test("matches paragraph joins, table-adjacent removal, and tracked section endpoints", () => {
     const doc = schema.node("doc", null, [

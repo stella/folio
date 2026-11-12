@@ -42,6 +42,7 @@ import type {
   Footnote,
   HeaderFooter,
 } from "./content";
+import type { WritableRecord } from "./deepReadonly";
 import type { NumberingDefinitions } from "./lists";
 import type { ParseWarning } from "./parseWarning";
 import type {
@@ -64,7 +65,7 @@ export {
 
 // Field-level totality gate shared by the serializers and the reserved-value
 // registry.
-export type { DeepReadonly } from "./deepReadonly";
+export type { DeepReadonly, RecordField, WritableRecord } from "./deepReadonly";
 export type { ExhaustiveFields } from "./exhaustiveFields";
 
 // `w:numPr`: the stated and resolved unions, the cascade fold, and the one
@@ -414,7 +415,7 @@ export const DEFAULT_TAB_STOP_TWIPS = 720;
  * Document-wide settings parsed from `word/settings.xml`.
  * Extend as more settings.xml fields enter the layout pipeline.
  */
-export type DocumentSettings = {
+export type DocumentSettings = WritableRecord & {
   /**
    * Application compatibility generation from
    * `w:compat/w:compatSetting[@w:name="compatibilityMode"]`.
@@ -460,7 +461,7 @@ export type DocumentSettings = {
    * `<a:ea>`/`<a:cs>` theme font slots from the script-specific
    * `<a:font script="…">` entries. Absent for non-CJK/bidi docs.
    */
-  themeFontLang?: { eastAsia?: string; bidi?: string };
+  themeFontLang?: WritableRecord & { eastAsia?: string; bidi?: string };
   /** Automatically hyphenate eligible paragraphs (`w:autoHyphenation`). */
   autoHyphenation?: boolean;
   /** Keep all-capital words unhyphenated (`w:doNotHyphenateCaps`). */
@@ -470,9 +471,15 @@ export type DocumentSettings = {
   /** Legacy hyphenation zone (`w:hyphenationZone`) in twips; retained for compatibility tooling. */
   hyphenationZoneTwips?: number;
   /** Word/OOXML document-wide line-breaking overrides. */
-  lineBreakRules?: {
-    noLineBreaksBefore?: { language?: string; characters: string };
-    noLineBreaksAfter?: { language?: string; characters: string };
+  lineBreakRules?: WritableRecord & {
+    noLineBreaksBefore?: WritableRecord & {
+      language?: string;
+      characters: string;
+    };
+    noLineBreaksAfter?: WritableRecord & {
+      language?: string;
+      characters: string;
+    };
     useLegacyEthiopicAmharicRules?: boolean;
   };
   /** Move a break-only paragraph mark onto the page after its hard page break. */
@@ -500,7 +507,7 @@ export type DocxConformanceClass =
   (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeof DOCX_CONFORMANCE_CLASSES];
 
 /** Complete DOCX package structure. */
-export type DocxPackage = {
+export type DocxPackage = WritableRecord & {
   /** Conformance class detected from the main document namespace. */
   conformanceClass?: DocxConformanceClass;
   /** Document body */
@@ -528,7 +535,7 @@ export type DocxPackage = {
   /** Media files */
   media?: Map<string, MediaFile> | undefined;
   /** Document properties */
-  properties?: {
+  properties?: WritableRecord & {
     title?: string;
     subject?: string;
     creator?: string;
@@ -544,7 +551,7 @@ export type DocxPackage = {
 /**
  * Complete parsed DOCX document
  */
-export type Document = {
+export type Document = WritableRecord & {
   /** DOCX package with all parsed content */
   package: DocxPackage;
   /** Original ArrayBuffer for round-trip */
