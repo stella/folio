@@ -310,3 +310,20 @@ test("a margin drag in the default session copies the document once, when the dr
     await mounted.unmount();
   }
 });
+
+test("the notes getDocument hands the host in the default session are the host's own", async () => {
+  const mounted = await mountEditor("default", documentWithFootnote());
+  try {
+    const handed =
+      mounted.ref().getDocument() ?? panic("Expected the editor's document");
+    const note = handed.package.footnotes?.at(0) ?? panic("Expected a note");
+    expect(JSON.stringify(note.content)).toContain("Note");
+    note.content.length = 0;
+    handed.package.footnotes?.splice(0);
+    const again =
+      mounted.ref().getDocument() ?? panic("Expected the editor's document");
+    expect(JSON.stringify(again.package.footnotes ?? [])).toContain("Note");
+  } finally {
+    await mounted.unmount();
+  }
+});

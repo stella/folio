@@ -97,7 +97,12 @@ export type NoteEditorManager = {
   getActive: () => NoteStoryKey | null;
   getView: (story: NoteStoryKey) => EditorView | null;
   listStories: () => NoteStoryKey[];
-  snapshotDocument: (document: Document) => Document;
+  /**
+   * The model with the edited notes written back. It shares what no edit
+   * touched with `model` and with the mounted editors, so it is read-only: a
+   * writer copies it first (`cloneDocumentWithParagraphPropertySources`).
+   */
+  snapshotDocument: (model: ReadonlyDocument) => ReadonlyDocument;
   sync: () => void;
 };
 
@@ -502,7 +507,7 @@ export const createNoteEditorManager = (
       const owned = getOwnedDocument();
       return enumerateDocumentNoteStories(owned && readModel(owned));
     },
-    snapshotDocument: (document) => {
+    snapshotDocument: (model) => {
       if (
         usesCanonicalSession(
           deps.getExperimentalSession?.(),
@@ -517,6 +522,7 @@ export const createNoteEditorManager = (
           message: "Canonical story snapshot is unavailable.",
         });
       }
+      const document = readModel(model);
       let footnotes = document.package.footnotes;
       let endnotes = document.package.endnotes;
       let footnotesChanged = false;
@@ -589,7 +595,7 @@ export const createNoteEditorManager = (
         story.appliedContent = updated.content;
         story.appliedProseDocument = noteToProseDocument(updated, proseOptions);
       }
-      if (!footnotesChanged && !endnotesChanged) return document;
+      if (!footnotesChanged && !endnotesChanged) return model;
       return {
         ...document,
         package: {

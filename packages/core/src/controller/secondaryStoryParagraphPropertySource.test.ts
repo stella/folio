@@ -17,6 +17,7 @@ import {
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import type { Document, HeaderFooter, Paragraph } from "../types/document";
+import { readModel } from "../types/documentModel";
 
 class TestEditorView {
   readonly dom: TestElement;
@@ -280,7 +281,7 @@ describe("secondary-story paragraph property ownership", () => {
       }
       editParagraphText(view, `${kind} source`);
 
-      const snapshot = manager.snapshotDocument(document);
+      const snapshot = readModel(manager.snapshotDocument(document));
       const savedPart =
         kind === "header"
           ? snapshot.package.headers?.get(relationshipId)
@@ -334,7 +335,7 @@ describe("secondary-story paragraph property ownership", () => {
       }
       editParagraphText(view, `${kind} second`);
 
-      const snapshot = manager.snapshotDocument(document);
+      const snapshot = readModel(manager.snapshotDocument(document));
       const savedPart =
         kind === "header"
           ? snapshot.package.headers?.get(relationshipId)
@@ -393,7 +394,7 @@ describe("secondary-story paragraph property ownership", () => {
       }
       editParagraphText(view, `${kind} source`);
 
-      const snapshot = manager.snapshotDocument(document);
+      const snapshot = readModel(manager.snapshotDocument(document));
       const savedStory =
         kind === "footnote"
           ? snapshot.package.footnotes?.at(0)
@@ -444,7 +445,7 @@ describe("secondary-story paragraph property ownership", () => {
       }
       editParagraphText(view, `${kind} second`);
 
-      const snapshot = manager.snapshotDocument(document);
+      const snapshot = readModel(manager.snapshotDocument(document));
       const savedStory =
         kind === "footnote"
           ? snapshot.package.footnotes?.at(0)

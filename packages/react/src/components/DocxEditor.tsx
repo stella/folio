@@ -1944,7 +1944,22 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         return null;
 
       let doc = cloneDocumentWithParagraphPropertySources(committed);
-      const pmDoc = pagedEditorRef.current?.getDocument();
+      const live = pagedEditorRef.current?.getDocument();
+      // The live stories share the editor's model: the host gets its own copy.
+      const pmDoc =
+        live &&
+        cloneDocumentWithParagraphPropertySources({
+          package: {
+            document: { content: live.package.document.content },
+            ...(live.package.numbering && {
+              numbering: live.package.numbering,
+            }),
+            ...(live.package.footnotes && {
+              footnotes: live.package.footnotes,
+            }),
+            ...(live.package.endnotes && { endnotes: live.package.endnotes }),
+          },
+        });
       if (pmDoc) {
         doc.package.document.content = pmDoc.package.document.content;
         if (pmDoc.package.numbering) {

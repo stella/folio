@@ -24,11 +24,7 @@ import {
 } from "@stll/folio-core/controller/noteEditorManager";
 import { setSuggestionMode } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
-import type {
-  Document,
-  StyleDefinitions,
-  Theme,
-} from "@stll/folio-core/types/document";
+import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
 import {
   readModel,
   type ReadonlyDocument,
@@ -40,7 +36,8 @@ export type NoteStoryEditorRef = {
   close: () => void;
   getActiveView: () => EditorView | null;
   open: (story: NoteStoryKey) => void;
-  snapshotDocument: (document: Document) => Document;
+  /** The model with the edited notes written back; it shares the model's parts. */
+  snapshotDocument: (model: ReadonlyDocument) => ReadonlyDocument;
 };
 
 export type NoteStoryEditorProps = {

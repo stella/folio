@@ -48,6 +48,7 @@ import {
   seedFileFor,
   titlePattern,
 } from "../test/property-testing";
+import { scanTestTimeout } from "../test/scan-timeout";
 import {
   joinPinnedSeeds,
   parseSeedTitles,
@@ -55,6 +56,7 @@ import {
   splitPinnedSeeds,
   testFileForSeedFile,
 } from "../test/seed-registry";
+import { runChild, subprocessTestTimeout } from "../test/subprocess";
 import { parseFailureRecord } from "./fuzz-failure-issues";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
@@ -217,83 +219,117 @@ describe("per-commit seeds", () => {
 });
 
 describe("failure reporting", () => {
-  test("Node runners import and read the default seed registry", () => {
-    const result = Bun.spawnSync(
+  // `tail` runs after the read; the check's own test uses it to break it.
+  const readRegistryWithNode = (
+    module: string,
+    tail = "",
+    hangTimeoutMs?: number,
+  ) =>
+    runChild(
       [
         "node",
         "--experimental-strip-types",
         "--input-type=module",
         "-e",
-        `import { readSeedRegistry } from "./test/seed-registry.ts";
-process.stdout.write(JSON.stringify(Object.keys(readSeedRegistry()).length));`,
+        `import { readSeedRegistry } from ${JSON.stringify(module)};
+process.stdout.write(JSON.stringify(Object.keys(readSeedRegistry()).length));${tail}`,
       ],
-      { cwd: REPO_ROOT },
+      { cwd: REPO_ROOT, hangTimeoutMs },
     );
-    expect({
-      exitCode: result.exitCode,
-      stderr: new TextDecoder().decode(result.stderr),
-    }).toMatchObject({ exitCode: 0 });
-    expect(Number(new TextDecoder().decode(result.stdout))).toBeGreaterThan(0);
-  });
 
-  test("explicit nightly fuzz files execute and report their own replay source", () => {
-    const directory = mkdtempSync(
-      path.join(REPO_ROOT, "test/.property-replay-"),
-    );
-    const fixture = path.join(directory, "fixture.fuzz.ts");
-    writeFileSync(
-      fixture,
-      `import { test } from "bun:test";
+  test(
+    "Node runners import and read the default seed registry",
+    () => {
+      const outcome = readRegistryWithNode("./test/seed-registry.ts");
+      expect(outcome).toMatchObject({ kind: "exited", exitCode: 0 });
+      expect(Number(outcome.stdout)).toBeGreaterThan(0);
+    },
+    subprocessTestTimeout(),
+  );
+
+  test(
+    "the Node registry check reports a missing module and a reader that never exits",
+    () => {
+      expect(
+        readRegistryWithNode("./test/no-such-seed-registry.ts"),
+      ).toMatchObject({ kind: "exited", exitCode: 1, stdout: "" });
+      // A child that never exits is hung however fast the runner is, so a short
+      // guard proves the report without depending on runner speed.
+      const hung = readRegistryWithNode(
+        "./test/seed-registry.ts",
+        "\nsetInterval(() => {}, 1_000);",
+        scanTestTimeout(1_000),
+      );
+      expect(hung).toMatchObject({ kind: "hung" });
+      expect(Number(hung.stdout)).toBeGreaterThan(0);
+    },
+    subprocessTestTimeout(2),
+  );
+
+  test(
+    "explicit nightly fuzz files execute and report their own replay source",
+    () => {
+      const directory = mkdtempSync(
+        path.join(REPO_ROOT, "test/.property-replay-"),
+      );
+      const fixture = path.join(directory, "fixture.fuzz.ts");
+      writeFileSync(
+        fixture,
+        `import { test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty } from "../property-testing";
 test("nightly replay fixture", () => {
   assertProperty(fc.property(fc.constant(false), (value) => value), { seed: 33, numRuns: 1, id: "nightly replay fixture" });
 });
 `,
-    );
-    try {
-      const result = Bun.spawnSync([process.execPath, "test", fixture], {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          CI: "true",
-          PROPERTY_TEST_SEED: "33",
-          PROPERTY_TEST_NUM_RUNS_FACTOR: "1",
-          PROPERTY_TEST_PATH: "",
-          FOLIO_PROPERTY_FAILURES_DIR: path.join(directory, "records"),
-        },
-      });
-      const output =
-        new TextDecoder().decode(result.stderr) +
-        new TextDecoder().decode(result.stdout);
-      expect(result.exitCode).toBe(1);
-      const relative = path.relative(REPO_ROOT, fixture);
-      expect(output).toContain(`bun test ./${relative}`);
-      expect(output).toContain(`"file":"${relative}"`);
-      expect(output).toContain(`${relative}::nightly replay fixture`);
-      expect(output).not.toContain("did not match any test files");
-      const files = readdirSync(path.join(directory, "records"));
-      const recordFiles = files.filter((file) => !file.endsWith(".flow.json"));
-      expect(recordFiles).toHaveLength(1);
-      expect(files.filter((file) => file.endsWith(".flow.json"))).toHaveLength(
-        1,
       );
-      const file = recordFiles.at(0);
-      if (!file) throw new Error("Missing failure record");
-      const persisted = parseFailureRecord(
-        JSON.parse(readFileSync(path.join(directory, "records", file), "utf8")),
-      );
-      expect(persisted?.marker.seed).toBe(33);
-      expect(persisted?.marker.test).toBe(
-        `${relative}::nightly replay fixture`,
-      );
-      expect(persisted?.flow).toEqual([false]);
-      expect(persisted?.replays.at(0)).toContain(`bun test ./${relative}`);
-      expect(persisted?.error).not.toBe("undefined");
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
+      try {
+        const result = runChild([process.execPath, "test", fixture], {
+          cwd: REPO_ROOT,
+          env: {
+            ...process.env,
+            CI: "true",
+            PROPERTY_TEST_SEED: "33",
+            PROPERTY_TEST_NUM_RUNS_FACTOR: "1",
+            PROPERTY_TEST_PATH: "",
+            FOLIO_PROPERTY_FAILURES_DIR: path.join(directory, "records"),
+          },
+        });
+        expect(result).toMatchObject({ kind: "exited", exitCode: 1 });
+        const output = result.stderr + result.stdout;
+        const relative = path.relative(REPO_ROOT, fixture);
+        expect(output).toContain(`bun test ./${relative}`);
+        expect(output).toContain(`"file":"${relative}"`);
+        expect(output).toContain(`${relative}::nightly replay fixture`);
+        expect(output).not.toContain("did not match any test files");
+        const files = readdirSync(path.join(directory, "records"));
+        const recordFiles = files.filter(
+          (file) => !file.endsWith(".flow.json"),
+        );
+        expect(recordFiles).toHaveLength(1);
+        expect(
+          files.filter((file) => file.endsWith(".flow.json")),
+        ).toHaveLength(1);
+        const file = recordFiles.at(0);
+        if (!file) throw new Error("Missing failure record");
+        const persisted = parseFailureRecord(
+          JSON.parse(
+            readFileSync(path.join(directory, "records", file), "utf8"),
+          ),
+        );
+        expect(persisted?.marker.seed).toBe(33);
+        expect(persisted?.marker.test).toBe(
+          `${relative}::nightly replay fixture`,
+        );
+        expect(persisted?.flow).toEqual([false]);
+        expect(persisted?.replays.at(0)).toContain(`bun test ./${relative}`);
+        expect(persisted?.error).not.toBe("undefined");
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+    subprocessTestTimeout(),
+  );
 
   test("a failure names the seed, the path and a replay line for this test", () => {
     withEnv({});
