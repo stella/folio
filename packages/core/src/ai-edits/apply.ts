@@ -4001,14 +4001,27 @@ const collapsedFinalRunSource = (
 
 type CanRetractFinalBreakOptions = { predecessor: PMNode; target: PMNode };
 
+/**
+ * Whether a final deletion can retract the inserted break between
+ * `predecessor` and the paragraph it joins. A paragraph holds one pending
+ * property change, so a predecessor with its own must agree with the target
+ * on what rejecting gives back, or already read as the target did. Which
+ * change the batch put on the predecessor before the retirement runs (a
+ * merge into it, a property write, a restyle) does not decide it: one at a
+ * time the retraction runs first, while the predecessor reads as before.
+ */
 const canRetractFinalBreak = ({
   predecessor,
   target,
 }: CanRetractFinalBreakOptions) => {
   if (target.type !== predecessor.type) return false;
+  const targetBefore = JSON.stringify(
+    paragraphPropertiesBeforePendingChanges(target),
+  );
   const formattingChanges =
-    JSON.stringify(paragraphPropertiesBeforePendingChanges(target)) !==
-    JSON.stringify(paragraphPropertiesSnapshot(predecessor));
+    targetBefore !== JSON.stringify(paragraphPropertiesSnapshot(predecessor)) &&
+    targetBefore !==
+      JSON.stringify(paragraphPropertiesBeforePendingChanges(predecessor));
   return !(
     formattingChanges &&
     hasSerializableParagraphPropertyChange(

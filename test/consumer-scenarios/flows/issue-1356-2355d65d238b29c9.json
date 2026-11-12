@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 2115896539: step 2: [batchSequential] the batch (tracked-changes: commentOnRange, mergeBlockWithNext, deleteBlock) merges into a split's first half and deletes its second half",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 2115896539,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3315626682,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "483CD5EB",
+          "text": "Agreement schedule goods schedule supplier."
+        },
+        { "type": "splitBlock", "blockId": "79D25458", "offset": 8 }
+      ]
+    },
+    { "action": "mistake", "seed": 660401608 },
+    {
+      "action": "core batch",
+      "seed": 3059861894,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "commentOnRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "3CEFFC83",
+            "startOffset": 28,
+            "endOffset": 33,
+            "selectedTextHash": "h4gr0cj"
+          },
+          "comment": { "text": "Written written buyer invoice notice." }
+        },
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "1BF99289",
+          "separator": " "
+        },
+        { "type": "deleteBlock", "blockId": "@11" }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 2115896539"
+}
