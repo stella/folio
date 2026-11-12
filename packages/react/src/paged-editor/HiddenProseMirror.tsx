@@ -114,8 +114,12 @@ export type HiddenProseMirrorProps = {
   extensionManager?: ExtensionManager;
   /** Callback when EditorView is ready */
   onEditorViewReady?: (view: EditorView) => void;
-  /** Initial state already built by the parent for pre-view layout. */
-  precomputedInitialState?: EditorState | null;
+  /**
+   * Reads the initial state the parent converts for its pre-view layout. Read
+   * only when the view is built from the document, never when a canonical
+   * session seeds it.
+   */
+  getPrecomputedInitialState?: () => EditorState | null;
   /** Callback when EditorView is destroyed */
   onEditorViewDestroy?: () => void;
   /** Intercept key events before ProseMirror processes them. Return true to prevent PM handling. */
@@ -212,7 +216,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onPaste,
     onReadOnlyEditAttempt,
     onRemoteSelectionsChange,
-    precomputedInitialState,
+    getPrecomputedInitialState,
   } = props;
 
   const hasCollaboration = collaboration !== undefined;
@@ -247,7 +251,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const stylesRef = useRef(styles);
   const extensionManagerRef = useRef(extensionManager);
   const externalPluginsRef = useRef(externalPlugins);
-  const precomputedInitialStateRef = useRef(precomputedInitialState);
+  const getPrecomputedInitialStateRef = useRef(getPrecomputedInitialState);
   const collaborationRef = useRef(collaboration);
   const collaborationModulesRef = useRef(collaborationModules);
 
@@ -281,7 +285,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     stylesRef.current = styles;
     extensionManagerRef.current = extensionManager;
     externalPluginsRef.current = externalPlugins;
-    precomputedInitialStateRef.current = precomputedInitialState;
+    getPrecomputedInitialStateRef.current = getPrecomputedInitialState;
     onTransactionRef.current = onTransaction;
     onCanonicalCompositionEndRef.current = onCanonicalCompositionEnd;
     onSelectionChangeRef.current = onSelectionChange;
@@ -308,7 +312,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getExternalPlugins: () => externalPluginsRef.current,
         getCollaboration: () => collaborationRef.current,
         getCollaborationModules: () => collaborationModulesRef.current,
-        getPrecomputedInitialState: () => precomputedInitialStateRef.current,
+        getPrecomputedInitialState: () =>
+          getPrecomputedInitialStateRef.current?.() ?? null,
         getReadOnly: () => readOnlyRef.current,
         getExperimentalSession: () => experimentalSessionRef.current,
         getEditingMode: () =>
