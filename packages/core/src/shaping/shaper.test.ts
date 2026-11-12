@@ -2,11 +2,18 @@
  * Loading the artifact from bytes, and the bidirectional algorithm it carries.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../../test/subprocess";
 import { BIDI_DIRECTION, type BidiDirection, getShaper } from "./shaper";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const SHAPER_MODULE = path.join(import.meta.dir, "shaper.ts");
 const WASM_PATH = path.join(
@@ -41,19 +48,13 @@ const runIsolated = async (body: string): Promise<string> => {
     const wasm = readFileSync(${JSON.stringify(WASM_PATH)});
     ${body}
   `;
-  const child = Bun.spawn([process.execPath, "--eval", script], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
-  if (code !== 0) {
-    throw new Error(`isolated script failed (${code}): ${stderr}`);
+  const child = expectExited(runChild([process.execPath, "--eval", script]));
+  if (child.exitCode !== 0) {
+    throw new Error(
+      `isolated script failed (${child.exitCode}): ${child.stderr}`,
+    );
   }
-  return stdout.trim();
+  return child.stdout.trim();
 };
 
 describe("loading from bytes", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { assertValidFolioDocumentModel } from "../docx/modelValidation";
-import { DOCUMENT_SHAPES } from "./documentShapes";
+import { DOCUMENT_SHAPES, TEXT_BOX_SHAPE } from "./documentShapes";
 import {
   createHarnessState,
   findTextblock,
@@ -10,11 +10,15 @@ import {
 
 describe("document shapes", () => {
   test("ids are unique", () => {
-    const ids = DOCUMENT_SHAPES.map((shape) => shape.id);
+    const ids = [...DOCUMENT_SHAPES, TEXT_BOX_SHAPE].map((shape) => shape.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  test.each(DOCUMENT_SHAPES.map((shape) => [shape.id, shape] as const))(
+  test.each(
+    [...DOCUMENT_SHAPES, TEXT_BOX_SHAPE].map(
+      (shape) => [shape.id, shape] as const,
+    ),
+  )(
     "%s builds the same content twice, validates and holds its focus paragraph",
     async (_id, shape) => {
       const document = await parseShapeDocument(await shape.build());

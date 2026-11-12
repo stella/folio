@@ -16,7 +16,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import editorWebPlaywright from "../packages/editor-web/playwright.config";
-import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import {
   BROWSER_INPUT_REGRESSIONS,
   PINNED_BROWSER_INPUT_TAG,
@@ -42,7 +46,7 @@ import {
 } from "./ci-test-shards";
 import type { ModuleGraph } from "./ci-test-shards";
 
-setDefaultTimeout(scanTestTimeout(30_000));
+setDefaultTimeout(subprocessTestTimeout(14));
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
@@ -175,9 +179,9 @@ describe("CI plan", () => {
       changedTypecheckPaths({
         repoRoot: REPO_ROOT,
         base: "f".repeat(40),
-        head: Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT })
-          .stdout.toString()
-          .trim(),
+        head: expectExited(
+          runChild(["git", "rev-parse", "HEAD"], { cwd: REPO_ROOT }),
+        ).stdout.trim(),
         fallbackOnMissingBase: true,
       }),
     ).toEqual(["package.json"]);
@@ -188,13 +192,11 @@ describe("CI plan", () => {
       path.join(tmpdir(), "folio-typecheck-diff-"),
     );
     const git = (...args: string[]) => {
-      const result = Bun.spawnSync(["git", ...args], {
-        cwd: fixtureRoot,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
+      const result = expectExited(
+        runChild(["git", ...args], { cwd: fixtureRoot }),
+      );
       expect(result.exitCode).toBe(0);
-      return result.stdout.toString().trim();
+      return result.stdout.trim();
     };
     const commit = (message: string) =>
       git(
@@ -272,12 +274,11 @@ describe("CI plan", () => {
   });
 
   test("discovery covers every committed Bun test outside declared Playwright directories", () => {
-    const tracked = Bun.spawnSync(
-      ["git", "ls-files", "--", "packages", "scripts", "benchmarks/compare"],
-      {
-        cwd: REPO_ROOT,
-        stdout: "pipe",
-      },
+    const tracked = expectExited(
+      runChild(
+        ["git", "ls-files", "--", "packages", "scripts", "benchmarks/compare"],
+        { cwd: REPO_ROOT },
+      ),
     );
     expect(tracked.exitCode).toBe(0);
     const testDir = editorWebPlaywright.testDir;
@@ -548,13 +549,11 @@ describe("CI plan", () => {
   test("changed-path discovery excludes deleted tests and deleted source before selection", () => {
     const fixtureRoot = mkdtempSync(path.join(tmpdir(), "folio-ci-diff-"));
     const git = (...args: string[]) => {
-      const result = Bun.spawnSync(["git", ...args], {
-        cwd: fixtureRoot,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
+      const result = expectExited(
+        runChild(["git", ...args], { cwd: fixtureRoot }),
+      );
       expect(result.exitCode).toBe(0);
-      return result.stdout.toString().trim();
+      return result.stdout.trim();
     };
     const write = (file: string, text: string) => {
       const target = path.join(fixtureRoot, file);
@@ -782,9 +781,12 @@ describe("CI plan", () => {
       expect(
         commands.filter((command) => command.includes("playwright test")),
       ).toEqual([
-        "bunx playwright test --project=browser-input-pinned --workers=1",
+        "bunx playwright test --project=browser-input-pinned --workers=1 --shard=${{ matrix.shard }}/3",
       ]);
-      expect(pinned?.strategy).toBeUndefined();
+      const shards = ((
+        pinned?.strategy as { matrix?: { shard?: unknown } } | undefined
+      )?.matrix?.shard ?? []) as unknown[];
+      expect(shards).toEqual([1, 2, 3]);
       // The replays have a tight limit of their own; the job's limit covers a
       // cold browser install, so a cancelled job never leaves the cache cold.
       expect(pinned?.["timeout-minutes"]).toBe(25);
@@ -797,20 +799,29 @@ describe("CI plan", () => {
       expect(isRecord(replays) ? replays["timeout-minutes"] : undefined).toBe(
         5,
       );
-
-      const listing = Bun.spawnSync(
-        [
-          "bunx",
-          "playwright",
-          "test",
-          "--project=browser-input-pinned",
-          "--list",
-          "--reporter=json",
-        ],
-        { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
+      // A replay takes about 3.6 s in CI (69 replays in 4.1 minutes); at a
+      // 4 s ceiling each shard's share must stay within 80% of the step's
+      // 5 minutes, or the registry has outgrown its shards.
+      const perShard = Math.ceil(
+        BROWSER_INPUT_REGRESSIONS.length / shards.length,
       );
-      expect(listing.exitCode, listing.stderr.toString()).toBe(0);
-      const report: unknown = JSON.parse(listing.stdout.toString());
+      expect(perShard * 4).toBeLessThanOrEqual(0.8 * 5 * 60);
+
+      const listing = expectExited(
+        runChild(
+          [
+            "bunx",
+            "playwright",
+            "test",
+            "--project=browser-input-pinned",
+            "--list",
+            "--reporter=json",
+          ],
+          { cwd: REPO_ROOT },
+        ),
+      );
+      expect(listing.exitCode, listing.stderr).toBe(0);
+      const report: unknown = JSON.parse(listing.stdout);
       if (!isRecord(report))
         throw new TypeError("Invalid pinned project report");
       expect(report["errors"]).toEqual([]);
@@ -848,8 +859,29 @@ describe("CI plan", () => {
         ).toSorted(),
       );
       expect(titles.length).toBeGreaterThan(0);
+
+      // Sharding splits the replays per test, so the first shard holds its
+      // share rather than the whole file.
+      const firstShard = expectExited(
+        runChild(
+          [
+            "bunx",
+            "playwright",
+            "test",
+            "--project=browser-input-pinned",
+            "--list",
+            "--shard=1/3",
+          ],
+          { cwd: REPO_ROOT },
+        ),
+      );
+      expect(firstShard.exitCode, firstShard.stderr).toBe(0);
+      const listed = firstShard.stdout
+        .split("\n")
+        .filter((line) => line.includes("regression seed")).length;
+      expect(listed).toBeLessThanOrEqual(Math.ceil(titles.length / 3));
     },
-    scanTestTimeout(30_000),
+    subprocessTestTimeout(),
   );
 
   test("benchmarks and extended proofs run only on demand", () => {
@@ -886,6 +918,7 @@ describe("CI plan", () => {
         fuzz: ["consumer-fuzz", "report-consumer-fuzz"],
         manual: "property-proofs.yml",
         proofs: [
+          "property-plan",
           "property-test",
           "docx-kernel-property",
           "conformance-full",

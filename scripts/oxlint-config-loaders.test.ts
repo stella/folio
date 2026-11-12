@@ -13,6 +13,12 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const FIXTURES = [
   path.join("test", "__fixtures__", "identity-attributes.invalid.ts"),
@@ -23,7 +29,8 @@ const EXPECTED_RULES = [
   "folio-reserved-values(no-bare-reserved-compare)",
 ] as const;
 
-setDefaultTimeout(120_000);
+// Each loader lints the fixtures once, while the file loads.
+setDefaultTimeout(subprocessTestTimeout(2));
 
 const LOADERS = {
   bun: ["bun", "--bun", "oxlint"],
@@ -35,23 +42,23 @@ type Loader = keyof typeof LOADERS;
 type LintResult = { exitCode: number; output: string };
 
 const lintFixtures = (loader: Loader): LintResult => {
-  const result = Bun.spawnSync(
-    [
-      ...LOADERS[loader],
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      "-f",
-      "json",
-      ...FIXTURES,
-    ],
-    {
-      cwd: REPO_ROOT,
-    },
+  const result = expectExited(
+    runChild(
+      [
+        ...LOADERS[loader],
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        "-f",
+        "json",
+        ...FIXTURES,
+      ],
+      { cwd: REPO_ROOT },
+    ),
   );
   return {
     exitCode: result.exitCode,
-    output: `${result.stdout.toString()}${result.stderr.toString()}`,
+    output: `${result.stdout}${result.stderr}`,
   };
 };
 

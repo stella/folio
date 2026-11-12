@@ -1,9 +1,23 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../test/subprocess";
 import { makeTempDir } from "./__tests__/fixtures";
 import { ISOLATED_GIT_ENV } from "./__tests__/io";
 import { resolveAuthor, resolveTransactionDate } from "./provenance";
+
+// Two git calls set up the repository and resolveAuthor reads it with a third.
+setDefaultTimeout(subprocessTestTimeout(3));
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();
@@ -18,10 +32,18 @@ afterEach(async () => {
 
 describe("resolveAuthor", () => {
   test("prefers --author, then FOLIO_AUTHOR, then git user.name", () => {
-    spawnSync("git", ["init", "-q", dir], {
-      env: { ...process.env, ...ISOLATED_GIT_ENV },
-    });
-    spawnSync("git", ["-C", dir, "config", "user.name", "Git Person"]);
+    expect(
+      expectExited(
+        runChild(["git", "init", "-q", dir], {
+          env: { ...process.env, ...ISOLATED_GIT_ENV },
+        }),
+      ).exitCode,
+    ).toBe(0);
+    expect(
+      expectExited(
+        runChild(["git", "-C", dir, "config", "user.name", "Git Person"]),
+      ).exitCode,
+    ).toBe(0);
     const withEnv = { ...ISOLATED_GIT_ENV, FOLIO_AUTHOR: "Env Person" };
 
     expect(

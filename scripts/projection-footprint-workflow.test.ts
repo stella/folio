@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setDefaultTimeout, test } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -9,6 +9,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const directories: string[] = [];
 afterEach(() => {
@@ -149,31 +157,31 @@ test.each([
     writeFileSync(join(bin, name), `#!${process.execPath}\n${mockTool}`, {
       mode: 0o755,
     });
-  const result = Bun.spawnSync(
-    [
-      "bash",
-      "-euo",
-      "pipefail",
-      "-c",
-      workflowStep("Compare named base and head projections"),
-    ],
-    {
-      cwd: directory,
-      env: {
-        ...process.env,
-        PATH: `${bin}:${process.env["PATH"] ?? ""}`,
-        FOOTPRINT_FIXTURE: directory,
-        RUNNER_TEMP: directory,
-        BASE_SHA: "a".repeat(40),
-        HEAD_SHA: "b".repeat(40),
-        HEAD_VERSION: head,
-        BASE_VERSION: base,
+  const result = expectExited(
+    runChild(
+      [
+        "bash",
+        "-euo",
+        "pipefail",
+        "-c",
+        workflowStep("Compare named base and head projections"),
+      ],
+      {
+        cwd: directory,
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+          FOOTPRINT_FIXTURE: directory,
+          RUNNER_TEMP: directory,
+          BASE_SHA: "a".repeat(40),
+          HEAD_SHA: "b".repeat(40),
+          HEAD_VERSION: head,
+          BASE_VERSION: base,
+        },
       },
-      stdout: "pipe",
-      stderr: "pipe",
-    },
+    ),
   );
-  expect(result.exitCode, result.stderr.toString()).toBe(exitCode);
+  expect(result.exitCode, result.stderr).toBe(exitCode);
   expect(
     readFileSync(join(directory, "calls"), "utf8").trim().split("\n"),
   ).toEqual(calls);
@@ -182,7 +190,7 @@ test.each([
     expect(readFileSync(report, "utf8")).toBe("{}");
     return;
   }
-  expect(result.stderr.toString()).toContain(
+  expect(result.stderr).toContain(
     `footprint attribution requires matching wasm-bindgen versions (head: ${head}, base: ${base})`,
   );
   expect(existsSync(report)).toBe(false);
@@ -233,29 +241,29 @@ test.each([
       `#!${process.execPath}\nconsole.error(process.env.BUILD_MESSAGE);\nprocess.exit(Number(process.env.BUILD_STATUS));\n`,
       { mode: 0o755 },
     );
-    const result = Bun.spawnSync(
-      [
-        "bash",
-        "-euo",
-        "pipefail",
-        "-c",
-        workflowStep("Generate canonical projection artifact"),
-      ],
-      {
-        cwd: directory,
-        env: {
-          ...process.env,
-          PATH: `${bin}:${process.env["PATH"] ?? ""}`,
-          RUNNER_TEMP: directory,
-          GITHUB_OUTPUT: githubOutput,
-          BUILD_MESSAGE: message,
-          BUILD_STATUS: String(exitCode),
+    const result = expectExited(
+      runChild(
+        [
+          "bash",
+          "-euo",
+          "pipefail",
+          "-c",
+          workflowStep("Generate canonical projection artifact"),
+        ],
+        {
+          cwd: directory,
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+            RUNNER_TEMP: directory,
+            GITHUB_OUTPUT: githubOutput,
+            BUILD_MESSAGE: message,
+            BUILD_STATUS: String(exitCode),
+          },
         },
-        stdout: "pipe",
-        stderr: "pipe",
-      },
+      ),
     );
-    expect(result.exitCode, result.stderr.toString()).toBe(exitCode);
+    expect(result.exitCode, result.stderr).toBe(exitCode);
     expect(readFileSync(githubOutput, "utf8")).toBe(output);
     expect(
       readFileSync(join(directory, "canonical-projection-build.log"), "utf8"),

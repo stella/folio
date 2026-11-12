@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
@@ -17,7 +16,11 @@ import {
   type PinnedScenarioFlow,
   scenarioSeedFileName,
 } from "../test/consumer-scenarios/support/scenario-seeds.ts";
-import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 
 const seedDirectory = path.join(
   import.meta.dir,
@@ -125,20 +128,17 @@ test("the legacy-reference guard detects a leftover reference", () => {
 test(
   "the repository has no references to the removed aggregate registry",
   {
-    timeout: scanTestTimeout(10_000),
+    timeout: subprocessTestTimeout(),
   },
   () => {
     const repository = path.join(import.meta.dir, "..");
     const removedName = ["scenario", "seeds.json"].join("-");
-    const tracked = spawnSync(
-      "git",
-      ["ls-files", "-co", "--exclude-standard"],
-      {
+    const tracked = expectExited(
+      runChild(["git", "ls-files", "-co", "--exclude-standard"], {
         cwd: repository,
-        encoding: "utf8",
-      },
+      }),
     );
-    assert.equal(tracked.status, 0, tracked.stderr);
+    assert.equal(tracked.exitCode, 0, tracked.stderr);
     const fileNames = tracked.stdout
       .trim()
       .split("\n")

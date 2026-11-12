@@ -1,9 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../../test/subprocess";
 import { BLACK } from "../display-list/primitives";
 import type { DisplayFontFace, DisplayList } from "../display-list/types";
 import {
@@ -14,6 +19,8 @@ import {
 import { parseSfnt, type SfntFont } from "../fonts/sfnt/parse";
 import { toSfntBytes } from "../fonts/sfnt/woff";
 import { writePdf } from "./writePdf";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const TIMESTAMP = "2026-01-02T03:04:05Z";
 const FONT_SIZE_PX = 16;
@@ -234,8 +241,8 @@ describe.skipIf(!TEST_FONTS_INSTALLED || mutool === null)(
       const directory = mkdtempSync(join(tmpdir(), "folio-pdf-fonts-"));
       const file = join(directory, "out.pdf");
       await Bun.write(file, result.value.bytes);
-      const process = Bun.spawn({
-        cmd: [
+      const extraction = expectExited(
+        runChild([
           mutool ?? "mutool",
           "draw",
           "-F",
@@ -243,11 +250,9 @@ describe.skipIf(!TEST_FONTS_INSTALLED || mutool === null)(
           "-o",
           join(directory, "out.xml"),
           file,
-        ],
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(await process.exited).toBe(0);
+        ]),
+      );
+      expect(extraction.exitCode).toBe(0);
       const extracted = await Bun.file(join(directory, "out.xml")).text();
       // The extractor flags a character it synthesized: widening the advances
       // past the face's own puts a space between every glyph, and those are not

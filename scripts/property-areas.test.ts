@@ -3,12 +3,16 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { seedFileFor } from "../test/seed-registry";
+import { subprocessBudgetBaseMs } from "../test/subprocess";
 import { parseSourceModule, walkAst } from "./lib/oxc-ast";
 import {
   areaOf,
+  EXTENDED_PROPERTY_SHARD_BUDGET_MS,
+  planExtendedPropertyShards,
   propertyBatches,
   propertyFileProfile,
   propertyFiles,
+  propertyShardTimings,
   ROOT_TEST_DIRS,
   runPropertyBatches,
   selectPropertyFiles,
@@ -137,13 +141,13 @@ describe("property areas", () => {
         expect(shardPropertyFiles(inventory.toReversed(), shard)).toEqual(
           files,
         );
-        const totalWeight = inventory.reduce(
-          (sum, file) => sum + file.weightMs,
-          0,
-        );
-        const heaviest = Math.max(...inventory.map(({ weightMs }) => weightMs));
+        // The planner's weights: measured where recorded, else budgets.
+        const { timings } = propertyShardTimings(inventory, 1);
+        const weights = Object.values(timings);
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        const heaviest = Math.max(...weights);
         expect(
-          files.reduce((sum, file) => sum + file.weightMs, 0),
+          files.reduce((sum, { file }) => sum + (timings[file] ?? 0), 0),
         ).toBeLessThanOrEqual(Math.ceil(totalWeight / total) + heaviest);
         for (const { file } of files) exercised.push(file);
       }
@@ -208,8 +212,9 @@ describe("property areas", () => {
     for (const [position, file] of equal
       .toSorted((a, b) => a.file.localeCompare(b.file))
       .entries())
+      // Unmeasured, so the stated budgets tie and filenames break the tie.
       expect(
-        shardPropertyFiles(equal, { index: position + 1, total: 4 }),
+        shardPropertyFiles(equal, { index: position + 1, total: 4 }, 1, {}),
       ).toEqual([file]);
   });
 
@@ -378,6 +383,25 @@ describe("property scheduling profiles", () => {
     expect(profile).toEqual({
       drivers: 3,
       weightMs: 70_000,
+      missingBudgets: 0,
+    });
+  });
+
+  test("a property that starts children weighs its stated subprocess budget", () => {
+    expect(
+      profileSource(`
+      const RUNS = 12;
+      setDefaultTimeout(subprocessTestTimeout());
+      test("default", () => { assertProperty(p); });
+      test("children", () => { assertProperty(q); }, subprocessTestTimeout(RUNS));
+      test("own work", () => { fc.check(r); }, subprocessTestTimeout(1, 30_000));
+    `),
+    ).toEqual({
+      drivers: 3,
+      weightMs:
+        subprocessBudgetBaseMs() +
+        subprocessBudgetBaseMs(12) +
+        subprocessBudgetBaseMs(1, 30_000),
       missingBudgets: 0,
     });
   });
@@ -565,5 +589,140 @@ describe("property batch execution", () => {
     expect(codes.toSorted((left, right) => left - right)).toEqual(
       issuedCodes.toSorted((left, right) => left - right),
     );
+  });
+});
+
+describe("extended property shards", () => {
+  const MINUTE_MS = 60_000;
+  // A shard's job also checks out, installs and starts a test process per
+  // batch, and runners vary, so its plan keeps a fifth of the timeout free.
+  const TIMEOUT_SHARE = 0.8;
+  const workflow = Bun.YAML.parse(
+    readFileSync(
+      path.resolve(import.meta.dir, "../.github/workflows/property-proofs.yml"),
+      "utf8",
+    ),
+  );
+  const job = workflow.jobs["property-test"];
+  const factor = Number(workflow.on.workflow_dispatch.inputs.factor.default);
+  const overLimit = (loads: readonly number[]) =>
+    loads.flatMap((load, index) =>
+      load > job["timeout-minutes"] * MINUTE_MS * TIMEOUT_SHARE
+        ? [
+            `shard ${String(index + 1)} plans ${String(load)} ms, over ${String(TIMEOUT_SHARE * 100)}% of ${String(job["timeout-minutes"])} min`,
+          ]
+        : [],
+    );
+
+  test("every planned shard fits within its job's timeout", () => {
+    expect(factor).toBe(10);
+    const { shards, loads } = planExtendedPropertyShards(
+      propertyFiles(),
+      factor,
+    );
+    expect(shards.length).toBeGreaterThan(1);
+    expect(overLimit(loads)).toEqual([]);
+    expect(overLimit([EXTENDED_PROPERTY_SHARD_BUDGET_MS])).toEqual([]);
+  });
+
+  test("a shard planned past the timeout share is reported", () => {
+    const limit = job["timeout-minutes"] * MINUTE_MS * TIMEOUT_SHARE;
+    expect(overLimit([limit, limit + 1])).toEqual([
+      `shard 2 plans ${String(limit + 1)} ms, over 80% of ${String(job["timeout-minutes"])} min`,
+    ]);
+    // A measured file too long for one shard fails the plan, never runs late.
+    const heavy = makePropertyFile("packages/core/src/docx/heavy.test.ts");
+    expect(() =>
+      planExtendedPropertyShards([heavy], factor, {
+        [heavy.file]: Math.ceil(limit / factor) + 1,
+      }),
+    ).toThrow("on their own");
+  });
+
+  test("every property file lands in exactly one shard, as the job selects it", () => {
+    const files = propertyFiles();
+    const { shards } = planExtendedPropertyShards(files, factor);
+    const planned = shards.flatMap((shard) => [...shard]);
+    expect(planned.toSorted()).toEqual(
+      files.map(({ file }) => file).toSorted(),
+    );
+    expect(new Set(planned).size).toBe(files.length);
+    for (const [position, shard] of shards.entries())
+      expect(
+        shardPropertyFiles(
+          files.toReversed(),
+          { index: position + 1, total: shards.length },
+          factor,
+        ).map(({ file }) => file),
+      ).toEqual([...shard].toSorted((a, b) => a.localeCompare(b)));
+  });
+
+  test("measured files plan their per-factor time; unmeasured ones their budgets, capped at one shard", () => {
+    const measured = makePropertyFile(
+      "packages/core/src/docx/m.test.ts",
+      1_000,
+    );
+    const stated = makePropertyFile("packages/core/src/docx/s.test.ts", 2_000);
+    const huge = makePropertyFile(
+      "packages/core/src/docx/h.test.ts",
+      EXTENDED_PROPERTY_SHARD_BUDGET_MS,
+    );
+    expect(
+      propertyShardTimings([measured, stated, huge], factor, {
+        [measured.file]: 7,
+      }),
+    ).toEqual({
+      timings: {
+        [measured.file]: 7 * factor,
+        [stated.file]: 2_000 * factor,
+        [huge.file]: EXTENDED_PROPERTY_SHARD_BUDGET_MS,
+      },
+      unmeasured: [stated.file, huge.file],
+    });
+  });
+
+  test("the matrix follows the plan and every shard's failures reach the report", () => {
+    const plan = workflow.jobs["property-plan"];
+    expect(
+      plan.steps.find((step: { id?: string }) => step.id === "plan").run,
+    ).toBe("bun scripts/property-areas.ts --all --plan");
+    expect(plan.outputs.property_shards).toBe(
+      "${{ steps.plan.outputs.property_shards }}",
+    );
+    expect(job.needs).toBe("property-plan");
+    expect(job.strategy["fail-fast"]).toBe(false);
+    expect(job.strategy.matrix.shard).toBe(
+      "${{ fromJSON(needs.property-plan.outputs.property_shards) }}",
+    );
+    const suite = job.steps.find(
+      (step: { name?: string }) => step.name === "Property test suite",
+    );
+    expect(suite.run).toContain(
+      '--all --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}"',
+    );
+    expect(suite.run).toContain(
+      'tee test-results/property-test-"${PROPERTY_SHARD}".log',
+    );
+    expect(suite.env.PROPERTY_SHARD_COUNT).toBe("${{ strategy.job-total }}");
+    const upload = job.steps.find(
+      (step: { name?: string }) =>
+        step.name === "Keep the log for the failure report",
+    );
+    expect(upload.with.name).toBe("property-test-log-${{ matrix.shard }}");
+    expect(upload.with.path).toBe(
+      "test-results/property-test-${{ matrix.shard }}.log",
+    );
+    const report = workflow.jobs["report-property"];
+    expect(report.needs).toBe("property-test");
+    const download = report.steps.find(
+      (step: { uses?: string }) =>
+        step.uses?.startsWith("actions/download-artifact@") === true,
+    );
+    expect(download.with.pattern).toBe("property-test-log-*");
+    expect(download.with["merge-multiple"]).toBe(true);
+    expect(JSON.stringify(report.steps)).toContain(
+      "property-test-logs/property-test-*.log",
+    );
+    expect(JSON.stringify(report.steps)).toContain("--log property-test.log");
   });
 });

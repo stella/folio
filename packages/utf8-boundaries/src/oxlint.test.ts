@@ -1,7 +1,15 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout(2));
 
 const pluginPath = path.resolve(import.meta.dir, "oxlint.ts");
 const oxlintPath = path.resolve(
@@ -33,28 +41,21 @@ const lint = async (
       }),
     );
     await Bun.write(sourcePath, source);
-    const child = Bun.spawn(
-      [
-        process.execPath,
-        "--bun",
-        oxlintPath,
-        "-c",
-        configPath,
-        "-f",
-        "json",
-        sourcePath,
-      ],
-      {
-        cwd: directory,
-        stdout: "pipe",
-        stderr: "pipe",
-      },
+    const { exitCode, stdout, stderr } = expectExited(
+      runChild(
+        [
+          process.execPath,
+          "--bun",
+          oxlintPath,
+          "-c",
+          configPath,
+          "-f",
+          "json",
+          sourcePath,
+        ],
+        { cwd: directory },
+      ),
     );
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
     if (exitCode !== 0 && exitCode !== 1)
       throw new Error(`${stdout}\n${stderr}`);
     const report: unknown = JSON.parse(stdout);

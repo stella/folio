@@ -6,8 +6,8 @@
  * numbering part (or no styles part at all), a document holding one kind of
  * list, headings numbered through their paragraph style, a host that seeds
  * unused list instances, and one shape per structural feature (tables, notes,
- * comments, tracked changes, header/footer, sections, fields, images, RTL and
- * CJK text).
+ * comments, tracked changes, header/footer, sections, fields, images, shapes,
+ * RTL and CJK text).
  *
  * Every shape is built through the same public path a host uses:
  * `fromMarkdown` → model edits → `createDocx`, or an OOXML package written the
@@ -51,6 +51,8 @@ export type DocumentShapeFeature =
   | "hyperlink"
   | "bookmark"
   | "image"
+  | "drawing-shape"
+  | "text-box"
   | "rtl"
   | "cjk";
 
@@ -196,6 +198,7 @@ const DRAWING_NAMESPACES = [
   'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"',
   'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
   'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
+  'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"',
 ].join(" ");
 
 export const SECTION = (extra = "") =>
@@ -321,6 +324,32 @@ const INLINE_IMAGE = (relationshipId: string) =>
   `<pic:blipFill><a:blip r:embed="${relationshipId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
   '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
   "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>";
+
+const WPS_URI =
+  "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+
+/** A run holding an inline DrawingML shape, with the run's own `w:rPr`. */
+const INLINE_SHAPE_RUN = ({
+  rPr,
+  name,
+  textBox,
+}: {
+  rPr: string;
+  name: string;
+  /** Children of `w:txbxContent`, for a text box; a plain shape has none. */
+  textBox?: string;
+}) =>
+  `<w:r><w:rPr>${rPr}</w:rPr><w:drawing>` +
+  '<wp:inline distT="0" distB="0" distL="0" distR="0">' +
+  `<wp:extent cx="1828800" cy="457200"/><wp:docPr id="2" name="${name}"/>` +
+  `<a:graphic><a:graphicData uri="${WPS_URI}"><wps:wsp>` +
+  (textBox === undefined ? "<wps:cNvSpPr/>" : '<wps:cNvSpPr txBox="1"/>') +
+  '<wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="457200"/></a:xfrm>' +
+  '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="4472C4"/></a:solidFill></wps:spPr>' +
+  (textBox === undefined
+    ? ""
+    : `<wps:txbx><w:txbxContent>${textBox}</w:txbxContent></wps:txbx>`) +
+  "<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>";
 
 const NOTES_PART = (kind: "footnote" | "endnote", text: string) => {
   const root = kind === "footnote" ? "footnotes" : "endnotes";
@@ -820,6 +849,26 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
       }),
   }),
   shape({
+    id: "drawing-shape",
+    description:
+      "An inline DrawingML shape whose run carries direct formatting",
+    features: ["drawing-shape"],
+    focus: "Text before the shape and after it.",
+    build: () =>
+      buildRawPackage({
+        styles: WORD_STYLES,
+        body:
+          textParagraph("Intro paragraph.") +
+          paragraph(
+            run("Text before the shape") +
+              INLINE_SHAPE_RUN({ rPr: "<w:b/>", name: "Rectangle 2" }) +
+              run(" and after it."),
+          ) +
+          textParagraph("Tail.") +
+          SECTION(),
+      }),
+  }),
+  shape({
     id: "rtl-cjk",
     description:
       "A right-to-left paragraph (Arabic and Hebrew) and a CJK paragraph",
@@ -845,6 +894,37 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
       }),
   }),
 ];
+
+/**
+ * A text box anchored inside a paragraph, its anchor's run with direct
+ * formatting. It stays out of {@link DOCUMENT_SHAPES} while the canonical
+ * session neither addresses a text box's paragraphs nor keeps their
+ * paragraph sources across undo, so editor-command conformance cannot run
+ * over it yet; suites that need the anchor read it here.
+ */
+export const TEXT_BOX_SHAPE: DocumentShape = shape({
+  id: "text-box",
+  description: "An inline text box whose anchor run carries direct formatting",
+  features: ["text-box"],
+  focus: "Text before the box and after it.",
+  build: () =>
+    buildRawPackage({
+      styles: WORD_STYLES,
+      body:
+        textParagraph("Intro paragraph.") +
+        paragraph(
+          run("Text before the box") +
+            INLINE_SHAPE_RUN({
+              rPr: "<w:i/>",
+              name: "Text Box 2",
+              textBox: textParagraph("Boxed note."),
+            }) +
+            run(" and after it."),
+        ) +
+        textParagraph("Tail.") +
+        SECTION(),
+    }),
+});
 
 export const documentShape = (id: string): DocumentShape => {
   const found = DOCUMENT_SHAPES.find((candidate) => candidate.id === id);

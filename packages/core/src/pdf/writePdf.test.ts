@@ -1,9 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../../test/subprocess";
 import { UNDERLINE_STROKES } from "../display-list/build/strokes";
 import { underlineThicknessPx } from "../display-list/build/textDecorations";
 import { BLACK, DISPLAY_PRIMITIVE_KINDS } from "../display-list/primitives";
@@ -15,6 +20,8 @@ import type {
 import { formatNumber } from "./objects";
 import { displayPointToPdf } from "./pageSpace";
 import { type PdfFontSource, writePdf } from "./writePdf";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const TIMESTAMP = "2026-01-02T03:04:05Z";
 
@@ -636,8 +643,8 @@ describe.skipIf(mutool === null)("mutool", () => {
     const directory = mkdtempSync(join(tmpdir(), "folio-pdf-"));
     const file = join(directory, "out.pdf");
     await Bun.write(file, (await write(FIXTURE)).bytes);
-    const process = Bun.spawn({
-      cmd: [
+    const extraction = expectExited(
+      runChild([
         mutool ?? "mutool",
         "draw",
         "-F",
@@ -645,13 +652,10 @@ describe.skipIf(mutool === null)("mutool", () => {
         "-o",
         join(directory, "out.xml"),
         file,
-      ],
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const stderr = await new Response(process.stderr).text();
-    expect(await process.exited).toBe(0);
-    expect(stderr).not.toContain("error");
+      ]),
+    );
+    expect(extraction.exitCode).toBe(0);
+    expect(extraction.stderr).not.toContain("error");
     const extracted = await Bun.file(join(directory, "out.xml")).text();
     const characters = [...extracted.matchAll(/<char c="(.)"/gu)].map(
       ([, character]) => character,

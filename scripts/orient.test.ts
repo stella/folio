@@ -1,8 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import {
   buildImportGraph,
   buildReport,
@@ -11,17 +16,19 @@ import {
   resolveFiles,
 } from "./orient";
 
+// Each test runs at most two children.
+setDefaultTimeout(subprocessTestTimeout(2));
+
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
 const trackedFiles = (): readonly string[] => {
-  const result = Bun.spawnSync(["git", "ls-files"], {
-    cwd: REPO_ROOT,
-    stdout: "pipe",
-  });
+  const result = expectExited(
+    runChild(["git", "ls-files"], { cwd: REPO_ROOT }),
+  );
   if (result.exitCode !== 0) {
     throw new Error("git ls-files failed in orientation test");
   }
-  return result.stdout.toString().trim().split("\n");
+  return result.stdout.trim().split("\n");
 };
 
 describe("repository orientation", () => {
@@ -223,15 +230,19 @@ describe("repository orientation", () => {
   });
 
   // Builds the whole-repository import graph twice with the syntax-tree scanner.
-  test("report ordering and aggregate checks are deterministic", () => {
-    const files = [
-      "parity/compare.ts",
-      "packages/core/src/layout-engine/paginator.ts",
-      "packages/core/src/docx/ensureParaIds.ts",
-    ];
-    const tracked = trackedFiles();
-    expect(buildReport(REPO_ROOT, tracked, files)).toEqual(
-      buildReport(REPO_ROOT, tracked, files),
-    );
-  }, 30_000);
+  test(
+    "report ordering and aggregate checks are deterministic",
+    () => {
+      const files = [
+        "parity/compare.ts",
+        "packages/core/src/layout-engine/paginator.ts",
+        "packages/core/src/docx/ensureParaIds.ts",
+      ];
+      const tracked = trackedFiles();
+      expect(buildReport(REPO_ROOT, tracked, files)).toEqual(
+        buildReport(REPO_ROOT, tracked, files),
+      );
+    },
+    subprocessTestTimeout(),
+  );
 });

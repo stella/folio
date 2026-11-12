@@ -11,14 +11,18 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
-import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import {
   PROTOCOL_CAPTURE_DIRECTORY,
   protocolCaptureEnvironment,
   protocolEvidenceFiles,
 } from "../tests/support/playwrightProtocolCapture";
 
-setDefaultTimeout(scanTestTimeout(60_000));
+setDefaultTimeout(subprocessTestTimeout());
 
 const ROOT = join(import.meta.dir, "..");
 const OWNER = "tests/support/playwrightProtocolCapture.ts";
@@ -63,9 +67,11 @@ const protocolCaptureViolations = (sources: readonly Source[]) => {
 };
 
 const trackedSources = (): Source[] => {
-  const listed = Bun.spawnSync(["git", "ls-files", "-z"], { cwd: ROOT });
+  const listed = expectExited(
+    runChild(["git", "ls-files", "-z"], { cwd: ROOT }),
+  );
   if (listed.exitCode !== 0)
-    throw new TypeError(`git ls-files failed: ${listed.stderr.toString()}`);
+    throw new TypeError(`git ls-files failed: ${listed.stderr}`);
   return listed.stdout
     .toString()
     .split("\0")
@@ -180,32 +186,32 @@ const runFlood = (environment: Record<string, string>) => {
         ([name]) => name !== PROTOCOL_CAPTURE_DIRECTORY && name !== "DEBUG",
       ),
     );
-    const run = Bun.spawnSync(
-      [
-        "node",
-        join(ROOT, "node_modules/.bin/playwright"),
-        "test",
-        "-c",
-        join(
-          import.meta.dir,
-          "__fixtures__/protocol-capture/playwright.config.ts",
-        ),
-        `--output=${output}`,
-      ],
-      {
-        cwd: ROOT,
-        env: {
-          ...inherited,
-          FOLIO_PROTOCOL_FLOOD_MESSAGES: String(FLOOD_MESSAGES),
-          FOLIO_PROTOCOL_FLOOD_PAYLOAD_BYTES: String(FLOOD_PAYLOAD_BYTES),
-          ...environment,
+    const run = expectExited(
+      runChild(
+        [
+          "node",
+          join(ROOT, "node_modules/.bin/playwright"),
+          "test",
+          "-c",
+          join(
+            import.meta.dir,
+            "__fixtures__/protocol-capture/playwright.config.ts",
+          ),
+          `--output=${output}`,
+        ],
+        {
+          cwd: ROOT,
+          env: {
+            ...inherited,
+            FOLIO_PROTOCOL_FLOOD_MESSAGES: String(FLOOD_MESSAGES),
+            FOLIO_PROTOCOL_FLOOD_PAYLOAD_BYTES: String(FLOOD_PAYLOAD_BYTES),
+            ...environment,
+          },
         },
-        stdout: "pipe",
-        stderr: "pipe",
-      },
+      ),
     );
-    const report: unknown = JSON.parse(run.stdout.toString());
-    expect(run.exitCode, run.stderr.toString()).toBe(0);
+    const report: unknown = JSON.parse(run.stdout);
+    expect(run.exitCode, run.stderr).toBe(0);
     return retainedStderrBytes(report);
   } finally {
     rmSync(output, { recursive: true, force: true });

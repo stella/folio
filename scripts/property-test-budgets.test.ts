@@ -16,6 +16,8 @@
  * helper (which always sets one). Either way the budget must come from
  * `propertyTestTimeout`, per test or once for the file: a plain number pins
  * PR CI and leaves the nightly run the same wall clock for ten times the work.
+ * A property that starts child processes states `subprocessTestTimeout`
+ * instead, which the same factor scales.
  *
  * Every `fc.assert` / `fc.check` also takes its parameters from
  * `propertyConfig` (or runs through `assertProperty`, which does), so every
@@ -42,6 +44,7 @@ import {
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const SCANNED_ROOTS = ["packages", "scripts", "parity"] as const;
 const BUDGET_HELPER = "propertyTestTimeout";
+const SUBPROCESS_BUDGET_HELPER = "subprocessTestTimeout";
 const RUN_COUNT_HELPER = "propertyConfig";
 const ASSERT_HELPERS = new Set(["assertProperty", "assertPinnedProperty"]);
 const FAST_CHECK_DRIVERS = new Set(["assert", "sample", "check"]);
@@ -177,7 +180,17 @@ const budgetDeclarations = (program: Program) => {
     if (initializer === undefined) return undefined;
     return numericValue(initializer, new Set([...resolving, expression.name]));
   };
+  const positiveNumber = (argument: Node): boolean => {
+    const value = numericValue(argument);
+    return value !== undefined && Number.isFinite(value) && value > 0;
+  };
   const validBudget = (expression: Node | undefined): boolean => {
+    // Its children and its own work, each a stated positive number.
+    if (callsNamed(expression, SUBPROCESS_BUDGET_HELPER))
+      return (
+        expression.arguments.length <= 2 &&
+        expression.arguments.every((argument) => positiveNumber(argument))
+      );
     if (
       !callsNamed(expression, BUDGET_HELPER) ||
       expression.arguments.length !== 1
@@ -198,7 +211,9 @@ const budgetDeclarations = (program: Program) => {
     const call = statement.expression;
     if (fileBudget === "invalid") continue;
     const timeout = call.arguments.at(0);
-    const usesHelper = callsNamed(timeout, BUDGET_HELPER);
+    const usesHelper =
+      callsNamed(timeout, BUDGET_HELPER) ||
+      callsNamed(timeout, SUBPROCESS_BUDGET_HELPER);
     if (!usesHelper) {
       fileBudget = "absent";
       continue;
@@ -444,6 +459,31 @@ ${callee}("x", () => { fc.assert(p, propertyConfig()); });`,
         ),
       ).toEqual([{ site: "probe.ts:2", declaresBudget: true }]);
     }
+  });
+
+  test("a property that starts children may state the subprocess budget", () => {
+    const body = "() => { fc.assert(p, propertyConfig()); }";
+    for (const [budget, declaresBudget] of [
+      ["subprocessTestTimeout()", true],
+      ["subprocessTestTimeout(RUNS)", true],
+      ["subprocessTestTimeout(1, 30_000)", true],
+      ["subprocessTestTimeout(0)", false],
+      ["subprocessTestTimeout(dynamicRuns)", false],
+      ["subprocessTestTimeout(1, 2, 3)", false],
+    ] as const) {
+      expect(
+        budgetRequiringSites(
+          "probe.ts",
+          `const RUNS = 12;\ntest("x", ${body}, ${budget});`,
+        ),
+      ).toEqual([{ site: "probe.ts:2", declaresBudget }]);
+    }
+    expect(
+      budgetRequiringSites(
+        "probe.ts",
+        `setDefaultTimeout(subprocessTestTimeout());\ntest("x", ${body});`,
+      ),
+    ).toEqual([{ site: "probe.ts:2", declaresBudget: true }]);
   });
 
   test("a scaled own budget overrides a plain example-test default", () => {

@@ -1,7 +1,17 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+// The pushed-range test runs 22 children: the fixture repository's git
+// commands and the warming step once per pushed range.
+setDefaultTimeout(subprocessTestTimeout(22));
 
 const workflow = Bun.YAML.parse(
   readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
@@ -24,25 +34,27 @@ const runLookup = (runs, status = 0) => {
   const requests = join(directory, "requests");
   writeFileSync(output, "");
   try {
-    const result = Bun.spawnSync(
-      [
-        "bash",
-        "-c",
-        `gh() { printf '%s\\n' "$*" >> "$REQUESTS"; printf '%s' "$RESPONSE"; return "$STATUS"; }; ${lookup.run}`,
-      ],
-      {
-        env: {
-          ...process.env,
-          RESPONSE: JSON.stringify({ workflow_runs: runs }),
-          STATUS: String(status),
-          REQUESTS: requests,
-          REPO: "stella/folio",
-          PUSHED_SHA: pushedSha,
-          GITHUB_WORKFLOW_REF:
-            "stella/folio/.github/workflows/ci.yml@refs/heads/main",
-          GITHUB_OUTPUT: output,
+    const result = expectExited(
+      runChild(
+        [
+          "bash",
+          "-c",
+          `gh() { printf '%s\\n' "$*" >> "$REQUESTS"; printf '%s' "$RESPONSE"; return "$STATUS"; }; ${lookup.run}`,
+        ],
+        {
+          env: {
+            ...process.env,
+            RESPONSE: JSON.stringify({ workflow_runs: runs }),
+            STATUS: String(status),
+            REQUESTS: requests,
+            REPO: "stella/folio",
+            PUSHED_SHA: pushedSha,
+            GITHUB_WORKFLOW_REF:
+              "stella/folio/.github/workflows/ci.yml@refs/heads/main",
+            GITHUB_OUTPUT: output,
+          },
         },
-      },
+      ),
     );
     return {
       status: result.exitCode,
@@ -113,9 +125,9 @@ test("warm-main only installs caches after reused coverage and dependency change
 test("the pushed range warms for dependency changes or an unavailable base", () => {
   const directory = mkdtempSync(join(tmpdir(), "folio-push-range-"));
   const git = (...args) => {
-    const result = Bun.spawnSync(["git", ...args], { cwd: directory });
+    const result = expectExited(runChild(["git", ...args], { cwd: directory }));
     expect(result.exitCode).toBe(0);
-    return result.stdout.toString().trim();
+    return result.stdout.trim();
   };
   const commit = () => {
     git("add", ".");
@@ -148,16 +160,18 @@ test("the pushed range warms for dependency changes or an unavailable base", () 
       const head = commit();
       const output = join(directory, "output");
       writeFileSync(output, "");
-      const result = Bun.spawnSync(["bash", "-c", warming.run], {
-        cwd: directory,
-        env: {
-          ...process.env,
-          PUSH_BASE: base,
-          PUSH_HEAD: head,
-          TOOLCHAIN_CHANGED: toolchain,
-          GITHUB_OUTPUT: output,
-        },
-      });
+      const result = expectExited(
+        runChild(["bash", "-c", warming.run], {
+          cwd: directory,
+          env: {
+            ...process.env,
+            PUSH_BASE: base,
+            PUSH_HEAD: head,
+            TOOLCHAIN_CHANGED: toolchain,
+            GITHUB_OUTPUT: output,
+          },
+        }),
+      );
       expect(result.exitCode).toBe(0);
       expect(readFileSync(output, "utf8")).toBe(`changed=${expected}\n`);
       base = head;
@@ -165,20 +179,22 @@ test("the pushed range warms for dependency changes or an unavailable base", () 
     for (const unavailableBase of ["0".repeat(40), "1".repeat(40)]) {
       const output = join(directory, "output");
       writeFileSync(output, "");
-      const result = Bun.spawnSync(["bash", "-c", warming.run], {
-        cwd: directory,
-        env: {
-          ...process.env,
-          PUSH_BASE: unavailableBase,
-          PUSH_HEAD: base,
-          TOOLCHAIN_CHANGED: "false",
-          GITHUB_OUTPUT: output,
-        },
-      });
+      const result = expectExited(
+        runChild(["bash", "-c", warming.run], {
+          cwd: directory,
+          env: {
+            ...process.env,
+            PUSH_BASE: unavailableBase,
+            PUSH_HEAD: base,
+            TOOLCHAIN_CHANGED: "false",
+            GITHUB_OUTPUT: output,
+          },
+        }),
+      );
       expect(result.exitCode).toBe(0);
       expect(readFileSync(output, "utf8")).toBe("changed=true\n");
-      expect(result.stdout.toString()).toContain("::warning::");
-      expect(result.stdout.toString()).toContain("warming dependency caches.");
+      expect(result.stdout).toContain("::warning::");
+      expect(result.stdout).toContain("warming dependency caches.");
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

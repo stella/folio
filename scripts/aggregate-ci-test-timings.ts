@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { plannedTestFiles, type TestTimings } from "./ci-test-shard-plan";
+import { propertyFiles } from "./property-areas";
 
 type TimingArtifact = { runId: string; timings: TestTimings };
 
@@ -15,18 +16,70 @@ type WorkflowRun = { event: string; id: number };
 
 type Artifact = { id: number; name: string; expired?: boolean };
 
+/** Where a timing file's measurements come from. */
+export type TimingSource = {
+  /** The committed file the aggregate replaces. */
+  output: string;
+  workflow: string;
+  /** Run-listing filters for that workflow. */
+  runs: string;
+  events: readonly string[];
+  /** Artifacts named `<prefix>-<run id>-<shard>`. */
+  prefix: string;
+  /** Whether a run's artifact count is a usable set. */
+  usable: (count: number) => boolean;
+  /** Unmeasured files get the median (scheduling) or stay absent (planned from budgets). */
+  fillUnmeasured: boolean;
+  files: () => string[];
+};
+
+const REPO_ROOT = path.resolve(import.meta.dir, "..");
+
+export const TIMING_SOURCES = {
+  // The full suite's four timing shards of a successful main or merge group run.
+  tests: {
+    output: "scripts/ci-test-timings.json",
+    workflow: "ci.yml",
+    runs: "status=success",
+    events: ["merge_group", "push"],
+    prefix: "test-timings",
+    usable: (count) => count === 4,
+    fillUnmeasured: true,
+    files: () => plannedTestFiles(REPO_ROOT),
+  },
+  // Extended property runs on main. A property failure does not change how
+  // long its file ran, and a shard cut off at its timeout uploads nothing, so
+  // any completed run with a shard's measurements counts.
+  properties: {
+    output: "scripts/property-test-timings.json",
+    workflow: "property-proofs.yml",
+    runs: "status=completed&branch=main",
+    events: ["workflow_dispatch"],
+    prefix: "property-timings",
+    usable: (count) => count > 0,
+    fillUnmeasured: false,
+    files: () => propertyFiles().map(({ file }) => file),
+  },
+} as const satisfies Record<string, TimingSource>;
+
+export type TimingSourceName = keyof typeof TIMING_SOURCES;
+
+const isTimingSourceName = (name: string): name is TimingSourceName =>
+  Object.hasOwn(TIMING_SOURCES, name);
+
 type GraphqlRequestOptions = {
   base: string;
   branch: string;
   repository: string;
-  timingFile: string;
+  /** Committed repository path to the local file holding its contents. */
+  timingFiles: Record<string, string>;
 };
 
 export const createGraphqlRequest = ({
   base,
   branch,
   repository,
-  timingFile,
+  timingFiles,
 }: GraphqlRequestOptions) => ({
   query:
     "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
@@ -36,12 +89,10 @@ export const createGraphqlRequest = ({
       expectedHeadOid: base,
       message: { headline: "perf(ci): refresh measured test timings" },
       fileChanges: {
-        additions: [
-          {
-            path: "scripts/ci-test-timings.json",
-            contents: readFileSync(timingFile).toString("base64"),
-          },
-        ],
+        additions: Object.entries(timingFiles).map(([repoPath, file]) => ({
+          path: repoPath,
+          contents: readFileSync(file).toString("base64"),
+        })),
       },
     },
   },
@@ -60,13 +111,14 @@ const recordsFor = (value: unknown, key: string) => {
 export const selectTimingArtifacts = async (
   repository: string,
   fetchJson: FetchJson,
+  source: TimingSource = TIMING_SOURCES.tests,
 ): Promise<TimingArtifactReference[]> => {
   const selected: TimingArtifactReference[] = [];
   let accepted = 0;
   // Timing artifacts expire after 14 days, so ten pages of runs reach past every usable set.
   for (let page = 1; page <= 10 && accepted < 5; page++) {
     const runsResponse = await fetchJson(
-      `https://api.github.com/repos/${repository}/actions/workflows/ci.yml/runs?status=success&per_page=100&page=${page}`,
+      `https://api.github.com/repos/${repository}/actions/workflows/${source.workflow}/runs?${source.runs}&per_page=100&page=${page}`,
     );
     const pageRuns = recordsFor(runsResponse, "workflow_runs");
     const runs = pageRuns.filter(
@@ -74,13 +126,13 @@ export const selectTimingArtifacts = async (
         typeof run === "object" &&
         run !== null &&
         typeof run.id === "number" &&
-        (run.event === "merge_group" || run.event === "push"),
+        source.events.includes(run.event),
     );
     for (const run of runs) {
       const artifactsResponse = await fetchJson(
         `https://api.github.com/repos/${repository}/actions/runs/${run.id}/artifacts?per_page=100`,
       );
-      const prefix = `test-timings-${run.id}-`;
+      const prefix = `${source.prefix}-${run.id}-`;
       const artifacts = recordsFor(artifactsResponse, "artifacts").filter(
         (artifact): artifact is Artifact =>
           typeof artifact === "object" &&
@@ -90,7 +142,7 @@ export const selectTimingArtifacts = async (
           artifact.name.startsWith(prefix) &&
           artifact.expired !== true,
       );
-      if (artifacts.length !== 4) continue;
+      if (!source.usable(artifacts.length)) continue;
       selected.push(
         ...artifacts.map(({ id }) => ({ artifactId: id, runId: run.id })),
       );
@@ -130,6 +182,7 @@ const median = (values: number[]) => {
 export const aggregateTestTimings = (
   artifacts: TimingArtifact[],
   files: string[],
+  { fillUnmeasured = true }: { fillUnmeasured?: boolean } = {},
 ): string => {
   const runs = new Map<string, Map<string, number>>();
   for (const { runId, timings } of artifacts) {
@@ -141,31 +194,48 @@ export const aggregateTestTimings = (
   const allMeasurements = [...runs.values()].flatMap((run) =>
     Array.from(run.values()),
   );
-  const fallback = median(allMeasurements);
+  const fallback = fillUnmeasured ? median(allMeasurements) : undefined;
   const result: TestTimings = {};
   for (const file of [...new Set(files)].toSorted()) {
     const samples = [...runs.values()].flatMap((run) => {
       const duration = run.get(file);
       return duration === undefined ? [] : [duration];
     });
-    result[file] = samples.length === 0 ? fallback : median(samples);
+    if (samples.length > 0) result[file] = median(samples);
+    else if (fallback !== undefined) result[file] = fallback;
   }
   return `${JSON.stringify(result, null, 2)}\n`;
 };
 
+// The `--graphql-request` flag naming each source's local file.
+const COMMIT_FLAGS: Record<TimingSourceName, string> = {
+  tests: "--timings",
+  properties: "--property-timings",
+};
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  const artifactManifestIndex = args.indexOf("--artifact-manifest");
-  if (artifactManifestIndex !== -1) {
-    const artifactManifest = args.at(artifactManifestIndex + 1);
-    const repositoryIndex = args.indexOf("--repository");
-    const repository = args.at(repositoryIndex + 1);
+  const valueFor = (name: string) => {
+    const index = args.indexOf(name);
+    return index === -1 ? undefined : args.at(index + 1);
+  };
+  const sourceName = valueFor("--source") ?? "tests";
+  if (!isTimingSourceName(sourceName))
+    panic(`Unknown timing source ${sourceName}`);
+  const source = TIMING_SOURCES[sourceName];
+  const artifactManifest = valueFor("--artifact-manifest");
+  if (artifactManifest !== undefined) {
+    const repository = valueFor("--repository");
     if (!artifactManifest || !repository) {
       panic(
-        "Usage: bun scripts/aggregate-ci-test-timings.ts --artifact-manifest <file> --repository <owner/name>",
+        "Usage: bun scripts/aggregate-ci-test-timings.ts --artifact-manifest <file> --repository <owner/name> [--source tests|properties]",
       );
     }
-    const artifacts = await selectTimingArtifacts(repository, githubFetchJson);
+    const artifacts = await selectTimingArtifacts(
+      repository,
+      githubFetchJson,
+      source,
+    );
     writeFileSync(
       artifactManifest,
       artifacts
@@ -174,41 +244,53 @@ if (import.meta.main) {
     );
     process.exit(0);
   }
-  const requestIndex = args.indexOf("--graphql-request");
-  if (requestIndex !== -1) {
-    const valueFor = (name: string) => {
-      const index = args.indexOf(name);
-      return index === -1 ? undefined : args.at(index + 1);
-    };
-    const requestOutput = args.at(requestIndex + 1);
-    const timingFile = valueFor("--timings");
+  const requestOutput = valueFor("--graphql-request");
+  if (requestOutput !== undefined) {
+    const timingFiles: Record<string, string> = {};
+    for (const [name, flag] of Object.entries(COMMIT_FLAGS)) {
+      const file = valueFor(flag);
+      if (file !== undefined && isTimingSourceName(name))
+        timingFiles[TIMING_SOURCES[name].output] = file;
+    }
     const repository = valueFor("--repository");
     const branch = valueFor("--branch");
     const base = valueFor("--base");
-    if (!requestOutput || !timingFile || !repository || !branch || !base) {
+    if (
+      !requestOutput ||
+      Object.keys(timingFiles).length === 0 ||
+      !repository ||
+      !branch ||
+      !base
+    ) {
       panic(
-        "Usage: bun scripts/aggregate-ci-test-timings.ts --graphql-request <file> --timings <file> --repository <owner/name> --branch <branch> --base <oid>",
+        "Usage: bun scripts/aggregate-ci-test-timings.ts --graphql-request <file> [--timings <file>] [--property-timings <file>] --repository <owner/name> --branch <branch> --base <oid>",
       );
     }
     writeFileSync(
       requestOutput,
-      `${JSON.stringify(createGraphqlRequest({ base, branch, repository, timingFile }))}\n`,
+      `${JSON.stringify(createGraphqlRequest({ base, branch, repository, timingFiles }))}\n`,
     );
     process.exit(0);
   }
-  const outputIndex = args.indexOf("--output");
-  const output = args.at(outputIndex + 1);
+  const output = valueFor("--output");
+  const valueFlags = new Set(["--output", "--source"]);
   const inputs = args.filter(
-    (_, index) => index !== outputIndex && index !== outputIndex + 1,
+    (arg, index) =>
+      !valueFlags.has(arg) &&
+      !(index > 0 && valueFlags.has(args[index - 1] ?? "")),
   );
   if (!output || inputs.length === 0) {
     panic(
-      "Usage: bun scripts/aggregate-ci-test-timings.ts --output <file> <artifacts...>",
+      "Usage: bun scripts/aggregate-ci-test-timings.ts --output <file> [--source tests|properties] <artifacts...>",
     );
   }
   const artifacts = inputs.map(
     (input) => JSON.parse(readFileSync(input, "utf8")) as TimingArtifact,
   );
-  const files = plannedTestFiles(path.resolve(import.meta.dir, ".."));
-  writeFileSync(output, aggregateTestTimings(artifacts, files));
+  writeFileSync(
+    output,
+    aggregateTestTimings(artifacts, source.files(), {
+      fillUnmeasured: source.fillUnmeasured,
+    }),
+  );
 }

@@ -10,9 +10,14 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 
-setDefaultTimeout(scanTestTimeout(30_000));
+// The largest test here runs 13 children one after another.
+setDefaultTimeout(subprocessTestTimeout(13));
 
 const repo = path.resolve(import.meta.dir, "..");
 
@@ -31,7 +36,7 @@ const fixtureEnvironment = Object.fromEntries(
   ),
 );
 const runInFixture = (command, directory) =>
-  Bun.spawnSync(command, { cwd: directory, env: fixtureEnvironment });
+  expectExited(runChild(command, { cwd: directory, env: fixtureEnvironment }));
 
 const workflow = Bun.YAML.parse(
   readFileSync(path.join(repo, ".github/workflows/ci.yml"), "utf8"),
@@ -51,15 +56,17 @@ const runDetector = ({ result, base = "event-base" }) => {
   writeFileSync(output, "");
   try {
     const command = `bunx() { [[ "$1" == "--no-install" && "$2" == "stll-toolchain-changed" && "$3" == "--since" && "$4" == "$TOOLCHAIN_BASE" ]] || return 2; printf '%s\\n' "$DETECTOR_RESULT"; }; ${detector.run}`;
-    const execution = Bun.spawnSync(["bash", "-c", command], {
-      cwd: repo,
-      env: {
-        ...process.env,
-        TOOLCHAIN_BASE: base,
-        GITHUB_OUTPUT: output,
-        DETECTOR_RESULT: JSON.stringify(result),
-      },
-    });
+    const execution = expectExited(
+      runChild(["bash", "-c", command], {
+        cwd: repo,
+        env: {
+          ...process.env,
+          TOOLCHAIN_BASE: base,
+          GITHUB_OUTPUT: output,
+          DETECTOR_RESULT: JSON.stringify(result),
+        },
+      }),
+    );
     return { status: execution.exitCode, output: readFileSync(output, "utf8") };
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -148,16 +155,16 @@ describe("shared toolchain CI selection", () => {
     const rootManifest = JSON.parse(
       readFileSync(path.join(repo, "package.json"), "utf8"),
     );
-    const projects = Bun.spawnSync(["git", "ls-files", "**/package.json"], {
-      cwd: repo,
-    });
+    const projects = expectExited(
+      runChild(["git", "ls-files", "**/package.json"], { cwd: repo }),
+    );
     expect(projects.exitCode).toBe(0);
     const vueProjects = new Set([
       "packages/vue/package.json",
       "packages/playground-vue/package.json",
     ]);
     const retained = new Set();
-    for (const file of projects.stdout.toString().trim().split("\n")) {
+    for (const file of projects.stdout.trim().split("\n")) {
       const manifest = JSON.parse(readFileSync(path.join(repo, file), "utf8"));
       const command = manifest.scripts?.typecheck;
       if (command === undefined) continue;
@@ -184,9 +191,11 @@ describe("shared toolchain CI selection", () => {
     );
     const output = path.join(directory, "output");
     const git = (...args) => {
-      const result = Bun.spawnSync(["git", ...args], { cwd: directory });
-      if (result.exitCode !== 0) throw new Error(result.stderr.toString());
-      return result.stdout.toString().trim();
+      const result = expectExited(
+        runChild(["git", ...args], { cwd: directory }),
+      );
+      if (result.exitCode !== 0) throw new Error(result.stderr);
+      return result.stdout.trim();
     };
     const commit = (version) => {
       writeFileSync(
@@ -217,29 +226,31 @@ describe("shared toolchain CI selection", () => {
         ["unavailable-toolchain-base", "true"],
       ]) {
         writeFileSync(output, "");
-        const execution = Bun.spawnSync(
-          [
-            "bash",
-            "-c",
-            `bunx() { shift 2; "$SHARED_DETECTOR" "$@"; }; ${detector.run}`,
-          ],
-          {
-            cwd: directory,
-            env: {
-              ...process.env,
-              TOOLCHAIN_BASE: since,
-              GITHUB_OUTPUT: output,
-              SHARED_DETECTOR: path.join(
-                repo,
-                "node_modules/.bin/stll-toolchain-changed",
-              ),
+        const execution = expectExited(
+          runChild(
+            [
+              "bash",
+              "-c",
+              `bunx() { shift 2; "$SHARED_DETECTOR" "$@"; }; ${detector.run}`,
+            ],
+            {
+              cwd: directory,
+              env: {
+                ...process.env,
+                TOOLCHAIN_BASE: since,
+                GITHUB_OUTPUT: output,
+                SHARED_DETECTOR: path.join(
+                  repo,
+                  "node_modules/.bin/stll-toolchain-changed",
+                ),
+              },
             },
-          },
+          ),
         );
         expect({
           status: execution.exitCode,
           output: readFileSync(output, "utf8"),
-          stderr: execution.stderr.toString(),
+          stderr: execution.stderr,
         }).toEqual({ status: 0, output: `changed=${changed}\n`, stderr: "" });
       }
     } finally {
@@ -275,15 +286,17 @@ describe("shared toolchain CI selection", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "folio-toolchain-plan-"));
     try {
       const run = (result) =>
-        Bun.spawnSync(["bash", "-c", command], {
-          cwd: repo,
-          env: {
-            ...process.env,
-            TOOLCHAIN_BASE: "event-base",
-            GITHUB_OUTPUT: path.join(directory, "output"),
-            DETECTOR_RESULT: JSON.stringify(result),
-          },
-        }).stdout.toString();
+        expectExited(
+          runChild(["bash", "-c", command], {
+            cwd: repo,
+            env: {
+              ...process.env,
+              TOOLCHAIN_BASE: "event-base",
+              GITHUB_OUTPUT: path.join(directory, "output"),
+              DETECTOR_RESULT: JSON.stringify(result),
+            },
+          }),
+        ).stdout;
       expect(
         run({ status: "unreadable", changed: true, error: "unavailable base" }),
       ).toContain(
@@ -300,17 +313,19 @@ describe("shared toolchain CI selection", () => {
   // The shared detector fails open on anything it cannot read, which silently runs
   // every job; this repository's own declarations must stay readable.
   test("the shared detector reads this repository's toolchain declarations", () => {
-    const run = Bun.spawnSync(
-      [
-        process.execPath,
-        path.join(repo, "node_modules/.bin/stll-toolchain-changed"),
-        "--since",
-        "HEAD",
-      ],
-      { cwd: repo },
+    const run = expectExited(
+      runChild(
+        [
+          process.execPath,
+          path.join(repo, "node_modules/.bin/stll-toolchain-changed"),
+          "--since",
+          "HEAD",
+        ],
+        { cwd: repo },
+      ),
     );
     expect(run.exitCode).toBe(0);
-    const result = JSON.parse(run.stdout.toString());
+    const result = JSON.parse(run.stdout);
     expect({ status: result.status, error: result.error }).toEqual({
       status: "compared",
       error: undefined,
@@ -347,25 +362,27 @@ describe("required shared toolchain policy", () => {
           Object.keys(scopes).map((name) => [name, { result: "success" }]),
         );
         needs.lint.result = lintResult;
-        const execution = Bun.spawnSync(["bash", "-c", evaluation.run], {
-          cwd: repo,
-          env: {
-            ...process.env,
-            EVENT: "pull_request",
-            PLAN_RESULT: "success",
-            NEEDS: JSON.stringify(needs),
-            PLAN: JSON.stringify({
-              trusted: "true",
-              suite_depth: "fast",
-              toolchain_changed: "false",
-              code_required: codeRequired,
-            }),
-            JOB_SCOPES: evaluation.env.JOB_SCOPES,
-          },
-        });
+        const execution = expectExited(
+          runChild(["bash", "-c", evaluation.run], {
+            cwd: repo,
+            env: {
+              ...process.env,
+              EVENT: "pull_request",
+              PLAN_RESULT: "success",
+              NEEDS: JSON.stringify(needs),
+              PLAN: JSON.stringify({
+                trusted: "true",
+                suite_depth: "fast",
+                toolchain_changed: "false",
+                code_required: codeRequired,
+              }),
+              JOB_SCOPES: evaluation.env.JOB_SCOPES,
+            },
+          }),
+        );
         expect(execution.exitCode).toBe(lintResult === "success" ? 0 : 1);
         if (lintResult !== "success")
-          expect(execution.stdout.toString()).toContain("lint (");
+          expect(execution.stdout).toContain("lint (");
       }
     }
   });
@@ -410,13 +427,13 @@ describe("required shared toolchain policy", () => {
         ["add", ".github", "stll-toolchain.json"],
       ]) {
         expect(
-          Bun.spawnSync(["git", ...args], { cwd: directory }).exitCode,
+          expectExited(runChild(["git", ...args], { cwd: directory })).exitCode,
         ).toBe(0);
       }
       const approved = check();
       expect({
         status: approved.exitCode,
-        diagnostics: approved.stderr.toString(),
+        diagnostics: approved.stderr,
       }).toEqual({
         status: 0,
         diagnostics: "",
@@ -424,7 +441,7 @@ describe("required shared toolchain policy", () => {
       writeWorkflow(action.version);
       const unpinned = check();
       expect(unpinned.exitCode).toBe(1);
-      expect(unpinned.stderr.toString()).toContain(
+      expect(unpinned.stderr).toContain(
         "[action-pins] remote actions must use a full commit SHA",
       );
     } finally {
@@ -527,25 +544,27 @@ describe("published Node minimum", () => {
         Object.keys(scopes).map((job) => [job, { result: "success" }]),
       );
       needs[floor.job].result = result;
-      const execution = Bun.spawnSync(["bash", "-c", evaluation.run], {
-        cwd: repo,
-        env: {
-          ...process.env,
-          EVENT: "merge_group",
-          PLAN_RESULT: "success",
-          NEEDS: JSON.stringify(needs),
-          PLAN: JSON.stringify({
-            ...plan,
-            trusted: "true",
-            suite_depth: "full",
-            toolchain_changed: "false",
-          }),
-          JOB_SCOPES: evaluation.env.JOB_SCOPES,
-        },
-      });
+      const execution = expectExited(
+        runChild(["bash", "-c", evaluation.run], {
+          cwd: repo,
+          env: {
+            ...process.env,
+            EVENT: "merge_group",
+            PLAN_RESULT: "success",
+            NEEDS: JSON.stringify(needs),
+            PLAN: JSON.stringify({
+              ...plan,
+              trusted: "true",
+              suite_depth: "full",
+              toolchain_changed: "false",
+            }),
+            JOB_SCOPES: evaluation.env.JOB_SCOPES,
+          },
+        }),
+      );
       expect(execution.exitCode).toBe(result === "success" ? 0 : 1);
       if (result !== "success")
-        expect(execution.stdout.toString()).toContain(`${floor.job} (`);
+        expect(execution.stdout).toContain(`${floor.job} (`);
     }
   });
 
@@ -634,7 +653,8 @@ describe("published Node minimum", () => {
           ["add", "."],
         ])
           expect(
-            Bun.spawnSync(["git", ...args], { cwd: directory }).exitCode,
+            expectExited(runChild(["git", ...args], { cwd: directory }))
+              .exitCode,
           ).toBe(0);
         const initial = check();
         // Dated quarantine entries near expiry print warnings; only errors count.
@@ -662,14 +682,14 @@ describe("published Node minimum", () => {
         expect(shared().exitCode).toBe(0);
         const drift = check();
         expect(drift.exitCode).toBe(1);
-        expect(drift.stderr.toString()).toContain("[consumer-node-minimum]");
+        expect(drift.stderr).toContain("[consumer-node-minimum]");
         const version = `${major}.${minor}.${patch}`;
         setRange(`>=${version}`);
         expect(check().exitCode).toBe(1);
         const generated = project("--write");
         expect({
           status: generated.exitCode,
-          diagnostic: generated.stderr.toString(),
+          diagnostic: generated.stderr,
         }).toEqual({
           status: 0,
           diagnostic: "",

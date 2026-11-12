@@ -3,27 +3,35 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const WIDENING_MARKER = "folio-model-types(no-model-intersection-widening)";
 const IN_CHECK_MARKER = "folio-model-types(no-in-check-on-model)";
 const MARK_MARKER = "folio-model-types(writable-record-mark)";
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(subprocessTestTimeout());
 
 const lintFixture = (fixture: string) => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      path.join("test", "__fixtures__", fixture),
-    ],
-    { cwd: REPO_ROOT },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        path.join("test", "__fixtures__", fixture),
+      ],
+      { cwd: REPO_ROOT },
+    ),
   );
-  const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  const output = `${result.stdout}${result.stderr}`;
   return {
     widening: output.split(WIDENING_MARKER).length - 1,
     inCheck: output.split(IN_CHECK_MARKER).length - 1,

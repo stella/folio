@@ -6,13 +6,17 @@
 
 import { panic } from "better-result";
 import { afterAll, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 import { ensureParaIds, FolioDocxReviewer } from "@stll/folio-core/server";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../test/subprocess";
 import { makeTempDir } from "./__tests__/fixtures";
 import { dataOf, ISOLATED_GIT_ENV } from "./__tests__/io";
 import { fileVersionOf } from "./document";
@@ -27,7 +31,6 @@ const FIXTURES = (await readdir(CORPUS))
   .toSorted();
 const EXERCISED = new Set<string>();
 const INSERTED_TEXT = "The parties confirm receipt of this copy.";
-const PROCESS_TEST_TIMEOUT_MS = 120_000;
 
 afterAll(() => {
   expect(FIXTURES.length).toBeGreaterThan(0);
@@ -93,29 +96,29 @@ describe("folio suggest --in-place preserves corpus ZIP entry names", () => {
           ]),
         );
 
-        const run = spawnSync(
-          process.execPath,
-          [
-            BIN,
-            "suggest",
-            file,
-            "--input",
-            `@${operations}`,
-            "--in-place",
-            "--allow-repack",
-            "--expect-version",
-            fileVersionOf(source),
-            "--date",
-            "2026-01-02T03:04:05Z",
-          ],
-          {
-            cwd: dir,
-            env: { ...ISOLATED_GIT_ENV, FOLIO_AUTHOR: "Corpus Reviewer" },
-            encoding: "utf8",
-            timeout: PROCESS_TEST_TIMEOUT_MS,
-          },
+        const run = expectExited(
+          runChild(
+            [
+              process.execPath,
+              BIN,
+              "suggest",
+              file,
+              "--input",
+              `@${operations}`,
+              "--in-place",
+              "--allow-repack",
+              "--expect-version",
+              fileVersionOf(source),
+              "--date",
+              "2026-01-02T03:04:05Z",
+            ],
+            {
+              cwd: dir,
+              env: { ...ISOLATED_GIT_ENV, FOLIO_AUTHOR: "Corpus Reviewer" },
+            },
+          ),
         );
-        expect(run.status, `${name}: ${run.stdout}\n${run.stderr}`).toBe(0);
+        expect(run.exitCode, `${name}: ${run.stdout}\n${run.stderr}`).toBe(0);
         const receipt = dataOf(run.stdout);
         expect(receipt["status"]).toBe("committed");
         expect(receipt["fileVersion"]).not.toBe(fileVersionOf(source));
@@ -136,6 +139,6 @@ describe("folio suggest --in-place preserves corpus ZIP entry names", () => {
         await cleanup();
       }
     },
-    PROCESS_TEST_TIMEOUT_MS,
+    subprocessTestTimeout(),
   );
 });
