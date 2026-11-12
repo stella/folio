@@ -53,6 +53,9 @@ const managedConfig = defineConfig({
       use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
       testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u,
       grep: new RegExp(PINNED_BROWSER_INPUT_TAG, "u"),
+      // The replays live in one file; sharding splits them per test only
+      // when the project runs its tests independently of each other.
+      fullyParallel: true,
       workers: 1,
     },
     {
