@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "title": "PINNED #1757, reported seed 99689983: a paragraph after a table pending deletion and a table after the paragraph before it land in the places the batch named",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "tracked-changes",
+  "seed": 99689983,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 787890550,
+      "operations": [
+        {
+          "type": "deleteTable",
+          "blockId": "1BF99289"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 28172486,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "31617F9A",
+          "text": "Supplier notice warranty party delivery invoice.",
+          "alignment": "right"
+        },
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "weights": { "version": 1, "cells": {}, "operations": [] },
+  "origin": "shrunk from random flow seed 99689983"
+}

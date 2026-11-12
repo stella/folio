@@ -769,6 +769,11 @@ export type XmlSplice = { start: number; end: number; newXml: string };
 /**
  * Apply `splices` to `xml`, end-to-start so earlier offsets stay valid.
  *
+ * Every offset is a position in `xml` itself. The kept source regions and the
+ * replacements are collected back to front and joined once, so a part with
+ * many splices (a paragraph id stamped into every paragraph) is assembled in
+ * one pass rather than rebuilt once per splice.
+ *
  * Every selective patch is a splice, and every splice goes through here, so
  * the refusal below is a property of the operation rather than a check each
  * site has to remember. A patch rewrites the regions an edit touched and keeps
@@ -783,15 +788,17 @@ export const spliceXml = (
   xml: string,
   splices: readonly XmlSplice[],
 ): string | null => {
-  let result = xml;
+  const piecesFromEnd: string[] = [];
   let unpatchedEnd = xml.length;
   for (const { start, end, newXml } of [...splices].toSorted(
     (a, b) => b.start - a.start,
   )) {
     if (end > unpatchedEnd) return null;
-    result = result.slice(0, start) + newXml + result.slice(end);
+    piecesFromEnd.push(xml.slice(end, unpatchedEnd), newXml);
     unpatchedEnd = start;
   }
+  piecesFromEnd.push(xml.slice(0, unpatchedEnd));
+  const result = piecesFromEnd.reverse().join("");
   return patchBreaksCommentRangeBalance(xml, result) ? null : result;
 };
 
