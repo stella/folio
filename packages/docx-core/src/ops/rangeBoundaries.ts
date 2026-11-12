@@ -127,7 +127,7 @@ type Boundary = Extract<InlineNode, { type: BoundaryType }>;
 type CommentAnchor = CommentAnchorCarrier;
 type OrderedBoundary = Exclude<Boundary, CommentAnchor>;
 
-const isBoundary = (node: InlineNode): node is Boundary =>
+export const isBoundary = (node: InlineNode): node is Boundary =>
   Object.hasOwn(BOUNDARY_SIDES, node.type);
 
 /** The range a boundary belongs to: its family and id. */
