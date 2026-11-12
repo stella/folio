@@ -579,3 +579,80 @@ test("a boundary kept between pieces formatted apart goes where it was, in every
     "run",
   ]);
 });
+
+test("an insertion's pieces a rejection joins again inside a control around a bookmarked link resolve as one, in every rejection order", () => {
+  const source: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "inlineSdt",
+                properties: { sdtType: "richText", id: 1, tag: "clause" },
+                content: [
+                  { type: "run", content: [{ type: "text", text: "aaa" }] },
+                  {
+                    type: "hyperlink",
+                    rId: "rId9",
+                    href: "https://example.org",
+                    children: [{ type: "bookmarkStart", id: 1, name: "_Link" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const at = (offset: number) => ({
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    offset,
+  });
+  const tracked = opsOn(source, [
+    // Inside the control's run: it cuts the run and the control.
+    (index) => ({
+      type: "insertContent",
+      at: at(1),
+      slice: {
+        content: [
+          {
+            type: "run",
+            content: [{ type: "text", text: "aaa" }, { type: "tab" }],
+          },
+        ],
+        openStart: 0,
+        openEnd: 0,
+      },
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+    // Inside the insertion: it cuts it in two pieces.
+    (index) => ({
+      type: "insertText",
+      at: at(3),
+      text: "x😀",
+      runProps: {},
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+    // Inside the second insertion: it cuts that one in two too.
+    (index) => ({
+      type: "insertText",
+      at: at(4),
+      text: "😀",
+      runProps: {},
+      newIds: { revision: [710, 711, 712, 713], control: [810, 811] },
+      revision: revision(index),
+    }),
+  ]);
+  const perOp = dated(tracked, 3);
+  const atOnce = resolve(tracked, perOp.flat(), REVISION_DECISIONS.REJECT);
+  expect(body(atOnce)).toEqual(body(source));
+  for (const order of orders(perOp))
+    expect(body(rejectedInOrder(tracked, order))).toEqual(body(atOnce));
+});
