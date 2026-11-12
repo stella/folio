@@ -3,7 +3,11 @@ import { panic, Result } from "better-result";
 import type { Document } from "../../model/document";
 import { validateOpsDocument } from "../contract";
 import { equalForStaleness } from "../equality";
-import { DOCUMENT_OP_TYPES, type DocumentOp } from "../types";
+import {
+  DOCUMENT_OP_SCHEMA_VERSION,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+} from "../types";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
 import { applyBatch } from "./applyBatch";
 import {
@@ -36,6 +40,20 @@ export type ClientNotice = {
   ops: readonly DocumentOp[];
 };
 
+/**
+ * How the optimistic `document` moved when the authority answered: applied in
+ * order to the document before the answer, `batch.ops` give the one after it.
+ * `rebased`: a foreign revision rebased over every pending local batch, or a
+ * refused local batch's inverse rebased over the ones after it, so positions
+ * and history can be transformed over it. `replaced`: a pending batch could not
+ * be rebased, so the change undoes every pending batch, applies what the
+ * authority sequenced and replays the survivors; only the document is exact.
+ */
+export type ClientDocumentChange = {
+  type: "rebased" | "replaced";
+  batch: SequencedBatch;
+};
+
 /** Optimistic state with ordered authoritative replay and one causal submission in flight. */
 export const createClient = (
   document: Document,
@@ -43,8 +61,10 @@ export const createClient = (
   enqueue: (batch: DocumentBatch) => Result<DocumentBatch, BatchRejection>;
   nextSubmission: () => DocumentBatch | undefined;
   receiveAck: (ack: BatchAck) => void;
-  receiveReject: (rejection: BatchReject) => void;
-  receiveBroadcast: (batch: SequencedBatch) => Result<void, BatchRejection>;
+  receiveReject: (rejection: BatchReject) => readonly ClientDocumentChange[];
+  receiveBroadcast: (
+    batch: SequencedBatch,
+  ) => Result<readonly ClientDocumentChange[], BatchRejection>;
   readonly document: Document;
   readonly headRev: number;
   readonly pending: readonly DocumentBatch[];
@@ -67,6 +87,35 @@ export const createClient = (
 
   const drop = (entry: PendingEntry, reason: BatchRejection): void => {
     notices.push({ opId: entry.batch.opId, reason, ops: entry.batch.ops });
+  };
+
+  // Every pending batch undone, the sequenced ops applied, the survivors replayed.
+  const replacement = (
+    previous: Document,
+    previousEntries: readonly PendingEntry[],
+    sequenced: readonly DocumentOp[],
+    source: Pick<SequencedBatch, "opId" | "actor" | "revision">,
+  ): ClientDocumentChange => {
+    const ops = [
+      ...[...previousEntries].reverse().flatMap(({ inverse }) => inverse),
+      ...sequenced,
+      ...entries.flatMap(({ batch }) => batch.ops),
+    ];
+    const applied = applyBatch(previous, ops);
+    if (applied.isErr())
+      return panic(
+        "Pending inverses, sequenced ops and survivors must replay in order.",
+      );
+    return {
+      type: "replaced",
+      batch: {
+        schema: DOCUMENT_OP_SCHEMA_VERSION,
+        ...source,
+        baseRev: source.revision - 1,
+        ops,
+        effects: applied.value.effects,
+      },
+    };
   };
 
   const replay = (): void => {
@@ -193,7 +242,9 @@ export const createClient = (
     }
   };
 
-  const receiveReject = (rejection: BatchReject): void => {
+  const receiveReject = (
+    rejection: BatchReject,
+  ): readonly ClientDocumentChange[] => {
     const index = entries.findIndex(
       ({ batch }) => batch.opId === rejection.opId,
     );
@@ -201,13 +252,16 @@ export const createClient = (
       if (inFlight === rejection.opId) {
         inFlight = undefined;
       }
-      return;
+      return [];
     }
     const entry = entries[index];
     if (entry === undefined) {
-      return;
+      return [];
     }
+    const previous = current;
+    const previousEntries = entries.slice();
     drop(entry, rejection.reason);
+    const noticesAfterDrop = notices.length;
     const later = entries.slice(index + 1);
     entries.splice(index, 1);
     // Later batches were authored with the rejected edit present. Rebase them
@@ -277,13 +331,23 @@ export const createClient = (
       inFlight = undefined;
     }
     replay();
+    const source = {
+      opId: entry.batch.opId,
+      actor: entry.batch.actor,
+      revision: headRev + 1,
+    };
+    return [
+      notices.length === noticesAfterDrop
+        ? { type: "rebased", batch: inverse }
+        : replacement(previous, previousEntries, [], source),
+    ];
   };
 
   const receiveBroadcast = (
     batch: SequencedBatch,
-  ): Result<void, BatchRejection> => {
+  ): Result<readonly ClientDocumentChange[], BatchRejection> => {
     const checked = validateSequencedBatch(batch);
-    if (checked.isErr()) return checked;
+    if (checked.isErr()) return Result.err(checked.error);
     batch = checked.value;
     if (
       !Number.isSafeInteger(batch.revision) ||
@@ -301,7 +365,7 @@ export const createClient = (
       history.get(batch.revision) ?? received.get(batch.revision);
     if (existing !== undefined) {
       return equalForStaleness(existing, batch)
-        ? Result.ok(undefined)
+        ? Result.ok([])
         : Result.err(
             new BatchRejection({
               reason: BATCH_REJECTION_REASONS.CONFLICT,
@@ -311,6 +375,7 @@ export const createClient = (
           );
     }
     received.set(batch.revision, batch);
+    const changes: ClientDocumentChange[] = [];
     while (received.has(headRev + 1)) {
       const next = received.get(headRev + 1);
       if (next === undefined) {
@@ -345,6 +410,10 @@ export const createClient = (
           }),
         );
       }
+      const previous = current;
+      const previousEntries = entries.slice();
+      const noticesBefore = notices.length;
+      let rebasedRemote: SequencedBatch | undefined;
       if (localIds.has(next.opId)) {
         entries = entries.filter(
           ({ batch: pendingBatch }) => pendingBatch.opId !== next.opId,
@@ -403,6 +472,7 @@ export const createClient = (
           };
         }
         entries = rebased;
+        rebasedRemote = remote;
       }
       confirmed = applied.value.document;
       headRev = next.revision;
@@ -410,8 +480,19 @@ export const createClient = (
       received.delete(headRev);
       history.set(headRev, next);
       replay();
+      // An own batch coming back moves nothing the client had not shown.
+      if (notices.length > noticesBefore)
+        changes.push(
+          replacement(previous, previousEntries, next.ops, {
+            opId: next.opId,
+            actor: next.actor,
+            revision: next.revision,
+          }),
+        );
+      else if (rebasedRemote !== undefined)
+        changes.push({ type: "rebased", batch: rebasedRemote });
     }
-    return Result.ok(undefined);
+    return Result.ok(changes);
   };
 
   return {

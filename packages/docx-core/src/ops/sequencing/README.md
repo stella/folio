@@ -19,6 +19,12 @@ in the broadcast journal. A rejection leaves the document and journal unchanged.
 Sequenced effects record document-dependent split identities and join lengths,
 so replay does not infer positions from a later document.
 
+Each authoritative answer returns how the client's document moved: a `rebased`
+change, transformable like a sequenced batch, or a `replaced` change when a
+pending batch was dropped, exact for the document only. `transformPosition`
+moves a position across sequenced batches by paragraph id and offset, so an
+editor maps its selection and history without its own coordinates.
+
 `transformBatch` refuses operation pairs whose effects cannot be mapped safely.
 An inverse keeps its staleness preconditions: an invalid undo must be dropped,
 never applied by removing those preconditions. Supported story addresses derive

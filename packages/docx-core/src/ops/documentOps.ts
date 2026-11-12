@@ -114,8 +114,10 @@ export {
   type SequencedBatch,
 } from "./sequencing/envelope";
 export { transformBatch } from "./sequencing/transform";
+export { transformPosition } from "./sequencing/position";
+export { applyBatch } from "./sequencing/applyBatch";
 export { createSequencer } from "./sequencing/sequencer";
-export { createClient } from "./sequencing/client";
+export { type ClientDocumentChange, createClient } from "./sequencing/client";
 export {
   type BatchBlockAccess,
   compareBatchOrder,
