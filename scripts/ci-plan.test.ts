@@ -859,6 +859,27 @@ describe("CI plan", () => {
         ).toSorted(),
       );
       expect(titles.length).toBeGreaterThan(0);
+
+      // Sharding splits the replays per test, so the first shard holds its
+      // share rather than the whole file.
+      const firstShard = expectExited(
+        runChild(
+          [
+            "bunx",
+            "playwright",
+            "test",
+            "--project=browser-input-pinned",
+            "--list",
+            "--shard=1/3",
+          ],
+          { cwd: REPO_ROOT },
+        ),
+      );
+      expect(firstShard.exitCode, firstShard.stderr).toBe(0);
+      const listed = firstShard.stdout
+        .split("\n")
+        .filter((line) => line.includes("regression seed")).length;
+      expect(listed).toBeLessThanOrEqual(Math.ceil(titles.length / 3));
     },
     subprocessTestTimeout(),
   );
