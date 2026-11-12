@@ -498,8 +498,11 @@ export type PagedEditorProps = {
 export type PagedEditorRef = {
   /** The headless editor controller (imperative API + events; Seam 6). */
   getEditor: () => FolioEditor;
-  /** Get the current document. */
-  getDocument: () => Document | null;
+  /**
+   * The current document, built over the editor's model and sharing its
+   * parts: read it, never write it (`DocxEditorRef.getDocument` hands a copy).
+   */
+  getDocument: () => ReadonlyDocument | null;
   /**
    * The editor's document model, without a copy: in a canonical session the
    * session's own document (read it, never write it); otherwise null.

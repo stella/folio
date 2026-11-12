@@ -46,6 +46,7 @@ import type {
   StyleDefinitions,
   Theme,
 } from "../types/document";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
@@ -97,7 +98,12 @@ export type HeaderFooterEditorManager = {
   destroy: () => void;
   getView: (rId: string) => EditorView | null;
   listSlots: () => HeaderFooterPartKey[];
-  snapshotDocument: (document: Document) => Document;
+  /**
+   * The model with the edited parts written back. It shares what no edit
+   * touched with `model` and with the mounted editors, so it is read-only: a
+   * writer copies it first (`cloneDocumentWithParagraphPropertySources`).
+   */
+  snapshotDocument: (model: ReadonlyDocument) => ReadonlyDocument;
   sync: () => void;
 };
 
@@ -487,7 +493,7 @@ export const createHeaderFooterEditorManager = (
         kind,
         rId,
       })),
-    snapshotDocument: (document) => {
+    snapshotDocument: (model) => {
       if (
         usesCanonicalSession(
           deps.getExperimentalSession?.(),
@@ -502,6 +508,7 @@ export const createHeaderFooterEditorManager = (
           message: "Canonical story snapshot is unavailable.",
         });
       }
+      const document = readModel(model);
       let headers = document.package.headers;
       let footers = document.package.footers;
       let headersChanged = false;
@@ -545,7 +552,7 @@ export const createHeaderFooterEditorManager = (
       }
 
       if (!headersChanged && !footersChanged) {
-        return document;
+        return model;
       }
       const packageWithSnapshots = { ...document.package };
       if (numbering) {

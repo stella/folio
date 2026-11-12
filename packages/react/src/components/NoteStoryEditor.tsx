@@ -37,7 +37,8 @@ export type NoteStoryEditorRef = {
   close: () => void;
   getActiveView: () => EditorView | null;
   open: (story: NoteStoryKey) => void;
-  snapshotDocument: (document: Document) => Document;
+  /** The model with the edited notes written back; it shares the model's parts. */
+  snapshotDocument: (model: ReadonlyDocument) => ReadonlyDocument;
 };
 
 export type NoteStoryEditorProps = {
