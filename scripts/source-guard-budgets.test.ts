@@ -41,6 +41,12 @@ const SUBPROCESS_METHODS = new Set([
 ]);
 const SUBPROCESS_BUDGET = "subprocessTestTimeout";
 const TEST_FUNCTIONS = new Set(["it", "test"]);
+const HOOK_FUNCTIONS = new Set([
+  "afterAll",
+  "afterEach",
+  "beforeAll",
+  "beforeEach",
+]);
 const TIMEOUT_KEYS = new Set(["hangTimeoutMs", "timeout"]);
 const UNBOUNDED_SUBPROCESS_TESTS = "scripts/unbounded-subprocess-tests.json";
 
@@ -183,21 +189,85 @@ const numericConstants = (program: Program): ReadonlySet<string> => {
   return names;
 };
 
+/**
+ * Names whose call starts a child: the subprocess methods and every function
+ * in the file that calls one of them, directly or through another.
+ */
+const childStarters = (program: Program): ReadonlySet<string> => {
+  const functions = new Map<string, Node>();
+  walkAst(program, (node) => {
+    if (node.type === "FunctionDeclaration" && node.id !== null) {
+      functions.set(node.id.name, node);
+    } else if (
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
+      (node.init?.type === "ArrowFunctionExpression" ||
+        node.init?.type === "FunctionExpression")
+    ) {
+      functions.set(node.id.name, node.init);
+    }
+    return true;
+  });
+  const starters = new Set(SUBPROCESS_METHODS);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [name, body] of functions) {
+      if (!starters.has(name) && callsAny(body, starters)) {
+        starters.add(name);
+        grew = true;
+      }
+    }
+  }
+  return starters;
+};
+
+const timeoutOption = (options: Node): Node | undefined => {
+  if (options.type !== "ObjectExpression") return options;
+  for (const property of options.properties) {
+    if (
+      property.type === "Property" &&
+      !property.computed &&
+      property.key.type === "Identifier" &&
+      property.key.name === "timeout"
+    ) {
+      return property.value;
+    }
+  }
+  return undefined;
+};
+
+/** A test's callback and limit, from `(name, fn, limit)` or `(name, options, fn)`. */
+const testParts = (
+  args: readonly Node[],
+): { callback: Node | undefined; limit: Node | undefined } => {
+  const [, second, third] = args;
+  if (second?.type === "ObjectExpression") {
+    return { callback: third, limit: timeoutOption(second) };
+  }
+  return {
+    callback: second,
+    limit: third === undefined ? undefined : timeoutOption(third),
+  };
+};
+
 /** Why a test file that starts child processes is not bounded by them. */
 const subprocessBoundProblems = (file: string, source: string): string[] => {
   const program = parseSourceModule(file, source).program;
   if (!callsAny(program, SUBPROCESS_METHODS)) return [];
   const problems: string[] = [];
-  const declaresBudget = program.body.some(
-    (statement) =>
-      statement.type === "ExpressionStatement" &&
-      statement.expression.type === "CallExpression" &&
-      callName(statement.expression.callee) === "setDefaultTimeout" &&
-      statement.expression.arguments.some(isBudgetCall),
+  const starters = childStarters(program);
+  // Bun applies the last top-level default to every test that states none.
+  const defaults = program.body.flatMap((statement) =>
+    statement.type === "ExpressionStatement" &&
+    statement.expression.type === "CallExpression" &&
+    callName(statement.expression.callee) === "setDefaultTimeout"
+      ? [statement.expression.arguments.at(0)]
+      : [],
   );
-  if (!declaresBudget) {
-    problems.push(`no top-level setDefaultTimeout(${SUBPROCESS_BUDGET}())`);
-  }
+  const lastDefault = defaults.at(-1);
+  const defaultIsBudget =
+    lastDefault !== undefined && isBudgetCall(lastDefault);
   const constants = numericConstants(program);
   walkAst(program, (node) => {
     if (
@@ -220,18 +290,30 @@ const subprocessBoundProblems = (file: string, source: string): string[] => {
       problems.push(`bare setDefaultTimeout at offset ${String(node.start)}`);
     }
     const root = calleeRoot(node.callee);
-    const [, body, limit] = node.arguments;
-    if (root === undefined || !TEST_FUNCTIONS.has(root) || limit === undefined)
+    if (root !== undefined && HOOK_FUNCTIONS.has(root)) {
+      const [callback, limit] = node.arguments;
+      if (
+        callback !== undefined &&
+        callsAny(callback, starters) &&
+        !(limit === undefined ? defaultIsBudget : isBudgetCall(limit))
+      ) {
+        problems.push(
+          `${root} starting a child at offset ${String(node.start)} has no ${SUBPROCESS_BUDGET}`,
+        );
+      }
       return true;
-    if (isBareNumber(limit, constants)) {
+    }
+    if (root === undefined || !TEST_FUNCTIONS.has(root)) return true;
+    const { callback, limit } = testParts(node.arguments);
+    if (limit !== undefined && isBareNumber(limit, constants)) {
       problems.push(`bare test timeout at offset ${String(limit.start)}`);
     } else if (
-      body !== undefined &&
-      callsAny(body, SUBPROCESS_METHODS) &&
-      !isBudgetCall(limit)
+      callback !== undefined &&
+      callsAny(callback, starters) &&
+      !(limit === undefined ? defaultIsBudget : isBudgetCall(limit))
     ) {
       problems.push(
-        `test starting a child overrides ${SUBPROCESS_BUDGET} at offset ${String(limit.start)}`,
+        `test starting a child at offset ${String(node.start)} has no ${SUBPROCESS_BUDGET}`,
       );
     }
     return true;
@@ -300,10 +382,16 @@ import { runChild, subprocessTestTimeout } from "../test/subprocess";
 setDefaultTimeout(subprocessTestTimeout());
 test("child", () => runChild(["bun", "--version"]));`;
 
-test("a subprocess test under the shared budget passes", () => {
-  expect(
-    subprocessBoundProblems("scripts/bounded.test.ts", boundedSource),
-  ).toEqual([]);
+test.each([
+  ["the shared default budget", boundedSource],
+  [
+    "a per-test budget under another default",
+    'import { setDefaultTimeout, test } from "bun:test";\nimport { propertyTestTimeout } from "../test/property-timeout";\nimport { runChild, subprocessTestTimeout } from "../test/subprocess";\nsetDefaultTimeout(propertyTestTimeout(5_000));\nconst check = () => runChild(["bun", "--version"]);\ntest("property", () => {});\ntest("child", () => check(), subprocessTestTimeout());',
+  ],
+])("a subprocess test under %s passes", (_case, source) => {
+  expect(subprocessBoundProblems("scripts/bounded.test.ts", source)).toEqual(
+    [],
+  );
 });
 
 test.each([
@@ -333,6 +421,22 @@ test.each([
   [
     "a smaller helper budget on a test that starts a child",
     `${boundedSource}\ntest("again", () => runChild(["bun", "--version"]), scanTestTimeout(5_000));`,
+  ],
+  [
+    "another default for a test that starts a child through a helper",
+    'import { setDefaultTimeout, test } from "bun:test";\nimport { propertyTestTimeout } from "../test/property-timeout";\nimport { runChild } from "../test/subprocess";\nsetDefaultTimeout(propertyTestTimeout(5_000));\nconst check = () => runChild(["bun", "--version"]);\nconst checkTwice = () => [check(), check()];\ntest("child", () => checkTwice());',
+  ],
+  [
+    "a hook that starts a child under the runner's default",
+    'import { beforeAll, test } from "bun:test";\nimport { runChild, subprocessTestTimeout } from "../test/subprocess";\nbeforeAll(() => runChild(["bun", "--version"]));\ntest("child", () => runChild(["bun", "--version"]), subprocessTestTimeout());',
+  ],
+  [
+    "a shared default followed by another default",
+    `${boundedSource}\nsetDefaultTimeout(scanTestTimeout(5_000));`,
+  ],
+  [
+    "a scan budget in test options",
+    'import { test } from "bun:test";\nimport { scanTestTimeout } from "../test/scan-timeout";\nimport { runChild } from "../test/subprocess";\ntest("child", { timeout: scanTestTimeout(10_000) }, () => runChild(["git", "ls-files"]));',
   ],
   [
     "a bare child timeout",

@@ -64,6 +64,7 @@
   "scripts/painted-text-lint.test.ts",
   "scripts/playground-build.test.ts",
   "scripts/playwright-discovery.test.ts",
+  "scripts/playwright-protocol-capture.test.ts",
   "scripts/prepare-publish.test.ts",
   "scripts/projection-footprint-workflow.test.ts",
   "scripts/projection-footprint.test.ts",

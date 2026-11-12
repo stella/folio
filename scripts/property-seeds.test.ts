@@ -59,7 +59,7 @@ import {
 import { runChild, subprocessTestTimeout } from "../test/subprocess";
 import { parseFailureRecord } from "./fuzz-failure-issues";
 
-setDefaultTimeout(subprocessTestTimeout());
+setDefaultTimeout(propertyTestTimeout(5_000));
 afterAll(closePropertyDriverAnalysis);
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -237,11 +237,15 @@ process.stdout.write(JSON.stringify(Object.keys(readSeedRegistry()).length));${t
       { cwd: REPO_ROOT, hangTimeoutMs },
     );
 
-  test("Node runners import and read the default seed registry", () => {
-    const outcome = readRegistryWithNode("./test/seed-registry.ts");
-    expect(outcome).toMatchObject({ kind: "exited", exitCode: 0 });
-    expect(Number(outcome.stdout)).toBeGreaterThan(0);
-  });
+  test(
+    "Node runners import and read the default seed registry",
+    () => {
+      const outcome = readRegistryWithNode("./test/seed-registry.ts");
+      expect(outcome).toMatchObject({ kind: "exited", exitCode: 0 });
+      expect(Number(outcome.stdout)).toBeGreaterThan(0);
+    },
+    subprocessTestTimeout(),
+  );
 
   test(
     "the Node registry check reports a missing module and a reader that never exits",
@@ -262,62 +266,70 @@ process.stdout.write(JSON.stringify(Object.keys(readSeedRegistry()).length));${t
     subprocessTestTimeout(2),
   );
 
-  test("explicit nightly fuzz files execute and report their own replay source", () => {
-    const directory = mkdtempSync(
-      path.join(REPO_ROOT, "test/.property-replay-"),
-    );
-    const fixture = path.join(directory, "fixture.fuzz.ts");
-    writeFileSync(
-      fixture,
-      `import { test } from "bun:test";
+  test(
+    "explicit nightly fuzz files execute and report their own replay source",
+    () => {
+      const directory = mkdtempSync(
+        path.join(REPO_ROOT, "test/.property-replay-"),
+      );
+      const fixture = path.join(directory, "fixture.fuzz.ts");
+      writeFileSync(
+        fixture,
+        `import { test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty } from "../property-testing";
 test("nightly replay fixture", () => {
   assertProperty(fc.property(fc.constant(false), (value) => value), { seed: 33, numRuns: 1, id: "nightly replay fixture" });
 });
 `,
-    );
-    try {
-      const result = runChild([process.execPath, "test", fixture], {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          CI: "true",
-          PROPERTY_TEST_SEED: "33",
-          PROPERTY_TEST_NUM_RUNS_FACTOR: "1",
-          PROPERTY_TEST_PATH: "",
-          FOLIO_PROPERTY_FAILURES_DIR: path.join(directory, "records"),
-        },
-      });
-      expect(result).toMatchObject({ kind: "exited", exitCode: 1 });
-      const output = result.stderr + result.stdout;
-      const relative = path.relative(REPO_ROOT, fixture);
-      expect(output).toContain(`bun test ./${relative}`);
-      expect(output).toContain(`"file":"${relative}"`);
-      expect(output).toContain(`${relative}::nightly replay fixture`);
-      expect(output).not.toContain("did not match any test files");
-      const files = readdirSync(path.join(directory, "records"));
-      const recordFiles = files.filter((file) => !file.endsWith(".flow.json"));
-      expect(recordFiles).toHaveLength(1);
-      expect(files.filter((file) => file.endsWith(".flow.json"))).toHaveLength(
-        1,
       );
-      const file = recordFiles.at(0);
-      if (!file) throw new Error("Missing failure record");
-      const persisted = parseFailureRecord(
-        JSON.parse(readFileSync(path.join(directory, "records", file), "utf8")),
-      );
-      expect(persisted?.marker.seed).toBe(33);
-      expect(persisted?.marker.test).toBe(
-        `${relative}::nightly replay fixture`,
-      );
-      expect(persisted?.flow).toEqual([false]);
-      expect(persisted?.replays.at(0)).toContain(`bun test ./${relative}`);
-      expect(persisted?.error).not.toBe("undefined");
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
+      try {
+        const result = runChild([process.execPath, "test", fixture], {
+          cwd: REPO_ROOT,
+          env: {
+            ...process.env,
+            CI: "true",
+            PROPERTY_TEST_SEED: "33",
+            PROPERTY_TEST_NUM_RUNS_FACTOR: "1",
+            PROPERTY_TEST_PATH: "",
+            FOLIO_PROPERTY_FAILURES_DIR: path.join(directory, "records"),
+          },
+        });
+        expect(result).toMatchObject({ kind: "exited", exitCode: 1 });
+        const output = result.stderr + result.stdout;
+        const relative = path.relative(REPO_ROOT, fixture);
+        expect(output).toContain(`bun test ./${relative}`);
+        expect(output).toContain(`"file":"${relative}"`);
+        expect(output).toContain(`${relative}::nightly replay fixture`);
+        expect(output).not.toContain("did not match any test files");
+        const files = readdirSync(path.join(directory, "records"));
+        const recordFiles = files.filter(
+          (file) => !file.endsWith(".flow.json"),
+        );
+        expect(recordFiles).toHaveLength(1);
+        expect(
+          files.filter((file) => file.endsWith(".flow.json")),
+        ).toHaveLength(1);
+        const file = recordFiles.at(0);
+        if (!file) throw new Error("Missing failure record");
+        const persisted = parseFailureRecord(
+          JSON.parse(
+            readFileSync(path.join(directory, "records", file), "utf8"),
+          ),
+        );
+        expect(persisted?.marker.seed).toBe(33);
+        expect(persisted?.marker.test).toBe(
+          `${relative}::nightly replay fixture`,
+        );
+        expect(persisted?.flow).toEqual([false]);
+        expect(persisted?.replays.at(0)).toContain(`bun test ./${relative}`);
+        expect(persisted?.error).not.toBe("undefined");
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+    subprocessTestTimeout(),
+  );
 
   test("a failure names the seed, the path and a replay line for this test", () => {
     withEnv({});
