@@ -15,6 +15,7 @@ import {
   aggregateTestTimings,
   createGraphqlRequest,
   selectTimingArtifacts,
+  TIMING_SOURCES,
 } from "./aggregate-ci-test-timings";
 import {
   assignTestShards,
@@ -706,6 +707,55 @@ describe("measured test shard balancing", () => {
     expect(first).not.toContain("vanished");
   });
 
+  test("property aggregation leaves unmeasured files to their stated budgets", () => {
+    const artifacts = [
+      { runId: "one", timings: { kept: 10 } },
+      { runId: "two", timings: { kept: 30, other: 4 } },
+    ];
+    expect(
+      JSON.parse(
+        aggregateTestTimings(artifacts, ["kept", "new", "other"], {
+          fillUnmeasured: false,
+        }),
+      ),
+    ).toEqual({ kept: 20, other: 4 });
+  });
+
+  test("property timing discovery takes partial sets from completed extended runs on main", async () => {
+    const urls: string[] = [];
+    const fetchJson = async (url: string) => {
+      urls.push(url);
+      if (url.includes("/workflows/")) {
+        return {
+          workflow_runs: [
+            { event: "push", id: 6 },
+            { event: "workflow_dispatch", id: 7 },
+          ],
+        };
+      }
+      return {
+        artifacts: [
+          { id: 71, name: "property-timings-7-1" },
+          { id: 73, name: "property-timings-7-3" },
+          { id: 79, name: "property-test-log-2" },
+        ],
+      };
+    };
+    expect(
+      await selectTimingArtifacts(
+        "stella/folio",
+        fetchJson,
+        TIMING_SOURCES.properties,
+      ),
+    ).toEqual([
+      { artifactId: 71, runId: 7 },
+      { artifactId: 73, runId: 7 },
+    ]);
+    expect(urls.at(0)).toContain(
+      "/workflows/property-proofs.yml/runs?status=completed&branch=main&",
+    );
+  });
+
   test("timing artifact discovery distinguishes a failed listing from no data", async () => {
     const failure = new Error("run listing failed");
     expect(
@@ -838,7 +888,7 @@ describe("measured test shard balancing", () => {
         base: "0123456789abcdef0123456789abcdef01234567",
         branch: "ci/test-timings",
         repository: "stella/folio",
-        timingFile,
+        timingFiles: { "scripts/ci-test-timings.json": timingFile },
       }),
     );
     expect(
@@ -847,6 +897,9 @@ describe("measured test shard balancing", () => {
         "base64",
       ),
     ).toEqual(timingBytes);
+    expect(request.variables.input.fileChanges.additions[0].path).toBe(
+      "scripts/ci-test-timings.json",
+    );
 
     const workflow = readFileSync(
       path.resolve(

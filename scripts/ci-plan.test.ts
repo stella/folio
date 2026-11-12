@@ -886,6 +886,7 @@ describe("CI plan", () => {
         fuzz: ["consumer-fuzz", "report-consumer-fuzz"],
         manual: "property-proofs.yml",
         proofs: [
+          "property-plan",
           "property-test",
           "docx-kernel-property",
           "conformance-full",
