@@ -59,6 +59,11 @@ const baseParagraph = (peer: number): Paragraph => ({
 
 const baseDocument = (peers: number): Document => ({
   package: {
+    // Fixed dates: a save stamps the current time on a package without them.
+    properties: {
+      created: new Date(Date.UTC(2026, 0, 1)),
+      modified: new Date(Date.UTC(2026, 0, 1)),
+    },
     document: {
       content: Array.from({ length: peers }, (_, peer) => baseParagraph(peer)),
     },
@@ -414,6 +419,10 @@ describe("id leases", () => {
         propertyConfig({ numRuns: NUM_RUNS, reporter: () => undefined }),
       );
       expect(result.failed).toBe(true);
+      // Caught for the id refusals, not for anything else.
+      expect(String(result.errorInstance)).toMatch(
+        /outsideIdLease|invalidOperation/u,
+      );
     },
     propertyTestTimeout(60_000),
   );

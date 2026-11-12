@@ -141,25 +141,8 @@ describe("sequencer id leases", () => {
       ).type,
     ).toBe("ack");
     expect(
-      sequencer.submit(
-        batch("second", "restore", 1, [
-          {
-            type: "insertBlocks",
-            story: OP_STORIES.MAIN,
-            at: { type: "after", blockId: FIRST },
-            blocks: [
-              {
-                type: "paragraph",
-                paraId: SECOND,
-                content: [
-                  { type: "run", content: [{ type: "text", text: "back" }] },
-                ],
-              },
-            ],
-          },
-        ]),
-      ).type,
-    ).toBe("ack");
+      sequencer.submit(batch("second", "restore", 1, [split(SECOND)])),
+    ).toMatchObject({ type: "ack" });
   });
 
   test("renews only an actor running low, and refuses rather than wraps when the space is spent", () => {
