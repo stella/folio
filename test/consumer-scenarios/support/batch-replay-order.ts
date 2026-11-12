@@ -2,6 +2,9 @@ import {
   type BatchOrderAddress,
   contentRank,
   deletionRemovesBlock,
+  type FinalBreakCandidate,
+  type FinalBreakCarrier,
+  finalBreakCarrier,
   groupInsertionRuns,
   orderAddressingBeforeRemoval,
   orderBatchOperations,
@@ -110,20 +113,19 @@ export const sequentialGroups = ({
     containers.set(key, rows);
   }
   /**
-   * The paragraph whose break a deleted container-final paragraph retires:
-   * the nearest earlier one of its container the batch keeps, with only
-   * paragraphs the batch deletes between them. A table between them (rows of
-   * another container, `preRows` being in document order) leaves none, and
-   * the final paragraph stays emptied, as the engine's
-   * `finalParagraphPredecessor` has it.
+   * The paragraph that settles a deleted container-final paragraph, as the
+   * engine reads it (`finalBreakCarrier`): the paragraphs before it in its
+   * container, up to a table (rows of another container, `preRows` being in
+   * document order) or the container's start.
    */
-  const breakCarrierOf = (last: Row): Row | undefined => {
+  const breakCarrierOf = (last: Row): FinalBreakCarrier<Row> => {
+    const before: FinalBreakCandidate<Row>[] = [];
     for (let at = preRows.indexOf(last) - 1; at >= 0; at -= 1) {
       const row = preRows.at(at);
-      if (!sameContainerRows(last, row)) return undefined;
-      if (!deleted.has(row.id)) return row;
+      if (!sameContainerRows(last, row)) break;
+      before.push({ paragraph: row, deleted: deleted.has(row.id) });
     }
-    return undefined;
+    return finalBreakCarrier(before);
   };
   /**
    * Whether the batch places a block in the gap before a deleted final
@@ -156,6 +158,8 @@ export const sequentialGroups = ({
   const retiringFinals = new Set<string>();
   const finalBlocks = new Set<string>();
   const uncarriedFinals = new Set<string>();
+  /** A late final deletion's block, mapped to its run's first paragraph, deleted after it. */
+  const runStartAfter = new Map<string, string>();
   // A suggestion reads the live rows, where a paragraph pending deletion is a
   // blank block: the block before such blocks ends its container as the batch
   // sees it.
@@ -175,7 +179,7 @@ export const sequentialGroups = ({
     );
     if (appended || !deleted.has(last.id)) continue;
     const carrier = breakCarrierOf(last);
-    if (!carrier) uncarriedFinals.add(last.id);
+    if (carrier.type !== "kept") uncarriedFinals.add(last.id);
     // A sole paragraph with one inserted before it is deleted first, and the
     // insertion takes its place. A paragraph that ends a deleted run stays until
     // the run is gone. Applied directly only such a replacement waits, since
@@ -191,8 +195,18 @@ export const sequentialGroups = ({
     const runsLate =
       mode === "tracked-changes"
         ? !replaced || endsARun
-        : mode === "direct" && carrier === undefined && replaced && endsARun;
-    if (runsLate || placesBeforeRun(last)) retiringFinals.add(last.id);
+        : mode === "direct" && carrier.type !== "kept" && replaced && endsARun;
+    const placesInRun = placesBeforeRun(last);
+    if (!runsLate && !placesInRun) continue;
+    retiringFinals.add(last.id);
+    // A run the batch deletes back to its container's start or a table
+    // collapses into its first paragraph. Run late, the final paragraph's
+    // deletion has to find that paragraph still standing to take its
+    // properties, so the first paragraph's own deletion follows it. A block
+    // the batch places in the run's gap takes the break instead.
+    if (carrier.type === "runStart" && !placesInRun) {
+      runStartAfter.set(last.id, carrier.paragraph.id);
+    }
   }
   const isColumnEdit = (operation: AnyOperation): boolean =>
     operation.type === "insertTableColumn" ||
@@ -334,7 +348,7 @@ export const sequentialGroups = ({
       return row === undefined ||
         deletionRemovesBlock({
           endsContainer: finalBlocks.has(id) && !appendedAfter(id),
-          hasKeptParagraphBefore: breakCarrierOf(row) !== undefined,
+          carrier: breakCarrierOf(row).type,
         })
         ? [id]
         : [];
@@ -375,7 +389,22 @@ export const sequentialGroups = ({
         operation.type === "deleteBlock" &&
         retiringFinals.has(blockIdOf(operation)),
     );
-  const others = reordered.filter((group) => !retiresBreak(group));
+  // A run's first paragraph is deleted right after the final paragraph's
+  // retirement that collapses the run into it.
+  const retirements = reordered.filter(retiresBreak).flatMap((group) => {
+    const head = group[0];
+    const runStart =
+      head === undefined ? undefined : runStartAfter.get(blockIdOf(head));
+    const follower = reordered.find(
+      (candidate) =>
+        runStart !== undefined &&
+        candidate.length === 1 &&
+        candidate[0]?.type === "deleteBlock" &&
+        blockIdOf(candidate[0]) === runStart,
+    );
+    return follower === undefined ? [group] : [group, follower];
+  });
+  const others = reordered.filter((group) => !retirements.includes(group));
   const firstMerge = others.findIndex((group) =>
     group.some(({ type }) => type === "mergeBlockWithNext"),
   );
@@ -383,7 +412,7 @@ export const sequentialGroups = ({
   return [
     ...annotations.map(({ operation }) => [operation]),
     ...others.slice(0, retirementsAt),
-    ...reordered.filter(retiresBreak),
+    ...retirements,
     ...others.slice(retirementsAt),
     ...columns.map(({ operation }) => [operation]),
   ];

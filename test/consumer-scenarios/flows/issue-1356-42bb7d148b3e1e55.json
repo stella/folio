@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "title": "PINNED #1356, reported seed 2115896471: step 2: [batchSequential] the batch (tracked-changes: deleteBlock, deleteBlock) deletes the paragraphs after a table, which collapse into the run's first one",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "tracked-changes",
+  "seed": 322055967,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2657575056,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "3CEFFC83",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2969704741,
+      "atomic": true,
+      "operations": [{ "type": "deleteBlock", "blockId": "3CEFFC83" }]
+    },
+    {
+      "action": "core batch",
+      "seed": 2771021572,
+      "atomic": true,
+      "operations": [
+        { "type": "deleteBlock", "blockId": "5E88C024" },
+        { "type": "deleteBlock", "blockId": "31617F9A" }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "formatRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from splice of 3b65221b5d7340b0"
+}
