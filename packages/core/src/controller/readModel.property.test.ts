@@ -16,6 +16,7 @@ import {
 } from "../../../../test/property-testing";
 import { deepFreeze } from "../__tests__/deepFreeze";
 import { DOCUMENT_SHAPES } from "../__tests__/documentShapes";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { getCachedNumberingMap } from "../docx/numberingParser";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
@@ -39,7 +40,6 @@ import {
   createFreshRenderRig,
   LOAD_LAYOUT,
 } from "./__tests__/freshRenderHarness";
-import { createCanonicalSession } from "./canonicalSession";
 import { type LayoutFontSet, waitForInitialLayoutFonts } from "./fontReadiness";
 import { createHiddenEditorState } from "./hiddenEditorManager";
 

@@ -14,12 +14,12 @@ import {
 import type { EditorView } from "prosemirror-view";
 
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
+import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
   CANONICAL_COMPOSITION_FLUSH_DELAY_MS,
   setCanonicalInputTimer,
 } from "./canonicalInputTimer";
-import { CanonicalSessionError } from "./canonicalSession";
 
 type CompositionOptions = {
   begin: () => boolean;

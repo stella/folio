@@ -13,12 +13,12 @@ import {
   CANONICAL_PARAGRAPH_SHAPE_FACTORIES,
   canonicalInlineShapeDocument,
 } from "../../typecheck/canonical-inline-shapes.typecheck";
-import type { Document, Paragraph, Run } from "../types/document";
 import {
   createCanonicalSession,
   deletionRange,
   publishCanonicalProjection,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import type { Document, Paragraph, Run } from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(60000));
 

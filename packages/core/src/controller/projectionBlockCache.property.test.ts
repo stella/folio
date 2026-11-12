@@ -19,6 +19,16 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  InlineProjectionCache,
+  projectCanonicalInline,
+} from "../canonical/canonicalInlineProjection";
+import {
+  type CanonicalProjection,
+  createCanonicalSession,
+  newStoryProjectionCaches,
+  projectCanonicalStory,
+} from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import {
   CommentMarkerCache,
@@ -41,16 +51,6 @@ import {
   parsedSources,
   SOURCES,
 } from "./__tests__/canonicalEditRuns";
-import {
-  InlineProjectionCache,
-  projectCanonicalInline,
-} from "./canonicalInlineProjection";
-import {
-  type CanonicalProjection,
-  createCanonicalSession,
-  newStoryProjectionCaches,
-  projectCanonicalStory,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(300_000));
 

@@ -5,7 +5,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
-} from "../packages/core/src/controller/canonicalOperations";
+} from "../packages/core/src/canonical/canonicalOperations";
 import { extractParagraphXml } from "../packages/core/src/docx/selectiveXmlPatch";
 /** Generated adapter save histories share operations, not a PM-derived expected model. */
 import { createEmptyDocument } from "../packages/core/src/utils/createDocument";

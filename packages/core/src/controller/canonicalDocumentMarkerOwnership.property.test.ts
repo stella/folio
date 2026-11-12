@@ -7,12 +7,12 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, Paragraph } from "../types/document";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document, Paragraph } from "../types/document";
 import { prepareCanonicalAutoformat } from "./canonicalStructure";
 
 // Marker fixtures started in one paragraph and never retired the addressed mark.

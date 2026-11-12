@@ -28,7 +28,7 @@ import type { EditorView } from "prosemirror-view";
 import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
-import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
+import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {

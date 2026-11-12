@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { parseDocx } from "../docx/parser";
 import { createEmptyDocx } from "../docx/rezip";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
@@ -10,7 +11,6 @@ import type { ParagraphBlock } from "../layout-engine/types";
 import { paragraphHasTrackedChanges } from "../layout-painter/renderParagraph";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
-import { createCanonicalSession } from "./canonicalSession";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";

@@ -6,6 +6,7 @@ import { type DirectEditorProps, EditorView } from "prosemirror-view";
 
 import { OP_STORIES } from "@stll/docx-core/ops";
 
+import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import {
   isSeparatorEndnote,
@@ -55,7 +56,6 @@ import {
   type ReadonlyDocument,
 } from "../types/documentModel";
 import type { NoteStoryKey } from "../types/editor-story";
-import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 

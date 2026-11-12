@@ -27,6 +27,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import {
   computeListMarker,
@@ -57,7 +58,6 @@ import {
   modelEditArbitrary,
   parsedSources,
 } from "./__tests__/canonicalEditRuns";
-import { createCanonicalSession } from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 

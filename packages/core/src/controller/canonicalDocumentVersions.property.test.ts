@@ -20,13 +20,13 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { deepFreeze } from "../__tests__/deepFreeze";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { schema } from "../prosemirror/schema";
 import {
   applyEdit,
   editArbitrary,
   parsedSources,
 } from "./__tests__/canonicalEditRuns";
-import { createCanonicalSession } from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(320_000));
 

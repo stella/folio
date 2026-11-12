@@ -9,7 +9,7 @@ import { panic, Result } from "better-result";
 import { afterAll, expect, spyOn, test } from "bun:test";
 import { IntlProvider } from "use-intl";
 
-import * as canonicalSessions from "@stll/folio-core/controller/canonicalSession";
+import * as canonicalSessions from "@stll/folio-core/canonical/canonicalSession";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { resetCanvasContext } from "@stll/folio-core/layout-engine/measure/measureContainer";

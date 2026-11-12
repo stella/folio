@@ -101,6 +101,30 @@ describe("controller and engine boundary lint", () => {
     ).toBe(1);
   });
 
+  test("rejects the canonical session imported outside the controller and the headless reviewer", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/core/src/compare/canonical-import.invalid.ts",
+        CONTROLLER_RULE_MARKER,
+      ),
+    ).toBe(1);
+  });
+
+  test("accepts the canonical session in the controller and the headless reviewer", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/core/src/controller/canonical-import.valid.ts",
+        CONTROLLER_RULE_MARKER,
+      ),
+    ).toBe(0);
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/core/src/ai-edits/headless.ts",
+        CONTROLLER_RULE_MARKER,
+      ),
+    ).toBe(0);
+  });
+
   test("accepts a pure model dependency from the layout engine", () => {
     expect(
       lintPath(

@@ -146,6 +146,7 @@ type RuleContext = {
       | "reactInCore"
       | "modelImpureData"
       | "controllerImportedUpstream"
+      | "canonicalImportedUpstream"
       | "engineImportsRuntime"
       | "projectionBoundaryImport"
       | "generatedKernelImport"
@@ -400,6 +401,14 @@ const checkModelPurity = (context: RuleContext, importNode: AstNode): void => {
 // ---------------------------------------------------------------------------
 
 const CONTROLLER_SEGMENT = "/packages/core/src/controller/";
+const CANONICAL_SEGMENT = "/packages/core/src/canonical/";
+/**
+ * The one module outside the controller that holds a canonical session, the
+ * headless reviewer, with its own tests. Compare, redline, version comparison
+ * and bilingual export reach the session only through the reviewer.
+ */
+const HEADLESS_REVIEWER =
+  /\/packages\/core\/src\/ai-edits\/headless(?:\.ts|[\w.]*\.test\.ts)$/;
 const ENGINE_SEGMENT = "/packages/core/src/layout-engine/";
 const FORBIDDEN_ENGINE_DIRS = [
   "controller",
@@ -470,6 +479,18 @@ const checkControllerAndEngineSeams = (
     context.report({
       node: importNode,
       messageId: "controllerImportedUpstream",
+    });
+    return;
+  }
+  if (
+    targetDirectory === "canonical" &&
+    !importerInController &&
+    !isInsideSegment(importerPath, CANONICAL_SEGMENT) &&
+    !HEADLESS_REVIEWER.test(normalizedWithLeadingSlash(importerPath))
+  ) {
+    context.report({
+      node: importNode,
+      messageId: "canonicalImportedUpstream",
     });
     return;
   }
@@ -832,6 +853,8 @@ export default {
         messages: {
           controllerImportedUpstream:
             "The controller is Folio's composition root. Move shared data to packages/core/src/types instead of importing a controller implementation upstream.",
+          canonicalImportedUpstream:
+            "The canonical session is held by the controller and the headless reviewer only. Reach it through the reviewer, or move shared data to packages/core/src/types.",
           engineImportsRuntime:
             "The layout engine must depend on pure model and measurement seams, not DOCX, ProseMirror, controller, render, or paged-layout runtime modules.",
         },

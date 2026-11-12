@@ -14,7 +14,7 @@ import { getTrackedChangesFromDoc } from "../packages/core/src/ai-edits/read";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-} from "../packages/core/src/controller/canonicalSession";
+} from "../packages/core/src/canonical/canonicalSession";
 import {
   CanonicalSessionRefusalError,
   createHiddenEditorManager,

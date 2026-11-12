@@ -15,6 +15,10 @@ import {
   parseShapeDocument,
   saveHarnessState,
 } from "../__tests__/editorHarness";
+import {
+  type CanonicalSession,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
@@ -22,10 +26,6 @@ import { createDocx } from "../docx/rezip";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { schema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
-import {
-  type CanonicalSession,
-  createCanonicalSession,
-} from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 
 const NS =

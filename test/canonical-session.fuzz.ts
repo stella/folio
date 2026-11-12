@@ -5,7 +5,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-} from "../packages/core/src/controller/canonicalSession";
+} from "../packages/core/src/canonical/canonicalSession";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
