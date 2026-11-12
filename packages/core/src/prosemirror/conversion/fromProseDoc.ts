@@ -165,7 +165,7 @@ import {
   normalizeShapeTextAnchor,
   presetDashForOutlineAttr,
 } from "../../types/documentEnumValues";
-import { type DeepReadonly, shareWithModel } from "../../types/documentModel";
+import { type DeepReadonly, writableCopy } from "../../types/documentModel";
 import { presetDashForCssBorderStyle } from "../../utils/borderCss";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
@@ -2954,18 +2954,18 @@ function paragraphAttrsToFormatting(
   if (attrs.styleId) {
     f.styleId = attrs.styleId;
   }
-  // These come from the paragraph's attrs, which the editor state and the
-  // style cascade share; the saved document is the host's read-only model.
+  // The saved document owns its formatting: these come from the paragraph's
+  // attrs, which the editor state and the style cascade share.
   if (borders) {
     f.borders =
-      shareWithModel<NonNullable<ParagraphFormatting["borders"]>>(borders);
+      writableCopy<NonNullable<ParagraphFormatting["borders"]>>(borders);
   }
   if (shading) {
     f.shading =
-      shareWithModel<NonNullable<ParagraphFormatting["shading"]>>(shading);
+      writableCopy<NonNullable<ParagraphFormatting["shading"]>>(shading);
   }
   if (tabs) {
-    f.tabs = shareWithModel<NonNullable<ParagraphFormatting["tabs"]>>(tabs);
+    f.tabs = writableCopy<NonNullable<ParagraphFormatting["tabs"]>>(tabs);
   }
   if (outlineLevel !== undefined) {
     f.outlineLevel = outlineLevel;
@@ -7079,9 +7079,9 @@ export function tableCellAttrsToFormatting(
       attrs.borders &&
       !sameResolvedValue(attrs.borders, attrs._resolvedBorders)
     ) {
-      // The attrs share the borders with the editor state and the table
-      // style; the saved document is the host's read-only model.
-      result.borders = shareWithModel<
+      // The saved cell owns its borders; the attrs share them with the
+      // editor state and the table style.
+      result.borders = writableCopy<
         NonNullable<TableCellFormatting["borders"]>
       >(attrs.borders);
     }
@@ -7151,7 +7151,7 @@ export function tableCellAttrsToFormatting(
     f.shading = cellShadingFromAttrs(attrs);
   }
   if (attrs.borders) {
-    f.borders = shareWithModel<NonNullable<TableCellFormatting["borders"]>>(
+    f.borders = writableCopy<NonNullable<TableCellFormatting["borders"]>>(
       attrs.borders,
     );
   }

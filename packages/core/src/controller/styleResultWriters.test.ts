@@ -3,11 +3,13 @@
  * paragraph's style-derived attributes takes its own copy first
  * (`writableCopy`). Each test here deep-freezes what a writer reads, runs the
  * writer, and checks that it neither throws on the frozen input nor returns an
- * object it shares with that input. The save, which builds the host's
- * read-only model, reads frozen attrs without writing them.
+ * object it shares with that input. The save copies only the values a node
+ * states itself, so its copies grow with the authored values, never with the
+ * document.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
 
 import { deepFreeze } from "../__tests__/deepFreeze";
 import { importReferencedStyleDefinitions } from "../compare/style-resources";
@@ -15,6 +17,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { buildRunFormattingOverrideAttrs } from "../prosemirror/extensions/marks/RunFormattingOverrideExtension";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph, StyleDefinitions } from "../types/document";
+import * as documentModel from "../types/documentModel";
 import { importClipboardStyles } from "./canonicalClipboardResources";
 
 /** Every object reachable from `value`. */
@@ -129,7 +132,7 @@ describe("style result writers copy first", () => {
     expect(sharedObjects(source, imported)).toEqual([]);
   });
 
-  test("the save reads frozen borders, shading and tabs into the model it builds", () => {
+  test("a saved paragraph and cell own the borders, shading and tabs of their attrs", () => {
     const paragraphAttrs = deepFreeze({
       borders: { top: { ...BORDER } },
       shading: { fill: { rgb: "ABCDEF" }, pattern: "clear" },
@@ -150,11 +153,56 @@ describe("style result writers copy first", () => {
     const [paragraph, table] = saved.package.document.content;
     if (paragraph?.type !== "paragraph" || table?.type !== "table")
       throw new Error("The saved body lost its blocks.");
-    // The saved document is the host's read-only model, so it shares the
-    // attrs' values (`shareWithModel`) instead of copying them per save.
     expect(paragraph.formatting).toMatchObject(paragraphAttrs);
+    expect(sharedObjects(paragraphAttrs, paragraph.formatting)).toEqual([]);
     const cellFormatting = table.rows[0]?.cells[0]?.formatting;
     expect(cellFormatting?.borders).toEqual(cellAttrs.borders);
+    expect(sharedObjects(cellAttrs, cellFormatting)).toEqual([]);
+  });
+
+  test("the save copies once per authored value, not per document node", () => {
+    const tableOf = (rows: number, bordered: (index: number) => boolean) =>
+      schema.node(
+        "table",
+        null,
+        Array.from({ length: rows }, (_, row) =>
+          schema.node(
+            "tableRow",
+            null,
+            Array.from({ length: 4 }, (_cell, column) =>
+              schema.node(
+                "tableCell",
+                bordered(row * 4 + column)
+                  ? { borders: { top: { ...BORDER } } }
+                  : null,
+                [schema.node("paragraph", null, [schema.text("cell")])],
+              ),
+            ),
+          ),
+        ),
+      );
+    const copiesFor = (doc: PMNode): number => {
+      const copies = spyOn(documentModel, "writableCopy");
+      try {
+        fromProseDoc(doc, undefined, { stylesheetSource: { type: "package" } });
+        return copies.mock.calls.length;
+      } finally {
+        copies.mockRestore();
+      }
+    };
+    const plain = copiesFor(
+      schema.node("doc", null, [tableOf(50, () => false)]),
+    );
+    const someBordered = copiesFor(
+      schema.node("doc", null, [tableOf(50, (index) => index % 10 === 0)]),
+    );
+    const moreRows = copiesFor(
+      schema.node("doc", null, [tableOf(100, (index) => index < 20)]),
+    );
+    // A cell that states no borders costs no copy; one that does costs one.
+    expect(plain).toBe(0);
+    expect(someBordered).toBe(20);
+    expect(moreRows).toBe(20);
   });
 
   test("a cleared shading override owns its shading", () => {

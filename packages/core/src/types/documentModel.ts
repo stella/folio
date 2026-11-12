@@ -36,20 +36,6 @@ export const readModel = (model: ReadonlyDocument): Document =>
   model as Document;
 
 /**
- * A read-only value the save puts into the document it builds from the editor
- * state, as it is, without a copy. That document becomes the host's model,
- * which nobody writes (`ReadonlyDocument`): a writer copies the model first
- * (`cloneDocumentWithParagraphPropertySources`), so the value is never
- * written through the model either. The editor state's attributes are shared
- * the same way already, and a copy per saved border would make every save of
- * a bordered table pay for it. This is the only place a value is put into a
- * model with its `readonly` dropped.
- */
-export const shareWithModel = <Value>(value: DeepReadonly<Value>): Value =>
-  // SAFETY: the document this value joins is a read-only model (see above).
-  value as Value;
-
-/**
  * A writable copy of a read-only value: the one way a writer gets something it
  * may change out of a value a reader handed out, such as a style resolver's
  * results or the style-derived attributes of a paragraph. A structured clone

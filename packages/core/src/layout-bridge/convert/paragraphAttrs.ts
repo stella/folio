@@ -560,7 +560,7 @@ export function paragraphAttrsWithListMarker(
     attrs.defaultTabStopTwips = defaultTabStopTwips;
   }
   // Default font for empty paragraph measurement (from style's rPr / pPr/rPr)
-  const dtf = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
+  const dtf = pmAttrs.defaultTextFormatting;
   if (dtf) {
     if (dtf.fontSize !== undefined) {
       // fontSize in TextFormatting is in half-points, convert to points

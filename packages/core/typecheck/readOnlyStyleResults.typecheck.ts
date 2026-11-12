@@ -1,3 +1,6 @@
+import type { EditorState } from "prosemirror-state";
+
+import { getParagraphTabs } from "../src/prosemirror/extensions/core/ParagraphExtension";
 import type { SelectionSnapshot } from "../src/prosemirror/selectionState";
 import { createStyleResolver } from "../src/prosemirror/styles/styleResolver";
 import { createStyleEngine } from "../src/style-engine";
@@ -36,6 +39,13 @@ export const resolverResults = (styles: StyleDefinitions): void => {
   paragraph.paragraphFormatting = {};
   // @ts-expect-error resolved tab stops are the style's own
   paragraph.paragraphFormatting?.tabs?.push({ position: 0, alignment: "left" });
+  // The cascade of a style-less paragraph is the document defaults' own
+  // record, not a copy: a write to it would change the package.
+  const fromDefaults = resolver.resolveParagraphStyle(null).paragraphFormatting;
+  if (fromDefaults) {
+    // @ts-expect-error the defaults' paragraph properties are the package's own
+    fromDefaults.spaceAfter = 0;
+  }
   const defaults = resolver.getDocDefaults();
   if (defaults?.rPr) {
     // @ts-expect-error document defaults are the package's own
@@ -63,6 +73,11 @@ export const engineResults = (styles: StyleDefinitions): void => {
   const table = engine.getDefaultTableStyle();
   // @ts-expect-error a table style's conditional regions are the document's own
   table?.tblStylePr?.pop();
+};
+
+export const paragraphTabs = (state: EditorState): void => {
+  // @ts-expect-error the tab stops are the paragraph's attrs, shared with the cascade
+  getParagraphTabs(state)?.push({ position: 720, alignment: "left" });
 };
 
 export const selectionFormatting = (snapshot: SelectionSnapshot): void => {

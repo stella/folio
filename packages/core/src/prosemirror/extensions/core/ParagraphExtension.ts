@@ -1134,14 +1134,17 @@ export function getParagraphAlignment(
   return paragraph.attrs["alignment"] || null;
 }
 
-export function getParagraphTabs(state: EditorState): TabStop[] | null {
+/** The selected paragraph's tab stops: its attrs, which the cascade shares. */
+export function getParagraphTabs(
+  state: EditorState,
+): readonly DeepReadonly<TabStop>[] | null {
   const { $from } = state.selection;
   const paragraph = $from.parent;
 
   if (paragraph.type.name !== "paragraph") {
     return null;
   }
-  return paragraph.attrs["tabs"] || null;
+  return expectParagraphAttrs(paragraph).tabs ?? null;
 }
 
 export function getStyleId(state: EditorState): string | null {

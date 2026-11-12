@@ -27,7 +27,7 @@ const lintFixture = (fixture: string, marker = RULE_MARKER) => {
   return output.split(marker).length - 1;
 };
 
-const SHARE_MARKER = "folio-read-model(model-share-owner)";
+const ATTR_CAST_MARKER = "folio-read-model(no-read-only-attr-cast)";
 
 describe("model read owner", () => {
   test("rejects every cast of a model to the model Document", () => {
@@ -42,8 +42,12 @@ describe("model read owner", () => {
     expect(lintFixture("read-model-cast.valid.ts")).toBe(0);
   });
 
-  test("rejects sharing a read-only value into a model outside the save", () => {
-    expect(lintFixture("read-model-share.invalid.ts", SHARE_MARKER)).toBe(2);
-    expect(lintFixture("read-model-cast.valid.ts", SHARE_MARKER)).toBe(0);
+  test("rejects a cast of a style-filled attr to a writable type", () => {
+    expect(
+      lintFixture("read-model-attr-cast.invalid.ts", ATTR_CAST_MARKER),
+    ).toBe(4);
+    expect(lintFixture("read-model-attr-cast.valid.ts", ATTR_CAST_MARKER)).toBe(
+      0,
+    );
   });
 });

@@ -1033,12 +1033,7 @@ function getTableContext(state: EditorState): TableContextInfo {
     ) {
       cellBackgroundColor = attrs["backgroundColor"];
     }
-    const borders = attrs["borders"] as
-      | Record<
-          string,
-          { style?: BorderStyleValue; color?: ColorValue } | undefined
-        >
-      | undefined;
+    const { borders } = expectTableCellAttrs(cellNode);
     if (borders) {
       // Pick the first non-none border's color (prefer top → right → bottom → left)
       for (const side of ["top", "right", "bottom", "left"] as const) {

@@ -21,6 +21,7 @@ import type {
   ParagraphFormatting,
   TextFormatting,
 } from "../../../types/document";
+import type { DeepReadonly } from "../../../types/documentModel";
 import type { MergedParagraphFormatting } from "../../../utils/paragraphFormattingMerge";
 import { mergeTextFormatting } from "../../../utils/textFormattingMerge";
 import {
@@ -125,7 +126,7 @@ const directFormattingFromMarks = (
 };
 
 const marksForParagraphFormatting = (
-  formatting: TextFormatting,
+  formatting: DeepReadonly<TextFormatting>,
   directFormatting: TextFormatting,
   schema: Schema,
 ): Mark[] => {
@@ -267,9 +268,8 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
           directFormattingFromMarks(caretFormattingMarks);
         if (directFormatting && Object.keys(directFormatting).length > 0) {
           const nextParagraph = tr.selection.$from.parent;
-          const nextStyleFormatting = nextParagraph.attrs[
-            "defaultTextFormatting"
-          ] as TextFormatting | undefined;
+          const nextStyleFormatting =
+            expectParagraphAttrs(nextParagraph).defaultTextFormatting;
           const defaultTextFormatting =
             mergeTextFormatting(nextStyleFormatting, directFormatting) ??
             directFormatting;
@@ -348,8 +348,7 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
         let effectiveMarks: Mark[] = caretFormattingMarks;
 
         if (effectiveMarks.length === 0 && sourcePara) {
-          const dtf = sourcePara.attrs["defaultTextFormatting"] as
-            TextFormatting | undefined;
+          const dtf = expectParagraphAttrs(sourcePara).defaultTextFormatting;
           if (dtf) {
             const allMarks = textFormattingToMarks(dtf, state.schema);
             effectiveMarks = allMarks.filter((m) =>
@@ -363,8 +362,10 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
           // marks disappear when the selection moves, so font-only defaults
           // would lose direct bold, italic, color, and similar choices after
           // leaving and returning to this empty paragraph.
-          const previousFormatting = newAttrs["defaultTextFormatting"] as
-            TextFormatting | undefined;
+          // The paragraph's own default, or the one it inherited above: both
+          // are paragraph attrs, read-only.
+          const previousFormatting: DeepReadonly<TextFormatting> | undefined =
+            newAttrs["defaultTextFormatting"] ?? undefined;
           const markFormatting = marksToTextFormatting(effectiveMarks);
           const defaultTextFormatting =
             mergeTextFormatting(previousFormatting, markFormatting) ??

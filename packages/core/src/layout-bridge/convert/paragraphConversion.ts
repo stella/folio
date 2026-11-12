@@ -23,7 +23,6 @@ import { expectBookmarkBoundaryAttrs } from "../../prosemirror/bookmarkBoundaryA
 import { advanceVisibleListMarker } from "../../prosemirror/listMarker";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
-import type { TextFormatting } from "../../types/document";
 import { nextBlockId, twipsToPixels } from "./flowConversionShared";
 import type {
   CounterFreeFlowConversionOptions,
@@ -211,8 +210,7 @@ export function convertParagraphWithListMarker(
   if (options.automaticHyphenation) {
     attrs.automaticHyphenation = options.automaticHyphenation;
   }
-  const defaultTextFormatting = pmAttrs.defaultTextFormatting as
-    TextFormatting | undefined;
+  const defaultTextFormatting = pmAttrs.defaultTextFormatting;
   if (runs.length === 0 || hasOnlyVisuallyEmptyTextRuns(runs)) {
     const hasDirectParagraphFormatting =
       pmAttrs._originalFormatting &&
