@@ -1,7 +1,7 @@
 import { expect, type Page, test, type TestInfo } from "@playwright/test";
 import fc from "fast-check";
 import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { dirname } from "node:path";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
@@ -864,7 +864,7 @@ test.describe("pinned browser input", () => {
             title: testInfo.title,
             repeat: testInfo.repeatEachIndex,
           });
-          await mkdir(path.dirname(file), { recursive: true });
+          await mkdir(dirname(file), { recursive: true });
           await writeFile(
             file,
             JSON.stringify({
