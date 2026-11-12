@@ -14,24 +14,49 @@ import {
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
-type ReconstructRejectedRunFormattingMarksOptions = {
+type RejectedRunFormattingOptions = {
   node: PMNode;
   paragraphContext: ParagraphRunStyleContext;
   previousFormatting: RunPropertyChange["previousFormatting"];
   styleResolver?: RunStyleResolver | null;
 };
 
-/**
- * Rebuild the pre-change run marks against the paragraph's live style cascade.
- * Both granular editor commands and the headless linear rewriter use this
- * owner so their reject semantics cannot diverge at the bulk threshold.
- */
-export const reconstructRejectedRunFormattingMarks = ({
+/** The one owner of what a reject restores: marks and an atom's run formatting. */
+export const rejectedRunFormatting = ({
   node,
   paragraphContext,
   previousFormatting,
   styleResolver,
-}: ReconstructRejectedRunFormattingMarksOptions): readonly Mark[] => {
+}: RejectedRunFormattingOptions): {
+  marks: readonly Mark[] | null;
+  atomRunFormatting: TextFormatting | null;
+} => {
+  // A picture, a shape or a text box anchor keeps its run's formatting in
+  // its attrs; a picture or a shape carries no formatting marks besides.
+  // Null means nothing to restore: no marks to rebuild, or no record kept.
+  const keepsRunFormatting = Object.hasOwn(node.attrs, "_docxRunFormatting");
+  return {
+    marks:
+      !keepsRunFormatting ||
+      node.marks.some(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name))
+        ? rebuiltRunFormattingMarks(
+            node,
+            paragraphContext,
+            previousFormatting,
+            styleResolver,
+          )
+        : null,
+    atomRunFormatting: keepsRunFormatting ? { ...previousFormatting } : null,
+  };
+};
+
+/** The pre-change run marks, against the paragraph's live style cascade. */
+const rebuiltRunFormattingMarks = (
+  node: PMNode,
+  paragraphContext: ParagraphRunStyleContext,
+  previousFormatting: RunPropertyChange["previousFormatting"],
+  styleResolver: RunStyleResolver | null | undefined,
+): readonly Mark[] => {
   const marks = reconcileRunFormattingMarks({
     authoredFormatting: previousFormatting ?? {},
     context: paragraphContext,
@@ -61,54 +86,6 @@ export const reconstructRejectedRunFormattingMarks = ({
       }),
     ),
   ];
-};
-
-type RejectedRunFormattingOptions = {
-  node: PMNode;
-  /** Read only when the node carries formatting marks to rebuild. */
-  paragraphContext: () => ParagraphRunStyleContext;
-  previousFormatting: RunPropertyChange["previousFormatting"];
-  styleResolver?: RunStyleResolver | null;
-};
-
-type RejectedRunFormatting = {
-  /**
-   * The run formatting record a picture, a shape or a text box anchor keeps
-   * in its `_docxRunFormatting` attr, as it was before the change; null for a
-   * node that keeps none.
-   */
-  atomRunFormatting: TextFormatting | null;
-  /** The formatting marks to put back, or null when there are none to rebuild. */
-  marks: readonly Mark[] | null;
-};
-
-/**
- * What rejecting a tracked run formatting change restores on `node`: its
- * marks and, for a node that keeps its run's formatting in its attrs, that
- * record. The range commands and the whole-story resolver both read it, so
- * neither can restore one and leave the other changed.
- */
-export const rejectedRunFormatting = ({
-  node,
-  paragraphContext,
-  previousFormatting,
-  styleResolver,
-}: RejectedRunFormattingOptions): RejectedRunFormatting => {
-  const keepsRunFormatting = Object.hasOwn(node.attrs, "_docxRunFormatting");
-  const rebuildsMarks =
-    !keepsRunFormatting ||
-    node.marks.some(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name));
-  return {
-    atomRunFormatting: keepsRunFormatting ? { ...previousFormatting } : null,
-    marks: rebuildsMarks
-      ? reconstructRejectedRunFormattingMarks({
-          node,
-          paragraphContext: paragraphContext(),
-          previousFormatting,
-          ...(styleResolver !== undefined ? { styleResolver } : {}),
-        })
-      : null,
-  };
 };
 
 type RestoreHistoricalRunFormattingOptions = {

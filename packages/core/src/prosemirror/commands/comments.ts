@@ -99,7 +99,6 @@ import {
 } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import {
-  reconstructRejectedRunFormattingMarks,
   rejectedRunFormatting,
   restoreHistoricalRunFormatting,
 } from "../runPropertyChangeResolution";
@@ -1248,12 +1247,13 @@ const resolveRunPropertyChange = ({
           tr.removeMark(from, to, currentMark.type);
         }
       }
-      for (const nextMark of reconstructRejectedRunFormattingMarks({
+      // A field keeps no run formatting record: only its marks rebuild.
+      for (const nextMark of rejectedRunFormatting({
         node,
         paragraphContext: styleContext,
         previousFormatting: resolvedRuns.visibleFormatting,
         styleResolver,
-      })) {
+      }).marks ?? []) {
         tr.addMark(from, to, nextMark);
       }
     }
@@ -1265,8 +1265,11 @@ const resolveRunPropertyChange = ({
 
   const rejected = rejectedRunFormatting({
     node,
-    paragraphContext: () =>
-      paragraphRunStyleContextAt({ doc: tr.doc, pos: from, styleResolver }),
+    paragraphContext: paragraphRunStyleContextAt({
+      doc: tr.doc,
+      pos: from,
+      styleResolver,
+    }),
     previousFormatting: matches.at(0)?.previousFormatting,
     styleResolver,
   });

@@ -165,11 +165,10 @@ const resolveInlineNode = ({
       ) {
         const rejected = rejectedRunFormatting({
           node,
-          paragraphContext: () =>
-            resolveParagraphRunStyleScope(
-              paragraphScope,
-              context.styleResolver,
-            ),
+          paragraphContext: resolveParagraphRunStyleScope(
+            paragraphScope,
+            context.styleResolver,
+          ),
           previousFormatting: resolvedRuns
             ? resolvedRuns.visibleFormatting
             : changes.at(0)?.previousFormatting,
