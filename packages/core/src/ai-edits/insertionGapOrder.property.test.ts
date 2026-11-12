@@ -317,9 +317,12 @@ const caseArbitrary: fc.Arbitrary<Case> = fc
     ),
   )
   .chain(({ anchorIsLast, table, mode }) => {
+    // A suggestion is refused beside a block pending deletion.
+    const besideTable =
+      table === "kept" || (table === "removed" && mode !== "suggested");
     const sides: Side[] = [
       "afterAnchor",
-      ...(table === "none" ? [] : (["afterTable"] as const)),
+      ...(besideTable ? (["afterTable"] as const) : []),
       ...(anchorIsLast ? [] : (["beforeNext"] as const)),
     ];
     return fc
@@ -405,25 +408,6 @@ const examples: [Case][] = [
           insertions: [
             { kind: "paragraph", side: "afterTable" },
             { kind: "table", side: "afterAnchor" },
-          ],
-          deletesAnchor: false,
-        },
-      ],
-      between: ["nothing"],
-    },
-  ],
-  // Suggested paragraphs after a table pending deletion and after the
-  // paragraph before it.
-  [
-    {
-      anchorIsLast: false,
-      table: "removed",
-      mode: "suggested",
-      batches: [
-        {
-          insertions: [
-            { kind: "paragraph", side: "afterTable" },
-            { kind: "paragraph", side: "afterAnchor" },
           ],
           deletesAnchor: false,
         },
