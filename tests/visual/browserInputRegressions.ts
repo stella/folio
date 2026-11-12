@@ -1400,6 +1400,24 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97 = {
   },
 } satisfies CanonicalRegression;
 
+/** A default-editor finding of #2596 (mixed-lists), replayed in the canonical session. */
+export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
+  authority: "canonical",
+  seed: 1794465004,
+  path: "10",
+  fingerprint: "canonical-4cfd6dadc63eeb36",
+  trace: {
+    shape: "mixed-lists",
+    actions: [
+      { kind: "selectionDrag", target: "list" },
+      { kind: "pasteWordHtml", ...BROWSER_PASTE_PAYLOADS.pasteWordHtml },
+      { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+      { kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable },
+    ],
+  },
+} satisfies CanonicalRegression;
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
@@ -1464,4 +1482,5 @@ export const BROWSER_INPUT_REGRESSIONS = [
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_5736502082EB3A9B,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_B3A7D52FAF40115D,
   CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97,
+  CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36,
 ];
