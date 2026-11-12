@@ -109,7 +109,7 @@ import {
   type CanonicalRefusalGround,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
-import type { Document, StyleDefinitions } from "../types/document";
+import type { StyleDefinitions } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
@@ -374,7 +374,8 @@ const HIDDEN_EDITOR_ATTRIBUTES = {
  * Otherwise falls back to the default singleton schema with no extension plugins.
  */
 export type CreateHiddenEditorStateOptions = {
-  document: Document | null;
+  /** The model; the editor state is built from it through `readModel`. */
+  document: ReadonlyDocument | null;
   styles?: StyleDefinitions | null | undefined;
   manager?: ExtensionManager | undefined;
   externalPlugins?: Plugin[] | undefined;
@@ -387,7 +388,7 @@ export function createHiddenEditorState(
   options: CreateHiddenEditorStateOptions,
 ): EditorState {
   const {
-    document,
+    document: model,
     styles,
     manager,
     externalPlugins = [],
@@ -396,6 +397,7 @@ export function createHiddenEditorState(
     reason = "mount",
   } = options;
   recordHiddenEditorStateCreate(reason);
+  const document = model && readModel(model);
 
   const activeSchema = manager?.getSchema() ?? schema;
   let localDoc = createEmptyDoc();
