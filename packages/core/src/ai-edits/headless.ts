@@ -1715,7 +1715,7 @@ export class FolioDocxReviewer {
     // Read-only: every path that would change it refuses on this engine.
     const document = readModel(session.document);
     return new FolioDocxReviewer({
-      baseDocument: document,
+      baseDocument: parsed,
       originalBuffer: parsed.originalBuffer ?? buffer,
       // No paragraph id or bidi pass: the projection is what the editor shows.
       state: EditorState.create({
