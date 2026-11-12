@@ -1467,6 +1467,7 @@ const resolveList = (
     if (!isTrackedWrapper(node)) return 0;
     const joins = node.resolutionJoins;
     const depth = joins?.remove ?? 0;
+    if (depth === 0) return 0;
     // A change this resolution removes that holds no record either side
     // (its joins on keeping are 0) cut only the records beyond the changes
     // later edits put beside it; those go with this resolution too, so the
@@ -1489,8 +1490,7 @@ const resolveList = (
       afterIndex += 1;
     const before = beforeIndex >= 0 ? pending.at(beforeIndex) : undefined;
     const after = pending.at(afterIndex);
-    if (depth === 0 || before === undefined || after === undefined)
-      return depth;
+    if (before === undefined || after === undefined) return depth;
     return cutReach({
       before: edgeChain(before, "end"),
       after: edgeChain(after, "start"),
