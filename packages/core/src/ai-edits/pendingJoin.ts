@@ -8,6 +8,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { endOfParagraphWithItsTextBoxes } from "../prosemirror/anchoredTextBoxes";
+import { paragraphJoinAfter } from "../prosemirror/commands/paragraphBookmarkJoin";
+import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { paragraphLeftAfter } from "../prosemirror/paragraphPropertyCarry";
 import { buildCleanBlockText } from "./clean-text";
 import type { NoteReferenceLabels } from "./note-references";
@@ -105,6 +107,36 @@ export const joinsIn = (options: PendingJoinBoundsOptions): boolean =>
   keepsWords(options);
 
 /**
+ * The paragraph whose break, once gone, runs it into `position`, the start of
+ * a paragraph or a place between blocks: the paragraph before it, past the
+ * typed range boundaries between them, when its break is pending removal.
+ * Into a paragraph, the two must join as `paragraphJoinAfter` reads it, the
+ * rule `paragraphLeftAfter` follows forward, so a join reads the same in
+ * either direction. Null when nothing runs into `position`.
+ */
+const joinedFromBefore = (doc: PMNode, position: number): number | null => {
+  const $place = doc.resolve(position);
+  let end = position;
+  let index = $place.index() - 1;
+  while (index >= 0 && isBlockBoundaryNode($place.parent.child(index))) {
+    end -= $place.parent.child(index).nodeSize;
+    index -= 1;
+  }
+  const previous = index < 0 ? null : $place.parent.child(index);
+  if (
+    previous?.type.name !== "paragraph" ||
+    !isDeletedPPrMark(previous.attrs["pPrMark"])
+  )
+    return null;
+  if (
+    doc.nodeAt(position)?.type.name === "paragraph" &&
+    paragraphJoinAfter(doc, end)?.nextPosition !== position
+  )
+    return null;
+  return end - previous.nodeSize;
+};
+
+/**
  * Whether a pending join runs earlier words on to `paragraphPos`, the start of
  * a paragraph or a place between blocks: the paragraphs before it, back to one
  * that keeps words, all have their breaks pending removal.
@@ -114,21 +146,13 @@ export const joinRunsWordsInto = ({
   paragraphPos,
   noteReferences,
 }: PendingJoinBoundsOptions): boolean => {
-  const $place = doc.resolve(paragraphPos);
-  let position = paragraphPos;
-  for (let index = $place.index() - 1; index >= 0; index--) {
-    const previous = $place.parent.child(index);
-    position -= previous.nodeSize;
-    if (
-      previous.type.name !== "paragraph" ||
-      !isDeletedPPrMark(previous.attrs["pPrMark"])
-    ) {
-      return false;
-    }
-    if (keepsWords({ doc, paragraphPos: position, noteReferences })) {
+  for (
+    let previous = joinedFromBefore(doc, paragraphPos);
+    previous !== null;
+    previous = joinedFromBefore(doc, previous)
+  )
+    if (keepsWords({ doc, paragraphPos: previous, noteReferences }))
       return true;
-    }
-  }
   return false;
 };
 
@@ -138,17 +162,18 @@ export type PendingJoinParagraphs = { first: number; last: number };
 /**
  * The paragraphs a pending join makes one of with the paragraph at
  * `paragraphPos`, read as accepting every change leaves them: a block put
- * before it goes before `first`, and one put after it goes after `last`. A join runs the words
- * of each paragraph whose break is pending removal into the paragraph it
- * leaves, so a block put between them would take those words once accepted,
- * as the same edits applied directly never do. Where a paragraph runs into
- * one the join leaves that keeps words of its own, a block after any
- * paragraph of the join goes after the paragraph it leaves, and a block
- * before that one goes before the first paragraph the join takes in, empty
- * ones included. A join into a paragraph with no words left (an emptied
- * final carrier, or one going whole) runs nothing together, nor does a
- * paragraph going whole with no join running through it: blocks keep their
- * places.
+ * before it goes before `first`, and one put after it goes after `last`. A
+ * join runs the words of each paragraph whose break is pending removal into
+ * the paragraph it leaves, so a block put between them would take those
+ * words once accepted, as the same edits applied directly never do. Where a
+ * paragraph runs into one the join leaves that keeps words of its own, a
+ * block after any paragraph of the join goes after the paragraph it leaves,
+ * and a block before any of them goes before the first paragraph the join
+ * takes in, empty ones included. Both directions cross the typed range
+ * boundaries a join crosses (`joinedFromBefore`). A join into a paragraph
+ * with no words left (an emptied final carrier, or one going whole) runs
+ * nothing together, nor does a paragraph going whole with no join running
+ * through it: blocks keep their places.
  */
 export const pendingJoinParagraphs = (
   options: PendingJoinBoundsOptions,
@@ -169,22 +194,23 @@ export const pendingJoinParagraphs = (
       after = survivor;
     }
   }
+  // Back from the paragraph the join leaves, so every paragraph of the join
+  // reads the same first one, whichever of them the block is put beside.
   let before = paragraphPos;
-  if (paragraph?.type.name === "paragraph" && keepsWords(options)) {
-    let start = paragraphPos;
-    for (;;) {
-      const previous = doc.resolve(start).nodeBefore;
+  if (
+    paragraph?.type.name === "paragraph" &&
+    (after !== paragraphPos || keepsWords(options))
+  ) {
+    for (
+      let previous = joinedFromBefore(doc, after);
+      previous !== null;
+      previous = joinedFromBefore(doc, previous)
+    )
       if (
-        previous?.type !== paragraph.type ||
-        !isDeletedPPrMark(previous.attrs["pPrMark"])
-      ) {
-        break;
-      }
-      start -= previous.nodeSize;
-      if (joinsIn({ doc, paragraphPos: start, noteReferences })) {
-        before = start;
-      }
-    }
+        previous < before &&
+        joinsIn({ doc, paragraphPos: previous, noteReferences })
+      )
+        before = previous;
   }
   return { first: before, last: after };
 };
