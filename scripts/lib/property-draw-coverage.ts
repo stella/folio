@@ -46,8 +46,11 @@ const MUTATING_METHODS = new Set([
 
 const PROPERTY_BUILDERS = new Set(["property", "asyncProperty"]);
 const PROPERTY_RUNNERS = new Set(["assertProperty", "assertKnownProperty"]);
-/** Runs only the seeds test/property-seeds/ pins: the same cases everywhere. */
-const PINNED_RUNNER = "assertPinnedProperty";
+/**
+ * Runners that replay the same cases everywhere: only the seeds
+ * test/property-seeds/ pins, or a fixed sample (test/property-coverage.ts).
+ */
+const FIXED_RUNNERS = new Set(["assertPinnedProperty", "checkCoverageSample"]);
 const ITERATING_METHODS = new Set(["forEach", "map", "flatMap", "reduce"]);
 
 /** Matchers that only hold while nothing was reached: a truncated tally cannot fail them. */
@@ -325,6 +328,29 @@ export const drawCoverageAssertions = (
     return binding === undefined ? undefined : bindingKey(binding);
   };
 
+  const isConstDeclarator = (node: Node): boolean => {
+    const declaration = parentOf(node);
+    return (
+      declaration?.type === "VariableDeclaration" &&
+      declaration.kind === "const"
+    );
+  };
+  /** Parameters naming a seed, inline or through a `const` that holds them. */
+  const seeded = (params: Node | undefined): boolean => {
+    if (namesSeed(params)) return true;
+    const target = params === undefined ? undefined : unwrap(params);
+    if (target?.type !== "Identifier") return false;
+    const key = resolveKey(target);
+    return nodes.some(
+      (node) =>
+        node.type === "VariableDeclarator" &&
+        node.id.type === "Identifier" &&
+        isConstDeclarator(node) &&
+        resolveKey(node.id) === key &&
+        namesSeed(node.init ?? undefined),
+    );
+  };
+
   // Functions by the binding that names them.
   const functionOf = new Map<string, FunctionNode>();
   for (const node of nodes) {
@@ -521,11 +547,11 @@ export const drawCoverageAssertions = (
       if (runner?.type === "CallExpression" && runner.arguments[0] === node) {
         const callee = unwrap(runner.callee);
         const name = callee.type === "Identifier" ? callee.name : "";
-        if (name === PINNED_RUNNER) continue;
+        if (FIXED_RUNNERS.has(name)) continue;
         if (
           (isFastCheckCall(runner, new Set(["assert", "check"])) ||
             PROPERTY_RUNNERS.has(name)) &&
-          namesSeed(runner.arguments[1])
+          seeded(runner.arguments[1])
         )
           continue;
       }
@@ -573,24 +599,41 @@ export const drawCoverageAssertions = (
     }
     if (
       isFastCheckCall(node, new Set(["sample"])) &&
-      !namesSeed(node.arguments[1])
+      !seeded(node.arguments[1])
     ) {
+      // The sample itself, or the binding it is stored in: where it is
+      // iterated, each value is a draw.
       const parent = parentOf(node);
-      if (parent?.type === "ForOfStatement" && parent.right === node) {
-        drawSites.add(parent.body);
-        addTallies(parent.body);
+      const uses: Node[] = [node];
+      if (parent?.type === "VariableDeclarator" && parent.init === node) {
+        const key = resolveKey(parent.id);
+        for (const use of nodes)
+          if (
+            use.type === "Identifier" &&
+            use !== parent.id &&
+            key !== undefined &&
+            resolveKey(use) === key
+          )
+            uses.push(use);
       }
-      if (
-        parent?.type === "MemberExpression" &&
-        parent.object === node &&
-        ITERATING_METHODS.has(staticMemberName(parent) ?? "")
-      ) {
-        const call = parentOf(parent);
-        const callback =
-          call?.type === "CallExpression" ? call.arguments[0] : undefined;
-        if (callback !== undefined && isFunction(unwrap(callback))) {
-          drawSites.add(unwrap(callback));
-          addTallies(unwrap(callback));
+      for (const use of uses) {
+        const at = parentOf(use);
+        if (at?.type === "ForOfStatement" && at.right === use) {
+          drawSites.add(at.body);
+          addTallies(at.body);
+        }
+        if (
+          at?.type === "MemberExpression" &&
+          at.object === use &&
+          ITERATING_METHODS.has(staticMemberName(at) ?? "")
+        ) {
+          const call = parentOf(at);
+          const callback =
+            call?.type === "CallExpression" ? call.arguments[0] : undefined;
+          if (callback !== undefined && isFunction(unwrap(callback))) {
+            drawSites.add(unwrap(callback));
+            addTallies(unwrap(callback));
+          }
         }
       }
     }
@@ -622,7 +665,7 @@ export const drawCoverageAssertions = (
     if (node.type !== "CallExpression") continue;
     const name = runnerName(node);
     if (!(PROPERTY_RUNNERS.has(name) || name === "fc")) continue;
-    if (namesSeed(node.arguments[1])) continue;
+    if (seeded(node.arguments[1])) continue;
     const built = builtProperty(node.arguments[0]);
     const factory = built === undefined ? undefined : calledFunction(built);
     if (built === undefined || factory === undefined) continue;
@@ -632,6 +675,27 @@ export const drawCoverageAssertions = (
       if (param !== undefined && mapped !== undefined && tallies.has(param))
         tallies.set(mapped, tallies.get(param) ?? param);
     });
+  }
+  // A `const` naming a collection is that collection: writes through
+  // `const alias = seen` write `seen`.
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const node of nodes) {
+      if (
+        node.type !== "VariableDeclarator" ||
+        node.id.type !== "Identifier" ||
+        node.init?.type !== "Identifier" ||
+        !isConstDeclarator(node)
+      )
+        continue;
+      const alias = resolveKey(node.id);
+      const target = resolveKey(node.init);
+      const name = alias === undefined ? undefined : tallies.get(alias);
+      if (name === undefined || target === undefined || tallies.has(target))
+        continue;
+      tallies.set(target, name);
+      grew = true;
+    }
   }
   if (tallies.size === 0) return [];
 

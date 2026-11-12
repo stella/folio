@@ -135,3 +135,22 @@ test("the same, through a binding", () => {
   assertProperty(property, { id: "bound" });
   expect(seen.has("a")).toBe(true); // caught
 });
+
+test("a sample that names no seed, stored before it is read", () => {
+  const seen = new Set<number>();
+  const values = fc.sample(fc.nat(), 50);
+  for (const value of values) seen.add(value % 3);
+  expect(seen.size).toBe(3); // caught
+});
+
+test("a collection the predicate writes through another name", () => {
+  const seen = new Set<Kind>();
+  const alias = seen;
+  assertProperty(
+    fc.property(fc.constantFrom(...KINDS), (kind) => {
+      alias.add(kind);
+    }),
+    { id: "alias" },
+  );
+  expect(seen.size).toBeGreaterThan(0); // caught
+});

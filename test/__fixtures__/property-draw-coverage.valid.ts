@@ -100,3 +100,14 @@ test("the property searches; its own predicate reaches every kind on a fixed sam
   checkCoverageSample(lawOver(seen), 30);
   expect(seen.size).toBe(KINDS.length);
 });
+
+test("a property written inline in the fixed sample", () => {
+  let hits = 0;
+  checkCoverageSample(
+    fc.property(fc.nat(), () => {
+      hits += 1;
+    }),
+    30,
+  );
+  expect(hits).toBe(30);
+});

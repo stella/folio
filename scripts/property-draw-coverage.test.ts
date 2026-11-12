@@ -88,7 +88,7 @@ describe("assertions over a property's draw", () => {
   test("the deliberate break is caught at every assertion it marks", () => {
     const fixture = `${FIXTURES}property-draw-coverage.invalid.ts`;
     const marked = markedSites(fixture);
-    expect(marked.length).toBeGreaterThanOrEqual(11);
+    expect(marked.length).toBeGreaterThanOrEqual(13);
     expect(sitesIn(fixture)).toEqual(marked);
   });
 
