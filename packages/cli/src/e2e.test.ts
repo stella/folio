@@ -5,12 +5,16 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../test/subprocess";
 import {
   CONTRACT_PARAGRAPHS,
   makeTempDir,
@@ -35,18 +39,16 @@ const folio = (
   args: readonly string[],
   env: Record<string, string | undefined> = {},
 ) => {
-  const run = spawnSync(process.execPath, [BIN, ...args], {
-    cwd: dir,
-    env: { ...ISOLATED_GIT_ENV, FOLIO_AUTHOR: "E2E Reviewer", ...env },
-    encoding: "utf8",
-  });
-  return { exitCode: run.status, stdout: run.stdout, stderr: run.stderr };
+  const run = expectExited(
+    runChild([process.execPath, BIN, ...args], {
+      cwd: dir,
+      env: { ...ISOLATED_GIT_ENV, FOLIO_AUTHOR: "E2E Reviewer", ...env },
+    }),
+  );
+  return { exitCode: run.exitCode, stdout: run.stdout, stderr: run.stderr };
 };
 
 const resultOf = (data: Record<string, unknown>): unknown => data["result"];
-
-/** Each step starts a process; a loaded machine needs more than the default 5 s. */
-const PROCESS_TEST_TIMEOUT_MS = 120_000;
 
 describe("folio executable", () => {
   test(
@@ -152,7 +154,7 @@ describe("folio executable", () => {
       );
       expect(JSON.stringify(redlineChanges)).toContain("$500");
     },
-    PROCESS_TEST_TIMEOUT_MS,
+    subprocessTestTimeout(10),
   );
 
   test(
@@ -181,6 +183,6 @@ describe("folio executable", () => {
         "author_required",
       );
     },
-    PROCESS_TEST_TIMEOUT_MS,
+    subprocessTestTimeout(),
   );
 });
