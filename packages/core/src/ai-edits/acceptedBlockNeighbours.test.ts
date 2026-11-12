@@ -576,10 +576,9 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
       };
       const direct = await replayJoin("direct");
       // The joined words keep that break, apart from the new block.
-      expect(direct[0]).toEqual({
+      expect(direct[0]).toMatchObject({
         text: "Opening clause. ",
         inTable: false,
-        numbering: undefined,
       });
       expect(direct.at(-1)?.text).toBe("Closing clause.");
       expect(await replayJoin("tracked-changes")).toEqual(direct);

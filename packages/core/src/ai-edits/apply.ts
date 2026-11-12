@@ -3178,14 +3178,14 @@ const insertionAt = ({
   if (item.joinSide === undefined) return item.from;
   const position = sinceRead(tr, item).map(item.blockFrom, 1);
   if (tr.doc.nodeAt(position)?.type.name !== "paragraph") return item.from;
-  return insertionGapStart(
-    tr.doc,
-    pendingJoinBounds({
-      doc: tr.doc,
-      paragraphPos: position,
-      noteReferences,
-    })[item.joinSide],
-  );
+  const bounds = pendingJoinBounds({
+    doc: tr.doc,
+    paragraphPos: position,
+    noteReferences,
+  });
+  return item.joinSide === "after"
+    ? bounds.after
+    : insertionGapStart(tr.doc, bounds.before);
 };
 
 /**
@@ -10044,15 +10044,18 @@ const resolveOperationTarget = ({
     // they leave the join's end. A block before it orders by where it lands,
     // ahead of the paragraphs the join takes in: edits inside them run first
     // and keep the positions they were read at.
-    // Either side of a table accepting removes is one gap
-    // (`insertionGapStart`).
-    const plain = insertionGapStart(
-      doc,
+    // Either side of the blocks accepting removes whole is one gap, so a
+    // block before a paragraph lands before those right before it
+    // (`insertionGapStart`). A block after a paragraph lands right after
+    // it, even one accepting removes: the batch named that place.
+    const gap = (position: number): number =>
+      side === "after" ? position : insertionGapStart(doc, position);
+    const plain = gap(
       side === "after"
         ? endOfParagraphWithItsTextBoxes(doc, blockFrom)
         : blockFrom,
     );
-    const at = insertionGapStart(doc, joinBounds()[side]);
+    const at = gap(joinBounds()[side]);
     const from = side === "after" ? plain : at;
     return at === plain
       ? { from, at }

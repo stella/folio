@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 2580001,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2580002,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2580003,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "5E88C024",
+          "text": "Inserted before the payment clause."
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Inserted after the opening clause."
+        }
+      ]
+    }
+  ]
+}
