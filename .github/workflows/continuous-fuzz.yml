@@ -188,7 +188,7 @@ jobs:
       # logs its seed, replay line and fingerprint (test/property-testing.ts).
       - name: Property suite
         id: fuzz
-        timeout-minutes: 35
+        timeout-minutes: 41
         run: |
           set -o pipefail
           mkdir -p test-results

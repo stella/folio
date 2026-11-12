@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { plannedTestFiles, type TestTimings } from "./ci-test-shard-plan";
 import { propertyFiles } from "./property-areas";
+import { WORKFLOW_DURATIONS_FILE } from "./workflow-durations";
 
 type TimingArtifact = { runId: string; timings: TestTimings };
 
@@ -252,6 +253,9 @@ if (import.meta.main) {
       if (file !== undefined && isTimingSourceName(name))
         timingFiles[TIMING_SOURCES[name].output] = file;
     }
+    const durations = valueFor("--workflow-durations");
+    if (durations !== undefined)
+      timingFiles[WORKFLOW_DURATIONS_FILE] = durations;
     const repository = valueFor("--repository");
     const branch = valueFor("--branch");
     const base = valueFor("--base");
@@ -263,7 +267,7 @@ if (import.meta.main) {
       !base
     ) {
       panic(
-        "Usage: bun scripts/aggregate-ci-test-timings.ts --graphql-request <file> [--timings <file>] [--property-timings <file>] --repository <owner/name> --branch <branch> --base <oid>",
+        "Usage: bun scripts/aggregate-ci-test-timings.ts --graphql-request <file> [--timings <file>] [--property-timings <file>] [--workflow-durations <file>] --repository <owner/name> --branch <branch> --base <oid>",
       );
     }
     writeFileSync(

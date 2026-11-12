@@ -75,7 +75,7 @@ jobs:
       - name: Run nightly browser fuzzer
         if: always()
         id: fuzz
-        timeout-minutes: 35
+        timeout-minutes: 38
         continue-on-error: true
         run: |
           # A step killed by its timeout leaves its web server running.

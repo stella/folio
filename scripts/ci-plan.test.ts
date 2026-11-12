@@ -793,9 +793,12 @@ describe("CI plan", () => {
           typeof step["run"] === "string" &&
           step["run"].includes("playwright test"),
       );
-      expect(isRecord(replays) ? replays["timeout-minutes"] : undefined).toBe(
-        5,
-      );
+      // Its value follows the measured durations (scripts/workflow-timeouts.test.ts).
+      const replayMinutes = isRecord(replays)
+        ? replays["timeout-minutes"]
+        : undefined;
+      expect(typeof replayMinutes).toBe("number");
+      expect(Number(replayMinutes)).toBeLessThan(25);
 
       const listing = expectExited(
         runChild(

@@ -859,7 +859,7 @@ jobs:
         uses: ./.github/actions/playwright-deps
 
       - name: Run only standing browser input regressions
-        timeout-minutes: 5
+        timeout-minutes: 7
         run: bunx playwright test --project=browser-input-pinned --workers=1
 
       - name: Upload failed pinned replay artifacts
