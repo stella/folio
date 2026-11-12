@@ -17,6 +17,7 @@ import {
   type SequencedBatch,
   type SequencedOpEffect,
 } from "./envelope";
+import { transformByFootprint } from "./scope";
 
 type TransformOptions = { order?: "before" | "after" };
 
@@ -238,6 +239,8 @@ const transformRestoredOp = ({
   effect,
   order,
 }: PairOptions): Result<readonly DocumentOp[], BatchRejection> => {
+  const scoped = transformByFootprint({ op, over, effect });
+  if (scoped !== undefined) return scoped;
   const story = operationStory(op);
   const overStory = operationStory(over);
   if (story === undefined || overStory === undefined)
@@ -537,13 +540,28 @@ const transformRestoredOp = ({
     to
   )
     to = { ...to, offset: op.to.offset + over.text.length };
+  // Text inherited at a paragraph's start takes the run after it, which a
+  // range formatted from the start covers: the range keeps the text.
+  const inheritsFormattedStart =
+    over.type === DOCUMENT_OP_TYPES.INSERT_TEXT &&
+    op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS &&
+    over.runProps === INHERIT_RUN_PROPS &&
+    sameParagraph(op.from, over.at) &&
+    over.at.offset === 0 &&
+    op.from.offset === 0 &&
+    op.to.offset > 0;
   const adjustedFrom =
     over.type === DOCUMENT_OP_TYPES.INSERT_TEXT &&
     ((op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && !op.revision) ||
       op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) &&
     op.from.offset === over.at.offset &&
     from
-      ? { ...from, offset: op.from.offset + over.text.length }
+      ? {
+          ...from,
+          offset: inheritsFormattedStart
+            ? 0
+            : op.from.offset + over.text.length,
+        }
       : from;
   if (
     over.type === DOCUMENT_OP_TYPES.INSERT_TEXT &&
