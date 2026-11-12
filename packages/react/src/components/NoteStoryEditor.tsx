@@ -29,6 +29,7 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 
 import "prosemirror-view/style/prosemirror.css";
 
@@ -54,7 +55,8 @@ export type NoteStoryEditorProps = {
     error?: Error,
   ) => void;
   onActiveChange: (story: NoteStoryKey | null) => void;
-  onDocumentChange: (document: Document) => void;
+  /** The model a note edit left, as it is typed: read it, never write it. */
+  onDocumentChange: (model: ReadonlyDocument) => void;
   onStoryChange: (
     view: EditorView,
     docChanged: boolean,
@@ -165,18 +167,16 @@ const NoteStoryEditorComponent = forwardRef<
           refusalRef.current?.(reason, ground, error),
         onTransaction: ({ docChanged, selectionChanged, view }) => {
           if (docChanged) {
-            // The manager's snapshot is a document the host owns, so the
-            // session's own document is only read on the way there.
-            const manager = managerRef.current;
-            const current =
-              readCanonicalDocumentRef.current() ?? documentRef.current;
-            if (current)
-              onDocumentChangeRef.current(
-                manager
-                  ? manager.snapshotDocument(current)
-                  : (canonicalApiRef.current?.()?.getCanonicalDocument() ??
-                      current),
-              );
+            // The model as the edit left it, never a copy: the session's own
+            // document, or the note snapshot over the editor's document. The
+            // host's copy is made once the edit settles.
+            const current = documentRef.current;
+            const model =
+              readCanonicalDocumentRef.current() ??
+              (current && managerRef.current
+                ? managerRef.current.snapshotDocument(current)
+                : current);
+            if (model) onDocumentChangeRef.current(model);
           }
           onStoryChangeRef.current(view, docChanged, selectionChanged);
         },

@@ -118,6 +118,7 @@
 import { computed, ref, watch } from "vue";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import { TWIPS_PER_INCH } from "@stll/folio-core/utils/units";
 
 import { useTranslation } from "../../i18n";
@@ -161,7 +162,7 @@ const PAGE_SIZES = [
 
 const props = defineProps<{
   isOpen: boolean;
-  sectionProperties?: SectionProperties | null;
+  sectionProperties?: DeepReadonly<SectionProperties> | null;
 }>();
 
 const emit = defineEmits<{

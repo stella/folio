@@ -66,6 +66,7 @@ import {
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
+import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
@@ -76,7 +77,10 @@ import {
   CanonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import {
+  cloneCommentsWithParagraphPropertySources,
+  cloneDocumentWithParagraphPropertySources,
+} from "@stll/folio-core/docx/document-clone";
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
@@ -257,6 +261,10 @@ import type {
   HeaderFooter,
   SectionProperties,
 } from "@stll/folio-core/types/document";
+import {
+  readModel,
+  type ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
 import { resolveColor } from "@stll/folio-core/utils/colorResolver";
 import { queryHtmlElement } from "@stll/folio-core/utils/domGuards";
@@ -358,6 +366,13 @@ import { useFolioComments } from "./useFolioComments";
 
 /** No headings to track while the outline is not shown. */
 const NO_HEADINGS: readonly HeadingInfo[] = [];
+
+/** A document built outside the paged editor's notification: the new model. */
+type BuiltDocumentChange = {
+  built: ReadonlyDocument;
+  /** For a change still in progress: the host is told once it settles. */
+  settles?: "later";
+};
 
 const CommentsSidebar = lazy(() =>
   import("./CommentsSidebar").then((m) => ({
@@ -873,7 +888,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const historyShortcuts = historyShortcutOwner(hostShortcuts);
 
     // History hook for undo/redo - start with null document
-    const history = useDocumentHistory<Document | null>(
+    const history = useDocumentHistory<ReadonlyDocument | null>(
       initialDocument || null,
       {
         maxEntries: 100,
@@ -1119,7 +1134,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           // first pass rather than from the first settled edit.
           const model = pagedEditorRef.current?.readDocumentModel();
           if (model && model !== history.state) {
-            history.reset(model as Document);
+            history.reset(model);
           }
         }
         reportEditorViewReady(view);
@@ -1405,7 +1420,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const getCanonicalApi = pagedEditorBinding.getCanonicalApi;
 
     const pushDocument = useCallback(
-      (document: Document) => {
+      (document: ReadonlyDocument) => {
         history.push(document);
         return document;
       },
@@ -1435,6 +1450,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       activeFooterRId,
       activeFirstHeaderRId,
       activeFirstFooterRId,
+      hasTitlePg,
       effectiveSectionProperties,
       handleHeaderFooterDoubleClick,
       handleBodyClick,
@@ -1661,6 +1677,23 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       pmImageContext: state.pmImageContext,
     });
 
+    // A built change still in progress (a margin drag) tells the host once it
+    // settles; a later notification, or a load, drops it.
+    const builtChangeNotifyRef = useRef<number | null>(null);
+    const onChangeRef = useRef(onChange);
+    useLayoutEffect(() => {
+      onChangeRef.current = onChange;
+    }, [onChange]);
+    const cancelBuiltChangeNotification = useCallback(() => {
+      if (builtChangeNotifyRef.current === null) return;
+      window.clearTimeout(builtChangeNotifyRef.current);
+      builtChangeNotifyRef.current = null;
+    }, []);
+    useEffect(
+      () => cancelBuiltChangeNotification,
+      [cancelBuiltChangeNotification],
+    );
+
     // Document loading (parse buffer, reset UI, keep original buffer for save)
     const documentLoader = useDocumentLoader({
       documentBuffer: documentBuffer ?? null,
@@ -1700,6 +1733,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         setFloatingCommentBtn(null);
         setHfEditPosition(null);
         setAnchorPositions(EMPTY_ANCHOR_POSITIONS);
+        cancelBuiltChangeNotification();
         resetFindResultRef.current?.();
         if (extractTrackedChangesTimerRef.current) {
           clearTimeout(extractTrackedChangesTimerRef.current);
@@ -1720,6 +1754,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         setVisibleCommentAuthors,
         setHeadingInfos,
         setAnchorPositions,
+        cancelBuiltChangeNotification,
       ]),
       setDocumentLoadState: useCallback((documentLoad: DocumentLoadState) => {
         setState((prev) => ({ ...prev, documentLoad }));
@@ -1796,41 +1831,70 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
 
     // Handle document change
     /**
-     * Take a change: hold the editor's document model as the document state,
-     * hand the host its own document. A document built outside the paged
-     * editor's notification arrives as `built` and is the model; in a
-     * canonical session the host gets a copy of it, as it does of the model.
+     * Take a change: hold the editor's document model as the document state
+     * and hand the host one copy of it it owns. A document built outside the
+     * paged editor's notification arrives as `built` and is the model; the
+     * host gets its copy now or, for a change still in progress, once the
+     * change settles. In the default session the model holds this hook's
+     * comment list, and the host's document a copy of it.
      */
     const applyDocumentChange = useCallback(
-      (change: DocumentChange | { built: Document }) => {
+      (change: DocumentChange | BuiltDocumentChange) => {
         const canonical = usesCanonicalSession(
           experimentalSession,
           CANONICAL_GAP.authorityRouting,
         );
-        if (canonical) {
-          // The session never writes a document it has handed out, and the
-          // editor only reads its document state: one model, held as is.
-          if ("built" in change) {
-            pushDocument(change.built);
-            onChange?.(cloneDocumentWithParagraphPropertySources(change.built));
+        // The session keeps its own comments; the default session's are the
+        // list this hook holds.
+        const held = (model: ReadonlyDocument): ReadonlyDocument =>
+          canonical
+            ? model
+            : {
+                ...model,
+                package: {
+                  ...model.package,
+                  document: {
+                    ...model.package.document,
+                    comments: commentsRef.current,
+                  },
+                },
+              };
+        const owned = (copy: Document): Document =>
+          canonical
+            ? copy
+            : {
+                ...copy,
+                package: {
+                  ...copy.package,
+                  document: {
+                    ...copy.package.document,
+                    comments: cloneCommentsWithParagraphPropertySources(
+                      commentsRef.current,
+                    ),
+                  },
+                },
+              };
+        if ("built" in change) {
+          const built = held(change.built);
+          pushDocument(built);
+          cancelBuiltChangeNotification();
+          if (change.settles === "later") {
+            builtChangeNotifyRef.current = window.setTimeout(() => {
+              builtChangeNotifyRef.current = null;
+              onChangeRef.current?.(
+                cloneDocumentWithParagraphPropertySources(built),
+              );
+            }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
           } else {
-            pushDocument(change.model as Document);
-            onChange?.(change.forHost);
+            onChange?.(cloneDocumentWithParagraphPropertySources(built));
           }
         } else {
-          const forHost = "built" in change ? change.built : change.forHost;
-          const documentWithComments = {
-            ...forHost,
-            package: {
-              ...forHost.package,
-              document: {
-                ...forHost.package.document,
-                comments: commentsRef.current,
-              },
-            },
-          };
-          pushDocument(documentWithComments);
-          onChange?.(documentWithComments);
+          if (change.model) pushDocument(held(change.model));
+          if (change.forHost) {
+            cancelBuiltChangeNotification();
+            onChange?.(owned(change.forHost));
+          }
+          if (!change.model) return;
         }
         // Re-extract tracked changes after document change (debounced to avoid
         // full-document walk on every keystroke in suggestion mode)
@@ -1850,6 +1914,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         refreshBodyHistoryAvailability,
         commentsRef,
         experimentalSession,
+        cancelBuiltChangeNotification,
       ],
     );
     /** A document changed outside the paged editor's own notification. */
@@ -2260,7 +2325,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
 
         // If no explicit font/size marks, resolve from paragraph style or document defaults
         if (!fontFamily || !fontSize) {
-          const currentDoc = historyStateRef.current;
+          const committed = historyStateRef.current;
+          const currentDoc = committed && readModel(committed);
           const paraStyleId = selectionState.styleId;
           if (currentDoc?.package.styles && paraStyleId) {
             const resolver = getCachedStyleResolver(currentDoc.package.styles);
@@ -2733,7 +2799,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                 let preset: TableStylePreset | undefined = getBuiltinTableStyle(
                   action.styleId,
                 );
-                const currentDocForTable = historyStateRef.current;
+                const committed = historyStateRef.current;
+                const currentDocForTable = committed && readModel(committed);
                 if (!preset && currentDocForTable?.package.styles) {
                   const styleResolver = getCachedStyleResolver(
                     currentDocForTable.package.styles,
@@ -3039,7 +3106,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               // Resolve style to get its formatting properties
               // Use ref to avoid stale closure (handleFormat does not depend on
               // the live document)
-              const currentDoc = historyStateRef.current;
+              const committed = historyStateRef.current;
+              const currentDoc = committed && readModel(committed);
               const styleResolver = currentDoc?.package.styles
                 ? getCachedStyleResolver(currentDoc.package.styles)
                 : null;
@@ -3615,25 +3683,32 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (!history.state || readOnly) {
           return;
         }
-        const newDoc = {
-          ...history.state,
-          package: {
-            ...history.state.package,
-            document: {
-              ...history.state.package.document,
-              finalSectionProperties: {
-                ...history.state.package.document.finalSectionProperties,
-                ...props,
+        // The new model shares what the change leaves with the old one, and
+        // neither is written. A margin drag sends one of these per pointer
+        // move, so the host hears of it once it settles.
+        const model = history.state;
+        const body = model.package.document;
+        applyDocumentChange({
+          built: {
+            ...model,
+            package: {
+              ...model.package,
+              document: {
+                ...body,
+                finalSectionProperties: {
+                  ...body.finalSectionProperties,
+                  ...props,
+                },
               },
             },
           },
-        };
-        handleDocumentChange(newDoc);
+          settles: "later",
+        });
       },
       [
         history.state,
         readOnly,
-        handleDocumentChange,
+        applyDocumentChange,
         getCanonicalApi,
         refuseCanonicalModelEdit,
       ],
@@ -6140,9 +6215,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             altChunkMarkerText={t("contentNotDisplayed")}
                             {...(fonts !== undefined ? { fonts } : {})}
                             theme={history.state.package.theme || theme || null}
-                            sectionProperties={
-                              effectiveSectionProperties ?? null
-                            }
+                            hasTitlePg={hasTitlePg}
                             headerContent={headerContent}
                             footerContent={footerContent}
                             firstPageHeaderContent={firstPageHeaderContent}
@@ -6151,9 +6224,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             footerContentRId={activeFooterRId}
                             firstPageHeaderContentRId={activeFirstHeaderRId}
                             firstPageFooterContentRId={activeFirstFooterRId}
-                            {...(history.state.package.styles
-                              ? { styles: history.state.package.styles }
-                              : {})}
                             onHeaderFooterDoubleClick={
                               handleHeaderFooterStoryOpen
                             }

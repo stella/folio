@@ -58,13 +58,14 @@
 import { computed, type CSSProperties, onBeforeUnmount, ref } from "vue";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import { pixelsToTwips, twipsToPixels } from "@stll/folio-core/utils/units";
 
 type MarkerType = "topMargin" | "bottomMargin";
 
 const props = withDefaults(
   defineProps<{
-    sectionProps?: SectionProperties | null;
+    sectionProps?: DeepReadonly<SectionProperties> | null;
     zoom?: number;
     editable?: boolean;
     unit?: "inch" | "cm";

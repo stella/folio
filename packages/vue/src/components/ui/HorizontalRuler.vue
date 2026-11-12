@@ -128,6 +128,7 @@ import type {
   SectionProperties,
   TabStop,
 } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import { pixelsToTwips, twipsToPixels } from "@stll/folio-core/utils/units";
 
 type MarkerType =
@@ -139,7 +140,7 @@ type MarkerType =
 
 const props = withDefaults(
   defineProps<{
-    sectionProps?: SectionProperties | null;
+    sectionProps?: DeepReadonly<SectionProperties> | null;
     zoom?: number;
     editable?: boolean;
     showFirstLineIndent?: boolean;

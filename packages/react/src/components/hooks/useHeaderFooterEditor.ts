@@ -18,16 +18,21 @@ import {
   removeCanonicalHeaderFooterOperations,
 } from "@stll/folio-core/controller/canonicalOperations";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
-  Document,
   HeaderFooter,
   SectionProperties,
 } from "@stll/folio-core/types/document";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 import {
   createEmptyHeaderFooter,
   pickActiveHeaderFooterRId,
@@ -44,8 +49,8 @@ import type { UseHistoryReturn } from "../../hooks/useHistory";
 // ---------------------------------------------------------------------------
 
 type UseHeaderFooterEditorParams = {
-  history: UseHistoryReturn<Document | null>;
-  pushDocument: (document: Document) => Document;
+  history: UseHistoryReturn<ReadonlyDocument | null>;
+  pushDocument: (document: ReadonlyDocument) => ReadonlyDocument;
   getCanonicalApi?: () => HiddenEditorApi | null;
   experimentalSession?: "canonical";
   /**
@@ -83,8 +88,11 @@ type UseHeaderFooterEditorReturn = {
   activeFirstHeaderRId: string | null;
   activeFirstFooterRId: string | null;
 
-  /** Section properties with titlePg merged from inline sections */
-  effectiveSectionProperties: SectionProperties | undefined;
+  /**
+   * Section properties with titlePg merged from inline sections: the model's
+   * own when nothing is merged, so read them, never write them.
+   */
+  effectiveSectionProperties: DeepReadonly<SectionProperties> | undefined;
 
   /** Open the inline HF editor on double-click; creates an empty HF if needed */
   handleHeaderFooterDoubleClick: (
@@ -106,17 +114,17 @@ type UseHeaderFooterEditorReturn = {
 
 type SaveAndCloseHeaderFooterEditOptions = {
   activeRId: string | null;
-  document: Document;
+  document: ReadonlyDocument;
   editPosition: "header" | "footer";
   isFirstPage: boolean;
-  pushDocument: (document: Document) => Document;
+  pushDocument: (document: ReadonlyDocument) => ReadonlyDocument;
   setEditPosition: (position: "header" | "footer" | null) => void;
   view: { readonly state: { readonly doc: PMNode } } | null;
 };
 
 export const saveAndCloseHeaderFooterEdit = ({
   activeRId,
-  document,
+  document: model,
   editPosition,
   isFirstPage,
   pushDocument,
@@ -127,6 +135,8 @@ export const saveAndCloseHeaderFooterEdit = ({
     setEditPosition(null);
     return;
   }
+  // The new document is built from a copy: the model is never written.
+  const document = cloneDocumentWithParagraphPropertySources(model);
   const sourceParts =
     editPosition === "header"
       ? document.package.headers
@@ -174,7 +184,10 @@ export const useHeaderFooterEditor = ({
   // -------------------------------------------------------------------------
 
   const rawResolution = useMemo(
-    () => resolveHeaderFooterContent(history.state?.package),
+    () =>
+      resolveHeaderFooterContent(
+        history.state ? readModel(history.state).package : undefined,
+      ),
     [history.state],
   );
   // `history.state` is transiently null while the document buffer is parsed and
@@ -215,7 +228,7 @@ export const useHeaderFooterEditor = ({
         history.state?.package.document,
         hasTitlePg,
       ),
-    [history.state?.package.document, hasTitlePg],
+    [history.state, hasTitlePg],
   );
 
   // -------------------------------------------------------------------------
@@ -262,7 +275,7 @@ export const useHeaderFooterEditor = ({
         return;
       }
       const newDoc = createEmptyHeaderFooter(
-        history.state,
+        cloneDocumentWithParagraphPropertySources(history.state),
         position,
         isFirstPage,
       );
@@ -371,7 +384,7 @@ export const useHeaderFooterEditor = ({
     if (activeRId) {
       pushDocument(
         removeHeaderFooter({
-          document: history.state,
+          document: cloneDocumentWithParagraphPropertySources(history.state),
           position: hfEditPosition,
           activeRId,
         }),

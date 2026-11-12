@@ -18,6 +18,7 @@ import type {
   HeaderFooter,
   SectionProperties,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 
 export type HeaderFooterPosition = "header" | "footer";
 
@@ -252,12 +253,22 @@ export const resolveHeaderFooterContent = (
 
 /**
  * The section properties that drive the rendered chrome, with `titlePg` merged
- * in when title-page mode was inferred from header/footer references.
+ * in when title-page mode was inferred from header/footer references. They are
+ * the document's own section properties when nothing is merged, so a read-only
+ * document gives read-only ones; a plain one still gives plain ones.
  */
-export const resolveEffectiveSectionProperties = (
+export function resolveEffectiveSectionProperties(
   documentBody: DocumentBody | undefined,
   hasTitlePg: boolean,
-): SectionProperties | undefined => {
+): SectionProperties | undefined;
+export function resolveEffectiveSectionProperties(
+  documentBody: DeepReadonly<DocumentBody> | undefined,
+  hasTitlePg: boolean,
+): DeepReadonly<SectionProperties> | undefined;
+export function resolveEffectiveSectionProperties(
+  documentBody: DeepReadonly<DocumentBody> | undefined,
+  hasTitlePg: boolean,
+): DeepReadonly<SectionProperties> | undefined {
   const firstContentSection = documentBody?.sections?.find(
     (section) => section.content.length > 0,
   );
@@ -267,7 +278,7 @@ export const resolveEffectiveSectionProperties = (
     return base;
   }
   return base ? { ...base, titlePg: true } : base;
-};
+}
 
 /** Pick the relationship id for the slot a save/remove targets. */
 export const pickActiveHeaderFooterRId = (

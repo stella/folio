@@ -8,6 +8,7 @@
 import * as React from "react";
 
 import type { Style, StyleType, Theme } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -33,7 +34,7 @@ export type StylePickerProps = {
   onChange?: ((styleId: string) => void) | undefined;
   displayLabel?: string | undefined;
   displayLabelStyle?: React.CSSProperties | undefined;
-  styles?: Style[] | undefined;
+  styles?: DeepReadonly<Style[]> | undefined;
   theme?: Theme | null | undefined;
   disabled?: boolean | undefined;
   className?: string | undefined;

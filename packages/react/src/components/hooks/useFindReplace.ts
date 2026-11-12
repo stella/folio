@@ -28,6 +28,10 @@ import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager
 import { findInDisplayedDocument } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import type { Document } from "@stll/folio-core/types/document";
 import {
+  readModel,
+  type ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
+import {
   createFindMatchView,
   getRenderedSearchStories,
 } from "@stll/folio-core/utils/findMatchView";
@@ -56,7 +60,7 @@ import type { UseFindReplaceReturn as FindReplaceStateReturn } from "../dialogs/
 
 type UseFindReplaceParams = {
   /** Current document state fallback for existing mounted callers during HMR */
-  documentState?: Document | null;
+  documentState?: ReadonlyDocument | null;
   /** Returns the current live document state from the editor */
   getDocumentState?: () => Document | null;
   /** Live body editor state; a review view searches its displayed projection. */
@@ -188,13 +192,13 @@ export function useFindReplace({
 
   const findDisplayedMatches = useCallback(
     (
-      currentDocument: Document,
+      currentDocument: ReadonlyDocument,
       searchText: string,
       options: FindOptions,
       context: FindSearchContext | undefined,
     ) =>
       findInDisplayedDocument({
-        document: currentDocument,
+        document: readModel(currentDocument),
         ...(getEditorState && { state: getEditorState() }),
         searchText,
         options,
@@ -251,7 +255,7 @@ export function useFindReplace({
       const nextSource = createFindSearchKey({
         query: searchText,
         options: effectiveOptions,
-        document: currentDocument,
+        document: readModel(currentDocument),
         ...(bodyDoc && { bodyVersion: bodyDoc }),
         ...(context && { context }),
       });
@@ -270,7 +274,7 @@ export function useFindReplace({
       matchView.current = container
         ? createFindMatchView({
             container,
-            document: currentDocument,
+            document: readModel(currentDocument),
             bodyDoc,
             matches,
             layout: getLayout?.(),
@@ -344,7 +348,7 @@ export function useFindReplace({
   }, [manager, goToMatch, revealMatch, publish]);
 
   const refreshChangedSource = useCallback(
-    (currentDocument: Document): boolean => {
+    (currentDocument: ReadonlyDocument): boolean => {
       const active = query.current;
       if (!active) return false;
       const bodyDoc = getBodyDoc?.();
@@ -358,7 +362,7 @@ export function useFindReplace({
           includeComments: true,
           ...(displayMode && { displayMode }),
         },
-        document: currentDocument,
+        document: readModel(currentDocument),
         ...(bodyDoc && { bodyVersion: bodyDoc }),
         ...(context && { context }),
       });
@@ -465,7 +469,7 @@ export function useFindReplace({
         return { replacedCount: 0, skippedCount: 0 };
       }
 
-      if (outcome.replacedCount > 0) {
+      if (outcome.document && outcome.replacedCount > 0) {
         acceptReplacement(outcome.document);
       }
       return {

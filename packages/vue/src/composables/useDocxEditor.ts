@@ -165,9 +165,14 @@ import type {
   HeaderFooter,
   SectionProperties,
 } from "@stll/folio-core/types/document";
-import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
+import {
+  readModel,
+  type ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter";
+
+import { rawDocument } from "../utils/rawDocument";
 
 // ============================================================================
 // CONSTANTS (mirror React PagedEditor.tsx)
@@ -511,7 +516,7 @@ export type UseDocxEditorReturn = {
    * edit (read it, never hand it out); otherwise the document the last change
    * notification wrote back. Reading it never builds a document.
    */
-  modelDocument: Readonly<Ref<Document | null>>;
+  modelDocument: Readonly<Ref<ReadonlyDocument | null>>;
   /**
    * The session's own document in a canonical session, read without a copy
    * (read it, never write it); otherwise null.
@@ -544,6 +549,13 @@ export type UseDocxEditorReturn = {
    * For a host that owns the result; derived state reads `modelDocument`.
    */
   getDocument: () => Document | null;
+  /**
+   * The current document for a reader, never copied: what `getDocument`
+   * copies. In a canonical session it is `readDocumentModel`'s, the session's
+   * own document; otherwise the document built from the editor state. Read
+   * it, never write it or hand it on.
+   */
+  readDocument: () => ReadonlyDocument | null;
   /** Publish a fresh Document object (e.g. after HF materialisation). */
   setDocument: (doc: Document) => void;
   /** Resolve a persistent header/footer EditorView by relationship id. */
@@ -612,7 +624,12 @@ export function useDocxEditor(
   // ---- Reactive state -----------------------------------------------------
   // `docModel` (not `document`) so the global `document` stays reachable for the
   // FontFaceSet probe + DOM host lookups.
-  const docModel = shallowRef<Document | null>(null);
+  const docModel = shallowRef<ReadonlyDocument | null>(null);
+  /** The model, for a reader that takes a plain `Document`. */
+  const readDocModel = (): Document | null => {
+    const model = docModel.value;
+    return model && readModel(model);
+  };
   const sourceBuffer = shallowRef<ArrayBuffer | null>(null);
   // Per-load identity for the hidden-editor manager: advanced on every document
   // swap, unchanged across internal edits (not reactive; read at sync time).
@@ -650,17 +667,13 @@ export function useDocxEditor(
       toValue(experimentalSession),
       CANONICAL_GAP.authorityRouting,
     );
-  const cloneForHost = (document: Document) =>
-    isCanonicalSession()
-      ? cloneDocumentWithParagraphPropertySources(document)
-      : document;
-  // Both change listeners are the host's, so they share the one copy a
-  // notification makes, as the default session's listeners share its model.
-  // The canonical session's own document is never handed out.
-  const notifyHosts = (document: Document, sessionOwned: boolean) => {
-    const forHosts = sessionOwned
-      ? cloneDocumentWithParagraphPropertySources(document)
-      : cloneForHost(document);
+  // The model is never handed out: a host gets a copy it owns.
+  const cloneForHost = (document: ReadonlyDocument) =>
+    cloneDocumentWithParagraphPropertySources(document);
+  // A settled change hands the host one copy of the model, in both sessions;
+  // both change listeners are the host's, so they share it.
+  const notifyHosts = (model: ReadonlyDocument) => {
+    const forHosts = cloneForHost(model);
     onChange?.(forHosts);
     emitter.emit("docChange", forHosts);
   };
@@ -769,7 +782,7 @@ export function useDocxEditor(
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,
     getReadOnly: () => toValue(readOnly),
-    getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
+    getDocument: () => manager.api.getCanonicalDocument() ?? readDocModel(),
     getCanonicalApi: () => manager.api,
     readCanonicalDocument: () => manager.readCanonicalDocument(),
     getExperimentalSession: () => toValue(experimentalSession),
@@ -777,8 +790,8 @@ export function useDocxEditor(
       parseError.value = message;
       onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
-    getStyles: () => docModel.value?.package.styles ?? null,
-    getTheme: () => docModel.value?.package.theme ?? null,
+    getStyles: () => readDocModel()?.package.styles ?? null,
+    getTheme: () => readDocModel()?.package.theme ?? null,
     onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
       if (docChanged) {
         isDirty.value = true;
@@ -799,7 +812,7 @@ export function useDocxEditor(
   const noteEditorManager = createNoteEditorManager({
     getHost: () => noteEditorContainer?.value ?? null,
     getPlugins: () => notePlugins,
-    getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
+    getDocument: () => manager.api.getCanonicalDocument() ?? readDocModel(),
     getCanonicalApi: () => manager.api,
     readCanonicalDocument: () => manager.readCanonicalDocument(),
     getExperimentalSession: () => toValue(experimentalSession),
@@ -807,20 +820,21 @@ export function useDocxEditor(
       parseError.value = message;
       onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
-    getStyles: () => docModel.value?.package.styles ?? null,
-    getTheme: () => docModel.value?.package.theme ?? null,
+    getStyles: () => readDocModel()?.package.styles ?? null,
+    getTheme: () => readDocModel()?.package.theme ?? null,
     onTransaction: ({ docChanged, selectionChanged, view }) => {
       if (docChanged) {
         isDirty.value = true;
         const current = docModel.value;
         if (current) {
-          const canonical = manager.readCanonicalDocument();
-          const updated =
-            canonical ??
-            noteEditorManagerHolder.current?.snapshotDocument(current) ??
+          docModel.value =
+            manager.readCanonicalDocument() ??
+            noteEditorManagerHolder.current?.snapshotDocument(
+              readModel(current),
+            ) ??
             current;
-          docModel.value = updated;
-          notifyHosts(updated, canonical !== null);
+          // The host hears of a note edit once it settles, as of a body edit.
+          scheduleNoteChangeNotification();
         }
         scheduler.schedule();
       }
@@ -877,7 +891,7 @@ export function useDocxEditor(
     // non-div host (or a not-yet-mounted ref) simply computes without painting.
     const paintTarget = container instanceof HTMLDivElement ? container : null;
 
-    const model = docModel.value;
+    const model = readDocModel();
     const body = model?.package.document;
     // Lead geometry from the first section; trailing section falls back to the
     // body's final section properties. Mirrors the React split.
@@ -979,7 +993,7 @@ export function useDocxEditor(
       docChangeTimer = null;
     }
     const view = editorView.value;
-    const base = docModel.value;
+    const base = readDocModel();
     if (!view || !base) {
       return;
     }
@@ -997,10 +1011,32 @@ export function useDocxEditor(
         );
       docModel.value = updated;
       syncSecondaryStoryEditors();
-      notifyHosts(updated, canonical !== null);
+      cancelNoteChangeNotification();
+      notifyHosts(updated);
     } catch (err) {
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
+  }
+
+  // A note edit changes the model in place of a body build, so its settled
+  // notification only copies the model; a body notification due by then
+  // carries it instead.
+  let noteChangeTimer: number | null = null;
+
+  function cancelNoteChangeNotification(): void {
+    if (noteChangeTimer === null) return;
+    window.clearTimeout(noteChangeTimer);
+    noteChangeTimer = null;
+  }
+
+  function scheduleNoteChangeNotification(): void {
+    cancelNoteChangeNotification();
+    noteChangeTimer = window.setTimeout(() => {
+      noteChangeTimer = null;
+      if (docChangeTimer !== null) return;
+      const model = docModel.value;
+      if (model) notifyHosts(model);
+    }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
   }
 
   function scheduleDocumentChangeNotification(): void {
@@ -1021,8 +1057,8 @@ export function useDocxEditor(
 
   const manager: HiddenEditorManager = createHiddenEditorManager({
     getHost: () => hiddenContainer.value,
-    getDocument: () => docModel.value,
-    getStyles: () => docModel.value?.package.styles ?? null,
+    getDocument: readDocModel,
+    getStyles: () => readDocModel()?.package.styles ?? null,
     getExtensionManager: () => extensionManager,
     getExternalPlugins: buildExternalPlugins,
     getCollaboration: () => toValue(collaboration),
@@ -1036,7 +1072,7 @@ export function useDocxEditor(
       onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
     getDocumentIdentity: () => String(loadSequence),
-    getDocumentContext: () => docModel.value,
+    getDocumentContext: readDocModel,
     onTransaction: handleTransaction,
     onCanonicalCompositionEnd: () => scheduler.schedule(),
     onSelectionChange: (state) => {
@@ -1166,7 +1202,7 @@ export function useDocxEditor(
     editorState.value = view.state;
     isReady.value = true;
 
-    const model = docModel.value;
+    const model = readDocModel();
     const sequence = loadSequence;
     const waitId = ++initialFontWaitId;
     initialFontWaitPending = true;
@@ -1301,6 +1337,8 @@ export function useDocxEditor(
   }
 
   function remountForNewDocument(): void {
+    // A note edit's pending notice belongs to the document it was made in.
+    cancelNoteChangeNotification();
     // A new document is a truly external swap: tear the view down and rebuild it
     // so the seed state + initial layout run fresh, and advance the load
     // identity the hidden-editor manager compares on its next sync. The freshly
@@ -1330,7 +1368,7 @@ export function useDocxEditor(
    * for the host element. Mirrors React's pre-hidden initial-layout effect.
    */
   function paintFromPrecomputedState(): void {
-    const model = docModel.value;
+    const model = readDocModel();
     if (!model || toValue(collaboration)) {
       return;
     }
@@ -1412,7 +1450,9 @@ export function useDocxEditor(
 
   function loadDocument(doc: Document): void {
     parseError.value = null;
-    docModel.value = doc;
+    // A host's document may hold reactive proxies; the model is its raw
+    // data, which the copies the host is handed can clone.
+    docModel.value = rawDocument(doc);
     noteFollower.reset();
     remountForNewDocument();
   }
@@ -1429,7 +1469,7 @@ export function useDocxEditor(
     serializationOptions?: FolioGetDocxOptions,
   ): Promise<SerializedDocxResult | null> {
     const view = editorView.value;
-    const currentDocument = docModel.value;
+    const currentDocument = readDocModel();
     if (!view || !currentDocument) {
       return null;
     }
@@ -1595,18 +1635,26 @@ export function useDocxEditor(
     });
   }
 
-  function getDocument(): Document | null {
-    const canonical = manager.api.getCanonicalDocument();
+  /** The session's own document in a canonical session, never copied. */
+  function readDocumentModel(): ReadonlyDocument | null {
+    return manager.readCanonicalDocument();
+  }
+
+  function readDocument(): ReadonlyDocument | null {
+    const canonical = readDocumentModel();
     if (canonical) return canonical;
     if (isCanonicalSession()) return null;
-    const document = docModel.value;
+    const document = readDocModel();
     if (!document) return null;
     const live = manager.api.getDocument() ?? document;
-    return cloneForHost(
-      noteEditorManager.snapshotDocument(
-        headerFooterManager.snapshotDocument(live),
-      ),
+    return noteEditorManager.snapshotDocument(
+      headerFooterManager.snapshotDocument(live),
     );
+  }
+
+  function getDocument(): Document | null {
+    const document = readDocument();
+    return document && cloneForHost(document);
   }
 
   function setDocument(doc: Document): void {
@@ -1618,7 +1666,8 @@ export function useDocxEditor(
     ) {
       return;
     }
-    docModel.value = doc;
+    docModel.value = rawDocument(doc);
+    cancelNoteChangeNotification();
     sourceBuffer.value = doc.originalBuffer ?? null;
     syncSecondaryStoryEditors();
     if (
@@ -1696,6 +1745,7 @@ export function useDocxEditor(
       window.clearTimeout(docChangeTimer);
       docChangeTimer = null;
     }
+    cancelNoteChangeNotification();
     manager.destroyView();
     remoteSelections.value = [];
     headerFooterManager.destroy();
@@ -1730,7 +1780,7 @@ export function useDocxEditor(
     isDirty,
     parseError,
     modelDocument: docModel,
-    readDocumentModel: () => manager.readCanonicalDocument(),
+    readDocumentModel,
     sourceBuffer,
     hiddenEditorWidth,
     layout,
@@ -1741,6 +1791,7 @@ export function useDocxEditor(
     loadDocument,
     save,
     getDocument,
+    readDocument,
     setDocument,
     getHeaderFooterView,
     syncHeaderFooterViews,

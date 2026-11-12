@@ -536,6 +536,7 @@ import {
   type SelectionContext,
 } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import type { ColorValue, Style, Theme } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 import { useParagraphStyleOptions } from "../composables/useParagraphStyleOptions";
 import { useToolbarDropdowns } from "../composables/useToolbarDropdowns";
@@ -638,7 +639,7 @@ const props = withDefaults(
     /** Paragraph styles from the loaded document (document.package.styles.styles).
       When present, the style picker shows the document's real styles + names,
       matching React's Toolbar `documentStyles` prop. Falls back to presets. */
-    documentStyles?: Style[];
+    documentStyles?: DeepReadonly<Style[]>;
   }>(),
   // Defaults for the container-level props let this render as an inert empty
   // rail when unconfigured (e.g. the EditorToolbar default `#toolbar` slot

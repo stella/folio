@@ -9,7 +9,13 @@
  * - Table document operations (add/delete rows/columns, merge/split)
  */
 
+import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import type { Document, Table } from "../types/document";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import {
   addColumn,
   addRow,
@@ -171,7 +177,8 @@ export function deleteTableFromDocument(
  */
 export type TableSelectionState = {
   context: TableContext | null;
-  table: Table | null;
+  /** The selected table as the document holds it: read it, never write it. */
+  table: DeepReadonly<Table> | null;
   tableIndex: number | null;
   rowIndex: number | null;
   columnIndex: number | null;
@@ -222,8 +229,11 @@ export class TableSelectionManager extends Subscribable<TableSelectionState> {
    * derives the full {@link TableContext}. Returns the context, or `null` (and
    * clears the selection) when that table no longer exists.
    */
-  selectCell(doc: Document, coords: CellCoordinates): TableContext | null {
-    const table = getTableFromDocument(doc, coords.tableIndex);
+  selectCell(
+    doc: ReadonlyDocument,
+    coords: CellCoordinates,
+  ): TableContext | null {
+    const table = getTableFromDocument(readModel(doc), coords.tableIndex);
     if (!table) {
       this.setSnapshot(EMPTY_SELECTION);
       return null;
@@ -268,17 +278,22 @@ export class TableSelectionManager extends Subscribable<TableSelectionState> {
    * (add/delete row or column, merge, split, delete table) return the resulting
    * document and re-track the selection against it; border-style and selection
    * actions are routed through the toolbar's own handlers and resolve to `noop`.
+   * `doc` is never written: the action edits a copy of it, so the result shares
+   * nothing with the model it started from.
    */
-  handleAction(doc: Document, action: TableAction): TableActionResult {
-    const { context, table, tableIndex, rowIndex, columnIndex } =
-      this.getSnapshot();
+  handleAction(doc: ReadonlyDocument, action: TableAction): TableActionResult {
+    const { context, tableIndex, rowIndex, columnIndex } = this.getSnapshot();
     if (
       context === null ||
-      table === null ||
       tableIndex === null ||
       rowIndex === null ||
       columnIndex === null
     ) {
+      return { type: "noop" };
+    }
+    const owned = cloneDocumentWithParagraphPropertySources(doc);
+    const table = getTableFromDocument(owned, tableIndex);
+    if (table === null) {
       return { type: "noop" };
     }
 
@@ -339,7 +354,7 @@ export class TableSelectionManager extends Subscribable<TableSelectionState> {
         break;
 
       case "deleteTable": {
-        const newDoc = deleteTableFromDocument(doc, tableIndex);
+        const newDoc = deleteTableFromDocument(owned, tableIndex);
         this.clearSelection();
         return { type: "deleted", document: newDoc };
       }
@@ -365,7 +380,7 @@ export class TableSelectionManager extends Subscribable<TableSelectionState> {
       return { type: "noop" };
     }
 
-    const newDoc = updateTableInDocument(doc, tableIndex, newTable);
+    const newDoc = updateTableInDocument(owned, tableIndex, newTable);
     // Re-resolve the selection against the mutated document so the tracked
     // context reflects the new table shape rather than the pre-mutation one.
     const nextContext = this.selectCell(newDoc, {

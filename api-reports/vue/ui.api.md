@@ -12,6 +12,7 @@ import { ComponentOptionsMixin } from 'vue';
 import { ComponentProvideOptions } from 'vue';
 import { ComputedRef } from 'vue';
 import { CSSProperties } from 'vue';
+import { DeepReadonly } from '@stll/folio-core/types/documentModel';
 import { DefineComponent } from 'vue';
 import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import { Document as Document_2 } from '@stll/folio-core/types/document';

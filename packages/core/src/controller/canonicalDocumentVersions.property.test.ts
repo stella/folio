@@ -18,6 +18,7 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { deepFreeze } from "../__tests__/deepFreeze";
 import { schema } from "../prosemirror/schema";
 import {
   applyEdit,
@@ -27,49 +28,6 @@ import {
 import { createCanonicalSession } from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
-
-const refuseWrite = () => {
-  throw new TypeError("A handed-out document version was written to.");
-};
-
-/**
- * Freeze everything reachable from `value`. Maps and sets cannot be frozen,
- * so their writing methods throw instead.
- */
-const deepFreeze = (value: unknown, seen = new Set<unknown>()): void => {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    seen.has(value) ||
-    // Versions share what an edit left: a part frozen with an earlier one.
-    Object.isFrozen(value)
-  )
-    return;
-  seen.add(value);
-  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return;
-  if (value instanceof Map) {
-    for (const [key, entry] of value) {
-      deepFreeze(key, seen);
-      deepFreeze(entry, seen);
-    }
-    Object.assign(value, {
-      set: refuseWrite,
-      delete: refuseWrite,
-      clear: refuseWrite,
-    });
-  } else if (value instanceof Set) {
-    for (const entry of value) deepFreeze(entry, seen);
-    Object.assign(value, {
-      add: refuseWrite,
-      delete: refuseWrite,
-      clear: refuseWrite,
-    });
-  } else {
-    for (const key of Reflect.ownKeys(value))
-      deepFreeze((value as Record<PropertyKey, unknown>)[key], seen);
-  }
-  Object.freeze(value);
-};
 
 describe("canonical document versions", () => {
   test("a write into a frozen version throws", async () => {

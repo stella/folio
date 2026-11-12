@@ -15,6 +15,7 @@ import type {
   Run,
   TextFormatting,
 } from "../types/document";
+import type { ReadonlyDocument } from "../types/documentModel";
 import { getFindParagraphText } from "./findReplace";
 
 type ReplaceRange = {
@@ -24,7 +25,7 @@ type ReplaceRange = {
 
 /** Replace text within a range in the document. Returns a new document. */
 export function replaceTextInDocument(
-  doc: Document,
+  doc: ReadonlyDocument,
   range: ReplaceRange,
   text: string,
   formatting?: TextFormatting,
@@ -35,7 +36,8 @@ export function replaceTextInDocument(
 }
 
 type ReplaceRangesResult = {
-  document: Document;
+  /** The copy the ranges were replaced in; null when it could not be made. */
+  document: Document | null;
   replacedCount: number;
   failedCount: number;
 };
@@ -43,10 +45,11 @@ type ReplaceRangesResult = {
 /**
  * Replace every range with `text` in one copy of the document. `ranges` must
  * run from the end of the document backwards, so each replacement leaves the
- * offsets of the ones after it valid.
+ * offsets of the ones after it valid. A document that cannot be copied fails
+ * every range and gives no document.
  */
 export function replaceTextRangesInDocument(
-  doc: Document,
+  doc: ReadonlyDocument,
   ranges: readonly ReplaceRange[],
   text: string,
 ): ReplaceRangesResult {
@@ -54,7 +57,7 @@ export function replaceTextRangesInDocument(
   try {
     newDoc = cloneDocumentWithParagraphPropertySources(doc);
   } catch {
-    return { document: doc, replacedCount: 0, failedCount: ranges.length };
+    return { document: null, replacedCount: 0, failedCount: ranges.length };
   }
   let replacedCount = 0;
   let failedCount = 0;

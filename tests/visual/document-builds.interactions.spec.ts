@@ -3,8 +3,10 @@
  *
  * Copying a document or converting one from the editor state costs time in
  * proportion to the document, so a host that derives toolbar, ruler or panel
- * state from a freshly built document pays it on every key. The document is
- * built once the edits settle, for the host's change notification.
+ * state from a freshly built document pays it on every key. Once the edits
+ * settle, the default session converts the editor state into the model once,
+ * and either session copies the model once for the host's change
+ * notification, which never hands out the model itself.
  *
  * The page is wide enough that the outline and the comments open beside the
  * page, so their per-edit updates are exercised too.
@@ -141,8 +143,14 @@ for (const host of HOSTS) {
       expect(keydowns).toHaveLength(KEYS);
       expect(after.length - before.length).toBe(KEYS);
       expect(betweenKeys).toEqual([]);
-      // The edits settle once: one document for the change notification.
-      expect(afterKeys.length).toBeLessThanOrEqual(1);
+      // The edits settle once: at most one conversion into the model, and one
+      // copy of it for the change notification.
+      expect(
+        afterKeys.filter(({ kind }) => kind === "conversion").length,
+      ).toBeLessThanOrEqual(1);
+      expect(
+        afterKeys.filter(({ kind }) => kind === "copy").length,
+      ).toBeLessThanOrEqual(1);
     });
   }
 }
