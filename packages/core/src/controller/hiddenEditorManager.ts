@@ -388,7 +388,7 @@ export function createHiddenEditorState(
   options: CreateHiddenEditorStateOptions,
 ): EditorState {
   const {
-    document,
+    document: model,
     styles,
     manager,
     externalPlugins = [],
@@ -397,6 +397,7 @@ export function createHiddenEditorState(
     reason = "mount",
   } = options;
   recordHiddenEditorStateCreate(reason);
+  const document = model && readModel(model);
 
   const activeSchema = manager?.getSchema() ?? schema;
   let localDoc = createEmptyDoc();
@@ -404,8 +405,8 @@ export function createHiddenEditorState(
     const startedAt = performance.now();
     localDoc =
       styles === undefined || styles === null
-        ? toProseDoc(readModel(document))
-        : toProseDoc(readModel(document), { styles });
+        ? toProseDoc(document)
+        : toProseDoc(document, { styles });
     localDoc = ensureParaIdsInDoc(localDoc);
     recordHiddenEditorPhase(
       reason,
