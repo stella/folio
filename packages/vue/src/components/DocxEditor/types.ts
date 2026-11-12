@@ -24,6 +24,7 @@ import type {
   SetContentControlContentInput,
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
+import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
@@ -319,6 +320,14 @@ export type DocxEditorProps = {
   onCommentsChange?: (comments: Comment[]) => void;
   /** Callback with the parsed document's editing compatibility report. */
   onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
+  /**
+   * With the canonical session: called after each edit, undo or redo is
+   * published in any story, with what it did to the session's undo history.
+   * A host that keeps its own undo stack (and owns `hostShortcuts`'
+   * `"history"`) adds one entry per `opened` and undoes through the editor's
+   * ref.
+   */
+  onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /**
    * Fires when the live ProseMirror view is captured (or torn down). The host
    * wires this to drive the AI suggestion overlay (decoration meta, apply,

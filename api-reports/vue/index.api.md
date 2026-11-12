@@ -36,6 +36,7 @@ import { AutocompleteTriggerOptions } from '@stll/folio-core/prosemirror/plugins
 import { AutocompleteTriggerSkipReason } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { buildPositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
+import { CanonicalHistoryEffect } from '@stll/folio-core/controller/canonicalSession';
 import { clearAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ColorValue } from '@stll/folio-core/types/document';
@@ -452,6 +453,7 @@ export type DocxEditorProps = {
     onFindResultChange?: (result: FindResult | null) => void;
     onCommentsChange?: (comments: Comment_2[]) => void;
     onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
+    onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
     onEditorViewReady?: (view: EditorView | null) => void;
     collaboration?: DocxEditorCollaboration | undefined;
     onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
