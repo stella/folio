@@ -372,7 +372,7 @@ export const connectCanonicalRoom = async (
     }
     // The same batch under the same id: the room answers it once.
     send(
-      fault === "freshOpIdOnResubmit"
+      fault === undefined || fault === "freshOpIdOnResubmit"
         ? { ...awaiting, opId: `${awaiting.opId}~${(resubmissions += 1)}` }
         : awaiting,
     );
