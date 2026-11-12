@@ -5,7 +5,7 @@
  * combinations and replays them with PROPERTY_TEST_SEED and its reported path.
  */
 
-import { test } from "bun:test";
+import { setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
@@ -20,8 +20,8 @@ import {
 import {
   assertProperty,
   propertyTestSeed,
-  propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { runChild, subprocessTestTimeout } from "../../../../test/subprocess";
 import {
   mutateXml,
   PARSER_XML_MUTATIONS,
@@ -34,9 +34,11 @@ import {
   type ZipMutation,
 } from "./__tests__/parserZipMutations";
 
-const CASE_TIMEOUT_MS = 8_000;
+setDefaultTimeout(subprocessTestTimeout());
+
 const MAX_MUTATED_BYTES = 512 * 1024;
 const BASE_RUNS = 12;
+const SEQUENCE_RUNS = Number(process.env["PARSER_FUZZ_RUNS"] ?? BASE_RUNS);
 const DEFAULT_SEED = 20_260_927;
 
 const FIXTURES = {
@@ -162,43 +164,28 @@ const CASE_RUNNER = join(
   "__tests__/parserMutationCase.ts",
 );
 
-const withCaseTimeout = async (
-  mutated: Uint8Array,
-  label: string,
-): Promise<"opened" | "refused"> => {
-  const child = Bun.spawn(
-    [process.execPath, CASE_RUNNER, Buffer.from(mutated).toString("base64")],
-    {
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  );
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    child.kill(9);
-  }, CASE_TIMEOUT_MS);
-  try {
-    const [exitCode, output, diagnostic] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    assert.ok(!timedOut, `${label}: exceeded ${CASE_TIMEOUT_MS} ms`);
-    assert.equal(
-      exitCode,
-      0,
-      `${label}: ${diagnostic || `case exited ${exitCode}`}`,
+const runCase = (mutated: Uint8Array, label: string): "opened" | "refused" => {
+  const outcome = runChild([
+    process.execPath,
+    CASE_RUNNER,
+    Buffer.from(mutated).toString("base64"),
+  ]);
+  if (outcome.kind !== "exited") {
+    assert.fail(
+      `${label}: case ${outcome.kind === "hung" ? "hung" : `was killed by ${outcome.signal}`}\n${outcome.stderr}`,
     );
-    assert.match(
-      output,
-      /^(?:opened|refused)\n$/u,
-      `${label}: missing case result`,
-    );
-    return output.trim() === "opened" ? "opened" : "refused";
-  } finally {
-    clearTimeout(timer);
   }
+  assert.equal(
+    outcome.exitCode,
+    0,
+    `${label}: ${outcome.stderr || `case exited ${outcome.exitCode}`}`,
+  );
+  assert.match(
+    outcome.stdout,
+    /^(?:opened|refused)\n$/u,
+    `${label}: missing case result`,
+  );
+  return outcome.stdout.trim() === "opened" ? "opened" : "refused";
 };
 
 const applyMutation = (
@@ -217,7 +204,7 @@ const assertSurvives = async (
     mutated.byteLength <= MAX_MUTATED_BYTES,
     `${label}: mutation exceeded input budget`,
   );
-  return withCaseTimeout(mutated, label);
+  return runCase(mutated, label);
 };
 
 const checkCase = async (
@@ -255,7 +242,7 @@ for (const entry of CASES) {
     async () => {
       await checkCase(entry);
     },
-    CASE_TIMEOUT_MS + 1_000,
+    subprocessTestTimeout(),
   );
 }
 
@@ -366,9 +353,10 @@ test(
       {
         ...localSeed(),
         id: "seeded parser mutation sequences refuse or round-trip",
-        numRuns: Number(process.env["PARSER_FUZZ_RUNS"] ?? BASE_RUNS),
+        numRuns: SEQUENCE_RUNS,
       },
     );
   },
-  propertyTestTimeout(60_000),
+  // Each generated sequence runs one case child.
+  subprocessTestTimeout(SEQUENCE_RUNS),
 );
