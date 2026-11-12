@@ -487,13 +487,12 @@ const advanceThroughContainer = (
       computeListMarker(
         rendering === undefined
           ? block
-          : {
-              ...block,
+          : cloneParagraphWithPropertySource(block, {
               listRendering: {
                 ...rendering,
                 marker: rendering.markerTemplate ?? rendering.marker,
               },
-            },
+            }),
         counters,
       ),
     );
