@@ -346,8 +346,13 @@ describe("a suggested paragraph beside a pending join", () => {
 });
 
 describe("a paragraph between a pending join and the table that stops it", () => {
-  /** "Alpha." merged into "Bravo." and "Bravo." deleted, tracked, before a table. */
-  const beforeTable = async () => {
+  /**
+   * "Bravo." deleted and "Alpha." then merged into it, tracked, before a
+   * table: the join runs into a paragraph going whole, and the table stops it.
+   */
+  const beforeTable = async (
+    order: "delete first" | "merge first" = "delete first",
+  ) => {
     const bytes = (
       await ensureParaIds(
         await createDocx(fromMarkdown("Alpha.\n\nBravo.\n\nCharlie.")),
@@ -366,15 +371,20 @@ describe("a paragraph between a pending join and the table that stops it", () =>
     ).toEqual([]);
     const cell = reviewer.snapshot().blocks.find(({ text }) => text === "Cell");
     if (!cell) throw new Error("Missing table");
-    for (const operation of [
-      {
-        id: "merge",
-        type: "mergeBlockWithNext",
-        blockId: alpha.id,
-        separator: " ",
-      },
-      { id: "delete", type: "deleteBlock", blockId: bravo.id },
-    ] satisfies FolioDocumentOperation[]) {
+    const merge: FolioDocumentOperation = {
+      id: "merge",
+      type: "mergeBlockWithNext",
+      blockId: alpha.id,
+      separator: " ",
+    };
+    const deletion: FolioDocumentOperation = {
+      id: "delete",
+      type: "deleteBlock",
+      blockId: bravo.id,
+    };
+    for (const operation of order === "delete first"
+      ? [deletion, merge]
+      : [merge, deletion]) {
       expect(
         reviewer.applyOperations([operation], { mode: "tracked-changes" })
           .skipped,
@@ -408,6 +418,32 @@ describe("a paragraph between a pending join and the table that stops it", () =>
       });
     }
   }
+
+  test("is applied and stands apart once the paragraph the join runs into is deleted", async () => {
+    // Deleting the paragraph a join runs into keeps its break, the joined
+    // paragraph's: nothing runs past it, so a paragraph after it stands.
+    const { reviewer, bravo } = await beforeTable("merge first");
+    expect(
+      reviewer.applyOperations(
+        [
+          {
+            id: "insert",
+            type: "insertAfterBlock",
+            blockId: bravo,
+            text: "Inserted.",
+          },
+        ],
+        { mode: "tracked-changes" },
+      ).skipped,
+    ).toEqual([]);
+    reviewer.acceptAll();
+    expect(reviewer.snapshot().blocks.map(({ text }) => text)).toEqual([
+      "Alpha. ",
+      "Inserted.",
+      "Cell",
+      "Charlie.",
+    ]);
+  });
 
   test("is applied and stands apart with a paragraph going whole before the table", async () => {
     const { reviewer, alpha } = await beforeTable();
@@ -447,13 +483,13 @@ describe("a paragraph between a pending join and the table that stops it", () =>
       if (!alpha || !bravo) throw new Error("Missing fixture");
       for (const operation of [
         { id: "t", type: "insertTable", blockId: bravo.id, rows: [["Cell"]] },
+        { id: "delete", type: "deleteBlock", blockId: bravo.id },
         {
           id: "merge",
           type: "mergeBlockWithNext",
           blockId: alpha.id,
           separator: " ",
         },
-        { id: "delete", type: "deleteBlock", blockId: bravo.id },
       ] satisfies FolioDocumentOperation[]) {
         expect(
           reviewer.applyOperations([operation], { mode: "tracked-changes" })
