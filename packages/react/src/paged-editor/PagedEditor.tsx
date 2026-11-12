@@ -1550,7 +1550,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
   function PagedEditor(props, ref) {
     const {
       accessibleName,
-      document: documentModel,
+      document,
       documentIO,
       documentIdentity,
       experimentalSession,
@@ -1609,15 +1609,14 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       anonymizationSelectionSeq,
     } = props;
     // The editor reads its model and never writes it: an edit goes through
-    // the editor state, and the readers it hands the model to are the ones a
-    // deep-freeze test runs over frozen documents.
-    const document = documentModel && readModel(documentModel);
-    // Styles and section properties are read from that same document.
-    const styles = document?.package.styles;
+    // the editor state. The model is passed on read-only, and each reader that
+    // takes a plain `Document` (its styles and section properties here) reads
+    // it through `readModel`; a deep-freeze test runs them over frozen models.
+    const styles = document ? readModel(document).package.styles : undefined;
     const sectionProperties = useMemo(
       () =>
         resolveEffectiveSectionProperties(
-          document?.package.document,
+          document ? readModel(document).package.document : undefined,
           hasTitlePg,
         ) ?? null,
       [document, hasTitlePg],
@@ -1773,7 +1772,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     );
     const layoutSessionRef = useRef(createLayoutSession());
     const precomputedInitialStateRef = useRef<EditorState | null>(null);
-    const precomputedInitialDocumentRef = useRef<Document | null>(null);
+    const precomputedInitialDocumentRef = useRef<ReadonlyDocument | null>(null);
     const preHiddenInitialLayoutDoneRef = useRef(false);
     const pendingHiddenEditorSelectionRef =
       useRef<PendingHiddenEditorSelection | null>(null);
@@ -2184,7 +2183,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const defaultTabStop = document?.package.settings?.defaultTabStop;
     const mirrorMargins = document?.package.settings?.mirrorMargins === true;
     const sectionHeaderFooterRefs = useMemo(
-      () => resolveSectionHeaderFooterRefs(document),
+      () => resolveSectionHeaderFooterRefs(document && readModel(document)),
       [document],
     );
     const layoutInputSignature = useMemo(
@@ -2479,10 +2478,10 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     // A note edit moves the model as it is typed and tells the host once it
     // settles; a body notification due by then carries it instead.
     const noteChangeNotifyTimerRef = useRef<number | null>(null);
-    const documentModelRef = useRef(documentModel);
+    const documentModelRef = useRef(document);
     useLayoutEffect(() => {
-      documentModelRef.current = documentModel;
-    }, [documentModel]);
+      documentModelRef.current = document;
+    }, [document]);
     const cancelNoteChangeNotification = useCallback(() => {
       if (noteChangeNotifyTimerRef.current === null) return;
       window.clearTimeout(noteChangeNotifyTimerRef.current);

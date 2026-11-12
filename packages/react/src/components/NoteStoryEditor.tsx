@@ -29,7 +29,10 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
-import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
+import {
+  readModel,
+  type ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 
 import "prosemirror-view/style/prosemirror.css";
 
@@ -42,7 +45,8 @@ export type NoteStoryEditorRef = {
 };
 
 export type NoteStoryEditorProps = {
-  document: Document | null;
+  /** The document model; the note editors only read it. */
+  document: ReadonlyDocument | null;
   experimentalSession?: "canonical";
   getCanonicalApi?: () => HiddenEditorApi | null;
   /**
@@ -175,7 +179,7 @@ const NoteStoryEditorComponent = forwardRef<
             const model =
               readCanonicalDocumentRef.current() ??
               (current && managerRef.current
-                ? managerRef.current.snapshotDocument(current)
+                ? managerRef.current.snapshotDocument(readModel(current))
                 : current);
             if (model) onDocumentChangeRef.current(model);
           }
