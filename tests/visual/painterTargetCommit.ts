@@ -1,7 +1,11 @@
 import { Result } from "better-result";
 
 /** What painted-target readiness reads of the page's font loading. */
-export type PainterFontSet = Pick<FontFaceSet, "status" | "ready">;
+export type PainterFontSet = {
+  readonly status: FontFaceSetLoadStatus;
+  /** Settles once nothing is loading; only waited on, never read. */
+  readonly ready: Promise<unknown>;
+};
 
 type PainterTargetOptions<T> = {
   commit: () => void;
