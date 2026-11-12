@@ -215,7 +215,24 @@ for (const name of documents) {
         await page.goto(`/?mode=${mode}&session=${engine}`);
         await page.waitForSelector(".layout-page");
         await page.waitForTimeout(1000);
+        const openCdp = PROFILE
+          ? await page.context().newCDPSession(page)
+          : undefined;
+        if (openCdp) {
+          await openCdp.send("Profiler.enable");
+          await openCdp.send("Profiler.setSamplingInterval", { interval: 200 });
+          await openCdp.send("Profiler.start");
+        }
         const opened = await open(page, bytes);
+        if (openCdp && PROFILE) {
+          const { profile } = await openCdp.send("Profiler.stop");
+          mkdirSync(PROFILE, { recursive: true });
+          writeFileSync(
+            join(PROFILE, `${name}-${mode}-${engine}-open.cpuprofile`),
+            JSON.stringify(profile),
+          );
+          await openCdp.detach();
+        }
         await page.waitForTimeout(3000);
         await prepare(page);
         await page.waitForTimeout(1000);

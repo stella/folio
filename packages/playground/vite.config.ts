@@ -60,5 +60,7 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    // Scratch profiling only: function names in CPU profiles.
+    ...(process.env["FOLIO_ZZ_UNMINIFIED"] ? { minify: false } : {}),
   },
 });
