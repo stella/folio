@@ -6,7 +6,9 @@ import { paragraphNumberingReference } from "@stll/docx-core/model";
 import type { ParagraphFormatting, RecordField } from "../../types/document";
 
 /** A paragraph formatting that states every field. */
-export const COMPLETE_PARAGRAPH_FORMATTING = {
+export const COMPLETE_PARAGRAPH_FORMATTING: {
+  [Field in RecordField<ParagraphFormatting>]-?: ParagraphFormatting[Field];
+} = {
   alignment: "center",
   bidi: false,
   kinsoku: true,
@@ -61,6 +63,4 @@ export const COMPLETE_PARAGRAPH_FORMATTING = {
   runProperties: { bold: true },
   runInWithNext: false,
   preserved: { children: [{ index: 32, xml: '<w:cnfStyle w:val="000000000000"/>' }] },
-} as const satisfies {
-  [Field in RecordField<ParagraphFormatting>]-?: ParagraphFormatting[Field];
 };

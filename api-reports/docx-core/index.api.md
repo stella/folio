@@ -126,7 +126,7 @@ export type DocxPackage = WritableRecord & {
     footers?: Map<string, HeaderFooter>;
     relationships?: RelationshipMap | undefined;
     media?: Map<string, MediaFile> | undefined;
-    properties?: {
+    properties?: WritableRecord & {
         title?: string;
         subject?: string;
         creator?: string;
@@ -345,19 +345,19 @@ export type SectionProperties = WritableRecord & {
     footerReferences?: FooterReference[];
     titlePg?: boolean;
     evenAndOddHeaders?: boolean;
-    lineNumbers?: {
+    lineNumbers?: WritableRecord & {
         start?: number;
         countBy?: number;
         distance?: number;
         restart?: LineNumberRestart;
     };
-    pageNumbering?: {
+    pageNumbering?: WritableRecord & {
         format?: NumberFormat;
         start?: number;
         chapterStyle?: number;
         chapterSeparator?: string;
     };
-    pageBorders?: {
+    pageBorders?: WritableRecord & {
         top?: BorderSpec;
         bottom?: BorderSpec;
         left?: BorderSpec;
@@ -366,7 +366,7 @@ export type SectionProperties = WritableRecord & {
         offsetFrom?: "page" | "text";
         zOrder?: "front" | "back";
     };
-    background?: {
+    background?: WritableRecord & {
         color?: ColorValue;
         themeColor?: ThemeColorValue;
         themeTint?: string;
@@ -375,7 +375,7 @@ export type SectionProperties = WritableRecord & {
     footnotePr?: FootnoteProperties;
     footnoteColumns?: number;
     endnotePr?: EndnoteProperties;
-    docGrid?: {
+    docGrid?: WritableRecord & {
         type?: "default" | "lines" | "linesAndChars" | "snapToChars";
         linePitch?: number;
         charSpace?: number;
@@ -420,14 +420,14 @@ export type Style = WritableRecord & {
     tblPr?: TableFormatting;
     trPr?: TableRowFormatting;
     tcPr?: TableCellFormatting;
-    tblStylePr?: {
+    tblStylePr?: (WritableRecord & {
         type: "band1Horz" | "band1Vert" | "band2Horz" | "band2Vert" | "firstCol" | "firstRow" | "lastCol" | "lastRow" | "neCell" | "nwCell" | "seCell" | "swCell" | "wholeTable";
         pPr?: ParagraphFormatting;
         rPr?: TextFormatting;
         tblPr?: TableFormatting;
         trPr?: TableRowFormatting;
         tcPr?: TableCellFormatting;
-    }[];
+    })[];
 };
 
 // @public

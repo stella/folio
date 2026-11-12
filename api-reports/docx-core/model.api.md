@@ -54,7 +54,7 @@ export type BookmarkEnd = WritableRecord & {
 } & MarkupRangeMarker & CopyOriginMarker;
 
 // @public
-export type BookmarkRangeMarker = MarkupRangeMarker & {
+export type BookmarkRangeMarker = MarkupRangeMarker & WritableRecord & {
     name: string;
     colFirst?: number;
     colLast?: number;
@@ -225,7 +225,7 @@ export const COUNTER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "
 export type CounterFormat = (typeof COUNTER_FORMATS)[number];
 
 // @public
-export type DeepReadonly<Value> = Value extends ((...args: never[]) => unknown) ? Value : Value extends ArrayBuffer | Date ? Value : Value extends ReadonlyMap<infer Key, infer Entry> ? ReadonlyMap<DeepReadonly<Key>, DeepReadonly<Entry>> : Value extends ReadonlySet<infer Entry> ? ReadonlySet<DeepReadonly<Entry>> : Value extends readonly (infer Element)[] ? readonly DeepReadonly<Element>[] : Value extends object ? { readonly [Key in keyof Value]: DeepReadonly<Value[Key]>; } : Value;
+export type DeepReadonly<Value> = Value extends ((...args: never[]) => unknown) ? Value : Value extends ArrayBuffer ? Value : Value extends Date ? ReadonlyDate : Value extends ReadonlyMap<infer Key, infer Entry> ? ReadonlyMap<DeepReadonly<Key>, DeepReadonly<Entry>> : Value extends ReadonlySet<infer Entry> ? ReadonlySet<DeepReadonly<Entry>> : Value extends readonly (infer Element)[] ? readonly DeepReadonly<Element>[] : Value extends object ? { readonly [Key in keyof Value]: DeepReadonly<Value[Key]>; } : Value;
 
 // @public
 export const DEFAULT_TAB_STOP_TWIPS = 720;
@@ -291,7 +291,7 @@ export type DocumentSettings = WritableRecord & {
     adjustLineHeightInTable?: true;
     doNotUseIndentAsNumberingTabStop?: true;
     updateFields?: boolean;
-    themeFontLang?: {
+    themeFontLang?: WritableRecord & {
         eastAsia?: string;
         bidi?: string;
     };
@@ -299,12 +299,12 @@ export type DocumentSettings = WritableRecord & {
     doNotHyphenateCaps?: boolean;
     consecutiveHyphenLimit?: number;
     hyphenationZoneTwips?: number;
-    lineBreakRules?: {
-        noLineBreaksBefore?: {
+    lineBreakRules?: WritableRecord & {
+        noLineBreaksBefore?: WritableRecord & {
             language?: string;
             characters: string;
         };
-        noLineBreaksAfter?: {
+        noLineBreaksAfter?: WritableRecord & {
             language?: string;
             characters: string;
         };
@@ -339,7 +339,7 @@ export type DocxPackage = WritableRecord & {
     footers?: Map<string, HeaderFooter>;
     relationships?: RelationshipMap | undefined;
     media?: Map<string, MediaFile> | undefined;
-    properties?: {
+    properties?: WritableRecord & {
         title?: string;
         subject?: string;
         creator?: string;
@@ -361,7 +361,7 @@ export const DRAWING_RAW_XML_MODES: {
 // @public
 export type DrawingAnchor = WritableRecord & {
     useSimplePosition?: boolean;
-    simplePosition?: {
+    simplePosition?: WritableRecord & {
         x: number;
         y: number;
     };
@@ -477,13 +477,13 @@ export type FloatingTableProperties = WritableRecord & {
 };
 
 // @public
-export type FoldedListNumber = {
+export type FoldedListNumber = (WritableRecord & {
     kind: "field";
     field: ComplexField;
-} | {
+}) | (WritableRecord & {
     kind: "tab";
     run: Run;
-};
+});
 
 // @public
 export type FontCharset = WritableRecord & {
@@ -499,7 +499,7 @@ export type FontInfo = WritableRecord & {
     charset?: FontCharset;
     family?: "decorative" | "modern" | "roman" | "script" | "swiss" | "auto";
     pitch?: "default" | "fixed" | "variable";
-    sig?: {
+    sig?: WritableRecord & {
         usb0?: string;
         usb1?: string;
         usb2?: string;
@@ -625,7 +625,7 @@ type Image_2 = WritableRecord & {
     hlinkClickSource?: ImageDocPrLink;
     hlinkHoverXml?: string;
     outline?: ShapeOutline;
-    effects?: {
+    effects?: WritableRecord & {
         brightness?: number;
         contrast?: number;
         saturation?: number;
@@ -667,12 +667,12 @@ export type ImagePadding = WritableRecord & {
 
 // @public
 export type ImagePosition = WritableRecord & {
-    horizontal: {
+    horizontal: WritableRecord & {
         relativeTo: "character" | "column" | "insideMargin" | "leftMargin" | "margin" | "outsideMargin" | "page" | "rightMargin";
         alignment?: "left" | "right" | "center" | "inside" | "outside";
         posOffset?: number;
     };
-    vertical: {
+    vertical: WritableRecord & {
         relativeTo: "insideMargin" | "line" | "margin" | "outsideMargin" | "page" | "paragraph" | "topMargin" | "bottomMargin";
         alignment?: "top" | "bottom" | "center" | "inside" | "outside";
         posOffset?: number;
@@ -889,7 +889,7 @@ export type ListRendering = WritableRecord & {
 export const lockedControlMessage: (input: LockedControlViolation) => string;
 
 // @public
-export type LockedControlSpan = {
+export type LockedControlSpan = WritableRecord & {
     lock: ContentControlLock;
     from: number;
     to: number;
@@ -898,14 +898,14 @@ export type LockedControlSpan = {
 };
 
 // @public
-export type LockedControlTouch = {
+export type LockedControlTouch = WritableRecord & {
     from: number;
     to: number;
     effect: "remove" | "edit";
 };
 
 // @public
-export type LockedControlViolation = {
+export type LockedControlViolation = WritableRecord & {
     lock: ContentControlLock;
     change: ContentControlChange;
 };
@@ -956,7 +956,7 @@ export const mergeParagraphNumbering: (inherited: ParagraphNumberingOverride | u
 export const mintRelationshipId: (ordinal: number) => RelationshipId;
 
 // @public
-export type MoveBookmarkMarker = BookmarkRangeMarker & {
+export type MoveBookmarkMarker = BookmarkRangeMarker & WritableRecord & {
     author: string;
     date?: string;
 };
@@ -1067,7 +1067,7 @@ export const numberingInstanceResolves: (definitions: NumberingDefinitions, numI
 export const numberingLevelEntries: (definitions: NumberingDefinitions) => NumberingLevelEntry[];
 
 // @public (undocumented)
-export type NumberingLevelEntry = {
+export type NumberingLevelEntry = WritableRecord & {
     numId: number;
     ilvl: number;
     level: ListLevel;
@@ -1079,14 +1079,14 @@ export const numberingLevelHasMarkerSlot: (level: {
 }, isLegal?: boolean) => boolean;
 
 // @public (undocumented)
-export type NumberingLevelResolution = {
+export type NumberingLevelResolution = (WritableRecord & {
     kind: "level";
     level: ListLevel;
     source: "abstract" | "override" | "styleLink";
-} | {
+}) | (WritableRecord & {
     kind: "undefined";
     reason: "levelOutOfRange" | "noInstance" | "noAbstract" | "unresolvedStyleLink" | "levelNotDefined";
-};
+});
 
 // @public
 export type OutlineLevel = {
@@ -1155,7 +1155,7 @@ export type ParagraphFormatting = WritableRecord & OwnFieldPresence<{
     indentFirstLine?: number;
     hangingIndent?: boolean;
     indentPreservedAttributes?: PreservedAttribute[];
-    borders?: {
+    borders?: WritableRecord & {
         top?: BorderSpec;
         bottom?: BorderSpec;
         left?: BorderSpec;
@@ -1176,7 +1176,7 @@ export type ParagraphFormatting = WritableRecord & OwnFieldPresence<{
     numberingInsertionXml?: string;
     outlineLevel?: OutlineLevel;
     styleId?: string;
-    frame?: {
+    frame?: WritableRecord & {
         dropCap?: "none" | "drop" | "margin";
         lines?: number;
         width?: number;
@@ -1563,10 +1563,10 @@ export type SdtProperties = WritableRecord & {
     showingPlaceholder?: boolean;
     dateFormat?: string;
     dateValueISO?: string;
-    listItems?: {
+    listItems?: (WritableRecord & {
         displayText: string;
         value: string;
-    }[];
+    })[];
     dropdownLastValue?: string;
     checked?: boolean;
     preserved?: PreservedMarkup;
@@ -1612,19 +1612,19 @@ export type SectionProperties = WritableRecord & {
     footerReferences?: FooterReference[];
     titlePg?: boolean;
     evenAndOddHeaders?: boolean;
-    lineNumbers?: {
+    lineNumbers?: WritableRecord & {
         start?: number;
         countBy?: number;
         distance?: number;
         restart?: LineNumberRestart;
     };
-    pageNumbering?: {
+    pageNumbering?: WritableRecord & {
         format?: NumberFormat;
         start?: number;
         chapterStyle?: number;
         chapterSeparator?: string;
     };
-    pageBorders?: {
+    pageBorders?: WritableRecord & {
         top?: BorderSpec;
         bottom?: BorderSpec;
         left?: BorderSpec;
@@ -1633,7 +1633,7 @@ export type SectionProperties = WritableRecord & {
         offsetFrom?: "page" | "text";
         zOrder?: "front" | "back";
     };
-    background?: {
+    background?: WritableRecord & {
         color?: ColorValue;
         themeColor?: ThemeColorValue;
         themeTint?: string;
@@ -1642,7 +1642,7 @@ export type SectionProperties = WritableRecord & {
     footnotePr?: FootnoteProperties;
     footnoteColumns?: number;
     endnotePr?: EndnoteProperties;
-    docGrid?: {
+    docGrid?: WritableRecord & {
         type?: "default" | "lines" | "linesAndChars" | "snapToChars";
         linePitch?: number;
         charSpace?: number;
@@ -1663,7 +1663,7 @@ export type SectionPropertyChange = WritableRecord & {
     type: "sectionPropertyChange";
     info: PropertyChangeInfo;
     previousProperties?: SectionProperties;
-    previousReferences?: {
+    previousReferences?: WritableRecord & {
         headerReferences?: HeaderReference[];
         footerReferences?: FooterReference[];
     };
@@ -1725,14 +1725,14 @@ export type ShapeFill = WritableRecord & {
     type: "none" | "solid" | "gradient" | "pattern" | "picture";
     rawXml?: string;
     color?: ColorValue;
-    gradient?: {
+    gradient?: WritableRecord & {
         type: "linear" | "radial" | "rectangular" | "path";
         angle?: number;
         scaled?: boolean;
-        stops: {
+        stops: (WritableRecord & {
             position: number;
             color: ColorValue;
-        }[];
+        })[];
     };
 };
 
@@ -1750,12 +1750,12 @@ export type ShapeOutline = WritableRecord & {
     dash?: PresetLineDashValue;
     cap?: "flat" | "round" | "square";
     join?: "bevel" | "miter" | "round";
-    headEnd?: {
+    headEnd?: WritableRecord & {
         type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
         width?: "sm" | "med" | "lg";
         length?: "sm" | "med" | "lg";
     };
-    tailEnd?: {
+    tailEnd?: WritableRecord & {
         type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
         width?: "sm" | "med" | "lg";
         length?: "sm" | "med" | "lg";
@@ -1764,7 +1764,7 @@ export type ShapeOutline = WritableRecord & {
 
 // @public
 export type ShapeTextBody = WritableRecord & {
-    wordArt?: {
+    wordArt?: WritableRecord & {
         fromWordArt?: boolean;
         preset?: string;
         adjustments?: ShapeGeometryAdjustment[];
@@ -1775,7 +1775,7 @@ export type ShapeTextBody = WritableRecord & {
     anchorCenter?: boolean;
     autoFit?: "none" | "normal" | "shape";
     textWrap?: "square" | "none";
-    margins?: {
+    margins?: WritableRecord & {
         top?: number;
         bottom?: number;
         left?: number;
@@ -1831,20 +1831,20 @@ export type Style = WritableRecord & {
     tblPr?: TableFormatting;
     trPr?: TableRowFormatting;
     tcPr?: TableCellFormatting;
-    tblStylePr?: {
+    tblStylePr?: (WritableRecord & {
         type: "band1Horz" | "band1Vert" | "band2Horz" | "band2Vert" | "firstCol" | "firstRow" | "lastCol" | "lastRow" | "neCell" | "nwCell" | "seCell" | "swCell" | "wholeTable";
         pPr?: ParagraphFormatting;
         rPr?: TextFormatting;
         tblPr?: TableFormatting;
         trPr?: TableRowFormatting;
         tcPr?: TableCellFormatting;
-    }[];
+    })[];
 };
 
 // @public
 export type StyleDefinitions = WritableRecord & {
     docDefaults?: DocDefaults;
-    latentStyles?: {
+    latentStyles?: WritableRecord & {
         defLockedState?: boolean;
         defUIPriority?: number;
         defSemiHidden?: boolean;
@@ -1921,7 +1921,7 @@ export type TableCell = WritableRecord & {
 export type TableCellBlock = BlockContent;
 
 // @public
-export type TableCellBorders = TableBorders & {
+export type TableCellBorders = TableBorders & WritableRecord & {
     topLeftToBottomRight?: BorderSpec;
     topRightToBottomLeft?: BorderSpec;
 };
@@ -2019,7 +2019,7 @@ export type TableMeasurement = WritableRecord & {
 
 // @public
 export type TablePreservedMarkup = WritableRecord & {
-    children?: (PreservedChild & {
+    children?: (PreservedChild & WritableRecord & {
         contentControls?: SdtProperties[];
         carrierStack?: TableContentCarrier[];
     })[];
@@ -2151,7 +2151,7 @@ export type TextBox = WritableRecord & {
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];
     verticalAlign?: ShapeTextBody["anchor"];
-    margins?: {
+    margins?: WritableRecord & {
         top?: number;
         bottom?: number;
         left?: number;
@@ -2181,7 +2181,7 @@ export type TextFormatting = WritableRecord & OwnFieldPresence<{
     boldCs?: boolean;
     italic?: boolean;
     italicCs?: boolean;
-    underline?: {
+    underline?: WritableRecord & {
         style: UnderlineStyle;
         color?: ColorValue;
     };
@@ -2197,7 +2197,7 @@ export type TextFormatting = WritableRecord & OwnFieldPresence<{
     shading?: ShadingProperties;
     fontSize?: number;
     fontSizeCs?: number;
-    fontFamily?: {
+    fontFamily?: WritableRecord & {
         ascii?: string;
         hAnsi?: string;
         eastAsia?: string;
@@ -2208,7 +2208,7 @@ export type TextFormatting = WritableRecord & OwnFieldPresence<{
         eastAsiaTheme?: string;
         csTheme?: string;
     };
-    language?: {
+    language?: WritableRecord & {
         val?: string;
         eastAsia?: string;
         bidi?: string;
@@ -2244,7 +2244,7 @@ export type Theme = WritableRecord & {
     name?: string;
     colorScheme?: ThemeColorScheme;
     fontScheme?: ThemeFontScheme;
-    formatScheme?: {
+    formatScheme?: WritableRecord & {
         name?: string;
     };
 };
@@ -2306,7 +2306,7 @@ export type ThemeFont = WritableRecord & {
     latin?: string;
     ea?: string;
     cs?: string;
-    fonts?: Record<string, string>;
+    fonts?: WritableRecord & Record<string, string>;
 };
 
 // @public
@@ -2321,7 +2321,7 @@ export type TrackedChangeInfo = WritableRecord & {
     author: string;
     date?: string;
     initials?: string;
-    utcDate?: {
+    utcDate?: WritableRecord & {
         attribute: string;
         value: string;
     };

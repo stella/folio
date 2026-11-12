@@ -2,7 +2,10 @@
 // comment field census lives here, where the package typecheck compiles it.
 import type { FolioReviewComment, FolioReviewCommentReply } from "../headless";
 
-export const REVIEW_COMMENT_FIELD_CENSUS = {
+export const REVIEW_COMMENT_FIELD_CENSUS: Record<
+  keyof FolioReviewComment,
+  keyof FolioReviewComment
+> = {
   id: "id",
   author: "author",
   date: "date",
@@ -12,14 +15,14 @@ export const REVIEW_COMMENT_FIELD_CENSUS = {
   story: "story",
   replies: "replies",
   done: "done",
-} as const satisfies Record<keyof FolioReviewComment, keyof FolioReviewComment>;
+};
 
-export const REVIEW_COMMENT_REPLY_FIELD_CENSUS = {
+export const REVIEW_COMMENT_REPLY_FIELD_CENSUS: Record<
+  keyof FolioReviewCommentReply,
+  keyof FolioReviewCommentReply
+> = {
   id: "id",
   author: "author",
   date: "date",
   text: "text",
-} as const satisfies Record<
-  keyof FolioReviewCommentReply,
-  keyof FolioReviewCommentReply
->;
+};

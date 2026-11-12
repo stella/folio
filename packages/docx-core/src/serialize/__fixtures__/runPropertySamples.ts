@@ -5,7 +5,10 @@ import type { RecordField } from "../../model/document";
 import type { TextFormatting } from "../../model/formatting";
 
 /** One minimal `TextFormatting` per model field, each stating that field. */
-export const RUN_PROPERTY_SAMPLES = {
+export const RUN_PROPERTY_SAMPLES: Record<
+  RecordField<TextFormatting>,
+  TextFormatting
+> = {
   bold: { bold: true },
   boldCs: { boldCs: false },
   italic: { italic: true },
@@ -43,4 +46,4 @@ export const RUN_PROPERTY_SAMPLES = {
   // Keeps this map total; the compiled writer has no capture channel, so this
   // sample contributes no child to its emitted `w:rPr`.
   preserved: { preserved: { children: [{ index: 0, xml: "<w:bdr/>" }] } },
-} as const satisfies Record<RecordField<TextFormatting>, TextFormatting>;
+};

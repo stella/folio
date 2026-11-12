@@ -17,7 +17,10 @@ type DifferenceFixture = Readonly<{
   expected: FolioContentInlineFormattingPatch;
 }>;
 
-export const PROPERTY_DIFFERENCES = {
+export const PROPERTY_DIFFERENCES: Record<
+  keyof FolioContentInlineFormatting,
+  readonly DifferenceFixture[]
+> = {
   bold: [
     {
       label: "effective on",
@@ -164,7 +167,4 @@ export const PROPERTY_DIFFERENCES = {
       expected: { color: null },
     },
   ],
-} as const satisfies Record<
-  keyof FolioContentInlineFormatting,
-  readonly DifferenceFixture[]
->;
+};

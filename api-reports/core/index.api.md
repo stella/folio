@@ -5,7 +5,6 @@
 ```ts
 
 import { DecorationSet } from 'prosemirror-view';
-import { DeepReadonly } from '@stll/docx-core/model';
 import { DirectiveKind } from '@stll/template-conditions';
 import { DOCX_CONFORMANCE_CLASSES } from '@stll/docx-core/model';
 import { EditorState } from 'prosemirror-state';
@@ -668,7 +667,7 @@ export type DocumentStyleSet = {
     initialParagraphStyleId: string;
     styles: import__stll_docx_core_model.StyleDefinitions;
     numbering?: import__stll_docx_core_model.NumberingDefinitions;
-    theme?: DeepReadonly<import__stll_docx_core_model.Theme>;
+    theme?: import__stll_docx_core_model.Theme;
     fontTable?: import__stll_docx_core_model.FontTable;
     settings?: import__stll_docx_core_model.DocumentSettings;
 };

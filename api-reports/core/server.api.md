@@ -4,7 +4,6 @@
 
 ```ts
 
-import { DeepReadonly } from '@stll/docx-core/model';
 import { Hyperlink } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
@@ -215,7 +214,7 @@ export type DocumentStyleSet = {
     initialParagraphStyleId: string;
     styles: import__stll_docx_core_model.StyleDefinitions;
     numbering?: import__stll_docx_core_model.NumberingDefinitions;
-    theme?: DeepReadonly<import__stll_docx_core_model.Theme>;
+    theme?: import__stll_docx_core_model.Theme;
     fontTable?: import__stll_docx_core_model.FontTable;
     settings?: import__stll_docx_core_model.DocumentSettings;
 };
