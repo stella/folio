@@ -1137,6 +1137,7 @@ describe("tracked operations and their resolution", () => {
         (document, seeds: OpSeed[]) => {
           let current = document;
           const stamps: RevisionStamp[] = [];
+          const kinds: DocumentOpType[] = [];
           let keptEarlier = false;
           for (const [index, seed] of seeds.entries()) {
             const op = trackedOpFor(current, seed, index);
@@ -1149,7 +1150,7 @@ describe("tracked operations and their resolution", () => {
               op,
               new Set(stampedIds(current, stamps)),
             );
-            count(tally, kindOf(op));
+            kinds.push(kindOf(op));
             stamps.push(stamp);
             current = applied.value.document;
           }
@@ -1158,6 +1159,9 @@ describe("tracked operations and their resolution", () => {
           const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
           const all = perOp.flat();
           if (all.length === 0) return;
+          // A kind counts once its revisions reach the checks below.
+          for (const [index, ids] of perOp.entries())
+            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
           // The run's own revisions: at once, and one operation's at a time.
           const rejectedAtOnce = resolved(
             current,
@@ -1238,19 +1242,23 @@ describe("tracked operations and their resolution", () => {
         (document, seeds: OpSeed[], keys: number[]) => {
           let current = document;
           const stamps: RevisionStamp[] = [];
+          const kinds: DocumentOpType[] = [];
           for (const [index, seed] of seeds.entries()) {
             const op = trackedOpFor(current, seed, index);
             const applied = applyDocumentOp(current, op);
             if (applied.isErr()) continue;
             const stamp = stampOf(op);
             if (stamp === undefined) continue;
-            count(tally, kindOf(op));
+            kinds.push(kindOf(op));
             stamps.push(stamp);
             current = applied.value.document;
           }
           const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
           const all = perOp.flat();
           if (all.length === 0) return;
+          // A kind counts once its revisions reach the check below.
+          for (const [index, ids] of perOp.entries())
+            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
           // The operations' revisions in an order the keys draw, earlier
           // operations' before later ones' as often as after.
           const order = perOp
