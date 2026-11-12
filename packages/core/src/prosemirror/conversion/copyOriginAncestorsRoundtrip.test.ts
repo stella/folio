@@ -412,9 +412,8 @@ test("accepting an empty copied move range removes its resolved owner", async ()
   );
 
   expect(output).toContain('w:name="copied"');
-  // The paragraph still holds the range, so the accepted copy goes with its owner.
-  expect(output.match(/w:moveToRangeStart/gu)).toHaveLength(1);
-  expect(output.match(/w:moveToRangeEnd/gu)).toHaveLength(1);
+  expect(output.match(/w:moveToRangeStart/gu)).toHaveLength(2);
+  expect(output.match(/w:moveToRangeEnd/gu)).toHaveLength(2);
   expect(output).not.toContain("copyOriginAncestors");
 });
 
@@ -425,9 +424,8 @@ test("accepting all changes removes empty move-range copy ownership", async () =
   );
 
   expect(output).toContain('w:name="copied"');
-  // The paragraph still holds the range, so the accepted copy goes with its owner.
-  expect(output.match(/w:moveToRangeStart/gu)).toHaveLength(1);
-  expect(output.match(/w:moveToRangeEnd/gu)).toHaveLength(1);
+  expect(output.match(/w:moveToRangeStart/gu)).toHaveLength(2);
+  expect(output.match(/w:moveToRangeEnd/gu)).toHaveLength(2);
   expect(output).not.toContain("copyOriginAncestors");
 });
 

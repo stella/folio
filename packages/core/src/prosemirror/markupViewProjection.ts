@@ -27,7 +27,6 @@ import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import type { NumberingDefinitions, StyleDefinitions } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
-import type { AcceptedCopies } from "./keptRangeBoundaries";
 import {
   createDocumentNumberingPlugin,
   getDocumentNumbering,
@@ -79,7 +78,6 @@ export const resolveStateStory = (
   removedEndpointCount: number;
   removedReferences: RemovedSectionReference[];
   keptBoundaries: Set<PMNode>;
-  acceptedCopies: AcceptedCopies;
 } =>
   resolveWholeStory({
     doc: state.doc,

@@ -24,7 +24,6 @@ const marker = (
   range: `${BOUNDARY_SIDES[type].family}:3`,
   side: BOUNDARY_SIDES[type].side,
   kept,
-  accepted: false,
   copied: false,
 });
 
@@ -60,14 +59,21 @@ test("a boundary kept beside a copy an added revision owns stays, and the copy o
       marker("bookmarkStart", true),
     ]).dropped,
   ).toEqual([0]);
-  // A standing original still holds the boundary.
+  // A kept original stays beside a standing one: it is no copy.
   expect(
     planWellFormedRanges([
       marker("bookmarkStart", false),
       copy("bookmarkStart"),
       marker("bookmarkStart", true),
     ]).dropped,
-  ).toEqual([2]);
+  ).toEqual([]);
+  // A kept copy goes where a standing original holds the boundary.
+  expect(
+    planWellFormedRanges([
+      marker("bookmarkStart", false),
+      { ...marker("bookmarkStart", true), copied: true },
+    ]).dropped,
+  ).toEqual([1]);
   // The kept start closes on the end, not on the copy before it.
   expect(
     planWellFormedRanges([
@@ -121,22 +127,16 @@ const occurrenceArbitrary = fc
   .record({
     definition: fc.constantFrom(...Object.entries(BOUNDARY_SIDES)),
     id: fc.integer({ min: 0, max: 5 }),
-    resolution: fc.constantFrom("standing", "kept", "accepted"),
+    kept: fc.boolean(),
     copied: fc.boolean(),
   })
-  .map(({ definition: [type, { family, side }], id, resolution, copied }) => ({
+  .map(({ definition: [type, { family, side }], id, kept, copied }) => ({
     boundary: `${type}:${id}`,
     range: `${family}:${id}`,
     side,
-    kept: resolution === "kept",
-    // An accepted copy is a copy no longer.
-    accepted: resolution === "accepted",
-    copied: resolution !== "accepted" && copied,
+    kept,
+    copied,
   }));
-
-/** An occurrence the resolution left as it was. */
-const isStanding = ({ kept, accepted }: BoundaryOccurrence) =>
-  !kept && !accepted;
 
 test("normalization preserves standing occurrences, retained quotas, and reaches a fixed point", () => {
   assertProperty(
@@ -144,8 +144,8 @@ test("normalization preserves standing occurrences, retained quotas, and reaches
       fc.array(occurrenceArbitrary, { maxLength: 60 }),
       (occurrences) => {
         const normalized = normalize(occurrences);
-        expect(normalized.filter(isStanding)).toEqual(
-          occurrences.filter(isStanding),
+        expect(normalized.filter(({ kept }) => !kept)).toEqual(
+          occurrences.filter(({ kept }) => !kept),
         );
         for (const boundary of new Set(
           occurrences.map((item) => item.boundary),
@@ -153,24 +153,28 @@ test("normalization preserves standing occurrences, retained quotas, and reaches
           const source = occurrences.filter(
             (item) => item.boundary === boundary,
           );
-          const standing = source.filter(isStanding);
-          const held = standing.some(({ copied }) => !copied);
-          const resolved = normalized.filter(
-            (item) => item.boundary === boundary && !isStanding(item),
+          const standing = source.filter(({ kept }) => !kept);
+          const keptOriginals = source.filter(
+            ({ kept, copied }) => kept && !copied,
           );
-          // A copy an added revision owns holds nothing: one boundary the
-          // resolution made standing stays beside it, a kept one before an
-          // accepted copy, and one that is no copy when there is one.
-          expect(resolved.length).toBe(
-            held || standing.length === source.length ? 0 : 1,
+          const keptCopies = source.filter(
+            ({ kept, copied }) => kept && copied,
           );
-          if (source.some((item) => item.kept))
-            expect(resolved.every(({ kept }) => kept)).toBe(true);
-          if (source.some((item) => item.kept && !item.copied))
-            expect(resolved.every(({ copied }) => !copied)).toBe(true);
+          const held =
+            keptOriginals.length > 0 || standing.some(({ copied }) => !copied);
+          const kept = normalized.filter(
+            (item) => item.boundary === boundary && item.kept,
+          );
+          // Every kept boundary that is no copy stays. A kept copy goes where
+          // anything that is no copy holds the boundary; a copy an added
+          // revision owns holds nothing, so one kept copy stays beside it.
+          expect(kept.filter(({ copied }) => !copied)).toEqual(keptOriginals);
+          expect(kept.filter(({ copied }) => copied).length).toBe(
+            held || keptCopies.length === 0 ? 0 : 1,
+          );
           expect(
             normalized.filter((item) => item.boundary === boundary).length,
-          ).toBe(standing.length + resolved.length);
+          ).toBe(standing.length + kept.length);
         }
         const keptRanges = new Set(
           normalized.filter(({ kept }) => kept).map(({ range }) => range),

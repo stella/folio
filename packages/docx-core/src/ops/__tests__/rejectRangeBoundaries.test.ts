@@ -138,7 +138,7 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
     ]);
   });
 
-  test("dropping a kept copy leaves the content control that held it, emptied", () => {
+  test("a kept boundary that is no copy stays, though the paragraph holds it too", () => {
     const control = {
       type: "inlineSdt",
       properties: { sdtType: "richText", id: 41, tag: "clause" },
@@ -159,17 +159,22 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
       },
     ]);
 
+    // The insertion's bookmark carries no copy ancestry: it is a boundary of
+    // its own, so rejecting keeps it where the insertion was.
     expect(firstParagraph(rejectAll(document, [2]))).toEqual([
       { type: "bookmarkStart", id: 5, name: "_Ref5" },
       { type: "run", content: [{ type: "text", text: "a" }] },
       { type: "bookmarkEnd", id: 5 },
-      { ...control, content: [] },
+      {
+        ...control,
+        content: [{ type: "bookmarkStart", id: 5, name: "_Ref5" }],
+      },
     ]);
   });
 
-  // The copy's acceptance makes it a boundary of its own only where the story
-  // holds the bookmark nowhere else: here its own insertion still holds it,
-  // pending or kept, so either order leaves the one occurrence that is no copy.
+  // Accepting the copy makes it a boundary of its own, as inserting it
+  // directly would, and rejecting the original's insertion keeps the
+  // original, which is no copy: either order leaves both.
   test("rejecting a bookmark's insertion and accepting its copy's leaves the same, in either order", () => {
     const bookmarked = (text: string): ParagraphContent[] => [
       { type: "bookmarkStart", id: 7, name: "_Ref7" },
@@ -203,7 +208,7 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
     );
   });
 
-  test("accepting a copy of a bookmark the paragraph holds leaves the bookmark once", () => {
+  test("accepting a copy of a bookmark the paragraph holds leaves what inserting it directly does", () => {
     const bookmark = [
       { type: "bookmarkStart", id: 7, name: "_Ref7" },
       { type: "run", content: [{ type: "text", text: "x" }] },
@@ -218,13 +223,24 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
       decision: REVISION_DECISIONS.ACCEPT,
     });
     if (resolved.isErr()) throw resolved.error;
-    const markers = firstParagraph(resolved.value.document).filter(
-      ({ type }) => type === "bookmarkStart" || type === "bookmarkEnd",
+    const direct = applyDocumentOp(base, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { ...at, offset: 1 },
+      slice: {
+        content: structuredClone([...bookmark]),
+        openStart: 0,
+        openEnd: 0,
+      },
+    });
+    if (direct.isErr()) throw direct.error;
+    const markers = (document: Document) =>
+      firstParagraph(document).filter(
+        ({ type }) => type === "bookmarkStart" || type === "bookmarkEnd",
+      );
+    expect(markers(resolved.value.document)).toEqual(
+      markers(direct.value.document),
     );
-    expect(markers).toEqual([
-      { type: "bookmarkStart", id: 7, name: "_Ref7" },
-      { type: "bookmarkEnd", id: 7 },
-    ]);
+    expect(markers(resolved.value.document)).toHaveLength(4);
   });
 
   test("a bookmark inside a rejected insertion stays where the insertion was", () => {

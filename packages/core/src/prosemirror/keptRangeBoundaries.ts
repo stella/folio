@@ -169,7 +169,6 @@ const BOUNDARY_SIDES: Record<
 const occurrenceOf = (
   item: BoundaryItem,
   kept: boolean,
-  accepted: boolean,
   keptFrom: string | undefined,
 ): BoundaryOccurrence => {
   const { family, side } = BOUNDARY_SIDES[item.type];
@@ -178,7 +177,6 @@ const occurrenceOf = (
     range: `${family}:${item.id}`,
     side,
     kept,
-    accepted,
     copied:
       "copyOriginAncestors" in item && item.copyOriginAncestors !== undefined,
     ...(kept && keptFrom !== undefined ? { keptFrom } : {}),
@@ -216,45 +214,10 @@ type Found = {
   occurrence: BoundaryOccurrence;
 };
 
-/**
- * The boundary halves of each node whose copy a resolution's acceptance made
- * a boundary of its own, by index among the node's boundary items: the
- * engine's `accepted` occurrences.
- */
-export type AcceptedCopies = Map<PMNode, Set<number>>;
-
-/** Record the halves of `resolved` whose copy ancestry resolving `source` ended. */
-export const recordAcceptedCopies = (
-  accepted: AcceptedCopies,
-  source: PMNode,
-  resolved: PMNode | null,
-): void => {
-  if (resolved === null || resolved === source) return;
-  const before = rangeBoundaryItemsOf(source);
-  const after = rangeBoundaryItemsOf(resolved);
-  if (before.length !== after.length) return;
-  const halves = new Set<number>();
-  for (const [index, item] of after.entries()) {
-    const previous = before[index];
-    if (
-      previous !== undefined &&
-      "copyOriginAncestors" in previous &&
-      previous.copyOriginAncestors !== undefined &&
-      !("copyOriginAncestors" in item && item.copyOriginAncestors !== undefined)
-    )
-      halves.add(index);
-  }
-  if (halves.size > 0) accepted.set(resolved, halves);
-};
-
-const boundariesIn = (
-  doc: PMNode,
-  kept: ReadonlySet<PMNode>,
-  accepted: AcceptedCopies,
-): Found[] => {
+const boundariesIn = (doc: PMNode, kept: ReadonlySet<PMNode>): Found[] => {
   const found: Found[] = [];
   doc.descendants((node, position) => {
-    for (const [index, item] of rangeBoundaryItemsOf(node).entries())
+    for (const item of rangeBoundaryItemsOf(node))
       found.push({
         position,
         node,
@@ -262,7 +225,6 @@ const boundariesIn = (
         occurrence: occurrenceOf(
           item,
           kept.has(node),
-          accepted.get(node)?.has(index) === true,
           keptRevisionDates.get(node),
         ),
       });
@@ -453,10 +415,8 @@ type BoundaryEdit =
 export const normalizeKeptRangeBoundaries = (
   tr: Transaction,
   kept: ReadonlySet<PMNode>,
-  accepted: AcceptedCopies,
 ): void => {
-  if (kept.size > 0 || accepted.size > 0)
-    wellFormKeptRangeBoundaries(tr, kept, accepted);
+  if (kept.size > 0) wellFormKeptRangeBoundaries(tr, kept);
   collapseEmptyMoveRanges(tr);
 };
 
@@ -521,9 +481,8 @@ const collapseEmptyMoveRanges = (tr: Transaction): void => {
 const wellFormKeptRangeBoundaries = (
   tr: Transaction,
   kept: ReadonlySet<PMNode>,
-  accepted: AcceptedCopies,
 ): void => {
-  const found = boundariesIn(tr.doc, kept, accepted);
+  const found = boundariesIn(tr.doc, kept);
   const plan = planWellFormedRanges(found.map(({ occurrence }) => occurrence));
   const leaving = new Set(plan.dropped);
   for (const { moving } of plan.moved) leaving.add(moving);

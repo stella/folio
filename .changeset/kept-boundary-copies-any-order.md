@@ -1,6 +1,5 @@
 ---
 "@stll/docx-core": patch
-"@stll/folio-core": patch
 ---
 
-Accepting a pasted copy of a bookmark or move range where the story still holds that boundary drops the copy, as rejecting does, so resolving a boundary's insertion and its copy's leaves the same single boundary in any order, and the document saves.
+Rejecting a change keeps every range boundary its content held that is no copy, even where the story holds that boundary too; only a kept copy goes where the story holds its boundary. Accepting a copy keeps it, as inserting it directly does. So resolving a boundary's insertion and its copy's leaves the same boundaries in either order.

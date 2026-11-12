@@ -153,33 +153,19 @@ export const pairedCommentRanges = (
 };
 
 /**
- * The boundaries a resolution made standing where the story may hold them
- * already, and their ranges: each boundary a rejection kept from removed
- * content, mapped to the date of the revision it was kept from (the empty
- * string when that revision has none), and each copy an acceptance made a
- * boundary of its own.
+ * The boundaries a rejection kept from removed content, and their ranges.
+ * Each kept boundary maps to the date of the revision it was kept from, the
+ * empty string when that revision has none.
  */
 export type RelocatedBoundaries = {
   ranges: Set<string>;
   nodes: WeakMap<InlineNode, string>;
-  accepted: WeakSet<InlineNode>;
 };
 
 export const noRelocatedBoundaries = (): RelocatedBoundaries => ({
   ranges: new Set(),
   nodes: new WeakMap(),
-  accepted: new WeakSet(),
 });
-
-/** Record a copy an acceptance made a boundary of its own, for {@link wellFormedRanges}. */
-export const recordAcceptedCopy = (
-  relocated: RelocatedBoundaries,
-  node: InlineNode,
-): void => {
-  if (!isBoundary(node)) return;
-  relocated.ranges.add(rangeKey(node));
-  relocated.accepted.add(node);
-};
 
 /**
  * The range boundaries removed content leaves where it was, in document
@@ -721,13 +707,6 @@ export type BoundaryOccurrence = {
   /** Whether a rejection kept it from removed content. */
   kept: boolean;
   /**
-   * Whether it is a copy the resolution's acceptance made a boundary of its
-   * own. It was a copy when the resolution began, so it holds nothing for
-   * the boundaries the resolution kept, and it goes where the story holds
-   * the boundary otherwise.
-   */
-  accepted: boolean;
-  /**
    * Whether it is a copy an added revision still owns (its
    * `copyOriginAncestors`): rejecting that revision takes it away, so it is
    * never the boundary itself, only a copy that may go.
@@ -784,17 +763,17 @@ export const classifyRangeMultiplicity = (
 };
 
 /**
- * The one rule that makes every range a resolution touched well-formed, for
- * the engine's model and the editor's document alike. A boundary the
- * resolution made standing (kept by a rejection, or a copy its acceptance
- * made a boundary of its own) where the story still holds the boundary is no
- * boundary of its own and goes. Of several, the first kept one that is no
- * added revision's copy stays, else the first kept, else the first accepted
- * copy. A copy an added revision still owns holds nothing: rejecting its
- * revision takes it away, so a boundary kept beside it stays whichever is
- * resolved first, and it counts for no range's order. So at most one
- * occurrence of a boundary is ever no copy, and every order of resolving its
- * copies and its own revision leaves that one.
+ * The one rule that makes every range a rejection kept boundaries of
+ * well-formed, for the engine's model and the editor's document alike. A
+ * kept boundary that is no copy stays, whatever else the story holds: it is
+ * the boundary itself, and an accepted copy of it stands as a direct
+ * insertion of that copy would, so dropping either would make the result
+ * depend on which was resolved first. A kept boundary that is still an added
+ * revision's copy goes where the story holds the boundary otherwise (of
+ * several such and nothing else, the first stays). A copy an added revision
+ * still owns holds nothing: rejecting its revision takes it away, so a
+ * boundary kept beside it stays whichever is resolved first, and it counts
+ * for no range's order.
  * Then, where such a range's end comes before its start, the half the
  * rejection kept closes on the other: a kept end moves to just after the
  * start, or else a kept start to just before the end. A boundary that was
@@ -805,9 +784,7 @@ export const planWellFormedRanges = (
   occurrences: readonly BoundaryOccurrence[],
 ): WellFormedRangePlan => {
   const ranges = new Set(
-    occurrences
-      .filter(({ kept, accepted }) => kept || accepted)
-      .map(({ range }) => range),
+    occurrences.filter(({ kept }) => kept).map(({ range }) => range),
   );
   const copies = new Map<string, number[]>();
   for (const [index, { boundary, range }] of occurrences.entries()) {
@@ -819,24 +796,13 @@ export const planWellFormedRanges = (
   const dropped = new Set<number>();
   for (const group of copies.values()) {
     if (group.length < 2) continue;
-    const kept = group.filter((member) => occurrences[member]?.kept === true);
-    const accepted = group.filter(
-      (member) =>
-        occurrences[member]?.accepted === true &&
-        occurrences[member]?.kept !== true,
-    );
-    const held = group.some((member) => {
+    const keptCopies = group.filter((member) => {
       const occurrence = occurrences[member];
-      return (
-        occurrence?.kept === false && !occurrence.accepted && !occurrence.copied
-      );
+      return occurrence?.kept === true && occurrence.copied;
     });
-    const survivor = held
-      ? undefined
-      : (kept.find((member) => occurrences[member]?.copied === false) ??
-        kept.at(0) ??
-        accepted.at(0));
-    for (const member of [...kept, ...accepted])
+    const held = group.some((member) => occurrences[member]?.copied === false);
+    const survivor = held ? undefined : keptCopies.at(0);
+    for (const member of keptCopies)
       if (member !== survivor) dropped.add(member);
   }
   const ownedCopies = occurrences.flatMap(({ kept, copied }, index) =>
@@ -906,7 +872,6 @@ export const wellFormedRanges = ({
         range: rangeKey(node),
         side: BOUNDARY_SIDES[node.type].side,
         kept: keptFrom !== undefined,
-        accepted: relocated.accepted.has(node),
         copied: copyOriginAncestorsOf(node) !== undefined,
         ...(keptFrom === undefined ? {} : { keptFrom }),
       };

@@ -24,8 +24,6 @@ import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
 import { canonicalFieldNode } from "../prosemirror/fieldRepresentation";
 import {
-  type AcceptedCopies,
-  recordAcceptedCopies,
   type RemovedSubtree,
   removeResolvedSubtree,
   type RevisionSelection,
@@ -67,8 +65,6 @@ type RevisionInlineContext = {
   styleResolver: RunStyleResolver | null;
   /** The boundaries removed content left standing, for the range repair. */
   keptBoundaries: Set<PMNode>;
-  /** The copies an acceptance made boundaries of their own, for the range repair. */
-  acceptedCopies: AcceptedCopies;
 };
 
 const EMPTY_PARAGRAPH_RUN_STYLE_CONTEXT: ParagraphRunStyleContext = {
@@ -222,11 +218,8 @@ const resolveInlineNode = ({
     return panic("A copied boundary owner cannot be rejected outside removal.");
   }
   attrs = resolvedAttrs;
-  if (attrs !== node.attrs) {
-    const rebuilt = rebuildNode(node, attrs, node.content, marks);
-    recordAcceptedCopies(context.acceptedCopies, node, rebuilt);
-    return rebuilt;
-  }
+  if (attrs !== node.attrs)
+    return rebuildNode(node, attrs, node.content, marks);
   return marksEqual(marks, node.marks) ? node : node.mark(marks);
 };
 
@@ -561,7 +554,6 @@ export const resolveInlineRevisions = ({
   ranges: RevisionRange[];
   steps: Step[];
   keptBoundaries: Set<PMNode>;
-  acceptedCopies: AcceptedCopies;
 } | null => {
   const context: RevisionInlineContext = {
     pointComments,
@@ -573,7 +565,6 @@ export const resolveInlineRevisions = ({
     changedParagraphRanges: [],
     styleResolver,
     keptBoundaries: new Set(),
-    acceptedCopies: new Map(),
   };
   const resolved = resolveInlineContent({ node: doc, position: -1, context });
   if (isRemoved(resolved))
@@ -600,6 +591,5 @@ export const resolveInlineRevisions = ({
     ranges: context.changedParagraphRanges,
     steps: context.steps,
     keptBoundaries: context.keptBoundaries,
-    acceptedCopies: context.acceptedCopies,
   };
 };
