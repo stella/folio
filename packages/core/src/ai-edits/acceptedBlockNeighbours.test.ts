@@ -188,6 +188,8 @@ describe("a merge into a paragraph accepting removes, before a table", () => {
 type Insertion = {
   name: string;
   operation: (reviewer: FolioDocxReviewer) => FolioDocumentOperation;
+  /** Text the first block it puts in holds. */
+  marker: string;
   /** Applied directly only: it has no tracked form. */
   directOnly?: true;
 };
@@ -196,6 +198,7 @@ type Insertion = {
 const afterOpening: Insertion[] = [
   {
     name: "a paragraph after the paragraph before it",
+    marker: "Inserted after.",
     operation: (reviewer) => ({
       id: "after",
       type: "insertAfterBlock",
@@ -205,6 +208,7 @@ const afterOpening: Insertion[] = [
   },
   {
     name: "a table after the paragraph before it",
+    marker: "Term",
     operation: (reviewer) => ({
       id: "after",
       type: "insertTable",
@@ -218,6 +222,7 @@ const afterOpening: Insertion[] = [
 const beforeClosing: Insertion[] = [
   {
     name: "a paragraph before the paragraph after it",
+    marker: "Inserted before.",
     operation: (reviewer) => ({
       id: "before",
       type: "insertBeforeBlock",
@@ -227,6 +232,7 @@ const beforeClosing: Insertion[] = [
   },
   {
     name: "a table before the paragraph after it",
+    marker: "Second",
     operation: (reviewer) => ({
       id: "before",
       type: "insertTable",
@@ -419,6 +425,7 @@ const everyAfterOpening: Insertion[] = [
   ...afterOpening,
   {
     name: "a signature table after the paragraph before it",
+    marker: "Signer",
     operation: (reviewer) =>
       signatureTable("after", idOf(reviewer, "Opening clause."), "after"),
     directOnly: true,
@@ -430,6 +437,7 @@ const everyBeforeClosing: Insertion[] = [
   ...beforeClosing,
   {
     name: "a signature table before the paragraph after it",
+    marker: "Signer",
     operation: (reviewer) =>
       signatureTable("before", idOf(reviewer, "Closing clause."), "before"),
     directOnly: true,
@@ -530,7 +538,20 @@ describe("blocks put on either side of blocks accepting removes whole", () => {
               return order === "after first" ? pair : pair.toReversed();
             };
             const direct = await replay(run, "direct", "direct", operations);
-            expect(textsOf(direct)).not.toContain("Removed clause.");
+            const texts = textsOf(direct);
+            expect(texts).not.toContain("Removed clause.");
+            // Between the two paragraphs, in the order the batch names them.
+            const indexOf = (marker: string): number =>
+              texts.findIndex((text) => text.includes(marker));
+            const [first, second] =
+              order === "after first" ? [after, before] : [before, after];
+            expect(indexOf("Opening clause.")).toBeLessThan(
+              indexOf(first.marker),
+            );
+            expect(indexOf(first.marker)).toBeLessThan(indexOf(second.marker));
+            expect(indexOf(second.marker)).toBeLessThan(
+              indexOf("Closing clause."),
+            );
             if (!after.directOnly && !before.directOnly) {
               expect(
                 await replay(
