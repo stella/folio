@@ -21,6 +21,7 @@ import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorSession } from '@stll/folio-core/types/canonicalCapabilities';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { FindMatch } from '@stll/folio-core/utils/findReplace';

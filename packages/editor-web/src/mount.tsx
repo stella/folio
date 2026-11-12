@@ -134,6 +134,9 @@ const FolioEditorApp = ({
           <DocxEditor
             accessibleName={accessibleName}
             ref={editorRef}
+            // The host's undo stack mirrors ProseMirror's history, which only
+            // the legacy engine keeps.
+            experimentalSession="legacy"
             author={author}
             mode={mode}
             onModeChange={onModeChange}
