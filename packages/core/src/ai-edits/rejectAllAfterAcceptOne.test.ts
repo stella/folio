@@ -25,7 +25,7 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
-import { FolioDocxReviewer } from "./headless";
+import { FolioDocxReviewer, type FolioReviewChangeKind } from "./headless";
 
 const LINES = [
   "Service Agreement",
@@ -114,11 +114,17 @@ type Step = {
   accept: number;
 };
 
-/** The suggestions and the accepted change; `null` when that change does not exist. */
+/**
+ * The suggestions and the accepted change, with the kind of change accepted;
+ * `null` when that change does not exist.
+ */
 const suggest = async (
   bytes: Uint8Array,
   { deleted, accept }: Step,
-): Promise<FolioDocxReviewer | null> => {
+): Promise<{
+  reviewer: FolioDocxReviewer;
+  accepted: FolioReviewChangeKind;
+} | null> => {
   const reviewer = await open(bytes);
   const first = apply(reviewer, "suggested", [
     {
@@ -149,7 +155,7 @@ const suggest = async (
   const change = reviewer.getChanges().at(accept);
   if (change === undefined) return null;
   expect(reviewer.acceptChange(change)).toBe(true);
-  return reviewer;
+  return { reviewer, accepted: change.type };
 };
 
 /**
@@ -171,44 +177,108 @@ const suggestAfter = (reviewer: FolioDocxReviewer, after: number): boolean => {
   return result.applied.length === 1;
 };
 
-describe("reject all after accepting one of several suggestions", () => {
-  // Deleting the last paragraph leaves a suggested paragraph holding another
-  // suggestion's break; a rejected paragraph suggested right before it still
-  // leaves its formatting on the last paragraph (the todo below).
-  test.todo(
-    "a rejected paragraph suggested before one holding another suggestion's break leaves no formatting",
-  );
+type Shape = Step & {
+  /** The index of the block the last suggestion inserts after. */
+  after: number;
+};
 
-  for (const deleted of [0, 1]) {
+/**
+ * KNOWN GAP, held by the `test.failing` below: the last paragraph is deleted,
+ * its deleted break alone is accepted, and the last suggestion inserts a
+ * paragraph right before the suggested paragraph that then holds another
+ * suggestion's displaced break (the first added clause). Rejecting every
+ * change still leaves that suggestion's alignment and a break on the last
+ * original paragraph, live and in the saved package.
+ */
+const isDisplacedBreakGap = (
+  { deleted, after }: Shape,
+  accepted: FolioReviewChangeKind,
+  reviewer: FolioDocxReviewer,
+): boolean =>
+  deleted === LINES.length - 1 &&
+  accepted === "paragraphMarkDeleted" &&
+  reviewer.getContent().at(after + 1)?.text === "First added clause.";
+
+/**
+ * Whether rejecting every change after the last suggestion reads, live and
+ * saved, as rejecting every change without it; `null` when the shape does not
+ * apply (no such change, or no paragraph can follow that block).
+ */
+const rejectsToBaseline = async (
+  bytes: Uint8Array,
+  shape: Shape,
+): Promise<{ matches: boolean; gap: boolean } | null> => {
+  const probe = await suggest(bytes, shape);
+  if (probe === null) return null;
+  const expected = await rejected(probe.reviewer);
+  const live = await suggest(bytes, shape);
+  if (live === null) throw new Error("the flow no longer replays");
+  const gap = isDisplacedBreakGap(shape, live.accepted, live.reviewer);
+  if (!suggestAfter(live.reviewer, shape.after)) return null;
+  const saved = await open(await live.reviewer.toBuffer());
+  const results = [await rejected(live.reviewer), await rejected(saved)].map(
+    (result) => JSON.stringify(result),
+  );
+  return {
+    matches: results.every((result) => result === JSON.stringify(expected)),
+    gap,
+  };
+};
+
+/** Every shape over the paragraph `deleted`: each accepted change, each anchor. */
+const shapesOf = async (
+  bytes: Uint8Array,
+  deleted: number,
+): Promise<Shape[]> => {
+  const shapes: Shape[] = [];
+  for (let accept = 0; ; accept += 1) {
+    const probe = await suggest(bytes, { deleted, accept });
+    if (probe === null) return shapes;
+    const blocks = probe.reviewer.getContent().length;
+    for (let after = 0; after < blocks; after += 1) {
+      shapes.push({ deleted, accept, after });
+    }
+  }
+};
+
+describe("reject all after accepting one of several suggestions", () => {
+  for (const deleted of LINES.keys()) {
     test(`a rejected last suggestion leaves nothing, deleting paragraph ${deleted}`, async () => {
       const bytes = await fixture();
+      const mismatches: Shape[] = [];
       let checked = 0;
-      for (let accept = 0; ; accept += 1) {
-        const step = { deleted, accept };
-        const probe = await suggest(bytes, step);
-        if (probe === null) break;
-        const expected = await rejected(probe);
-        const blocks = (await suggest(bytes, step))?.getContent().length ?? 0;
-        for (let after = 0; after < blocks; after += 1) {
-          const label = { deleted, accept, after };
-          const live = await suggest(bytes, step);
-          if (live === null) throw new Error("the flow no longer replays");
-          if (!suggestAfter(live, after)) continue;
-          const saved = await open(await live.toBuffer());
-          expect({ label, ...(await rejected(live)) }).toEqual({
-            label,
-            ...expected,
-          });
-          expect({ label, ...(await rejected(saved)) }).toEqual({
-            label,
-            ...expected,
-          });
-          checked += 1;
+      let gaps = 0;
+      for (const shape of await shapesOf(bytes, deleted)) {
+        const outcome = await rejectsToBaseline(bytes, shape);
+        if (outcome === null) continue;
+        if (outcome.gap) {
+          gaps += 1;
+          continue;
         }
+        if (!outcome.matches) mismatches.push(shape);
+        checked += 1;
       }
+      expect(mismatches).toEqual([]);
       expect(checked).toBeGreaterThan(10);
+      // The known gap is excluded only where its predicate names it.
+      expect(gaps > 0).toBe(deleted === LINES.length - 1);
     });
   }
+
+  // KNOWN GAP (see `isDisplacedBreakGap`): passes while the gap is there and
+  // fails once it is fixed, so the predicate and this test go together.
+  test.failing(
+    "a rejected paragraph suggested before one holding another suggestion's displaced break leaves nothing",
+    async () => {
+      const bytes = await fixture();
+      const mismatches: Shape[] = [];
+      for (const shape of await shapesOf(bytes, LINES.length - 1)) {
+        const outcome = await rejectsToBaseline(bytes, shape);
+        if (outcome?.gap === true && !outcome.matches) mismatches.push(shape);
+      }
+      expect(mismatches).toEqual([]);
+    },
+  );
 
   test("the reported flow keeps the joined words in the paragraph that stays", async () => {
     // The heading is deleted and its deleted break alone is accepted.
