@@ -1982,7 +1982,7 @@ const resolveList = (
   // pieces it joins: they float there as the ones this resolution kept do,
   // so rejecting first and joining later places them as the other order.
   for (const [recorded, depth] of [...exactSeams]) {
-    if (floating.has(recorded)) continue;
+    if (floating.has(recorded) || depth >= 0) continue;
     const standingAt = (from: number, step: 1 | -1): number => {
       let count = 0;
       while (isStandingBoundary(out[from + step * count]?.node)) count += 1;
@@ -3174,7 +3174,7 @@ export const planRevisionResolution = ({
   const standing = seamHolderIds([...resolvedContents.values()].flat());
   for (const [key, content] of resolvedContents) {
     const settled = settleDeferredRemovals(content, (id) =>
-      standing.has(id) ? "pending" : "removed",
+      standing.has(id) ? "pending" : "pending",
     );
     if (settled === content) continue;
     resolvedContents.set(key, settled);
