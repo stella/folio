@@ -150,7 +150,7 @@ export class CanonicalSessionRefusalError extends CanonicalSessionRefusalErrorBa
   message: string;
 }> {}
 
-type EditorSession =
+type ActiveEditorSession =
   | { type: "prosemirror" }
   | { type: "canonical"; session: CanonicalSession }
   | { type: "refused"; reason: string; documentIdentity: string | null };
@@ -681,7 +681,7 @@ export const createHiddenEditorManager = (
 ): HiddenEditorManager => {
   let view: EditorView | null = null;
   let releaseCommandOwner: (() => void) | undefined;
-  let editorSession: EditorSession = { type: "prosemirror" };
+  let editorSession: ActiveEditorSession = { type: "prosemirror" };
   let canonicalSessionEpoch = 0;
   let modeOverride: CanonicalSessionMode | null = null;
   const syncCanonicalMode = (): void => {

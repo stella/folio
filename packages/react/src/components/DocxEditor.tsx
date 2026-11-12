@@ -1460,12 +1460,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       history,
       pushDocument,
       getCanonicalApi,
-      ...(!usesCanonicalSession(
+      experimentalSession: usesCanonicalSession(
         experimentalSession,
         CANONICAL_GAP.authorityRouting,
       )
-        ? {}
-        : { experimentalSession }),
+        ? "canonical"
+        : "legacy",
       // Hook reads live HF PM state at close time (the in-place sync
       // that previously kept package.headers/footers current per
       // keystroke was removed to fix the undo-corruption bug; the
@@ -1700,12 +1700,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       documentBuffer: documentBuffer ?? null,
       initialDocument: initialDocument ?? null,
       password,
-      ...(!usesCanonicalSession(
+      experimentalSession: usesCanonicalSession(
         experimentalSession,
         CANONICAL_GAP.authorityRouting,
       )
-        ? {}
-        : { experimentalSession }),
+        ? "canonical"
+        : "legacy",
       history,
       onError,
       onCompatibilityChange,
@@ -6237,12 +6237,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                               ? { marginGuideColor }
                               : {})}
                             readOnly={readOnly}
-                            {...(!usesCanonicalSession(
-                              experimentalSession,
-                              CANONICAL_GAP.authorityRouting,
-                            )
-                              ? {}
-                              : { experimentalSession })}
+                            experimentalSession={
+                              usesCanonicalSession(
+                                experimentalSession,
+                                CANONICAL_GAP.authorityRouting,
+                              )
+                                ? "canonical"
+                                : "legacy"
+                            }
                             onDocumentChange={applyDocumentChange}
                             extensionManager={extensionManager}
                             suggestionModeActive={editingMode === "suggesting"}
