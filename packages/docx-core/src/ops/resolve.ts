@@ -1464,15 +1464,11 @@ const resolveList = (
    * the same records whichever resolution removes the pieces it split.
    */
   const cutLevelsOnceResolved = (node: InlineNode, index: number): number => {
+    if (!isTrackedWrapper(node)) return 0;
     const depth = node.resolutionJoins?.remove ?? 0;
     const before = index > 0 ? pending.at(index - 1) : undefined;
     const after = pending.at(index + 1);
-    if (
-      !isTrackedWrapper(node) ||
-      depth === 0 ||
-      before === undefined ||
-      after === undefined
-    )
+    if (depth === 0 || before === undefined || after === undefined)
       return depth;
     return cutReach({
       before: edgeChain(before, "end"),
