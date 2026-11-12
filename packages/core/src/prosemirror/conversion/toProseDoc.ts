@@ -5299,7 +5299,7 @@ function withRunBoundaryMarks(
     // The run's tracked formatting has no other carrier: its formatting
     // rides in the node's attrs, but the revision is a change of its own.
     const change = marks.find(({ type }) => type.name === "runPropertyChange");
-    return change && change.type.name === "" ? node.mark([change]) : node;
+    return change ? node.mark([change]) : node;
   }
 
   return node.mark(marks);
