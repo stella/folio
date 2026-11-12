@@ -55,7 +55,6 @@ import {
   splitsGraphemeCluster,
   splitsSurrogatePair,
 } from "../ai-edits/character-boundaries";
-import { getTrackedChangeGroupsForIds } from "../ai-edits/read";
 import {
   CommentMarkerCache,
   type ParagraphCommentMarkers,
@@ -2449,7 +2448,7 @@ class CanonicalSession {
       ] as const;
     // An id names its whole listed change: one split by a comment or a
     // hyperlink carries several ids, and resolving fewer leaves part pending.
-    const changes = getTrackedChangeGroupsForIds(state.doc, revisionIds);
+    const changes = revisionIds.map((id) => [id]);
     // A change whose resolution breaks a lock stays pending; the rest resolve.
     let firstHeld: LockedControlViolation | null = null;
     const heldChanges = changes.filter((ids) => {
