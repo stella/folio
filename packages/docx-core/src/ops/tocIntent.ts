@@ -7,6 +7,12 @@ import { applyDocumentOp } from "./apply";
 import { storyBody, storyParagraphs } from "./blocks";
 import type { EditorIntentMode } from "./editorIntent";
 import { resolveGap } from "./gaps";
+import {
+  formatParaId,
+  freshLeasedIds,
+  ID_LEASE_KINDS,
+  type IdLease,
+} from "./idLease";
 import { idKey, packageBookmarkCensus, packageParagraphIds } from "./ids";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -75,23 +81,24 @@ type TakeParagraphIdsOptions = {
   document: Document;
   count: number;
   reserved: ReadonlySet<string> | undefined;
+  lease: IdLease | undefined;
 };
 const takeParagraphIds = ({
   document,
   count,
   reserved,
+  lease,
 }: TakeParagraphIdsOptions): string[] | undefined => {
   const occupied = new Set(
     [...packageParagraphIds(document.package), ...(reserved ?? [])].map(idKey),
   );
-  const ids: string[] = [];
-  for (let id = 1; id < 0x8000_0000 && ids.length < count; id += 1) {
-    const candidate = id.toString(16).padStart(8, "0").toUpperCase();
-    if (occupied.has(candidate)) continue;
-    occupied.add(candidate);
-    ids.push(candidate);
-  }
-  return ids.length === count ? ids : undefined;
+  const ids = freshLeasedIds({
+    lease,
+    kind: ID_LEASE_KINDS.PARAGRAPH,
+    count,
+    taken: (id) => occupied.has(formatParaId(id)),
+  });
+  return ids.length === count ? ids.map(formatParaId) : undefined;
 };
 
 const takeBookmarkName = (
@@ -412,6 +419,7 @@ export const compileGenerateTOCIntent = (
       document,
       count: toc.length,
       reserved: mode.reservedBlockIds,
+      lease: mode.idLease,
     });
     if (ids === undefined)
       return refuse("The paragraph identity space is exhausted.");
@@ -434,6 +442,7 @@ export const compileGenerateTOCIntent = (
     document,
     count: 1,
     reserved: mode.reservedBlockIds,
+    lease: mode.idLease,
   })?.at(0);
   if (newBlockId === undefined)
     return refuse("The paragraph identity space is exhausted.");
@@ -453,6 +462,7 @@ export const compileGenerateTOCIntent = (
     document,
     count: toc.length,
     reserved: mode.reservedBlockIds,
+    lease: mode.idLease,
   });
   if (tocIds === undefined)
     return refuse("The paragraph identity space is exhausted.");

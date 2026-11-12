@@ -15,6 +15,12 @@ import {
 } from "./blocks";
 import { structurallyEqual } from "./equality";
 import {
+  freshLeasedIds,
+  ID_LEASE_KINDS,
+  type IdLease,
+  idLeaseRemaining,
+} from "./idLease";
+import {
   IDENTITY_SPACES,
   identityKeysIn,
   type IdentitySpace,
@@ -187,6 +193,7 @@ export const trimAppliedNewIds = ({
 export const allocateCommentAnchorIds = (
   document: Document,
   op: CreateCommentOp,
+  lease?: IdLease,
 ): Result<NewIds, DocumentOpRefusal> => {
   const keys = [
     ...packageIdentityKeys(document.package),
@@ -202,20 +209,45 @@ export const allocateCommentAnchorIds = (
     op.comment.id + 1,
   );
   const firstControl = firstIn(IDENTITY_SPACES.CONTROL);
-  const pool = (first: number, count: number): number[] =>
-    Array.from({ length: count }, (_, index) => first + index);
+  const taken = new Set(keys);
+  const first = {
+    [IDENTITY_SPACES.REVISION]: firstRevision,
+    [IDENTITY_SPACES.CONTROL]: firstControl,
+  };
+  const leaseKind = {
+    [IDENTITY_SPACES.REVISION]: ID_LEASE_KINDS.REVISION,
+    [IDENTITY_SPACES.CONTROL]: ID_LEASE_KINDS.CONTROL,
+  };
+  // A leased author's pools are the lowest leased ids no record carries.
+  const pool = (space: IdentitySpace, count: number): number[] =>
+    lease === undefined
+      ? Array.from({ length: count }, (_, index) => first[space] + index)
+      : freshLeasedIds({
+          lease,
+          kind: leaseKind[space],
+          count,
+          taken: (id) =>
+            taken.has(`${space}:${id}`) ||
+            (space === IDENTITY_SPACES.REVISION && id === op.comment.id),
+        });
   const attempt = (counts: { revision: number; control: number }) =>
     applyDocumentOp(document, {
       ...op,
       newIds: {
-        revision: pool(firstRevision, counts.revision),
-        control: pool(firstControl, counts.control),
+        revision: pool(IDENTITY_SPACES.REVISION, counts.revision),
+        control: pool(IDENTITY_SPACES.CONTROL, counts.control),
       },
     });
-  const capacity = {
-    revision: Math.max(0, MAX_REVISION_ID - firstRevision + 1),
-    control: Math.max(0, MAX_REVISION_ID - firstControl + 1),
-  };
+  const capacity =
+    lease === undefined
+      ? {
+          revision: Math.max(0, MAX_REVISION_ID - firstRevision + 1),
+          control: Math.max(0, MAX_REVISION_ID - firstControl + 1),
+        }
+      : {
+          revision: idLeaseRemaining(lease, ID_LEASE_KINDS.REVISION),
+          control: idLeaseRemaining(lease, ID_LEASE_KINDS.CONTROL),
+        };
   let count = 0;
   for (;;) {
     const trial = attempt({
@@ -257,8 +289,8 @@ export const allocateCommentAnchorIds = (
     counts[space] = low;
   }
   return Result.ok({
-    revision: pool(firstRevision, counts.revision),
-    control: pool(firstControl, counts.control),
+    revision: pool(IDENTITY_SPACES.REVISION, counts.revision),
+    control: pool(IDENTITY_SPACES.CONTROL, counts.control),
   });
 };
 

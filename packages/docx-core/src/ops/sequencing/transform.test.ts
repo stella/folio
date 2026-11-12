@@ -338,6 +338,8 @@ describe("position transforms", () => {
                 }
               }
               const sequencer = createSequencer(document);
+              // The split's new identity lies in the actor's first lease block.
+              sequencer.grantIdLease("actor").unwrap();
               expect(sequencer.submit(batch(split)).type).toBe("ack");
               const before = sequencer.document;
               const submission = { ...batch(invalid), opId: "invalid-range" };
