@@ -594,7 +594,7 @@ const resolveStructure = ({
     }
     // What stood here before this level resolved anything, the baseline every
     // change to this paragraph is recorded against.
-    const before = entry.resolved ?? paragraph;
+    const before: PMNode = entry.resolved ?? paragraph;
     if (paragraph.type.name !== "paragraph") {
       if (isBlockBoundaryNode(paragraph)) {
         pendingBookmarks.push(paragraph);
