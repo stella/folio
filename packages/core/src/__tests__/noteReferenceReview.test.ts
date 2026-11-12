@@ -591,3 +591,46 @@ describe("a save keeps the notes the package held without a reference", () => {
     propertyTestTimeout(60_000),
   );
 });
+
+describe("a full canonical save writes the notes no edit touched as the package held them", () => {
+  test("untyped separator-shaped notes nothing refers to survive a full repack unchanged", async () => {
+    // Some packages carry their separators without a `w:type`: the model reads
+    // them as ordinary notes it cannot spell, held without a reference.
+    const typed = await packageOf({
+      body: '<w:p w14:paraId="10000001"><w:r><w:t>Body text.</w:t></w:r></w:p>',
+    });
+    const zip = await ZipArchive.read(typed);
+    const footnotesXml = (await zip.entry("word/footnotes.xml")?.text()) ?? "";
+    const untypedXml = footnotesXml
+      .replace(' w:type="separator"', "")
+      .replace(' w:type="continuationSeparator"', "");
+    expect(untypedXml).not.toContain("w:type=");
+    zip.set("word/footnotes.xml", untypedXml);
+    const bytes = await zip.generate({ compression: "store" });
+    const opened = await parseShapeDocument(
+      (await prepareCanonicalDocxInput(bytes)).unwrap(),
+    );
+    const saved = await serializeCanonicalSave({
+      snapshot: {
+        document: opened,
+        version: 0,
+        changedBlockIds: [],
+        // A structural change takes the full repack path.
+        structure: "changed",
+        heldUnreferencedNotes: heldUnreferencedNotes(opened),
+      },
+    });
+    const written =
+      (await (
+        await ZipArchive.read(saved.buffer)
+      )
+        .entry("word/footnotes.xml")
+        ?.text()) ?? "";
+    expect(written).toContain("<w:separator/>");
+    expect(written).toContain("<w:continuationSeparator/>");
+    const reopened = await parseShapeDocument(new Uint8Array(saved.buffer));
+    const ids = (document: Document) =>
+      (document.package.footnotes ?? []).map(({ id }) => id).toSorted();
+    expect(ids(reopened)).toEqual(ids(opened));
+  });
+});
