@@ -345,12 +345,7 @@ test("a join keeps both paragraphs' boundary records and turns a suggested parag
     },
     schema.text("cd"),
   );
-  const joined = joinedParagraphAttrs({
-    paragraph: first,
-    next,
-    between: 2,
-    nextContent: "kept",
-  });
+  const joined = joinedParagraphAttrs(first, next, 2);
   expect(joined["paraId"]).toBe("10000002");
   expect(joined["bookmarks"]).toEqual([
     { id: 1, name: "First" },
@@ -372,14 +367,10 @@ test("a join keeps both paragraphs' boundary records and turns a suggested parag
     },
   });
   // Both paragraphs one suggestion's: the joined one still is.
-  const both = joinedParagraphAttrs({
-    paragraph: paragraphType.create(
-      { _suggestedInsert: suggested },
-      schema.text("ab"),
-    ),
+  const both = joinedParagraphAttrs(
+    paragraphType.create({ _suggestedInsert: suggested }, schema.text("ab")),
     next,
-    nextContent: "kept",
-  });
+  );
   expect(both["_suggestedInsert"]).toEqual(suggested);
   expect(both["pPrMark"]).toBeNull();
 });

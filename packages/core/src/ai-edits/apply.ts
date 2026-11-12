@@ -102,10 +102,7 @@ import {
   paragraphIndentationFromFormatting,
   withDirectParagraphIndentation,
 } from "../prosemirror/paragraphIndentation";
-import {
-  joinAtParagraphMark,
-  trackedJoinNextContent,
-} from "../prosemirror/paragraphMarkJoin";
+import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -2863,8 +2860,8 @@ const insertionWithLiveAnchor = (
   const mapped = liveBlockResult(tr, item, 1);
   const anchor = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
   let paraId: unknown = item.blockNode.attrs["paraId"];
-  // A retracted break leaves one paragraph, under the identity the join gave
-  // it: the anchor reads as that paragraph.
+  // A retracted break leaves the next paragraph, with its identity: the anchor
+  // reads as the paragraph it joined.
   while (typeof paraId === "string" && joinedInto.has(paraId)) {
     paraId = joinedInto.get(paraId);
   }
@@ -4532,7 +4529,6 @@ const withRetiredFinalParagraphs = ({
         paragraphPos: position,
         paragraph: previous,
         next: following,
-        nextContent: trackedJoinNextContent(previous, following),
         styleResolver,
       });
       resolvedOperationIds.add(operationId);
@@ -4952,7 +4948,6 @@ const withRotatedAddedFinalBreaks = ({
           paragraphPos: previous.position,
           paragraph: deleted,
           next: following,
-          nextContent: trackedJoinNextContent(deleted, following),
           styleResolver,
         });
         retractedRevisionIds.push(ownerRevisionId);
@@ -7386,7 +7381,6 @@ const applyFolioAIEditOperationsInternal = ({
               paragraphPos: markPosition,
               paragraph: deleted,
               next: following,
-              nextContent: trackedJoinNextContent(deleted, following),
               styleResolver: styleResolver ?? null,
             });
             const joined = tr.doc.nodeAt(markPosition);
@@ -8038,17 +8032,12 @@ const applyFolioAIEditOperationsInternal = ({
               paragraphPos: blockFrom,
               paragraph,
               next,
-              nextContent: trackedJoinNextContent(paragraph, next),
               styleResolver,
             });
             const firstId: unknown = paragraph.attrs["paraId"];
-            const joinedId: unknown = tr.doc.nodeAt(blockFrom)?.attrs["paraId"];
-            if (
-              typeof firstId === "string" &&
-              typeof joinedId === "string" &&
-              joinedId !== firstId
-            ) {
-              joinedInto.set(firstId, joinedId);
+            const nextId: unknown = next.attrs["paraId"];
+            if (typeof firstId === "string" && typeof nextId === "string") {
+              joinedInto.set(firstId, nextId);
             }
             // It reads as the first paragraph, as a direct merge does, under
             // a property change recording what the paragraph left had:
