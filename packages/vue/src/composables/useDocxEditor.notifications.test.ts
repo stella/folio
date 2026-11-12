@@ -341,3 +341,34 @@ test("a document holding a reactive proxy deeper down is held as raw data", () =
     container.remove();
   }
 });
+
+test("the controller's getDocument in the default session is read-only: a host writes its own copy, and the editor's model stays", async () => {
+  const mounted = await mountDefaultEditor("Body");
+  try {
+    const { adapter } = mounted;
+    const model = adapter.modelDocument.value ?? panic("Expected a model");
+    const margin = () =>
+      model.package.document.finalSectionProperties?.marginLeft;
+    const before = margin();
+    expect(before).toBeNumber();
+
+    // The document shares the editor's model, so it is handed out read-only
+    // (writing it is a type error): a host that writes copies it first.
+    const handed =
+      adapter.editor.getDocument() ??
+      panic("Expected the controller's document");
+    const owned = cloneDocumentWithParagraphPropertySources(handed);
+    const sections =
+      owned.package.document.finalSectionProperties ??
+      panic("Expected section properties");
+    sections.marginLeft = 4321;
+
+    expect(margin()).toBe(before);
+    expect(
+      adapter.getDocument()?.package.document.finalSectionProperties
+        ?.marginLeft,
+    ).toBe(before);
+  } finally {
+    mounted.unmount();
+  }
+});

@@ -57,8 +57,13 @@ export type HiddenEditorApi = {
   getState: () => EditorState | null;
   /** Get the ProseMirror EditorView */
   getView: () => EditorView | null;
-  /** Get the current Document from PM state */
-  getDocument: () => Document | null;
+  /**
+   * The current document, never copied: in a canonical session the session's
+   * own document, otherwise the document built from the editor state over the
+   * model, which shares every part no edit reached with the model. Read it;
+   * a writer copies it first (`cloneDocumentWithParagraphPropertySources`).
+   */
+  getDocument: () => ReadonlyDocument | null;
   /** Canonical snapshot, or null in the default session. */
   getCanonicalComments: () => Comment[] | null;
   /** Committed session/version identity; safe during provisional composition. */
@@ -185,15 +190,16 @@ export type HiddenEditorApiDeps = {
  */
 const stateToDocument = (
   state: EditorState,
-  originalDoc: Document | null,
-): Document | null => {
+  originalDoc: ReadonlyDocument | null,
+): ReadonlyDocument | null => {
   if (!originalDoc) {
     return null;
   }
 
-  // fromProseDoc preserves the base document structure when provided
+  // fromProseDoc reads the base document and keeps its package structure, so
+  // the result shares the parts no edit reached with the model.
   // canonical-gap: pm-save-projection
-  return fromProseDoc(state.doc, originalDoc, {
+  return fromProseDoc(state.doc, readModel(originalDoc), {
     stylesheetSource: { type: "package" },
   });
 };
@@ -266,14 +272,12 @@ export const createHiddenEditorApi = (
 
     getDocument: () => {
       const canonical = deps.getCanonicalDocument?.();
-      if (canonical)
-        return cloneDocumentWithParagraphPropertySources(canonical);
+      if (canonical) return canonical;
       const view = deps.getView();
       if (!view) {
         return null;
       }
-      const context = deps.getDocumentContext();
-      return stateToDocument(view.state, context && readModel(context));
+      return stateToDocument(view.state, deps.getDocumentContext());
     },
 
     updateCanonicalInputLifecycle: (action) =>
