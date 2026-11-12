@@ -1,8 +1,13 @@
 import { DOCUMENT_OP_TYPES, OP_STORIES, type TextPosition } from "../types";
 import { restoreDocumentOp } from "../wire";
 import { sameStory } from "./address";
+import {
+  isAnchoredComment,
+  positionPastCommentAnchor,
+} from "./commentTransform";
 import type { SequencedBatch } from "./envelope";
-import { mapPoint, operationStory, operationTargets } from "./transform";
+import { mapPoint } from "./points";
+import { operationStory, operationTargets } from "./transform";
 
 /**
  * Where a position lands after an ordered journal tail, by paragraph identity
@@ -25,6 +30,10 @@ export const transformPosition = (
       const effect = sequenced.effects?.at(index);
       const story = operationStory(op);
       if (story !== undefined && !sameStory(story, point.story)) continue;
+      if (isAnchoredComment(op)) {
+        point = positionPastCommentAnchor(point, op, affinity);
+        continue;
+      }
       if (effect?.type === "touchedBlocks") {
         if (effect.blockIds.includes(point.blockId)) return undefined;
         continue;
@@ -61,15 +70,6 @@ export const transformPosition = (
         case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
         case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
           continue;
-        // Comment ranges are zero-width: offsets stay, the gap between
-        // markers a position names does not.
-        case DOCUMENT_OP_TYPES.CREATE_COMMENT:
-        case DOCUMENT_OP_TYPES.DELETE_COMMENT:
-        case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE: {
-          const { zeroWidthBefore: _gap, ...offsetOnly } = point;
-          point = offsetOnly;
-          continue;
-        }
         // A header or footer part changes no body offset.
         case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
         case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
@@ -101,6 +101,11 @@ export const transformPosition = (
         case DOCUMENT_OP_TYPES.SET_TABLE:
         case DOCUMENT_OP_TYPES.ADD_NOTE:
         case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+        // A reply, a deletion or a restoration adds or removes comment
+        // references the operation does not name.
+        case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+        case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+        case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
           return undefined;
         default: {
           const exhaustive: never = op;

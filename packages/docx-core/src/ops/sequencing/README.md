@@ -29,18 +29,21 @@ editor maps its selection and history without its own coordinates.
 `transformBatch` refuses operation pairs whose effects cannot be mapped safely.
 An inverse keeps its staleness preconditions: an invalid undo must be dropped,
 never applied by removing those preconditions. Supported story addresses derive
-from the operation contract; this schema has no `addComment` primitive.
+from the operation contract.
 
-The unknown-input decoder accepts every operation kind except comment
-operations (`UNSENT_OP_TYPES`); `BATCH_WIRE_OP_TYPES` declares the accepted
-kinds, and a kind added to the schema without a wire form or an unsent entry
-stops the decoder compiling. Embedded model records are validated within the
+The unknown-input decoder accepts every operation kind; `BATCH_WIRE_OP_TYPES`
+declares them, and a kind added to the schema without a wire form stops the
+decoder compiling. Embedded model records are validated within the
 decoder's JSON depth and byte bounds: every content node's kind is one the
 model defines for its slot, every record carries only the fields its model
 type declares, paragraph ids are well formed, scalar formatting values have
 their model types and nested content is checked recursively. Deep property
 records (borders, shading, drawings, style, numbering-level and section
-details) are bounded by the JSON checks alone. `validateDocumentBatch`
+details) are bounded by the JSON checks alone. Comment records (a creation's
+comment, a content edit's paragraphs, the records and anchor paragraphs a
+comment inverse restores) are checked the same way; a reply's thread is its
+anchor's, never a field of the new comment. A comment's author and date are
+the operation's own: the sequencer and every receiver apply them as sent. `validateDocumentBatch`
 normalizes optional undefined object fields, and `validateSequencedBatch`
 checks assigned revisions and that each effect is the one its operation kind
 records.
@@ -65,11 +68,46 @@ unchanged when it addresses none of those paragraphs, and is refused with
 `tableRequiresExclusiveEdit` only when the concurrent one restructured the
 same table; typing in that table's cells passes. Package parts
 (`EXCLUSIVE_PARTS`: numbering, styles, relationships, media, sections, headers
-and footers, notes, settings and revision metadata) conflict when one
-operation writes a part both name, by entry where the operation names one
-(a numbering instance, a relationship id, a note): `partConflict`, with the
-part. Pairs of position-rebased operations the transform cannot map safely
+and footers, notes, settings, revision metadata and comments) conflict when
+one operation writes a part both name, by entry where the operation names one
+(a numbering instance, a relationship id, a note, a comment): `partConflict`,
+with the part. A comment operation that may add or remove the comment part
+relationships writes the whole relationships part. Pairs of position-rebased operations the transform cannot map safely
 reject with `unsupportedPair`.
+
+## Comments
+
+Comment threads are sequenced in the journal like any other edit. A range or
+point comment is rebased by its anchor: its ends move like text over
+concurrent insertions, direct deletions, splits and joins, and stay over
+formatting, paragraph properties and paragraph insertion. Its comment
+reference occupies one offset unit at the range's end (or at the point), so a
+concurrent position after it moves past it. A position at an anchor's own
+offset has no affinity to follow and refuses with `unsupportedPair`, as does
+a concurrent deletion or format whose range reaches an anchor. A deletion
+that removes a range's text is therefore refused rather than collapsing the
+range: the apply contract makes a collapsed range a point comment, which the
+other order (a range comment whose text is then deleted) would not give. A
+reply, a deletion and a restoration find their anchors in the document they
+apply to; their effect records the paragraphs they changed, so a concurrent
+edit addressing one of those paragraphs refuses with `blockConflict`, and
+the comments they added or removed, replies of a deleted thread among them.
+
+Concurrent comment operations decide by the comments they use. Different
+comments pass: a new comment takes its place in the comment list by id, so
+concurrent creations land in the same order whichever applies first. On one
+comment, a content edit and a resolution pass, a reply passes an edit or a
+resolution of its parent, and the same resolution twice is one resolution.
+Everything else on one comment is refused with `partConflict` naming the
+`comments` part: two content edits, opposite resolutions, a deletion against
+any other use of its thread (a reply to a deleted parent included), two
+replies to one parent (their references would take opposite orders), and a
+restoration against anything but a content edit of another comment (it puts
+records and part relationships back as captured). A reply or a resolution
+after a concurrent deletion that removed a comment part relationship is
+refused naming `relationships`, since it would add the relationship under
+another id than it does before the deletion. Comment ids come from the
+actor's lease like every other id.
 
 Undo inverses are operations of the same kinds and follow the same rules.
 Rich inverse preconditions stay intact and may refuse an undo after another

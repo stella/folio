@@ -6,7 +6,7 @@ import { INSERTION_SEAM_POLICIES } from "../../model/content";
 import type { IdLeaseKind } from "../idLease";
 import { cloneModel } from "../modelClone";
 import {
-  type CommentOp,
+  type CommentState,
   type DeleteRowOp,
   type DeleteTableOp,
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -29,7 +29,9 @@ import {
   array,
   blockContent,
   blockId,
+  boolean,
   boundedJson,
+  comment,
   documentSettings,
   type Fields,
   headerFooter,
@@ -38,6 +40,7 @@ import {
   literal,
   mapEntries,
   natural,
+  newComment,
   nonemptyString,
   note,
   nullable,
@@ -98,6 +101,12 @@ export type SequencedOpEffect =
        * after it: another structure edit of that table conflicts with it.
        */
       tableBlockIds?: readonly string[];
+      /**
+       * For a comment operation, the comments it added, removed or changed,
+       * replies of a deleted thread among them, and whether it removed a
+       * package relationship of the comment parts.
+       */
+      comments?: { ids: readonly number[]; relationshipRemoved: boolean };
     }
   | { type: typeof NO_SEQUENCED_EFFECT };
 
@@ -141,6 +150,7 @@ export const EXCLUSIVE_PARTS: Readonly<{
   readonly NOTES: "notes";
   readonly SETTINGS: "settings";
   readonly REVISIONS: "revisions";
+  readonly COMMENTS: "comments";
 }> = Object.freeze({
   NUMBERING: "numbering",
   STYLES: "styles",
@@ -151,6 +161,7 @@ export const EXCLUSIVE_PARTS: Readonly<{
   NOTES: "notes",
   SETTINGS: "settings",
   REVISIONS: "revisions",
+  COMMENTS: "comments",
 } as const);
 
 /** One of {@link EXCLUSIVE_PARTS}. */
@@ -224,28 +235,13 @@ export const TABLE_EXCLUSIVE_OP_TYPES: {
 >;
 
 /**
- * Operation kinds with no wire form in this schema, each with the reason.
- * Every other kind is sendable: {@link BATCH_WIRE_OP_TYPES}.
- */
-export const UNSENT_OP_TYPES: Readonly<Record<CommentOp["type"], string>> =
-  Object.freeze({
-    createComment: "Comment threads are not yet sequenced.",
-    updateCommentContent: "Comment threads are not yet sequenced.",
-    setCommentResolution: "Comment threads are not yet sequenced.",
-    deleteComment: "Comment threads are not yet sequenced.",
-    restoreCommentState: "Comment threads are not yet sequenced.",
-  });
-
-type WireOpType = Exclude<DocumentOpType, CommentOp["type"]>;
-
-/**
- * The effect the sequencer records for each sendable kind: none for an
- * operation the position transform rebases by its own fields, the split half
- * or join length a position needs, or the paragraphs a block-scoped
- * operation touched.
+ * The effect the sequencer records for each kind: none for an operation the
+ * position transform rebases by its own fields or that changes no paragraph,
+ * the split half or join length a position needs, or the paragraphs a
+ * block-scoped operation or a comment's anchors touched.
  */
 export const SEQUENCED_EFFECT_TYPES: Readonly<
-  Record<WireOpType, SequencedOpEffect["type"]>
+  Record<DocumentOpType, SequencedOpEffect["type"]>
 > = Object.freeze({
   insertText: NO_SEQUENCED_EFFECT,
   deleteRange: NO_SEQUENCED_EFFECT,
@@ -288,6 +284,11 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
   restoreStoryParts: "touchedBlocks",
   addNote: "touchedBlocks",
   removeNote: "touchedBlocks",
+  createComment: "touchedBlocks",
+  updateCommentContent: NO_SEQUENCED_EFFECT,
+  setCommentResolution: NO_SEQUENCED_EFFECT,
+  deleteComment: "touchedBlocks",
+  restoreCommentState: "touchedBlocks",
 });
 
 /** The effect type a sequenced operation of this kind must record. */
@@ -325,12 +326,11 @@ const revision = optional(
     suggestionId: optional(string),
   }),
 );
-const newIds = optional(
-  object({
-    revision: optional(array(natural)),
-    control: optional(array(natural)),
-  }),
-);
+const idSet = object({
+  revision: optional(array(natural)),
+  control: optional(array(natural)),
+});
+const newIds = optional(idSet);
 const half = optional(literal("first", "second"));
 const whenEmpty = optional(literal("omit", "keep"));
 const blockAnchor = object({ type: literal("before", "after"), blockId });
@@ -408,11 +408,33 @@ const storyParts: Validator = object({
   settings: optional(nullable(documentSettings)),
 } satisfies Record<keyof StoryParts, Validator>);
 
+const commentAnchor: Validator = (value) =>
+  object({ kind: literal("range"), from: position, to: position })(value) ||
+  object({ kind: literal("point"), at: position })(value) ||
+  object({ kind: literal("reply"), parentId: natural })(value) ||
+  object({
+    kind: literal("revision"),
+    story: isOpStory,
+    revisionId: natural,
+  })(value);
+const commentState: Validator = object({
+  relationshipPresence: literal("absent", "undefined", "present"),
+  relationships: array(
+    object({ index: natural, key: nonemptyString, relationship }),
+  ),
+  listPresence: literal("absent", "undefined", "present"),
+  records: array(object({ index: natural, comment })),
+  anchors: array(
+    object({ story: isOpStory, blockId, content: array(inlineContent) }),
+  ),
+} satisfies Record<keyof CommentState, Validator>);
+
 /**
- * The unknown-input decoder accepts every operation kind except comment
- * operations ({@link UNSENT_OP_TYPES}). Embedded model records are checked
- * by `wireRecords.ts`: their kinds, their declared fields, paragraph ids and
- * scalar formatting values, within the decoder's JSON bounds.
+ * The unknown-input decoder accepts every operation kind. Embedded model
+ * records are checked by `wireRecords.ts`: their kinds, their declared
+ * fields, paragraph ids and scalar formatting values, within the decoder's
+ * JSON bounds. A comment's author and date are the operation's own: no
+ * receiver stamps them.
  */
 const operationFields = {
   insertText: {
@@ -709,7 +731,46 @@ const operationFields = {
     expected: storyParts,
     parts: storyParts,
   } satisfies OperationFields<"restoreStoryParts">,
-} satisfies Record<WireOpType, Fields>;
+  createComment: {
+    type: literal("createComment"),
+    comment: newComment,
+    anchor: commentAnchor,
+    newIds,
+  } satisfies OperationFields<"createComment">,
+  updateCommentContent: {
+    type: literal("updateCommentContent"),
+    id: natural,
+    content: array(paragraph),
+    patch: optional(
+      properties(
+        {
+          author: string,
+          initials: string,
+          date: string,
+          suggestionId: string,
+        },
+        true,
+      ),
+    ),
+  } satisfies OperationFields<"updateCommentContent">,
+  setCommentResolution: {
+    type: literal("setCommentResolution"),
+    id: natural,
+    status: literal("open", "resolved"),
+  } satisfies OperationFields<"setCommentResolution">,
+  deleteComment: {
+    type: literal("deleteComment"),
+    id: natural,
+    scope: literal("thread", "reply"),
+  } satisfies OperationFields<"deleteComment">,
+  restoreCommentState: {
+    type: literal("restoreCommentState"),
+    ids: array(natural),
+    scaffoldIds: idSet,
+    expected: commentState,
+    state: commentState,
+  } satisfies OperationFields<"restoreCommentState">,
+} satisfies Record<DocumentOpType, Fields>;
 
 export const BATCH_WIRE_OP_TYPES: readonly string[] = Object.freeze(
   Object.keys(operationFields),
@@ -806,6 +867,9 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
               type: literal("touchedBlocks"),
               blockIds: array(blockId),
               tableBlockIds: optional(array(blockId)),
+              comments: optional(
+                object({ ids: array(natural), relationshipRemoved: boolean }),
+              ),
             })(effect);
           default:
             return false;
