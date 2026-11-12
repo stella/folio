@@ -14,7 +14,6 @@ import { getTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { insertPageBreak } from "../../prosemirror/commands/pageBreak";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
-import type { HyperlinkAttrs } from "../../prosemirror/schema/marks";
 import type {
   Document,
   Hyperlink,
@@ -27,6 +26,7 @@ import {
   TAB_STOP_ALIGNMENT_VALUES,
 } from "../../types/documentEnumValues";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
+import { HYPERLINK_ATTRIBUTE_CHANGES } from "./__fixtures__/hyperlinkAttributeChanges";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
@@ -3098,20 +3098,7 @@ describe("toFlowBlocks hyperlink identity", () => {
     expect(getHyperlinkIndexes(boundaryWith(right))).toEqual([0, 0]);
 
     // Every payload attribute needs a negative boundary case when the mark grows.
-    const changedAttributes = {
-      href: { href: "https://example.test/changed" },
-      anchor: { anchor: "ChangedBookmark" },
-      tooltip: { tooltip: "changed" },
-      rId: { rId: "rId2" },
-      target: { target: "_blank" },
-      history: { history: false },
-      docLocation: { docLocation: "changed" },
-    } as const satisfies {
-      [Key in keyof Omit<HyperlinkAttrs, "_docxHyperlinkIndex">]-?: Pick<
-        HyperlinkAttrs,
-        Key
-      >;
-    };
+    const changedAttributes = HYPERLINK_ATTRIBUTE_CHANGES;
     expect(Object.keys(changedAttributes).sort()).toEqual(
       Object.keys(schema.marks["hyperlink"]?.spec.attrs ?? {})
         .filter((name) => name !== "_docxHyperlinkIndex")

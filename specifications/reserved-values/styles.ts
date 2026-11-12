@@ -73,7 +73,7 @@ export const STYLE_CONDITIONAL_RESERVED = {
   trPr: NO_RESERVED_VALUE,
   tcPr: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<Style["tblStylePr"]>[number],
+  RecordField<NonNullable<Style["tblStylePr"]>[number]>,
   ReservedValueDisposition
 >;
 
@@ -111,7 +111,7 @@ export const LATENT_STYLES_RESERVED = {
   defQFormat: toggle("w:latentStyles@defQFormat"),
   count: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<StyleDefinitions["latentStyles"]>,
+  RecordField<NonNullable<StyleDefinitions["latentStyles"]>>,
   ReservedValueDisposition
 >;
 
@@ -177,7 +177,7 @@ export type ExhaustiveThemeReserved = ExhaustiveFields<
 export const THEME_FORMAT_SCHEME_RESERVED = {
   name: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<Theme["formatScheme"]>,
+  RecordField<NonNullable<Theme["formatScheme"]>>,
   ReservedValueDisposition
 >;
 
@@ -223,7 +223,7 @@ export const FONT_SIGNATURE_RESERVED = {
   csb0: NO_RESERVED_VALUE,
   csb1: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<FontInfo["sig"]>,
+  RecordField<NonNullable<FontInfo["sig"]>>,
   ReservedValueDisposition
 >;
 

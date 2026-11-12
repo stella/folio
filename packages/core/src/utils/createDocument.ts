@@ -35,9 +35,7 @@ import type {
   SectionProperties,
   Style,
   TextContent,
-  Theme,
 } from "../types/document";
-import { writableCopy } from "../types/documentModel";
 import { generateHexId } from "./hexId";
 
 /**
@@ -528,7 +526,7 @@ export function createEmptyDocument(
     docxPackage.numbering = structuredClone(styleSet.numbering);
   }
   if (styleSet?.theme) {
-    docxPackage.theme = writableCopy<Theme>(styleSet.theme);
+    docxPackage.theme = structuredClone(styleSet.theme);
   }
   if (styleSet?.fontTable) {
     docxPackage.fontTable = structuredClone(styleSet.fontTable);

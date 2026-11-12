@@ -83,7 +83,7 @@ export type ParagraphNumberingSlots = WritableRecord & {
 type ParagraphNumberingReferenceOptions<
   NumId extends number,
   Level extends number | undefined,
-> = {
+> = WritableRecord & {
   numId: Exclude<NumId, typeof NO_NUMBERING_NUM_ID>;
   ilvl?: Level | undefined;
 };

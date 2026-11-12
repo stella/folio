@@ -47,6 +47,88 @@ const stringArrayOption = (
 const normalizedPath = (filename: string): string =>
   filename.replaceAll("\\", "/");
 
+type AstNode = Record<string, unknown> & { type: string };
+
+type GateContext = {
+  filename: string;
+  options?: unknown[];
+  report: (diagnostic: {
+    node: unknown;
+    messageId: "uncheckedFieldGate";
+  }) => void;
+};
+
+const isAstNode = (value: unknown): value is AstNode =>
+  isRecord(value) && typeof value["type"] === "string";
+
+const SKIP_KEYS = new Set(["parent", "loc", "range", "start", "end", "type"]);
+
+const forEachChild = (node: AstNode, visit: (child: AstNode) => void): void => {
+  for (const [key, value] of Object.entries(node)) {
+    if (SKIP_KEYS.has(key)) {
+      continue;
+    }
+    for (const item of Array.isArray(value) ? value : [value]) {
+      if (isAstNode(item)) {
+        visit(item);
+      }
+    }
+  }
+};
+
+const typeArguments = (node: AstNode): unknown[] => {
+  const instantiation = node["typeArguments"];
+  const params = isAstNode(instantiation) ? instantiation["params"] : null;
+  return Array.isArray(params) ? params : [];
+};
+
+const referenceName = (node: unknown): string | null => {
+  if (!isAstNode(node) || node.type !== "TSTypeReference") {
+    return null;
+  }
+  const name = node["typeName"];
+  return isAstNode(name) && typeof name["name"] === "string"
+    ? name["name"]
+    : null;
+};
+
+/** `keyof Model` or `RecordField<Model>` over a named type, not a value's
+ * `typeof`: the field list of a declared type. */
+const isFieldListOfType = (node: unknown): boolean => {
+  if (!isAstNode(node)) {
+    return false;
+  }
+  if (node.type === "TSTypeOperator" && node["operator"] === "keyof") {
+    const operand = node["typeAnnotation"];
+    return isAstNode(operand) && operand.type === "TSTypeReference";
+  }
+  return referenceName(node) === "RecordField";
+};
+
+/** A type that holds a value total over a declared type's fields:
+ * `Required<Model>`, `Record<keyof Model, …>`, `{ [Field in keyof Model]-?: … }`. */
+const isFieldTotalityGate = (node: unknown): boolean => {
+  if (!isAstNode(node)) {
+    return false;
+  }
+  const name = referenceName(node);
+  if (name === "Required") {
+    return true;
+  }
+  if (name === "Record") {
+    return isFieldListOfType(typeArguments(node)[0]);
+  }
+  if (node.type === "TSMappedType") {
+    const constraint =
+      node["constraint"] ??
+      (isAstNode(node["typeParameter"])
+        ? node["typeParameter"]["constraint"]
+        : null);
+    return isFieldListOfType(constraint);
+  }
+  return false;
+};
+
 export default {
   meta: { name: "folio-typecheck-proofs" },
   rules: {
@@ -112,6 +194,41 @@ export default {
                 });
               }
             }
+          },
+        };
+      },
+    },
+    "no-unchecked-field-gate": {
+      meta: {
+        type: "problem",
+        messages: {
+          uncheckedFieldGate:
+            "A field-totality gate (`satisfies Required<…>`, `Record<keyof …>`, " +
+            "`Record<RecordField<…>, …>` or a mapped type over a type's fields) in a test file " +
+            "is checked by nothing: a package's `typecheck` excludes `**/*.test.ts`, so the " +
+            "gate can stop holding unnoticed. Move the table into a `__fixtures__` module " +
+            "beside the test, which the package's `typecheck` compiles, and import it.",
+        },
+      },
+      create(context: GateContext) {
+        return {
+          Program: (node: unknown) => {
+            if (!isAstNode(node)) {
+              return;
+            }
+            const visit = (child: AstNode): void => {
+              if (
+                child.type === "TSSatisfiesExpression" &&
+                isFieldTotalityGate(child["typeAnnotation"])
+              ) {
+                context.report({
+                  node: child,
+                  messageId: "uncheckedFieldGate",
+                });
+              }
+              forEachChild(child, visit);
+            };
+            visit(node);
           },
         };
       },

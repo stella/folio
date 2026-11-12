@@ -461,7 +461,7 @@ export type DocumentSettings = WritableRecord & {
    * `<a:ea>`/`<a:cs>` theme font slots from the script-specific
    * `<a:font script="…">` entries. Absent for non-CJK/bidi docs.
    */
-  themeFontLang?: { eastAsia?: string; bidi?: string };
+  themeFontLang?: WritableRecord & { eastAsia?: string; bidi?: string };
   /** Automatically hyphenate eligible paragraphs (`w:autoHyphenation`). */
   autoHyphenation?: boolean;
   /** Keep all-capital words unhyphenated (`w:doNotHyphenateCaps`). */
@@ -471,9 +471,15 @@ export type DocumentSettings = WritableRecord & {
   /** Legacy hyphenation zone (`w:hyphenationZone`) in twips; retained for compatibility tooling. */
   hyphenationZoneTwips?: number;
   /** Word/OOXML document-wide line-breaking overrides. */
-  lineBreakRules?: {
-    noLineBreaksBefore?: { language?: string; characters: string };
-    noLineBreaksAfter?: { language?: string; characters: string };
+  lineBreakRules?: WritableRecord & {
+    noLineBreaksBefore?: WritableRecord & {
+      language?: string;
+      characters: string;
+    };
+    noLineBreaksAfter?: WritableRecord & {
+      language?: string;
+      characters: string;
+    };
     useLegacyEthiopicAmharicRules?: boolean;
   };
   /** Move a break-only paragraph mark onto the page after its hard page break. */
@@ -529,7 +535,7 @@ export type DocxPackage = WritableRecord & {
   /** Media files */
   media?: Map<string, MediaFile> | undefined;
   /** Document properties */
-  properties?: {
+  properties?: WritableRecord & {
     title?: string;
     subject?: string;
     creator?: string;

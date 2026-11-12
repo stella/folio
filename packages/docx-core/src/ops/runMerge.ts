@@ -251,8 +251,8 @@ const canonicalRemainderKeys = (
     .sort();
 
 function languageEquals(
-  a: TextFormatting["language"],
-  b: TextFormatting["language"],
+  a: DeepReadonly<TextFormatting["language"]>,
+  b: DeepReadonly<TextFormatting["language"]>,
 ): boolean {
   return (
     a?.val === b?.val && a?.eastAsia === b?.eastAsia && a?.bidi === b?.bidi
@@ -333,8 +333,8 @@ function shadingEquals(
  * Compare font family settings
  */
 function fontFamilyEquals(
-  a: TextFormatting["fontFamily"],
-  b: TextFormatting["fontFamily"],
+  a: DeepReadonly<TextFormatting["fontFamily"]>,
+  b: DeepReadonly<TextFormatting["fontFamily"]>,
 ): boolean {
   if (!a && !b) {
     return true;

@@ -430,7 +430,7 @@ export const IMAGE_POSITION_AXIS_RESERVED = {
   alignment: NO_RESERVED_VALUE,
   posOffset: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ImagePosition["horizontal"]>,
+  RecordField<NonNullable<ImagePosition["horizontal"]>>,
   ReservedValueDisposition
 >;
 
@@ -577,7 +577,7 @@ export const IMAGE_EFFECTS_RESERVED = {
   contrast: NO_RESERVED_VALUE,
   saturation: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<Image["effects"]>,
+  RecordField<NonNullable<Image["effects"]>>,
   ReservedValueDisposition
 >;
 
@@ -621,7 +621,7 @@ export const SHAPE_FILL_GRADIENT_RESERVED = {
   scaled: NO_RESERVED_VALUE,
   stops: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeFill["gradient"]>,
+  RecordField<NonNullable<ShapeFill["gradient"]>>,
   ReservedValueDisposition
 >;
 
@@ -634,7 +634,7 @@ export const SHAPE_FILL_GRADIENT_STOP_RESERVED = {
   position: NO_RESERVED_VALUE,
   color: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeFill["gradient"]>["stops"][number],
+  RecordField<NonNullable<ShapeFill["gradient"]>["stops"][number]>,
   ReservedValueDisposition
 >;
 
@@ -673,7 +673,7 @@ export const SHAPE_OUTLINE_END_RESERVED = {
   width: NO_RESERVED_VALUE,
   length: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeOutline["headEnd"]>,
+  RecordField<NonNullable<ShapeOutline["headEnd"]>>,
   ReservedValueDisposition
 >;
 
@@ -712,7 +712,7 @@ export const SHAPE_TEXT_BODY_WORD_ART_RESERVED = {
   preset: NO_RESERVED_VALUE,
   adjustments: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeTextBody["wordArt"]>,
+  RecordField<NonNullable<ShapeTextBody["wordArt"]>>,
   ReservedValueDisposition
 >;
 
@@ -727,7 +727,7 @@ export const SHAPE_TEXT_BODY_MARGINS_RESERVED = {
   left: NO_RESERVED_VALUE,
   right: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<ShapeTextBody["margins"]>,
+  RecordField<NonNullable<ShapeTextBody["margins"]>>,
   ReservedValueDisposition
 >;
 
@@ -803,7 +803,7 @@ export const TEXT_BOX_MARGINS_RESERVED = {
   left: NO_RESERVED_VALUE,
   right: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<TextBox["margins"]>,
+  RecordField<NonNullable<TextBox["margins"]>>,
   ReservedValueDisposition
 >;
 
@@ -960,7 +960,7 @@ export const TRACKED_CHANGE_UTC_DATE_RESERVED = {
   attribute: NO_RESERVED_VALUE,
   value: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<TrackedChangeInfo["utcDate"]>,
+  RecordField<NonNullable<TrackedChangeInfo["utcDate"]>>,
   ReservedValueDisposition
 >;
 
@@ -1181,7 +1181,7 @@ export const SECTION_PROPERTY_CHANGE_REFERENCES_RESERVED = {
   headerReferences: NO_RESERVED_VALUE,
   footerReferences: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<SectionPropertyChange["previousReferences"]>,
+  RecordField<NonNullable<SectionPropertyChange["previousReferences"]>>,
   ReservedValueDisposition
 >;
 
@@ -1254,7 +1254,7 @@ export const SDT_LIST_ITEM_RESERVED = {
   displayText: NO_RESERVED_VALUE,
   value: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<SdtProperties["listItems"]>[number],
+  RecordField<NonNullable<SdtProperties["listItems"]>[number]>,
   ReservedValueDisposition
 >;
 

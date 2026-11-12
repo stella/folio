@@ -43,7 +43,7 @@ export const THEME_FONT_LANG_RESERVED = {
   eastAsia: NO_RESERVED_VALUE,
   bidi: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<DocumentSettings["themeFontLang"]>,
+  RecordField<NonNullable<DocumentSettings["themeFontLang"]>>,
   ReservedValueDisposition
 >;
 
@@ -57,7 +57,7 @@ export const LINE_BREAK_RULES_RESERVED = {
   noLineBreaksAfter: NO_RESERVED_VALUE,
   useLegacyEthiopicAmharicRules: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<DocumentSettings["lineBreakRules"]>,
+  RecordField<NonNullable<DocumentSettings["lineBreakRules"]>>,
   ReservedValueDisposition
 >;
 
@@ -114,7 +114,7 @@ export const DOCX_PACKAGE_PROPERTIES_RESERVED = {
   created: NO_RESERVED_VALUE,
   modified: NO_RESERVED_VALUE,
 } satisfies Record<
-  keyof NonNullable<DocxPackage["properties"]>,
+  RecordField<NonNullable<DocxPackage["properties"]>>,
   ReservedValueDisposition
 >;
 

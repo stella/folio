@@ -83,7 +83,7 @@ export type TextFormatting = WritableRecord &
 
     // Underline & strikethrough
     /** Underline style and color (w:u) */
-    underline?: {
+    underline?: WritableRecord & {
       style: UnderlineStyle;
       color?: ColorValue;
     };
@@ -139,7 +139,7 @@ export type TextFormatting = WritableRecord &
     /** Font size complex script (w:szCs) */
     fontSizeCs?: number;
     /** Font family (w:rFonts) */
-    fontFamily?: {
+    fontFamily?: WritableRecord & {
       ascii?: string;
       hAnsi?: string;
       eastAsia?: string;
@@ -161,7 +161,7 @@ export type TextFormatting = WritableRecord &
       csTheme?: string;
     };
     /** Run language metadata (`w:lang`) used by spelling and line breaking. */
-    language?: {
+    language?: WritableRecord & {
       val?: string;
       eastAsia?: string;
       bidi?: string;
@@ -341,7 +341,7 @@ export type ParagraphFormatting = WritableRecord &
 
     // Borders
     /** Paragraph borders (w:pBdr) */
-    borders?: {
+    borders?: WritableRecord & {
       top?: BorderSpec;
       bottom?: BorderSpec;
       left?: BorderSpec;
@@ -421,7 +421,7 @@ export type ParagraphFormatting = WritableRecord &
 
     // Frame properties
     /** Text frame properties (w:framePr) */
-    frame?: {
+    frame?: WritableRecord & {
       dropCap?: "none" | "drop" | "margin";
       lines?: number;
       width?: number;
@@ -510,10 +510,11 @@ export type TableBorders = WritableRecord & {
  * Table cell borders, including w:tl2br (top-left to bottom-right) and
  * w:tr2bl (top-right to bottom-left).
  */
-export type TableCellBorders = TableBorders & {
-  topLeftToBottomRight?: BorderSpec;
-  topRightToBottomLeft?: BorderSpec;
-};
+export type TableCellBorders = TableBorders &
+  WritableRecord & {
+    topLeftToBottomRight?: BorderSpec;
+    topRightToBottomLeft?: BorderSpec;
+  };
 
 /**
  * Cell margins

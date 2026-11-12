@@ -64,7 +64,7 @@ export type Style = WritableRecord & {
   /** Table cell properties */
   tcPr?: TableCellFormatting;
   /** Conditional table style parts */
-  tblStylePr?: {
+  tblStylePr?: (WritableRecord & {
     type:
       | "band1Horz"
       | "band1Vert"
@@ -84,7 +84,7 @@ export type Style = WritableRecord & {
     tblPr?: TableFormatting;
     trPr?: TableRowFormatting;
     tcPr?: TableCellFormatting;
-  }[];
+  })[];
 };
 
 /**
@@ -104,7 +104,7 @@ export type StyleDefinitions = WritableRecord & {
   /** Document defaults */
   docDefaults?: DocDefaults;
   /** Latent styles */
-  latentStyles?: {
+  latentStyles?: WritableRecord & {
     defLockedState?: boolean;
     defUIPriority?: number;
     defSemiHidden?: boolean;
@@ -156,7 +156,7 @@ export type ThemeFont = WritableRecord & {
   /** Complex script font */
   cs?: string;
   /** Script-specific fonts */
-  fonts?: Record<string, string>;
+  fonts?: WritableRecord & Record<string, string>;
 };
 
 /**
@@ -180,7 +180,7 @@ export type Theme = WritableRecord & {
   /** Font scheme */
   fontScheme?: ThemeFontScheme;
   /** Format scheme (fills, lines, effects) - simplified */
-  formatScheme?: {
+  formatScheme?: WritableRecord & {
     name?: string;
   };
 };
@@ -235,7 +235,7 @@ export type FontInfo = WritableRecord & {
   /** Pitch (fixed or variable) */
   pitch?: "default" | "fixed" | "variable";
   /** Signature */
-  sig?: {
+  sig?: WritableRecord & {
     usb0?: string;
     usb1?: string;
     usb2?: string;

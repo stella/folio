@@ -449,7 +449,7 @@ const VISUAL_BOOLEAN_FORMATTING_PROPERTIES = new Set<
 
 const fontFamilyDifference = (
   actual: NonNullable<TextFormatting["fontFamily"]>,
-  inherited: TextFormatting["fontFamily"],
+  inherited: DeepReadonly<TextFormatting["fontFamily"]>,
 ): NonNullable<TextFormatting["fontFamily"]> | undefined => {
   const difference: NonNullable<TextFormatting["fontFamily"]> = {};
   for (const property of [

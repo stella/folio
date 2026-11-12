@@ -27,14 +27,14 @@ type BoundaryJoins = NonNullable<RunPropertyChange["boundaryJoins"]>;
 type RetainedIdentity = NonNullable<ResolutionJoins["retainedAfter"]>[number];
 type IdentitySlot = RetainedIdentity["source"][number];
 const SLOT_FIELDS = { space: true, id: true } as const satisfies Record<
-  keyof IdentitySlot,
+  RecordField<IdentitySlot>,
   true
 >;
 const RETAINED_FIELDS = {
   depth: true,
   source: true,
   target: true,
-} as const satisfies Record<keyof RetainedIdentity, true>;
+} as const satisfies Record<RecordField<RetainedIdentity>, true>;
 const JOIN_FIELDS = {
   before: true,
   after: true,
@@ -52,7 +52,7 @@ const ENCLOSING_FIELDS = {
   levels: true,
   source: true,
   target: true,
-} as const satisfies Record<keyof EnclosingHandoff, true>;
+} as const satisfies Record<RecordField<EnclosingHandoff>, true>;
 /**
  * Saved as its own attribute: a reader that does not know it keeps the
  * joins and drops only the handoff.
@@ -79,7 +79,7 @@ const PARAGRAPH_MARK_FIELDS = {
 const DEFERRED_REMOVAL_FIELDS = {
   depth: true,
   blockers: true,
-} as const satisfies Record<keyof DeferredRemoval, true>;
+} as const satisfies Record<RecordField<DeferredRemoval>, true>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

@@ -401,12 +401,13 @@ type CopyOriginMarker = WritableRecord & {
 };
 
 /** `CT_Bookmark`: a named range, optionally scoped to table columns. */
-export type BookmarkRangeMarker = MarkupRangeMarker & {
-  name: string;
-  /** Column index for table bookmarks */
-  colFirst?: number;
-  colLast?: number;
-};
+export type BookmarkRangeMarker = MarkupRangeMarker &
+  WritableRecord & {
+    name: string;
+    /** Column index for table bookmarks */
+    colFirst?: number;
+    colLast?: number;
+  };
 
 /**
  * `CT_MoveBookmark`: a bookmark range attributed to the move that created it.
@@ -417,10 +418,11 @@ export type BookmarkRangeMarker = MarkupRangeMarker & {
  * but a date folio does not have is not a date it may invent, so a document
  * that arrived without one keeps arriving without one.
  */
-export type MoveBookmarkMarker = BookmarkRangeMarker & {
-  author: string;
-  date?: string;
-};
+export type MoveBookmarkMarker = BookmarkRangeMarker &
+  WritableRecord & {
+    author: string;
+    date?: string;
+  };
 
 /**
  * Bookmark start marker (w:bookmarkStart)
@@ -721,7 +723,7 @@ export type DrawingAnchor = WritableRecord & {
   /** `@simplePos`: position from `wp:simplePos` rather than `positionH`/`positionV`. */
   useSimplePosition?: boolean;
   /** `wp:simplePos` itself, in EMUs. */
-  simplePosition?: { x: number; y: number };
+  simplePosition?: WritableRecord & { x: number; y: number };
   /** `@relativeHeight`: z-order among the anchors on a page. */
   relativeHeight?: number;
   /** `@locked`: the anchor may not be moved. */
@@ -739,7 +741,7 @@ export type DrawingAnchor = WritableRecord & {
  */
 export type ImagePosition = WritableRecord & {
   /** Horizontal positioning */
-  horizontal: {
+  horizontal: WritableRecord & {
     relativeTo:
       | "character"
       | "column"
@@ -753,7 +755,7 @@ export type ImagePosition = WritableRecord & {
     posOffset?: number;
   };
   /** Vertical positioning */
-  vertical: {
+  vertical: WritableRecord & {
     relativeTo:
       | "insideMargin"
       | "line"
@@ -933,7 +935,7 @@ export type Image = WritableRecord & {
   /** Image outline/border */
   outline?: ShapeOutline;
   /** Image effects */
-  effects?: {
+  effects?: WritableRecord & {
     brightness?: number;
     contrast?: number;
     saturation?: number;
@@ -1141,7 +1143,7 @@ export type ShapeFill = WritableRecord & {
   /** Solid fill color */
   color?: ColorValue;
   /** Gradient stops for gradient fill */
-  gradient?: {
+  gradient?: WritableRecord & {
     type: "linear" | "radial" | "rectangular" | "path";
     angle?: number;
     /**
@@ -1149,10 +1151,10 @@ export type ShapeFill = WritableRecord & {
      * with the fill region (ECMA-376 §20.1.8.41). Absent means not stated.
      */
     scaled?: boolean;
-    stops: {
+    stops: (WritableRecord & {
       position: number; // 0-100000
       color: ColorValue;
-    }[];
+    })[];
   };
 };
 
@@ -1182,13 +1184,13 @@ export type ShapeOutline = WritableRecord & {
   /** Line join */
   join?: "bevel" | "miter" | "round";
   /** Head arrow */
-  headEnd?: {
+  headEnd?: WritableRecord & {
     type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
     width?: "sm" | "med" | "lg";
     length?: "sm" | "med" | "lg";
   };
   /** Tail arrow */
-  tailEnd?: {
+  tailEnd?: WritableRecord & {
     type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
     width?: "sm" | "med" | "lg";
     length?: "sm" | "med" | "lg";
@@ -1200,7 +1202,7 @@ export type ShapeOutline = WritableRecord & {
  */
 export type ShapeTextBody = WritableRecord & {
   /** Authored DrawingML WordArt metadata. */
-  wordArt?: {
+  wordArt?: WritableRecord & {
     /** Authored `wps:bodyPr/@fromWordArt`; omitted when the source omitted it. */
     fromWordArt?: boolean;
     preset?: string;
@@ -1219,7 +1221,7 @@ export type ShapeTextBody = WritableRecord & {
   /** Horizontal text wrapping inside the shape */
   textWrap?: "square" | "none";
   /** Text margins */
-  margins?: {
+  margins?: WritableRecord & {
     top?: number;
     bottom?: number;
     left?: number;
@@ -1333,7 +1335,7 @@ export type TextBox = WritableRecord & {
   /** Vertical text alignment inside the box */
   verticalAlign?: ShapeTextBody["anchor"];
   /** Internal margins */
-  margins?: {
+  margins?: WritableRecord & {
     top?: number;
     bottom?: number;
     left?: number;
@@ -1385,10 +1387,11 @@ export type TableCell = WritableRecord & {
  * rebuilt as two wrappers around the children on either side of it.
  */
 export type TablePreservedMarkup = WritableRecord & {
-  children?: (PreservedChild & {
-    contentControls?: SdtProperties[];
-    carrierStack?: TableContentCarrier[];
-  })[];
+  children?: (PreservedChild &
+    WritableRecord & {
+      contentControls?: SdtProperties[];
+      carrierStack?: TableContentCarrier[];
+    })[];
 };
 
 /** Replayable shell for a transparent custom-XML wrapper around table structure. */
@@ -1666,7 +1669,7 @@ export type TrackedChangeInfo = WritableRecord & {
    * namespace the part declares on its root, and re-emitting it under a
    * prefix of our choosing would name one that is not there.
    */
-  utcDate?: { attribute: string; value: string };
+  utcDate?: WritableRecord & { attribute: string; value: string };
   /**
    * The pending suggestion this revision belongs to. A suggestion is a set of
    * revisions proposed together and accepted or rejected together; a revision
@@ -1735,23 +1738,38 @@ type TrackedResolutionJoins = WritableRecord & {
    */
   plainSides?: readonly ("before" | "after")[];
   /** A split seam survives only while all intervening insertions await rejection. */
-  deferredRemove?: readonly { depth: number; blockers: readonly number[] }[];
-  /** Source identities handed to the retained suffix when a deleted prefix goes. */
-  retainedAfter?: readonly {
+  deferredRemove?: readonly (WritableRecord & {
     depth: number;
-    source: readonly { space: "revision" | "control"; id: number }[];
-    target: readonly { space: "revision" | "control"; id: number }[];
-  }[];
+    blockers: readonly number[];
+  })[];
+  /** Source identities handed to the retained suffix when a deleted prefix goes. */
+  retainedAfter?: readonly (WritableRecord & {
+    depth: number;
+    source: readonly (WritableRecord & {
+      space: "revision" | "control";
+      id: number;
+    })[];
+    target: readonly (WritableRecord & {
+      space: "revision" | "control";
+      id: number;
+    })[];
+  })[];
   /**
    * Identities of the record `levels` above this wrapper, handed to the
    * piece of it that an edit cut off after this wrapper, when removing this
    * wrapper leaves that record empty. Saved as its own ignorable attribute.
    */
-  retainedEnclosing?: readonly {
+  retainedEnclosing?: readonly (WritableRecord & {
     levels: number;
-    source: readonly { space: "revision" | "control"; id: number }[];
-    target: readonly { space: "revision" | "control"; id: number }[];
-  }[];
+    source: readonly (WritableRecord & {
+      space: "revision" | "control";
+      id: number;
+    })[];
+    target: readonly (WritableRecord & {
+      space: "revision" | "control";
+      id: number;
+    })[];
+  })[];
 };
 
 /**
@@ -2030,7 +2048,7 @@ export type SectionPropertyChange = WritableRecord & {
   /** Section properties before the tracked change */
   previousProperties?: SectionProperties;
   /** Complete prior header/footer selection, stored in Folio's ignorable MCE extension. */
-  previousReferences?: {
+  previousReferences?: WritableRecord & {
     headerReferences?: HeaderReference[];
     footerReferences?: FooterReference[];
   };
@@ -2169,7 +2187,7 @@ export type SdtProperties = WritableRecord & {
    */
   dateValueISO?: string;
   /** Dropdown/combobox list items. */
-  listItems?: { displayText: string; value: string }[];
+  listItems?: (WritableRecord & { displayText: string; value: string })[];
   /**
    * Selected dropdown / comboBox value (`w:dropDownList@w:lastValue`).
    * Persisted as the OOXML value, independent of the body display text.
@@ -2348,7 +2366,8 @@ export type PreservedInline = WritableRecord & {
  * it; anywhere else it is replaced by this item, which shows on the line.
  */
 export type FoldedListNumber =
-  { kind: "field"; field: ComplexField } | { kind: "tab"; run: Run };
+  | (WritableRecord & { kind: "field"; field: ComplexField })
+  | (WritableRecord & { kind: "tab"; run: Run });
 
 /**
  * Paragraph content types
@@ -2779,7 +2798,7 @@ export type SectionProperties = WritableRecord & {
 
   // Line numbers
   /** Line numbering settings */
-  lineNumbers?: {
+  lineNumbers?: WritableRecord & {
     start?: number;
     countBy?: number;
     distance?: number;
@@ -2788,7 +2807,7 @@ export type SectionProperties = WritableRecord & {
 
   // Page numbers
   /** Page numbering settings */
-  pageNumbering?: {
+  pageNumbering?: WritableRecord & {
     format?: NumberFormat;
     start?: number;
     chapterStyle?: number;
@@ -2797,7 +2816,7 @@ export type SectionProperties = WritableRecord & {
 
   // Page borders
   /** Page borders */
-  pageBorders?: {
+  pageBorders?: WritableRecord & {
     top?: BorderSpec;
     bottom?: BorderSpec;
     left?: BorderSpec;
@@ -2812,7 +2831,7 @@ export type SectionProperties = WritableRecord & {
 
   // Background
   /** Page background */
-  background?: {
+  background?: WritableRecord & {
     color?: ColorValue;
     themeColor?: ThemeColorValue;
     themeTint?: string;
@@ -2829,7 +2848,7 @@ export type SectionProperties = WritableRecord & {
 
   // Document grid
   /** Document grid */
-  docGrid?: {
+  docGrid?: WritableRecord & {
     type?: "default" | "lines" | "linesAndChars" | "snapToChars";
     linePitch?: number;
     charSpace?: number;

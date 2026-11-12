@@ -6,7 +6,6 @@ import type {
   StyleDefinitions,
   Theme,
 } from "../types/document";
-import type { DeepReadonly } from "../types/documentModel";
 
 export const DOCUMENT_STYLE_SET_VERSION = 1 as const;
 export const DOCUMENT_PRESET_VERSION = 1 as const;
@@ -24,7 +23,7 @@ export type DocumentStyleSet = {
   initialParagraphStyleId: string;
   styles: StyleDefinitions;
   numbering?: NumberingDefinitions;
-  theme?: DeepReadonly<Theme>;
+  theme?: Theme;
   fontTable?: FontTable;
   settings?: DocumentSettings;
 };

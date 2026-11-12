@@ -3,10 +3,13 @@ import { createStyleResolver } from "../src/prosemirror/styles/styleResolver";
 import type {
   ColorValue,
   Document,
+  DocxPackage,
+  ListMarkerFormatting,
   SectionProperties,
   StyleDefinitions,
   TabStop,
   TextFormatting,
+  ThemeFont,
 } from "../src/types/document";
 import {
   type DeepReadonly,
@@ -43,6 +46,20 @@ const writesSectionProperties = (properties: SectionProperties): void => {
 };
 const writesDocument = (document: Document): void => {
   document.package.document.content.length = 0;
+};
+const writesLineNumbers = (
+  lineNumbers: NonNullable<SectionProperties["lineNumbers"]>,
+): void => {
+  lineNumbers.countBy = 1;
+};
+const writesScriptFonts = (fonts: NonNullable<ThemeFont["fonts"]>): void => {
+  fonts["Jpan"] = "MS Mincho";
+};
+const writesDate = (date: Date): void => {
+  date.setFullYear(2000);
+};
+const writesMarkerFormatting = (formatting: ListMarkerFormatting): void => {
+  formatting.bold = true;
 };
 const readsColor = (color: DeepReadonly<ColorValue>): string | undefined =>
   color.rgb;
@@ -92,6 +109,39 @@ export const readOnlyDocument = (model: ReadonlyDocument): void => {
   writesDocument(cloneDocumentWithParagraphPropertySources(model));
   // The one sanctioned reader hands a reader the model as it is.
   readModel(model);
+};
+
+// The shapes a mark could be missed on: an inline record holding only
+// primitives, an index-signature record, a date, and a pick of a record.
+export const everyRecordShape = (
+  section: DeepReadonly<SectionProperties>,
+  font: DeepReadonly<ThemeFont>,
+  pkg: DeepReadonly<DocxPackage>,
+  marker: DeepReadonly<ListMarkerFormatting>,
+  model: ReadonlyDocument,
+): void => {
+  if (section.lineNumbers) {
+    // @ts-expect-error an inline record of primitives is read-only too
+    writesLineNumbers(section.lineNumbers);
+  }
+  if (font.fonts) {
+    // @ts-expect-error an index-signature record is read-only too
+    writesScriptFonts(font.fonts);
+  }
+  const created = pkg.properties?.created;
+  if (created) {
+    // @ts-expect-error a read-only date is not a date
+    writesDate(created);
+    // @ts-expect-error a read-only date has no setters
+    created.setFullYear(2000);
+    writesDate(new Date(created.getTime()));
+  }
+  // @ts-expect-error a pick of a model record keeps the mark
+  writesMarkerFormatting(marker);
+  // Known escape: an `ArrayBuffer` stays as it is, since its bytes are
+  // written only through a view and every reader builds the same views.
+  const bytes: ArrayBuffer | undefined = model.originalBuffer;
+  void bytes;
 };
 
 export const styleResults = (styles: StyleDefinitions): void => {

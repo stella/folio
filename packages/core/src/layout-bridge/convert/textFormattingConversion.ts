@@ -22,13 +22,12 @@ import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { halfPointsToPixels, halfPointsToPoints } from "../../utils/units";
 import { twipsToPixels } from "./flowConversionShared";
 
-type ThemeFontAttributes = Omit<
-  NonNullable<TextFormatting["fontFamily"]>,
-  "asciiTheme"
-> & {
-  /** The ProseMirror attr reader validates this against the canonical theme values. */
-  asciiTheme?: string;
-};
+type ThemeFontAttributes = DeepReadonly<
+  Omit<NonNullable<TextFormatting["fontFamily"]>, "asciiTheme"> & {
+    /** The ProseMirror attr reader validates this against the canonical theme values. */
+    asciiTheme?: string;
+  }
+>;
 
 export const resolveWesternThemeFont = (
   fontFamily: ThemeFontAttributes,
