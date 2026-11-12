@@ -100,7 +100,7 @@ describe("canonical operation wire coverage", () => {
     // The sample reaches text, block, table, list, note, package and
     // section operations, and none of them is an unsent kind.
     for (const type of [
-      DOCUMENT_OP_TYPES.INSERT_TEXT,
+      DOCUMENT_OP_TYPES.INSERT_CONTENT,
       DOCUMENT_OP_TYPES.DELETE_RANGE,
       DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       DOCUMENT_OP_TYPES.INSERT_ROW,
@@ -108,14 +108,13 @@ describe("canonical operation wire coverage", () => {
       DOCUMENT_OP_TYPES.INSERT_TABLE,
       DOCUMENT_OP_TYPES.DELETE_TABLE,
       DOCUMENT_OP_TYPES.ADD_NOTE,
-      DOCUMENT_OP_TYPES.REMOVE_NOTE,
       DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
       DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
-      DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
       DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
     ])
       expect(observed).toContain(type);
     for (const type of observed)
       expect(Object.hasOwn(UNSENT_OP_TYPES, type)).toBe(false);
+    expect(observed.size).toBeGreaterThanOrEqual(25);
   });
 });

@@ -43,6 +43,11 @@ test("every production-shaped operation decodes, except the unsent comment famil
   let refused = 0;
   for (const { op } of envelopes()) {
     const result = parseDocumentBatch(JSON.stringify(withOp(op)));
+    // One fixture carries a field its kind does not declare; it must refuse.
+    if (op.type === "setParagraphProps" && "propertyReview" in op) {
+      expect(result.isErr()).toBe(true);
+      continue;
+    }
     if (supported.has(op.type)) {
       if (result.isErr())
         throw new Error(`${op.type} must decode: ${result.error.message}`);

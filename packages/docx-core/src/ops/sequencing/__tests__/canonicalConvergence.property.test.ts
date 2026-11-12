@@ -390,7 +390,7 @@ describe("canonical sequencing", () => {
       await assertProperty(convergence(), {
         numRuns: NUM_RUNS,
         id: "canonical sequencing convergence",
-        examples: [concurrentRows],
+        examples: [[concurrentRows]],
       });
       // On a fixed sample the schedules race: accepted batches are rebased
       // over concurrent ones, block-scoped ones among them, and the commuted
@@ -420,7 +420,7 @@ describe("canonical sequencing", () => {
           // The break is a counterexample on purpose: report nothing.
           propertyConfig({
             numRuns: NUM_RUNS,
-            examples: [concurrentRows],
+            examples: [[concurrentRows]],
             reporter: () => undefined,
           }),
         );
@@ -433,7 +433,7 @@ describe("canonical sequencing", () => {
       // Without the break the same scenario passes.
       const restored = await fc.check(
         convergence(),
-        propertyConfig({ numRuns: 1, examples: [concurrentRows] }),
+        propertyConfig({ numRuns: 1, examples: [[concurrentRows]] }),
       );
       expect(restored.failed).toBe(false);
     },
