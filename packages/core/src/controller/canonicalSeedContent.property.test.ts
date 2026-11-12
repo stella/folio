@@ -123,7 +123,9 @@ type Edit =
   | { type: "delete"; at: number }
   | { type: "comments"; ids: number[] }
   // Moving a block keeps every anchor and may change only their order.
-  | { type: "move"; from: number; to: number };
+  | { type: "move"; from: number; to: number }
+  // A comment range between blocks, its start before its end.
+  | { type: "range"; id: number; from: number; to: number };
 
 const editOver = (blocks: fc.Arbitrary<BlockContent>): fc.Arbitrary<Edit> =>
   fc.oneof(
@@ -251,12 +253,19 @@ const edited = (document: Document, edit: Edit, inNote: boolean): Document => {
       commentsOf(edit.ids),
     );
   const blocks = [...(inNote ? note : document.package.document.content)];
-  const at = blocks.length === 0 ? 0 : edit.at % blocks.length;
+  const index = (at: number) => (blocks.length === 0 ? 0 : at % blocks.length);
   if (edit.type === "replace" && blocks.length > 0)
-    blocks.splice(at, 1, edit.block);
-  else if (edit.type === "insert") blocks.splice(at, 0, edit.block);
-  else if (edit.type === "delete") blocks.splice(at, 1);
-  else if (edit.type === "move") {
+    blocks.splice(index(edit.at), 1, edit.block);
+  else if (edit.type === "insert") blocks.splice(index(edit.at), 0, edit.block);
+  else if (edit.type === "delete") blocks.splice(index(edit.at), 1);
+  else if (edit.type === "range") {
+    const end = edit.to % (blocks.length + 1);
+    blocks.splice(end, 0, { type: "commentRangeEnd", id: edit.id });
+    blocks.splice(edit.from % (end + 1), 0, {
+      type: "commentRangeStart",
+      id: edit.id,
+    });
+  } else if (edit.type === "move") {
     const [block] = blocks.splice(edit.from % Math.max(blocks.length, 1), 1);
     if (block !== undefined)
       blocks.splice(edit.to % (blocks.length + 1), 0, block);
@@ -326,6 +335,12 @@ const editChainOf = (blocks: fc.Arbitrary<BlockContent>) =>
           editOver(blocks),
           fc.record({
             type: fc.constant("move" as const),
+            from: fc.nat(),
+            to: fc.nat(),
+          }),
+          fc.record({
+            type: fc.constant("range" as const),
+            id: commentIds,
             from: fc.nat(),
             to: fc.nat(),
           }),
@@ -674,15 +689,15 @@ test("deliberate breaks of the comment skip", () => {
       seed: -71963594,
       path: "428:2:4:5:6:5:6:6:6:6:6",
     }).failed;
-    const generated = fc.check(original, { numRuns: 600, seed: 1 }).failed;
-    const nested = fc.check(
-      fc.property(editChainOf(nestedBlockOf), (chain) =>
-        eachEdit(chain, judge),
-      ),
-      { numRuns: 400, seed: 1 },
-    ).failed;
+    const generated = fc.check(original, { numRuns: 2000, seed: 1 }).failed;
+    const nestedProperty = fc.property(editChainOf(nestedBlockOf), (chain) =>
+      eachEdit(chain, judge),
+    );
+    const nested = [1, 2, 3, 4, 5].filter(
+      (seed) => fc.check(nestedProperty, { numRuns: 400, seed }).failed,
+    ).length;
     rows.push(
-      `BREAK ${name}: pinned=${String(pinned)} property=${String(generated)} nested=${String(nested)}`,
+      `BREAK ${name}: pinned=${String(pinned)} property=${String(generated)} nested400=${String(nested)}/5`,
     );
   }
   console.log(rows.join("\n"));
