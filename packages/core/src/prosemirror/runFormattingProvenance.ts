@@ -1,4 +1,5 @@
 import type { TextFormatting } from "../types/document";
+import { type DeepReadonly, writableCopy } from "../types/documentModel";
 import {
   type AuthoredRunFormattingValues,
   RUN_FORMATTING_BOOLEAN_PROPERTIES,
@@ -55,9 +56,18 @@ export const authoredRunFormattingFromAttrs = (
   for (const property of attrs._authoredOff ?? []) {
     Reflect.set(formatting, property, false);
   }
+  // The mark's authored values are shared with the editor state and the
+  // document they were read from; the formatting returned here is the
+  // caller's, so an object value is copied.
   for (const [property, value] of Object.entries(attrs._authoredValues ?? {})) {
     if (value !== undefined && isRunFormattingProperty(property)) {
-      Reflect.set(formatting, property, value);
+      Reflect.set(
+        formatting,
+        property,
+        typeof value === "object" && value !== null
+          ? writableCopy<unknown>(value)
+          : value,
+      );
     }
   }
   return formatting;
@@ -66,7 +76,7 @@ export const authoredRunFormattingFromAttrs = (
 /** Replace the direct baseline while preserving current rendering attributes. */
 export const withAuthoredRunFormatting = (
   attrs: RunFormattingOverrideAttrs,
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
 ): RunFormattingOverrideAttrs => {
   const authoredOn: RunFormattingBooleanProperty[] = [];
   const authoredOff: RunFormattingBooleanProperty[] = [];

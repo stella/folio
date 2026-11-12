@@ -581,7 +581,7 @@ export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_P
 export const findStoryBody: (document: Document_2, story: OpStory) => DocumentBody | undefined;
 
 // @public
-export function formattingEquals(a: ComparedTextFormatting | undefined, b: ComparedTextFormatting | undefined): boolean;
+export function formattingEquals(a: DeepReadonly<ComparedTextFormatting> | undefined, b: DeepReadonly<ComparedTextFormatting> | undefined): boolean;
 
 // @public
 export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?: Formatting[Key] | null | undefined; };

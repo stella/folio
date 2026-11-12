@@ -37,6 +37,7 @@ import type {
   TextFormatting,
   Theme,
 } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { mergeParagraphTabStops } from "../../utils/paragraphFormattingMerge";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { convertBorderSpecToLayout } from "./flowBorders";
@@ -67,7 +68,7 @@ type ParagraphAttrsInputs = {
    * Resolved paragraph-mark run properties, the base of the list marker's
    * typography. Lazy: only paragraphs that paint a marker resolve them.
    */
-  paragraphMarkFormatting: () => TextFormatting | undefined;
+  paragraphMarkFormatting: () => DeepReadonly<TextFormatting> | undefined;
 };
 
 type ConvertParagraphAttrsOptions = ParagraphAttrsInputs & {
@@ -559,7 +560,7 @@ export function paragraphAttrsWithListMarker(
     attrs.defaultTabStopTwips = defaultTabStopTwips;
   }
   // Default font for empty paragraph measurement (from style's rPr / pPr/rPr)
-  const dtf = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
+  const dtf = pmAttrs.defaultTextFormatting;
   if (dtf) {
     if (dtf.fontSize !== undefined) {
       // fontSize in TextFormatting is in half-points, convert to points

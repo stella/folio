@@ -12,6 +12,11 @@ import path from "node:path";
 
 import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
 import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+import {
   aggregateTestTimings,
   createGraphqlRequest,
   selectTimingArtifacts,
@@ -29,7 +34,7 @@ import {
 
 const temporaryRoots: string[] = [];
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(subprocessTestTimeout());
 
 const fixture = (files: Record<string, string>) => {
   const root = mkdtempSync(path.join(tmpdir(), "folio-import-closure-"));
@@ -879,8 +884,8 @@ describe("measured test shard balancing", () => {
     expect(
       Math.max(...args.map((argument) => Buffer.byteLength(argument))),
     ).toBeLessThan(4_096);
-    const result = Bun.spawnSync(args, { stderr: "pipe" });
-    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    const result = expectExited(runChild(args));
+    expect(result.exitCode, result.stderr).toBe(0);
 
     const request = JSON.parse(readFileSync(requestFile, "utf8"));
     expect(request).toEqual(

@@ -7,6 +7,7 @@ import type {
   TableWidthType,
   Theme,
 } from "../../types/document";
+import type { DeepReadonly, OwnRecord } from "../../types/documentModel";
 import { resolveColor } from "../../utils/colorResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
 
@@ -33,7 +34,7 @@ type EffectiveTableCellBackground =
 type EffectiveTableCellFormatting = Readonly<{
   width: EffectiveTableCellWidth;
   background: EffectiveTableCellBackground;
-  borders: TableCellBorders | undefined;
+  borders: DeepReadonly<TableCellBorders> | undefined;
   margins: TableCellMarginsAttrs | undefined;
 }>;
 
@@ -46,8 +47,8 @@ export type TableCellPosition = {
 
 type ResolveEffectiveTableCellFormattingOptions = {
   directFormatting: TableCellFormatting | undefined;
-  styleFormatting: TableCellFormatting | undefined;
-  tableBorders: TableBorders | undefined;
+  styleFormatting: DeepReadonly<TableCellFormatting> | undefined;
+  tableBorders: DeepReadonly<TableBorders> | undefined;
   position: TableCellPosition;
   gridWidthPercent: number | undefined;
   defaultMargins: TableCellMarginsAttrs | undefined;
@@ -157,7 +158,7 @@ const resolveEffectiveBackground = ({
 };
 
 type ResolveBackgroundColorOptions = {
-  shading: ShadingProperties;
+  shading: DeepReadonly<ShadingProperties>;
   source: "direct" | "style";
   theme: Theme | null | undefined;
 };
@@ -186,7 +187,8 @@ const resolveEffectiveBorders = ({
   tableBorders,
   position,
   theme,
-}: ResolveEffectiveBordersOptions): TableCellBorders | undefined => {
+}: ResolveEffectiveBordersOptions):
+  DeepReadonly<TableCellBorders> | undefined => {
   const baseBorders = tableBorders
     ? {
         top: position.isFirstRow ? tableBorders.top : tableBorders.insideH,
@@ -244,14 +246,14 @@ const cellMarginsToAttrs = (margins: CellMargins): TableCellMarginsAttrs => {
 };
 
 const resolveThemedBorderColors = (
-  borders: TableCellBorders | undefined,
+  borders: DeepReadonly<TableCellBorders> | undefined,
   theme: Theme | null | undefined,
-): TableCellBorders | undefined => {
+): DeepReadonly<TableCellBorders> | undefined => {
   if (!borders || !theme?.colorScheme) {
     return borders;
   }
 
-  let resolved: TableCellBorders | undefined;
+  let resolved: OwnRecord<TableCellBorders> | undefined;
   for (const side of TABLE_BORDER_SIDES) {
     const border = borders[side];
     if (!border?.color?.themeColor || border.color.auto) {

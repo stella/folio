@@ -5,7 +5,6 @@ import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import type { BlockRect } from "@stll/folio-core/paged-layout/blockGeometry";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
-import type { Document } from "@stll/folio-core/types/document";
 import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 
 /**
@@ -25,8 +24,11 @@ import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 export type PagedEditorRef = {
   /** The headless editor controller (imperative API + events; Seam 6). */
   getEditor: () => FolioEditor;
-  /** Get the current document. */
-  getDocument: () => Document | null;
+  /**
+   * The current document, built over the editor's model and sharing its
+   * parts: read it, never write it (`DocxEditorRef.getDocument` hands a copy).
+   */
+  getDocument: () => ReadonlyDocument | null;
   /**
    * The editor's document model, without a copy: in a canonical session the
    * session's own document (read it, never write it); otherwise null.

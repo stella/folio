@@ -1,8 +1,12 @@
-import { expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import {
   bindingElements,
   collectSyntaxTree,
@@ -15,6 +19,15 @@ import {
   parseLikeTypeScript,
   walkAst,
 } from "./lib/oxc-ast";
+
+setDefaultTimeout(subprocessTestTimeout());
+
+/** Git's output for `args`; git must exit cleanly. */
+const git = (args: string[]): string => {
+  const run = expectExited(runChild(["git", ...args], { cwd: ROOT }));
+  expect(run.exitCode).toBe(0);
+  return run.stdout;
+};
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const OWNER = "packages/core/src/prosemirror/numberingAttr.ts";
@@ -358,10 +371,7 @@ test("membership readers require the effective numbering owner through local ali
 });
 
 test("production membership readers never consume the authored slot alone", () => {
-  const files = execFileSync("git", ["ls-files", "packages/core/src"], {
-    cwd: ROOT,
-  })
-    .toString()
+  const files = git(["ls-files", "packages/core/src"])
     .trim()
     .split("\n")
     .filter(
@@ -387,10 +397,7 @@ test("numbering level decisions stay in explicitly owned bridges", () => {
     levelOwnerViolations("resolveParagraphList(sources, numbering)"),
   ).toEqual([]);
 
-  const files = execFileSync("git", ["ls-files", "packages/core/src"], {
-    cwd: ROOT,
-  })
-    .toString()
+  const files = git(["ls-files", "packages/core/src"])
     .trim()
     .split("\n")
     .filter(
@@ -420,10 +427,7 @@ test("paragraph list readers do not decide rendering from the cached projection"
     ),
   ).toEqual([]);
 
-  const files = execFileSync("git", ["ls-files", "packages/core/src"], {
-    cwd: ROOT,
-  })
-    .toString()
+  const files = git(["ls-files", "packages/core/src"])
     .trim()
     .split("\n")
     .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));

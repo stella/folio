@@ -9,7 +9,11 @@
 
 import type { Mark } from "prosemirror-model";
 
-import type { TextFormatting } from "../../../types/document";
+import type {
+  ShadingProperties,
+  TextFormatting,
+} from "../../../types/document";
+import { type DeepReadonly, writableCopy } from "../../../types/documentModel";
 import { expectRunFormattingOverrideMarkAttrs } from "../../attrs";
 import { withAuthoredRunFormatting } from "../../runFormattingProvenance";
 import type { RunFormattingOverrideAttrs } from "../../schema/marks";
@@ -17,11 +21,14 @@ import { createMarkExtension } from "../create";
 import type { MarkExtension } from "../types";
 
 type BuildRunFormattingOverrideAttrsOptions =
-  | { type: "authored-baseline"; formatting: TextFormatting | undefined }
+  | {
+      type: "authored-baseline";
+      formatting: DeepReadonly<TextFormatting> | undefined;
+    }
   | { type: "structural-only" };
 
 export function buildRunFormattingOverrideAttrs(
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
   options?: BuildRunFormattingOverrideAttrsOptions,
 ): RunFormattingOverrideAttrs | undefined {
   const attrs: RunFormattingOverrideAttrs = {};
@@ -42,7 +49,10 @@ export function buildRunFormattingOverrideAttrs(
     attrs.highlight = "none";
   }
   if (formatting?.shading?.pattern === "nil") {
-    attrs.shading = { ...formatting.shading, pattern: "nil" };
+    attrs.shading = {
+      ...writableCopy<ShadingProperties>(formatting.shading),
+      pattern: "nil",
+    };
   }
   if (formatting?.strike !== undefined) {
     attrs.strike = formatting.strike;

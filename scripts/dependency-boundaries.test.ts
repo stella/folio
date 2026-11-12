@@ -10,6 +10,12 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const DEPCRUISE_BINARY = path.join(
   REPOSITORY_ROOT,
@@ -54,7 +60,7 @@ type CruiseResult = {
 
 let fixtureRoots: string[] = [];
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(subprocessTestTimeout(2));
 
 afterEach(() => {
   for (const fixtureRoot of fixtureRoots) {
@@ -158,40 +164,37 @@ const writeSource = (
 };
 
 const cruise = (fixtureRoot: string): CruiseResult => {
-  const result = Bun.spawnSync(
-    [
-      DEPCRUISE_BINARY,
-      "--config",
-      DEPCRUISE_CONFIG,
-      "--output-type",
-      "err-long",
-      "packages",
-    ],
-    {
-      cwd: fixtureRoot,
-      env: { ...process.env, NODE_PATH: REPOSITORY_NODE_MODULES },
-      stderr: "pipe",
-      stdout: "pipe",
-    },
+  const result = expectExited(
+    runChild(
+      [
+        DEPCRUISE_BINARY,
+        "--config",
+        DEPCRUISE_CONFIG,
+        "--output-type",
+        "err-long",
+        "packages",
+      ],
+      {
+        cwd: fixtureRoot,
+        env: { ...process.env, NODE_PATH: REPOSITORY_NODE_MODULES },
+      },
+    ),
   );
   return {
     exitCode: result.exitCode,
-    output: `${result.stdout.toString()}${result.stderr.toString()}`,
+    output: `${result.stdout}${result.stderr}`,
   };
 };
 
 const checkManifests = (fixtureRoot: string): CruiseResult => {
-  const result = Bun.spawnSync(
-    [process.execPath, "scripts/check-workspace-manifests.ts"],
-    {
+  const result = expectExited(
+    runChild([process.execPath, "scripts/check-workspace-manifests.ts"], {
       cwd: fixtureRoot,
-      stderr: "pipe",
-      stdout: "pipe",
-    },
+    }),
   );
   return {
     exitCode: result.exitCode,
-    output: `${result.stdout.toString()}${result.stderr.toString()}`,
+    output: `${result.stdout}${result.stderr}`,
   };
 };
 

@@ -140,6 +140,7 @@ export default library({
     "./.oxlint-plugins/folio-harness-workspaces.ts",
     "./.oxlint-plugins/folio-test-dom.ts",
     "./.oxlint-plugins/folio-painted-positions.ts",
+    "./.oxlint-plugins/folio-subprocess-bounds.ts",
   ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
@@ -480,9 +481,11 @@ export default library({
       files: [
         "packages/*/src/**/*.{ts,tsx,vue}",
         "test/__fixtures__/read-model-cast.*.{ts,vue}",
+        "test/__fixtures__/read-model-attr-cast.*.ts",
       ],
       rules: {
         "folio-read-model/no-model-document-cast": "error",
+        "folio-read-model/no-read-only-attr-cast": "error",
       },
     },
     {
@@ -495,6 +498,7 @@ export default library({
       ],
       rules: {
         "folio-read-model/no-model-document-cast": "off",
+        "folio-read-model/no-read-only-attr-cast": "off",
       },
     },
     {
@@ -758,6 +762,24 @@ export default library({
         "test/__fixtures__/test-dom*.ts",
       ],
       rules: { "folio-test-dom/dom-lease-owner": "error" },
+    },
+    {
+      // A test that starts a child process runs it through `runChild` from
+      // `test/subprocess.ts` and is bounded by `subprocessTestTimeout`, never
+      // by a bare wall-clock limit, so a slow runner does not fail a child
+      // that would have finished and a hung child is reported by its own
+      // test. See `.oxlint-plugins/folio-subprocess-bounds.ts` and the
+      // matching test at `scripts/subprocess-bounds-lint.test.ts`, which lints
+      // the `test/__fixtures__` files covered here;
+      // `scripts/source-guard-budgets.test.ts` checks that every test file is
+      // covered.
+      files: [
+        "**/*.test.{ts,tsx,mts,mjs}",
+        "test/__fixtures__/subprocess-bounds/*.ts",
+      ],
+      rules: {
+        "folio-subprocess-bounds/bounded-child-tests": "error",
+      },
     },
     nonReactPackageOverride,
   ],

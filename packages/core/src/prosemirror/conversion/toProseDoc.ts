@@ -118,6 +118,7 @@ import type {
   WrapDistanceSlots,
 } from "../../types/document";
 import { outlineAttrForDash } from "../../types/documentEnumValues";
+import type { DeepReadonly, OwnRecord } from "../../types/documentModel";
 import { cssBorderStyleForDash } from "../../utils/borderCss";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
@@ -246,7 +247,7 @@ const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
  */
 export type ToProseDocOptions = {
   /** Style definitions for resolving paragraph styles */
-  styles?: StyleDefinitions;
+  styles?: DeepReadonly<StyleDefinitions>;
   /** Package definitions used to recompute secondary-story list rendering. */
   numbering?: NumberingDefinitions;
   /** Theme used when converting themed table/cell values in nested content. */
@@ -289,14 +290,14 @@ const pageBreakProjectionWarn = (
       };
 
 type ResolvedRunFormatting = {
-  formatting: TextFormatting | undefined;
+  formatting: DeepReadonly<TextFormatting> | undefined;
   implicitCharacterStyleApplied?: true;
-  paragraphMarkOverrides?: TextFormatting;
+  paragraphMarkOverrides?: DeepReadonly<TextFormatting>;
   toggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
 };
 
 type RunFormattingResolver = (
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
   fieldType?: string,
 ) => ResolvedRunFormatting;
 
@@ -821,7 +822,7 @@ type CachedBlock = {
 };
 
 type ProjectionPackageInputs = {
-  styles: StyleDefinitions | undefined;
+  styles: DeepReadonly<StyleDefinitions> | undefined;
   theme: Theme | null;
   numbering: NumberingDefinitions | undefined;
   warn: ParseContext["warn"] | undefined;
@@ -1396,7 +1397,7 @@ function convertParagraph(
   paragraph: Paragraph,
   styleResolver: StyleEngine | null,
   context: TableConversionContext,
-  extraRunFormatting?: TextFormatting,
+  extraRunFormatting?: DeepReadonly<TextFormatting>,
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode {
@@ -1575,7 +1576,7 @@ function convertParagraph(
     }
   }
   const getInheritedRunFormatting = (
-    formatting: TextFormatting | undefined,
+    formatting: DeepReadonly<TextFormatting> | undefined,
     fieldType?: string,
   ): ResolvedRunFormatting => {
     const hasCharacterStyle = formatting?.styleId !== undefined;
@@ -2309,7 +2310,7 @@ function convertTrackedChange(
  */
 type ParagraphFormattingProjection = {
   attrs: ParagraphAttrs;
-  effectiveFrame: ParagraphFormatting["frame"];
+  effectiveFrame: DeepReadonly<ParagraphFormatting["frame"]>;
 };
 
 function paragraphFormattingToAttrs(
@@ -2433,7 +2434,7 @@ function paragraphFormattingToAttrs(
   // Cell paragraphs (`tableParagraphOverlay` set) layer the enclosing table
   // style's modeled paragraph fields in between docDefaults and this
   // paragraph's own style chain — see resolveParagraphStyleInTable.
-  let stylePpr: Paragraph["formatting"] | undefined;
+  let stylePpr: DeepReadonly<Paragraph["formatting"]> | undefined;
   if (styleResolver) {
     const cascade = paragraphStyleCascadeAttrs({
       styleId,
@@ -2534,8 +2535,8 @@ function paragraphFormattingToAttrs(
  * modeled paragraph overlay described on {@link TableCellParagraphSpacingOverlay}.
  */
 type TableConditionalStyle = {
-  tcPr?: TableCellFormatting;
-  rPr?: TextFormatting;
+  tcPr?: DeepReadonly<TableCellFormatting>;
+  rPr?: DeepReadonly<TextFormatting>;
   pPr?: TableCellParagraphSpacingOverlay;
 };
 
@@ -2643,7 +2644,7 @@ function mergeConditionalStyles(
   const baseTcPr = base.tcPr;
   const overrideTcPr = override.tcPr;
   if (baseTcPr || overrideTcPr) {
-    const tcPr: TableCellFormatting = {
+    const tcPr: OwnRecord<TableCellFormatting> = {
       ...baseTcPr,
       ...overrideTcPr,
     };
@@ -2689,9 +2690,9 @@ function mergeConditionalStyles(
 }
 
 function resolveTextFormatting(
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
   styleResolver: StyleEngine | null,
-): TextFormatting | undefined {
+): DeepReadonly<TextFormatting> | undefined {
   if (!formatting) {
     return styleResolver?.resolveRunStyle(null);
   }
@@ -3044,7 +3045,7 @@ function convertTableRow(
   },
   rowBand?: "band1Horz" | "band2Horz",
   tableLook?: ResolvedTableLook,
-  tableBorders?: TableBorders,
+  tableBorders?: DeepReadonly<TableBorders>,
   rowIndex?: number,
   totalRows?: number,
   totalColumns?: number,
@@ -3294,7 +3295,7 @@ type ConvertTableCellOptions = {
   isHeader: boolean;
   gridWidthPercent: number | undefined;
   conditionalStyle: TableConditionalStyle | undefined;
-  tableBorders: TableBorders | undefined;
+  tableBorders: DeepReadonly<TableBorders> | undefined;
   position: TableCellPosition;
   calculatedRowSpan: number | undefined;
   preserveVMergeRestart: boolean | undefined;
@@ -4442,7 +4443,7 @@ const hasSingleLeadingParagraphPageBreak = (paragraph: Paragraph): boolean => {
 type ParagraphPageBreakProjectionOptions = {
   paragraph: Paragraph;
   attrs: ParagraphAttrs;
-  effectiveFrame: ParagraphFormatting["frame"];
+  effectiveFrame: DeepReadonly<ParagraphFormatting["frame"]>;
   sourceDescendants: PageBreakRunSourceDescendantIndex;
   warn: PageBreakProjectionWarn;
 };
@@ -4639,7 +4640,7 @@ type BuiltRunMarks = {
   // returned so callers can forward it to `convertRunContent` for attributes
   // that are read off the formatting rather than the marks (e.g. footnote
   // anchor vertAlign superscript).
-  mergedFormatting: TextFormatting | undefined;
+  mergedFormatting: DeepReadonly<TextFormatting> | undefined;
 };
 
 const RUN_FORMATTING_INFERENCE = {
@@ -4763,9 +4764,9 @@ const isReconstructibleFontFamily = (
 
 type CanReconstructAuthoredRunFormattingOptions = {
   directFormatting: TextFormatting | undefined;
-  effectiveFormatting: TextFormatting | undefined;
-  inheritedFormatting: TextFormatting | undefined;
-  paragraphMarkOverrides: TextFormatting | undefined;
+  effectiveFormatting: DeepReadonly<TextFormatting> | undefined;
+  inheritedFormatting: DeepReadonly<TextFormatting> | undefined;
+  paragraphMarkOverrides: DeepReadonly<TextFormatting> | undefined;
 };
 
 const canReconstructAuthoredRunFormatting = ({
@@ -4930,7 +4931,7 @@ function buildRunMarks({
     };
   }
   const styleId = runFormatting?.styleId;
-  let characterStyleFormatting: TextFormatting | undefined;
+  let characterStyleFormatting: DeepReadonly<TextFormatting> | undefined;
   if (styleId) {
     characterStyleFormatting = styleResolver?.getRunStyleOwnProperties(styleId);
   } else if (!inherited.implicitCharacterStyleApplied) {
@@ -4973,20 +4974,20 @@ function buildRunMarks({
     })
       ? "reconstruct"
       : "preserve";
-  const overrideFormatting = getRunFormattingOverrides({
+  const runOverrides = getRunFormattingOverrides({
     directFormatting: runFormatting,
     effectiveStyleFormatting: runStyleFormatting,
     hasCharacterStyle: styleId !== undefined,
     paragraphMarkOverrides: inherited.paragraphMarkOverrides,
   });
-  if (authoredCarrier === "reconstruct") {
-    if (overrideFormatting?.bold === true) {
-      delete overrideFormatting.bold;
-    }
-    if (overrideFormatting?.italic === true) {
-      delete overrideFormatting.italic;
-    }
-  }
+  // A reconstructed carrier states bold and italic through their own marks.
+  // The overrides may be the paragraph's shared mark overrides, so the
+  // positive toggles are left out of a new record rather than deleted.
+  const overrideFormatting =
+    authoredCarrier === "reconstruct" &&
+    (runOverrides?.bold === true || runOverrides?.italic === true)
+      ? withoutPositiveBoldItalic(runOverrides)
+      : runOverrides;
   const marks = textFormattingToMarks(mergedFormatting, schema, {
     overrideFormatting,
     directFormatting: runFormatting,
@@ -5014,9 +5015,21 @@ const ORDINARY_STYLE_TOGGLE_KEYS = [
 
 type GetRunFormattingOverridesOptions = {
   directFormatting: TextFormatting | undefined;
-  effectiveStyleFormatting: TextFormatting | undefined;
+  effectiveStyleFormatting: DeepReadonly<TextFormatting> | undefined;
   hasCharacterStyle: boolean;
-  paragraphMarkOverrides: TextFormatting | undefined;
+  paragraphMarkOverrides: DeepReadonly<TextFormatting> | undefined;
+};
+
+/** `formatting` without a positive bold or italic, as a new record. */
+const withoutPositiveBoldItalic = (
+  formatting: DeepReadonly<TextFormatting>,
+): DeepReadonly<TextFormatting> => {
+  const { bold, italic, ...rest } = formatting;
+  return {
+    ...rest,
+    ...(bold === true || bold === undefined ? {} : { bold }),
+    ...(italic === true || italic === undefined ? {} : { italic }),
+  };
 };
 
 function getRunFormattingOverrides({
@@ -5024,14 +5037,14 @@ function getRunFormattingOverrides({
   effectiveStyleFormatting,
   hasCharacterStyle,
   paragraphMarkOverrides,
-}: GetRunFormattingOverridesOptions): TextFormatting | undefined {
+}: GetRunFormattingOverridesOptions): DeepReadonly<TextFormatting> | undefined {
+  if (!directFormatting) {
+    return paragraphMarkOverrides;
+  }
   const overrides = mergeTextFormatting(
     paragraphMarkOverrides,
     directFormatting,
   );
-  if (!overrides || !directFormatting) {
-    return overrides;
-  }
 
   // A positive PM mark already preserves direct formatting unless character-style
   // subtraction would mistake it for an inherited visual. Keep only that ambiguous
@@ -5085,7 +5098,7 @@ const carriedRunFormatting = (
 type ConvertRunContentOptions = {
   content: RunContent;
   marks: ReturnType<typeof schema.mark>[];
-  formatting: TextFormatting | undefined;
+  formatting: DeepReadonly<TextFormatting> | undefined;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
   /**
    * The run's own `w:rPr`, NOT the style-resolved `formatting` above. An
@@ -5296,7 +5309,10 @@ function withRunBoundaryMarks(
     RUN_BOUNDARY_MARK_NAMES.has(type.name),
   );
   if (!ownsWrapperOrSourceRun) {
-    return node;
+    // The run's tracked formatting has no other carrier: its formatting
+    // rides in the node's attrs, but the revision is a change of its own.
+    const change = marks.find(({ type }) => type.name === "runPropertyChange");
+    return change ? node.mark([change]) : node;
   }
 
   return node.mark(marks);
@@ -6034,7 +6050,7 @@ function convertShape(shape: Shape, runFormatting?: TextFormatting): PMNode {
 type ConvertParagraphWithTextBoxesOptions = {
   textBoxGroupId: string;
   context: TableConversionContext;
-  extraRunFormatting?: TextFormatting;
+  extraRunFormatting?: DeepReadonly<TextFormatting>;
   preserveEmptyWrapper?: boolean;
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay;
 };

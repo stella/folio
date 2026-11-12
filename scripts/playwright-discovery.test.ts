@@ -2,6 +2,12 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -32,25 +38,27 @@ test.each([
   "Node discovers $project modules and their standing regression",
   ({ project, file, count }) => {
     const root = join(import.meta.dir, "..");
-    const result = Bun.spawnSync(
-      [
-        "node",
-        join(root, "node_modules/.bin/playwright"),
-        "test",
-        `--project=${project}`,
-        "--list",
-        "--reporter=json",
-      ],
-      { cwd: root, stdout: "pipe", stderr: "pipe" },
+    const result = expectExited(
+      runChild(
+        [
+          "node",
+          join(root, "node_modules/.bin/playwright"),
+          "test",
+          `--project=${project}`,
+          "--list",
+          "--reporter=json",
+        ],
+        { cwd: root },
+      ),
     );
-    const report: unknown = JSON.parse(result.stdout.toString());
+    const report: unknown = JSON.parse(result.stdout);
     if (
       !isRecord(report) ||
       !Array.isArray(report["errors"]) ||
       !Array.isArray(report["suites"])
     )
       throw new TypeError(
-        `Invalid Playwright discovery report: ${result.stderr.toString()}`,
+        `Invalid Playwright discovery report: ${result.stderr}`,
       );
     expect(result.exitCode, JSON.stringify(report["errors"])).toBe(0);
     expect(report["errors"]).toEqual([]);
@@ -60,5 +68,5 @@ test.each([
       count,
     );
   },
-  30_000,
+  subprocessTestTimeout(),
 );

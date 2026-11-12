@@ -46,7 +46,11 @@ import type {
   StyleDefinitions,
   Theme,
 } from "../types/document";
-import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
@@ -83,7 +87,7 @@ export type HeaderFooterEditorManagerDeps = {
     | ((reason: string, ground: CanonicalRefusalGround, error?: Error) => void)
     | undefined;
   getHost: () => HTMLElement | null;
-  getStyles: () => StyleDefinitions | null | undefined;
+  getStyles: () => DeepReadonly<StyleDefinitions> | null | undefined;
   getTheme: () => Theme | null | undefined;
   onTransaction?:
     ((transaction: HeaderFooterEditorTransaction) => void) | undefined;
@@ -111,7 +115,7 @@ type MountedView = {
   appliedContent: BlockContent[];
   appliedHeaderFooter: HeaderFooter;
   appliedNumbering: NumberingDefinitions | null | undefined;
-  appliedStyles: StyleDefinitions | null | undefined;
+  appliedStyles: DeepReadonly<StyleDefinitions> | null | undefined;
   appliedTheme: Theme | null | undefined;
   dirty: boolean;
   kind: HeaderFooterPartKind;
@@ -145,7 +149,7 @@ const headerFooterToProseDocWithDetachedWatermarkHost = (
 
 const buildInitialState = (
   headerFooter: HeaderFooter,
-  styles: StyleDefinitions | null | undefined,
+  styles: DeepReadonly<StyleDefinitions> | null | undefined,
   theme: Theme | null | undefined,
   numbering: NumberingDefinitions | null | undefined,
   manager: ExtensionManager,

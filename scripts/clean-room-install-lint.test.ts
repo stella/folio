@@ -2,22 +2,30 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-setDefaultTimeout(30_000);
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const lint = (files: string[]) => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      ...files,
-    ],
-    { cwd: path.resolve(import.meta.dir, "..") },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        ...files,
+      ],
+      { cwd: path.resolve(import.meta.dir, "..") },
+    ),
   );
-  const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  const output = `${result.stdout}${result.stderr}`;
   return {
     exitCode: result.exitCode,
     output,

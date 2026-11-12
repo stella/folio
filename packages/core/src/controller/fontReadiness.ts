@@ -33,7 +33,11 @@ import {
   expectParagraphAttrs,
 } from "../prosemirror/attrs";
 import type { Document, TextFormatting } from "../types/document";
-import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
 
 /** The parts of a `FontFace` layout readiness reads. */
@@ -337,7 +341,7 @@ export function collectInitialLayoutFontFaces(
 
 type AddTextFormattingFontFacesOptions = {
   faces: Map<string, LayoutFontFace>;
-  formatting: TextFormatting | undefined;
+  formatting: DeepReadonly<TextFormatting> | undefined;
   resolution: FontFaceResolutionContext;
 };
 
@@ -363,7 +367,7 @@ function addTextFormattingFontFaces({
 type CollectProseMirrorFontFacesOptions = {
   faces: Map<string, LayoutFontFace>;
   node: PMNode;
-  inheritedTextFormatting: TextFormatting | undefined;
+  inheritedTextFormatting: DeepReadonly<TextFormatting> | undefined;
   resolution: FontFaceResolutionContext;
 };
 
@@ -419,12 +423,10 @@ function collectProseMirrorFontFaces({
 
 function readParagraphDefaultTextFormatting(
   node: PMNode,
-): TextFormatting | undefined {
-  const value = node.attrs["defaultTextFormatting"];
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  return value as TextFormatting;
+): DeepReadonly<TextFormatting> | undefined {
+  return node.type.name === "paragraph"
+    ? expectParagraphAttrs(node).defaultTextFormatting
+    : undefined;
 }
 
 function readFontFamilyMarkAttrs(marks: readonly Mark[]): unknown {

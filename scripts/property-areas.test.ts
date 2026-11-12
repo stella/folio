@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { seedFileFor } from "../test/seed-registry";
+import { subprocessBudgetBaseMs } from "../test/subprocess";
 import { parseSourceModule, walkAst } from "./lib/oxc-ast";
 import {
   areaOf,
@@ -382,6 +383,25 @@ describe("property scheduling profiles", () => {
     expect(profile).toEqual({
       drivers: 3,
       weightMs: 70_000,
+      missingBudgets: 0,
+    });
+  });
+
+  test("a property that starts children weighs its stated subprocess budget", () => {
+    expect(
+      profileSource(`
+      const RUNS = 12;
+      setDefaultTimeout(subprocessTestTimeout());
+      test("default", () => { assertProperty(p); });
+      test("children", () => { assertProperty(q); }, subprocessTestTimeout(RUNS));
+      test("own work", () => { fc.check(r); }, subprocessTestTimeout(1, 30_000));
+    `),
+    ).toEqual({
+      drivers: 3,
+      weightMs:
+        subprocessBudgetBaseMs() +
+        subprocessBudgetBaseMs(12) +
+        subprocessBudgetBaseMs(1, 30_000),
       missingBudgets: 0,
     });
   });

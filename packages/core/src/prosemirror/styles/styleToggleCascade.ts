@@ -1,5 +1,7 @@
 import type { TextFormatting } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import {
+  type MergedTextFormatting,
   mergeTextFormatting,
   STYLE_TOGGLE_KEYS,
 } from "../../utils/textFormattingMerge";
@@ -11,32 +13,47 @@ type ToggleState = {
   defaultsActive: boolean;
 };
 
-/** Internal formatting value whose toggle history survives copying and separate cascade passes. */
-type StyleTextFormattingCascade = {
-  formatting: TextFormatting | undefined;
+/**
+ * Internal formatting value whose toggle history survives copying and separate
+ * cascade passes. Its formatting shares nested values with the levels it read
+ * (a style resolver's results among them), so it is read-only; TypeScript lets
+ * a readonly literal match a writable parameter, so there is no writable
+ * variant to fall into.
+ */
+type StyleTextFormattingCascade<
+  Formatting extends DeepReadonly<TextFormatting> =
+    DeepReadonly<TextFormatting>,
+> = {
+  formatting: Formatting | undefined;
   toggleStates: ReadonlyMap<StyleToggleKey, ToggleState>;
   type: "styleToggleCascade";
 };
 
-type StyleToggleLevel =
+type StyleToggleLevel<
+  Formatting extends DeepReadonly<TextFormatting> =
+    DeepReadonly<TextFormatting>,
+> =
   | {
-      formatting: TextFormatting | undefined;
+      formatting: Formatting | undefined;
       type: "defaults" | "style" | "direct";
     }
   | {
-      cascade: StyleTextFormattingCascade;
+      cascade: StyleTextFormattingCascade<Formatting>;
       type: "carried";
     };
 
-type StyleToggleCascadeOptions = {
+type StyleToggleCascadeOptions<
+  Formatting extends DeepReadonly<TextFormatting> =
+    DeepReadonly<TextFormatting>,
+> = {
   /** Existing ordinary-property merge whose toggle fields this cascade replaces. */
-  ordinaryFormatting: TextFormatting | undefined;
+  ordinaryFormatting: Formatting | undefined;
 };
 
 type CascadeStyleFromResolvedBaseOptions = {
-  baseFormatting: TextFormatting | undefined;
+  baseFormatting: DeepReadonly<TextFormatting> | undefined;
   defaultsActiveProperties: readonly StyleToggleKey[] | undefined;
-  styleFormatting: TextFormatting | undefined;
+  styleFormatting: DeepReadonly<TextFormatting> | undefined;
 };
 
 /** Continue a style cascade from a compact resolved paragraph snapshot. */
@@ -44,7 +61,8 @@ export const cascadeStyleFromResolvedBase = ({
   baseFormatting,
   defaultsActiveProperties,
   styleFormatting,
-}: CascadeStyleFromResolvedBaseOptions): TextFormatting | undefined => {
+}: CascadeStyleFromResolvedBaseOptions):
+  DeepReadonly<TextFormatting> | undefined => {
   const defaultsActive = new Set(defaultsActiveProperties);
   const toggleStates = new Map<StyleToggleKey, ToggleState>();
   for (const key of STYLE_TOGGLE_KEYS) {
@@ -78,8 +96,14 @@ export const cascadeStyleFromResolvedBase = ({
 export function cascadeStyleTextFormatting(
   levels: readonly StyleToggleLevel[],
   options?: StyleToggleCascadeOptions,
+): StyleTextFormattingCascade;
+export function cascadeStyleTextFormatting(
+  levels: readonly StyleToggleLevel[],
+  options?: StyleToggleCascadeOptions,
 ): StyleTextFormattingCascade {
-  let formatting = options
+  // Every value assigned here is a merge with a source, a new record, so the
+  // toggle writes below land in this cascade's own record, never in a level.
+  let formatting: MergedTextFormatting | undefined = options?.ordinaryFormatting
     ? mergeTextFormatting(undefined, options.ordinaryFormatting)
     : undefined;
   const mergeOrdinaryFormatting = options === undefined;
@@ -87,7 +111,7 @@ export function cascadeStyleTextFormatting(
 
   for (const level of levels) {
     if (level.type === "carried") {
-      if (mergeOrdinaryFormatting) {
+      if (mergeOrdinaryFormatting && level.cascade.formatting) {
         formatting = mergeTextFormatting(formatting, level.cascade.formatting);
       }
       for (const [key, state] of level.cascade.toggleStates) {

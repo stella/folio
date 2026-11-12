@@ -5,6 +5,7 @@
 ```ts
 
 import { Command } from 'prosemirror-state';
+import { DeepReadonly } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { MarkSpec } from 'prosemirror-model';
 import { NodeSpec } from 'prosemirror-model';

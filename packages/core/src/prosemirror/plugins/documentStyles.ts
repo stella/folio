@@ -32,6 +32,7 @@ export {
   getDocumentStyleDefinitions,
   getDocumentBuiltInStyles,
 } from "./documentStyleState";
+import type { DeepReadonly } from "../../types/documentModel";
 import { getDocumentNumbering } from "./documentNumbering";
 import { resolveEditedParagraphStyles } from "./paragraphStyleResolution";
 
@@ -101,7 +102,8 @@ const bareResolver = (): StyleResolver => {
   return bareStyleResolver;
 };
 
-type DocumentStylesInput = StyleDefinitions | StyleResolver | null | undefined;
+type DocumentStylesInput =
+  DeepReadonly<StyleDefinitions> | StyleResolver | null | undefined;
 
 const documentStyleContextSpec = (styles: DocumentStylesInput) => {
   let resolver: StyleResolver | null;
@@ -130,7 +132,7 @@ export const createDocumentStyleContextPlugin = (
  * have one.
  */
 export function createDocumentStylesPlugin(
-  styles: StyleDefinitions | StyleResolver | null | undefined,
+  styles: DeepReadonly<StyleDefinitions> | StyleResolver | null | undefined,
 ): Plugin {
   return new Plugin({
     ...documentStyleContextSpec(styles),
@@ -156,7 +158,7 @@ export function createDocumentStylesPlugin(
 /** Reconfigure so ProseMirror replaces the keyed plugin's resolver state. */
 export const withDocumentStyles = (
   state: EditorState,
-  styles: StyleDefinitions | StyleResolver | null | undefined,
+  styles: DeepReadonly<StyleDefinitions> | StyleResolver | null | undefined,
 ): EditorState => {
   const previous = documentStylesKey.get(state);
   const retained = state.plugins.filter((plugin) => plugin !== previous);

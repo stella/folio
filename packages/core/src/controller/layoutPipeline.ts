@@ -129,7 +129,11 @@ import type {
   Theme,
   Watermark,
 } from "../types/document";
-import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import { getDocumentWatermark } from "../watermark";
 import { diffAgainstCommittedLayout } from "./committedLayoutDiff";
 import type { HyphenationReadiness } from "./hyphenationReadiness";
@@ -268,7 +272,7 @@ export type LayoutPipelineDeps<THfPMs> = {
   document: ReadonlyDocument | null;
   defaultTabStop: number | undefined;
   mirrorMargins: boolean;
-  styles: StyleDefinitions | null | undefined;
+  styles: DeepReadonly<StyleDefinitions> | null | undefined;
   layout: Layout | null;
   // Refs read as their current value; `session` is the object itself because
   // the body reads AND writes its fields and those writes must persist.

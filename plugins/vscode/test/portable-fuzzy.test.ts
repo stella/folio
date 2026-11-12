@@ -1,10 +1,17 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { build } from "esbuild";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../test/subprocess";
 import { copyFuzzyWasm, fuzzyFromDisk } from "../scripts/portable-fuzzy";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 test("the universal CLI backend loads from disk and computes Unicode distances in Node", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "folio-fuzzy-"));
@@ -37,9 +44,9 @@ test("the universal CLI backend loads from disk and computes Unicode distances i
       ),
     ).toBe(false);
     await copyFuzzyWasm(directory);
-    const child = Bun.spawnSync(["node", outfile]);
+    const child = expectExited(runChild(["node", outfile]));
     expect(child.exitCode).toBe(0);
-    expect(JSON.parse(child.stdout.toString())).toEqual([3, 2, 1, 1, 0]);
+    expect(JSON.parse(child.stdout)).toEqual([3, 2, 1, 1, 0]);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

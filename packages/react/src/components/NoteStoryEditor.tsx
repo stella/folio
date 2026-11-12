@@ -26,6 +26,7 @@ import { setSuggestionMode } from "@stll/folio-core/prosemirror/plugins/suggesti
 import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
 import {
+  type DeepReadonly,
   readModel,
   type ReadonlyDocument,
 } from "@stll/folio-core/types/documentModel";
@@ -66,7 +67,7 @@ export type NoteStoryEditorProps = {
   plugins?: Plugin[];
   suggestionAuthor?: string;
   suggestionModeActive?: boolean;
-  styles?: StyleDefinitions | null;
+  styles?: DeepReadonly<StyleDefinitions> | null;
   theme?: Theme | null;
 };
 

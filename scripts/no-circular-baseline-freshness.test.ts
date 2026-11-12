@@ -2,6 +2,11 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { dependencyCruiseCoverageIssue } from "./check-dependency-cruise";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
@@ -42,7 +47,7 @@ type CruiseRun = {
   violations: readonly CruiseViolation[];
 };
 
-setDefaultTimeout(60_000);
+setDefaultTimeout(subprocessTestTimeout());
 
 // A dependency-cruiser cycle violation is keyed by its member set, not by
 // position: the same strongly connected component is reported once per
@@ -66,27 +71,27 @@ const readKnownViolations = (): KnownViolation[] =>
   JSON.parse(readFileSync(KNOWN_VIOLATIONS_PATH, "utf8")) as KnownViolation[];
 
 const runCruise = (): CruiseRun => {
-  const result = Bun.spawnSync(
-    [
-      DEPCRUISE_BINARY,
-      "--config",
-      DEPCRUISE_CONFIG,
-      "--output-type",
-      "json",
-      "packages",
-    ],
-    {
-      cwd: REPOSITORY_ROOT,
-      env: {
-        ...process.env,
-        NODE_OPTIONS: `--import=${TYPESCRIPT_PRELOAD}`,
-        NODE_PATH: "node_modules",
+  const result = expectExited(
+    runChild(
+      [
+        DEPCRUISE_BINARY,
+        "--config",
+        DEPCRUISE_CONFIG,
+        "--output-type",
+        "json",
+        "packages",
+      ],
+      {
+        cwd: REPOSITORY_ROOT,
+        env: {
+          ...process.env,
+          NODE_OPTIONS: `--import=${TYPESCRIPT_PRELOAD}`,
+          NODE_PATH: "node_modules",
+        },
       },
-      stderr: "pipe",
-      stdout: "pipe",
-    },
+    ),
   );
-  const report = JSON.parse(result.stdout.toString()) as {
+  const report = JSON.parse(result.stdout) as {
     modules: ReadonlyArray<{
       dependencies: ReadonlyArray<{ dependencyTypes?: readonly string[] }>;
     }>;

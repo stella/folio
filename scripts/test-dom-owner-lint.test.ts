@@ -2,29 +2,37 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
 import baseline from "../.oxlint-plugins/folio-test-dom.baseline.json";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { checkTestDomBaseline } from "./lib/test-dom-baseline";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_MARKER = "folio-test-dom(dom-lease-owner)";
-setDefaultTimeout(30_000);
+// The largest test here lints five fixtures.
+setDefaultTimeout(subprocessTestTimeout(5));
 
 type LintOptions = { files: string[]; allowRules?: string[] };
 
 const lint = ({ files, allowRules = [] }: LintOptions) => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      ...allowRules.flatMap((rule) => ["--allow", rule]),
-      ...files,
-    ],
-    { cwd: REPO_ROOT },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        ...allowRules.flatMap((rule) => ["--allow", rule]),
+        ...files,
+      ],
+      { cwd: REPO_ROOT },
+    ),
   );
-  const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  const output = `${result.stdout}${result.stderr}`;
   return { exitCode: result.exitCode, output };
 };
 

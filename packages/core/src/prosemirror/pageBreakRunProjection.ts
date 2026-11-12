@@ -1,6 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import type { ParagraphFormatting } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { expectParagraphAttrs } from "./attrs";
 import type { ParagraphAttrs } from "./schema/nodes";
 
@@ -38,7 +39,7 @@ export type PageBreakRunParagraphProjectionDisposition =
 
 type PageBreakRunParagraphFeatures = {
   attrs: ParagraphAttrs;
-  effectiveFrame: ParagraphFormatting["frame"];
+  effectiveFrame: DeepReadonly<ParagraphFormatting["frame"]>;
   /**
    * A text-box anchor that the paragraph's first page break precedes.
    *

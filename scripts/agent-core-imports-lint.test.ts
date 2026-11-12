@@ -2,22 +2,30 @@ import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
-setDefaultTimeout(30_000);
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const lintFixture = (fixture: string) => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      path.join("test", "__fixtures__", fixture),
-    ],
-    { cwd: path.resolve(import.meta.dir, "..") },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        path.join("test", "__fixtures__", fixture),
+      ],
+      { cwd: path.resolve(import.meta.dir, "..") },
+    ),
   );
-  const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  const output = `${result.stdout}${result.stderr}`;
   const marker = "folio-layer-boundaries(agents-contract-import)";
   const violations = output.split(marker).length - 1;
   const hasViolations = violations > 0;

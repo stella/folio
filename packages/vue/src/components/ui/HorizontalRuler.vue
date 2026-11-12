@@ -149,7 +149,7 @@ const props = withDefaults(
     indentLeft?: number;
     indentRight?: number;
     unit?: "inch" | "cm";
-    tabStops?: TabStop[] | null;
+    tabStops?: readonly DeepReadonly<TabStop>[] | null;
   }>(),
   {
     zoom: 1,

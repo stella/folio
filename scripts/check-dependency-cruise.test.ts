@@ -4,17 +4,19 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { assertProperty, propertyTestTimeout } from "../test/property-testing";
+import { assertProperty } from "../test/property-testing";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import {
   dependencyCruiseCoverageIssue,
   dependencyCruiseOutputIssue,
   MINIMUM_CRUISED_MODULES,
 } from "./check-dependency-cruise";
 
-setDefaultTimeout(propertyTestTimeout(5_000));
-
-const CLI_TIMEOUT_MS = 30_000;
-const CLI_CLEANUP_GRACE_MS = 5_000;
+setDefaultTimeout(subprocessTestTimeout());
 
 const fixtureDirectories: string[] = [];
 afterEach(() => {
@@ -43,27 +45,21 @@ describe("dependency-cruiser coverage", () => {
       fixtureDirectories.push(directory);
       const entry = path.join(directory, "entry.js");
       writeFileSync(entry, "export const value = 1;\n");
-      const result = Bun.spawnSync(
-        [
+      const result = expectExited(
+        runChild([
           path.resolve(import.meta.dirname, "../node_modules/.bin/depcruise"),
           "--no-config",
           "--output-type",
           "err",
           entry,
-        ],
-        {
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: CLI_TIMEOUT_MS,
-          killSignal: "SIGKILL",
-        },
+        ]),
       );
       expect(result.exitCode).toBe(0);
-      expect(dependencyCruiseOutputIssue(result.stdout.toString())).toContain(
+      expect(dependencyCruiseOutputIssue(result.stdout)).toContain(
         "cruised 1 modules; expected at least",
       );
     },
-    CLI_TIMEOUT_MS + CLI_CLEANUP_GRACE_MS,
+    subprocessTestTimeout(),
   );
 
   test("accepts the recorded full-graph summary and summaries with violations", () => {

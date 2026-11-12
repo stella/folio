@@ -11,8 +11,11 @@ import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { IntlProvider } from "use-intl";
 
+import { sharedObjects } from "@stll/folio-core/__tests__/sharedObjects";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import type { LayoutInstrumentation } from "@stll/folio-core/layout-engine/layoutInstrumentation";
 import type { Document } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
@@ -324,6 +327,96 @@ test("the notes getDocument hands the host in the default session are the host's
       mounted.ref().getDocument() ?? panic("Expected the editor's document");
     expect(JSON.stringify(again.package.footnotes ?? [])).toContain("Note");
   } finally {
+    await mounted.unmount();
+  }
+});
+
+test("the controller's getDocument in the default session is read-only: a host writes its own copy, and the editor's document and its undo stay", async () => {
+  const mounted = await mountEditor(
+    "default",
+    createEmptyDocument({ initialText: "Start" }),
+  );
+  try {
+    const view =
+      mounted.ref().getEditorRef()?.getView() ?? panic("Expected a view");
+    await act(async () => typeInto(view, "N"));
+    await act(settle);
+    const margin = () =>
+      mounted.ref().getDocument()?.package.document.finalSectionProperties
+        ?.marginLeft;
+    const before = margin();
+    expect(before).toBeNumber();
+
+    // The document shares the editor's model, so it is handed out read-only
+    // (writing it is a type error): a host that writes copies it first.
+    const handed =
+      mounted.ref().getEditor()?.getDocument() ??
+      panic("Expected the controller's document");
+    const owned = cloneDocumentWithParagraphPropertySources(handed);
+    const sections =
+      owned.package.document.finalSectionProperties ??
+      panic("Expected section properties");
+    sections.marginLeft = 4321;
+    expect(handed.package.document.finalSectionProperties?.marginLeft).toBe(
+      before,
+    );
+
+    expect(margin()).toBe(before);
+    await act(async () => mounted.ref().undo());
+    await act(settle);
+    expect(view.state.doc.textContent).not.toContain("N");
+    expect(margin()).toBe(before);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+/** Counts the copy owner's whole-document copies until `stop` is called. */
+const countCopyOwnerCopies = () => {
+  const previous: LayoutInstrumentation | undefined =
+    globalThis.__folioLayoutInstrumentation;
+  let copies = 0;
+  globalThis.__folioLayoutInstrumentation = {
+    ...previous,
+    onDocumentBuilt: (event) => {
+      previous?.onDocumentBuilt?.(event);
+      if (event.kind === "copy") copies += 1;
+    },
+  };
+  return {
+    copies: () => copies,
+    stop: () => {
+      globalThis.__folioLayoutInstrumentation = previous;
+    },
+  };
+};
+
+test("getDocument in the default session takes one copy, and shares no object with the editor's document or an earlier call's", async () => {
+  const mounted = await mountEditor("default", documentWithFootnote());
+  const counter = countCopyOwnerCopies();
+  try {
+    const view =
+      mounted.ref().getEditorRef()?.getView() ?? panic("Expected a view");
+    await act(async () => typeInto(view, "N"));
+    await act(settle);
+    const live =
+      mounted.ref().getEditorRef()?.getDocument() ??
+      panic("Expected the editor's document");
+    const before = counter.copies();
+    const handed =
+      mounted.ref().getDocument() ?? panic("Expected the editor's document");
+    expect(counter.copies() - before).toBe(1);
+    expect(JSON.stringify(handed.package.document.content)).toContain("N");
+    expect(JSON.stringify(handed.package.footnotes ?? [])).toContain("Note");
+    expect(sharedObjects(live, handed)).toEqual([]);
+    // Two calls share nothing, so neither shares what both read: the
+    // committed document's package.
+    const again =
+      mounted.ref().getDocument() ?? panic("Expected the editor's document");
+    expect(again).toEqual(handed);
+    expect(sharedObjects(handed, again)).toEqual([]);
+  } finally {
+    counter.stop();
     await mounted.unmount();
   }
 });

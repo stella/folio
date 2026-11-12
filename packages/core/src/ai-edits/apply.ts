@@ -191,6 +191,7 @@ import type {
   Style,
   TextFormatting,
 } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import { type BatchClaim, BatchClaims } from "./batch-claims";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import {
@@ -808,7 +809,7 @@ const statedNumberingAttrPatch = ({
 type ParagraphPropertiesPatchOptions = {
   node: PMNode;
   properties: FolioAIBlockParagraphProperties;
-  resolvedFormattingFromStyle: ParagraphFormatting | undefined;
+  resolvedFormattingFromStyle: DeepReadonly<ParagraphFormatting> | undefined;
   numbering?: NumberingMap | null;
 };
 
@@ -1228,7 +1229,8 @@ const resolveFormattingFromStyle = ({
   attrs,
   styleId,
   styleResolver,
-}: ResolveFormattingFromStyleOptions): ParagraphFormatting | undefined => {
+}: ResolveFormattingFromStyleOptions):
+  DeepReadonly<ParagraphFormatting> | undefined => {
   const resolved =
     styleResolver?.resolveParagraphStyle(styleId).paragraphFormatting;
   if (resolved !== undefined) {
@@ -2788,7 +2790,7 @@ const rebuiltBlockContent = ({
 type BuildInsertedParagraphsOptions = {
   item: ResolvedOperation;
   schema: Schema;
-  formattingFromStyle: ParagraphFormatting | undefined;
+  formattingFromStyle: DeepReadonly<ParagraphFormatting> | undefined;
   mode: FolioAIEditApplyMode;
   author: string;
   date: string;

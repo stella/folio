@@ -8,6 +8,7 @@ import type {
   TextFormatting,
   Theme,
 } from "../types/document";
+import { type DeepReadonly, writableCopy } from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
 import { resolveColorToHex } from "../utils/colorResolver";
 import { resolveThemeFont } from "../utils/fontResolver";
@@ -105,7 +106,7 @@ const languageForThemeFontSlot = ({
   formatting,
   slot,
 }: {
-  formatting: TextFormatting;
+  formatting: DeepReadonly<TextFormatting>;
   slot: ThemeFontSlot;
 }): string | undefined => {
   if (slot === "eastAsia")
@@ -132,7 +133,7 @@ const resolveThemeFontForFormatting = ({
   theme,
   themeRef,
 }: {
-  formatting: TextFormatting;
+  formatting: DeepReadonly<TextFormatting>;
   slot: ThemeFontSlot;
   theme: Theme | undefined;
   themeRef: string;
@@ -148,11 +149,11 @@ const resolveThemeFontForFormatting = ({
 };
 
 type MaterializedTextFormattingResult =
-  | { status: "ok"; formatting: TextFormatting | undefined }
+  | { status: "ok"; formatting: DeepReadonly<TextFormatting> | undefined }
   | { status: "unalignable" };
 
 const materializeThemeTextFormatting = (
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
   theme: Theme | undefined,
   materializeThemeReferences: boolean,
 ): MaterializedTextFormattingResult => {
@@ -275,7 +276,9 @@ const materializeEffectiveStyle = ({
     materializeThemeReferences,
   );
   if (runFormatting.status === "unalignable") return runFormatting;
-  const conditionalStyles: NonNullable<Style["tblStylePr"]> = [];
+  const conditionalStyles: DeepReadonly<
+    NonNullable<Style["tblStylePr"]>[number]
+  >[] = [];
   for (const conditional of style.tblStylePr ?? []) {
     if (materializeThemeReferences && hasThemeReference(conditional.pPr)) {
       return { status: "unalignable" };
@@ -295,9 +298,11 @@ const materializeEffectiveStyle = ({
     });
   }
   const { basedOn: _basedOn, ...independent } = style;
+  // The materialized style joins another package, so it owns its values
+  // rather than sharing the source resolver's.
   return {
     status: "ok",
-    style: {
+    style: writableCopy<Style>({
       ...independent,
       ...((style.type === "paragraph" || style.type === "table") &&
         resolved.paragraphFormatting && {
@@ -305,7 +310,7 @@ const materializeEffectiveStyle = ({
         }),
       ...(runFormatting.formatting && { rPr: runFormatting.formatting }),
       ...(style.tblStylePr && { tblStylePr: conditionalStyles }),
-    },
+    }),
   };
 };
 
@@ -372,12 +377,12 @@ const materializeEffectiveDefaultParagraphStyle = ({
       : undefined;
   return {
     status: "ok",
-    style: {
+    style: writableCopy<Style>({
       styleId,
       type: "paragraph",
       ...(paragraphFormatting && { pPr: paragraphFormatting }),
       ...(runFormatting.formatting && { rPr: runFormatting.formatting }),
-    },
+    }),
   };
 };
 

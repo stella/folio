@@ -5,6 +5,7 @@
 ```ts
 
 import { Command } from 'prosemirror-state';
+import { DeepReadonly } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { MarkSpec } from 'prosemirror-model';
 import { NodeSpec } from 'prosemirror-model';
@@ -316,16 +317,16 @@ export type ParagraphAttrs = {
     listStartOverride?: number;
     styleId?: string;
     _tableOfContentsLevel?: number;
-    borders?: {
+    borders?: DeepReadonly<{
         top?: import__stll_docx_core_model.BorderSpec;
         bottom?: import__stll_docx_core_model.BorderSpec;
         left?: import__stll_docx_core_model.BorderSpec;
         right?: import__stll_docx_core_model.BorderSpec;
         between?: import__stll_docx_core_model.BorderSpec;
         bar?: import__stll_docx_core_model.BorderSpec;
-    };
-    shading?: import__stll_docx_core_model.ShadingProperties;
-    tabs?: import__stll_docx_core_model.TabStop[];
+    }>;
+    shading?: DeepReadonly<import__stll_docx_core_model.ShadingProperties>;
+    tabs?: readonly DeepReadonly<import__stll_docx_core_model.TabStop>[];
     pageBreakBefore?: boolean;
     renderedPageBreakBefore?: boolean;
     _pageBreakCarrier?: boolean;
@@ -334,8 +335,8 @@ export type ParagraphAttrs = {
     keepLines?: boolean;
     widowControl?: boolean;
     contextualSpacing?: boolean;
-    defaultTextFormatting?: import__stll_docx_core_model.TextFormatting;
-    _tableRunFormatting?: import__stll_docx_core_model.TextFormatting;
+    defaultTextFormatting?: DeepReadonly<import__stll_docx_core_model.TextFormatting>;
+    _tableRunFormatting?: DeepReadonly<import__stll_docx_core_model.TextFormatting>;
     direction?: ParagraphDirection | null;
     outlineLevel?: import__stll_docx_core_model.OutlineLevel;
     bookmarks?: {
@@ -355,8 +356,8 @@ export type ParagraphAttrs = {
     }[];
     runInWithNext?: boolean;
     _originalFormatting?: import__stll_docx_core_model.ParagraphFormatting;
-    _resolvedFormatting?: import__stll_docx_core_model.ParagraphFormatting;
-    _styleResolvedFormatting?: import__stll_docx_core_model.ParagraphFormatting;
+    _resolvedFormatting?: DeepReadonly<import__stll_docx_core_model.ParagraphFormatting>;
+    _styleResolvedFormatting?: DeepReadonly<import__stll_docx_core_model.ParagraphFormatting>;
     _autospacingBase?: {
         before?: number | null;
         after?: number | null;
@@ -598,8 +599,8 @@ export type TableCellAttrs = {
     textDirection?: NonNullable<import__stll_docx_core_model.TableCellFormatting["textDirection"]>;
     noWrap?: boolean;
     hideMark?: boolean;
-    borders?: import__stll_docx_core_model.TableCellBorders;
-    _resolvedBorders?: import__stll_docx_core_model.TableCellBorders;
+    borders?: DeepReadonly<import__stll_docx_core_model.TableCellBorders>;
+    _resolvedBorders?: DeepReadonly<import__stll_docx_core_model.TableCellBorders>;
     margins?: {
         top?: number;
         bottom?: number;

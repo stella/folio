@@ -1,10 +1,22 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../test/subprocess";
 import {
   buildDocx,
   CONTRACT_PARAGRAPHS,
@@ -26,6 +38,8 @@ import { executeWriteTool, type WriteOptions } from "./execute-write";
 import { type AcquiredLease, lockPathFor, readLease } from "./lock";
 import { findFileTool } from "./registry";
 import { saveDocumentBytes } from "./save";
+
+setDefaultTimeout(subprocessTestTimeout(2));
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();
@@ -461,13 +475,9 @@ test("a rejected background renewal surfaces its error", async () => {
     });
     setTimeout(() => process.exit(0), 1000);
   `;
-  const result = Bun.spawnSync([process.execPath, "--eval", source], {
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: 3000,
-  });
+  const result = expectExited(runChild([process.execPath, "--eval", source]));
   expect(result.exitCode).toBe(23);
-  expect(result.stderr.toString()).toContain("surfaced:renewal failed");
+  expect(result.stderr).toContain("surfaced:renewal failed");
 
   // Prove a bare renewal rejection cannot satisfy the explicit reporting assertion.
   const handler = "renew().catch(surfaceBackgroundError);";
@@ -479,16 +489,15 @@ test("a rejected background renewal surfaces its error", async () => {
   );
   try {
     await writeFile(mutantPath, moduleSource.replace(handler, "void renew();"));
-    const mutant = Bun.spawnSync(
-      [
+    const mutant = expectExited(
+      runChild([
         process.execPath,
         "--eval",
         source.replace(JSON.stringify(modulePath), JSON.stringify(mutantPath)),
-      ],
-      { stdout: "pipe", stderr: "pipe", timeout: 3000 },
+      ]),
     );
     expect(mutant.exitCode).toBe(0);
-    expect(mutant.stderr.toString()).not.toContain("surfaced:renewal failed");
+    expect(mutant.stderr).not.toContain("surfaced:renewal failed");
   } finally {
     await rm(mutantPath, { force: true });
   }
@@ -555,13 +564,9 @@ test.each(["initial", "poll", "watcher"] as const)(
       if (invocation === "watcher") watcherCallback("rename", requestName);
       setTimeout(() => process.exit(0), 1000);
     `;
-    const result = Bun.spawnSync([process.execPath, "--eval", source], {
-      stdout: "pipe",
-      stderr: "pipe",
-      timeout: 3000,
-    });
+    const result = expectExited(runChild([process.execPath, "--eval", source]));
     expect(result.exitCode).toBe(23);
-    expect(result.stderr.toString()).toContain("surfaced:flush check failed");
+    expect(result.stderr).toContain("surfaced:flush check failed");
 
     // Prove the same scenario rejects removal of its specific catch handler.
     const handlers = {
@@ -585,22 +590,19 @@ test.each(["initial", "poll", "watcher"] as const)(
           handler.replace(".catch(surfaceBackgroundError)", ""),
         ),
       );
-      const mutant = Bun.spawnSync(
-        [
+      const mutant = expectExited(
+        runChild([
           process.execPath,
           "--eval",
           source.replace(
             JSON.stringify(modulePath),
             JSON.stringify(mutantPath),
           ),
-        ],
-        { stdout: "pipe", stderr: "pipe", timeout: 3000 },
+        ]),
       );
       // Without the handler, the child takes the distinct unhandled-rejection path.
       expect(mutant.exitCode).toBe(0);
-      expect(mutant.stderr.toString()).not.toContain(
-        "surfaced:flush check failed",
-      );
+      expect(mutant.stderr).not.toContain("surfaced:flush check failed");
     } finally {
       await rm(mutantPath, { force: true });
     }
