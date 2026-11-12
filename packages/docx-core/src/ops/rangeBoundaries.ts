@@ -40,6 +40,7 @@ import {
   isCommentAnchor,
   isEmptyRecord,
   rebuildNode,
+  sameOwnFields,
 } from "./leaves";
 import { isHyperlinkChild } from "./offsets";
 
@@ -621,8 +622,11 @@ export const withBoundariesAtEdge = (
  * `right`, held by no record) moved inside the piece the join merges: the
  * start of `right`'s first record, else the end of `left`'s last. A
  * boundary a rejection kept there then lands where it lands when the join
- * happens first. Lists are returned as they are when no record either side
- * can hold the boundaries.
+ * happens first. The records either side are pieces the join merges only
+ * when they are alike, two pieces of one container its cut split; a record
+ * beside the seam that is no such piece, as a content control after
+ * pieces a rejection took away, never receives them. Lists are returned as
+ * they are when no piece either side can hold the boundaries.
  */
 export const withSeamBoundariesInside = ({
   left,
@@ -641,7 +645,12 @@ export const withSeamBoundariesInside = ({
   const boundaries = [...left.slice(leftEnd), ...right.slice(0, rightStart)];
   const before = left.at(leftEnd - 1);
   const after = right.at(rightStart);
-  if (boundaries.length === 0 || leftEnd === 0 || after === undefined)
+  if (
+    boundaries.length === 0 ||
+    before === undefined ||
+    after === undefined ||
+    !sameOwnFields(before, after)
+  )
     return { left, right };
   const intoAfter = withBoundariesAtEdge(after, boundaries, depth, "start");
   if (intoAfter !== undefined)
@@ -649,10 +658,7 @@ export const withSeamBoundariesInside = ({
       left: left.slice(0, leftEnd),
       right: [intoAfter, ...right.slice(rightStart + 1)],
     };
-  const intoBefore =
-    before === undefined
-      ? undefined
-      : withBoundariesAtEdge(before, boundaries, depth, "end");
+  const intoBefore = withBoundariesAtEdge(before, boundaries, depth, "end");
   if (intoBefore === undefined) return { left, right };
   return {
     left: [...left.slice(0, leftEnd - 1), intoBefore],

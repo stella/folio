@@ -11,10 +11,12 @@ import { envelopes } from "../__tests__/wireFixtures";
 import { applyDocumentOps } from "../apply";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
+  DOCUMENT_OP_TYPES,
   type DocumentOp,
   OP_STORIES,
 } from "../types";
 import {
+  baseFixtures,
   envelopeFixtures,
   sequencedFixture,
 } from "./__tests__/envelopeFixtures";
@@ -23,6 +25,7 @@ import {
   BATCH_WIRE_OP_TYPES,
   MAX_BATCH_WIRE_BYTES,
   parseDocumentBatch,
+  sequencedEffectType,
   TABLE_EXCLUSIVE_OP_TYPES,
   validateDocumentBatch,
   validateSequencedBatch,
@@ -30,24 +33,33 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
-const fixture = envelopeFixtures[0];
+const fixture = baseFixtures[0];
 const withOp = (op: unknown) => ({ ...fixture, ops: [op] });
 
-test("unsupported operation families refuse production-shaped wire fixtures", () => {
-  const supported = new Set(BATCH_WIRE_OP_TYPES);
-  let refused = 0;
+test("every production-shaped operation decodes", () => {
+  const decoded = new Set<string>();
   for (const { op } of envelopes()) {
-    if (supported.has(op.type)) continue;
-    refused += 1;
-    const result = validateDocumentBatch(withOp(op));
-    if (result.isOk()) throw new Error(`Unsupported ${op.type} must refuse.`);
-    expect(result.error.reason).toBe(
-      Object.hasOwn(TABLE_EXCLUSIVE_OP_TYPES, op.type)
-        ? BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT
-        : BATCH_REJECTION_REASONS.INVALID_OPERATION,
-    );
+    const result = parseDocumentBatch(JSON.stringify(withOp(op)));
+    // One fixture carries a field its kind does not declare; it must refuse.
+    if (op.type === "setParagraphProps" && "propertyReview" in op) {
+      expect(result.isErr()).toBe(true);
+      continue;
+    }
+    if (result.isErr())
+      throw new Error(`${op.type} must decode: ${result.error.message}`);
+    expect(result.value.ops).toStrictEqual([op]);
+    decoded.add(op.type);
   }
-  expect(refused).toBeGreaterThan(0);
+  // The fixtures exercise every kind, comment operations among them.
+  expect([...decoded].toSorted()).toEqual([...BATCH_WIRE_OP_TYPES].toSorted());
+});
+
+test("every operation kind is sendable and records a sequenced effect", () => {
+  expect([...BATCH_WIRE_OP_TYPES].toSorted()).toEqual(
+    Object.values(DOCUMENT_OP_TYPES).toSorted(),
+  );
+  for (const type of Object.values(DOCUMENT_OP_TYPES))
+    expect(sequencedEffectType(type)).toBeDefined();
 });
 
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {
@@ -443,7 +455,7 @@ test("actual text inverses normalize absent optional fields and remain decodable
   }
 });
 
-test("sequencing refuses unsupported property-review and section-boundary payloads", () => {
+test("property-review and section-boundary payloads decode; undeclared fields refuse", () => {
   const operations = [
     {
       type: "setRunProps",
@@ -487,7 +499,9 @@ test("sequencing refuses unsupported property-review and section-boundary payloa
     },
   ] as const satisfies readonly DocumentOp[];
   for (const op of operations)
-    expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
+    expect(validateDocumentBatch(withOp(op)).isErr()).toBe(
+      op.type === "setParagraphProps",
+    );
 });
 
 test("older batch schemas and persisted batches are refused structurally", async () => {
@@ -517,7 +531,7 @@ test("older batch schemas and persisted batches are refused structurally", async
   }
 });
 
-test("every table family refuses explicitly and mixed text/table batches apply nothing", () => {
+test("every table family decodes alone and beside text operations", () => {
   const exercised = new Set<string>();
   const text = fixture.ops.at(0);
   if (!text) throw new Error("Fixture text operation missing.");
@@ -528,17 +542,47 @@ test("every table family refuses explicitly and mixed text/table batches apply n
       const batch = { ...fixture, ops };
       const before = structuredClone(batch);
       const result = validateDocumentBatch(batch);
-      if (result.isOk())
-        throw new Error(
-          `Table operation ${op.type} must require exclusive editing.`,
-        );
-      expect(result.error.reason).toBe(
-        BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
-      );
+      if (result.isErr()) throw result.error;
+      expect(result.value.ops).toStrictEqual(ops);
       expect(batch).toStrictEqual(before);
     }
   }
   expect([...exercised].toSorted()).toEqual(
     Object.keys(TABLE_EXCLUSIVE_OP_TYPES).toSorted(),
   );
+});
+
+test("embedded records refuse undeclared fields, unknown kinds and malformed ids", () => {
+  const table = envelopes().find(({ op }) => op.type === "insertTable")?.op;
+  if (table?.type !== "insertTable") throw new Error("Table fixture missing.");
+  const row = table.table.rows.at(0);
+  const cell = row?.cells.at(0);
+  if (row === undefined || cell === undefined)
+    throw new Error("Table fixture has no cell.");
+  const withCell = (content: unknown) => ({
+    ...table,
+    table: {
+      ...table.table,
+      rows: [{ ...row, cells: [{ ...cell, content }] }],
+    },
+  });
+  const paragraphOf = (fields: object) => ({
+    type: "paragraph",
+    paraId: "0000ABCD",
+    content: [],
+    ...fields,
+  });
+  expect(
+    validateDocumentBatch(withOp(withCell([paragraphOf({})]))).isOk(),
+  ).toBe(true);
+  for (const content of [
+    [paragraphOf({ paraId: "not-hex" })],
+    [paragraphOf({ script: "x" })],
+    [paragraphOf({ content: [{ type: "unknownInline" }] })],
+    [paragraphOf({ content: [{ type: "run", content: [{ type: "image" }] }] })],
+    [paragraphOf({ formatting: { bold: true } })],
+    [paragraphOf({ formatting: { keepNext: "yes" } })],
+    [{ type: "unknownBlock" }],
+  ])
+    expect(validateDocumentBatch(withOp(withCell(content))).isErr()).toBe(true);
 });
