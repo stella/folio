@@ -272,6 +272,24 @@
       "path": "1:0:0:1:1:1:2:2:2:2:1:1:1:1",
       "note": "Typed text continuing an inline container: both modes must continue it the same way.",
       "date": "2026-11-08"
+    },
+    {
+      "seed": 548927938,
+      "path": "32:0:0:2:2:3:4:5:9",
+      "note": "#2628: a rejected insertion whose neighbours are later insertions the same resolution removes joins the source pieces beyond them.",
+      "date": "2026-11-12"
+    },
+    {
+      "seed": 451960561,
+      "path": "6:0:0:0:1:3:3:3:5",
+      "note": "#2628: a rejected insertion whose neighbours are later insertions the same resolution removes joins the source pieces beyond them.",
+      "date": "2026-11-12"
+    },
+    {
+      "seed": 454365684,
+      "path": "11:0:0:0:1:3:3:3:3:5",
+      "note": "#2628: a rejected insertion whose neighbours are later insertions the same resolution removes joins the source pieces beyond them.",
+      "date": "2026-11-12"
     }
   ],
   "overlapping formatting rejection preserves authored runs in either resolution order": [
