@@ -1,4 +1,6 @@
+import type { FolioEditor } from "../src/controller/folioEditor";
 import type { HeaderFooterEditorManager } from "../src/controller/headerFooterEditorManager";
+import type { HiddenEditorApi } from "../src/controller/hiddenEditorApi";
 import type { NoteEditorManager } from "../src/controller/noteEditorManager";
 import type { TableSelectionManager } from "../src/managers/TableSelectionManager";
 import type { Document } from "../src/types/document";
@@ -56,4 +58,22 @@ export const storySnapshots = (
   const parted = parts.snapshotDocument(model);
   // @ts-expect-error a part snapshot shares what no edit touched with the model
   parted.package.headers?.clear();
+};
+
+export const hiddenEditorDocument = (
+  api: HiddenEditorApi,
+  editor: FolioEditor,
+): void => {
+  const built = api.getDocument();
+  if (built) {
+    // @ts-expect-error the built document holds the model's own parts
+    built.package.document.finalSectionProperties = undefined;
+    // @ts-expect-error the built document holds the model's own styles
+    built.package.styles?.styles.splice(0);
+  }
+  const controlled = editor.getDocument();
+  if (controlled) {
+    // @ts-expect-error the controller's document is the hidden editor's
+    controlled.package.document.content.length = 0;
+  }
 };

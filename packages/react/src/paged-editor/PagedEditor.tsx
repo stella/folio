@@ -2519,7 +2519,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         const body = hidden?.getState()?.doc;
         if (!built) return null;
         return settledChangeOf(
-          body ? noteFollower.reconcile(built, body) : built,
+          body ? noteFollower.reconcile(readModel(built), body) : built,
         );
       }, [experimentalSession, noteFollower]);
 
@@ -6376,7 +6376,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           )
             return editorDocument;
           const current = editorDocument
-            ? noteFollower.withPending(editorDocument)
+            ? noteFollower.withPending(readModel(editorDocument))
             : null;
           return current
             ? (noteEditorRef.current?.snapshotDocument(current) ?? current)
