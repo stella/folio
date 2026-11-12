@@ -39,6 +39,7 @@ import {
   type CanonicalEditorHarness,
   createCanonicalHarnessCase,
   resolveCanonicalHarnessDocument,
+  resolveReopenedCanonicalHarnessDocument,
   saveCanonicalHarnessDocument,
 } from "../../../../test/canonicalEditorHarness";
 import { assertExactModel } from "../../../../test/exactModel";
@@ -783,7 +784,9 @@ export type ViolationKind =
   | "redo"
   | "silent-refusal"
   | "reject-mismatch"
-  | "accept-mismatch";
+  | "accept-mismatch"
+  /** Resolving the listed changes left a revision a host cannot reach. */
+  | "resolve-pending";
 
 export type Violation = {
   kind: ViolationKind;
@@ -1237,11 +1240,22 @@ type ResolvedSnapshotOptions = {
   run: ModeRun;
   phase: "before" | "after";
   decision: "accept" | "reject";
+  /** Resolve the saved file reopened, rather than the session's own model. */
+  reopen?: boolean;
+  /** Where a resolution that strands a revision is recorded. */
+  violations: Violation[];
 };
-const resolvedSnapshot = ({
+/**
+ * The run resolved the way a host resolves it: by the ids its change list
+ * shows. A canonical resolution that leaves a revision pending which
+ * resolving every id would resolve is a violation of its own.
+ */
+const resolvedSnapshot = async ({
   run,
   phase,
   decision,
+  reopen = false,
+  violations,
 }: ResolvedSnapshotOptions) => {
   const state = phase === "before" ? run.before : run.after;
   const model = phase === "before" ? run.beforeModel : run.base;
@@ -1251,7 +1265,15 @@ const resolvedSnapshot = ({
       run.base,
       run.authority,
     ] as const;
-  const resolved = resolveCanonicalHarnessDocument(model, decision);
+  const resolved = reopen
+    ? await resolveReopenedCanonicalHarnessDocument(model, decision)
+    : resolveCanonicalHarnessDocument(model, decision);
+  if (resolved.stranded.length > 0)
+    violations.push({
+      kind: "resolve-pending",
+      mode: run.mode,
+      detail: `${reopen ? "after reopen: " : ""}${decision} ${phase}: the listed changes ${JSON.stringify(resolved.listed)} left revisions ${JSON.stringify(resolved.stranded)} pending`,
+    });
   return [resolved.state, resolved.model, run.authority] as const;
 };
 
@@ -1483,18 +1505,20 @@ const runCaseWithAuthority = async (
   if (suggesting.status === "changed") {
     try {
       const rejectedOriginal = observe(
-        ...resolvedSnapshot({
+        ...(await resolvedSnapshot({
           run: suggesting,
           phase: "before",
           decision: "reject",
-        }),
+          violations,
+        })),
       );
       const rejected = observe(
-        ...resolvedSnapshot({
+        ...(await resolvedSnapshot({
           run: suggesting,
           phase: "after",
           decision: "reject",
-        }),
+          violations,
+        })),
       );
       const rejectDifference = compareObservations(rejectedOriginal, rejected);
       if (rejectDifference && operation.suggesting !== "direct") {
@@ -1506,18 +1530,20 @@ const runCaseWithAuthority = async (
       }
       if (editing.status === "changed") {
         const acceptedEditing = observe(
-          ...resolvedSnapshot({
+          ...(await resolvedSnapshot({
             run: editing,
             phase: "after",
             decision: "accept",
-          }),
+            violations,
+          })),
         );
         const accepted = observe(
-          ...resolvedSnapshot({
+          ...(await resolvedSnapshot({
             run: suggesting,
             phase: "after",
             decision: "accept",
-          }),
+            violations,
+          })),
         );
         const acceptDifference = compareObservations(acceptedEditing, accepted);
         if (acceptDifference) {
@@ -1530,18 +1556,22 @@ const runCaseWithAuthority = async (
       }
       if (operation.suggesting !== "direct") {
         const reopenedOriginal = await observeReopened(
-          ...resolvedSnapshot({
+          ...(await resolvedSnapshot({
             run: suggesting,
             phase: "before",
             decision: "reject",
-          }),
+            reopen: true,
+            violations,
+          })),
         );
         const reopenedRejected = await observeReopened(
-          ...resolvedSnapshot({
+          ...(await resolvedSnapshot({
             run: suggesting,
             phase: "after",
             decision: "reject",
-          }),
+            reopen: true,
+            violations,
+          })),
         );
         const reopenedRejectDifference = compareObservations(
           reopenedOriginal,
@@ -1556,18 +1586,22 @@ const runCaseWithAuthority = async (
         }
         if (editing.status === "changed") {
           const reopenedEditing = await observeReopened(
-            ...resolvedSnapshot({
+            ...(await resolvedSnapshot({
               run: editing,
               phase: "after",
               decision: "accept",
-            }),
+              reopen: true,
+              violations,
+            })),
           );
           const reopenedAccepted = await observeReopened(
-            ...resolvedSnapshot({
+            ...(await resolvedSnapshot({
               run: suggesting,
               phase: "after",
               decision: "accept",
-            }),
+              reopen: true,
+              violations,
+            })),
           );
           const reopenedAcceptDifference = compareObservations(
             reopenedEditing,

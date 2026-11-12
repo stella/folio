@@ -1,5 +1,5 @@
 import { panic, Result } from "better-result";
-import type { Slice } from "prosemirror-model";
+import type { Node as PMNode, Slice } from "prosemirror-model";
 import type { Command, Transaction } from "prosemirror-state";
 import { EditorState as PMEditorState } from "prosemirror-state";
 
@@ -7,7 +7,10 @@ import {
   type EditorMode,
   HARNESS_AUTHOR,
   keyboardEventFor,
+  parseShapeDocument,
 } from "../packages/core/src/__tests__/editorHarness";
+import { FolioDocxReviewer } from "../packages/core/src/ai-edits/headless";
+import { getTrackedChangesFromDoc } from "../packages/core/src/ai-edits/read";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
@@ -231,11 +234,17 @@ export const createCanonicalEditorHarness = (
       return refusals.length === count && applied;
     });
   };
-  const resolve = (decision: "accept" | "reject") => {
-    const ids = storyRevisionIds(snapshot());
-    return (
-      ids.length > 0 && manager.api.resolveCanonicalRevisions(ids, decision)
-    );
+  /** Resolve what the review list shows, by the ids it lists, as a host does. */
+  const resolve = (decision: ReviewDecision) => {
+    const before = snapshot();
+    const listed = listedRevisionIds(editorView.state.doc);
+    const resolved =
+      listed.length > 0 &&
+      manager.api.resolveCanonicalRevisions(listed, decision);
+    const stranded = strandedRevisionIds(before, snapshot(), decision);
+    if (stranded.length > 0)
+      panic(strandedRevisionText({ listed, stranded, decision }));
+    return resolved;
   };
   return {
     authority: "canonical" as const,
@@ -409,29 +418,125 @@ export const createCanonicalHarnessCase = (
   throw created.error;
 };
 
-/** Review observations use a fresh canonical session, leaving the case's journal untouched. */
-export const resolveCanonicalHarnessDocument = (
+type ReviewDecision = "accept" | "reject";
+
+/** The ids a host's review list shows: one per listed change, as the live editor lists them. */
+const listedRevisionIds = (doc: PMNode) =>
+  getTrackedChangesFromDoc(doc).map(({ id }) => id);
+
+/** Resolve `ids` in a fresh canonical session, leaving any case journal untouched. */
+const resolveInFreshSession = (
   source: Document,
-  decision: "accept" | "reject",
+  ids: (doc: PMNode) => readonly number[],
+  decision: ReviewDecision,
 ) => {
   const session = createCanonicalSession(source).unwrap();
   const state = PMEditorState.create({ doc: session.projection.doc });
-  const ids = storyRevisionIds(session.document);
-  if (ids.length === 0)
-    return {
+  const revisionIds = ids(state.doc);
+  if (revisionIds.length === 0)
+    return Result.ok({
       model: rememberCanonicalSave(session.captureSaveSnapshot()),
       state,
-    };
-  const commit = session
-    .prepareResolve(state, { revisionIds: ids, resolution: decision })
-    .unwrap();
-  const published = publishCanonicalProjection({
-    state,
-    session,
-    commit,
-  }).unwrap();
+      revisionIds,
+    });
+  return session
+    .prepareResolve(state, { revisionIds, resolution: decision })
+    .andThen((commit) => publishCanonicalProjection({ state, session, commit }))
+    .map((published) => ({
+      model: rememberCanonicalSave(session.captureSaveSnapshot()),
+      state: published.state,
+      revisionIds,
+    }));
+};
+
+/**
+ * Revisions a resolution by the listed ids left pending that resolving every
+ * revision id in the story resolves: a host has no other way to reach them.
+ * A change a lock holds stays pending either way and is not stranded.
+ */
+const strandedRevisionIds = (
+  source: Document,
+  resolved: Document,
+  decision: ReviewDecision,
+): number[] => {
+  const left = storyRevisionIds(resolved);
+  if (left.length === 0) return [];
+  const everything = resolveInFreshSession(
+    source,
+    () => storyRevisionIds(source),
+    decision,
+  );
+  const held = new Set(
+    storyRevisionIds(everything.isOk() ? everything.value.model : source),
+  );
+  return left.filter((id) => !held.has(id));
+};
+
+type StrandedRevisionTextOptions = {
+  listed: readonly number[];
+  stranded: readonly number[];
+  decision: ReviewDecision;
+};
+const strandedRevisionText = ({
+  listed,
+  stranded,
+  decision,
+}: StrandedRevisionTextOptions) =>
+  `${decision} of the listed changes ${JSON.stringify(listed)} left revisions ${JSON.stringify(stranded)} pending`;
+
+type ListedResolution = {
+  model: Document;
+  state: PMEditorState;
+  /** The ids the host listed and resolved. */
+  listed: readonly number[];
+  /** Revisions the listed resolution left that resolving every id resolves. */
+  stranded: readonly number[];
+};
+
+/** Resolve the ids `list` shows over `source`, and what that strands. */
+const resolveListedChanges = (
+  source: Document,
+  list: (doc: PMNode) => readonly number[],
+  decision: ReviewDecision,
+): ListedResolution => {
+  const { model, state, revisionIds } = resolveInFreshSession(
+    source,
+    list,
+    decision,
+  ).unwrap();
   return {
-    model: rememberCanonicalSave(session.captureSaveSnapshot()),
-    state: published.state,
+    model,
+    state,
+    listed: revisionIds,
+    stranded: strandedRevisionIds(source, model, decision),
   };
+};
+
+/**
+ * Review observations of the session's own model resolve the changes the
+ * live editor lists, by the ids it lists, in a fresh canonical session.
+ */
+export const resolveCanonicalHarnessDocument = (
+  source: Document,
+  decision: ReviewDecision,
+): ListedResolution =>
+  resolveListedChanges(source, listedRevisionIds, decision);
+
+/**
+ * Review observations of the saved file: save it, reopen it with the
+ * headless reviewer, and resolve the ids its change list shows in a canonical
+ * session over the reopened package, as a host reviewing the file does.
+ */
+export const resolveReopenedCanonicalHarnessDocument = async (
+  source: Document,
+  decision: ReviewDecision,
+): Promise<ListedResolution> => {
+  const { bytes } = await saveCanonicalHarnessDocument(source);
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+  const listed = reviewer.getChanges().map(({ id }) => id);
+  return resolveListedChanges(
+    await parseShapeDocument(bytes),
+    () => listed,
+    decision,
+  );
 };
