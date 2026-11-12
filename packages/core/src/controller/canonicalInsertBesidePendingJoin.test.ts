@@ -265,10 +265,16 @@ describe("a block beside a paragraph that joins the next, in the canonical sessi
     });
 });
 
-/** A join whose paragraphs a block may name: each anchor reads as part of the last. */
+/**
+ * A join whose paragraphs a block may name: each anchor reads as part of the
+ * survivor, and the clause is the join's first paragraph.
+ */
 type LongerJoin = {
   bytes: ArrayBuffer;
-  anchors: Readonly<Record<string, string>> & { survivor: string };
+  anchors: Readonly<Record<string, string>> & {
+    clause: string;
+    survivor: string;
+  };
 };
 
 /**
@@ -343,14 +349,25 @@ const acrossARangeBoundary = async (): Promise<LongerJoin> => {
   };
 };
 
-const LONGER_JOINS = {
-  "through an emptied paragraph": throughAnEmptiedParagraph,
-  "across a range boundary": acrossARangeBoundary,
+/**
+ * Each longer join, with where its placement is read: once every change is
+ * accepted, or pending, where the canonical session does not yet accept a
+ * join across a range boundary.
+ */
+const LONGER_JOINS: Record<
+  string,
+  { make: () => Promise<LongerJoin>; read: "accepted" | "pending" }
+> = {
+  "through an emptied paragraph": {
+    make: throughAnEmptiedParagraph,
+    read: "accepted",
+  },
+  "across a range boundary": { make: acrossARangeBoundary, read: "pending" },
 };
 
 describe("a block beside a longer pending join, in the canonical session", () => {
   for (const [kind, block] of Object.entries(BLOCKS))
-    for (const [shape, make] of Object.entries(LONGER_JOINS))
+    for (const [shape, { make, read: reading }] of Object.entries(LONGER_JOINS))
       for (const side of ["after", "before"] as const) {
         const name = `(${kind}, ${shape}, ${side})`;
 
@@ -362,22 +379,40 @@ describe("a block beside a longer pending join, in the canonical session", () =>
               editor.apply([block.operation(side, anchor)], "tracked-changes")
                 .skipped,
             ).toEqual([]);
-            const pending = shapeOf(editor.blocks());
+            const pending = editor.blocks();
+            const ids = pending.map(({ id }) => id);
+            const texts = pending.map(({ text }) => text);
+            // Pending, the paragraph stands outside the join: right before its
+            // first paragraph, or right after the paragraph it leaves.
+            if (side === "after")
+              expect(texts[ids.indexOf(join.anchors.survivor) + 1]).toBe(
+                block.first,
+              );
+            else
+              expect(texts[ids.indexOf(join.anchors.clause) - 1]).toBe(
+                block.last,
+              );
+            if (reading === "pending")
+              return { pending: shapeOf(pending), accepted: [] };
             editor.resolveAll("accept");
             return {
-              pending,
+              pending: shapeOf(pending),
               accepted: editor.blocks().map(({ text }) => text),
             };
           };
           const expected = await read(join.anchors.survivor);
-          const joined = expected.accepted.findIndex((text) =>
-            text.endsWith(SURVIVOR),
-          );
-          expect(joined).toBeGreaterThan(-1);
-          if (side === "after")
-            expect(expected.accepted.indexOf(block.first)).toBe(joined + 1);
-          else
-            expect(expected.accepted.lastIndexOf(block.last)).toBe(joined - 1);
+          if (reading === "accepted") {
+            const joined = expected.accepted.findIndex((text) =>
+              text.endsWith(SURVIVOR),
+            );
+            expect(joined).toBeGreaterThan(-1);
+            if (side === "after")
+              expect(expected.accepted.indexOf(block.first)).toBe(joined + 1);
+            else
+              expect(expected.accepted.lastIndexOf(block.last)).toBe(
+                joined - 1,
+              );
+          }
           for (const anchor of Object.values(join.anchors))
             expect(await read(anchor)).toEqual(expected);
         });
