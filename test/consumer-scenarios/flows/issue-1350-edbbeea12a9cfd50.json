@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "title": "PINNED #1350, reported seed 2002852447: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked)",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "suggested",
+  "seed": 2002852447,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2946817802,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "412DDC7F"
+        }
+      ]
+    },
+    {
+      "action": "add_comment",
+      "seed": 4082606748
+    },
+    {
+      "action": "core batch",
+      "seed": 2627111817,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "3CEFFC83"
+        }
+      ],
+      "atomic": true
+    },
+    {
+      "action": "story batch",
+      "seed": 1931334950,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "31617F9A"
+        }
+      ]
+    }
+  ],
+  "swarm": ["formatRange", "deleteBlock"],
+  "origin": "shrunk from collisions flow seed 2002852447"
+}
