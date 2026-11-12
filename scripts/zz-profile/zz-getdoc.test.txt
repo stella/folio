@@ -1,0 +1,123 @@
+// Scratch measurement only (copied into packages/react/src/components/ by pair.sh, never committed).
+// Times DocxEditorRef.getDocument and save in the default session on large documents, and counts
+// the copy owner's copies per call through its instrumentation hook.
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
+
+GlobalRegistrator.register();
+
+import { act, createRef } from "react";
+import { createRoot } from "react-dom/client";
+
+import { panic } from "better-result";
+import { expect, test } from "bun:test";
+import { IntlProvider } from "use-intl";
+
+import { createDocx } from "@stll/folio-core/docx/rezip";
+import { getFolioMessages } from "@stll/folio-core/i18n/messages";
+import { fromMarkdown } from "@stll/folio-core/markdown/fromMarkdown";
+import type { Document } from "@stll/folio-core/types/document";
+
+import { DocxEditor } from "./DocxEditor";
+import type { DocxEditorRef } from "./DocxEditor.props";
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+
+const WORDS = "the supplier shall deliver goods services under this agreement subject to terms conditions warranty liability indemnity confidential information party notice period".split(" ");
+const contract = (articles: number): string => {
+  let seed = 7;
+  const random = () => { seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31; return seed / 2 ** 31; };
+  const sentence = (length: number) => Array.from({ length }, () => WORDS[Math.floor(random() * WORDS.length)] ?? "the").join(" ");
+  const lines = ["# Services Agreement", ""];
+  for (let article = 1; article <= articles; article += 1) {
+    lines.push(`## ${article}. ${sentence(3)}`, "");
+    for (let clause = 1; clause <= 8; clause += 1) {
+      lines.push(`${article}.${clause} **${sentence(2)}** ${sentence(40)}. ${sentence(25)}.`, "");
+      if (clause % 3 === 0) { for (let item = 1; item <= 4; item += 1) lines.push(`${item}. ${sentence(18)};`); lines.push(""); }
+    }
+    if (article % 10 === 0) { lines.push("| Item | Fee | Term |", "|---|---|---|"); for (let row = 0; row < 12; row += 1) lines.push(`| ${sentence(3)} | ${row * 100} | ${sentence(2)} |`); lines.push(""); }
+  }
+  return lines.join("\n");
+};
+const numberedList = (items: number) => Array.from({ length: items }, (_, index) => `1. Item ${index + 1}`).join("\n");
+
+/** One footnote per article, referenced from the article's first clause. */
+const withNotes = (doc: Document): Document => {
+  const notes: NonNullable<Document["package"]["footnotes"]> = [];
+  let id = 1;
+  for (const block of doc.package.document.content) {
+    if (block.type !== "paragraph") continue;
+    const text = JSON.stringify(block.content);
+    if (!/"\d+\.1 /.test(text)) continue;
+    block.content.push({ type: "run", content: [{ type: "footnoteRef", id }] });
+    notes.push({ type: "footnote", id, content: [{ type: "paragraph", content: [{ type: "run", content: [{ type: "text", text: `Note ${id}: see the schedule for the terms that apply.` }] }] }] });
+    id += 1;
+  }
+  doc.package.footnotes = notes;
+  return doc;
+};
+
+const DOC = process.env["ZZ_DOC"] ?? "list-3500";
+const CALLS = Number(process.env["ZZ_CALLS"] ?? 20);
+const SAVES = Number(process.env["ZZ_SAVES"] ?? 8);
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 600));
+const stats = (times: number[]) => {
+  const sorted = times.toSorted((a, b) => a - b);
+  const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))]?.toFixed(2);
+  return `median ${at(0.5)} p25 ${at(0.25)} p75 ${at(0.75)} min ${sorted[0]?.toFixed(2)}`;
+};
+
+test(`getDocument and save ${DOC}`, async () => {
+  const source = DOC === "list-3500" ? fromMarkdown(numberedList(3500)) : withNotes(fromMarkdown(contract(100)));
+  const bytes = await createDocx(source);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const editor = createRef<DocxEditorRef>();
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+        <DocxEditor ref={editor} accessibleName="Document editor" documentBuffer={bytes} showToolbar={false} />
+      </IntlProvider>,
+    ),
+  );
+  await act(async () => editor.current?.loadDocumentBuffer(bytes));
+  await act(async () => editor.current?.ensureEditorView({ focus: false }));
+  await act(settle);
+  const ref = editor.current ?? panic("no editor");
+  const view = ref.getEditorRef()?.getView() ?? panic("no view");
+  await act(async () => { view.dispatch(view.state.tr.insertText("x", 3)); });
+  await act(settle);
+
+  let copies = 0;
+  const previous = globalThis.__folioLayoutInstrumentation;
+  globalThis.__folioLayoutInstrumentation = { ...previous, onDocumentBuilt: (event) => { if (event.kind === "copy") copies += 1; } };
+  for (let i = 0; i < 3; i += 1) ref.getDocument();
+  copies = 0;
+  const getTimes: number[] = [];
+  let paragraphs = 0;
+  let notes = 0;
+  for (let i = 0; i < CALLS; i += 1) {
+    const started = performance.now();
+    const doc = ref.getDocument();
+    getTimes.push(performance.now() - started);
+    paragraphs = doc?.package.document.content.length ?? 0;
+    notes = doc?.package.footnotes?.length ?? 0;
+  }
+  const getCopies = copies / CALLS;
+  await ref.save();
+  copies = 0;
+  const saveTimes: number[] = [];
+  for (let i = 0; i < SAVES; i += 1) {
+    const started = performance.now();
+    const saved = await ref.save();
+    saveTimes.push(performance.now() - started);
+    expect(saved).not.toBeNull();
+  }
+  const saveCopies = copies / SAVES;
+  globalThis.__folioLayoutInstrumentation = previous;
+  console.log(`ZZ ${DOC} blocks ${paragraphs} notes ${notes} getDocument ${stats(getTimes)} ms copies/call ${getCopies}`);
+  console.log(`ZZ ${DOC} blocks ${paragraphs} save ${stats(saveTimes)} ms copies/call ${saveCopies}`);
+  await act(async () => root.unmount());
+  container.remove();
+}, 600_000);

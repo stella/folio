@@ -339,6 +339,7 @@ import { useImageHandlers } from "./hooks/useImageHandlers";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { usePanelLayout } from "./hooks/usePanelLayout";
 import { useZoomAndPageInfo } from "./hooks/useZoomAndPageInfo";
+import { copyHostDocument } from "./hostDocument";
 import { InlineHeaderFooterEditor } from "./InlineHeaderFooterEditor";
 import type { InlineHeaderFooterEditorRef } from "./InlineHeaderFooterEditor";
 import { PanelScrim } from "./panelDrawer";
@@ -1943,37 +1944,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       )
         return null;
 
-      let doc = cloneDocumentWithParagraphPropertySources(committed);
       const live = pagedEditorRef.current?.getDocument();
       // The live stories share the editor's model: the host gets its own copy.
-      const pmDoc =
-        live &&
-        cloneDocumentWithParagraphPropertySources({
-          package: {
-            document: { content: live.package.document.content },
-            ...(live.package.numbering && {
-              numbering: live.package.numbering,
-            }),
-            ...(live.package.footnotes && {
-              footnotes: live.package.footnotes,
-            }),
-            ...(live.package.endnotes && { endnotes: live.package.endnotes }),
-          },
-        });
-      if (pmDoc) {
-        doc.package.document.content = pmDoc.package.document.content;
-        if (pmDoc.package.numbering) {
-          doc.package.numbering = pmDoc.package.numbering;
-        } else {
-          delete doc.package.numbering;
-        }
-        if (pmDoc.package.footnotes !== undefined) {
-          doc.package.footnotes = pmDoc.package.footnotes;
-        }
-        if (pmDoc.package.endnotes !== undefined) {
-          doc.package.endnotes = pmDoc.package.endnotes;
-        }
-      } else {
+      let doc = live
+        ? copyHostDocument(committed, live)
+        : cloneDocumentWithParagraphPropertySources(committed);
+      if (!live) {
         // The editor view was never instantiated, so getDocument() returned null
         // and the PM-layer auto-bidi normalization never reached this clone.
         // Apply the equivalent model-layer pass so an unflagged RTL-led document
