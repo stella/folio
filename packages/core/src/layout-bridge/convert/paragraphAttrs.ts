@@ -37,6 +37,7 @@ import type {
   TextFormatting,
   Theme,
 } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { mergeParagraphTabStops } from "../../utils/paragraphFormattingMerge";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { convertBorderSpecToLayout } from "./flowBorders";
@@ -67,7 +68,7 @@ type ParagraphAttrsInputs = {
    * Resolved paragraph-mark run properties, the base of the list marker's
    * typography. Lazy: only paragraphs that paint a marker resolve them.
    */
-  paragraphMarkFormatting: () => TextFormatting | undefined;
+  paragraphMarkFormatting: () => DeepReadonly<TextFormatting> | undefined;
 };
 
 type ConvertParagraphAttrsOptions = ParagraphAttrsInputs & {

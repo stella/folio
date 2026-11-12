@@ -8,7 +8,7 @@ const RULE_MARKER = "folio-read-model(no-model-document-cast)";
 
 setDefaultTimeout(30_000);
 
-const lintFixture = (fixture: string) => {
+const lintFixture = (fixture: string, marker = RULE_MARKER) => {
   const result = Bun.spawnSync(
     [
       "bun",
@@ -24,8 +24,10 @@ const lintFixture = (fixture: string) => {
   const output = `${result.stdout.toString()}${result.stderr.toString()}`;
   expect(output).not.toContain("Failed to load");
   expect(output).not.toContain("Failed to parse");
-  return output.split(RULE_MARKER).length - 1;
+  return output.split(marker).length - 1;
 };
+
+const SHARE_MARKER = "folio-read-model(model-share-owner)";
 
 describe("model read owner", () => {
   test("rejects every cast of a model to the model Document", () => {
@@ -38,5 +40,10 @@ describe("model read owner", () => {
 
   test("accepts readModel, checked literals and the DOM Document", () => {
     expect(lintFixture("read-model-cast.valid.ts")).toBe(0);
+  });
+
+  test("rejects sharing a read-only value into a model outside the save", () => {
+    expect(lintFixture("read-model-share.invalid.ts", SHARE_MARKER)).toBe(2);
+    expect(lintFixture("read-model-cast.valid.ts", SHARE_MARKER)).toBe(0);
   });
 });

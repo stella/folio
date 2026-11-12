@@ -8,6 +8,8 @@ import type { EditorState } from "prosemirror-state";
 
 import type { ParagraphFormatting, TextFormatting } from "../types/document";
 import { FONT_THEME_VALUES } from "../types/documentEnumValues";
+import type { DeepReadonly } from "../types/documentModel";
+import type { MergedParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import {
   expectFontFamilyMarkAttrs,
   expectFontSizeMarkAttrs,
@@ -40,10 +42,10 @@ export type SelectionSnapshot = {
   hasSelection: boolean;
   /** Whether selection spans multiple paragraphs */
   isMultiParagraph: boolean;
-  /** Current text formatting at selection/cursor */
-  textFormatting: TextFormatting;
-  /** Current paragraph formatting */
-  paragraphFormatting: ParagraphFormatting;
+  /** Current text formatting at selection/cursor, read from the editor state. */
+  textFormatting: DeepReadonly<TextFormatting>;
+  /** Current paragraph formatting, read from the editor state. */
+  paragraphFormatting: DeepReadonly<ParagraphFormatting>;
   /** Current paragraph style ID (e.g., 'Heading1', 'Normal') */
   styleId: string | null;
   /** Start paragraph index */
@@ -91,7 +93,8 @@ export function extractSelectionSnapshot(
       : null;
 
   const marks = selectionMarks(state);
-  let textFormatting = extractTextFormatting(marks);
+  let textFormatting: DeepReadonly<TextFormatting> =
+    extractTextFormatting(marks);
   const isEmptyParagraph =
     paragraph.type.name === "paragraph" && paragraph.textContent.length === 0;
 
@@ -103,7 +106,7 @@ export function extractSelectionSnapshot(
     textFormatting = { ...paragraphAttrs.defaultTextFormatting };
   }
 
-  const paragraphFormatting: ParagraphFormatting = {};
+  const paragraphFormatting: MergedParagraphFormatting = {};
   let styleId: string | null = null;
 
   if (paragraphAttrs) {

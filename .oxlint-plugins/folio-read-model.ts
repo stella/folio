@@ -233,9 +233,49 @@ const addModelDocumentAliases = (program: AstNode, names: ModelNames): void => {
   }
 };
 
+// `shareWithModel` puts a read-only value into the document the save builds
+// from the editor state, which becomes the host's read-only model. Only the
+// save builds that document; anywhere else the call would hand a writer a
+// shared value typed writable. The config turns this rule off in the save.
+const callsShareWithModel = (node: unknown): boolean => {
+  if (!isAstNode(node)) return false;
+  const callee = node["callee"];
+  if (!isAstNode(callee)) return false;
+  if (callee.type === "Identifier") return callee["name"] === "shareWithModel";
+  if (callee.type !== "MemberExpression") return false;
+  const property = callee["property"];
+  return isAstNode(property) && property["name"] === "shareWithModel";
+};
+
 export default {
   meta: { name: "folio-read-model" },
   rules: {
+    "model-share-owner": {
+      meta: {
+        type: "problem",
+        messages: {
+          modelShare:
+            "Only the save shares a read-only value into the model it builds " +
+            "(`packages/core/src/prosemirror/conversion/fromProseDoc.ts`). A " +
+            "writer takes `writableCopy` from " +
+            "`@stll/folio-core/types/documentModel` instead.",
+        },
+      },
+      create(context: {
+        report: (descriptor: {
+          node: unknown;
+          messageId: "modelShare";
+        }) => void;
+      }) {
+        return {
+          CallExpression: (node: unknown) => {
+            if (callsShareWithModel(node)) {
+              context.report({ node, messageId: "modelShare" });
+            }
+          },
+        };
+      },
+    },
     "no-model-document-cast": {
       meta: {
         type: "problem",

@@ -40,6 +40,7 @@ import {
   TABLE_WIDTH_TYPE_VALUES,
   TEXT_DIRECTION_VALUES,
 } from "../../../types/documentEnumValues";
+import type { DeepReadonly, OwnRecord } from "../../../types/documentModel";
 import type {
   TableBorders,
   TableWidthType,
@@ -95,7 +96,8 @@ import type {
   TableStyleCommand,
 } from "../types";
 
-type TableCellBorders = NonNullable<TableCellAttrs["borders"]>;
+/** A cell's borders as a command builds them: its own record of shared border specs. */
+type TableCellBorders = OwnRecord<NonNullable<TableCellAttrs["borders"]>>;
 type TableCellBorderSide = "top" | "bottom" | "left" | "right";
 type OmittedGridSlot = NonNullable<TableCellAttrs["_omittedGridSlot"]>;
 
@@ -2992,7 +2994,7 @@ export const TablePluginExtension: (
             const newBorders: TableCellBorders = {};
 
             for (const side of ["top", "bottom", "left", "right"] as const) {
-              const borderVal: BorderSpec = {
+              const borderVal: DeepReadonly<BorderSpec> = {
                 ...defaultBorder,
                 ...currentBorders[side],
                 color: { rgb },
@@ -3084,7 +3086,7 @@ export const TablePluginExtension: (
             const newBorders: TableCellBorders = {};
 
             for (const side of ["top", "bottom", "left", "right"] as const) {
-              const borderVal: BorderSpec = {
+              const borderVal: DeepReadonly<BorderSpec> = {
                 ...defaultBorder,
                 ...currentBorders[side],
                 size,

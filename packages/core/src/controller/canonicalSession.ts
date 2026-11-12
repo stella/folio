@@ -96,7 +96,7 @@ import type {
   Paragraph,
   StyleDefinitions,
 } from "../types/document";
-import type { ReadonlyDocument } from "../types/documentModel";
+import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
 import {
   canonicalNativeCells,
   InlineProjectionCache,
@@ -763,7 +763,7 @@ export const newStoryProjectionCaches = (): StoryProjectionCaches => ({
 
 type ProjectStoryOptions = {
   document: Document;
-  styles: StyleDefinitions | null | undefined;
+  styles: DeepReadonly<StyleDefinitions> | null | undefined;
   story?: OpStory;
   /** What earlier projections converted, kept by its session. */
   caches?: StoryProjectionCaches;
@@ -1565,7 +1565,7 @@ type JournalledOpsOptions = {
 type CanonicalSessionSeedOptions = {
   document: Document;
   projection: CanonicalProjection;
-  styles: StyleDefinitions | null | undefined;
+  styles: DeepReadonly<StyleDefinitions> | null | undefined;
   /** Stories the session reads in its own spelling, given back as read while unedited. */
   sourceRestores?: readonly CanonicalSourceRestore[];
   caches: StoryProjectionCaches;
@@ -1629,7 +1629,7 @@ class CanonicalSession {
     type: "committed",
   };
   private readonly undone: UndoneJournalEntry[] = [];
-  private readonly styles: StyleDefinitions | null | undefined;
+  private readonly styles: DeepReadonly<StyleDefinitions> | null | undefined;
   private readonly sourceRestores: readonly CanonicalSourceRestore[];
   /** What earlier projections converted, reused by every later one. */
   private readonly caches: StoryProjectionCaches;
@@ -3067,7 +3067,7 @@ export { project as projectCanonicalStory };
 
 export const createCanonicalSession = (
   document: ReadonlyDocument,
-  styles?: StyleDefinitions | null,
+  styles?: DeepReadonly<StyleDefinitions> | null,
 ): Result<CanonicalSession, CanonicalSessionError> => {
   const owned = cloneDocumentWithParagraphPropertySources(document);
   const source = normalizeCanonicalSource(owned);

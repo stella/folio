@@ -13,6 +13,7 @@ import type { EditorState, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { ParagraphFormatting, TextFormatting } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { expectCommentMarkAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { type ListState, sameListState } from "../listState";
 import { createPluginKeyOwner } from "../pluginKeyOwner";
@@ -27,9 +28,9 @@ export type SelectionContext = {
   /** Whether selection spans multiple paragraphs */
   isMultiParagraph: boolean;
   /** Current text formatting at cursor/selection */
-  textFormatting: TextFormatting;
+  textFormatting: DeepReadonly<TextFormatting>;
   /** Current paragraph formatting */
-  paragraphFormatting: ParagraphFormatting;
+  paragraphFormatting: DeepReadonly<ParagraphFormatting>;
   /** Start paragraph index */
   startParagraphIndex: number;
   /** End paragraph index */
@@ -68,7 +69,7 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
   const { empty } = selection;
   const snapshot = extractSelectionSnapshot(state);
 
-  const paragraphFormatting: ParagraphFormatting =
+  const paragraphFormatting: DeepReadonly<ParagraphFormatting> =
     snapshot.styleId === null
       ? snapshot.paragraphFormatting
       : { ...snapshot.paragraphFormatting, styleId: snapshot.styleId };

@@ -165,6 +165,7 @@ import {
   normalizeShapeTextAnchor,
   presetDashForOutlineAttr,
 } from "../../types/documentEnumValues";
+import { type DeepReadonly, shareWithModel } from "../../types/documentModel";
 import { presetDashForCssBorderStyle } from "../../utils/borderCss";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
@@ -2490,10 +2491,10 @@ const propertyChangeFromAttrs = (
  */
 const authoredParagraphValue = <Field extends keyof ParagraphFormatting>(
   field: Field,
-  value: ParagraphFormatting[Field] | undefined,
-  orig: ParagraphFormatting | undefined,
-  resolved: ParagraphFormatting | undefined,
-): ParagraphFormatting[Field] | undefined => {
+  value: DeepReadonly<ParagraphFormatting[Field]> | undefined,
+  orig: DeepReadonly<ParagraphFormatting> | undefined,
+  resolved: DeepReadonly<ParagraphFormatting> | undefined,
+): DeepReadonly<ParagraphFormatting[Field]> | undefined => {
   if (value === undefined) {
     return undefined;
   }
@@ -2813,8 +2814,8 @@ function paragraphAttrsToFormatting(
   const resolved = attrs._resolvedFormatting;
   const authored = <Field extends StyleResolvedParagraphField>(
     field: Field,
-    value: ParagraphFormatting[Field] | null | undefined,
-  ): ParagraphFormatting[Field] | undefined =>
+    value: DeepReadonly<ParagraphFormatting[Field]> | null | undefined,
+  ): DeepReadonly<ParagraphFormatting[Field]> | undefined =>
     authoredParagraphValue(field, value ?? undefined, undefined, resolved);
 
   const outlineLevel = authored(
@@ -2953,14 +2954,18 @@ function paragraphAttrsToFormatting(
   if (attrs.styleId) {
     f.styleId = attrs.styleId;
   }
+  // These come from the paragraph's attrs, which the editor state and the
+  // style cascade share; the saved document is the host's read-only model.
   if (borders) {
-    f.borders = borders;
+    f.borders =
+      shareWithModel<NonNullable<ParagraphFormatting["borders"]>>(borders);
   }
   if (shading) {
-    f.shading = shading;
+    f.shading =
+      shareWithModel<NonNullable<ParagraphFormatting["shading"]>>(shading);
   }
   if (tabs) {
-    f.tabs = tabs;
+    f.tabs = shareWithModel<NonNullable<ParagraphFormatting["tabs"]>>(tabs);
   }
   if (outlineLevel !== undefined) {
     f.outlineLevel = outlineLevel;
@@ -3048,9 +3053,9 @@ function createTrackedRunWrapper({
 }
 
 type RunFormattingContext = {
-  baseParagraphFormatting: TextFormatting | undefined;
-  inheritedFormatting: TextFormatting | undefined;
-  paragraphMarkFormatting: TextFormatting | undefined;
+  baseParagraphFormatting: DeepReadonly<TextFormatting> | undefined;
+  inheritedFormatting: DeepReadonly<TextFormatting> | undefined;
+  paragraphMarkFormatting: DeepReadonly<TextFormatting> | undefined;
   styleResolver: RunStyleResolver | null;
 };
 
@@ -7074,7 +7079,11 @@ export function tableCellAttrsToFormatting(
       attrs.borders &&
       !sameResolvedValue(attrs.borders, attrs._resolvedBorders)
     ) {
-      result.borders = attrs.borders;
+      // The attrs share the borders with the editor state and the table
+      // style; the saved document is the host's read-only model.
+      result.borders = shareWithModel<
+        NonNullable<TableCellFormatting["borders"]>
+      >(attrs.borders);
     }
     if (
       attrs.margins &&
@@ -7142,7 +7151,9 @@ export function tableCellAttrsToFormatting(
     f.shading = cellShadingFromAttrs(attrs);
   }
   if (attrs.borders) {
-    f.borders = attrs.borders;
+    f.borders = shareWithModel<NonNullable<TableCellFormatting["borders"]>>(
+      attrs.borders,
+    );
   }
   if (attrs.margins) {
     f.margins = buildCellMarginsFromAttrs(attrs.margins);

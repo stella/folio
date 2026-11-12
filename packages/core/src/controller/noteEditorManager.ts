@@ -49,7 +49,11 @@ import type {
   StyleDefinitions,
   Theme,
 } from "../types/document";
-import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import type { NoteStoryKey } from "../types/editor-story";
 import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
@@ -81,7 +85,7 @@ export type NoteEditorManagerDeps = {
     | undefined;
   getHost: () => HTMLElement | null;
   getPlugins?: (() => Plugin[]) | undefined;
-  getStyles: () => StyleDefinitions | null | undefined;
+  getStyles: () => DeepReadonly<StyleDefinitions> | null | undefined;
   getTheme: () => Theme | null | undefined;
   onTransaction?: ((transaction: NoteEditorTransaction) => void) | undefined;
 };
@@ -110,7 +114,7 @@ type MountedView = {
   appliedNumbering: NumberingDefinitions | null | undefined;
   appliedPlugins: Plugin[];
   appliedProseDocument: PMNode;
-  appliedStyles: StyleDefinitions | null | undefined;
+  appliedStyles: DeepReadonly<StyleDefinitions> | null | undefined;
   appliedTheme: Theme | null | undefined;
   dirty: boolean;
   manager: ExtensionManager;
@@ -153,7 +157,7 @@ const noteToProseDocument = (note: NoteStory, options: ToProseDocOptions) =>
 
 const buildInitialState = (
   document: PMNode,
-  styles: StyleDefinitions | null | undefined,
+  styles: DeepReadonly<StyleDefinitions> | null | undefined,
   numbering: NumberingDefinitions | null | undefined,
   manager: ExtensionManager,
   externalPlugins: Plugin[],

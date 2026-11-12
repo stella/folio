@@ -7,6 +7,7 @@ import {
 } from "../../docx/numberingParser";
 import { paragraphNumberingReference } from "../../docx/numberingReference";
 import type { ParagraphFormatting } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
@@ -216,7 +217,7 @@ function listLevelIndentAttrPatch(
 
 type ListIndentationProvenanceOptions = {
   direct: DirectParagraphIndentation | undefined;
-  styleFormatting: ParagraphFormatting | undefined;
+  styleFormatting: DeepReadonly<ParagraphFormatting> | undefined;
   numberingSource: "style" | "paragraph";
   numPr: { numId: number; ilvl: number } | undefined;
   numbering: NumberingMap | null | undefined;

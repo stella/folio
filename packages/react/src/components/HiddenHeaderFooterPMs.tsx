@@ -29,7 +29,10 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
-import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
+import type {
+  DeepReadonly,
+  ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 
 import "prosemirror-view/style/prosemirror.css";
 
@@ -57,7 +60,7 @@ export type HiddenHeaderFooterPMsProps = {
     ground: CanonicalRefusalGround,
     error?: Error,
   ) => void;
-  styles?: StyleDefinitions | null;
+  styles?: DeepReadonly<StyleDefinitions> | null;
   theme?: Theme | null;
   defaultTabStopTwips?: number | null;
   onTransaction?: (

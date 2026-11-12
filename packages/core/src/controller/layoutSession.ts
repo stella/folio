@@ -10,6 +10,7 @@ import type {
   TemplatePreviewValues,
 } from "../prosemirror/plugins/templatePreviewValues";
 import type { StyleDefinitions, Theme } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 
 export type LayoutArtifacts = {
   blocks: FlowBlock[];
@@ -33,7 +34,7 @@ export type LayoutTemplatePreview = {
 export type LayoutMeasureInputs = {
   embeddedFontFamilyMap?: ReadonlyMap<string, string>;
   documentFontFactsCacheIdentity: string | undefined;
-  styles: StyleDefinitions | null | undefined;
+  styles: DeepReadonly<StyleDefinitions> | null | undefined;
   theme: Theme | null | undefined;
   defaultTabStop: number | undefined;
   pageContentHeight: number;

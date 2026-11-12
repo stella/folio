@@ -33,18 +33,28 @@ import type {
   StyleDefinitions,
   TextFormatting,
 } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { cascadeStyleTextFormatting } from "./styleToggleCascade";
 
 /**
  * Resolved style properties ready for rendering
  */
-export type ResolvedParagraphStyle = {
+export type ResolvedParagraphStyle = DeepReadonly<{
   /** Paragraph formatting (alignment, spacing, indentation, etc.) */
   paragraphFormatting?: ParagraphFormatting;
   /** Default run formatting from the style */
   runFormatting?: TextFormatting;
-};
+}>;
+
+/**
+ * A style the resolver hands out: the document's own definition, shared with
+ * the document and every other caller, so nobody may write to it.
+ */
+export type ReadonlyStyle = DeepReadonly<Style>;
+
+/** Run formatting the resolver hands out; see {@link ReadonlyStyle}. */
+export type ReadonlyTextFormatting = DeepReadonly<TextFormatting>;
 
 /**
  * Paragraph fields sourced from the table style enclosing a cell paragraph:
@@ -58,14 +68,16 @@ export type ResolvedParagraphStyle = {
  * ownership checks. Other fields remain out of scope until their table-style
  * projection is modeled end to end.
  */
-export type TableCellParagraphSpacingOverlay = Pick<
-  ParagraphFormatting,
-  | "spaceBefore"
-  | "spaceAfter"
-  | "lineSpacing"
-  | "lineSpacingRule"
-  | "contextualSpacing"
-  | "frame"
+export type TableCellParagraphSpacingOverlay = DeepReadonly<
+  Pick<
+    ParagraphFormatting,
+    | "spaceBefore"
+    | "spaceAfter"
+    | "lineSpacing"
+    | "lineSpacingRule"
+    | "contextualSpacing"
+    | "frame"
+  >
 >;
 
 /**
@@ -93,14 +105,14 @@ const BUILTIN_NORMAL_STYLE: Style = {
  * StyleResolver provides efficient access to resolved style properties
  */
 export class StyleResolver {
-  private readonly stylesById: Map<string, Style>;
+  private readonly stylesById: Map<string, ReadonlyStyle>;
   private builtInStyleIndex: BuiltInStyleIndex | undefined;
-  private readonly docDefaults: DocDefaults | undefined;
-  private readonly defaultParagraphStyle: Style | undefined;
-  private readonly defaultCharacterStyle: Style | undefined;
-  private readonly defaultTableStyle: Style | undefined;
+  private readonly docDefaults: DeepReadonly<DocDefaults> | undefined;
+  private readonly defaultParagraphStyle: ReadonlyStyle | undefined;
+  private readonly defaultCharacterStyle: ReadonlyStyle | undefined;
+  private readonly defaultTableStyle: ReadonlyStyle | undefined;
 
-  constructor(styleDefinitions: StyleDefinitions | undefined) {
+  constructor(styleDefinitions: DeepReadonly<StyleDefinitions> | undefined) {
     this.stylesById = new Map();
     this.docDefaults = styleDefinitions?.docDefaults;
 
@@ -122,7 +134,7 @@ export class StyleResolver {
   /**
    * Get a style by ID
    */
-  getStyle(styleId: string): Style | undefined {
+  getStyle(styleId: string): ReadonlyStyle | undefined {
     return this.stylesById.get(styleId);
   }
 
@@ -143,8 +155,8 @@ export class StyleResolver {
   /**
    * Get all available paragraph styles (for toolbar dropdown)
    */
-  getParagraphStyles(): Style[] {
-    const styles: Style[] = [];
+  getParagraphStyles(): ReadonlyStyle[] {
+    const styles: ReadonlyStyle[] = [];
     for (const style of this.stylesById.values()) {
       if (style.type === "paragraph" && !style.hidden && !style.semiHidden) {
         styles.push(style);
@@ -207,13 +219,13 @@ export class StyleResolver {
   private resolveParagraphFormatting(
     styleId: string | undefined | null,
     tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
-  ): ParagraphFormatting | undefined {
+  ): DeepReadonly<ParagraphFormatting> | undefined {
     const [defaults, overlay, style] = paragraphFormattingLayers({
       resolver: this,
       styleId,
       tableParagraphOverlay,
     });
-    let formatting = defaults ? { ...defaults } : undefined;
+    let formatting = defaults;
     for (const layer of [overlay, style]) {
       formatting = mergeParagraphFormatting(formatting, layer) ?? formatting;
     }
@@ -224,22 +236,19 @@ export class StyleResolver {
     styleId: string | undefined | null,
     tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
   ): ResolvedParagraphStyle {
-    const result: ResolvedParagraphStyle = {};
     const paragraphFormatting = this.resolveParagraphFormatting(
       styleId,
       tableParagraphOverlay,
     );
-    if (paragraphFormatting) result.paragraphFormatting = paragraphFormatting;
     const style = paragraphStyleFor(this, styleId);
     const runFormatting = cascadeStyleTextFormatting([
       { formatting: this.docDefaults?.rPr, type: "defaults" },
       { formatting: style?.rPr, type: "style" },
     ]).formatting;
-    if (runFormatting) {
-      result.runFormatting = runFormatting;
-    }
-
-    return result;
+    return {
+      ...(paragraphFormatting ? { paragraphFormatting } : {}),
+      ...(runFormatting ? { runFormatting } : {}),
+    };
   }
 
   /**
@@ -272,8 +281,8 @@ export class StyleResolver {
   /**
    * Get all available table styles (for style gallery)
    */
-  getTableStyles(): Style[] {
-    const styles: Style[] = [];
+  getTableStyles(): ReadonlyStyle[] {
+    const styles: ReadonlyStyle[] = [];
     for (const style of this.stylesById.values()) {
       if (style.type === "table" && !style.hidden && !style.semiHidden) {
         styles.push(style);
@@ -297,7 +306,7 @@ export class StyleResolver {
    */
   resolveRunStyle(
     styleId: string | undefined | null,
-  ): TextFormatting | undefined {
+  ): ReadonlyTextFormatting | undefined {
     const style = styleId
       ? this.stylesById.get(styleId)
       : this.defaultCharacterStyle;
@@ -316,7 +325,7 @@ export class StyleResolver {
    */
   getRunStyleOwnProperties(
     styleId: string | undefined | null,
-  ): TextFormatting | undefined {
+  ): ReadonlyTextFormatting | undefined {
     if (!styleId) {
       return undefined;
     }
@@ -326,34 +335,34 @@ export class StyleResolver {
       return undefined;
     }
 
-    return Object.keys(style.rPr).length > 0 ? { ...style.rPr } : undefined;
+    return Object.keys(style.rPr).length > 0 ? style.rPr : undefined;
   }
 
   /**
    * Get document defaults
    */
-  getDocDefaults(): DocDefaults | undefined {
+  getDocDefaults(): DeepReadonly<DocDefaults> | undefined {
     return this.docDefaults;
   }
 
   /**
    * Get default paragraph style (usually "Normal")
    */
-  getDefaultParagraphStyle(): Style | undefined {
+  getDefaultParagraphStyle(): ReadonlyStyle | undefined {
     return this.defaultParagraphStyle;
   }
 
   /**
    * Get default character style.
    */
-  getDefaultCharacterStyle(): Style | undefined {
+  getDefaultCharacterStyle(): ReadonlyStyle | undefined {
     return this.defaultCharacterStyle;
   }
 
   /**
    * Get default table style.
    */
-  getDefaultTableStyle(): Style | undefined {
+  getDefaultTableStyle(): ReadonlyStyle | undefined {
     return this.defaultTableStyle;
   }
 
@@ -370,7 +379,7 @@ export class StyleResolver {
 
   private findDefaultStyle(
     type: "paragraph" | "character" | "table",
-  ): Style | undefined {
+  ): ReadonlyStyle | undefined {
     // Only synthesize the default-template Normal for a bare document with no
     // docDefaults; when docDefaults exist they are the authoritative paragraph
     // defaults and an absent Normal must not re-introduce the template's
@@ -394,7 +403,7 @@ export class StyleResolver {
  * Create a style resolver from document's style definitions
  */
 export function createStyleResolver(
-  styleDefinitions: StyleDefinitions | undefined,
+  styleDefinitions: DeepReadonly<StyleDefinitions> | undefined,
 ): StyleResolver {
   return new StyleResolver(styleDefinitions);
 }

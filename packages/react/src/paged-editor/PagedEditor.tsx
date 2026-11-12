@@ -243,6 +243,7 @@ import type {
   Theme,
 } from "@stll/folio-core/types/document";
 import {
+  type DeepReadonly,
   readModel,
   type ReadonlyDocument,
 } from "@stll/folio-core/types/documentModel";
@@ -1100,7 +1101,7 @@ type LayoutInputSignatureOptions = {
   pageGap: number;
   pageSize: { h: number; w: number };
   sectionProperties: SectionProperties | null | undefined;
-  styles: StyleDefinitions | null | undefined;
+  styles: DeepReadonly<StyleDefinitions> | null | undefined;
   theme: Theme | null | undefined;
 };
 
@@ -1609,8 +1610,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     // the editor state, and the readers it hands the model to are the ones a
     // deep-freeze test runs over frozen documents.
     const document = documentModel && readModel(documentModel);
-    // Styles and section properties are read from that same document.
-    const styles = document?.package.styles;
+    // The styles are the model's own and stay typed read-only for everything
+    // they feed: the style resolver, the hidden editors and the layout.
+    const styles = documentModel?.package.styles;
     const sectionProperties = useMemo(
       () =>
         resolveEffectiveSectionProperties(

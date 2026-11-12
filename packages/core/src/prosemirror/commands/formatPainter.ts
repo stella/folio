@@ -13,6 +13,7 @@ import type { Mark, Node as PMNode, ResolvedPos } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 
 import type { TextFormatting } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { expectCharacterStyleMarkAttrs } from "../attrs";
 import { getDocumentStyleResolver } from "../plugins/documentStyleState";
@@ -324,7 +325,7 @@ export type CapturedTextFormatting = Readonly<{
 }>;
 
 function pickPaintableFormatting(
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
 ): PaintableFormatting {
   const result: PaintableFormatting = {};
   if (!formatting) {

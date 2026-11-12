@@ -64,6 +64,7 @@ export {
 
 // Field-level totality gate shared by the serializers and the reserved-value
 // registry.
+export type { DeepReadonly } from "./deepReadonly";
 export type { ExhaustiveFields } from "./exhaustiveFields";
 
 // `w:numPr`: the stated and resolved unions, the cascade fold, and the one

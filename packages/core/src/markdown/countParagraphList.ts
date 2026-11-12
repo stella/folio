@@ -18,6 +18,7 @@ import {
   paragraphNumberingAttr,
 } from "../prosemirror/numberingAttr";
 import { resolveParagraphList } from "../prosemirror/paragraphList";
+import type { ParagraphAttrs } from "../prosemirror/schema/nodes";
 import type {
   DocxPackage,
   ListRendering,
@@ -64,13 +65,16 @@ export function countParagraphList(
   );
   const resolvedRendering =
     resolvedList.kind === "marker" ? resolvedList.rendering : undefined;
-  const counterAttrs = listLabelAttrsFromRendering(resolvedRendering, {
-    ...sources,
-    numPrFromStyle:
-      resolvedList.kind === "none"
-        ? undefined
-        : (inherited ?? sources.numPrFromStyle),
-  });
+  const counterAttrs: ParagraphAttrs = listLabelAttrsFromRendering(
+    resolvedRendering,
+    {
+      ...sources,
+      numPrFromStyle:
+        resolvedList.kind === "none"
+          ? undefined
+          : (inherited ?? sources.numPrFromStyle),
+    },
+  );
   if (
     sources.numPr === undefined &&
     sources.numPrFromStyle !== undefined &&

@@ -14,6 +14,7 @@ import type {
 } from "../../layout-engine/types";
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
 import type { ColorValue, TextFormatting, Theme } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
@@ -78,7 +79,7 @@ export function isAutomaticTextColorValue(color: ColorValue): boolean {
 }
 
 function textFormattingToRunFormatting(
-  defaultTextFormatting: TextFormatting | undefined,
+  defaultTextFormatting: DeepReadonly<TextFormatting> | undefined,
   theme?: Theme | null,
   fontAlternates?: FontAlternates,
 ): RunFormatting {
@@ -267,8 +268,8 @@ const LIST_MARKER_FORMATTING_KEYS = [
  * Text runs of the paragraph play no part.
  */
 export function listMarkerFormattingFor(
-  levelFormatting: TextFormatting | undefined,
-  paragraphMarkFormatting: TextFormatting | undefined,
+  levelFormatting: DeepReadonly<TextFormatting> | undefined,
+  paragraphMarkFormatting: DeepReadonly<TextFormatting> | undefined,
   theme: Theme | null | undefined,
   fontAlternates: FontAlternates | undefined,
 ): ListMarkerFormatting | undefined {

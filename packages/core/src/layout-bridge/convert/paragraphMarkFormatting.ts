@@ -13,6 +13,7 @@ import {
 import type { ParagraphAttrs as PMParagraphAttrs } from "../../prosemirror/schema/nodes";
 import { cascadeStyleTextFormatting } from "../../prosemirror/styles/styleToggleCascade";
 import type { TextFormatting } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 
 /**
@@ -20,9 +21,9 @@ import { mergeTextFormatting } from "../../utils/textFormattingMerge";
  * is missing or names a style of another type contributes nothing.
  */
 const markCharacterStyleFormatting = (
-  mark: TextFormatting | undefined,
+  mark: DeepReadonly<TextFormatting> | undefined,
   styleResolver: RunStyleResolver,
-): TextFormatting | undefined => {
+): DeepReadonly<TextFormatting> | undefined => {
   const styleId = mark?.styleId;
   if (
     styleId === undefined ||
@@ -35,9 +36,9 @@ const markCharacterStyleFormatting = (
 
 /** The mark's own properties: its `w:rStyle` character style under its direct `w:rPr`. */
 export const resolveParagraphMarkOwnFormatting = (
-  mark: TextFormatting | undefined,
+  mark: DeepReadonly<TextFormatting> | undefined,
   styleResolver: RunStyleResolver,
-): TextFormatting | undefined => {
+): DeepReadonly<TextFormatting> | undefined => {
   const characterStyle = markCharacterStyleFormatting(mark, styleResolver);
   if (characterStyle === undefined) {
     return mark;
@@ -52,7 +53,7 @@ export const resolveParagraphMarkOwnFormatting = (
 export const resolveParagraphMarkFormatting = (
   pmAttrs: PMParagraphAttrs,
   styleResolver: RunStyleResolver,
-): TextFormatting | undefined => {
+): DeepReadonly<TextFormatting> | undefined => {
   const mark = pmAttrs._originalFormatting?.runProperties;
   const { baseFormatting, baseToggleCascade } =
     resolveParagraphBodyRunFormatting({

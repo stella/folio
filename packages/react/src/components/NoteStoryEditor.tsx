@@ -29,7 +29,10 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
-import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
+import type {
+  DeepReadonly,
+  ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 
 import "prosemirror-view/style/prosemirror.css";
 
@@ -65,7 +68,7 @@ export type NoteStoryEditorProps = {
   plugins?: Plugin[];
   suggestionAuthor?: string;
   suggestionModeActive?: boolean;
-  styles?: StyleDefinitions | null;
+  styles?: DeepReadonly<StyleDefinitions> | null;
   theme?: Theme | null;
 };
 

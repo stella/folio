@@ -33,6 +33,7 @@ import type {
   UnderlineStyle,
 } from "../types/document";
 import { UNDERLINE_STYLE_VALUES } from "../types/documentEnumValues";
+import type { DeepReadonly } from "../types/documentModel";
 import { cssBorderStyle } from "./borderCss";
 import {
   resolveColor,
@@ -318,7 +319,7 @@ export function textToStyle(
  * @returns React CSSProperties
  */
 export function paragraphToStyle(
-  formatting: ParagraphFormatting | undefined | null,
+  formatting: DeepReadonly<ParagraphFormatting> | undefined | null,
   theme?: Theme | null,
 ): CSSProperties {
   if (!formatting) {
@@ -486,7 +487,7 @@ export function paragraphToStyle(
  * @returns Partial CSSProperties with border styles
  */
 export function borderToStyle(
-  border: BorderSpec | undefined | null,
+  border: DeepReadonly<BorderSpec> | undefined | null,
   side: "Top" | "Bottom" | "Left" | "Right" | "" = "",
   theme?: Theme | null,
 ): CSSProperties {
@@ -600,7 +601,7 @@ function blendShadingColors({
  * @returns CSS color string or empty string
  */
 export function resolveShadingFill(
-  shading: ShadingProperties | undefined | null,
+  shading: DeepReadonly<ShadingProperties> | undefined | null,
   theme?: Theme | null,
 ): string {
   if (!shading) {
@@ -869,7 +870,7 @@ export function tableCellToStyle(
     | {
         verticalAlign?: "top" | "center" | "bottom";
         textDirection?: TextDirection;
-        shading?: ShadingProperties;
+        shading?: DeepReadonly<ShadingProperties>;
         borders?: {
           top?: BorderSpec;
           bottom?: BorderSpec;

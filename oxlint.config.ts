@@ -480,9 +480,22 @@ export default library({
       files: [
         "packages/*/src/**/*.{ts,tsx,vue}",
         "test/__fixtures__/read-model-cast.*.{ts,vue}",
+        "test/__fixtures__/read-model-share.*.ts",
       ],
       rules: {
         "folio-read-model/no-model-document-cast": "error",
+        "folio-read-model/model-share-owner": "error",
+      },
+    },
+    {
+      // The save builds the model from the editor state and shares the
+      // attrs' read-only values into it; `documentModel.ts` defines the call.
+      files: [
+        "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
+        "packages/core/src/types/documentModel.ts",
+      ],
+      rules: {
+        "folio-read-model/model-share-owner": "off",
       },
     },
     {

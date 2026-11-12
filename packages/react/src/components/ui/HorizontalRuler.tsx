@@ -54,7 +54,7 @@ export type HorizontalRulerProps = {
   unit?: "inch" | "cm";
   className?: string;
   style?: CSSProperties;
-  tabStops?: TabStop[] | null;
+  tabStops?: readonly DeepReadonly<TabStop>[] | null;
   onTabStopRemove?: (positionTwips: number) => void;
 };
 
@@ -567,7 +567,7 @@ function DragTooltip({
 }
 
 type TabStopMarkerProps = {
-  tabStop: TabStop;
+  tabStop: DeepReadonly<TabStop>;
   positionPx: number;
   onRemove?: ((positionTwips: number) => void) | undefined;
 };

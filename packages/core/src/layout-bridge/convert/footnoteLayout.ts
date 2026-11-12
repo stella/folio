@@ -38,6 +38,7 @@ import type {
   StyleDefinitions,
   Theme,
 } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { measureParagraph } from "../engine/measuring";
 import { remapMarkupViewBlocks } from "./markupViewFlow";
 import { collectNoteRefs, toFlowBlocks } from "./toFlowBlocks";
@@ -67,7 +68,7 @@ export type ConvertFootnoteOptions = Pick<
   showCommentHighlights?: boolean;
   altChunkMarkerText?: string;
   markupView?: DisplayMode;
-  styles?: StyleDefinitions | null;
+  styles?: DeepReadonly<StyleDefinitions> | null;
   numbering?: NumberingDefinitions;
   theme?: Theme | null;
   defaultSize?: number;

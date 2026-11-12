@@ -26,6 +26,7 @@ import type { RemovedSectionReference } from "../internal/sectionEndpointResolut
 import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import type { NumberingDefinitions, StyleDefinitions } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import {
   createDocumentNumberingPlugin,
   getDocumentNumbering,
@@ -227,7 +228,7 @@ export const visibleCaretPosition = (
 type ProjectStoryMarkupViewOptions = {
   doc: PMNode;
   markupView: DisplayMode;
-  styles?: StyleDefinitions | null | undefined;
+  styles?: DeepReadonly<StyleDefinitions> | null | undefined;
   numbering?: NumberingDefinitions | undefined;
 };
 

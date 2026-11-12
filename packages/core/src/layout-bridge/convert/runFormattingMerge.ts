@@ -14,6 +14,7 @@ import {
 } from "../../prosemirror/runStyleFormatting";
 import type { RunFormattingOverrideAttrs } from "../../prosemirror/schema/marks";
 import type { TextFormatting } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
 
 const DEFAULT_BLACK_TEXT_COLOR_VALUES = new Set(["000000", "000"]);
@@ -105,7 +106,7 @@ export function mergeRunFormatting(
 type ApplyCharacterStyleToggleFormattingOptions = {
   formatting: RunFormatting;
   marks: readonly Mark[];
-  paragraphFormatting: TextFormatting | undefined;
+  paragraphFormatting: DeepReadonly<TextFormatting> | undefined;
   styleResolver: RunStyleResolver;
 };
 

@@ -52,7 +52,10 @@ import type {
   StyleDefinitions,
   Theme,
 } from "@stll/folio-core/types/document";
-import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
+import type {
+  DeepReadonly,
+  ReadonlyDocument,
+} from "@stll/folio-core/types/documentModel";
 // Import ProseMirror CSS
 import "prosemirror-view/style/prosemirror.css";
 
@@ -92,7 +95,7 @@ export type HiddenProseMirrorProps = {
    */
   documentIdentity: string;
   /** Document styles for style resolution */
-  styles?: StyleDefinitions | null;
+  styles?: DeepReadonly<StyleDefinitions> | null;
   /** Theme for styling */
   theme?: Theme | null;
   /** Width in pixels (should match document content width) */

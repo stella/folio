@@ -1,4 +1,5 @@
 import type { TextFormatting } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import {
   type AuthoredRunFormattingValues,
   RUN_FORMATTING_BOOLEAN_PROPERTIES,
@@ -66,7 +67,7 @@ export const authoredRunFormattingFromAttrs = (
 /** Replace the direct baseline while preserving current rendering attributes. */
 export const withAuthoredRunFormatting = (
   attrs: RunFormattingOverrideAttrs,
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
 ): RunFormattingOverrideAttrs => {
   const authoredOn: RunFormattingBooleanProperty[] = [];
   const authoredOff: RunFormattingBooleanProperty[] = [];

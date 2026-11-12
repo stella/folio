@@ -74,6 +74,7 @@ import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 // union from the adapter's own type surface rather than reaching into core.
 export type { EditorMode };
 import type { DocumentLoadState } from "@stll/folio-core/managers/DocumentLoaderManager";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 import type { FolioUIComponents } from "../../ui/folio-ui";
 import type { FontOption } from "../../utils/fontOptions";
@@ -796,7 +797,7 @@ export type EditorState = {
   paragraphIndentRight: number;
   paragraphFirstLineIndent: number;
   paragraphHangingIndent: boolean;
-  paragraphTabs: TabStop[] | null;
+  paragraphTabs: readonly DeepReadonly<TabStop>[] | null;
   /** ProseMirror table context (for showing table toolbar) */
   pmTableContext: TableContextInfo | null;
   /** Image context when cursor is on an image node */

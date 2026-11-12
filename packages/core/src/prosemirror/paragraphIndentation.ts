@@ -2,6 +2,8 @@ import { panic } from "better-result";
 
 import type { FolioContentParagraphIndentation } from "../compare/content-types";
 import type { ParagraphFormatting } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
+import type { MergedParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { hangingFirstLineIndent } from "../utils/units";
 import {
   effectiveParagraphNumberingReference,
@@ -66,7 +68,7 @@ const copyIndentationValue = ({
 
 /** Project only authored `w:ind` attributes, preserving zero and false. */
 export const paragraphIndentationFromFormatting = (
-  formatting: ParagraphFormatting | null | undefined,
+  formatting: DeepReadonly<ParagraphFormatting> | null | undefined,
 ): DirectParagraphIndentation | undefined => {
   if (!formatting) {
     return undefined;
@@ -161,11 +163,20 @@ export const paragraphIndentationEqual = (
   );
 
 /** Replace the complete direct `w:ind` cluster in canonical formatting. */
-export const withDirectParagraphIndentation = (
+/** A new record whose nested values stay shared with `formatting`. */
+export function withDirectParagraphIndentation(
   formatting: ParagraphFormatting | null | undefined,
   indentation: DirectParagraphIndentation | null | undefined,
-): ParagraphFormatting | undefined => {
-  const result: ParagraphFormatting = { ...formatting };
+): ParagraphFormatting | undefined;
+export function withDirectParagraphIndentation(
+  formatting: DeepReadonly<ParagraphFormatting> | null | undefined,
+  indentation: DirectParagraphIndentation | null | undefined,
+): DeepReadonly<ParagraphFormatting> | undefined;
+export function withDirectParagraphIndentation(
+  formatting: DeepReadonly<ParagraphFormatting> | null | undefined,
+  indentation: DirectParagraphIndentation | null | undefined,
+): DeepReadonly<ParagraphFormatting> | undefined {
+  const result: MergedParagraphFormatting = { ...formatting };
   for (const key of DIRECT_PARAGRAPH_INDENTATION_KEYS) {
     Reflect.deleteProperty(result, key);
   }
@@ -173,7 +184,7 @@ export const withDirectParagraphIndentation = (
     Object.assign(result, indentation);
   }
   return Object.keys(result).length > 0 ? result : undefined;
-};
+}
 
 type ParagraphIndentationAttrPatchOptions = {
   direct: DirectParagraphIndentation | null | undefined;

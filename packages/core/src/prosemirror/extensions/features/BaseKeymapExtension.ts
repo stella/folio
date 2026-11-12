@@ -21,6 +21,7 @@ import type {
   ParagraphFormatting,
   TextFormatting,
 } from "../../../types/document";
+import type { MergedParagraphFormatting } from "../../../utils/paragraphFormattingMerge";
 import { mergeTextFormatting } from "../../../utils/textFormattingMerge";
 import {
   expectCharacterStyleMarkAttrs,
@@ -298,7 +299,7 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
         const originalFormatting: ParagraphFormatting = {
           ...addedAttrs._originalFormatting,
         };
-        const resolvedFormatting: ParagraphFormatting = {
+        const resolvedFormatting: MergedParagraphFormatting = {
           ...addedAttrs._resolvedFormatting,
         };
         for (const { attr, formattingFields } of INHERITED_PARA_ATTRS) {
