@@ -37,6 +37,12 @@
       "path": "6:4:5:4:4:4:4:4:9:8:8:8:9:8:8:8:8:8:9:10:12:12:11:11:14:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:18:19:7:0:6:6:8:9:6:5:5:9:7:5:7:7:7:7:7:7:7:7:7:7:9:7:7:7:7:7:7:7:7:7:7",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -1077732988,
+      "path": "315:12:10:10:10:10:14:13:13:13:13:14:17:16:21:21:21:24:25:25:25:25:25:25:25:25:25:25:27:28:29:29:29:29:29:29:23:24:23:23:23:23:23:23:23:23:23:23:23:23:23:23:23:23:23:34:23:23:35:26:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57:57",
+      "note": "A tracked deletion must not take in a content control that holds a comment anchor; accepting it kept the comment's end that the direct deletion removed.",
+      "date": "2026-11-13"
     }
   ],
   "L2: rejecting a tracked operation's revisions gives the document back": [
