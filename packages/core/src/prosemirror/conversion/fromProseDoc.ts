@@ -1196,12 +1196,8 @@ function stripSuggestedInlineMarks(
   );
 
   if (suggestedRunPropertyChange) {
-    const {
-      baseParagraphFormatting,
-      inheritedFormatting,
-      paragraphMarkFormatting,
-      styleResolver,
-    } = readFormattingContext();
+    const { baseParagraphFormatting, inheritedFormatting, styleResolver } =
+      readFormattingContext();
     const previousFormatting = expectRunPropertyChangeMarkAttrs(
       suggestedRunPropertyChange,
     ).changes.at(0)?.previousFormatting;
@@ -1221,11 +1217,7 @@ function stripSuggestedInlineMarks(
       context: {
         baseParagraphFormatting,
         paragraphFormatting: inheritedFormatting,
-        paragraphMarkFormatting,
       },
-      ...(previousFormatting !== undefined
-        ? { directFormatting: previousFormatting }
-        : {}),
     });
     const styleFormatting = preservedCharacterStyleAttrs
       ? resolveEffectiveRunStyleFormatting({
@@ -1395,11 +1387,10 @@ const savedParagraphRunStyleContext = (
     styleId: attrs.styleId,
     styleResolver,
     tableRunFormatting: attrs._tableRunFormatting,
-    paragraphMarkFormatting:
-      attrs.styleId === undefined ? context.paragraphMarkFormatting : undefined,
   });
-  // Caret defaults may carry formatting across an empty split without emitting
-  // paragraph properties. Only the source cascade can make a saved run inherit.
+  // Caret defaults (an empty paragraph's mark formatting) may carry formatting
+  // into typed text without emitting paragraph properties. Only the style
+  // cascade lets a saved run inherit: what the caret lent is written direct.
   return { ...context, paragraphFormatting: source.inheritedFormatting };
 };
 
@@ -1445,8 +1436,6 @@ function mapSuggestionStrippedNode(
             baseParagraphFormatting:
               paragraphStyleContext.baseParagraphFormatting,
             inheritedFormatting: paragraphStyleContext.paragraphFormatting,
-            paragraphMarkFormatting:
-              paragraphStyleContext.paragraphMarkFormatting,
             styleResolver,
           };
           return resolvedChildContext;
@@ -1487,7 +1476,6 @@ function stripSuggestedProvenance(
     mapSuggestionStrippedNode(doc, () => ({
       baseParagraphFormatting: undefined,
       inheritedFormatting: undefined,
-      paragraphMarkFormatting: undefined,
       styleResolver,
     })) ?? doc
   );
@@ -2341,7 +2329,6 @@ function convertPMParagraph(
     {
       baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
       inheritedFormatting: paragraphStyleContext.paragraphFormatting,
-      paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
       styleResolver,
     },
   );
@@ -3050,7 +3037,6 @@ function createTrackedRunWrapper({
 type RunFormattingContext = {
   baseParagraphFormatting: TextFormatting | undefined;
   inheritedFormatting: TextFormatting | undefined;
-  paragraphMarkFormatting: TextFormatting | undefined;
   styleResolver: RunStyleResolver | null;
 };
 
@@ -3403,7 +3389,6 @@ function extractParagraphContent(
     ({
       baseParagraphFormatting: paragraphStyleContext?.baseParagraphFormatting,
       inheritedFormatting: paragraphStyleContext?.paragraphFormatting,
-      paragraphMarkFormatting: paragraphStyleContext?.paragraphMarkFormatting,
       styleResolver: null,
     } satisfies RunFormattingContext);
   const sortedEmptyHyperlinks = (emptyHyperlinks ?? [])
@@ -4125,7 +4110,6 @@ function extractParagraphContent(
               inheritedFormatting:
                 formattingContext.baseParagraphFormatting ??
                 formattingContext.inheritedFormatting,
-              paragraphMarkFormatting: undefined,
             }
           : formattingContext;
       const revisionAncestors = enclosingInsertionAncestors({
@@ -4565,13 +4549,11 @@ function createTrackedChangeRun({
   inheritedFormatting,
   marks,
   node,
-  paragraphMarkFormatting,
   styleResolver,
 }: CreateTrackedChangeRunOptions): Run | null {
   const formattingContext = {
     baseParagraphFormatting,
     inheritedFormatting,
-    paragraphMarkFormatting,
     styleResolver,
   };
   const noteRefMark = marks.find((mark) => mark.type.name === "footnoteRef");
@@ -4774,7 +4756,6 @@ function addNodeToHyperlink({
   hyperlink,
   inheritedFormatting,
   node,
-  paragraphMarkFormatting,
   sourceRunOwners,
   styleResolver,
 }: AddNodeToHyperlinkOptions): void {
@@ -4787,7 +4768,6 @@ function addNodeToHyperlink({
   const formattingContext = {
     baseParagraphFormatting,
     inheritedFormatting,
-    paragraphMarkFormatting,
     styleResolver,
   };
   const nonLinkMarks = node.marks.filter(
@@ -4812,7 +4792,6 @@ function addNodeToHyperlink({
       createNoteReferenceRun(noteRefMark, node.marks, {
         baseParagraphFormatting,
         inheritedFormatting,
-        paragraphMarkFormatting,
         styleResolver,
       }),
     );
@@ -4824,7 +4803,6 @@ function addNodeToHyperlink({
       baseParagraphFormatting,
       inheritedFormatting,
       marks: nonLinkMarks,
-      paragraphMarkFormatting,
       styleResolver,
       text: node.text,
     });
@@ -4844,7 +4822,6 @@ function addNodeToHyperlink({
       createSymbolRun(node, nonLinkMarks, {
         baseParagraphFormatting,
         inheritedFormatting,
-        paragraphMarkFormatting,
         styleResolver,
       }),
     );
@@ -4861,7 +4838,6 @@ function addNodeToHyperlink({
         : createPreservedXmlRun(node, nonLinkMarks, {
             baseParagraphFormatting,
             inheritedFormatting,
-            paragraphMarkFormatting,
             styleResolver,
           }),
     );
@@ -4873,7 +4849,6 @@ function addNodeToHyperlink({
       createBreakRun(expectHardBreakAttrs(node), nonLinkMarks, {
         baseParagraphFormatting,
         inheritedFormatting,
-        paragraphMarkFormatting,
         styleResolver,
       }),
     );
@@ -4897,7 +4872,6 @@ function addNodeToHyperlink({
       createTabRun(node, nonLinkMarks, {
         baseParagraphFormatting,
         inheritedFormatting,
-        paragraphMarkFormatting,
         styleResolver,
       }),
     );
@@ -5014,14 +4988,12 @@ function createRunFromText({
   baseParagraphFormatting,
   inheritedFormatting,
   marks,
-  paragraphMarkFormatting,
   styleResolver,
   text,
 }: CreateRunFromTextOptions): Run {
   const formatting = getRunFormattingFromMarks(marks, {
     baseParagraphFormatting,
     inheritedFormatting,
-    paragraphMarkFormatting,
     styleResolver,
   });
   const run: Run = { type: "run", content: textLeafRunContent(text, marks) };
@@ -5285,7 +5257,6 @@ function createPageBreakCarrierRun({
   clear,
   inheritedFormatting,
   marks,
-  paragraphMarkFormatting,
   styleResolver,
 }: CreatePageBreakCarrierRunOptions): Run {
   const run: Run = {
@@ -5301,7 +5272,6 @@ function createPageBreakCarrierRun({
   const formatting = getAtomRunFormattingFromMarks(marks, {
     baseParagraphFormatting,
     inheritedFormatting,
-    paragraphMarkFormatting,
     styleResolver,
   });
   if (formatting) {
@@ -5429,7 +5399,6 @@ function createFieldFromNode(
     baseParagraphFormatting,
     inheritedFormatting,
     marks,
-    paragraphMarkFormatting,
     styleResolver,
     textBoxAnchorMarkers,
   }: CreateFieldFromNodeOptions,
@@ -5440,14 +5409,12 @@ function createFieldFromNode(
       ? marksToTextFormatting(marks, {
           baseParagraphFormatting,
           inheritedFormatting,
-          paragraphMarkFormatting,
           styleResolver,
         })
       : undefined;
   const fieldFormattingContext = {
     baseParagraphFormatting,
     inheritedFormatting,
-    paragraphMarkFormatting,
     styleResolver: styleResolver ?? null,
   };
   const extractedContent = extractParagraphContent(

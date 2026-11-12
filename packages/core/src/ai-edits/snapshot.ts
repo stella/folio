@@ -1320,7 +1320,6 @@ const getPreviewRuns = ({
       const directTextFormatting = marksToTextFormatting(child.marks, {
         baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
         inheritedFormatting: paragraphStyleContext.paragraphFormatting,
-        paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
         styleResolver,
       });
       directFormatting = getDirectPreviewRunStyle(

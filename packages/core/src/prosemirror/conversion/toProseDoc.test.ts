@@ -427,7 +427,7 @@ describe("toProseDoc", () => {
     ]);
   });
 
-  test("applies paragraph-mark defaults to otherwise unformatted visible text", () => {
+  test("lends a paragraph mark's run properties to no run", () => {
     const document: Document = {
       package: {
         document: {
@@ -457,11 +457,12 @@ describe("toProseDoc", () => {
     const doc = toProseDoc(document);
     const text = doc.firstChild?.firstChild;
 
-    expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(true);
+    // The mark's properties format the mark alone (ECMA-376 17.3.1.29).
+    expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(false);
     expect(text?.marks.some((mark) => mark.type.name === "italic")).toBe(false);
-    expect(
-      text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
-    ).toBe(21);
+    expect(text?.marks.some((mark) => mark.type.name === "fontSize")).toBe(
+      false,
+    );
     expect(text?.marks.some((mark) => mark.type.name === "fontFamily")).toBe(
       false,
     );
@@ -506,7 +507,7 @@ describe("toProseDoc", () => {
     ).toBe(20);
   });
 
-  test("keeps paragraph font size when a run only overrides the font family", () => {
+  test("takes no size from the paragraph mark for a run that only states a font family", () => {
     const document: Document = {
       package: {
         document: {
@@ -542,7 +543,7 @@ describe("toProseDoc", () => {
 
     expect(
       text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
-    ).toBe(16);
+    ).toBeUndefined();
   });
 
   test("keeps the default paragraph style size when paragraph and run only set a font family", () => {
@@ -640,7 +641,7 @@ describe("toProseDoc", () => {
     const paragraph = doc.firstChild;
     const text = paragraph?.firstChild;
 
-    expect(paragraph?.attrs.defaultTextFormatting.fontSize).toBe(52);
+    expect(paragraph?.attrs.defaultTextFormatting.fontSize).toBe(24);
     expect(
       text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
     ).toBe(24);
@@ -1030,7 +1031,7 @@ describe("toProseDoc", () => {
     expect(
       label?.marks.find((mark) => mark.type.name === "runFormattingOverride")
         ?.attrs.underline,
-    ).toBe("none");
+    ).toBeNull();
     expect(
       tab?.marks.find((mark) => mark.type.name === "underline")?.attrs.style,
     ).toBe("single");
@@ -1071,7 +1072,7 @@ describe("toProseDoc", () => {
     expect(
       text?.marks.find((mark) => mark.type.name === "runFormattingOverride")
         ?.attrs.bold,
-    ).toBe(false);
+    ).toBeNull();
   });
 
   test("does not leak paragraph-mark emphasis through a character-style reference", () => {
@@ -1128,7 +1129,7 @@ describe("toProseDoc", () => {
       expect(text?.marks.some((mark) => mark.type.name === markName)).toBe(
         false,
       );
-      expect(formattingOverride?.attrs[markName]).toBe(false);
+      expect(formattingOverride?.attrs[markName] ?? null).toBeNull();
     }
     expect(
       text?.marks.find((mark) => mark.type.name === "characterStyle")?.attrs
@@ -1180,11 +1181,10 @@ describe("toProseDoc", () => {
     const paragraph = doc.firstChild;
     const text = paragraph?.firstChild;
 
-    expect(paragraph?.attrs.defaultTextFormatting.spacing).toBe(-60);
+    expect(paragraph?.attrs.defaultTextFormatting).toBeNull();
     expect(
-      text?.marks.find((mark) => mark.type.name === "characterSpacing")?.attrs
-        .spacing,
-    ).toBe(0);
+      text?.marks.some((mark) => mark.type.name === "characterSpacing"),
+    ).toBe(false);
   });
 
   test("applies oneNDA table style run properties before direct run properties", () => {
@@ -2262,7 +2262,7 @@ describe("toProseDoc", () => {
     });
   });
 
-  test("uses current paragraph formatting for inserted runs", () => {
+  test("lends inserted runs nothing from the paragraph mark", () => {
     const document: Document = {
       package: {
         document: {
@@ -2288,7 +2288,7 @@ describe("toProseDoc", () => {
     const inserted = toProseDoc(document).firstChild?.firstChild;
     expect(
       inserted?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size,
-    ).toBe(22);
+    ).toBeUndefined();
   });
 
   test("preserves historical defaults when they equal paragraph-mark formatting", () => {

@@ -11,9 +11,7 @@ import { marksToTextFormatting } from "./runFormattingFromMarks";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
 import {
-  getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
-  isParagraphMarkSuppressionEligible,
   paragraphFormattingForRun,
   type ParagraphRunStyleContext,
   resolveEffectiveRunStyleFormatting,
@@ -35,7 +33,6 @@ export const readAuthoredRunFormatting = ({
   marksToTextFormatting(marks, {
     baseParagraphFormatting: context.baseParagraphFormatting,
     inheritedFormatting: context.paragraphFormatting,
-    paragraphMarkFormatting: context.paragraphMarkFormatting,
     ...(styleResolver !== undefined ? { styleResolver } : {}),
   });
 
@@ -97,7 +94,6 @@ export const reconcileRunFormattingMarks = ({
   const paragraphFormatting = paragraphFormattingForRun({
     marks: styleResolutionMarks,
     context,
-    directFormatting: authoredFormatting,
   });
   const inheritedFormatting = resolveEffectiveRunStyleFormatting({
     marks: styleResolutionMarks,
@@ -108,30 +104,11 @@ export const reconcileRunFormattingMarks = ({
     inheritedFormatting,
     authoredFormatting,
   );
-  const paragraphMarkOverrides = isParagraphMarkSuppressionEligible(
-    authoredFormatting,
-  )
-    ? getParagraphMarkSuppressionOverrides({
-        directFormatting: authoredFormatting,
-        paragraphMarkFormatting: context.paragraphMarkFormatting,
-        suppressedFormatting: paragraphFormatting,
-        characterStyleFormatting:
-          authoredFormatting.styleId === undefined
-            ? undefined
-            : (styleResolver?.getRunStyleOwnProperties(
-                authoredFormatting.styleId,
-              ) ?? undefined),
-      })
-    : undefined;
-  const overrideFormatting = mergeTextFormatting(
-    paragraphMarkOverrides,
-    authoredFormatting,
-  );
   const formattingMarks = textFormattingToMarks(
     effectiveFormatting,
     node.type.schema,
     {
-      overrideFormatting,
+      overrideFormatting: authoredFormatting,
       directFormatting: authoredFormatting,
       authoredCarrier: "preserve",
     },

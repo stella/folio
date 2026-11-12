@@ -98,10 +98,7 @@ import {
   nodePropertyRevisionSites,
 } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-import {
-  reconstructRejectedRunFormattingMarks,
-  restoreHistoricalRunFormatting,
-} from "../runPropertyChangeResolution";
+import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import type { TrackedRevisionAncestor } from "../schema/marks";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
@@ -523,39 +520,6 @@ function resolveChangeUnguarded(
           );
         if (resolvesNode) {
           resolvedBoundaries.push(rangeFrom, rangeTo);
-        }
-        const restoredDeletion =
-          mode === "reject" &&
-          node.marks.find(
-            (mark) =>
-              mark.type === keepType &&
-              matchesRevision(mark) &&
-              expectTrackedChangeMarkAttrs(mark)._historicalFormatting &&
-              !expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.some(
-                (layer) =>
-                  (layer.type === "deletion" || layer.type === "moveFrom") &&
-                  revisionSet !== null &&
-                  !revisionSet.has(layer.revisionId),
-              ),
-          );
-        if (restoredDeletion && !removesNode) {
-          const nextMarks = restoreHistoricalRunFormatting({
-            node,
-            paragraphContext: paragraphRunStyleContextAt({
-              doc: tr.doc,
-              pos: rangeFrom,
-              styleResolver,
-            }),
-            styleResolver,
-          });
-          for (const mark of node.marks) {
-            if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name))
-              tr.removeMark(rangeFrom, rangeTo, mark);
-          }
-          for (const mark of nextMarks) {
-            if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name))
-              tr.addMark(rangeFrom, rangeTo, mark);
-          }
         }
         if (runPropertyChangeMark) {
           resolveRunPropertyChange({

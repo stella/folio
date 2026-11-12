@@ -183,12 +183,9 @@ import {
   continueSourceCarrierIdentitiesKeeping,
 } from "../runIdentityAcrossRevisions";
 import {
-  getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
-  isParagraphMarkSuppressionEligible,
   resolveParagraphInheritedRunFormatting,
   stripParagraphMarkOnlyFormatting,
-  suppressParagraphMarkFormatting,
 } from "../runStyleFormatting";
 import { schema } from "../schema";
 import type {
@@ -207,7 +204,6 @@ import type {
 } from "../schema/nodes";
 import {
   extractTableParagraphOverlay,
-  inheritableParagraphMarkFormatting,
   paragraphStyleCascadeAttrs,
   resolveRunFormattingWithoutDefaults,
 } from "../styles/paragraphStyleCascade";
@@ -291,7 +287,6 @@ const pageBreakProjectionWarn = (
 type ResolvedRunFormatting = {
   formatting: TextFormatting | undefined;
   implicitCharacterStyleApplied?: true;
-  paragraphMarkOverrides?: TextFormatting;
   toggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
 };
 
@@ -1505,7 +1500,6 @@ function convertParagraph(
     sourceDescendants: pageBreakRunSourceDescendants,
     warn: context.warnPageBreakProjection,
   });
-  const isTocParagraph = attrs._tableOfContentsLevel !== undefined;
   const inlineNodes: PMNode[] = [];
   let inlineOffset = 0;
   let bookmarksArr: { id: number; name: string }[] | undefined;
@@ -1540,13 +1534,8 @@ function convertParagraph(
     emitInlineNodes([node]);
   };
 
-  const inheritableParagraphRunFormatting = isTocParagraph
-    ? undefined
-    : inheritableParagraphMarkFormatting({
-        runProperties: paragraph.formatting?.runProperties,
-        styleId: paragraph.formatting?.styleId,
-        styleResolver,
-      });
+  // A paragraph mark's run properties format the mark alone: body runs take
+  // the table, paragraph style and default character style cascade only.
   const {
     baseFormatting: baseRunFormatting,
     baseToggleCascade: orderedToggleFormatting,
@@ -1558,7 +1547,6 @@ function convertParagraph(
     styleId: paragraph.formatting?.styleId,
     tableRunFormatting: extraRunFormatting,
     styleResolver,
-    paragraphMarkFormatting: inheritableParagraphRunFormatting,
   });
   if (extraRunFormatting !== undefined || paragraph.content.length > 0) {
     // The paragraph-mark font paints an empty paragraph's glyph. Once the
@@ -1574,74 +1562,33 @@ function convertParagraph(
       delete attrs.defaultTextFormatting;
     }
   }
+  const getHistoricalRunFormatting: RunFormattingResolver = (formatting) => {
+    const hasCharacterStyle = formatting?.styleId !== undefined;
+    return {
+      formatting: hasCharacterStyle
+        ? baseRunFormatting
+        : ordinaryBaseWithDefaultCharacter,
+      ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
+      toggleCascade: hasCharacterStyle
+        ? orderedToggleFormatting
+        : defaultCharacterStyleCascade,
+    };
+  };
+  // A run that states nothing takes the cascade's resolved toggles as they
+  // stand; one that states something resolves them again over its own.
   const getInheritedRunFormatting = (
     formatting: TextFormatting | undefined,
     fieldType?: string,
-  ): ResolvedRunFormatting => {
-    const hasCharacterStyle = formatting?.styleId !== undefined;
-    const inheritedBaseFormatting = hasCharacterStyle
-      ? baseRunFormatting
-      : ordinaryBaseWithDefaultCharacter;
-    const inheritedToggleCascade = hasCharacterStyle
-      ? orderedToggleFormatting
-      : defaultCharacterStyleCascade;
-    if (fieldType === "TOC") {
-      return {
-        formatting: hasDirectRunFormatting(formatting)
-          ? suppressParagraphMarkFormatting({
-              baseFormatting: inheritedBaseFormatting,
-              directFormatting: formatting,
-              paragraphMarkFormatting: undefined,
-            })
-          : inheritedBaseFormatting,
-        ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
-        toggleCascade: inheritedToggleCascade,
-      };
-    }
-    if (!isParagraphMarkSuppressionEligible(formatting)) {
-      return {
-        formatting: defaultRunFormatting,
-        implicitCharacterStyleApplied: true,
-        toggleCascade: defaultToggleCascade,
-      };
-    }
-    const suppressedFormatting = suppressParagraphMarkFormatting({
-      baseFormatting: inheritedBaseFormatting,
-      directFormatting: formatting,
-      paragraphMarkFormatting: inheritableParagraphRunFormatting,
-    });
-    const paragraphMarkOverrides =
-      getParagraphMarkSuppressionOverrides({
-        directFormatting: formatting,
-        paragraphMarkFormatting: inheritableParagraphRunFormatting,
-        suppressedFormatting,
-        characterStyleFormatting:
-          formatting?.styleId === undefined
-            ? undefined
-            : (styleResolver?.getRunStyleOwnProperties(formatting.styleId) ??
-              undefined),
-      }) ?? (inheritableParagraphRunFormatting ? {} : undefined);
-    return {
-      formatting: suppressedFormatting,
-      ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
-      ...(paragraphMarkOverrides ? { paragraphMarkOverrides } : {}),
-      toggleCascade: inheritedToggleCascade,
-    };
-  };
-  const getHistoricalRunFormatting: RunFormattingResolver = (formatting) => {
-    const hasCharacterStyle = formatting?.styleId !== undefined;
-    const inheritedBaseFormatting = hasCharacterStyle
-      ? baseRunFormatting
-      : ordinaryBaseWithDefaultCharacter;
-    const inheritedToggleCascade = hasCharacterStyle
-      ? orderedToggleFormatting
-      : defaultCharacterStyleCascade;
-    return {
-      formatting: inheritedBaseFormatting,
-      ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
-      toggleCascade: inheritedToggleCascade,
-    };
-  };
+  ): ResolvedRunFormatting =>
+    fieldType === "TOC" ||
+    formatting?.styleId !== undefined ||
+    hasDirectRunFormatting(formatting)
+      ? getHistoricalRunFormatting(formatting)
+      : {
+          formatting: defaultRunFormatting,
+          implicitCharacterStyleApplied: true,
+          toggleCascade: defaultToggleCascade,
+        };
   const trackedRunFormattingResolvers: TrackedRunFormattingResolvers = {
     current: getInheritedRunFormatting,
     historical: getHistoricalRunFormatting,
@@ -4765,18 +4712,13 @@ type CanReconstructAuthoredRunFormattingOptions = {
   directFormatting: TextFormatting | undefined;
   effectiveFormatting: TextFormatting | undefined;
   inheritedFormatting: TextFormatting | undefined;
-  paragraphMarkOverrides: TextFormatting | undefined;
 };
 
 const canReconstructAuthoredRunFormatting = ({
   directFormatting,
   effectiveFormatting,
   inheritedFormatting,
-  paragraphMarkOverrides,
 }: CanReconstructAuthoredRunFormattingOptions): boolean => {
-  if (paragraphMarkOverrides !== undefined) {
-    return false;
-  }
   for (const property of Object.keys(
     directFormatting ?? {},
   ) as (keyof TextFormatting)[]) {
@@ -4916,8 +4858,7 @@ function buildRunMarks({
 }: BuildRunMarksOptions): BuiltRunMarks {
   if (
     runFormatting === undefined &&
-    inherited.implicitCharacterStyleApplied === true &&
-    inherited.paragraphMarkOverrides === undefined
+    inherited.implicitCharacterStyleApplied === true
   ) {
     return {
       marks: textFormattingToMarks(inherited.formatting, schema, {
@@ -4969,7 +4910,6 @@ function buildRunMarks({
       directFormatting: runFormatting,
       effectiveFormatting: mergedFormatting,
       inheritedFormatting: runStyleFormatting,
-      paragraphMarkOverrides: inherited.paragraphMarkOverrides,
     })
       ? "reconstruct"
       : "preserve";
@@ -4977,7 +4917,6 @@ function buildRunMarks({
     directFormatting: runFormatting,
     effectiveStyleFormatting: runStyleFormatting,
     hasCharacterStyle: styleId !== undefined,
-    paragraphMarkOverrides: inherited.paragraphMarkOverrides,
   });
   if (authoredCarrier === "reconstruct") {
     if (overrideFormatting?.bold === true) {
@@ -5016,19 +4955,14 @@ type GetRunFormattingOverridesOptions = {
   directFormatting: TextFormatting | undefined;
   effectiveStyleFormatting: TextFormatting | undefined;
   hasCharacterStyle: boolean;
-  paragraphMarkOverrides: TextFormatting | undefined;
 };
 
 function getRunFormattingOverrides({
   directFormatting,
   effectiveStyleFormatting,
   hasCharacterStyle,
-  paragraphMarkOverrides,
 }: GetRunFormattingOverridesOptions): TextFormatting | undefined {
-  const overrides = mergeTextFormatting(
-    paragraphMarkOverrides,
-    directFormatting,
-  );
+  const overrides = mergeTextFormatting(undefined, directFormatting);
   if (!overrides || !directFormatting) {
     return overrides;
   }

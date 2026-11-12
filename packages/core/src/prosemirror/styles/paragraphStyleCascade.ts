@@ -29,11 +29,7 @@ import { paragraphNumberingAttr } from "../numberingAttr";
 import { directionFromBidi } from "../paragraphDirection";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
-import {
-  paragraphMarkLendsRuns,
-  stripParagraphMarkFormattingForBodyRuns,
-  stripParagraphMarkOnlyFormatting,
-} from "../runStyleFormatting";
+import { stripParagraphMarkOnlyFormatting } from "../runStyleFormatting";
 import type { ParagraphAttrs } from "../schema/nodes";
 import { cascadeStyleTextFormatting } from "./styleToggleCascade";
 import type { TableStyleRegion } from "./tableStyleRegions";
@@ -79,30 +75,6 @@ export function resolveRunFormattingWithoutDefaults(
     { formatting, type: "direct" },
   ]).formatting;
 }
-
-/**
- * What a paragraph's mark lends its body runs: nothing when the paragraph has a
- * style, and never the font or the mark-only decorations. One rule for a
- * document read and for a paragraph whose properties a review restores.
- */
-export const inheritableParagraphMarkFormatting = ({
-  runProperties,
-  styleId,
-  styleResolver,
-}: {
-  runProperties: TextFormatting | undefined;
-  styleId: string | undefined;
-  styleResolver: Parameters<typeof resolveRunFormattingWithoutDefaults>[1];
-}): TextFormatting | undefined => {
-  if (!paragraphMarkLendsRuns(styleId)) return undefined;
-  const formatting = resolveRunFormattingWithoutDefaults(
-    runProperties,
-    styleResolver,
-  );
-  return formatting
-    ? stripParagraphMarkFormattingForBodyRuns(formatting)
-    : undefined;
-};
 
 /** @internal Recompute a paragraph's inherited run defaults from authored package state. */
 export function resolveParagraphDefaultTextFormatting(
