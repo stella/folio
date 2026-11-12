@@ -3237,7 +3237,7 @@ export const deletionRange = (
   )
     return refuse("There is no visible character to delete in this paragraph.");
   let boundary = visibleOffset + (direction === "backward" ? -1 : 1);
-  while (splitsSurrogatePair(text, boundary))
+  while (splitsGraphemeCluster(text, boundary))
     boundary += direction === "backward" ? -1 : 1;
   const from = physicalStarts.at(
     direction === "backward" ? boundary : visibleOffset,
