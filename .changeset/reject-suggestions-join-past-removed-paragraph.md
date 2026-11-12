@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Rejecting suggestions together runs the words of a paragraph whose suggested break they take out into the paragraph that stays, not into a suggested paragraph the same rejection removes, so it keeps that paragraph's formatting.
+Rejecting every suggestion, and saving while suggestions are pending, leaves no rejected suggestion's paragraph break behind, so the words of a paragraph whose break goes keep the formatting of the paragraph that stays.

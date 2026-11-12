@@ -11,7 +11,9 @@
  *   suggestions runs them into the paragraph that stays, not into the
  *   rejected one.
  * - The saved package, reopened and rejected, reads as the live reviewer
- *   rejected.
+ *   rejected. Deleting the last paragraph and accepting its deleted break
+ *   leaves a suggested paragraph holding another suggestion's break; the
+ *   save rejects both, so the accepted join is in the package too.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -251,67 +253,36 @@ describe("reject all after accepting one of several suggestions", () => {
       ]);
     }
   });
-});
 
-// TEMPORARY diagnostic dump, removed before review.
-type DiagNode = {
-  type: { name: string };
-  attrs: Record<string, unknown>;
-  isText: boolean;
-  text?: string;
-  marks: { type: { name: string }; attrs: Record<string, unknown> }[];
-  forEach: (visit: (node: DiagNode) => void) => void;
-  descendants: (visit: (node: DiagNode) => void) => void;
-};
-const dump = (label: string, reviewer: FolioDocxReviewer) => {
-  const { doc } = Reflect.get(reviewer, "state") as { doc: DiagNode };
-  const lines: string[] = [];
-  doc.forEach((node) => {
-    const runs: string[] = [];
-    node.descendants((child) => {
-      if (!child.isText) return;
-      const marks = child.marks
-        .filter(
-          (m) => m.type.name === "insertion" || m.type.name === "deletion",
-        )
-        .map(
-          (m) =>
-            `${m.type.name}:${String(m.attrs["revisionId"])}:${String(m.attrs["suggestionId"])}`,
-        );
-      runs.push(`[${child.text ?? ""}|${marks.join(",")}]`);
-    });
-    const mark = node.attrs["pPrMark"] as {
-      kind?: string;
-      info?: { id?: number; suggestionId?: string };
-    } | null;
-    const sugg = node.attrs["_suggestedInsert"] as {
-      suggestionId?: string;
-      revisionId?: number;
-    } | null;
-    lines.push(
-      `${node.type.name} mark=${mark ? `${mark.kind}:${mark.info?.id}:${mark.info?.suggestionId}` : "-"} sugg=${sugg ? `${sugg.suggestionId}:${sugg.revisionId}` : "-"} pc=${JSON.stringify((node.attrs["_propertyChanges"] as unknown[] | null)?.length ?? 0)} ${runs.join("")}`,
-    );
+  test("an accepted deleted last break is in the saved package", async () => {
+    const flow = await open(await fixture());
+    const last = idOf(flow, LINES[4]);
+    apply(flow, "suggested", [
+      { id: "delete", type: "deleteBlock", blockId: last },
+      {
+        id: "first",
+        type: "insertBeforeBlock",
+        blockId: last,
+        text: "First added clause.",
+      },
+      {
+        id: "second",
+        type: "insertBeforeBlock",
+        blockId: last,
+        text: "Second added clause.",
+      },
+    ]);
+    const deletedBreak = flow
+      .getChanges()
+      .find((change) => change.type === "paragraphMarkDeleted");
+    if (deletedBreak === undefined) throw new Error("no deleted break");
+    expect(flow.acceptChange(deletedBreak)).toBe(true);
+    const saved = await open(await flow.toBuffer());
+    const live = await rejected(flow);
+    expect(await rejected(saved)).toEqual(live);
+    expect(live.blocks.map(({ text }) => text)).toEqual([
+      ...LINES.slice(0, 3),
+      `${LINES[3]}${LINES[4]}`,
+    ]);
   });
-  console.log(`DIAG ${label}\n${lines.join("\n")}`);
-};
-
-test("DIAG deleted 4, accept 2, after 0", async () => {
-  const bytes = await fixture();
-  for (const withAfter of [false, true]) {
-    const live = await suggest(bytes, { deleted: 4, accept: 2 });
-    if (live === null) return;
-    dump(`${withAfter} accepted`, live);
-    console.log(
-      "DIAG changes",
-      JSON.stringify(live.getChanges().map((c) => [c.type, c.id, c.text])),
-    );
-    if (withAfter) suggestAfter(live, 0);
-    dump(`${withAfter} after`, live);
-    const saved = await open(await live.toBuffer());
-    dump(`${withAfter} saved`, saved);
-    live.rejectAll();
-    dump(`${withAfter} live rejected`, live);
-    saved.rejectAll();
-    dump(`${withAfter} saved rejected`, saved);
-  }
 });
