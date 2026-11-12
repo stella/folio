@@ -263,9 +263,8 @@ export const limitsUnderMeasuredDurations = (
 ): string[] =>
   [...workflows].flatMap(([file, workflow]) => {
     const { limits, problems } = declaredLimits(file, workflow);
-    return [
-      ...problems,
-      ...limits.flatMap(({ job, minutes, step }) => {
+    return problems.concat(
+      limits.flatMap(({ job, minutes, step }) => {
         const jobDurations = durations[file]?.[job];
         const measurement =
           step === undefined ? jobDurations?.job : jobDurations?.steps?.[step];
@@ -277,7 +276,7 @@ export const limitsUnderMeasuredDurations = (
               `${file}: ${step === undefined ? job : `${job} step "${step}"`} allows ${minutes} min, but its measured p95 of ${measurement.p95Seconds} s needs at least ${needed} min`,
             ];
       }),
-    ];
+    );
   });
 
 export const committedWorkflows = (root = REPO_ROOT): Map<string, unknown> =>
@@ -383,7 +382,9 @@ export const parseWorkflowRuns = (
           (checkRun) => {
             const id = field(checkRun, "id");
             if (typeof id !== "string") panic("GitHub check run has no id");
-            return { ...parseStep(checkRun), id, steps: [] };
+            const { name, conclusion, startedAt, completedAt } =
+              parseStep(checkRun);
+            return { id, name, conclusion, startedAt, completedAt, steps: [] };
           },
         ),
       },
@@ -492,10 +493,16 @@ export const fetchWorkflowRuns = async (
   }
   return runs.map(({ workflow, checkRuns }) => ({
     workflow,
-    checkRuns: checkRuns.map((checkRun) => ({
-      ...checkRun,
-      steps: steps.get(checkRun.id) ?? [],
-    })),
+    checkRuns: checkRuns.map(
+      ({ id, name, conclusion, startedAt, completedAt }) => ({
+        id,
+        name,
+        conclusion,
+        startedAt,
+        completedAt,
+        steps: steps.get(id) ?? [],
+      }),
+    ),
   }));
 };
 
