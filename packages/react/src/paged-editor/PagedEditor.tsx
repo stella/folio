@@ -2296,11 +2296,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const laidOutLayoutInputSignatureRef = useRef<string | null>(null);
     const runLayoutPipeline = useCallback(
       (state: EditorState, options: LayoutRunOptions = {}) => {
-        // An edit's pass waits for the initial font wait to end, then runs on
-        // the state current at that moment.
+        // Nothing paints before the initial font wait ends; a pass asked for
+        // meanwhile runs, on the state current then, once it has.
         if (
           pendingInitialFontReadyLayoutRef.current &&
-          options.reason === "transaction"
+          options.reason !== "initial"
         ) {
           layoutDeferredByFontWaitRef.current = true;
           return;
@@ -5958,6 +5958,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       return () => {
         cancelled = true;
         pendingInitialFontReadyLayoutRef.current = false;
+        // A wait this effect starts again takes the held pass over; without
+        // one, it runs now.
+        queueMicrotask(runLayoutDeferredByFontWait);
       };
     }, [
       collaboration,
