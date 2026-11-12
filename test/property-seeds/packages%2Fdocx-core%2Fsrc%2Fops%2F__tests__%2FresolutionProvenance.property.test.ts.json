@@ -290,6 +290,18 @@
       "path": "11:0:0:0:1:3:3:3:3:5",
       "note": "#2628: a rejected insertion whose neighbours are later insertions the same resolution removes joins the source pieces beyond them.",
       "date": "2026-11-12"
+    },
+    {
+      "seed": 88965487,
+      "path": "30:0:0:0:2:2:2:2:2",
+      "note": "scratch check of a seed a scratch run reported",
+      "date": "2026-11-12"
+    },
+    {
+      "seed": -624148277,
+      "path": "30:0:0:0:0:0:0:2:4:4:4:6:6",
+      "note": "scratch check of a seed a scratch run reported",
+      "date": "2026-11-12"
     }
   ],
   "overlapping formatting rejection preserves authored runs in either resolution order": [
