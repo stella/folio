@@ -6,7 +6,7 @@
  *
  * The anchor may be the story's last paragraph, or have a paragraph after
  * it, with a table between the two that stays or that a first batch deletes
- * (pending, unless applied directly). Every batch puts one to five blocks of
+ * (as a tracked change still pending, unless applied directly). Every batch puts one to five blocks of
  * mixed kinds (a paragraph, two paragraphs from one text, a paragraph
  * starting a new list, a table or a signature table, whichever the mode has;
  * no operation inserts a block content control) after the anchor, after the
@@ -236,7 +236,8 @@ const replay = async (setup: Case, mode: Mode) => {
       ? []
       : [{ label: TABLE, table: true, isTable: true }];
   if (setup.table === "removed" && tableId !== undefined) {
-    applyBatch(reviewer, mode, [
+    // Another reviewer's pending deletion, unless applied directly.
+    applyBatch(reviewer, mode === "direct" ? "direct" : "tracked-changes", [
       { id: "delete-table", type: "deleteTable", blockId: tableId },
     ]);
   }
