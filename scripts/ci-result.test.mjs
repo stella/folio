@@ -1,8 +1,17 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+// The largest test here runs the result step 22 times.
+setDefaultTimeout(subprocessTestTimeout(22));
 
 const workflow = Bun.YAML.parse(
   readFileSync(
@@ -52,22 +61,24 @@ const runResult = (event, needs, draft = "false") => {
   const directory = mkdtempSync(join(tmpdir(), "folio-ci-outcome-"));
   const summary = join(directory, "summary");
   try {
-    const result = Bun.spawnSync(
-      ["bash", "-c", `gh() { echo "$DRAFT_STATE"; }; ${resultStep.run}`],
-      {
-        env: {
-          ...process.env,
-          EVENT: event,
-          NEEDS: JSON.stringify(needs),
-          PLAN: JSON.stringify(needs["ci-plan"].outputs),
-          PLAN_RESULT: needs["ci-plan"].result,
-          JOB_SCOPES: JSON.stringify(scopes),
-          DRAFT_STATE: draft,
-          REPO: "stella/folio",
-          PR_NUMBER: "1",
-          GITHUB_STEP_SUMMARY: summary,
+    const result = expectExited(
+      runChild(
+        ["bash", "-c", `gh() { echo "$DRAFT_STATE"; }; ${resultStep.run}`],
+        {
+          env: {
+            ...process.env,
+            EVENT: event,
+            NEEDS: JSON.stringify(needs),
+            PLAN: JSON.stringify(needs["ci-plan"].outputs),
+            PLAN_RESULT: needs["ci-plan"].result,
+            JOB_SCOPES: JSON.stringify(scopes),
+            DRAFT_STATE: draft,
+            REPO: "stella/folio",
+            PR_NUMBER: "1",
+            GITHUB_STEP_SUMMARY: summary,
+          },
         },
-      },
+      ),
     );
     return {
       ...result,
@@ -157,9 +168,7 @@ describe("CI result", () => {
           if (failure !== "missing") needs[job].result = failure;
           const run = runResult(event, needs);
           expect(run.exitCode).toBe(1);
-          expect(run.stdout.toString()).toContain(
-            `${job} (selected, ${failure})`,
-          );
+          expect(run.stdout).toContain(`${job} (selected, ${failure})`);
         }
       });
     }
@@ -250,9 +259,7 @@ describe("CI result", () => {
       for (const depth of ["full", "invalid"]) {
         const run = runResult(event, needsFor({ depth, event }));
         expect(run.exitCode).toBe(1);
-        expect(run.stdout.toString()).toContain(
-          `wrong suite depth for ${event}`,
-        );
+        expect(run.stdout).toContain(`wrong suite depth for ${event}`);
       }
     }
     for (const depth of ["fast", "invalid"]) {
@@ -261,9 +268,7 @@ describe("CI result", () => {
         needsFor({ depth, event: "merge_group" }),
       );
       expect(run.exitCode).toBe(1);
-      expect(run.stdout.toString()).toContain(
-        "wrong suite depth for merge_group",
-      );
+      expect(run.stdout).toContain("wrong suite depth for merge_group");
     }
 
     const untrusted = needsFor({ depth: "full", event: "merge_group" });

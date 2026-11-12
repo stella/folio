@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,6 +11,11 @@ import { join } from "node:path";
 
 import packageJson from "../package.json";
 import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+import {
   checkQuarantineExcludes,
   pruneExpiredExcludes,
   quarantineInstallRoots,
@@ -19,6 +24,8 @@ import {
   workflowFixturePath,
   workflowReference,
 } from "./lib/reusable-workflow-permissions";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const SCRIPT_PATH = "scripts/check-quarantine-excludes.ts";
 
@@ -505,13 +512,12 @@ test("the prune command removes expired exceptions from every independent instal
       writeFileSync(join(root, directory, "bun.lock"), lockfile);
     }
     expect(quarantineInstallRoots).toContain("plugins/vscode");
-    const result = Bun.spawnSync(
-      [process.execPath, join(root, SCRIPT_PATH), "--prune"],
-      {
+    const result = expectExited(
+      runChild([process.execPath, join(root, SCRIPT_PATH), "--prune"], {
         cwd: root,
-      },
+      }),
     );
-    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    expect(result.exitCode, result.stderr).toBe(0);
     for (const directory of quarantineInstallRoots) {
       const bunfig = readFileSync(join(root, directory, "bunfig.toml"), "utf8");
       expect(bunfig).not.toContain('"bun-types"');

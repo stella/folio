@@ -1,8 +1,16 @@
 import binaryen from "binaryen";
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -38,17 +46,16 @@ test("attribution normalizes Rust hashes and measures emitted function-body grow
         (func $probe::h2222222222222222 (export "probe") (param i32) (result i32)
           (i32.add (local.get 0) (i32.const 1))))`),
     );
-    const result = Bun.spawnSync(
-      [
+    const result = expectExited(
+      runChild([
         process.execPath,
         join(import.meta.dir, "projection-footprint.ts"),
         base,
         head,
         output,
-      ],
-      { stdout: "pipe", stderr: "pipe" },
+      ]),
     );
-    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    expect(result.exitCode, result.stderr).toBe(0);
     const report: unknown = JSON.parse(readFileSync(output, "utf8"));
     if (
       !isRecord(report) ||

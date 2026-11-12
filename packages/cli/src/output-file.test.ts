@@ -1,9 +1,23 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../test/subprocess";
 import { makeTempDir } from "./__tests__/fixtures";
 import { writeOutputFile } from "./output-file";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 let dir = "";
 let cleanup: () => Promise<void> = () => Promise.resolve();
@@ -95,13 +109,9 @@ describe("writeOutputFile", () => {
       });
       console.log(JSON.stringify(result.isErr() ? result.error.code : "ok"));
     `;
-    const result = Bun.spawnSync([process.execPath, "--eval", source], {
-      stdout: "pipe",
-      stderr: "pipe",
-      timeout: 10_000,
-    });
-    expect(result.stderr.toString()).toBe("");
-    expect(JSON.parse(result.stdout.toString())).toBe("unsafe_path");
+    const result = expectExited(runChild([process.execPath, "--eval", source]));
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toBe("unsafe_path");
     expect(await readdir(elsewhere)).toEqual([]);
     expect(await readdir(`${output}-moved`)).toEqual([]);
   });

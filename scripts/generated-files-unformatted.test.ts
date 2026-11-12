@@ -1,7 +1,14 @@
-import { expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 // A generator's check compares its output byte for byte, so a file it writes
 // must never be rewritten by `bun fmt`: every tracked file that opens with a
@@ -50,11 +57,15 @@ const ignorePatterns = (): string[] => {
   return patterns;
 };
 
+/** Git's output for `args`; git must exit cleanly. */
+const git = (args: string[]): string => {
+  const run = expectExited(runChild(["git", ...args], { cwd: root }));
+  expect(run.exitCode).toBe(0);
+  return run.stdout;
+};
+
 test("bun fmt never rewrites a tracked generated file", () => {
-  const files = execFileSync("git", ["ls-files", "-z"], {
-    cwd: root,
-    encoding: "utf8",
-  })
+  const files = git(["ls-files", "-z"])
     .split("\0")
     .filter((file) => FORMATTED.test(file))
     .map((file) => ({

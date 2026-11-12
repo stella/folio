@@ -1,7 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const DIVERGENCES_SCRIPT = path.resolve(import.meta.dir, "../divergences.ts");
 
@@ -27,18 +35,9 @@ const runDivergences = async (report: unknown): Promise<RunResult> => {
   await Bun.write(reportPath, JSON.stringify(report));
 
   try {
-    const proc = Bun.spawn(
-      [process.execPath, DIVERGENCES_SCRIPT, "--report", reportPath],
-      {
-        stdout: "pipe",
-        stderr: "pipe",
-      },
+    const { exitCode, stdout, stderr } = expectExited(
+      runChild([process.execPath, DIVERGENCES_SCRIPT, "--report", reportPath]),
     );
-    const [exitCode, stdout, stderr] = await Promise.all([
-      proc.exited,
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
     return { exitCode, stdout, stderr };
   } finally {
     await rm(dir, { recursive: true, force: true });

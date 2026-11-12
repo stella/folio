@@ -1,5 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES = ["core", "react"] as const;
@@ -10,16 +18,13 @@ const PRIVATE_SOURCE_RE =
 const dryRunPackageFiles = (
   packageName: (typeof PACKAGES)[number],
 ): string[] => {
-  const result = Bun.spawnSync(
-    ["bun", "pm", "pack", "--dry-run", "--ignore-scripts"],
-    {
+  const result = expectExited(
+    runChild(["bun", "pm", "pack", "--dry-run", "--ignore-scripts"], {
       cwd: path.join(REPO_ROOT, "packages", packageName),
-      stdout: "pipe",
-      stderr: "pipe",
-    },
+    }),
   );
   expect(result.exitCode).toBe(0);
-  const output = `${result.stdout.toString()}\n${result.stderr.toString()}`;
+  const output = `${result.stdout}\n${result.stderr}`;
   return output
     .split("\n")
     .map((line) => PACKED_FILE_RE.exec(line)?.groups?.["file"])

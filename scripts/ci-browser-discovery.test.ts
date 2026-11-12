@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -11,10 +11,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+import {
   checkBrowserConfigDiscovery,
   checkBrowserDiscovery,
   trackedBrowserConfigs,
 } from "./ci-browser-discovery";
+
+// The largest test here runs 13 children one after another.
+setDefaultTimeout(subprocessTestTimeout(13));
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const requireFromRepo = createRequire(path.join(REPO_ROOT, "package.json"));
@@ -31,13 +39,9 @@ const write = (repoRoot: string, file: string, contents = "") => {
 };
 type GitOptions = { repoRoot: string; args: string[] };
 const git = ({ repoRoot, args }: GitOptions) => {
-  const result = Bun.spawnSync(["git", ...args], {
-    cwd: repoRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (result.exitCode !== 0) throw new TypeError(result.stderr.toString());
-  return result.stdout.toString();
+  const result = expectExited(runChild(["git", ...args], { cwd: repoRoot }));
+  if (result.exitCode !== 0) throw new TypeError(result.stderr);
+  return result.stdout;
 };
 const fixture = () => {
   const repoRoot = mkdtempSync(path.join(tmpdir(), "folio-browser-discovery-"));
@@ -238,87 +242,100 @@ describe("no-browser discovery preflight", () => {
     expect(calls).toBe(1);
   });
 
-  test("the actual pinned Node CLI lists all projects without executing tests or web servers", () => {
-    const repoRoot = fixture();
-    write(
-      repoRoot,
-      "scripts/check-browser-input-coverage.ts",
-      'process.stdout.write("Fixture coverage registered.\\n");\n',
-    );
-    const playwrightModule = requireFromRepo.resolve("@playwright/test");
-    write(
-      repoRoot,
-      "playwright.config.cjs",
-      `module.exports = { testDir: './tests', projects: [{name:'first'}, {name:'second'}], webServer: {command: 'node -e "process.exit(99)"', port: 61999} };\n`,
-    );
-    write(
-      repoRoot,
-      "tests/discovery.spec.cjs",
-      `const {test} = require(${JSON.stringify(playwrightModule)});\ntest('discover only', () => { throw new Error('test body must never execute'); });\n`,
-    );
-    git({ repoRoot, args: ["add", "."] });
-    const options = {
-      repoRoot,
-      cliPath: requireFromRepo.resolve("@playwright/test/cli"),
-      log: () => {},
-    };
-    expect(checkBrowserDiscovery(options)).toEqual([
-      { config: "playwright.config.cjs", tests: 2 },
-    ]);
-    expect(existsSync(path.join(repoRoot, "test-results"))).toBe(false);
-    const added = "nested/playwright.extra.config.cjs";
-    write(
-      repoRoot,
-      added,
-      "module.exports = {testDir:'../tests', projects:[{name:'new-project'}]};\n",
-    );
-    git({ repoRoot, args: ["add", "--", added] });
-    expect(checkBrowserDiscovery(options)).toEqual([
-      { config: added, tests: 1 },
-      { config: "playwright.config.cjs", tests: 2 },
-    ]);
-    write(
-      repoRoot,
-      "tests/discovery.spec.cjs",
-      'require("folio-fixture-nonexistent-discovery-module");\n',
-    );
-    expect(() => checkBrowserDiscovery(options)).toThrow(
-      "Playwright discovery failed for nested/playwright.extra.config.cjs",
-    );
-  }, 20_000);
+  test(
+    "the actual pinned Node CLI lists all projects without executing tests or web servers",
+    () => {
+      const repoRoot = fixture();
+      write(
+        repoRoot,
+        "scripts/check-browser-input-coverage.ts",
+        'process.stdout.write("Fixture coverage registered.\\n");\n',
+      );
+      const playwrightModule = requireFromRepo.resolve("@playwright/test");
+      write(
+        repoRoot,
+        "playwright.config.cjs",
+        `module.exports = { testDir: './tests', projects: [{name:'first'}, {name:'second'}], webServer: {command: 'node -e "process.exit(99)"', port: 61999} };\n`,
+      );
+      write(
+        repoRoot,
+        "tests/discovery.spec.cjs",
+        `const {test} = require(${JSON.stringify(playwrightModule)});\ntest('discover only', () => { throw new Error('test body must never execute'); });\n`,
+      );
+      git({ repoRoot, args: ["add", "."] });
+      const options = {
+        repoRoot,
+        cliPath: requireFromRepo.resolve("@playwright/test/cli"),
+        log: () => {},
+      };
+      expect(checkBrowserDiscovery(options)).toEqual([
+        { config: "playwright.config.cjs", tests: 2 },
+      ]);
+      expect(existsSync(path.join(repoRoot, "test-results"))).toBe(false);
+      const added = "nested/playwright.extra.config.cjs";
+      write(
+        repoRoot,
+        added,
+        "module.exports = {testDir:'../tests', projects:[{name:'new-project'}]};\n",
+      );
+      git({ repoRoot, args: ["add", "--", added] });
+      expect(checkBrowserDiscovery(options)).toEqual([
+        { config: added, tests: 1 },
+        { config: "playwright.config.cjs", tests: 2 },
+      ]);
+      write(
+        repoRoot,
+        "tests/discovery.spec.cjs",
+        'require("folio-fixture-nonexistent-discovery-module");\n',
+      );
+      expect(() => checkBrowserDiscovery(options)).toThrow(
+        "Playwright discovery failed for nested/playwright.extra.config.cjs",
+      );
+    },
+    subprocessTestTimeout(3),
+  );
 
-  test("the repository's browser input coverage passes before discovery", () => {
-    const result = Bun.spawnSync(
-      [
-        process.execPath,
-        path.join(REPO_ROOT, "scripts/check-browser-input-coverage.ts"),
-      ],
-      { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
-    );
-    expect(result.stderr.toString()).toBe("");
-    expect(result.exitCode).toBe(0);
-  }, 20_000);
+  test(
+    "the repository's browser input coverage passes before discovery",
+    () => {
+      const result = expectExited(
+        runChild(
+          [
+            process.execPath,
+            path.join(REPO_ROOT, "scripts/check-browser-input-coverage.ts"),
+          ],
+          { cwd: REPO_ROOT },
+        ),
+      );
+      expect(result.stderr).toBe("");
+      expect(result.exitCode).toBe(0);
+    },
+    subprocessTestTimeout(),
+  );
 
-  // Each independent Node process gets the same deadline. Sharing a deadline
+  // Each graph loads in its own Node process with its own budget. Sharing one
   // made later graphs inherit the cost of every preceding graph and coverage.
   for (const config of trackedBrowserConfigs()) {
-    test(`the repository's real browser import graph loads in Node: ${config}`, () => {
-      const result = checkBrowserConfigDiscovery({ config });
-      expect(result.config).toBe(config);
-      expect(result.tests).toBeGreaterThan(0);
-    }, 20_000);
+    test(
+      `the repository's real browser import graph loads in Node: ${config}`,
+      () => {
+        const result = checkBrowserConfigDiscovery({ config });
+        expect(result.config).toBe(config);
+        expect(result.tests).toBeGreaterThan(0);
+      },
+      subprocessTestTimeout(),
+    );
   }
 
   test("the command line refuses filtering arguments", () => {
-    const result = Bun.spawnSync(
-      [
+    const result = expectExited(
+      runChild([
         process.execPath,
         path.join(import.meta.dir, "ci-browser-discovery.ts"),
         "--project=interactions",
-      ],
-      { stdout: "pipe", stderr: "pipe" },
+      ]),
     );
     expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain("takes no arguments");
+    expect(result.stderr).toContain("takes no arguments");
   });
 });

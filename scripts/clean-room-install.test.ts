@@ -1,9 +1,17 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import { writeCleanRoomInstallConfig } from "./clean-room-install";
+
+// The install test runs its child once per exit status.
+setDefaultTimeout(subprocessTestTimeout(2));
 
 test("clean rooms derive exactly the repository release-age settings on every write", async () => {
   const consumerDir = await mkdtemp(
@@ -54,18 +62,17 @@ test("the install subprocess receives the policy first, preserves arguments, and
     const code = `import { installCleanRoomDependencies } from ${JSON.stringify(entry)}; await installCleanRoomDependencies(${JSON.stringify({ consumerDir, dependencies })});`;
     for (const exitCode of [0, 7]) {
       await rm(path.join(consumerDir, "bunfig.toml"), { force: true });
-      const child = Bun.spawn([process.execPath, "-e", code], {
-        cwd: root,
-        env: {
-          ...process.env,
-          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-          INSTALL_TEST_EXIT: String(exitCode),
-        },
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const result = await child.exited;
-      expect(result === 0).toBe(exitCode === 0);
+      const child = expectExited(
+        runChild([process.execPath, "-e", code], {
+          cwd: root,
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            INSTALL_TEST_EXIT: String(exitCode),
+          },
+        }),
+      );
+      expect(child.exitCode === 0).toBe(exitCode === 0);
       expect(
         await readFile(path.join(consumerDir, "observed.toml"), "utf8"),
       ).toBe(await readFile(path.join(consumerDir, "bunfig.toml"), "utf8"));

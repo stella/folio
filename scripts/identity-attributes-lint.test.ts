@@ -4,28 +4,35 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
 import { IDENTITY_ATTRIBUTES } from "../specifications/generated/identity-attributes.gen";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import baseline from "./identity-attribute-baseline.json";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_MARKER =
   "folio-identity-attributes(no-prefix-resolved-identity-read)";
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(subprocessTestTimeout());
 
 const lintFixture = (fixture: string): number => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      path.join("test", "__fixtures__", fixture),
-    ],
-    { cwd: REPO_ROOT },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        path.join("test", "__fixtures__", fixture),
+      ],
+      { cwd: REPO_ROOT },
+    ),
   );
-  const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  const output = `${result.stdout}${result.stderr}`;
   return output.split(RULE_MARKER).length - 1;
 };
 
@@ -76,15 +83,12 @@ describe("identity-attribute set", () => {
   });
 
   test("the generated set is what the schema graph and the extension table say", () => {
-    const result = Bun.spawnSync(
-      ["bun", "scripts/generate-identity-attributes.ts", "check"],
-      {
+    const result = expectExited(
+      runChild(["bun", "scripts/generate-identity-attributes.ts", "check"], {
         cwd: REPO_ROOT,
-      },
+      }),
     );
-    expect(`${result.stdout.toString()}${result.stderr.toString()}`).toContain(
-      "up to date",
-    );
+    expect(`${result.stdout}${result.stderr}`).toContain("up to date");
     expect(result.exitCode).toBe(0);
   });
 });

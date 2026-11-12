@@ -4,6 +4,7 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import { scanTestTimeout } from "../test/scan-timeout";
 import {
   childHangTimeout,
+  expectExited,
   runChild,
   subprocessTestTimeout,
 } from "../test/subprocess";
@@ -22,6 +23,14 @@ test("a child that exits reports its status and output", () => {
       bunEval('process.stdout.write("out"); process.stderr.write("err")'),
     ),
   ).toEqual({ kind: "exited", exitCode: 0, stdout: "out", stderr: "err" });
+});
+
+test("a child reads the input it is given", () => {
+  expect(
+    runChild(bunEval("process.stdout.write(await Bun.stdin.text())"), {
+      input: "fed",
+    }),
+  ).toEqual({ kind: "exited", exitCode: 0, stdout: "fed", stderr: "" });
 });
 
 test("a child that exits non-zero is reported with its status", () => {
@@ -52,9 +61,32 @@ test("a child ended by a signal is reported with the signal", () => {
   ).toMatchObject({ kind: "killed", signal: "SIGTERM" });
 });
 
+test("a child that must exit hands back its exit, and fails the test otherwise", () => {
+  expect(expectExited(runChild(bunEval("process.exit(4)")))).toMatchObject({
+    kind: "exited",
+    exitCode: 4,
+  });
+  expect(() =>
+    expectExited(
+      runChild(
+        bunEval(
+          'process.stdout.write("started"); setInterval(() => {}, 1_000)',
+        ),
+        NEVER_EXITS_GUARD,
+      ),
+    ),
+  ).toThrow(/The child hung\.\nstdout:\nstarted/u);
+  expect(() =>
+    expectExited(runChild(bunEval('process.kill(process.pid, "SIGTERM")'))),
+  ).toThrow("The child was killed by SIGTERM.");
+});
+
 test("the test budget always outlasts its children's hang guards", () => {
   expect(subprocessTestTimeout()).toBeGreaterThan(childHangTimeout());
   expect(subprocessTestTimeout(3)).toBeGreaterThan(3 * childHangTimeout());
+  expect(subprocessTestTimeout(1, 240_000)).toBe(
+    childHangTimeout() + scanTestTimeout(240_000),
+  );
   for (const children of [0, -1, 1.5, Number.NaN]) {
     expect(() => subprocessTestTimeout(children)).toThrow("whole number");
   }

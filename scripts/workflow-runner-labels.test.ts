@@ -1,9 +1,13 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
-import { scanTestTimeout } from "../test/scan-timeout";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 
-setDefaultTimeout(scanTestTimeout(10_000));
+setDefaultTimeout(subprocessTestTimeout());
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -20,11 +24,9 @@ const floatingLabelLines = (file: string, text: string): string[] =>
     );
 
 const workflowFiles = (): readonly string[] => {
-  const result = Bun.spawnSync(["git", "ls-files", ".github"], {
-    cwd: REPO_ROOT,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  const result = expectExited(
+    runChild(["git", "ls-files", ".github"], { cwd: REPO_ROOT }),
+  );
   expect(result.exitCode).toBe(0);
   return result.stdout
     .toString()
