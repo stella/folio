@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "title": "PINNED #1754, reported seed 374939434: step 19: accept-all document differs after save",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "tracked-changes",
+  "seed": 374939434,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 615551622,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "04D9A0FF"
+        }
+      ]
+    },
+    {
+      "action": "accept all",
+      "seed": 3007435608
+    },
+    {
+      "action": "core batch",
+      "seed": 4143224554,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "3CEFFC83",
+          "text": "Agreement period supplier party clause."
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "commentOnRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "commentOnBlock",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from collisions flow seed 374939434"
+}

@@ -249,6 +249,45 @@ describe("text box fitting", () => {
 });
 
 describe("measureBlocks", () => {
+  test("an instrumentation callback that throws leaves a measured block's measure in place", () => {
+    withFakeTextMeasure(() => {
+      const block = para(
+        "throwing-callback",
+        "A callback that throws never replaces this measure.",
+      );
+      const previous = globalThis.__folioLayoutInstrumentation;
+      const errors: string[] = [];
+      const outcomes: string[] = [];
+      try {
+        globalThis.__folioLayoutInstrumentation = {
+          onMeasureBlock: () => {
+            throw new Error("callback failed");
+          },
+          onMeasureBlockError: ({ message }) => errors.push(message),
+        };
+        // The callback's error surfaces as its own, not as a failed measure.
+        expect(() => measureBlocks([block], 500)).toThrow("callback failed");
+        expect(errors).toEqual([]);
+
+        // The block kept the measure taken before the callback threw: the
+        // next pass reuses it instead of measuring the block again.
+        globalThis.__folioLayoutInstrumentation = {
+          onMeasureBlock: () => outcomes.push("measured"),
+          onReuseMeasure: () => outcomes.push("reused"),
+          onMeasureBlockError: ({ message }) => errors.push(message),
+        };
+        const [measure] = measureBlocks([block], 500);
+        expect(outcomes).toEqual(["reused"]);
+        expect(errors).toEqual([]);
+        expect(measure?.kind).toBe("paragraph");
+        if (measure?.kind === "paragraph")
+          expect(measure.lines.length).toBeGreaterThan(0);
+      } finally {
+        globalThis.__folioLayoutInstrumentation = previous;
+      }
+    }, fakeMeasure);
+  });
+
   test("returns exactly one measure per input block", () => {
     withFakeTextMeasure(() => {
       const blocks: FlowBlock[] = [

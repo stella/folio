@@ -138,7 +138,7 @@ const skippedNote = (document: Document, story: OpStory): boolean => {
 };
 
 /** The blocks of a story an edit replaced, and the ones it put in their place. */
-const changedWindow = (
+export const changedWindow = (
   before: readonly BlockContent[],
   after: readonly BlockContent[],
 ): { removed: readonly BlockContent[]; added: readonly BlockContent[] } => {

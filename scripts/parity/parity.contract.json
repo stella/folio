@@ -185,6 +185,7 @@
       "focus",
       "getActiveView",
       "getDocument",
+      "readDocumentModel",
       "getEditor",
       "getHfView",
       "getLayout",

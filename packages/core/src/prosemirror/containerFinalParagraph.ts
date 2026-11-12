@@ -46,6 +46,12 @@ export const paragraphEndsItsContainer = (
   paragraphTypeName: string,
 ): boolean => nothingFollowsIn(at.parent, at.index() + 1, paragraphTypeName);
 
+/** Whether a container ends at the position between its children `at`. */
+export const containerEndsAt = (
+  at: ResolvedPos,
+  paragraphTypeName: string,
+): boolean => nothingFollowsIn(at.parent, at.index(), paragraphTypeName);
+
 /**
  * Every paragraph a container ENDS with in `doc`, with its position.
  *

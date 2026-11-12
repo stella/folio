@@ -112,6 +112,7 @@ import {
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
+import type { ReadonlyDocument } from "@stll/folio-core/types/documentModel";
 import { canonicalJson } from "@stll/folio-core/utils/canonicalJson";
 
 import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
@@ -236,6 +237,8 @@ export type UseDocxEditorRefApiOptions = {
   // Action handles from useDocxEditor.
   focus: () => void;
   getDocument: () => Document | null;
+  /** The session's own document in a canonical session, without a copy; otherwise null. */
+  readDocumentModel: () => ReadonlyDocument | null;
   getActiveView: () => EditorView | null;
   getExperimentalSession?: () => "canonical" | undefined;
   getActiveCanonicalStory?: () => OpStory;
@@ -445,6 +448,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     pagedEditorRef ??= {
       getEditor: () => opts.editor,
       getDocument: () => opts.editor.getDocument(),
+      readDocumentModel: opts.readDocumentModel,
       getState: () => opts.editor.getState(),
       getView: () => opts.editor.getView(),
       getActiveView: opts.getActiveView,

@@ -98,6 +98,125 @@ test("rejecting a split beside a suggested paragraph keeps the split's words", a
   expect(await textsOf(await reviewer.toBuffer())).toEqual(SOURCE_TEXTS);
 });
 
+// A suggested paragraph whose own mark another revision holds (the break of a
+// paragraph inserted after it, or a deleted break it took over), or that ends
+// the body, which carries no added break. Its break is then the free mark
+// before it, so rejecting the suggestion, before or after the other revision,
+// must take that break out and leave the other one.
+type Batch = {
+  mode: "tracked-changes" | "suggested";
+  operation: FolioDocumentOperation;
+};
+const SLOT_TAKEN: readonly (readonly Batch[])[] = [
+  [
+    {
+      mode: "suggested",
+      operation: {
+        id: "op-0",
+        type: "insertAfterBlock",
+        blockId: "10000002",
+        text: "New term",
+      },
+    },
+    {
+      mode: "tracked-changes",
+      operation: { id: "op-1", type: "deleteBlock", blockId: "10000003" },
+    },
+    {
+      mode: "tracked-changes",
+      operation: {
+        id: "op-2",
+        type: "insertAfterBlock",
+        blockId: "10000002",
+        text: "Payment due.",
+      },
+    },
+  ],
+  [
+    {
+      mode: "tracked-changes",
+      operation: { id: "op-0", type: "deleteBlock", blockId: "10000003" },
+    },
+    {
+      mode: "suggested",
+      operation: {
+        id: "op-1",
+        type: "insertAfterBlock",
+        blockId: "10000002",
+        text: "New term",
+      },
+    },
+    {
+      mode: "tracked-changes",
+      operation: {
+        id: "op-2",
+        type: "insertBeforeBlock",
+        blockId: "10000003",
+        text: "Payment due.",
+      },
+    },
+  ],
+  [
+    {
+      mode: "suggested",
+      operation: {
+        id: "op-0",
+        type: "insertAfterBlock",
+        blockId: "10000003",
+        text: "New term",
+      },
+    },
+    {
+      mode: "tracked-changes",
+      operation: {
+        id: "op-1",
+        type: "insertAfterBlock",
+        blockId: "10000003",
+        text: "Payment due.",
+      },
+    },
+  ],
+];
+
+const applyBatches = async (bytes: ArrayBuffer, batches: readonly Batch[]) => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice(0));
+  for (const { mode, operation } of batches)
+    expect(apply(reviewer, mode, [operation]).skipped).toEqual([]);
+  return reviewer;
+};
+
+test("a suggested paragraph whose mark another revision holds leaves with its suggestion, whichever is rejected first", async () => {
+  const bytes = await source();
+  for (const batches of SLOT_TAKEN) {
+    const suggestions = batches
+      .filter(({ mode }) => mode === "suggested")
+      .map(({ operation }) => operation.id);
+    // Revision ids differ between reviewers: a change is picked by its place.
+    const count = (await applyBatches(bytes, batches)).getChanges().length;
+    expect(count).toBeGreaterThan(0);
+    for (let index = -1; index < count; index++) {
+      const reviewer = await applyBatches(bytes, batches);
+      const change = reviewer.getChanges()[index];
+      const first = change?.type ?? "suggestion";
+      let rejected = true;
+      for (const id of index < 0 ? suggestions : [])
+        rejected = reviewer.rejectSuggestion(id) && rejected;
+      if (index >= 0) {
+        rejected = change !== undefined && reviewer.rejectChange(change);
+        for (const id of suggestions) reviewer.rejectSuggestion(id);
+      }
+      for (const left of reviewer.getChanges().toReversed())
+        reviewer.rejectChange(left);
+      reviewer.rejectAll();
+      expect({
+        first,
+        rejected,
+        texts: await textsOf(await reviewer.toBuffer()),
+      }).toEqual({ first, rejected: true, texts: SOURCE_TEXTS });
+    }
+  }
+});
+
 // Mostly one paragraph, so the batches meet at its marks.
 const blockId = fc.oneof(
   { weight: 3, arbitrary: fc.constant("10000002") },

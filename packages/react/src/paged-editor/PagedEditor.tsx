@@ -485,6 +485,11 @@ export type PagedEditorRef = {
   getEditor: () => FolioEditor;
   /** Get the current document. */
   getDocument: () => Document | null;
+  /**
+   * The editor's document model, without a copy: in a canonical session the
+   * session's own document (read it, never write it); otherwise null.
+   */
+  readDocumentModel: () => ReadonlyDocument | null;
   /** Get the ProseMirror EditorState. */
   getState: () => EditorState | null;
   /** Get the ProseMirror EditorView. */
@@ -6296,6 +6301,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       () => ({
         getEditor() {
           return folioEditor;
+        },
+        readDocumentModel() {
+          return hiddenPMRef.current?.readCanonicalDocument() ?? null;
         },
         getDocument() {
           // A write-back still pending may owe the notes a restore or a

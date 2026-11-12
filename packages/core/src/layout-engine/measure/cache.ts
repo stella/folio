@@ -22,6 +22,7 @@ import type {
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 import { clearFontResolvedCache } from "./measureHelpers";
 import { memoizedParagraphKey } from "./paragraphKeyMemo";
+import { forgetTableMeasures } from "./tableMeasureMemo";
 
 // =============================================================================
 // TEXT WIDTH CACHE
@@ -571,6 +572,8 @@ export function setCachedParagraphMeasure(
 export function clearParagraphMeasureCache(): void {
   paragraphMeasureCache.clear();
   paragraphCacheBytes = 0;
+  // A table's measure is built from its paragraphs' measures.
+  forgetTableMeasures();
 }
 
 /**

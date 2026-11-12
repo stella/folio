@@ -49,11 +49,9 @@ runs:
         path: ~/.cache/playwright-apt
         key: ${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-playwright-apt-${{ steps.names.outputs.browsers }}-${{ steps.playwright.outputs.version }}
 
-    - name: Install Playwright browsers and system packages
+    - name: Prepare Playwright system packages
       if: runner.os == 'Linux'
       shell: bash
-      env:
-        BROWSERS: ${{ inputs.browsers }}
       run: |
         # Package sources the browser packages do not need, and whose mirrors
         # have stalled installs.
@@ -63,20 +61,62 @@ runs:
         archives="$HOME/.cache/playwright-apt"
         mkdir -p "$archives/partial"
         # apt installs from the cached packages and keeps what it downloads
-        # beside them for the cache to save.
-        echo "Dir::Cache::Archives \"$archives\";" |
+        # beside them for the cache to save. A retry waits for the lock a
+        # stopped attempt held instead of failing on it.
+        printf 'Dir::Cache::Archives "%s";\nDPkg::Lock::Timeout "60";\n' "$archives" |
           sudo tee /etc/apt/apt.conf.d/99playwright-archives >/dev/null
-        # shellcheck disable=SC2086 # one browser name per word
-        bunx playwright install --with-deps $BROWSERS
-        sudo chown -R "$(id -u):$(id -g)" "$archives"
 
+    # The only step that downloads browsers. A cold install finishes in a few
+    # minutes, so an attempt that runs past ATTEMPT_SECONDS is stalled: it is
+    # stopped and the download is tried once more. A second failure fails the
+    # step instead of holding the job until its own limit.
     - name: Install Playwright browsers
-      if: runner.os != 'Linux'
       shell: bash
       env:
         BROWSERS: ${{ inputs.browsers }}
-      # shellcheck disable=SC2086 # one browser name per word
-      run: bunx playwright install $BROWSERS
+        RUNNER_OS_NAME: ${{ runner.os }}
+        ATTEMPT_SECONDS: "480"
+      run: |
+        flags=()
+        if [ "$RUNNER_OS_NAME" = "Linux" ]; then
+          flags=(--with-deps)
+        fi
+
+        # Each attempt runs in its own process group, so the limit also stops
+        # the download and package processes the install started.
+        attempt() {
+          set -m
+          # shellcheck disable=SC2086 # one browser name per word
+          bunx playwright install "${flags[@]}" $BROWSERS &
+          local install=$!
+          set +m
+          (
+            trap 'kill "$timer" 2>/dev/null || true; exit 0' TERM
+            sleep "$ATTEMPT_SECONDS" &
+            timer=$!
+            wait "$timer"
+            echo "::warning::Playwright install ran past ${ATTEMPT_SECONDS}s; stopping it"
+            kill -TERM -- "-$install" 2>/dev/null || true
+            sleep 10 &
+            timer=$!
+            wait "$timer"
+            kill -KILL -- "-$install" 2>/dev/null || true
+          ) &
+          local watchdog=$!
+          local status=0
+          wait "$install" || status=$?
+          kill "$watchdog" 2>/dev/null || true
+          wait "$watchdog" 2>/dev/null || true
+          return "$status"
+        }
+
+        if ! attempt; then
+          echo "::warning::Playwright install failed; trying the download once more"
+          attempt
+        fi
+        if [ "$RUNNER_OS_NAME" = "Linux" ]; then
+          sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/playwright-apt"
+        fi
 
     - name: Save Playwright browsers
       if: steps.browser-cache.outputs.cache-hit != 'true'
