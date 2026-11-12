@@ -76,7 +76,6 @@ import {
   removedContentBoundaries,
   wellFormedRanges,
   withBoundariesAtEdge,
-  withSeamBoundariesInside,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
@@ -2572,18 +2571,11 @@ const joinOps = (
         ? mergedAtSeam(paragraph.content, next.content, emptied)
         : joinParagraphSeam(paragraph.content, next.content);
     } else {
-      const seam = deferSplitSeam(
-        depth > 0
-          ? {
-              ...withSeamBoundariesInside({
-                left: paragraph.content,
-                right: next.content,
-                depth,
-              }),
-              depth,
-            }
-          : { left: paragraph.content, right: next.content, depth },
-      );
+      const seam = deferSplitSeam({
+        left: paragraph.content,
+        right: next.content,
+        depth,
+      });
       const left = seam.left.at(-1);
       const right = seam.right.at(0);
       if (depth > 0 && left !== undefined && right !== undefined) {
