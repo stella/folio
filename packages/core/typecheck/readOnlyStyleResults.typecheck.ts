@@ -3,6 +3,7 @@ import type { EditorState } from "prosemirror-state";
 import { getParagraphTabs } from "../src/prosemirror/extensions/core/ParagraphExtension";
 import type { SelectionSnapshot } from "../src/prosemirror/selectionState";
 import { createStyleResolver } from "../src/prosemirror/styles/styleResolver";
+import { cascadeStyleTextFormatting } from "../src/prosemirror/styles/styleToggleCascade";
 import { createStyleEngine } from "../src/style-engine";
 import type {
   ParagraphFormatting,
@@ -98,14 +99,41 @@ export const writersCopyFirst = (styles: StyleDefinitions): void => {
     resolver.resolveRunStyle(null) ?? {},
   );
   run.bold = true;
-  // A merge of plain formatting stays plain; a merge of resolved formatting
-  // is read-only.
+  // A merge with a source is a new record whose own fields are the caller's,
+  // while the values in it stay shared with the inputs and read-only.
   const plain = mergeTextFormatting({ bold: true }, { italic: true });
-  if (plain) plain.bold = false;
+  plain.bold = false;
   const inherited = mergeParagraphFormatting(resolved.paragraphFormatting, {
     spaceAfter: 0,
   });
   inherited.spaceAfter = 120;
   // @ts-expect-error the merge shares its nested values with the style
   inherited.tabs?.push({ position: 720, alignment: "left" });
+};
+
+// TypeScript lets a readonly literal match a writable parameter, so a merge
+// has no writable overload: what it shares with a literal stays read-only.
+export const readOnlyLiterals = (): void => {
+  const literal = { color: { rgb: "112233" } } as const;
+  const merged = mergeTextFormatting({ bold: true }, literal);
+  if (merged.color) {
+    // @ts-expect-error the merge shares the literal's colour
+    merged.color.rgb = "000000";
+  }
+  const cascade = cascadeStyleTextFormatting([
+    { formatting: { bold: true }, type: "defaults" },
+    { formatting: literal, type: "style" },
+  ]);
+  if (cascade.formatting?.color) {
+    // @ts-expect-error the cascade shares the literal's colour
+    cascade.formatting.color.rgb = "000000";
+  }
+  const borders = {
+    top: { style: "single", color: { rgb: "112233" } },
+  } as const;
+  const paragraph = mergeParagraphFormatting({ spaceAfter: 0 }, { borders });
+  if (paragraph.borders?.top) {
+    // @ts-expect-error the merge shares the literal's border
+    paragraph.borders.top.style = "double";
+  }
 };

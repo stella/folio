@@ -3,7 +3,7 @@ import type { Mark } from "prosemirror-model";
 import type { RunPropsPatch } from "@stll/docx-core/ops";
 
 import type { ColorValue, TextFormatting } from "../types/document";
-import type { DeepReadonly } from "../types/documentModel";
+import { type DeepReadonly, writableCopy } from "../types/documentModel";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
 import {
@@ -965,7 +965,12 @@ export function marksToTextFormatting(
       []) {
       Reflect.deleteProperty(conservativeFormatting, property);
     }
-    return { ...conservativeFormatting, styleId: characterStyleId };
+    // The run's formatting owns its values; the merge shares them with the
+    // mark attrs it read.
+    return {
+      ...writableCopy<TextFormatting>(conservativeFormatting),
+      styleId: characterStyleId,
+    };
   }
 
   const runContext = {

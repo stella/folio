@@ -13,11 +13,12 @@ type ToggleState = {
   defaultsActive: boolean;
 };
 
-/** Internal formatting value whose toggle history survives copying and separate cascade passes. */
 /**
- * A cascade's formatting shares nested values with the levels it read, so a
- * cascade over read-only formatting (a style resolver's results) is
- * read-only, and a cascade over plain formatting is plain.
+ * Internal formatting value whose toggle history survives copying and separate
+ * cascade passes. Its formatting shares nested values with the levels it read
+ * (a style resolver's results among them), so it is read-only; TypeScript lets
+ * a readonly literal match a writable parameter, so there is no writable
+ * variant to fall into.
  */
 type StyleTextFormattingCascade<
   Formatting extends DeepReadonly<TextFormatting> =
@@ -92,10 +93,6 @@ export const cascadeStyleFromResolvedBase = ({
  * carries its toggle history explicitly, so paragraph and character style resolution may happen
  * in separate passes without an object-identity contract.
  */
-export function cascadeStyleTextFormatting(
-  levels: readonly StyleToggleLevel<TextFormatting>[],
-  options?: StyleToggleCascadeOptions<TextFormatting>,
-): StyleTextFormattingCascade<TextFormatting>;
 export function cascadeStyleTextFormatting(
   levels: readonly StyleToggleLevel[],
   options?: StyleToggleCascadeOptions,

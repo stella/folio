@@ -52,10 +52,6 @@ export const STYLE_TOGGLE_KEYS: readonly [
  * it has no place in this function.
  */
 export function mergeStyleTextFormatting(
-  target: TextFormatting | undefined,
-  source: TextFormatting | undefined,
-): TextFormatting | undefined;
-export function mergeStyleTextFormatting(
   target: DeepReadonly<TextFormatting> | undefined,
   source: DeepReadonly<TextFormatting> | undefined,
 ): DeepReadonly<TextFormatting> | undefined;
@@ -92,14 +88,12 @@ export type MergedTextFormatting = OwnRecord<TextFormatting>;
 
 /**
  * The merge shares nested values with its inputs and, without a source,
- * returns the target itself, so a merge of read-only formatting is
- * read-only and a merge of plain formatting is plain. A merge with a source
- * returns a new record ({@link MergedTextFormatting}).
+ * returns the target itself, so its result is read-only. A merge with a
+ * source returns a new record ({@link MergedTextFormatting}) whose own fields
+ * the caller may set. There is no writable variant: TypeScript lets a
+ * readonly literal match a writable parameter, which would hand its shared
+ * values out writable.
  */
-export function mergeTextFormatting(
-  target: TextFormatting | undefined,
-  source: TextFormatting | undefined,
-): TextFormatting | undefined;
 export function mergeTextFormatting(
   target: DeepReadonly<TextFormatting> | undefined,
   source: DeepReadonly<TextFormatting>,

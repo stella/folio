@@ -133,10 +133,6 @@ const withoutPreservedMarkup = (
  * merge rules.
  */
 export function mergeParagraphFormatting(
-  target: ParagraphFormatting | undefined,
-  source: ParagraphFormatting | undefined,
-): ParagraphFormatting | undefined;
-export function mergeParagraphFormatting(
   target: DeepReadonly<ParagraphFormatting> | undefined,
   source: DeepReadonly<ParagraphFormatting>,
 ): MergedParagraphFormatting;
