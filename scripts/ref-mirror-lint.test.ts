@@ -2,29 +2,37 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 import { z } from "zod";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_ID = "folio-ref-mirrors(no-write-to-render-mirrored-ref)";
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(subprocessTestTimeout());
 
 const lintFixture = (fixture: string) => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      "--format",
-      "json",
-      path.join("test", "__fixtures__", fixture),
-    ],
-    { cwd: REPO_ROOT },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        "--format",
+        "json",
+        path.join("test", "__fixtures__", fixture),
+      ],
+      { cwd: REPO_ROOT },
+    ),
   );
   const { diagnostics } = z
     .object({ diagnostics: z.array(z.object({ code: z.string() })) })
-    .parse(JSON.parse(result.stdout.toString()));
+    .parse(JSON.parse(result.stdout));
   return {
     status: result.exitCode,
     ruleIds: diagnostics.map(({ code }) => code),

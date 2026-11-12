@@ -1,7 +1,15 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const workflow: unknown = Bun.YAML.parse(
   readFileSync(
@@ -90,18 +98,20 @@ const runRelease = ({
       ].join("\n") + "\n",
       { mode: 0o755 },
     );
-    const result = Bun.spawnSync(["bash", "-c", script], {
-      cwd: directory,
-      env: {
-        ...process.env,
-        PATH: `${directory}:${process.env["PATH"] ?? ""}`,
-        REPO: "stella/folio",
-        SOURCE_REF: SOURCE,
-        VERSION: version,
-        TEST_EXISTING: existing ?? "",
-        TEST_CALLS: path.join(directory, "calls"),
-      },
-    });
+    const result = expectExited(
+      runChild(["bash", "-c", script], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          PATH: `${directory}:${process.env["PATH"] ?? ""}`,
+          REPO: "stella/folio",
+          SOURCE_REF: SOURCE,
+          VERSION: version,
+          TEST_EXISTING: existing ?? "",
+          TEST_CALLS: path.join(directory, "calls"),
+        },
+      }),
+    );
     let calls: string[] = [];
     try {
       calls = readFileSync(path.join(directory, "calls"), "utf8")

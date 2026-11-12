@@ -12,27 +12,34 @@ import {
   RESERVED_VALUE_REGISTRY,
   reservedValueEntries,
 } from "../specifications/reserved-values/registry";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
 import baseline from "./reserved-value-baseline.json";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_MARKER = "folio-reserved-values(no-bare-reserved-compare)";
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(subprocessTestTimeout());
 
 const lintFixture = (fixture: string): number => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      path.join("test", "__fixtures__", fixture),
-    ],
-    { cwd: REPO_ROOT },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        path.join("test", "__fixtures__", fixture),
+      ],
+      { cwd: REPO_ROOT },
+    ),
   );
-  const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  const output = `${result.stdout}${result.stderr}`;
   return output.split(RULE_MARKER).length - 1;
 };
 

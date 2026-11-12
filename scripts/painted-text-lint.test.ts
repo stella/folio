@@ -1,25 +1,33 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_MARKER = "folio-painted-text(no-direct-text-shape)";
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(subprocessTestTimeout(2));
 
 const lintFixture = (fixture: string, marker = RULE_MARKER) => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      path.join("test", "__fixtures__", fixture),
-    ],
-    { cwd: REPO_ROOT },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        path.join("test", "__fixtures__", fixture),
+      ],
+      { cwd: REPO_ROOT },
+    ),
   );
-  const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  const output = `${result.stdout}${result.stderr}`;
   return {
     status: result.exitCode,
     violations: output.split(marker).length - 1,

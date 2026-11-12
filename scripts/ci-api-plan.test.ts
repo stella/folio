@@ -1,5 +1,5 @@
 /** Workspace and Git fixtures enumerate the API gate's source and control boundaries. */
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,11 +11,19 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+import {
   apiRequiredForPaths,
   changedApiPaths,
   packagedConsumerRequiredForPaths,
   publishedPackagePaths,
 } from "./ci-api-plan";
+
+// The largest test here runs 19 children one after another.
+setDefaultTimeout(subprocessTestTimeout(19));
 
 const fixtures = new Set<string>();
 afterEach(() => {
@@ -48,14 +56,11 @@ const fixture = ({ workspaces, manifests }: FixtureOptions) => {
 
 type GitOptions = { repoRoot: string; args: string[]; input?: string };
 const git = ({ repoRoot, args, input }: GitOptions) => {
-  const result = Bun.spawnSync(["git", ...args], {
-    cwd: repoRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-    ...(input === undefined ? {} : { stdin: Buffer.from(input) }),
-  });
-  if (result.exitCode !== 0) throw new TypeError(result.stderr.toString());
-  return result.stdout.toString().trim();
+  const result = expectExited(
+    runChild(["git", ...args], { cwd: repoRoot, input }),
+  );
+  if (result.exitCode !== 0) throw new TypeError(result.stderr);
+  return result.stdout.trim();
 };
 // Synthetic commit objects require neither a user identity nor commit hooks/signing.
 const snapshot = (repoRoot: string, parent?: string) => {
@@ -426,23 +431,23 @@ describe("PR diff and fail-closed CLI", () => {
     const output = path.join(repoRoot, "github-output");
     const run = (args: string[]) => {
       writeFileSync(output, "previous=value\n");
-      const result = Bun.spawnSync(
-        [
-          process.execPath,
-          path.join(import.meta.dir, "ci-api-plan.ts"),
-          ...args,
-        ],
-        {
-          cwd: path.join(repoRoot, "modules/private"),
-          stdout: "pipe",
-          stderr: "pipe",
-          env: { ...process.env, GITHUB_OUTPUT: output },
-        },
+      const result = expectExited(
+        runChild(
+          [
+            process.execPath,
+            path.join(import.meta.dir, "ci-api-plan.ts"),
+            ...args,
+          ],
+          {
+            cwd: path.join(repoRoot, "modules/private"),
+            env: { ...process.env, GITHUB_OUTPUT: output },
+          },
+        ),
       );
       return {
         exitCode: result.exitCode,
         output: readFileSync(output, "utf8"),
-        stderr: result.stderr.toString(),
+        stderr: result.stderr,
       };
     };
     expect(run(["--base", base, "--head", docsHead])).toEqual({

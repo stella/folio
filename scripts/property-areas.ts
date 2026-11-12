@@ -36,6 +36,7 @@ import {
   PROPERTY_SEEDS_FILE,
   testFileForSeedFile,
 } from "../test/seed-registry";
+import { subprocessBudgetBaseMs } from "../test/subprocess";
 import { type Node, nodeText, parseSourceModule, walkAst } from "./lib/oxc-ast";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
@@ -189,7 +190,8 @@ export const propertyFileProfile = ({
       }
       if (
         callee.type === "Identifier" &&
-        callee.name === "propertyTestTimeout"
+        (callee.name === "propertyTestTimeout" ||
+          callee.name === "subprocessTestTimeout")
       ) {
         budgets.push(node);
         ancestry.set(node, [...ancestors]);
@@ -235,6 +237,17 @@ export const propertyFileProfile = ({
   };
   let missingBudgets = 0;
   const timeoutBudget = (call: CallExpression): number => {
+    // A property that starts children states their hang guards and its own work.
+    if (
+      call.callee.type === "Identifier" &&
+      call.callee.name === "subprocessTestTimeout"
+    ) {
+      const [children, ownWork] = call.arguments;
+      return subprocessBudgetBaseMs(
+        children === undefined ? undefined : numericBudget(children),
+        ownWork === undefined ? undefined : numericBudget(ownWork),
+      );
+    }
     const argument = call.arguments.at(0);
     if (argument === undefined) {
       missingBudgets += 1;

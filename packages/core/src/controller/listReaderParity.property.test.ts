@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Fragment } from "prosemirror-model";
@@ -16,6 +15,11 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../../../../test/subprocess";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import {
   computeListMarker,
@@ -212,10 +216,11 @@ test.each([
 test(
   "every production counter producer belongs to an exercised reader",
   () => {
-    const files = execFileSync("git", ["ls-files", "packages/core/src"], {
-      cwd: ROOT,
-    })
-      .toString()
+    const listing = expectExited(
+      runChild(["git", "ls-files", "packages/core/src"], { cwd: ROOT }),
+    );
+    expect(listing.exitCode).toBe(0);
+    const files = listing.stdout
       .trim()
       .split("\n")
       .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
@@ -227,8 +232,8 @@ test(
       Object.keys(PRODUCER_READERS).sort(),
     );
   },
-  // This structural guard parses every production source file.
-  propertyTestTimeout(10_000),
+  // This structural guard lists and parses every production source file.
+  subprocessTestTimeout(),
 );
 
 const streams = () => ({

@@ -1,8 +1,16 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 test("publish preparation maps source, asset and private exports to dist", async () => {
   const packageRoot = await realpath(
@@ -45,13 +53,12 @@ test("publish preparation maps source, asset and private exports to dist", async
       )}\n`,
     );
 
-    const result = Bun.spawnSync(
-      [
+    const result = expectExited(
+      runChild([
         process.execPath,
         path.join(import.meta.dir, "prepare-publish.ts"),
         packageRoot,
-      ],
-      { stderr: "pipe", stdout: "pipe" },
+      ]),
     );
     expect(result.exitCode).toBe(0);
     const manifest = await Bun.file(
@@ -114,13 +121,12 @@ test("publish preparation keeps package asset exports and the files they name", 
       )}\n`,
     );
 
-    const result = Bun.spawnSync(
-      [
+    const result = expectExited(
+      runChild([
         process.execPath,
         path.join(import.meta.dir, "prepare-publish.ts"),
         packageRoot,
-      ],
-      { stderr: "pipe", stdout: "pipe" },
+      ]),
     );
     expect(result.exitCode).toBe(0);
     const manifest = await Bun.file(

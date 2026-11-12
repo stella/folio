@@ -3,6 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_ID = "folio-find-navigation(navigation-owner)";
 const IMPORT =
@@ -80,23 +86,25 @@ const lintFixture = (source: string): string[] => {
   try {
     const fixture = path.join(directory, "fixture.ts");
     writeFileSync(fixture, source);
-    const result = Bun.spawnSync(
-      [
-        "bun",
-        "--bun",
-        "oxlint",
-        "-c",
-        "oxlint.fixtures.config.ts",
-        "--no-ignore",
-        "--format",
-        "json",
-        fixture,
-      ],
-      { cwd: REPO_ROOT },
+    const result = expectExited(
+      runChild(
+        [
+          "bun",
+          "--bun",
+          "oxlint",
+          "-c",
+          "oxlint.fixtures.config.ts",
+          "--no-ignore",
+          "--format",
+          "json",
+          fixture,
+        ],
+        { cwd: REPO_ROOT },
+      ),
     );
     const { diagnostics } = z
       .object({ diagnostics: z.array(z.object({ code: z.string() })) })
-      .parse(JSON.parse(result.stdout.toString()));
+      .parse(JSON.parse(result.stdout));
     return diagnostics
       .map(({ code }) => code)
       .filter((code) => code === RULE_ID);
@@ -113,6 +121,6 @@ describe("find navigation ownership", () => {
         expect(lintFixture(source)).toEqual(
           Array.from({ length: count }, () => RULE_ID),
         ),
-      30_000,
+      subprocessTestTimeout(),
     );
 });

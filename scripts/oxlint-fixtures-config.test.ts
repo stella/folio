@@ -22,7 +22,7 @@ test("every oxlint fixture self-test selects the fixture config", () => {
   for (const filename of tests) {
     const source = readFileSync(`${root}/${filename}`, "utf8");
     if (
-      !/Bun\.spawnSync\s*\(/u.test(source) ||
+      !/\b(?:runChild|Bun\.spawnSync)\s*\(/u.test(source) ||
       !source.includes('"oxlint"') ||
       (!source.includes('"__fixtures__"') &&
         !source.includes('"test/__fixtures__/'))

@@ -3,28 +3,36 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
 
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const CONTROLLER_RULE_MARKER =
   "folio-layer-boundaries(controller-and-engine-seams)";
 const PROJECTION_RULE_MARKER =
   "folio-layer-boundaries(rust-projection-boundary)";
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(subprocessTestTimeout());
 
 const lintPath = (relativePath: string, marker: string): number => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      "--no-ignore",
-      relativePath,
-    ],
-    { cwd: REPOSITORY_ROOT },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        "--no-ignore",
+        relativePath,
+      ],
+      { cwd: REPOSITORY_ROOT },
+    ),
   );
-  const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  const output = `${result.stdout}${result.stderr}`;
   const violationCount = output.split(marker).length - 1;
   const hasViolations = violationCount > 0;
   const lintFailed = result.exitCode !== 0;

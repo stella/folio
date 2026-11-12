@@ -1,9 +1,23 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { existsSync } from "node:fs";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout(3));
 
 const PLUGIN_ROOT = path.resolve(import.meta.dir, "..", "plugins", "herdr");
 
@@ -104,10 +118,8 @@ describe("open-docx.sh", () => {
 
   const open = async (link: string) => {
     await rm(record, { force: true });
-    const run = spawnSync(
-      "bash",
-      [path.join(PLUGIN_ROOT, "bin", "open-docx.sh")],
-      {
+    const run = expectExited(
+      runChild(["bash", path.join(PLUGIN_ROOT, "bin", "open-docx.sh")], {
         env: {
           PATH: process.env["PATH"],
           HERDR_BIN_PATH: stub,
@@ -115,13 +127,12 @@ describe("open-docx.sh", () => {
           HERDR_PANE_ID: "pane-7",
           HERDR_PLUGIN_CLICKED_URL: link,
         },
-        encoding: "utf8",
-      },
+      }),
     );
     const args = existsSync(record)
       ? (await readFile(record, "utf8")).trim().split("\n")
       : [];
-    return { status: run.status, args };
+    return { status: run.exitCode, args };
   };
 
   test("opens the preview pane on the decoded local path beside the clicked pane", async () => {

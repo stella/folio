@@ -99,7 +99,7 @@ import {
 } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import {
-  reconstructRejectedRunFormattingMarks,
+  rejectedRunFormatting,
   restoreHistoricalRunFormatting,
 } from "../runPropertyChangeResolution";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
@@ -1247,12 +1247,13 @@ const resolveRunPropertyChange = ({
           tr.removeMark(from, to, currentMark.type);
         }
       }
-      for (const nextMark of reconstructRejectedRunFormattingMarks({
+      // A field keeps no run formatting record: only its marks rebuild.
+      for (const nextMark of rejectedRunFormatting({
         node,
         paragraphContext: styleContext,
         previousFormatting: resolvedRuns.visibleFormatting,
         styleResolver,
-      })) {
+      }).marks ?? []) {
         tr.addMark(from, to, nextMark);
       }
     }
@@ -1262,38 +1263,31 @@ const resolveRunPropertyChange = ({
     return;
   }
 
-  const previousFormatting: RunPropertyChange["previousFormatting"] =
-    matches.at(0)?.previousFormatting;
-  if (Object.hasOwn(node.attrs, "_docxRunFormatting")) {
-    // A drawing, a shape or a text box anchor keeps its run's formatting in
-    // its attrs, not in marks: rejecting restores that record.
+  const rejected = rejectedRunFormatting({
+    node,
+    paragraphContext: paragraphRunStyleContextAt({
+      doc: tr.doc,
+      pos: from,
+      styleResolver,
+    }),
+    previousFormatting: matches.at(0)?.previousFormatting,
+    styleResolver,
+  });
+  if (rejected.atomRunFormatting !== null) {
     const current = tr.doc.nodeAt(from);
     if (!current) panic("A resolved run atom has no node at its position");
     tr.setNodeMarkup(from, undefined, {
       ...current.attrs,
-      _docxRunFormatting: previousFormatting ?? {},
+      _docxRunFormatting: rejected.atomRunFormatting,
     });
-    if (
-      !node.marks.some(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name))
-    )
-      return;
   }
-  const styleContext = paragraphRunStyleContextAt({
-    doc: tr.doc,
-    pos: from,
-    styleResolver,
-  });
+  if (rejected.marks === null) return;
   for (const currentMark of node.marks) {
     if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
       tr.removeMark(from, to, currentMark.type);
     }
   }
-  for (const previousMark of reconstructRejectedRunFormattingMarks({
-    node,
-    paragraphContext: styleContext,
-    previousFormatting,
-    styleResolver,
-  })) {
+  for (const previousMark of rejected.marks) {
     tr.addMark(from, to, previousMark);
   }
 };

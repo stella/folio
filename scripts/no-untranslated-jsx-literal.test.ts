@@ -12,28 +12,38 @@
  * scoping, and the rule's own literal detection.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
+
+import {
+  expectExited,
+  runChild,
+  subprocessTestTimeout,
+} from "../test/subprocess";
+
+setDefaultTimeout(subprocessTestTimeout());
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const RULE_MARKER = "no-untranslated-jsx-literal(no-untranslated-jsx-literal)";
 
 const lintFixture = (fixture: string) => {
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "--bun",
-      "oxlint",
-      "-c",
-      "oxlint.fixtures.config.ts",
-      // The fixtures sit in `ignorePatterns` so `bun run lint` skips their
-      // deliberate violation; the fixture config removes only that ignore.
-      "--no-ignore",
-      path.join("test", "__fixtures__", fixture),
-    ],
-    { cwd: REPO_ROOT },
+  const result = expectExited(
+    runChild(
+      [
+        "bun",
+        "--bun",
+        "oxlint",
+        "-c",
+        "oxlint.fixtures.config.ts",
+        // The fixtures sit in `ignorePatterns` so `bun run lint` skips their
+        // deliberate violation; the fixture config removes only that ignore.
+        "--no-ignore",
+        path.join("test", "__fixtures__", fixture),
+      ],
+      { cwd: REPO_ROOT },
+    ),
   );
-  const output = `${result.stdout.toString()}${result.stderr.toString()}`;
+  const output = `${result.stdout}${result.stderr}`;
   return {
     output,
     ruleDiagnostics: output.split(RULE_MARKER).length - 1,

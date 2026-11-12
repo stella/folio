@@ -1,6 +1,6 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
-import type { RunPropertyChange } from "../types/document";
+import type { RunPropertyChange, TextFormatting } from "../types/document";
 import { expectRunIdentityMarkAttrs } from "./attrs";
 import { runFormattingInlineAtomDisposition } from "./runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
@@ -14,24 +14,42 @@ import {
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
-type ReconstructRejectedRunFormattingMarksOptions = {
+type RejectedRunFormattingOptions = {
   node: PMNode;
   paragraphContext: ParagraphRunStyleContext;
   previousFormatting: RunPropertyChange["previousFormatting"];
   styleResolver?: RunStyleResolver | null;
 };
 
-/**
- * Rebuild the pre-change run marks against the paragraph's live style cascade.
- * Both granular editor commands and the headless linear rewriter use this
- * owner so their reject semantics cannot diverge at the bulk threshold.
- */
-export const reconstructRejectedRunFormattingMarks = ({
+/** The one owner of what a reject restores: marks and an atom's run formatting. */
+export const rejectedRunFormatting = (
+  options: RejectedRunFormattingOptions,
+): {
+  marks: readonly Mark[] | null;
+  atomRunFormatting: TextFormatting | null;
+} => {
+  // A picture, a shape or a text box anchor keeps its run's formatting in
+  // its attrs; a picture or a shape carries no formatting marks besides.
+  // Null means nothing to restore: no marks to rebuild, or no record kept.
+  const { node, previousFormatting } = options;
+  const keepsRunFormatting = Object.hasOwn(node.attrs, "_docxRunFormatting");
+  return {
+    marks:
+      !keepsRunFormatting ||
+      node.marks.some(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name))
+        ? rebuiltRunFormattingMarks(options)
+        : null,
+    atomRunFormatting: keepsRunFormatting ? { ...previousFormatting } : null,
+  };
+};
+
+/** The pre-change run marks, against the paragraph's live style cascade. */
+const rebuiltRunFormattingMarks = ({
   node,
   paragraphContext,
   previousFormatting,
   styleResolver,
-}: ReconstructRejectedRunFormattingMarksOptions): readonly Mark[] => {
+}: RejectedRunFormattingOptions): readonly Mark[] => {
   const marks = reconcileRunFormattingMarks({
     authoredFormatting: previousFormatting ?? {},
     context: paragraphContext,
