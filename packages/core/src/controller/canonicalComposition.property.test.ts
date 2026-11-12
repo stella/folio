@@ -14,6 +14,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -2075,8 +2076,7 @@ test("native carrier commits require rebuilding the captured baseline", async ()
 
 test("a native rewrite of identical text never commits a replacement", async () => {
   const docs = await loadProjections();
-  const executed = { markLoss: 0, textEdit: 0 };
-  assertProperty(
+  const law = (executed: { markLoss: number; textEdit: number }) =>
     fc.property(
       fc.constantFrom(...docs),
       fc.nat(),
@@ -2116,10 +2116,16 @@ test("a native rewrite of identical text never commits a replacement", async () 
         expect(edit.inputs).toEqual([{ from, to, text: EDIT_TEXT }]);
         executed.textEdit++;
       },
-    ),
-    { id: "a native rewrite of identical text never commits a replacement" },
-  );
+    );
+  assertProperty(law({ markLoss: 0, textEdit: 0 }), {
+    id: "a native rewrite of identical text never commits a replacement",
+  });
   expect(docs.length).toBeGreaterThan(0);
+  // A fixed sample, as many cases as the property's, loses marks in a
+  // rewrite and commits a real edit.
+  const RUNS = 100;
+  const executed = { markLoss: 0, textEdit: 0 };
+  checkCoverageSample(law(executed), RUNS);
   expect(executed.markLoss).toBeGreaterThan(0);
   expect(executed.textEdit).toBeGreaterThan(0);
 });

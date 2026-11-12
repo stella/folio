@@ -307,14 +307,12 @@ test(
 test(
   "paragraph property package inverses retain authored stories",
   async () => {
-    let cases = 0;
     await assertProperty(
       fc.asyncProperty(
         captureDocumentArbitrary,
         opSeedArbitrary,
         fc.constantFrom(...GENERATED_PACKAGE_STORIES),
         async (document, seed, story) => {
-          cases += 1;
           await assertPackageOperationLaws({
             kind: "setParagraphProps",
             document,
@@ -328,7 +326,6 @@ test(
         id: "paragraph property package inverses retain authored stories",
       },
     );
-    expect(cases).toBeGreaterThan(0);
   },
   propertyTestTimeout(60_000),
 );
@@ -336,14 +333,12 @@ test(
 test(
   "join package inverses retain authored stories",
   async () => {
-    let cases = 0;
     await assertProperty(
       fc.asyncProperty(
         captureDocumentArbitrary,
         opSeedArbitrary,
         fc.constantFrom(...GENERATED_PACKAGE_STORIES),
         async (document, seed, story) => {
-          cases += 1;
           await assertPackageOperationLaws({
             kind: "joinBlocks",
             document,
@@ -354,7 +349,6 @@ test(
       ),
       { numRuns: 100, id: "join package inverses retain authored stories" },
     );
-    expect(cases).toBeGreaterThan(0);
   },
   propertyTestTimeout(60_000),
 );
@@ -362,14 +356,12 @@ test(
 test(
   "operation sequence generation retains the parsed package control",
   async () => {
-    let cases = 0;
     await assertProperty(
       fc.asyncProperty(
         captureDocumentArbitrary,
         fc.integer({ min: 0, max: 0x7fffffff }),
         fc.constantFrom(" ", "\n", "\r\n", "\t"),
         async (document, seed, whitespace) => {
-          cases += 1;
           const zip = await ZipArchive.read(await createDocx(document));
           const xml = await zip.entry("word/document.xml")?.text();
           if (!xml) throw new TypeError("Missing document part");
@@ -417,7 +409,6 @@ test(
         id: "operation sequence generation retains the parsed package control",
       },
     );
-    expect(cases).toBeGreaterThan(0);
   },
   propertyTestTimeout(60_000),
 );

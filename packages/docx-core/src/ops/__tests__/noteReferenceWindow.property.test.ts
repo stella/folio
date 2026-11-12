@@ -8,6 +8,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -32,10 +33,11 @@ const keyOf = ({ kind, id }: { kind: string; id: number }) => `${kind}:${id}`;
 
 describe("an edit's note references read from its changed blocks", () => {
   test("equal the references read from every paragraph", () => {
-    let same = 0;
-    let changed = 0;
-    let referencing = 0;
-    assertProperty(
+    const law = (counts: {
+      same: number;
+      changed: number;
+      referencing: number;
+    }) =>
       fc.property(
         documentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 1, maxLength: 12 }),
@@ -47,11 +49,11 @@ describe("an edit's note references read from its changed blocks", () => {
             const after = applied.value.document;
             const before = [...referencedNoteKeysInFull(document)].sort();
             const now = [...referencedNoteKeysInFull(after)].sort();
-            if (before.length > 0) referencing += 1;
+            if (before.length > 0) counts.referencing += 1;
             if (sameNoteReferences(document, after)) {
-              same += 1;
+              counts.same += 1;
               expect(now).toEqual(before);
-            } else changed += 1;
+            } else counts.changed += 1;
             expect(
               removedNoteStories(document, after).map(keyOf).sort(),
             ).toEqual(before.filter((key) => !now.includes(key)));
@@ -65,21 +67,23 @@ describe("an edit's note references read from its changed blocks", () => {
             document = after;
           }
         },
-      ),
-      {
-        id: "note references read from changed blocks equal every paragraph",
-        numRuns: 300,
-      },
-    );
+      );
+    assertProperty(law({ same: 0, changed: 0, referencing: 0 }), {
+      id: "note references read from changed blocks equal every paragraph",
+      numRuns: 300,
+    });
+    // The property's run count, which the thresholds were set for.
+    const COVERAGE_RUNS = 300;
+    const counts = { same: 0, changed: 0, referencing: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
     // Both answers, over documents that reference notes.
-    expect(same).toBeGreaterThan(300);
-    expect(changed).toBeGreaterThan(20);
-    expect(referencing).toBeGreaterThan(100);
+    expect(counts.same).toBeGreaterThan(300);
+    expect(counts.changed).toBeGreaterThan(20);
+    expect(counts.referencing).toBeGreaterThan(100);
   });
 
   test("tell a renumbered reference from the one it replaces", () => {
-    let renumbered = 0;
-    assertProperty(
+    const law = (counts: { renumbered: number }) =>
       fc.property(documentArbitrary, fc.nat(), (document, choice) => {
         const content = document.package.document.content;
         const at = content.findIndex(
@@ -111,17 +115,20 @@ describe("an edit's note references read from its changed blocks", () => {
         const before = [...referencedNoteKeysInFull(document)].sort();
         const now = [...referencedNoteKeysInFull(after)].sort();
         if (now.join() === before.join()) return;
-        renumbered += 1;
+        counts.renumbered += 1;
         expect(sameNoteReferences(document, after)).toBe(false);
         expect(removedNoteStories(document, after).map(keyOf).sort()).toEqual(
           before.filter((key) => !now.includes(key)),
         );
-      }),
-      {
-        id: "note references read from changed blocks tell renumbered references",
-        numRuns: 300,
-      },
-    );
-    expect(renumbered).toBeGreaterThan(30);
+      });
+    assertProperty(law({ renumbered: 0 }), {
+      id: "note references read from changed blocks tell renumbered references",
+      numRuns: 300,
+    });
+    // The property's run count, which the threshold was set for.
+    const COVERAGE_RUNS = 300;
+    const counts = { renumbered: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.renumbered).toBeGreaterThan(30);
   });
 });

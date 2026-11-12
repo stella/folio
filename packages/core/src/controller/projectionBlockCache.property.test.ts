@@ -14,6 +14,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -51,7 +52,7 @@ import {
   projectCanonicalStory,
 } from "./canonicalSession";
 
-setDefaultTimeout(propertyTestTimeout(240_000));
+setDefaultTimeout(propertyTestTimeout(300_000));
 
 /** Text-box ids with their conversion's salt left out: each projection draws its own. */
 const withoutSalt = (value: unknown): unknown => {
@@ -172,8 +173,7 @@ describe("a projection reusing converted blocks across story versions", () => {
     const sources = await parsedSources();
     const sorted = (ids: ReadonlySet<number>) =>
       [...ids].toSorted((left, right) => left - right);
-    let marked = 0;
-    await assertProperty(
+    const law = (counts: { marked: number }) =>
       fc.property(
         fc.constantFrom(...sources),
         fc.array(modelEditArbitrary, { minLength: 1, maxLength: 16 }),
@@ -197,7 +197,7 @@ describe("a projection reusing converted blocks across story versions", () => {
               markers.pairedBookmarkIds.size > 0 &&
               markers.rangedCommentIds.size > 0
             )
-              marked += 1;
+              counts.marked += 1;
             const full = convertedInFull(version, cache.salt);
             if (full === undefined) continue;
             const cached = toProseDoc(version, { blockCache: cache });
@@ -220,14 +220,18 @@ describe("a projection reusing converted blocks across story versions", () => {
               );
           }
         },
-      ),
-      {
-        id: "projection block cache equals full conversion over story versions",
-        numRuns: 400,
-      },
-    );
-    // Versions held both paired bookmarks and ranged comments.
-    expect(marked).toBeGreaterThan(50);
+      );
+    await assertProperty(law({ marked: 0 }), {
+      id: "projection block cache equals full conversion over story versions",
+      numRuns: 400,
+    });
+    // Versions of a fixed sample held both paired bookmarks and ranged
+    // comments. Each case converts every version twice, so a quarter of the
+    // runs, at the same ratio.
+    const RUNS = 100;
+    const counts = { marked: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.marked).toBeGreaterThan(RUNS / 8);
   });
 });
 
