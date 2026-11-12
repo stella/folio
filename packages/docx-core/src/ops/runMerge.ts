@@ -369,34 +369,19 @@ export function isTextOnlyRun(run: Run): boolean {
 }
 
 /**
- * Whether run content flows with text: a run of it and an alike neighbour are
- * one run. A tab or a line break is content of its run as a letter is, so the
- * run boundary beside it, between runs no property or record tells apart,
- * says nothing the document keeps. Whether such runs were written apart or
- * together, as an edit cut one or a save wrote its pieces, they read the same.
+ * Check if run content can be merged (simple text types)
  */
 function isMergeableContent(content: RunContent): boolean {
-  switch (content.type) {
-    case "text":
-    case "softHyphen":
-    case "noBreakHyphen":
-      return true;
-    case "tab":
-      return content.positional === undefined;
-    case "break":
-      return (
-        content.sourceElement === "cr" ||
-        content.breakType === undefined ||
-        content.breakType === "textWrapping"
-      );
-    default:
-      return false;
-  }
+  return (
+    content.type === "text" ||
+    content.type === "softHyphen" ||
+    content.type === "noBreakHyphen"
+  );
 }
 
 /**
  * Check if a run can be merged with another run
- * Runs with page breaks, images, fields, etc. act as merge boundaries
+ * Runs with breaks, tabs, images, fields, etc. act as merge boundaries
  */
 function canMergeRun(run: Run): boolean {
   // A run-property revision owns an exact text range. Merging either boundary
