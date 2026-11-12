@@ -112,20 +112,24 @@ const XML_TOKEN =
   /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(?:"[^"]*"|'[^']*'|[^'">])*>/gu;
 const XML_ATTRIBUTE = /([^\s=<>/]+)(\s*=\s*)(["'])(.*?)\3/gsu;
 
-const readStory = (
-  xml: string,
-  scope?: XmlNamespaceScope,
+type XmlRange = { readonly start: number; readonly end: number };
+type StoryBlock = {
+  readonly element: XmlElement;
+  readonly start: number;
+  readonly end: number;
+};
+/** A story element and its block children; offsets index the XML it was read from. */
+type ReadStory = {
+  readonly root: XmlElement;
+  readonly blocks: readonly StoryBlock[];
+  readonly range: XmlRange;
+};
+
+const storyOfElement = (
+  root: XmlElement,
   ignoredChild?: string,
-) => {
-  const parsed = parseStreamingXmlWithSourceRanges(xml, scope);
-  if (parsed.status !== "parsed") return null;
-  const roots = getChildElements(parsed.value);
-  const root = roots.at(0);
-  if (
-    roots.length !== 1 ||
-    !root ||
-    !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(root) ?? "")
-  )
+): ReadStory | null => {
+  if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(root) ?? ""))
     return null;
   if (
     root.elements?.some(
@@ -148,6 +152,19 @@ const readStory = (
   }
   const range = getXmlSourceRange(root);
   return range ? { root, blocks, range } : null;
+};
+
+const readStory = (
+  xml: string,
+  scope?: XmlNamespaceScope,
+  ignoredChild?: string,
+): ReadStory | null => {
+  const parsed = parseStreamingXmlWithSourceRanges(xml, scope);
+  if (parsed.status !== "parsed") return null;
+  const roots = getChildElements(parsed.value);
+  const root = roots.at(0);
+  if (roots.length !== 1 || !root) return null;
+  return storyOfElement(root, ignoredChild);
 };
 
 const effectiveBindings = (element: XmlElement): Map<string, string> => {
@@ -307,36 +324,98 @@ type StoryBlockReplayOptions = {
   ignoredChild?: string;
 };
 
-/** Replace only mapped block ranges, retaining authored root syntax and every intervening gap. */
-const replayBlocks = (
-  {
-    sourceXml,
-    baselineContent,
-    currentContent,
-    serializedXml,
-    ignoredChild,
-  }: StoryBlockReplayOptions,
-  scope?: ReplayScopeOptions,
-): string | null => {
-  const source = readStory(sourceXml, scope?.source, ignoredChild);
-  const generated = readStory(serializedXml, scope?.generated, ignoredChild);
+/**
+ * A source story whose blocks each match their baseline model block, as a
+ * replay reads it: block ranges and the baseline's saved fingerprints. Only
+ * container blocks keep their element, for a nested replay; a source read once
+ * serves every later save of the same part without holding its tree.
+ */
+type SourceStory = {
+  readonly rootName: string | undefined;
+  readonly namespace: string;
+  readonly range: XmlRange;
+  readonly blocks: readonly {
+    readonly start: number;
+    readonly end: number;
+    readonly element: XmlElement | undefined;
+  }[];
+  /** Start of the ignored child, where blocks enter a story that has none. */
+  readonly ignoredStart: number | undefined;
+  readonly fingerprints: readonly string[];
+};
+
+const isContainerBlock = (block: BlockContent | undefined): boolean =>
+  block?.type === "table" ||
+  block?.type === "blockSdt" ||
+  block?.type === "blockCustomXml";
+
+const readSourceStory = (
+  story: ReadStory,
+  baselineContent: readonly BlockContent[],
+  ignoredChild: string | undefined,
+): SourceStory | null => {
   if (
-    !source ||
-    !generated ||
-    getLocalName(source.root.name) !== getLocalName(generated.root.name) ||
-    source.blocks.length !== baselineContent.length ||
-    generated.blocks.length !== currentContent.length
-  )
-    return null;
-  if (
-    source.blocks.some(
+    story.blocks.length !== baselineContent.length ||
+    story.blocks.some(
       (block, index) =>
         !modelMatchesElement({
           value: baselineContent[index],
           element: block.element,
           mode: "source",
         }),
-    ) ||
+    )
+  )
+    return null;
+  const ignored =
+    ignoredChild === undefined
+      ? undefined
+      : getChildElements(story.root).find(
+          (child) =>
+            getLocalName(child.name) === ignoredChild &&
+            WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? ""),
+        );
+  return {
+    rootName: story.root.name,
+    namespace: getNamespaceUri(story.root) ?? "",
+    range: story.range,
+    blocks: story.blocks.map(({ element, start, end }, index) => ({
+      start,
+      end,
+      element: isContainerBlock(baselineContent[index]) ? element : undefined,
+    })),
+    ignoredStart: ignored && getXmlSourceRange(ignored)?.start,
+    fingerprints: baselineContent.map(savedFingerprint),
+  };
+};
+
+type StoryReplayOptions = {
+  /** The XML the source story's offsets index. */
+  sourceXml: string;
+  /** The XML the generated story's offsets index. */
+  serializedXml: string;
+  source: SourceStory;
+  generated: ReadStory;
+  baselineContent: readonly BlockContent[];
+  currentContent: readonly BlockContent[];
+  generatedRoot: XmlElement;
+};
+
+/**
+ * Replace only mapped block ranges, retaining authored root syntax and every
+ * intervening gap. The splices are in the source story's offsets.
+ */
+const replayStoryBlocks = ({
+  sourceXml,
+  serializedXml,
+  source,
+  generated,
+  baselineContent,
+  currentContent,
+  generatedRoot,
+}: StoryReplayOptions): XmlSplice[] | null => {
+  if (
+    getLocalName(source.rootName) !== getLocalName(generated.root.name) ||
+    generated.blocks.length !== currentContent.length ||
     generated.blocks.some(
       (block, index) =>
         !modelMatchesElement({
@@ -347,8 +426,7 @@ const replayBlocks = (
     )
   )
     return null;
-  const generatedRoot = scope?.generatedRoot ?? generated.root;
-  const fingerprints = baselineContent.map(savedFingerprint);
+  const { fingerprints } = source;
   const identities = new Map<string, CandidateQueue>();
   const byFingerprint = new Map<string, CandidateQueue>();
   for (const [index, block] of baselineContent.entries()) {
@@ -394,7 +472,7 @@ const replayBlocks = (
     }
     const replacement = generated.blocks[index];
     if (!replacement) return null;
-    if (original && originalIndex !== undefined) {
+    if (original && originalIndex !== undefined && original.element) {
       const nested = replayNestedBlock({
         sourceXml,
         serializedXml,
@@ -412,7 +490,7 @@ const replayBlocks = (
     const fragment = materializeReplayFragment({
       xml: serializedXml.slice(replacement.start, replacement.end),
       element: replacement.element,
-      sourceNamespace: getNamespaceUri(source.root) ?? "",
+      sourceNamespace: source.namespace,
       generatedRoot,
     });
     if (fragment === null) return null;
@@ -432,32 +510,51 @@ const replayBlocks = (
         .slice(source.range.start, source.range.end)
         .matchAll(XML_TOKEN),
     ].at(0)?.[0];
-    if (!opening || !source.root.name) return null;
+    if (!opening || !source.rootName) return null;
     if (opening.endsWith("/>")) {
       splices.push({
         start: source.range.start,
         end: source.range.end,
-        newXml: `${opening.slice(0, -2)}>${fragments.join("")}</${source.root.name}>`,
+        newXml: `${opening.slice(0, -2)}>${fragments.join("")}</${source.rootName}>`,
       });
     } else {
-      const ignored =
-        ignoredChild === undefined
-          ? undefined
-          : getChildElements(source.root).find(
-              (child) =>
-                getLocalName(child.name) === ignoredChild &&
-                WORDPROCESSINGML_NAMESPACE_URIS.has(
-                  getNamespaceUri(child) ?? "",
-                ),
-            );
+      // The story's own closing tag: the last one that starts inside it.
       const close =
-        (ignored && getXmlSourceRange(ignored)?.start) ??
-        sourceXml.lastIndexOf("</", source.range.end);
+        source.ignoredStart ??
+        sourceXml.lastIndexOf("</", source.range.end - 1);
       if (close < source.range.start) return null;
       splices.push({ start: close, end: close, newXml: fragments.join("") });
     }
   }
-  return spliceXml(sourceXml, splices);
+  return splices;
+};
+
+/** Read both stories from their own XML and replay them in one pass. */
+const replayBlocks = (
+  {
+    sourceXml,
+    baselineContent,
+    currentContent,
+    serializedXml,
+    ignoredChild,
+  }: StoryBlockReplayOptions,
+  scope?: ReplayScopeOptions,
+): string | null => {
+  const sourceStory = readStory(sourceXml, scope?.source, ignoredChild);
+  const generated = readStory(serializedXml, scope?.generated, ignoredChild);
+  const source =
+    sourceStory && readSourceStory(sourceStory, baselineContent, ignoredChild);
+  if (!source || !generated) return null;
+  const splices = replayStoryBlocks({
+    sourceXml,
+    serializedXml,
+    source,
+    generated,
+    baselineContent,
+    currentContent,
+    generatedRoot: scope?.generatedRoot ?? generated.root,
+  });
+  return splices === null ? null : spliceXml(sourceXml, splices);
 };
 
 export const buildStoryBlockReplay = (
@@ -771,30 +868,48 @@ const readDocumentStory = (xml: string) => {
   return range ? { document, body, range } : null;
 };
 
+/** The trusted source part as every save of it reads it. */
+type SourceDocument = {
+  readonly bodyRange: XmlRange;
+  readonly bodyScope: XmlNamespaceScope | undefined;
+  readonly story: SourceStory;
+};
+
+// A source part is read once per captured baseline (null: it cannot be read or
+// does not match the baseline). The key is the private captured body, whose
+// fingerprint getDocumentSourceBaseline verifies before a save passes it here,
+// so neither the part nor its baseline can have changed since.
+const sourceDocuments = new WeakMap<
+  DocumentBody,
+  { readonly xml: string; readonly read: SourceDocument | null }
+>();
+
+const readSourceDocument = (
+  sourceXml: string,
+  baseline: DocumentBody,
+): SourceDocument | null => {
+  const cached = sourceDocuments.get(baseline);
+  if (cached?.xml === sourceXml) return cached.read;
+  const source = readDocumentStory(sourceXml);
+  const body = source && storyOfElement(source.body, "sectPr");
+  const story = body && readSourceStory(body, baseline.content, "sectPr");
+  const read =
+    source && story
+      ? {
+          bodyRange: source.range,
+          bodyScope: source.body.namespaceScope,
+          story,
+        }
+      : null;
+  sourceDocuments.set(baseline, { xml: sourceXml, read });
+  return read;
+};
+
 /** Validate source/model correspondence before replaying an unchanged complete part. */
 export const canReplayDocumentSource = (
   sourceXml: string,
   baseline: DocumentBody,
-): boolean => {
-  const source = readDocumentStory(sourceXml);
-  if (!source) return false;
-  const body = readStory(
-    sourceXml.slice(source.range.start, source.range.end),
-    source.body.namespaceScope,
-    "sectPr",
-  );
-  return (
-    body !== null &&
-    body.blocks.length === baseline.content.length &&
-    body.blocks.every((block, index) =>
-      modelMatchesElement({
-        value: baseline.content[index],
-        element: block.element,
-        mode: "source",
-      }),
-    )
-  );
-};
+): boolean => readSourceDocument(sourceXml, baseline) !== null;
 
 type DocumentBlockReplayOptions = {
   sourceXml: string;
@@ -803,38 +918,40 @@ type DocumentBlockReplayOptions = {
   current: DocumentBody;
 };
 
-/** Replay body blocks and modeled document metadata inside the authored part shell. */
+/**
+ * Replay body blocks and modeled document metadata inside the authored part
+ * shell. The generated part is read once; the source part once per baseline.
+ */
 export const buildDocumentBlockReplay = ({
   sourceXml,
   serializedXml,
   baseline,
   current,
 }: DocumentBlockReplayOptions): string | null => {
-  const sourceStory = readDocumentStory(sourceXml);
+  const source = readSourceDocument(sourceXml, baseline);
   const generatedStory = readDocumentStory(serializedXml);
-  if (!sourceStory || !generatedStory) return null;
-  const { body: sourceBody, range: sourceRange } = sourceStory;
-  const {
-    document: generated,
-    body: generatedBody,
-    range: generatedRange,
-  } = generatedStory;
-  let bodyXml = replayBlocks(
-    {
-      sourceXml: sourceXml.slice(sourceRange.start, sourceRange.end),
-      serializedXml: serializedXml.slice(
-        generatedRange.start,
-        generatedRange.end,
-      ),
-      baselineContent: baseline.content,
-      currentContent: current.content,
-      ignoredChild: "sectPr",
-    },
-    {
-      source: sourceBody.namespaceScope,
-      generated: generatedBody.namespaceScope,
-      generatedRoot: generated.root,
-    },
+  if (!source || !generatedStory) return null;
+  const { bodyRange: sourceRange, bodyScope: sourceBodyScope } = source;
+  const { document: generated, body: generatedBody } = generatedStory;
+  const generatedBlocks = storyOfElement(generatedBody, "sectPr");
+  if (!generatedBlocks) return null;
+  const bodySplices = replayStoryBlocks({
+    sourceXml,
+    serializedXml,
+    source: source.story,
+    generated: generatedBlocks,
+    baselineContent: baseline.content,
+    currentContent: current.content,
+    generatedRoot: generated.root,
+  });
+  if (bodySplices === null) return null;
+  let bodyXml = spliceXml(
+    sourceXml.slice(sourceRange.start, sourceRange.end),
+    bodySplices.map(({ start, end, newXml }) => ({
+      start: start - sourceRange.start,
+      end: end - sourceRange.start,
+      newXml,
+    })),
   );
   if (bodyXml === null) return null;
   const replaceMetadata = (
@@ -887,7 +1004,7 @@ export const buildDocumentBlockReplay = ({
   ) {
     const reparsed = parseStreamingXmlWithSourceRanges(
       bodyXml,
-      sourceBody.namespaceScope,
+      sourceBodyScope,
     );
     if (reparsed.status !== "parsed") return null;
     const root = getChildElements(reparsed.value).at(0);
