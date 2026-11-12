@@ -47,31 +47,6 @@
       "seed": 1604245293
     },
     {
-      "action": "suggest_changes",
-      "seed": 3435811106,
-      "operations": [
-        {
-          "type": "splitBlock",
-          "blockId": "3CEFFC83",
-          "offset": 11
-        },
-        {
-          "type": "formatRange",
-          "range": {
-            "type": "textRange",
-            "story": "main",
-            "blockId": "0C0A0460",
-            "startOffset": 0,
-            "endOffset": 3,
-            "selectedTextHash": "h376lws"
-          },
-          "formatting": {
-            "underline": true
-          }
-        }
-      ]
-    },
-    {
       "action": "new reviewer",
       "seed": 3307928712
     },
