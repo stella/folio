@@ -102,6 +102,25 @@ const rejectedInTurn = (
   return current;
 };
 
+/** Every order of `items`. */
+const orders = <T>(items: readonly T[]): T[][] =>
+  items.length <= 1
+    ? [[...items]]
+    : items.flatMap((item, index) =>
+        orders(items.toSpliced(index, 1)).map((rest) => [item].concat(rest)),
+      );
+
+/** Each operation's revisions rejected one after another, in `order`. */
+const rejectedInOrder = (
+  document: Document,
+  order: readonly (readonly number[])[],
+): Document => {
+  let current = document;
+  for (const ids of order)
+    current = resolve(current, ids, REVISION_DECISIONS.REJECT);
+  return current;
+};
+
 const revision = (index: number) => ({
   id: index + 1,
   author: "C",
@@ -294,5 +313,269 @@ test("a boundary kept beside a cut control goes where it was once the cut deleti
       href: "https://example.org",
       children: [tab(), { type: "bookmarkStart", id: 1, name: "_Link" }],
     },
+  ]);
+});
+
+test("a boundary kept from content later edits wrapped goes where it was, in every rejection order", () => {
+  const source: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "run",
+                content: [
+                  { type: "text", text: "aa" },
+                  { type: "text", text: "😀😀a" },
+                ],
+              },
+              {
+                type: "inlineSdt",
+                properties: { sdtType: "richText", id: 1, tag: "clause" },
+                content: [
+                  { type: "run", content: [{ type: "text", text: "aa" }] },
+                  {
+                    type: "hyperlink",
+                    rId: "rId9",
+                    href: "https://example.org",
+                    children: [
+                      {
+                        type: "inlineWrapper",
+                        kind: "bidi",
+                        control: "embedding",
+                        content: [
+                          {
+                            type: "run",
+                            content: [
+                              { type: "tab" },
+                              { type: "text", text: "aa" },
+                            ],
+                          },
+                          {
+                            type: "run",
+                            content: [
+                              { type: "text", text: "aa" },
+                              { type: "text", text: "aaaaa" },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const tracked = opsOn(source, [
+    // Between the two runs of the bidi wrapper: it cuts the wrapper, the link
+    // and the control.
+    (index) => ({
+      type: "insertContent",
+      at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 12 },
+      slice: {
+        content: [
+          { type: "moveToRangeStart", id: 1, name: "move1", author: "A" },
+        ],
+        openStart: 0,
+        openEnd: 0,
+      },
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+    // Over the boundary: the piece before goes whole, the piece after only
+    // at its start, so a deletion wraps the link inside that piece alone.
+    (index) => ({
+      type: "deleteRange",
+      from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+      to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 13 },
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+  ]);
+  const perOp = dated(tracked, 2);
+  const atOnce = resolve(tracked, perOp.flat(), REVISION_DECISIONS.REJECT);
+  for (const order of orders(perOp))
+    expect(body(rejectedInOrder(tracked, order))).toEqual(body(atOnce));
+  const paragraph = body(atOnce).at(0);
+  if (paragraph?.type !== "paragraph") throw new TypeError("A paragraph.");
+  const control = paragraph.content.at(1);
+  if (control?.type !== "inlineSdt") throw new TypeError("An inline control.");
+  const link = control.content.at(1);
+  if (link?.type !== "hyperlink") throw new TypeError("A link.");
+  expect(link.children).toHaveLength(1);
+  const bidi = link.children.at(0);
+  if (bidi?.type !== "inlineWrapper") throw new TypeError("A bidi wrapper.");
+  expect(bidi.content.map((node) => node.type)).toEqual([
+    "run",
+    "moveToRangeStart",
+    "run",
+  ]);
+});
+
+test("a boundary kept beside a cut deletion goes where it was when the deletion is rejected first", () => {
+  const source: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000002",
+            content: [
+              {
+                type: "inlineSdt",
+                properties: { sdtType: "richText", id: 2, tag: "clause" },
+                content: [
+                  tab(),
+                  {
+                    type: "hyperlink",
+                    rId: "rId9",
+                    href: "https://example.org",
+                    children: [
+                      tab(),
+                      { type: "bookmarkStart", id: 1, name: "_Link" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const tracked = opsOn(source, [
+    (index) => ({
+      type: "deleteRange",
+      from: { story: OP_STORIES.MAIN, blockId: "00000002", offset: 0 },
+      to: { story: OP_STORIES.MAIN, blockId: "00000002", offset: 2 },
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+    // Between the two tabs: it cuts the deletion and the control.
+    (index) => ({
+      type: "insertContent",
+      at: { story: OP_STORIES.MAIN, blockId: "00000002", offset: 1 },
+      slice: {
+        content: [{ type: "bookmarkEnd", id: 2 }],
+        openStart: 0,
+        openEnd: 0,
+      },
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+  ]);
+  const perOp = dated(tracked, 2);
+  const atOnce = resolve(tracked, perOp.flat(), REVISION_DECISIONS.REJECT);
+  // The deletion first: the cut it no longer holds is one level shallower.
+  expect(body(rejectedInOrder(tracked, perOp))).toEqual(body(atOnce));
+  expect(body(rejectedInTurn(tracked, perOp))).toEqual(body(atOnce));
+  const paragraph = body(atOnce).at(0);
+  if (paragraph?.type !== "paragraph") throw new TypeError("A paragraph.");
+  const inline = paragraph.content.at(0);
+  if (inline?.type !== "inlineSdt") throw new TypeError("An inline control.");
+  expect(inline.content).toEqual([
+    tab(),
+    { type: "bookmarkEnd", id: 2 },
+    {
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [tab(), { type: "bookmarkStart", id: 1, name: "_Link" }],
+    },
+  ]);
+});
+
+test("a boundary kept between pieces formatted apart goes where it was, in every rejection order", () => {
+  const source: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "hyperlink",
+                rId: "rId9",
+                href: "https://example.org",
+                children: [
+                  {
+                    type: "inlineWrapper",
+                    kind: "bidi",
+                    control: "embedding",
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "abcd" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const at = (offset: number) => ({
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    offset,
+  });
+  const tracked = opsOn(source, [
+    (index) => ({
+      type: "insertText",
+      at: at(2),
+      text: "xyz",
+      runProps: {},
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+    // Inside the insertion: it cuts the insertion, the link and the wrapper.
+    (index) => ({
+      type: "insertContent",
+      at: at(4),
+      slice: {
+        content: [{ type: "bookmarkStart", id: 5, name: "bm" }],
+        openStart: 0,
+        openEnd: 0,
+      },
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+    // One piece of the cut insertion formatted apart from the other.
+    (index) => ({
+      type: "setRunProps",
+      from: at(4),
+      to: at(5),
+      patch: { bold: true },
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+  ]);
+  const perOp = dated(tracked, 3);
+  const atOnce = resolve(tracked, perOp.flat(), REVISION_DECISIONS.REJECT);
+  for (const order of orders(perOp))
+    expect(body(rejectedInOrder(tracked, order))).toEqual(body(atOnce));
+  const paragraph = body(atOnce).at(0);
+  if (paragraph?.type !== "paragraph") throw new TypeError("A paragraph.");
+  const link = paragraph.content.at(0);
+  if (link?.type !== "hyperlink" || paragraph.content.length !== 1)
+    throw new TypeError("One link.");
+  const bidi = link.children.at(0);
+  if (bidi?.type !== "inlineWrapper" || link.children.length !== 1)
+    throw new TypeError("One bidi wrapper.");
+  expect(bidi.content.map((node) => node.type)).toEqual([
+    "run",
+    "bookmarkStart",
+    "run",
   ]);
 });
