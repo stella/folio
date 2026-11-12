@@ -257,6 +257,8 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   // Innermost enclosing marked row first: a table nested in a marked row can
   // carry a marked row of its own.
   const rowRevisionScopes: RowRevisionScope[] = [];
+  // Run revision ids folded into a row's entry: resolving the row reaches them.
+  const rowFoldedIds = new Map<FolioReviewChange, Set<number>>();
   const derivedFormattingRepresentationPositions = new Set<number>();
   const noteReferences = collectNoteReferenceLabels(doc);
   let currentBlockId: string | null = null;
@@ -313,6 +315,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
         };
         grouped.set(`row:${kind}:${revisionId}:${String(pos)}`, change);
+        rowFoldedIds.set(change, new Set());
         rowRevisionScopes.push({
           end: pos + node.nodeSize,
           kind: kind === "rowInserted" ? "insertion" : "deletion",
@@ -499,6 +502,10 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         rowScope?.kind === layerKind &&
         belongsToRowRevision(rowScope, revision)
       ) {
+        // The row's entry stands for this run's revision too, so its ids
+        // reach a run mark minted under another id.
+        if (revision.id !== rowScope.change.id)
+          rowFoldedIds.get(rowScope.change)?.add(revision.id);
         continue;
       }
       const path = `${currentBlockId ?? ""}:${JSON.stringify(pathLayers.slice(0, layerIndex + 1))}`;
@@ -593,7 +600,10 @@ const getTrackedChangeGroupsFromProjectedDoc = (
       previousRange.lastBoundary = range.lastBoundary;
       continue;
     }
-    const group = { change: { ...change }, ids: [change.id] };
+    const group = {
+      change: { ...change },
+      ids: [change.id, ...(rowFoldedIds.get(change) ?? [])],
+    };
     groups.push(group);
     if (range) {
       previousInline = { key, group };
@@ -634,8 +644,9 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] =>
 /**
  * The physical revision ids behind each listed change that `ids` name, one
  * group per change. An inline change split by markup is one entry of the
- * change list over several ids, and any of them resolves the whole change.
- * An id no change lists stands alone.
+ * change list over several ids, as is a marked row with the run marks it
+ * folds, and any of them resolves the whole change. An id no change lists
+ * stands alone.
  */
 export const getTrackedChangeGroupsForIds = (
   doc: PMNode,
