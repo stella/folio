@@ -49,6 +49,12 @@ import {
   createBatchListMinter,
   type MintedList,
 } from "../ai-edits/newListNumbering";
+import type { NoteReferenceLabels } from "../ai-edits/note-references";
+import {
+  isDeletedPPrMark,
+  joinsIn,
+  pendingJoinParagraphs,
+} from "../ai-edits/pendingJoin";
 import {
   collectNoteReferenceLabels,
   hashFolioAIBlockContent,
@@ -359,10 +365,17 @@ const isBlockInsertion = (
   operation.type === "insertAfterBlock" ||
   operation.type === "insertBeforeBlock";
 
+type ProjectedParagraph = NonNullable<
+  ReturnType<CanonicalProjection["paragraph"]>
+>;
+
 type ResolveBlockInsertionOptions = {
   mintList: (format: FolioAIListKind) => MintedList;
   operation: BlockInsertion;
-  paragraph: NonNullable<ReturnType<CanonicalProjection["paragraph"]>>;
+  /** The paragraph the insertion goes beside. */
+  paragraph: ProjectedParagraph;
+  /** The paragraph whose stated properties the new paragraph copies. */
+  formattingSource: ProjectedParagraph;
   projection: CanonicalProjection;
   story: OpStory;
   refusal: (
@@ -411,6 +424,69 @@ const blockInsertionPlace = (
   };
 };
 
+/** Where an insertion beside a paragraph goes, and whose properties it copies. */
+type BesidePendingJoin = {
+  place: ProjectedParagraph;
+  formattingSource: ProjectedParagraph;
+};
+
+/** A suggestion reads the document as it stands: beside the paragraph it names. */
+const besideAsItStands = (
+  paragraph: ProjectedParagraph,
+): BesidePendingJoin => ({
+  place: paragraph,
+  formattingSource: paragraph,
+});
+
+type BesidePendingJoinOptions = {
+  operation: BlockInsertion;
+  paragraph: ProjectedParagraph;
+  projection: CanonicalProjection;
+  noteReferences: NoteReferenceLabels;
+};
+
+/**
+ * Where an insertion beside `paragraph` goes, read as the joined paragraph a
+ * pending join makes of it in the document the batch read
+ * (`pendingJoinParagraphs`, which the default engine places by too): after
+ * the join's last paragraph, or before its first, copying the properties of
+ * the paragraph the join leaves, which the joined paragraph has. The batch's
+ * other operations do not move it: a split of the paragraph the join leaves
+ * puts the block after both halves, as one put after that paragraph goes.
+ * Undefined beside a paragraph whose own break is pending removal where no
+ * join reads it: after it, when the join leaves no paragraph with words for
+ * the block to follow; before it, when the paragraph goes whole.
+ */
+const besidePendingJoin = ({
+  operation,
+  paragraph,
+  projection,
+  noteReferences,
+}: BesidePendingJoinOptions): BesidePendingJoin | undefined => {
+  const options = {
+    doc: projection.doc,
+    paragraphPos: paragraph.start - 1,
+    noteReferences,
+  };
+  const join = pendingJoinParagraphs(options);
+  const breakGoes = isDeletedPPrMark(paragraph.node.attrs["pPrMark"]);
+  const after = operation.type === "insertAfterBlock";
+  if (
+    breakGoes &&
+    (after ? join.last === options.paragraphPos : !joinsIn(options))
+  )
+    return undefined;
+  const at = (position: number) =>
+    position === options.paragraphPos
+      ? paragraph
+      : projection.paragraphStartingAt(position);
+  const place = at(after ? join.last : join.first);
+  const formattingSource = at(join.last);
+  if (place === undefined || formattingSource === undefined)
+    return panic("A pending join names a paragraph the projection lacks.");
+  return { place, formattingSource };
+};
+
 /**
  * One new paragraph beside the anchor, as the default engine writes it: the
  * anchor's stated paragraph properties unless `inheritFormatting` is false,
@@ -419,6 +495,7 @@ const blockInsertionPlace = (
 const resolveBlockInsertion = ({
   operation,
   paragraph,
+  formattingSource,
   projection,
   story,
   mintList,
@@ -449,7 +526,7 @@ const resolveBlockInsertion = ({
   const formatting: Record<string, unknown> =
     operation.inheritFormatting === false
       ? {}
-      : { ...paragraph.source.formatting };
+      : { ...formattingSource.source.formatting };
   for (const [key, value] of Object.entries(
     statedParagraphPatch({
       ...(operation.styleId === undefined
@@ -776,6 +853,11 @@ type ResolveCanonicalPublicOperationOptions = {
   diff: ReturnType<typeof wordDiffSessionFromOptions>["diff"];
   /** Whether the batch records its edits as revisions. */
   tracked: boolean;
+  /**
+   * Whether the batch records its edits as suggestions, which read the
+   * document as it stands rather than as accepting leaves it.
+   */
+  suggested: boolean;
   /** A new list of one kind for this operation, minted after the batch's earlier ones. */
   mintList: (format: FolioAIListKind) => MintedList;
   /** The blocks the batch deletes, and those it inserts beside. */
@@ -995,6 +1077,7 @@ export class CanonicalPublicOperations {
         story,
         diff,
         tracked: batch.mode !== "direct",
+        suggested: batch.mode === "suggested",
         mintList,
         besideDeletions,
       });
@@ -1040,6 +1123,7 @@ export class CanonicalPublicOperations {
         story,
         diff,
         tracked: batch.mode !== "direct",
+        suggested: batch.mode === "suggested",
         mintList,
         besideDeletions: {
           deleted: new Set(),
@@ -1670,6 +1754,7 @@ export class CanonicalPublicOperations {
     story,
     diff,
     tracked,
+    suggested,
     mintList,
     besideDeletions,
   }: ResolveCanonicalPublicOperationOptions) {
@@ -1713,14 +1798,19 @@ export class CanonicalPublicOperations {
     if (!anchor || projection.isErr()) return refusal("missingBlock");
     const paragraph = projection.value.paragraph(blockId);
     if (!paragraph) return refusal("missingBlock");
+    // A block beside a paragraph whose break is pending removal is placed
+    // by the join it is part of (`besidePendingJoin`); any other operation
+    // on it waits for that change to be resolved.
     if (
-      paragraph.source.pPrMark?.kind === "del" ||
-      paragraph.source.pPrMark?.kind === "moveFrom"
+      (paragraph.source.pPrMark?.kind === "del" ||
+        paragraph.source.pPrMark?.kind === "moveFrom") &&
+      !isBlockInsertion(operation)
     )
       return refusal("pendingDeletion");
+    const noteReferences = collectNoteReferenceLabels(state.doc);
     const clean = buildCleanBlockText(paragraph.node, paragraph.start - 1, {
       fieldResults: "text",
-      noteReferences: collectNoteReferenceLabels(state.doc),
+      noteReferences,
     });
     const hash = hashFolioAIBlockContent(clean.text);
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
@@ -1740,11 +1830,22 @@ export class CanonicalPublicOperations {
         operation.type === "insertBeforeBlock" &&
         !followed &&
         besideDeletions.deleted.has(blockId);
+      const insertion: BlockInsertion = besideDeletion
+        ? { ...operation, type: "insertAfterBlock" }
+        : operation;
+      const placed = suggested
+        ? besideAsItStands(paragraph)
+        : besidePendingJoin({
+            operation: insertion,
+            paragraph,
+            projection: projection.value,
+            noteReferences,
+          });
+      if (placed === undefined) return refusal("pendingDeletion");
       const inserted = resolveBlockInsertion({
-        operation: besideDeletion
-          ? { ...operation, type: "insertAfterBlock" }
-          : operation,
-        paragraph,
+        operation: insertion,
+        paragraph: placed.place,
+        formattingSource: placed.formattingSource,
         projection: projection.value,
         story,
         mintList,
