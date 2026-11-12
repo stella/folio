@@ -5,6 +5,7 @@
 ```ts
 
 import { Comment as Comment_2 } from '@stll/docx-core/model';
+import { DeepReadonly } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 
 // @public

@@ -23,6 +23,7 @@ import type {
   UnderlineStyle,
 } from "../../../types/document";
 import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
+import type { DeepReadonly } from "../../../types/documentModel";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
 import { normalizeHorizontalScalePercent } from "../../../utils/horizontalScale";
 import {
@@ -994,7 +995,7 @@ export function getMarkAttr(
 
 const withDirectFontProvenance = (
   attrs: RunFormattingOverrideAttrs | undefined,
-  directFormatting: TextFormatting | undefined,
+  directFormatting: DeepReadonly<TextFormatting> | undefined,
 ): RunFormattingOverrideAttrs | undefined => {
   const directFontProperties: ("fontFamily" | "fontSize" | "color")[] = [];
   if (directFormatting?.fontFamily !== undefined) {
@@ -1023,7 +1024,7 @@ const COMPLEX_SCRIPT_MIRRORS = [
 
 const withComplexScriptAbsenceProvenance = (
   attrs: RunFormattingOverrideAttrs | undefined,
-  directFormatting: TextFormatting | undefined,
+  directFormatting: DeepReadonly<TextFormatting> | undefined,
 ): RunFormattingOverrideAttrs | undefined => {
   const absent = COMPLEX_SCRIPT_MIRRORS.filter(
     ({ ordinary, complex }) =>
@@ -1055,9 +1056,9 @@ export type MarkFactory = (type: string, attrs?: Attrs | null) => Mark;
  * Convert TextFormatting to ProseMirror marks
  */
 type TextFormattingToMarksOptions = {
-  overrideFormatting: TextFormatting | undefined;
+  overrideFormatting: DeepReadonly<TextFormatting> | undefined;
   /** Direct standard font properties whose authored provenance must survive. */
-  directFormatting?: TextFormatting | undefined;
+  directFormatting?: DeepReadonly<TextFormatting> | undefined;
   /** Whether direct authorship is reconstructible from structural marks and the style context. */
   authoredCarrier?: AuthoredRunFormattingCarrier;
   /** Builds each mark; defaults to `schema.mark`. */
@@ -1065,7 +1066,7 @@ type TextFormattingToMarksOptions = {
 };
 
 export function textFormattingToMarks(
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
   schema: Schema,
   options?: TextFormattingToMarksOptions,
 ): Mark[] {

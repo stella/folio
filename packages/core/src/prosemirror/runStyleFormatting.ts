@@ -1,15 +1,8 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import type { StyleEngine } from "../style-engine";
-import type {
-  ColorValue,
-  EmphasisMark,
-  PreservedMarkup,
-  ShadingProperties,
-  TextEffect,
-  TextFormatting,
-  UnderlineStyle,
-} from "../types/document";
+import type { TextFormatting } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import {
   mergeTextFormatting,
   STYLE_TOGGLE_KEYS,
@@ -20,6 +13,13 @@ import {
   cascadeStyleTextFormatting,
   type StyleToggleKey,
 } from "./styles/styleToggleCascade";
+
+/**
+ * Run formatting read from the document's styles or from a paragraph's
+ * attributes: shared with the document, the style resolver's cache or the
+ * editor state, so these readers never write it.
+ */
+type ReadonlyTextFormatting = DeepReadonly<TextFormatting>;
 
 const PARAGRAPH_MARK_BOOLEAN_KEYS = [
   "bold",
@@ -37,7 +37,7 @@ const PARAGRAPH_MARK_BOOLEAN_KEYS = [
 ] as const satisfies readonly (keyof TextFormatting)[];
 
 export const hasDirectRunFormatting = (
-  formatting: TextFormatting | undefined,
+  formatting: ReadonlyTextFormatting | undefined,
 ): boolean => {
   if (!formatting) {
     return false;
@@ -49,13 +49,19 @@ export const hasDirectRunFormatting = (
 
 /** A stated run property or character style establishes paragraph-mark suppression. */
 export const isParagraphMarkSuppressionEligible = (
-  formatting: TextFormatting | undefined,
+  formatting: ReadonlyTextFormatting | undefined,
 ): boolean =>
   hasDirectRunFormatting(formatting) || formatting?.styleId !== undefined;
 
-export const stripParagraphMarkOnlyFormatting = (
+export function stripParagraphMarkOnlyFormatting(
   formatting: TextFormatting,
-): TextFormatting | undefined => {
+): TextFormatting | undefined;
+export function stripParagraphMarkOnlyFormatting(
+  formatting: ReadonlyTextFormatting,
+): ReadonlyTextFormatting | undefined;
+export function stripParagraphMarkOnlyFormatting(
+  formatting: ReadonlyTextFormatting,
+): ReadonlyTextFormatting | undefined {
   const {
     allCaps: _allCaps,
     highlight: _highlight,
@@ -71,7 +77,7 @@ export const stripParagraphMarkOnlyFormatting = (
   return Object.keys(formattingForBody).length > 0
     ? formattingForBody
     : undefined;
-};
+}
 
 /**
  * Whether a paragraph's mark lends its run properties to the paragraph's
@@ -81,9 +87,15 @@ export const stripParagraphMarkOnlyFormatting = (
 export const paragraphMarkLendsRuns = (styleId: string | undefined): boolean =>
   styleId === undefined;
 
-export const stripParagraphMarkFormattingForBodyRuns = (
+export function stripParagraphMarkFormattingForBodyRuns(
   formatting: TextFormatting,
-): TextFormatting | undefined => {
+): TextFormatting | undefined;
+export function stripParagraphMarkFormattingForBodyRuns(
+  formatting: ReadonlyTextFormatting,
+): ReadonlyTextFormatting | undefined;
+export function stripParagraphMarkFormattingForBodyRuns(
+  formatting: ReadonlyTextFormatting,
+): ReadonlyTextFormatting | undefined {
   const paragraphMarkFormatting = stripParagraphMarkOnlyFormatting(formatting);
   if (!paragraphMarkFormatting) {
     return undefined;
@@ -93,24 +105,24 @@ export const stripParagraphMarkFormattingForBodyRuns = (
   return Object.keys(bodyRunFormatting).length > 0
     ? bodyRunFormatting
     : undefined;
-};
+}
 
 type SuppressParagraphMarkFormattingOptions = {
-  baseFormatting: TextFormatting | undefined;
-  directFormatting: TextFormatting | undefined;
-  paragraphMarkFormatting: TextFormatting | undefined;
+  baseFormatting: ReadonlyTextFormatting | undefined;
+  directFormatting: ReadonlyTextFormatting | undefined;
+  paragraphMarkFormatting: ReadonlyTextFormatting | undefined;
 };
 
 export const suppressParagraphMarkFormatting = ({
   baseFormatting,
   directFormatting,
   paragraphMarkFormatting,
-}: SuppressParagraphMarkFormattingOptions): TextFormatting | undefined => {
+}: SuppressParagraphMarkFormattingOptions):
+  ReadonlyTextFormatting | undefined => {
   if (!paragraphMarkFormatting) {
     return baseFormatting;
   }
-  const result =
-    mergeTextFormatting(baseFormatting, paragraphMarkFormatting) ?? {};
+  const result = mergeTextFormatting(baseFormatting, paragraphMarkFormatting);
   for (const property of PARAGRAPH_MARK_BOOLEAN_KEYS) {
     if (
       paragraphMarkFormatting[property] !== undefined &&
@@ -144,15 +156,15 @@ export const suppressParagraphMarkFormatting = ({
 };
 
 type GetParagraphMarkSuppressionOverridesOptions = {
-  directFormatting: TextFormatting | undefined;
-  paragraphMarkFormatting: TextFormatting | undefined;
-  suppressedFormatting: TextFormatting | undefined;
+  directFormatting: ReadonlyTextFormatting | undefined;
+  paragraphMarkFormatting: ReadonlyTextFormatting | undefined;
+  suppressedFormatting: ReadonlyTextFormatting | undefined;
   /**
    * The run's own character style. A property it states is the style's to
    * give, not the paragraph mark's to take away: the run keeps it as the
    * style cascade resolves it, with no override saying it is off.
    */
-  characterStyleFormatting: TextFormatting | undefined;
+  characterStyleFormatting: ReadonlyTextFormatting | undefined;
 };
 
 export const getParagraphMarkSuppressionOverrides = ({
@@ -186,10 +198,11 @@ export const getParagraphMarkSuppressionOverrides = ({
   return Object.keys(overrides).length > 0 ? overrides : undefined;
 };
 
+/** A paragraph's run cascade inputs, read from its styles and attributes. */
 export type ParagraphRunStyleContext = {
-  baseParagraphFormatting: TextFormatting | undefined;
-  paragraphFormatting: TextFormatting | undefined;
-  paragraphMarkFormatting: TextFormatting | undefined;
+  baseParagraphFormatting: ReadonlyTextFormatting | undefined;
+  paragraphFormatting: ReadonlyTextFormatting | undefined;
+  paragraphMarkFormatting: ReadonlyTextFormatting | undefined;
 };
 
 export type RunStyleResolver = Pick<
@@ -204,8 +217,8 @@ export type RunStyleResolver = Pick<
 >;
 
 const withoutFontFamily = (
-  formatting: TextFormatting | undefined,
-): TextFormatting | undefined => {
+  formatting: ReadonlyTextFormatting | undefined,
+): ReadonlyTextFormatting | undefined => {
   if (!formatting?.fontFamily) {
     return formatting;
   }
@@ -216,12 +229,12 @@ const withoutFontFamily = (
 const paragraphStyleFontFamily = (
   styleId: string | undefined,
   styleResolver: RunStyleResolver,
-): TextFormatting["fontFamily"] | undefined => {
+): ReadonlyTextFormatting["fontFamily"] | undefined => {
   let style =
     (styleId ? styleResolver.getStyle(styleId) : undefined) ??
     styleResolver.getDefaultParagraphStyle();
   const visited = new Set<string>();
-  const styleChain: TextFormatting[] = [];
+  const styleChain: ReadonlyTextFormatting[] = [];
   while (style?.type === "paragraph" && !visited.has(style.styleId)) {
     visited.add(style.styleId);
     if (style.rPr?.fontFamily) {
@@ -229,7 +242,7 @@ const paragraphStyleFontFamily = (
     }
     style = style.basedOn ? styleResolver.getStyle(style.basedOn) : undefined;
   }
-  let formatting: TextFormatting | undefined;
+  let formatting: ReadonlyTextFormatting | undefined;
   for (const styleFormatting of styleChain.toReversed()) {
     formatting = mergeTextFormatting(formatting, styleFormatting);
   }
@@ -239,7 +252,17 @@ const paragraphStyleFontFamily = (
 type ResolveParagraphBodyRunFormattingOptions = {
   styleId: string | undefined;
   styleResolver?: RunStyleResolver | null | undefined;
-  tableRunFormatting?: TextFormatting | undefined;
+  tableRunFormatting?: ReadonlyTextFormatting | undefined;
+};
+
+type StyleToggleCascade = ReturnType<typeof cascadeStyleTextFormatting>;
+
+/** A paragraph's body-run cascade, read from the document's styles. */
+type ParagraphBodyRunFormatting = {
+  baseFormatting: ReadonlyTextFormatting | undefined;
+  baseToggleCascade: StyleToggleCascade;
+  defaultFormatting: ReadonlyTextFormatting | undefined;
+  defaultToggleCascade: StyleToggleCascade;
 };
 
 /** Resolve the table, paragraph, and character style cascade before paragraph-mark properties. */
@@ -247,12 +270,7 @@ export const resolveParagraphBodyRunFormatting = ({
   styleId,
   styleResolver,
   tableRunFormatting,
-}: ResolveParagraphBodyRunFormattingOptions): {
-  baseFormatting: TextFormatting | undefined;
-  baseToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
-  defaultFormatting: TextFormatting | undefined;
-  defaultToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
-} => {
+}: ResolveParagraphBodyRunFormattingOptions): ParagraphBodyRunFormatting => {
   if (!styleResolver) {
     const defaultToggleCascade = cascadeStyleTextFormatting(
       [{ formatting: tableRunFormatting, type: "style" }],
@@ -316,114 +334,15 @@ export const resolveParagraphBodyRunFormatting = ({
 
 type ResolveParagraphInheritedRunFormattingOptions =
   ResolveParagraphBodyRunFormattingOptions & {
-    paragraphMarkFormatting: TextFormatting | undefined;
+    paragraphMarkFormatting: ReadonlyTextFormatting | undefined;
   };
 
 /** One source cascade for imported body runs and the saver inheritance baseline. */
 export const resolveParagraphInheritedRunFormatting = (
   options: ResolveParagraphInheritedRunFormattingOptions,
-): {
-  inheritedFormatting:
-    | {
-        bold?: boolean | undefined;
-        boldCs?: boolean | undefined;
-        italic?: boolean | undefined;
-        italicCs?: boolean | undefined;
-        underline?:
-          | {
-              style: UnderlineStyle;
-              color?: ColorValue;
-            }
-          | undefined;
-        strike?: boolean | undefined;
-        doubleStrike?: boolean | undefined;
-        vertAlign?: "baseline" | "superscript" | "subscript" | undefined;
-        smallCaps?: boolean | undefined;
-        allCaps?: boolean | undefined;
-        hidden?: boolean | undefined;
-        noProof?: boolean | undefined;
-        color?: ColorValue | undefined;
-        highlight?:
-          | "black"
-          | "blue"
-          | "cyan"
-          | "darkBlue"
-          | "darkCyan"
-          | "darkGray"
-          | "darkGreen"
-          | "darkMagenta"
-          | "darkRed"
-          | "darkYellow"
-          | "green"
-          | "lightGray"
-          | "magenta"
-          | "none"
-          | "red"
-          | "white"
-          | "yellow"
-          | undefined;
-        shading?: ShadingProperties | undefined;
-        fontSize?: number | undefined;
-        fontSizeCs?: number | undefined;
-        fontFamily?:
-          | {
-              ascii?: string;
-              hAnsi?: string;
-              eastAsia?: string;
-              cs?: string;
-              hint?: "default" | "eastAsia" | "cs";
-              asciiTheme?:
-                | "majorAscii"
-                | "majorHAnsi"
-                | "majorEastAsia"
-                | "majorBidi"
-                | "minorAscii"
-                | "minorHAnsi"
-                | "minorEastAsia"
-                | "minorBidi";
-              hAnsiTheme?: string;
-              eastAsiaTheme?: string;
-              csTheme?: string;
-            }
-          | undefined;
-        language?:
-          | {
-              val?: string;
-              eastAsia?: string;
-              bidi?: string;
-            }
-          | undefined;
-        spacing?: number | undefined;
-        position?: number | undefined;
-        scale?: number | undefined;
-        kerning?: number | undefined;
-        effect?: TextEffect | undefined;
-        emphasisMark?: EmphasisMark | undefined;
-        emboss?: boolean | undefined;
-        imprint?: boolean | undefined;
-        outline?: boolean | undefined;
-        shadow?: boolean | undefined;
-        rtl?: boolean | undefined;
-        cs?: boolean | undefined;
-        styleId?: string | undefined;
-        preserved?: PreservedMarkup | undefined;
-      }
-    | undefined;
-  inheritedToggleCascade: {
-    formatting: TextFormatting | undefined;
-    toggleStates: ReadonlyMap<
-      StyleToggleKey,
-      {
-        value: boolean;
-        defaultsActive: boolean;
-      }
-    >;
-    type: "styleToggleCascade";
-  };
-  baseFormatting: TextFormatting | undefined;
-  baseToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
-  defaultFormatting: TextFormatting | undefined;
-  defaultToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
+): ParagraphBodyRunFormatting & {
+  inheritedFormatting: ReadonlyTextFormatting | undefined;
+  inheritedToggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
 } => {
   const body = resolveParagraphBodyRunFormatting(options);
   const ordinaryFormatting = mergeTextFormatting(
@@ -478,7 +397,7 @@ export const paragraphRunStyleContext = (
 
 type ParagraphFormattingForRunOptions = {
   context: ParagraphRunStyleContext;
-  directFormatting?: TextFormatting;
+  directFormatting?: ReadonlyTextFormatting;
   marks: readonly Mark[];
 };
 
@@ -486,7 +405,7 @@ export const paragraphFormattingForRun = ({
   context,
   directFormatting,
   marks,
-}: ParagraphFormattingForRunOptions): TextFormatting | undefined => {
+}: ParagraphFormattingForRunOptions): ReadonlyTextFormatting | undefined => {
   if (
     !marks.some(
       ({ type }) =>
@@ -542,7 +461,7 @@ export const nearestParagraphRunStyleContext = (
 
 type ResolveEffectiveRunStyleFormattingOptions = {
   marks: readonly Mark[];
-  paragraphFormatting: TextFormatting | undefined;
+  paragraphFormatting: ReadonlyTextFormatting | undefined;
   styleResolver?: RunStyleResolver | null;
 };
 
@@ -551,14 +470,15 @@ export const resolveEffectiveRunStyleFormatting = ({
   marks,
   paragraphFormatting,
   styleResolver,
-}: ResolveEffectiveRunStyleFormattingOptions): TextFormatting | undefined => {
+}: ResolveEffectiveRunStyleFormattingOptions):
+  ReadonlyTextFormatting | undefined => {
   const characterStyle = marks.find(
     ({ type }) => type.name === "characterStyle",
   );
   const hasDirectFormattingCarrier = marks.some(
     ({ type }) => type.name === "runFormattingOverride",
   );
-  let styleFormatting: TextFormatting | undefined;
+  let styleFormatting: ReadonlyTextFormatting | undefined;
   if (characterStyle) {
     styleFormatting = styleResolver?.getRunStyleOwnProperties(
       expectCharacterStyleMarkAttrs(characterStyle).styleId,

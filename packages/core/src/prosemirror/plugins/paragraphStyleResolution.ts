@@ -26,6 +26,7 @@ import type { NumberingMap } from "../../docx/numberingParser";
 import { resolveTableLook } from "../../docx/tableLook";
 import type { StyleEngine } from "../../style-engine";
 import type { ParagraphFormatting } from "../../types/document";
+import type { DeepReadonly, OwnRecord } from "../../types/documentModel";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import {
   expectParagraphAttrs,
@@ -78,8 +79,12 @@ const changedRanges = (
  * node holds a value for. Only called for paragraphs the load path never
  * projected, whose attrs hold nothing inherited yet.
  */
-const statedFormatting = (attrs: ParagraphAttrs): ParagraphFormatting => {
-  const formatting: ParagraphFormatting = {};
+const statedFormatting = (
+  attrs: Readonly<ParagraphAttrs>,
+): DeepReadonly<ParagraphFormatting> => {
+  // Its own record of the attrs' values; borders, shading and tabs stay the
+  // attrs' read-only values, since the cascade only reads them.
+  const formatting: OwnRecord<ParagraphFormatting> = {};
   const copy = <Key extends keyof ParagraphFormatting & keyof ParagraphAttrs>(
     key: Key,
   ): void => {

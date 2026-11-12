@@ -31,6 +31,7 @@ import type {
   TextFormatting,
 } from "../../../types/document";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
+import { type DeepReadonly, writableCopy } from "../../../types/documentModel";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
 import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
@@ -109,7 +110,7 @@ function paragraphAttrsToDOMStyle(attrs: ParagraphAttrs): string {
     indentLeft = (numbering.ilvl + 1) * 720;
   }
 
-  const formatting: ParagraphFormatting = {
+  const formatting: DeepReadonly<ParagraphFormatting> = {
     ...(attrs.alignment !== undefined ? { alignment: attrs.alignment } : {}),
     ...(attrs.spaceBefore !== undefined
       ? { spaceBefore: attrs.spaceBefore }
@@ -850,8 +851,8 @@ function setParagraphAttrsCmd(attrs: Record<string, unknown>): Command {
 // ============================================================================
 
 export type ResolvedStyleAttrs = {
-  paragraphFormatting?: ParagraphFormatting;
-  runFormatting?: TextFormatting;
+  paragraphFormatting?: DeepReadonly<ParagraphFormatting>;
+  runFormatting?: DeepReadonly<TextFormatting>;
   /** Canonical OOXML style name, used when the document-local style id is localized. */
   styleName?: string;
   /**
@@ -1133,14 +1134,17 @@ export function getParagraphAlignment(
   return paragraph.attrs["alignment"] || null;
 }
 
-export function getParagraphTabs(state: EditorState): TabStop[] | null {
+/** The selected paragraph's tab stops: its attrs, which the cascade shares. */
+export function getParagraphTabs(
+  state: EditorState,
+): readonly DeepReadonly<TabStop>[] | null {
   const { $from } = state.selection;
   const paragraph = $from.parent;
 
   if (paragraph.type.name !== "paragraph") {
     return null;
   }
-  return paragraph.attrs["tabs"] || null;
+  return expectParagraphAttrs(paragraph).tabs ?? null;
 }
 
 export function getStyleId(state: EditorState): string | null {
@@ -1594,7 +1598,9 @@ export const ParagraphExtension: (
                 dispatch,
               );
             },
-            (paragraph) => ({ tabs: tabsFor(paragraph) }),
+            (paragraph) => ({
+              tabs: writableCopy<TabStop[] | null>(tabsFor(paragraph)),
+            }),
           );
         },
         removeTabStop: (position: number) => {
@@ -1613,7 +1619,9 @@ export const ParagraphExtension: (
                 dispatch,
               );
             },
-            (paragraph) => ({ tabs: tabsFor(paragraph) }),
+            (paragraph) => ({
+              tabs: writableCopy<TabStop[] | null>(tabsFor(paragraph)),
+            }),
           );
         },
       },

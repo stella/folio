@@ -52,6 +52,7 @@ import type {
   StyleDefinitions,
   Theme,
 } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { emuToPixels } from "../../utils/units";
 import { ALT_CHUNK_CONTENT } from "./flowConversionShared";
 import type { MeasureBlocksFn } from "./footnoteLayout";
@@ -784,7 +785,7 @@ export type ConvertHeaderFooterOptions = {
   /** Whether comment highlights are painted. Defaults to true. */
   showCommentHighlights?: boolean;
   altChunkMarkerText?: string;
-  styles?: StyleDefinitions | null;
+  styles?: DeepReadonly<StyleDefinitions> | null;
   numbering?: NumberingDefinitions;
   theme?: Theme | null;
   defaultSize?: number;

@@ -47,10 +47,13 @@ import {
 } from "@stll/docx-core/model";
 
 import type { DocDefaults, Style } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 import {
   BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME,
   resolveDefaultParagraphStyle,
 } from "./defaultParagraphStyle";
+
+type ReadonlyStyle = DeepReadonly<Style>;
 
 /**
  * 17.3.1.20 adds that an omitted `w:outlineLvl` "is assumed to be 9". That
@@ -239,11 +242,11 @@ const asBuiltInName = (normalized: string): BuiltInStyleName | undefined =>
  * guards the circular `basedOn` a malformed package can contain.
  */
 const inheritedOutlineLevel = (
-  style: Style,
-  styleById: ReadonlyMap<string, Style>,
+  style: ReadonlyStyle,
+  styleById: ReadonlyMap<string, ReadonlyStyle>,
 ): OutlineLevel | undefined => {
   const seen = new Set<string>();
-  let current: Style | undefined = style;
+  let current: ReadonlyStyle | undefined = style;
   let nearestImplicitHeadingLevel: OutlineLevel | undefined;
   while (current && !seen.has(current.styleId)) {
     seen.add(current.styleId);
@@ -276,16 +279,16 @@ const headingLevelForIndex = (
 };
 
 export const createBuiltInStyleIndex = (
-  styles: Iterable<Style>,
-  docDefaults?: DocDefaults | undefined,
+  styles: Iterable<ReadonlyStyle>,
+  docDefaults?: DeepReadonly<DocDefaults> | undefined,
 ): BuiltInStyleIndex => {
   const styleIdByHeadingLevel = new Map<number, string>();
   const styleIdByTableOfContentsLevel = new Map<number, string>();
   const styleIdByBuiltInName = new Map<BuiltInStyleName, string>();
 
-  const paragraphStyles: Style[] = [];
-  const paragraphStyleById = new Map<string, Style>();
-  const styleById = new Map<string, Style>();
+  const paragraphStyles: ReadonlyStyle[] = [];
+  const paragraphStyleById = new Map<string, ReadonlyStyle>();
+  const styleById = new Map<string, ReadonlyStyle>();
   for (const style of styles) {
     // `w:basedOn` may point at any style type, so the chain walk needs them
     // all even though only paragraph styles are classified.
@@ -350,7 +353,9 @@ export const createBuiltInStyleIndex = (
    * `StyleResolver` applies, so the model and the editor cannot drift apart.
    */
   const defaultStyle = resolveDefaultParagraphStyle(paragraphStyles);
-  const styleFor = (styleId: string | null | undefined): Style | undefined =>
+  const styleFor = (
+    styleId: string | null | undefined,
+  ): ReadonlyStyle | undefined =>
     (styleId === null || styleId === undefined
       ? undefined
       : paragraphStyleById.get(styleId)) ?? defaultStyle;

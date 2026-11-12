@@ -39,6 +39,7 @@ import type {
   TablePropertyExceptionFormatting,
   TableRowFormatting,
 } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { expectParagraphAttrs } from "../attrs";
 import {
   hasListRendering,
@@ -375,7 +376,7 @@ const PPR_CHANGE_SCOPED_FORMATTING_KEYS = [
  */
 export function paragraphRejectAttrPatch(
   previousFormatting: ParagraphPropertySnapshot | null | undefined,
-  inheritedFormatting?: ParagraphFormatting,
+  inheritedFormatting?: DeepReadonly<ParagraphFormatting>,
 ): AttrPatch {
   const prev: ParagraphPropertySnapshot = previousFormatting ?? {};
   const patch: AttrPatch = {};

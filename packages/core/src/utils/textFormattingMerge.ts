@@ -1,4 +1,5 @@
 import type { ColorValue, TextFormatting } from "../types/document";
+import type { DeepReadonly, OwnRecord } from "../types/documentModel";
 import { mergeFontFamily } from "./fontFamilyMerge";
 
 // Double strike is deliberately absent: it uses ordinary last-defined inheritance.
@@ -51,9 +52,13 @@ export const STYLE_TOGGLE_KEYS: readonly [
  * it has no place in this function.
  */
 export function mergeStyleTextFormatting(
-  target: TextFormatting | undefined,
-  source: TextFormatting | undefined,
-): TextFormatting | undefined {
+  target: DeepReadonly<TextFormatting> | undefined,
+  source: DeepReadonly<TextFormatting> | undefined,
+): DeepReadonly<TextFormatting> | undefined;
+export function mergeStyleTextFormatting(
+  target: DeepReadonly<TextFormatting> | undefined,
+  source: DeepReadonly<TextFormatting> | undefined,
+): DeepReadonly<TextFormatting> | undefined {
   return mergeTextFormatting(target, source);
 }
 
@@ -64,7 +69,9 @@ export function mergeStyleTextFormatting(
  * write a style's or a paragraph mark's markup into every run that inherits
  * from it. So no merged formatting has one, on any path out of the function.
  */
-const withoutPreserved = (formatting: TextFormatting): TextFormatting => {
+const withoutPreserved = (
+  formatting: DeepReadonly<TextFormatting>,
+): DeepReadonly<TextFormatting> => {
   if (formatting.preserved === undefined) {
     return formatting;
   }
@@ -72,10 +79,33 @@ const withoutPreserved = (formatting: TextFormatting): TextFormatting => {
   return values;
 };
 
+/**
+ * A merge's own record: a merge with a source always builds a new top-level
+ * record, so its fields are the caller's to set, while the nested values in
+ * it (an underline, a colour, a font family) stay shared with the inputs.
+ */
+export type MergedTextFormatting = OwnRecord<TextFormatting>;
+
+/**
+ * The merge shares nested values with its inputs and, without a source,
+ * returns the target itself, so its result is read-only. A merge with a
+ * source returns a new record ({@link MergedTextFormatting}) whose own fields
+ * the caller may set. There is no writable variant: TypeScript lets a
+ * readonly literal match a writable parameter, which would hand its shared
+ * values out writable.
+ */
 export function mergeTextFormatting(
-  target: TextFormatting | undefined,
-  source: TextFormatting | undefined,
-): TextFormatting | undefined {
+  target: DeepReadonly<TextFormatting> | undefined,
+  source: DeepReadonly<TextFormatting>,
+): MergedTextFormatting;
+export function mergeTextFormatting(
+  target: DeepReadonly<TextFormatting> | undefined,
+  source: DeepReadonly<TextFormatting> | undefined,
+): DeepReadonly<TextFormatting> | undefined;
+export function mergeTextFormatting(
+  target: DeepReadonly<TextFormatting> | undefined,
+  source: DeepReadonly<TextFormatting> | undefined,
+): DeepReadonly<TextFormatting> | undefined {
   if (!source && !target) {
     return undefined;
   }
@@ -118,5 +148,5 @@ export function mergeTextFormatting(
     result[key] = value;
   }
 
-  return result as TextFormatting;
+  return result as DeepReadonly<TextFormatting>;
 }

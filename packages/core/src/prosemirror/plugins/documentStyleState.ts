@@ -4,9 +4,8 @@ import {
   type BuiltInStyleIndex,
   EMPTY_BUILT_IN_STYLE_INDEX,
 } from "../../docx/builtInStyles";
-import type { Style } from "../../types/document";
 import { createPluginKeyOwner } from "../pluginKeyOwner";
-import type { StyleResolver } from "../styles/styleResolver";
+import type { ReadonlyStyle, StyleResolver } from "../styles/styleResolver";
 
 export const documentStylesKey: Readonly<{
   key: string;
@@ -29,8 +28,8 @@ export function getDocumentStyleResolver(
  * without a styles part defines none.
  */
 export function getDocumentStyleDefinitions(state: EditorState): {
-  get: (styleId: string) => Style | undefined;
-  paragraphStyles: () => Style[];
+  get: (styleId: string) => ReadonlyStyle | undefined;
+  paragraphStyles: () => ReadonlyStyle[];
 } | null {
   if (documentStylesKey.get(state) === undefined) {
     return null;

@@ -26,6 +26,7 @@ import type {
   TextFormatting,
 } from "../types/document";
 import { FONT_THEME_VALUES } from "../types/documentEnumValues";
+import { writableCopy } from "../types/documentModel";
 import { isValidHexColor, resolveColorToHex } from "../utils/colorResolver";
 import { resolveThemeFont } from "../utils/fontResolver";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
@@ -260,9 +261,17 @@ const materializeClipboardDefaults = ({
     const implicitStyle = engine.getDefaultParagraphStyle();
     const styleId = authored?.styleId ?? implicitStyle?.styleId;
     const resolved = engine.resolveParagraphStyle(styleId);
-    const formatting =
-      mergeParagraphFormatting(resolved.paragraphFormatting, authored) ??
-      (destinationDefaults.paragraphFormatting === undefined ? undefined : {});
+    // The paragraph takes its own copy: the cascade is the engine's cached
+    // result, which every paragraph of the style shares.
+    const resolvedFormatting = mergeParagraphFormatting(
+      resolved.paragraphFormatting,
+      authored,
+    );
+    let formatting: ParagraphFormatting | undefined;
+    if (resolvedFormatting !== undefined)
+      formatting = writableCopy<ParagraphFormatting>(resolvedFormatting);
+    else if (destinationDefaults.paragraphFormatting !== undefined)
+      formatting = {};
     if (formatting !== undefined) {
       // Style numbering must remain inherited: writing it directly changes
       // OOXML precedence between level and style indentation.
@@ -314,7 +323,9 @@ const materializeClipboardDefaults = ({
       direct: TextFormatting | undefined,
     ): TextFormatting | undefined => {
       const named = direct?.styleId;
-      const cascade =
+      // The run takes its own copy of the cascade, which shares its values
+      // with the engine's cached styles.
+      const cascade = writableCopy<TextFormatting>(
         cascadeStyleTextFormatting([
           {
             cascade:
@@ -331,7 +342,8 @@ const materializeClipboardDefaults = ({
             type: "style",
           },
           { formatting: direct, type: "direct" },
-        ]).formatting ?? {};
+        ]).formatting ?? {},
+      );
       neutralizeBooleanDefaults(cascade, destinationDefaults.runFormatting);
       const themeLowered = lowerSourceTheme({ value: cascade, source });
       if (themeLowered.isErr()) recordRefusal(themeLowered.error.message);
@@ -389,10 +401,14 @@ const materializeClipboardDefaults = ({
     });
     for (const change of paragraph.propertyChanges ?? []) {
       const previous = change.previousFormatting;
-      const before = mergeParagraphFormatting(
+      const previousCascade = mergeParagraphFormatting(
         engine.resolveParagraphStyle(previous?.styleId).paragraphFormatting,
         previous,
       );
+      const before =
+        previousCascade === undefined
+          ? undefined
+          : writableCopy<ParagraphFormatting>(previousCascade);
       if (before !== undefined) {
         if (previous?.numPr === undefined) delete before.numPr;
         if (previous?.preserved !== undefined)

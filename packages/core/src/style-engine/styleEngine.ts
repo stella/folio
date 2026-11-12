@@ -18,17 +18,15 @@
 
 import type { BuiltInStyleIndex } from "../docx/builtInStyles";
 import type {
+  ReadonlyStyle,
+  ReadonlyTextFormatting,
   ResolvedParagraphStyle,
   StyleResolver,
   TableCellParagraphSpacingOverlay,
 } from "../prosemirror/styles/styleResolver";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import type {
-  DocDefaults,
-  Style,
-  StyleDefinitions,
-  TextFormatting,
-} from "../types/document";
+import type { DocDefaults, StyleDefinitions } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 
 /**
  * Sentinel key used for null / undefined styleId queries so that
@@ -70,25 +68,26 @@ export type StyleEngineCacheStats = {
  *
  * The engine exposes the same surface as {@link StyleResolver} for the
  * methods folio currently consumes, plus cache controls. Returned
- * objects are shared between cache hits — treat them as immutable.
+ * objects are shared between cache hits and with the document, so they are
+ * typed read-only.
  */
 export type StyleEngine = {
   /** Look up a single named style by id. */
-  getStyle: (styleId: string) => Style | undefined;
+  getStyle: (styleId: string) => ReadonlyStyle | undefined;
   /** True if a style with the given id is registered. */
   hasStyle: (styleId: string) => boolean;
   /** Return the document-wide defaults (`w:docDefaults`). */
-  getDocDefaults: () => DocDefaults | undefined;
+  getDocDefaults: () => DeepReadonly<DocDefaults> | undefined;
   /** The paragraph default per ECMA-376 17.7.4.17, else the built-in Normal. */
-  getDefaultParagraphStyle: () => Style | undefined;
+  getDefaultParagraphStyle: () => ReadonlyStyle | undefined;
   /** The style flagged `w:default="1"` for character styles. */
-  getDefaultCharacterStyle: () => Style | undefined;
+  getDefaultCharacterStyle: () => ReadonlyStyle | undefined;
   /** The style flagged `w:default="1"` for tables. */
-  getDefaultTableStyle: () => Style | undefined;
+  getDefaultTableStyle: () => ReadonlyStyle | undefined;
   /** All visible paragraph styles, sorted for toolbar use. */
-  getParagraphStyles: () => Style[];
+  getParagraphStyles: () => ReadonlyStyle[];
   /** All visible table styles, sorted for the table-style gallery. */
-  getTableStyles: () => Style[];
+  getTableStyles: () => ReadonlyStyle[];
   /** The document's styles indexed by the built-in they are — see {@link StyleResolver.builtInStyles}. */
   builtInStyles: BuiltInStyleIndex;
 
@@ -121,7 +120,7 @@ export type StyleEngine = {
    */
   resolveRunStyle: (
     styleId: string | undefined | null,
-  ) => TextFormatting | undefined;
+  ) => ReadonlyTextFormatting | undefined;
   /**
    * Return a run style's own properties without docDefaults applied —
    * used when the caller has already merged docDefaults via the
@@ -129,7 +128,7 @@ export type StyleEngine = {
    */
   getRunStyleOwnProperties: (
     styleId: string | undefined | null,
-  ) => TextFormatting | undefined;
+  ) => ReadonlyTextFormatting | undefined;
 
   /** Drop every memoized cascade result. */
   invalidate: () => void;
@@ -145,7 +144,7 @@ export type StyleEngine = {
  * @param options - Engine-level toggles, see {@link StyleEngineOptions}.
  */
 export function createStyleEngine(
-  styleDefinitions: StyleDefinitions | undefined,
+  styleDefinitions: DeepReadonly<StyleDefinitions> | undefined,
   options?: StyleEngineOptions,
 ): StyleEngine {
   const resolver: StyleResolver = createStyleResolver(styleDefinitions);
@@ -158,8 +157,14 @@ export function createStyleEngine(
   // we would otherwise need on the `has` / `get` boundary.
   type Cached<T> = { value: T };
   const paragraphCache = new Map<string, Cached<ResolvedParagraphStyle>>();
-  const runCache = new Map<string, Cached<TextFormatting | undefined>>();
-  const ownPropsCache = new Map<string, Cached<TextFormatting | undefined>>();
+  const runCache = new Map<
+    string,
+    Cached<ReadonlyTextFormatting | undefined>
+  >();
+  const ownPropsCache = new Map<
+    string,
+    Cached<ReadonlyTextFormatting | undefined>
+  >();
   // Keyed by the overlay object's identity (not its contents) since table
   // conversion computes one overlay object per style region and reuses it
   // across every cell/paragraph in that region — see the interface doc

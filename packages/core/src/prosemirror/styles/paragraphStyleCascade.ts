@@ -20,6 +20,7 @@ import type {
   ParagraphFormatting,
   TextFormatting,
 } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import {
   mergeParagraphFormatting,
   mergeParagraphTabStops,
@@ -64,9 +65,9 @@ type ParagraphDefaultFormattingResolver = Pick<
 >;
 
 export function resolveRunFormattingWithoutDefaults(
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
   styleResolver: ParagraphDefaultFormattingResolver | null,
-): TextFormatting | undefined {
+): DeepReadonly<TextFormatting> | undefined {
   if (!formatting || !styleResolver) {
     return formatting;
   }
@@ -90,10 +91,10 @@ export const inheritableParagraphMarkFormatting = ({
   styleId,
   styleResolver,
 }: {
-  runProperties: TextFormatting | undefined;
+  runProperties: DeepReadonly<TextFormatting> | undefined;
   styleId: string | undefined;
   styleResolver: Parameters<typeof resolveRunFormattingWithoutDefaults>[1];
-}): TextFormatting | undefined => {
+}): DeepReadonly<TextFormatting> | undefined => {
   if (!paragraphMarkLendsRuns(styleId)) return undefined;
   const formatting = resolveRunFormattingWithoutDefaults(
     runProperties,
@@ -107,10 +108,10 @@ export const inheritableParagraphMarkFormatting = ({
 /** @internal Recompute a paragraph's inherited run defaults from authored package state. */
 export function resolveParagraphDefaultTextFormatting(
   styleId: string | undefined,
-  formatting: Paragraph["formatting"] | undefined,
+  formatting: DeepReadonly<Paragraph["formatting"]> | undefined,
   styleResolver: ParagraphDefaultFormattingResolver,
   options: { includeParagraphMarkRunProperties?: boolean } = {},
-): TextFormatting | undefined {
+): DeepReadonly<TextFormatting> | undefined {
   const style = styleId
     ? (styleResolver.getStyle(styleId) ??
       styleResolver.getDefaultParagraphStyle())
@@ -172,7 +173,7 @@ export function resolveParagraphDefaultTextFormatting(
 export type ParagraphStyleCascadeInput = {
   styleId: string | undefined;
   /** What the paragraph states itself; each stated field wins over the cascade. */
-  formatting: ParagraphFormatting | undefined;
+  formatting: DeepReadonly<ParagraphFormatting> | undefined;
   styleResolver: ParagraphCascadeResolver;
   /**
    * The enclosing table style's modeled paragraph fields, layered between
@@ -187,7 +188,7 @@ export type ParagraphStyleCascade = {
   /** The effective attrs, with the provenance a save needs to keep inherited values out of `w:pPr`. */
   attrs: ParagraphAttrs;
   /** The resolved style cascade the attrs were read from. */
-  stylePpr: ParagraphFormatting | undefined;
+  stylePpr: DeepReadonly<ParagraphFormatting> | undefined;
 };
 
 /**
@@ -370,30 +371,23 @@ export function paragraphStyleCascadeAttrs({
  * region's) `w:pPr` for use as the cell-paragraph cascade overlay.
  */
 export function extractTableParagraphOverlay(
-  pPr: ParagraphFormatting | undefined,
+  pPr: DeepReadonly<ParagraphFormatting> | undefined,
 ): TableCellParagraphSpacingOverlay | undefined {
   if (!pPr) {
     return undefined;
   }
-  const overlay: TableCellParagraphSpacingOverlay = {};
-  if (pPr.spaceBefore !== undefined) {
-    overlay.spaceBefore = pPr.spaceBefore;
-  }
-  if (pPr.spaceAfter !== undefined) {
-    overlay.spaceAfter = pPr.spaceAfter;
-  }
-  if (pPr.lineSpacing !== undefined) {
-    overlay.lineSpacing = pPr.lineSpacing;
-  }
-  if (pPr.lineSpacingRule !== undefined) {
-    overlay.lineSpacingRule = pPr.lineSpacingRule;
-  }
-  if (pPr.contextualSpacing !== undefined) {
-    overlay.contextualSpacing = pPr.contextualSpacing;
-  }
-  if (pPr.frame !== undefined) {
-    overlay.frame = pPr.frame;
-  }
+  const overlay: TableCellParagraphSpacingOverlay = {
+    ...(pPr.spaceBefore === undefined ? {} : { spaceBefore: pPr.spaceBefore }),
+    ...(pPr.spaceAfter === undefined ? {} : { spaceAfter: pPr.spaceAfter }),
+    ...(pPr.lineSpacing === undefined ? {} : { lineSpacing: pPr.lineSpacing }),
+    ...(pPr.lineSpacingRule === undefined
+      ? {}
+      : { lineSpacingRule: pPr.lineSpacingRule }),
+    ...(pPr.contextualSpacing === undefined
+      ? {}
+      : { contextualSpacing: pPr.contextualSpacing }),
+    ...(pPr.frame === undefined ? {} : { frame: pPr.frame }),
+  };
   return Object.keys(overlay).length > 0 ? overlay : undefined;
 }
 
@@ -414,9 +408,8 @@ export function tableCellParagraphOverlay(
   if (!style) {
     return undefined;
   }
-  let overlay: ParagraphFormatting | undefined = extractTableParagraphOverlay(
-    style.pPr,
-  );
+  let overlay: DeepReadonly<ParagraphFormatting> | undefined =
+    extractTableParagraphOverlay(style.pPr);
   for (const region of regions) {
     const conditional = style.tblStylePr?.find(({ type }) => type === region);
     overlay = mergeParagraphFormatting(

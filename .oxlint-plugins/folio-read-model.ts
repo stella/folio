@@ -233,9 +233,108 @@ const addModelDocumentAliases = (program: AstNode, names: ModelNames): void => {
   }
 };
 
+// The paragraph and table cell attrs the style cascade fills hold values the
+// style resolver hands out, shared with the document and its cached results,
+// so their types are read-only. A cast to anything but a `DeepReadonly` type
+// would hand a writer those shared values.
+const READ_ONLY_ATTRS = new Set([
+  "defaultTextFormatting",
+  "_tableRunFormatting",
+  "_resolvedFormatting",
+  "_styleResolvedFormatting",
+  "_resolvedBorders",
+]);
+// Shared names that are read-only only on a node's attrs (`node.attrs.tabs`).
+const READ_ONLY_NODE_ATTRS = new Set(["borders", "shading", "tabs"]);
+
+const memberName = (node: AstNode): string | undefined => {
+  const property = node["property"];
+  if (!isAstNode(property)) return undefined;
+  if (property.type === "Identifier" && node["computed"] !== true)
+    return typeof property["name"] === "string" ? property["name"] : undefined;
+  return typeof property["value"] === "string" ? property["value"] : undefined;
+};
+
+const isNodeAttrsObject = (node: unknown): boolean =>
+  isAstNode(node) &&
+  node.type === "MemberExpression" &&
+  memberName(node) === "attrs";
+
+const readsReadOnlyAttr = (node: unknown): boolean => {
+  if (!isAstNode(node)) return false;
+  if (
+    node.type === "TSNonNullExpression" ||
+    node.type === "ParenthesizedExpression"
+  )
+    return readsReadOnlyAttr(node["expression"]);
+  if (node.type !== "MemberExpression") return false;
+  const name = memberName(node);
+  if (name === undefined) return false;
+  return (
+    READ_ONLY_ATTRS.has(name) ||
+    (READ_ONLY_NODE_ATTRS.has(name) && isNodeAttrsObject(node["object"]))
+  );
+};
+
+/** Whether the type keeps the value read-only: `DeepReadonly<...>`, `unknown` or a union of those. */
+const keepsReadOnly = (node: unknown): boolean => {
+  if (!isAstNode(node)) return false;
+  switch (node.type) {
+    case "TSUnknownKeyword":
+    case "TSUndefinedKeyword":
+    case "TSNullKeyword":
+      return true;
+    case "TSUnionType": {
+      const types = node["types"];
+      return Array.isArray(types) && types.every(keepsReadOnly);
+    }
+    case "TSTypeReference": {
+      const typeName = node["typeName"];
+      return (
+        isAstNode(typeName) &&
+        typeName.type === "Identifier" &&
+        typeName["name"] === "DeepReadonly"
+      );
+    }
+    default:
+      return false;
+  }
+};
+
 export default {
   meta: { name: "folio-read-model" },
   rules: {
+    "no-read-only-attr-cast": {
+      meta: {
+        type: "problem",
+        messages: {
+          readOnlyAttrCast:
+            "Do not cast a style-filled attr to a writable type. The attr " +
+            "holds values the style resolver shares with the document and " +
+            "its cache: read it through `expectParagraphAttrs` or " +
+            "`expectTableCellAttrs` (typed read-only), or take " +
+            "`writableCopy` from `@stll/folio-core/types/documentModel` " +
+            "before writing.",
+        },
+      },
+      create(context: {
+        report: (descriptor: {
+          node: unknown;
+          messageId: "readOnlyAttrCast";
+        }) => void;
+      }) {
+        const check = (node: unknown) => {
+          if (
+            isAstNode(node) &&
+            readsReadOnlyAttr(node["expression"]) &&
+            !keepsReadOnly(node["typeAnnotation"])
+          ) {
+            context.report({ node, messageId: "readOnlyAttrCast" });
+          }
+        };
+        return { TSAsExpression: check, TSTypeAssertion: check };
+      },
+    },
     "no-model-document-cast": {
       meta: {
         type: "problem",
