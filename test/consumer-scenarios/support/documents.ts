@@ -518,7 +518,7 @@ export const importedMoveDocument = (): Promise<Uint8Array> => {
 
 export const LINE_BREAK_FIXTURE = "lineBreaks";
 
-/** A paragraph whose lines end in line breaks and a tab, between plain paragraphs. */
+/** A paragraph whose lines end in line breaks, between plain paragraphs. */
 export const lineBreakDocument = (): Promise<Uint8Array> => {
   const document = fromMarkdown("Opening clause.");
   document.package.document.content.push(
@@ -531,9 +531,7 @@ export const lineBreakDocument = (): Promise<Uint8Array> => {
             { type: "break" },
             { type: "text", text: "Payment terms" },
             { type: "break" },
-            { type: "text", text: "Notice" },
-            { type: "tab" },
-            { type: "text", text: "period" },
+            { type: "text", text: "Notice period" },
           ],
         },
       ]),

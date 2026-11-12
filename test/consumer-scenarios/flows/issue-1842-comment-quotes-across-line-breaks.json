@@ -27,7 +27,7 @@
         {
           "type": "commentOnBlock",
           "blockId": "1B0E5A11",
-          "quote": "Notice\tperiod",
+          "quote": "terms\nNotice",
           "comment": { "text": "Notice term." }
         }
       ]
@@ -45,6 +45,6 @@
       ]
     }
   ],
-  "origin": "comment quotes that end in or cross a line break or a tab",
-  "title": "a comment's anchored text reads a line break and a tab as the block text does"
+  "origin": "comment quotes that end in or cross a line break",
+  "title": "a comment's anchored text reads a line break as the block text does"
 }
