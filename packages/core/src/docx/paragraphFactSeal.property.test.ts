@@ -16,6 +16,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -238,10 +239,12 @@ const REFUSAL = /^A paragraph fact \(.+\) changed after a reader kept it\.$/;
 
 describe("sealed paragraph facts", () => {
   test("a writer never changes the facts of a sealed paragraph", () => {
-    let refusals = 0;
-    let unsealedWrites = 0;
-    let replaced = 0;
-    assertProperty(
+    type Counts = {
+      refusals: number;
+      unsealedWrites: number;
+      replaced: number;
+    };
+    const law = (counts: Counts) =>
       fc.property(
         fc.array(
           fc.option(fc.integer({ min: 0, max: 3 }), { nil: undefined }),
@@ -278,7 +281,7 @@ describe("sealed paragraph facts", () => {
                 step.kind === "carryRestore"
               )
                 throw error;
-              refusals += 1;
+              counts.refusals += 1;
             }
             for (const { paragraph, formatting, state } of before) {
               expect(paragraph.formatting).toBe(formatting);
@@ -296,22 +299,28 @@ describe("sealed paragraph facts", () => {
                 state.some((fact, at) => fact !== unsealed[index]?.[at]),
               )
             )
-              unsealedWrites += 1;
+              counts.unsealedWrites += 1;
             if (
               (step.kind === "carry" || step.kind === "carryRestore") &&
               pool[step.target] !== held
             )
-              replaced += 1;
+              counts.replaced += 1;
           }
         },
-      ),
-      { id: "sealed paragraph facts never change", numRuns: 500 },
-    );
-    // The writers ran against both sealed and open paragraphs, and carrying
-    // replaced kept ones.
-    expect(refusals).toBeGreaterThan(0);
-    expect(unsealedWrites).toBeGreaterThan(0);
-    expect(replaced).toBeGreaterThan(0);
+      );
+    assertProperty(law({ refusals: 0, unsealedWrites: 0, replaced: 0 }), {
+      id: "sealed paragraph facts never change",
+      numRuns: 500,
+    });
+    // On a fixed sample, the writers ran against both sealed and open
+    // paragraphs, and carrying replaced kept ones. Each case runs up to 30
+    // steps, so fewer cases than the property's reach every outcome.
+    const RUNS = 200;
+    const counts: Counts = { refusals: 0, unsealedWrites: 0, replaced: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.refusals).toBeGreaterThan(0);
+    expect(counts.unsealedWrites).toBeGreaterThan(0);
+    expect(counts.replaced).toBeGreaterThan(0);
   });
 
   test("each writer leaves a paragraph sealed just before it as it was", () => {
