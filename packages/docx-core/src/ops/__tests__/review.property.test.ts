@@ -22,7 +22,7 @@
  *   leaves the paragraph after it, which is the new one.
  * - **L3 Batches.** For a run of tracked operations, rejecting all their
  *   revisions at once equals rejecting each operation's in turn, from the
- *   last, and gives the document back. Accepting every revision in the story
+ *   last or in any other order, and gives the document back. Accepting every revision in the story
  *   (A*) gives the same once the run's have been accepted operation by
  *   operation, in whatever order marks are removed, and rejecting every one
  *   (J*) gives what it gives on the document the run started from.
@@ -1269,6 +1269,54 @@ describe("tracked operations and their resolution", () => {
     );
     if (diagFailures.length > 0)
       throw new Error(`L3 diagnostics: ${diagFailures.join(" | ")}`);
+    expectEveryKindChecked(tally, NUM_RUNS / 5);
+  });
+
+  test("L3: rejecting a run's revisions at once equals rejecting each operation's in any order", () => {
+    const tally: Tally = new Map();
+    assertProperty(
+      fc.property(
+        reviewDocumentArbitrary,
+        fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
+        fc.array(fc.nat(), { minLength: 6, maxLength: 6 }),
+        (document, seeds: OpSeed[], keys: number[]) => {
+          let current = document;
+          const stamps: RevisionStamp[] = [];
+          for (const [index, seed] of seeds.entries()) {
+            const op = trackedOpFor(current, seed, index);
+            const applied = applyDocumentOp(current, op);
+            if (applied.isErr()) continue;
+            const stamp = stampOf(op);
+            if (stamp === undefined) continue;
+            count(tally, kindOf(op));
+            stamps.push(stamp);
+            current = applied.value.document;
+          }
+          const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
+          const all = perOp.flat();
+          if (all.length === 0) return;
+          // The operations' revisions in an order the keys draw, earlier
+          // operations' before later ones' as often as after.
+          const order = perOp
+            .map((ids, index) => ({ ids, key: keys[index] ?? index, index }))
+            .toSorted(
+              (left, right) => left.key - right.key || left.index - right.index,
+            )
+            .map(({ ids }) => ids);
+          assertExactModel(
+            projected(resolved(current, all, REVISION_DECISIONS.REJECT), "π′"),
+            projected(
+              resolvedInTurn(current, order, REVISION_DECISIONS.REJECT),
+              "π′",
+            ),
+          );
+        },
+      ),
+      {
+        numRuns: NUM_RUNS / 5,
+        id: "L3: rejecting a run's revisions at once equals rejecting each operation's in any order",
+      },
+    );
     expectEveryKindChecked(tally, NUM_RUNS / 5);
   });
 
