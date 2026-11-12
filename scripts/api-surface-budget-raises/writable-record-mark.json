@@ -1,9 +1,12 @@
 {
   "docx-core": {
-    "reportBytes": 3096,
-    "declarationBytes": 2117
+    "reportBytes": 4042,
+    "declarationBytes": 3597
   },
   "core": {
-    "declarationBytes": 3082
+    "declarationBytes": 3110
+  },
+  "vue": {
+    "declarationBytes": 6297
   }
 }
