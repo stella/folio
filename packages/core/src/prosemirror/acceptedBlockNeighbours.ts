@@ -7,8 +7,7 @@
  * deleted (`tableGoes`). An edit reads a document with pending changes as
  * accepting leaves it: a join into a paragraph accepting removes, right
  * before a table, ends there, and the two sides of blocks accepting removes
- * whole are one gap (`insertionGap`). Applied directly, the same edit reads
- * the same.
+ * whole are one gap. Applied directly, the same edit reads the same.
  */
 
 import type { Node as PMNode } from "prosemirror-model";

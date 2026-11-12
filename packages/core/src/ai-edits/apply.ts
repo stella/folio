@@ -5898,14 +5898,10 @@ const applyFolioAIEditOperationsInternal = ({
   let tr = view.state.tr;
   /** The blocks the batch has put into each gap so far. */
   const gapOrder = new InsertionGapOrder();
-  // DELIBERATE BREAK (reverted in the next commit): tracked changes read the
-  // batch's order backwards within a gap.
-  const gapRank = (item: ResolvedOperation): number =>
-    mode === "tracked-changes" ? -item.originalIndex : item.originalIndex;
   /**
-   * Where `items`, block insertions of one gap in document order, land next
-   * to the blocks of their gap already in; undefined while none is, and
-   * they land where they are placed, at `placed`.
+   * Where `items`, block insertions of one gap, land next to the blocks of
+   * their gap already in; undefined while none is, and they land where they
+   * are placed, at `placed`.
    */
   const gapLanding = (
     items: readonly ResolvedOperation[],
@@ -5914,7 +5910,7 @@ const applyFolioAIEditOperationsInternal = ({
     const gap = items[0]?.gap;
     if (gap === undefined) return undefined;
     const orders = items
-      .map((landed) => gapRank(landed))
+      .map(({ originalIndex }) => originalIndex)
       .toSorted((left, right) => left - right);
     return gapOrder.landing(tr, gap, orders, placed);
   };
@@ -5930,7 +5926,7 @@ const applyFolioAIEditOperationsInternal = ({
       tr,
       gap,
       items.map((landed, index) => ({
-        order: gapRank(landed),
+        order: landed.originalIndex,
         size: Fragment.from(blocks[index] as PMNode | PMNode[]).size,
       })),
       at,

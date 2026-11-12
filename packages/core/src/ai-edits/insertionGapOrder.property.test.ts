@@ -6,14 +6,18 @@
  *
  * Every batch puts one to five blocks of mixed kinds (a paragraph, two
  * paragraphs from one text, a paragraph starting a new list, a table or a
- * signature table, whichever the mode has) after the anchor or before the
- * paragraph after it, which share one gap. The last batch may delete the
+ * signature table, whichever the mode has; no operation inserts a block
+ * content control) after the anchor or before the paragraph after it, which
+ * share one gap. The last batch may delete the
  * anchor too. Between batches the reviewer may save and reopen the package,
  * accept every change, or both.
  *
  * Within a batch the blocks keep the batch's order. A later batch after the
  * anchor lands right after it, ahead of what earlier batches put there; one
  * before the next paragraph lands right before it, behind them.
+ *
+ * A case saves and reopens a package a few times, about 50 ms; the budget is
+ * 120 s for the stated runs, scaled by the nightly factor.
  */
 
 import { expect, test } from "bun:test";
