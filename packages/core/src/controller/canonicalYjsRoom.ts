@@ -348,29 +348,15 @@ export type CanonicalYjsRoom = CanonicalRoomTransport & {
   close(): void;
 };
 
-/**
- * A deliberate defect, for tests that must show their property detects it.
- * @internal
- */
-export type CanonicalYjsRoomFault = "acceptForeignJournal";
-
 /** A client's transport to a room carried by `doc`. */
-export const openCanonicalYjsRoom = (
-  options: OpenCanonicalYjsRoomOptions,
-): CanonicalYjsRoom => connectCanonicalYjsRoom(options);
-
-/** @internal `openCanonicalYjsRoom` with a deliberate defect, for tests. */
-export const connectCanonicalYjsRoom = (
-  {
-    doc,
-    snapshot,
-    authority = CANONICAL_YJS_AUTHORITY,
-    connection,
-    awareness,
-    onError = () => {},
-  }: OpenCanonicalYjsRoomOptions,
-  fault?: CanonicalYjsRoomFault,
-): CanonicalYjsRoom => {
+export const openCanonicalYjsRoom = ({
+  doc,
+  snapshot,
+  authority = CANONICAL_YJS_AUTHORITY,
+  connection,
+  awareness,
+  onError = () => {},
+}: OpenCanonicalYjsRoomOptions): CanonicalYjsRoom => {
   const { inbox, journal, answers, room } = roomTypes(doc);
   const origin = { openCanonicalYjsRoom: true };
   const sequenced: SequencedBatch[] = [];
@@ -419,7 +405,7 @@ export const connectCanonicalYjsRoom = (
       if (failure !== undefined) return;
       const values = valuesOf(item);
       if (values.length === 0) continue;
-      if (item.id.client !== authority && fault !== "acceptForeignJournal") {
+      if (item.id.client !== authority) {
         if (refused.has(item)) continue;
         refused.add(item);
         for (const _ of values)

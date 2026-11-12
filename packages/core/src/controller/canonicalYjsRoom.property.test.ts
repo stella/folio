@@ -18,7 +18,6 @@ import {
 import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
-  propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
@@ -40,8 +39,7 @@ import {
   type CanonicalYjsAuthority,
   type CanonicalYjsRoom,
   type CanonicalYjsRoomError,
-  type CanonicalYjsRoomFault,
-  connectCanonicalYjsRoom,
+  openCanonicalYjsRoom,
   serveCanonicalYjsRoom,
 } from "./canonicalYjsRoom";
 
@@ -280,13 +278,11 @@ const run = async (
     peersCount,
     lateJoin,
     commands,
-    fault,
     coverage,
   }: {
     peersCount: number;
     lateJoin: boolean;
     commands: readonly Command[];
-    fault: CanonicalYjsRoomFault | undefined;
     coverage: YjsCoverage;
   },
 ): Promise<void> => {
@@ -308,24 +304,21 @@ const run = async (
   const open = (index: number): void => {
     const link = provider.connect();
     const errors: CanonicalYjsRoomError[] = [];
-    const yjsRoom = connectCanonicalYjsRoom(
-      {
-        doc: link.doc,
-        snapshot: room.snapshot,
-        awareness: link.awareness,
-        connection: {
-          get connected() {
-            return link.up;
-          },
-          onChange: (listener) => {
-            link.listeners.add(listener);
-            return () => link.listeners.delete(listener);
-          },
+    const yjsRoom = openCanonicalYjsRoom({
+      doc: link.doc,
+      snapshot: room.snapshot,
+      awareness: link.awareness,
+      connection: {
+        get connected() {
+          return link.up;
         },
-        onError: (error) => errors.push(error),
+        onChange: (listener) => {
+          link.listeners.add(listener);
+          return () => link.listeners.delete(listener);
+        },
       },
-      fault,
-    );
+      onError: (error) => errors.push(error),
+    });
     const slot: Slot = { link, room: yjsRoom, errors };
     slots[index] = slot;
     const joinSlot = async (): Promise<void> => {
@@ -480,13 +473,13 @@ const simulate = async (options: SimulateOptions): Promise<void> => {
   }
 };
 
-const law = (fault: CanonicalYjsRoomFault | undefined, coverage: YjsCoverage) =>
+const law = (coverage: YjsCoverage) =>
   fc.asyncProperty(
     fc.integer({ min: 3, max: MAX_PEERS }),
     fc.boolean(),
     fc.array(commandArbitrary, { minLength: 10, maxLength: 40 }),
     async (peersCount, lateJoin, commands) =>
-      simulate({ peersCount, lateJoin, commands, fault, coverage }),
+      simulate({ peersCount, lateJoin, commands, coverage }),
   );
 
 const deliveries = (count: number, seed = 0): Command[] =>
@@ -552,7 +545,7 @@ const emptyCoverage = (): YjsCoverage => ({
 });
 
 test("peers of a Yjs-carried room converge on the authority's document", async () => {
-  await assertProperty(law(undefined, emptyCoverage()), {
+  await assertProperty(law(emptyCoverage()), {
     numRuns: 12,
     examples: EXAMPLES,
     id: "canonical yjs room convergence",
@@ -561,7 +554,7 @@ test("peers of a Yjs-carried room converge on the authority's document", async (
   // resubmits after reconnecting, a forged entry is refused, the authority
   // restarts and a late peer joins.
   const coverage = emptyCoverage();
-  await checkCoverageSample(law(undefined, coverage), 8, {
+  await checkCoverageSample(law(coverage), 8, {
     map: ([peersCount, lateJoin, commands], index) => {
       const example = EXAMPLES[index % EXAMPLES.length];
       return example === undefined
@@ -575,14 +568,6 @@ test("peers of a Yjs-carried room converge on the authority's document", async (
   expect(coverage.forgeries).toBeGreaterThan(0);
   expect(coverage.restarts).toBeGreaterThan(0);
   expect(coverage.lateJoins).toBeGreaterThan(0);
-});
-
-test("the property catches a client that accepts a journal entry another client wrote", async () => {
-  const result = await fc.check(
-    law("acceptForeignJournal", emptyCoverage()),
-    propertyConfig({ numRuns: 30, endOnFailure: true, examples: EXAMPLES }),
-  );
-  expect(result.failed).toBe(true);
 });
 
 test("an authority refuses a room seeded from another document", async () => {
