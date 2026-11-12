@@ -82,16 +82,26 @@ export const textCaretOf = (
  * next composition's start from the start of the editable content, and it
  * picks the text node to compose into before `compositionstart`, so the
  * text in progress shows elsewhere. A caret goes into the text before it,
- * where a composition continues the run it follows.
+ * where a composition continues the run it follows. A caret with no text
+ * beside it, such as one before a bookmark boundary at a paragraph's start,
+ * is set again where it is.
  *
- * A selection the browser or ProseMirror set since the last update has a new
- * range; one left alone keeps its range and is set again.
+ * A selection the browser or ProseMirror set during the update has a new
+ * range; one left alone keeps its range and is set again. The range held is
+ * the one the last update or the last `selectionchange` left, so a caret set
+ * between updates, by focus or a click, counts as left alone too.
  */
 export const createNativeSelectionRefreshPlugin = (): Plugin =>
   new Plugin({
     view: (view) => {
       let held = nativeRange(view);
+      const owner = view.dom.ownerDocument;
+      const hold = () => {
+        held = nativeRange(view);
+      };
+      owner.addEventListener("selectionchange", hold);
       return {
+        destroy: () => owner.removeEventListener("selectionchange", hold),
         update: (current, previous) => {
           const native = current.dom.ownerDocument.getSelection();
           const range = nativeRange(current);
