@@ -12,6 +12,8 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { ZipArchive } from "@stll/docx-core/zip";
+
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
@@ -21,7 +23,7 @@ import type {
 } from "../document-operations";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { parseDocx } from "../docx/parser";
-import { createDocx } from "../docx/rezip";
+import { createDocx, createEmptyDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { schema } from "../prosemirror/schema";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
@@ -228,6 +230,134 @@ describe("a paragraph beside one that joins the next, in the canonical session",
         await original(joined.bytes),
       );
     });
+});
+
+/** A join whose paragraphs a block may name: each anchor reads as part of the last. */
+type LongerJoin = {
+  bytes: ArrayBuffer;
+  anchors: Readonly<Record<string, string>> & { survivor: string };
+};
+
+/**
+ * The clause and an emptied paragraph after it, both with their breaks
+ * pending deletion by tracked merges, joining "Signed in two copies.".
+ */
+const throughAnEmptiedParagraph = async (): Promise<LongerJoin> => {
+  const markdown = `Alpha.\n\n${CLAUSE}\n\n${SURVIVOR}\n\nCharlie.`;
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    (await ensureParaIds(await createDocx(fromMarkdown(markdown)))).docx,
+    { author: "Test" },
+  );
+  const clause = reviewer.snapshot().blocks.at(1);
+  if (clause?.text !== CLAUSE) throw new Error("Missing fixture");
+  expect(
+    reviewer.applyOperations(
+      [{ id: "empty", type: "insertAfterBlock", blockId: clause.id, text: "" }],
+      { mode: "direct" },
+    ).skipped,
+  ).toEqual([]);
+  const [, , emptied, survivor] = reviewer.snapshot().blocks;
+  if (emptied?.text !== "" || survivor?.text !== SURVIVOR)
+    throw new Error("Missing fixture");
+  for (const operation of [
+    {
+      id: "merge-clause",
+      type: "mergeBlockWithNext",
+      blockId: clause.id,
+      separator: " ",
+    },
+    { id: "merge-emptied", type: "mergeBlockWithNext", blockId: emptied.id },
+  ] satisfies FolioDocumentOperation[])
+    expect(
+      reviewer.applyOperations([operation], { mode: "tracked-changes" })
+        .skipped,
+    ).toEqual([]);
+  return {
+    bytes: await reviewer.toBuffer(),
+    anchors: {
+      clause: clause.id,
+      emptied: emptied.id,
+      survivor: survivor.id,
+    },
+  };
+};
+
+const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
+
+/**
+ * The clause, its break pending deletion, joining "Signed in two copies."
+ * across the bookmark that starts between them.
+ */
+const acrossARangeBoundary = async (): Promise<LongerJoin> => {
+  const run = (text: string) =>
+    `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+  const zip = await ZipArchive.read(await createEmptyDocx());
+  zip.set(
+    "word/document.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>` +
+      `<w:p w14:paraId="10000001">${run("Alpha.")}</w:p>` +
+      `<w:p w14:paraId="10000002"><w:pPr><w:rPr><w:del w:id="1" w:author="Test" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>${run(CLAUSE)}</w:p>` +
+      `<w:bookmarkStart w:id="7" w:name="Signature"/>` +
+      `<w:p w14:paraId="10000003">${run(SURVIVOR)}</w:p>` +
+      `<w:bookmarkEnd w:id="7"/>` +
+      `<w:p w14:paraId="10000004">${run("Charlie.")}</w:p>` +
+      `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
+  );
+  return {
+    bytes: (await zip.generate({ compression: "store" })).buffer,
+    anchors: { clause: "10000002", survivor: "10000003" },
+  };
+};
+
+const LONGER_JOINS = {
+  "through an emptied paragraph": throughAnEmptiedParagraph,
+  "across a range boundary": acrossARangeBoundary,
+};
+
+describe("a paragraph beside a longer pending join, in the canonical session", () => {
+  for (const [shape, make] of Object.entries(LONGER_JOINS))
+    for (const side of ["after", "before"] as const) {
+      const type = side === "after" ? "insertAfterBlock" : "insertBeforeBlock";
+      const name = `(${shape}, ${side})`;
+
+      test(`is placed as one beside the paragraph the join leaves, whichever paragraph of the join it names ${name}`, async () => {
+        const join = await make();
+        const read = async (anchor: string) => {
+          const editor = await open(join.bytes);
+          expect(
+            editor.apply([insertion(type, anchor)], "tracked-changes").skipped,
+          ).toEqual([]);
+          const pending = shapeOf(editor.blocks());
+          editor.resolveAll("accept");
+          return { pending, accepted: editor.blocks().map(({ text }) => text) };
+        };
+        const expected = await read(join.anchors.survivor);
+        const joined = expected.accepted.findIndex((text) =>
+          text.endsWith(SURVIVOR),
+        );
+        expect(joined).toBeGreaterThan(-1);
+        expect(expected.accepted.indexOf(INSERTED)).toBe(
+          side === "after" ? joined + 1 : joined - 1,
+        );
+        for (const anchor of Object.values(join.anchors))
+          expect(await read(anchor)).toEqual(expected);
+      });
+
+      test(`rejects to the document it started from, whichever paragraph it names ${name}`, async () => {
+        const join = await make();
+        for (const anchor of Object.values(join.anchors)) {
+          const editor = await open(join.bytes);
+          expect(
+            editor.apply([insertion(type, anchor)], "tracked-changes").skipped,
+          ).toEqual([]);
+          editor.resolveAll("reject");
+          expect(editor.blocks().map(({ text }) => text)).toEqual(
+            await original(join.bytes),
+          );
+        }
+      });
+    }
 });
 
 type SplitBatchOptions = {
