@@ -1192,8 +1192,10 @@ const edgeChain = (node: InlineNode, edge: "start" | "end"): InlineNode[] => {
  * done, into the records either side of it, given as the chains of records
  * at their edges facing the cut, as the list held them before the
  * resolution. The levels a cut counts are the containers it split: their
- * pieces stand on both sides of it, a tracked change's pieces sharing its
- * kind, author and date. A tracked change on one side only came
+ * pieces stand on both sides of it and are alike, as the pieces a join
+ * merges are, a tracked change's pieces sharing its kind, author and date.
+ * The reach ends where the two sides differ. A tracked change on one side
+ * only came
  * after the cut, or never held it, and is no level of it; nor is one that
  * also holds a piece of `spanning`, the content that made the cut, as a
  * deletion made over the cut does. So the reach is the same whichever
@@ -1244,7 +1246,8 @@ const cutReach = ({
         : !isTrackedWrapper(near) &&
           !isTrackedWrapper(far) &&
           childNodes(near) !== undefined &&
-          childNodes(far) !== undefined;
+          childNodes(far) !== undefined &&
+          sameOwnFields(near, far);
     if (!piecesOfOne && isTrackedWrapper(near)) {
       pass("before", near);
       nearIndex += 1;
@@ -1754,6 +1757,35 @@ const resolveList = (
     else if (pendingRemoval(right)) acceptAsPlain(seam, "before");
     else if (seam > 0 && pendingRemoval(left)) acceptAsPlain(seam - 1, "after");
   }
+  // A recorded seam a pending deletion or move source stands at, holding
+  // the piece on its side, joins once that change's content is kept: the
+  // change carries the seam on that side, as deep as it was recorded.
+  // Dropped, rejecting the change later would leave the pieces apart where
+  // rejecting both at once joins them.
+  const carrySeam = (
+    node: InlineNode,
+    side: "before" | "after",
+    depth: number | undefined,
+  ): InlineNode => {
+    if (
+      depth === undefined ||
+      depth === 0 ||
+      !isTrackedWrapper(node) ||
+      isAddedRevision(node) ||
+      resolution.ids.has(node.info.id) ||
+      node.resolutionJoins === undefined ||
+      node.resolutionJoins.plainSides?.includes(side) === true ||
+      node.resolutionJoins[side] >= depth
+    )
+      return node;
+    const carried = Object.assign({}, node, {
+      resolutionJoins: Object.assign({}, node.resolutionJoins, {
+        [side]: depth,
+      }),
+    });
+    carryResolutionState(resolution, node, carried);
+    return carried;
+  };
   const merges = new Set(seams);
   for (const recorded of [
     ...new Set([...seams, ...exactSeams.keys(), ...folds]),
@@ -2019,8 +2051,11 @@ const resolveList = (
       out.splice(
         seam - 1,
         2,
-        occurrenceOf(metLeft, leftOccurrence),
-        occurrenceOf(metRight, rightOccurrence),
+        occurrenceOf(carrySeam(metLeft, "after", exactDepth), leftOccurrence),
+        occurrenceOf(
+          carrySeam(metRight, "before", exactDepth),
+          rightOccurrence,
+        ),
       );
     }
   }
