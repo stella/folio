@@ -2174,18 +2174,35 @@ const addToTable = (
 };
 
 /**
- * The blocks inserted between `row` and its neighbour on `position`'s side.
- * An insertion after one block and one before the next land in one gap, in
- * batch order.
+ * Whether accepting removes `row` whole: a block pending deletion, mark and
+ * all, that no operation wrote into and no pending join runs through.
+ */
+const goesWhole = (row: ModelRow): boolean =>
+  row.pendingDeletion === true &&
+  row.pendingJoin !== true &&
+  row.edits.length === 0;
+
+/**
+ * The blocks inserted between `row` and its neighbour on `position`'s side,
+ * and the row whose gap that is. An insertion after one block and one before
+ * the next land in one gap, in batch order, past the blocks between them that
+ * accepting removes whole. A block a pending join runs through stops that.
  */
 const gapOf = (
   model: Model,
   row: ModelRow,
   position: "before" | "after",
-): ModelRow[] => {
-  if (position === "after") return row.after;
-  const previous = model.rows[model.rows.indexOf(row) - 1];
-  return previous && !previous.pendingJoin ? previous.after : row.before;
+): { gap: ModelRow[]; bordering: ModelRow } => {
+  if (position === "after") return { gap: row.after, bordering: row };
+  let at = row;
+  for (let index = model.rows.indexOf(row) - 1; ; index--) {
+    const previous = model.rows[index];
+    if (!previous || previous.pendingJoin)
+      return { gap: at.before, bordering: at };
+    if (!goesWhole(previous))
+      return { gap: previous.after, bordering: previous };
+    at = previous;
+  }
 };
 
 /**
@@ -2199,11 +2216,8 @@ const pushBesideBlocks = (
   position: "before" | "after",
   rows: readonly ModelRow[],
 ) => {
-  const gap = gapOf(model, anchor, position);
-  const previous = model.rows[model.rows.indexOf(anchor) - 1];
-  const bordering =
-    position === "after" || gap === anchor.before ? anchor : previous;
-  const nearTable = bordering?.pre?.table !== undefined;
+  const { gap, bordering } = gapOf(model, anchor, position);
+  const nearTable = bordering.pre?.table !== undefined;
   for (const row of rows) if (nearTable) row.besideTable = true;
   gap.push(...rows);
 };

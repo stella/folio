@@ -6,8 +6,8 @@
  * whose mark is deleted (`paragraphGoes`), and a table every row of which is
  * deleted (`tableGoes`). An edit reads a document with pending changes as
  * accepting leaves it: a join into a paragraph accepting removes, right
- * before a table, ends there, and the two sides of a table accepting removes
- * are one gap. Applied directly, the same edit reads the same.
+ * before a table, ends there, and the two sides of blocks accepting removes
+ * whole are one gap. Applied directly, the same edit reads the same.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -50,20 +50,42 @@ export const paragraphMergeLeaves = (
     : left;
 };
 
+/** Whether accepting every change removes `block` whole. */
+const goesWhole = (block: PMNode): boolean =>
+  isTable(block) ? tableGoes(block, "accept") : paragraphGoes(block, "accept");
+
 /**
  * Where a block put at `position`, a boundary between blocks, lands: before
- * every table right before it that accepting removes whole. Accepted, the two
- * sides of such a table are one gap, so a block put on either side of it lands
- * at the gap's start, and the blocks a batch puts into that gap keep the order
- * the batch names them in, as they do once the table is removed directly.
+ * the blocks right before it that accepting removes whole, tables and
+ * paragraphs alike. Accepted, the two sides of such blocks are one gap, so a
+ * block put on either side of them lands at the gap's start, and the blocks a
+ * batch puts into that gap keep the order the batch names them in, as they do
+ * once those blocks are removed directly. A paragraph a pending join runs
+ * into, from words before it whose break goes, is part of that join rather
+ * than a gap (`pendingJoinEnd` reads where the join ends), so a block lands
+ * after it, past the tables before it alone. A block put after a paragraph
+ * lands right after it, even one accepting removes: the batch named that
+ * place, so it is not read through here.
  */
 export const insertionGapStart = (doc: PMNode, position: number): number => {
+  const $position = doc.resolve(position);
+  const parent = $position.parent;
+  let first = $position.index();
+  while (first > 0 && goesWhole(parent.child(first - 1))) first -= 1;
+  const reached = parent.maybeChild(first - 1);
+  // Accepting removes a break pending deletion, or a move's source.
+  const reachedMark =
+    reached?.type.name === "paragraph"
+      ? expectParagraphAttrs(reached).pPrMark?.kind
+      : undefined;
+  const joinReaches = reachedMark === "del" || reachedMark === "moveFrom";
   let at = position;
-  for (;;) {
-    const before = doc.resolve(at).nodeBefore;
-    if (!before || !isTable(before) || !tableGoes(before, "accept")) return at;
+  for (let index = $position.index(); index > first; index--) {
+    const before = parent.child(index - 1);
+    if (joinReaches && !isTable(before)) return at;
     at -= before.nodeSize;
   }
+  return at;
 };
 
 /**
