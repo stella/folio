@@ -19,6 +19,7 @@
 //   value as Document | null
 //   model as Document & { marker?: string }
 //   model as Model.Document                 (import type * as Model from ...)
+//   model as Writable                       (type Writable = Document, in the file)
 //
 // Not flagged:
 //   readModel(model)                         (the sanctioned reader cast)
@@ -194,6 +195,44 @@ const namesModelDocument = (node: unknown, names: ModelNames): boolean => {
   );
 };
 
+/** Every type alias declared anywhere in the file. */
+const typeAliases = (node: unknown, found: AstNode[] = []): AstNode[] => {
+  if (Array.isArray(node)) {
+    for (const child of node) typeAliases(child, found);
+    return found;
+  }
+  if (!isAstNode(node)) return found;
+  if (node.type === "TSTypeAliasDeclaration") found.push(node);
+  for (const [key, child] of Object.entries(node)) {
+    if (key !== "parent" && typeof child === "object" && child !== null)
+      typeAliases(child, found);
+  }
+  return found;
+};
+
+/**
+ * Add each alias the file declares for the model `Document` (alone or in a
+ * union or intersection), and aliases of those, to the names that reach it.
+ */
+const addModelDocumentAliases = (program: AstNode, names: ModelNames): void => {
+  const aliases = typeAliases(program["body"]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const alias of aliases) {
+      const name = identifierName(alias["id"]);
+      if (
+        name !== null &&
+        !names.documents.has(name) &&
+        namesModelDocument(alias["typeAnnotation"], names)
+      ) {
+        names.documents.add(name);
+        added = true;
+      }
+    }
+  }
+};
+
 export default {
   meta: { name: "folio-read-model" },
   rules: {
@@ -229,6 +268,7 @@ export default {
           Program: (node: unknown) => {
             if (isAstNode(node)) {
               names = modelDocumentNames(node, context.filename);
+              addModelDocumentAliases(node, names);
             }
           },
           TSAsExpression: check,

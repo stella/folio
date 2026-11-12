@@ -23,3 +23,13 @@ export const asIntersection = (
 
 export const throughNamespace = (model: ReadonlyDocument): Model.Document =>
   model as Model.Document;
+
+type WritableDocument = Document;
+type MaybeWritable = WritableDocument | null;
+
+export const throughAlias = (model: ReadonlyDocument): WritableDocument =>
+  model as WritableDocument;
+
+export const throughAliasChain = (
+  model: ReadonlyDocument | null,
+): MaybeWritable => model as MaybeWritable;
