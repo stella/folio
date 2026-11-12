@@ -405,7 +405,8 @@ export const openCanonicalYjsRoom = ({
       if (failure !== undefined) return;
       const values = valuesOf(item);
       if (values.length === 0) continue;
-      if (item.id.client !== authority) {
+      // The defect: an entry from any Yjs client is read as the authority's.
+      if (item.id.client !== authority && item.id.client < 0) {
         if (refused.has(item)) continue;
         refused.add(item);
         for (const _ of values)
