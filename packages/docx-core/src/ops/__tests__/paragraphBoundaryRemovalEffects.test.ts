@@ -1,6 +1,7 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -17,6 +18,9 @@ import { paragraphHoldsContent } from "../offsets";
 import { planParagraphBoundaryRemoval } from "../rangeBoundaries";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
+
+/** The property's run count: each case plans six small removals. */
+const COVERAGE_RUNS = 30;
 
 const host = {
   type: "paragraph",
@@ -113,8 +117,7 @@ const PREFIXES = {
 >;
 
 test("paragraph removal plans declare exactly the retained-boundary receiver across structural cases", () => {
-  const exercised = new Set<string>();
-  assertProperty(
+  const law = (exercised: Set<string>) =>
     fc.property(
       fc.shuffledSubarray(BOUNDARIES, {
         minLength: BOUNDARIES.length,
@@ -201,12 +204,13 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
             ).toBe(true);
         }
       },
-    ),
-    {
-      numRuns: 30,
-      id: "paragraph removal plans declare exactly the retained-boundary receiver across structural cases",
-    },
-  );
+    );
+  assertProperty(law(new Set()), {
+    numRuns: 30,
+    id: "paragraph removal plans declare exactly the retained-boundary receiver across structural cases",
+  });
+  const exercised = new Set<string>();
+  checkCoverageSample(law(exercised), COVERAGE_RUNS);
   expect([...exercised].sort()).toEqual(Object.keys(REMOVAL_CASES).sort());
 });
 

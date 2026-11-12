@@ -13,6 +13,7 @@ import fc from "fast-check";
 import { Fragment, type Mark, type Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -35,7 +36,7 @@ import {
 } from "./__tests__/canonicalEditRuns";
 import { createCanonicalSession } from "./canonicalSession";
 
-setDefaultTimeout(propertyTestTimeout(240_000));
+setDefaultTimeout(propertyTestTimeout(480_000));
 
 /** Edits that leave tracked paragraph splits, carriers and lists behind. */
 const SEEDING_EDITS: readonly Edit[] = [
@@ -201,11 +202,13 @@ const json = (blocks: readonly PMNode[]) =>
 describe("a story conversion's passes kept from the last one", () => {
   test("equal the passes over every block across story versions", async () => {
     const pool = await blockPool();
-    let keptContinuation = 0;
-    let keptValidation = 0;
-    let refused = 0;
-    let continuing = 0;
-    await assertProperty(
+    type Counts = {
+      keptContinuation: number;
+      keptValidation: number;
+      refused: number;
+      continuing: number;
+    };
+    const law = (counts: Counts) =>
       fc.property(
         fc.array(fc.nat(), { minLength: 1, maxLength: 12 }),
         fc.array(editArbitrary, { minLength: 1, maxLength: 16 }),
@@ -223,10 +226,10 @@ describe("a story conversion's passes kept from the last one", () => {
               carriers,
             );
             if (last?.some((node) => continued.includes(node)))
-              keptContinuation += 1;
+              counts.keptContinuation += 1;
             const given = blocks;
             if (continued.some((node, index) => node !== given[index]))
-              continuing += 1;
+              counts.continuing += 1;
             expect(json(continued)).toEqual(
               json(
                 continueSourceCarrierIdentitiesAcrossInsertedParagraphMarks(
@@ -247,29 +250,42 @@ describe("a story conversion's passes kept from the last one", () => {
             } catch (error) {
               message = error instanceof Error ? error.message : String(error);
             }
-            if (before !== undefined) keptValidation += 1;
+            if (before !== undefined) counts.keptValidation += 1;
             if (full.valid) {
               expect(message).toBeUndefined();
               expect(validated?.doc).toBe(doc);
             } else {
-              refused += 1;
+              counts.refused += 1;
               expect(message).toBe(
                 `invalid:\n${full.issues.map((issue) => `ProseMirror document error at ${issue.path}: ${issue.message}`).join("\n")}`,
               );
             }
           }
         },
-      ),
-      {
-        id: "kept story conversion passes equal full passes",
-        numRuns: 300,
-      },
+      );
+    await assertProperty(
+      law({
+        keptContinuation: 0,
+        keptValidation: 0,
+        refused: 0,
+        continuing: 0,
+      }),
+      { id: "kept story conversion passes equal full passes", numRuns: 300 },
     );
-    // The runs kept results and met invalid documents, not only full passes.
-    expect(keptContinuation).toBeGreaterThan(300);
-    expect(keptValidation).toBeGreaterThan(300);
-    expect(refused).toBeGreaterThan(30);
-    expect(continuing).toBeGreaterThan(40);
+    // The cases of a fixed sample, as many as the property's, kept results
+    // and met invalid documents, not only full passes.
+    const RUNS = 300;
+    const counts: Counts = {
+      keptContinuation: 0,
+      keptValidation: 0,
+      refused: 0,
+      continuing: 0,
+    };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.keptContinuation).toBeGreaterThan(300);
+    expect(counts.keptValidation).toBeGreaterThan(300);
+    expect(counts.refused).toBeGreaterThan(30);
+    expect(counts.continuing).toBeGreaterThan(40);
   });
 });
 

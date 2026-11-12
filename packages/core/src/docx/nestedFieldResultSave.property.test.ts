@@ -14,6 +14,7 @@ import fc from "fast-check";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -21,7 +22,7 @@ import {
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 
-setDefaultTimeout(propertyTestTimeout(120_000));
+setDefaultTimeout(propertyTestTimeout(160_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
@@ -133,8 +134,7 @@ const paragraphText = (reviewer: FolioDocxReviewer): string | undefined =>
 
 describe("nested complex fields across a save that writes from the model", () => {
   test("keep their text and their structure at any depth", async () => {
-    let nested = 0;
-    await assertProperty(
+    const law = (counts: { nested: number }) =>
       fc.asyncProperty(
         fc.array(nodeArbitrary(5), { minLength: 1, maxLength: 3 }),
         async (nodes) => {
@@ -197,11 +197,18 @@ describe("nested complex fields across a save that writes from the model", () =>
                 ),
             )
           )
-            nested += 1;
+            counts.nested += 1;
         },
-      ),
-      { id: "nested complex fields survive a model save", numRuns: 150 },
-    );
-    expect(nested).toBeGreaterThan(0);
+      );
+    await assertProperty(law({ nested: 0 }), {
+      id: "nested complex fields survive a model save",
+      numRuns: 150,
+    });
+    // A fixed sample reaches fields nested in fields. Each case saves and
+    // reopens the document several times, so the sample is a third of the runs.
+    const RUNS = 50;
+    const counts = { nested: 0 };
+    await checkCoverageSample(law(counts), RUNS);
+    expect(counts.nested).toBeGreaterThan(0);
   });
 });

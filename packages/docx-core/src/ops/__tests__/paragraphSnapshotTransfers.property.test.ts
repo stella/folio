@@ -8,6 +8,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -25,11 +26,12 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
+/** The property's run count, which the thresholds were set for. */
+const COVERAGE_RUNS = 300;
+
 describe("an edit's paragraph property snapshot transfers", () => {
   test("read from the changed blocks equal those read from every paragraph", () => {
-    let compared = 0;
-    let transferred = 0;
-    assertProperty(
+    const law = (counts: { compared: number; transferred: number }) =>
       fc.property(
         documentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 1, maxLength: 12 }),
@@ -50,18 +52,19 @@ describe("an edit's paragraph property snapshot transfers", () => {
               expect(source).toBe(every[index]?.source);
               expect(target).toBe(every[index]?.target);
             });
-            compared += 1;
-            transferred += kept.length;
+            counts.compared += 1;
+            counts.transferred += kept.length;
             document = applied.value.document;
           }
         },
-      ),
-      {
-        id: "paragraph snapshot transfers read from changed blocks equal every paragraph",
-        numRuns: 300,
-      },
-    );
-    expect(compared).toBeGreaterThan(300);
-    expect(transferred).toBeGreaterThan(100);
+      );
+    assertProperty(law({ compared: 0, transferred: 0 }), {
+      id: "paragraph snapshot transfers read from changed blocks equal every paragraph",
+      numRuns: 300,
+    });
+    const counts = { compared: 0, transferred: 0 };
+    checkCoverageSample(law(counts), COVERAGE_RUNS);
+    expect(counts.compared).toBeGreaterThan(300);
+    expect(counts.transferred).toBeGreaterThan(100);
   });
 });

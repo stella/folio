@@ -19,6 +19,7 @@ import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
 
 import { assertExactModel } from "../../../../test/exactModel";
 import { acquireHarnessDom } from "../../../../test/harnessDom";
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -575,6 +576,89 @@ test("canonical manager refuses transaction bypasses and shares one input journa
     GlobalRegistrator.unregister();
   }
 });
+
+for (const owner of ["editor", "host"] as const) {
+  test(`canonical undo keys belong to the ${owner} that owns history shortcuts`, () => {
+    const releaseDom = acquireHarnessDom();
+    const effects: string[] = [];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = createEmptyDocument({ initialText: "Start" });
+    const paragraph = source.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+    paragraph.paraId = "12345678";
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExperimentalSession: () => "canonical",
+      getHistoryShortcuts: () => owner,
+      onCanonicalHistory: (effect) => effects.push(effect),
+    });
+    const manager = createHiddenEditorManager(deps);
+    try {
+      manager.ensureView();
+      const view = manager.getView() ?? panic("Expected a body view");
+      manager.api.setSelection(6);
+      view.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          inputType: "insertText",
+          data: "!",
+          cancelable: true,
+          bubbles: true,
+        }),
+      );
+      expect(view.state.doc.textContent).toBe("Start!");
+      const shortcuts = [
+        new KeyboardEvent("keydown", {
+          key: "z",
+          ctrlKey: true,
+          cancelable: true,
+          bubbles: true,
+        }),
+        new InputEvent("beforeinput", {
+          inputType: "historyUndo",
+          cancelable: true,
+          bubbles: true,
+        }),
+      ];
+      for (const event of shortcuts) {
+        view.dom.dispatchEvent(event);
+        // The browser's own history never runs over the canonical projection.
+        expect(event.defaultPrevented).toBe(true);
+        if (owner === "editor") {
+          expect(view.state.doc.textContent).toBe("Start");
+          expect(manager.api.redo()).toBe(true);
+        }
+        expect(view.state.doc.textContent).toBe("Start!");
+      }
+      // A story view's undo keys come through the API marked as keys.
+      expect(
+        manager.api.applyCanonicalStoryHistory({
+          view,
+          story: OP_STORIES.MAIN,
+          direction: "undo",
+          shortcut: true,
+        }),
+      ).toBe(owner === "editor");
+      if (owner === "editor") expect(manager.api.redo()).toBe(true);
+      expect(view.state.doc.textContent).toBe("Start!");
+      // The host undoes through the API either way.
+      expect(manager.api.undo()).toBe(true);
+      expect(view.state.doc.textContent).toBe("Start");
+      // Every published commit tells the host what it did to the history.
+      expect(effects).toEqual(
+        owner === "editor"
+          ? ["opened", "undo", "redo", "undo", "redo", "undo", "redo", "undo"]
+          : ["opened", "undo"],
+      );
+    } finally {
+      manager.destroyView();
+      host.remove();
+      releaseDom();
+    }
+  });
+}
 
 test("canonical public batches publish the saved document and share human undo", () => {
   GlobalRegistrator.register();
@@ -1675,9 +1759,9 @@ test(
   "canonical undescribed commands preserve non-document effects and refuse raw mutations",
   () => {
     GlobalRegistrator.register();
-    const counts = { selection: 0, probe: 0, mutation: 0 };
+    type Counts = { selection: number; probe: number; mutation: number };
     try {
-      assertProperty(
+      const law = (counts: Counts) =>
         fc.property(
           fc.record({
             text: fc.string({ minLength: 1, maxLength: 16 }),
@@ -1762,18 +1846,22 @@ test(
               host.remove();
             }
           },
-        ),
-        {
-          id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
-        },
-      );
+        );
+      assertProperty(law({ selection: 0, probe: 0, mutation: 0 }), {
+        id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
+      });
+      // Every case runs each kind of command; a few cases of a fixed sample
+      // show it.
+      const RUNS = 3;
+      const counts: Counts = { selection: 0, probe: 0, mutation: 0 };
+      checkCoverageSample(law(counts), RUNS);
       for (const count of Object.values(counts))
         expect(count).toBeGreaterThan(0);
     } finally {
       GlobalRegistrator.unregister();
     }
   },
-  propertyTestTimeout(30_000),
+  propertyTestTimeout(31_000),
 );
 
 test("canonical command execution reports descriptor refusals without mutation", () => {

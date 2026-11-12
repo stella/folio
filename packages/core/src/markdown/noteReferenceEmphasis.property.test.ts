@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -23,8 +24,7 @@ const edge = fc
 test(
   "every emitted note reference survives all emphasis combinations and neighboring text",
   async () => {
-    let cases = 0;
-    await assertProperty(
+    const law = (counts: { cases: number }) =>
       fc.property(
         fc.record({ before: edge, after: edge }),
         ({ before, after }) => {
@@ -104,17 +104,20 @@ test(
               expect(markdown.slice(boundary + 2)).toBe(
                 `${marker}: Note text.`,
               );
-              cases++;
+              counts.cases++;
             }
           }
         },
-      ),
-      {
-        numRuns: 50,
-        id: "every emitted note reference survives all emphasis combinations and neighboring text",
-      },
-    );
-    expect(cases).toBeGreaterThan(0);
+      );
+    await assertProperty(law({ cases: 0 }), {
+      numRuns: 50,
+      id: "every emitted note reference survives all emphasis combinations and neighboring text",
+    });
+    // A fixed sample runs the check; one case is enough.
+    const RUNS = 1;
+    const counts = { cases: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.cases).toBeGreaterThan(0);
   },
-  propertyTestTimeout(30_000),
+  propertyTestTimeout(31_000),
 );

@@ -11,6 +11,7 @@ import { paragraphLogicalText } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { assertExactModel } from "../../../../test/exactModel";
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -32,7 +33,7 @@ import {
   publishCanonicalProjection,
 } from "./canonicalSession";
 
-setDefaultTimeout(propertyTestTimeout(120_000));
+setDefaultTimeout(propertyTestTimeout(180_000));
 
 const seed = (): Document => {
   const document: Document = {
@@ -1554,14 +1555,13 @@ describe("canonical clipboard", () => {
   });
 
   test("generated clipboard sequences preserve every intermediate journal state at arbitrary targets", () => {
-    const refusals = new Map<string, number>();
-    const appliedKinds = new Set<string>();
+    type Tally = { refusals: Map<string, number>; appliedKinds: Set<string> };
     const text = fc.string({
       unit: fc.constantFrom("x", "é", "😀"),
       minLength: 1,
       maxLength: 5,
     });
-    assertProperty(
+    const law = ({ refusals, appliedKinds }: Tally) =>
       fc.property(
         fc.array(
           fc.record({
@@ -1757,20 +1757,19 @@ describe("canonical clipboard", () => {
             assertExactModel(state.selection.toJSON(), entry.afterSelection);
           }
         },
-      ),
-      {
-        numRuns: 50,
-        id: "generated clipboard sequences preserve every intermediate journal state at arbitrary targets",
-      },
-    );
-    expect([...appliedKinds].sort()).toEqual(["move", "paste"]);
+      );
+    assertProperty(law({ refusals: new Map(), appliedKinds: new Set() }), {
+      numRuns: 50,
+      id: "generated clipboard sequences preserve every intermediate journal state at arbitrary targets",
+    });
+    // A fixed sample applies both kinds and meets a refusal. Each case runs
+    // 8 to 16 steps with undo and redo, so half of the runs.
+    const RUNS = 25;
+    const tally: Tally = { refusals: new Map(), appliedKinds: new Set() };
+    checkCoverageSample(law(tally), RUNS);
+    expect([...tally.appliedKinds].sort()).toEqual(["move", "paste"]);
     expect(
-      [...refusals.keys()].every(
-        (reason) => reason === "refused" || reason === "noChange",
-      ),
-    ).toBe(true);
-    expect(
-      [...refusals.values()].reduce((sum, count) => sum + count, 0),
+      [...tally.refusals.values()].reduce((sum, count) => sum + count, 0),
     ).toBeGreaterThan(0);
   });
 

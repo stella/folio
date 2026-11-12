@@ -33,6 +33,7 @@ import { panic } from "better-result";
 import type { EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import {
@@ -45,6 +46,7 @@ import {
   type HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
+import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
 import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
@@ -78,6 +80,8 @@ export type HiddenProseMirrorProps = {
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
   experimentalSession?: "canonical";
+  /** Who answers the undo and redo keys; the editor when unset. */
+  historyShortcuts?: HistoryShortcutOwner;
   suggestionModeActive?: boolean;
   suggestionAuthor?: string;
   onSessionRefusal?: (
@@ -114,8 +118,14 @@ export type HiddenProseMirrorProps = {
   extensionManager?: ExtensionManager;
   /** Callback when EditorView is ready */
   onEditorViewReady?: (view: EditorView) => void;
-  /** Initial state already built by the parent for pre-view layout. */
-  precomputedInitialState?: EditorState | null;
+  /** A canonical commit was published, with what it did to the undo history. */
+  onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
+  /**
+   * Reads the initial state the parent converts for its pre-view layout. Read
+   * only when the view is built from the document, never when a canonical
+   * session seeds it.
+   */
+  getPrecomputedInitialState?: () => EditorState | null;
   /** Callback when EditorView is destroyed */
   onEditorViewDestroy?: () => void;
   /** Intercept key events before ProseMirror processes them. Return true to prevent PM handling. */
@@ -191,6 +201,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     document,
     documentIdentity,
     experimentalSession,
+    historyShortcuts = "editor",
     suggestionModeActive = false,
     suggestionAuthor = "User",
     onSessionRefusal,
@@ -205,6 +216,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     collaboration,
     extensionManager,
     onEditorViewReady,
+    onCanonicalHistory,
     onEditorViewDestroy,
     onKeyDown,
     onCopy,
@@ -212,7 +224,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onPaste,
     onReadOnlyEditAttempt,
     onRemoteSelectionsChange,
-    precomputedInitialState,
+    getPrecomputedInitialState,
   } = props;
 
   const hasCollaboration = collaboration !== undefined;
@@ -239,6 +251,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   // accessor functions, so it always sees the latest committed value.
   const readOnlyRef = useRef(readOnly);
   const experimentalSessionRef = useRef(experimentalSession);
+  const historyShortcutsRef = useRef(historyShortcuts);
   const suggestionModeActiveRef = useRef(suggestionModeActive);
   const suggestionAuthorRef = useRef(suggestionAuthor);
   const onSessionRefusalRef = useRef(onSessionRefusal);
@@ -247,7 +260,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const stylesRef = useRef(styles);
   const extensionManagerRef = useRef(extensionManager);
   const externalPluginsRef = useRef(externalPlugins);
-  const precomputedInitialStateRef = useRef(precomputedInitialState);
+  const getPrecomputedInitialStateRef = useRef(getPrecomputedInitialState);
   const collaborationRef = useRef(collaboration);
   const collaborationModulesRef = useRef(collaborationModules);
 
@@ -257,6 +270,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const onCanonicalCompositionEndRef = useRef(onCanonicalCompositionEnd);
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onEditorViewReadyRef = useRef(onEditorViewReady);
+  const onCanonicalHistoryRef = useRef(onCanonicalHistory);
   const onEditorViewDestroyRef = useRef(onEditorViewDestroy);
   const onKeyDownRef = useRef(onKeyDown);
   const onCopyRef = useRef(onCopy);
@@ -275,17 +289,19 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     // Keep refs in sync
     readOnlyRef.current = readOnly;
     experimentalSessionRef.current = experimentalSession;
+    historyShortcutsRef.current = historyShortcuts;
     suggestionModeActiveRef.current = suggestionModeActive;
     suggestionAuthorRef.current = suggestionAuthor;
     onSessionRefusalRef.current = onSessionRefusal;
     stylesRef.current = styles;
     extensionManagerRef.current = extensionManager;
     externalPluginsRef.current = externalPlugins;
-    precomputedInitialStateRef.current = precomputedInitialState;
+    getPrecomputedInitialStateRef.current = getPrecomputedInitialState;
     onTransactionRef.current = onTransaction;
     onCanonicalCompositionEndRef.current = onCanonicalCompositionEnd;
     onSelectionChangeRef.current = onSelectionChange;
     onEditorViewReadyRef.current = onEditorViewReady;
+    onCanonicalHistoryRef.current = onCanonicalHistory;
     onEditorViewDestroyRef.current = onEditorViewDestroy;
     onKeyDownRef.current = onKeyDown;
     onCopyRef.current = onCopy;
@@ -308,9 +324,12 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getExternalPlugins: () => externalPluginsRef.current,
         getCollaboration: () => collaborationRef.current,
         getCollaborationModules: () => collaborationModulesRef.current,
-        getPrecomputedInitialState: () => precomputedInitialStateRef.current,
+        getPrecomputedInitialState: () =>
+          getPrecomputedInitialStateRef.current?.() ?? null,
         getReadOnly: () => readOnlyRef.current,
         getExperimentalSession: () => experimentalSessionRef.current,
+        getHistoryShortcuts: () => historyShortcutsRef.current,
+        onCanonicalHistory: (effect) => onCanonicalHistoryRef.current?.(effect),
         getEditingMode: () =>
           suggestionModeActiveRef.current ? "suggesting" : "editing",
         getSuggestionAuthor: () => suggestionAuthorRef.current,

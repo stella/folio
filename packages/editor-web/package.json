@@ -15,7 +15,6 @@
     "@stll/folio-core": "workspace:*",
     "@stll/folio-react": "workspace:*",
     "@stll/utf8-boundaries": "workspace:*",
-    "prosemirror-history": "^1.5.1",
     "prosemirror-state": "^1.4.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -27,8 +26,6 @@
     "@playwright/test": "1.64.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "esbuild": "0.28.2",
-    "prosemirror-model": "^1.25.9",
-    "prosemirror-view": "^1.42.9"
+    "esbuild": "0.28.2"
   }
 }

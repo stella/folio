@@ -2,6 +2,7 @@ import { panic } from "better-result";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -74,8 +75,7 @@ const typeAt = (
 
 describe("a compiled intent's own application", () => {
   test("equals applying its ops, through generated typing runs in both modes", () => {
-    const reused = { suggesting: 0, editing: 0 };
-    assertProperty(
+    const law = (reused: { suggesting: number; editing: number }) =>
       fc.property(
         fc.oneof(documentArbitrary, reviewDocumentArbitrary),
         fc.nat(),
@@ -107,9 +107,24 @@ describe("a compiled intent's own application", () => {
             if (typed?.reused) reused[modeType] += 1;
           }
         },
-      ),
-      { numRuns: 200, id: "a compiled intent's own application" },
-    );
+      );
+    assertProperty(law({ suggesting: 0, editing: 0 }), {
+      numRuns: 200,
+      id: "a compiled intent's own application",
+    });
+    // The property's run count, the two modes taking turns.
+    const COVERAGE_RUNS = 200;
+    const reused = { suggesting: 0, editing: 0 };
+    checkCoverageSample(law(reused), COVERAGE_RUNS, {
+      map: ([document, paragraphPick, offsetPick, keys, author], index) => [
+        document,
+        paragraphPick,
+        offsetPick,
+        keys,
+        author,
+        index % 2 === 0 ? "suggesting" : "editing",
+      ],
+    });
     // Direct typing, and typing on beside one's own insertion, hand their
     // application back.
     expect(reused.suggesting).toBeGreaterThan(0);

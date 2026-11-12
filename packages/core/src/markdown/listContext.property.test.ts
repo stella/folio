@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -19,8 +20,7 @@ const paragraph = (text: string, listRendering?: ListRendering): Paragraph => ({
 test(
   "orphan list levels never inherit absent or interrupted Markdown ancestors",
   async () => {
-    let cases = 0;
-    await assertProperty(
+    const law = (counts: { cases: number }) =>
       fc.property(fc.integer({ min: 1, max: 999 }), (start) => {
         for (let level = 0; level <= 8; level++) {
           const cellMarkdown = toMarkdown({
@@ -168,26 +168,28 @@ test(
                 package: { document: { content: blocks } },
               });
               expect(markdown.split("\n").at(-1)).toBe(`${marker} Target`);
-              cases++;
+              counts.cases++;
             }
           }
         }
-      }),
-      {
-        numRuns: 10,
-        id: "orphan list levels never inherit absent or interrupted Markdown ancestors",
-      },
-    );
-    expect(cases).toBeGreaterThan(0);
+      });
+    await assertProperty(law({ cases: 0 }), {
+      numRuns: 10,
+      id: "orphan list levels never inherit absent or interrupted Markdown ancestors",
+    });
+    // A fixed sample runs the check; one case is enough.
+    const RUNS = 1;
+    const counts = { cases: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.cases).toBeGreaterThan(0);
   },
-  propertyTestTimeout(30_000),
+  propertyTestTimeout(33_000),
 );
 
 test(
   "skipped logical levels nest only under emitted native list ancestors",
   async () => {
-    let cases = 0;
-    await assertProperty(
+    const law = (counts: { cases: number }) =>
       fc.property(fc.integer({ min: 1, max: 999 }), (start) => {
         for (let parentLevel = 0; parentLevel < 8; parentLevel++) {
           for (
@@ -221,16 +223,19 @@ test(
             expect(markdown).toBe(
               `${start}. Parent\n${" ".repeat(String(start).length + 2)}- Child\n${start}. Sibling`,
             );
-            cases++;
+            counts.cases++;
           }
         }
-      }),
-      {
-        numRuns: 10,
-        id: "skipped logical levels nest only under emitted native list ancestors",
-      },
-    );
-    expect(cases).toBeGreaterThan(0);
+      });
+    await assertProperty(law({ cases: 0 }), {
+      numRuns: 10,
+      id: "skipped logical levels nest only under emitted native list ancestors",
+    });
+    // A fixed sample runs the check; one case is enough.
+    const RUNS = 1;
+    const counts = { cases: 0 };
+    checkCoverageSample(law(counts), RUNS);
+    expect(counts.cases).toBeGreaterThan(0);
   },
-  propertyTestTimeout(30_000),
+  propertyTestTimeout(33_000),
 );

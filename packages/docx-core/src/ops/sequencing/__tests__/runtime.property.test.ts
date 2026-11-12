@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
+import { checkCoverageSample } from "../../../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -438,8 +439,7 @@ describe("reference sequencing convergence", () => {
     test(
       group,
       () => {
-        let accepted = 0;
-        assertProperty(
+        const law = (counts: { accepted: number }) =>
           fc.property(
             generatedDocument,
             fc.integer({ min: 2, max: 4 }),
@@ -452,16 +452,22 @@ describe("reference sequencing convergence", () => {
                 schedule,
                 enqueueLater: false,
               });
-              accepted += result.accepted;
+              counts.accepted += result.accepted;
               expect(result.submitted).toBe(clientsCount);
               expect(result.accepted).toBeGreaterThanOrEqual(2);
             },
-          ),
-          { numRuns: NUM_RUNS, id: "reference sequencing convergence" },
-        );
-        expect(accepted).toBeGreaterThanOrEqual(NUM_RUNS * 2);
+          );
+        assertProperty(law({ accepted: 0 }), {
+          numRuns: NUM_RUNS,
+          id: "reference sequencing convergence",
+        });
+        // A fifth of the property's runs: each run simulates a long schedule.
+        const COVERAGE_RUNS = NUM_RUNS / 5;
+        const counts = { accepted: 0 };
+        checkCoverageSample(law(counts), COVERAGE_RUNS);
+        expect(counts.accepted).toBeGreaterThanOrEqual(COVERAGE_RUNS * 2);
       },
-      propertyTestTimeout(30_000),
+      propertyTestTimeout(36_000),
     );
   }
 
@@ -497,9 +503,7 @@ describe("reference sequencing convergence", () => {
   test(
     "inverse submissions over foreign edits succeed or are dropped atomically",
     () => {
-      let accepted = 0;
-      let dropped = 0;
-      assertProperty(
+      const law = (counts: { accepted: number; dropped: number }) =>
         fc.property(generatedDocument, fc.nat(), (document, seed) => {
           const forward = operation({
             document,
@@ -549,26 +553,33 @@ describe("reference sequencing convergence", () => {
           );
           const result = sequencer.submit(inverse);
           if (result.type === "reject") {
-            dropped += 1;
+            counts.dropped += 1;
             expect(equalForStaleness(sequencer.document, before)).toBe(true);
           } else {
-            accepted += 1;
+            counts.accepted += 1;
             expect(transformed.isOk()).toBe(true);
             if (transformed.isOk())
               expect(
                 applyDocumentOps(before, transformed.value.ops).isOk(),
               ).toBe(true);
           }
-        }),
-        {
-          numRuns: NUM_RUNS,
-          id: "inverse submissions over foreign edits succeed or are dropped atomically",
-        },
-      );
-      expect(accepted).toBeGreaterThan(0);
-      expect(dropped).toBeGreaterThan(0);
+        });
+      assertProperty(law({ accepted: 0, dropped: 0 }), {
+        numRuns: NUM_RUNS,
+        id: "inverse submissions over foreign edits succeed or are dropped atomically",
+      });
+      // The property's run count, the two foreign edit groups taking turns.
+      const counts = { accepted: 0, dropped: 0 };
+      checkCoverageSample(law(counts), NUM_RUNS, {
+        map: ([document, seed], index) => [
+          document,
+          seed - (seed % 2) + (index % 2),
+        ],
+      });
+      expect(counts.accepted).toBeGreaterThan(0);
+      expect(counts.dropped).toBeGreaterThan(0);
     },
-    propertyTestTimeout(30_000),
+    propertyTestTimeout(60_000),
   );
 
   test(
