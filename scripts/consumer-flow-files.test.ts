@@ -350,11 +350,11 @@ describe("mutation", () => {
         donors: [pinned],
       });
       const shared = mutant.steps.findIndex((step, index) => {
-        const parent = pinned.steps[index];
+        const original = pinned.steps[index];
         return (
-          parent === undefined ||
+          original === undefined ||
           JSON.stringify(withoutCount(step)) !==
-            JSON.stringify(withoutCount(parent))
+            JSON.stringify(withoutCount(original))
         );
       });
       for (const [index, step] of mutant.steps.entries()) {
