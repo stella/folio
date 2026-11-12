@@ -243,6 +243,7 @@ import type {
   Theme,
 } from "@stll/folio-core/types/document";
 import {
+  type DeepReadonly,
   readModel,
   type ReadonlyDocument,
 } from "@stll/folio-core/types/documentModel";
@@ -1103,7 +1104,7 @@ type LayoutInputSignatureOptions = {
   pageGap: number;
   pageSize: { h: number; w: number };
   sectionProperties: SectionProperties | null | undefined;
-  styles: StyleDefinitions | null | undefined;
+  styles: DeepReadonly<StyleDefinitions> | null | undefined;
   theme: Theme | null | undefined;
 };
 
@@ -1610,9 +1611,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     } = props;
     // The editor reads its model and never writes it: an edit goes through
     // the editor state. The model is passed on read-only, and each reader that
-    // takes a plain `Document` (its styles and section properties here) reads
-    // it through `readModel`; a deep-freeze test runs them over frozen models.
-    const styles = document ? readModel(document).package.styles : undefined;
+    // takes a plain `Document` (its section properties here) reads it through
+    // `readModel`; a deep-freeze test runs them over frozen models. The styles
+    // stay read-only for everything they feed: the style resolver, the hidden
+    // editors and the layout.
+    const styles = document?.package.styles;
     const sectionProperties = useMemo(
       () =>
         resolveEffectiveSectionProperties(
@@ -2519,7 +2522,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         const body = hidden?.getState()?.doc;
         if (!built) return null;
         return settledChangeOf(
-          body ? noteFollower.reconcile(built, body) : built,
+          body ? noteFollower.reconcile(readModel(built), body) : built,
         );
       }, [experimentalSession, noteFollower]);
 
@@ -6376,7 +6379,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           )
             return editorDocument;
           const current = editorDocument
-            ? noteFollower.withPending(editorDocument)
+            ? noteFollower.withPending(readModel(editorDocument))
             : null;
           return current
             ? (noteEditorRef.current?.snapshotDocument(current) ?? current)

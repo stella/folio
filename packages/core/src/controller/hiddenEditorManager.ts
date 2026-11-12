@@ -110,7 +110,11 @@ import {
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type { StyleDefinitions } from "../types/document";
-import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 import {
@@ -376,7 +380,7 @@ const HIDDEN_EDITOR_ATTRIBUTES = {
 export type CreateHiddenEditorStateOptions = {
   /** The model; the editor state is built from it through `readModel`. */
   document: ReadonlyDocument | null;
-  styles?: StyleDefinitions | null | undefined;
+  styles?: DeepReadonly<StyleDefinitions> | null | undefined;
   manager?: ExtensionManager | undefined;
   externalPlugins?: Plugin[] | undefined;
   collaboration?: HiddenProseMirrorCollaboration | undefined;
@@ -567,7 +571,7 @@ function syncHiddenEditorAccessibility(
 export type HiddenEditorManagerDeps = {
   getHost: () => HTMLElement | null;
   getDocument: () => ReadonlyDocument | null;
-  getStyles: () => StyleDefinitions | null | undefined;
+  getStyles: () => DeepReadonly<StyleDefinitions> | null | undefined;
   getExtensionManager: () => ExtensionManager | undefined;
   getExternalPlugins: () => Plugin[];
   getCollaboration: () => HiddenProseMirrorCollaboration | undefined;

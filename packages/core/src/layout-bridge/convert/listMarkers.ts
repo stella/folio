@@ -17,6 +17,7 @@ import type {
   ParagraphPropertyChangeAttrs,
 } from "../../prosemirror/schema/nodes";
 import type { TextFormatting, Theme } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import { listMarkerFormattingFor } from "./textFormattingConversion";
 
 export function applyMarkerAllCaps(
@@ -215,7 +216,7 @@ export function applyDeletedListMarkerAttrs(
   change: ListPropertyChange & { previousFormatting: ListPropertyFormatting },
   theme: Theme | null | undefined,
   fontAlternates: FontAlternates | undefined,
-  paragraphMarkFormatting: () => TextFormatting | undefined,
+  paragraphMarkFormatting: () => DeepReadonly<TextFormatting> | undefined,
 ): void {
   const previousListAttrs = toPreviousListAttrs(change.previousFormatting);
   const marker = resolveDeletedListMarker(previousListAttrs);

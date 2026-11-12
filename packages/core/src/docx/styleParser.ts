@@ -29,6 +29,7 @@ import type {
   TableRowFormatting,
   Theme,
 } from "../types/document";
+import { writableCopy } from "../types/documentModel";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
 import { parseBorderSpec } from "./borderParser";
@@ -856,14 +857,16 @@ export function resolveStyleInheritance(
   // Merge parent into this style (this style overrides parent)
   const resolved: Style = { ...style };
 
+  // The resolved style owns its values: the merges share them with the
+  // parent and the style they were read from.
   const mergedPPr = mergeParagraphFormatting(resolvedParent.pPr, style.pPr);
   if (mergedPPr) {
-    resolved.pPr = mergedPPr;
+    resolved.pPr = writableCopy<NonNullable<Style["pPr"]>>(mergedPPr);
   }
 
   const mergedRPr = mergeStyleTextFormatting(resolvedParent.rPr, style.rPr);
   if (mergedRPr) {
-    resolved.rPr = mergedRPr;
+    resolved.rPr = writableCopy<NonNullable<Style["rPr"]>>(mergedRPr);
   }
 
   // Merge table properties if this is a table style

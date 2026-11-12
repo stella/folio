@@ -16,6 +16,7 @@ import type {
 import type { ListCounterStreams } from "../../prosemirror/listMarker";
 import type { RunStyleResolver } from "../../prosemirror/runStyleFormatting";
 import type { StyleDefinitions, Theme } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import type { ParagraphBlockCache } from "./paragraphBlockCache";
 
 /**
@@ -52,7 +53,7 @@ export type ToFlowBlocksOptions = {
   /** Theme for resolving theme colors. */
   theme?: Theme | null;
   /** Document styles used to resolve character-style toggles without per-run copies. */
-  styles?: StyleDefinitions;
+  styles?: DeepReadonly<StyleDefinitions>;
   /** Document-scoped OOXML primary-font to `w:altName` lookup. */
   fontAlternates?: FontAlternates;
   /** Page content height in pixels (pageHeight - marginTop - marginBottom). Images taller than this are scaled down to fit. */

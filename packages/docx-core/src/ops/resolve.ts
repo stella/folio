@@ -83,6 +83,7 @@ import {
   isAddedRevision,
   isTrackedWrapper,
   reviewFieldsOf,
+  type TrackedWrapper,
   withMarkFormatting,
 } from "./review";
 import { runsMergeable } from "./runMerge";
@@ -1058,23 +1059,20 @@ type SourceOwnerState =
       adjacent: Record<SourceOwnerSide, SourceOwner | undefined>;
     };
 type SourceOwner = { state: SourceOwnerState };
-/**
- * A record in a resolved list and the source occurrence it came from.
- * `lifted` is set on content a resolved wrapper left in its place: it stands
- * one level above where the wrapper held it, so a depth measured from the
- * wrapper reaches one level less into it.
- */
+/** A record in a resolved list and the source occurrence it came from. */
 type SourceOccurrence = {
   node: InlineNode;
   owner: SourceOwner | undefined;
-  /** The record the list held, before this resolution; absent on lifted content. */
+  /**
+   * The record the list held before this resolution: for content a resolved
+   * wrapper left in its place, that wrapper.
+   */
   source?: InlineNode;
-  lifted?: true;
   /** Content of an added revision this resolution accepts: new, not source. */
   payload?: true;
 };
 
-/** `node` in the place of `occurrence`, from the same source and as lifted. */
+/** `node` in the place of `occurrence`, from the same source. */
 const occurrenceOf = (
   node: InlineNode,
   occurrence: SourceOccurrence | undefined,
@@ -1082,7 +1080,6 @@ const occurrenceOf = (
   node,
   owner: occurrence?.owner,
   ...(occurrence?.source !== undefined && { source: occurrence.source }),
-  ...(occurrence?.lifted === true && { lifted: true as const }),
   ...(occurrence?.payload === true && { payload: true as const }),
 });
 
@@ -1158,37 +1155,123 @@ const sourceOwnerDepthAt = ({
   return undefined;
 };
 
+/** Two tracked changes of one kind, author and date: pieces of one change. */
+const sameStamp = (left: TrackedWrapper, right: TrackedWrapper): boolean =>
+  left.type === right.type &&
+  structurallyEqual({ ...left.info, id: 0 }, { ...right.info, id: 0 });
+
+/** Every tracked change in `nodes`, at any depth. */
+const trackedWithin = (nodes: readonly InlineNode[]): TrackedWrapper[] =>
+  nodes.flatMap((node) => [
+    ...(isTrackedWrapper(node) ? [node] : []),
+    ...trackedWithin(childNodes(node) ?? []),
+  ]);
+
+type CutReach = {
+  /** The cut's levels that stay once the resolution is done. */
+  levels: number;
+  /** Records each side's edge goes through to the deepest level that stays. */
+  before: number;
+  after: number;
+};
+
+/** `node` and its last (`end`) or first (`start`) child, theirs, and so on. */
+const edgeChain = (node: InlineNode, edge: "start" | "end"): InlineNode[] => {
+  const chain: InlineNode[] = [];
+  let current: InlineNode | undefined = node;
+  while (current !== undefined) {
+    chain.push(current);
+    const children = childNodes(current);
+    current = edge === "start" ? children?.at(0) : children?.at(-1);
+  }
+  return chain;
+};
+
 /**
- * A depth measured into `source` at its `edge`, as far as the records on the
- * way stay once `resolution` is done: a wrapper it resolves away at that edge
- * leaves its content a level up, and one whose content goes takes the
- * position with it, so the depth stops above it.
+ * Where a cut recorded `depth` levels deep reaches, once `resolution` is
+ * done, into the records either side of it, given as the chains of records
+ * at their edges facing the cut, as the list held them before the
+ * resolution. The levels a cut counts are the containers it split: their
+ * pieces stand on both sides of it and are alike, as the pieces a join
+ * merges are, a tracked change's pieces sharing its kind, author and date.
+ * The reach ends where the two sides differ. A tracked change on one side
+ * only came
+ * after the cut, or never held it, and is no level of it; nor is one that
+ * also holds a piece of `spanning`, the content that made the cut, as a
+ * deletion made over the cut does. So the reach is the same whichever
+ * changes earlier resolutions removed and whichever later edits wrapped a
+ * piece: a cut level the resolution resolves away leaves its content a level
+ * up, and one whose content goes takes the position with it.
  */
-const survivingDepth = ({
-  source,
+const cutReach = ({
+  before,
+  after,
   depth,
-  edge,
+  spanning,
   resolution,
 }: {
-  source: InlineNode;
+  before: readonly InlineNode[];
+  after: readonly InlineNode[];
   depth: number;
-  edge: "start" | "end";
+  spanning: readonly TrackedWrapper[];
   resolution: Resolution;
-}): number => {
-  let surviving = Math.min(depth, 1);
-  let current = source;
-  for (let level = 2; level <= depth; level += 1) {
-    const children = childNodes(current);
-    const child = edge === "start" ? children?.at(0) : children?.at(-1);
-    if (child === undefined) break;
-    current = child;
-    if (isTrackedWrapper(child) && resolution.ids.has(child.info.id)) {
-      if (removesContent(child, resolution.decision)) break;
+}): CutReach => {
+  const reach: CutReach = { levels: depth, before: 0, after: 0 };
+  const open = { before: true, after: true };
+  /** How a record on one side's edge counts once the resolution is done. */
+  const pass = (
+    side: "before" | "after",
+    node: InlineNode,
+  ): "stays" | "lifted" | "gone" => {
+    if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
+      if (!removesContent(node, resolution.decision)) return "lifted";
+      open[side] = false;
+      return "gone";
+    }
+    if (open[side]) reach[side] += 1;
+    return "stays";
+  };
+  let nearIndex = 0;
+  let farIndex = 0;
+  let counted = 0;
+  let staying = 0;
+  while (counted < depth) {
+    const near = before[nearIndex];
+    const far = after[farIndex];
+    if (near === undefined || far === undefined) break;
+    const piecesOfOne =
+      isTrackedWrapper(near) && isTrackedWrapper(far)
+        ? sameStamp(near, far) &&
+          !spanning.some((change) => sameStamp(change, near))
+        : !isTrackedWrapper(near) &&
+          !isTrackedWrapper(far) &&
+          childNodes(near) !== undefined &&
+          childNodes(far) !== undefined &&
+          sameOwnFields(near, far);
+    if (!piecesOfOne && isTrackedWrapper(near)) {
+      pass("before", near);
+      nearIndex += 1;
       continue;
     }
-    surviving += 1;
+    if (!piecesOfOne && isTrackedWrapper(far)) {
+      pass("after", far);
+      farIndex += 1;
+      continue;
+    }
+    if (!piecesOfOne) break;
+    counted += 1;
+    const outcome = pass("before", near);
+    pass("after", far);
+    if (outcome === "gone") {
+      reach.levels = staying;
+      break;
+    }
+    if (outcome === "lifted") reach.levels -= 1;
+    else staying += 1;
+    nearIndex += 1;
+    farIndex += 1;
   }
-  return surviving;
+  return reach;
 };
 
 const resolveList = (
@@ -1207,7 +1290,6 @@ const resolveList = (
   const appendSource = (
     node: InlineNode,
     index: number,
-    lifted = false,
     payload = false,
   ): void => {
     const source = pending.at(index);
@@ -1215,10 +1297,36 @@ const resolveList = (
       node,
       owner:
         sourceOwners.at(index) ?? panic("A source occurrence has an owner."),
-      ...(!lifted && source !== undefined && { source }),
-      ...(lifted && { lifted: true as const }),
+      ...(source !== undefined && { source }),
       ...(payload && { payload: true as const }),
     });
+  };
+  /**
+   * The cut a pending insertion recorded, once this resolution is done: a
+   * container it split that this resolution resolves away is a level of it no
+   * more. Kept as it was, a later resolution of the insertion would read the
+   * cut one level deeper than resolving both at once does. `undefined` when
+   * the cut stays as recorded.
+   */
+  const remainingCut = (
+    node: InlineNode,
+    index: number,
+  ): number | undefined => {
+    if (!isAddedRevision(node) || resolution.ids.has(node.info.id))
+      return undefined;
+    const depth = node.resolutionJoins?.remove ?? 0;
+    const before = index > 0 ? pending.at(index - 1) : undefined;
+    const after = pending.at(index + 1);
+    if (depth === 0 || before === undefined || after === undefined)
+      return undefined;
+    const { levels } = cutReach({
+      before: edgeChain(before, "end"),
+      after: edgeChain(after, "start"),
+      depth,
+      spanning: trackedWithin(node.content),
+      resolution,
+    });
+    return levels < depth ? levels : undefined;
   };
   const appendUnowned = (items: readonly InlineNode[]): void => {
     out.push(...items.map((node) => ({ node, owner: undefined })));
@@ -1244,6 +1352,8 @@ const resolveList = (
       depth: number;
       before: SourceOwner | undefined;
       after: SourceOwner | undefined;
+      /** The tracked changes the removed content held. */
+      spanning: readonly TrackedWrapper[];
     }
   >();
   let changed = false;
@@ -1355,6 +1465,7 @@ const resolveList = (
             depth: node.resolutionJoins?.remove ?? 0,
             before: index > 0 ? sourceOwners.at(index - 1) : undefined,
             after: sourceOwners.at(index + 1),
+            spanning: trackedWithin(node.content),
           });
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else if ((node.resolutionJoins.plainSides?.length ?? 0) > 0)
@@ -1400,7 +1511,7 @@ const resolveList = (
       const payload =
         isAddedRevision(node) &&
         resolution.decision === REVISION_DECISIONS.ACCEPT;
-      for (const child of content) appendSource(child, index, true, payload);
+      for (const child of content) appendSource(child, index, payload);
       if (resolved.edges?.last !== undefined)
         recordSourceSeam(out.length, resolved.edges.last);
       if (node.resolutionJoins === undefined) seams.push(out.length);
@@ -1468,8 +1579,20 @@ const resolveList = (
         ...prepareDeferredRemovals(following, resolution),
       );
     }
+    const cut = remainingCut(node, index);
+    if (cut !== undefined) changed = true;
+    const recut = (record: InlineNode): InlineNode =>
+      cut === undefined ||
+      !isTrackedWrapper(record) ||
+      record.resolutionJoins === undefined
+        ? record
+        : Object.assign({}, record, {
+            resolutionJoins: Object.assign({}, record.resolutionJoins, {
+              remove: cut,
+            }),
+          });
     if (children === undefined || inner === undefined || !inner.changed) {
-      appendSource(node, index);
+      appendSource(recut(node), index);
       continue;
     }
     changed = true;
@@ -1496,7 +1619,7 @@ const resolveList = (
         plainSeams.add(out.length);
       continue;
     }
-    let rebuilt = rebuildNode(node, inner.nodes);
+    let rebuilt = recut(rebuildNode(node, inner.nodes));
     if (
       isTrackedWrapper(rebuilt) &&
       rebuilt.resolutionJoins?.retainedAfter !== undefined
@@ -1634,6 +1757,35 @@ const resolveList = (
     else if (pendingRemoval(right)) acceptAsPlain(seam, "before");
     else if (seam > 0 && pendingRemoval(left)) acceptAsPlain(seam - 1, "after");
   }
+  // A recorded seam a pending deletion or move source stands at, holding
+  // the piece on its side, joins once that change's content is kept: the
+  // change carries the seam on that side, as deep as it was recorded.
+  // Dropped, rejecting the change later would leave the pieces apart where
+  // rejecting both at once joins them.
+  const carrySeam = (
+    node: InlineNode,
+    side: "before" | "after",
+    depth: number | undefined,
+  ): InlineNode => {
+    if (
+      depth === undefined ||
+      depth === 0 ||
+      !isTrackedWrapper(node) ||
+      isAddedRevision(node) ||
+      resolution.ids.has(node.info.id) ||
+      node.resolutionJoins === undefined ||
+      node.resolutionJoins.plainSides?.includes(side) === true ||
+      node.resolutionJoins[side] >= depth
+    )
+      return node;
+    const carried = Object.assign({}, node, {
+      resolutionJoins: Object.assign({}, node.resolutionJoins, {
+        [side]: depth,
+      }),
+    });
+    carryResolutionState(resolution, node, carried);
+    return carried;
+  };
   const merges = new Set(seams);
   for (const recorded of [
     ...new Set([...seams, ...exactSeams.keys(), ...folds]),
@@ -1650,8 +1802,11 @@ const resolveList = (
       const afterOccurrence = out[seam];
       const before = beforeOccurrence?.node;
       const after = afterOccurrence?.node;
-      // The depth reaches into the source occurrence; content its resolved
-      // wrapper left in place starts one level shallower.
+      // The depth counts the containers the removed content cut, read on
+      // the records either side as the list held them: a container this
+      // resolution resolves away is a level no more, and a tracked change on
+      // one side only was never one. A side with no source record is read
+      // against itself.
       const ownerDepth = ({
         occurrence,
         source,
@@ -1668,15 +1823,22 @@ const resolveList = (
           depth: kept.depth,
         });
         if (depth === undefined) return undefined;
-        if (occurrence?.lifted === true) return depth - 1;
-        return occurrence?.source === undefined
-          ? depth
-          : survivingDepth({
-              source: occurrence.source,
-              depth,
-              edge: side === "after" ? "start" : "end",
-              resolution,
-            });
+        const near = occurrence?.source;
+        if (near === undefined) return depth;
+        const far = (side === "before" ? afterOccurrence : beforeOccurrence)
+          ?.source;
+        const nearChain = edgeChain(near, side === "before" ? "end" : "start");
+        const farChain =
+          far === undefined
+            ? nearChain
+            : edgeChain(far, side === "before" ? "start" : "end");
+        return cutReach({
+          before: side === "before" ? nearChain : farChain,
+          after: side === "before" ? farChain : nearChain,
+          depth,
+          spanning: far === undefined ? [] : kept.spanning,
+          resolution,
+        })[side];
       };
       const beforeDepth = ownerDepth({
         occurrence: beforeOccurrence,
@@ -1889,8 +2051,11 @@ const resolveList = (
       out.splice(
         seam - 1,
         2,
-        occurrenceOf(metLeft, leftOccurrence),
-        occurrenceOf(metRight, rightOccurrence),
+        occurrenceOf(carrySeam(metLeft, "after", exactDepth), leftOccurrence),
+        occurrenceOf(
+          carrySeam(metRight, "before", exactDepth),
+          rightOccurrence,
+        ),
       );
     }
   }

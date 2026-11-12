@@ -7,6 +7,7 @@
 import { Attrs } from 'prosemirror-model';
 import { ColorValue } from '@stll/docx-core/model';
 import { Command } from 'prosemirror-state';
+import { DeepReadonly } from '@stll/docx-core/model';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
@@ -108,7 +109,7 @@ export const clearTextColor: Command;
 export const continueNumbering: Command;
 
 // @public
-export function createDocumentStylesPlugin(styles: import__stll_docx_core_model.StyleDefinitions | StyleResolver | null | undefined): Plugin_2;
+export function createDocumentStylesPlugin(styles: DeepReadonly<import__stll_docx_core_model.StyleDefinitions> | StyleResolver | null | undefined): Plugin_2;
 
 // @public
 export function createEmptyDoc(): Node_2;
@@ -117,7 +118,7 @@ export function createEmptyDoc(): Node_2;
 export function createSelectionTrackerPlugin(onSelectionChange?: SelectionChangeCallback): Plugin_2;
 
 // @public
-export function createStyleResolver(styleDefinitions: import__stll_docx_core_model.StyleDefinitions | undefined): StyleResolver;
+export function createStyleResolver(styleDefinitions: DeepReadonly<import__stll_docx_core_model.StyleDefinitions> | undefined): StyleResolver;
 
 // @public (undocumented)
 export function decreaseIndent(amount?: number): Command;
@@ -438,16 +439,16 @@ export type ParagraphAttrs = {
     listStartOverride?: number;
     styleId?: string;
     _tableOfContentsLevel?: number;
-    borders?: {
+    borders?: DeepReadonly<{
         top?: import__stll_docx_core_model.BorderSpec;
         bottom?: import__stll_docx_core_model.BorderSpec;
         left?: import__stll_docx_core_model.BorderSpec;
         right?: import__stll_docx_core_model.BorderSpec;
         between?: import__stll_docx_core_model.BorderSpec;
         bar?: import__stll_docx_core_model.BorderSpec;
-    };
-    shading?: import__stll_docx_core_model.ShadingProperties;
-    tabs?: import__stll_docx_core_model.TabStop[];
+    }>;
+    shading?: DeepReadonly<import__stll_docx_core_model.ShadingProperties>;
+    tabs?: readonly DeepReadonly<import__stll_docx_core_model.TabStop>[];
     pageBreakBefore?: boolean;
     renderedPageBreakBefore?: boolean;
     _pageBreakCarrier?: boolean;
@@ -456,8 +457,8 @@ export type ParagraphAttrs = {
     keepLines?: boolean;
     widowControl?: boolean;
     contextualSpacing?: boolean;
-    defaultTextFormatting?: import__stll_docx_core_model.TextFormatting;
-    _tableRunFormatting?: import__stll_docx_core_model.TextFormatting;
+    defaultTextFormatting?: DeepReadonly<import__stll_docx_core_model.TextFormatting>;
+    _tableRunFormatting?: DeepReadonly<import__stll_docx_core_model.TextFormatting>;
     direction?: ParagraphDirection | null;
     outlineLevel?: import__stll_docx_core_model.OutlineLevel;
     bookmarks?: {
@@ -477,8 +478,8 @@ export type ParagraphAttrs = {
     }[];
     runInWithNext?: boolean;
     _originalFormatting?: import__stll_docx_core_model.ParagraphFormatting;
-    _resolvedFormatting?: import__stll_docx_core_model.ParagraphFormatting;
-    _styleResolvedFormatting?: import__stll_docx_core_model.ParagraphFormatting;
+    _resolvedFormatting?: DeepReadonly<import__stll_docx_core_model.ParagraphFormatting>;
+    _styleResolvedFormatting?: DeepReadonly<import__stll_docx_core_model.ParagraphFormatting>;
     _autospacingBase?: {
         before?: number | null;
         after?: number | null;
@@ -512,10 +513,10 @@ export function removeTableBorders(state: EditorState, dispatch?: (tr: Transacti
 export function removeTabStop(position: number): Command;
 
 // @public
-export type ResolvedParagraphStyle = {
+export type ResolvedParagraphStyle = DeepReadonly<{
     paragraphFormatting?: import__stll_docx_core_model.ParagraphFormatting;
     runFormatting?: import__stll_docx_core_model.TextFormatting;
-};
+}>;
 
 // @public
 export const resolveListState: (numbering: NumberingMap | null | undefined, numPr: ParagraphNumberingOverride | undefined) => ListState;
@@ -539,8 +540,8 @@ export type SelectionChangeCallback = (context: SelectionContext) => void;
 export type SelectionContext = {
     hasSelection: boolean;
     isMultiParagraph: boolean;
-    textFormatting: import__stll_docx_core_model.TextFormatting;
-    paragraphFormatting: import__stll_docx_core_model.ParagraphFormatting;
+    textFormatting: DeepReadonly<import__stll_docx_core_model.TextFormatting>;
+    paragraphFormatting: DeepReadonly<import__stll_docx_core_model.ParagraphFormatting>;
     startParagraphIndex: number;
     endParagraphIndex: number;
     listState: ListState;
@@ -656,21 +657,21 @@ export function splitCell(state: EditorState, dispatch?: (tr: Transaction) => vo
 
 // @public
 export class StyleResolver {
-    constructor(styleDefinitions: import__stll_docx_core_model.StyleDefinitions | undefined);
+    constructor(styleDefinitions: DeepReadonly<import__stll_docx_core_model.StyleDefinitions> | undefined);
     get builtInStyles(): BuiltInStyleIndex;
-    getDefaultCharacterStyle(): import__stll_docx_core_model.Style | undefined;
-    getDefaultParagraphStyle(): import__stll_docx_core_model.Style | undefined;
-    getDefaultTableStyle(): import__stll_docx_core_model.Style | undefined;
-    getDocDefaults(): import__stll_docx_core_model.DocDefaults | undefined;
+    getDefaultCharacterStyle(): ReadonlyStyle | undefined;
+    getDefaultParagraphStyle(): ReadonlyStyle | undefined;
+    getDefaultTableStyle(): ReadonlyStyle | undefined;
+    getDocDefaults(): DeepReadonly<import__stll_docx_core_model.DocDefaults> | undefined;
     getNextStyleId(styleId: string | undefined | null): string | null;
-    getParagraphStyles(): import__stll_docx_core_model.Style[];
-    getRunStyleOwnProperties(styleId: string | undefined | null): import__stll_docx_core_model.TextFormatting | undefined;
-    getStyle(styleId: string): import__stll_docx_core_model.Style | undefined;
-    getTableStyles(): import__stll_docx_core_model.Style[];
+    getParagraphStyles(): ReadonlyStyle[];
+    getRunStyleOwnProperties(styleId: string | undefined | null): ReadonlyTextFormatting | undefined;
+    getStyle(styleId: string): ReadonlyStyle | undefined;
+    getTableStyles(): ReadonlyStyle[];
     hasStyle(styleId: string): boolean;
     resolveParagraphStyle(styleId: string | undefined | null): ResolvedParagraphStyle;
     resolveParagraphStyleInTable(styleId: string | undefined | null, tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined): ResolvedParagraphStyle;
-    resolveRunStyle(styleId: string | undefined | null): import__stll_docx_core_model.TextFormatting | undefined;
+    resolveRunStyle(styleId: string | undefined | null): ReadonlyTextFormatting | undefined;
 }
 
 // @public (undocumented)
@@ -757,7 +758,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 
 // @public
 export type ToProseDocOptions = {
-    styles?: import__stll_docx_core_model.StyleDefinitions;
+    styles?: DeepReadonly<import__stll_docx_core_model.StyleDefinitions>;
     numbering?: import__stll_docx_core_model.NumberingDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
     warn?: ParseContext["warn"];

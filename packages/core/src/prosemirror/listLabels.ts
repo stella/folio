@@ -109,11 +109,29 @@ const projectedListRendering = (
  * attrs no label depends on: a reader that walks the model (Markdown) counts
  * every list paragraph through here.
  */
+type ListLabelAttrs = Pick<
+  ParagraphAttrs,
+  | "numPr"
+  | "numPrFromStyle"
+  | "listMarker"
+  | "listMarkerTemplate"
+  | "listIsBullet"
+  | "listIsLegal"
+  | "listNumFmt"
+  | "listMarkerHidden"
+  | "listMarkerFormatting"
+  | "listLevelNumFmts"
+  | "listLevelStarts"
+  | "listAbstractNumId"
+  | "listStartOverride"
+  | "listImplicitChildLevelAdvances"
+>;
+
 export const listLabelAttrsFromRendering = (
   rendering: ListRendering | undefined,
   { numPr, numPrFromStyle }: ParagraphNumberingSources,
-): ParagraphAttrs => {
-  const attrs: ParagraphAttrs = {
+): ListLabelAttrs => {
+  const attrs: ListLabelAttrs = {
     ...(numPr === undefined ? {} : { numPr: paragraphNumberingAttr(numPr) }),
     ...(numPrFromStyle === undefined
       ? {}

@@ -1,3 +1,4 @@
+import type { FloatingTableProperties, TableLook } from "../../types";
 /**
  * ProseMirror Node Type Interfaces
  *
@@ -5,8 +6,6 @@
  * extensions, and other consumers. NodeSpec definitions have moved
  * to the extension system (extensions/core/ and extensions/nodes/).
  */
-
-import type { FloatingTableProperties, TableLook } from "../../types";
 import type {
   BookmarkEnd,
   BorderSpec,
@@ -66,6 +65,7 @@ import type {
   WrapDistanceSlots,
 } from "../../types/document";
 import type { OutlineStyleAttr } from "../../types/documentEnumValues";
+import type { DeepReadonly } from "../../types/documentModel";
 import type { SpacingExplicit } from "../../types/formatting";
 import type { ParagraphNumberingAttr } from "../numberingAttr";
 import type { ParagraphDirection } from "../paragraphDirection";
@@ -286,20 +286,20 @@ export type ParagraphAttrs = {
   _tableOfContentsLevel?: number;
 
   // Borders
-  borders?: {
+  borders?: DeepReadonly<{
     top?: BorderSpec;
     bottom?: BorderSpec;
     left?: BorderSpec;
     right?: BorderSpec;
     between?: BorderSpec;
     bar?: BorderSpec;
-  };
+  }>;
 
   // Background/Shading
-  shading?: ShadingProperties;
+  shading?: DeepReadonly<ShadingProperties>;
 
   // Tab stops
-  tabs?: TabStop[];
+  tabs?: readonly DeepReadonly<TabStop>[];
 
   // Page break control
   pageBreakBefore?: boolean;
@@ -317,9 +317,9 @@ export type ParagraphAttrs = {
 
   // Default text formatting for empty paragraphs (persists when navigating away)
   // Maps to OOXML pPr/rPr (paragraph's default run properties)
-  defaultTextFormatting?: TextFormatting;
+  defaultTextFormatting?: DeepReadonly<TextFormatting>;
   /** Internal table-style run overlay, used to resolve body-run provenance. */
-  _tableRunFormatting?: TextFormatting;
+  _tableRunFormatting?: DeepReadonly<TextFormatting>;
 
   /**
    * Base text direction as a discriminated union (undecided when absent).
@@ -378,10 +378,10 @@ export type ParagraphAttrs = {
    * the style it came from, and a later edit to that style stops reaching the
    * paragraph. `TableCellAttrs._resolvedBorders` is the same device.
    */
-  _resolvedFormatting?: ParagraphFormatting;
+  _resolvedFormatting?: DeepReadonly<ParagraphFormatting>;
 
   /** Style-only inheritance baseline, before numbering-level indentation. PM-only. */
-  _styleResolvedFormatting?: ParagraphFormatting;
+  _styleResolvedFormatting?: DeepReadonly<ParagraphFormatting>;
 
   /** Import-effective spacing baseline for HTML auto-spacing detection.
    *  PM-only; never serialized back into DOCX formatting. */
@@ -1389,7 +1389,7 @@ export type TableCellAttrs = {
   /** Effective end-of-cell marker suppression (`w:hideMark`). */
   hideMark?: boolean;
   /** Cell borders — full BorderSpec per side (style, color, size) */
-  borders?: TableCellBorders;
+  borders?: DeepReadonly<TableCellBorders>;
   /**
    * Effective borders after the table and table-style cascade. PM-only; never
    * serialized. The companion to `borders` that `_resolvedBackgroundColor` is
@@ -1397,7 +1397,7 @@ export type TableCellAttrs = {
    * its own, so a save can tell a border a style supplied from one the cell
    * states.
    */
-  _resolvedBorders?: TableCellBorders;
+  _resolvedBorders?: DeepReadonly<TableCellBorders>;
   /** Cell margins/padding in twips per side */
   margins?: { top?: number; bottom?: number; left?: number; right?: number };
   /** Effective margins after the cascade. PM-only; never serialized. */

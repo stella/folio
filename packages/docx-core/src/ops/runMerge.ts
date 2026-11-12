@@ -1,5 +1,6 @@
 /** Shared run merge rules for parsing and paragraph joins. */
 import type {
+  DeepReadonly,
   ExhaustiveFields,
   PreservedAttribute,
   PreservedMarkup,
@@ -61,8 +62,8 @@ type ComparedTextFormatting = ExhaustiveFields<
  * can be merged without losing formatting information.
  */
 export function formattingEquals(
-  a: ComparedTextFormatting | undefined,
-  b: ComparedTextFormatting | undefined,
+  a: DeepReadonly<ComparedTextFormatting> | undefined,
+  b: DeepReadonly<ComparedTextFormatting> | undefined,
 ): boolean {
   // Both undefined - equal
   if (!a && !b) {
@@ -201,8 +202,8 @@ export function formattingEquals(
  * so equality is by sequence, not by set.
  */
 function preservedMarkupEquals(
-  a: PreservedMarkup | undefined,
-  b: PreservedMarkup | undefined,
+  a: DeepReadonly<PreservedMarkup> | undefined,
+  b: DeepReadonly<PreservedMarkup> | undefined,
 ): boolean {
   const left = a?.children ?? [];
   const right = b?.children ?? [];
@@ -305,8 +306,8 @@ function colorEquals(
  * Compare shading properties
  */
 function shadingEquals(
-  a: TextFormatting["shading"],
-  b: TextFormatting["shading"],
+  a: DeepReadonly<TextFormatting["shading"]>,
+  b: DeepReadonly<TextFormatting["shading"]>,
 ): boolean {
   if (!a && !b) {
     return true;

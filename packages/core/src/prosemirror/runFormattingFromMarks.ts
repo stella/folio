@@ -3,6 +3,7 @@ import type { Mark } from "prosemirror-model";
 import type { RunPropsPatch } from "@stll/docx-core/ops";
 
 import type { ColorValue, TextFormatting } from "../types/document";
+import { type DeepReadonly, writableCopy } from "../types/documentModel";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
 import {
@@ -45,9 +46,9 @@ import type { RunFormattingOverrideAttrs } from "./schema/marks";
  * Convert ProseMirror marks to TextFormatting
  */
 export type MarksToTextFormattingOptions = {
-  baseParagraphFormatting?: TextFormatting | undefined;
-  inheritedFormatting?: TextFormatting | undefined;
-  paragraphMarkFormatting?: TextFormatting | undefined;
+  baseParagraphFormatting?: DeepReadonly<TextFormatting> | undefined;
+  inheritedFormatting?: DeepReadonly<TextFormatting> | undefined;
+  paragraphMarkFormatting?: DeepReadonly<TextFormatting> | undefined;
   styleResolver?: RunStyleResolver | null | undefined;
 };
 
@@ -134,7 +135,7 @@ const RUN_FORMATTING_FAST_PATH_DISPOSITION = {
 >;
 
 const hasOnlyCarrierlessVisualFormatting = (
-  formatting: TextFormatting,
+  formatting: DeepReadonly<TextFormatting>,
 ): boolean => {
   for (const property of Object.keys(formatting) as (keyof TextFormatting)[]) {
     if (RUN_FORMATTING_FAST_PATH_DISPOSITION[property] !== "visual") {
@@ -145,14 +146,14 @@ const hasOnlyCarrierlessVisualFormatting = (
 };
 
 const visibleUnderline = (
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
 ): TextFormatting["underline"] | undefined => {
   const underline = formatting?.underline;
   return underline?.style === "none" ? undefined : underline;
 };
 
 const visibleStrike = (
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
 ): "double" | "single" | undefined => {
   if (formatting?.doubleStrike === true) {
     return "double";
@@ -161,7 +162,7 @@ const visibleStrike = (
 };
 
 const visibleColor = (
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
 ): TextFormatting["color"] | undefined =>
   formatting?.color?.auto === true ? undefined : formatting?.color;
 
@@ -176,8 +177,8 @@ const visibleValue = <Value>(
  * structural carrier before calling this predicate.
  */
 const sameVisualFormatting = (
-  left: TextFormatting | undefined,
-  right: TextFormatting | undefined,
+  left: DeepReadonly<TextFormatting> | undefined,
+  right: DeepReadonly<TextFormatting> | undefined,
 ): boolean => {
   if (
     (left?.bold === true) !== (right?.bold === true) ||
@@ -224,7 +225,7 @@ const sameVisualFormatting = (
 };
 
 const visualFormattingGroups = (
-  formatting: TextFormatting | undefined,
+  formatting: DeepReadonly<TextFormatting> | undefined,
 ): ReadonlyMap<VisualFormattingGroup, unknown> => {
   const groups = new Map<VisualFormattingGroup, unknown>();
   if (!formatting) {
@@ -384,7 +385,7 @@ const expectedRunFormattingOverrideAttrs = (
 
 const changedVisualFormattingGroups = (
   observedFormatting: TextFormatting,
-  expectedFormatting: TextFormatting | undefined,
+  expectedFormatting: DeepReadonly<TextFormatting> | undefined,
 ): ReadonlySet<VisualFormattingGroup> => {
   const actual = visualFormattingGroups(observedFormatting);
   const expected = visualFormattingGroups(expectedFormatting);
@@ -466,7 +467,7 @@ type ReconcileAuthoredFormattingOptions = {
   authoredFormatting: TextFormatting;
   carrierlessContext: "ordinary" | "paragraph-mark";
   currentOverrideAttrs: RunFormattingOverrideAttrs | undefined;
-  inheritedFormatting: TextFormatting | undefined;
+  inheritedFormatting: DeepReadonly<TextFormatting> | undefined;
   observedFormatting: TextFormatting;
 };
 
@@ -562,7 +563,7 @@ const reconcileOverrideSignals = (
   formatting: TextFormatting,
   current: RunFormattingOverrideAttrs | undefined,
   expected: RunFormattingOverrideAttrs | undefined,
-  inheritedFormatting: TextFormatting | undefined,
+  inheritedFormatting: DeepReadonly<TextFormatting> | undefined,
   observedFormatting: TextFormatting,
 ): void => {
   for (const property of DIRECT_OVERRIDE_FORMATTING_PROPERTIES) {
@@ -964,7 +965,12 @@ export function marksToTextFormatting(
       []) {
       Reflect.deleteProperty(conservativeFormatting, property);
     }
-    return { ...conservativeFormatting, styleId: characterStyleId };
+    // The run's formatting owns its values; the merge shares them with the
+    // mark attrs it read.
+    return {
+      ...writableCopy<TextFormatting>(conservativeFormatting),
+      styleId: characterStyleId,
+    };
   }
 
   const runContext = {

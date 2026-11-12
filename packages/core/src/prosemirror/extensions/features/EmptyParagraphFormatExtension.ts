@@ -22,6 +22,8 @@
 import { type EditorState, Plugin, type PluginKey } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
+import type { DeepReadonly } from "../../../types/documentModel";
+import { expectParagraphAttrs } from "../../attrs";
 import { createPluginKeyOwner } from "../../pluginKeyOwner";
 import { createExtension } from "../create";
 import { textFormattingToMarks } from "../marks/markUtils";
@@ -45,7 +47,7 @@ export const emptyParagraphFormatKey: Readonly<{
  */
 const FONT_ONLY_DEFAULTS = new Set(["fontFamily", "fontSize"]);
 
-function hasNonFontDefaults(dtf: TextFormatting): boolean {
+function hasNonFontDefaults(dtf: DeepReadonly<TextFormatting>): boolean {
   return Object.entries(dtf).some(
     ([property, value]) =>
       value !== undefined && !FONT_ONLY_DEFAULTS.has(property),
@@ -77,8 +79,7 @@ function createEmptyParagraphFormatPlugin(): Plugin {
         return null;
       }
 
-      const dtf = para.attrs["defaultTextFormatting"] as
-        TextFormatting | null | undefined;
+      const dtf = expectParagraphAttrs(para).defaultTextFormatting;
       if (!dtf || !hasNonFontDefaults(dtf)) {
         return null;
       }

@@ -1,6 +1,7 @@
 import { mergeParagraphNumbering } from "@stll/docx-core/model";
 
 import type { ParagraphFormatting, TabStop } from "../types/document";
+import type { DeepReadonly, OwnRecord } from "../types/documentModel";
 import { mergeTextFormatting } from "./textFormattingMerge";
 
 const PARAGRAPH_REPLACE_KEYS = [
@@ -37,9 +38,16 @@ const PARAGRAPH_REPLACE_KEYS = [
 
 type ParagraphReplaceKey = (typeof PARAGRAPH_REPLACE_KEYS)[number];
 
+/**
+ * A merge's own record: a merge with a source always builds a new top-level
+ * record, so its fields are the caller's to set, while its nested values (a
+ * border, a frame, the tab stops) stay shared with the inputs.
+ */
+export type MergedParagraphFormatting = OwnRecord<ParagraphFormatting>;
+
 const copyDefinedParagraphProperty = <K extends ParagraphReplaceKey>(
-  target: Pick<ParagraphFormatting, K>,
-  source: Pick<ParagraphFormatting, K>,
+  target: Pick<MergedParagraphFormatting, K>,
+  source: Pick<DeepReadonly<ParagraphFormatting>, K>,
   key: K,
 ): void => {
   const value = source[key];
@@ -57,23 +65,23 @@ const copyDefinedParagraphProperty = <K extends ParagraphReplaceKey>(
  * clear entry also lets the tab calculator suppress an automatic stop at the
  * same position.
  */
-export function mergeParagraphTabStops(
-  inherited: TabStop[] | undefined,
-  direct: TabStop[],
-): TabStop[];
-export function mergeParagraphTabStops(
-  inherited: TabStop[] | undefined,
-  direct: TabStop[] | undefined,
-): TabStop[] | undefined;
-export function mergeParagraphTabStops(
-  inherited: TabStop[] | undefined,
-  direct: TabStop[] | undefined,
-): TabStop[] | undefined {
+export function mergeParagraphTabStops<Stop extends DeepReadonly<TabStop>>(
+  inherited: readonly Stop[] | undefined,
+  direct: readonly Stop[],
+): Stop[];
+export function mergeParagraphTabStops<Stop extends DeepReadonly<TabStop>>(
+  inherited: readonly Stop[] | undefined,
+  direct: readonly Stop[] | undefined,
+): Stop[] | undefined;
+export function mergeParagraphTabStops<Stop extends DeepReadonly<TabStop>>(
+  inherited: readonly Stop[] | undefined,
+  direct: readonly Stop[] | undefined,
+): Stop[] | undefined {
   if (direct === undefined) {
     return inherited === undefined ? undefined : [...inherited];
   }
 
-  const stopsByPosition = new Map<number, TabStop>();
+  const stopsByPosition = new Map<number, Stop>();
   for (const stop of inherited ?? []) {
     stopsByPosition.set(stop.position, stop);
   }
@@ -105,8 +113,8 @@ export function mergeParagraphTabStops(
  * is, and the attributes the author wrote on it belong with it.
  */
 const withoutPreservedMarkup = (
-  formatting: ParagraphFormatting,
-): ParagraphFormatting => {
+  formatting: DeepReadonly<ParagraphFormatting>,
+): MergedParagraphFormatting => {
   const {
     preserved: _preserved,
     indentPreservedAttributes: _indentPreservedAttributes,
@@ -125,9 +133,17 @@ const withoutPreservedMarkup = (
  * merge rules.
  */
 export function mergeParagraphFormatting(
-  target: ParagraphFormatting | undefined,
-  source: ParagraphFormatting | undefined,
-): ParagraphFormatting | undefined {
+  target: DeepReadonly<ParagraphFormatting> | undefined,
+  source: DeepReadonly<ParagraphFormatting>,
+): MergedParagraphFormatting;
+export function mergeParagraphFormatting(
+  target: DeepReadonly<ParagraphFormatting> | undefined,
+  source: DeepReadonly<ParagraphFormatting> | undefined,
+): DeepReadonly<ParagraphFormatting> | undefined;
+export function mergeParagraphFormatting(
+  target: DeepReadonly<ParagraphFormatting> | undefined,
+  source: DeepReadonly<ParagraphFormatting> | undefined,
+): DeepReadonly<ParagraphFormatting> | undefined {
   if (!source) {
     return target;
   }
@@ -139,7 +155,7 @@ export function mergeParagraphFormatting(
     return result;
   }
 
-  const result: ParagraphFormatting = withoutPreservedMarkup(target);
+  const result = withoutPreservedMarkup(target);
 
   for (const key of PARAGRAPH_REPLACE_KEYS) {
     copyDefinedParagraphProperty(result, source, key);

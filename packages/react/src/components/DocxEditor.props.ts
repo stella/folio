@@ -60,6 +60,7 @@ import type {
   TabStop,
   Theme,
 } from "@stll/folio-core/types/document";
+import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import type {
   FindMatch,
@@ -784,7 +785,7 @@ export type EditorState = {
   paragraphIndentRight: number;
   paragraphFirstLineIndent: number;
   paragraphHangingIndent: boolean;
-  paragraphTabs: TabStop[] | null;
+  paragraphTabs: readonly DeepReadonly<TabStop>[] | null;
   /** ProseMirror table context (for showing table toolbar) */
   pmTableContext: TableContextInfo | null;
   /** Image context when cursor is on an image node */

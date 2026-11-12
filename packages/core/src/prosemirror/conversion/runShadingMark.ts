@@ -13,6 +13,7 @@
 import { knownThemeColor } from "@stll/docx-core/model";
 
 import type { ColorValue, ShadingProperties } from "../../types/colors";
+import type { DeepReadonly } from "../../types/documentModel";
 import type { RunShadingAttrs } from "../schema/marks";
 
 /**
@@ -23,7 +24,7 @@ import type { RunShadingAttrs } from "../schema/marks";
  * `resolveShadingFill` only paints the fill when the pattern is not `clear`.
  */
 export function shadingToRunShadingAttrs(
-  shading: ShadingProperties | undefined,
+  shading: DeepReadonly<ShadingProperties> | undefined,
 ): RunShadingAttrs | null {
   if (!shading || shading.pattern === "nil") {
     return null;

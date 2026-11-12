@@ -11,6 +11,8 @@
  */
 
 import type { ParagraphFormatting } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
+import type { MergedParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /**
@@ -297,12 +299,12 @@ export const STYLE_RESOLVED_PARAGRAPH_FIELDS = Object.keys(
  * cascade supplies only spacing, stores nothing at all.
  */
 export const styleResolvedParagraphFormatting = (
-  resolved: ParagraphFormatting | undefined,
-): ParagraphFormatting | undefined => {
+  resolved: DeepReadonly<ParagraphFormatting> | undefined,
+): DeepReadonly<ParagraphFormatting> | undefined => {
   if (!resolved) {
     return undefined;
   }
-  const governed: ParagraphFormatting = {};
+  const governed: MergedParagraphFormatting = {};
   let found = false;
   for (const field of STYLE_RESOLVED_PARAGRAPH_FIELDS) {
     const value = resolved[field];

@@ -481,9 +481,11 @@ export default library({
       files: [
         "packages/*/src/**/*.{ts,tsx,vue}",
         "test/__fixtures__/read-model-cast.*.{ts,vue}",
+        "test/__fixtures__/read-model-attr-cast.*.ts",
       ],
       rules: {
         "folio-read-model/no-model-document-cast": "error",
+        "folio-read-model/no-read-only-attr-cast": "error",
       },
     },
     {
@@ -496,6 +498,7 @@ export default library({
       ],
       rules: {
         "folio-read-model/no-model-document-cast": "off",
+        "folio-read-model/no-read-only-attr-cast": "off",
       },
     },
     {

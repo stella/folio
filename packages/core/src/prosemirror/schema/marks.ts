@@ -21,6 +21,7 @@ import type {
   ThemeColor,
   UnderlineStyle,
 } from "../../types/document";
+import type { DeepReadonly } from "../../types/documentModel";
 import type { TrackedCommentBoundary } from "../commentBoundaryOwnership";
 
 /**
@@ -397,8 +398,12 @@ export const RUN_FORMATTING_PROPERTY_SPECS: {
   styleId: "style",
 } as const satisfies RunFormattingPropertySpec;
 
-export type AuthoredRunFormattingValues = Partial<
-  Pick<TextFormatting, RunFormattingValueProperty>
+/**
+ * The run's own stated values, as the run's formatting holds them: shared
+ * with the document and the editor state, so read-only.
+ */
+export type AuthoredRunFormattingValues = DeepReadonly<
+  Partial<Pick<TextFormatting, RunFormattingValueProperty>>
 >;
 
 export type RunFormattingOverrideAttrs = {

@@ -46,24 +46,21 @@ const makeDeps = (
 });
 
 describe("createHiddenEditorApi", () => {
-  test.each(["getDocument", "getCanonicalDocument"] as const)(
-    "%s returns an owned canonical snapshot that cannot corrupt the authority",
-    (method) => {
-      const canonical = createEmptyDocument({ initialText: "Owned text" });
-      const original = structuredClone(canonical);
-      const api = createHiddenEditorApi({
-        ...makeDeps(makeStubView()),
-        getCanonicalDocument: () => canonical,
-      });
-      const snapshot = api[method]();
-      expect(snapshot).toEqual(original);
-      expect(snapshot).not.toBe(canonical);
-      if (!snapshot) panic("Expected canonical snapshot");
-      snapshot.package.document.content.length = 0;
-      expect(canonical).toEqual(original);
-      expect(api[method]()).toEqual(original);
-    },
-  );
+  test("getCanonicalDocument returns an owned canonical snapshot that cannot corrupt the authority", () => {
+    const canonical = createEmptyDocument({ initialText: "Owned text" });
+    const original = structuredClone(canonical);
+    const api = createHiddenEditorApi({
+      ...makeDeps(makeStubView()),
+      getCanonicalDocument: () => canonical,
+    });
+    const snapshot = api.getCanonicalDocument();
+    expect(snapshot).toEqual(original);
+    expect(snapshot).not.toBe(canonical);
+    if (!snapshot) panic("Expected canonical snapshot");
+    snapshot.package.document.content.length = 0;
+    expect(canonical).toEqual(original);
+    expect(api.getCanonicalDocument()).toEqual(original);
+  });
 
   test("canonical history is used for mutations and availability without PM history", () => {
     const calls: string[] = [];

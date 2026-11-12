@@ -12,6 +12,7 @@
  */
 
 import type { Style } from "../types/document";
+import type { DeepReadonly } from "../types/documentModel";
 
 /** The name Word's built-in default paragraph style always carries in the file. */
 export const BUILT_IN_DEFAULT_PARAGRAPH_STYLE_NAME = "Normal";
@@ -73,12 +74,14 @@ export const mintDefaultParagraphStyle = ({
   };
 };
 
-export const resolveDefaultParagraphStyle = (
-  styles: Iterable<Style>,
-): Style | undefined => {
-  let flagged: Style | undefined;
-  let namedBuiltIn: Style | undefined;
-  let idBuiltIn: Style | undefined;
+export const resolveDefaultParagraphStyle = <
+  Definition extends DeepReadonly<Style>,
+>(
+  styles: Iterable<Definition>,
+): Definition | undefined => {
+  let flagged: Definition | undefined;
+  let namedBuiltIn: Definition | undefined;
+  let idBuiltIn: Definition | undefined;
   for (const style of styles) {
     if (style.type !== "paragraph") {
       continue;
