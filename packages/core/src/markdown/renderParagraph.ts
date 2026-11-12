@@ -27,6 +27,14 @@ import type { RenderContext } from "./types";
 const MAX_MARKDOWN_HEADING_LEVEL = 6;
 
 /**
+ * Where a paragraph is written. A table cell holds inline content only: GFM
+ * and the HTML a cell falls back to read `## ` or `> ` there as literal text,
+ * so a heading or quote in a cell writes its text as prose does, and the
+ * readers that list the cell's paragraph see the same words.
+ */
+export type ParagraphPlacement = "flow" | "tableCell";
+
+/**
  * Render a paragraph and return the block text. No surrounding blank line: the
  * caller joins blocks.
  */
@@ -34,8 +42,9 @@ export function renderParagraph(
   ctx: RenderContext,
   pkg: DocxPackage | undefined,
   para: Paragraph,
+  placement: ParagraphPlacement,
 ): string {
-  return renderParagraphBlock(ctx, pkg, para).markdown;
+  return renderParagraphBlock(ctx, pkg, para, placement).markdown;
 }
 
 /** List items declare the boundary needed to preserve their Markdown structure. */
@@ -53,6 +62,7 @@ export function renderParagraphBlock(
   ctx: RenderContext,
   pkg: DocxPackage | undefined,
   para: Paragraph,
+  placement: ParagraphPlacement,
 ): RenderedParagraph {
   // Every paragraph advances the list counter, whatever it renders as.
   const { visibleList, label } = countParagraphList(ctx, pkg, para);
@@ -62,7 +72,8 @@ export function renderParagraphBlock(
   const inline = protectBreakBlanks(written);
   const styleId = para.formatting?.styleId;
 
-  const headingLevel = markdownHeadingLevel(ctx, para);
+  const headingLevel =
+    placement === "flow" ? markdownHeadingLevel(ctx, para) : undefined;
   if (headingLevel !== undefined) {
     ctx.listIndentWidths = [];
     // A numbered heading (`1. Scope`, through its style's `w:numPr` or its
@@ -91,7 +102,7 @@ export function renderParagraphBlock(
 
   ctx.listIndentWidths = [];
 
-  if (isQuoteStyle(styleId, ctx.builtInStyles)) {
+  if (placement === "flow" && isQuoteStyle(styleId, ctx.builtInStyles)) {
     return {
       markdown: inline
         .split("\n")
