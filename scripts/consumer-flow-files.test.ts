@@ -324,6 +324,52 @@ describe("mutation", () => {
       [...OPERATIONS_CHANGING_MUTATIONS].sort(),
     );
   });
+
+  test("a mutant keeps an expected applied count only on the history it was pinned on", () => {
+    // A count says what applies after exactly the steps before it: a comment
+    // pinned before a deletion of its block does not apply once a swap moves
+    // the deletion first.
+    const pinned = flow(
+      ["commentOnBlock", "deleteBlock", "replaceBlock", "insertAfterBlock"].map(
+        (type, index) => ({
+          action: "suggest_changes",
+          seed: index + 1,
+          operations: [{ type, blockId: "12345678" }],
+          expectedApplied: 1,
+        }),
+      ),
+    );
+    const withoutCount = ({
+      expectedApplied: _expectedApplied,
+      ...step
+    }: FlowFile["steps"][number]) => step;
+    let kept = 0;
+    let dropped = 0;
+    for (let seed = 0; seed < 2_000; seed += 1) {
+      const { flow: mutant } = mutateFlow(pinned, createRandom(seed), {
+        donors: [pinned],
+      });
+      const shared = mutant.steps.findIndex((step, index) => {
+        const parent = pinned.steps[index];
+        return (
+          parent === undefined ||
+          JSON.stringify(withoutCount(step)) !==
+            JSON.stringify(withoutCount(parent))
+        );
+      });
+      for (const [index, step] of mutant.steps.entries()) {
+        if (shared === -1 || index < shared) {
+          expect(step).toEqual(pinned.steps[index]);
+          kept += 1;
+        } else {
+          expect(step.expectedApplied).toBeUndefined();
+          dropped += 1;
+        }
+      }
+    }
+    expect(kept).toBeGreaterThan(0);
+    expect(dropped).toBeGreaterThan(0);
+  });
 });
 
 describe("corpus", () => {
