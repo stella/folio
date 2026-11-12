@@ -82,7 +82,11 @@ import {
   lockedControlViolationOfTransform,
 } from "../lockedControls";
 import { resolveStateStory } from "../markupViewProjection";
-import { joinAtParagraphMark } from "../paragraphMarkJoin";
+import {
+  joinAtParagraphMark,
+  joinedNextContentOf,
+  sourceParagraphsOf,
+} from "../paragraphMarkJoin";
 import {
   carryParagraphProperties,
   paragraphLeftAfter,
@@ -1024,6 +1028,21 @@ function resolveChangeUnguarded(
             paragraphPos: mappedPos,
             paragraph,
             next,
+            nextContent: joinedNextContentOf({
+              first: paragraph,
+              before: sourceParagraphsOf({
+                source: state.doc,
+                mapping: tr.mapping,
+                range: { from: nextPos, to: nextPos + next.nodeSize },
+              }),
+              after: [next],
+              // Another revision's pending content goes once it is resolved
+              // the same way, as resolving every change at once has it.
+              pending:
+                removeType && keepType
+                  ? { removedBy: removeType, keptBy: keepType }
+                  : null,
+            }),
             styleResolver,
           });
           joinSeams.push({

@@ -30,7 +30,11 @@ import {
   isBlockBoundaryNode,
   paragraphRemainsOf,
 } from "../prosemirror/keptRangeBoundaries";
-import { joinedParagraphAttrs } from "../prosemirror/paragraphMarkJoin";
+import {
+  joinedNextContentOf,
+  joinedParagraphAttrs,
+  sourceParagraphsOf,
+} from "../prosemirror/paragraphMarkJoin";
 import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
 import { createResolvedCommentPointCollector } from "../prosemirror/replacedAnnotations";
 import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
@@ -258,6 +262,8 @@ type StructuralContext = {
   removedReferences: RemovedSectionReference[];
   /** Text box anchors the inline pass removed: their boxes go with them. */
   droppedTextBoxAnchors: ReadonlySet<string>;
+  /** The paragraphs a range the structural pass reads stood for before the inline pass. */
+  sourceParagraphs: (range: { from: number; to: number }) => PMNode[];
 };
 
 type StructuralReplacement = { from: number; to: number; slice: Slice };
@@ -430,8 +436,26 @@ type ParagraphChain = {
   position: number;
   /** The chain's first paragraph before this level resolved anything. */
   before: PMNode;
+  /**
+   * The chain's paragraphs as this level found them and as resolved: what a
+   * join into the chain reads to tell whether the resolution emptied it.
+   */
+  contents: {
+    entries: { original: PMNode; position: number }[];
+    after: PMNode[];
+  };
   joinBoundaries: { closing: number; bookmarks: Fragment }[];
 };
+/** The paragraphs a structural entry stood for before the inline pass. */
+const sourceParagraphsOfEntry = (
+  entry: { original: PMNode; position: number },
+  context: StructuralContext,
+): PMNode[] =>
+  context.sourceParagraphs({
+    from: entry.position,
+    to: entry.position + entry.original.nodeSize,
+  });
+
 type ResolveStructureOptions = {
   node: PMNode;
   position: number;
@@ -648,14 +672,25 @@ const resolveStructure = ({
         pendingBookmarks = [];
       }
       // The mark that stays ends the joined paragraph, so the paragraph left
-      // is the chain's last one: its identity, properties, mark and section
-      // endpoint survive whether this one still has words or not. Its runs
-      // are re-read in the survivor's style when the chain is assembled.
-      const joinedAttrs = joinedParagraphAttrs(
+      // is the chain's last one: its properties, mark and section endpoint
+      // survive whether this one still has words or not, and its identity
+      // unless resolving emptied the chain. Its runs are re-read in the
+      // survivor's style when the chain is assembled.
+      const joinedAttrs = joinedParagraphAttrs({
         paragraph,
-        chain.node,
-        bookmarks.size,
-      );
+        next: chain.node,
+        between: bookmarks.size,
+        nextContent: joinedNextContentOf({
+          first: paragraph,
+          before: chain.contents.entries.flatMap((source) =>
+            sourceParagraphsOfEntry(source, context),
+          ),
+          after: chain.contents.after,
+          pending: null,
+        }),
+      });
+      chain.contents.entries.push(entry);
+      chain.contents.after.push(paragraph);
       if (joinedAttrs !== chain.node.attrs) {
         chain.node = rebuild(chain.node, { attrs: joinedAttrs });
       }
@@ -775,6 +810,7 @@ const resolveStructure = ({
       ],
       position: entry.position,
       before,
+      contents: { entries: [entry], after: [resolved] },
       joinBoundaries: [],
     };
     followingContainerChild = true;
@@ -1072,6 +1108,11 @@ const resolveStoryRevisions = ({
   const comments = inline
     ? resolveCommentReferences(inlineResolved, doc)
     : null;
+  // Positions before the inline pass to positions the structural pass reads.
+  const inputMapping = new Mapping([
+    ...(inline ? [inline.positionMap] : []),
+    ...(comments?.positionMaps ?? []),
+  ]);
   const context: StructuralContext = {
     mode,
     styleResolver,
@@ -1090,6 +1131,8 @@ const resolveStoryRevisions = ({
     droppedTextBoxAnchors: inline
       ? droppedTextBoxAnchorIds(properties, inlineResolved)
       : new Set<string>(),
+    sourceParagraphs: (range) =>
+      sourceParagraphsOf({ source: properties, mapping: inputMapping, range }),
   };
   const resolved =
     resolveStructure({
