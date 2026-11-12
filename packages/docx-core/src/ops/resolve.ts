@@ -2658,6 +2658,11 @@ const joinOps = (
       );
       const left = seam.left.at(-1);
       const right = seam.right.at(0);
+      if (globalThis.__folioJoinDebug === true)
+        console.error(
+          "DEBUGJOIN",
+          JSON.stringify({ depth, added, paragraph: paragraph.content, next: next.content, seamLeft: seam.left, seamRight: seam.right, emptied: [...emptied] }),
+        );
       if (depth > 0 && left !== undefined && right !== undefined) {
         const folded = foldAtCut({ left, right, depth, emptied });
         const met =
@@ -2670,6 +2675,8 @@ const joinOps = (
         merged = [...seam.left, ...seam.right];
       }
     }
+    if (globalThis.__folioJoinDebug === true)
+      console.error("DEBUGMERGED", JSON.stringify({ depth, merged }));
     const keepsFirst = paragraph.pPrMark?.survivor === "first";
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty. The
