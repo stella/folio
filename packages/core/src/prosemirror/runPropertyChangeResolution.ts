@@ -22,29 +22,22 @@ type RejectedRunFormattingOptions = {
 };
 
 /** The one owner of what a reject restores: marks and an atom's run formatting. */
-export const rejectedRunFormatting = ({
-  node,
-  paragraphContext,
-  previousFormatting,
-  styleResolver,
-}: RejectedRunFormattingOptions): {
+export const rejectedRunFormatting = (
+  options: RejectedRunFormattingOptions,
+): {
   marks: readonly Mark[] | null;
   atomRunFormatting: TextFormatting | null;
 } => {
   // A picture, a shape or a text box anchor keeps its run's formatting in
   // its attrs; a picture or a shape carries no formatting marks besides.
   // Null means nothing to restore: no marks to rebuild, or no record kept.
+  const { node, previousFormatting } = options;
   const keepsRunFormatting = Object.hasOwn(node.attrs, "_docxRunFormatting");
   return {
     marks:
       !keepsRunFormatting ||
       node.marks.some(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name))
-        ? rebuiltRunFormattingMarks({
-            node,
-            paragraphContext,
-            previousFormatting,
-            styleResolver,
-          })
+        ? rebuiltRunFormattingMarks(options)
         : null,
     atomRunFormatting: keepsRunFormatting ? { ...previousFormatting } : null,
   };
