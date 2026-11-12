@@ -782,7 +782,7 @@ export function useDocxEditor(
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,
     getReadOnly: () => toValue(readOnly),
-    getDocument: () => manager.api.getCanonicalDocument() ?? readDocModel(),
+    getDocument: () => docModel.value,
     getCanonicalApi: () => manager.api,
     readCanonicalDocument: () => manager.readCanonicalDocument(),
     getExperimentalSession: () => toValue(experimentalSession),
@@ -812,7 +812,7 @@ export function useDocxEditor(
   const noteEditorManager = createNoteEditorManager({
     getHost: () => noteEditorContainer?.value ?? null,
     getPlugins: () => notePlugins,
-    getDocument: () => manager.api.getCanonicalDocument() ?? readDocModel(),
+    getDocument: () => docModel.value,
     getCanonicalApi: () => manager.api,
     readCanonicalDocument: () => manager.readCanonicalDocument(),
     getExperimentalSession: () => toValue(experimentalSession),
@@ -1057,7 +1057,7 @@ export function useDocxEditor(
 
   const manager: HiddenEditorManager = createHiddenEditorManager({
     getHost: () => hiddenContainer.value,
-    getDocument: readDocModel,
+    getDocument: () => docModel.value,
     getStyles: () => readDocModel()?.package.styles ?? null,
     getExtensionManager: () => extensionManager,
     getExternalPlugins: buildExternalPlugins,
@@ -1072,7 +1072,7 @@ export function useDocxEditor(
       onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
     getDocumentIdentity: () => String(loadSequence),
-    getDocumentContext: readDocModel,
+    getDocumentContext: () => docModel.value,
     onTransaction: handleTransaction,
     onCanonicalCompositionEnd: () => scheduler.schedule(),
     onSelectionChange: (state) => {
