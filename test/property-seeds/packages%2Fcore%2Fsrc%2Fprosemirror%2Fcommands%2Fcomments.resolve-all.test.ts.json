@@ -5,6 +5,12 @@
       "path": "5:2:1:1:5:5:5:4:4:4:4:4:4",
       "note": "#1237: bulk paragraph joins must preserve the formatting owner marks rather than rebase their provenance",
       "date": "2026-09-29"
+    },
+    {
+      "seed": 2609260,
+      "path": "109:1:1:1:2:3:4:4",
+      "note": "#2602: a rejected added mark that ends a section hands the section to the paragraph before it, a changed paragraph the bulk resolution must record",
+      "date": "2026-11-12"
     }
   ]
 }
