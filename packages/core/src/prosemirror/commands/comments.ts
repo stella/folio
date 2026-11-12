@@ -3836,8 +3836,13 @@ export function rejectSuggestion(suggestionId: string): Command {
       mode: "reject",
       resolves: (revisionId: number) => entry.revisionIds.has(revisionId),
     } as const;
+    // A revision id may repeat across suggestions until save renumbers it, so
+    // a whole node goes only when it is this suggestion's own insertion.
     workingTr.doc.descendants((node, pos) => {
-      if (rejectionRemovesWholeNode(node, rejected)) {
+      if (
+        rejectionRemovesWholeNode(node, rejected) &&
+        readStructuralSuggestion(node)?.suggestionId === suggestionId
+      ) {
         positions.push(pos);
       }
       return undefined;

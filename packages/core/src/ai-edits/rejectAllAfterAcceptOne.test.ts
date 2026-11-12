@@ -48,11 +48,13 @@ const idOf = (reviewer: FolioDocxReviewer, text: string): string => {
   return block.id;
 };
 
-const apply = (
-  reviewer: FolioDocxReviewer,
-  mode: "direct" | "suggested",
-  operations: FolioDocumentOperation[],
-) =>
+type ApplyOptions = {
+  reviewer: FolioDocxReviewer;
+  mode: "direct" | "suggested";
+  operations: FolioDocumentOperation[];
+};
+
+const apply = ({ reviewer, mode, operations }: ApplyOptions) =>
   reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -68,20 +70,24 @@ const fixture = async (): Promise<Uint8Array> => {
   const bytes = (await ensureParaIds(await createDocx(fromMarkdown(MARKDOWN))))
     .docx;
   const reviewer = await open(bytes);
-  const commented = apply(reviewer, "direct", [
-    {
-      id: "c1",
-      type: "commentOnBlock",
-      blockId: idOf(reviewer, LINES[2]),
-      comment: { text: "Define good order." },
-    },
-    {
-      id: "c2",
-      type: "commentOnBlock",
-      blockId: idOf(reviewer, LINES[3]),
-      comment: { text: "Thirty days is long." },
-    },
-  ]);
+  const commented = apply({
+    reviewer,
+    mode: "direct",
+    operations: [
+      {
+        id: "c1",
+        type: "commentOnBlock",
+        blockId: idOf(reviewer, LINES[2]),
+        comment: { text: "Define good order." },
+      },
+      {
+        id: "c2",
+        type: "commentOnBlock",
+        blockId: idOf(reviewer, LINES[3]),
+        comment: { text: "Thirty days is long." },
+      },
+    ],
+  });
   expect(commented.applied).toHaveLength(2);
   return new Uint8Array(await reviewer.toBuffer());
 };
@@ -126,31 +132,39 @@ const suggest = async (
   accepted: FolioReviewChangeKind;
 } | null> => {
   const reviewer = await open(bytes);
-  const first = apply(reviewer, "suggested", [
-    {
-      id: "before",
-      type: "insertBeforeBlock",
-      blockId: idOf(reviewer, LINES[1]),
-      text: "Period written supplier invoice.",
-    },
-  ]);
+  const first = apply({
+    reviewer,
+    mode: "suggested",
+    operations: [
+      {
+        id: "before",
+        type: "insertBeforeBlock",
+        blockId: idOf(reviewer, LINES[1]),
+        text: "Period written supplier invoice.",
+      },
+    ],
+  });
   expect(first.applied).toHaveLength(1);
   const target = idOf(reviewer, LINES[deleted] ?? "");
-  const second = apply(reviewer, "suggested", [
-    { id: "delete", type: "deleteBlock", blockId: target },
-    {
-      id: "first",
-      type: "insertBeforeBlock",
-      blockId: target,
-      text: "First added clause.",
-    },
-    {
-      id: "second",
-      type: "insertBeforeBlock",
-      blockId: target,
-      text: "Second added clause.",
-    },
-  ]);
+  const second = apply({
+    reviewer,
+    mode: "suggested",
+    operations: [
+      { id: "delete", type: "deleteBlock", blockId: target },
+      {
+        id: "first",
+        type: "insertBeforeBlock",
+        blockId: target,
+        text: "First added clause.",
+      },
+      {
+        id: "second",
+        type: "insertBeforeBlock",
+        blockId: target,
+        text: "Second added clause.",
+      },
+    ],
+  });
   expect(second.applied).toHaveLength(3);
   const change = reviewer.getChanges().at(accept);
   if (change === undefined) return null;
@@ -165,15 +179,19 @@ const suggest = async (
 const suggestAfter = (reviewer: FolioDocxReviewer, after: number): boolean => {
   const anchor = reviewer.getContent().at(after);
   if (anchor === undefined) throw new Error(`No block at ${after}`);
-  const result = apply(reviewer, "suggested", [
-    {
-      id: "after",
-      type: "insertAfterBlock",
-      blockId: anchor.id,
-      text: "Term agreement party invoice.",
-      alignment: "right",
-    },
-  ]);
+  const result = apply({
+    reviewer,
+    mode: "suggested",
+    operations: [
+      {
+        id: "after",
+        type: "insertAfterBlock",
+        blockId: anchor.id,
+        text: "Term agreement party invoice.",
+        alignment: "right",
+      },
+    ],
+  });
   return result.applied.length === 1;
 };
 
@@ -190,11 +208,17 @@ type Shape = Step & {
  * change still leaves that suggestion's alignment and a break on the last
  * original paragraph, live and in the saved package.
  */
-const isDisplacedBreakGap = (
-  { deleted, after }: Shape,
-  accepted: FolioReviewChangeKind,
-  reviewer: FolioDocxReviewer,
-): boolean =>
+type DisplacedBreakGapOptions = {
+  shape: Shape;
+  accepted: FolioReviewChangeKind;
+  reviewer: FolioDocxReviewer;
+};
+
+const isDisplacedBreakGap = ({
+  shape: { deleted, after },
+  accepted,
+  reviewer,
+}: DisplacedBreakGapOptions): boolean =>
   deleted === LINES.length - 1 &&
   accepted === "paragraphMarkDeleted" &&
   reviewer.getContent().at(after + 1)?.text === "First added clause.";
@@ -213,7 +237,11 @@ const rejectsToBaseline = async (
   const expected = await rejected(probe.reviewer);
   const live = await suggest(bytes, shape);
   if (live === null) throw new Error("the flow no longer replays");
-  const gap = isDisplacedBreakGap(shape, live.accepted, live.reviewer);
+  const gap = isDisplacedBreakGap({
+    shape,
+    accepted: live.accepted,
+    reviewer: live.reviewer,
+  });
   if (!suggestAfter(live.reviewer, shape.after)) return null;
   const saved = await open(await live.reviewer.toBuffer());
   const results = [await rejected(live.reviewer), await rejected(saved)].map(
@@ -283,30 +311,38 @@ describe("reject all after accepting one of several suggestions", () => {
   test("the reported flow keeps the joined words in the paragraph that stays", async () => {
     // The heading is deleted and its deleted break alone is accepted.
     const flow = await open(await fixture());
-    apply(flow, "suggested", [
-      {
-        id: "before",
-        type: "insertBeforeBlock",
-        blockId: idOf(flow, LINES[1]),
-        text: "Period written supplier invoice.",
-      },
-    ]);
+    apply({
+      reviewer: flow,
+      mode: "suggested",
+      operations: [
+        {
+          id: "before",
+          type: "insertBeforeBlock",
+          blockId: idOf(flow, LINES[1]),
+          text: "Period written supplier invoice.",
+        },
+      ],
+    });
     const heading = idOf(flow, LINES[0]);
-    apply(flow, "suggested", [
-      { id: "delete", type: "deleteBlock", blockId: heading },
-      {
-        id: "first",
-        type: "insertBeforeBlock",
-        blockId: heading,
-        text: "First added clause.",
-      },
-      {
-        id: "second",
-        type: "insertBeforeBlock",
-        blockId: heading,
-        text: "Second added clause.",
-      },
-    ]);
+    apply({
+      reviewer: flow,
+      mode: "suggested",
+      operations: [
+        { id: "delete", type: "deleteBlock", blockId: heading },
+        {
+          id: "first",
+          type: "insertBeforeBlock",
+          blockId: heading,
+          text: "First added clause.",
+        },
+        {
+          id: "second",
+          type: "insertBeforeBlock",
+          blockId: heading,
+          text: "Second added clause.",
+        },
+      ],
+    });
     const deletedBreak = flow
       .getChanges()
       .find((change) => change.type === "paragraphMarkDeleted");
@@ -334,21 +370,25 @@ describe("reject all after accepting one of several suggestions", () => {
   test("an accepted deleted last break is in the saved package", async () => {
     const flow = await open(await fixture());
     const last = idOf(flow, LINES[4]);
-    apply(flow, "suggested", [
-      { id: "delete", type: "deleteBlock", blockId: last },
-      {
-        id: "first",
-        type: "insertBeforeBlock",
-        blockId: last,
-        text: "First added clause.",
-      },
-      {
-        id: "second",
-        type: "insertBeforeBlock",
-        blockId: last,
-        text: "Second added clause.",
-      },
-    ]);
+    apply({
+      reviewer: flow,
+      mode: "suggested",
+      operations: [
+        { id: "delete", type: "deleteBlock", blockId: last },
+        {
+          id: "first",
+          type: "insertBeforeBlock",
+          blockId: last,
+          text: "First added clause.",
+        },
+        {
+          id: "second",
+          type: "insertBeforeBlock",
+          blockId: last,
+          text: "Second added clause.",
+        },
+      ],
+    });
     const deletedBreak = flow
       .getChanges()
       .find((change) => change.type === "paragraphMarkDeleted");
