@@ -625,10 +625,10 @@ export function useDocxEditor(
   // `docModel` (not `document`) so the global `document` stays reachable for the
   // FontFaceSet probe + DOM host lookups.
   const docModel = shallowRef<ReadonlyDocument | null>(null);
-  /** The model, for a reader that takes a plain `Document`. */
-  const readDocModel = (): Document | null => {
+  /** The model's styles, for a reader that takes plain style definitions. */
+  const readModelStyles = () => {
     const model = docModel.value;
-    return model && readModel(model);
+    return (model && readModel(model).package.styles) ?? null;
   };
   const sourceBuffer = shallowRef<ArrayBuffer | null>(null);
   // Per-load identity for the hidden-editor manager: advanced on every document
@@ -790,8 +790,8 @@ export function useDocxEditor(
       parseError.value = message;
       onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
-    getStyles: () => readDocModel()?.package.styles ?? null,
-    getTheme: () => readDocModel()?.package.theme ?? null,
+    getStyles: readModelStyles,
+    getTheme: () => docModel.value?.package.theme ?? null,
     onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
       if (docChanged) {
         isDirty.value = true;
@@ -820,8 +820,8 @@ export function useDocxEditor(
       parseError.value = message;
       onError?.(error ?? new CanonicalSessionRefusalError({ ground, message }));
     },
-    getStyles: () => readDocModel()?.package.styles ?? null,
-    getTheme: () => readDocModel()?.package.theme ?? null,
+    getStyles: readModelStyles,
+    getTheme: () => docModel.value?.package.theme ?? null,
     onTransaction: ({ docChanged, selectionChanged, view }) => {
       if (docChanged) {
         isDirty.value = true;
@@ -889,8 +889,12 @@ export function useDocxEditor(
     // non-div host (or a not-yet-mounted ref) simply computes without painting.
     const paintTarget = container instanceof HTMLDivElement ? container : null;
 
-    const model = readDocModel();
-    const body = model?.package.document;
+    const model = docModel.value;
+    // The pipeline takes the model as it is; the section, style and
+    // header/footer readers below take plain values, so they read it through
+    // `readModel`.
+    const plain = model && readModel(model);
+    const body = plain?.package.document;
     // Lead geometry from the first section; trailing section falls back to the
     // body's final section properties. Mirrors the React split.
     const sectionProps =
@@ -901,11 +905,11 @@ export function useDocxEditor(
     const columns = getColumns(sectionProps);
     const contentWidth = pageSize.w - margins.left - margins.right;
     hiddenEditorWidth.value = contentWidth;
-    const styles = model?.package.styles ?? null;
+    const styles = plain?.package.styles ?? null;
     const theme = model?.package.theme ?? null;
     const defaultTabStop = model?.package.settings?.defaultTabStop;
     const mirrorMargins = model?.package.settings?.mirrorMargins === true;
-    const hf = resolveHeaderFooterContent(model?.package);
+    const hf = resolveHeaderFooterContent(plain?.package);
 
     try {
       const outcome = runLayoutPipelineCompute<HfPmsHandle>(
@@ -930,7 +934,7 @@ export function useDocxEditor(
           footerContentRId: hf.activeFooterRId,
           firstPageHeaderContentRId: hf.activeFirstHeaderRId,
           firstPageFooterContentRId: hf.activeFirstFooterRId,
-          sectionHeaderFooterRefs: resolveSectionHeaderFooterRefs(model),
+          sectionHeaderFooterRefs: resolveSectionHeaderFooterRefs(plain),
           theme,
           sectionProperties: sectionProps,
           document: model,
@@ -991,7 +995,7 @@ export function useDocxEditor(
       docChangeTimer = null;
     }
     const view = editorView.value;
-    const base = readDocModel();
+    const base = docModel.value;
     if (!view || !base) {
       return;
     }
@@ -1002,7 +1006,7 @@ export function useDocxEditor(
         canonical ??
         noteFollower.reconcile(
           // canonical-gap: pm-save-projection
-          fromProseDoc(view.state.doc, base, {
+          fromProseDoc(view.state.doc, readModel(base), {
             stylesheetSource: { type: "package" },
           }),
           view.state.doc,
@@ -1056,7 +1060,7 @@ export function useDocxEditor(
   const manager: HiddenEditorManager = createHiddenEditorManager({
     getHost: () => hiddenContainer.value,
     getDocument: () => docModel.value,
-    getStyles: () => readDocModel()?.package.styles ?? null,
+    getStyles: readModelStyles,
     getExtensionManager: () => extensionManager,
     getExternalPlugins: buildExternalPlugins,
     getCollaboration: () => toValue(collaboration),
@@ -1200,7 +1204,7 @@ export function useDocxEditor(
     editorState.value = view.state;
     isReady.value = true;
 
-    const model = readDocModel();
+    const model = docModel.value;
     const sequence = loadSequence;
     const waitId = ++initialFontWaitId;
     initialFontWaitPending = true;
@@ -1366,14 +1370,14 @@ export function useDocxEditor(
    * for the host element. Mirrors React's pre-hidden initial-layout effect.
    */
   function paintFromPrecomputedState(): void {
-    const model = readDocModel();
+    const model = docModel.value;
     if (!model || toValue(collaboration)) {
       return;
     }
     try {
       const initialState = createHiddenEditorState({
         document: model,
-        styles: model.package.styles ?? null,
+        styles: readModel(model).package.styles ?? null,
         manager: extensionManager,
         externalPlugins: buildExternalPlugins(),
         collaborationModules: null,
@@ -1467,7 +1471,7 @@ export function useDocxEditor(
     serializationOptions?: FolioGetDocxOptions,
   ): Promise<SerializedDocxResult | null> {
     const view = editorView.value;
-    const currentDocument = readDocModel();
+    const currentDocument = docModel.value;
     if (!view || !currentDocument) {
       return null;
     }
@@ -1642,7 +1646,7 @@ export function useDocxEditor(
     const canonical = readDocumentModel();
     if (canonical) return canonical;
     if (isCanonicalSession()) return null;
-    const document = readDocModel();
+    const document = docModel.value;
     if (!document) return null;
     const live = manager.api.getDocument() ?? document;
     return noteEditorManager.snapshotDocument(
