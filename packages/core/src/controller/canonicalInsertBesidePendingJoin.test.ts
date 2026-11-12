@@ -348,49 +348,55 @@ const LONGER_JOINS = {
   "across a range boundary": acrossARangeBoundary,
 };
 
-describe("a paragraph beside a longer pending join, in the canonical session", () => {
-  for (const [shape, make] of Object.entries(LONGER_JOINS))
-    for (const side of ["after", "before"] as const) {
-      const type = side === "after" ? "insertAfterBlock" : "insertBeforeBlock";
-      const name = `(${shape}, ${side})`;
+describe("a block beside a longer pending join, in the canonical session", () => {
+  for (const [kind, block] of Object.entries(BLOCKS))
+    for (const [shape, make] of Object.entries(LONGER_JOINS))
+      for (const side of ["after", "before"] as const) {
+        const name = `(${kind}, ${shape}, ${side})`;
 
-      test(`is placed as one beside the paragraph the join leaves, whichever paragraph of the join it names ${name}`, async () => {
-        const join = await make();
-        const read = async (anchor: string) => {
-          const editor = await open(join.bytes);
-          expect(
-            editor.apply([insertion(type, anchor)], "tracked-changes").skipped,
-          ).toEqual([]);
-          const pending = shapeOf(editor.blocks());
-          editor.resolveAll("accept");
-          return { pending, accepted: editor.blocks().map(({ text }) => text) };
-        };
-        const expected = await read(join.anchors.survivor);
-        const joined = expected.accepted.findIndex((text) =>
-          text.endsWith(SURVIVOR),
-        );
-        expect(joined).toBeGreaterThan(-1);
-        expect(expected.accepted.indexOf(INSERTED)).toBe(
-          side === "after" ? joined + 1 : joined - 1,
-        );
-        for (const anchor of Object.values(join.anchors))
-          expect(await read(anchor)).toEqual(expected);
-      });
-
-      test(`rejects to the document it started from, whichever paragraph it names ${name}`, async () => {
-        const join = await make();
-        for (const anchor of Object.values(join.anchors)) {
-          const editor = await open(join.bytes);
-          expect(
-            editor.apply([insertion(type, anchor)], "tracked-changes").skipped,
-          ).toEqual([]);
-          editor.resolveAll("reject");
-          expect(editor.blocks().map(({ text }) => text)).toEqual(
-            await original(join.bytes),
+        test(`is placed as one beside the paragraph the join leaves, whichever paragraph of the join it names ${name}`, async () => {
+          const join = await make();
+          const read = async (anchor: string) => {
+            const editor = await open(join.bytes);
+            expect(
+              editor.apply([block.operation(side, anchor)], "tracked-changes")
+                .skipped,
+            ).toEqual([]);
+            const pending = shapeOf(editor.blocks());
+            editor.resolveAll("accept");
+            return {
+              pending,
+              accepted: editor.blocks().map(({ text }) => text),
+            };
+          };
+          const expected = await read(join.anchors.survivor);
+          const joined = expected.accepted.findIndex((text) =>
+            text.endsWith(SURVIVOR),
           );
-        }
-      });
-    }
+          expect(joined).toBeGreaterThan(-1);
+          if (side === "after")
+            expect(expected.accepted.indexOf(block.first)).toBe(joined + 1);
+          else
+            expect(expected.accepted.lastIndexOf(block.last)).toBe(joined - 1);
+          for (const anchor of Object.values(join.anchors))
+            expect(await read(anchor)).toEqual(expected);
+        });
+
+        test(`rejects to the document it started from, whichever paragraph it names ${name}`, async () => {
+          const join = await make();
+          for (const anchor of Object.values(join.anchors)) {
+            const editor = await open(join.bytes);
+            expect(
+              editor.apply([block.operation(side, anchor)], "tracked-changes")
+                .skipped,
+            ).toEqual([]);
+            editor.resolveAll("reject");
+            expect(editor.blocks().map(({ text }) => text)).toEqual(
+              await original(join.bytes),
+            );
+          }
+        });
+      }
 });
 
 type SplitBatchOptions = {
