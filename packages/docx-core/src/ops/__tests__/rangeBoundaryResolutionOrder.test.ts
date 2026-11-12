@@ -491,3 +491,91 @@ test("a boundary kept beside a cut deletion goes where it was when the deletion 
     },
   ]);
 });
+
+test("a boundary kept between pieces formatted apart goes where it was, in every rejection order", () => {
+  const source: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "hyperlink",
+                rId: "rId9",
+                href: "https://example.org",
+                children: [
+                  {
+                    type: "inlineWrapper",
+                    kind: "bidi",
+                    control: "embedding",
+                    content: [
+                      {
+                        type: "run",
+                        content: [{ type: "text", text: "abcd" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const at = (offset: number) => ({
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    offset,
+  });
+  const tracked = opsOn(source, [
+    (index) => ({
+      type: "insertText",
+      at: at(2),
+      text: "xyz",
+      runProps: {},
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+    // Inside the insertion: it cuts the insertion, the link and the wrapper.
+    (index) => ({
+      type: "insertContent",
+      at: at(4),
+      slice: {
+        content: [{ type: "bookmarkStart", id: 5, name: "bm" }],
+        openStart: 0,
+        openEnd: 0,
+      },
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+    // One piece of the cut insertion formatted apart from the other.
+    (index) => ({
+      type: "setRunProps",
+      from: at(4),
+      to: at(5),
+      patch: { bold: true },
+      newIds: NEW_IDS,
+      revision: revision(index),
+    }),
+  ]);
+  const perOp = dated(tracked, 3);
+  const atOnce = resolve(tracked, perOp.flat(), REVISION_DECISIONS.REJECT);
+  for (const order of orders(perOp))
+    expect(body(rejectedInOrder(tracked, order))).toEqual(body(atOnce));
+  const paragraph = body(atOnce).at(0);
+  if (paragraph?.type !== "paragraph") throw new TypeError("A paragraph.");
+  const link = paragraph.content.at(0);
+  if (link?.type !== "hyperlink" || paragraph.content.length !== 1)
+    throw new TypeError("One link.");
+  const bidi = link.children.at(0);
+  if (bidi?.type !== "inlineWrapper" || link.children.length !== 1)
+    throw new TypeError("One bidi wrapper.");
+  expect(bidi.content.map((node) => node.type)).toEqual([
+    "run",
+    "bookmarkStart",
+    "run",
+  ]);
+});
