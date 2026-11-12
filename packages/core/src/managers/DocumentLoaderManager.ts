@@ -14,6 +14,7 @@ import { inspectDocxCompatibility } from "../docx/compatibility";
 import type { DocxCompatibility } from "../docx/compatibility";
 import { parseDocx } from "../docx/parser";
 import { recordDocumentLoadPhase } from "../layout-engine/layoutInstrumentation";
+import { heldUnreferencedNotes } from "../prosemirror/noteReferenceReview";
 import {
   CANONICAL_GAP,
   usesCanonicalSession,
@@ -65,6 +66,7 @@ export type DocumentLoaderCallbacks = {
 export class DocumentLoaderManager {
   private loadGeneration = 0;
   private callbacks: DocumentLoaderCallbacks;
+  private heldNotes: ReadonlySet<string> = new Set();
 
   constructor(callbacks: DocumentLoaderCallbacks) {
     this.callbacks = callbacks;
@@ -90,6 +92,14 @@ export class DocumentLoaderManager {
     this.commitParsedDocument(doc, ++this.loadGeneration);
   }
 
+  /**
+   * The notes the loaded document held without a reference: its content,
+   * which a save keeps (see `withoutUnreferencedNotes`).
+   */
+  heldUnreferencedNotes(): ReadonlySet<string> {
+    return this.heldNotes;
+  }
+
   private commitParsedDocument(doc: Document, generation: number): void {
     const {
       history,
@@ -98,6 +108,7 @@ export class DocumentLoaderManager {
       setLoadedDocumentIdentity,
     } = this.callbacks;
     this.resetForNewDocument();
+    this.heldNotes = heldUnreferencedNotes(doc);
     history.reset(doc);
     setLoadedDocumentIdentity(String(generation));
     onCompatibilityChange?.(inspectDocxCompatibility(doc));

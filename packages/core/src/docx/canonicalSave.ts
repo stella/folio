@@ -61,7 +61,10 @@ export const serializeCanonicalSave = async ({
   const withoutSuggestions = withoutPendingSuggestions(snapshot.document);
   if (withoutSuggestions.isErr()) throw withoutSuggestions.error;
   const document = withoutUnusedSessionLists(
-    withoutUnreferencedNotes(withoutSuggestions.value),
+    withoutUnreferencedNotes(
+      withoutSuggestions.value,
+      snapshot.heldUnreferencedNotes,
+    ),
   );
   // Package-resource operations conservatively retain structural save work through undo.
   const replacementPart =

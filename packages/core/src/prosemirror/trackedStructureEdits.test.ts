@@ -28,6 +28,7 @@ import type { Document } from "../types/document";
 import { fromProseDoc } from "./conversion/fromProseDoc";
 import {
   createNoteReferenceFollower,
+  heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "./noteReferenceReview";
 
@@ -74,7 +75,10 @@ const saveLikeEditors = async (
     fromProseDoc(after.doc, base, { stylesheetSource: { type: "package" } }),
     after.doc,
   );
-  return saveHarnessState(after, withoutUnreferencedNotes(written));
+  return saveHarnessState(
+    after,
+    withoutUnreferencedNotes(written, heldUnreferencedNotes(base)),
+  );
 };
 
 const run = async (
