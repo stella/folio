@@ -96,6 +96,7 @@ import type {
   Paragraph,
   StyleDefinitions,
 } from "../types/document";
+import type { ReadonlyDocument } from "../types/documentModel";
 import {
   canonicalNativeCells,
   InlineProjectionCache,
@@ -1821,7 +1822,7 @@ class CanonicalSession {
     }
   }
 
-  get document(): Document {
+  get document(): ReadonlyDocument {
     if (this.isComposing)
       throw new CanonicalSessionError({
         ground: { gap: CANONICAL_GAP.dispatch },
@@ -3065,7 +3066,7 @@ export type { CanonicalProjection, CanonicalSession };
 export { project as projectCanonicalStory };
 
 export const createCanonicalSession = (
-  document: Document,
+  document: ReadonlyDocument,
   styles?: StyleDefinitions | null,
 ): Result<CanonicalSession, CanonicalSessionError> => {
   const owned = cloneDocumentWithParagraphPropertySources(document);

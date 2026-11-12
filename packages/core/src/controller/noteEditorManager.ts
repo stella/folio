@@ -68,13 +68,13 @@ export type NoteEditorManagerDeps = {
   createView?:
     | ((mountNode: HTMLElement, props: DirectEditorProps) => EditorView)
     | undefined;
-  getDocument: () => Document | null;
+  getDocument: () => ReadonlyDocument | null;
   getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
   /**
    * The canonical session's own document, read without a copy (see
    * `HiddenEditorManager.readCanonicalDocument`); null outside a session.
    */
-  readCanonicalDocument: () => Document | null;
+  readCanonicalDocument: () => ReadonlyDocument | null;
   getExperimentalSession?: (() => "canonical" | undefined) | undefined;
   onSessionRefusal?:
     | ((reason: string, ground: CanonicalRefusalGround, error?: Error) => void)
@@ -244,7 +244,7 @@ export const createNoteEditorManager = (
     active = null;
   };
 
-  const getOwnedDocument = (): Document | null =>
+  const getOwnedDocument = (): ReadonlyDocument | null =>
     usesCanonicalSession(
       deps.getExperimentalSession?.(),
       CANONICAL_GAP.authorityRouting,
@@ -264,7 +264,8 @@ export const createNoteEditorManager = (
       !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
     )
       return;
-    const document = getOwnedDocument();
+    const owned = getOwnedDocument();
+    const document = owned && readModel(owned);
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
@@ -502,7 +503,10 @@ export const createNoteEditorManager = (
     destroy,
     getActive: () => active,
     getView: (story) => mounted.get(storyMapKey(story))?.view ?? null,
-    listStories: () => enumerateDocumentNoteStories(getOwnedDocument()),
+    listStories: () => {
+      const owned = getOwnedDocument();
+      return enumerateDocumentNoteStories(owned && readModel(owned));
+    },
     snapshotDocument: (model) => {
       if (
         usesCanonicalSession(

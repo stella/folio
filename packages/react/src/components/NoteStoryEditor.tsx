@@ -49,7 +49,7 @@ export type NoteStoryEditorProps = {
    * The canonical session's own document, read without a copy; null outside
    * a session. The editor's story managers only read it.
    */
-  readCanonicalDocument: () => Document | null;
+  readCanonicalDocument: () => ReadonlyDocument | null;
   onSessionRefusal?: (
     reason: string,
     ground: CanonicalRefusalGround,

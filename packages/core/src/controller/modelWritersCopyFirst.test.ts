@@ -20,6 +20,7 @@ import { TableSelectionManager } from "../managers/TableSelectionManager";
 import type { ReadonlyDocument } from "../types/documentModel";
 import { findInDocument } from "../utils/findReplace";
 import type { TableAction } from "../utils/tableOperations";
+import { createCanonicalSession } from "./canonicalSession";
 
 const shapeDocument = async (id: string): Promise<ReadonlyDocument> => {
   const shape = DOCUMENT_SHAPES.find((candidate) => candidate.id === id);
@@ -108,6 +109,16 @@ describe("writers copy the model first", () => {
     expect(all?.replacedCount).toBeGreaterThan(0);
     expect(sharedObjects(model, all?.document)).toEqual([]);
   });
+
+  test.each(DOCUMENT_SHAPES.map(({ id }) => id))(
+    "a canonical session seeded from the %s model",
+    async (id) => {
+      const model = await shapeDocument(id);
+      const session = createCanonicalSession(model);
+      if (session.isErr()) return;
+      expect(sharedObjects(model, session.value.document)).toEqual([]);
+    },
+  );
 
   test.each(STRUCTURAL_TABLE_ACTIONS)("the table action %s", async (action) => {
     const model = await shapeDocument("tables");

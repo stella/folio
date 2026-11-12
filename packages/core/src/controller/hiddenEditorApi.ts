@@ -30,6 +30,7 @@ import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
 import type { CanonicalSectionPropertiesResult } from "../types/canonicalSections";
 import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
 import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
 import type { CanonicalSessionMode } from "./canonicalSession";
@@ -146,10 +147,10 @@ export type HiddenEditorApi = {
 
 export type HiddenEditorApiDeps = {
   getView: () => EditorView | null;
-  getDocumentContext: () => Document | null;
+  getDocumentContext: () => ReadonlyDocument | null;
   getCanonicalComments?: () => Comment[] | null;
   getCanonicalCommittedVersion?: HiddenEditorApi["getCanonicalCommittedVersion"];
-  getCanonicalDocument?: () => Document | null;
+  getCanonicalDocument?: () => ReadonlyDocument | null;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
@@ -271,7 +272,8 @@ export const createHiddenEditorApi = (
       if (!view) {
         return null;
       }
-      return stateToDocument(view.state, deps.getDocumentContext());
+      const context = deps.getDocumentContext();
+      return stateToDocument(view.state, context && readModel(context));
     },
 
     updateCanonicalInputLifecycle: (action) =>

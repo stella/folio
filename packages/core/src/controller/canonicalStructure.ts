@@ -44,6 +44,7 @@ import type {
   ListLevel,
   Paragraph,
 } from "../types/document";
+import { readModel } from "../types/documentModel";
 import { collectHeadings } from "../utils/headingCollector";
 import {
   type CanonicalCommit,
@@ -198,7 +199,7 @@ const numberingIntent = (
   positions: readonly ParagraphPosition[],
   request: ListRequest,
 ): EditorIntent => {
-  const definitions = session.document.package.numbering;
+  const definitions = readModel(session.document).package.numbering;
   const map =
     definitions === undefined ? undefined : getCachedNumberingMap(definitions);
   const container = positions.at(0)?.container ?? [];
@@ -238,7 +239,11 @@ const numberingIntent = (
   const unused =
     map === undefined
       ? undefined
-      : unusedListInstanceFor(map, referencedNumIds(session.document), request);
+      : unusedListInstanceFor(
+          map,
+          referencedNumIds(readModel(session.document)),
+          request,
+        );
   if (
     neighbor?.type === "paragraph" &&
     neighbor.formatting?.numPr?.kind === "reference"
@@ -418,7 +423,7 @@ export const prepareCanonicalCommands = (
       case "generateTOC": {
         const at = session.projection.addressAt(command.at);
         if (at.isErr()) return at;
-        const definitions = session.document.package.styles;
+        const definitions = readModel(session.document).package.styles;
         const styles = createBuiltInStyleIndex(
           definitions?.styles ?? [],
           definitions?.docDefaults,
@@ -444,7 +449,9 @@ export const prepareCanonicalCommands = (
         const titleStyleId = styles.styleIdForBuiltInName(
           BUILT_IN_STYLE_NAME.tocHeading,
         );
-        const section = session.document.package.document.content.find(
+        const section = readModel(
+          session.document,
+        ).package.document.content.find(
           (item) =>
             item.type === "paragraph" &&
             (item.sectionProperties?.pageWidth ?? 0) > 0,
@@ -602,7 +609,7 @@ export const prepareCanonicalCommands = (
       case "toggleList": {
         const positions = paragraphPositions(session, paragraphs);
         if (positions.isErr()) return positions;
-        const definitions = session.document.package.numbering;
+        const definitions = readModel(session.document).package.numbering;
         const map =
           definitions === undefined
             ? undefined
@@ -698,7 +705,7 @@ export const prepareCanonicalCommands = (
         if (positions.isErr()) return positions;
         const source = paragraphs.at(0);
         const numPr = effectiveNumbering(source);
-        const definitions = session.document.package.numbering;
+        const definitions = readModel(session.document).package.numbering;
         if (
           source === undefined ||
           numPr?.kind !== "reference" ||
@@ -813,14 +820,15 @@ export const prepareCanonicalAutoformat = (
   if (text !== " " || from !== to) return undefined;
   const at = session.projection.addressAt(from);
   if (at.isErr()) return undefined;
-  const logical = editorPositionAtPhysicalPosition(session.document, at.value);
+  const document = readModel(session.document);
+  const logical = editorPositionAtPhysicalPosition(document, at.value);
   const address = session.projection.paragraph(logical.blockId);
   if (
     address === undefined ||
     effectiveNumbering(address.source)?.kind === "reference"
   )
     return undefined;
-  const group = editorParagraphGroups(session.document, logical.story).find(
+  const group = editorParagraphGroups(document, logical.story).find(
     ({ blockId }) => blockId === logical.blockId,
   );
   if (group === undefined) panic("Autoformat lost its logical paragraph");
@@ -829,7 +837,7 @@ export const prepareCanonicalAutoformat = (
   const requests = listRequestsForMarker(prefix);
   const heading = /^(?<hashes>#{1,6}) $/u.exec(prefix)?.groups?.["hashes"];
   if (requests === null && heading === undefined) return undefined;
-  const start = physicalPositionAtEditorOffset(session.document, {
+  const start = physicalPositionAtEditorOffset(document, {
     ...logical,
     offset: 0,
   });

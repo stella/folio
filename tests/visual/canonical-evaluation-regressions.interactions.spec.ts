@@ -18,6 +18,11 @@ import {
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
 import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
 import {
+  attachProtocolEvidence,
+  protocolEvidenceOffset,
+  workerProtocolEvidencePath,
+} from "../support/playwrightProtocolCapture";
+import {
   checkCanonicalBrowserHistory,
   initializeCanonicalBrowserHistory,
 } from "./canonicalBrowserHistoryOracle";
@@ -291,11 +296,12 @@ const assertCollectedTransportEvidence = ({
 test("canonical load roots the awaited transport promise across forced collection", async ({
   page,
 }) => {
-  const protocolPath = process.env["FOLIO_CANONICAL_PROTOCOL_LOG"];
+  const protocolPath = workerProtocolEvidencePath();
   if (!protocolPath)
     throw new TypeError(
       "Run this transport regression through canonical-interactions.ts to capture raw CDP evidence",
     );
+  const protocolOffset = protocolEvidenceOffset();
   await page.goto("/?session=canonical");
   await waitForCanonicalPageReady(page);
   const cdp = await page.context().newCDPSession(page);
@@ -442,12 +448,11 @@ test("canonical load roots the awaited transport promise across forced collectio
       frameId: frameTree.frame.id,
     });
   } finally {
-    const evidence = readFileSync(protocolPath, "utf8");
-    console.log(`Canonical transport protocol evidence:\n${evidence}`);
-    await test.info().attach("canonical-transport-protocol", {
-      body: evidence,
-      contentType: "application/x-ndjson",
-    });
+    await attachProtocolEvidence(
+      test.info(),
+      "canonical-transport-protocol",
+      protocolOffset,
+    );
     await cdp.detach();
   }
 });
