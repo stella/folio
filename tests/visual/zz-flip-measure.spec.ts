@@ -281,6 +281,13 @@ for (const name of documents) {
             frames: record?.frames.slice(from.frames) ?? [],
           };
         }, skip);
+        const canonicalActive = await page.evaluate(
+          () =>
+            globalThis.__folioPlayground
+              ?.getEditorRef()
+              ?.getEditor()
+              ?.getCanonicalDocument() != null,
+        );
         const saves =
           name === "lir011" || process.env["FOLIO_ZZ_SAVE_ALL"] === "1"
             ? await save(page)
@@ -290,6 +297,7 @@ for (const name of documents) {
           document: name,
           mode,
           engine,
+          canonicalActive,
           profiled: Boolean(PROFILE),
           blocks: opened.blocks,
           openMs: Math.round(opened.openMs),
