@@ -3047,9 +3047,8 @@ class CanonicalSession {
       previousProjection: projected.value,
       opId: change.batch.opId,
       onPublish: () => {
-        this.storySelections.clear();
-        for (const [key, moved] of storySelections)
-          this.storySelections.set(key, moved);
+        // Break: a peer's edit leaves the story selections where they were.
+        void storySelections;
         this.applied.splice(0, this.applied.length, ...history.applied);
         this.undone.splice(0, this.undone.length, ...history.undone);
         this.breakUndoGroup();
