@@ -4,6 +4,7 @@ export {
   acceptCopyOriginAncestors,
   type CopyOriginAncestorList,
   isCopyOriginAncestors,
+  recordsCopyOrigin,
   rejectCopyOriginAncestors,
   shiftCopyOriginAncestors,
 } from "./copyOriginAncestors";
