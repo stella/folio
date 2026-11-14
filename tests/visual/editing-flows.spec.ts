@@ -515,14 +515,19 @@ test.describe("lists", () => {
       .first()
       .click();
     await page.keyboard.press("End");
-    await page.keyboard.press("Shift+ArrowLeft");
-    expect(
-      await page.evaluate(
+    // An invisible endpoint may take a caret stop of its own, so the
+    // selection grows until it holds the last character.
+    const selectionText = () =>
+      page.evaluate(
         () =>
           globalThis.__folioPlayground?.getEditorRef()?.getSelectionText() ??
           "",
-      ),
-    ).toBe(inserted.at(-1));
+      );
+    for (let step = 0; step < 3; step += 1) {
+      if ((await selectionText()) === inserted.at(-1)) break;
+      await page.keyboard.press("Shift+ArrowLeft");
+    }
+    expect(await selectionText()).toBe(inserted.at(-1));
     await page.keyboard.press("Backspace");
     await expect.poll(() => documentBookmarks(page)).toEqual(BALANCED_BOOKMARK);
 
