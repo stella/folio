@@ -744,15 +744,17 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       .slice(noticed)
       .entries()) {
       const touched = paragraphsIn(notice.ops);
-      const earlier = new Set(queued
-        .slice(
-          0,
-          Math.max(
+      const earlier = new Set(
+        queued
+          .slice(
             0,
-            queued.findIndex(({ opId }) => opId === notice.opId),
-          ),
-        )
-        .flatMap(({ paragraphs }) => paragraphs));
+            Math.max(
+              0,
+              queued.findIndex(({ opId }) => opId === notice.opId),
+            ),
+          )
+          .flatMap(({ paragraphs }) => paragraphs),
+      );
       if (
         index > 0 || event.type === "broadcast"
           ? touched.length > 0 &&
