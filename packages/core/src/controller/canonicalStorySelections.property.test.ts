@@ -539,14 +539,9 @@ test("pinned: a peer types ahead of the caret in an open note and header", () =>
 test("on a fixed sample the peer inserts, deletes, splits and joins", () => {
   const tally: Tally = new Map();
   checkCoverageSample(law(tally), 30);
-  for (const kind of [
-    "insertText",
-    "insertContent",
-    "deleteRange",
-    "splitBlock",
-    "joinBlocks",
-  ])
-    expect(tally.get(kind) ?? 0).toBeGreaterThan(0);
+  // Typed text is inserted as inline content.
+  const kinds = ["insertContent", "deleteRange", "splitBlock", "joinBlocks"];
+  expect(kinds.filter((kind) => (tally.get(kind) ?? 0) === 0)).toEqual([]);
 });
 
 test(
