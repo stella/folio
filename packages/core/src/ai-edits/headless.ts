@@ -763,7 +763,7 @@ type FolioDocxComparisonProjection = {
 
 type MatchStoryInlineProvenanceOptions = InlineProvenanceTargetOptions & {
   story: FolioEditableDocumentStoryHandle;
-};
+} & InlineMatchTarget;
 
 type StoryInlineProvenanceResult =
   | {
@@ -781,6 +781,15 @@ type MatchStoryInlineAtomsOptions = Omit<
   "state" | "author"
 > & {
   story: FolioEditableDocumentStoryHandle;
+} & InlineMatchTarget;
+
+/**
+ * The target side of an inline match: the session's model matcher reads the
+ * target story from its reviewer; the legacy matcher reads the snapshot.
+ */
+type InlineMatchTarget = {
+  targetReviewer: FolioDocxReviewer;
+  targetStory: FolioDocumentStoryHandle;
 };
 
 type StoryInlineAtomsResult =
@@ -1472,7 +1481,13 @@ export class FolioDocxReviewer {
           this.stageFinalSectionProperties({ target, previous, revision }),
         stageMappedSectionBoundaries: (options) =>
           this.stageMappedSectionBoundaries(options),
-        matchInlineAtoms: ({ story, ...options }) => {
+        // The legacy matcher reads the target from its snapshot alone.
+        matchInlineAtoms: ({
+          story,
+          targetReviewer: _targetReviewer,
+          targetStory: _targetStory,
+          ...options
+        }) => {
           const state = this.getEditableStoryState(story);
           if (!state)
             return panic("A compared story lost its editable state", { story });
@@ -1507,7 +1522,13 @@ export class FolioDocxReviewer {
             }
           }
         },
-        matchInlineProvenance: ({ story, ...options }) => {
+        // The legacy matcher reads the target from its snapshot alone.
+        matchInlineProvenance: ({
+          story,
+          targetReviewer: _targetReviewer,
+          targetStory: _targetStory,
+          ...options
+        }) => {
           const state = this.getEditableStoryState(story);
           if (!state)
             return panic("A compared story lost its editable state", { story });
