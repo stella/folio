@@ -1294,7 +1294,7 @@ export class FolioDocxReviewer {
   private readonly loadedMainCommentIds: ReadonlySet<number>;
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] =
     [];
-  private readonly pendingSuggestions = new FolioPendingSuggestionRegistry();
+  private pendingSuggestions = new FolioPendingSuggestionRegistry();
   /**
    * Resolved-state overrides recorded by {@link resolveComment}, keyed by
    * comment id. Applied on read ({@link getComments}) and on write
@@ -1329,7 +1329,11 @@ export class FolioDocxReviewer {
       },
     );
     this.loadedMainCommentIds = anchoredCommentIdsInProseDoc(args.state.doc);
-    if (args.engine.type === "canonical") {
+    this.registerComparisonAccess();
+  }
+
+  private registerComparisonAccess(): void {
+    if (this.engine.type === "canonical") {
       // Comparison stages its result into the reviewer's PM states.
       canonicalReviewers.add(this);
       return;
@@ -1828,6 +1832,74 @@ export class FolioDocxReviewer {
         publish: (commit) => this.publishOnSession(commit),
       }),
     };
+  }
+
+  /**
+   * A live, independent copy of the reviewer: the same document, stories,
+   * comments and pending suggestions, which a DOCX save would drop. Edits to
+   * either leave the other as it is. The copy's undo history starts empty.
+   */
+  fork(): FolioDocxReviewer {
+    if (this.engine.type === "canonical") {
+      // A second session over the current document, as `toResolvedDocument`
+      // resolves on.
+      const document = readModel(this.engine.session.document);
+      const created = createCanonicalSession(document, document.package.styles);
+      if (created.isErr()) throw created.error;
+      const copy = new FolioDocxReviewer({
+        baseDocument: document,
+        originalBuffer: this.originalBuffer,
+        state: canonicalReviewerState(created.value),
+        author: this.author,
+        engine: { type: "canonical", session: created.value },
+      });
+      copy.pendingSuggestions = this.pendingSuggestions.clone();
+      return copy;
+    }
+    return this.forkLegacy();
+  }
+
+  /**
+   * The legacy reviewer's copy: every field, with each editor state given
+   * its own plugin state and each collection copied.
+   */
+  private forkLegacy(): FolioDocxReviewer {
+    const copyValue = (key: PropertyKey, value: unknown): unknown => {
+      if (key === "documentOperationUndoEntries") return [];
+      if (value instanceof FolioPendingSuggestionRegistry) return value.clone();
+      if (value instanceof EditorState) return value.apply(value.tr);
+      if (key === "secondaryStoryStates" && value instanceof Map)
+        return new Map(
+          [...value].map(
+            ([storyKey, entry]: [string, FolioSecondaryStoryState]) => [
+              storyKey,
+              {
+                ...entry,
+                state: entry.state.apply(entry.state.tr),
+                initialState: entry.initialState.apply(entry.initialState.tr),
+              },
+            ],
+          ),
+        );
+      if (value instanceof Map) return new Map(value);
+      if (value instanceof Set) return new Set(value);
+      if (Array.isArray(value)) return [...value];
+      return value;
+    };
+    // SAFETY: the copy has the reviewer's prototype and every own field the
+    // constructor gave this one; each field an edit changes is copied above.
+    const copy: FolioDocxReviewer = Object.create(FolioDocxReviewer.prototype);
+    for (const key of Reflect.ownKeys(this)) {
+      const descriptor = Object.getOwnPropertyDescriptor(this, key);
+      // A method a host set on this instance stays with this instance.
+      if (!descriptor || typeof descriptor.value === "function") continue;
+      Object.defineProperty(copy, key, {
+        ...descriptor,
+        value: copyValue(key, descriptor.value),
+      });
+    }
+    copy.registerComparisonAccess();
+    return copy;
   }
 
   /** Refuse what a canonical reviewer cannot do on its session yet. */
