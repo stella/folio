@@ -980,7 +980,9 @@ export const createHiddenEditorManager = (
     if (published.isErr()) return Result.err(published.error);
     const staged = published.value;
     view.updateState(staged.state);
-    refreshStoryViews(session, stories, commit);
+    // Break: open story editors are not refreshed on a peer's edit.
+    void stories;
+    void refreshStoryViews;
     deps.onTransaction({
       transactions: staged.transactions,
       newState: staged.state,
