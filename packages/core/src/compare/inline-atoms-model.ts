@@ -15,11 +15,16 @@ import { panic } from "better-result";
 
 import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
 import {
+  applyDocumentOp,
+  type DeleteRangeOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   findStoryBody,
-  type InlineSlice,
+  type InsertContentOp,
+  type NewIds,
   type OpStory,
+  packageResourcesOpOf,
+  revisionIdDemand,
   type RevisionStamp,
   type TextPosition,
 } from "@stll/docx-core/ops";
@@ -32,6 +37,7 @@ import type {
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { drawingXmlWithoutIdentity } from "../docx/drawingIdNormalization";
 import { rebindDrawingImageRelationship } from "../docx/drawingRelationships";
+import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import type {
   BlockContent,
   ComplexField,
@@ -56,6 +62,7 @@ import {
   noteReferenceMarker,
   type NoteReferenceNumbering,
 } from "../utils/noteReferenceLabels";
+import { base64ToBytes } from "../utils/textEncoding";
 import {
   type AlignableAtom,
   type AtomActionDisposition,
@@ -1424,6 +1431,7 @@ export const matchInlineAtomsOnModel = ({
     }
   }
   return writeActions({
+    document,
     actions,
     story,
     author,
@@ -1433,6 +1441,7 @@ export const matchInlineAtomsOnModel = ({
 };
 
 type WriteActionsOptions = {
+  document: ReadonlyDocument;
   actions: readonly Action[];
   story: OpStory;
   author: string;
@@ -1440,11 +1449,30 @@ type WriteActionsOptions = {
   rangeCount: number;
 };
 
+const PICTURE_DATA_URL =
+  /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/iu;
+
+/** The picture of a revised atom, when the atom inserts one. */
+const insertedPictureOf = (
+  content: DeepReadonly<ParagraphContent>,
+): DeepReadonly<DrawingContent> | undefined => {
+  if (content.type !== "run") return undefined;
+  const drawing = content.content.at(0);
+  return drawing?.type === "drawing" &&
+    drawing.image.rId === COMPARISON_IMAGE_RELATIONSHIP
+    ? drawing
+    : undefined;
+};
+
 /**
  * The batch that carries the planned actions out, from the end of the story
- * back, each edit addressed where the earlier ones left its point.
+ * back, each edit addressed where the earlier ones left its point. Every
+ * operation is applied to a copy as it is written, so the batch names the
+ * ids the records it cuts take, and a picture brings its media and
+ * relationship ahead of it.
  */
 const writeActions = ({
+  document,
   actions,
   story,
   author,
@@ -1452,9 +1480,11 @@ const writeActions = ({
   rangeCount,
 }: WriteActionsOptions): MatchInlineAtomsOnModelResult => {
   const operations: DocumentOp[] = [];
+  let current = readModel(document);
   const edits = new Map<string, AppliedEdit[]>();
   const changedTargetBlockIds = new Set<string>();
   let nextRevisionId = revisionStamp.idSeed;
+  let refusal: string | undefined;
   const stamp = (): RevisionStamp => ({
     id: nextRevisionId++,
     author,
@@ -1471,51 +1501,162 @@ const writeActions = ({
     if (list === undefined) edits.set(point.paraId, [edit]);
     else list.push(edit);
   };
+  /** Apply one operation to the copy and keep it, or note why it cannot apply. */
+  const emit = (op: DocumentOp): boolean => {
+    if (refusal !== undefined) return false;
+    const applied = applyDocumentOp(current, op);
+    if (applied.isErr()) {
+      refusal = applied.error.message;
+      return false;
+    }
+    current = applied.value.document;
+    operations.push(op);
+    return true;
+  };
+  /** The ids the records an edit cuts in two take, after its stamp's. */
+  const freshIds = (
+    op: InsertContentOp | DeleteRangeOp,
+  ): NewIds | undefined => {
+    const demand = revisionIdDemand(current, op);
+    if (demand.isErr()) {
+      refusal ??= demand.error.message;
+      return undefined;
+    }
+    if (demand.value === 0) return undefined;
+    return {
+      revision: Array.from({ length: demand.value }, () => nextRevisionId++),
+    };
+  };
+  /** A picture's media and relationship, added to the package for it. */
+  const withPictureResources = (
+    picture: DeepReadonly<DrawingContent>,
+  ): DeepReadonly<DrawingContent> | undefined => {
+    const data = PICTURE_DATA_URL.exec(picture.image.src ?? "");
+    const mimeType = data?.at(1);
+    const payload = data?.at(2);
+    if (mimeType === undefined || payload === undefined) {
+      refusal ??= "A restored picture has no embedded image bytes.";
+      return undefined;
+    }
+    const relationships = new Map(current.package.relationships);
+    let relationshipIndex = relationships.size + 1;
+    while (relationships.has(`rId${String(relationshipIndex)}`))
+      relationshipIndex += 1;
+    const id = relationshipIdOf(`rId${String(relationshipIndex)}`);
+    const media = new Map(current.package.media);
+    const extension =
+      mimeType.toLowerCase() === "image/jpeg" ? "jpg" : mimeType.slice(6);
+    let mediaIndex = media.size + 1;
+    while (media.has(`word/media/compare${String(mediaIndex)}.${extension}`))
+      mediaIndex += 1;
+    const path = `word/media/compare${String(mediaIndex)}.${extension}`;
+    if (id === undefined) {
+      refusal ??= "A restored picture's relationship id names nothing.";
+      return undefined;
+    }
+    media.set(path, {
+      path,
+      mimeType,
+      data: base64ToBytes(payload).slice().buffer,
+      dataUrl: picture.image.src,
+    });
+    relationships.set(id, {
+      id,
+      type: RELATIONSHIP_TYPES.image,
+      target: path.slice("word/".length),
+    });
+    const rawXml =
+      picture.rawXml === undefined
+        ? undefined
+        : rebindDrawingImageRelationship({
+            xml: picture.rawXml,
+            previousId: COMPARISON_IMAGE_RELATIONSHIP,
+            nextId: id,
+          });
+    if (rawXml === null) {
+      refusal ??= "A restored picture's markup names no single image.";
+      return undefined;
+    }
+    if (
+      !emit(
+        packageResourcesOpOf({
+          before: current,
+          after: {
+            ...current,
+            package: { ...current.package, relationships, media },
+          },
+        }),
+      )
+    )
+      return undefined;
+    // A drawing id from another package does not number a drawing here.
+    const { id: _drawingId, ...image } = picture.image;
+    return {
+      ...picture,
+      image: { ...image, rId: id },
+      ...(rawXml === undefined ? {} : { rawXml }),
+    };
+  };
   const insert = (
     at: LivePoint,
     content: DeepReadonly<ParagraphContent>,
     revision: RevisionStamp,
-  ) => {
-    const slice: InlineSlice = {
-      content: [writableCopy(content)],
-      openStart: 0,
-      openEnd: 0,
-    };
-    operations.push({
+  ): boolean => {
+    const picture = insertedPictureOf(content);
+    let inserted = content;
+    if (picture !== undefined && content.type === "run") {
+      const placed = withPictureResources(picture);
+      if (placed === undefined) return false;
+      inserted = { ...content, content: [placed] };
+    }
+    const op: InsertContentOp = {
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       at: position(at),
-      slice,
+      slice: {
+        content: [writableCopy<ParagraphContent>(inserted)],
+        openStart: 0,
+        openEnd: 0,
+      },
       revision,
-    });
+    };
+    const newIds = freshIds(op);
+    if (refusal !== undefined) return false;
+    if (!emit(newIds === undefined ? op : { ...op, newIds })) return false;
     record(at, { offset: at.offset, deleted: 0, inserted: 1 });
+    return true;
   };
   /** Remove `[from, to)`: the comparison's own insertion goes, anything else is marked deleted. */
   const remove = (
     from: LivePoint,
     to: LivePoint,
     disposition: AtomActionDisposition,
-  ) => {
+  ): boolean => {
     switch (disposition) {
-      case "inserted":
-        operations.push({
+      case "inserted": {
+        const op: DeleteRangeOp = {
           type: DOCUMENT_OP_TYPES.DELETE_RANGE,
           from: position(from),
           to: position(to),
-        });
+        };
+        if (!emit(op)) return false;
         record(from, {
           offset: from.offset,
           deleted: to.offset - from.offset,
           inserted: 0,
         });
-        return;
-      case "retained":
-        operations.push({
+        return true;
+      }
+      case "retained": {
+        const op: DeleteRangeOp = {
           type: DOCUMENT_OP_TYPES.DELETE_RANGE,
           from: position(from),
           to: position(to),
           revision: stamp(),
-        });
-        return;
+        };
+        const newIds = freshIds(op);
+        if (refusal !== undefined) return false;
+        return emit(newIds === undefined ? op : { ...op, newIds });
+      }
       default: {
         const unreachable: never = disposition;
         return unreachable;
@@ -1527,9 +1668,14 @@ const writeActions = ({
       comparePoints(right.from, left.from) || (left.kind === "delete" ? -1 : 1),
   );
   for (const action of ordered) {
+    let written: boolean;
     switch (action.kind) {
       case "insert":
-        insert(mapPoint(edits, action.from, 1), action.content, stamp());
+        written = insert(
+          mapPoint(edits, action.from, 1),
+          action.content,
+          stamp(),
+        );
         break;
       case "replace-text":
       case "replace-atom": {
@@ -1537,27 +1683,27 @@ const writeActions = ({
         const to = mapPoint(edits, action.to, -1);
         if (from.paraId !== to.paraId || from.offset >= to.offset)
           return { status: "unalignable" };
-        remove(
-          from,
-          to,
-          action.kind === "replace-text"
-            ? action.textDisposition
-            : action.atomDisposition,
-        );
-        const at = mapPoint(edits, action.from, -1);
-        insert(
-          at,
-          action.kind === "replace-text"
-            ? action.content
-            : {
-                type: "run",
-                ...(action.formatting === undefined
-                  ? {}
-                  : { formatting: action.formatting }),
-                content: [{ type: "text", text: action.text }],
-              },
-          stamp(),
-        );
+        written =
+          remove(
+            from,
+            to,
+            action.kind === "replace-text"
+              ? action.textDisposition
+              : action.atomDisposition,
+          ) &&
+          insert(
+            mapPoint(edits, action.from, -1),
+            action.kind === "replace-text"
+              ? action.content
+              : {
+                  type: "run",
+                  ...(action.formatting === undefined
+                    ? {}
+                    : { formatting: action.formatting }),
+                  content: [{ type: "text", text: action.text }],
+                },
+            stamp(),
+          );
         break;
       }
       case "note-reference": {
@@ -1565,19 +1711,19 @@ const writeActions = ({
         const to = mapPoint(edits, action.to, -1);
         if (from.paraId !== to.paraId || from.offset >= to.offset)
           return { status: "unalignable" };
-        // The reference joins the insertion that wrote its marker: a stamp
-        // alike in author and date merges into it and adds no record, so the
-        // id it names stays free.
-        insert(from, action.content, {
-          id: nextRevisionId,
-          author: action.insertion.author,
-          date: action.insertion.date ?? revisionStamp.date,
-        });
-        remove(
-          { ...from, offset: from.offset + 1, zeroWidthBefore: 0 },
-          { ...to, offset: to.offset + 1 },
-          "inserted",
-        );
+        // The reference takes the place of the marker inside the insertion
+        // that wrote it, alike in author and date.
+        written =
+          insert(from, action.content, {
+            id: nextRevisionId++,
+            author: action.insertion.author,
+            date: action.insertion.date ?? revisionStamp.date,
+          }) &&
+          remove(
+            { ...from, offset: from.offset + 1, zeroWidthBefore: 0 },
+            { ...to, offset: to.offset + 1 },
+            "inserted",
+          );
         break;
       }
       case "delete": {
@@ -1585,7 +1731,7 @@ const writeActions = ({
         const to = mapPoint(edits, action.to, -1);
         if (from.paraId !== to.paraId || to.offset - from.offset !== 1)
           return { status: "unalignable" };
-        remove(from, to, action.disposition);
+        written = remove(from, to, action.disposition);
         break;
       }
       default: {
@@ -1593,6 +1739,11 @@ const writeActions = ({
         return unreachable;
       }
     }
+    if (!written)
+      return {
+        status: "unalignable",
+        detail: `inline atoms cannot be restored as document operations: ${refusal ?? "an operation was refused"}`,
+      };
     if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
   }
   return {
