@@ -1741,17 +1741,7 @@ type TrackedResolutionJoins = WritableRecord & {
   deferredRemove?: readonly (WritableRecord & {
     depth: number;
     blockers: readonly number[];
-    /**
-     * The date of the revision whose kept range boundaries stand at the seam,
-     * waiting for its pieces to meet: they are placed as of that revision.
-     */
-    keptFrom?: string;
   })[];
-  /**
-   * The date of the revision whose kept range boundaries stand at the seam
-   * this wrapper's removal joins, once a deferred seam settled on it.
-   */
-  keptFrom?: string;
   /** Source identities handed to the retained suffix when a deleted prefix goes. */
   retainedAfter?: readonly (WritableRecord & {
     depth: number;
