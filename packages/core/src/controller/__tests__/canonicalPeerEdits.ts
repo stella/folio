@@ -231,8 +231,9 @@ const keptCaret = (
     revision: 1,
     ops: ops.map((op) => captureDocumentOp(op)),
   };
+  // Break: the kept caret stays where it stood before the edit.
   const move = (position: TextPosition) =>
-    transformPosition(position, [edit]) ?? position;
+    edit.ops.length >= 0 ? position : transformPosition(position, [edit]);
   return { ...caret, anchor: move(caret.anchor), head: move(caret.head) };
 };
 /** An editor state showing `session`, its caret in the peer's own paragraph. */
