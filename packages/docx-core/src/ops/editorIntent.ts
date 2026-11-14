@@ -1251,24 +1251,32 @@ type JoinParagraphPropertyAlignmentOptions = {
   revision?: RevisionStamp;
 };
 
-/** Direct and tracked joins choose paragraph properties from the same editing-view group. */
+/**
+ * Direct and tracked joins choose paragraph properties from the same
+ * editing-view group: the joined group shows the first group's properties,
+ * or the following group's when the first shows no text. A paragraph whose
+ * mark is already pending deletion is one group with the paragraph after it,
+ * so joining the two physically leaves that group's properties as they were.
+ * The properties go on the paragraph that ends the joined group once the join
+ * is applied, whichever paragraph the join keeps, since that paragraph's mark
+ * gives the group its properties.
+ */
 const joinParagraphPropertyAlignment = ({
   document,
   current,
   intent,
   revision,
 }: JoinParagraphPropertyAlignmentOptions) => {
+  const holding = (
+    groups: ReturnType<typeof editorParagraphGroups>,
+    blockId: string,
+  ) =>
+    groups.find(({ paragraphs }) =>
+      paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(blockId)),
+    );
   const groups = editorParagraphGroups(document, intent.story);
-  const firstGroup = groups.find(({ paragraphs }) =>
-    paragraphs.some(
-      ({ paraId }) => idKey(paraId ?? "") === idKey(intent.blockId),
-    ),
-  );
-  const followingGroup = groups.find(({ paragraphs }) =>
-    paragraphs.some(
-      ({ paraId }) => idKey(paraId ?? "") === idKey(intent.nextBlockId),
-    ),
-  );
+  const firstGroup = holding(groups, intent.blockId);
+  const followingGroup = holding(groups, intent.nextBlockId);
   if (!firstGroup || !followingGroup)
     panic("A valid canonical join must belong to paragraph groups.");
   const source =
@@ -1276,17 +1284,18 @@ const joinParagraphPropertyAlignment = ({
       ? followingGroup.paragraphs.at(-1)
       : firstGroup.paragraphs.at(-1);
   // A direct join may keep the first paragraph; a tracked one keeps the second.
-  const survivorId =
+  const keptId =
     revision === undefined && intent.survivor === "first"
-      ? firstGroup.blockId
-      : followingGroup.blockId;
-  const survivor = paragraphAt(current, {
-    story: intent.story,
-    blockId: survivorId,
-    offset: 0,
-  });
-  if (!survivor)
-    panic("A valid canonical join must retain its surviving group.");
+      ? intent.blockId
+      : intent.nextBlockId;
+  const joinedGroup = holding(
+    editorParagraphGroups(current, intent.story),
+    keptId,
+  );
+  const survivor = joinedGroup?.paragraphs.at(-1);
+  const survivorId = survivor?.paraId;
+  if (!survivor || survivorId === undefined)
+    panic("An applied join must keep the paragraph it names as kept.");
   const desired = paragraphPropertiesOf(source?.formatting);
   const existing = paragraphPropertiesOf(survivor.formatting);
   if (structurallyEqual(existing, desired)) return undefined;
