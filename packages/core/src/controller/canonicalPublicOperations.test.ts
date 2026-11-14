@@ -28,6 +28,8 @@ import type {
 } from "../document-operations";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
+import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
+import type { FlowBlock } from "../layout-engine/types";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
 import {
@@ -1035,4 +1037,119 @@ describe("a paragraph the session holds no address in", () => {
       "missingBlock",
     ]);
   });
+});
+
+/** Every painted text run's comment ids, table cells included. */
+const paintedCommentIds = (blocks: readonly FlowBlock[]): number[][] =>
+  blocks.flatMap((block) => {
+    switch (block.kind) {
+      case "paragraph":
+        return block.runs.flatMap((run) =>
+          run.kind === "text" && run.commentIds !== undefined
+            ? [run.commentIds]
+            : [],
+        );
+      case "table":
+        return block.rows.flatMap((row) =>
+          row.cells.flatMap((cell) => paintedCommentIds(cell.blocks)),
+        );
+      default:
+        return [];
+    }
+  });
+
+const tableDocument = (): Document => ({
+  package: {
+    document: {
+      content: [
+        {
+          type: "table",
+          rows: [
+            {
+              type: "tableRow",
+              cells: [
+                {
+                  type: "tableCell",
+                  content: [
+                    {
+                      type: "paragraph",
+                      paraId: "12345678",
+                      content: [
+                        {
+                          type: "run",
+                          content: [{ type: "text", text: "alpha beta" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        { type: "paragraph", paraId: "23456789", content: [] },
+      ],
+    },
+  },
+});
+
+describe("the first comment in a document without any", () => {
+  const range =
+    createFolioAITextRangeHandle({
+      blockId: "12345678",
+      text: "alpha beta",
+      startOffset: 0,
+      endOffset: 5,
+    }) ?? panic("Missing range");
+  const operations = [
+    {
+      id: "block",
+      type: "commentOnBlock",
+      blockId: "12345678",
+      comment: { text: "note" },
+    },
+    {
+      id: "range",
+      type: "commentOnRange",
+      range,
+      comment: { text: "note" },
+    },
+  ] as const satisfies readonly FolioDocumentOperation[];
+
+  for (const [where, source] of [
+    ["the body", "alpha beta"],
+    ["a table cell", tableDocument()],
+  ] as const) {
+    for (const operation of operations) {
+      test(`${operation.type} in ${where} is comment 0 and is painted through undo, redo and save`, async () => {
+        const editor = setup(source);
+        const result = editor.apply([operation]);
+        expect(result.status).toBe("committed");
+        expect(result.applied.at(0)?.commentId).toBe(0);
+        expect(paintedCommentIds(toFlowBlocks(editor.state().doc))).toEqual([
+          [0],
+        ]);
+
+        editor.executor.undo(result.undoHandle ?? panic("Missing handle"));
+        expect(paintedCommentIds(toFlowBlocks(editor.state().doc))).toEqual([]);
+        const redone = editor.session.prepareRedo(editor.state());
+        if (redone.isErr()) return panic(redone.error.message);
+        expect(editor.publish(redone.value)).toBe(true);
+        expect(paintedCommentIds(toFlowBlocks(editor.state().doc))).toEqual([
+          [0],
+        ]);
+
+        const reopened = await parseDocx(
+          await createDocx(editor.session.document),
+          { preloadFonts: false },
+        );
+        expect(reopened.package.document.comments?.map(({ id }) => id)).toEqual(
+          [0],
+        );
+        expect(paintedCommentIds(toFlowBlocks(toProseDoc(reopened)))).toEqual([
+          [0],
+        ]);
+      });
+    }
+  }
 });
