@@ -468,6 +468,48 @@ describe("canonical input boundary", () => {
     },
   );
 
+  test.each([
+    ["deleteWordBackward", "deleteBackward"],
+    ["deleteWordForward", "deleteForward"],
+    ["deleteSoftLineBackward", "deleteBackward"],
+    ["deleteHardLineForward", "deleteForward"],
+  ] as const)(
+    "%s deletes the range the browser names",
+    (inputType, semantic) => {
+      const { boundary, view, inputs, refusals } = createRig(2);
+      // A modified key at a caret inside text is the browser's to measure.
+      expect(
+        boundary.handleKeyDown(
+          view,
+          new KeyboardEvent("keydown", { key: "Backspace", ctrlKey: true }),
+        ),
+      ).toBe(false);
+      const text = view.dom.querySelector("p")?.firstChild;
+      if (!text) throw new Error("No text node");
+      const range = document.createRange();
+      range.setStart(text, 0);
+      range.setEnd(text, 3);
+      const event = new InputEvent("beforeinput", {
+        inputType,
+        cancelable: true,
+      });
+      Object.defineProperty(event, "getTargetRanges", {
+        value: () => [range],
+      });
+      expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+      expect(refusals).toEqual([]);
+      expect(inputs).toEqual([
+        {
+          from: view.posAtDOM(text, 0),
+          to: view.posAtDOM(text, 3),
+          text: "",
+          semantic,
+        },
+      ]);
+    },
+  );
+
   test("a native proposal is accepted exactly once and only at its originating state", () => {
     const { boundary, view, inputs } = createRig(2, 4);
     const propose = () =>
