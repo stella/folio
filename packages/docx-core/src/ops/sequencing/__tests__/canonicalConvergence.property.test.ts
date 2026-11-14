@@ -852,6 +852,25 @@ const SAME_PARAGRAPH_EDITS = sameParagraphTyping[1].filter(
   ({ type }) => type === "edit",
 ).length;
 
+/**
+ * A suggesting erase of 2..4 in the first paragraph while another peer
+ * formats 3..6: the format cuts the run inside the tracked range, which
+ * decides whether one record ran across all of it.
+ */
+const formatAcrossSuggestedErase: Scenario = [
+  3,
+  [
+    suggestedErase(0, { a: 2, b: 1 }),
+    {
+      type: "edit",
+      peer: 1,
+      seed: { kind: "format", a: 3, b: 2, suggest: false, focus: true },
+    },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 1 },
+  ],
+];
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -860,6 +879,7 @@ const PINNED: readonly Scenario[] = [
   deleteAgainstResolve,
   adjacentSuggestedErases,
   concurrentSuggestedErases,
+  formatAcrossSuggestedErase,
 ];
 
 describe("canonical sequencing", () => {
@@ -913,6 +933,14 @@ describe("canonical sequencing", () => {
     expect(phases.proven).toBe(phases.rebased);
     for (const document of phases.documents)
       expect(equalForStaleness(document, phases.authority)).toBe(true);
+    // A format cutting runs inside a tracked range is refused too.
+    const crossing = simulate(...formatAcrossSuggestedErase);
+    expect(crossing.diverged).toEqual([]);
+    expect(crossing.rejected).toEqual([
+      BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+    ]);
+    for (const document of crossing.documents)
+      expect(equalForStaleness(document, crossing.authority)).toBe(true);
   });
 
   test(
