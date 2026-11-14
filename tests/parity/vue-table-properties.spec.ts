@@ -4,7 +4,7 @@ import {
   type AdapterFixture,
   ensureLiveView,
   expect,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 const VUE_ADAPTER = {
@@ -15,7 +15,7 @@ const VUE_ADAPTER = {
 test("Vue applies table properties from the table options menu", async ({
   page,
 }) => {
-  await openEditor(page, VUE_ADAPTER);
+  await openCanonicalEditor(page, VUE_ADAPTER);
   await ensureLiveView(page);
   expect(
     await page.evaluate(() => window.__folioParity?.insertTable(2, 2) ?? false),
