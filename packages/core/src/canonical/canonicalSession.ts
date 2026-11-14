@@ -178,7 +178,7 @@ const noChange = (message: string) =>
 /**
  * What the session says for an intent the compiler or the engine refused. A
  * change the engine cannot record belongs to the capability that would record
- * it: review provenance for hyperlinks, and the tracked table records for a
+ * it: a link edit cutting markup folio does not model, and the tracked table records for a
  * suggested row, column or table change. Every other refusal is unclassified.
  */
 const intentRefusal = (
@@ -188,6 +188,15 @@ const intentRefusal = (
 ) => {
   if (reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE)
     return noChange(message);
+  // The suggestion's shape is one review records cannot hold: a rule, not a gap.
+  if (reason === DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION)
+    return Result.err(
+      new CanonicalSessionError({
+        ground: { rule: CANONICAL_RULE.linkSuggestionShape },
+        message,
+        reason: "refused",
+      }),
+    );
   if (reason !== DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE)
     return refuse(message);
   let gap: CanonicalGap;
@@ -655,7 +664,7 @@ class CanonicalProjection {
   }
 
   selectionAt(
-    state: EditorState,
+    state: Pick<EditorState, "doc" | "selection">,
   ): Result<CanonicalSelection, CanonicalSessionError> {
     const selection = state.selection;
     let type: CanonicalSelection["type"];
@@ -1616,7 +1625,15 @@ type StageOptions = {
   stagedApplied?: AppliedDocumentOp;
   story?: OpStory;
   previousProjection?: CanonicalProjection;
-  onPublish: (inverse: readonly DocumentOp[], version: number) => void;
+  /**
+   * `shown` is the selection the published projection holds, read back from
+   * it, so history restores exactly what this publish showed.
+   */
+  onPublish: (
+    inverse: readonly DocumentOp[],
+    version: number,
+    shown: CanonicalSelection,
+  ) => void;
   /** A remote commit's sequenced id; a local commit mints a fresh one. */
   opId?: string;
 };
@@ -2305,7 +2322,7 @@ class CanonicalSession {
       ...(compiled.value.applied === undefined
         ? {}
         : { stagedApplied: compiled.value.applied }),
-      onPublish: (inverse, version) => {
+      onPublish: (inverse, version, shown) => {
         const entry = {
           type: "applied",
           ops,
@@ -2318,13 +2335,13 @@ class CanonicalSession {
         } as const satisfies AppliedJournalEntry;
         if (group !== undefined && joins) {
           group.entries.push(entry);
-          group.postSelection = postSelection;
+          group.postSelection = shown;
         } else {
           this.applied.push({
             entries: [entry],
             undo: { type: "entries" },
             preSelection: preSelection.value,
-            postSelection,
+            postSelection: shown,
           });
         }
         this.undone.length = 0;
@@ -2419,22 +2436,6 @@ class CanonicalSession {
       edits.push(imported.value);
     }
     for (const intent of intents) {
-      if (
-        this.mode.type === "suggesting" &&
-        (intent.type === "setHyperlink" ||
-          intent.type === "removeHyperlink" ||
-          intent.type === "insertHyperlink" ||
-          intent.type === "generateTOC")
-      ) {
-        return Result.err(
-          new CanonicalSessionError({
-            ground: { gap: CANONICAL_GAP.trackedHyperlinkResolution },
-            reason: "refused",
-            message:
-              "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
-          }),
-        );
-      }
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
@@ -2452,7 +2453,27 @@ class CanonicalSession {
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
-      if (intent.type === "generateTOC") {
+      if (
+        this.mode.type === "suggesting" &&
+        (intent.type === "setHyperlink" || intent.type === "removeHyperlink")
+      ) {
+        // The struck text keeps its place and each changed copy follows it,
+        // so the selection runs from its start to the end of the last copy.
+        postSelection = {
+          type: "text",
+          anchor: intent.from,
+          head: compiled.value.selection,
+        };
+      } else if (
+        this.mode.type === "suggesting" &&
+        intent.type === "generateTOC"
+      ) {
+        postSelection = {
+          type: "text",
+          anchor: compiled.value.selection,
+          head: compiled.value.selection,
+        };
+      } else if (intent.type === "generateTOC") {
         const mapping = {
           at: intent.at,
           after: compiled.value.selection,
@@ -2520,13 +2541,13 @@ class CanonicalSession {
       origin: "input",
       history: "opened",
       ...(stagedApplied === undefined ? {} : { stagedApplied }),
-      onPublish: (inverse, version) => {
+      onPublish: (inverse, version, shown) => {
         const entry = {
           type: "applied",
           ops,
           inverse,
           preSelection: preSelection.value,
-          postSelection,
+          postSelection: shown,
           preDocument,
           postDocument: this.currentDocument,
           version,
@@ -2540,7 +2561,7 @@ class CanonicalSession {
           entries: [entry],
           undo: { type: "entries" },
           preSelection: preSelection.value,
-          postSelection,
+          postSelection: shown,
         });
         this.undone.length = 0;
       },
@@ -2913,7 +2934,7 @@ class CanonicalSession {
       selection: postSelection,
       origin: "input",
       history: "opened",
-      onPublish: (inverse, version) => {
+      onPublish: (inverse, version, shown) => {
         this.applied.push({
           entries: [
             {
@@ -2921,7 +2942,7 @@ class CanonicalSession {
               ops: preparedOps,
               inverse,
               preSelection: selected.value,
-              postSelection,
+              postSelection: shown,
               preDocument,
               postDocument: this.currentDocument,
               version,
@@ -2934,7 +2955,7 @@ class CanonicalSession {
           ],
           undo: { type: "entries" },
           preSelection: selected.value,
-          postSelection,
+          postSelection: shown,
         });
         this.undone.length = 0;
       },
@@ -2998,8 +3019,8 @@ class CanonicalSession {
    * It journals no undo step and opens no undo group. The local undo and redo
    * steps are rebased over it; a step that no longer rebases is dropped with
    * every step beneath it and reported to `onHistoryDrop`, and a `replaced`
-   * change drops them all. The selection moves by paragraph id and offset.
-   * It waits while a composition is pending; any other refusal means this
+   * change drops them all. The selection moves by paragraph id and offset,
+   * over a `replaced` change's `moves` when it has them. It waits while a composition is pending; any other refusal means this
    * session no longer follows the shared document.
    */
   prepareRemote(
@@ -3017,7 +3038,12 @@ class CanonicalSession {
     const before = shown.isOk() ? shown.value : this.currentSelection;
     const selection = remoteSelection({
       selection: before,
-      over: change.batch,
+      // A replacement that only re-cut records moves positions as its
+      // rebased change does.
+      over:
+        change.type === "replaced"
+          ? (change.moves ?? change.batch)
+          : change.batch,
       previous: this.currentDocument,
       document: applied.value.document,
       story,
@@ -3405,6 +3431,14 @@ class CanonicalSession {
           "Canonical history cannot restore the selected inline atom.",
         );
     }
+    // A position the projection cannot place falls back near the old caret,
+    // so history keeps the selection read back from what is shown.
+    const read =
+      sameStory(selection.anchor.story, projectedStory) &&
+      sameStory(selection.head.story, projectedStory)
+        ? projected.value.selectionAt(transaction)
+        : undefined;
+    const shown = read !== undefined && read.isOk() ? read.value : selection;
     // The transaction now ends on a document equal to the projection.
     const held = projected.value.heldAs(transaction.doc);
     const heldBody =
@@ -3507,7 +3541,7 @@ class CanonicalSession {
         )
           this.saveStructure = "changed";
         this.currentVersion = baseVersion + 1;
-        onPublish(applied.value.inverse, this.currentVersion);
+        onPublish(applied.value.inverse, this.currentVersion, shown);
         const committed: CanonicalCommittedBatch = {
           opId: opId ?? this.newOpId(),
           ops,

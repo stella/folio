@@ -1,4 +1,5 @@
 import { RUN_FORMATTING_MARK_NAMES } from "../packages/core/src/prosemirror/runFormattingMarkNames.ts";
+import baseline from "./folio-editor-commands.baseline.json" with { type: "json" };
 
 /** Adapter commands enter the owning view's canonical journal before dispatch. */
 type AstNode = Record<string, unknown> & { type: string };
@@ -7,7 +8,12 @@ type RuleContext = {
   report: (descriptor: {
     node: unknown;
     messageId:
-      "rawCommand" | "foreignOwner" | "rawRunFormattingCommand" | "resizeOwner";
+      | "rawCommand"
+      | "rawDispatch"
+      | "staleBaseline"
+      | "foreignOwner"
+      | "rawRunFormattingCommand"
+      | "resizeOwner";
   }) => void;
 };
 const isNode = (value: unknown): value is AstNode =>
@@ -49,7 +55,69 @@ const stringValue = (node: unknown): string | undefined =>
       : node.type === "Identifier" && typeof node.name === "string"
         ? node.name
         : undefined;
+/** Transaction methods that change the document. */
+const DOCUMENT_STEPS = new Set([
+  "delete",
+  "insert",
+  "replaceWith",
+  "replace",
+  "insertText",
+  "addMark",
+  "removeMark",
+  "setNodeMarkup",
+  "setNodeAttribute",
+  "setDocAttribute",
+  "deleteSelection",
+  "replaceSelection",
+  "replaceSelectionWith",
+  "replaceRangeWith",
+  "deleteRange",
+  "split",
+  "join",
+  "lift",
+  "wrap",
+  "setBlockType",
+  "addNodeMark",
+  "removeNodeMark",
+  "step",
+]);
+const containsTr = (node: unknown): boolean => {
+  let found = false;
+  visit(node, (child) => {
+    if (member(child, "tr")) found = true;
+  });
+  return found;
+};
+/** A transaction built in place that changes the document: `x.tr.insertText(...)`. */
+const containsDocumentStep = (node: unknown): boolean => {
+  let found = false;
+  visit(node, (child) => {
+    if (
+      child.type === "CallExpression" &&
+      isNode(child.callee) &&
+      child.callee.type === "MemberExpression" &&
+      isNode(child.callee.property) &&
+      child.callee.property.type === "Identifier" &&
+      typeof child.callee.property.name === "string" &&
+      DOCUMENT_STEPS.has(child.callee.property.name) &&
+      containsTr(child.callee.object)
+    )
+      found = true;
+  });
+  return found;
+};
 const OWNER = "packages/core/src/controller/hiddenEditorManager.ts";
+const EXECUTOR = "packages/core/src/prosemirror/executeEditorCommand.ts";
+/**
+ * Package sources that still run a command against a view's own state and
+ * dispatch, by count. Such a run skips the view's command owner, so a
+ * canonical session refuses its transaction instead of taking the command's
+ * intent. The list only shrinks.
+ */
+const BASELINE: Readonly<Record<string, number>> = baseline;
+const PACKAGE_SOURCE =
+  /packages\/(?:react|vue|core)\/src\/(?!.*(?:__tests__|\.test\.|\.spec\.))/u;
+const ADAPTER_SOURCE = /packages\/(?:react|vue)\/src\//u;
 const REACT = "packages/react/src/components/DocxEditor.tsx";
 const VUE = [
   "packages/vue/src/components/Toolbar.vue",
@@ -113,7 +181,11 @@ export default {
         type: "problem",
         messages: {
           rawCommand:
-            "Execute adapter commands through executeEditorCommand (or executeFirstEditorCommand), so the owning view classifies canonical intents before mutation.",
+            "Execute commands through executeEditorCommand (or executeFirstEditorCommand), so the owning view classifies canonical intents before mutation. A file not migrated yet holds to its count in `.oxlint-plugins/folio-editor-commands.baseline.json`, which only shrinks.",
+          rawDispatch:
+            "Express a document change as an editor command run through executeEditorCommand, or a canonical operation, instead of dispatching a transaction built in place. A file not migrated yet holds to its count in `.oxlint-plugins/folio-editor-commands.baseline.json`, which only shrinks.",
+          staleBaseline:
+            "This file runs fewer raw commands or dispatches than `.oxlint-plugins/folio-editor-commands.baseline.json` allows: lower its count to what remains.",
           foreignOwner:
             "Only hiddenEditorManager owns registerEditorCommandOwner; adapters execute commands against the selected view.",
         },
@@ -122,6 +194,16 @@ export default {
         const filename = context.filename.replaceAll("\\", "/");
         const react = filename.endsWith(REACT);
         const vue = VUE.some((path) => filename.endsWith(path));
+        // Lint fixtures copy package paths under test/__fixtures__; they
+        // state their own expectations.
+        const packageFile =
+          PACKAGE_SOURCE.test(filename) &&
+          !filename.includes("/__fixtures__/") &&
+          !filename.endsWith(OWNER) &&
+          !filename.endsWith(EXECUTOR);
+        const relative = filename.slice(filename.indexOf("packages/"));
+        const allowed = BASELINE[relative] ?? 0;
+        let seen = 0;
         let handlerDepth = 0;
         return {
           ImportDeclaration: (node: unknown) => {
@@ -153,18 +235,46 @@ export default {
             if (react && isNode(node) && named(node.id, "handleFormat"))
               handlerDepth--;
           },
+          "Program:exit": (node: unknown) => {
+            // The baseline names exactly the sites that remain: one fixed
+            // without lowering its count would let a new one take its place.
+            if (packageFile && seen < allowed)
+              context.report({ node, messageId: "staleBaseline" });
+          },
           CallExpression: (node: unknown) => {
             if (
-              (!vue && handlerDepth === 0) ||
+              (!vue && !packageFile && handlerDepth === 0) ||
               !isNode(node) ||
               !Array.isArray(node.arguments)
             )
               return;
+            // Adapter code that dispatches a document change it built in
+            // place skips the command owner as a raw command does.
+            if (
+              packageFile &&
+              ADAPTER_SOURCE.test(filename) &&
+              member(node.callee, "dispatch") &&
+              containsDocumentStep(node.arguments[0])
+            ) {
+              seen += 1;
+              if (seen > allowed)
+                context.report({ node, messageId: "rawDispatch" });
+              return;
+            }
             const [state, dispatch] = node.arguments;
             if (
-              (member(state, "state") || named(state, "commandState")) &&
-              containsDispatch(dispatch)
+              !(member(state, "state") || named(state, "commandState")) ||
+              !containsDispatch(dispatch)
             )
+              return;
+            // The adapters' formatting handlers allow none; any other package
+            // source holds to its baseline.
+            if (vue || handlerDepth > 0) {
+              context.report({ node, messageId: "rawCommand" });
+              return;
+            }
+            seen += 1;
+            if (seen > allowed)
               context.report({ node, messageId: "rawCommand" });
           },
         };

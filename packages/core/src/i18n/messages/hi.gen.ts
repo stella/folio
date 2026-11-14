@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "दस्तावेज़ का यह हिस्सा लॉक है।",
       "editing": "संपादन",
       "editingDescription": "दस्तावेज़ को सीधे संपादित करें",
+      "linkSuggestionUnavailable": "लिंक के इस परिवर्तन को ट्रैक नहीं किया जा सकता। इसे संपादन मोड में करें, या टिप्पणी या बुकमार्क को लिंक से बाहर ले जाएँ।",
       "outlineDepthAll": "सभी स्तर",
       "outlineDepthLabel": "शीर्षक दिखाएँ",
       "outlineDepthThree": "स्तर 1–3",
