@@ -431,7 +431,7 @@ export const compileGenerateTOCIntent = (
         ? { type: "before", blockId: intent.at.blockId }
         : { type: "after", blockId: intent.at.blockId };
     let selection: TextPosition = { ...insertionAt, ...gap };
-    let partMode = mode;
+    let partMode: EditorIntentMode = mode;
     if (gap.offset !== 0 && gap.offset !== targetLength) {
       const newBlockId = takeParagraphIds({
         document,

@@ -29,7 +29,12 @@ import {
 } from "../../../../test/property-testing";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
-import type { Document, ParagraphContent, Run } from "../types/document";
+import type {
+  Document,
+  Hyperlink,
+  ParagraphContent,
+  Run,
+} from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
@@ -98,7 +103,9 @@ const documentOf = (pieces: readonly Piece[]): Document => {
         );
         break;
       case "link": {
-        const children = piece.texts.map((text) => textRun(text));
+        const children: Hyperlink["children"] = piece.texts.map(
+          (text): Run => ({ type: "run", content: [{ type: "text", text }] }),
+        );
         const id = bookmark++;
         const markers = [
           { type: "bookmarkStart", id, name: `mark${String(id)}` } as const,
