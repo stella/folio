@@ -3163,16 +3163,23 @@ const removedClosedBoundary = ({
   nodes,
   edge,
   resolution,
-}: AcceptedClosedBoundaryOptions): number | undefined => {
+  splitDate,
+}: AcceptedClosedBoundaryOptions & {
+  /** The date of the split whose cut this reads, when it has one. */
+  splitDate: string | undefined;
+}): number | undefined => {
   if (resolution.decision !== REVISION_DECISIONS.REJECT) return undefined;
   const removed = (node: InlineNode): boolean =>
     isTrackedWrapper(node) &&
     isAddedRevision(node) &&
     resolution.ids.has(node.info.id);
+  // Content inserted after the split, or into the seam itself, is no piece
+  // the split left: removing it exposes the seam rather than the piece.
   const insideSeam = (node: InlineNode): boolean =>
     removed(node) &&
     isTrackedWrapper(node) &&
-    (node.resolutionJoins?.remove ?? 0) > 0;
+    ((node.resolutionJoins?.remove ?? 0) > 0 ||
+      (splitDate !== undefined && (node.info.date ?? "") > splitDate));
   let current = nodes;
   let depth = 0;
   while (current.length > 0) {
@@ -3469,6 +3476,7 @@ export const planRevisionResolution = ({
       nodes: paragraph.content,
       edge: "last",
       resolution,
+      splitDate: mark.info.date,
     });
     const removedLeading =
       next?.type === "paragraph"
@@ -3476,6 +3484,7 @@ export const planRevisionResolution = ({
             nodes: next.content,
             edge: "first",
             resolution,
+            splitDate: mark.info.date,
           })
         : undefined;
     if (removedTrailing !== undefined && removedLeading !== undefined)
