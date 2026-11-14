@@ -25,6 +25,24 @@ import type { CanonicalRoomBridgeStatus } from "./canonicalRoomBridge";
 
 const ACTOR_KEY = "folio-playground-room-actor";
 
+declare global {
+  /** A test's own DOCX for the room, set before the page loads. */
+  var __folioCanonicalRoomSeed: readonly number[] | undefined;
+}
+
+/**
+ * The DOCX the room opens: the bytes a test set for it, else the fixture
+ * `file`; undefined when the fixture is missing.
+ */
+export const readCanonicalRoomSeed = async (
+  file: string,
+): Promise<ArrayBuffer | undefined> => {
+  const seeded = globalThis.__folioCanonicalRoomSeed;
+  if (seeded !== undefined) return new Uint8Array(seeded).buffer;
+  const response = await fetch(`/fixtures/${file}`);
+  return response.ok ? response.arrayBuffer() : undefined;
+};
+
 /** This tab's actor: kept for the tab's life, reloads included. */
 const tabActor = (): string => {
   try {

@@ -1,5 +1,7 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 
+import { createDocx } from "../../packages/core/src/docx/rezip";
+import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import type {} from "../parity/canonicalBridge";
 import {
   reactPort,
@@ -204,5 +206,91 @@ for (const adapter of adapters) {
     expect(await expectConverged([reopened])).toBe(afterHandover);
     expect((await roomBridge(reopened))?.notice).toBeUndefined();
     await reopened.close();
+  });
+}
+
+/** A body paragraph with a footnote reference, and the footnote. */
+const noteDocument = async () => {
+  const document = createEmptyDocument({ initialText: "Body seed" });
+  const body = document.package.document.content.at(0);
+  if (body?.type !== "paragraph")
+    throw new TypeError("Expected a body paragraph.");
+  body.content.push({
+    type: "run",
+    content: [{ type: "footnoteRef", id: 1 }],
+  });
+  document.package.footnotes = [
+    {
+      type: "footnote",
+      id: 1,
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "run", content: [{ type: "text", text: "Footnote seed" }] },
+          ],
+        },
+      ],
+    },
+  ];
+  return [...new Uint8Array(await createDocx(document))];
+};
+
+/** Open the footnote's editor in `page`; returns its ProseMirror. */
+const openFootnote = async (page: Page) => {
+  const reference = page
+    .locator('[data-note-kind="footnote"][data-note-id="1"]')
+    .first();
+  await expect(reference).toBeVisible({ timeout: JOIN_TIMEOUT });
+  await reference.dblclick();
+  const editor = page
+    .locator(
+      'aside[aria-label="Footnotes"], aside[aria-label="Endnotes"], .docx-editor-vue__note-editor',
+    )
+    .locator('[data-note-kind="footnote"][data-note-id="1"] .ProseMirror');
+  await expect(editor).toBeVisible();
+  return editor;
+};
+
+for (const adapter of adapters) {
+  test(`an open note editor follows a peer's edit to its note [${adapter.name}]`, async ({
+    context,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    await context.addInitScript(
+      (bytes) => {
+        globalThis.__folioCanonicalRoomSeed = bytes;
+      },
+      await noteDocument(),
+    );
+    const room = `notes-${adapter.name.toLowerCase()}-${testInfo.testId}-${Date.now()}`;
+    const url = `http://localhost:${adapter.port}/?collaboration=1#${room}`;
+    const first = await openTab(context, url);
+    const second = await openTab(context, url);
+    await expectConverged([first, second]);
+
+    const firstNote = await openFootnote(first);
+    const secondNote = await openFootnote(second);
+
+    // The second tab types in the footnote the first tab has open.
+    await secondNote.click();
+    await second.keyboard.press("End");
+    await second.keyboard.type(" remote");
+    await expect(secondNote).toContainText("Footnote seed remote");
+    await expect(firstNote).toContainText("Footnote seed remote", {
+      timeout: JOIN_TIMEOUT,
+    });
+
+    // The first tab's editor took the peer's edit: typing in it goes on.
+    await firstNote.click();
+    await first.keyboard.press("End");
+    await first.keyboard.type(" local");
+    await expect(firstNote).toContainText("Footnote seed remote local");
+    await expect(secondNote).toContainText("Footnote seed remote local", {
+      timeout: JOIN_TIMEOUT,
+    });
+    await expectConverged([first, second]);
+    expect((await roomBridge(first))?.notice).toBeUndefined();
+    expect((await roomBridge(second))?.notice).toBeUndefined();
   });
 }
