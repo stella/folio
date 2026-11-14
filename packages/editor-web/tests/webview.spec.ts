@@ -39,6 +39,27 @@ const sentOfType = async <Type extends EditorMessage["type"]>(
   );
 
 /** The bytes of the `serialized` answer to `requestId`. */
+const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+/** Two paragraphs; the second holds a bookmark. */
+const bookmarkedDocument = async (): Promise<Uint8Array> => {
+  const zip = new ZipArchive();
+  zip.set(
+    "[Content_Types].xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+  );
+  zip.set(
+    "_rels/.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${R}/officeDocument" Target="word/document.xml"/></Relationships>`,
+  );
+  zip.set(
+    "word/document.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Plain</w:t></w:r></w:p><w:p><w:bookmarkStart w:id="0" w:name="Mark"/><w:r><w:t>Marked</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p></w:body></w:document>`,
+  );
+  return new Uint8Array(await zip.generate());
+};
+
 const serializedBytes = async (page: Page, requestId: number) =>
   new Uint8Array(
     await page.evaluate((id) => {
@@ -157,15 +178,11 @@ test("the VS Code bundle round-trips a document under the webview policy", async
   await expect.poll(() => paintedText(page)).toContain("Beta");
   expect(await sentOfType(page, "edit")).toHaveLength(3);
 
-  // Save: a paragraph break forces a full repack.
+  // Save: the bytes carry every edit.
   await postToWebview(page, { type: "serialize", requestId: 1 });
   await waitForSent(page, { type: "serialized", requestId: 1 });
   const [firstSave] = await sentOfType(page, "serialized");
   expect(firstSave?.fileVersion).toBe("v1");
-  expect(firstSave?.strategy).toEqual({
-    type: "full-repack",
-    reason: "structuralChange",
-  });
   const savedBytes = await serializedBytes(page, 1);
   const savedZip = await ZipArchive.read(savedBytes);
   const savedXml = await savedZip.entry("word/document.xml")?.text();
@@ -185,12 +202,8 @@ test("the VS Code bundle round-trips a document under the webview policy", async
     .toBeGreaterThan(0);
   expect(await sentOfType(page, "edit")).toHaveLength(4);
 
-  // A text-only edit keeps the selective patch in play.
   await postToWebview(page, { type: "serialize", requestId: 2 });
   await waitForSent(page, { type: "serialized", requestId: 2 });
-  expect((await sentOfType(page, "serialized")).at(-1)?.strategy).toEqual({
-    type: "selective-first",
-  });
 
   // The toolbar's track-changes toggle reports the mode back to the host.
   await page.getByRole("button", { name: "Toggle track changes" }).click();
@@ -209,6 +222,43 @@ test("the VS Code bundle round-trips a document under the webview policy", async
   await expect.poll(() => paintedText(page)).not.toContain("Gamma");
   expect(await paintedText(page)).toContain("Beta");
   expect(await sentOfType(page, "edit")).toHaveLength(4);
+
+  // The strategy is how the save wrote the package. A bookmark in the body
+  // is outside what the selective patch splices paragraphs around: a
+  // text-only edit beside it is patched, a paragraph break is a full repack.
+  await postDocument(page, {
+    type: "reload",
+    document: {
+      bytes: await bookmarkedDocument(),
+      fileVersion: "v3",
+      fileName: "bookmarked.docx",
+    },
+  });
+  await waitForSent(page, { type: "loaded", fileVersion: "v3" });
+  await expect.poll(() => paintedText(page)).toContain("Marked");
+  await page.locator(".layout-paragraph").first().click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Delta");
+  await page.waitForTimeout(NEW_UNDO_STEP_PAUSE_MS);
+  await expect.poll(() => paintedText(page)).toContain("Delta");
+  await postToWebview(page, { type: "serialize", requestId: 3 });
+  await waitForSent(page, { type: "serialized", requestId: 3 });
+  expect((await sentOfType(page, "serialized")).at(-1)?.strategy).toEqual({
+    type: "selective-first",
+  });
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(NEW_UNDO_STEP_PAUSE_MS);
+  await postToWebview(page, { type: "serialize", requestId: 4 });
+  await waitForSent(page, { type: "serialized", requestId: 4 });
+  expect((await sentOfType(page, "serialized")).at(-1)?.strategy).toEqual({
+    type: "full-repack",
+    reason: "selectiveDeclined",
+    decline: "structuralRangeElement",
+  });
+  const repacked = await ZipArchive.read(await serializedBytes(page, 4));
+  const repackedXml = await repacked.entry("word/document.xml")?.text();
+  expect(repackedXml).toContain("Delta");
+  expect(repackedXml).toContain("Marked");
 
   // The dark theme switches folio's palette.
   await page.evaluate(() =>

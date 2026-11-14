@@ -26,7 +26,10 @@ import type {
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type {
+  FolioEditor,
+  FolioSaveOptions,
+} from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
@@ -529,8 +532,13 @@ export type DocxEditorRef = {
   getEditorRef: () => PagedEditorRef | null;
   /** The headless editor controller (Seam 6), or null before the editor mounts. */
   getEditor: () => FolioEditor | null;
-  /** Save the document to buffer. Pass { selective: false } to force full repack. */
-  save: (options?: { selective?: boolean }) => Promise<ArrayBuffer | null>;
+  /**
+   * Save the document to buffer. Pass { selective: false } to force full
+   * repack. With `onDiagnostic`, a canonical save reports its fidelity
+   * fallbacks (a declined selective patch among them) there instead of
+   * through `onError`; `onSelectiveDecline` names why the patch declined.
+   */
+  save: (options?: FolioSaveOptions) => Promise<ArrayBuffer | null>;
   /** Set zoom level */
   setZoom: (zoom: number) => void;
   /** Get current zoom level */

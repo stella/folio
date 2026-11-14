@@ -31,6 +31,7 @@ export { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 export type {
   FolioDocxSerializationMode,
   FolioGetDocxOptions,
+  FolioSaveOptions,
 } from "../types/docxSerialization";
 
 /**

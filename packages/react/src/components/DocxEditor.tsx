@@ -75,7 +75,7 @@ import {
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import {
-  CanonicalSaveDiagnosticError,
+  canonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
 import {
@@ -3841,13 +3841,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             });
             for (const diagnostic of result.diagnostics) {
               if (!options?.onDiagnostic)
-                onError?.(
-                  new CanonicalSaveDiagnosticError({
-                    gap: CANONICAL_GAP.save,
-                    diagnostic,
-                    message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
-                  }),
-                );
+                onError?.(canonicalSaveDiagnosticError(diagnostic));
             }
             tripwireResult = result.tripwireResult;
             // Keep the parsed baseline: canonical touched ids are cumulative
@@ -3860,9 +3854,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               editor.isCanonicalSaveCurrent(snapshot.version)
             ) {
               editor.markCanonicalSaved(snapshot.version);
-              // The VS Code host still reads its save strategy from this
-              // tracker.
-              view.dispatch(clearTrackedChanges(view.state));
             }
             savedBuffer = result.buffer;
           } else {
@@ -3905,6 +3896,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   structuralChange: hasStructuralChanges(editorState),
                   hasUntrackedChanges: hasUntrackedChanges(editorState),
                   maxBytes: flags.selectiveSaveMaxBytes,
+                  onSelectiveDecline: options?.onSelectiveDecline,
                 },
               );
             }
@@ -4002,15 +3994,17 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // Host-facing save keeps callback and dirty-state policy outside the
     // framework-neutral controller's side-effect-free serialization method.
     const handleSave = useCallback(
-      async (options?: {
-        selective?: boolean;
-      }): Promise<ArrayBuffer | null> => {
+      async (
+        options?: Parameters<DocxEditorRef["save"]>[0],
+      ): Promise<ArrayBuffer | null> => {
         const editor = pagedEditorRef.current?.getEditor();
         const serializationOptions = {
           mode:
             options?.selective === false
               ? FOLIO_DOCX_SERIALIZATION_MODE.full
               : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
+          onDiagnostic: options?.onDiagnostic,
+          onSelectiveDecline: options?.onSelectiveDecline,
         } as const satisfies FolioGetDocxOptions;
         const buffer = editor
           ? await editor.getDocx(serializationOptions)

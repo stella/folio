@@ -72,9 +72,7 @@ const isEditorDocument = (value: unknown): value is FolioEditorDocument =>
   isString(value["fileName"]);
 
 const REPACK_REASONS = {
-  structuralChange: true,
-  untrackedChange: true,
-  noBodyView: true,
+  selectiveDeclined: true,
 } as const satisfies Record<FolioEditorRepackReason, true>;
 
 const isSaveStrategy = (value: unknown): value is FolioEditorSaveStrategy => {
@@ -85,7 +83,9 @@ const isSaveStrategy = (value: unknown): value is FolioEditorSaveStrategy => {
     case "full-repack":
       return (
         isString(value["reason"]) &&
-        Object.hasOwn(REPACK_REASONS, value["reason"])
+        Object.hasOwn(REPACK_REASONS, value["reason"]) &&
+        isString(value["decline"]) &&
+        value["decline"] !== ""
       );
     default:
       return false;

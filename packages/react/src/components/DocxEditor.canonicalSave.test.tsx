@@ -20,11 +20,7 @@ import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
-import {
-  clearTrackedChanges,
-  getChangedParagraphIds,
-  hasStructuralChanges,
-} from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import type { CanonicalCommentResult } from "@stll/folio-core/types/canonicalComments";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
@@ -1340,16 +1336,16 @@ test.each(CANONICAL_SAVE_SEEDS)(
             expect(api.redo()).toBe(true);
           });
           expect(adapter.getDocument()).toEqual(canonical);
-          await act(async () => {
-            view.dispatch(clearTrackedChanges(view.state));
-          });
-          expect(getChangedParagraphIds(view.state).size).toBe(0);
+          // The save reads the session's journal: the canonical view carries
+          // no paragraph change tracker.
+          expect(
+            paragraphChangeTrackerKey.getState(view.state),
+          ).toBeUndefined();
           const changedIds = new Set(
             api.captureCanonicalSave()?.changedBlockIds ??
               panic("Expected canonical save capture"),
           );
           expect(changedIds.has(untouchedId)).toBe(false);
-          expect(hasStructuralChanges(view.state)).toBe(false);
           let saved: ArrayBuffer | null = null;
           await act(async () => {
             saved = await adapter.save({ selective: index % 2 === 0 });
@@ -1388,6 +1384,19 @@ test.each(CANONICAL_SAVE_SEEDS)(
           for (const diagnostic of diagnostics) {
             expect(diagnostic).toEqual(CANONICAL_SAVE_FALLBACK_DIAGNOSTIC);
           }
+          // The host-facing save hands the same fallbacks to its caller
+          // instead of reporting them as errors.
+          const savedDiagnostics: SaveDiagnostic[] = [];
+          await act(async () => {
+            const savedWithDiagnostics = await adapter.save({
+              selective: index % 2 !== 0,
+              onDiagnostic: (diagnostic) => savedDiagnostics.push(diagnostic),
+            });
+            if (!savedWithDiagnostics)
+              panic("Expected canonical save with diagnostics");
+          });
+          expect(errors.length).toBe(errorsBeforeSerialization);
+          expect(savedDiagnostics).toEqual(diagnostics);
           if (!repeated) panic("Expected repeated canonical serialization");
           expect(
             describePackageDifferences(

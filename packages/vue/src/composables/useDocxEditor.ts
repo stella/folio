@@ -44,6 +44,7 @@ import {
   type FolioEditor,
   type FolioEditorDocumentIO,
   type FolioGetDocxOptions,
+  type FolioSaveOptions,
 } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import {
@@ -86,7 +87,7 @@ import {
 } from "@stll/folio-core/controller/noteEditorManager";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import {
-  CanonicalSaveDiagnosticError,
+  canonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
 import {
@@ -565,7 +566,7 @@ export type UseDocxEditorReturn = {
   /** Load an already-parsed `Document` directly. */
   loadDocument: (doc: Document) => void;
   /** Serialize the current document to a DOCX blob. */
-  save: (options?: { selective?: boolean }) => Promise<Blob | null>;
+  save: (options?: FolioSaveOptions) => Promise<Blob | null>;
   /**
    * Build a copy of the current document, in time proportional to its size.
    * For a host that owns the result; derived state reads `modelDocument`.
@@ -1566,13 +1567,7 @@ export function useDocxEditor(
         });
         for (const diagnostic of result.diagnostics) {
           if (!serializationOptions?.onDiagnostic)
-            onError?.(
-              new CanonicalSaveDiagnosticError({
-                gap: CANONICAL_GAP.save,
-                diagnostic,
-                message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
-              }),
-            );
+            onError?.(canonicalSaveDiagnosticError(diagnostic));
         }
         if (result.tripwireResult)
           onSelectiveSaveTripwire?.(result.tripwireResult);
@@ -1634,6 +1629,7 @@ export function useDocxEditor(
         structuralChange: hasStructuralChanges(state),
         hasUntrackedChanges: hasUntrackedChanges(state),
         maxBytes: flags.selectiveSaveMaxBytes,
+        onSelectiveDecline: serializationOptions?.onSelectiveDecline,
       });
     }
 
@@ -1683,9 +1679,7 @@ export function useDocxEditor(
     return { buffer, document: updatedDoc };
   }
 
-  async function save(saveOptions?: {
-    selective?: boolean;
-  }): Promise<Blob | null> {
+  async function save(saveOptions?: FolioSaveOptions): Promise<Blob | null> {
     const savedView = editorView.value;
     const savedState = savedView?.state;
     const result = await serializeCurrentDocx({
@@ -1693,6 +1687,8 @@ export function useDocxEditor(
         saveOptions?.selective === false
           ? FOLIO_DOCX_SERIALIZATION_MODE.full
           : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
+      onDiagnostic: saveOptions?.onDiagnostic,
+      onSelectiveDecline: saveOptions?.onSelectiveDecline,
     });
     if (!result) {
       return null;

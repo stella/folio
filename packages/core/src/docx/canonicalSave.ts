@@ -33,6 +33,16 @@ export class CanonicalSaveDiagnosticError extends CanonicalSaveDiagnosticErrorBa
   diagnostic: SaveDiagnostic;
 }> {}
 
+/** The error a host receives for a canonical save's fidelity fallback. */
+export const canonicalSaveDiagnosticError = (
+  diagnostic: SaveDiagnostic,
+): CanonicalSaveDiagnosticError =>
+  new CanonicalSaveDiagnosticError({
+    gap: CANONICAL_GAP.save,
+    diagnostic,
+    message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
+  });
+
 type SerializeCanonicalSaveOptions = {
   snapshot: CanonicalSaveSnapshot;
   options?: FolioGetDocxOptions | undefined;
@@ -102,10 +112,16 @@ export const serializeCanonicalSave = async ({
       hasUntrackedChanges: false,
       maxBytes: flags.selectiveSaveMaxBytes,
       onDiagnostic,
+      onSelectiveDecline: options?.onSelectiveDecline,
     });
     if (useSelective && !selectiveBuffer)
       onDiagnostic({ type: "selectiveSaveRefused", part: "word/document.xml" });
   }
+  if (useSelective && !baseline)
+    options?.onSelectiveDecline?.({
+      part: "word/document.xml",
+      reason: "noSourcePackage",
+    });
   // Which note paragraphs changed is the session's journal, as for the body,
   // never a diff of the notes' re-serialization: a note the session never
   // touched (one the package held without a reference, say) is written as the

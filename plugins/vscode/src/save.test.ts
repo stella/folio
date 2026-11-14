@@ -48,7 +48,11 @@ describe("saveArgs", () => {
     const args = saveArgs(
       request({
         leaseToken: "tok",
-        strategy: { type: "full-repack", reason: "noBodyView" },
+        strategy: {
+          type: "full-repack",
+          reason: "selectiveDeclined",
+          decline: "structuralRangeElement",
+        },
         destination: {
           path: "/work/Copy.docx",
           expectedVersion: "b".repeat(64),
