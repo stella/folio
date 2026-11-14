@@ -61,7 +61,10 @@ export const serializeCanonicalSave = async ({
   const withoutSuggestions = withoutPendingSuggestions(snapshot.document);
   if (withoutSuggestions.isErr()) throw withoutSuggestions.error;
   const document = withoutUnusedSessionLists(
-    withoutUnreferencedNotes(withoutSuggestions.value),
+    withoutUnreferencedNotes(
+      withoutSuggestions.value,
+      snapshot.heldUnreferencedNotes,
+    ),
   );
   // Package-resource operations conservatively retain structural save work through undo.
   const replacementPart =
@@ -125,6 +128,23 @@ export const serializeCanonicalSave = async ({
     if (useSelective && !selectiveBuffer)
       onDiagnostic({ type: "selectiveSaveRefused", part: "word/document.xml" });
   }
+  // Which note paragraphs changed is the session's journal, as for the body,
+  // never a diff of the notes' re-serialization: a note the session never
+  // touched (one the package held without a reference, say) is written as the
+  // package held it, even where the model cannot spell its source markup.
+  const touched = new Set(snapshot.changedBlockIds.map(idKey));
+  const changedNoteParaIds = new Set<string>();
+  for (const note of [
+    ...(document.package.footnotes ?? []),
+    ...(document.package.endnotes ?? []),
+  ])
+    for (const block of note.content)
+      if (
+        block.type === "paragraph" &&
+        block.paraId !== undefined &&
+        touched.has(idKey(block.paraId))
+      )
+        changedNoteParaIds.add(block.paraId);
   const repack = () => {
     if (baseline && getDocumentSourceBaseline(document).type === "missing")
       onDiagnostic({
@@ -135,7 +155,11 @@ export const serializeCanonicalSave = async ({
       ? repackWithCanonicalStoryRemovals({
           document,
           repack: () =>
-            repackDocx(document, { onDiagnostic, bodyAuthority: "canonical" }),
+            repackDocx(document, {
+              onDiagnostic,
+              bodyAuthority: "canonical",
+              changedNoteParaIds,
+            }),
         })
       : createDocx(document, { onDiagnostic, bodyAuthority: "canonical" });
   };

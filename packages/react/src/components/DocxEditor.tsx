@@ -1767,6 +1767,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const {
       loadBuffer,
       loadParsedDocument,
+      heldUnreferencedNotes,
       originalBufferRef,
       loadedDocumentIdentity,
     } = documentLoader;
@@ -3830,7 +3831,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             // Build the current document from the selected session. A note goes with its
             // reference: one nothing refers to any more is not saved.
             const current = buildCurrentDocument();
-            const doc = current ? withoutUnreferencedNotes(current) : null;
+            const doc = current
+              ? withoutUnreferencedNotes(current, heldUnreferencedNotes())
+              : null;
             if (!doc) {
               return null;
             }
@@ -3944,6 +3947,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       },
       [
         buildCurrentDocument,
+        heldUnreferencedNotes,
         onError,
         originalBufferRef,
         featureFlags,

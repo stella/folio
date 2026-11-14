@@ -87,6 +87,7 @@ import {
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_GAP,
@@ -1725,6 +1726,8 @@ class CanonicalSession {
   private readonly newOpId: () => string;
   private readonly styles: DeepReadonly<StyleDefinitions> | null | undefined;
   private readonly sourceRestores: readonly CanonicalSourceRestore[];
+  /** Notes the opened package held without a reference: content, kept on save. */
+  private readonly heldUnreferencedNotes: ReadonlySet<string>;
   /** What earlier projections converted, reused by every later one. */
   private readonly caches: StoryProjectionCaches;
 
@@ -1744,6 +1747,7 @@ class CanonicalSession {
         : new CanonicalIdLease(idLease, document);
     this.sourceRestores = sourceRestores;
     this.caches = caches;
+    this.heldUnreferencedNotes = notesHeldWithoutReference(document);
     this.currentDocument = document;
     this.currentProjection = projection;
     const blockIds = packageParagraphIds(document.package);
@@ -1984,6 +1988,7 @@ class CanonicalSession {
         retainedBlockIdKeys.has(blockId.toUpperCase()),
       ),
       structure: this.saveStructure,
+      heldUnreferencedNotes: this.heldUnreferencedNotes,
     };
   }
 
