@@ -109,6 +109,12 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
+const bodyOf = (document: Document): unknown =>
+  document.package.document.content;
+const debugDump = (label: string, payload: Record<string, unknown>): void => {
+  console.error(`L3DEBUG ${label} ${JSON.stringify(payload)}`);
+};
+
 /**
  * Each run applies an operation and checks it several ways, so the base count
  * is kept small: the nightly factor of ten takes it to 10^4, and the five-fold
@@ -1162,63 +1168,88 @@ describe("tracked operations and their resolution", () => {
           // A kind counts once its revisions reach the checks below.
           for (const [index, ids] of perOp.entries())
             if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
-          // The run's own revisions: at once, and one operation's at a time.
-          const rejectedAtOnce = resolved(
-            current,
-            all,
-            REVISION_DECISIONS.REJECT,
-          );
-          const rejectedInTurn = resolvedInTurn(
-            current,
-            perOp.toReversed(),
-            REVISION_DECISIONS.REJECT,
-          );
-          assertExactModel(
-            projected(rejectedAtOnce, "π′"),
-            projected(rejectedInTurn, "π′"),
-          );
-          // A split at a paragraph's end is given back under the new paragraph's id.
-          if (!keptEarlier) {
-            expectRejectedTo({
-              rejected: rejectedAtOnce,
-              tracked: current,
-              ids: all,
-              expected: document,
-              projection: "π′",
-            });
-          }
-          // Every revision (A*, J*): the run's in turn first, or all at once.
-          const acceptedInTurn = resolvedInTurn(
-            current,
-            perOp,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
-          const turnAccepted = resolvedAll(
-            acceptedInTurn,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          if (allAccepted !== undefined && turnAccepted !== undefined) {
-            count(tally, "A*");
-            assertExactModel(
-              projected(allAccepted, "π′"),
-              projected(turnAccepted, "π′"),
+          try {
+            // The run's own revisions: at once, and one operation's at a time.
+            const rejectedAtOnce = resolved(
+              current,
+              all,
+              REVISION_DECISIONS.REJECT,
             );
-          }
-          const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
-          const originalRejected = resolvedAll(
-            document,
-            REVISION_DECISIONS.REJECT,
-          );
-          if (allRejected !== undefined && originalRejected !== undefined) {
-            count(tally, "J*");
-            expectRejectedTo({
-              rejected: allRejected,
-              tracked: current,
-              ids: all,
-              expected: originalRejected,
-              projection: "π′",
+            const rejectedInTurn = resolvedInTurn(
+              current,
+              perOp.toReversed(),
+              REVISION_DECISIONS.REJECT,
+            );
+            assertExactModel(
+              projected(rejectedAtOnce, "π′"),
+              projected(rejectedInTurn, "π′"),
+            );
+            // A split at a paragraph's end is given back under the new paragraph's id.
+            if (!keptEarlier) {
+              expectRejectedTo({
+                rejected: rejectedAtOnce,
+                tracked: current,
+                ids: all,
+                expected: document,
+                projection: "π′",
+              });
+            }
+            // Every revision (A*, J*): the run's in turn first, or all at once.
+            const acceptedInTurn = resolvedInTurn(
+              current,
+              perOp,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
+            const turnAccepted = resolvedAll(
+              acceptedInTurn,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            if (allAccepted !== undefined && turnAccepted !== undefined) {
+              count(tally, "A*");
+              assertExactModel(
+                projected(allAccepted, "π′"),
+                projected(turnAccepted, "π′"),
+              );
+            }
+            const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
+            const originalRejected = resolvedAll(
+              document,
+              REVISION_DECISIONS.REJECT,
+            );
+            if (allRejected !== undefined && originalRejected !== undefined) {
+              count(tally, "J*");
+              expectRejectedTo({
+                rejected: allRejected,
+                tracked: current,
+                ids: all,
+                expected: originalRejected,
+                projection: "π′",
+              });
+            }
+          } catch (error) {
+            const turnSteps: unknown[] = [];
+            let step = current;
+            for (const ids of perOp.toReversed()) {
+              step = resolved(step, ids, REVISION_DECISIONS.REJECT);
+              turnSteps.push({ ids, body: bodyOf(step) });
+            }
+            let acceptStep = current;
+            const acceptSteps: unknown[] = [];
+            for (const ids of perOp) {
+              acceptStep = resolved(acceptStep, ids, REVISION_DECISIONS.ACCEPT);
+              acceptSteps.push({ ids, body: bodyOf(acceptStep) });
+            }
+            debugDump("in-turn", {
+              original: bodyOf(document),
+              current: bodyOf(current),
+              perOp,
+              atOnce: bodyOf(resolved(current, all, REVISION_DECISIONS.REJECT)),
+              turnSteps,
+              acceptSteps,
+              message: String(error).slice(0, 400),
             });
+            throw error;
           }
         },
       );
@@ -1267,13 +1298,37 @@ describe("tracked operations and their resolution", () => {
               (left, right) => left.key - right.key || left.index - right.index,
             )
             .map(({ ids }) => ids);
-          assertExactModel(
-            projected(resolved(current, all, REVISION_DECISIONS.REJECT), "π′"),
-            projected(
-              resolvedInTurn(current, order, REVISION_DECISIONS.REJECT),
-              "π′",
-            ),
-          );
+          try {
+            assertExactModel(
+              projected(
+                resolved(current, all, REVISION_DECISIONS.REJECT),
+                "π′",
+              ),
+              projected(
+                resolvedInTurn(current, order, REVISION_DECISIONS.REJECT),
+                "π′",
+              ),
+            );
+          } catch (error) {
+            const steps: unknown[] = [];
+            let step = current;
+            for (const ids of order) {
+              step = resolved(step, ids, REVISION_DECISIONS.REJECT);
+              steps.push({ ids, body: bodyOf(step) });
+            }
+            Reflect.set(globalThis, "__SEAM_TRACE", true);
+            resolved(current, all, REVISION_DECISIONS.REJECT);
+            Reflect.set(globalThis, "__SEAM_TRACE", false);
+            debugDump("reject-any-order", {
+              original: bodyOf(document),
+              current: bodyOf(current),
+              all,
+              order,
+              atOnce: bodyOf(resolved(current, all, REVISION_DECISIONS.REJECT)),
+              steps,
+            });
+            throw error;
+          }
         },
       );
     assertProperty(law(new Map()), {
@@ -1345,21 +1400,56 @@ describe("tracked operations and their resolution", () => {
             )
             .map(({ group }) => group);
           let oneByOne = current;
-          for (const { ids, decision } of order)
+          const steps: unknown[] = [];
+          for (const { ids, decision } of order) {
             oneByOne = resolved(oneByOne, ids, decision);
+            steps.push({ ids, decision, body: bodyOf(oneByOne) });
+          }
           const expected = projected(oneByOne, "π′");
-          const acceptedFirst = resolved(
-            resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
-            rejected,
-            REVISION_DECISIONS.REJECT,
-          );
-          assertExactModel(projected(acceptedFirst, "π′"), expected);
-          const rejectedFirst = resolved(
-            resolved(current, rejected, REVISION_DECISIONS.REJECT),
+          const acceptedOnly = resolved(
+            current,
             accepted,
             REVISION_DECISIONS.ACCEPT,
           );
-          assertExactModel(projected(rejectedFirst, "π′"), expected);
+          const acceptedFirst = resolved(
+            acceptedOnly,
+            rejected,
+            REVISION_DECISIONS.REJECT,
+          );
+          const rejectedOnly = resolved(
+            current,
+            rejected,
+            REVISION_DECISIONS.REJECT,
+          );
+          const rejectedFirst = resolved(
+            rejectedOnly,
+            accepted,
+            REVISION_DECISIONS.ACCEPT,
+          );
+          const dump = (label: string) =>
+            debugDump(label, {
+              original: bodyOf(document),
+              current: bodyOf(current),
+              accepted,
+              rejected,
+              steps,
+              acceptedOnly: bodyOf(acceptedOnly),
+              acceptedFirst: bodyOf(acceptedFirst),
+              rejectedOnly: bodyOf(rejectedOnly),
+              rejectedFirst: bodyOf(rejectedFirst),
+            });
+          try {
+            assertExactModel(projected(acceptedFirst, "π′"), expected);
+          } catch (error) {
+            dump("two-batch-accepted-first");
+            throw error;
+          }
+          try {
+            assertExactModel(projected(rejectedFirst, "π′"), expected);
+          } catch (error) {
+            dump("two-batch-rejected-first");
+            throw error;
+          }
         },
       );
     assertProperty(law(new Map()), {
