@@ -80,6 +80,7 @@ import {
   withSeamBoundariesInside,
 } from "./rangeBoundaries";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import { edgeChain, edgeChainPastRemoved } from "./resolvedEdges";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import {
   isAddedRevision,
@@ -1332,18 +1333,6 @@ type CutReach = {
   after: number;
 };
 
-/** `node` and its last (`end`) or first (`start`) child, theirs, and so on. */
-const edgeChain = (node: InlineNode, edge: "start" | "end"): InlineNode[] => {
-  const chain: InlineNode[] = [];
-  let current: InlineNode | undefined = node;
-  while (current !== undefined) {
-    chain.push(current);
-    const children = childNodes(current);
-    current = edge === "start" ? children?.at(0) : children?.at(-1);
-  }
-  return chain;
-};
-
 /**
  * Two records meeting at a cut recorded `depth` levels deep, folded as
  * {@link foldAtSeam} folds an emptied piece into the piece across from it.
@@ -1400,7 +1389,9 @@ const foldAtCut = ({
  * only came
  * after the cut, or never held it, and is no level of it; nor is one that
  * also holds a piece of `spanning`, the content that made the cut, as a
- * deletion made over the cut does. So the reach is the same whichever
+ * deletion made over the cut does. Such a change this resolution removes
+ * with its content is read past: the record beside it inside the same
+ * container meets the cut once it is gone. So the reach is the same whichever
  * changes earlier resolutions removed and whichever later edits wrapped a
  * piece: a cut level the resolution resolves away leaves its content a level
  * up, and one whose content goes takes the position with it.
@@ -1420,6 +1411,32 @@ const cutReach = ({
 }): CutReach => {
   const reach: CutReach = { levels: depth, before: 0, after: 0 };
   const open = { before: true, after: true };
+  const chains = { before: [...before], after: [...after] };
+  /**
+   * Reads one side's edge past a tracked change there that no record across
+   * from it matches and this resolution removes with its content: the
+   * record it stood in front of is what then meets the cut. Whether
+   * resolved at once or before the cut's own change, the cut reaches the
+   * same records.
+   */
+  const pastRemoved = (side: "before" | "after", index: number): boolean => {
+    const node = chains[side][index];
+    if (
+      node === undefined ||
+      !isTrackedWrapper(node) ||
+      !resolution.ids.has(node.info.id) ||
+      !removesContent(node, resolution.decision)
+    )
+      return false;
+    const chain = edgeChainPastRemoved(
+      chains[side],
+      index,
+      side === "before" ? "end" : "start",
+    );
+    if (chain === undefined) return false;
+    chains[side] = chain;
+    return true;
+  };
   /** How a record on one side's edge counts once the resolution is done. */
   const pass = (
     side: "before" | "after",
@@ -1438,8 +1455,8 @@ const cutReach = ({
   let counted = 0;
   let staying = 0;
   while (counted < depth) {
-    const near = before[nearIndex];
-    const far = after[farIndex];
+    const near = chains.before[nearIndex];
+    const far = chains.after[farIndex];
     if (near === undefined || far === undefined) break;
     const piecesOfOne =
       isTrackedWrapper(near) && isTrackedWrapper(far)
@@ -1451,11 +1468,13 @@ const cutReach = ({
           childNodes(far) !== undefined &&
           sameOwnFields(near, far);
     if (!piecesOfOne && isTrackedWrapper(near)) {
+      if (pastRemoved("before", nearIndex)) continue;
       pass("before", near);
       nearIndex += 1;
       continue;
     }
     if (!piecesOfOne && isTrackedWrapper(far)) {
+      if (pastRemoved("after", farIndex)) continue;
       pass("after", far);
       farIndex += 1;
       continue;
