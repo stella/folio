@@ -141,18 +141,19 @@ for (const { adapter, port } of [
     await page.evaluate(() => {
       globalThis.__folioCanonicalFuzzErrors = [];
     });
-    const beforeRefusal = await snapshot(page);
+    // A suggested contents list is recorded as inserted paragraphs.
+    const beforeSuggestion = await snapshot(page);
     await insert();
-    const refused = await snapshot(page);
-    expect(refused.document).toEqual(beforeRefusal.document);
-    expect(refused.selectionJSON).toEqual(beforeRefusal.selectionJSON);
+    const suggested = await snapshot(page);
+    expect(suggested.document).not.toEqual(beforeSuggestion.document);
+    expect(
+      JSON.stringify(suggested.document.package.document.content),
+    ).toContain('"author":');
     if (adapter === "React") {
       const errors = await page.evaluate(
         () => globalThis.__folioCanonicalFuzzErrors,
       );
-      expect(errors).toContainEqual(
-        expect.objectContaining({ gap: "tracked-hyperlink-resolution" }),
-      );
+      expect(errors).toEqual([]);
     }
   });
 }

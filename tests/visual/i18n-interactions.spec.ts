@@ -22,7 +22,7 @@ const BOLD_LABEL = {
 } as const;
 
 async function openPlayground(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/?session=canonical");
   await page.waitForSelector('[data-testid="folio-editor"]', {
     timeout: 15_000,
   });

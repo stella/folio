@@ -2,6 +2,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
+  openCanonicalEditor,
   openEditor,
 } from "./parity-fixture";
 
@@ -11,7 +12,7 @@ import {
 forEachAdapter(
   "getPositionPage resolves paragraph positions to rendered pages",
   async (adapter, { page }) => {
-    await openEditor(page, adapter, undefined, { session: "canonical" });
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
     await expect

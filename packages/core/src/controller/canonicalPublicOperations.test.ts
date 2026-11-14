@@ -18,6 +18,10 @@ import {
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
 import {
+  CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
+  CanonicalPublicOperations,
+} from "../canonical/canonicalPublicOperations";
+import {
   type CanonicalCommit,
   createCanonicalSession,
   publishCanonicalProjection,
@@ -30,10 +34,6 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
-import {
-  CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
-  CanonicalPublicOperations,
-} from "./canonicalPublicOperations";
 
 const setup = (source: string | Document = "alpha beta") => {
   const document =

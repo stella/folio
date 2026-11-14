@@ -588,6 +588,7 @@ import {
 } from "@stll/folio-core/prosemirror";
 import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import {
@@ -1824,7 +1825,7 @@ function handleNumberingValueApply(value: number): void {
   if (readOnly.value || !view || !factory) {
     return;
   }
-  factory(value)(view.state, (transaction) => view.dispatch(transaction), view);
+  executeEditorCommand(view, factory(value));
   view.focus();
 }
 
@@ -1834,8 +1835,7 @@ function handleTablePropertiesApply(properties: TablePropertiesCommand): void {
   if (!view || !factory) {
     return;
   }
-  const command = factory(properties);
-  command(view.state, (transaction) => view.dispatch(transaction), view);
+  executeEditorCommand(view, factory(properties));
   view.focus();
 }
 

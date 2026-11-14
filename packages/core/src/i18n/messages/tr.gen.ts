@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "Belgenin bu bölümü kilitli.",
       "editing": "Düzenleme",
       "editingDescription": "Belgeyi doğrudan düzenleyin",
+      "linkSuggestionUnavailable": "Bu bağlantı değişikliği izlenemez. Değişikliği Düzenleme modunda yapın veya yorumu ya da yer işaretini bağlantının dışına taşıyın.",
       "outlineDepthAll": "Tüm düzeyler",
       "outlineDepthLabel": "Başlıkları göster",
       "outlineDepthThree": "1–3. düzeyler",

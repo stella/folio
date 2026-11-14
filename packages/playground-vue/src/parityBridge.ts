@@ -74,17 +74,6 @@ export function buildParityBridge(
       const watermark = getDocumentWatermark(document);
       return watermark?.kind === "text" ? watermark.text : null;
     },
-    insertText: (text) => {
-      const view = liveView();
-      if (!view) {
-        return false;
-      }
-      const { state } = view;
-      view.dispatch(
-        state.tr.insertText(text, state.selection.from, state.selection.to),
-      );
-      return true;
-    },
     boldFirstWord: () => {
       const view = liveView();
       if (!view) {
@@ -145,54 +134,7 @@ export function buildParityBridge(
     },
     countSelectionRects: () =>
       document.querySelectorAll("[data-folio-selection-rect]").length,
-    setupContentControls: () => {
-      const view = liveView();
-      if (!view) {
-        return false;
-      }
-      const dropdown = view.state.schema.node(
-        "blockSdt",
-        {
-          sdtType: "dropdown",
-          tag: "state",
-          listItems: JSON.stringify([
-            { displayText: "California", value: "ca" },
-            { displayText: "New York", value: "ny" },
-          ]),
-        },
-        [
-          view.state.schema.node("paragraph", {}, [
-            view.state.schema.text("California"),
-          ]),
-        ],
-      );
-      const date = view.state.schema.node(
-        "blockSdt",
-        { sdtType: "date", tag: "effective" },
-        [
-          view.state.schema.node("paragraph", {}, [
-            view.state.schema.text("2026-01-15"),
-          ]),
-        ],
-      );
-      view.dispatch(
-        view.state.tr.replaceWith(0, view.state.doc.content.size, [
-          dropdown,
-          date,
-        ]),
-      );
-      return true;
-    },
-    dispatchClipboardEvent: (kind) => {
-      const view = liveView();
-      if (!view) {
-        return 0;
-      }
-      view.dom.dispatchEvent(
-        new ClipboardEvent(kind, { bubbles: true, cancelable: true }),
-      );
-      return getClipboardCallbackCount(kind);
-    },
+    getClipboardCallbackCount: (kind) => getClipboardCallbackCount(kind),
     getCurrentTableProperties: () => {
       const view = liveView();
       if (!view) {
@@ -236,43 +178,32 @@ export function buildParityBridge(
       });
       return count;
     },
-    commentFirstWord: () => {
-      const view = liveView();
-      if (!view) {
-        return false;
-      }
-      const commentType = view.state.schema.marks["comment"];
-      if (!commentType) {
-        return false;
-      }
-      let range: { from: number; to: number } | null = null;
-      view.state.doc.descendants((node, pos) => {
-        if (range) {
-          return false;
-        }
-        if (!node.isText || !node.text) {
-          return true;
-        }
-        const leading = node.text.length - node.text.trimStart().length;
-        const word = node.text.slice(leading).split(/\s+/)[0];
-        if (!word) {
-          return true;
-        }
-        range = { from: pos + leading, to: pos + leading + word.length };
-        return false;
-      });
-      if (!range) {
-        return false;
-      }
-      const { from, to } = range;
-      view.dispatch(
-        view.state.tr.addMark(
-          from,
-          to,
-          commentType.create({ commentId: 424242 }),
-        ),
+    commentFirstBlock: () => {
+      const ref = getRef();
+      const snapshot = ref?.createAIEditSnapshot();
+      const block = snapshot?.blocks.find(
+        (candidate) => candidate.text.trim() !== "",
       );
-      return view.state.doc.rangeHasMark(from, to, commentType);
+      if (!ref || !snapshot || !block) {
+        return false;
+      }
+      const result = ref.applyDocumentOperations({
+        undefinedReferences: "refuse",
+        snapshot,
+        batch: {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "parity-comment",
+              type: "commentOnBlock",
+              blockId: block.id,
+              comment: { text: "Parity comment" },
+            },
+          ],
+        },
+      });
+      return result.status === "committed" && result.applied.length === 1;
     },
     countCommentAnchors: () =>
       document.querySelectorAll(".paged-editor__pages [data-comment-id]")
