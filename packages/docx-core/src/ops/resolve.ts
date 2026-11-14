@@ -2524,7 +2524,13 @@ const deferSplitSeam = ({
       break;
     }
   }
-  if (leftEnd !== left.length - 1 || rightStart !== 0) {
+  // A seam with no source fragment left on one side joins nothing: an
+  // insertion standing there separates no pieces, so it defers no join.
+  if (
+    (leftEnd !== left.length - 1 || rightStart !== 0) &&
+    leftEnd >= 0 &&
+    rightStart < right.length
+  ) {
     const blockers = [
       ...left.slice(leftEnd + 1),
       ...right.slice(0, rightStart),
