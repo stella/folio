@@ -13,7 +13,6 @@ import { Plugin } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { withCanonicalHistory } from "../../canonicalCommands";
 import { createExtension } from "../create";
 import type { Extension, ExtensionContext, ExtensionRuntime } from "../types";
 
@@ -202,8 +201,8 @@ export const HistoryExtension: (
         inputBoundaryPlugin(options.newGroupDelay),
       ],
       commands: {
-        undo: () => withCanonicalHistory(undo, "undo"),
-        redo: () => withCanonicalHistory(redo, "redo"),
+        undo: () => undo,
+        redo: () => redo,
       },
       ...(options.shortcuts === "editor" && {
         keyboardShortcuts: {
