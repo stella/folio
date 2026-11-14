@@ -9,15 +9,11 @@ import type { ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
-import type { EditorState } from "prosemirror-state";
 import { IntlProvider, useTranslations } from "use-intl";
 
 import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
+import { canonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
 import type { HostShortcut } from "@stll/folio-core/managers/editorShortcuts";
-import {
-  hasStructuralChanges,
-  hasUntrackedChanges,
-} from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { DocxEditor } from "@stll/folio-react";
 import type { DocxEditorRef } from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
@@ -62,7 +58,6 @@ export const mountFolioEditor = (
         locale={host.init.locale}
         onCanonicalHistory={session.onCanonicalHistory}
         onModeChange={session.onModeChange}
-        onEditorViewReady={session.onEditorViewReady}
         onError={session.onError}
       />,
     );
@@ -91,7 +86,6 @@ type FolioEditorAppProps = {
   locale: string;
   onCanonicalHistory: Session["onCanonicalHistory"];
   onModeChange: Session["onModeChange"];
-  onEditorViewReady: Session["onEditorViewReady"];
   onError: Session["onError"];
 };
 
@@ -112,7 +106,6 @@ const FolioEditorApp = ({
   locale: hostLocale,
   onCanonicalHistory,
   onModeChange,
-  onEditorViewReady,
   onError,
 }: FolioEditorAppProps) => {
   const mode = useSyncExternalStore(modeStore.subscribe, modeStore.get);
@@ -135,7 +128,6 @@ const FolioEditorApp = ({
             onModeChange={onModeChange}
             hostShortcuts={HOST_SHORTCUTS}
             onCanonicalHistory={onCanonicalHistory}
-            onEditorViewReady={onEditorViewReady}
             onError={onError}
             preserveDocumentWhileLoading={true}
             // Headers and footers keep undo stacks of their own, which the host's
@@ -190,7 +182,6 @@ type LoadState =
 const createSession = (host: FolioEditorHost) => {
   const editor: RefObject<DocxEditorRef | null> = createRef();
   const mode = createModeStore(host.init.mode);
-  let bodyState: (() => EditorState) | null = null;
   let loaded: FolioEditorDocument = host.init.document;
   let loadState: LoadState = { type: "loading", generation: 0, error: null };
   let dirty = false;
@@ -255,31 +246,36 @@ const createSession = (host: FolioEditorHost) => {
     host.onLoaded(document.fileVersion);
   };
 
-  const saveStrategy = (): FolioEditorSaveStrategy => {
-    const state = bodyState?.();
-    if (state === undefined)
-      return { type: "full-repack", reason: "noBodyView" };
-    if (hasStructuralChanges(state))
-      return { type: "full-repack", reason: "structuralChange" };
-    if (hasUntrackedChanges(state))
-      return { type: "full-repack", reason: "untrackedChange" };
-    return { type: "selective-first" };
-  };
-
   const serialize = async () => {
     const ref = editor.current;
     if (ref === null || loadState.type !== "loaded") {
       throw new Error("The editor has no document to serialize.");
     }
     const fileVersion = loaded.fileVersion;
-    // Read before saving: a save clears the change tracker it is read from.
-    const strategy = saveStrategy();
-    const buffer = await ref.save();
+    // The save reports how it wrote the package: a declined selective patch
+    // is the full repack the host warns about, any other fallback an error.
+    const written: { strategy: FolioEditorSaveStrategy } = {
+      strategy: { type: "selective-first" },
+    };
+    const buffer = await ref.save({
+      onDiagnostic: (diagnostic) => {
+        if (diagnostic.type === "selectiveSaveRefused")
+          written.strategy = {
+            type: "full-repack",
+            reason: "selectiveDeclined",
+          };
+        else host.onError(canonicalSaveDiagnosticError(diagnostic).message);
+      },
+    });
     if (buffer === null) {
       throw new Error("folio could not serialize the document.");
     }
     setDirty(ref.hasPendingChanges());
-    return { bytes: new Uint8Array(buffer), fileVersion, strategy };
+    return {
+      bytes: new Uint8Array(buffer),
+      fileVersion,
+      strategy: written.strategy,
+    };
   };
 
   return {
@@ -294,9 +290,6 @@ const createSession = (host: FolioEditorHost) => {
       if (loadState.type !== "loaded") return;
       if (effect === "opened") host.onEdit();
       setDirty(editor.current?.hasPendingChanges() ?? false);
-    },
-    onEditorViewReady: (view: { state: EditorState } | null) => {
-      bodyState = view === null ? null : () => view.state;
     },
     onModeChange: (next: FolioEditingMode) => {
       mode.set(next);

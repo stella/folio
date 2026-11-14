@@ -15,7 +15,7 @@ describe("isEditorMessage", () => {
         requestId: 3,
         bytes: new Uint8Array([1]),
         fileVersion: "load-1",
-        strategy: { type: "full-repack", reason: "structuralChange" },
+        strategy: { type: "full-repack", reason: "selectiveDeclined" },
       }),
     ).toBe(true);
   });
@@ -49,7 +49,7 @@ describe("saveStrategyFlag", () => {
   test("maps the editor's strategy to folio save's", () => {
     expect(saveStrategyFlag({ type: "selective-first" })).toBe("selective");
     expect(
-      saveStrategyFlag({ type: "full-repack", reason: "untrackedChange" }),
+      saveStrategyFlag({ type: "full-repack", reason: "selectiveDeclined" }),
     ).toBe("full-repack");
   });
 });

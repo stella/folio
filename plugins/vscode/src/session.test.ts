@@ -28,7 +28,7 @@ const THEIRS = bytesOf("PK theirs");
 const SELECTIVE: FolioEditorSaveStrategy = { type: "selective-first" };
 const REPACK: FolioEditorSaveStrategy = {
   type: "full-repack",
-  reason: "structuralChange",
+  reason: "selectiveDeclined",
 };
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));

@@ -33,6 +33,16 @@ export class CanonicalSaveDiagnosticError extends CanonicalSaveDiagnosticErrorBa
   diagnostic: SaveDiagnostic;
 }> {}
 
+/** The error a host receives for a canonical save's fidelity fallback. */
+export const canonicalSaveDiagnosticError = (
+  diagnostic: SaveDiagnostic,
+): CanonicalSaveDiagnosticError =>
+  new CanonicalSaveDiagnosticError({
+    gap: CANONICAL_GAP.save,
+    diagnostic,
+    message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
+  });
+
 type SerializeCanonicalSaveOptions = {
   snapshot: CanonicalSaveSnapshot;
   options?: FolioGetDocxOptions | undefined;

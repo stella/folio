@@ -82,10 +82,6 @@ import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/Histor
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import {
-  createParagraphChangeTrackerPlugin,
-  markPackageChange,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
 } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
@@ -821,7 +817,6 @@ export const createHiddenEditorManager = (
       doc: session.projection.doc,
       plugins: [
         createDocumentNumberingPlugin(document.package.numbering),
-        createParagraphChangeTrackerPlugin(),
         createNativeSelectionRefreshPlugin(),
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? document.package.styles,
@@ -1876,7 +1871,6 @@ export const createHiddenEditorManager = (
         return false;
       }
     }
-    markPackageChange(bodyTransaction);
     bodyTransaction.setMeta("addToHistory", false);
     const bodyStaged = Result.try(() =>
       view?.state.applyTransaction(bodyTransaction),

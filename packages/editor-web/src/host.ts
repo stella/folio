@@ -32,20 +32,15 @@ export type FolioEditorInit = {
 
 /**
  * Why a save rewrote the whole package instead of patching the edited
- * paragraphs into the previous bytes: `structuralChange` (paragraphs added or
- * removed, or styles, headers, footers or section properties changed),
- * `untrackedChange` (an edit the change tracker cannot key to a paragraph), or
- * `noBodyView` (the body editor never started, so there was no change tracker
- * to patch from).
+ * paragraphs into the opened bytes: `selectiveDeclined` (the patch could not
+ * express the change, so the save fell back to a full repack).
  */
-export type FolioEditorRepackReason =
-  "structuralChange" | "untrackedChange" | "noBodyView";
+export type FolioEditorRepackReason = "selectiveDeclined";
 
 /**
- * How a serialization wrote the package, as far as the editor can tell before
- * it runs. `selective-first` patched the edited paragraphs into the previous
- * bytes unless the patch declined, in which case it fell back to a full
- * repack; folio-react does not report which of the two happened.
+ * How a serialization wrote the package, as the save reports it:
+ * `selective-first` patched the edited paragraphs into the opened bytes;
+ * `full-repack` rewrote the whole package.
  */
 export type FolioEditorSaveStrategy =
   | { readonly type: "selective-first" }

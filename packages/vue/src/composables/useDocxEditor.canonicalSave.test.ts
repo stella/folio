@@ -37,11 +37,7 @@ import {
 const { usePageSetupControls } = await import("./usePageSetupControls");
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
 import type { SaveDiagnostic } from "@stll/folio-core/docx/saveDiagnostics";
-import {
-  clearTrackedChanges,
-  getChangedParagraphIds,
-  hasStructuralChanges,
-} from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { paragraphChangeTrackerKey } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 
 import { describePackageDifferences } from "../../../../scripts/lib/corpus-invariants/model-equality";
 import {
@@ -1010,14 +1006,14 @@ test.each(CANONICAL_SAVE_SEEDS)(
         expect(adapter.getDocument()).toEqual(before);
         expect(api.redo()).toBe(true);
         expect(adapter.getDocument()).toEqual(canonical);
-        view.dispatch(clearTrackedChanges(view.state));
-        expect(getChangedParagraphIds(view.state).size).toBe(0);
+        // The save reads the session's journal: the canonical view carries no
+        // paragraph change tracker.
+        expect(paragraphChangeTrackerKey.getState(view.state)).toBeUndefined();
         const changedIds = new Set(
           api.captureCanonicalSave()?.changedBlockIds ??
             panic("Expected canonical save capture"),
         );
         expect(changedIds.has(untouchedId)).toBe(false);
-        expect(hasStructuralChanges(view.state)).toBe(false);
         const saved = await adapter.save({ selective: index % 2 === 0 });
         if (!saved) panic("Expected generated canonical save");
         const savedBytes = await saved.arrayBuffer();

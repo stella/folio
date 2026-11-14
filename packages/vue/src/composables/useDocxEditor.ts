@@ -86,7 +86,7 @@ import {
 } from "@stll/folio-core/controller/noteEditorManager";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import {
-  CanonicalSaveDiagnosticError,
+  canonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
@@ -1532,13 +1532,7 @@ export function useDocxEditor(
         });
         for (const diagnostic of result.diagnostics) {
           if (!serializationOptions?.onDiagnostic)
-            onError?.(
-              new CanonicalSaveDiagnosticError({
-                gap: CANONICAL_GAP.save,
-                diagnostic,
-                message: `Canonical save used a fidelity fallback: ${diagnostic.type} (${diagnostic.part}).`,
-              }),
-            );
+            onError?.(canonicalSaveDiagnosticError(diagnostic));
         }
         if (result.tripwireResult)
           onSelectiveSaveTripwire?.(result.tripwireResult);

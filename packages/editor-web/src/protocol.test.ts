@@ -39,7 +39,7 @@ const EDITOR_MESSAGES = {
     requestId: 7,
     bytes: new Uint8Array([0x50, 0x4b]),
     fileVersion: "1727344000000",
-    strategy: { type: "full-repack", reason: "structuralChange" },
+    strategy: { type: "full-repack", reason: "selectiveDeclined" },
   },
   serializeFailed: { type: "serializeFailed", requestId: 7, message: "Failed" },
   error: { type: "error", message: "Font failed to load" },
