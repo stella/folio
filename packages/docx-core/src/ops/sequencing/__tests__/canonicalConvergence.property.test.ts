@@ -216,6 +216,11 @@ const insertionAgainstDeletion = (
   );
 };
 
+// A split or a join that is not a seam join: it cuts or merges records exactly.
+const cutsRecordsExactly = (op: DocumentOp): boolean =>
+  op.type === DOCUMENT_OP_TYPES.SPLIT_INLINE ||
+  (op.type === DOCUMENT_OP_TYPES.JOIN_INLINE && op.ifAlike !== true);
+
 // An inverse whose preconditions or joins pin the range it restores.
 const holdsPreconditions = (op: DocumentOp): boolean => {
   switch (op.type) {
@@ -593,8 +598,9 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       const refusing = refusingOps(batch, tail);
       // No declared tracked pair is refused: the authority's order decides.
       // An inverse keeps its preconditions, which refuse by their own rule,
-      // and an insertion against a deletion's range is the typing and
-      // deletion class, with rules of its own.
+      // an insertion against a deletion's range is the typing and deletion
+      // class, and a hard inline split or join (rejoining or cutting a
+      // record exactly) the record cutting class, each with rules of its own.
       for (const op of restoredOps(opsAtRefusal(batch, tail)))
         for (const other of restoredOps(refusing)) {
           const kind = trackedTransform.trackedOrderPair(op, other);
@@ -606,7 +612,9 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
             named &&
             !holdsPreconditions(op) &&
             !holdsPreconditions(other) &&
-            !insertionAgainstDeletion(op, other)
+            !insertionAgainstDeletion(op, other) &&
+            !cutsRecordsExactly(op) &&
+            !cutsRecordsExactly(other)
           )
             outcome.trackedRefusals.push(
               `${kind}: ${String(opType)} over ${String(overType)}: ${result.reason.message} (${describeOps(batch.ops)} over ${describeOps(refusing)})`,
