@@ -493,7 +493,13 @@ const commutes = (
       effects: placed.value.effects,
     };
   }
-  return equalForStaleness(document, result);
+  const same = equalForStaleness(document, result);
+  if (!same)
+    // oxlint-disable-next-line no-console
+    console.log(
+      `SEED713 DIVERGE ${batch.opId} (${describeOps(batch.ops)}) over [${tail.map((remote) => `${remote.opId} (${describeOps(remote.ops)})`).join("; ")}] at ${JSON.stringify(differenceAt(document, result, "document")).slice(0, 2500)} OPS ${JSON.stringify(batch.ops).slice(0, 1500)} TAIL ${JSON.stringify(tail.map((remote) => remote.ops)).slice(0, 3000)}`,
+    );
+  return same;
 };
 
 const simulate = (peers: number, steps: readonly Step[]): Outcome => {
