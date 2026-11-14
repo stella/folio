@@ -61,6 +61,7 @@ import {
   projectMarkdownIdentities,
   projectSnapshotIdentities,
 } from "./identity.ts";
+import { holdsPendingSuggestions } from "./invariants.ts";
 import type { Finding } from "./known-issues.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Mode } from "./operations.ts";
@@ -1390,7 +1391,7 @@ export const startRelations = async ({
     afterStep: async (live, saved, context) => {
       const batches = recorded.splice(0);
       instrument(live);
-      const pending = mode === "suggested" && live.getChanges().length > 0;
+      const pending = mode === "suggested" && holdsPendingSuggestions(live);
       for (const entry of batches) {
         await replay(entry, context);
         await onCopies(entry, context);

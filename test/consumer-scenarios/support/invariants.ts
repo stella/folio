@@ -47,6 +47,15 @@ export const assertStoryInventory = (
   assert.equal(trailer, "", message);
 };
 
+/**
+ * Whether a reviewer holds suggestions the saved package leaves out until they
+ * are accepted: a tracked change, or a suggestion with none, such as a
+ * suggested comment.
+ */
+export const holdsPendingSuggestions = (reviewer: Reviewer): boolean =>
+  reviewer.getChanges().length > 0 ||
+  reviewer.exportPendingSuggestions().length > 0;
+
 /** Everything a person or a model can see of a reviewer's document. */
 export const visibleState = (reviewer: Reviewer) => ({
   // The number or bullet beside a block is part of what a reader sees: after

@@ -23,8 +23,10 @@ import {
 } from "../../../../test/property-testing";
 import { CanonicalCommentError } from "../canonical/canonicalComments";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
+import { fromMarkdown } from "../markdown/fromMarkdown";
 import {
   CANONICAL_GAP,
   type HeadlessReviewerSession,
@@ -189,4 +191,82 @@ describe("a canonical reviewer replies to and resolves comments", () => {
     },
     propertyTestTimeout(120_000),
   );
+});
+
+describe("a comment on words a tracked replacement removes", () => {
+  for (const mode of ["tracked-changes", "suggested"] as const) {
+    test(
+      `stays on the removed words (${mode}), as on the legacy reviewer`,
+      async () => {
+        const buffer = await ingested(
+          await createDocx(
+            fromMarkdown(
+              "The Supplier delivers the goods on time.\n\nThe Buyer pays.",
+            ),
+          ),
+        );
+        const engines = await Promise.all(
+          (["legacy", "canonical"] as const).map(async (session) => {
+            const reviewer = await open(buffer, session);
+            const block = reviewer
+              .snapshotStory({ type: "main" })
+              ?.blocks.find(({ kind }) => kind === "paragraph");
+            if (block?.kind !== "paragraph") throw new Error("no paragraph");
+            const run = (
+              operations: Parameters<
+                FolioDocxReviewer["applyDocumentOperations"]
+              >[0]["operations"],
+              batchMode: "direct" | "tracked-changes" | "suggested",
+            ) =>
+              reviewer.applyDocumentOperations(
+                {
+                  version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                  operations,
+                  mode: batchMode,
+                },
+                { undefinedReferences: "refuse" },
+              ).applied.length;
+            for (const quote of ["time", "The"])
+              expect(
+                run(
+                  [
+                    {
+                      type: "commentOnBlock",
+                      blockId: block.id,
+                      quote,
+                      comment: { text: `On ${quote}.` },
+                    },
+                  ],
+                  "tracked-changes",
+                ),
+              ).toBe(1);
+            expect(
+              run(
+                [
+                  {
+                    type: "replaceBlock",
+                    blockId: block.id,
+                    text: "Invoice delivery payment agreement supplier buyer payment term.",
+                  },
+                ],
+                mode,
+              ),
+            ).toBe(1);
+            const texts = (read: FolioDocxReviewer) =>
+              threads(read)
+                .map(({ text }) => text)
+                .sort();
+            return {
+              live: texts(reviewer),
+              saved: texts(await open(await reviewer.toBuffer(), session)),
+            };
+          }),
+        );
+        const [legacy, canonical] = engines;
+        expect(legacy?.live).toEqual(["On The.", "On time."]);
+        expect(canonical).toEqual(legacy);
+      },
+      propertyTestTimeout(30_000),
+    );
+  }
 });
