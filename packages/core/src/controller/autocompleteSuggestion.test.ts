@@ -7,11 +7,12 @@
  */
 
 import { panic } from "better-result";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import * as documentOps from "@stll/docx-core/ops";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
@@ -144,7 +145,8 @@ describe("autocomplete suggestion edits", () => {
     expect(structural.get()).toBe(IDLE_AUTOCOMPLETE);
   });
 
-  test("a peer's text before the anchor moves it; at the anchor lands after it", () => {
+  /** A peer's edits around a shown suggestion, and where its anchor goes. */
+  const expectPeerEditsMoveTheAnchor = () => {
     const insert = (offset: number, text: string): DocumentOp => ({
       type: DOCUMENT_OP_TYPES.INSERT_TEXT,
       at: at(offset),
@@ -156,6 +158,23 @@ describe("autocomplete suggestion edits", () => {
     expect(owner.get()).toMatchObject({ anchor: at(8), status: "shown" });
     owner.noteEdit({ type: "moved", ops: [insert(8, "zz")] });
     expect(owner.get()).toMatchObject({ anchor: at(8), status: "shown" });
+  };
+
+  test("a peer's text before the anchor moves it; at the anchor lands after it", () => {
+    expectPeerEditsMoveTheAnchor();
+  });
+
+  test("the peer check fails when the anchor is not moved over the edit", () => {
+    // Turn the mapping off: every position comes back where it was.
+    const transform = spyOn(
+      documentOps,
+      "transformPosition",
+    ).mockImplementation((position) => position);
+    try {
+      expect(expectPeerEditsMoveTheAnchor).toThrow();
+    } finally {
+      transform.mockRestore();
+    }
   });
 
   test("the next word takes its leading space and one space after it", () => {
