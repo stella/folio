@@ -4,6 +4,7 @@ import { encodeUtf8 } from "@stll/utf8-boundaries";
 
 import { INSERTION_SEAM_POLICIES } from "../../model/content";
 import type { IdLeaseKind } from "../idLease";
+import type { Gap } from "../leaves";
 import { cloneModel } from "../modelClone";
 import {
   type CommentState,
@@ -99,6 +100,17 @@ export type SequencedOpEffect =
        * content control) in two, its second half taking a new id.
        */
       cutIdentified: boolean;
+    }
+  | {
+      type: "setRunProps";
+      /**
+       * The records a direct format cut at both of its ends, outermost
+       * first, by the gaps before their first leaf and after their last one
+       * before the format: a run, and the text the range lay inside. Where
+       * a concurrent deletion holds the format's range and reaches past
+       * neither end of such a record, the deletion keeps it one record.
+       */
+      cutRecords?: readonly { from: Gap; to: Gap }[];
     }
   | {
       type: "touchedBlocks";
@@ -253,7 +265,7 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
 > = Object.freeze({
   insertText: NO_SEQUENCED_EFFECT,
   deleteRange: NO_SEQUENCED_EFFECT,
-  setRunProps: NO_SEQUENCED_EFFECT,
+  setRunProps: "setRunProps",
   setParagraphProps: NO_SEQUENCED_EFFECT,
   insertBlocks: NO_SEQUENCED_EFFECT,
   splitBlock: "splitBlock",
@@ -429,6 +441,18 @@ const commentState: Validator = object({
   records: array(object({ index: natural, comment })),
   anchors: array(
     object({ story: isOpStory, blockId, content: array(inlineContent) }),
+  ),
+  boundaries: optional(
+    array(
+      object({
+        story: isOpStory,
+        blockId,
+        depth: natural,
+        side: literal("before", "after"),
+        gap: natural,
+        node: blockContent,
+      }),
+    ),
   ),
 } satisfies Record<keyof CommentState, Validator>);
 
@@ -870,6 +894,18 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
             return object({
               type: literal("insertContent"),
               cutIdentified: boolean,
+            })(effect);
+          case "setRunProps":
+            return object({
+              type: literal("setRunProps"),
+              cutRecords: optional(
+                array(
+                  object({
+                    from: object({ offset: natural, zeroWidthBefore: natural }),
+                    to: object({ offset: natural, zeroWidthBefore: natural }),
+                  }),
+                ),
+              ),
             })(effect);
           case "touchedBlocks":
             return object({

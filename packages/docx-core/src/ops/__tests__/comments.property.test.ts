@@ -20,6 +20,7 @@ import {
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
 import {
+  commentAnchorsIn,
   commentDocumentIssue,
   freshCommentId,
   orphanRootCommentIds,
@@ -33,6 +34,7 @@ import { allocateCommentAnchorIds, planTrackedDeletion } from "../plan";
 import { documentStories, storyBody } from "../stories";
 import {
   type CommentOp,
+  DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   OP_STORIES,
@@ -453,7 +455,7 @@ test("comment inverses refuse changed owned text and preserve unrelated package 
   expect(applyDocumentOps(changed.document, applied.inverse).isErr()).toBe(
     true,
   );
-  expect(toOpEnvelope(op).schema).toBe(10);
+  expect(toOpEnvelope(op).schema).toBe(DOCUMENT_OP_SCHEMA_VERSION);
 });
 
 test("every comment package-operation generator exercises its exact inverse in every story", () => {
@@ -995,7 +997,7 @@ test("a loaded root comment without source anchors is accepted, preserved and re
   expect(undone.document).toStrictEqual(document);
 });
 
-test("a comment whose range opens between blocks is read, and kept from edits that would reach that block", () => {
+test("a comment whose range opens between blocks is read, removed, replied to and restored exactly", () => {
   const document: Document = {
     package: {
       document: {
@@ -1020,20 +1022,46 @@ test("a comment whose range opens between blocks is read, and kept from edits th
   ]);
   // The start between blocks pairs with the end inside the paragraph.
   expect(commentDocumentIssue(document, "all")).toBeUndefined();
-  for (const op of [
-    { type: DOCUMENT_OP_TYPES.DELETE_COMMENT, id: 300, scope: "thread" },
-    {
-      type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
-      comment: comment(301, "00000031", "reply"),
-      anchor: { kind: "reply", parentId: 300 },
-    },
-  ] satisfies CommentOp[]) {
-    const result = applyDocumentOp(document, op);
-    expect(result.isErr()).toBe(true);
-    expect(result.isErr() ? result.error.message : "").toContain(
-      "between blocks",
-    );
-  }
+  // Removing the thread takes its marker between blocks too, and the
+  // inverse puts it back in its place.
+  const removed = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+    id: 300,
+    scope: "thread",
+  }).unwrap();
+  expect(
+    removed.document.package.document.content.map(({ type }) => type),
+  ).toEqual(["paragraph", "paragraph"]);
+  expect(commentAnchorsIn(removed.document)).toEqual([]);
+  expect(commentDocumentIssue(removed.document, "all")).toBeUndefined();
+  expect(
+    applyDocumentOps(removed.document, removed.inverse).unwrap().document,
+  ).toStrictEqual(document);
+  // A reply's start goes at the start of the text the boundary opens on.
+  const replied = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+    comment: comment(301, "00000031", "reply"),
+    anchor: { kind: "reply", parentId: 300 },
+  }).unwrap();
+  const repliedTo = replied.document.package.document.content.at(2);
+  expect(
+    repliedTo?.type === "paragraph"
+      ? repliedTo.content.map((node) =>
+          "id" in node ? `${node.type}:${String(node.id)}` : node.type,
+        )
+      : [],
+  ).toEqual([
+    "commentRangeStart:301",
+    "run",
+    "commentRangeEnd:300",
+    "commentRangeEnd:301",
+    "commentReference:300",
+    "commentReference:301",
+  ]);
+  expect(commentDocumentIssue(replied.document, "all")).toBeUndefined();
+  expect(
+    applyDocumentOps(replied.document, replied.inverse).unwrap().document,
+  ).toStrictEqual(document);
   // Content and resolution touch no anchor, so they still apply.
   expect(
     applyDocumentOp(document, {

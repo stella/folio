@@ -138,6 +138,7 @@ export default library({
     "./.oxlint-plugins/folio-xml-escaping.ts",
     "./.oxlint-plugins/folio-xml-splice.ts",
     "./.oxlint-plugins/folio-relationship-ids.ts",
+    "./.oxlint-plugins/folio-annotation-ids.ts",
     "./.oxlint-plugins/folio-typecheck-proofs.ts",
     "./.oxlint-plugins/folio-harness-workspaces.ts",
     "./.oxlint-plugins/folio-test-dom.ts",
@@ -416,6 +417,19 @@ export default library({
       ],
       rules: {
         "folio-relationship-ids/no-empty-relationship-id": "error",
+      },
+    },
+    {
+      // An annotation id is a `w:id`, and `0` is the first real one, so absence
+      // is tested against `undefined` or `null`, never by truthiness. The fixtures
+      // verify this custom rule; repo-wide lint ignores their deliberate
+      // violation.
+      files: [
+        "packages/*/src/**/*.{ts,tsx}",
+        "test/__fixtures__/annotation-ids.*.ts",
+      ],
+      rules: {
+        "folio-annotation-ids/no-annotation-id-truthiness": "error",
       },
     },
     {

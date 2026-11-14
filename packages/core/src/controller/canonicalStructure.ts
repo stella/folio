@@ -582,6 +582,9 @@ export const prepareCanonicalCommands = (
         });
         break;
       }
+      case "selection":
+        // Run by the editor as it is; it changes no content.
+        break;
       case "insertBreak": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
