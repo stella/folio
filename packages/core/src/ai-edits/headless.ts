@@ -2137,13 +2137,41 @@ export class FolioDocxReviewer {
     const active = this.activeSuggestionIds();
     return this.pendingSuggestions.exportPendingSuggestions({
       activeSuggestionIds: active,
-      snapshotForStory: (story, commentIds) => {
-        const state = this.getEditableStoryState(story);
-        return state
-          ? createPendingSuggestionSourceSnapshot(state, commentIds)
-          : null;
-      },
+      snapshotForStory: (story, commentIds) =>
+        this.pendingSuggestionSource(story, commentIds),
     });
+  }
+
+  /**
+   * A story as a save writes it, every pending suggestion rejected: what a
+   * suggestion record's fingerprint describes. On the canonical engine it is
+   * read from a session over the document the save writes, so a reviewer
+   * reopened on the saved package reads the same story.
+   */
+  private pendingSuggestionSource(
+    story: FolioEditableDocumentStoryHandle,
+    commentIds: ReadonlySet<number>,
+  ): FolioAIEditSnapshot | null {
+    if (this.engine.type === "canonical") {
+      if (!this.getEditableStoryState(story)) return null;
+      const document = this.toDocument();
+      const created = createCanonicalSession(document, document.package.styles);
+      if (created.isErr()) throw created.error;
+      const saved = new FolioDocxReviewer({
+        baseDocument: document,
+        originalBuffer: this.originalBuffer,
+        state: canonicalReviewerState(created.value),
+        author: this.author,
+        engine: { type: "canonical", session: created.value },
+      }).getEditableStoryState(story);
+      return saved
+        ? createPendingSuggestionSourceSnapshot(saved, new Set())
+        : null;
+    }
+    const state = this.getEditableStoryState(story);
+    return state
+      ? createPendingSuggestionSourceSnapshot(state, commentIds)
+      : null;
   }
 
   /** Validate saved proposals against this document before restaging them. */
@@ -2153,12 +2181,8 @@ export class FolioDocxReviewer {
     return this.pendingSuggestions.loadPendingSuggestions({
       records,
       snapshotForStory: (story) => this.snapshotStory(story),
-      sourceSnapshotForStory: (story, commentIds) => {
-        const state = this.getEditableStoryState(story);
-        return state
-          ? createPendingSuggestionSourceSnapshot(state, commentIds)
-          : null;
-      },
+      sourceSnapshotForStory: (story, commentIds) =>
+        this.pendingSuggestionSource(story, commentIds),
       apply: (record, snapshot) => {
         const restage = {
           undefinedReferences: "refuse",
