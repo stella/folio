@@ -43,6 +43,7 @@ const DATE = "2026-01-01T00:00:00Z";
 const TYPED_REFUSALS = [
   "A link suggestion cannot strike text beside a marker inside the same link.",
   "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",
+  "A link suggestion cannot copy text inside a content control or a direction or smart tag wrapper.",
 ];
 
 type Piece =
@@ -54,7 +55,10 @@ type Piece =
       marker: "none" | "start" | "middle" | "end";
     }
   | { kind: "bookmark" }
-  | { kind: "insertion" | "deletion"; text: string; linked: boolean };
+  | { kind: "insertion" | "deletion"; text: string; linked: boolean }
+  | { kind: "math" }
+  | { kind: "move" }
+  | { kind: "control" | "bidi"; text: string; linked: boolean };
 
 const pieceArbitrary: fc.Arbitrary<Piece> = fc.oneof(
   fc.record({
@@ -73,6 +77,12 @@ const pieceArbitrary: fc.Arbitrary<Piece> = fc.oneof(
   fc.record({
     kind: fc.constantFrom("insertion" as const, "deletion" as const),
     text: fc.constantFrom("pq", "r"),
+    linked: fc.boolean(),
+  }),
+  fc.record({ kind: fc.constantFrom("math" as const, "move" as const) }),
+  fc.record({
+    kind: fc.constantFrom("control" as const, "bidi" as const),
+    text: fc.constantFrom("gh", "k"),
     linked: fc.boolean(),
   }),
 );
@@ -145,6 +155,55 @@ const documentOf = (pieces: readonly Piece[]): Document => {
           ],
         });
         break;
+      case "math":
+        content.push({
+          type: "mathEquation",
+          display: "inline",
+          ommlXml:
+            '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:r><m:t>x</m:t></m:r></m:oMath>',
+          plainText: "x",
+        });
+        break;
+      case "move": {
+        const id = bookmark++;
+        content.push(
+          {
+            type: "moveFromRangeStart",
+            id,
+            name: `move${String(id)}`,
+            author: "Other",
+            date: DATE,
+          },
+          { type: "moveFromRangeEnd", id },
+        );
+        break;
+      }
+      case "control":
+      case "bidi": {
+        const inner: ParagraphContent = piece.linked
+          ? {
+              type: "hyperlink",
+              href: "https://c.example/",
+              children: [textRun(piece.text)],
+            }
+          : textRun(piece.text);
+        content.push(
+          piece.kind === "control"
+            ? {
+                type: "inlineSdt",
+                properties: { sdtType: "richText", id: revision++ },
+                content: [inner],
+              }
+            : {
+                type: "inlineWrapper",
+                kind: "bidi",
+                control: "embedding",
+                direction: "rtl",
+                content: [inner],
+              },
+        );
+        break;
+      }
       default: {
         const unreachable: never = piece;
         return unreachable;
@@ -173,6 +232,14 @@ const physicalLength = (pieces: readonly Piece[]): number => {
         length += piece.texts.join("").length;
         break;
       case "bookmark":
+      case "move":
+        break;
+      case "math":
+        length += 1;
+        break;
+      case "control":
+      case "bidi":
+        length += piece.text.length;
         break;
       default: {
         const unreachable: never = piece;
@@ -227,7 +294,16 @@ type Token =
       color: string | undefined;
       styleId: string | undefined;
     }
-  | { marker: "bookmarkStart" | "bookmarkEnd"; id: number }
+  | {
+      marker:
+        | "bookmarkStart"
+        | "bookmarkEnd"
+        | "moveFromRangeStart"
+        | "moveFromRangeEnd";
+      id: number;
+    }
+  | { math: string | undefined; link: string | undefined }
+  | { container: "inlineSdt" | "inlineWrapper"; edge: "start" | "end" }
   | { emptyLink: string | undefined };
 
 /**
@@ -266,7 +342,18 @@ const authored = (document: Document): Token[] => {
           break;
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
           tokens.push({ marker: item.type, id: item.id });
+          break;
+        case "mathEquation":
+          tokens.push({ math: item.plainText, link });
+          break;
+        case "inlineSdt":
+        case "inlineWrapper":
+          tokens.push({ container: item.type, edge: "start" });
+          walk(item.content, link, change);
+          tokens.push({ container: item.type, edge: "end" });
           break;
         default:
           throw new TypeError(`Unexpected ${item.type} in a link fixture.`);
