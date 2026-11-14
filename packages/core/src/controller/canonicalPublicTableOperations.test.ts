@@ -565,6 +565,32 @@ const caseArbitrary = (
     }),
   );
 
+/** Whether the paragraph `anchor` is the last block of the body. */
+const endsTheBody = (body: Body, anchor: string): boolean =>
+  ALL_BODIES[body].xml.at(-1)?.startsWith(`<w:p w14:paraId="${anchor}"`) ??
+  false;
+
+type Outcomes = Awaited<ReturnType<typeof outcomes>>;
+
+/**
+ * A table put after the body's last paragraph: a body that ended with a
+ * paragraph still ends with one, an empty paragraph after the table, where
+ * the default engine lets the table end the body. Nothing else differs.
+ */
+const closedOutcomes = (outcome: Outcomes): Outcomes => {
+  const closed = (blocks: Outcomes["pending"]): Outcomes["pending"] => {
+    const last = blocks.at(-1);
+    return last !== undefined && "rows" in last
+      ? [...blocks, { text: [""] }]
+      : blocks;
+  };
+  return {
+    pending: closed(outcome.pending),
+    accepted: closed(outcome.accepted),
+    rejected: closed(outcome.rejected),
+  };
+};
+
 /** The operation in both engines gives the same package, pending, accepted and rejected. */
 const sameAsDefaultEngine =
   (
@@ -608,8 +634,11 @@ const sameAsDefaultEngine =
     }
     expect(canonical.skipped).toEqual(legacy.skipped);
     if (legacy.skipped.length > 0) return;
+    const expected = await outcomes(legacy.bytes);
     expect(await outcomes(canonical.bytes)).toEqual(
-      await outcomes(legacy.bytes),
+      operation.endsWith(" after") && endsTheBody(body, anchor)
+        ? closedOutcomes(expected)
+        : expected,
     );
   };
 
@@ -664,6 +693,24 @@ describe("table structure operations in the canonical session", () => {
       },
     );
   });
+
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`a table after the body's last paragraph leaves the body ending with a paragraph (${mode})`, async () => {
+      const source = await packageOf("two tables touching");
+      const op = INSERTIONS["insertTable after"]("10000002");
+      const legacy = await outcomes(
+        (await viaDefaultEngine(source, op, mode)).bytes,
+      );
+      const canonical = await viaCanonicalEngine(source, op, mode);
+      expect(canonical.refusals).toEqual([]);
+      expect(canonical.skipped).toEqual([]);
+      const resolved = await outcomes(canonical.bytes);
+      expect(resolved.pending.at(-1)).toEqual({ text: [""] });
+      expect(resolved.accepted.at(-1)).toEqual({ text: [""] });
+      // Only the closing paragraph differs from the default engine's package.
+      expect(resolved).not.toEqual(legacy);
+      expect(resolved).toEqual(closedOutcomes(legacy));
+    });
 
   test("resolve in the canonical session as the default engine resolves them", async () => {
     await assertProperty(
