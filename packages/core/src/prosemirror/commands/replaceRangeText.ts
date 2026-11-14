@@ -44,8 +44,5 @@ export const replaceRangeText = ({
       );
       return true;
     },
-    () =>
-      from === to && text === ""
-        ? []
-        : [{ type: "replaceText", from, to, text }],
+    () => undefined,
   );

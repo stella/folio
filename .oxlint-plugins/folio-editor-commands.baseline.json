@@ -12,6 +12,7 @@
   "packages/vue/src/components/ImageSelectionOverlay.vue": 1,
   "packages/vue/src/components/InlineHeaderFooterEditor.vue": 1,
   "packages/vue/src/composables/useCommentManagement.ts": 3,
+  "packages/vue/src/composables/useContextMenus.ts": 1,
   "packages/vue/src/composables/useDocxEditorRefApi.ts": 6,
   "packages/vue/src/composables/useFindReplace.ts": 1,
   "packages/vue/src/composables/useHistory.ts": 2,

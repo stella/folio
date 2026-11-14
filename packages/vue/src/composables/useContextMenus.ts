@@ -32,10 +32,6 @@ import {
   listNumberingMenuState,
   NO_LIST_NUMBERING_MENU,
 } from "@stll/folio-core/prosemirror";
-import {
-  buildPlainTextSlice,
-  pastePlainTextSlice,
-} from "@stll/folio-core/prosemirror/commands/pastePlainText";
 import { replaceRangeText } from "@stll/folio-core/prosemirror/commands/replaceRangeText";
 import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
@@ -415,10 +411,7 @@ export function useContextMenus(
           .then((text) => {
             // The read is async: the editor may have gone while it ran.
             if (text && !view.isDestroyed) {
-              pastePlainTextSlice(
-                view,
-                buildPlainTextSlice(text, view.state.schema),
-              );
+              view.dispatch(view.state.tr.insertText(text).scrollIntoView());
               opts.onPaste?.();
             }
             return undefined;
