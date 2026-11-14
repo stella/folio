@@ -56,6 +56,7 @@ import {
   type MintedList,
 } from "../ai-edits/newListNumbering";
 import {
+  cutsIntoNoteReference,
   type NoteReferenceLabels,
   noteReferenceSpansWithin,
   segmentsAroundNoteReferences,
@@ -2661,14 +2662,10 @@ export class CanonicalPublicOperations {
       operation.type === "replaceRange" ||
       operation.type === "replaceBlock";
     const references = noteReferenceSpansWithin(clean, start, end);
-    const cutsReference = clean.structuralBoundaries.some(
-      (boundary) =>
-        boundary.type === "noteReference" &&
-        start < boundary.offset + boundary.length &&
-        end > boundary.offset &&
-        (boundary.offset < start || boundary.offset + boundary.length > end),
-    );
-    if (cutsReference || (references.length > 0 && !replacesText))
+    if (
+      cutsIntoNoteReference(clean, start, end) ||
+      (references.length > 0 && !replacesText)
+    )
       return refusal("protectedReference");
     const segments = segmentsAroundNoteReferences(
       clean.text.slice(start, end),
