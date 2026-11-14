@@ -24,22 +24,25 @@ import { operationStory, operationTargets } from "./transform";
 const apartFromEdges = (
   point: TextPosition,
   op: DocumentOp,
-): { plain: TextPosition; covered?: TextPosition } | undefined => {
-  if ((point.zeroWidthBefore ?? 0) === 0) return undefined;
+):
+  | { plain: TextPosition; zeroWidthBefore: number; covered?: TextPosition }
+  | undefined => {
+  const zeroWidthBefore = point.zeroWidthBefore ?? 0;
+  if (zeroWidthBefore === 0) return undefined;
   const plain = { ...point, zeroWidthBefore: 0 };
   if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK)
     return op.at.blockId !== point.blockId || op.at.offset !== point.offset
-      ? { plain }
+      ? { plain, zeroWidthBefore }
       : undefined;
   if (op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE) return undefined;
-  if (op.from.blockId !== point.blockId) return { plain };
+  if (op.from.blockId !== point.blockId) return { plain, zeroWidthBefore };
   if (point.offset === op.from.offset || point.offset === op.to.offset)
     return undefined;
   return op.revision === undefined &&
     point.offset > op.from.offset &&
     point.offset < op.to.offset
-    ? { plain, covered: op.from }
-    : { plain };
+    ? { plain, zeroWidthBefore, covered: op.from }
+    : { plain, zeroWidthBefore };
 };
 
 /**
@@ -102,7 +105,7 @@ export const transformPosition = (
           point =
             apart === undefined
               ? mapped
-              : { ...mapped, zeroWidthBefore: point.zeroWidthBefore };
+              : { ...mapped, zeroWidthBefore: apart.zeroWidthBefore };
           continue;
         }
         // Formatting, inline record splits and joins, paragraph insertion
