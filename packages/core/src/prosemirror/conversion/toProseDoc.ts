@@ -3166,7 +3166,8 @@ function convertTableRow(
   // positions are as absent as omitted ones: they render as filler cells,
   // which keep PM's `(tableCell | tableHeader)+` row valid and save as
   // nothing, so the row is written back without a cell it never had.
-  const effectiveCells: readonly TableCell[] = row.cells;
+  const effectiveCells: readonly TableCell[] =
+    row.cells.length === 0 ? [{ type: "tableCell", content: [] }] : row.cells;
 
   // Track column index for mapping to columnWidths (accounting for colspan)
   let colIndex = gridBefore;
