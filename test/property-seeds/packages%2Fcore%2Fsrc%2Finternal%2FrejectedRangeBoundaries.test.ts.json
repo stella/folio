@@ -5,6 +5,12 @@
       "path": "110:1:4:4:5:8:8",
       "note": "Only a move range start directly followed by its end collapses into a point anchor, so the editor keeps the engine's order of other kept markers.",
       "date": "2026-10-25"
+    },
+    {
+      "seed": 1052922812,
+      "path": "235:4:3",
+      "note": "A move range end kept in a pending deletion nested in a rejected insertion, beside its start outside it, stays in that deletion in the editor as in the engine.",
+      "date": "2026-11-14"
     }
   ]
 }
