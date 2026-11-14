@@ -77,7 +77,6 @@ const open = (buffer: ArrayBuffer): Promise<Reviewer> =>
     session: "canonical",
   });
 
-/** What the operation is built from: one draw per choice it makes. */
 const batchOf = (
   operation: FolioDocumentOperation,
   mode: "direct" | "tracked-changes",
