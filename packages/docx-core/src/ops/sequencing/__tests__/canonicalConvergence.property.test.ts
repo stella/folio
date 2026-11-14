@@ -1453,6 +1453,17 @@ describe("canonical sequencing", () => {
     propertyTestTimeout(180_000),
   );
 
+  test("a pending batch dropped while rebasing takes only the batches that depend on it", () => {
+    const outcome = simulate(...independentAfterDropped);
+    // The typing inside the suggested erase is dropped; the typing in
+    // another paragraph after it is rebased as if it had never been made.
+    expect(outcome.dropped).toEqual(["edit-11"]);
+    expect(outcome.sequenced).toContain("edit-12");
+    expect(outcome.independentDrops).toEqual([]);
+    for (const document of outcome.documents)
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+  });
+
   test("an undo that puts back a change a concurrent peer decided is refused", () => {
     const outcome = simulate(...undoAgainstRepeatedDecision);
     expect(outcome.diverged).toEqual([]);
