@@ -305,9 +305,11 @@ describe("a canonical reviewer edits and resolves through its session", () => {
     async () => {
       const tally = new Map<EditOutcome, number>();
       await checkCoverageSample(generatedEdits(tally), COVERAGE_RUNS);
-      expect(tally.get("edited") ?? 0).toBeGreaterThanOrEqual(
-        COVERAGE_RUNS / 3,
-      );
+      // The whole tally is in the failure, so a shortfall names its outcomes.
+      expect({
+        reached: (tally.get("edited") ?? 0) >= COVERAGE_RUNS / 3,
+        tally: Object.fromEntries(tally),
+      }).toMatchObject({ reached: true });
     },
     propertyTestTimeout(120_000),
   );
