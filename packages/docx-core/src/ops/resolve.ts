@@ -1671,7 +1671,20 @@ const resolveList = (
           resolution.decision === REVISION_DECISIONS.REJECT &&
           (node.resolutionJoins?.remove ?? 0) > 0
         )
-          floating.set(out.length, {
+          (Reflect.get(globalThis, "__SEAM_TRACE") === true
+            ? console.error(
+                `SEAMTRACE float ${JSON.stringify({
+                  at: out.length,
+                  id: node.info.id,
+                  joins: node.resolutionJoins,
+                  prev: JSON.stringify(pending[index - 1]).slice(0, 200),
+                  next: JSON.stringify(pending[index + 1]).slice(0, 200),
+                  prevRemoved: sourceOwners.at(index - 1)?.state.type,
+                  nextRemoved: sourceOwners.at(index + 1)?.state.type,
+                })}`,
+              )
+            : undefined,
+          floating).set(out.length, {
             count: kept.length,
             depth: node.resolutionJoins?.remove ?? 0,
             before: index > 0 ? sourceOwners.at(index - 1) : undefined,
@@ -2093,6 +2106,27 @@ const resolveList = (
         source: kept.after,
         side: "after",
       });
+      if (Reflect.get(globalThis, "__SEAM_TRACE") === true)
+        console.error(
+          `SEAMTRACE place ${JSON.stringify({
+            recorded,
+            keptDepth: kept.depth,
+            count: kept.count,
+            beforeDepth,
+            afterDepth,
+            before:
+              before === undefined
+                ? null
+                : JSON.stringify(before).slice(0, 300),
+            after:
+              after === undefined ? null : JSON.stringify(after).slice(0, 300),
+            beforeOwner: beforeOccurrence?.owner === kept.before,
+            afterOwner: afterOccurrence?.owner === kept.after,
+            keptBeforeState: kept.before?.state.type,
+            keptAfterState: kept.after?.state.type,
+            exact: exactSeams.get(recorded),
+          })}`,
+        );
       const intoAfter =
         after === undefined || afterDepth === undefined
           ? undefined
@@ -2260,6 +2294,18 @@ const resolveList = (
           }) ?? panic("An as-far-as-alike merge always returns its records.");
       }
     }
+    if (Reflect.get(globalThis, "__SEAM_TRACE") === true)
+      console.error(
+        `SEAMTRACE met ${JSON.stringify({
+          recorded,
+          seam,
+          exactDepth,
+          merges: merges.has(recorded),
+          metLength: met.length,
+          left: JSON.stringify(left).slice(0, 300),
+          right: JSON.stringify(right).slice(0, 300),
+        })}`,
+      );
     if (met.length === 1) {
       const merged = met.at(0) ?? panic("A single merged record exists.");
       for (const [id, into] of rejoinedPieceIds({ left, right, merged }))

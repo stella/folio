@@ -207,10 +207,30 @@ test("a replacement keeps the id of another reviewer's record it cuts, in every 
             tracked.revisions,
             decision,
           );
-          assertExactModel(separately, together);
-          if (decision === REVISION_DECISIONS.REJECT)
-            assertExactModel(together, original);
-          else
+          try {
+            assertExactModel(separately, together);
+            if (decision === REVISION_DECISIONS.REJECT)
+              assertExactModel(together, original);
+          } catch (error) {
+            const steps: unknown[] = [];
+            let step = tracked.document;
+            for (const id of ids) {
+              step = resolve(step, [id], decision);
+              steps.push({ id, body: step.package.document.content });
+            }
+            console.error(
+              `L3DEBUG cut-piece ${JSON.stringify({
+                decision,
+                ids,
+                original: original.package.document.content,
+                tracked: tracked.document.package.document.content,
+                steps,
+                together: together.package.document.content,
+              })}`,
+            );
+            throw error;
+          }
+          if (decision !== REVISION_DECISIONS.REJECT)
             assertFreshIdentityEquivalent({
               actual: together,
               expected: direct,
