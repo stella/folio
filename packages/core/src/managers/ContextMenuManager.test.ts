@@ -35,7 +35,7 @@ const listNumberingAt = (markdown: string, text: string) => {
   const manager = new ContextMenuManager();
   manager.openMenu(
     { x: 0, y: 0 },
-    { state: stateWithCaretIn(markdown, text), cursorInTrackedChange: false },
+    { state: stateWithCaretIn(markdown, text), trackedChange: null },
   );
   return manager.getSnapshot().listNumbering;
 };

@@ -635,6 +635,7 @@ export const EXCLUSIVE_PARTS: Readonly<{
     readonly NOTES: "notes";
     readonly SETTINGS: "settings";
     readonly REVISIONS: "revisions";
+    readonly COMMENTS: "comments";
 }>;
 
 // @public

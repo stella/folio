@@ -329,6 +329,269 @@
         }
       },
       {
+        "type": "createComment",
+        "comment": {
+          "id": 400,
+          "author": "Reviewer",
+          "content": [
+            {
+              "type": "paragraph",
+              "paraId": "00001000",
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Comment"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "anchor": {
+          "kind": "point",
+          "at": {
+            "story": "main",
+            "blockId": "00000001",
+            "offset": 0
+          }
+        },
+        "undefinedFields": [
+          [
+            "comment",
+            "initials"
+          ]
+        ]
+      },
+      {
+        "type": "restoreCommentState",
+        "ids": [
+          400
+        ],
+        "scaffoldIds": {
+          "revision": [],
+          "control": []
+        },
+        "expected": {
+          "relationshipPresence": "present",
+          "relationships": [
+            {
+              "index": 0,
+              "key": "rId1",
+              "relationship": {
+                "id": "rId1",
+                "type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+                "target": "comments.xml"
+              }
+            }
+          ],
+          "listPresence": "present",
+          "records": [
+            {
+              "index": 0,
+              "comment": {
+                "id": 400,
+                "author": "Reviewer",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00001000",
+                    "content": [
+                      {
+                        "type": "run",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Comment"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "anchorKind": "point"
+              }
+            }
+          ],
+          "anchors": [
+            {
+              "story": "main",
+              "blockId": "00000001",
+              "content": [
+                {
+                  "type": "commentReference",
+                  "id": 400
+                },
+                {
+                  "type": "run",
+                  "formatting": {
+                    "bold": true
+                  },
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Alpha "
+                    }
+                  ]
+                },
+                {
+                  "type": "bookmarkStart",
+                  "id": 1,
+                  "name": "_Ref1"
+                },
+                {
+                  "type": "insertion",
+                  "info": {
+                    "id": 5,
+                    "author": "A",
+                    "date": "2026-01-02T03:04:05Z"
+                  },
+                  "content": [
+                    {
+                      "type": "run",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "beta"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "bookmarkEnd",
+                  "id": 1
+                },
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": " gamma"
+                    },
+                    {
+                      "type": "tab"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "state": {
+          "relationshipPresence": "absent",
+          "relationships": [],
+          "listPresence": "absent",
+          "records": [],
+          "anchors": [
+            {
+              "story": "main",
+              "blockId": "00000001",
+              "content": [
+                {
+                  "type": "run",
+                  "formatting": {
+                    "bold": true
+                  },
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Alpha "
+                    }
+                  ]
+                },
+                {
+                  "type": "bookmarkStart",
+                  "id": 1,
+                  "name": "_Ref1"
+                },
+                {
+                  "type": "insertion",
+                  "info": {
+                    "id": 5,
+                    "author": "A",
+                    "date": "2026-01-02T03:04:05Z"
+                  },
+                  "content": [
+                    {
+                      "type": "run",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "beta"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "bookmarkEnd",
+                  "id": 1
+                },
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": " gamma"
+                    },
+                    {
+                      "type": "tab"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "undefinedFields": [
+          [
+            "expected",
+            "records",
+            "0",
+            "comment",
+            "initials"
+          ]
+        ]
+      },
+      {
+        "type": "updateCommentContent",
+        "id": 400,
+        "content": [
+          {
+            "type": "paragraph",
+            "paraId": "00001000",
+            "content": [
+              {
+                "type": "run",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Edited"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "patch": {
+          "date": "2026-02-03T04:05:06Z"
+        }
+      },
+      {
+        "type": "setCommentResolution",
+        "id": 400,
+        "status": "resolved"
+      },
+      {
+        "type": "deleteComment",
+        "id": 400,
+        "scope": "thread"
+      },
+      {
         "type": "createNumberingInstance",
         "abstractNum": {
           "abstractNumId": 7,
