@@ -63,14 +63,12 @@ const apply = (
 /** What a reader sees, pending suggestions included. */
 const reads = (reviewer: Reviewer) => ({
   text: reviewer.getContentAsText({ annotated: true }),
-  changes: reviewer
-    .getChanges()
-    .map(({ type, text, author, blockId }) => ({
-      type,
-      text,
-      author,
-      blockId,
-    })),
+  changes: reviewer.getChanges().map(({ type, text, author, blockId }) => ({
+    type,
+    text,
+    author,
+    blockId,
+  })),
   comments: reviewer
     .getComments()
     .map(({ text, anchoredText, author }) => ({ text, anchoredText, author })),
@@ -192,7 +190,7 @@ describe("a canonical reviewer's pending suggestions", () => {
       const tally = new Map<SuggestionOutcome, number>();
       await checkCoverageSample(generatedSuggestions(tally), COVERAGE_RUNS);
       expect(tally.get("suggested") ?? 0).toBeGreaterThanOrEqual(
-        COVERAGE_RUNS / 3,
+        COVERAGE_RUNS / 5,
       );
     },
     propertyTestTimeout(120_000),

@@ -21,10 +21,14 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { CanonicalCommentError } from "../canonical/canonicalComments";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_GAP,
+  type HeadlessReviewerSession,
+} from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
@@ -90,7 +94,15 @@ const review = (reviewer: FolioDocxReviewer) => {
   return roots.length;
 };
 
-type CommentOutcome = "reviewed" | "noThreads" | "sessionRefused";
+type CommentOutcome =
+  "reviewed" | "noThreads" | "sessionRefused" | "commentRefused";
+
+/**
+ * The session's typed comment refusal: a thread without a source anchor is
+ * preserved read-only on the canonical engine.
+ */
+const isCommentRefusal = (error: unknown): boolean =>
+  CanonicalCommentError.is(error) && error.gap === CANONICAL_GAP.comments;
 
 const commentLaws = async (buffer: ArrayBuffer): Promise<CommentOutcome> => {
   let canonical: FolioDocxReviewer;
@@ -101,7 +113,14 @@ const commentLaws = async (buffer: ArrayBuffer): Promise<CommentOutcome> => {
     throw error;
   }
   const legacy = await open(buffer, "legacy");
-  if (review(canonical) === 0) return "noThreads";
+  let reviewed: number;
+  try {
+    reviewed = review(canonical);
+  } catch (error) {
+    if (isCommentRefusal(error)) return "commentRefused";
+    throw error;
+  }
+  if (reviewed === 0) return "noThreads";
   review(legacy);
   expect(threads(canonical)).toEqual(threads(legacy));
   const reopened = await open(await canonical.toBuffer(), "canonical");
