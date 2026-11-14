@@ -31,13 +31,6 @@ type IntentionalBreak = { dependent: string; range: string; reason: string };
 type IntentionalBreaks = Readonly<Record<string, readonly IntentionalBreak[]>>;
 
 const INTENTIONAL_BREAKS: IntentionalBreaks = {
-  archiver: [
-    {
-      dependent: "nitropack",
-      range: "^7.0.1",
-      reason: "archiver 8 resolves a dependency advisory",
-    },
-  ],
   glob: [
     {
       dependent: "@vercel/nft",
