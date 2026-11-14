@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "Dieser Teil des Dokuments ist gesperrt.",
       "editing": "Bearbeiten",
       "editingDescription": "Dokument direkt bearbeiten",
+      "linkSuggestionUnavailable": "Diese Linkänderung kann nicht nachverfolgt werden. Nehmen Sie sie im Modus Bearbeiten vor, oder verschieben Sie den Kommentar oder die Textmarke aus dem Link.",
       "outlineDepthAll": "Alle Ebenen",
       "outlineDepthLabel": "Überschriften anzeigen",
       "outlineDepthThree": "Ebenen 1–3",

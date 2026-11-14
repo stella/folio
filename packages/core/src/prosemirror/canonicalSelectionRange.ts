@@ -16,7 +16,7 @@ export const canonicalContentPosition = (
 export const canonicalSelectionRange = ({
   doc,
   selection,
-}: EditorState): {
+}: Pick<EditorState, "doc" | "selection">): {
   from: number;
   to: number;
 } => {

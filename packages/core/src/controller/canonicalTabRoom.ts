@@ -11,9 +11,10 @@ import {
 } from "@stll/docx-core/ops";
 
 import type { Document } from "../types/document";
-import type {
-  CanonicalPresenceChannel,
-  CanonicalPresenceState,
+import {
+  type CanonicalPresenceChannel,
+  type CanonicalPresenceState,
+  parseCanonicalPresence,
 } from "./canonicalPresence";
 import {
   type CanonicalRoomAuthority,
@@ -528,6 +529,23 @@ export const openCanonicalTabRoom = ({
   const notifyPresence = (peer: string, state: unknown): void => {
     for (const listener of [...presenceListeners]) listener(peer, state);
   };
+  /**
+   * Whether a state arriving from a tab is older than the one held from it:
+   * the same sender and instance, at a clock no later. Deliveries reorder,
+   * and the held state is what a listener subscribing later is handed, so
+   * it must be the sender's latest, as a viewer keeps it.
+   */
+  const olderThanHeld = (held: unknown, arriving: unknown): boolean => {
+    const before = parseCanonicalPresence(held);
+    const after = parseCanonicalPresence(arriving);
+    return (
+      before !== undefined &&
+      after !== undefined &&
+      before.actor === after.actor &&
+      before.instance === after.instance &&
+      after.clock <= before.clock
+    );
+  };
   const postPresence = (): void => {
     if (ownPresence !== null)
       send({ type: "presence", from: tab, state: ownPresence });
@@ -554,16 +572,25 @@ export const openCanonicalTabRoom = ({
           report("invalidMessage", "A lease answer is malformed.");
         return;
       }
-      case "presence":
+      case "presence": {
         if (message.from === tab) return;
+        const held = presenceStates.get(message.from);
         if (message.state === null) presenceStates.delete(message.from);
-        else
+        else if (
+          held !== undefined &&
+          olderThanHeld(held.state, message.state)
+        ) {
+          // The tab is alive; what it said last still stands.
+          held.heard = Date.now();
+          return;
+        } else
           presenceStates.set(message.from, {
             state: message.state,
             heard: Date.now(),
           });
         notifyPresence(message.from, message.state);
         return;
+      }
       case "presenceQuery":
         if (message.from !== tab) postPresence();
         return;

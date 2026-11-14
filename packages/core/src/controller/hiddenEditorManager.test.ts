@@ -2024,7 +2024,7 @@ test("selecting a table, a row or a column in a canonical session selects what t
   }
 });
 
-test("TOC view helper publishes through the controller and keeps handled refusal atomic", () => {
+test("TOC view helper publishes through the controller in editing and suggesting", () => {
   GlobalRegistrator.register();
   const host = document.createElement("div");
   document.body.append(host);
@@ -2058,13 +2058,12 @@ test("TOC view helper publishes through the controller and keeps handled refusal
     expect(
       manager.api.setCanonicalMode({ type: "suggesting", author: "Reviewer" }),
     ).toBe(true);
-    const state = view.state;
-    expect(insertTableOfContentsInView(view, { title: "Contents" })).toBe(
-      false,
-    );
-    expect(view.state).toBe(state);
+    // A suggested contents list is recorded, and undo takes it back whole.
+    expect(insertTableOfContentsInView(view, { title: "Contents" })).toBe(true);
+    expect(manager.api.getCanonicalDocument()).not.toEqual(accepted);
+    expect(gaps).toEqual([]);
+    expect(manager.api.undo()).toBe(true);
     expect(manager.api.getCanonicalDocument()).toEqual(accepted);
-    expect(gaps).toEqual([CANONICAL_GAP.trackedHyperlinkResolution]);
   } finally {
     manager.destroyView();
     host.remove();
