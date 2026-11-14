@@ -89,8 +89,8 @@ const paintedLines = (page: Page): Promise<Seen[]> =>
   });
 
 for (const [painter, url] of [
-  ["the default painter", "/"],
-  ["the display-list painter", "/?pageRenderer=display-list"],
+  ["the default painter", "/?session=canonical"],
+  ["the display-list painter", "/?session=canonical&pageRenderer=display-list"],
 ] as const) {
   test(`a row whose cells share no line boundary shows every line once, on ${painter}`, async ({
     page,

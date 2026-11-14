@@ -92,12 +92,6 @@ import type {
   FolioAIParagraphSpacing,
 } from "../ai-edits/types";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
-import { lockViolationBetween } from "../canonical/canonicalLockGuard";
-import {
-  type CanonicalCommit,
-  type CanonicalProjection,
-  type CanonicalSession,
-} from "../canonical/canonicalSession";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
 import {
   type ApplyFolioDocumentOperationsOptions,
@@ -136,6 +130,12 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
+import { lockViolationBetween } from "./canonicalLockGuard";
+import {
+  type CanonicalCommit,
+  type CanonicalProjection,
+  type CanonicalSession,
+} from "./canonicalSession";
 
 type CanonicalPublicOperationRefusal = NonNullable<
   FolioAIEditSkippedOperation["canonicalRefusal"]
