@@ -2,7 +2,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { act, createRef, useImperativeHandle, useRef, useState } from "react";
+import { act, createRef, useImperativeHandle, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
 import { panic } from "better-result";
@@ -54,6 +54,26 @@ afterAll(() => {
 const options = { matchCase: false, matchWholeWord: false };
 const noop = () => {};
 
+/** A mounted body editor over `fixture`; the host's document reads it back. */
+const mountBody = (fixture: Document) => {
+  const hidden = document.createElement("div");
+  document.body.append(hidden);
+  const view = new EditorView(hidden, {
+    state: EditorState.create({ doc: toProseDoc(fixture) }),
+  });
+  return {
+    view,
+    read: () =>
+      fromProseDoc(view.state.doc, fixture, {
+        stylesheetSource: { type: "package" },
+      }),
+    destroy: () => {
+      view.destroy();
+      hidden.remove();
+    },
+  };
+};
+
 const pendingOptionCases = [
   {
     option: "matchCase",
@@ -92,8 +112,8 @@ test.each(
   async (_option, command, replacement, scenario) => {
     const fixture = createEmptyDocument({ initialText: scenario.text });
     const before = structuredClone(fixture);
-    const bodyDoc = toProseDoc(fixture);
-    const applied: Document[] = [];
+    const body = mountBody(fixture);
+    const initialDoc = body.view.state.doc;
     const liveOptions = {
       matchCase: false,
       matchWholeWord: false,
@@ -106,9 +126,9 @@ test.each(
       const search = useFindReplace({
         containerRef,
         findReplace,
-        getDocumentState: () => fixture,
-        getBodyDoc: () => bodyDoc,
-        handleDocumentChange: (nextDocument) => applied.push(nextDocument),
+        getDocumentState: body.read,
+        getBodyDoc: () => body.view.state.doc,
+        getEditorView: () => body.view,
       });
       useImperativeHandle(handle, () => search);
       return null;
@@ -142,7 +162,7 @@ test.each(
             skippedCount: scenario.previousCount,
           });
       });
-      expect(applied).toEqual([]);
+      expect(body.view.state.doc).toBe(initialDoc);
       expect(fixture).toEqual(before);
       expect(operations().getFindResult()?.totalCount).toBe(
         scenario.refreshedCount,
@@ -161,17 +181,18 @@ test.each(
             skippedCount: 0,
           });
       });
-      expect(applied).toHaveLength(1);
+      expect(body.view.state.doc.textContent).toContain("changed");
     } finally {
       await act(async () => root.unmount());
+      body.destroy();
     }
   },
 );
 
 test("React uses the live query edit before its next debounced search", async () => {
   const fixture = createEmptyDocument({ initialText: "alpha beta" });
-  const bodyDoc = toProseDoc(fixture);
-  const applied: Document[] = [];
+  const body = mountBody(fixture);
+  const initialDoc = body.view.state.doc;
   const handle = createRef<ReturnType<typeof useFindReplace>>();
   const Harness = () => {
     const findReplace = useFindDialogState();
@@ -179,9 +200,9 @@ test("React uses the live query edit before its next debounced search", async ()
     const search = useFindReplace({
       containerRef,
       findReplace,
-      getDocumentState: () => fixture,
-      getBodyDoc: () => bodyDoc,
-      handleDocumentChange: (nextDocument) => applied.push(nextDocument),
+      getDocumentState: body.read,
+      getBodyDoc: () => body.view.state.doc,
+      getEditorView: () => body.view,
     });
     useImperativeHandle(handle, () => search);
     return null;
@@ -195,26 +216,22 @@ test("React uses the live query edit before its next debounced search", async ()
     await act(async () =>
       expect(operations().handleReplace("changed")).toBe(false),
     );
-    expect(applied).toEqual([]);
+    expect(body.view.state.doc).toBe(initialDoc);
     expect(operations().getFindResult()?.matches.at(0)?.text).toBe("beta");
     await act(async () =>
       expect(operations().handleReplace("changed")).toBe(true),
     );
-    expect(applied).toHaveLength(1);
-    expect(findInDocument(applied.at(0), "alpha", options)).toHaveLength(1);
-    expect(findInDocument(applied.at(0), "beta", options)).toHaveLength(0);
-    expect(findInDocument(applied.at(0), "changed", options)).toHaveLength(1);
+    expect(body.view.state.doc.textContent).toBe("alpha changed");
   } finally {
     await act(async () => root.unmount());
+    body.destroy();
   }
 });
 
 test.each(["current", "all"] as const)(
-  "React waits for the committed body after accepted %s replacement",
+  "React refreshes its result from the edited body after %s replacement",
   async (command) => {
-    let liveDocument = createEmptyDocument({ initialText: "hit" });
-    let bodyDoc = toProseDoc(liveDocument);
-    const applied: Document[] = [];
+    const body = mountBody(createEmptyDocument({ initialText: "hit" }));
     const handle = createRef<ReturnType<typeof useFindReplace>>();
     const Harness = () => {
       const findReplace = useFindDialogState();
@@ -222,9 +239,9 @@ test.each(["current", "all"] as const)(
       const search = useFindReplace({
         containerRef,
         findReplace,
-        getDocumentState: () => liveDocument,
-        getBodyDoc: () => bodyDoc,
-        handleDocumentChange: (nextDocument) => applied.push(nextDocument),
+        getDocumentState: body.read,
+        getBodyDoc: () => body.view.state.doc,
+        getEditorView: () => body.view,
       });
       useImperativeHandle(handle, () => search);
       return null;
@@ -241,50 +258,24 @@ test.each(["current", "all"] as const)(
       await act(async () => root.render(<Harness />));
       await act(async () => operations().handleFind("hit", options));
       await act(async () => expect(replace("hit", "changed")).toBe(true));
-      expect(applied).toHaveLength(1);
-      expect(operations().getFindResult()).toBeNull();
+      expect(body.view.state.doc.textContent).toBe("changed");
+      // The written body answers the active query at once.
+      expect(operations().getFindResult()?.totalCount).toBe(0);
       await act(async () => expect(replace("hit", "duplicate")).toBe(false));
-      await act(async () => operations().resetFindResult());
-      await act(async () =>
-        operations().handleFind("hit", { ...options, matchCase: true }),
-      );
-      liveDocument.package.headers = new Map([
-        [
-          "h-pending",
-          {
-            type: "header",
-            hdrFtrType: "default",
-            content: [
-              {
-                type: "paragraph",
-                content: [
-                  { type: "run", content: [{ type: "text", text: "header" }] },
-                ],
-              },
-            ],
-          },
-        ],
-      ]);
-      await act(async () => expect(replace("hit", "duplicate")).toBe(false));
-      expect(applied).toHaveLength(1);
-      expect(bodyDoc.textContent).toBe("hit");
+      expect(body.view.state.doc.textContent).toBe("changed");
 
-      liveDocument = applied.at(0) ?? panic("Accepted document missing");
-      bodyDoc = toProseDoc(liveDocument);
       await act(async () => operations().handleFind("changed", options));
       await act(async () => expect(replace("changed", "committed")).toBe(true));
-      expect(applied).toHaveLength(2);
-      expect(findInDocument(applied.at(1), "committed", options)).toHaveLength(
-        1,
-      );
+      expect(body.view.state.doc.textContent).toBe("committed");
     } finally {
       await act(async () => root.unmount());
+      body.destroy();
     }
   },
 );
 
 test.each(["current", "all"] as const)(
-  "React accepts an unchanged %s replacement without waiting for a body commit",
+  "React accepts an unchanged %s replacement without an edit",
   async (command) => {
     const fixture = createEmptyDocument({ initialText: "hit" });
     const host = document.createElement("div");
@@ -294,7 +285,6 @@ test.each(["current", "all"] as const)(
       state: EditorState.create({ doc: toProseDoc(fixture) }),
     });
     const originalState = view.state;
-    const applied: Document[] = [];
     const handle = createRef<ReturnType<typeof useFindReplace>>();
     const Harness = () => {
       const findReplace = useFindDialogState();
@@ -307,18 +297,7 @@ test.each(["current", "all"] as const)(
             stylesheetSource: { type: "package" },
           }),
         getBodyDoc: () => view.state.doc,
-        handleDocumentChange: (nextDocument) => {
-          applied.push(nextDocument);
-          const nextDoc = toProseDoc(nextDocument);
-          if (nextDoc.eq(view.state.doc)) return;
-          view.dispatch(
-            view.state.tr.replaceWith(
-              0,
-              view.state.doc.content.size,
-              nextDoc.content,
-            ),
-          );
-        },
+        getEditorView: () => view,
       });
       useImperativeHandle(handle, () => search);
       return null;
@@ -336,10 +315,8 @@ test.each(["current", "all"] as const)(
       await act(async () => operations().handleFind("hit", options));
       await act(async () => expect(replace("hit")).toBe(true));
       expect(view.state).toBe(originalState);
-      expect(applied).toEqual([]);
       await act(async () => operations().handleFind("hit", { ...options }));
       await act(async () => expect(replace("changed")).toBe(true));
-      expect(applied).toHaveLength(1);
       expect(view.state.doc.textContent).toBe("changed");
     } finally {
       await act(async () => root.unmount());
@@ -352,8 +329,8 @@ test.each(["current", "all"] as const)(
 
 test("React host search changes cannot relabel the mounted dialog result", async () => {
   const fixture = createEmptyDocument({ initialText: "alpha beta" });
-  const bodyDoc = toProseDoc(fixture);
-  const applied: Document[] = [];
+  const body = mountBody(fixture);
+  const initialDoc = body.view.state.doc;
   const handle = createRef<ReturnType<typeof useFindReplace>>();
   const Harness = () => {
     const findReplace = useFindDialogState();
@@ -361,9 +338,9 @@ test("React host search changes cannot relabel the mounted dialog result", async
     const search = useFindReplace({
       containerRef,
       findReplace,
-      getDocumentState: () => fixture,
-      getBodyDoc: () => bodyDoc,
-      handleDocumentChange: (nextDocument) => applied.push(nextDocument),
+      getDocumentState: body.read,
+      getBodyDoc: () => body.view.state.doc,
+      getEditorView: () => body.view,
     });
     useImperativeHandle(handle, () => search);
     return (
@@ -411,10 +388,11 @@ test("React host search changes cannot relabel the mounted dialog result", async
     expect(host.querySelector("input")?.value).toBe("alpha");
     expect(replaceButton()?.disabled).toBe(true);
     await act(async () => replaceButton()?.click());
-    expect(applied).toEqual([]);
+    expect(body.view.state.doc).toBe(initialDoc);
   } finally {
     await act(async () => root.unmount());
     host.remove();
+    body.destroy();
   }
 });
 
@@ -456,7 +434,6 @@ test.each(
           mark.attrs["revisionId"] === boundary.info.id,
       );
     });
-    const dispatchedDocuments: Document[] = [];
     const handle = createRef<ReturnType<typeof useFindReplace>>();
     const Harness = () => {
       const containerRef = useRef<HTMLDivElement>(null);
@@ -470,17 +447,7 @@ test.each(
           }),
         getBodyDoc: () => view.state.doc,
         displayMode: "no-markup",
-        handleDocumentChange: (nextDocument) => {
-          dispatchedDocuments.push(nextDocument);
-          const nextDoc = toProseDoc(nextDocument);
-          view.dispatch(
-            view.state.tr.replaceWith(
-              0,
-              view.state.doc.content.size,
-              nextDoc.content,
-            ),
-          );
-        },
+        getEditorView: () => view,
       });
       useImperativeHandle(handle, () => search);
       return null;
@@ -512,7 +479,6 @@ test.each(
               skippedCount: 1,
             });
         });
-        expect(dispatchedDocuments).toEqual([]);
         expect(view.state).toBe(originalState);
         expect(view.state.doc.toJSON()).toEqual(originalJSON);
         expect(fixture).toEqual(before);
@@ -587,9 +553,16 @@ const replacementFixture = (
 test.each(["body", "document"] as const)(
   "replacement refuses stale matches before the debounced refresh using %s identity",
   async (source) => {
-    let liveDocument = createEmptyDocument({ initialText: "hit" });
-    let bodyDoc = toProseDoc(liveDocument);
-    const applied: Document[] = [];
+    const body = mountBody(createEmptyDocument({ initialText: "hit" }));
+    // Another edit replaces the body behind the find result's back.
+    const replaceBody = (next: Document) =>
+      body.view.dispatch(
+        body.view.state.tr.replaceWith(
+          0,
+          body.view.state.doc.content.size,
+          toProseDoc(next).content,
+        ),
+      );
     const ref = createRef<ReturnType<typeof useFindReplace>>();
     const Harness = () => {
       const findReplace = useFindDialogState();
@@ -597,10 +570,9 @@ test.each(["body", "document"] as const)(
       const operations = useFindReplace({
         containerRef,
         findReplace,
-        getDocumentState: () =>
-          source === "body" ? structuredClone(liveDocument) : liveDocument,
-        ...(source === "body" ? { getBodyDoc: () => bodyDoc } : {}),
-        handleDocumentChange: (nextDocument) => applied.push(nextDocument),
+        getDocumentState: body.read,
+        ...(source === "body" ? { getBodyDoc: () => body.view.state.doc } : {}),
+        getEditorView: () => body.view,
       });
       useImperativeHandle(ref, () => operations);
       return null;
@@ -610,14 +582,12 @@ test.each(["body", "document"] as const)(
     try {
       await act(async () => root.render(<Harness />));
       for (const command of ["current", "all"] as const) {
-        liveDocument = createEmptyDocument({ initialText: "hit" });
-        bodyDoc = toProseDoc(liveDocument);
+        replaceBody(createEmptyDocument({ initialText: "hit" }));
         await act(async () => {
           expect(operations().handleFind("hit", options)?.totalCount).toBe(1);
         });
-        liveDocument = replacementFixture("field");
-        bodyDoc = toProseDoc(liveDocument);
-        const before = structuredClone(liveDocument);
+        replaceBody(replacementFixture("field"));
+        const before = body.view.state.doc;
         await act(async () => {
           if (command === "current")
             expect(operations().handleReplace("changed")).toBe(false);
@@ -629,8 +599,7 @@ test.each(["body", "document"] as const)(
               skippedCount: 1,
             });
         });
-        expect(applied).toEqual([]);
-        expect(liveDocument).toEqual(before);
+        expect(body.view.state.doc).toBe(before);
         expect(operations().getFindResult()?.totalCount).toBe(3);
         expect(
           operations().getFindResult()?.matches.at(0)?.replacement,
@@ -639,18 +608,17 @@ test.each(["body", "document"] as const)(
           reason: "field-result",
         });
       }
-      liveDocument = createEmptyDocument({ initialText: "hit" });
-      bodyDoc = toProseDoc(liveDocument);
+      replaceBody(createEmptyDocument({ initialText: "hit" }));
       await act(async () => {
         operations().handleFind("hit", options);
       });
       await act(async () => {
         expect(operations().handleReplace("changed")).toBe(true);
       });
-      expect(applied).toHaveLength(1);
-      expect(findInDocument(applied.at(0), "changed", options)).toHaveLength(1);
+      expect(body.view.state.doc.textContent).toBe("changed");
     } finally {
       await act(async () => root.unmount());
+      body.destroy();
     }
   },
 );
@@ -661,7 +629,6 @@ test.each(["current", "all"] as const)(
     const fixture = replacementFixture("hidden");
     const before = structuredClone(fixture);
     const bodyDoc = toProseDoc(fixture);
-    const applied: Document[] = [];
     const ref = createRef<ReturnType<typeof useFindReplace>>();
     const Harness = ({ mode }: { mode: "all-markup" | "no-markup" }) => {
       const findReplace = useFindDialogState();
@@ -672,7 +639,6 @@ test.each(["current", "all"] as const)(
         findReplace,
         displayMode: mode,
         getBodyDoc: () => bodyDoc,
-        handleDocumentChange: (nextDocument) => applied.push(nextDocument),
       });
       useImperativeHandle(ref, () => operations);
       return null;
@@ -699,7 +665,6 @@ test.each(["current", "all"] as const)(
           });
       });
       expect(operations().getFindResult()?.totalCount).toBe(0);
-      expect(applied).toEqual([]);
       expect(fixture).toEqual(before);
     } finally {
       await act(async () => root.unmount());
@@ -712,35 +677,26 @@ test.each(["field", "hidden", "ordinary"] as const)(
   async (kind) => {
     const fixture = replacementFixture(kind);
     const before = structuredClone(fixture);
-    const ref = createRef<{
-      operations: ReturnType<typeof useFindReplace>;
-      document: Document;
-    }>();
-    const applied: Document[] = [];
+    const body = mountBody(fixture);
+    const initialDoc = body.view.state.doc;
+    const ref = createRef<ReturnType<typeof useFindReplace>>();
     const Harness = () => {
-      const [currentDocument, setCurrentDocument] = useState(fixture);
       const findReplace = useFindDialogState();
       const containerRef = useRef<HTMLDivElement>(null);
       const operations = useFindReplace({
-        documentState: currentDocument,
+        getDocumentState: body.read,
+        getBodyDoc: () => body.view.state.doc,
+        getEditorView: () => body.view,
         containerRef,
         findReplace,
         // Review views refuse replacement; only the hidden fixture needs No Markup.
         displayMode: kind === "hidden" ? "no-markup" : "all-markup",
-        handleDocumentChange: (nextDocument) => {
-          applied.push(nextDocument);
-          setCurrentDocument(nextDocument);
-        },
       });
-      useImperativeHandle(ref, () => ({
-        operations,
-        document: currentDocument,
-      }));
+      useImperativeHandle(ref, () => operations);
       return null;
     };
     const root = createRoot(document.createElement("div"));
-    const operations = () =>
-      ref.current?.operations ?? panic("Find hook handle missing");
+    const operations = () => ref.current ?? panic("Find hook handle missing");
     try {
       await act(async () => root.render(<Harness />));
       await act(async () => {
@@ -750,16 +706,10 @@ test.each(["field", "hidden", "ordinary"] as const)(
         expect(operations().handleReplace("changed")).toBe(kind === "ordinary");
       });
       if (kind === "ordinary") {
-        expect(applied).toHaveLength(1);
-        expect(
-          findInDocument(ref.current?.document, "changed", options),
-        ).toHaveLength(1);
-        expect(
-          findInDocument(ref.current?.document, "hit", options),
-        ).toHaveLength(0);
+        expect(body.view.state.doc.textContent).toBe("changed");
         return;
       }
-      expect(applied).toEqual([]);
+      expect(body.view.state.doc).toBe(initialDoc);
       await act(async () => {
         expect(
           operations().handleReplaceAll(
@@ -774,32 +724,28 @@ test.each(["field", "hidden", "ordinary"] as const)(
         );
       });
       if (kind === "hidden") {
-        expect(applied).toEqual([]);
-        expect(ref.current?.document).toEqual(before);
+        expect(body.view.state.doc).toBe(initialDoc);
+        expect(fixture).toEqual(before);
         return;
       }
-      expect(applied).toHaveLength(1);
-      const currentParagraph =
-        ref.current?.document.package.document.content.at(0);
+      // The field keeps its result; only the ordinary text is replaced.
+      const written = body.read();
+      expect(findInDocument(written, "hit", options)).toHaveLength(2);
+      expect(findInDocument(written, "changed", options)).toHaveLength(1);
+      const paragraph = written.package.document.content.at(0);
       const originalParagraph = before.package.document.content.at(0);
-      expect(currentParagraph?.type).toBe("paragraph");
       if (
-        currentParagraph?.type !== "paragraph" ||
+        paragraph?.type !== "paragraph" ||
         originalParagraph?.type !== "paragraph"
       )
         panic("Replacement fixture paragraph missing");
-      expect(currentParagraph.content.at(0)).toEqual(
-        originalParagraph.content.at(0),
+      expect(paragraph.content.at(0)?.type).toBe(
+        originalParagraph.content.at(0)?.type,
       );
-      expect(
-        findInDocument(ref.current?.document, "hit", options),
-      ).toHaveLength(2);
-      expect(
-        findInDocument(ref.current?.document, "changed", options),
-      ).toHaveLength(1);
       expect(fixture).toEqual(before);
     } finally {
       await act(async () => root.unmount());
+      body.destroy();
     }
   },
 );
@@ -851,7 +797,6 @@ test.each(DISPLAY_MODES.filter((mode) => mode !== "all-markup"))(
         getEditorState: () => editorState,
         displayMode: markupView,
         containerRef,
-        handleDocumentChange: noop,
         findReplace,
       });
       useImperativeHandle(ref, () => ({
@@ -892,7 +837,6 @@ test("query and document resets clear manager navigation, reactive result, and d
     const operations = useFindReplace({
       documentState: document,
       containerRef,
-      handleDocumentChange: noop,
       findReplace,
     });
     useImperativeHandle(
@@ -972,7 +916,6 @@ test.each([true, false])(
       const operations = useFindReplace({
         documentState: fixture,
         containerRef,
-        handleDocumentChange: noop,
         findReplace,
         readOnlyReason: readOnly ? "host-read-only" : null,
         onFindResultChange: (result) => notifications.push(result),
@@ -1174,7 +1117,6 @@ test.each(["body", "header"] as const)(
         documentState: fixture,
         getBodyDoc: () => bodyDoc,
         getLayout: () => layout,
-        handleDocumentChange: noop,
       });
       useImperativeHandle(handle, () => search);
       return null;
@@ -1241,7 +1183,6 @@ test.each(["collapsed", "visible", "deferred"] as const)(
         findReplace,
         documentState: fixture,
         getBodyDoc: () => bodyDoc,
-        handleDocumentChange: noop,
         selectMatch: (match) => {
           expect(match.commentId).toBe(8);
           events.push("activate");
@@ -1316,7 +1257,6 @@ test("React keeps the current match after an older unmounted page finishes mount
       documentState: fixture,
       getBodyDoc: () => bodyDoc,
       getLayout: () => layout,
-      handleDocumentChange: noop,
     });
     useImperativeHandle(handle, () => search);
     return null;
@@ -1378,7 +1318,6 @@ test("switching markup views refreshes active results and preserves authored sel
       getEditorState: () => state,
       displayMode: markupView,
       containerRef,
-      handleDocumentChange: noop,
       findReplace,
     });
     useImperativeHandle(ref, () => ({
@@ -1423,14 +1362,14 @@ test("replacement spanning a hidden revision is refused without changing saved b
       '<w:p><w:r><w:t>left</w:t></w:r><w:del w:id="1" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"><w:r><w:delText xml:space="preserve"> hidden </w:delText></w:r></w:del><w:r><w:t>right</w:t></w:r></w:p>' +
       SECTION(),
   });
-  let currentDocument = await parseDocx(input, {
+  const parsed = await parseDocx(input, {
     preloadFonts: false,
     detectVariables: false,
   });
-  let state = EditorState.create({ doc: toProseDoc(currentDocument) });
-  const authored = state.doc;
+  const body = mountBody(parsed);
+  const authored = body.view.state.doc;
   const savedBefore = new Uint8Array(
-    await repackDocx(currentDocument, { updateModifiedDate: false }),
+    await repackDocx(body.read(), { updateModifiedDate: false }),
   );
   const refusals: EditorReadOnlyReason[] = [];
   const ref = createRef<FindHarnessRef>();
@@ -1438,15 +1377,12 @@ test("replacement spanning a hidden revision is refused without changing saved b
     const findReplace = useFindDialogState();
     const containerRef = useRef<HTMLDivElement>(null);
     const operations = useFindReplace({
-      getDocumentState: () => currentDocument,
-      getEditorState: () => state,
+      getDocumentState: body.read,
+      getEditorState: () => body.view.state,
+      getEditorView: () => body.view,
       displayMode: markupView,
       onReadonlyEditAttempt: (reason) => refusals.push(reason),
       containerRef,
-      handleDocumentChange: (document) => {
-        currentDocument = document;
-        state = EditorState.create({ doc: toProseDoc(document) });
-      },
       findReplace,
     });
     useImperativeHandle(ref, () => ({
@@ -1478,10 +1414,10 @@ test("replacement spanning a hidden revision is refused without changing saved b
         skippedCount: 1,
       });
     });
-    expect(state.doc).toBe(authored);
+    expect(body.view.state.doc).toBe(authored);
     expect(
       new Uint8Array(
-        await repackDocx(currentDocument, { updateModifiedDate: false }),
+        await repackDocx(body.read(), { updateModifiedDate: false }),
       ),
     ).toEqual(savedBefore);
     expect(refusals).toEqual(["review-display-mode", "review-display-mode"]);
@@ -1490,7 +1426,7 @@ test("replacement spanning a hidden revision is refused without changing saved b
       getOperations().handleFind("left", options);
       expect(getOperations().handleReplace("replacement")).toBe(true);
     });
-    expect(state.doc.textContent).toBe("replacement hidden right");
+    expect(body.view.state.doc.textContent).toBe("replacement hidden right");
     await act(async () => {
       getOperations().handleFind("right", options);
       expect(getOperations().handleReplaceAll("right", "end", options)).toEqual(
@@ -1500,8 +1436,9 @@ test("replacement spanning a hidden revision is refused without changing saved b
         },
       );
     });
-    expect(state.doc.textContent).toBe("replacement hidden end");
+    expect(body.view.state.doc.textContent).toBe("replacement hidden end");
   } finally {
     await act(async () => root.unmount());
+    body.destroy();
   }
 });

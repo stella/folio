@@ -1,31 +1,17 @@
 /**
  * FindReplaceManager
  *
- * Framework-agnostic find/replace result cursor and replace orchestration.
- * Extracted from the React `useFindReplace` hook (the document-aware half).
+ * Framework-agnostic find result cursor.
  *
- * Owns the active find result (the matches plus the cursor index) and runs the
- * document-level replace operations. The shared findReplace utility scans
- * stories, and findMatchView projects view-only highlights. Adapters bind
- * dialog state and document access. The manager is generic over the adapter's match shape
- * and only reads each match's paragraph-relative offsets via `FindMatchPosition`,
- * so a richer adapter match (content index, matched text) round-trips untouched.
+ * Owns the active find result (the matches plus the cursor index). The shared
+ * findReplace utility scans stories, findMatchView projects view-only
+ * highlights, and replaceFindMatches writes replacements through the body
+ * editor. Adapters bind dialog state and document access. The manager is
+ * generic over the adapter's match shape, so a richer adapter match (content
+ * index, matched text) round-trips untouched.
  */
 
-import type { OpStory } from "@stll/docx-core/ops";
-
 import type { FindMatchPosition } from "../prosemirror/findReplaceSelection";
-import type { Document } from "../types/document";
-import type { ReadonlyDocument } from "../types/documentModel";
-import {
-  type ReplaceAllSummary,
-  type ReplaceEligibility,
-  replaceEligibility,
-} from "../utils/findReplace";
-import {
-  replaceTextInDocument,
-  replaceTextRangesInDocument,
-} from "../utils/replaceText";
 
 export type FindDirection = "next" | "previous";
 
@@ -33,15 +19,6 @@ export type FindReplaceResult<TMatch> = {
   matches: TMatch[];
   totalCount: number;
   currentIndex: number;
-};
-
-/**
- * A replace-all's counts and the document it wrote. `document` is null when
- * the document could not be copied: nothing was replaced and every match
- * counts as skipped.
- */
-export type ReplaceAllOutcome = ReplaceAllSummary & {
-  document: Document | null;
 };
 
 /**
@@ -64,19 +41,7 @@ export const getAdjacentFindIndex = (
   return (currentIndex + 1) % totalCount;
 };
 
-const toReplaceRange = (match: FindMatchPosition) => ({
-  start: { paragraphIndex: match.paragraphIndex, offset: match.startOffset },
-  end: { paragraphIndex: match.paragraphIndex, offset: match.endOffset },
-});
-
-type ReplaceableFindPosition = FindMatchPosition & {
-  story?: OpStory;
-  textBoxIndex?: number;
-  commentId?: number;
-  replacement: ReplaceEligibility;
-};
-
-export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
+export class FindReplaceManager<TMatch extends FindMatchPosition> {
   private result: FindReplaceResult<TMatch> | null = null;
 
   /** The active find result, or null when there is no active search. */
@@ -138,75 +103,5 @@ export class FindReplaceManager<TMatch extends ReplaceableFindPosition> {
     }
     this.result = { ...result, currentIndex: index };
     return { match, index };
-  }
-
-  /**
-   * Replace the current match's text. Returns the new document, or null when
-   * there is no current match or the replace fails.
-   */
-  replaceCurrent(
-    document: ReadonlyDocument,
-    replaceText: string,
-  ): Document | null {
-    const result = this.result;
-    if (!result || result.matches.length === 0) {
-      return null;
-    }
-
-    const match = result.matches[result.currentIndex];
-    if (!match || replaceEligibility(match).status === "blocked") {
-      return null;
-    }
-
-    try {
-      return replaceTextInDocument(
-        document,
-        toReplaceRange(match),
-        replaceText,
-      );
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Replace every match. Matches are replaced from the end of the document
-   * backwards so earlier offsets stay valid as the text shifts. Ineligible
-   * matches are skipped and counted. Clears the active result, or returns null
-   * when there is nothing to replace.
-   */
-  replaceAll(
-    document: ReadonlyDocument,
-    matches: readonly TMatch[],
-    replaceText: string,
-  ): ReplaceAllOutcome | null {
-    if (matches.length === 0) {
-      return null;
-    }
-
-    const eligibleMatches = matches.filter(
-      (match) => replaceEligibility(match).status === "allowed",
-    );
-    const sortedMatches = [...eligibleMatches].toSorted((a, b) => {
-      if (a.paragraphIndex !== b.paragraphIndex) {
-        return b.paragraphIndex - a.paragraphIndex;
-      }
-      return b.startOffset - a.startOffset;
-    });
-
-    // One copy of the document for the whole batch, not one per match.
-    const {
-      document: nextDocument,
-      replacedCount,
-      failedCount,
-    } = replaceTextRangesInDocument(
-      document,
-      sortedMatches.map((match) => toReplaceRange(match)),
-      replaceText,
-    );
-    const skippedCount = matches.length - eligibleMatches.length + failedCount;
-
-    if (replacedCount > 0) this.result = null;
-    return { document: nextDocument, replacedCount, skippedCount };
   }
 }

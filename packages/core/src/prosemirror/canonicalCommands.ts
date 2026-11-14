@@ -88,6 +88,7 @@ export type CanonicalCommandIntent =
       href: string;
       tooltip?: string;
     }
+  | { type: "replaceText"; from: number; to: number; text: string }
   | { type: "formatRun"; from: number; to: number; patch: RunPropsPatch }
   | { type: "formatParagraph"; at: number; patch: ParagraphPropsPatch }
   | { type: "toggleList"; kind: "bullet" | "decimal" }

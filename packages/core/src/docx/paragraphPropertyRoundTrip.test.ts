@@ -11,7 +11,6 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import type { Document, Paragraph } from "../types/document";
-import { replaceTextInDocument } from "../utils/replaceText";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import {
   assignParagraphPropertySource,
@@ -265,34 +264,6 @@ describe("paragraph properties survive a no-edit full repack", () => {
       canonicalElement(
         await firstParagraphProperties(
           await repackDocx(cleaned, { updateModifiedDate: false }),
-        ),
-      ),
-    ).toBe(before);
-  });
-
-  test("find-and-replace cloning preserves untouched paragraph properties", async () => {
-    const source = await documentWithSourceProperties();
-    const before = canonicalElement(await firstParagraphProperties(source));
-    const parsed = await parseDocx(source, { preloadFonts: false });
-
-    const replaced = replaceTextInDocument(
-      parsed,
-      {
-        start: { paragraphIndex: 0, offset: 0 },
-        end: { paragraphIndex: 0, offset: 4 },
-      },
-      "Edited",
-    );
-    expect(firstParagraph(replaced).content).not.toEqual(
-      firstParagraph(parsed).content,
-    );
-    expect(getParagraphPropertySource(firstParagraph(replaced))).toEqual(
-      getParagraphPropertySource(firstParagraph(parsed)),
-    );
-    expect(
-      canonicalElement(
-        await firstParagraphProperties(
-          await repackDocx(replaced, { updateModifiedDate: false }),
         ),
       ),
     ).toBe(before);

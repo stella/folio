@@ -65,10 +65,11 @@ export async function openCanonicalEditor(
   page: Page,
   adapter: AdapterFixture,
   fixture = DEFAULT_FIXTURE,
+  mode: "editing" | "suggesting" = "editing",
 ): Promise<void> {
   await openEditorAt(
     page,
-    `${adapter.baseUrl}/?session=canonical&file=${fixture}`,
+    `${adapter.baseUrl}/?session=canonical&file=${fixture}${mode === "suggesting" ? "&mode=suggesting" : ""}`,
   );
 }
 
