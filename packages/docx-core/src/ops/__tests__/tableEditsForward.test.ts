@@ -403,7 +403,7 @@ describe("independent table forward oracles", () => {
   );
 
   test(
-    "mixed-chain merges preserve nested content; horizontal splits preserve owners and refuse vertical groups",
+    "mixed-chain merges preserve nested content; splits preserve owners across columns and rows",
     () => {
       // A merge that drops continuation/nested content passes snapshot restoration. Pin every moved block and new empty slot.
       assertProperty(
@@ -455,20 +455,50 @@ describe("independent table forward oracles", () => {
               rowIndex === 0 ? "restart" : "continue",
             );
           }
-          for (const row of mergedTable.rows) {
-            const first = row.cells.at(0)?.content.at(0);
-            if (first?.type !== "paragraph" || !first.paraId)
-              throw new Error("Merged owner paragraph missing.");
-            refused(
-              merged.document,
-              {
-                ...address(first.paraId),
-                type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-                newBlockIds: [],
-              },
-              DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-            );
-          }
+          // Splitting the merge gives each row its own cells again: the
+          // first keeps the row's content and identity, the rest are new.
+          const owner = mergedTable.rows.at(0)?.cells.at(0)?.content.at(0);
+          if (owner?.type !== "paragraph" || !owner.paraId)
+            throw new Error("Merged owner paragraph missing.");
+          const unmerged = tableOf(
+            applied(merged.document, {
+              ...address(owner.paraId),
+              type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+              newBlockIds: Array.from({ length: shape.rows * 2 }, (_, index) =>
+                id(0x7000 + index),
+              ),
+            }).document,
+          );
+          const unmergedExpected = mergedTable.rows.map((row, rowIndex) =>
+            Array.from({ length: left }, (): unknown => null).concat(
+              [
+                row.cells.at(0)?.content ?? [],
+                [
+                  {
+                    type: "paragraph",
+                    paraId: id(0x7000 + rowIndex * 2),
+                    content: [],
+                  },
+                ],
+                [
+                  {
+                    type: "paragraph",
+                    paraId: id(0x7000 + rowIndex * 2 + 1),
+                    content: [],
+                  },
+                ],
+              ],
+              Array.from({ length: Number(shape.after) }, () => null),
+            ),
+          );
+          expect(payloads(independentSlots(unmerged))).toStrictEqual(
+            unmergedExpected,
+          );
+          for (const row of unmerged.rows)
+            for (const value of row.cells) {
+              expect(value.formatting?.gridSpan ?? 1).toBe(1);
+              expect(value.formatting?.vMerge).toBeUndefined();
+            }
           const horizontalDocument = fixture({ ...shape, vertical: false });
           const horizontalTable = tableOf(horizontalDocument);
           const horizontalMerge = applied(horizontalDocument, {
@@ -512,7 +542,7 @@ describe("independent table forward oracles", () => {
         }),
         {
           numRuns: NUM_RUNS,
-          id: "mixed-chain merges preserve nested content; horizontal splits preserve owners and refuse vertical groups",
+          id: "mixed-chain merges preserve nested content; splits preserve owners across columns and rows",
         },
       );
     },
