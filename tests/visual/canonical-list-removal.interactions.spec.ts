@@ -48,9 +48,12 @@ const clickToolbarButton = async (page: Page, name: string) => {
     .getByRole("button", { name, exact: true })
     .filter({ visible: true })
     .first();
-  if ((await button.count()) === 0)
+  const overflow = (await button.count()) === 0;
+  if (overflow)
     await page.getByRole("button", { name: "More formatting" }).click();
   await button.click();
+  // An overflow popover left open would take the next click in the page.
+  if (overflow) await page.keyboard.press("Escape");
 };
 
 const clickText = (page: Page, text: string) =>
