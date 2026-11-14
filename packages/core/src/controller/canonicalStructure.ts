@@ -336,6 +336,17 @@ export const prepareCanonicalCommands = (
   state: EditorState,
   commands: readonly CanonicalCommandIntent[],
 ): Result<CanonicalCommit, CanonicalSessionError> => {
+  // A menu's text replacement is the session's own text input.
+  for (const command of commands) {
+    if (command.type !== "replaceText") continue;
+    if (commands.length !== 1)
+      return refuse("A text replacement must be prepared on its own.");
+    return session.prepareReplace(state, {
+      from: command.from,
+      to: command.to,
+      text: command.text,
+    });
+  }
   // A note reference or a table of contents goes at one caret; selected
   // cells have none.
   if (
@@ -613,6 +624,8 @@ export const prepareCanonicalCommands = (
       case "insertNote":
       case "deleteNote":
         return panic("Note commands are prepared before editor intents.");
+      case "replaceText":
+        return panic("Text replacements are prepared before editor intents.");
       case "formatRun": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;

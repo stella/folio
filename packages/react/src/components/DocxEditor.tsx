@@ -177,6 +177,7 @@ import {
   CLIPBOARD_READ_ERROR_EVENT,
   pastePlainTextSlice,
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
+import { replaceRangeText } from "@stll/folio-core/prosemirror/commands/replaceRangeText";
 import {
   clearPendingComment,
   commentIdsNamedIn,
@@ -210,7 +211,6 @@ import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirr
 import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
-  deleteSelectionAsSuggestion,
   setSuggestionMode,
   suggestionModeKey,
 } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
@@ -3469,9 +3469,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             const { from, to } = view.state.selection;
             const text = view.state.doc.textBetween(from, to, "\n");
             void navigator.clipboard.writeText(text).catch(() => undefined);
-            if (!deleteSelectionAsSuggestion(view.state, view.dispatch)) {
-              view.dispatch(view.state.tr.deleteSelection());
-            }
+            executeEditorCommand(
+              view,
+              replaceRangeText({ from, to, text: "" }),
+            );
             onCut?.();
             break;
           }
@@ -3517,8 +3518,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             } catch {
               try {
                 const text = await navigator.clipboard.readText();
-                if (text) {
-                  view.dispatch(view.state.tr.insertText(text));
+                if (text && !view.isDestroyed) {
+                  pastePlainTextSlice(
+                    view,
+                    buildPlainTextSlice(text, view.state.schema),
+                  );
                   onPaste?.();
                 }
               } catch {
@@ -3548,9 +3552,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             break;
           case "delete": {
             const { from, to } = view.state.selection;
-            if (from !== to) {
-              view.dispatch(view.state.tr.deleteRange(from, to));
-            }
+            if (from !== to)
+              executeEditorCommand(
+                view,
+                replaceRangeText({ from, to, text: "" }),
+              );
             break;
           }
           case "selectAll":
