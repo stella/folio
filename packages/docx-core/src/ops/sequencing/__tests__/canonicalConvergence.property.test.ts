@@ -57,6 +57,11 @@ import {
   editSeedArbitrary,
 } from "./canonicalEdits";
 
+// Injected break: no tracked change meets a concurrent cut.
+void mock.module("../trackedTransform", () => ({
+  trackedCutConflict: () => undefined,
+}));
+
 const NUM_RUNS = 25;
 
 type Step =
