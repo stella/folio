@@ -4,7 +4,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 const FIXTURE = "tracked-insertion-boundary.docx";
@@ -43,7 +43,7 @@ const expectBoundaryResult = async (
 forEachAdapter(
   "physical typing at a tracked insertion edge stays outside the revision",
   async (adapter, { page }) => {
-    await openEditor(page, adapter, FIXTURE);
+    await openCanonicalEditor(page, adapter, FIXTURE);
     await ensureLiveView(page);
     await expect
       .poll(() =>
@@ -61,7 +61,7 @@ forEachAdapter(
 forEachAdapter(
   "non-keyboard Unicode input at a tracked insertion edge stays outside the revision",
   async (adapter, { page }) => {
-    await openEditor(page, adapter, FIXTURE);
+    await openCanonicalEditor(page, adapter, FIXTURE);
     await ensureLiveView(page);
     await clickTrackedInsertionEnd(page);
     await page.evaluate(() => {
@@ -89,7 +89,7 @@ forEachAdapter(
 forEachAdapter(
   "IME composition at a tracked insertion edge commits once outside the revision",
   async (adapter, { page }) => {
-    await openEditor(page, adapter, FIXTURE);
+    await openCanonicalEditor(page, adapter, FIXTURE);
     await ensureLiveView(page);
     await clickTrackedInsertionEnd(page);
 
