@@ -900,3 +900,93 @@ describe("a boundary kept beside a pending deletion's pieces stays out of the de
     expect(boundaries(atOnce)).toHaveLength(1);
   });
 });
+
+describe("a seam joins only pieces that stand, whatever the order", () => {
+  // A link cut in two: its first piece held in another reviewer's pending
+  // removal (a deletion, or a move's source), its second piece standing, and
+  // between them an insertion holding a bookmark end that keeps the cut.
+  const link = (text: string): ParagraphContent => ({
+    type: "hyperlink",
+    rId: "rId9",
+    href: "https://example.org",
+    children: [{ type: "run", content: [{ type: "text", text }] }],
+  });
+  const tracked = (removal: "deletion" | "moveFrom"): Document =>
+    documentWith([
+      {
+        type: removal,
+        info: { id: 20, author: "B", date: "2026-03-04T05:00:01Z" },
+        content: [link("x")],
+        resolutionJoins: { before: 0, after: 2, remove: 0 },
+      },
+      {
+        type: "insertion",
+        info: { id: 2, author: "A", date: "2026-03-04T05:00:02Z" },
+        content: [{ type: "bookmarkEnd", id: 1 }],
+        resolutionJoins: {
+          before: 0,
+          after: 0,
+          remove: 0,
+          deferredRemove: [{ depth: 2, blockers: [2] }],
+        },
+      },
+      link("a"),
+    ]);
+  const resolveIds = (
+    document: Document,
+    ids: number[],
+    decision: (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS],
+  ): Document => {
+    const applied = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: ids,
+      decision,
+    });
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+  const { ACCEPT, REJECT } = REVISION_DECISIONS;
+  const bookmarkEnd = { type: "bookmarkEnd", id: 1 } as const;
+
+  for (const removal of ["deletion", "moveFrom"] as const) {
+    test(`rejecting the insertion leaves the bookmark end outside the link while its other piece is in a pending ${removal}`, () => {
+      expect(firstParagraph(resolveIds(tracked(removal), [2], REJECT))).toEqual(
+        [expect.objectContaining({ type: removal }), bookmarkEnd, link("a")],
+      );
+    });
+
+    test(`accepting the ${removal} keeps the bookmark end outside the link, in either order`, () => {
+      const insertionFirst = resolveIds(
+        resolveIds(tracked(removal), [2], REJECT),
+        [20],
+        ACCEPT,
+      );
+      const removalFirst = resolveIds(
+        resolveIds(tracked(removal), [20], ACCEPT),
+        [2],
+        REJECT,
+      );
+      expect(firstParagraph(insertionFirst)).toEqual([bookmarkEnd, link("a")]);
+      expect(firstParagraph(removalFirst)).toEqual(
+        firstParagraph(insertionFirst),
+      );
+    });
+
+    test(`rejecting the ${removal} joins the link around the bookmark end, in either order and at once`, () => {
+      const insertionFirst = resolveIds(
+        resolveIds(tracked(removal), [2], REJECT),
+        [20],
+        REJECT,
+      );
+      const removalFirst = resolveIds(
+        resolveIds(tracked(removal), [20], REJECT),
+        [2],
+        REJECT,
+      );
+      const atOnce = resolveIds(tracked(removal), [2, 20], REJECT);
+      expect(firstParagraph(insertionFirst)).toEqual(firstParagraph(atOnce));
+      expect(firstParagraph(removalFirst)).toEqual(firstParagraph(atOnce));
+    });
+  }
+});
