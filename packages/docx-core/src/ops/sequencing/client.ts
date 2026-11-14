@@ -160,6 +160,197 @@ export const createClient = (
       : "elsewhere";
   };
 
+  // A batch's ops applied in turn, or undefined when one does not apply.
+  const documentAfter = (
+    start: Document,
+    batches: readonly SequencedBatch[],
+  ): Document | undefined => {
+    let cursor = start;
+    for (const { ops } of batches) {
+      const applied = applyBatch(cursor, ops);
+      if (applied.isErr()) return undefined;
+      cursor = applied.value.document;
+    }
+    return cursor;
+  };
+
+  /**
+   * One pending batch rebased over `leading`, the batches leading from the
+   * document it was made in (`at`) to the one it now applies to, and
+   * `leading` carried past it. When `leading` does not carry past it, the
+   * later batches move over its inverse, `leading` and its rebased self.
+   */
+  const passOver = (
+    entry: PendingEntry,
+    leading: readonly SequencedBatch[],
+    at: Document,
+    fresh: Document,
+  ): Result<
+    { batch: DocumentBatch; leading: SequencedBatch[]; fresh: Document },
+    BatchRejection
+  > => {
+    const mine: SequencedBatch = {
+      ...entry.batch,
+      revision: headRev + 1,
+      effects: entry.effects,
+    };
+    const moved = transformBatch(entry.batch, leading);
+    if (moved.isErr()) return Result.err(moved.error);
+    // A rebased batch that does not apply where it rebased is dropped like
+    // one that does not rebase.
+    const redone = applyBatch(fresh, moved.value.ops);
+    if (redone.isErr())
+      return Result.err(
+        new BatchRejection({
+          reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
+          message: redone.error.message,
+        }),
+      );
+    const carried: SequencedBatch[] = [];
+    let cursor = at;
+    let carriedMine: SequencedBatch = mine;
+    for (const lead of leading) {
+      const past = transformBatch(lead, [carriedMine], { order: "before" });
+      const next = transformBatch(carriedMine, [lead]);
+      const afterMine = applyBatch(cursor, carriedMine.ops);
+      const afterLead = applyBatch(cursor, lead.ops);
+      if (
+        past.isErr() ||
+        next.isErr() ||
+        afterMine.isErr() ||
+        afterLead.isErr()
+      )
+        break;
+      const pastApplied = applyBatch(afterMine.value.document, past.value.ops);
+      const nextApplied = applyBatch(afterLead.value.document, next.value.ops);
+      if (pastApplied.isErr() || nextApplied.isErr()) break;
+      carried.push({
+        ...past.value,
+        revision: lead.revision,
+        effects: pastApplied.value.effects,
+      });
+      carriedMine = {
+        ...next.value,
+        revision: headRev + 1,
+        effects: nextApplied.value.effects,
+      };
+      cursor = afterLead.value.document;
+    }
+    if (carried.length === leading.length)
+      return Result.ok({
+        batch: moved.value,
+        leading: carried,
+        fresh: redone.value.document,
+      });
+    // Later batches lose this one, cross `leading`, and take it back as
+    // rebased: one that depends on it cannot lose it and is dropped.
+    const made = applyBatch(at, entry.batch.ops);
+    if (made.isErr())
+      return panic(
+        "Pending batch must replay in its original coordinate space.",
+      );
+    const undone = applyBatch(made.value.document, entry.inverse);
+    if (undone.isErr())
+      return panic("Recorded inverse must apply after its batch.");
+    return Result.ok({
+      batch: moved.value,
+      fresh: redone.value.document,
+      leading: [
+        {
+          ...entry.batch,
+          ops: entry.inverse,
+          revision: headRev + 1,
+          effects: undone.value.effects,
+        },
+        ...leading,
+        {
+          ...moved.value,
+          revision: headRev + 1,
+          effects: redone.value.effects,
+        },
+      ],
+    });
+  };
+
+  /**
+   * Rebase pending batches, made one after another from `original`, over
+   * `leading`. A batch that does not rebase is dropped (`forced` drops the
+   * first one whatever it is, as a rejection does), and the batches after
+   * it rebase as if it had never been made: over its inverse first. Only a
+   * batch that depends on it, editing what it put there, fails that and is
+   * dropped too. Returns the kept batches and `leading` carried past them.
+   */
+  const rebaseRun = ({
+    run,
+    original,
+    leading,
+    forced,
+  }: {
+    run: readonly PendingEntry[];
+    original: Document;
+    leading: readonly SequencedBatch[];
+    forced?: BatchRejection;
+  }): { kept: PendingEntry[]; leading: SequencedBatch[] } => {
+    const kept: PendingEntry[] = [];
+    let cursor = original;
+    let carried = [...leading];
+    let fresh =
+      documentAfter(original, leading) ??
+      panic("The batches leading a pending run must apply in turn.");
+    for (const [index, entry] of run.entries()) {
+      const made = applyBatch(cursor, entry.batch.ops);
+      if (made.isErr())
+        return panic(
+          "Pending batch must replay in its original coordinate space.",
+        );
+      const passed =
+        index === 0 && forced !== undefined
+          ? Result.err(forced)
+          : passOver(entry, carried, cursor, fresh);
+      if (passed.isOk()) {
+        kept.push({ ...entry, batch: passed.value.batch });
+        carried = passed.value.leading;
+        fresh = passed.value.fresh;
+      } else {
+        drop(entry, passed.error);
+        const undone = applyBatch(made.value.document, entry.inverse);
+        if (undone.isErr())
+          return panic("Recorded inverse must apply after its batch.");
+        carried = [
+          {
+            ...entry.batch,
+            ops: entry.inverse,
+            revision: headRev + 1,
+            effects: undone.value.effects,
+          },
+          ...carried,
+        ];
+      }
+      cursor = made.value.document;
+    }
+    return { kept, leading: carried };
+  };
+
+  // Batches applied in turn as one, under the identity of `source`.
+  const joined = (
+    batches: readonly SequencedBatch[],
+    source: Omit<SequencedBatch, "effects">,
+  ): SequencedBatch => {
+    const only = batches.at(0);
+    if (batches.length === 1 && only !== undefined)
+      return {
+        ...only,
+        opId: source.opId,
+        actor: source.actor,
+        revision: source.revision,
+      };
+    return {
+      ...source,
+      ops: batches.flatMap(({ ops }) => ops),
+      effects: batches.flatMap(({ effects }) => effects ?? []),
+    };
+  };
+
   const replay = (): void => {
     current = confirmed;
     const surviving: PendingEntry[] = [];
@@ -302,72 +493,27 @@ export const createClient = (
     }
     const previous = current;
     const previousEntries = entries.slice();
-    drop(entry, rejection.reason);
-    const noticesAfterDrop = notices.length;
-    const later = entries.slice(index + 1);
-    entries.splice(index, 1);
-    // Later batches were authored with the rejected edit present. Rebase them
-    // over its inverse, refusing any whose dependency cannot be expressed.
-    const originalPrefix = applyBatch(
+    const noticesBefore = notices.length;
+    const prefix = entries.slice(0, index);
+    const original = applyBatch(
       confirmed,
-      entries
-        .slice(0, index)
-        .flatMap(({ batch }) => batch.ops)
-        .concat(entry.batch.ops),
+      prefix.flatMap(({ batch }) => batch.ops),
     );
-    if (originalPrefix.isErr())
+    if (original.isErr())
       return panic("Pending prefix must replay before a rejection is removed.");
-    let originalCursor = originalPrefix.value.document;
-    const inverseApplied = applyBatch(originalCursor, entry.inverse);
-    if (inverseApplied.isErr())
-      return panic("Recorded inverse must apply before later pending batches.");
-    let inverse: SequencedBatch = {
+    // Later batches were authored with the rejected edit present: they
+    // rebase over its inverse, and only one that depends on it goes too.
+    const rebased = rebaseRun({
+      run: entries.slice(index),
+      original: original.value.document,
+      leading: [],
+      forced: rejection.reason,
+    });
+    const inverse = joined(rebased.leading, {
       ...entry.batch,
-      ops: entry.inverse,
       revision: headRev + 1,
-      effects: inverseApplied.value.effects,
-    };
-    const retained = entries.slice(0, index);
-    for (const [laterIndex, pending] of later.entries()) {
-      const adjusted = transformBatch(pending.batch, [inverse]);
-      const propagated = transformBatch(
-        inverse,
-        [{ ...pending.batch, revision: headRev + 1, effects: pending.effects }],
-        { order: "before" },
-      );
-      if (adjusted.isErr()) {
-        drop(pending, adjusted.error);
-        for (const rest of later.slice(laterIndex + 1))
-          drop(rest, adjusted.error);
-        break;
-      }
-      retained.push({ ...pending, batch: adjusted.value });
-      if (propagated.isErr()) {
-        for (const rest of later.slice(laterIndex + 1))
-          drop(rest, propagated.error);
-        break;
-      }
-      const originalPending = applyBatch(originalCursor, pending.batch.ops);
-      if (originalPending.isErr())
-        return panic(
-          "Pending batch must replay in its original coordinate space.",
-        );
-      originalCursor = originalPending.value.document;
-      const captured = applyBatch(originalCursor, propagated.value.ops);
-      if (captured.isErr()) {
-        const reason = new BatchRejection({
-          reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
-          message: captured.error.message,
-        });
-        for (const rest of later.slice(laterIndex + 1)) drop(rest, reason);
-        break;
-      }
-      inverse = {
-        ...propagated.value,
-        revision: headRev + 1,
-        effects: captured.value.effects,
-      };
-    }
+    });
+    const retained = [...prefix, ...rebased.kept];
     entries = retained;
     if (inFlight === rejection.opId) {
       inFlight = undefined;
@@ -378,7 +524,7 @@ export const createClient = (
       actor: entry.batch.actor,
       revision: headRev + 1,
     };
-    if (notices.length > noticesAfterDrop)
+    if (notices.length > noticesBefore + 1)
       return [replacement(previous, previousEntries, [], source)];
     const landed = landing(previous, inverse);
     switch (landed) {
@@ -474,57 +620,13 @@ export const createClient = (
           inFlight = undefined;
         }
       } else {
-        let remote = next;
-        let originalCursor = confirmed;
-        const rebased: PendingEntry[] = [];
-        for (const [index, pending] of entries.entries()) {
-          const adjusted = transformBatch(pending.batch, [remote]);
-          const propagated = transformBatch(
-            remote,
-            [
-              {
-                ...pending.batch,
-                revision: headRev + 1,
-                effects: pending.effects,
-              },
-            ],
-            { order: "before" },
-          );
-          if (adjusted.isErr()) {
-            drop(pending, adjusted.error);
-            for (const rest of entries.slice(index + 1))
-              drop(rest, adjusted.error);
-            break;
-          }
-          rebased.push({ ...pending, batch: adjusted.value });
-          if (propagated.isErr()) {
-            for (const rest of entries.slice(index + 1))
-              drop(rest, propagated.error);
-            break;
-          }
-          const originalPending = applyBatch(originalCursor, pending.batch.ops);
-          if (originalPending.isErr())
-            return panic(
-              "Pending batch must replay in its original coordinate space.",
-            );
-          originalCursor = originalPending.value.document;
-          const captured = applyBatch(originalCursor, propagated.value.ops);
-          if (captured.isErr()) {
-            const reason = new BatchRejection({
-              reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
-              message: captured.error.message,
-            });
-            for (const rest of entries.slice(index + 1)) drop(rest, reason);
-            break;
-          }
-          remote = {
-            ...propagated.value,
-            revision: next.revision,
-            effects: captured.value.effects,
-          };
-        }
-        entries = rebased;
-        rebasedRemote = remote;
+        const rebased = rebaseRun({
+          run: entries,
+          original: confirmed,
+          leading: [next],
+        });
+        entries = rebased.kept;
+        rebasedRemote = joined(rebased.leading, next);
       }
       confirmed = applied.value.document;
       headRev = next.revision;

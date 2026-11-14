@@ -28,6 +28,13 @@ lengths carries it as `moves`, so positions still follow it. `transformPosition`
 moves a position across sequenced batches by paragraph id and offset, so an
 editor maps its selection and history without its own coordinates.
 
+A pending batch that does not rebase over a sequenced one, or that the
+authority rejected, is dropped with a notice; the pending batches after it
+rebase as if it had never been made, over its inverse first, so only a batch
+that edits what the dropped one put there is dropped with it. When a
+sequenced batch cannot be carried past a kept pending one, the later pending
+batches cross that one's inverse, the sequenced batch and its rebased self.
+
 `transformBatch` refuses operation pairs whose effects cannot be mapped safely.
 An inverse keeps its staleness preconditions: an invalid undo must be dropped,
 never applied by removing those preconditions. Supported story addresses derive
