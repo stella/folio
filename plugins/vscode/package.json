@@ -40,7 +40,7 @@
     "test:smoke": "bun test/smoke/run.ts"
   },
   "devDependencies": {
-    "@stll/fuzzy-search-wasm": "1.4.0",
+    "@stll/fuzzy-search-wasm": "1.4.2",
     "@types/node": "26.6.6",
     "@types/vscode": "1.86.0",
     "@vscode/test-electron": "3.1.0",

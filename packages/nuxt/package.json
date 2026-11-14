@@ -52,21 +52,21 @@
     "typecheck": "bun check --no-pretty --all --project=tsconfig.json"
   },
   "dependencies": {
-    "@nuxt/kit": "^4.6.3",
-    "@nuxt/schema": "^4.6.3",
+    "@nuxt/kit": "^4.6.4",
+    "@nuxt/schema": "^4.6.4",
     "@stll/folio-vue": "workspace:^",
     "@stll/utf8-boundaries": "workspace:*"
   },
   "devDependencies": {
     "@nuxt/module-builder": "^1.0.0",
-    "@nuxt/schema": "^4.6.3",
-    "nuxt": "^4.6.3",
+    "@nuxt/schema": "^4.6.4",
+    "nuxt": "^4.6.4",
     "prosemirror-history": "^1.5.1",
-    "prosemirror-model": "^1.25.9",
+    "prosemirror-model": "^1.25.13",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
     "prosemirror-view": "^1.42.9",
-    "vue": "^3.5.44"
+    "vue": "^3.5.45"
   },
   "peerDependencies": {
     "prosemirror-commands": "^1.7.1",
@@ -75,7 +75,7 @@
     "prosemirror-history": "^1.5.1",
     "prosemirror-inputrules": "^1.5.0",
     "prosemirror-keymap": "^1.2.3",
-    "prosemirror-model": "^1.25.9",
+    "prosemirror-model": "^1.25.13",
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
     "prosemirror-transform": "^1.12.0",
