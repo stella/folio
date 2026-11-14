@@ -81,6 +81,7 @@ import {
   copyOriginBoundaryKeysInBlocks,
   hasValidCopyOriginAncestors,
 } from "./copyOriginAncestors";
+import { keptDeletionBoundaries } from "./deletionBoundaries";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { resolveGap, type ZeroWidthDefault } from "./gaps";
@@ -1015,6 +1016,32 @@ const automaticNoteMarkBetween = (
   );
 };
 
+/**
+ * `items` without the leaves between `from` and `to`, except the `kept` leaves
+ * inside that range, which stay where they are. Deletes right to left so each
+ * cut's gaps still name the original positions.
+ */
+const deletedAround = (
+  items: readonly ParagraphContent[],
+  from: Gap,
+  to: Gap,
+  kept: readonly { before: Gap; after: Gap }[],
+): ParagraphContent[] => {
+  const cuts: [Gap, Gap][] = [];
+  let start = from;
+  for (const leaf of kept) {
+    cuts.push([start, leaf.before]);
+    start = leaf.after;
+  }
+  cuts.push([start, to]);
+  let content = [...items];
+  for (const [cutFrom, cutTo] of cuts.toReversed()) {
+    if (compareGaps(cutFrom, cutTo) < 0)
+      content = deleteBetween(content, cutFrom, cutTo).content;
+  }
+  return content;
+};
+
 const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   const join = op.join ?? 0;
   if (!isCount(join)) {
@@ -1063,6 +1090,18 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
     return unchanged(document);
   }
   const protectedMark = automaticNoteMarkBetween(story, paragraph, from, to);
+  // One end of a comment or move range the deletion covers, whose other end
+  // stands outside it, stays where it is: the range shrinks to the
+  // deletion's edge instead of losing an end.
+  const keptBoundaries =
+    op.revision === undefined && join === 0
+      ? keptDeletionBoundaries({
+          body: storyBody(document, story),
+          paragraph,
+          from,
+          to,
+        })
+      : [];
   let content = remaining;
   if (protectedMark !== undefined) {
     // A leaf counts when the range covers any part of it, including part of a text leaf.
@@ -1080,12 +1119,16 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
         "The range contains only the note story's automatic marker.",
       );
     }
-    const afterRemoved = deleteBetween(
-      paragraph.content,
-      protectedMark.after,
-      to,
-    ).content;
-    content = deleteBetween(afterRemoved, from, protectedMark.before).content;
+  }
+  const kept = [
+    ...keptBoundaries,
+    ...(protectedMark === undefined ? [] : [protectedMark]),
+  ].toSorted((left, right) => compareGaps(left.before, right.before));
+  if (kept.length > 0) {
+    content = deletedAround(paragraph.content, from, to, kept);
+    if (structurallyEqual(content, paragraph.content)) {
+      return unchanged(document);
+    }
   }
   if (op.revision !== undefined) {
     const wrapped = wrappedContent(op, {
@@ -1138,7 +1181,7 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
     },
     (result) => {
       if (
-        protectedMark !== undefined ||
+        kept.length > 0 ||
         cutHasResolutionProvenance({
           content: paragraph.content,
           gaps: [from, to],
