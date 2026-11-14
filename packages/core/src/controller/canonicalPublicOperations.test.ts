@@ -210,7 +210,15 @@ describe("canonical public operation batches", () => {
       replace: "gamma",
     } as const;
     const refused = editor.apply(
-      [operation, { id: "table", type: "deleteTable", blockId: "12345678" }],
+      [
+        operation,
+        {
+          id: "table",
+          type: "insertTableColumn",
+          blockId: "12345678",
+          position: "after",
+        },
+      ],
       { atomic: true },
     );
     expect(refused.status).toBe("rejected");
@@ -454,7 +462,7 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
       .apply([
         {
           id: "table",
-          type: "insertTableRow",
+          type: "insertTableColumn",
           blockId: "12345678",
           position: "after",
           cellTexts: ["cell"],
@@ -462,6 +470,19 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
       ])
       .issues.at(0)?.canonicalRefusal?.gap,
   ).toBe("publicOps.tableStructure");
+  // A row operation on a block in no table is skipped as the default engine
+  // skips it, under no gap.
+  const outside = editor.apply([
+    {
+      id: "row",
+      type: "insertTableRow",
+      blockId: "12345678",
+      position: "after",
+      cellTexts: ["cell"],
+    },
+  ]);
+  expect(outside.skipped.at(0)?.reason).toBe("unsupportedBlock");
+  expect(outside.issues.at(0)?.canonicalRefusal).toBeUndefined();
   const before = editor.session.document;
   editor.session.beginComposition();
   expect(
