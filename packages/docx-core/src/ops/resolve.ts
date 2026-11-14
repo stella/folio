@@ -68,7 +68,7 @@ import {
 } from "./offsets";
 import {
   isBlockBoundary,
-  isBoundary,
+  isKeptBoundaryCarrier,
   noRelocatedBoundaries,
   pairedCommentRanges,
   paragraphRemains,
@@ -907,9 +907,12 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
   return joins.retainedAfter.every(validEntry);
 };
 
-/** A range boundary standing on its own in a list, held by no record. */
+/**
+ * A range boundary standing on its own in a list, held by no record, or a
+ * pending deletion a rejection kept holding only such boundaries.
+ */
 const isStandingBoundary = (node: InlineNode | undefined): boolean =>
-  node !== undefined && isBoundary(node);
+  node !== undefined && isKeptBoundaryCarrier(node);
 
 /** What has become of a deferred seam's blocker. */
 type BlockerFate = "pending" | "accepted" | "removed";
@@ -1669,6 +1672,7 @@ const resolveList = (
               : resolution.pairedComments,
           relocated: resolution.relocated,
           revisionDate: node.info.date ?? "",
+          leavesPending: (revisionId) => !resolution.ids.has(revisionId),
         });
         appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are

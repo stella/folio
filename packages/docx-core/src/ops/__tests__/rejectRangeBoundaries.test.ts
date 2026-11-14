@@ -683,6 +683,115 @@ describe("a split seam with nothing left on one side joins nothing", () => {
   });
 });
 
+describe("a pending deletion nested in a rejected insertion keeps its boundaries pending", () => {
+  // Another reviewer's pending deletion inside an insertion, holding a
+  // bookmark start (in a hyperlink), and text after the insertion.
+  const tracked = (): Document =>
+    documentWith([
+      {
+        type: "insertion",
+        info: { id: 1, author: "A", date: "2026-03-04T05:00:01Z" },
+        content: [
+          {
+            type: "deletion",
+            info: { id: 2, author: "B", date: "2026-03-04T05:00:02Z" },
+            content: [
+              {
+                type: "hyperlink",
+                rId: "rId9",
+                href: "https://example.org",
+                children: [{ type: "bookmarkStart", id: 1, name: "_Link" }],
+              },
+            ],
+          },
+        ],
+      },
+      { type: "run", content: [{ type: "text", text: "x" }] },
+    ]);
+  const resolve = (
+    document: Document,
+    ids: number[],
+    decision: (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS],
+  ): Document => {
+    const applied = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: ids,
+      decision,
+    });
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+  const { ACCEPT, REJECT } = REVISION_DECISIONS;
+  const bookmark = { type: "bookmarkStart", id: 1, name: "_Link" } as const;
+  const x = { type: "run", content: [{ type: "text", text: "x" }] } as const;
+
+  test("rejecting the insertion leaves the deletion pending, holding only the bookmark", () => {
+    expect(firstParagraph(resolve(tracked(), [1], REJECT))).toEqual([
+      {
+        type: "deletion",
+        info: { id: 2, author: "B", date: "2026-03-04T05:00:02Z" },
+        content: [bookmark],
+      },
+      x,
+    ]);
+  });
+
+  test("accepting the deletion removes the bookmark whether the insertion is rejected before or after", () => {
+    const rejectedFirst = resolve(resolve(tracked(), [1], REJECT), [2], ACCEPT);
+    const acceptedFirst = resolve(resolve(tracked(), [2], ACCEPT), [1], REJECT);
+    expect(firstParagraph(rejectedFirst)).toEqual([x]);
+    expect(firstParagraph(acceptedFirst)).toEqual([x]);
+  });
+
+  test("rejecting the deletion keeps the bookmark in either order and at once", () => {
+    const insertionFirst = resolve(
+      resolve(tracked(), [1], REJECT),
+      [2],
+      REJECT,
+    );
+    const deletionFirst = resolve(resolve(tracked(), [2], REJECT), [1], REJECT);
+    const atOnce = resolve(tracked(), [1, 2], REJECT);
+    expect(firstParagraph(insertionFirst)).toEqual([bookmark, x]);
+    expect(firstParagraph(deletionFirst)).toEqual([bookmark, x]);
+    expect(firstParagraph(atOnce)).toEqual([bookmark, x]);
+  });
+
+  test("accepting the insertion first leaves the deletion as it was, no longer nested", () => {
+    const accepted = resolve(tracked(), [1], ACCEPT);
+    expect(firstParagraph(resolve(accepted, [2], ACCEPT))).toEqual([x]);
+    expect(firstParagraph(resolve(accepted, [2], REJECT))).toEqual([
+      {
+        type: "hyperlink",
+        rId: "rId9",
+        href: "https://example.org",
+        children: [bookmark],
+      },
+      x,
+    ]);
+  });
+
+  test("a nested deletion holding no boundary goes with the insertion", () => {
+    const document = documentWith([
+      {
+        type: "insertion",
+        info: { id: 1, author: "A", date: "2026-03-04T05:00:01Z" },
+        content: [
+          {
+            type: "deletion",
+            info: { id: 2, author: "B", date: "2026-03-04T05:00:02Z" },
+            content: [
+              { type: "run", content: [{ type: "deletedText", text: "d" }] },
+            ],
+          },
+        ],
+      },
+      x,
+    ]);
+    expect(firstParagraph(resolve(document, [1], REJECT))).toEqual([x]);
+  });
+});
+
 describe("a boundary kept beside a pending deletion's pieces stays out of the deletion", () => {
   // Text another reviewer deleted, and a link holding a bookmark inserted in
   // the middle of it, between the deletion's two pieces.
