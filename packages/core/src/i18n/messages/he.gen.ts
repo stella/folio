@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "חלק זה של המסמך נעול.",
       "editing": "עריכה",
       "editingDescription": "ערוך את המסמך ישירות",
+      "linkSuggestionUnavailable": "לא ניתן לעקוב אחר שינוי זה בקישור. בצעו אותו במצב עריכה, או העבירו את ההערה או הסימנייה אל מחוץ לקישור.",
       "outlineDepthAll": "כל הרמות",
       "outlineDepthLabel": "הצגת כותרות",
       "outlineDepthThree": "רמות 1–3",
