@@ -208,6 +208,16 @@ const EXAMPLES: [Scenario][] = [
       deleteTo: { offset: 3, zeroWidthBefore: 0 },
     },
   ],
+  // A format and a deletion of all the text, a note's mark right after it.
+  [
+    {
+      content: [{ type: "text", text: "fgh" }, LEAVES.noteMarker],
+      deleteFrom: { offset: 0, zeroWidthBefore: 0 },
+      formatFrom: { offset: 0, zeroWidthBefore: 0 },
+      formatTo: { offset: 3, zeroWidthBefore: 0 },
+      deleteTo: { offset: 3, zeroWidthBefore: 0 },
+    },
+  ],
 ];
 
 const rejoined = (forget = false) =>
