@@ -50,8 +50,11 @@ const createRig = (from = 2, to = from) => {
   const refusals: string[] = [];
   const history: string[] = [];
   const groupBoundaries: number[] = [];
+  /** What the view showed each time a composition asked for layout. */
+  const shown: string[] = [];
   const boundary = createCanonicalInputBoundary({
     replace: (input) => inputs.push(input),
+    compositionShown: () => shown.push(view.state.doc.textContent),
     breakUndoGroup: () => {
       groupBoundaries.push(1);
     },
@@ -103,6 +106,7 @@ const createRig = (from = 2, to = from) => {
     history,
     compositionTransitions,
     groupBoundaries,
+    shown,
   };
 };
 
@@ -576,8 +580,14 @@ describe("canonical input boundary", () => {
   ])(
     "CJK composition at $from..$to lowers one net replacement",
     async ({ from, to, final, expectedTo }) => {
-      const { boundary, view, inputs, refusals, compositionTransitions } =
-        createRig(from, to);
+      const {
+        boundary,
+        view,
+        inputs,
+        refusals,
+        compositionTransitions,
+        shown,
+      } = createRig(from, to);
       const baseline = view.state;
       expect(boundary.handleDOMEvents.compositionstart(view)).toBe(false);
       expect(boundary.isComposing).toBe(true);
@@ -604,6 +614,10 @@ describe("canonical input boundary", () => {
         from === to ? "A契約😀B" : "A契約B",
       );
       expect(inputs).toEqual([]);
+      // Each provisional step asks for layout before anything commits.
+      expect(shown).toEqual(
+        from === to ? ["A契😀B", "A契約😀B"] : ["A契B", "A契約B"],
+      );
       expect(
         boundary.handleDOMEvents.compositionend(
           view,

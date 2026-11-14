@@ -21,7 +21,7 @@ import {
   Plugin as PMPlugin,
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
-import type { DirectEditorProps } from "prosemirror-view";
+import type { DirectEditorProps, MarkViewConstructor } from "prosemirror-view";
 import { EditorView } from "prosemirror-view";
 import type * as YProseMirror from "y-prosemirror";
 import type { Doc as YDoc, XmlFragment } from "yjs";
@@ -64,6 +64,11 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
+import {
+  type EditingFontContext,
+  editingFontContextOf,
+  editingFontFamily,
+} from "../layout-bridge/convert/editingFont";
 import {
   type HiddenEditorStateReason,
   recordHiddenEditorPhase,
@@ -621,11 +626,19 @@ export type HiddenEditorManagerDeps = {
   getDocumentContext: () => ReadonlyDocument | null;
   onTransaction: (update: HiddenEditorTransactionUpdate) => void;
   /**
-   * A canonical composition ended. A layout pass reads the live view, so one
-   * that ran during the composition painted provisional text that only a new
-   * pass can replace, and a cancellation publishes no commit that would ask.
+   * A canonical composition changed what the view shows without a document
+   * change: its provisional text grew or shrank, or it ended. A layout pass
+   * reads the live view, so the painted text and caret follow the composition
+   * as it grows, and the pass after it ends replaces the provisional text.
+   * Nothing reaches the host's change callbacks, the history or a room until
+   * the composition commits.
    */
-  onCanonicalCompositionEnd: () => void;
+  onCanonicalCompositionLayout: () => void;
+  /**
+   * The embedded-font families the painter resolves runs with, so the view
+   * draws text with the faces painted text uses.
+   */
+  getEmbeddedFontFamilyMap: () => ReadonlyMap<string, string> | undefined;
   onSelectionChange: (state: EditorState) => void;
   onKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
   onCopy?: () => void;
@@ -680,6 +693,8 @@ export const createHiddenEditorClipboardHandlers = (
 export type HiddenEditorManager = {
   /** Whether the canonical owner still holds a provisional composition. */
   isCanonicalComposing: () => boolean;
+  /** Draw the view's text again with the painter's current font context. */
+  refreshFonts: () => void;
   /** Request the view (sets the requested flag, then attempts creation). */
   ensureView: () => void;
   /** Re-attempt a previously-requested-but-deferred creation (no-op otherwise). */
@@ -722,6 +737,24 @@ export const createHiddenEditorManager = (
     },
   };
   let view: EditorView | null = null;
+  /** The font context the view's font runs resolve with; see `refreshFonts`. */
+  let editingFonts: EditingFontContext = {};
+  const editingMarkViews = (
+    document: ReadonlyDocument | null,
+  ): Record<string, MarkViewConstructor> => {
+    editingFonts = editingFontContextOf(
+      document,
+      deps.getEmbeddedFontFamilyMap(),
+    );
+    return {
+      fontFamily: (mark, editorView) => {
+        const dom = editorView.dom.ownerDocument.createElement("span");
+        const fontFamily = editingFontFamily(mark, editingFonts);
+        if (fontFamily !== null) dom.style.fontFamily = fontFamily;
+        return { dom };
+      },
+    };
+  };
   let releaseCommandOwner: (() => void) | undefined;
   let editorSession: EditorSession = { type: "prosemirror" };
   let canonicalSessionEpoch = 0;
@@ -1249,6 +1282,10 @@ export const createHiddenEditorManager = (
     "command" | "structure"
   >;
   const canonicalInputLifecycle = {
+    compositionShown: () => {
+      if (editorSession.type === "canonical")
+        deps.onCanonicalCompositionLayout();
+    },
     breakUndoGroup: () => {
       if (editorSession.type === "canonical")
         editorSession.session.breakUndoGroup();
@@ -1266,7 +1303,7 @@ export const createHiddenEditorManager = (
     endComposition: () => {
       if (editorSession.type !== "canonical") return;
       editorSession.session.endComposition();
-      deps.onCanonicalCompositionEnd();
+      deps.onCanonicalCompositionLayout();
       room?.flush();
     },
   };
@@ -1421,6 +1458,9 @@ export const createHiddenEditorManager = (
     const editorProps: DirectEditorProps = {
       state: initialState,
       attributes: HIDDEN_EDITOR_ATTRIBUTES,
+      // Text the browser draws itself, such as an IME composition, takes the
+      // faces the painter draws the run with.
+      markViews: editingMarkViews(document),
       editable: () => !deps.getReadOnly() && editorSession.type !== "refused",
       dispatchTransaction: (transaction: Transaction) => {
         if (!view || isDestroying) {
@@ -2398,5 +2438,14 @@ export const createHiddenEditorManager = (
         : null,
     isCanonicalComposing: () =>
       editorSession.type === "canonical" && editorSession.session.isComposing,
+    refreshFonts: () => {
+      const markViews = editingMarkViews(deps.getDocument());
+      // A redraw would replace the text a composition is drawing into; runs
+      // drawn after it ends take the new context.
+      if (!view || view.isDestroyed || view.composing) return;
+      // ProseMirror rebuilds its views only when the node views it is given
+      // change, and then redraws the runs whose constructor changed.
+      view.setProps({ nodeViews: {}, markViews });
+    },
   };
 };

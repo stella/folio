@@ -417,7 +417,8 @@ for (const target of [
             notes.sync();
             parts.sync();
           },
-          onCanonicalCompositionEnd: () => {},
+          onCanonicalCompositionLayout: () => {},
+          getEmbeddedFontFamilyMap: () => undefined,
           onSelectionChange: () => {},
           onKeyDown: () => false,
           onCopy: () => {},
