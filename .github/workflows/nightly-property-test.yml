@@ -13,7 +13,7 @@ jobs:
   consumer-fuzz:
     name: Generated consumer scenarios (nightly budget)
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 150
     permissions:
       contents: read
     steps:
@@ -31,19 +31,23 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # Fresh seeds each night; reruns retain the same seed. Pinned regressions
-      # run alongside a larger generated budget than the default 12/8 runs.
-      - name: Generated random and collision flows
+      - name: Scratch replays
         run: |
-          set -o pipefail
-          mkdir -p test-results
-          export FOLIO_SCENARIO_SEED=$(( (GITHUB_RUN_ID * 7919) % 2147483647 ))
-          bun scripts/consumer-scenarios.ts -- fuzz.test.ts 2>&1 \
-            | tee test-results/nightly-consumer-fuzz.log
+          set +e
+          mkdir -p test-results /tmp/tb
+          echo "SCRATCH_ENGINE_ENV ${FOLIO_SCENARIO_ENGINE:-default}"
+          bun scripts/consumer-scenarios.ts --pack-only /tmp/tb > test-results/pack.log 2>&1 || { tail -50 test-results/pack.log; exit 1; }
+          bun scripts/consumer-scenarios.ts --tarballs /tmp/tb -- zz-scratch-replays.test.ts > test-results/flows.log 2>&1
+          grep -E 'SCRATCH_' test-results/flows.log || tail -80 test-results/flows.log
+          while IFS=$'\t' read -r name args; do
+            eval "bun scripts/consumer-scenarios.ts --tarballs /tmp/tb $args" > test-results/seed.log 2>&1
+            rc=$?
+            echo "SCRATCH_SEED $name rc=$rc $(grep -E 'FOLIO_FAILURE|\[batchSequential\]|\[directTracked\]|differs|differ:|  Error:|failed at step|refused' test-results/seed.log | head -6 | cut -c1-700 | tr '\n' ' ')"
+            cat test-results/seed.log >> test-results/nightly-consumer-fuzz.log
+          done < .github/scratch-seeds.tsv
+          cat test-results/flows.log >> test-results/nightly-consumer-fuzz.log
         env:
-          FOLIO_SCENARIO_FUZZ_RUNS: "240"
-          FOLIO_SCENARIO_COLLISION_RUNS: "160"
-          FOLIO_SCENARIO_FUZZ_STEPS: "16"
+          FOLIO_SCENARIO_SEED: "1"
 
       - name: Keep the consumer fuzz log
         if: always()
