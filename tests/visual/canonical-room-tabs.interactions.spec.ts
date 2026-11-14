@@ -199,6 +199,19 @@ for (const adapter of adapters) {
     // With every tab closed, a new tab rebuilds the room from IndexedDB.
     await survivor.close();
     await witness.close();
+    // Break: the room's stored journal is gone before the reopen.
+    const wiper = await context.newPage();
+    await wiper.goto(`http://localhost:${adapter.port}/`);
+    await wiper.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const request = indexedDB.deleteDatabase("folio-canonical-rooms");
+          request.addEventListener("success", () => resolve());
+          request.addEventListener("error", () => resolve());
+          request.addEventListener("blocked", () => resolve());
+        }),
+    );
+    await wiper.close();
     const reopened = await openTab(context, url);
     expect((await roomBridge(reopened))?.leading).toBe(true);
     expect(await expectConverged([reopened])).toBe(afterHandover);
