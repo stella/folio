@@ -132,18 +132,22 @@ const documentFor = ({ start, end, neighbour }: Layout): Document => {
         ...(end === "cellEnd" ? [] : endBlock),
       ]
     : [...other, ...startBlock, inner, ...endBlock];
+  const content: BlockContent[] = [
+    ...(start === "storyStart"
+      ? []
+      : [paragraph("00000001", [run("Opening words")])]),
+    ...group,
+    ...(end === "storyEnd"
+      ? []
+      : [paragraph("00000003", [run("Closing words")])]),
+  ];
+  // The section view holds the body's own blocks, as the parser builds it.
   const document: Document = {
     package: {
       document: {
-        content: [
-          ...(start === "storyStart"
-            ? []
-            : [paragraph("00000001", [run("Opening words")])]),
-          ...group,
-          ...(end === "storyEnd"
-            ? []
-            : [paragraph("00000003", [run("Closing words")])]),
-        ],
+        content,
+        sections: [{ properties: { pageWidth: 12240 }, content }],
+        finalSectionProperties: { pageWidth: 12240 },
       },
     },
   };
@@ -259,7 +263,10 @@ test(
           id: 3,
           scope: "reply",
         });
-        expect(reply.document).toStrictEqual(document);
+        // The comment part's relationship the reply added may stay.
+        expect(reply.document.package.document).toStrictEqual(
+          document.package.document,
+        );
 
         apply(document, {
           type: DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION,
