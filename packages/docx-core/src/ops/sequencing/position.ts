@@ -109,8 +109,9 @@ export const transformPosition = (
           continue;
         }
         // Formatting, inline record splits and joins, paragraph insertion
-        // beside the position, and package metadata leave every offset where
-        // it was.
+        // beside the position, content control properties and package
+        // metadata leave every offset where it was.
+        case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
         case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
         case DOCUMENT_OP_TYPES.SPLIT_INLINE:
         case DOCUMENT_OP_TYPES.JOIN_INLINE:
