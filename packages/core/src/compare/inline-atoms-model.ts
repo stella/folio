@@ -13,7 +13,7 @@
 
 import { panic } from "better-result";
 
-import { relationshipIdOf } from "@stll/docx-core/model";
+import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -509,7 +509,7 @@ const detachedDrawing = (
       ? undefined
       : rebindDrawingImageRelationship({
           xml: drawing.rawXml,
-          previousId: image.rId ?? "",
+          previousId: image.rId === undefined ? "" : String(image.rId),
           nextId: COMPARISON_IMAGE_RELATIONSHIP,
         });
   if (rawXml === null) return null;
@@ -538,7 +538,10 @@ const drawingKey = (
         ? undefined
         : drawingXmlWithoutIdentity(drawing.rawXml),
     rawXmlMode: drawing.rawXmlMode,
-    rawImageFingerprint: drawing.rawImageFingerprint,
+    rawImageFingerprint:
+      drawing.rawXmlMode === DRAWING_RAW_XML_MODES.PRESERVE_ONLY
+        ? undefined
+        : drawing.rawImageFingerprint,
     runFormatting: ownFormatting(run),
   });
 
