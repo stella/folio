@@ -656,7 +656,7 @@ class CanonicalProjection {
   }
 
   selectionAt(
-    state: EditorState,
+    state: Pick<EditorState, "doc" | "selection">,
   ): Result<CanonicalSelection, CanonicalSessionError> {
     const selection = state.selection;
     let type: CanonicalSelection["type"];
@@ -1617,7 +1617,15 @@ type StageOptions = {
   stagedApplied?: AppliedDocumentOp;
   story?: OpStory;
   previousProjection?: CanonicalProjection;
-  onPublish: (inverse: readonly DocumentOp[], version: number) => void;
+  /**
+   * `shown` is the selection the published projection holds, read back from
+   * it, so history restores exactly what this publish showed.
+   */
+  onPublish: (
+    inverse: readonly DocumentOp[],
+    version: number,
+    shown: CanonicalSelection,
+  ) => void;
   /** A remote commit's sequenced id; a local commit mints a fresh one. */
   opId?: string;
 };
@@ -2267,7 +2275,7 @@ class CanonicalSession {
       ...(compiled.value.applied === undefined
         ? {}
         : { stagedApplied: compiled.value.applied }),
-      onPublish: (inverse, version) => {
+      onPublish: (inverse, version, shown) => {
         const entry = {
           type: "applied",
           ops,
@@ -2280,13 +2288,13 @@ class CanonicalSession {
         } as const satisfies AppliedJournalEntry;
         if (group !== undefined && joins) {
           group.entries.push(entry);
-          group.postSelection = postSelection;
+          group.postSelection = shown;
         } else {
           this.applied.push({
             entries: [entry],
             undo: { type: "entries" },
             preSelection: preSelection.value,
-            postSelection,
+            postSelection: shown,
           });
         }
         this.undone.length = 0;
@@ -2486,13 +2494,13 @@ class CanonicalSession {
       origin: "input",
       history: "opened",
       ...(stagedApplied === undefined ? {} : { stagedApplied }),
-      onPublish: (inverse, version) => {
+      onPublish: (inverse, version, shown) => {
         const entry = {
           type: "applied",
           ops,
           inverse,
           preSelection: preSelection.value,
-          postSelection,
+          postSelection: shown,
           preDocument,
           postDocument: this.currentDocument,
           version,
@@ -2506,7 +2514,7 @@ class CanonicalSession {
           entries: [entry],
           undo: { type: "entries" },
           preSelection: preSelection.value,
-          postSelection,
+          postSelection: shown,
         });
         this.undone.length = 0;
       },
@@ -2879,7 +2887,7 @@ class CanonicalSession {
       selection: postSelection,
       origin: "input",
       history: "opened",
-      onPublish: (inverse, version) => {
+      onPublish: (inverse, version, shown) => {
         this.applied.push({
           entries: [
             {
@@ -2887,7 +2895,7 @@ class CanonicalSession {
               ops: preparedOps,
               inverse,
               preSelection: selected.value,
-              postSelection,
+              postSelection: shown,
               preDocument,
               postDocument: this.currentDocument,
               version,
@@ -2900,7 +2908,7 @@ class CanonicalSession {
           ],
           undo: { type: "entries" },
           preSelection: selected.value,
-          postSelection,
+          postSelection: shown,
         });
         this.undone.length = 0;
       },
@@ -3344,6 +3352,14 @@ class CanonicalSession {
           "Canonical history cannot restore the selected inline atom.",
         );
     }
+    // A position the projection cannot place falls back near the old caret,
+    // so history keeps the selection read back from what is shown.
+    const read =
+      sameStory(selection.anchor.story, projectedStory) &&
+      sameStory(selection.head.story, projectedStory)
+        ? projected.value.selectionAt(transaction)
+        : undefined;
+    const shown = read !== undefined && read.isOk() ? read.value : selection;
     // The transaction now ends on a document equal to the projection.
     const held = projected.value.heldAs(transaction.doc);
     const heldBody =
@@ -3436,7 +3452,7 @@ class CanonicalSession {
         )
           this.saveStructure = "changed";
         this.currentVersion = baseVersion + 1;
-        onPublish(applied.value.inverse, this.currentVersion);
+        onPublish(applied.value.inverse, this.currentVersion, shown);
         const committed: CanonicalCommittedBatch = {
           opId: opId ?? this.newOpId(),
           ops,
