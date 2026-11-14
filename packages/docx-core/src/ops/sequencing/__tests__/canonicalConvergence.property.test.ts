@@ -114,6 +114,8 @@ type Outcome = {
   trackedPairs: number;
   /** Concurrent pairs in one paragraph or thread, accepted and refused. */
   pairs: PairCounts;
+  /** Why two typings refused each other: the pair's types and message. */
+  typingRefusals: string[];
 };
 
 /**
@@ -360,6 +362,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     diverged: [],
     trackedPairs: 0,
     pairs: noPairs(),
+    typingRefusals: [],
   };
   const delivery: Delivery[] = [];
   let serial = 10;
@@ -415,9 +418,14 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           type === DOCUMENT_OP_TYPES.INSERT_CONTENT ||
           type === DOCUMENT_OP_TYPES.JOIN_INLINE,
       );
-      for (const kind of pairKinds(batch.ops, refusingOps(batch, tail)))
-        if (kind !== "typingTyping" || typingPair)
-          outcome.pairs[kind].refused += 1;
+      for (const kind of pairKinds(batch.ops, refusingOps(batch, tail))) {
+        if (kind === "typingTyping" && !typingPair) continue;
+        outcome.pairs[kind].refused += 1;
+        if (kind === "typingTyping")
+          outcome.typingRefusals.push(
+            `${String(result.reason.opType)} over ${String(result.reason.overType)}: ${result.reason.message}`,
+          );
+      }
       return;
     }
     history.push(sequencer.document);
@@ -606,6 +614,8 @@ type Counts = {
   commentRebased: number;
   trackedPairs: number;
   pairs: PairCounts;
+  /** Why two typings refused each other: the pair's types and message. */
+  typingRefusals: string[];
 };
 
 const noCounts = (): Counts => ({
@@ -615,6 +625,7 @@ const noCounts = (): Counts => ({
   commentRebased: 0,
   trackedPairs: 0,
   pairs: noPairs(),
+  typingRefusals: [],
 });
 
 const convergence = (
@@ -634,6 +645,7 @@ const convergence = (
       counts.pairs[kind].accepted += outcome.pairs[kind].accepted;
       counts.pairs[kind].refused += outcome.pairs[kind].refused;
     }
+    counts.typingRefusals.push(...outcome.typingRefusals);
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
@@ -957,7 +969,7 @@ describe("canonical sequencing", () => {
         NUM_RUNS,
       );
       expect(counts.pairs.typingTyping.accepted).toBeGreaterThan(0);
-      expect(counts.pairs.typingTyping.refused).toBe(0);
+      expect(counts.typingRefusals).toEqual([]);
       expect(counts.proven).toBeGreaterThan(0);
     },
     propertyTestTimeout(180_000),
@@ -989,7 +1001,7 @@ describe("canonical sequencing", () => {
       expect(
         TYPING_PAIR_KINDS.filter((kind) => counts.pairs[kind].accepted === 0),
       ).toEqual([]);
-      expect(counts.pairs.typingTyping.refused).toBe(0);
+      expect(counts.typingRefusals).toEqual([]);
     },
     propertyTestTimeout(180_000),
   );
