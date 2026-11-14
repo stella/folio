@@ -33,6 +33,10 @@ import type { CanonicalSectionPropertiesResult } from "../types/canonicalSection
 import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import {
+  type AnonymizationHighlightsView,
+  NO_ANONYMIZATION_HIGHLIGHTS,
+} from "./anonymizationHighlights";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
 
 type CanonicalStoryHistoryOptions = {
@@ -164,6 +168,11 @@ export type HiddenEditorApi = {
   setCellSelection: (anchorCellPos: number, headCellPos: number) => void;
   /** Scroll the PM view to selection (no-op since hidden) */
   scrollToSelection: () => void;
+  /**
+   * Where the host's anonymization terms occur in every story the editor
+   * shows, read from the current text; nothing before the editor exists.
+   */
+  getAnonymizationHighlights: () => AnonymizationHighlightsView;
 };
 
 export type HiddenEditorApiDeps = {
@@ -172,6 +181,7 @@ export type HiddenEditorApiDeps = {
   getCanonicalComments?: () => Comment[] | null;
   getCanonicalCommittedVersion?: HiddenEditorApi["getCanonicalCommittedVersion"];
   getCanonicalDocument?: () => ReadonlyDocument | null;
+  getAnonymizationHighlights?: () => AnonymizationHighlightsView;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
   markCanonicalSaved?: HiddenEditorApi["markCanonicalSaved"];
@@ -292,6 +302,9 @@ export const createHiddenEditorApi = (
         ? cloneDocumentWithParagraphPropertySources(canonical)
         : null;
     },
+
+    getAnonymizationHighlights: () =>
+      deps.getAnonymizationHighlights?.() ?? NO_ANONYMIZATION_HIGHLIGHTS,
 
     getDocument: () => {
       const canonical = deps.getCanonicalDocument?.();

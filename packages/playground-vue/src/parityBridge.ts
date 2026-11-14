@@ -4,10 +4,9 @@ import {
   finishAutocompleteSuggestion,
   getDocumentWatermark,
   insertTableInView,
-  setAnonymizationTermsMeta,
   startAutocompleteSuggestion,
 } from "@stll/folio-vue";
-import type { DocxEditorRef } from "@stll/folio-vue";
+import type { DocxEditorRef, FolioAnonymizationTerm } from "@stll/folio-vue";
 
 import type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
 
@@ -16,6 +15,7 @@ export type { FolioParityBridge } from "../../../scripts/parity/bridge-contract"
 export function buildParityBridge(
   getRef: () => DocxEditorRef | null,
   getClipboardCallbackCount: (kind: "copy" | "cut" | "paste") => number,
+  setAnonymizationTerms: (terms: readonly FolioAnonymizationTerm[]) => void,
 ): FolioParityBridge {
   const autocompleteRequestId = "parity-autocomplete";
   const liveView = () => getRef()?.getEditor()?.getView() ?? null;
@@ -367,38 +367,22 @@ export function buildParityBridge(
       );
     },
     anonymizeFirstWord: () => {
-      const view = liveView();
-      if (!view) {
-        return false;
-      }
-      let word: string | null = null;
-      view.state.doc.descendants((node) => {
-        if (word) {
-          return false;
-        }
-        if (!node.isText || !node.text) {
-          return true;
-        }
-        const candidate = node.text.trimStart().split(/\s+/)[0];
-        if (candidate) {
-          word = candidate;
-          return false;
-        }
-        return true;
-      });
-      if (!word) {
-        return false;
-      }
-      const { key, payload } = setAnonymizationTermsMeta([
-        { canonical: word, label: "person" },
-      ]);
-      view.dispatch(view.state.tr.setMeta(key, payload));
-      return true;
+      const word = getRef()
+        ?.createAIEditSnapshot()
+        ?.blocks.map((block) => block.text.trimStart().split(/\s+/u)[0] ?? "")
+        .find((candidate) => candidate.length > 0);
+      if (word === undefined) return null;
+      setAnonymizationTerms([{ canonical: word, label: "person" }]);
+      return word;
     },
     countAnonymizationRects: () =>
       document.querySelectorAll(
         "[data-folio-anonymization-overlay] .folio-anonymization-term",
       ).length,
+    getAnonymizationMatchStarts: () =>
+      (getRef()?.getAnonymizationMatches() ?? []).map(
+        ({ start }) => `${start.blockId}:${String(start.offset)}`,
+      ),
     startAutocomplete: (text) => {
       const view = liveView();
       if (!view) {

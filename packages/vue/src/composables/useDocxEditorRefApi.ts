@@ -1122,6 +1122,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const pageIndex = findPageIndexContainingPmPos(currentLayout, range.from);
       return pageIndex == null ? null : pageIndex + 1;
     },
+    getAnonymizationMatches: () =>
+      opts.editor.getAnonymizationHighlights().matches,
     getBlockRect,
     getBlockRects,
     getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),

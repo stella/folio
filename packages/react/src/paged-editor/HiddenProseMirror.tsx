@@ -37,6 +37,10 @@ import type {
   CanonicalHistoryDrop,
   CanonicalHistoryEffect,
 } from "@stll/folio-core/canonical/canonicalSession";
+import {
+  type FolioAnonymizationTerm,
+  NO_ANONYMIZATION_TERMS,
+} from "@stll/folio-core/controller/anonymizationHighlights";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
@@ -114,6 +118,8 @@ export type HiddenProseMirrorProps = {
   onSelectionChange?: (state: EditorState) => void;
   /** External ProseMirror plugins */
   externalPlugins?: Plugin[];
+  /** Terms the editor highlights in the shown text. */
+  anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
   /** Yjs-backed collaboration document owner. */
   collaboration?: HiddenProseMirrorCollaboration | undefined;
   /** The canonical room the canonical session joins. */
@@ -221,6 +227,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onCanonicalCompositionEnd,
     onSelectionChange,
     externalPlugins = EMPTY_EXTERNAL_PLUGINS,
+    anonymizationTerms,
     collaboration,
     canonicalRoom,
     extensionManager,
@@ -270,6 +277,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const stylesRef = useRef(styles);
   const extensionManagerRef = useRef(extensionManager);
   const externalPluginsRef = useRef(externalPlugins);
+  const anonymizationTermsRef = useRef(anonymizationTerms);
   const getPrecomputedInitialStateRef = useRef(getPrecomputedInitialState);
   const collaborationRef = useRef(collaboration);
   const canonicalRoomRef = useRef(canonicalRoom);
@@ -308,6 +316,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     stylesRef.current = styles;
     extensionManagerRef.current = extensionManager;
     externalPluginsRef.current = externalPlugins;
+    anonymizationTermsRef.current = anonymizationTerms;
     getPrecomputedInitialStateRef.current = getPrecomputedInitialState;
     onTransactionRef.current = onTransaction;
     onCanonicalCompositionEndRef.current = onCanonicalCompositionEnd;
@@ -336,6 +345,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getStyles: () => stylesRef.current,
         getExtensionManager: () => extensionManagerRef.current,
         getExternalPlugins: () => externalPluginsRef.current,
+        getAnonymizationTerms: () =>
+          anonymizationTermsRef.current ?? NO_ANONYMIZATION_TERMS,
         getCollaboration: () => collaborationRef.current,
         getCollaborationModules: () => collaborationModulesRef.current,
         getCanonicalRoom: () => canonicalRoomRef.current,
