@@ -1,0 +1,39 @@
+name: Scratch Nuxt lockfile
+
+on:
+  push:
+    branches: [scratch/nuxt-lockfile-2]
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/bun
+        with:
+          package-json: package.json
+          binary-cache: read-only
+
+      - name: Resolve the lockfile
+        run: bun install --lockfile-only
+
+      - name: Lockfile diff
+        run: git diff --stat
+
+      - name: Audit the resolved lockfile
+        run: bun audit || true
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lockfiles
+          path: |
+            bun.lock
+            plugins/vscode/bun.lock
+          if-no-files-found: error
