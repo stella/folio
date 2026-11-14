@@ -420,22 +420,15 @@ const errorText = (error: unknown): string => {
  * running into later tests.
  */
 const SHRINK_BUDGET_SHARE = 0.9;
-/**
- * Elapsed real time in milliseconds, from a clock fake timers do not move: a
- * property that advances a fake clock must not spend its own time budget.
- */
-const realNow = (): number =>
-  typeof Bun === "undefined" ? performance.now() : Bun.nanoseconds() / 1e6;
 const RUN_BUDGET_SHARE = 0.95;
 
 type RunBudget = {
   /** The budget the test states, in milliseconds. */
   budgetMs: number;
-  startedAt: number;
-  /** When shrinking a found failure stops. */
-  shrinkDeadline: number;
-  /** When every run of this test must have stopped. */
-  deadline: number;
+  /** Real time this test's runs have spent, in milliseconds. */
+  spentMs: number;
+  /** The clock reading the last count started from, and whether it was fake. */
+  mark: { at: number; fake: boolean };
 };
 
 /** Budgets of the tests running now, by test definition. */
@@ -444,31 +437,45 @@ const runningTests = new Map<string, RunBudget>();
 type OnTestFinished = (callback: () => void) => void;
 
 /**
- * Bun's `onTestFinished`, loaded once this module is; absent outside Bun (the
- * Playwright specs import this module too) and until the import settles,
- * which is before any test runs.
+ * Bun's `onTestFinished` and fake-timer state, loaded once this module is;
+ * absent outside Bun (the Playwright specs import this module too) and until
+ * the import settles, which is before any test runs.
  */
 let onTestFinished: OnTestFinished | undefined;
+let fakeTimers: () => boolean = () => false;
 if (process.versions["bun"] !== undefined) {
   void import("bun:test").then((bunTest) => {
     onTestFinished = bunTest.onTestFinished;
-    return onTestFinished;
+    fakeTimers = () => bunTest.jest.isFakeTimers();
+    return bunTest;
   });
 }
 
 /**
+ * Real time `budget`'s test has spent so far. Fake timers move every clock a
+ * test can read, so a stretch that starts or ends under them is not counted:
+ * a property that drives a fake clock is left to Bun's own timeout.
+ */
+const spent = (budget: RunBudget): number => {
+  const mark = { at: Date.now(), fake: fakeTimers() };
+  if (!mark.fake && !budget.mark.fake)
+    budget.spentMs += Math.max(0, mark.at - budget.mark.at);
+  budget.mark = mark;
+  return budget.spentMs;
+};
+
+/**
  * The budget of the Bun test this run belongs to, or `undefined` outside a
  * running test or when the test states none. Every run of one test shares
- * one deadline, so pinned replays and several properties in a test add up.
+ * one budget, so pinned replays and several properties in a test add up.
  */
 const runBudget = (): RunBudget | undefined => {
   const test = statedTestBudget(outsideFrames());
   if (test?.budgetMs === undefined) return undefined;
-  const now = realNow();
   const running = runningTests.get(test.key);
   // A test that outlived its budget has ended (Bun timed it out), so a later
-  // run of the same definition is a new test with a deadline of its own.
-  if (running !== undefined && now - running.startedAt <= running.budgetMs)
+  // run of the same definition is a new test with a budget of its own.
+  if (running !== undefined && spent(running) <= running.budgetMs)
     return running;
   const register = onTestFinished;
   if (register === undefined) return undefined;
@@ -482,17 +489,20 @@ const runBudget = (): RunBudget | undefined => {
   }
   const budget = {
     budgetMs: test.budgetMs,
-    startedAt: now,
-    shrinkDeadline: now + Math.floor(test.budgetMs * SHRINK_BUDGET_SHARE),
-    deadline: now + Math.floor(test.budgetMs * RUN_BUDGET_SHARE),
+    spentMs: 0,
+    mark: { at: Date.now(), fake: fakeTimers() },
   };
   runningTests.set(test.key, budget);
   return budget;
 };
 
-/** Time left before `budget`'s deadline; at least 1 ms so fast-check stops at once. */
+/**
+ * Time left before `budget`'s run share is spent, for fast-check's own limit
+ * on a configuration a caller asserts directly; at least 1 ms so fast-check
+ * stops at once.
+ */
 const remainingMs = (budget: RunBudget): number =>
-  Math.max(1, budget.deadline - realNow());
+  Math.max(1, budget.budgetMs * RUN_BUDGET_SHARE - spent(budget));
 
 /** Each configuration's budget, refreshed into its limit when its run starts. */
 const configBudgets = new WeakMap<object, RunBudget>();
@@ -503,10 +513,10 @@ const budgetText = (budget: RunBudget | undefined, share: number): string =>
     : `${String(Math.round(share * 100))}% of the test's ${String(budget.budgetMs)} ms budget`;
 
 /**
- * `property`, stopped as fast-check's own time limit stops a run, on the real
- * clock: before any further case once `budget`'s deadline has passed, and
- * before any further shrink once a case has failed and its shrink deadline
- * has passed. A case already running finishes first.
+ * `property`, stopped as fast-check's own time limit stops a run, by the real
+ * time its test has spent: before any further case once the run share of
+ * `budget` is spent, and before any further shrink once a case has failed and
+ * the shrink share is spent. A case already running finishes first.
  */
 const shrinkBounded = <Ts>(
   property: fc.IRawProperty<Ts>,
@@ -527,8 +537,11 @@ const shrinkBounded = <Ts>(
     runBeforeEach: () => property.runBeforeEach(),
     runAfterEach: () => property.runAfterEach(),
     run: (value) => {
-      const now = realNow();
-      if (now >= budget.deadline || (failed && now >= budget.shrinkDeadline)) {
+      const used = spent(budget);
+      if (
+        used >= budget.budgetMs * RUN_BUDGET_SHARE ||
+        (failed && used >= budget.budgetMs * SHRINK_BUDGET_SHARE)
+      ) {
         const stop = new fc.PreconditionFailure(true);
         return property.isAsync() ? Promise.resolve(stop) : stop;
       }
@@ -803,7 +816,8 @@ const buildConfig = <Ts>(
   };
   if (budget !== undefined) {
     configBudgets.set(config, budget);
-    config.interruptAfterTimeLimit = remainingMs(budget);
+    // fast-check's own limit reads the clock fake timers move.
+    if (!fakeTimers()) config.interruptAfterTimeLimit = remainingMs(budget);
     // A caller's reporter sees a stopped run as failed, never as a short pass.
     if (!own) config.markInterruptAsFailure = true;
   }

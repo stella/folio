@@ -101,12 +101,12 @@ describe("property run budgets", () => {
   });
 
   test(
-    "a property that moves a fake clock keeps its real-time budget",
+    "a property that moves a fake clock is not stopped by the time it fakes",
     () => {
       jest.useFakeTimers();
       try {
-        // An hour of fake time per case: a budget on the faked clock would
-        // stop this run after its first case.
+        // An hour of fake time per case: a budget read from the faked clock
+        // would stop this run after its first case.
         assertProperty(
           fc.property(fc.nat(), () => {
             jest.advanceTimersByTime(3_600_000);
