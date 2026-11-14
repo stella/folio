@@ -25,19 +25,54 @@ export const operationDrawArbitrary: fc.Arbitrary<OperationDraw> = fc.record({
   text: fc.constantFrom("revised", "the Customer", "Payment is due.", ""),
 });
 
+/**
+ * Draws for properties whose laws start from a staged operation: the text
+ * is never empty, so every insertion names an operation, and replacements
+ * inside a block, which most documents can take, are drawn most often. Use
+ * with `{ replaceIn: "blocksWithWords" }` so a replacement always finds a
+ * word.
+ */
+export const stagingDrawArbitrary: fc.Arbitrary<OperationDraw> = fc.record({
+  kind: fc.oneof(
+    { weight: 3, arbitrary: fc.constant("replaceInBlock" as const) },
+    { weight: 2, arbitrary: fc.constant("insertAfterBlock" as const) },
+    { weight: 2, arbitrary: fc.constant("insertBeforeBlock" as const) },
+    { weight: 1, arbitrary: fc.constant("deleteBlock" as const) },
+  ),
+  block: fc.nat(),
+  word: fc.nat(),
+  text: fc.constantFrom("revised", "the Customer", "Payment is due."),
+});
+
+type OperationForOptions = {
+  /**
+   * Which blocks a replacement draws from: every block a reader sees (a
+   * block without words then names no operation), or only those with words.
+   */
+  replaceIn?: "everyBlock" | "blocksWithWords";
+};
+
+const wordsOf = (text: string): string[] =>
+  text.split(/\s+/u).filter((word) => word !== "");
+
 /** The operation a draw names over the blocks a reader of `reviewer` sees. */
 export const operationFor = (
   reviewer: { getContent: () => FolioAIBlock[] },
   draw: OperationDraw,
+  { replaceIn = "everyBlock" }: OperationForOptions = {},
 ): FolioDocumentOperation | null => {
-  const blocks = reviewer
+  const read = reviewer
     .getContent()
     .filter((block) => block.kind !== "diagnostic");
+  const blocks =
+    draw.kind === "replaceInBlock" && replaceIn === "blocksWithWords"
+      ? read.filter((block) => wordsOf(block.text).length > 0)
+      : read;
   const block = blocks.at(draw.block % Math.max(blocks.length, 1));
   if (!block) return null;
   switch (draw.kind) {
     case "replaceInBlock": {
-      const words = block.text.split(/\s+/u).filter((word) => word !== "");
+      const words = wordsOf(block.text);
       const find = words.at(draw.word % Math.max(words.length, 1));
       return find === undefined
         ? null

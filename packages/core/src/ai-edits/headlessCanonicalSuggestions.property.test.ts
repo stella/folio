@@ -20,8 +20,8 @@ import fc from "fast-check";
 import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
 import {
   type OperationDraw,
-  operationDrawArbitrary,
   operationFor,
+  stagingDrawArbitrary,
 } from "../../../../test/generators/reviewerOperationDraws";
 import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
@@ -95,7 +95,9 @@ const suggestionLaws = async (
     if (CanonicalSessionError.is(error)) return "sessionRefused";
     throw error;
   }
-  const operation = operationFor(reviewer, draw);
+  const operation = operationFor(reviewer, draw, {
+    replaceIn: "blocksWithWords",
+  });
   if (operation === null) return "noOperation";
   const before = reads(reviewer);
   const result = apply(reviewer, operation, "suggested");
@@ -160,7 +162,7 @@ const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
 const generatedSuggestions = (tally: Map<SuggestionOutcome, number>) =>
   fc.asyncProperty(
     reviewerDocumentArbitrary,
-    operationDrawArbitrary,
+    stagingDrawArbitrary,
     async (document, draw) => {
       const buffer = await packaged(document);
       const outcome =
@@ -189,9 +191,11 @@ describe("a canonical reviewer's pending suggestions", () => {
     async () => {
       const tally = new Map<SuggestionOutcome, number>();
       await checkCoverageSample(generatedSuggestions(tally), COVERAGE_RUNS);
-      expect(tally.get("suggested") ?? 0).toBeGreaterThanOrEqual(
-        COVERAGE_RUNS / 5,
-      );
+      // The whole tally is in the failure, so a shortfall names its outcomes.
+      expect({
+        staged: (tally.get("suggested") ?? 0) >= COVERAGE_RUNS / 3,
+        tally: Object.fromEntries(tally),
+      }).toMatchObject({ staged: true });
     },
     propertyTestTimeout(120_000),
   );
