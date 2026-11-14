@@ -26,9 +26,9 @@
 
 import React, { useEffect, useMemo, useRef } from "react";
 
+import { slugAnonymizationLabel } from "@stll/folio-core/controller/anonymizationHighlights";
 import type { SelectionRect } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import { scrollEditorElementIntoView } from "@stll/folio-core/paged-layout/editorScrollRoot";
-import { slugAnonymizationLabel } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 
 export type AnonymizationRectGroup = {
   /** Same shape as SelectionOverlay — adjusted into container space. */

@@ -210,13 +210,10 @@ export {
   setActiveCitationMeta,
   type AICitationRange,
 } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
-export {
-  anonymizationDecorationsKey,
-  getAnonymizationMatches,
-  setAnonymizationTermsMeta,
-  type AnonymizationMatch,
-  type AnonymizationTerm,
-} from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
+export type {
+  FolioAnonymizationMatch,
+  FolioAnonymizationTerm,
+} from "@stll/folio-core/controller/anonymizationHighlights";
 export {
   getTemplateDirectives,
   scanDirectives,
@@ -239,26 +236,10 @@ export {
   type TemplateSlashMenuKeyAction,
   type TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
-export {
-  acceptAutocompleteSuggestion,
-  acceptAutocompleteWord,
-  appendAutocompleteToken,
-  autocompleteSuggestionKey,
-  autocompleteSuggestionPlugin,
-  clearAutocompleteSuggestion,
-  DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES,
-  finishAutocompleteSuggestion,
-  getAutocompleteSuggestion,
-  shouldTriggerAutocomplete,
-  startAutocompleteSuggestion,
-  type AcceptAutocompleteResult,
-  type AutocompleteSuggestionPluginOptions,
-  type AutocompleteSuggestionState,
-  type AutocompleteSuggestionStatus,
-  type AutocompleteTriggerCheck,
-  type AutocompleteTriggerOptions,
-  type AutocompleteTriggerSkipReason,
-} from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
+export type {
+  FolioAutocompleteApi,
+  FolioAutocompleteState,
+} from "@stll/folio-core/controller/autocompleteSuggestion";
 export {
   AutocompleteCaretOverlay,
   type AutocompleteCaretOverlayProps,

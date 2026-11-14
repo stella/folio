@@ -303,9 +303,11 @@
                 aria-hidden="true"
               >
                 <AnonymizationRectsOverlay
-                  :get-view="() => editorView"
+                  :get-highlights="readAnonymizationHighlights"
                   :get-pages-container="() => pagesRef"
                   :editor-state="editorState"
+                  :terms="props.anonymizationTerms"
+                  :on-matches-change="props.onAnonymizationMatchesChange"
                   :zoom="zoom"
                   :layout="layout"
                   :blocks="blocks"
@@ -341,6 +343,8 @@
                   :editor-state="editorState"
                   :zoom="zoom"
                   :sync-coordinator="syncCoordinator"
+                  :autocomplete="editor.autocomplete"
+                  :on-change="props.onAutocompleteChange"
                 />
                 <DecorationLayer
                   :get-view="() => editorView"
@@ -999,10 +1003,9 @@ const {
   onCanonicalHistory: (effect) => props.onCanonicalHistory?.(effect),
   onCanonicalHistoryDrop: (drop) => props.onCanonicalHistoryDrop?.(drop),
   collaboration: () => props.collaboration,
-  // Anonymization highlights + template directives are driven by the overlay
-  // components below; these thread the plugin callbacks and the directive gate.
-  onAnonymizationMatchesChange: (matches) =>
-    props.onAnonymizationMatchesChange?.(matches),
+  // Template directives are driven by the overlay components below; this
+  // threads the directive gate. Highlights read the host's terms.
+  getAnonymizationTerms: () => props.anonymizationTerms,
   showTemplateDirectives: () => props.showTemplateDirectives,
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) =>
@@ -1037,6 +1040,8 @@ const {
     ? (result) => props.onSelectiveSaveTripwire?.(result)
     : undefined,
 });
+
+const readAnonymizationHighlights = () => editor.getAnonymizationHighlights();
 
 /**
  * The current document for this component's own readers: never a host copy,

@@ -14,24 +14,20 @@ import {
   type PageRendererName,
 } from "@stll/folio-core/display-list/editor/pageRenderer";
 import {
-  appendAutocompleteToken,
-  clearAutocompleteSuggestion,
   createEmptyDocument,
   createStellaStyleDocumentPreset,
   DocxEditor,
-  finishAutocompleteSuggestion,
   getDocumentWatermark,
   insertImageFromFile,
   insertPageBreakInView,
   insertTableInView,
   insertTableOfContentsInView,
-  setAnonymizationTermsMeta,
-  startAutocompleteSuggestion,
 } from "@stll/folio-react";
 import type {
   Document as FolioDocument,
   DocxEditorRef,
   EditorMode,
+  FolioAnonymizationTerm,
   FontDefinition,
 } from "@stll/folio-react";
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
@@ -99,6 +95,7 @@ declare global {
 function buildParityBridge(
   getRef: () => DocxEditorRef | null,
   getClipboardCallbackCount: (kind: "copy" | "cut" | "paste") => number,
+  setAnonymizationTerms: (terms: readonly FolioAnonymizationTerm[]) => void,
 ): FolioParityBridge {
   const autocompleteRequestId = "parity-autocomplete";
   const liveView = () => getRef()?.getEditor()?.getView() ?? null;
@@ -450,73 +447,45 @@ function buildParityBridge(
       );
     },
     anonymizeFirstWord: () => {
-      const view = liveView();
-      if (!view) {
-        return false;
-      }
-      let word: string | null = null;
-      view.state.doc.descendants((node) => {
-        if (word) {
-          return false;
-        }
-        if (!node.isText || !node.text) {
-          return true;
-        }
-        const candidate = node.text.trimStart().split(/\s+/)[0];
-        if (candidate) {
-          word = candidate;
-          return false;
-        }
-        return true;
-      });
-      if (!word) {
-        return false;
-      }
-      const { key, payload } = setAnonymizationTermsMeta([
-        { canonical: word, label: "person" },
-      ]);
-      view.dispatch(view.state.tr.setMeta(key, payload));
-      return true;
+      const word = getRef()
+        ?.createAIEditSnapshot()
+        ?.blocks.map((block) => block.text.trimStart().split(/\s+/u)[0] ?? "")
+        .find((candidate) => candidate.length > 0);
+      if (word === undefined) return null;
+      setAnonymizationTerms([{ canonical: word, label: "person" }]);
+      return word;
     },
     countAnonymizationRects: () =>
       document.querySelectorAll(
         "[data-folio-anonymization-overlay] .folio-anonymization-term",
       ).length,
+    getAnonymizationMatchStarts: () =>
+      (getRef()?.getAnonymizationMatches() ?? []).map(
+        ({ start }) => `${start.blockId}:${String(start.offset)}`,
+      ),
     startAutocomplete: (text) => {
-      const view = liveView();
-      if (!view) {
+      const autocomplete = getRef()?.autocomplete;
+      const requestId = autocomplete?.start({
+        requestId: autocompleteRequestId,
+      });
+      if (!autocomplete || requestId === null || requestId === undefined)
         return false;
-      }
-      view.dispatch(
-        startAutocompleteSuggestion(
-          view.state.tr,
-          view.state.selection.head,
-          autocompleteRequestId,
-        ),
-      );
-      view.dispatch(
-        appendAutocompleteToken(view.state.tr, autocompleteRequestId, text),
-      );
-      return true;
+      return autocomplete.append(requestId, text);
     },
-    finishAutocomplete: () => {
-      const view = liveView();
-      if (!view) {
-        return false;
-      }
-      view.dispatch(
-        finishAutocompleteSuggestion(view.state.tr, autocompleteRequestId),
-      );
-      return true;
-    },
+    finishAutocomplete: () =>
+      getRef()?.autocomplete.finish(autocompleteRequestId) ?? false,
     clearAutocomplete: () => {
-      const view = liveView();
-      if (!view) {
-        return false;
-      }
-      view.dispatch(clearAutocompleteSuggestion(view.state.tr));
+      const autocomplete = getRef()?.autocomplete;
+      if (!autocomplete) return false;
+      autocomplete.clear();
       return true;
     },
+    readAutocompleteText: () => {
+      const state = getRef()?.autocomplete.get();
+      return state === undefined || state.status === "idle" ? null : state.text;
+    },
+    acceptAutocompleteWord: () =>
+      getRef()?.autocomplete.accept("word") ?? false,
     save: async () => {
       const buffer = await (getRef()?.save() ?? Promise.resolve(null));
       return buffer?.byteLength ?? 0;
@@ -563,26 +532,29 @@ function buildParityBridge(
       if (!saved) throw new Error("The editor did not save");
       return [...new Uint8Array(saved)];
     },
-    insertTextViaPagedEditorRef: (text) => {
-      const pagedRef = getRef()?.getEditorRef();
-      const view = pagedRef?.getView();
-      if (!pagedRef || !view) {
-        return false;
-      }
-      const { state } = view;
-      pagedRef.dispatch(
-        state.tr.insertText(text, state.selection.from, state.selection.to),
+    getParagraphEdgePages: () => {
+      const ref = getRef();
+      const ids = (ref?.getDocument()?.package.document.content ?? []).flatMap(
+        (block) =>
+          block.type === "paragraph" && block.paraId !== undefined
+            ? [block.paraId]
+            : [],
       );
-      return true;
+      const firstId = ids.at(0);
+      const lastId = ids.at(-1);
+      if (!ref || firstId === undefined || lastId === undefined) return null;
+      const pageOf = (blockId: string) =>
+        ref.getPositionPage({ story: "main", blockId, offset: 0 });
+      const first = pageOf(firstId);
+      const last = pageOf(lastId);
+      return first === null || last === null ? null : { first, last };
     },
-    getPageNumberForSelection: () => {
-      const pagedRef = getRef()?.getEditorRef();
-      const view = pagedRef?.getView();
-      if (!pagedRef || !view) {
-        return 0;
-      }
-      return pagedRef.getPageNumberForPmPos(view.state.selection.from) ?? 0;
-    },
+    getUnknownPositionPage: () =>
+      getRef()?.getPositionPage({
+        story: "main",
+        blockId: "parity-no-such-paragraph",
+        offset: 0,
+      }) ?? null,
     typeThenReloadDocument: (marker) => {
       const ref = getRef();
       const view = liveView();
@@ -679,6 +651,8 @@ const DocumentPlayground = () => {
     [scrollHost],
   );
   const clipboardCallbackCountsRef = useRef({ copy: 0, cut: 0, paste: 0 });
+  const [anonymizationTerms, setAnonymizationTerms] =
+    useState<readonly FolioAnonymizationTerm[]>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(
     () => {
@@ -942,6 +916,7 @@ const DocumentPlayground = () => {
     globalThis.__folioParity = buildParityBridge(
       () => editorRef.current,
       (kind) => clipboardCallbackCountsRef.current[kind],
+      setAnonymizationTerms,
     );
     return () => {
       globalThis.__folioBrowserTestBridge = undefined;
@@ -964,6 +939,9 @@ const DocumentPlayground = () => {
           <DocxEditor
             accessibleName="Document editor"
             ref={attachEditor}
+            {...(anonymizationTerms === undefined
+              ? {}
+              : { anonymizationTerms })}
             document={documentBuffer ? null : currentDocument}
             documentBuffer={documentBuffer}
             author="Folio User"

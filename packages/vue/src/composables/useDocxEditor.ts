@@ -33,6 +33,10 @@ import type {
   CanonicalHistoryEffect,
 } from "@stll/folio-core/canonical/canonicalSession";
 import {
+  type FolioAnonymizationTerm,
+  NO_ANONYMIZATION_TERMS,
+} from "@stll/folio-core/controller/anonymizationHighlights";
+import {
   type CanonicalRoomCollaboration,
   isCanonicalRoomCollaboration,
 } from "@stll/folio-core/controller/canonicalRoomEditor";
@@ -148,9 +152,6 @@ import {
   heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
-import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -439,15 +440,8 @@ export type UseDocxEditorOptions = {
   collaboration?: MaybeRefOrGetter<
     UseDocxEditorCollaboration | CanonicalRoomCollaboration | undefined
   >;
-  /**
-   * Fires with the anonymization decoration plugin's current match list on
-   * mount, term push, and every doc edit. The anonymization plugin is always
-   * installed (inert until terms are pushed via `setAnonymizationTermsMeta`),
-   * mirroring the React adapter.
-   */
-  onAnonymizationMatchesChange?: (
-    matches: readonly AnonymizationMatch[],
-  ) => void;
+  /** The terms the editor highlights in the shown text; none when unset. */
+  getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[] | undefined;
   /**
    * Install the template-directive + slash-menu plugins so `{{...}}` markers are
    * scanned and the `/` trigger is active. Reactive: toggling reconfigures the
@@ -626,7 +620,7 @@ export function useDocxEditor(
     onCanonicalHistory,
     onCanonicalHistoryDrop,
     collaboration,
-    onAnonymizationMatchesChange,
+    getAnonymizationTerms,
     showTemplateDirectives,
     onSlashMenuChange,
     onSlashMenuKeyAction,
@@ -741,17 +735,6 @@ export function useDocxEditor(
   // manager installs it on every (re)created state.
   const suggestionPlugin = createSuggestionModePlugin(false);
   const notePlugins = [suggestionPlugin];
-  // Inline autocomplete is always installed and inert until a host dispatches
-  // start/token/finish metadata. Keep its keymap ahead of extension keymaps so
-  // Tab, Mod+ArrowRight, and Escape consume an active suggestion first.
-  const autocompletePlugin = autocompleteSuggestionPlugin({ keymap: true });
-
-  // Anonymization-term highlights. Always installed (inert until the host pushes
-  // terms via `setAnonymizationTermsMeta`), matching React. The callback is read
-  // through the stable closure below so the plugin identity never changes.
-  const anonymizationPlugin = createAnonymizationDecorationsPlugin({
-    onMatchesChange: (matches) => onAnonymizationMatchesChange?.(matches),
-  });
   // Template-directive scan + slash-menu trigger. Installed only when
   // `showTemplateDirectives` is on (see `buildExternalPlugins` /
   // `syncTemplatePlugins`). Preview plugin is inert until values are pushed.
@@ -771,11 +754,9 @@ export function useDocxEditor(
   // decorations. The template directive/slash-menu pair remains feature-gated.
   function buildExternalPlugins(): Plugin[] {
     return [
-      autocompletePlugin,
       suggestionPlugin,
       ...externalPlugins,
       ...(yjsCollaboration()?.plugins ?? []),
-      anonymizationPlugin,
       ...(templatePluginsEnabled()
         ? [templateDirectivesPlugin, templateSlashMenu]
         : []),
@@ -1103,6 +1084,8 @@ export function useDocxEditor(
     getStyles: readModelStyles,
     getExtensionManager: () => extensionManager,
     getExternalPlugins: buildExternalPlugins,
+    getAnonymizationTerms: () =>
+      getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,
     getCollaboration: yjsCollaboration,
     getCollaborationModules: () => collaborationModules.value,
     getCanonicalRoom: canonicalRoom,

@@ -2,26 +2,24 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
-// Both adapters install the anonymization decoration plugin (always on, inert
-// until terms are pushed) and mount an overlay that projects the plugin's match
-// ranges onto container-relative highlight rects. Pushing a term matching the
-// first word through the bridge proves the full path in each adapter: plugin
-// match recompute -> overlay re-projection -> painted `.folio-anonymization-term`
-// rect. Because both playgrounds parse the same fixture with the same core
-// plugin + projection, a highlight appears in React and Vue alike.
+// The `anonymizationTerms` prop highlights a term wherever it occurs in the
+// shown text. In the canonical session both adapters read the occurrences the
+// editor derives from the text and paint them through the shared range
+// projection; the occurrences come back as text positions, and setting terms
+// leaves the document unchanged.
 forEachAdapter(
-  "anonymization: pushed term paints a highlight rect",
+  "anonymization: a term from the prop paints a highlight rect",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
-    const pushed = await page.evaluate(
-      () => window.__folioParity?.anonymizeFirstWord() ?? false,
+    const word = await page.evaluate(
+      () => window.__folioParity?.anonymizeFirstWord() ?? null,
     );
-    expect(pushed).toBe(true);
+    expect(word).not.toBeNull();
 
     await expect
       .poll(
@@ -34,5 +32,15 @@ forEachAdapter(
         },
       )
       .toBeGreaterThan(0);
+    const starts = await page.evaluate(
+      () => window.__folioParity?.getAnonymizationMatchStarts() ?? [],
+    );
+    expect(starts.length).toBeGreaterThan(0);
+    for (const start of starts) expect(start).toMatch(/^\S+:\d+$/u);
+    expect(
+      await page.evaluate(
+        () => window.__folioParity?.hasPendingChanges() ?? true,
+      ),
+    ).toBe(false);
   },
 );

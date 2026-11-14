@@ -13,7 +13,12 @@ import { NodeSelection, Selection, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 
-import type { DocumentOp, FormattingPatch, OpStory } from "@stll/docx-core/ops";
+import type {
+  DocumentOp,
+  FormattingPatch,
+  OpStory,
+  TextPosition,
+} from "@stll/docx-core/ops";
 
 import type { CanonicalPublicOperationOptions } from "../canonical/canonicalPublicOperations";
 import type { CanonicalSessionMode } from "../canonical/canonicalSession";
@@ -25,6 +30,10 @@ import type {
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type {
+  FolioAutocompleteApi,
+  FolioAutocompleteState,
+} from "../types/autocomplete";
+import type {
   CanonicalCommentRequest,
   CanonicalCommentResult,
 } from "../types/canonicalComments";
@@ -33,7 +42,49 @@ import type { CanonicalSectionPropertiesResult } from "../types/canonicalSection
 import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import {
+  type AnonymizationHighlightsView,
+  NO_ANONYMIZATION_HIGHLIGHTS,
+} from "./anonymizationHighlights";
+import { IDLE_AUTOCOMPLETE } from "./autocompleteSuggestion";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
+import { legacyEditorPositionAt } from "./textPositionLookup";
+
+/** The inline suggestion, and what painting it needs. */
+export type HiddenEditorAutocomplete = FolioAutocompleteApi & {
+  /** Where the anchor shows in the body's editor document, if it does. */
+  editorAnchor: () => number | null;
+  /** Called after every change of the suggestion; returns the unsubscribe. */
+  subscribe: (listener: (state: FolioAutocompleteState) => void) => () => void;
+};
+
+/** No editor: nothing to suggest in. */
+export const NO_AUTOCOMPLETE: HiddenEditorAutocomplete = Object.freeze({
+  start: () => null,
+  append: () => false,
+  finish: () => false,
+  clear: () => {},
+  accept: () => false,
+  get: () => IDLE_AUTOCOMPLETE,
+  canTrigger: () => false,
+  editorAnchor: () => null,
+  subscribe: () => () => {},
+});
+
+/** An autocomplete that reads the one `current` gives on every call. */
+export const delegateAutocomplete = (
+  current: () => HiddenEditorAutocomplete,
+): HiddenEditorAutocomplete => ({
+  start: (options) => current().start(options),
+  append: (requestId, delta) => current().append(requestId, delta),
+  finish: (requestId) => current().finish(requestId),
+  clear: () => current().clear(),
+  accept: (scope) => current().accept(scope),
+  get: () => current().get(),
+  canTrigger: () => current().canTrigger(),
+  editorAnchor: () => current().editorAnchor(),
+  subscribe: (listener) => current().subscribe(listener),
+});
 
 type CanonicalStoryHistoryOptions = {
   view: EditorView;
@@ -164,6 +215,19 @@ export type HiddenEditorApi = {
   setCellSelection: (anchorCellPos: number, headCellPos: number) => void;
   /** Scroll the PM view to selection (no-op since hidden) */
   scrollToSelection: () => void;
+  /**
+   * Where a body text position shows in the editor's current document, or
+   * null when the editor has no view or the position names no paragraph
+   * there. Layout and painted pages are addressed by this position.
+   */
+  editorPositionAt: (position: TextPosition) => number | null;
+  /**
+   * Where the host's anonymization terms occur in every story the editor
+   * shows, read from the current text; nothing before the editor exists.
+   */
+  getAnonymizationHighlights: () => AnonymizationHighlightsView;
+  /** The inline autocomplete suggestion. */
+  autocomplete: HiddenEditorAutocomplete;
 };
 
 export type HiddenEditorApiDeps = {
@@ -172,6 +236,15 @@ export type HiddenEditorApiDeps = {
   getCanonicalComments?: () => Comment[] | null;
   getCanonicalCommittedVersion?: HiddenEditorApi["getCanonicalCommittedVersion"];
   getCanonicalDocument?: () => ReadonlyDocument | null;
+  /**
+   * The editor position of `position` in the canonical session's projection;
+   * undefined outside a canonical session.
+   */
+  canonicalEditorPositionAt?: (
+    position: TextPosition,
+  ) => number | null | undefined;
+  getAnonymizationHighlights?: () => AnonymizationHighlightsView;
+  autocomplete?: HiddenEditorAutocomplete;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
   markCanonicalSaved?: HiddenEditorApi["markCanonicalSaved"];
@@ -292,6 +365,20 @@ export const createHiddenEditorApi = (
         ? cloneDocumentWithParagraphPropertySources(canonical)
         : null;
     },
+
+    editorPositionAt: (position) => {
+      const view = deps.getView();
+      if (!view) return null;
+      const canonical = deps.canonicalEditorPositionAt?.(position);
+      return canonical === undefined
+        ? legacyEditorPositionAt(view.state.doc, position)
+        : canonical;
+    },
+
+    getAnonymizationHighlights: () =>
+      deps.getAnonymizationHighlights?.() ?? NO_ANONYMIZATION_HIGHLIGHTS,
+
+    autocomplete: deps.autocomplete ?? NO_AUTOCOMPLETE,
 
     getDocument: () => {
       const canonical = deps.getCanonicalDocument?.();

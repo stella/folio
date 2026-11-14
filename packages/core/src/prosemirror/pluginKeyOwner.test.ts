@@ -22,14 +22,6 @@ import type { AnyExtension } from "./extensions/types";
 import { createPluginKeyOwner } from "./pluginKeyOwner";
 import { createAICitationDecorationsPlugin } from "./plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "./plugins/aiSuggestionDecorations";
-import {
-  anonymizationDecorationsKey,
-  createAnonymizationDecorationsPlugin,
-  getAnonymizationMatches,
-  setAnonymizationTermsMeta,
-} from "./plugins/anonymizationDecorations";
-import { autocompleteSuggestionPlugin } from "./plugins/autocompleteSuggestion";
-import * as autocomplete from "./plugins/autocompleteSuggestion";
 import { createContentControlWidgetsPlugin } from "./plugins/contentControlWidgets";
 import { createDocumentNumberingPlugin } from "./plugins/documentNumbering";
 import {
@@ -91,8 +83,6 @@ const extensionPlugin = (extension: AnyExtension): Plugin => {
 const FACTORIES = {
   aiCitationDecorations: [createAICitationDecorationsPlugin],
   aiSuggestionDecorations: [createAISuggestionDecorationsPlugin],
-  anonymizationDecorations: [() => createAnonymizationDecorationsPlugin()],
-  autocompleteSuggestion: [() => autocompleteSuggestionPlugin()],
   contentControlWidgets: [() => createContentControlWidgetsPlugin()],
   documentNumbering: [() => createDocumentNumberingPlugin(null)],
   documentStyles: [
@@ -247,39 +237,6 @@ test("immutable descriptors read only their owned state across interleaved metad
   expect(() => owner.getState(duplicated)).toThrow("Multiple plugins belong");
 });
 
-test("real anonymization metadata and state remain editor owned", () => {
-  const doc = schema.node("doc", null, [
-    schema.node("paragraph", null, schema.text("Alice Bob")),
-  ]);
-  let first = EditorState.create({
-    doc,
-    plugins: [createAnonymizationDecorationsPlugin()],
-  });
-  let second = EditorState.create({
-    doc,
-    plugins: [createAnonymizationDecorationsPlugin()],
-  });
-  const alice = setAnonymizationTermsMeta([
-    { canonical: "Alice", label: "Person A" },
-  ]);
-  const bob = setAnonymizationTermsMeta([
-    { canonical: "Bob", label: "Person B" },
-  ]);
-  first = first.apply(first.tr.setMeta(alice.key, alice.payload));
-  expect(anonymizationDecorationsKey.getState(second)?.matches).toEqual([]);
-  second = second.apply(second.tr.setMeta(bob.key, bob.payload));
-  expect(
-    anonymizationDecorationsKey
-      .getState(first)
-      ?.matches.map(({ canonical }) => canonical),
-  ).toEqual(["Alice"]);
-  expect(
-    anonymizationDecorationsKey
-      .getState(second)
-      ?.matches.map(({ canonical }) => canonical),
-  ).toEqual(["Bob"]);
-});
-
 test("unrelated and unbranded keys cannot impersonate a plugin family", () => {
   const owner = createPluginKeyOwner("test.counter");
   const unrelated = new Plugin({
@@ -307,96 +264,6 @@ test("independent evaluations of a family reject duplicate plugins in one state"
   for (const owner of [firstOwner, secondOwner]) {
     expect(() => owner.get(state)).toThrow("Multiple plugins belong");
   }
-});
-
-test("anonymization readers and metadata survive actual repeated module evaluation", async () => {
-  const repeated: typeof import("./plugins/anonymizationDecorations") =
-    await importRepeatedPlugin("anonymizationDecorations");
-  expect(repeated.anonymizationDecorationsKey).not.toBe(
-    anonymizationDecorationsKey,
-  );
-  const doc = schema.node("doc", null, [
-    schema.node("paragraph", null, schema.text("Alice Bob")),
-  ]);
-  const firstPlugin = createAnonymizationDecorationsPlugin();
-  const secondPlugin = repeated.createAnonymizationDecorationsPlugin();
-  expect(firstPlugin.spec.key).not.toBe(secondPlugin.spec.key);
-  let first = EditorState.create({ doc, plugins: [firstPlugin] });
-  let second = EditorState.create({ doc, plugins: [secondPlugin] });
-  const alice = repeated.setAnonymizationTermsMeta([
-    { canonical: "Alice", label: "person" },
-  ]);
-  first = first.apply(first.tr.setMeta(alice.key, alice.payload));
-  expect(
-    repeated.getAnonymizationMatches(first).map(({ canonical }) => canonical),
-  ).toEqual(["Alice"]);
-  expect(repeated.getAnonymizationMatches(second)).toEqual([]);
-  const bob = setAnonymizationTermsMeta([
-    { canonical: "Bob", label: "person" },
-  ]);
-  second = second.apply(second.tr.setMeta(bob.key, bob.payload));
-  expect(
-    getAnonymizationMatches(second).map(({ canonical }) => canonical),
-  ).toEqual(["Bob"]);
-  const clear = repeated.setAnonymizationTermsMeta([]);
-  first = first.apply(first.tr.setMeta(clear.key, clear.payload));
-  expect(repeated.getAnonymizationMatches(first)).toEqual([]);
-  expect(
-    getAnonymizationMatches(second).map(({ canonical }) => canonical),
-  ).toEqual(["Bob"]);
-  const duplicated = EditorState.create({
-    doc,
-    plugins: [firstPlugin, secondPlugin],
-  });
-  expect(() => repeated.getAnonymizationMatches(duplicated)).toThrow(
-    "Multiple plugins belong",
-  );
-});
-
-test("autocomplete readers and commands survive actual repeated module evaluation", async () => {
-  const repeated: typeof import("./plugins/autocompleteSuggestion") =
-    await importRepeatedPlugin("autocompleteSuggestion");
-  expect(repeated.autocompleteSuggestionKey).not.toBe(
-    autocomplete.autocompleteSuggestionKey,
-  );
-  const firstPlugin = autocompleteSuggestionPlugin();
-  const secondPlugin = repeated.autocompleteSuggestionPlugin();
-  expect(firstPlugin.spec.key).not.toBe(secondPlugin.spec.key);
-  let first = EditorState.create({ schema, plugins: [firstPlugin] });
-  let second = EditorState.create({ schema, plugins: [secondPlugin] });
-  first = first.apply(
-    repeated.startAutocompleteSuggestion(first.tr, 1, "first"),
-  );
-  first = first.apply(
-    repeated.appendAutocompleteToken(first.tr, "first", "Alpha"),
-  );
-  first = first.apply(repeated.finishAutocompleteSuggestion(first.tr, "first"));
-  expect(repeated.getAutocompleteSuggestion(first)).toMatchObject({
-    status: "shown",
-    text: "Alpha",
-    requestId: "first",
-  });
-  expect(repeated.getAutocompleteSuggestion(second).status).toBe("idle");
-  second = second.apply(
-    autocomplete.startAutocompleteSuggestion(second.tr, 1, "second"),
-  );
-  second = second.apply(
-    autocomplete.appendAutocompleteToken(second.tr, "second", "Beta"),
-  );
-  second = second.apply(
-    autocomplete.finishAutocompleteSuggestion(second.tr, "second"),
-  );
-  expect(autocomplete.getAutocompleteSuggestion(second)).toMatchObject({
-    status: "shown",
-    text: "Beta",
-    requestId: "second",
-  });
-  first = first.apply(repeated.clearAutocompleteSuggestion(first.tr));
-  expect(repeated.getAutocompleteSuggestion(first).status).toBe("idle");
-  expect(autocomplete.getAutocompleteSuggestion(second)).toMatchObject({
-    status: "shown",
-    text: "Beta",
-  });
 });
 
 test("slash-menu readers and commands survive actual repeated module evaluation", async () => {

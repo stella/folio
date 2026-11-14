@@ -28,8 +28,19 @@ import type {
   SetContentControlContentInput,
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
+import type {
+  FolioAnonymizationMatch,
+  FolioAnonymizationTerm,
+} from "@stll/folio-core/controller/anonymizationHighlights";
+import type {
+  FolioAutocompleteApi,
+  FolioAutocompleteState,
+} from "@stll/folio-core/controller/autocompleteSuggestion";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type {
+  FolioEditor,
+  TextPosition,
+} from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
@@ -55,7 +66,6 @@ import type {
   FolioSuggestion,
   SuggestionAppliedAs,
 } from "@stll/folio-core/prosemirror/commands/comments";
-import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import type {
   TemplateSlashMenuKeyAction,
   TemplateSlashMenuState,
@@ -353,13 +363,24 @@ export type DocxEditorProps = {
    */
   collaboration?: DocxEditorCollaboration | undefined;
   /**
-   * Fires with the current anonymization match list every time the decoration
-   * plugin recomputes it (mount, term push, doc edit, async DOCX load). The
-   * host mirrors per-document counts and "matching workspace terms" to the
-   * inspector facet without polling the plugin state.
+   * Terms to highlight wherever they occur in the shown text of every story
+   * (body, table cells, headers, footers, notes), in either session. A term
+   * matches literally, case-insensitively and on word boundaries, across
+   * formatting runs; text inside a tracked deletion is matched too.
+   * Highlights are view state: they never change the document, its undo
+   * history or its pending changes, and they follow every edit, a peer's
+   * included. Pass a new array to change the terms.
+   */
+  anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
+  /** Called with the inline autocomplete suggestion each time it changes. */
+  onAutocompleteChange?: ((state: FolioAutocompleteState) => void) | undefined;
+  /**
+   * Fires with every occurrence, as text positions, each time the set of
+   * occurrences changes (new terms, an edit, a load). An edit elsewhere in
+   * the document does not fire it.
    */
   onAnonymizationMatchesChange?: (
-    matches: readonly AnonymizationMatch[],
+    matches: readonly FolioAnonymizationMatch[],
   ) => void;
   /**
    * Fires when the user clicks an anonymization highlight in the rendered
@@ -695,6 +716,23 @@ export type DocxEditorRef = {
     target: FolioDocumentNavigationTarget,
     snapshot?: FolioAIEditSnapshot,
   ) => number | null;
+  /**
+   * The 1-based rendered page that shows a body text position (story,
+   * paragraph id, offset), or null before layout or when no paragraph in the
+   * body has that id.
+   */
+  getPositionPage: (position: TextPosition) => number | null;
+  /**
+   * The inline autocomplete suggestion: ghost text streamed in at a text
+   * position and shown beside the caret, in either session. It is view
+   * state: it never changes the document, its undo history or its pending
+   * changes, and it stays on its text when a peer edits. Typing its next
+   * characters consumes them; any other edit dismisses it. Tab accepts it,
+   * Mod-ArrowRight its next word, Escape dismisses it.
+   */
+  autocomplete: FolioAutocompleteApi;
+  /** Every occurrence of the `anonymizationTerms`, as text positions. */
+  getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
   /** Painted geometry for one block, relative to this editor's scroll root. */
   getBlockRect: (blockId: string) => BlockRect | null;
   /** Painted geometry for many blocks in one layout read; missing ids are omitted. */
