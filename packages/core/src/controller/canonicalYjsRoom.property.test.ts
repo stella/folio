@@ -297,6 +297,12 @@ const run = async (
       onError: (error) => authorityErrors.push(error),
     }).unwrap();
   let authority = serve();
+  // Scratch debug: every submission as the server receives it.
+  provider.server.getArray("folio.canonical.inbox").observe((event) => {
+    for (const item of event.changes.added)
+      for (const value of item.content.getContent())
+        console.log("DEBUG inbox", JSON.stringify(value));
+  });
   const slots: Slot[] = [];
   const joining = new Set<Promise<void>>();
   let forged = 0;
@@ -450,6 +456,18 @@ const run = async (
   );
   for (const peer of all)
     expect(documentText(peer.session.document)).not.toContain(FORGED);
+  for (const batch of authority.journal)
+    console.log(
+      "DEBUG journal",
+      JSON.stringify({
+        revision: batch.revision,
+        baseRev: batch.baseRev,
+        actor: batch.actor,
+        opId: batch.opId,
+        ops: batch.ops,
+      }),
+    );
+  console.log("DEBUG text", JSON.stringify(documentText(authority.document)));
   await room.expectConverged({
     peers: all,
     peersCount,
