@@ -1319,20 +1319,24 @@ export const createHiddenEditorManager = (
       if (!view || deps.getReadOnly() || editorSession.type !== "canonical")
         return;
       syncCanonicalMode();
-      const rule = prepareCanonicalAutoformat(
-        editorSession.session,
-        view.state,
-        intent,
-      );
-      const prepared =
-        rule ?? editorSession.session.prepareReplace(view.state, intent);
-      if (prepared.isErr()) {
-        if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.ground);
+      const session = editorSession.session;
+      const typed = session.prepareReplace(view.state, intent);
+      if (typed.isErr()) {
+        if (typed.error.reason !== "noChange")
+          refuse(typed.error.message, typed.error.ground);
         return;
       }
-      const session = editorSession.session;
-      if (publishCommit(prepared.value) && rule !== undefined && view !== null)
+      if (!publishCommit(typed.value) || view === null) return;
+      // The rule the typed text completes is a history step of its own, so
+      // undoing it gives back exactly what was typed.
+      const rule = prepareCanonicalAutoformat(session, view.state, intent);
+      if (rule === undefined) return;
+      if (rule.isErr()) {
+        if (rule.error.reason !== "noChange")
+          refuse(rule.error.message, rule.error.ground);
+        return;
+      }
+      if (publishCommit(rule.value) && view !== null)
         lastInputRule = {
           session,
           version: session.version,
