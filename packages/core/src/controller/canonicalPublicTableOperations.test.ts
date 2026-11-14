@@ -182,6 +182,35 @@ const cellShape = (tableCell: TableCell) => ({
   vMerge: tableCell.formatting?.vMerge,
 });
 
+type CellShape = ReturnType<typeof cellShape>;
+
+/**
+ * A table's rows as both engines' files read alike: the default engine
+ * drops a row that holds nothing but empty continuations of merges from the
+ * rows above, ending a merge that no row continues any more, where the
+ * canonical session keeps the row the file states.
+ */
+const withoutContinuationRows = (
+  rows: readonly (readonly CellShape[])[],
+): CellShape[][] => {
+  const kept = rows.filter(
+    (row) =>
+      !row.every(
+        (entry) =>
+          entry.vMerge === "continue" &&
+          entry.text.every((text) => text === ""),
+      ),
+  );
+  return kept.map((row, rowIndex) =>
+    row.map((entry, index) =>
+      entry.vMerge === "restart" &&
+      kept[rowIndex + 1]?.[index]?.vMerge !== "continue"
+        ? { ...entry, vMerge: undefined }
+        : entry,
+    ),
+  );
+};
+
 /** Each body block: a paragraph's text, a table's rows of cells. */
 const blocksOf = async (bytes: ArrayBuffer) => {
   const document = await parseDocx(bytes.slice(0), {
@@ -190,7 +219,11 @@ const blocksOf = async (bytes: ArrayBuffer) => {
   });
   return document.package.document.content.map((block) =>
     block.type === "table"
-      ? { rows: block.rows.map((row) => row.cells.map(cellShape)) }
+      ? {
+          rows: withoutContinuationRows(
+            block.rows.map((row) => row.cells.map(cellShape)),
+          ),
+        }
       : { text: textOf([block]) },
   );
 };
