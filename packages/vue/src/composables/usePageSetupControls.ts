@@ -11,11 +11,9 @@ import type { EditorView } from "prosemirror-view";
 import type { Ref } from "vue";
 
 import {
-  removeTabStop,
-  setIndentFirstLine,
-  setIndentLeft,
-  setIndentRight,
-} from "@stll/folio-core/prosemirror/commands/paragraph";
+  applyRulerParagraphEdit,
+  type RulerParagraphEdit,
+} from "@stll/folio-core/prosemirror/commands/rulerParagraph";
 import type {
   Document,
   SectionProperties,
@@ -31,7 +29,7 @@ export type UsePageSetupControlsOptions = {
    * Notified after a direct section-properties write (margins, page size,
    * orientation) so the host's `onChange` fires. These writes bypass the PM
    * transaction pipeline, so this is their only change signal; ruler indent /
-   * tab-stop edits dispatch PM commands and notify via the pipeline instead.
+   * tab-stop edits run through the view's command owner and notify via the pipeline instead.
    */
   onChange: (doc: Document) => void;
   /** Canonical sessions publish section properties through the Document journal. */
@@ -75,30 +73,23 @@ export function usePageSetupControls(opts: UsePageSetupControlsOptions) {
     applyMarginChange("marginBottom", twips);
   }
 
-  function handleIndentLeftChange(twips: number) {
+  function applyRulerEdit(edit: RulerParagraphEdit) {
     const view = opts.editorView.value;
     if (!view) return;
-    setIndentLeft(twips)(view.state, view.dispatch);
+    applyRulerParagraphEdit(view, edit);
+  }
+  function handleIndentLeftChange(twips: number) {
+    applyRulerEdit({ type: "indentLeft", twips });
   }
   function handleIndentRightChange(twips: number) {
-    const view = opts.editorView.value;
-    if (!view) return;
-    setIndentRight(twips)(view.state, view.dispatch);
+    applyRulerEdit({ type: "indentRight", twips });
   }
+  /** Negative twips are a hanging indent, as in React. */
   function handleFirstLineIndentChange(twips: number) {
-    const view = opts.editorView.value;
-    if (!view) return;
-    // Negative twips → hanging indent (matches React's flag-shape API).
-    if (twips < 0) {
-      setIndentFirstLine(-twips, true)(view.state, view.dispatch);
-    } else {
-      setIndentFirstLine(twips, false)(view.state, view.dispatch);
-    }
+    applyRulerEdit({ type: "indentFirstLine", twips });
   }
-  function handleTabStopRemove(positionTwips: number) {
-    const view = opts.editorView.value;
-    if (!view) return;
-    removeTabStop(positionTwips)(view.state, view.dispatch);
+  function handleTabStopRemove(position: number) {
+    applyRulerEdit({ type: "removeTabStop", position });
   }
 
   return {
