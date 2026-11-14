@@ -1,5 +1,6 @@
 import { panic, Result } from "better-result";
 
+import { compareGaps, type Gap } from "../leaves";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -153,6 +154,55 @@ type PairOptions = {
   effect: SequencedOpEffect | undefined;
   order: "before" | "after";
 };
+const gapOf = ({ offset, zeroWidthBefore }: TextPosition): Gap => ({
+  offset,
+  zeroWidthBefore: zeroWidthBefore ?? 0,
+});
+
+/**
+ * A direct deletion over a concurrent direct format lying inside it: in the
+ * other order the records the format cut (`cutRecords`) were whole, and the
+ * deletion kept each that reaches past both of its ends one record. So the
+ * deletion joins their pieces again at its point, that many levels below
+ * the records still running across it. Undefined for every other pair.
+ */
+const rejoinedOverFormat = ({
+  op,
+  over,
+  effect,
+}: Pick<PairOptions, "op" | "over" | "effect">):
+  Result<readonly DocumentOp[], BatchRejection> | undefined => {
+  if (
+    op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE ||
+    op.revision !== undefined ||
+    op.expected !== undefined ||
+    op.join !== undefined ||
+    over.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS ||
+    effect?.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS ||
+    effect.cutRecords === undefined ||
+    !sameParagraph(op.from, op.to) ||
+    !sameParagraph(op.from, over.from) ||
+    !sameParagraph(over.from, over.to)
+  )
+    return undefined;
+  const from = gapOf(op.from);
+  const to = gapOf(op.to);
+  if (
+    compareGaps(gapOf(over.from), from) < 0 ||
+    compareGaps(to, gapOf(over.to)) < 0
+  )
+    return undefined;
+  const depth = effect.cutRecords.filter(
+    (record) =>
+      compareGaps(record.from, from) < 0 && compareGaps(to, record.to) < 0,
+  ).length;
+  if (depth === 0) return undefined;
+  return Result.ok([
+    op,
+    { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at: op.from, depth, ifAlike: true },
+  ]);
+};
+
 const transformRestoredOp = ({
   op,
   over,
@@ -189,6 +239,9 @@ const transformRestoredOp = ({
       "The operation targets a structurally changed block.",
     );
   }
+  // A direct deletion over a direct format inside it.
+  const rejoined = rejoinedOverFormat({ op, over, effect });
+  if (rejoined !== undefined) return rejoined;
   // Inline insertions, and inline record splits and joins.
   const inline = transformInlinePair({ op, over, effect, order });
   if (inline !== undefined) return inline;

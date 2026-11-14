@@ -94,6 +94,8 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 11 records, as a sequenced format's effect, the run a direct
+ * format cut (`setRunProps` effect).
  * Version 9 adds exact, JSON-safe package resource replacement for clipboard imports.
  * Version 8 adds semantic table edits and exact whole-table restoration.
  * Version 7 adds lossless own-undefined operation snapshot presence and
@@ -116,7 +118,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 10;
+export const DOCUMENT_OP_SCHEMA_VERSION = 11;
 
 /**
  * The main story has a fixed address; other editable parts use their stable

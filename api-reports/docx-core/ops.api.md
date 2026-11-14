@@ -420,7 +420,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 10;
+export const DOCUMENT_OP_SCHEMA_VERSION = 11;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
