@@ -1,9 +1,8 @@
+import { test as base } from "@playwright/test";
 // Scratch instrumentation: collect the editor's unclassified-transaction
 // reports from each test's page.
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-
-import { test as base } from "../support/unclassifiedProbe";
 
 export * from "@playwright/test";
 
