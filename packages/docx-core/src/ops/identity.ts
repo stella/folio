@@ -63,17 +63,13 @@ type DeferredRemovalGroup = NonNullable<
   NonNullable<Deletion["resolutionJoins"]>["deferredRemove"]
 >[number];
 /** Identity substitutions can collapse distinct source groups into one exact fact. */
-/** What tells two deferred seam groups apart: depth, blockers, kept date. */
-export const deferredGroupKey = (group: DeferredRemovalGroup): string =>
-  `${group.depth}:${group.blockers.join(",")}:${group.keptFrom ?? ""}:${group.edge ?? ""}`;
-
 export const canonicalDeferredGroups = (
   groups: readonly DeferredRemovalGroup[],
 ): DeferredRemovalGroup[] => {
   const keys = new Set<string>();
   const out: DeferredRemovalGroup[] = [];
   for (const group of groups) {
-    const key = deferredGroupKey(group);
+    const key = `${group.depth}:${group.blockers.join(",")}`;
     if (keys.has(key)) continue;
     keys.add(key);
     out.push(group);
@@ -141,7 +137,7 @@ const bindDeferredIdentities = ({
           )
         ) {
           const remapGroup = (group: DeferredRemovalGroup) => ({
-            ...group,
+            depth: group.depth,
             blockers: [
               ...new Set(
                 group.blockers.flatMap((id) => [
