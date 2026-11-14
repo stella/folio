@@ -258,6 +258,25 @@ const pairKinds = (
   return kinds;
 };
 
+// Operation kinds with the fields that decide a typing pair.
+const describeOps = (ops: readonly DocumentOp[]): string =>
+  ops
+    .map((op) => {
+      switch (op.type) {
+        case DOCUMENT_OP_TYPES.JOIN_INLINE:
+          return `joinInline@${String(op.at.offset)}/${String(op.depth)}${op.ifAlike === true ? "/seam" : ""}`;
+        case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+          return `splitInline@${String(op.at.offset)}/${String(op.depth)}`;
+        case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+          return `insertContent@${String(op.at.offset)}${op.revision === undefined ? "" : "/tracked"}`;
+        case DOCUMENT_OP_TYPES.DELETE_RANGE:
+          return `deleteRange@${String(op.from.offset)}-${String(op.to.offset)}${op.revision === undefined ? "" : "/tracked"}`;
+        default:
+          return op.type;
+      }
+    })
+    .join(", ");
+
 // The tail batch a refused batch could not be rebased over, else the whole tail.
 const refusingOps = (
   batch: DocumentBatch,
@@ -423,7 +442,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         outcome.pairs[kind].refused += 1;
         if (kind === "typingTyping")
           outcome.typingRefusals.push(
-            `${String(result.reason.opType)} over ${String(result.reason.overType)}: ${result.reason.message}`,
+            `${String(result.reason.opType)} over ${String(result.reason.overType)}: ${result.reason.message} (${describeOps(batch.ops)} over ${describeOps(refusingOps(batch, tail))})`,
           );
       }
       return;
