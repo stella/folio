@@ -231,7 +231,7 @@ forEachAdapter(
 forEachAdapter(
   "CJK IME input caret stays beside a composition as it grows",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openEditor(page, adapter, "sample.docx&session=canonical");
     await ensureLiveView(page);
     await page
       .locator(".paged-editor__hidden-pm > .ProseMirror")
