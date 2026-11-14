@@ -9,6 +9,7 @@ export type {
   DocxEditorApplyDocumentOperationsOptions,
   DocxEditorCollaboration,
   DocxEditorProps,
+  DocxEditorYjsCollaboration,
   DocxEditorRef,
   HighlightPassageOptions,
   HighlightPassageResult,

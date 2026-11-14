@@ -28,6 +28,7 @@
       "onAnonymizationMatchesChange",
       "onAnonymizationTermClick",
       "onCanonicalHistory",
+      "onCanonicalHistoryDrop",
       "onChange",
       "onCommentsChange",
       "onCompatibilityChange",

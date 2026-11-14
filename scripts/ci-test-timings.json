@@ -1403,7 +1403,6 @@
   "packages/editor-web/src/protocol.test.ts": 2,
   "packages/fonts/src/node.test.ts": 8,
   "packages/playground-vue/test/App.test.ts": 306,
-  "packages/playground/src/collaboration/useCollaboration.test.ts": 40,
   "packages/react/src/components/CommentsSidebar.positions.test.tsx": 990,
   "packages/react/src/components/DocumentOutline.depth.test.tsx": 345,
   "packages/react/src/components/DocxEditor.bookmarkImport.test.tsx": 97,
