@@ -1570,6 +1570,8 @@ const resolveList = (
       after: SourceOwner | undefined;
       /** The tracked changes the removed content held. */
       spanning: readonly TrackedWrapper[];
+      /** The date of the revision whose removed content they came from. */
+      keptFrom?: string;
     }
   >();
   let changed = false;
@@ -1688,6 +1690,7 @@ const resolveList = (
             before: index > 0 ? sourceOwners.at(index - 1) : undefined,
             after: sourceOwners.at(index + 1),
             spanning: trackedWithin(node.content),
+            keptFrom: node.info.date ?? "",
           });
         if (node.resolutionJoins === undefined) seams.push(out.length);
         else if ((node.resolutionJoins.plainSides?.length ?? 0) > 0)
@@ -2112,13 +2115,25 @@ const resolveList = (
       const intoAfter =
         after === undefined || afterDepth === undefined
           ? undefined
-          : withBoundariesAtEdge(after, boundaries, afterDepth, "start");
+          : withBoundariesAtEdge(
+              after,
+              boundaries,
+              afterDepth,
+              "start",
+              kept.keptFrom,
+            );
       const intoBefore =
         intoAfter !== undefined ||
         before === undefined ||
         beforeDepth === undefined
           ? undefined
-          : withBoundariesAtEdge(before, boundaries, beforeDepth, "end");
+          : withBoundariesAtEdge(
+              before,
+              boundaries,
+              beforeDepth,
+              "end",
+              kept.keptFrom,
+            );
       if (intoAfter !== undefined && after !== undefined) {
         carryResolutionState(resolution, after, intoAfter);
         out.splice(
