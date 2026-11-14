@@ -70,6 +70,7 @@ export {
   runsMergeable,
   mergeRunContent,
 } from "./runMerge";
+export { type RunSeam, runSeams } from "./runNormalForm";
 export {
   compileEditorIntent,
   createEditorIntentIdAllocator,

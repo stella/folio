@@ -1240,6 +1240,15 @@ export type RevisionStamp = {
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
 
 // @public
+export type RunSeam = {
+    at: Gap;
+    depth: number;
+};
+
+// @public
+export const runSeams: (paragraph: Paragraph) => RunSeam[];
+
+// @public
 export function runsMergeable(a: MergeDecidedRun, b: MergeDecidedRun): boolean;
 
 // @public (undocumented)

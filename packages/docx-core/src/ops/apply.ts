@@ -172,6 +172,7 @@ import {
   wrapTracked,
 } from "./review";
 import { setRevisionInfo } from "./revisionInfo";
+import { runSeams } from "./runNormalForm";
 import { documentStories, findStoryBody, sameStory } from "./stories";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
 import { tableEditBoundaryRefusal } from "./tableEditBoundary";
@@ -3040,6 +3041,90 @@ const preserveParagraphPropertySnapshots = (options: {
 };
 
 /** Apply one operation to a document that meets the seed contract. */
+/**
+ * Operations that put the records they are given in place exactly: a split
+ * separates runs on purpose, and an inline, block, container or story
+ * replacement restores what it names. They are left as they put it.
+ */
+const PLACES_RECORDS_EXACTLY: ReadonlySet<DocumentOp["type"]> = new Set([
+  DOCUMENT_OP_TYPES.SPLIT_INLINE,
+  DOCUMENT_OP_TYPES.REPLACE_INLINE,
+  DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+  DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+  DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+  DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+]);
+
+/**
+ * The paragraphs an edit touched, in their run normal form (runNormalForm.ts):
+ * each seam is joined as a seam join, whose inverse splits it again, so the
+ * edit's inverse first splits the joined runs and then undoes the edit, and
+ * undo restores the structure exactly. Only a paragraph that was in normal
+ * form before the edit is brought to it: one the edit inserted, or one that
+ * held no seam. An undo passes through paragraphs its splits took out of
+ * normal form, and an edit of a paragraph some caller built out of normal
+ * form leaves its other runs as they were.
+ */
+const inRunNormalForm = ({
+  op,
+  edit,
+  before,
+  story,
+}: {
+  op: DocumentOp;
+  edit: DocumentEdit;
+  before: Document;
+  story: OpStory | undefined;
+}): Applied => {
+  if (PLACES_RECORDS_EXACTLY.has(op.type)) return Result.ok(edit);
+  const touched = new Set(
+    [...edit.touched.modified, ...edit.touched.inserted].map(idKey),
+  );
+  if (touched.size === 0) return Result.ok(edit);
+  let document = edit.document;
+  const joins: DocumentEdit[] = [];
+  for (const target of story === undefined
+    ? documentStories(document)
+    : [story]) {
+    const body = findStoryBody(document, target);
+    if (body === undefined) continue;
+    const previous = findStoryBody(before, target);
+    const wasNormal = new Map(
+      (previous === undefined ? [] : storyParagraphs(previous)).flatMap(
+        ({ paragraph }) =>
+          paragraph.paraId === undefined
+            ? []
+            : [[idKey(paragraph.paraId), runSeams(paragraph).length === 0]],
+      ),
+    );
+    for (const { paragraph } of storyParagraphs(body)) {
+      const blockId = paragraph.paraId;
+      if (
+        blockId === undefined ||
+        !touched.has(idKey(blockId)) ||
+        wasNormal.get(idKey(blockId)) === false
+      )
+        continue;
+      for (const seam of runSeams(paragraph).toReversed()) {
+        const joined = joinInline(document, {
+          type: DOCUMENT_OP_TYPES.JOIN_INLINE,
+          at: { story: target, blockId, ...seam.at },
+          depth: seam.depth,
+          ifAlike: true,
+        });
+        if (joined.isErr()) return Result.err(joined.error);
+        document = joined.value.document;
+        joins.push(joined.value);
+      }
+    }
+  }
+  return Result.ok(
+    joins.length === 0
+      ? edit
+      : { ...edit, ...combineEdits(before, [edit, ...joins]) },
+  );
+};
+
 export const applyDocumentOp = (
   document: Document,
   input: DocumentOp,
@@ -3093,11 +3178,11 @@ export const applyDocumentOp = (
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }
-  const applied = dispatch(document, op);
-  if (applied.isErr()) {
-    return Result.err(applied.error);
+  const dispatched = dispatch(document, op);
+  if (dispatched.isErr()) {
+    return Result.err(dispatched.error);
   }
-  const edit = applied.value;
+  const edit = dispatched.value;
   const beforeSections = document.package.document.sections;
   const afterSections = edit.document.package.document.sections;
   const structural =
@@ -3147,8 +3232,16 @@ export const applyDocumentOp = (
       }
     }
   }
+  const normal = inRunNormalForm({
+    op,
+    edit,
+    before: document,
+    story: addressed,
+  });
+  if (normal.isErr()) return Result.err(normal.error);
+  const normalized = normal.value;
   // Check all operation outputs before trusting them, including caller-supplied block/review records.
-  if (hasMultipleParagraphPropertyChanges(edit.document)) {
+  if (hasMultipleParagraphPropertyChanges(normalized.document)) {
     return Result.err(
       refusal(
         op,
@@ -3159,16 +3252,16 @@ export const applyDocumentOp = (
   }
   // The contract keeps paragraph ids unique: an edit that would repeat one,
   // however its operation came by it, is refused here, where it is owned.
-  const repeatedId = repeatedParagraphId(edit.document);
+  const repeatedId = repeatedParagraphId(normalized.document);
   if (repeatedId !== undefined)
     return Result.err(refusal(op, repeatedId.reason, repeatedId.message));
-  meetsContract(edit.document);
-  preserveParagraphPropertySnapshots({ before: document, edit });
+  meetsContract(normalized.document);
+  preserveParagraphPropertySnapshots({ before: document, edit: normalized });
   return Result.ok({
-    ...edit,
-    inverse: edit.inverse.map(captureDocumentOp),
+    ...normalized,
+    inverse: normalized.inverse.map(captureDocumentOp),
     revisions:
-      stamp === undefined ? [] : recordedRevisions(document, edit, stamp),
+      stamp === undefined ? [] : recordedRevisions(document, normalized, stamp),
   });
 };
 
