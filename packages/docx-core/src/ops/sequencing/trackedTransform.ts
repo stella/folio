@@ -69,8 +69,9 @@ const reaches = (
   edges: readonly TextPosition[],
   cuts: readonly TextPosition[],
 ): boolean => {
-  const [start, end = start] = edges;
-  if (start === undefined) return false;
+  const start = edges.at(0);
+  const end = edges.at(-1);
+  if (start === undefined || end === undefined) return false;
   return cuts.some(
     (cut) =>
       sameParagraph(start, cut) &&
