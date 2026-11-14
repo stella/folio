@@ -79,7 +79,8 @@ const reads = (reviewer: Reviewer) => ({
   changes: reviewer.getChanges(),
   comments: reviewer.getComments(),
   numbering: reviewer.readNumberingDefinitions(),
-  properties: reviewer.getDocumentProperties(),
+  // A save stamps the package's modified time; every other property stays.
+  properties: { ...reviewer.getDocumentProperties(), modified: undefined },
 });
 
 /** The body once every change is resolved, or `null` when that refuses. */
