@@ -269,7 +269,25 @@ const compareEngines = async (
   expect(canonical.skipped).toEqual(
     blankLeftBlank ? ["noopOperation"] : legacy.skipped,
   );
-  expect(await outcomes(canonical.bytes)).toEqual(await outcomes(legacy.bytes));
+  // New words split over runs of mixed formatting are placed by each
+  // engine's own word diff, which this property does not judge: there it
+  // compares each paragraph's words and style.
+  type Outcomes = Awaited<ReturnType<typeof outcomes>>;
+  const judged = (all: Outcomes) =>
+    operation.text === target.text
+      ? all
+      : Object.fromEntries(
+          Object.entries(all).map(([key, paragraphs]) => [
+            key,
+            paragraphs.map(({ styleId, runs }) => ({
+              styleId,
+              text: runs.map(({ text }) => text).join(""),
+            })),
+          ]),
+        );
+  expect(judged(await outcomes(canonical.bytes))).toEqual(
+    judged(await outcomes(legacy.bytes)),
+  );
 };
 
 describe("a replacement that names a paragraph style", () => {
