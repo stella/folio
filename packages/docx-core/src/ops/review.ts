@@ -348,9 +348,10 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
 
 /**
  * A tracked change takes in no bare comment anchor. A deletion of a range,
- * which records its resolution joins, takes in a record holding one:
- * accepting it removes every comment anchor it holds, as deleting the range
- * directly does. A deletion recording no joins, of a whole paragraph or row,
+ * which records its resolution joins, takes in a content control or
+ * hyperlink holding one: accepting it removes every comment anchor it holds,
+ * as deleting the range directly does. A transparent wrapper holding one is
+ * still refused, as a bare anchor is. A deletion recording no joins, of a whole paragraph or row,
  * takes in none at any depth: accepting it keeps the anchors of comment
  * ranges that continue past it, which removing that content directly does
  * not keep where they were. An insertion may hold one inside a record it
@@ -363,7 +364,10 @@ const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
   if (state.kind === WRAP_KINDS.DELETION) {
     if (isRemovedRevisionNode(node)) return "skip";
     if (isAddedRevision(node)) return "descend";
-    if (state.resolutionJoin === undefined && holdsCommentAnchor(node))
+    if (
+      (state.resolutionJoin === undefined || node.type === "inlineWrapper") &&
+      holdsCommentAnchor(node)
+    )
       return "refuse";
   }
   return "wrap";
