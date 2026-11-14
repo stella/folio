@@ -88,16 +88,16 @@ const styleReplacementArbitrary = fc.constant(
 
 /**
  * The resolution, then an operation for it. A style-changing replaceBlock of
- * the paragraph an accepted join leaves is another capability (an
- * unsupported inline payload in the canonical session), so after an accept
- * only the property edit runs.
+ * a paragraph once the deletion is resolved is another capability (an
+ * unsupported inline payload in the canonical session), so after a
+ * resolution only the property edit runs.
  */
 const caseArbitrary = fc
   .constantFrom("pending", "accept", "reject")
   .chain((resolution) =>
     fc.tuple(
       fc.constant(resolution),
-      resolution === "accept"
+      resolution !== "pending"
         ? propertyEditArbitrary
         : fc.oneof(propertyEditArbitrary, styleReplacementArbitrary),
     ),
