@@ -39,7 +39,11 @@ const EDITOR_MESSAGES = {
     requestId: 7,
     bytes: new Uint8Array([0x50, 0x4b]),
     fileVersion: "1727344000000",
-    strategy: { type: "full-repack", reason: "selectiveDeclined" },
+    strategy: {
+      type: "full-repack",
+      reason: "selectiveDeclined",
+      decline: "structuralRangeElement",
+    },
   },
   serializeFailed: { type: "serializeFailed", requestId: 7, message: "Failed" },
   error: { type: "error", message: "Font failed to load" },
@@ -94,6 +98,10 @@ describe("isEditorMessage", () => {
       {
         ...EDITOR_MESSAGES.serialized,
         strategy: { type: "full-repack", reason: "hunch" },
+      },
+      {
+        ...EDITOR_MESSAGES.serialized,
+        strategy: { type: "full-repack", reason: "selectiveDeclined" },
       },
       { type: "serializeFailed", requestId: 7 },
     ]) {

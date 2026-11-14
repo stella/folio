@@ -46,7 +46,10 @@ import {
   updateCoreProperties,
   withoutAttachedTemplate,
 } from "./rezip";
-import type { SaveDiagnosticOptions } from "./saveDiagnostics";
+import type {
+  SaveDiagnosticOptions,
+  SelectiveSaveDeclineReason,
+} from "./saveDiagnostics";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES } from "./selectiveSaveFlags";
 import {
   buildPatchedDocumentXml,
@@ -425,22 +428,30 @@ export async function attemptSelectiveSave(
   doc = withoutExhaustedComments(doc);
   const { changedParaIds, structuralChange, hasUntrackedChanges } = options;
   const maxBytes = options.maxBytes ?? DEFAULT_SELECTIVE_SAVE_MAX_BYTES;
+  const decline = (
+    reason: SelectiveSaveDeclineReason,
+    part = "word/document.xml",
+  ): null => {
+    options.onSelectiveDecline?.({ part, reason });
+    return null;
+  };
+  let structuralDecline: SelectiveSaveDeclineReason = "structuralSplice";
 
   // Unresolved paragraph identities cannot be anchored in the source package.
   if (hasUntrackedChanges) {
-    return null;
+    return decline("untrackedChanges");
   }
   // Refuse very large inputs: the ZipArchive overhead on top of the original buffer
   // dominates memory cost, and full repack is the safer path at that scale.
   if (originalBuffer.byteLength > maxBytes) {
-    return null;
+    return decline("tooLarge");
   }
   // Check for new images/hyperlinks that need relationship management; a
   // header, footer, or note part mints them into its own rels, which only the
   // full repack path writes.
   const content = doc.package.document.content;
   if (hasUnmaterializedInlineResources(content)) {
-    return null;
+    return decline("unmaterializedBodyResource");
   }
   for (const part of [
     ...(doc.package.headers?.values() ?? []),
@@ -449,34 +460,34 @@ export async function attemptSelectiveSave(
     ...(doc.package.endnotes ?? []),
   ]) {
     if (hasUnmaterializedInlineResources(part.content)) {
-      return null;
+      return decline("unmaterializedStoryResource");
     }
   }
   // A header/footer created in memory needs a new part + relationship +
   // [Content_Types] Override, which only the full repack path writes.
   if (hasUnmaterializedHeaderFooter(doc)) {
-    return null;
+    return decline("unmaterializedHeaderFooter");
   }
   // A picture watermark spanning multiple headers needs per-header image
   // relationship rebinding, which only the full repack path performs.
   if (hasModelDrivenPictureWatermark(doc)) {
-    return null;
+    return decline("pictureWatermark");
   }
   // Orphan comment markers can live in paragraphs outside `changedParaIds`,
   // or in note parts the splice never re-reads, so a cleanup here would not
   // ship through the selective overlay. Hand off to the full repack, which
   // sanitizes and re-serializes every part.
   if (withoutOrphanCommentRanges(doc) !== doc) {
-    return null;
+    return decline("orphanCommentRanges");
   }
   // A reply with no anchor of its own must get its parent's commentRange
   // markers, which means editing the parent's paragraph — not necessarily one of
   // `changedParaIds`. The full repack owns that synthesis, so hand off to it.
   if (hasUnsynthesizedReplyRanges(doc)) {
-    return null;
+    return decline("unsynthesizedReplyRanges");
   }
   if (!validateFolioDocumentModel(doc).valid) {
-    return null;
+    return decline("invalidModel");
   }
 
   const comments = doc.package.document.comments ?? [];
@@ -490,7 +501,8 @@ export async function attemptSelectiveSave(
 
   try {
     const zip = await ZipArchive.read(originalBuffer);
-    if (await hasUnmaterializedHyperlinkBindings(doc, zip)) return null;
+    if (await hasUnmaterializedHyperlinkBindings(doc, zip))
+      return decline("unmaterializedHyperlink");
 
     // The selective path overlays a handful of parts on top of the ORIGINAL
     // zip and re-emits everything else verbatim, which is what the document's
@@ -500,7 +512,7 @@ export async function attemptSelectiveSave(
     // predicate, so neither can drift into passing what the other blocks.
     for (const path of zip.paths()) {
       if (isUnsafePackagePath(path)) {
-        return null;
+        return decline("unsafePackagePath");
       }
     }
 
@@ -545,7 +557,7 @@ export async function attemptSelectiveSave(
     if (changedParaIds.size > 0 || structuralChange) {
       const docXmlFile = zip.entry("word/document.xml");
       if (!docXmlFile) {
-        return null;
+        return decline("missingDocumentPart");
       }
       const originalDocXml = await docXmlFile
         .bytes()
@@ -591,7 +603,8 @@ export async function attemptSelectiveSave(
           baselineNumbering,
           serializeNumberingXml(doc.package.numbering),
         );
-        if (added.abstractNums.size > 0 || added.nums.size > 0) return null;
+        if (added.abstractNums.size > 0 || added.nums.size > 0)
+          return decline("addedNumbering");
       }
 
       const bodyChangedIds = new Set<string>();
@@ -615,7 +628,7 @@ export async function attemptSelectiveSave(
         // paragraph, falls back to full repack — matching the prior safety when
         // buildPatchedDocumentXml met a paraId it could not resolve.
         if (unrouted === null || unrouted.size > 0) {
-          return null;
+          return decline("unroutedParagraphs");
         }
       }
 
@@ -625,6 +638,9 @@ export async function attemptSelectiveSave(
               originalXml: originalDocXml,
               serializedXml: serializedDocXml,
               changedIds: bodyChangedIds,
+              onRangeElement: () => {
+                structuralDecline = "structuralRangeElement";
+              },
             })
           : buildPatchedDocumentXml(
               originalDocXml,
@@ -632,7 +648,9 @@ export async function attemptSelectiveSave(
               bodyChangedIds,
             );
         if (!patchedDocXml) {
-          return null;
+          return decline(
+            structuralChange ? structuralDecline : "paragraphPatch",
+          );
         }
         updates.set("word/document.xml", patchedDocXml);
       }
@@ -710,14 +728,14 @@ export async function attemptSelectiveSave(
       !commentsUnchanged &&
       !(await patchCommentsExtended(zip, commentPlan, updates))
     ) {
-      return null;
+      return decline("commentsExtended");
     }
 
     // Splice edited numbering definitions into word/numbering.xml. Numbering
     // carries no paraId, so this always runs and self-detects changes (like the
     // comments/header updates above); a no-op when numbering is unchanged.
     if (!(await patchNumberingPart(zip, doc, updates))) {
-      return null;
+      return decline("numberingPart");
     }
 
     // Package resource operations may add or replace styles without touching
@@ -734,7 +752,7 @@ export async function attemptSelectiveSave(
           type: "selectiveSaveRefused",
           part: "word/styles.xml",
         });
-        return null;
+        return decline("styleMaterialization", "word/styles.xml");
       default: {
         const exhaustive: never = styles;
         return exhaustive;
@@ -785,7 +803,7 @@ export async function attemptSelectiveSave(
         detectDocxConformanceClass(sourceDocumentXml ?? null) ===
         DOCX_CONFORMANCE_CLASSES.STRICT
       ) {
-        return null;
+        return decline("strictConformance");
       }
     }
 
@@ -793,6 +811,6 @@ export async function attemptSelectiveSave(
     return await applyUpdatesToZip(zip, updates);
   } catch {
     // Any error — fall back to full repack
-    return null;
+    return decline("packageError");
   }
 }

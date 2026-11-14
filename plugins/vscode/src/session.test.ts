@@ -29,6 +29,7 @@ const SELECTIVE: FolioEditorSaveStrategy = { type: "selective-first" };
 const REPACK: FolioEditorSaveStrategy = {
   type: "full-repack",
   reason: "selectiveDeclined",
+  decline: "structuralRangeElement",
 };
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));

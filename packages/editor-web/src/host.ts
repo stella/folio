@@ -44,7 +44,15 @@ export type FolioEditorRepackReason = "selectiveDeclined";
  */
 export type FolioEditorSaveStrategy =
   | { readonly type: "selective-first" }
-  | { readonly type: "full-repack"; readonly reason: FolioEditorRepackReason };
+  | {
+      readonly type: "full-repack";
+      readonly reason: FolioEditorRepackReason;
+      /**
+       * The condition that declined the patch, as folio names it (for
+       * example `structuralRangeElement`), or `unreported`.
+       */
+      readonly decline: string;
+    };
 
 export type FolioEditorSerialization = {
   readonly bytes: Uint8Array;

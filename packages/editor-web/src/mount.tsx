@@ -254,19 +254,26 @@ const createSession = (host: FolioEditorHost) => {
     const fileVersion = loaded.fileVersion;
     // The save reports how it wrote the package: a declined selective patch
     // is the full repack the host warns about, any other fallback an error.
-    const written: { strategy: FolioEditorSaveStrategy } = {
-      strategy: { type: "selective-first" },
+    const written: { refused: boolean; decline: string } = {
+      refused: false,
+      decline: "unreported",
     };
     const buffer = await ref.save({
       onDiagnostic: (diagnostic) => {
-        if (diagnostic.type === "selectiveSaveRefused")
-          written.strategy = {
-            type: "full-repack",
-            reason: "selectiveDeclined",
-          };
+        if (diagnostic.type === "selectiveSaveRefused") written.refused = true;
         else host.onError(canonicalSaveDiagnosticError(diagnostic).message);
       },
+      onSelectiveDecline: ({ reason }) => {
+        written.decline = reason;
+      },
     });
+    const strategy: FolioEditorSaveStrategy = written.refused
+      ? {
+          type: "full-repack",
+          reason: "selectiveDeclined",
+          decline: written.decline,
+        }
+      : { type: "selective-first" };
     if (buffer === null) {
       throw new Error("folio could not serialize the document.");
     }
@@ -274,7 +281,7 @@ const createSession = (host: FolioEditorHost) => {
     return {
       bytes: new Uint8Array(buffer),
       fileVersion,
-      strategy: written.strategy,
+      strategy,
     };
   };
 

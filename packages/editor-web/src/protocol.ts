@@ -83,7 +83,9 @@ const isSaveStrategy = (value: unknown): value is FolioEditorSaveStrategy => {
     case "full-repack":
       return (
         isString(value["reason"]) &&
-        Object.hasOwn(REPACK_REASONS, value["reason"])
+        Object.hasOwn(REPACK_REASONS, value["reason"]) &&
+        isString(value["decline"]) &&
+        value["decline"] !== ""
       );
     default:
       return false;

@@ -253,6 +253,7 @@ test("the VS Code bundle round-trips a document under the webview policy", async
   expect((await sentOfType(page, "serialized")).at(-1)?.strategy).toEqual({
     type: "full-repack",
     reason: "selectiveDeclined",
+    decline: "structuralRangeElement",
   });
   const repacked = await ZipArchive.read(await serializedBytes(page, 4));
   const repackedXml = await repacked.entry("word/document.xml")?.text();

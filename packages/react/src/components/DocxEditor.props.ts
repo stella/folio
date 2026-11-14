@@ -534,11 +534,12 @@ export type DocxEditorRef = {
    * Save the document to buffer. Pass { selective: false } to force full
    * repack. With `onDiagnostic`, a canonical save reports its fidelity
    * fallbacks (a declined selective patch among them) there instead of
-   * through `onError`.
+   * through `onError`; `onSelectiveDecline` names why the patch declined.
    */
   save: (options?: {
     selective?: boolean;
     onDiagnostic?: SaveDiagnosticOptions["onDiagnostic"];
+    onSelectiveDecline?: SaveDiagnosticOptions["onSelectiveDecline"];
   }) => Promise<ArrayBuffer | null>;
   /** Set zoom level */
   setZoom: (zoom: number) => void;

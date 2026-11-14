@@ -152,6 +152,8 @@ type StructuralPatchOptions = {
   originalXml: string;
   serializedXml: string;
   changedIds: ReadonlySet<string>;
+  /** Told when a range element anywhere in the body declines the splice. */
+  onRangeElement?: () => void;
 };
 
 /**
@@ -163,6 +165,7 @@ export const buildStructuralDocumentPatch = ({
   originalXml,
   serializedXml,
   changedIds,
+  onRangeElement,
 }: StructuralPatchOptions): string | null => {
   const source = readBody(originalXml);
   const current = readBody(serializedXml);
@@ -175,8 +178,10 @@ export const buildStructuralDocumentPatch = ({
       if (
         WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
         RANGE_ELEMENTS.has(getLocalName(element.name))
-      )
+      ) {
+        onRangeElement?.();
         return null;
+      }
     }
   }
   const allSourceIds = paragraphIds(source.root);

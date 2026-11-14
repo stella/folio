@@ -14,5 +14,7 @@ export type FolioDocxSerializationMode =
 export type FolioGetDocxOptions = {
   /** Fidelity diagnostics for the exact snapshot being serialized. */
   onDiagnostic?: SaveDiagnosticOptions["onDiagnostic"];
+  /** Why the selective writer declined this save, when it did. */
+  onSelectiveDecline?: SaveDiagnosticOptions["onSelectiveDecline"];
   mode?: FolioDocxSerializationMode;
 };
