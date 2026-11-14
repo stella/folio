@@ -19,7 +19,6 @@ import { readFileSync } from "node:fs";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
-import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
 
 declare global {
   var __folioPlayground:
@@ -474,7 +473,7 @@ test.describe("lists", () => {
           { type: "bookmarkEnd", id: 707 },
         ],
       });
-      const { bytes } = await canonicalLoadFixture(await createDocx(source));
+      const bytes = [...new Uint8Array(await createDocx(source))];
       await page.evaluate(async (array) => {
         const ref = globalThis.__folioPlayground?.getEditorRef();
         await ref?.loadDocumentBuffer(new Uint8Array(array));
