@@ -2305,6 +2305,17 @@ export const compileEditorIntent = (
           story: op.story,
         }),
       ];
+      // A row deletion that hands a vertical merge on moves the removed
+      // cell's paragraphs into the next row in place of the continuation's:
+      // the caret then stays in the paragraph the edit named.
+      const kept = new Set(
+        storyParagraphs(storyBody(applied.value.document, op.story)).flatMap(
+          ({ paragraph }) =>
+            paragraph.paraId === undefined ? [] : [idKey(paragraph.paraId)],
+        ),
+      );
+      if (!kept.has(idKey(blockId)) && kept.has(idKey(operation.blockId)))
+        blockId = operation.blockId;
       selection = { story: op.story, blockId, offset: 0 };
       break;
     }

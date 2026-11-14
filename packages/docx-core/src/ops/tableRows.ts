@@ -7,6 +7,10 @@ import type {
   Table,
   TableRow,
 } from "../model/document";
+import {
+  TABLE_CELL_VERTICAL_MERGES,
+  tableCellVerticalMerge,
+} from "../model/tableCellVerticalMerge";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import {
   endsItsContainer,
@@ -35,6 +39,7 @@ import { cloneModel } from "./modelClone";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
+import { tableGrid } from "./tableGrid";
 import {
   locateTableRow,
   tableRowAnchor,
@@ -287,6 +292,63 @@ const commitRows = ({
   });
 };
 
+/**
+ * The row after `rowIndex` once that row is removed directly, when the
+ * removed row starts a vertical merge the next row continues: the merge then
+ * starts in the next row, with the removed cell's properties and content, so
+ * the merged cell keeps its words; it is no merge at all when no later row
+ * continues it. Content the continuation held stays after the moved content.
+ * `undefined` when the removed row starts no merge that continues.
+ */
+const withMergesHandedOn = (
+  table: Table,
+  rowIndex: number,
+): TableRow | undefined => {
+  const grid = tableGrid(table, DOCUMENT_OP_TYPES.DELETE_ROW);
+  if (grid.isErr()) return undefined;
+  const removed = grid.value.rows[rowIndex] ?? [];
+  const following = grid.value.rows[rowIndex + 1] ?? [];
+  const later = grid.value.rows[rowIndex + 2] ?? [];
+  const nextRow = table.rows[rowIndex + 1];
+  if (nextRow === undefined) return undefined;
+  let handed = false;
+  const cells = nextRow.cells.map((cell, index) => {
+    const slot = following.find((entry) => entry.index === index);
+    if (
+      slot === undefined ||
+      slot.ownerRow !== rowIndex ||
+      tableCellVerticalMerge(cell.formatting?.vMerge) !==
+        TABLE_CELL_VERTICAL_MERGES.CONTINUE
+    )
+      return cell;
+    const owner = removed.find((entry) => entry.index === slot.ownerIndex);
+    if (owner === undefined) return cell;
+    handed = true;
+    const continues = later.some(
+      (entry) => entry.start === slot.start && entry.ownerRow === rowIndex,
+    );
+    const { vMerge: _vMerge, ...formatting } = owner.cell.formatting ?? {};
+    const held = cell.content.filter(
+      (block) => block.type !== "paragraph" || block.content.length > 0,
+    );
+    const moved = { ...owner.cell, content: [...owner.cell.content, ...held] };
+    if (continues)
+      return {
+        ...moved,
+        formatting: {
+          ...formatting,
+          vMerge: TABLE_CELL_VERTICAL_MERGES.RESTART,
+        },
+      };
+    if (Object.keys(formatting).length === 0) {
+      const { formatting: _formatting, ...plain } = moved;
+      return plain;
+    }
+    return { ...moved, formatting };
+  });
+  return handed ? { ...nextRow, cells } : undefined;
+};
+
 export const applyRowOp = (
   document: Document,
   op: RowOp,
@@ -371,7 +433,12 @@ export const applyRowOp = (
         });
       }
       if (op.revision === undefined) {
-        rows.splice(location.rowIndex, 1);
+        const next = withMergesHandedOn(location.table, location.rowIndex);
+        rows.splice(
+          location.rowIndex,
+          next === undefined ? 1 : 2,
+          ...(next === undefined ? [] : [next]),
+        );
       } else {
         const tracked = trackTableRows({
           document,
