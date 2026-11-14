@@ -57,10 +57,16 @@ import {
   importClipboardStyles,
 } from "./canonicalClipboardResources";
 
-const refuse = (
-  message: string,
-  ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch },
-) =>
+const refuse = (message: string) =>
+  Result.err(
+    new CanonicalSessionError({
+      ground: { gap: CANONICAL_GAP.dispatch },
+      message,
+      reason: "refused",
+    }),
+  );
+/** A refusal under the gap or rule it belongs to. */
+const refuseUnder = (ground: CanonicalRefusalGround, message: string) =>
   Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
 
 /**
@@ -409,9 +415,9 @@ export const prepareCanonicalPaste = ({
       }),
     );
   if (slice.openStart > 1 || slice.openEnd > 1)
-    return refuse(
-      "Clipboard tables and nested block containers require canonical table editing.",
+    return refuseUnder(
       unplacedBlockGround(slice),
+      "Clipboard tables and nested block containers require canonical table editing.",
     );
   const paragraphType = state.schema.nodes["paragraph"];
   if (paragraphType === undefined)
@@ -423,9 +429,9 @@ export const prepareCanonicalPaste = ({
     paragraphsOnly &&= node.type === paragraphType;
   });
   if (!inline && !paragraphsOnly)
-    return refuse(
-      "Clipboard tables and embedded blocks require canonical table editing.",
+    return refuseUnder(
       unplacedBlockGround(slice),
+      "Clipboard tables and embedded blocks require canonical table editing.",
     );
   // A same-parent document slice omits its paragraph; it still represents open inline edges.
   const importedSlice = inline
@@ -450,9 +456,9 @@ export const prepareCanonicalPaste = ({
   const paragraphs: Paragraph[] = [];
   for (const block of converted.value) {
     if (block.type !== "paragraph")
-      return refuse(
-        "The clipboard contains an unsupported block.",
+      return refuseUnder(
         unplacedBlockGround(slice),
+        "The clipboard contains an unsupported block.",
       );
     const paragraph = structuredClone(block);
     copyParagraphIndentationProjection({ target: paragraph, source: block });
