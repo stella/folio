@@ -468,24 +468,40 @@ describe("semantic table edit properties", () => {
           expect(row.cells.at(0)?.formatting?.vMerge).toBe("continue");
           expect(row.cells.length).toBe(f.width - 1);
         }
-        // The generator previously coupled every split to a vertical merge, despite
-        // that geometry being refused. Cover every group target plus a horizontal success path.
+        // A continuation is split through the merge's owner; the owner splits
+        // the whole merge back into each row's own cells.
         const mergedSnapshot = structuredClone(merged.document);
-        for (const row of table.rows) {
+        for (const [rowIndex, row] of table.rows.entries()) {
           const mergedParagraph = row.cells.at(0)?.content.at(0);
           if (mergedParagraph?.type !== "paragraph" || !mergedParagraph.paraId)
             throw new Error("Merged target paragraph missing.");
-          const refusal = applyDocumentOp(merged.document, {
+          const split = applyDocumentOp(merged.document, {
             ...target(mergedParagraph.paraId),
             type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-            newBlockIds: [],
+            newBlockIds: Array.from({ length: f.height }, (_, offset) =>
+              id(0x2800 + offset),
+            ),
           });
-          if (refusal.isOk())
-            throw new Error("Vertical-group split must refuse.");
-          expect(refusal.error.reason).toBe(
-            DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-          );
-          exact(merged.document, mergedSnapshot);
+          if (rowIndex > 0) {
+            if (split.isOk())
+              throw new Error("A continuation split must refuse.");
+            expect(split.error.reason).toBe(
+              DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            );
+            exact(merged.document, mergedSnapshot);
+            continue;
+          }
+          if (split.isErr()) throw split.error;
+          const unmerged = tableOf(split.value.document, f.nested);
+          for (const [index, unmergedRow] of unmerged.rows.entries()) {
+            const owner = unmergedRow.cells.at(0);
+            exact(owner?.content, table.rows.at(index)?.cells.at(0)?.content);
+            expect(owner?.formatting?.vMerge).toBeUndefined();
+            expect(owner?.formatting?.gridSpan).toBeUndefined();
+            exact(unmergedRow.cells.at(1)?.content, [
+              { type: "paragraph", paraId: id(0x2800 + index), content: [] },
+            ]);
+          }
         }
         const horizontal = fixture({ ...value, variant: 0 });
         const horizontalBefore = tableOf(
@@ -556,14 +572,6 @@ describe("semantic table edit properties", () => {
             id(0x7000 + offset),
           ),
         } satisfies DocumentOp;
-        if (vertical) {
-          const refused = applyDocumentOp(f.document, op);
-          expect(refused.isErr() && refused.error.reason).toBe(
-            DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-          );
-          exact(tableOf(f.document, f.nested), before);
-          return;
-        }
         const result = applied(f.document, op);
         const after = tableOf(result.document, f.nested);
         for (let rowIndex = 0; rowIndex < splitHeight; rowIndex++) {
@@ -1134,7 +1142,7 @@ describe("semantic table edit properties", () => {
               type: DOCUMENT_OP_TYPES.SPLIT_CELL,
               newBlockIds: [],
             } satisfies DocumentOp,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
           },
           {
             op: {
