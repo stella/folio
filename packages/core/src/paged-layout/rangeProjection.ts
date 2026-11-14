@@ -11,7 +11,10 @@
  * (initial paint, off-screen pages).
  */
 
+import { OP_STORIES, type OpStory } from "@stll/docx-core/ops";
+
 import { findBodyPmSpans } from "../layout-bridge/dom/findBodyPmSpans";
+import { findHfPmSpans } from "../layout-bridge/dom/findHfPmSpans";
 import {
   createTextStreamRange,
   descendantTextNodes,
@@ -19,9 +22,18 @@ import {
 } from "../layout-bridge/dom/textStreamDom";
 import type { SelectionRect } from "../layout-bridge/engine/selectionRects";
 import type { FlowBlock, Layout, Measure } from "../layout-engine/types";
-import { readPaintedEnd, readPaintedStart } from "../utils/paintedPositions";
+import {
+  PAINTED_RANGE_SELECTOR,
+  readPaintedEnd,
+  readPaintedStart,
+} from "../utils/paintedPositions";
 
-export type ProjectableRange = { from: number; to: number };
+/**
+ * An editor range to paint. `story` names the editor document `from` and `to`
+ * count in; the body when absent. Only body ranges fall back to the layout
+ * where their spans are not painted yet.
+ */
+export type ProjectableRange = { from: number; to: number; story?: OpStory };
 
 export type ProjectedRange<T extends ProjectableRange> = {
   range: T;
@@ -34,6 +46,21 @@ export type RangeProjectionContext = {
   layout: Layout | null;
   blocks: FlowBlock[];
   measures: Measure[];
+};
+
+/** The painted spans of one story, whose positions count in its editor document. */
+const storyPmSpans = (
+  container: HTMLElement,
+  story: OpStory,
+): HTMLElement[] => {
+  if (story === OP_STORIES.MAIN) return findBodyPmSpans(container);
+  if (story.kind === "header" || story.kind === "footer")
+    return findHfPmSpans(container, story.kind, story.rId);
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      `[data-note-kind="${story.kind}"][data-note-id="${String(story.id)}"] span${PAINTED_RANGE_SELECTOR}`,
+    ),
+  );
 };
 
 const pageIndexOf = (el: Element): number => {
@@ -283,13 +310,23 @@ export const projectRangesToRects = async <T extends ProjectableRange>(
   const pageRect = firstPage.getBoundingClientRect();
   const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
   const pageOffsetY = (pageRect.top - overlayRect.top) / zoom;
-  const pmSpans = findBodyPmSpans(pagesContainer);
+  const spansByStory = new Map<string, HTMLElement[]>();
+  const spansOf = (story: OpStory): HTMLElement[] => {
+    const key = JSON.stringify(story);
+    let spans = spansByStory.get(key);
+    if (spans === undefined) {
+      spans = storyPmSpans(pagesContainer, story);
+      spansByStory.set(key, spans);
+    }
+    return spans;
+  };
 
   const result: ProjectedRange<T>[] = [];
   const fallback: T[] = [];
   for (const range of ranges) {
+    const story = range.story ?? OP_STORIES.MAIN;
     const rects = domRectsForRange(
-      pmSpans,
+      spansOf(story),
       overlayRect,
       zoom,
       range.from,
@@ -297,7 +334,7 @@ export const projectRangesToRects = async <T extends ProjectableRange>(
     );
     if (rects.length > 0) {
       result.push({ range, rects });
-    } else {
+    } else if (story === OP_STORIES.MAIN) {
       fallback.push(range);
     }
   }

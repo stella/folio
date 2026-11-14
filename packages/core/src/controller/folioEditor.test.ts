@@ -5,6 +5,7 @@ import type { EditorView } from "prosemirror-view";
 import type { Layout } from "../layout-engine/types";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
+import { NO_ANONYMIZATION_HIGHLIGHTS } from "./anonymizationHighlights";
 import { createFolioEditor, type FolioEditorDocumentIO } from "./folioEditor";
 import { createFolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
@@ -124,6 +125,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     setCellSelection: record("setCellSelection"),
     scrollToSelection: record("scrollToSelection"),
     editorPositionAt: () => null,
+    getAnonymizationHighlights: () => NO_ANONYMIZATION_HIGHLIGHTS,
   };
   return { api, calls };
 };

@@ -15,6 +15,7 @@ import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import type { FolioGetDocxOptions } from "../types/docxSerialization";
 import type { DocxInput } from "../utils/docxInput";
+import { NO_ANONYMIZATION_HIGHLIGHTS } from "./anonymizationHighlights";
 import type { FolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 import type { LayoutRunOptions } from "./layoutRunOptions";
@@ -179,6 +180,9 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
 
     editorPositionAt: (position) =>
       deps.getEditorApi()?.editorPositionAt(position) ?? null,
+    getAnonymizationHighlights: () =>
+      deps.getEditorApi()?.getAnonymizationHighlights() ??
+      NO_ANONYMIZATION_HIGHLIGHTS,
 
     getLayout: () => deps.getLayout(),
 

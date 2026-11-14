@@ -1115,6 +1115,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       return pageIndex == null ? null : pageIndex + 1;
     },
     getPositionPage: (position) => opts.editor.getPositionPage(position),
+    getAnonymizationMatches: () =>
+      opts.editor.getAnonymizationHighlights().matches,
     getBlockRect,
     getBlockRects,
     getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),
