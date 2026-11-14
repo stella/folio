@@ -11,6 +11,7 @@ import {
   patchBreaksCommentRangeBalance,
   withoutOrphanCommentRanges,
 } from "./commentRangeIntegrity";
+import { visitDocxContentSlots } from "./paragraphTraversal";
 
 const validComment = {
   id: 1,
@@ -244,6 +245,181 @@ describe("withoutOrphanCommentRanges", () => {
       "run",
     ]);
   });
+});
+
+type CommentMarker = Extract<
+  ParagraphContent,
+  {
+    type: "commentRangeStart" | "commentRangeEnd" | "commentReference";
+  }
+>;
+
+const MARKER_TYPES = [
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+] as const satisfies readonly CommentMarker["type"][];
+
+const revision = { id: 50, author: "Reviewer" };
+
+/** Every inline container a comment marker can sit in, holding one marker. */
+const MARKER_CONTAINERS: Record<
+  string,
+  (marker: CommentMarker) => ParagraphContent
+> = {
+  "content control": (marker) => ({
+    type: "inlineSdt",
+    properties: { sdtType: "richText" },
+    content: [marker],
+  }),
+  hyperlink: (marker) => ({
+    type: "hyperlink",
+    href: "https://example.com",
+    children: [marker],
+  }),
+  insertion: (marker) => ({
+    type: "insertion",
+    info: revision,
+    content: [marker],
+  }),
+  deletion: (marker) => ({
+    type: "deletion",
+    info: revision,
+    content: [marker],
+  }),
+  "move from": (marker) => ({
+    type: "moveFrom",
+    info: revision,
+    content: [marker],
+  }),
+  "move to": (marker) => ({
+    type: "moveTo",
+    info: revision,
+    content: [marker],
+  }),
+  "bidi wrapper": (marker) => ({
+    type: "inlineWrapper",
+    kind: "bidi",
+    control: "embedding",
+    content: [marker],
+  }),
+  "smart tag": (marker) => ({
+    type: "inlineWrapper",
+    kind: "smartTag",
+    element: "place",
+    content: [marker],
+  }),
+  "custom XML wrapper": (marker) => ({
+    type: "inlineWrapper",
+    kind: "customXml",
+    element: "clause",
+    content: [marker],
+  }),
+  // A simple field admits no marker child of its own; one sits in a wrapper
+  // the field holds.
+  "simple field": (marker) => ({
+    type: "simpleField",
+    instruction: " PAGE ",
+    fieldType: "PAGE",
+    content: [
+      {
+        type: "inlineWrapper",
+        kind: "customXml",
+        element: "clause",
+        content: [marker],
+      },
+    ],
+  }),
+  "hyperlink inside a content control": (marker) => ({
+    type: "inlineSdt",
+    properties: { sdtType: "richText" },
+    content: [
+      { type: "hyperlink", href: "https://example.com", children: [marker] },
+    ],
+  }),
+  "text box of a shape in a run": (marker) => ({
+    type: "run",
+    content: [
+      {
+        type: "shape",
+        shape: {
+          type: "shape",
+          shapeType: "rect",
+          size: { width: 914400, height: 914400 },
+          textBody: { content: [paragraph([run("boxed"), marker])] },
+        },
+      },
+    ],
+  }),
+};
+
+/** Every comment marker id the package's stories hold, at every depth. */
+const commentMarkerIds = (document: Document): number[] => {
+  const ids: number[] = [];
+  visitDocxContentSlots(
+    {
+      documentBody: document.package.document,
+      headers: document.package.headers,
+      footers: document.package.footers,
+      footnotes: document.package.footnotes,
+      endnotes: document.package.endnotes,
+    },
+    (slot) => {
+      if (
+        slot.item.type === "commentRangeStart" ||
+        slot.item.type === "commentRangeEnd" ||
+        slot.item.type === "commentReference"
+      ) {
+        ids.push(slot.item.id);
+      }
+    },
+  );
+  return ids;
+};
+
+const documentWithContainer = (container: ParagraphContent): Document => ({
+  package: {
+    document: {
+      comments: [validComment],
+      content: [
+        paragraph([run("before"), container, run("after")]),
+        paragraph([run("untouched")]),
+      ],
+    },
+  },
+});
+
+describe("withoutOrphanCommentRanges inside inline containers", () => {
+  for (const [containerName, contain] of Object.entries(MARKER_CONTAINERS)) {
+    for (const markerType of MARKER_TYPES) {
+      test(`drops an orphan ${markerType} inside a ${containerName}`, () => {
+        const document = documentWithContainer(
+          contain({ type: markerType, id: 404 }),
+        );
+        expect(commentMarkerIds(document)).toEqual([404]);
+
+        const result = withoutOrphanCommentRanges(document);
+
+        expect(commentMarkerIds(result)).toEqual([]);
+        // The container stays; only the marker goes.
+        expect(contentTypes(result.package.document.content.at(0))).toEqual(
+          contentTypes(document.package.document.content.at(0)),
+        );
+        // A paragraph holding no orphan is the same record.
+        expect(result.package.document.content.at(1)).toBe(
+          document.package.document.content.at(1),
+        );
+      });
+
+      test(`keeps a held ${markerType} inside a ${containerName}`, () => {
+        const document = documentWithContainer(
+          contain({ type: markerType, id: validComment.id }),
+        );
+
+        expect(withoutOrphanCommentRanges(document)).toBe(document);
+      });
+    }
+  }
 });
 
 const story = (...paragraphs: string[]): string =>
