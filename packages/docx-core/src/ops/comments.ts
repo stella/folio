@@ -1458,7 +1458,15 @@ const create = (
       },
     ];
   }
-  let current = withComments(document, [...comments, comment]);
+  // A new comment goes before the first one with a greater id, so concurrent
+  // creations take the same places in whichever order they apply.
+  const following = comments.findIndex(({ id }) => id > comment.id);
+  let current = withComments(
+    document,
+    following < 0
+      ? [...comments, comment]
+      : comments.toSpliced(following, 0, comment),
+  );
   for (const { at, content } of positions) {
     const inserted = applyOps(current, [
       {

@@ -1,9 +1,11 @@
+import { Result } from "better-result";
 /**
  * Peers editing one room concurrently with every kind of canonical edit,
- * through the real sequencer and optimistic client, with every batch crossing
- * the JSON wire: all of them end on the authority's bytes, no edit is lost
- * without a notice, and every concurrent batch the authority accepted
- * commutes with the journal tail it was rebased over.
+ * comment threads among them, through the real sequencer and optimistic
+ * client, with every batch crossing the JSON wire: all of them end on the
+ * authority's bytes, comments included, no edit is lost without a notice,
+ * and every concurrent batch the authority accepted commutes with the
+ * journal tail it was rebased over.
  */
 import { describe, expect, mock, test } from "bun:test";
 import fc from "fast-check";
@@ -18,10 +20,21 @@ import type { Document } from "../../../model/document";
 import { serializeDocumentToDocx } from "../../../serialize/docx";
 import { createEditorIntentIdAllocator } from "../../editorIntent";
 import { equalForStaleness } from "../../equality";
-import { introducedIds, leasedIdCensus, trimIdLease } from "../../idLease";
-import { DOCUMENT_OP_SCHEMA_VERSION, type DocumentOp } from "../../types";
+import {
+  ID_LEASE_KINDS,
+  introducedIds,
+  leasedIdCensus,
+  trimIdLease,
+} from "../../idLease";
+import {
+  DOCUMENT_OP_SCHEMA_VERSION,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+} from "../../types";
 import { applyBatch } from "../applyBatch";
 import { createClient } from "../client";
+import * as commentTransform from "../commentTransform";
+import { isCommentOp } from "../commentTransform";
 import * as envelope from "../envelope";
 import {
   BATCH_REJECTION_REASONS,
@@ -81,6 +94,8 @@ type Outcome = {
   rebased: number;
   proven: number;
   scopedRebased: number;
+  /** Accepted rebased batches with a comment operation in them or their tail. */
+  commentRebased: number;
   /** Accepted rebased batches whose result differs from the commuted order. */
   diverged: string[];
 };
@@ -155,6 +170,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     rebased: 0,
     proven: 0,
     scopedRebased: 0,
+    commentRebased: 0,
     diverged: [],
   };
   const delivery: Delivery[] = [];
@@ -213,6 +229,8 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         [batch, ...tail].some(({ ops }) => ops.some((op) => isBlockScoped(op)))
       )
         outcome.scopedRebased += 1;
+      if ([batch, ...tail].some(({ ops }) => ops.some((op) => isCommentOp(op))))
+        outcome.commentRebased += 1;
       const proven = commutes(history, batch, tail, sequencer.document);
       if (proven === true) outcome.proven += 1;
       if (proven === false) outcome.diverged.push(batch.opId);
@@ -332,16 +350,27 @@ const scenarioArbitrary: fc.Arbitrary<Scenario> = fc
 const bytes = async (document: Document): Promise<Uint8Array> =>
   new Uint8Array(await serializeDocumentToDocx(document));
 
-type Counts = { rebased: number; proven: number; scopedRebased: number };
+type Counts = {
+  rebased: number;
+  proven: number;
+  scopedRebased: number;
+  commentRebased: number;
+};
 
 const convergence = (
-  counts: Counts = { rebased: 0, proven: 0, scopedRebased: 0 },
+  counts: Counts = {
+    rebased: 0,
+    proven: 0,
+    scopedRebased: 0,
+    commentRebased: 0,
+  },
 ) =>
   fc.asyncProperty(scenarioArbitrary, async ([peers, steps]) => {
     const outcome = simulate(peers, steps);
     counts.rebased += outcome.rebased;
     counts.proven += outcome.proven;
     counts.scopedRebased += outcome.scopedRebased;
+    counts.commentRebased += outcome.commentRebased;
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
@@ -383,6 +412,58 @@ const concurrentRows: Scenario = [
   ],
 ];
 
+// The queue drains in order: every answer and broadcast reaches its peer.
+const drain = (count: number): Step[] =>
+  Array.from({ length: count }, () => ({ type: "deliver", seed: 0 }));
+
+/**
+ * A comment on the first paragraph's fourth character while another peer
+ * erases its first: the comment's range moves back by one.
+ */
+const commentOverErase: Scenario = [
+  3,
+  [
+    edit(0, { kind: "erase", a: 0, b: 0 }),
+    edit(1, { kind: "comment", a: 24, b: 0 }),
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 1 },
+  ],
+];
+
+/**
+ * One thread, seen by every peer, then replied to, resolved and edited at
+ * once: the three commute.
+ */
+const concurrentThread: Scenario = [
+  3,
+  [
+    edit(0, { kind: "comment", a: 24, b: 0 }),
+    { type: "submit", peer: 0 },
+    ...drain(4),
+    edit(1, { kind: "reply", a: 0, b: 0 }),
+    edit(2, { kind: "resolveComment", a: 0, b: 0 }),
+    edit(0, { kind: "editComment", a: 0, b: 0 }),
+    { type: "submit", peer: 1 },
+    { type: "submit", peer: 2 },
+    { type: "submit", peer: 0 },
+  ],
+];
+
+/** A thread deleted while another peer resolves it: the later one refuses. */
+const deleteAgainstResolve: Scenario = [
+  3,
+  [
+    edit(0, { kind: "pointComment", a: 36, b: 0 }),
+    { type: "submit", peer: 0 },
+    ...drain(4),
+    edit(1, { kind: "deleteComment", a: 0, b: 0 }),
+    edit(2, { kind: "resolveComment", a: 0, b: 0 }),
+    { type: "undo", peer: 1 },
+    { type: "submit", peer: 1 },
+    { type: "submit", peer: 2 },
+  ],
+];
+
 describe("canonical sequencing", () => {
   test(
     "concurrent canonical edits converge on the authority's bytes and commute where accepted",
@@ -390,15 +471,26 @@ describe("canonical sequencing", () => {
       await assertProperty(convergence(), {
         numRuns: NUM_RUNS,
         id: "canonical sequencing convergence",
-        examples: [[concurrentRows]],
+        examples: [
+          [concurrentRows],
+          [commentOverErase],
+          [concurrentThread],
+          [deleteAgainstResolve],
+        ],
       });
       // On a fixed sample the schedules race: accepted batches are rebased
-      // over concurrent ones, block-scoped ones among them, and the commuted
-      // order is proven for them.
-      const counts = { rebased: 0, proven: 0, scopedRebased: 0 };
+      // over concurrent ones, block-scoped and comment ones among them, and
+      // the commuted order is proven for them.
+      const counts = {
+        rebased: 0,
+        proven: 0,
+        scopedRebased: 0,
+        commentRebased: 0,
+      };
       await checkCoverageSample(convergence(counts), NUM_RUNS);
       expect(counts.rebased).toBeGreaterThan(0);
       expect(counts.scopedRebased).toBeGreaterThan(0);
+      expect(counts.commentRebased).toBeGreaterThan(0);
       expect(counts.proven).toBeGreaterThan(0);
     },
     propertyTestTimeout(180_000),
@@ -438,5 +530,115 @@ describe("canonical sequencing", () => {
       expect(restored.failed).toBe(false);
     },
     propertyTestTimeout(180_000),
+  );
+
+  test(
+    "a comment anchor left in place over a concurrent deletion is caught",
+    async () => {
+      // The test-only break: a comment's anchor no longer moves over a
+      // concurrent text or structure operation.
+      const original = { ...commentTransform };
+      mock.module("../commentTransform", () => ({
+        ...original,
+        moveCommentAnchor: ({ op }: { op: DocumentOp }) => Result.ok([op]),
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: NUM_RUNS,
+            examples: [[commentOverErase]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+        // Caught by the commutation check, not by anything else.
+        expect(String(result.errorInstance)).toMatch(/do not commute/u);
+      } finally {
+        mock.module("../commentTransform", () => original);
+      }
+      // Without the break the same scenario passes.
+      const restored = await fc.check(
+        convergence(),
+        propertyConfig({ numRuns: 1, examples: [[commentOverErase]] }),
+      );
+      expect(restored.failed).toBe(false);
+    },
+    propertyTestTimeout(180_000),
+  );
+
+  test(
+    "a comment id outside the submitter's lease is refused",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.nat({ max: 1023 }),
+          fc.constantFrom("comment" as const, "pointComment" as const),
+          (offset, kind) => {
+            const base = canonicalBase();
+            const sequencer = createSequencer(base);
+            const own = sequencer.grantIdLease("actor-0");
+            const other = sequencer.grantIdLease("actor-1");
+            if (own.isErr()) throw own.error;
+            if (other.isErr()) throw other.error;
+            const block = other.value.blocks.find(
+              ({ kind: leased }) => leased === ID_LEASE_KINDS.COMMENT,
+            );
+            if (block === undefined) throw new Error("No comment lease block.");
+            const ops = compileCanonicalEdit(
+              base,
+              {
+                actor: "actor-0",
+                tag: "0",
+                lease: own.value,
+                allocate: createEditorIntentIdAllocator(),
+              },
+              { kind, a: 24, b: 0, suggest: false },
+              1,
+            );
+            const created = ops?.at(0);
+            if (created?.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT)
+              throw new Error("The comment edit did not compile.");
+            // The same comment under an id another actor leases.
+            const forged = {
+              ...created,
+              comment: {
+                ...created.comment,
+                id: block.start + (offset % (block.end - block.start)),
+              },
+            };
+            const result = sequencer.submit(
+              wire({
+                schema: DOCUMENT_OP_SCHEMA_VERSION,
+                opId: "forged",
+                actor: "actor-0",
+                baseRev: 0,
+                ops: [forged],
+              }),
+            );
+            expect(result.type).toBe("reject");
+            if (result.type !== "reject") return;
+            expect(result.reason.reason).toBe(
+              BATCH_REJECTION_REASONS.OUTSIDE_ID_LEASE,
+            );
+            expect(result.reason.idKind).toBe(ID_LEASE_KINDS.COMMENT);
+            // The honest comment is accepted.
+            const honest = sequencer.submit(
+              wire({
+                schema: DOCUMENT_OP_SCHEMA_VERSION,
+                opId: "honest",
+                actor: "actor-0",
+                baseRev: 0,
+                ops: [created],
+              }),
+            );
+            expect(honest.type).toBe("ack");
+          },
+        ),
+        { numRuns: 20, id: "comment ids outside the submitter's lease" },
+      );
+    },
+    propertyTestTimeout(60_000),
   );
 });

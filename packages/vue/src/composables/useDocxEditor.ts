@@ -138,6 +138,7 @@ import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/Starte
 import type { CommandMap } from "@stll/folio-core/prosemirror/extensions/types";
 import {
   createNoteReferenceFollower,
+  heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
@@ -638,6 +639,8 @@ export function useDocxEditor(
   // `docModel` (not `document`) so the global `document` stays reachable for the
   // FontFaceSet probe + DOM host lookups.
   const docModel = shallowRef<ReadonlyDocument | null>(null);
+  /** The notes the loaded document held without a reference: content a save keeps. */
+  let heldNotes: ReadonlySet<string> = new Set();
   /** The model's styles, for a reader that takes plain style definitions. */
   const readModelStyles = () => {
     const model = docModel.value;
@@ -1476,6 +1479,7 @@ export function useDocxEditor(
         source = prepared.value;
       }
       const doc = await parseDocx(source, { password: toValue(password) });
+      heldNotes = heldUnreferencedNotes(doc);
       docModel.value = doc;
       remountForNewDocument();
     } catch (err) {
@@ -1489,6 +1493,7 @@ export function useDocxEditor(
     parseError.value = null;
     // A host's document may hold reactive proxies; the model is its raw
     // data, which the copies the host is handed can clone.
+    heldNotes = heldUnreferencedNotes(doc);
     docModel.value = rawDocument(doc);
     noteFollower.reset();
     remountForNewDocument();
@@ -1558,6 +1563,7 @@ export function useDocxEditor(
             anchoredInEditor: commentIdsNamedIn(state.doc),
           })
         : projected,
+      heldNotes,
     );
 
     const { resolveSelectiveSaveFlags } =

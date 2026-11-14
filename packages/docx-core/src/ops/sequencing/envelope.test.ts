@@ -27,7 +27,6 @@ import {
   parseDocumentBatch,
   sequencedEffectType,
   TABLE_EXCLUSIVE_OP_TYPES,
-  UNSENT_OP_TYPES,
   validateDocumentBatch,
   validateSequencedBatch,
 } from "./envelope";
@@ -37,10 +36,8 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 const fixture = baseFixtures[0];
 const withOp = (op: unknown) => ({ ...fixture, ops: [op] });
 
-test("every production-shaped operation decodes, except the unsent comment family", () => {
-  const supported = new Set(BATCH_WIRE_OP_TYPES);
+test("every production-shaped operation decodes", () => {
   const decoded = new Set<string>();
-  let refused = 0;
   for (const { op } of envelopes()) {
     const result = parseDocumentBatch(JSON.stringify(withOp(op)));
     // One fixture carries a field its kind does not declare; it must refuse.
@@ -48,29 +45,21 @@ test("every production-shaped operation decodes, except the unsent comment famil
       expect(result.isErr()).toBe(true);
       continue;
     }
-    if (supported.has(op.type)) {
-      if (result.isErr())
-        throw new Error(`${op.type} must decode: ${result.error.message}`);
-      expect(result.value.ops).toStrictEqual([op]);
-      decoded.add(op.type);
-      continue;
-    }
-    expect(Object.hasOwn(UNSENT_OP_TYPES, op.type)).toBe(true);
-    refused += 1;
-    if (result.isOk()) throw new Error(`Unsent ${op.type} must refuse.`);
-    expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.INVALID_OPERATION);
+    if (result.isErr())
+      throw new Error(`${op.type} must decode: ${result.error.message}`);
+    expect(result.value.ops).toStrictEqual([op]);
+    decoded.add(op.type);
   }
-  expect(refused).toBeGreaterThan(0);
-  // The fixtures exercise every sendable kind.
+  // The fixtures exercise every kind, comment operations among them.
   expect([...decoded].toSorted()).toEqual([...BATCH_WIRE_OP_TYPES].toSorted());
 });
 
-test("every operation kind is sendable or explicitly unsent, never both", () => {
-  for (const type of Object.values(DOCUMENT_OP_TYPES)) {
-    const sendable = BATCH_WIRE_OP_TYPES.includes(type);
-    expect(sendable).toBe(!Object.hasOwn(UNSENT_OP_TYPES, type));
-    if (sendable) expect(sequencedEffectType(type)).toBeDefined();
-  }
+test("every operation kind is sendable and records a sequenced effect", () => {
+  expect([...BATCH_WIRE_OP_TYPES].toSorted()).toEqual(
+    Object.values(DOCUMENT_OP_TYPES).toSorted(),
+  );
+  for (const type of Object.values(DOCUMENT_OP_TYPES))
+    expect(sequencedEffectType(type)).toBeDefined();
 });
 
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {

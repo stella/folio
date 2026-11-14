@@ -340,6 +340,20 @@ const spanningAction = (
 /** What a wrap does with a record the range covers whole. */
 type CoveredAction = "wrap" | "skip" | "descend" | "refuse";
 
+/** Whether a record holds a comment anchor at any depth. */
+const holdsCommentAnchor = (node: InlineNode): boolean =>
+  (childNodes(node) ?? []).some(
+    (child) => isCommentAnchor(child) || holdsCommentAnchor(child),
+  );
+
+/**
+ * A tracked change takes in no comment anchor. A deletion takes in none at
+ * any depth either: deleting directly removes the anchors inside the range,
+ * but accepting keeps those of comment ranges that continue past it, so a
+ * deletion holding one would accept to another document than the direct
+ * deletion. An insertion may hold one inside a record it takes in whole:
+ * rejecting keeps every boundary it held.
+ */
 const coveredAction = (node: InlineNode, kind: WrapKind): CoveredAction => {
   if (isCommentAnchor(node)) {
     return "refuse";
@@ -347,6 +361,7 @@ const coveredAction = (node: InlineNode, kind: WrapKind): CoveredAction => {
   if (kind === WRAP_KINDS.DELETION) {
     if (isRemovedRevisionNode(node)) return "skip";
     if (isAddedRevision(node)) return "descend";
+    if (holdsCommentAnchor(node)) return "refuse";
   }
   return "wrap";
 };

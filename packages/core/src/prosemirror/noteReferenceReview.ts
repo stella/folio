@@ -485,19 +485,47 @@ const anchoredComments = (
 };
 
 /**
- * The document without the notes nothing refers to any more: a note goes
+ * The notes `source` holds that nothing in it refers to: the package's own
+ * content, which no edit has touched. Taken when a document is opened, so a
+ * save can tell them from the notes an edit left without a reference.
+ */
+export const heldUnreferencedNotes = (
+  source: Document,
+): ReadonlySet<string> => {
+  const referenced = referencedNotes(source);
+  const held = new Set<NoteKey>();
+  const { footnotes, endnotes } = source.package;
+  for (const note of footnotes ?? []) {
+    const key = noteKey("footnote", note.id);
+    if (!referenced.has(key)) held.add(key);
+  }
+  for (const note of endnotes ?? []) {
+    const key = noteKey("endnote", note.id);
+    if (!referenced.has(key)) held.add(key);
+  }
+  return held;
+};
+
+/**
+ * The document without the notes an edit left with no reference: a note goes
  * with its reference, so accepting the reference's deletion leaves a note no
  * reader can reach, and saving drops it, with the comments anchored only in
- * it. Separators stay.
+ * it. A note the opened package already held without a reference
+ * (`heldUnreferenced`, from {@link heldUnreferencedNotes}) is the package's
+ * content, not an edit's leftover, and stays. Separators stay.
  */
-export const withoutUnreferencedNotes = (document: Document): Document => {
+export const withoutUnreferencedNotes = (
+  document: Document,
+  heldUnreferenced: ReadonlySet<string>,
+): Document => {
   const referenced = referencedNotes(document);
   const { footnotes, endnotes, headers, footers } = document.package;
   const keeps = (kind: NoteKind) => (note: Footnote | Endnote) =>
     (kind === "footnote"
       ? isSeparatorFootnote(note as Footnote)
       : isSeparatorEndnote(note as Endnote)) ||
-    referenced.has(noteKey(kind, note.id));
+    referenced.has(noteKey(kind, note.id)) ||
+    heldUnreferenced.has(noteKey(kind, note.id));
   const keptFootnotes = footnotes?.filter(keeps("footnote"));
   const keptEndnotes = endnotes?.filter(keeps("endnote"));
   if (

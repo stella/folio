@@ -12,6 +12,12 @@ import {
   type TouchedBlocks,
 } from "../types";
 import {
+  anchorPoints,
+  isAnchoredComment,
+  isCommentOp,
+  transformCommentPair,
+} from "./commentTransform";
+import {
   BATCH_REJECTION_REASONS,
   BatchRejection,
   type BatchRejectionReason,
@@ -87,11 +93,10 @@ const read = (part: ExclusivePart, key: string): PartAccess => ({
 const sections = (changes: boolean): PartAccess[] =>
   changes ? [write(EXCLUSIVE_PARTS.SECTIONS)] : [];
 
-/**
- * The footprint of every operation kind, or undefined for comment operations,
- * which have no wire form in this schema and keep the pairwise refusals.
- */
-const footprintOf = (op: DocumentOp): OpFootprint | undefined => {
+const comment = (id: number): string => String(id);
+
+/** The footprint of every operation kind. */
+const footprintOf = (op: DocumentOp): OpFootprint => {
   const facts = payloadFacts(op);
   const numbering = facts.numIds.map((id) =>
     read(EXCLUSIVE_PARTS.NUMBERING, `num:${String(id)}`),
@@ -252,6 +257,7 @@ const footprintOf = (op: DocumentOp): OpFootprint | undefined => {
           write(EXCLUSIVE_PARTS.RELATIONSHIPS),
           write(EXCLUSIVE_PARTS.NOTES),
           write(EXCLUSIVE_PARTS.SETTINGS),
+          write(EXCLUSIVE_PARTS.COMMENTS),
         ],
       );
     case DOCUMENT_OP_TYPES.ADD_NOTE:
@@ -274,12 +280,60 @@ const footprintOf = (op: DocumentOp): OpFootprint | undefined => {
         [],
         op.infos.map(({ id }) => write(EXCLUSIVE_PARTS.REVISIONS, String(id))),
       );
-    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+    // Comment operations may add or remove the comment part relationships;
+    // a range or point anchor moves like text.
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT: {
+      const parts = [
+        write(EXCLUSIVE_PARTS.RELATIONSHIPS),
+        write(EXCLUSIVE_PARTS.COMMENTS, comment(op.comment.id)),
+      ];
+      if (isAnchoredComment(op))
+        return positional(
+          anchorPoints(op).map(({ blockId }) => blockId),
+          parts,
+        );
+      switch (op.anchor.kind) {
+        case "reply":
+          return scoped(
+            [],
+            [
+              ...parts,
+              read(EXCLUSIVE_PARTS.COMMENTS, comment(op.anchor.parentId)),
+            ],
+          );
+        case "revision":
+          return scoped(
+            [],
+            [
+              ...parts,
+              write(EXCLUSIVE_PARTS.REVISIONS, String(op.anchor.revisionId)),
+            ],
+          );
+        default:
+          return panic("Unknown comment anchor kind.");
+      }
+    }
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
+      return scoped([], [write(EXCLUSIVE_PARTS.COMMENTS, comment(op.id))]);
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
     case DOCUMENT_OP_TYPES.DELETE_COMMENT:
+      return scoped(
+        [],
+        [
+          write(EXCLUSIVE_PARTS.RELATIONSHIPS),
+          write(EXCLUSIVE_PARTS.COMMENTS, comment(op.id)),
+        ],
+      );
     case DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE:
-      return undefined;
+      return scoped(
+        [...op.expected.anchors, ...op.state.anchors].map(
+          ({ blockId }) => blockId,
+        ),
+        [
+          write(EXCLUSIVE_PARTS.RELATIONSHIPS),
+          ...op.ids.map((id) => write(EXCLUSIVE_PARTS.COMMENTS, comment(id))),
+        ],
+      );
     default: {
       const exhaustive: never = op;
       void exhaustive;
@@ -290,7 +344,7 @@ const footprintOf = (op: DocumentOp): OpFootprint | undefined => {
 
 /** Whether the operation is sequenced with a block footprint, not a position transform. */
 export const isBlockScoped = (op: DocumentOp): boolean =>
-  footprintOf(op)?.positional === false;
+  !footprintOf(op).positional;
 
 const partsConflict = (
   left: readonly PartAccess[],
@@ -311,6 +365,7 @@ type ScopedPair = {
   op: DocumentOp;
   over: DocumentOp;
   effect: SequencedOpEffect | undefined;
+  order: "before" | "after";
 };
 
 export const TOUCHED_BLOCKS_EFFECT = "touchedBlocks";
@@ -329,10 +384,13 @@ export const transformByFootprint = ({
   op,
   over,
   effect,
+  order,
 }: ScopedPair): Result<readonly DocumentOp[], BatchRejection> | undefined => {
+  // Two comment operations decide by the comments they use and their anchors.
+  if (isCommentOp(op) && isCommentOp(over))
+    return transformCommentPair({ op, over, effect, order });
   const mine = footprintOf(op);
   const theirs = footprintOf(over);
-  if (mine === undefined || theirs === undefined) return undefined;
   const refuse = (
     reason: BatchRejectionReason,
     message: string,
@@ -417,6 +475,35 @@ const tableParagraphIds = (
   });
 };
 
+// The comments whose records an operation added, removed or replaced, and
+// whether a package relationship went with them.
+const changedComments = (
+  before: Document,
+  after: Document,
+): { ids: number[]; relationshipRemoved: boolean } => {
+  const previous = new Map(
+    (before.package.document.comments ?? []).map((record) => [
+      record.id,
+      record,
+    ]),
+  );
+  const next = new Map(
+    (after.package.document.comments ?? []).map((record) => [
+      record.id,
+      record,
+    ]),
+  );
+  const ids = new Set<number>();
+  for (const [id, record] of previous) if (next.get(id) !== record) ids.add(id);
+  for (const id of next.keys()) if (!previous.has(id)) ids.add(id);
+  return {
+    ids: [...ids].toSorted((left, right) => left - right),
+    relationshipRemoved: [...(before.package.relationships?.keys() ?? [])].some(
+      (key) => after.package.relationships?.has(key) !== true,
+    ),
+  };
+};
+
 /**
  * The sequenced effect of a block-scoped operation: every paragraph it
  * changed, inserted or removed, and for a table structure edit every
@@ -448,6 +535,12 @@ export const blockScopedEffect = (
       ids.set(key, paragraph.paraId);
   }
   const blockIds = [...ids.values()].toSorted();
+  if (isCommentOp(op))
+    return {
+      type: TOUCHED_BLOCKS_EFFECT,
+      blockIds,
+      comments: changedComments(before, after),
+    };
   if (!restructuresTable(op)) return { type: TOUCHED_BLOCKS_EFFECT, blockIds };
   const table = [
     ...new Set([
