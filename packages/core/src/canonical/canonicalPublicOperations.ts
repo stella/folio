@@ -1580,13 +1580,27 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
     const resolved: ResolvedOperation[] = [];
-    const model = readModel(session.document);
-    const definedStyles = styleDefinitionLookup(
-      createStyleResolver(model.package.styles),
-    );
-    const definedNumberingInstances = new Set(
-      model.package.numbering?.nums.map(({ numId }) => numId) ?? [],
-    );
+    // Read once, at the first operation that reaches the check: a batch the
+    // session refuses as a whole reads no document.
+    let definedReferences:
+      | {
+          styles: ReturnType<typeof styleDefinitionLookup>;
+          numberingInstanceIds: ReadonlySet<number>;
+        }
+      | undefined;
+    const references = () => {
+      if (definedReferences !== undefined) return definedReferences;
+      const model = readModel(session.document);
+      definedReferences = {
+        styles: styleDefinitionLookup(
+          createStyleResolver(model.package.styles),
+        ),
+        numberingInstanceIds: new Set(
+          model.package.numbering?.nums.map(({ numId }) => numId) ?? [],
+        ),
+      };
+      return definedReferences;
+    };
     const mintList = createBatchListMinter(() => readModel(session.document));
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
@@ -1713,8 +1727,7 @@ export class CanonicalPublicOperations {
       // place: before the operation compiles.
       const undefinedReference = findUndefinedOperationReference({
         operation,
-        styles: definedStyles,
-        numberingInstanceIds: definedNumberingInstances,
+        ...references(),
         undefinedReferences: "refuse",
       });
       if (undefinedReference !== undefined) {
