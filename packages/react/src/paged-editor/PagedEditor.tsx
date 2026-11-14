@@ -42,7 +42,10 @@ import type { EditorView } from "prosemirror-view";
 import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import type { OpStory } from "@stll/folio-core/canonical/canonicalOperations";
-import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
+import type {
+  CanonicalHistoryDrop,
+  CanonicalHistoryEffect,
+} from "@stll/folio-core/canonical/canonicalSession";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
@@ -428,6 +431,8 @@ export type PagedEditorProps = {
   onEditorViewReady?: (view: EditorView | null) => void;
   /** A canonical commit was published, with what it did to the undo history. */
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
+  /** A peer's edit dropped local history steps. */
+  onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
   /** External ProseMirror plugins. */
   externalPlugins?: Plugin[];
   /** Paint the template-directive overlay. Toggling this hides the chips even
@@ -1615,6 +1620,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       onSelectionTextChange,
       onEditorViewReady,
       onCanonicalHistory,
+      onCanonicalHistoryDrop,
       externalPlugins = EMPTY_PLUGINS,
       showTemplateDirectives = true,
       collaboration,
@@ -6893,6 +6899,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             : { experimentalSession })}
           {...(historyShortcuts === undefined ? {} : { historyShortcuts })}
           {...(onCanonicalHistory === undefined ? {} : { onCanonicalHistory })}
+          {...(onCanonicalHistoryDrop === undefined
+            ? {}
+            : { onCanonicalHistoryDrop })}
           onSessionRefusal={handleSessionRefusal}
           {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           suggestionModeActive={suggestionModeActive}

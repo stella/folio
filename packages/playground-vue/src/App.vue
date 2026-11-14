@@ -56,7 +56,10 @@ import type {
 
 import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
 import { buildCanonicalRoomBridge } from "../../../tests/parity/canonicalRoomBridge";
-import { createCanonicalRoomDemo } from "../../../tests/parity/canonicalRoomDemo";
+import {
+  createCanonicalRoomDemo,
+  readCanonicalRoomSeed,
+} from "../../../tests/parity/canonicalRoomDemo";
 import { buildFindNotificationBridge } from "./findNotificationBridge";
 import type { FindNotificationBridge } from "./findNotificationBridge";
 import type { FolioParityBridge } from "./parityBridge";
@@ -146,12 +149,11 @@ const roomName = (): string => {
 
 async function openRoom(fixtureFile: string): Promise<void> {
   status.value = "Opening the room...";
-  const response = await fetch(`/fixtures/${fixtureFile}`);
-  if (!response.ok) {
+  const bytes = await readCanonicalRoomSeed(fixtureFile);
+  if (bytes === undefined) {
     status.value = `Fixture not found: ${fixtureFile}`;
     return;
   }
-  const bytes = await response.arrayBuffer();
   const demo = await createCanonicalRoomDemo({
     room: roomName(),
     bytes,
