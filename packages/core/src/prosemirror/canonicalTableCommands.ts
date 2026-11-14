@@ -208,7 +208,7 @@ export const withCanonicalTableAttributeCommand = (command: Command): Command =>
   );
 
 /** A paragraph of the table's own, outside the given columns, that addresses it. */
-const tableAnchor = (
+export const tableAnchor = (
   rect: TableRect,
   avoid: { left: number; right: number } = { left: 0, right: 0 },
 ): number | undefined => {
@@ -342,7 +342,7 @@ export const withCanonicalCellSplit = (command: Command): Command =>
   withCanonicalTableStructureCommand(command, splitCell);
 
 /** A paragraph of the table's own in the given row. */
-const rowAnchor = (rect: TableRect, row: number): number | undefined => {
+export const rowAnchor = (rect: TableRect, row: number): number | undefined => {
   const { map, table, tableStart } = rect;
   for (let column = 0; column < map.width; column += 1) {
     const offset = map.map[row * map.width + column];

@@ -586,7 +586,8 @@ export const isKeptBoundaryCarrier = (node: InlineNode): boolean =>
     node.content.length > 0 &&
     node.content.every(isKeptBoundaryCarrier));
 
-/** Which kept boundaries each container may hold, as its model declares. */
+/**
+ * Which kept boundaries each container may hold, as its model declares. */
 const HOLDS: Partial<
   Record<InlineNode["type"], (boundary: Boundary) => boolean>
 > = {
@@ -600,6 +601,18 @@ const HOLDS: Partial<
 };
 
 /**
+ * Whether a pending deletion or move source covered content of a revision
+ * dated `keptFrom`: only one made after that revision can have. Content
+ * inserted later beside or between its pieces was never in it, so a boundary
+ * kept from that content stays out of it: accepting the deletion must not
+ * take away what it never deleted.
+ */
+const coveredBy = (node: InlineNode, keptFrom: string | undefined): boolean =>
+  keptFrom === undefined ||
+  (node.type !== "deletion" && node.type !== "moveFrom") ||
+  (node.info.date ?? "") >= keptFrom;
+
+/**
  * `node` with `boundaries` at its start or end, as deep as `depth` containers
  * in as the containers on the way can hold them: where removed content that
  * cut those containers was, so the pieces it separated still join around the
@@ -611,8 +624,11 @@ export const withBoundariesAtEdge = (
   boundaries: readonly InlineNode[],
   depth: number,
   edge: "start" | "end",
+  /** The date of the revision the boundaries were kept from, when known. */
+  keptFrom?: string,
 ): InlineNode | undefined => {
-  if (depth <= 0 || boundaries.length === 0) return undefined;
+  if (depth <= 0 || boundaries.length === 0 || !coveredBy(node, keptFrom))
+    return undefined;
   const children = childNodes(node);
   const holds = HOLDS[node.type];
   const holdsKept = (kept: InlineNode): boolean => {
@@ -633,7 +649,7 @@ export const withBoundariesAtEdge = (
   const inner = edge === "start" ? children.at(0) : children.at(-1);
   const nested =
     depth > 1 && inner !== undefined
-      ? withBoundariesAtEdge(inner, boundaries, depth - 1, edge)
+      ? withBoundariesAtEdge(inner, boundaries, depth - 1, edge, keptFrom)
       : undefined;
   if (nested !== undefined)
     return rebuildNode(
