@@ -166,6 +166,13 @@ stay exported for validation-only paths.
   mark, or its table row) reads as a blank block; `replaceBlock` on it skips
   (`pendingDeletion`), since accepting would join the new text to the next
   paragraph. Reject that deletion first, or insert a new block next to it.
+- A paragraph whose mark alone is pending deletion (a tracked change joins it
+  to the next paragraph) keeps its properties until that change is resolved:
+  `setBlockParagraphProperties`, or a `replaceBlock` that changes its style,
+  skips (`pendingParagraphMarkDeletion`), since accepting the join gives the
+  joined paragraph the next paragraph's properties. Resolve that change
+  first, or state the joined paragraph's properties with
+  `mergedParagraphProperties` on the `mergeBlockWithNext` that joins them.
 - Successful mutations return input-ordered `receipts`. Use their typed
   `affected` targets to identify updated blocks, stable ranges, insertions,
   and created comments without inferring effects from document text.

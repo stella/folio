@@ -186,7 +186,6 @@ import {
 } from "../prosemirror/tableRunIn";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type {
   ParagraphFormatting,
   RunPropertyChange,
@@ -238,6 +237,7 @@ import {
   isDeletedPPrMark,
   isPendingDeletion,
   joinRunsWordsInto,
+  PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
   pendingJoinBounds,
   type PendingJoinBoundsOptions,
 } from "./pendingJoin";
@@ -3225,12 +3225,11 @@ const pendingJoinInsertionRefusal = {
     "Accepting the pending paragraph mark deletion before this place would run the paragraph together with the words before it or the table after it. Resolve that change first, or insert elsewhere.",
 } as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
 
-const pendingParagraphMarkPropertyRefusal = {
-  reason: "pendingParagraphMarkDeletion",
-  canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
-  message:
-    "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
-} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
+const pendingParagraphMarkPropertyRefusal =
+  PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL satisfies Omit<
+    FolioAIEditSkippedOperation,
+    "id"
+  >;
 
 /** Whether every piece of the paragraph's content is pending inserted text. */
 const holdsOnlyInsertedContent = (

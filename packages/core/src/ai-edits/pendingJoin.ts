@@ -14,6 +14,22 @@ import { paragraphLeftAfter } from "../prosemirror/paragraphPropertyCarry";
 import { buildCleanBlockText } from "./clean-text";
 import type { NoteReferenceLabels } from "./note-references";
 
+/**
+ * A public operation that edits a paragraph's properties waits while the
+ * paragraph's mark is pending deletion, in both engines: accepting the
+ * deletion gives the joined paragraph the next paragraph's properties, so
+ * the edit would not survive it. A merge carries its own result's properties
+ * (`mergedParagraphProperties`).
+ */
+export const PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL: {
+  readonly reason: "pendingParagraphMarkDeletion";
+  readonly message: string;
+} = {
+  reason: "pendingParagraphMarkDeletion",
+  message:
+    "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
+} as const;
+
 /** A paragraph mark that is a pending deletion, or a relocation's source. */
 export const isDeletedPPrMark = (value: unknown): boolean =>
   typeof value === "object" &&

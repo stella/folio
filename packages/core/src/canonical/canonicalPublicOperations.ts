@@ -59,6 +59,7 @@ import type { NoteReferenceLabels } from "../ai-edits/note-references";
 import {
   isDeletedPPrMark,
   joinsIn,
+  PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
   pendingJoinParagraphs,
 } from "../ai-edits/pendingJoin";
 import {
@@ -2462,20 +2463,34 @@ export class CanonicalPublicOperations {
             "The canonical session holds no address in this paragraph, such as one in a text box.",
           )
         : refusal("missingBlock");
-    // A block beside a paragraph whose break is pending removal is placed
-    // by the join it is part of (`besidePendingJoin`); any other operation
-    // on it waits for that change to be resolved.
-    if (
-      (paragraph.source.pPrMark?.kind === "del" ||
-        paragraph.source.pPrMark?.kind === "moveFrom") &&
-      !placesBlock(operation)
-    )
-      return refusal("pendingDeletion");
     const noteReferences = collectNoteReferenceLabels(state.doc);
     const clean = buildCleanBlockText(paragraph.node, paragraph.start - 1, {
       fieldResults: "text",
       noteReferences,
     });
+    // A block beside a paragraph whose break is pending removal is placed
+    // by the join it is part of (`besidePendingJoin`); any other operation
+    // on it waits for that change to be resolved. An edit of the paragraph's
+    // own properties says so, as the default engine does: accepting the
+    // deletion would give the joined paragraph the next one's properties.
+    if (
+      (paragraph.source.pPrMark?.kind === "del" ||
+        paragraph.source.pPrMark?.kind === "moveFrom") &&
+      !placesBlock(operation)
+    ) {
+      const editsProperties =
+        operation.type === "setBlockParagraphProperties" ||
+        (operation.type === "replaceBlock" &&
+          clean.text.length > 0 &&
+          operation.styleId !== undefined &&
+          operation.styleId !== (paragraph.source.formatting?.styleId ?? null));
+      return editsProperties
+        ? refusal(
+            PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL.reason,
+            PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL.message,
+          )
+        : refusal("pendingDeletion");
+    }
     const hash = hashFolioAIBlockContent(clean.text);
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
