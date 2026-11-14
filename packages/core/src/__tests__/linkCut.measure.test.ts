@@ -4,12 +4,13 @@ import { setDefaultTimeout, test } from "bun:test";
 import type { EditorState } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 
+import { createDocx } from "../docx/rezip";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document, ParagraphContent } from "../types/document";
 import {
   createHarnessState,
   harnessRuntimeManager,
   parseShapeDocument,
-  saveHarnessState,
 } from "./editorHarness";
 
 setDefaultTimeout(600_000);
@@ -145,8 +146,16 @@ test("S20LEGACYCUT legacy direct link edits over refused content", async () => {
         report[name] = "refuses";
         continue;
       }
-      const saved = await saveHarnessState(state, document);
-      const reopened = await parseShapeDocument(saved.bytes);
+      const model = fromProseDoc(state.doc, document, {
+        stylesheetSource: { type: "package" },
+      });
+      const modelParagraph = model.package.document.content.at(0);
+      report[`${name}:model`] =
+        modelParagraph?.type === "paragraph"
+          ? shapeOf(modelParagraph.content)
+          : null;
+      const bytes = new Uint8Array(await createDocx(model));
+      const reopened = await parseShapeDocument(bytes);
       const paragraph = reopened.package.document.content.at(0);
       report[name] = {
         textKept: state.doc.textContent === before,
