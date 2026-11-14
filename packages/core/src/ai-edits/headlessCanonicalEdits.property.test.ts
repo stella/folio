@@ -1,9 +1,10 @@
 /**
  * A canonical headless reviewer edits and resolves through its session.
  *
- * Each case draws a document a reviewer lists every story of (or a body with
- * review marks of every shape) and one public operation built from the
- * blocks a reader sees, then holds the reviewer's edits to three laws:
+ * Each case draws a body with review marks of every shape (or, less often, a
+ * document a reviewer lists every story of) and one operation to stage,
+ * built from the blocks a reader sees, then holds the reviewer's edits to
+ * three laws:
  *
  * - rejecting every change after the operation in tracked mode gives what
  *   rejecting every change gives without it;
@@ -20,7 +21,12 @@ import fc from "fast-check";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
+import { bodyReviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
+import {
+  type OperationDraw,
+  operationFor,
+  stagingDrawArbitrary,
+} from "../../../../test/generators/reviewerOperationDraws";
 import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
@@ -72,64 +78,6 @@ const open = (buffer: ArrayBuffer): Promise<Reviewer> =>
   });
 
 /** What the operation is built from: one draw per choice it makes. */
-type OperationDraw = {
-  kind:
-    "replaceInBlock" | "insertAfterBlock" | "insertBeforeBlock" | "deleteBlock";
-  block: number;
-  word: number;
-  text: string;
-};
-
-const operationDrawArbitrary: fc.Arbitrary<OperationDraw> = fc.record({
-  kind: fc.constantFrom(
-    "replaceInBlock",
-    "insertAfterBlock",
-    "insertBeforeBlock",
-    "deleteBlock",
-  ),
-  block: fc.nat(),
-  word: fc.nat(),
-  text: fc.constantFrom("revised", "the Customer", "Payment is due.", ""),
-});
-
-/** The operation a draw names over the blocks a reader of `reviewer` sees. */
-const operationFor = (
-  reviewer: Reviewer,
-  draw: OperationDraw,
-): FolioDocumentOperation | null => {
-  const blocks = reviewer
-    .getContent()
-    .filter((block) => block.kind !== "diagnostic");
-  const block = blocks.at(draw.block % Math.max(blocks.length, 1));
-  if (!block) return null;
-  switch (draw.kind) {
-    case "replaceInBlock": {
-      const words = block.text.split(/\s+/u).filter((word) => word !== "");
-      const find = words.at(draw.word % Math.max(words.length, 1));
-      return find === undefined
-        ? null
-        : {
-            id: "op",
-            type: "replaceInBlock",
-            blockId: block.id,
-            find,
-            replace: draw.text,
-          };
-    }
-    case "insertAfterBlock":
-    case "insertBeforeBlock":
-      return draw.text === ""
-        ? null
-        : { id: "op", type: draw.kind, blockId: block.id, text: draw.text };
-    case "deleteBlock":
-      return { id: "op", type: "deleteBlock", blockId: block.id };
-    default: {
-      const unreachable: never = draw.kind;
-      throw new Error(`Unknown operation draw ${String(unreachable)}`);
-    }
-  }
-};
-
 const batchOf = (
   operation: FolioDocumentOperation,
   mode: "direct" | "tracked-changes",
@@ -227,7 +175,9 @@ const editLaws = async (
     if (CanonicalSessionError.is(error)) return "sessionRefused";
     throw error;
   }
-  const operation = operationFor(base, draw);
+  const operation = operationFor(base, draw, {
+    replaceIn: "blocksWithWords",
+  });
   if (operation === null) return "noOperation";
 
   // Undo gives back every read and the document.
@@ -284,8 +234,8 @@ const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
 
 const generatedEdits = (tally: Map<EditOutcome, number>, refusals?: Refusals) =>
   fc.asyncProperty(
-    reviewerDocumentArbitrary,
-    operationDrawArbitrary,
+    bodyReviewerDocumentArbitrary,
+    stagingDrawArbitrary,
     async (document, draw) => {
       const buffer = await packaged(document);
       const outcome =
