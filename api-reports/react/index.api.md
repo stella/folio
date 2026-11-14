@@ -166,6 +166,7 @@ import { resetTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/te
 import { ResolvedAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { resolveSuggestionAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { ReviewDisplayMode } from '@stll/folio-core/managers/reviewDisplayMode';
+import { SaveDiagnosticOptions } from '@stll/folio-core/docx/saveDiagnostics';
 import { scanDirectives } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { scrollFolioPositionIntoView } from '@stll/folio-core/paged-layout/scrollToPmPosition';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
@@ -475,6 +476,8 @@ export type DocxEditorRef = {
     getEditor: () => FolioEditor | null;
     save: (options?: {
         selective?: boolean;
+        onDiagnostic?: SaveDiagnosticOptions["onDiagnostic"];
+        onSelectiveDecline?: SaveDiagnosticOptions["onSelectiveDecline"];
     }) => Promise<ArrayBuffer | null>;
     setZoom: (zoom: number) => void;
     getZoom: () => number;

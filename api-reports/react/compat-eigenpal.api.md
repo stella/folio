@@ -63,6 +63,7 @@ import { ReadonlyDocument } from '@stll/folio-core/types/documentModel';
 import { RefAttributes } from 'react';
 import { RefObject } from 'react';
 import { ReviewDisplayMode } from '@stll/folio-core/managers/reviewDisplayMode';
+import { SaveDiagnosticOptions } from '@stll/folio-core/docx/saveDiagnostics';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
 import { SdtProperties } from '@stll/folio-core/types/document';
 import { Select } from '@base-ui/react/select';
@@ -141,6 +142,8 @@ export type DocxEditorRef = {
     getEditor: () => FolioEditor | null;
     save: (options?: {
         selective?: boolean;
+        onDiagnostic?: SaveDiagnosticOptions["onDiagnostic"];
+        onSelectiveDecline?: SaveDiagnosticOptions["onSelectiveDecline"];
     }) => Promise<ArrayBuffer | null>;
     setZoom: (zoom: number) => void;
     getZoom: () => number;
