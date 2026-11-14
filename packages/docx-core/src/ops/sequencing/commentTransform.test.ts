@@ -372,12 +372,10 @@ test("two replies to one parent take the same places in either order", () => {
   // The same with the parent's range ending between blocks, after the
   // paragraph that holds its replies' end markers.
   const between = endBetweenBlocks(commented);
-  const early = compiled(between, 1, "reply", 6);
-  const late = compiled(between, 2, "reply", 7);
   expect(
     equalForStaleness(
-      apply(apply(between, early), late),
-      apply(apply(between, late), early),
+      apply(apply(between, first), second),
+      apply(apply(between, second), first),
     ),
   ).toBe(true);
 });
