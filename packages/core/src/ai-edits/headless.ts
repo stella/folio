@@ -20,6 +20,7 @@ import {
 import {
   freshCommentId,
   OP_STORIES,
+  type OpStory,
   reconcileDocumentPartRelationships,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
@@ -321,13 +322,13 @@ export type FolioDocxReviewerOptions = {
    * The engine the document is held in. (default: `"legacy"`)
    *
    * `"canonical"` loads the document into the canonical session the editors'
-   * canonical mode runs. Every read comes from it, and the body's operations,
-   * their undo, the resolution of its changes and the save run on it as the
-   * canonical editor runs them. Edits in headers, footers and notes,
-   * suggestions, comment replies and resolution, resolved views and
-   * comparison are not on the session yet: they throw a
-   * `CanonicalSessionError` whose ground is the `publicOps.headlessSession`
-   * gap, and never fall back to the legacy engine.
+   * canonical mode runs. Every read comes from it, and operations in every
+   * story, their undo, comment replies and resolution, the resolution of
+   * tracked changes and the save run on it as the canonical editor runs
+   * them. Suggestions, resolved views and comparison are not on the session
+   * yet: they throw a `CanonicalSessionError` whose ground is the
+   * `publicOps.headlessSession` gap, and never fall back to the legacy
+   * engine.
    */
   session?: HeadlessReviewerSession;
 };
@@ -359,16 +360,41 @@ type FolioReviewerEngine =
  * against. It is rebuilt from the session after every commit, so it never
  * holds anything the session does not.
  */
-const canonicalReviewerState = (session: CanonicalSession): EditorState => {
+const canonicalReviewerState = (session: CanonicalSession): EditorState =>
+  canonicalStoryState(session, session.projection.doc);
+
+/** A story's state over `doc`, with the session document's numbering and styles. */
+const canonicalStoryState = (
+  session: CanonicalSession,
+  doc: PMNode,
+): EditorState => {
   const document = readModel(session.document);
   return EditorState.create({
     schema,
-    doc: session.projection.doc,
+    doc,
     plugins: [
       createDocumentNumberingPlugin(document.package.numbering),
       createDocumentStylesPlugin(document.package.styles),
     ],
   });
+};
+
+/** The session's name for a reviewer's story. */
+const canonicalOpStory = (story: FolioEditableDocumentStoryHandle): OpStory => {
+  switch (story.type) {
+    case "main":
+      return OP_STORIES.MAIN;
+    case "header":
+    case "footer":
+      return { kind: story.type, rId: story.relationshipId };
+    case "footnote":
+    case "endnote":
+      return { kind: story.type, id: story.noteId };
+    default: {
+      const unreachable: never = story;
+      return panic("Unknown reviewer story", { story: unreachable });
+    }
+  }
 };
 
 /** The refusal of a canonical reviewer for what it cannot do on the session yet. */
@@ -1294,10 +1320,16 @@ export class FolioDocxReviewer {
             ...args.engine,
             operations: new CanonicalPublicOperations({
               session: args.engine.session,
-              // Headers, footers and notes refuse before they reach the
-              // compiler (see `requireMainStoryOnSession`).
-              getState: (story) =>
-                story === OP_STORIES.MAIN ? this.state : null,
+              getState: (story) => {
+                if (story === OP_STORIES.MAIN) return this.state;
+                const projected = args.engine.session.projectStory(story);
+                return projected.isErr()
+                  ? null
+                  : canonicalStoryState(
+                      args.engine.session,
+                      projected.value.doc,
+                    );
+              },
               publish: (commit) => this.publishOnSession(commit),
             }),
           };
@@ -1812,8 +1844,13 @@ export class FolioDocxReviewer {
     if (this.engine.type !== "canonical")
       return panic("Only a canonical reviewer publishes session commits");
     const { session } = this.engine;
+    // A header, footer or note commit applies to that story's projection;
+    // the body follows from the session below.
     const published = publishCanonicalProjection({
-      state: this.state,
+      state:
+        commit.selection.anchor.story === OP_STORIES.MAIN
+          ? this.state
+          : canonicalStoryState(session, commit.transaction.before),
       commit,
       session,
     });
@@ -1845,12 +1882,10 @@ export class FolioDocxReviewer {
   }
 
   /**
-   * The resolution of the body's ordinary changes on the session. What is
-   * not on the session yet refuses before anything changes: changes in
-   * headers, footers and notes, final section property changes, and pending
-   * suggestions.
+   * What the session cannot resolve yet refuses before anything changes:
+   * final section property changes and pending suggestions.
    */
-  private requireBodyOnlyReview(action: string): void {
+  private requireSessionReview(action: string): void {
     if (getSuggestions(this.state).length > 0)
       throw canonicalReviewerRefusal(`${action} beside pending suggestions`);
     if (
@@ -1859,25 +1894,52 @@ export class FolioDocxReviewer {
       throw canonicalReviewerRefusal(
         `${action} in the final section's properties`,
       );
+  }
+
+  /** Every change of the headers, footers and notes, as resolution operations. */
+  private storyResolutions(resolution: "accept" | "reject"): {
+    ops: DocumentOp[];
+    count: number;
+  } {
+    const ops: DocumentOp[] = [];
+    let count = 0;
     for (const handle of this.listStoryHandlesInternal()) {
       if (handle.type === "main") continue;
       const doc = this.readSecondaryStoryDoc(handle);
-      if (doc && getTrackedChangesFromDoc(doc).length > 0)
-        throw canonicalReviewerRefusal(
-          `${action} in headers, footers or notes`,
-        );
+      if (!doc) continue;
+      const changes = getTrackedChangesFromDoc(doc);
+      if (changes.length === 0) continue;
+      count += changes.length;
+      ops.push({
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: canonicalOpStory(handle),
+        revisionIds: changes.flatMap(({ id }) =>
+          getTrackedChangeGroupIdsFromDoc(doc, id),
+        ),
+        decision: resolution,
+      });
     }
+    return { ops, count };
   }
 
   /** A batch the session cannot take yet refuses whole, before anything changes. */
-  private requireMainStoryOnSession(
-    story: FolioEditableDocumentStoryHandle,
-    batch: FolioDocumentOperationBatch,
-  ): void {
-    if (story.type !== "main")
-      throw canonicalReviewerRefusal("edit headers, footers or notes");
+  private requireSessionBatch(batch: FolioDocumentOperationBatch): void {
     if (batch.mode === "suggested")
       throw canonicalReviewerRefusal("stage suggested operations");
+  }
+
+  /** A story's snapshot as the compiler resolves operations against it. */
+  private snapshotOnSession(
+    story: FolioEditableDocumentStoryHandle,
+  ): FolioAIEditSnapshot {
+    if (story.type === "main") return createStateSnapshot(this.state);
+    const snapshot = this.snapshotStory(story);
+    if (!snapshot)
+      throw new FolioDocumentStoryNotFoundError({
+        message: `Document story ${JSON.stringify(story)} was not found.`,
+        story,
+      });
+    return snapshot;
   }
 
   /** Apply a batch through the editor's canonical public operation compiler. */
@@ -1895,11 +1957,11 @@ export class FolioDocxReviewer {
     ApplyDocumentOperationsInternalOptions,
     "createUndoEntry" | "author" | "restagesSuggestions"
   > & { operations: CanonicalPublicOperations }): FolioDocumentOperationResult {
-    this.requireMainStoryOnSession(story, batch);
+    this.requireSessionBatch(batch);
     return operations.apply({
-      snapshot: snapshot ?? createStateSnapshot(this.state),
+      snapshot: snapshot ?? this.snapshotOnSession(story),
       batch,
-      story: "main",
+      story: story.type === "main" ? "main" : story,
       author: this.author,
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
@@ -3352,14 +3414,18 @@ export class FolioDocxReviewer {
     session: CanonicalSession,
     resolution: "accept" | "reject",
   ): FolioReviewResolution {
-    this.requireBodyOnlyReview(`${resolution} every change`);
+    this.requireSessionReview(`${resolution} every change`);
     const before = this.state;
     const changes = getTrackedChangesFromDoc(before.doc);
-    if (changes.length === 0) return { resolved: 0, skipped: [] };
+    // Headers, footers and notes resolve in the same commit as the body.
+    const stories = this.storyResolutions(resolution);
+    if (changes.length === 0 && stories.count === 0)
+      return { resolved: 0, skipped: [] };
     const outcome = this.resolveOnSession(
       session.prepareResolve(before, {
         revisionIds: changes.map(({ id }) => id),
         resolution,
+        before: stories.ops,
       }),
     );
     if (!outcome.resolved && outcome.reason === "noChange")
@@ -3382,7 +3448,11 @@ export class FolioDocxReviewer {
         },
       ];
     });
-    return { resolved: changes.length - skipped.length, skipped };
+    const storiesResolved = outcome.resolved ? stories.count : 0;
+    return {
+      resolved: changes.length - skipped.length + storiesResolved,
+      skipped,
+    };
   }
 
   private resolveAll(mode: "accept" | "reject"): FolioReviewResolution {
@@ -4304,6 +4374,12 @@ export class FolioDocxReviewer {
       return this.state;
     }
     if (!this.secondaryStorySource(story)) return null;
+    // Nothing is held for a canonical story: its state is the session's
+    // projection at every read.
+    if (this.engine.type === "canonical") {
+      const doc = this.secondaryStoryDoc(story);
+      return doc && canonicalStoryState(this.engine.session, doc);
+    }
     const key = secondaryStoryKey(story);
     const existing = this.secondaryStoryStates.get(key);
     if (existing) {
@@ -4360,6 +4436,15 @@ export class FolioDocxReviewer {
    * session's story projections yet.
    */
   private secondaryStoryDoc(story: FolioSecondaryStoryHandle): PMNode | null {
+    if (this.engine.type === "canonical") {
+      // The story as the session projects it, the document its edits act on.
+      if (!this.secondaryStorySource(story)) return null;
+      const projected = this.engine.session.projectStory(
+        canonicalOpStory(story),
+      );
+      if (projected.isErr()) throw projected.error;
+      return projected.value.doc;
+    }
     const source = this.secondaryStorySource(story);
     if (!source) {
       return null;
