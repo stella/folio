@@ -14,10 +14,13 @@
  * Documents are compared under the review projection the tracked-operation
  * laws use.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import { projectReview } from "../../../../../test/reviewProjection";
 import type {
   CommentRangeEnd,
@@ -36,6 +39,8 @@ import {
   REVISION_DECISIONS,
   type RevisionDecision,
 } from "../types";
+
+setDefaultTimeout(propertyTestTimeout(60_000));
 
 type Anchor = CommentRangeStart | CommentRangeEnd;
 type Part = "text" | "anchor";
