@@ -3023,12 +3023,11 @@ const acceptedClosedBoundary = ({
 };
 
 /**
- * A rejection that removes the piece of a split record standing at a
- * paragraph's edge ends the split's cut there: nothing of the records it cut
- * stands on that side to join again, so the join meets whatever stands beside
- * the seam as plain neighbours. Returns the depth the cut ends at. An
- * insertion standing inside the seam itself (one that cut records of its own)
- * is passed over: removing it exposes the seam rather than ending it.
+ * The depth at which a rejection removes the record standing at a
+ * paragraph's edge, where a split's cut left a piece. An insertion standing
+ * inside the seam itself (one that cut records of its own) is passed over:
+ * removing it exposes the seam rather than the piece. `undefined` when the
+ * edge keeps a record down to its leaves.
  */
 const removedClosedBoundary = ({
   nodes,
@@ -3333,8 +3332,9 @@ export const planRevisionResolution = ({
     );
     if (trailing !== undefined) depth = Math.min(depth, trailing);
     if (leading !== undefined) depth = Math.min(depth, leading);
-    // A piece the cut left at either edge that this rejection removes ends the
-    // cut at that depth, as removing it earlier would have.
+    // Where this rejection removes the pieces the cut left at both edges, the
+    // cut ends at the shallower of the two depths: no pieces stand on both
+    // sides below it to join, as when they were removed earlier.
     const removedTrailing = removedClosedBoundary({
       nodes: paragraph.content,
       edge: "last",
@@ -3348,8 +3348,8 @@ export const planRevisionResolution = ({
             resolution,
           })
         : undefined;
-    if (removedTrailing !== undefined) depth = Math.min(depth, removedTrailing);
-    if (removedLeading !== undefined) depth = Math.min(depth, removedLeading);
+    if (removedTrailing !== undefined && removedLeading !== undefined)
+      depth = Math.min(depth, removedTrailing, removedLeading);
     if (depth !== mark.resolutionJoin)
       retiredCutDepths.set(idKey(paragraph.paraId ?? ""), depth);
   }
