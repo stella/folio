@@ -137,7 +137,7 @@ const openMenu = async (
 };
 
 const DELETE = /^\s*Delete(?!\s*image)/u;
-const CUT = /^\s*Cut\b/u;
+const CUT = /^\s*Cut(?![a-z])/u;
 
 const choose = async (menu: Locator, item: RegExp) => {
   await menu
