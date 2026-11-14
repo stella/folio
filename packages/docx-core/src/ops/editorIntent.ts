@@ -3410,9 +3410,10 @@ export const compileEditorIntent = (
         at.offset,
         at.zeroWidthBefore ?? 0,
       ]);
-      // An edited seam joins alike runs; a source cut puts a record back.
+      // An edited seam, and a source cut that rejoins runs, join alike runs
+      // where they still meet; a deeper source cut puts a record back.
       const seam =
-        policy === RUN_SEAM_POLICIES.plain &&
+        (policy === RUN_SEAM_POLICIES.plain || depth === 1) &&
         (plannedSeams.get(key)?.seam ?? true);
       plannedSeams.set(key, { at, depth, seam });
     }
