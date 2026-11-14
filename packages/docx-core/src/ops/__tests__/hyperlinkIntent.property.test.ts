@@ -181,14 +181,32 @@ test("hyperlink intents have exact inverses and refuse unrepresentable suggestio
               newIds: ids.newIds,
             },
           });
-          expect(tracked.isErr()).toBe(true);
+          // A suggestion applies; only the two shapes it cannot record refuse.
           if (tracked.isErr()) {
-            expect(tracked.error.reason).toBe("untrackable");
-            expect(tracked.error.message).toContain(
-              "serializable wrapper review provenance",
+            expect(tracked.error.reason).toBe(
+              DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION,
             );
+            expect([
+              "A link suggestion cannot strike text beside a marker inside the same link.",
+              "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",
+            ]).toContain(tracked.error.message);
           }
           expect(document).toStrictEqual(original(styleId));
+          if (tracked.isOk()) {
+            const suggested = applyDocumentOps(
+              document,
+              tracked.value.ops,
+            ).unwrap();
+            const undone = applyDocumentOps(
+              suggested.document,
+              suggested.inverse,
+            ).unwrap();
+            expect(undone.document).toStrictEqual(document);
+            expect(
+              applyDocumentOps(undone.document, undone.inverse).unwrap()
+                .document,
+            ).toStrictEqual(suggested.document);
+          }
           const expectedText =
             intent.type === "insertHyperlink"
               ? "ab😀cd".slice(0, from) + intent.text + "ab😀cd".slice(to)
