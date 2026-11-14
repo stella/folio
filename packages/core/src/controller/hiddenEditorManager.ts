@@ -2234,7 +2234,8 @@ export const createHiddenEditorManager = (
           return null;
         const session = editorSession.session;
         const selection = session.storySelection(story);
-        if (!selection) return null;
+        // Only a text selection is restored as text; the editor keeps others.
+        if (selection?.type !== "text") return null;
         const projection = session.projectStory(story);
         if (projection.isErr()) return null;
         const anchor = projection.value.positionAt(selection.anchor);

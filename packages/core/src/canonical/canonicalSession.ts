@@ -2041,7 +2041,12 @@ class CanonicalSession {
     if (state.doc !== projection.doc && !state.doc.eq(projection.doc))
       return refuse("The story editor shows a stale canonical projection.");
     const selection = projection.selectionAt(state);
-    if (selection.isErr()) return selection;
+    // A selection the session cannot hold (a node selection on a note's
+    // mark) replaces the one held before, so nothing restores that one.
+    if (selection.isErr()) {
+      this.storySelections.delete(storyProjectionKey(story));
+      return selection;
+    }
     this.storySelections.set(storyProjectionKey(story), selection.value);
     return Result.ok(undefined);
   }
@@ -3050,6 +3055,13 @@ class CanonicalSession {
         this.storySelections.clear();
         for (const [key, moved] of storySelections)
           this.storySelections.set(key, moved);
+        // A batch shown in a story's own editor keeps the selection it shows.
+        const shownStory = selection.head.story;
+        if (
+          shownStory !== OP_STORIES.MAIN &&
+          findStoryBody(applied.value.document, shownStory) !== undefined
+        )
+          this.storySelections.set(storyProjectionKey(shownStory), selection);
         this.applied.splice(0, this.applied.length, ...history.applied);
         this.undone.splice(0, this.undone.length, ...history.undone);
         this.breakUndoGroup();

@@ -105,10 +105,10 @@ export type HiddenEditorApi = {
     patch: FormattingPatch<SectionProperties>,
   ) => CanonicalSectionPropertiesResult | null;
   /**
-   * Where the editor of a header, footer or note shows its selection in the
-   * story's current projection: the selection it last reported or committed,
-   * moved over every peer's edit since. Null for the body, and before the
-   * editor reported one.
+   * Where the editor of a header, footer or note shows its text selection in
+   * the story's current projection: the selection it last reported or
+   * committed, moved over every peer's edit since. Null for the body, before
+   * the editor reported one, and for any other kind of selection.
    */
   getCanonicalStorySelection: (
     story: OpStory,

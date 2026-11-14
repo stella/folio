@@ -26,10 +26,11 @@ type CanonicalStoryEditorOptions = {
 };
 
 /**
- * Show the story's current projection in its open editor, when the editor
- * shows another. The selection is the one the session holds for the story:
- * the one the editor last reported, moved over every edit since. An editor
- * that never reported one keeps its position, within the new content.
+ * Show the story's current projection in its open editor, with the selection
+ * the session holds for the story: the one the editor last reported, moved
+ * over every edit since. A peer's edit can move it without changing what the
+ * story shows, so it is restored then too. An editor that never reported one
+ * keeps its position, within the new content.
  */
 export const refreshCanonicalStoryView = ({
   view,
@@ -41,13 +42,23 @@ export const refreshCanonicalStoryView = ({
   api: HiddenEditorApi | null | undefined;
 }): void => {
   const projected = api?.getCanonicalStoryProjection(story);
-  if (!api || !projected || view.state.doc.eq(projected)) return;
+  if (!api || !projected) return;
+  const held = api.getCanonicalStorySelection(story);
+  if (view.state.doc.eq(projected)) {
+    const { anchor, head } = view.state.selection;
+    if (!held || (held.anchor === anchor && held.head === head)) return;
+    const moved = view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, held.anchor, held.head),
+    );
+    moved.setMeta("addToHistory", false);
+    view.updateState(view.state.apply(moved));
+    return;
+  }
   const transaction = view.state.tr.replaceWith(
     0,
     view.state.doc.content.size,
     projected.content,
   );
-  const held = api.getCanonicalStorySelection(story);
   transaction.setSelection(
     held
       ? TextSelection.create(transaction.doc, held.anchor, held.head)
