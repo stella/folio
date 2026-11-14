@@ -104,6 +104,7 @@ export {
 export {
   BATCH_REJECTION_REASONS,
   BATCH_WIRE_OP_TYPES,
+  EXCLUSIVE_PARTS,
   MAX_BATCH_WIRE_BYTES,
   BatchRejection,
   parseDocumentBatch,
@@ -111,11 +112,24 @@ export {
   validateSequencedBatch,
   type BatchRejectionReason,
   type DocumentBatch,
+  type ExclusivePart,
   type SequencedBatch,
 } from "./sequencing/envelope";
 export { transformBatch } from "./sequencing/transform";
-export { createSequencer, type SequencerOptions } from "./sequencing/sequencer";
-export { createClient } from "./sequencing/client";
+export { transformPosition } from "./sequencing/position";
+export { applyBatch } from "./sequencing/applyBatch";
+export {
+  type BatchAck,
+  type BatchReject,
+  type BatchSubmission,
+  createSequencer,
+  type SequencerOptions,
+} from "./sequencing/sequencer";
+export {
+  type ClientDocumentChange,
+  type ClientNotice,
+  createClient,
+} from "./sequencing/client";
 export {
   DEFAULT_ID_BLOCK_SIZES,
   ID_LEASE_REFUSAL_REASONS,
