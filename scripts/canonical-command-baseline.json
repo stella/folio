@@ -1,8 +1,5 @@
 {
   "command-descriptors": [
-    "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#autoFitContents",
-    "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectColumn",
-    "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectRow",
-    "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#selectTable"
+    "packages/core/src/prosemirror/extensions/nodes/TableExtension.ts#autoFitContents"
   ]
 }

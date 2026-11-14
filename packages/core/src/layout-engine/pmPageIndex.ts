@@ -54,3 +54,18 @@ export function findPageIndexContainingPmPos(
   }
   return null;
 }
+
+/**
+ * The 1-based page that shows editor position `pmPos`, or null. A caret at a
+ * paragraph's end sits on its last fragment's exclusive end bound, so that
+ * bound falls back to the position before it.
+ */
+export function findPageNumberAtEditorPosition(
+  layout: Layout,
+  pmPos: number,
+): number | null {
+  const index =
+    findPageIndexContainingPmPos(layout, pmPos) ??
+    (pmPos > 0 ? findPageIndexContainingPmPos(layout, pmPos - 1) : null);
+  return index === null ? null : index + 1;
+}

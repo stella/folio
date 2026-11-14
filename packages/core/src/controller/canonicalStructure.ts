@@ -4,7 +4,9 @@ import { CellSelection } from "prosemirror-tables";
 
 import {
   headingOutlineLevel,
+  NO_PARAGRAPH_NUMBERING,
   paragraphNumberingReference,
+  resolveParagraphNumbering,
 } from "@stll/docx-core/model";
 import {
   DOCUMENT_OP_TYPES,
@@ -42,6 +44,7 @@ import {
   effectiveParagraphNumbering,
   paragraphNumberingSourcesFromBoundary,
 } from "../prosemirror/numberingAttr";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type {
   BlockContent,
@@ -120,6 +123,30 @@ const effectiveNumbering = (paragraph: Paragraph | undefined) =>
       numPrFromStyle: paragraph?.formatting?.numPrFromStyle,
     }),
   );
+
+/**
+ * The numbering that takes a paragraph out of its list. A paragraph whose
+ * style chain numbers it states the cancellation (`w:numId="0"`), since only
+ * that overrides the style; any other paragraph loses its own numbering, so it
+ * keeps no override it never had.
+ */
+const numberingRemoval = (session: CanonicalSession) => {
+  const styles = createStyleResolver(
+    readModel(session.document).package.styles,
+  );
+  return (paragraph: Paragraph): typeof NO_PARAGRAPH_NUMBERING | null =>
+    resolveParagraphNumbering(
+      styles.resolveParagraphStyle(paragraph.formatting?.styleId)
+        .paragraphFormatting?.numPr,
+    ).kind === "reference"
+      ? NO_PARAGRAPH_NUMBERING
+      : null;
+};
+
+/** Whether a paragraph is in a list, by numbering of its own or its style's. */
+export const isCanonicalListParagraph = (
+  paragraph: Paragraph | undefined,
+): boolean => effectiveNumbering(paragraph).kind === "reference";
 
 type ParagraphPosition = {
   container: readonly BlockContent[];
@@ -564,6 +591,9 @@ export const prepareCanonicalCommands = (
         });
         break;
       }
+      case "selection":
+        // Run by the editor as it is; it changes no content.
+        break;
       case "insertBreak": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
@@ -634,6 +664,7 @@ export const prepareCanonicalCommands = (
           );
           break;
         }
+        const removed = numberingRemoval(session);
         for (const paragraph of paragraphs)
           intents.push({
             type: "formatParagraph",
@@ -642,15 +673,14 @@ export const prepareCanonicalCommands = (
               blockId: paragraph.paraId ?? "",
               offset: 0,
             },
-            patch: { numPr: { kind: "none" } },
+            patch: { numPr: removed(paragraph) },
           });
         break;
       }
-      case "removeList":
-        {
-          const positions = paragraphPositions(session, paragraphs);
-          if (positions.isErr()) return positions;
-        }
+      case "removeList": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
+        const removed = numberingRemoval(session);
         for (const paragraph of paragraphs)
           intents.push({
             type: "formatParagraph",
@@ -659,14 +689,14 @@ export const prepareCanonicalCommands = (
               blockId: paragraph.paraId ?? "",
               offset: 0,
             },
-            patch: { numPr: { kind: "none" } },
+            patch: { numPr: removed(paragraph) },
           });
         break;
-      case "changeListLevel":
-        {
-          const positions = paragraphPositions(session, paragraphs);
-          if (positions.isErr()) return positions;
-        }
+      }
+      case "changeListLevel": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
+        const removed = numberingRemoval(session);
         for (const paragraph of paragraphs) {
           const numPr = effectiveNumbering(paragraph);
           if (numPr?.kind !== "reference") continue;
@@ -684,7 +714,7 @@ export const prepareCanonicalCommands = (
             at,
             patch: {
               numPr: (() => {
-                if (level < 0) return { kind: "none" } as const;
+                if (level < 0) return removed(paragraph);
                 if (
                   paragraph.formatting?.numPr?.kind !== "reference" &&
                   paragraph.formatting?.numPrFromStyle?.kind === "reference"
@@ -699,6 +729,7 @@ export const prepareCanonicalCommands = (
           });
         }
         break;
+      }
       case "restartNumbering":
       case "continueNumbering": {
         const positions = paragraphPositions(session, paragraphs);

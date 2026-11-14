@@ -26,7 +26,10 @@ import type {
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type {
+  FolioEditor,
+  TextPosition,
+} from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
@@ -726,6 +729,12 @@ export type DocxEditorRef = {
     target: FolioDocumentNavigationTarget,
     snapshot?: FolioAIEditSnapshot,
   ) => number | null;
+  /**
+   * The 1-based rendered page that shows a body text position (story,
+   * paragraph id, offset), or null before layout or when no paragraph in the
+   * body has that id.
+   */
+  getPositionPage: (position: TextPosition) => number | null;
   /** Painted geometry for one block, relative to this editor's scroll root. */
   getBlockRect: (blockId: string) => BlockRect | null;
   /** Painted geometry for many blocks in one layout read; missing ids are omitted. */

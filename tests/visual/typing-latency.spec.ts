@@ -140,15 +140,20 @@ const showMiddlePage = async (page: Page) => {
     const ref = globalThis.__folioPlayground?.getEditorRef();
     const view = ref?.getEditor()?.getView();
     if (!ref || !view) throw new TypeError("No editor view.");
-    const paragraphs: number[] = [];
-    view.state.doc.descendants((node, position) => {
+    const paragraphs: unknown[] = [];
+    view.state.doc.descendants((node) => {
       if (node.type.name === "paragraph" && node.textContent.length > 4)
-        paragraphs.push(position);
+        paragraphs.push(node.attrs["paraId"]);
       return true;
     });
     const middle = paragraphs[Math.floor(paragraphs.length / 2)];
-    if (middle === undefined) throw new TypeError("No paragraph to type in.");
-    const pageNumber = ref.getEditorRef()?.getPageNumberForPmPos(middle + 3);
+    if (typeof middle !== "string")
+      throw new TypeError("No paragraph with an id to type in.");
+    const pageNumber = ref.getPositionPage({
+      story: "main",
+      blockId: middle,
+      offset: 2,
+    });
     if (pageNumber === undefined || pageNumber === null)
       throw new TypeError("No page holds the paragraph.");
     ref.scrollToPage(pageNumber);

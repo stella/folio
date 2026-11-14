@@ -125,6 +125,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     setNodeSelection: record("setNodeSelection"),
     setCellSelection: record("setCellSelection"),
     scrollToSelection: record("scrollToSelection"),
+    editorPositionAt: () => null,
   };
   return { api, calls };
 };
@@ -362,5 +363,41 @@ describe("createFolioEditor", () => {
     expect(() => editor.loadDocument(sentinelDocument)).toThrow(
       "FolioEditor document I/O requires a getDocumentIO dependency",
     );
+  });
+
+  test("getPositionPage reads the page whose fragments show the position", () => {
+    // Two pages: the first shows editor positions [1, 10), the second [10, 20).
+    /* oxlint-disable typescript/no-unsafe-type-assertion -- the lookup reads only fragment bounds */
+    const layout = {
+      pages: [
+        { fragments: [{ pmStart: 1, pmEnd: 10 }] },
+        { fragments: [{ pmStart: 10, pmEnd: 20 }] },
+      ],
+    } as unknown as Layout;
+    /* oxlint-enable typescript/no-unsafe-type-assertion */
+    const { api } = createFakeApi();
+    let currentLayout: Layout | null = null;
+    const editor = createFolioEditor({
+      // The fake API resolves a position to its offset as the editor position.
+      getEditorApi: () => ({
+        ...api,
+        editorPositionAt: (position) =>
+          position.blockId === "known" ? position.offset : null,
+      }),
+      getLayout: () => currentLayout,
+      runLayout: () => {},
+      emitter: createFolioEditorEmitter(),
+    });
+    const at = (offset: number, blockId = "known") =>
+      editor.getPositionPage({ story: "main", blockId, offset });
+
+    expect(at(3)).toBeNull();
+    currentLayout = layout;
+    expect(at(3)).toBe(1);
+    expect(at(10)).toBe(2);
+    // The end bound of the last fragment still belongs to its page.
+    expect(at(20)).toBe(2);
+    expect(at(3, "unknown")).toBeNull();
+    expect(at(40)).toBeNull();
   });
 });
