@@ -1359,9 +1359,10 @@ describe("fromProseDoc", () => {
     },
   );
 
-  test("fails closed before serializing an unpaired bookmark boundary", () => {
+  test("writes a bookmark boundary without a partner as it stands", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [
+        schema.text("body"),
         schema.node("bookmarkBoundary", {
           type: "start",
           id: 99,
@@ -1370,9 +1371,17 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    expect(() =>
-      fromProseDoc(pmDoc, undefined, { stylesheetSource: { type: "package" } }),
-    ).toThrow('Bookmark "unpaired" (id 99) has no matching end boundary');
+    const paragraph = fromProseDoc(pmDoc, undefined, {
+      stylesheetSource: { type: "package" },
+    }).package.document.content.at(0);
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") return;
+    expect(
+      paragraph.content.filter(
+        (item) => item.type === "bookmarkStart" || item.type === "bookmarkEnd",
+      ),
+    ).toEqual([{ type: "bookmarkStart", id: 99, name: "unpaired" }]);
   });
 
   test("round-trips table row structural revision markers through the editor model", () => {

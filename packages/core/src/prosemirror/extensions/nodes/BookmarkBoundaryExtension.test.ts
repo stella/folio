@@ -244,6 +244,66 @@ describe("BookmarkBoundaryExtension editing integrity", () => {
     expect(boundaryCount).toBe(4);
   });
 
+  test.each([
+    { name: "start", attrs: { type: "start", id: 90, name: "_GoBack" } },
+    { name: "end", attrs: { type: "end", id: 90 } },
+  ])("keeps a lone $name the document held before the edit", ({ attrs }) => {
+    const state = EditorState.create({
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("alpha"),
+          schema.node("bookmarkBoundary", attrs),
+          schema.text("beta"),
+        ]),
+        schema.node("blockBookmarkBoundary", { ...attrs, id: 91 }),
+        schema.node("paragraph", null, [schema.text("gamma")]),
+      ]),
+      plugins: [getBoundaryIntegrityPlugin()],
+    });
+
+    const applied = state.applyTransaction(state.tr.insertText("x", 3));
+
+    expect(applied.transactions).toHaveLength(1);
+    expect(validateProseMirrorDocument(applied.state.doc).valid).toBe(true);
+    const kept: string[] = [];
+    applied.state.doc.descendants((node) => {
+      if (
+        node.type.name === "bookmarkBoundary" ||
+        node.type.name === "blockBookmarkBoundary"
+      )
+        kept.push(`${String(node.attrs["type"])}:${String(node.attrs["id"])}`);
+      return true;
+    });
+    expect(kept).toEqual([`${attrs.type}:90`, `${attrs.type}:91`]);
+  });
+
+  test("removes a lone boundary an edit brings in", () => {
+    const state = EditorState.create({
+      doc: createBoundaryDocument(),
+      plugins: [getBoundaryIntegrityPlugin()],
+    });
+
+    const applied = state.applyTransaction(
+      state.tr.insert(
+        3,
+        schema.node("bookmarkBoundary", {
+          type: "start",
+          id: 404,
+          name: "inserted",
+        }),
+      ),
+    );
+
+    expect(applied.transactions).toHaveLength(2);
+    let inserted = 0;
+    applied.state.doc.descendants((node) => {
+      if (node.type.name === "bookmarkBoundary" && node.attrs["id"] === 404)
+        inserted += 1;
+      return true;
+    });
+    expect(inserted).toBe(0);
+  });
+
   test("removes ambiguous node pairs that collide with paragraph bookmark ids", () => {
     const doc = schema.node("doc", null, [
       schema.node(
