@@ -1434,6 +1434,45 @@ const formatInsideErase: Scenario = [
   ],
 ];
 
+/**
+ * Peer 1 replaces directly, rejoining a run exactly beside the replacement
+ * peer 0 suggests at the same place: the exact join is refused by its own
+ * class, which the tracked pair check must not count.
+ */
+const exactJoinBesideSuggestedReplace: Scenario = [
+  3,
+  [
+    { type: "undo", peer: 0 },
+    { type: "deliver", seed: 0 },
+    focused(1, { kind: "replace", a: 24, b: 0 }),
+    suggested(0, { kind: "replace", a: 23, b: 8551 }),
+    suggested(0, { kind: "type", a: 0, b: 0 }),
+    { type: "submit", peer: 0 },
+    { type: "reconnect", peer: 0 },
+    { type: "deliver", seed: 0 },
+  ],
+];
+
+/**
+ * Suggested replacements and typing from four peers, so that one answer
+ * brings a peer several revisions with a replacement among them: its moves
+ * apply where the change before it left the document.
+ */
+const replacementAmongRevisions: Scenario = [
+  4,
+  [
+    suggested(2, { kind: "replace", a: 24, b: 99370 }),
+    suggested(1, { kind: "type", a: 0, b: 33211 }),
+    suggested(3, { kind: "replace", a: 24, b: 99370 }),
+    { type: "deliver", seed: 0 },
+    suggested(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    suggested(0, { kind: "type", a: 0, b: 0 }),
+    suggested(0, { kind: "type", a: 0, b: 0 }),
+    { type: "undo", peer: 0 },
+  ],
+];
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -1571,7 +1610,11 @@ describe("canonical sequencing", () => {
       await assertProperty(convergence(noCounts(), trackedScenarioArbitrary), {
         numRuns: NUM_RUNS,
         id: "canonical sequencing tracked pairs",
-        examples: [[trackedPending]],
+        examples: [
+          [trackedPending],
+          [exactJoinBesideSuggestedReplace],
+          [replacementAmongRevisions],
+        ],
       });
       const counts = noCounts();
       await checkCoverageSample(

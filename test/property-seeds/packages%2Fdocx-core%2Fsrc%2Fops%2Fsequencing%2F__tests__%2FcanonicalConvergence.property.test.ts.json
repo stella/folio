@@ -16,19 +16,5 @@
       "note": "Two suggesting erases of one paragraph, the second ending where the first starts",
       "date": "2026-11-14"
     }
-  ],
-  "canonical sequencing tracked pairs": [
-    {
-      "seed": 862099314,
-      "path": "6:0:0:0:8:1:8:15:6:6:11:13:13:0:0:0:0:0:0:0:0:0:0",
-      "note": "A direct replacement rejoining a run exactly beside a suggested replacement: the refusal belongs to the exact join",
-      "date": "2026-11-14"
-    },
-    {
-      "seed": 1488297232,
-      "path": "2:2:17:9:11:9:9:9:11:11:12:16:12:12:13:13:12:13:12:13:29:21:23:21:21:21:23:23:23:23:23:23:23:23:25:25:25:25:23:23:23:23:23:23:23:23:23",
-      "note": "An answer bringing several revisions, a replacement among them, to a peer typing in suggesting mode",
-      "date": "2026-11-14"
-    }
   ]
 }
