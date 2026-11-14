@@ -841,8 +841,8 @@ export const compileHyperlinkIntent = (
         before: piece.before,
         replacement,
         after: piece.after,
-        startCut: piece.startCut,
-        endCut: piece.endCut,
+        startCut: undefined,
+        endCut: undefined,
       }),
     });
   }
