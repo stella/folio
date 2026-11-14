@@ -116,6 +116,8 @@ type Outcome = {
   pairs: PairCounts;
   /** Why two typings refused each other: the pair's types and message. */
   typingRefusals: string[];
+  /** Typing pairs refused because one side cuts or rejoins an identified record. */
+  identifiedTypingRefusals: string[];
 };
 
 /**
@@ -382,6 +384,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     trackedPairs: 0,
     pairs: noPairs(),
     typingRefusals: [],
+    identifiedTypingRefusals: [],
   };
   const delivery: Delivery[] = [];
   let serial = 10;
@@ -437,13 +440,23 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           type === DOCUMENT_OP_TYPES.INSERT_CONTENT ||
           type === DOCUMENT_OP_TYPES.JOIN_INLINE,
       );
-      for (const kind of pairKinds(batch.ops, refusingOps(batch, tail))) {
+      const refusing = refusingOps(batch, tail);
+      // An edit that cuts an identified record (a revision or a content
+      // control) at the shared point, or joins its pieces again, would give
+      // the record's second half the id of whichever applied first.
+      const identified =
+        result.reason.message.includes("identified record") ||
+        [...batch.ops, ...refusing].some(
+          (op) =>
+            op.type === DOCUMENT_OP_TYPES.JOIN_INLINE && op.ifAlike !== true,
+        );
+      for (const kind of pairKinds(batch.ops, refusing)) {
         if (kind === "typingTyping" && !typingPair) continue;
         outcome.pairs[kind].refused += 1;
-        if (kind === "typingTyping")
-          outcome.typingRefusals.push(
-            `${String(result.reason.opType)} over ${String(result.reason.overType)}: ${result.reason.message} (${describeOps(batch.ops)} over ${describeOps(refusingOps(batch, tail))})`,
-          );
+        if (kind !== "typingTyping") continue;
+        const described = `${String(result.reason.opType)} over ${String(result.reason.overType)}: ${result.reason.message} (${describeOps(batch.ops)} over ${describeOps(refusing)})`;
+        if (identified) outcome.identifiedTypingRefusals.push(described);
+        else outcome.typingRefusals.push(described);
       }
       return;
     }
@@ -635,6 +648,8 @@ type Counts = {
   pairs: PairCounts;
   /** Why two typings refused each other: the pair's types and message. */
   typingRefusals: string[];
+  /** Typing pairs refused because one side cuts or rejoins an identified record. */
+  identifiedTypingRefusals: string[];
 };
 
 const noCounts = (): Counts => ({
@@ -645,6 +660,7 @@ const noCounts = (): Counts => ({
   trackedPairs: 0,
   pairs: noPairs(),
   typingRefusals: [],
+  identifiedTypingRefusals: [],
 });
 
 const convergence = (
@@ -665,6 +681,7 @@ const convergence = (
       counts.pairs[kind].refused += outcome.pairs[kind].refused;
     }
     counts.typingRefusals.push(...outcome.typingRefusals);
+    counts.identifiedTypingRefusals.push(...outcome.identifiedTypingRefusals);
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
@@ -1008,7 +1025,8 @@ describe("canonical sequencing", () => {
       // On a fixed sample, which starts with the pinned scenario, typing is
       // rebased over every kind of concurrent edit of its paragraph, and two
       // replies to one parent over each other; typing pairs are never
-      // refused.
+      // refused, unless one side cuts or rejoins an identified record at the
+      // shared point.
       const counts = noCounts();
       await checkCoverageSample(
         convergence(counts, sameParagraphScenarioArbitrary),

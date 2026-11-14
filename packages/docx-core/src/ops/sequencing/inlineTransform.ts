@@ -124,10 +124,12 @@ const splittable = (op: DeleteRangeOp | SetRunPropsOp): boolean =>
 const within = (
   point: TextPosition,
   range: DeleteRangeOp | SetRunPropsOp,
-): { start: -1 | 0 | 1; end: -1 | 0 | 1 } | undefined => {
+): { fromSide: -1 | 0 | 1; toSide: -1 | 0 | 1 } | undefined => {
   const start = comparePositions(point, range.from);
   const end = comparePositions(point, range.to);
-  return start === undefined || end === undefined ? undefined : { start, end };
+  return start === undefined || end === undefined
+    ? undefined
+    : { fromSide: start, toSide: end };
 };
 
 /**
@@ -143,8 +145,8 @@ const rangeOverInsertion = (
   const place = within(at, op);
   if (place === undefined)
     return refusal(op, over, "The insertion's zero-width gap is ambiguous.");
-  const inside = place.start > 0 && place.end < 0;
-  const touches = place.start >= 0 && place.end <= 0;
+  const inside = place.fromSide > 0 && place.toSide < 0;
+  const touches = place.fromSide >= 0 && place.toSide <= 0;
   if (structural(op) && touches)
     return refusal(
       op,
@@ -164,11 +166,11 @@ const rangeOverInsertion = (
   // An empty range is a point: it moves past content inserted before it.
   if (comparePositions(op.from, op.to) === 0)
     return Result.ok([
-      place.start < 0
+      place.fromSide < 0
         ? { ...op, from: past(op.from, over), to: past(op.to, over) }
         : op,
     ]);
-  if (place.end >= 0) return Result.ok([op]);
+  if (place.toSide >= 0) return Result.ok([op]);
   if (!inside)
     return Result.ok([
       { ...op, from: past(op.from, over), to: past(op.to, over) },
@@ -294,8 +296,8 @@ const insertionOverRange = (
       opType: op.type,
       overType: over.type,
     });
-  const inside = place.start > 0 && place.end < 0;
-  const touches = place.start >= 0 && place.end <= 0;
+  const inside = place.fromSide > 0 && place.toSide < 0;
+  const touches = place.fromSide >= 0 && place.toSide <= 0;
   const refuse = (message: string) =>
     new BatchRejection({
       reason: BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
