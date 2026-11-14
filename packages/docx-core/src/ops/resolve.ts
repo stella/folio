@@ -158,8 +158,6 @@ const runParagraphIntoTable = (
   return replacement;
 };
 
-const NO_COMMENT_RANGES: ReadonlySet<number> = new Set();
-
 /** Whether a decision removes the content of a tracked change of this kind. */
 const removesContent = (
   node: InlineNode,
@@ -1661,12 +1659,7 @@ const resolveList = (
         const kept = removedContentBoundaries({
           nodes: removalContent,
           rejecting: resolution.decision === REVISION_DECISIONS.REJECT,
-          // A deletion of a range removes every comment anchor it holds, as
-          // deleting the range directly does.
-          pairedComments:
-            node.type === "deletion" && node.resolutionJoins !== undefined
-              ? NO_COMMENT_RANGES
-              : resolution.pairedComments,
+          pairedComments: resolution.pairedComments,
           relocated: resolution.relocated,
           revisionDate: node.info.date ?? "",
         });
