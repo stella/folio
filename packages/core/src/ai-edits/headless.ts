@@ -1,4 +1,9 @@
-import { panic, TaggedError, type TaggedErrorClass } from "better-result";
+import {
+  panic,
+  type Result,
+  TaggedError,
+  type TaggedErrorClass,
+} from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Command, Plugin, Transaction } from "prosemirror-state";
@@ -13,15 +18,19 @@ import {
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
 import {
+  OP_STORIES,
   reconcileDocumentPartRelationships,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
+  type CanonicalCommit,
   type CanonicalSession,
   CanonicalSessionError,
   createCanonicalSession,
+  publishCanonicalProjection,
 } from "../canonical/canonicalSession";
 import {
   matchInlineAtoms,
@@ -169,6 +178,7 @@ import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import { collapseEmptyTextBoxHosts } from "../prosemirror/textBoxHostCollapse";
 import {
   CANONICAL_GAP,
+  CANONICAL_RULE,
   type HeadlessReviewerSession,
   headlessReviewerUsesCanonicalSession,
 } from "../types/canonicalCapabilities";
@@ -304,10 +314,13 @@ export type FolioDocxReviewerOptions = {
    * The engine the document is held in. (default: `"legacy"`)
    *
    * `"canonical"` loads the document into the canonical session the editors'
-   * canonical mode runs, and every read comes from it. Edits, review
-   * resolution, undo and save are not on that session yet: they throw a
-   * `CanonicalSessionError` whose ground is the `publicOps.headlessSession`
-   * gap, and never fall back to the legacy engine.
+   * canonical mode runs. Every read comes from it, and the body's operations,
+   * their undo and the resolution of its changes run on it as the canonical
+   * editor runs them. Edits in headers, footers and notes, suggestions,
+   * comment replies and resolution, resolved views, comparison and save are
+   * not on the session yet: they throw a `CanonicalSessionError` whose ground
+   * is the `publicOps.headlessSession` gap, and never fall back to the legacy
+   * engine.
    */
   session?: HeadlessReviewerSession;
 };
@@ -318,8 +331,38 @@ export type FolioDocxReviewerOptions = {
  * exactly the document a canonical editor shows, and its model is the
  * session's document.
  */
-type FolioReviewerEngine =
+type FolioReviewerEngineSource =
   { type: "legacy" } | { type: "canonical"; session: CanonicalSession };
+
+/**
+ * A canonical reviewer's engine: the session, and the editor's public
+ * operation compiler over it, which publishes into the reviewer's state.
+ */
+type FolioReviewerEngine =
+  | { type: "legacy" }
+  | {
+      type: "canonical";
+      session: CanonicalSession;
+      operations: CanonicalPublicOperations;
+    };
+
+/**
+ * The main story's state of a canonical reviewer: the session's projection
+ * with the package's numbering and styles, which the readers resolve
+ * against. It is rebuilt from the session after every commit, so it never
+ * holds anything the session does not.
+ */
+const canonicalReviewerState = (session: CanonicalSession): EditorState => {
+  const document = readModel(session.document);
+  return EditorState.create({
+    schema,
+    doc: session.projection.doc,
+    plugins: [
+      createDocumentNumberingPlugin(document.package.numbering),
+      createDocumentStylesPlugin(document.package.styles),
+    ],
+  });
+};
 
 /** The refusal of a canonical reviewer for what it cannot do on the session yet. */
 const canonicalReviewerRefusal = (action: string): CanonicalSessionError =>
@@ -1185,7 +1228,8 @@ const lockHeldChanges = (
 export class FolioDocxReviewer {
   /** Default author for tracked changes and comments. */
   readonly author: string;
-  private readonly baseDocument: Document;
+  /** The legacy reviewer's parsed model; a canonical one reads its session's. */
+  private readonly loadedDocument: Document;
   private finalSectionPropertiesOverride: SectionProperties | undefined;
   private readonly originalBuffer: ArrayBuffer;
   private state: EditorState;
@@ -1230,13 +1274,26 @@ export class FolioDocxReviewer {
     originalBuffer: ArrayBuffer;
     state: EditorState;
     author: string;
-    engine: FolioReviewerEngine;
+    engine: FolioReviewerEngineSource;
   }) {
-    this.baseDocument = args.baseDocument;
+    this.loadedDocument = args.baseDocument;
     this.originalBuffer = args.originalBuffer;
     this.state = args.state;
     this.author = args.author;
-    this.engine = args.engine;
+    this.engine =
+      args.engine.type === "legacy"
+        ? args.engine
+        : {
+            ...args.engine,
+            operations: new CanonicalPublicOperations({
+              session: args.engine.session,
+              // Headers, footers and notes refuse before they reach the
+              // compiler (see `requireMainStoryOnSession`).
+              getState: (story) =>
+                story === OP_STORIES.MAIN ? this.state : null,
+              publish: (commit) => this.publishOnSession(commit),
+            }),
+          };
     seedCommentAllocator(
       createCommentIdAllocator(),
       args.baseDocument.package.document.comments,
@@ -1712,20 +1769,12 @@ export class FolioDocxReviewer {
     const created = createCanonicalSession(parsed, parsed.package.styles);
     if (created.isErr()) throw created.error;
     const session = created.value;
-    // Read-only: every path that would change it refuses on this engine.
-    const document = readModel(session.document);
     return new FolioDocxReviewer({
-      baseDocument: document,
+      // The model at load; the readers follow the session from here on.
+      baseDocument: readModel(session.document),
       originalBuffer: parsed.originalBuffer ?? buffer,
       // No paragraph id or bidi pass: the projection is what the editor shows.
-      state: EditorState.create({
-        schema,
-        doc: session.projection.doc,
-        plugins: createHeadlessPlugins(
-          document.package.styles,
-          document.package.numbering,
-        ),
-      }),
+      state: canonicalReviewerState(session),
       author: options.author ?? "AI",
       engine: { type: "canonical", session },
     });
@@ -1735,6 +1784,122 @@ export class FolioDocxReviewer {
   private requireLegacyEngine(action: string): void {
     if (this.engine.type === "canonical")
       throw canonicalReviewerRefusal(action);
+  }
+
+  /**
+   * The model the readers read: the parsed package on the legacy engine, the
+   * session's document, as it is after every commit, on the canonical one.
+   */
+  private get baseDocument(): Document {
+    return this.engine.type === "canonical"
+      ? readModel(this.engine.session.document)
+      : this.loadedDocument;
+  }
+
+  /**
+   * Publish a commit the session prepared on the reviewer's main state. The
+   * state is then rebuilt from the session. A projection the state refuses
+   * throws the session's refusal; nothing falls back to the legacy engine.
+   */
+  private publishOnSession(commit: CanonicalCommit): boolean {
+    if (this.engine.type !== "canonical")
+      return panic("Only a canonical reviewer publishes session commits");
+    const { session } = this.engine;
+    const published = publishCanonicalProjection({
+      state: this.state,
+      commit,
+      session,
+    });
+    if (published.isErr()) throw published.error;
+    this.state = canonicalReviewerState(session);
+    return true;
+  }
+
+  /**
+   * Run a review resolution the session prepared. `false` when it changes
+   * nothing or a content control's lock holds every change it names, as on
+   * the legacy engine; any other refusal throws.
+   */
+  private resolveOnSession(
+    prepared: Result<CanonicalCommit, CanonicalSessionError>,
+  ):
+    | { resolved: true; lockHeld: readonly number[] }
+    | { resolved: false; reason: "noChange" | "lockHeld" } {
+    if (prepared.isErr()) {
+      const { error } = prepared;
+      if (error.reason === "noChange")
+        return { resolved: false, reason: "noChange" };
+      if (error.ground.rule === CANONICAL_RULE.contentControlLock)
+        return { resolved: false, reason: "lockHeld" };
+      throw error;
+    }
+    this.publishOnSession(prepared.value);
+    return { resolved: true, lockHeld: prepared.value.lockHeld ?? [] };
+  }
+
+  /**
+   * The resolution of the body's ordinary changes on the session. What is
+   * not on the session yet refuses before anything changes: changes in
+   * headers, footers and notes, final section property changes, and pending
+   * suggestions.
+   */
+  private requireBodyOnlyReview(action: string): void {
+    if (getSuggestions(this.state).length > 0)
+      throw canonicalReviewerRefusal(`${action} beside pending suggestions`);
+    if (
+      (this.currentFinalSectionProperties()?.propertyChanges?.length ?? 0) > 0
+    )
+      throw canonicalReviewerRefusal(
+        `${action} in the final section's properties`,
+      );
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (handle.type === "main") continue;
+      const doc = this.readSecondaryStoryDoc(handle);
+      if (doc && getTrackedChangesFromDoc(doc).length > 0)
+        throw canonicalReviewerRefusal(
+          `${action} in headers, footers or notes`,
+        );
+    }
+  }
+
+  /** A batch the session cannot take yet refuses whole, before anything changes. */
+  private requireMainStoryOnSession(
+    story: FolioEditableDocumentStoryHandle,
+    batch: FolioDocumentOperationBatch,
+  ): void {
+    if (story.type !== "main")
+      throw canonicalReviewerRefusal("edit headers, footers or notes");
+    if (batch.mode === "suggested")
+      throw canonicalReviewerRefusal("stage suggested operations");
+  }
+
+  /** Apply a batch through the editor's canonical public operation compiler. */
+  private applyDocumentOperationsOnSession({
+    operations,
+    story,
+    batch,
+    snapshot,
+    revisionStamp,
+    wordDiff,
+    tableTemplates,
+    replacementBackground,
+    undefinedReferences,
+  }: Omit<
+    ApplyDocumentOperationsInternalOptions,
+    "createUndoEntry" | "author" | "restagesSuggestions"
+  > & { operations: CanonicalPublicOperations }): FolioDocumentOperationResult {
+    this.requireMainStoryOnSession(story, batch);
+    return operations.apply({
+      snapshot: snapshot ?? createStateSnapshot(this.state),
+      batch,
+      story: "main",
+      author: this.author,
+      ...(revisionStamp !== undefined && { revisionStamp }),
+      ...(wordDiff !== undefined && { wordDiff }),
+      ...(tableTemplates !== undefined && { tableTemplates }),
+      ...(replacementBackground !== undefined && { replacementBackground }),
+      undefinedReferences,
+    });
   }
 
   /**
@@ -2095,8 +2260,7 @@ export class FolioDocxReviewer {
     operations: FolioAIEditOperation[],
     options: FolioApplyOperationsOptions,
   ): FolioAIEditApplyResult {
-    this.requireLegacyEngine("apply operations");
-    const { applied, skipped } = this.applyDocumentOperationsInternal({
+    const internal = {
       story: MAIN_STORY,
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -2109,8 +2273,17 @@ export class FolioDocxReviewer {
       }),
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
       undefinedReferences: options.undefinedReferences,
-      createUndoEntry: false,
-    });
+    } satisfies Omit<ApplyDocumentOperationsInternalOptions, "createUndoEntry">;
+    const { applied, skipped } =
+      this.engine.type === "canonical"
+        ? this.applyDocumentOperationsOnSession({
+            ...internal,
+            operations: this.engine.operations,
+          })
+        : this.applyDocumentOperationsInternal({
+            ...internal,
+            createUndoEntry: false,
+          });
     return { applied, skipped };
   }
 
@@ -2124,8 +2297,7 @@ export class FolioDocxReviewer {
     batch: FolioDocumentOperationBatch,
     options: FolioApplyDocumentOperationsOptions,
   ): FolioDocumentOperationResult {
-    this.requireLegacyEngine("apply operations");
-    return this.applyDocumentOperationsInternal({
+    const internal = {
       story: MAIN_STORY,
       batch,
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
@@ -2134,8 +2306,16 @@ export class FolioDocxReviewer {
       }),
       ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
       undefinedReferences: options.undefinedReferences,
-      createUndoEntry: true,
-    });
+    } satisfies Omit<ApplyDocumentOperationsInternalOptions, "createUndoEntry">;
+    return this.engine.type === "canonical"
+      ? this.applyDocumentOperationsOnSession({
+          ...internal,
+          operations: this.engine.operations,
+        })
+      : this.applyDocumentOperationsInternal({
+          ...internal,
+          createUndoEntry: true,
+        });
   }
 
   /** Apply a versioned operation batch to one editable document story. */
@@ -2149,8 +2329,7 @@ export class FolioDocxReviewer {
     replacementBackground,
     undefinedReferences,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
-    this.requireLegacyEngine("apply operations");
-    return this.applyDocumentOperationsInternal({
+    const internal = {
       story,
       batch,
       ...(snapshot !== undefined && { snapshot }),
@@ -2159,8 +2338,16 @@ export class FolioDocxReviewer {
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
       undefinedReferences,
-      createUndoEntry: true,
-    });
+    } satisfies Omit<ApplyDocumentOperationsInternalOptions, "createUndoEntry">;
+    return this.engine.type === "canonical"
+      ? this.applyDocumentOperationsOnSession({
+          ...internal,
+          operations: this.engine.operations,
+        })
+      : this.applyDocumentOperationsInternal({
+          ...internal,
+          createUndoEntry: true,
+        });
   }
 
   /** Apply a batch; the notes whose references it deletes or removes follow them. */
@@ -2291,7 +2478,9 @@ export class FolioDocxReviewer {
   undoDocumentOperations(
     undoHandle: FolioDocumentOperationUndoHandle,
   ): FolioDocumentOperationUndoResult {
-    this.requireLegacyEngine("undo operations");
+    // The session's journal undoes the batch, comments included.
+    if (this.engine.type === "canonical")
+      return this.engine.operations.undo(undoHandle);
     const entryIndex = this.documentOperationUndoEntries.findIndex(
       (entry) =>
         entry.undoHandle.type === undoHandle.type &&
@@ -2891,7 +3080,8 @@ export class FolioDocxReviewer {
    * removal. A held change stays pending as it is.
    */
   acceptChange(target: FolioReviewChange | number): boolean {
-    this.requireLegacyEngine("accept a change");
+    if (this.engine.type === "canonical")
+      return this.resolveChangeOnSession(target, "accept");
     return this.resolveWithSectionReferenceHistory(() =>
       this.withNotesFollowingReferences(() =>
         this.acceptChangeInternal(target),
@@ -2929,7 +3119,8 @@ export class FolioDocxReviewer {
    * deletion's text is restored. See {@link acceptChange} for targeting.
    */
   rejectChange(target: FolioReviewChange | number): boolean {
-    this.requireLegacyEngine("reject a change");
+    if (this.engine.type === "canonical")
+      return this.resolveChangeOnSession(target, "reject");
     return this.resolveWithSectionReferenceHistory(() =>
       this.withNotesFollowingReferences(() =>
         this.rejectChangeInternal(target),
@@ -3026,14 +3217,88 @@ export class FolioDocxReviewer {
    * ordinary changes resolved.
    */
   acceptAll(): FolioReviewResolution {
-    this.requireLegacyEngine("accept every change");
-    return this.resolveAll("accept");
+    return this.engine.type === "canonical"
+      ? this.resolveAllOnSession(this.engine.session, "accept")
+      : this.resolveAll("accept");
   }
 
   /** Reject every tracked change in the package. See {@link acceptAll}. */
   rejectAll(): FolioReviewResolution {
-    this.requireLegacyEngine("reject every change");
-    return this.resolveAll("reject");
+    return this.engine.type === "canonical"
+      ? this.resolveAllOnSession(this.engine.session, "reject")
+      : this.resolveAll("reject");
+  }
+
+  /**
+   * One change of the body, resolved by the session's review intent: every
+   * revision of the change (one a comment or a hyperlink splits carries
+   * several ids) resolves together, as the editor resolves it.
+   */
+  private resolveChangeOnSession(
+    target: FolioReviewChange | number,
+    resolution: "accept" | "reject",
+  ): boolean {
+    if (this.engine.type !== "canonical")
+      return panic("Only a canonical reviewer resolves on the session");
+    const id = revisionIdOf(target);
+    if (suggestionIdOfRevision(this.state, id) !== null)
+      throw canonicalReviewerRefusal(`${resolution} a pending suggestion`);
+    if (
+      this.currentFinalSectionProperties()?.propertyChanges?.some(
+        ({ info }) => info.id === id,
+      ) === true
+    )
+      throw canonicalReviewerRefusal(
+        `${resolution} a final section properties change`,
+      );
+    return this.resolveOnSession(
+      this.engine.session.prepareResolve(this.state, {
+        revisionIds: [id],
+        resolution,
+      }),
+    ).resolved;
+  }
+
+  /**
+   * Every ordinary change of the body in one session commit. A change a
+   * content control's lock holds stays pending as it is and is listed in
+   * `skipped`, as on the legacy engine.
+   */
+  private resolveAllOnSession(
+    session: CanonicalSession,
+    resolution: "accept" | "reject",
+  ): FolioReviewResolution {
+    this.requireBodyOnlyReview(`${resolution} every change`);
+    const before = this.state;
+    const changes = getTrackedChangesFromDoc(before.doc);
+    if (changes.length === 0) return { resolved: 0, skipped: [] };
+    const outcome = this.resolveOnSession(
+      session.prepareResolve(before, {
+        revisionIds: changes.map(({ id }) => id),
+        resolution,
+      }),
+    );
+    if (!outcome.resolved && outcome.reason === "noChange")
+      return { resolved: 0, skipped: [] };
+    const held = new Set(
+      outcome.resolved ? outcome.lockHeld : changes.map(({ id }) => id),
+    );
+    const violations = lockHeldChanges(before, resolution);
+    const skipped = changes.flatMap(({ id }) => {
+      if (!held.has(id)) return [];
+      const violation = violations.get(id);
+      return [
+        {
+          id,
+          reason: CONTENT_CONTROL_LOCK,
+          message:
+            violation === undefined
+              ? `Resolving change ${String(id)} changes a locked content control.`
+              : lockedControlMessage(violation),
+        },
+      ];
+    });
+    return { resolved: changes.length - skipped.length, skipped };
   }
 
   private resolveAll(mode: "accept" | "reject"): FolioReviewResolution {

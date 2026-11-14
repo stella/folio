@@ -9,12 +9,6 @@ import type { HarnessRefusalRow } from "./canonical-refusal-rows";
 
 // These are fixture contracts, independent of the command planner's verdict.
 const REFUSAL_ROWS = {
-  hyperlinkSuggestion: {
-    id: CANONICAL_GAP.trackedHyperlinkResolution,
-    gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message:
-      "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
-  },
   cellSelectionPlacement: {
     id: CANONICAL_GAP.commands,
     gap: CANONICAL_GAP.commands,
@@ -121,28 +115,8 @@ export const canonicalConformanceRefusalRows = (
     return inFixtureTable && key.placement === "cross-paragraph"
       ? [REFUSAL_ROWS.suggestedSpanningColumnDeletion]
       : [];
-  if (key.operation === "command:generateTOC")
-    return key.mode === "suggesting" &&
-      TOC_HEADING_SHAPES.some((shape) => shape === key.shape)
-      ? [REFUSAL_ROWS.hyperlinkSuggestion]
-      : [];
-  const range = [
-    "word",
-    "paragraph",
-    "cross-paragraph",
-    "document",
-    "node",
-  ].includes(key.placement);
-  const hyperlink =
-    key.operation === "command:insertHyperlink" ||
-    (range &&
-      (key.operation === "command:setHyperlink" ||
-        key.operation === "command:removeHyperlink"));
-  if (!hyperlink) return [];
-  // Over selected cells a hyperlink command changes nothing in either mode, so
-  // there is nothing to refuse.
-  if (key.shape === "tables" && key.placement === "cross-paragraph") return [];
-  if (key.mode === "suggesting") return [REFUSAL_ROWS.hyperlinkSuggestion];
+  // Link and contents-list suggestions are recorded as struck text and
+  // inserted copies, so a fixture refuses none of them.
   return [];
 };
 
