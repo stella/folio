@@ -1,4 +1,9 @@
-import { DOCUMENT_OP_TYPES, OP_STORIES, type TextPosition } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  type TextPosition,
+} from "../types";
 import { restoreDocumentOp } from "../wire";
 import { sameStory } from "./address";
 import {
@@ -8,6 +13,34 @@ import {
 import type { SequencedBatch } from "./envelope";
 import { isInlineInsertion, mapPoint } from "./points";
 import { operationStory, operationTargets } from "./transform";
+
+/**
+ * A position among zero-width children (a note's own mark, a bookmark) at an
+ * offset a split or a direct deletion does not cut at: the children stay
+ * with the text around them, so it maps as the plain offset it stands at and
+ * keeps its place among them. One a direct deletion covers goes where the
+ * deletion starts. Undefined for any other position or operation.
+ */
+const apartFromEdges = (
+  point: TextPosition,
+  op: DocumentOp,
+): { plain: TextPosition; covered?: TextPosition } | undefined => {
+  if ((point.zeroWidthBefore ?? 0) === 0) return undefined;
+  const plain = { ...point, zeroWidthBefore: 0 };
+  if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK)
+    return op.at.blockId !== point.blockId || op.at.offset !== point.offset
+      ? { plain }
+      : undefined;
+  if (op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE) return undefined;
+  if (op.from.blockId !== point.blockId) return { plain };
+  if (point.offset === op.from.offset || point.offset === op.to.offset)
+    return undefined;
+  return op.revision === undefined &&
+    point.offset > op.from.offset &&
+    point.offset < op.to.offset
+    ? { plain, covered: op.from }
+    : { plain };
+};
 
 /**
  * Where a position lands after an ordered journal tail, by paragraph identity
@@ -54,14 +87,22 @@ export const transformPosition = (
             !isInlineInsertion(op)
           )
             return undefined;
-          const mapped = mapPoint(point, affinity, {
+          const apart = apartFromEdges(point, op);
+          if (apart?.covered !== undefined) {
+            point = apart.covered;
+            continue;
+          }
+          const mapped = mapPoint(apart?.plain ?? point, affinity, {
             over: op,
             effect,
             order: affinity,
             splitTiesToSecond: true,
           });
           if (mapped === undefined) return undefined;
-          point = mapped;
+          point =
+            apart === undefined
+              ? mapped
+              : { ...mapped, zeroWidthBefore: point.zeroWidthBefore };
           continue;
         }
         // Formatting, inline record splits and joins, paragraph insertion
