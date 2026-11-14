@@ -8,7 +8,8 @@
  * directly or as a tracked change, on a body paragraph, one in a table cell
  * or one in a content control, then saves and reopens: every paragraph's
  * numbering and list rendering read the same in the live model and in the
- * reopened one.
+ * reopened one, and so does the indentation a numbering level adds to the
+ * paragraph's formatting.
  */
 
 import { describe, expect, mock, test } from "bun:test";
@@ -145,6 +146,13 @@ const paragraphRead = (paragraph: Paragraph) => ({
   numPr: asJson(paragraph.formatting?.numPr),
   numPrFromStyle: asJson(paragraph.formatting?.numPrFromStyle),
   listRendering: asJson(paragraph.listRendering),
+  // The indentation a numbering level adds to the paragraph's formatting.
+  indentation: asJson({
+    left: paragraph.formatting?.indentLeft,
+    right: paragraph.formatting?.indentRight,
+    firstLine: paragraph.formatting?.indentFirstLine,
+    hanging: paragraph.formatting?.hangingIndent,
+  }),
 });
 
 /** Every paragraph of the body, in tables and content controls too, by its id. */
