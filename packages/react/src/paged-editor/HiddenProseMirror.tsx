@@ -33,8 +33,8 @@ import { panic } from "better-result";
 import type { EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
-import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import {

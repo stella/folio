@@ -7,9 +7,9 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { schema } from "../prosemirror/schema";
-import { createCanonicalSession } from "./canonicalSession";
 
 const sessionWithState = () => {
   const document = fromMarkdown("First paragraph.\n\nSecond paragraph.");

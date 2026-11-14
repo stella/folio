@@ -4,17 +4,17 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { Document } from "@stll/docx-core";
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { createCanonicalSession } from "../canonical/canonicalSession";
+import {
+  canonicalSourceRestores,
+  normalizeCanonicalSource,
+  withUneditedSourceRestored,
+} from "../canonical/canonicalSourceNormalization";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { schema } from "../prosemirror/schema";
-import { createCanonicalSession } from "./canonicalSession";
-import {
-  canonicalSourceRestores,
-  normalizeCanonicalSource,
-  withUneditedSourceRestored,
-} from "./canonicalSourceNormalization";
 
 const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';

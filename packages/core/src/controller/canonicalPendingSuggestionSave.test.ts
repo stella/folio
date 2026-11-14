@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import type { Document, ParagraphContent } from "../types/document";
-import { createCanonicalSession } from "./canonicalSession";
 
 const run = (text: string): ParagraphContent => ({
   type: "run",

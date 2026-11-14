@@ -53,7 +53,7 @@ import {
   resolveFolioAITextRange,
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
-import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
+import type { OpStory } from "@stll/folio-core/canonical/canonicalOperations";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";

@@ -24,6 +24,13 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { changedWindow } from "../canonical/canonicalSeedContent";
+import { createCanonicalSession } from "../canonical/canonicalSession";
+import {
+  ownedSourceCopies,
+  preservePropertySources,
+  preservePropertySourcesWholeStories,
+} from "../canonical/propertySourcePreservation";
 import { paragraphPropertySourceState } from "../docx/paragraphPropertySource";
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import {
@@ -31,13 +38,6 @@ import {
   editArbitrary,
   parsedSources,
 } from "./__tests__/canonicalEditRuns";
-import { changedWindow } from "./canonicalSeedContent";
-import { createCanonicalSession } from "./canonicalSession";
-import {
-  ownedSourceCopies,
-  preservePropertySources,
-  preservePropertySourcesWholeStories,
-} from "./propertySourcePreservation";
 
 setDefaultTimeout(propertyTestTimeout(320_000));
 

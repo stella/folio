@@ -16,7 +16,7 @@ import type { EditorView } from "prosemirror-view";
 import {
   createCanonicalHeaderFooterOperation,
   removeCanonicalHeaderFooterOperations,
-} from "@stll/folio-core/controller/canonicalOperations";
+} from "@stll/folio-core/canonical/canonicalOperations";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";

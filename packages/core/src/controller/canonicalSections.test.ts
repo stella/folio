@@ -9,17 +9,17 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createCanonicalSectionPropertiesOperation } from "../canonical/canonicalOperations";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import type { Document, Paragraph, SectionProperties } from "../types/document";
-import { createCanonicalSectionPropertiesOperation } from "./canonicalOperations";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 import {
   createHiddenEditorManager,
   type HiddenEditorManagerDeps,
