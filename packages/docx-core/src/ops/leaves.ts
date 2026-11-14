@@ -23,6 +23,7 @@ import type {
   ParagraphContent,
   Run,
   RunContent,
+  RunPropertyChange,
   SimpleField,
 } from "../model/document";
 import { structurallyEqual } from "./equality";
@@ -233,6 +234,48 @@ export const withFieldResult = (
   field.type === "simpleField"
     ? { ...field, content: narrowNodes(result, isSimpleFieldContent) }
     : { ...field, fieldResult: narrowNodes(result, isRun) };
+
+/**
+ * The records nested in a record that carry ids of their own: a run's or
+ * container's children, and a field's result, whose runs a run patch over the
+ * field reaches and records its changes on. Walks that keep ids unique take
+ * this, not {@link childNodes}, which keeps a field one unit.
+ */
+export const nestedRecords = (
+  node: InlineNode,
+): readonly InlineNode[] | undefined => childNodes(node) ?? fieldResultOf(node);
+
+/** The same record holding other {@link nestedRecords}. */
+export const withNestedRecords = (
+  node: InlineNode,
+  children: readonly InlineNode[],
+): InlineNode =>
+  node.type === "simpleField" || node.type === "complexField"
+    ? withFieldResult(node, children)
+    : rebuildNode(node, children);
+
+/**
+ * The run property changes a record carries: a run's own, and a field's on
+ * the runs of its result, where a run patch over the field records them. The
+ * walks that list and resolve revisions take these; tracked changes inside a
+ * field's result are left to the field.
+ */
+export const ownRunPropertyChanges = (
+  node: InlineNode,
+): readonly RunPropertyChange[] => {
+  if (node.type === "run") return node.propertyChanges ?? [];
+  const result = fieldResultOf(node);
+  if (result === undefined) return [];
+  const out: RunPropertyChange[] = [];
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const child of nodes) {
+      if (child.type === "run") out.push(...(child.propertyChanges ?? []));
+      else visit(childNodes(child) ?? []);
+    }
+  };
+  visit(result);
+  return out;
+};
 
 /** The same run or container holding other children. */
 export const rebuildNode = (

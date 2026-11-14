@@ -8,6 +8,7 @@ import type {
   SimpleField,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
+import { ownRunPropertyChanges } from "../leaves";
 import { findStoryBody } from "../stories";
 import {
   DOCUMENT_OP_TYPES,
@@ -91,6 +92,16 @@ const resultFormatting = (document: Document) =>
 
 const revision = { id: 71, author: "Reviewer", date: "2026-11-14T00:00:00Z" };
 
+// Each run a tracked patch changes records its own revision id: the first
+// keeps the stamp's, the others take these.
+const newIds = { revision: [201, 202, 203, 204, 205, 206] };
+
+/** The run property change ids of a paragraph's runs and field results, in document order. */
+const changeIds = (document: Document, story: OpStory = OP_STORIES.MAIN) =>
+  contentOf(document, story).flatMap((item) =>
+    ownRunPropertyChanges(item).map(({ info }) => info.id),
+  );
+
 const bold = (from: number, to: number): SetRunPropsOp => ({
   type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
   from: at(from),
@@ -153,7 +164,7 @@ describe("run properties over a field", () => {
   });
 
   test("a tracked patch records the change on each result run; reject restores and accept keeps it", () => {
-    const op = { ...bold(2, 6), revision };
+    const op = { ...bold(2, 6), revision, newIds };
     const direct = applied(original, bold(2, 6)).document;
     const { document: tracked, inverse } = applied(original, op);
     expect(
@@ -161,24 +172,24 @@ describe("run properties over a field", () => {
         (field.type === "simpleField" ? field.content : field.fieldResult).map(
           (item) =>
             item.type === "run"
-              ? item.propertyChanges?.map(({ info, previousFormatting }) => ({
-                  id: info.id,
-                  previousFormatting,
-                }))
+              ? item.propertyChanges?.map(
+                  ({ previousFormatting }) => previousFormatting,
+                )
               : undefined,
         ),
       ),
-    ).toEqual([
-      [{ id: revision.id, previousFormatting: { italic: true } }],
-      [{ id: revision.id, previousFormatting: { italic: true } }],
-      [{ id: revision.id, previousFormatting: { italic: true } }],
-    ]);
+    ).toEqual([[{ italic: true }], [{ italic: true }], [{ italic: true }]]);
+    // The field result runs and the run between them: four records, four ids.
+    const ids = changeIds(tracked);
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
+    expect(ids).toContain(revision.id);
     expect(undone(tracked, inverse)).toStrictEqual(original);
     const resolved = (decision: "accept" | "reject") =>
       applied(tracked, {
         type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
         story: OP_STORIES.MAIN,
-        revisionIds: [revision.id],
+        revisionIds: ids,
         decision:
           decision === "accept"
             ? REVISION_DECISIONS.ACCEPT
@@ -205,14 +216,23 @@ describe("run properties over a field", () => {
 describe("resolving tracked formats inside field results", () => {
   test("one batch, two batches and the other order agree, accepting and rejecting", () => {
     const second = { ...revision, id: 72 };
-    let tracked = applied(original, { ...bold(0, 3), revision }).document;
+    let tracked = applied(original, {
+      ...bold(0, 3),
+      revision,
+      newIds,
+    }).document;
+    const first = changeIds(tracked);
     tracked = applied(tracked, {
       type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
       from: at(5),
       to: at(8),
       patch: { strike: true },
       revision: second,
+      newIds: { revision: [301, 302, 303] },
     }).document;
+    const later = changeIds(tracked).filter((id) => !first.includes(id));
+    expect(first).toHaveLength(2);
+    expect(later).toHaveLength(3);
     const resolve = (
       document: Document,
       ids: number[],
@@ -228,15 +248,15 @@ describe("resolving tracked formats inside field results", () => {
             : REVISION_DECISIONS.REJECT,
       }).document;
     for (const decision of ["accept", "reject"] as const) {
-      const batch = resolve(tracked, [revision.id, second.id], decision);
+      const batch = resolve(tracked, [...first, ...later], decision);
       const inTurn = resolve(
-        resolve(tracked, [revision.id], decision),
-        [second.id],
+        resolve(tracked, first, decision),
+        later,
         decision,
       );
       const otherOrder = resolve(
-        resolve(tracked, [second.id], decision),
-        [revision.id],
+        resolve(tracked, later, decision),
+        first,
         decision,
       );
       expect(inTurn).toStrictEqual(batch);
@@ -299,7 +319,7 @@ describe("run properties over a note's own reference mark", () => {
         from: position(0, 0),
         to: position(4),
         patch: { bold: true },
-        ...(tracked ? { revision } : {}),
+        ...(tracked ? { revision, newIds } : {}),
       };
       const { document, inverse } = applied(withNote, op);
       expect(markerFormatting(document)).toEqual([

@@ -186,6 +186,47 @@ describe("formatting a selection that holds a field on the session", () => {
     }
   });
 
+  test("the comparison above catches a session that leaves the fields as they were", async () => {
+    // Fields sit at [2, 3) and [5, 6); a selection holding one formats it.
+    const holdsField = (from: number, to: number) =>
+      (from <= 2 && to >= 3) || (from <= 5 && to >= 6);
+    const seedFields = contentOf(seed()).filter(
+      (item) => item.type === "simpleField" || item.type === "complexField",
+    );
+    const caught: string[] = [];
+    const expected: string[] = [];
+    for (let from = 0; from < 8; from++) {
+      for (let to = from + 1; to <= 8; to++) {
+        if (holdsField(from, to)) expected.push(`${from}-${to}`);
+        const { session, state } = formatOnSession("editing", from, to);
+        let legacy = state;
+        toggleBold(state, (transaction) => {
+          legacy = state.apply(transaction);
+        });
+        const legacyDocument: Document = {
+          package: { document: { content: proseDocToBlocks(legacy.doc) } },
+        };
+        // The session's result with every field put back as it was.
+        const unformattedFields = structuredClone(session.document);
+        const paragraph = unformattedFields.package.document.content.at(0);
+        if (paragraph?.type !== "paragraph") return panic("Missing paragraph.");
+        let field = 0;
+        paragraph.content = paragraph.content.map((item) =>
+          item.type === "simpleField" || item.type === "complexField"
+            ? (seedFields[field++] ?? item)
+            : item,
+        );
+        const differs = !Bun.deepEquals(
+          fieldResults(await reopened(unformattedFields)),
+          fieldResults(await reopened(legacyDocument)),
+        );
+        if (differs) caught.push(`${from}-${to}`);
+      }
+    }
+    expect(expected.length).toBeGreaterThan(0);
+    expect(caught).toEqual(expected);
+  });
+
   test("a selection ending at a field's end reaches it; one ending at its start does not", () => {
     expect(
       fieldResults(formatOnSession("editing", 1, 3).session.document),

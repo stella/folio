@@ -124,16 +124,15 @@ import {
   asParagraphContent,
   childNodes,
   compareGaps,
-  fieldResultOf,
   type Gap,
   type InlineNode,
   isEmptyRecord,
   leafSpans,
-  rebuildNode,
+  nestedRecords,
   recordsBetween,
   spanningRecords,
   textsIn,
-  withFieldResult,
+  withNestedRecords,
   zeroWidthLeavesAt,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
@@ -1290,18 +1289,6 @@ const statesValues = (
   });
 };
 
-/** The records a run patch walks into: a run's or container's children, a field's result. */
-const patchedChildren = (node: InlineNode): readonly InlineNode[] | undefined =>
-  childNodes(node) ?? fieldResultOf(node);
-
-const withPatchedChildren = (
-  node: InlineNode,
-  children: readonly InlineNode[],
-): InlineNode =>
-  node.type === "simpleField" || node.type === "complexField"
-    ? withFieldResult(node, children)
-    : rebuildNode(node, children);
-
 const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
   const joinStart = op.joinStart ?? 0;
   const joinEnd = op.joinEnd ?? 0;
@@ -1429,15 +1416,15 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           priorIdentities.set(changed, prior);
           return changed;
         }
-        const children = patchedChildren(node);
+        const children = nestedRecords(node);
         if (children === undefined) return node;
-        const priorChildren = patchedChildren(original);
+        const priorChildren = nestedRecords(original);
         if (priorChildren === undefined)
           panic("Freshening removed a run patch's child list.");
         const next = appendChanges(priorChildren, children);
         return next.every((child, childIndex) => child === children[childIndex])
           ? node
-          : withPatchedChildren(node, next);
+          : withNestedRecords(node, next);
       });
     };
     const sourceFresh = freshened.value.at(0);
@@ -1451,10 +1438,10 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     ): InlineNode[] =>
       nodes.map((node) => {
         const prior = priorIdentities.get(node) ?? node;
-        const children = patchedChildren(prior);
+        const children = nestedRecords(prior);
         return children === undefined
           ? prior
-          : withPatchedChildren(prior, restorePriorIdentities(children));
+          : withNestedRecords(prior, restorePriorIdentities(children));
       });
     const rebound =
       rebindRetainedIdentities({
