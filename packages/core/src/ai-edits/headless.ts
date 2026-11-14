@@ -57,7 +57,10 @@ import {
   type InlineProvenanceTargetOptions,
   matchInlineProvenance,
 } from "../compare/inline-provenance";
-import { stageSectionBoundaryProperties as stageMappedSectionBoundaryProperties } from "../compare/section-boundary-properties";
+import {
+  stageSectionBoundaryOperations,
+  stageSectionBoundaryProperties as stageMappedSectionBoundaryProperties,
+} from "../compare/section-boundary-properties";
 import {
   importReferencedStyleDefinitions,
   type ImportReferencedStyleDefinitionsResult,
@@ -262,6 +265,7 @@ import {
 } from "./snapshot";
 import {
   matchTableGeometry,
+  matchTableGeometryOperations,
   type TableGeometryPairing,
 } from "./table-geometry";
 import {
@@ -2126,8 +2130,8 @@ export class FolioDocxReviewer {
       finalSectionProperties: () => this.currentFinalSectionProperties(),
       stageFinalSectionProperties: (options) =>
         this.stageFinalSectionPropertiesOnSession(options),
-      stageMappedSectionBoundaries: () =>
-        refuse("stage the target's section boundaries"),
+      stageMappedSectionBoundaries: (options) =>
+        this.stageMappedSectionBoundariesOnSession(options),
     });
   }
 
@@ -2167,12 +2171,6 @@ export class FolioDocxReviewer {
       });
     }
     return { stories, revisions: { ids: [...ids], present } };
-  }
-
-  /** Refuse what a canonical reviewer cannot do on its session yet. */
-  private requireLegacyEngine(action: string): void {
-    if (this.engine.type === "canonical")
-      throw canonicalReviewerRefusal(action);
   }
 
   /**
@@ -2403,13 +2401,41 @@ export class FolioDocxReviewer {
     const active = this.activeSuggestionIds();
     return this.pendingSuggestions.exportPendingSuggestions({
       activeSuggestionIds: active,
-      snapshotForStory: (story, commentIds) => {
-        const state = this.getEditableStoryState(story);
-        return state
-          ? createPendingSuggestionSourceSnapshot(state, commentIds)
-          : null;
-      },
+      snapshotForStory: (story, commentIds) =>
+        this.pendingSuggestionSource(story, commentIds),
     });
+  }
+
+  /**
+   * A story as a save writes it, every pending suggestion rejected: what a
+   * suggestion record's fingerprint describes. On the canonical engine it is
+   * read from a session over the document the save writes, so a reviewer
+   * reopened on the saved package reads the same story.
+   */
+  private pendingSuggestionSource(
+    story: FolioEditableDocumentStoryHandle,
+    commentIds: ReadonlySet<number>,
+  ): FolioAIEditSnapshot | null {
+    if (this.engine.type === "canonical") {
+      if (!this.getEditableStoryState(story)) return null;
+      const document = this.toDocument();
+      const created = createCanonicalSession(document, document.package.styles);
+      if (created.isErr()) throw created.error;
+      const saved = new FolioDocxReviewer({
+        baseDocument: document,
+        originalBuffer: this.originalBuffer,
+        state: canonicalReviewerState(created.value),
+        author: this.author,
+        engine: { type: "canonical", session: created.value },
+      }).getEditableStoryState(story);
+      return saved
+        ? createPendingSuggestionSourceSnapshot(saved, new Set())
+        : null;
+    }
+    const state = this.getEditableStoryState(story);
+    return state
+      ? createPendingSuggestionSourceSnapshot(state, commentIds)
+      : null;
   }
 
   /** Validate saved proposals against this document before restaging them. */
@@ -2419,12 +2445,8 @@ export class FolioDocxReviewer {
     return this.pendingSuggestions.loadPendingSuggestions({
       records,
       snapshotForStory: (story) => this.snapshotStory(story),
-      sourceSnapshotForStory: (story, commentIds) => {
-        const state = this.getEditableStoryState(story);
-        return state
-          ? createPendingSuggestionSourceSnapshot(state, commentIds)
-          : null;
-      },
+      sourceSnapshotForStory: (story, commentIds) =>
+        this.pendingSuggestionSource(story, commentIds),
       apply: (record, snapshot) => {
         const restage = {
           undefinedReferences: "refuse",
@@ -2631,10 +2653,29 @@ export class FolioDocxReviewer {
     pairings,
     revisionStamp,
   }: FolioMatchStoryTableGeometryOptions): number {
-    this.requireLegacyEngine("change table properties");
     const state = this.getEditableStoryState(story);
     if (!state || pairings.length === 0) {
       return revisionStamp.idSeed;
+    }
+    if (this.engine.type === "canonical") {
+      const matched = matchTableGeometryOperations({
+        story: canonicalOpStory(story),
+        baseTables: folioStoryTables(state.doc),
+        targetTables,
+        pairings,
+        revision: {
+          author: this.author,
+          date: revisionStamp.date,
+          idSeed: revisionStamp.idSeed,
+        },
+      });
+      if (matched.status === "unaddressable")
+        throw canonicalReviewerRefusal(
+          "change the properties of a table cell without a paragraph id",
+        );
+      if (matched.operations.length > 0)
+        this.commitOpsOnSession(matched.operations);
+      return matched.nextRevisionId;
     }
     const transaction = state.tr;
     const { nextRevisionId } = matchTableGeometry({
@@ -3625,6 +3666,41 @@ export class FolioDocxReviewer {
       rangeCount: result.rangeCount,
       nextRevisionId: result.nextRevisionId,
       documentChanged,
+    };
+  }
+
+  /**
+   * The target's section endpoints on the session: planned on the accepted
+   * projection of a second session over the current document, each boundary
+   * paragraph found in this session's document by its paragraph id, and
+   * staged as one section-endpoint operation per endpoint in one commit.
+   */
+  private stageMappedSectionBoundariesOnSession(
+    options: Parameters<
+      FolioDocxComparisonAccess["stageMappedSectionBoundaries"]
+    >[0],
+  ): ReturnType<FolioDocxComparisonAccess["stageMappedSectionBoundaries"]> {
+    if (this.engine.type !== "canonical")
+      return panic("Only a canonical reviewer stages on the session");
+    const { session } = this.engine;
+    const result = stageSectionBoundaryOperations({
+      document: readModel(session.document),
+      accepted: () => this.resolvedSessionCopy(session, "final").state.doc,
+      target: options.target,
+      originalRevisionIdSeed: options.originalRevisionIdSeed,
+      revisionStamp: options.revision,
+      author: this.author,
+      maxRanges: options.maxRanges,
+      mapTargetProperties: options.mapTargetProperties,
+    });
+    if (result.status !== "matched") return result;
+    return {
+      status: "matched",
+      rangeCount: result.operations.length,
+      nextRevisionId: result.nextRevisionId,
+      documentChanged:
+        result.operations.length > 0 &&
+        this.commitOpsOnSession(result.operations),
     };
   }
 
@@ -5216,13 +5292,22 @@ export class FolioDocxReviewer {
     };
     if (this.engine.type === "canonical") {
       // The part and its media join the package unreferenced, as on the
-      // legacy engine: the section's reference is staged on its own.
+      // legacy engine: the section's reference is staged on its own. Its
+      // paragraph takes an identity the session mints.
       const document = this.baseDocument;
+      const minted = this.engine.session.freshBlockIds([1]);
+      if (minted.isErr()) throw minted.error;
+      const paraId = minted.value.at(0)?.at(0);
+      if (paraId === undefined)
+        return panic("The session minted no paragraph id for a header part");
       const entries: (readonly [string, HeaderFooter])[] = [
         ...((story.type === "header"
           ? document.package.headers
           : document.package.footers) ?? new Map<string, HeaderFooter>()),
-        [relationshipId, empty],
+        [
+          relationshipId,
+          { ...empty, content: [{ type: "paragraph", paraId, content: [] }] },
+        ],
       ];
       const parts: StoryParts =
         story.type === "header" ? { headers: entries } : { footers: entries };

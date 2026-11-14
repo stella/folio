@@ -31,6 +31,7 @@ import type {
 } from "../model/document";
 import {
   copyOriginAncestorsOf,
+  isTrackedRunContent,
   recordsCopyOrigin,
   rejectCopyOriginAncestorsInNodes,
 } from "./copyOriginAncestors";
@@ -173,6 +174,13 @@ export const noRelocatedBoundaries = (): RelocatedBoundaries => ({
  * order. Rejecting keeps every one and records it in `relocated`, for
  * {@link wellFormedRanges}; accepting keeps the anchors of
  * `pairedComments`, as a direct deletion does.
+ *
+ * A pending deletion nested in rejected content that this resolution does not
+ * resolve (`leavesPending`) keeps the boundaries it holds inside it, still
+ * pending: rejecting the content around it says nothing about the deletion,
+ * so accepting it later removes them, as deleting them directly does, and
+ * rejecting it keeps them. A deletion holding no such boundary goes with the
+ * content.
  */
 export const removedContentBoundaries = ({
   nodes,
@@ -180,6 +188,7 @@ export const removedContentBoundaries = ({
   pairedComments,
   relocated,
   revisionDate = "",
+  leavesPending = () => false,
 }: {
   nodes: readonly InlineNode[];
   rejecting: boolean;
@@ -187,21 +196,39 @@ export const removedContentBoundaries = ({
   relocated: RelocatedBoundaries;
   /** The date of the revision whose content is removed. */
   revisionDate?: string;
+  /** Whether the resolution leaves the revision with this id pending. */
+  leavesPending?: (revisionId: number) => boolean;
 }): InlineNode[] =>
-  nodes.flatMap((node) => {
+  nodes.flatMap((node): InlineNode[] => {
     if (isBoundary(node) && rejecting) {
       relocated.ranges.add(rangeKey(node));
       relocated.nodes.set(node, revisionDate);
       return [node];
     }
     if (isCommentAnchor(node)) return pairedComments.has(node.id) ? [node] : [];
-    return removedContentBoundaries({
+    const inner = removedContentBoundaries({
       nodes: childNodes(node) ?? [],
       rejecting,
       pairedComments,
       relocated,
       revisionDate,
+      leavesPending,
     });
+    if (
+      rejecting &&
+      node.type === "deletion" &&
+      inner.length > 0 &&
+      leavesPending(node.info.id)
+    ) {
+      const { resolutionJoins: _joins, ...deletion } = node;
+      const content = inner.map((kept) =>
+        isTrackedRunContent(kept)
+          ? kept
+          : panic("A kept boundary is tracked run content."),
+      );
+      return [{ ...deletion, content }];
+    }
+    return inner;
   });
 
 /** A boundary a block list holds between its blocks. */
@@ -548,7 +575,19 @@ export const withBoundariesOutsideDeletion = (
   return { nodes: visit(nodes), standing };
 };
 
-/** Which kept boundaries each container may hold, as its model declares. */
+/**
+ * What a rejection keeps where removed content was: a range boundary, or a
+ * pending deletion the rejection leaves, holding only such keeps
+ * ({@link removedContentBoundaries}). It is placed as the boundaries it holds.
+ */
+export const isKeptBoundaryCarrier = (node: InlineNode): boolean =>
+  isBoundary(node) ||
+  (node.type === "deletion" &&
+    node.content.length > 0 &&
+    node.content.every(isKeptBoundaryCarrier));
+
+/**
+ * Which kept boundaries each container may hold, as its model declares. */
 const HOLDS: Partial<
   Record<InlineNode["type"], (boundary: Boundary) => boolean>
 > = {
@@ -562,6 +601,18 @@ const HOLDS: Partial<
 };
 
 /**
+ * Whether a pending deletion or move source covered content of a revision
+ * dated `keptFrom`: only one made after that revision can have. Content
+ * inserted later beside or between its pieces was never in it, so a boundary
+ * kept from that content stays out of it: accepting the deletion must not
+ * take away what it never deleted.
+ */
+const coveredBy = (node: InlineNode, keptFrom: string | undefined): boolean =>
+  keptFrom === undefined ||
+  (node.type !== "deletion" && node.type !== "moveFrom") ||
+  (node.info.date ?? "") >= keptFrom;
+
+/**
  * `node` with `boundaries` at its start or end, as deep as `depth` containers
  * in as the containers on the way can hold them: where removed content that
  * cut those containers was, so the pieces it separated still join around the
@@ -573,20 +624,32 @@ export const withBoundariesAtEdge = (
   boundaries: readonly InlineNode[],
   depth: number,
   edge: "start" | "end",
+  /** The date of the revision the boundaries were kept from, when known. */
+  keptFrom?: string,
 ): InlineNode | undefined => {
-  if (depth <= 0 || boundaries.length === 0) return undefined;
+  if (depth <= 0 || boundaries.length === 0 || !coveredBy(node, keptFrom))
+    return undefined;
   const children = childNodes(node);
   const holds = HOLDS[node.type];
-  if (
-    children === undefined ||
-    holds === undefined ||
-    !boundaries.every((boundary) => isBoundary(boundary) && holds(boundary))
-  )
-    return undefined;
+  const holdsKept = (kept: InlineNode): boolean => {
+    if (holds === undefined) return false;
+    if (isBoundary(kept)) return holds(kept);
+    return (
+      kept.type === "deletion" &&
+      isKeptBoundaryCarrier(kept) &&
+      node.type !== "deletion" &&
+      node.type !== "moveFrom" &&
+      (node.type !== "hyperlink" || isHyperlinkChild(kept)) &&
+      kept.content.every(holdsKept)
+    );
+  };
+  if (children === undefined || holds === undefined) return undefined;
+  // As deep as the cut reaches first: a container on the way that cannot hold
+  // a kept deletion itself, as a link, still passes it to one inside that can.
   const inner = edge === "start" ? children.at(0) : children.at(-1);
   const nested =
     depth > 1 && inner !== undefined
-      ? withBoundariesAtEdge(inner, boundaries, depth - 1, edge)
+      ? withBoundariesAtEdge(inner, boundaries, depth - 1, edge, keptFrom)
       : undefined;
   if (nested !== undefined)
     return rebuildNode(
@@ -595,6 +658,7 @@ export const withBoundariesAtEdge = (
         ? [nested, ...children.slice(1)]
         : [...children.slice(0, -1), nested],
     );
+  if (!boundaries.every(holdsKept)) return undefined;
   return rebuildNode(
     node,
     edge === "start"
@@ -654,7 +718,7 @@ export const withSeamBoundariesInside = ({
 };
 
 const isStandingBoundary = (node: InlineNode | undefined): boolean =>
-  node !== undefined && isBoundary(node);
+  node !== undefined && isKeptBoundaryCarrier(node);
 
 type Occurrence = { paragraph: string; node: Boundary };
 

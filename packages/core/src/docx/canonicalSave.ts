@@ -4,6 +4,7 @@ import type { Document } from "@stll/docx-core";
 import {
   idKey,
   packageParagraphIds,
+  storyParagraphs,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
 
@@ -14,10 +15,6 @@ import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
 } from "../types/docxSerialization";
-import {
-  canonicalResourceReplacementOf,
-  CanonicalResourceSaveRefusalError,
-} from "./canonicalResourceSave";
 import { repackWithCanonicalStoryRemovals } from "./canonicalStoryRepack";
 import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
 import type { SaveDiagnostic } from "./saveDiagnostics";
@@ -68,25 +65,6 @@ export const serializeCanonicalSave = async ({
       snapshot.heldUnreferencedNotes,
     ),
   );
-  // Package-resource operations conservatively retain structural save work through undo.
-  const replacementPart =
-    snapshot.structure === "changed"
-      ? canonicalResourceReplacementOf(document)
-      : undefined;
-  if (replacementPart) {
-    const diagnostic = {
-      type: "canonicalResourceReplacement",
-      gap: CANONICAL_GAP.resourceReplacement,
-      part: replacementPart,
-    } as const satisfies SaveDiagnostic;
-    options?.onDiagnostic?.(diagnostic);
-    throw new CanonicalResourceSaveRefusalError({
-      message:
-        "Canonical save cannot preserve this package resource replacement.",
-      gap: CANONICAL_GAP.resourceReplacement,
-      diagnostic,
-    });
-  }
   // A paragraph a pending suggestion adds is not in the file, so it is no
   // change to write: rejecting the suggestion only ever removes paragraphs
   // the suggestion itself added.
@@ -134,19 +112,20 @@ export const serializeCanonicalSave = async ({
   // never a diff of the notes' re-serialization: a note the session never
   // touched (one the package held without a reference, say) is written as the
   // package held it, even where the model cannot spell its source markup.
+  // Every paragraph of a note counts, at any depth: one in a table cell or a
+  // content control is as much the note's as one at its top level.
   const touched = new Set(snapshot.changedBlockIds.map(idKey));
   const changedNoteParaIds = new Set<string>();
   for (const note of [
     ...(document.package.footnotes ?? []),
     ...(document.package.endnotes ?? []),
   ])
-    for (const block of note.content)
+    for (const { paragraph } of storyParagraphs({ content: note.content }))
       if (
-        block.type === "paragraph" &&
-        block.paraId !== undefined &&
-        touched.has(idKey(block.paraId))
+        paragraph.paraId !== undefined &&
+        touched.has(idKey(paragraph.paraId))
       )
-        changedNoteParaIds.add(block.paraId);
+        changedNoteParaIds.add(paragraph.paraId);
   const repack = () => {
     if (baseline && getDocumentSourceBaseline(document).type === "missing")
       onDiagnostic({

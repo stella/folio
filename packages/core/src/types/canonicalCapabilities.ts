@@ -9,10 +9,8 @@ export const CANONICAL_GAP = {
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
   watermark: "watermark-model-edits",
-  collaboration: "collaboration-session",
   dispatch: "unclassified-transactions",
   save: "pm-save-projection",
-  resourceReplacement: "canonical-resource-replacement",
   history: "pm-history",
   suggestionPlugin: "pm-suggestion-plugin",
   paragraphTracker: "pm-paragraph-tracker",
@@ -157,12 +155,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["vue"];
     readonly summary: "Vue watermark mutations still change the model directly.";
   };
-  readonly "collaboration-session": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Collaboration cannot activate a canonical session.";
-  };
   readonly "unclassified-transactions": {
     readonly owner: "controller";
     readonly kind: "refusal";
@@ -174,12 +166,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly kind: "routing";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Legacy save and read paths reconstruct documents from PM.";
-  };
-  readonly "canonical-resource-replacement": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Canonical save refuses existing style, style-default, and media replacements the package writers cannot express.";
   };
   readonly "pm-history": {
     readonly owner: "prosemirror";
@@ -237,7 +223,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public table operations other than a table inserted beside a paragraph require canonical table operation descriptors.";
+    readonly summary: "Public signature tables and tables beside a table need canonical table descriptors.";
   };
   readonly "publicOps.pendingParagraphMarkProperties": {
     readonly owner: "document-operations";
@@ -251,7 +237,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A canonical headless reviewer edits, suggests, comments, resolves, undoes and saves; table geometry and comparison refuse.";
+    readonly summary: "A canonical headless reviewer edits, suggests, comments, resolves, undoes, saves and stages comparisons; inline matches refuse.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -322,12 +308,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["vue"],
     summary: "Vue watermark mutations still change the model directly.",
   },
-  [CANONICAL_GAP.collaboration]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary: "Collaboration cannot activate a canonical session.",
-  },
   [CANONICAL_GAP.dispatch]: {
     owner: "controller",
     kind: "refusal",
@@ -340,13 +320,6 @@ export const CANONICAL_CAPABILITIES: {
     kind: "routing",
     adapters: ["react", "vue"],
     summary: "Legacy save and read paths reconstruct documents from PM.",
-  },
-  [CANONICAL_GAP.resourceReplacement]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Canonical save refuses existing style, style-default, and media replacements the package writers cannot express.",
   },
   [CANONICAL_GAP.history]: {
     owner: "prosemirror",
@@ -409,7 +382,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Public table operations other than a table inserted beside a paragraph require canonical table operation descriptors.",
+      "Public signature tables and tables beside a table need canonical table descriptors.",
   },
   [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
     owner: "document-operations",
@@ -425,7 +398,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "A canonical headless reviewer edits, suggests, comments, resolves, undoes and saves; table geometry and comparison refuse.",
+      "A canonical headless reviewer edits, suggests, comments, resolves, undoes, saves and stages comparisons; inline matches refuse.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",

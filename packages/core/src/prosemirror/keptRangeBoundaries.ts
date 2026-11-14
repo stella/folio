@@ -11,7 +11,7 @@
  * kept boundary is always one the repair sees.
  */
 
-import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
+import { Mark, type Node as PMNode, type Schema } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import {
@@ -445,12 +445,16 @@ const collapseEmptyMoveRanges = (tr: Transaction): void => {
       ) {
         const start = expectMoveRangeBoundaryAttrs(previous.node);
         const end = expectMoveRangeBoundaryAttrs(child);
+        // Only halves in the same tracked changes are one point: a half a
+        // pending deletion still holds, beside one it does not, stays apart,
+        // as the engine keeps that deletion around it.
         if (
           start.id === end.id &&
           ((start.type === "moveFromRangeStart" &&
             end.type === "moveFromRangeEnd") ||
             (start.type === "moveToRangeStart" &&
-              end.type === "moveToRangeEnd"))
+              end.type === "moveToRangeEnd")) &&
+          Mark.sameSet(previous.node.marks, child.marks)
         ) {
           pairs.push({
             position: previous.position,
@@ -575,7 +579,10 @@ const layerKey = (layer: TrackedRevisionAncestor): string =>
  * The revision marks a boundary carries where `removed` stood: of each of
  * its revision marks, the layers outside the outermost one this resolution
  * takes content out by, less those it resolves. A revision nested inside
- * removed content goes with that content, as the engine's wrappers do.
+ * removed content goes with that content, as the engine's wrappers do, except
+ * a pending deletion the resolution leaves: rejecting the content around it
+ * says nothing about the deletion, so the boundary stays inside it, pending,
+ * as the engine's `removedContentBoundaries` keeps it.
  */
 const landingMarks = (removed: PMNode, selection: RevisionSelection): Mark[] =>
   removed.marks.flatMap((mark) => {
@@ -586,8 +593,18 @@ const landingMarks = (removed: PMNode, selection: RevisionSelection): Mark[] =>
         selection.resolves(layer.revisionId) &&
         revisionLayerRemovesContent(layer, selection.mode),
     );
+    const pendingDeletions =
+      cut === -1 || selection.mode !== "reject"
+        ? []
+        : path
+            .slice(cut + 1)
+            .filter(
+              (layer) =>
+                layer.type === "deletion" &&
+                !selection.resolves(layer.revisionId),
+            );
     const standing = new Set(
-      (cut === -1 ? path : path.slice(0, cut))
+      [...(cut === -1 ? path : path.slice(0, cut)), ...pendingDeletions]
         .filter((layer) => !selection.resolves(layer.revisionId))
         .map(layerKey),
     );

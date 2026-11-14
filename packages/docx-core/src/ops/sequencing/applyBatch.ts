@@ -3,9 +3,15 @@ import { Result } from "better-result";
 import type { Document } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
+import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "../ids";
 import { paragraphLength } from "../offsets";
 import type { DocumentOpRefusal } from "../refusal";
-import { DOCUMENT_OP_TYPES, type DocumentOp, SPLIT_HALVES } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  type InsertContentOp,
+  SPLIT_HALVES,
+} from "../types";
 import {
   NO_SEQUENCED_EFFECT,
   type SequencedBatch,
@@ -17,6 +23,39 @@ type AppliedBatch = {
   document: Document;
   inverse: readonly DocumentOp[];
   effects: NonNullable<SequencedBatch["effects"]>;
+};
+
+// The ids held in the paragraph an insertion addresses.
+const paragraphIdentities = (
+  document: Document,
+  op: InsertContentOp,
+): string[] =>
+  identityKeysIn(
+    storyParagraphs(storyBody(document, op.at.story)).find(
+      ({ paragraph }) =>
+        paragraph.paraId !== undefined &&
+        idKey(paragraph.paraId) === idKey(op.at.blockId),
+    )?.paragraph ?? [],
+  );
+
+/**
+ * Whether an insertion cut an identified record: its paragraph holds an id
+ * that neither it, the inserted content nor the insertion's own revision
+ * held before.
+ */
+const cutIdentified = (
+  before: Document,
+  after: Document,
+  op: InsertContentOp,
+): boolean => {
+  const known = new Set([
+    ...paragraphIdentities(before, op),
+    ...identityKeysIn(op.slice.content),
+    ...(op.revision === undefined
+      ? []
+      : [slotKey({ space: IDENTITY_SPACES.REVISION, id: op.revision.id })]),
+  ]);
+  return paragraphIdentities(after, op).some((key) => !known.has(key));
 };
 
 /** Capture position facts before each operation, including within an atomic batch. */
@@ -61,7 +100,12 @@ export const applyBatch = (
     if (applied.isErr()) {
       return Result.err(applied.error);
     }
-    if (
+    if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT) {
+      effect = {
+        type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+        cutIdentified: cutIdentified(current, applied.value.document, op),
+      };
+    } else if (
       op.type === DOCUMENT_OP_TYPES.DELETE_BLOCKS ||
       op.type === DOCUMENT_OP_TYPES.RESOLVE_REVISION
     ) {

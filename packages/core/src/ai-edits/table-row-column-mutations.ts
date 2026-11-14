@@ -770,7 +770,8 @@ const populateTableRow = (
   return row.type.create(row.attrs, cells);
 };
 
-const getInsertedPhysicalColumnRows = (
+/** The rows a column inserted at `columnIndex` gives a cell of its own, in order. */
+export const getInsertedPhysicalColumnRows = (
   map: TableMap,
   table: PMNode,
   columnIndex: number,
@@ -842,17 +843,20 @@ const expandTableCellColspan = (
   };
 };
 
+/** A new cell holding the text; a line break starts a new paragraph, as in a new row. */
 const populateTableCell = (cell: PMNode, text: string): PMNode | null => {
   const paragraph = cell.firstChild;
   if (!paragraph?.isTextblock) {
     return null;
   }
-  const content = text.length > 0 ? cell.type.schema.text(text) : null;
-  const nextParagraph = paragraph.type.create(
-    stripBlockIdentityAttrs(paragraph.attrs),
-    content,
+  const attrs = stripBlockIdentityAttrs(paragraph.attrs);
+  const paragraphs = splitCellParagraphTexts(text).map((line) =>
+    paragraph.type.create(
+      attrs,
+      line.length > 0 ? cell.type.schema.text(line) : null,
+    ),
   );
-  return cell.type.create(cell.attrs, nextParagraph);
+  return cell.type.create(cell.attrs, paragraphs);
 };
 
 const buildTableColumnInsertionActions = ({

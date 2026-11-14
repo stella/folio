@@ -9,7 +9,9 @@ on:
 permissions: {}
 
 concurrency:
-  group: nightly-long-fuzz-${{ github.ref }}
+  # A hand-started run checks one fixed commit: no push and no other
+  # dispatch replaces or cancels it, so each dispatch has its own group.
+  group: ${{ github.event_name == 'workflow_dispatch' && format('nightly-long-fuzz-dispatch-{0}', github.run_id) || format('nightly-long-fuzz-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:

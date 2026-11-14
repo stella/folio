@@ -23,7 +23,7 @@ import {
   type TextPosition,
 } from "../types";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
-import { isOpStory } from "./address";
+import { headerFooterStory, isOpStory, noteStory } from "./address";
 import {
   abstractNumbering,
   array,
@@ -92,6 +92,14 @@ export const NO_SEQUENCED_EFFECT = "none";
 export type SequencedOpEffect =
   | { type: "splitBlock"; newHalf: SplitHalf }
   | { type: "joinBlocks"; firstLength: number }
+  | {
+      type: "insertContent";
+      /**
+       * Whether the insertion cut a record carrying an id (a revision or a
+       * content control) in two, its second half taking a new id.
+       */
+      cutIdentified: boolean;
+    }
   | {
       type: "touchedBlocks";
       /** Paragraphs the operation changed, inserted or removed. */
@@ -252,9 +260,9 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
   joinBlocks: "joinBlocks",
   resolveRevision: "touchedBlocks",
   deleteBlocks: "touchedBlocks",
-  insertContent: "touchedBlocks",
-  splitInline: "touchedBlocks",
-  joinInline: "touchedBlocks",
+  insertContent: "insertContent",
+  splitInline: NO_SEQUENCED_EFFECT,
+  joinInline: NO_SEQUENCED_EFFECT,
   replaceBlocks: "touchedBlocks",
   setParagraphReview: "touchedBlocks",
   replaceInline: "touchedBlocks",
@@ -341,11 +349,6 @@ const slice = object({
   content: array(inlineContent),
   openStart: natural,
   openEnd: natural,
-});
-const noteStory = object({ kind: literal("footnote", "endnote"), id: natural });
-const headerFooterStory = object({
-  kind: literal("header", "footer"),
-  rId: nonemptyString,
 });
 const headerFooterType = literal("default", "first", "even");
 const tableTarget = { story: isOpStory, blockId, revision, newIds };
@@ -543,6 +546,7 @@ const operationFields = {
     type: literal("joinInline"),
     at: position,
     depth: natural,
+    ifAlike: optional(literal(true)),
   } satisfies OperationFields<"joinInline">,
   replaceBlocks: {
     type: literal("replaceBlocks"),
@@ -861,6 +865,11 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
             return object({
               type: literal("joinBlocks"),
               firstLength: natural,
+            })(effect);
+          case "insertContent":
+            return object({
+              type: literal("insertContent"),
+              cutIdentified: boolean,
             })(effect);
           case "touchedBlocks":
             return object({

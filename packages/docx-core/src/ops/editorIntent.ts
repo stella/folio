@@ -120,6 +120,7 @@ import {
   type InlineSlice,
   type InsertContentOp,
   type InsertRowOp,
+  type JoinInlineOp,
   type NewIds,
   type OpStory,
   type ParagraphPropsPatch,
@@ -195,7 +196,18 @@ export type TableBlockIntentOperation =
 export type EditorIntent =
   | HyperlinkEditorIntent
   | GenerateTOCIntent
-  | { type: "table"; operation: TableIntentOperation }
+  | {
+      type: "table";
+      operation: TableIntentOperation;
+      /**
+       * What each cell an inserted column creates holds, in row order: the
+       * compiler writes it into the new cells after the column, as text
+       * typed there, so a suggestion records it as inserted. A cell past
+       * the list, or given no paragraphs, stays empty. Only a column
+       * insertion takes it.
+       */
+      cellContent?: readonly (readonly Paragraph[])[];
+    }
   | { type: "tableRow"; operation: TableRowIntentOperation }
   | { type: "tableBlock"; operation: TableBlockIntentOperation }
   | {
@@ -581,6 +593,15 @@ export const createEditorIntentIdAllocator = ({
         switch (op.type) {
           case DOCUMENT_OP_TYPES.INSERT_COLUMN:
             demand = located.value.table.rows.length + 2;
+            // Each new cell's content, as a fragment written into it.
+            for (const paragraphs of intent.cellContent ?? []) {
+              demand += 8;
+              for (const paragraph of paragraphs) {
+                demand += 4;
+                for (const span of leafSpans(paragraph.content))
+                  demand += 4 * (1 + span.ancestors.length);
+              }
+            }
             break;
           case DOCUMENT_OP_TYPES.DELETE_COLUMN: {
             const table = located.value.table;
@@ -601,10 +622,13 @@ export const createEditorIntentIdAllocator = ({
             demand = (op.bottom - op.top + 1) * 2;
             break;
           case DOCUMENT_OP_TYPES.SPLIT_CELL:
+            // A cell for each column of the span in each row a vertical
+            // merge reaches, which is at most every row.
             demand =
-              located.value.table.rows
+              (located.value.table.rows
                 .at(located.value.rowIndex)
-                ?.cells.at(located.value.cellIndex)?.formatting?.gridSpan ?? 1;
+                ?.cells.at(located.value.cellIndex)?.formatting?.gridSpan ??
+                1) * located.value.table.rows.length;
             break;
           case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
             demand = 2;
@@ -1227,24 +1251,32 @@ type JoinParagraphPropertyAlignmentOptions = {
   revision?: RevisionStamp;
 };
 
-/** Direct and tracked joins choose paragraph properties from the same editing-view group. */
+/**
+ * Direct and tracked joins choose paragraph properties from the same
+ * editing-view group: the joined group shows the first group's properties,
+ * or the following group's when the first shows no text. A paragraph whose
+ * mark is already pending deletion is one group with the paragraph after it,
+ * so joining the two physically leaves that group's properties as they were.
+ * The properties go on the paragraph that ends the joined group once the join
+ * is applied, whichever paragraph the join keeps, since that paragraph's mark
+ * gives the group its properties.
+ */
 const joinParagraphPropertyAlignment = ({
   document,
   current,
   intent,
   revision,
 }: JoinParagraphPropertyAlignmentOptions) => {
+  const holding = (
+    groups: ReturnType<typeof editorParagraphGroups>,
+    blockId: string,
+  ) =>
+    groups.find(({ paragraphs }) =>
+      paragraphs.some(({ paraId }) => idKey(paraId ?? "") === idKey(blockId)),
+    );
   const groups = editorParagraphGroups(document, intent.story);
-  const firstGroup = groups.find(({ paragraphs }) =>
-    paragraphs.some(
-      ({ paraId }) => idKey(paraId ?? "") === idKey(intent.blockId),
-    ),
-  );
-  const followingGroup = groups.find(({ paragraphs }) =>
-    paragraphs.some(
-      ({ paraId }) => idKey(paraId ?? "") === idKey(intent.nextBlockId),
-    ),
-  );
+  const firstGroup = holding(groups, intent.blockId);
+  const followingGroup = holding(groups, intent.nextBlockId);
   if (!firstGroup || !followingGroup)
     panic("A valid canonical join must belong to paragraph groups.");
   const source =
@@ -1252,17 +1284,18 @@ const joinParagraphPropertyAlignment = ({
       ? followingGroup.paragraphs.at(-1)
       : firstGroup.paragraphs.at(-1);
   // A direct join may keep the first paragraph; a tracked one keeps the second.
-  const survivorId =
+  const keptId =
     revision === undefined && intent.survivor === "first"
-      ? firstGroup.blockId
-      : followingGroup.blockId;
-  const survivor = paragraphAt(current, {
-    story: intent.story,
-    blockId: survivorId,
-    offset: 0,
-  });
-  if (!survivor)
-    panic("A valid canonical join must retain its surviving group.");
+      ? intent.blockId
+      : intent.nextBlockId;
+  const joinedGroup = holding(
+    editorParagraphGroups(current, intent.story),
+    keptId,
+  );
+  const survivor = joinedGroup?.paragraphs.at(-1);
+  const survivorId = survivor?.paraId;
+  if (!survivor || survivorId === undefined)
+    panic("An applied join must keep the paragraph it names as kept.");
   const desired = paragraphPropertiesOf(source?.formatting);
   const existing = paragraphPropertiesOf(survivor.formatting);
   if (structurallyEqual(existing, desired)) return undefined;
@@ -2242,6 +2275,52 @@ export const compileEditorIntent = (
         }),
       ];
       selection = { story: op.story, blockId, offset: 0 };
+      if (intent.cellContent === undefined) break;
+      if (
+        op.type !== DOCUMENT_OP_TYPES.INSERT_COLUMN ||
+        intent.cellContent.length > newBlockIds.length
+      )
+        return Result.err(
+          new DocumentOpRefusal({
+            opType: op.type,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            message: "Cell content needs a cell the column insertion creates.",
+          }),
+        );
+      // Each new cell holds one empty paragraph, its fresh id in row order;
+      // the content goes into it as a fragment typed there.
+      let filled = applied.value.document;
+      for (const [index, paragraphs] of intent.cellContent.entries()) {
+        const cellBlockId = newBlockIds[index];
+        if (
+          cellBlockId === undefined ||
+          paragraphs.length === 0 ||
+          (paragraphs.length === 1 && paragraphs[0]?.content.length === 0)
+        )
+          continue;
+        const at = { story: op.story, blockId: cellBlockId, offset: 0 };
+        const fill = compileEditorIntent(filled, {
+          intent: {
+            type: "replaceFragment",
+            from: at,
+            to: at,
+            paragraphs,
+            openStart: 1,
+            openEnd: 1,
+          },
+          mode: {
+            ...modeAfterOps(filled, mode),
+            ...(mode.reservedBlockIds === undefined
+              ? {}
+              : { reservedBlockIds: mode.reservedBlockIds }),
+          },
+        });
+        if (fill.isErr()) return Result.err(fill.error);
+        const written = applyDocumentOps(filled, fill.value.ops);
+        if (written.isErr()) return Result.err(written.error);
+        filled = written.value.document;
+        ops.push(...fill.value.ops);
+      }
       break;
     }
     case "tableRow": {
@@ -2295,6 +2374,17 @@ export const compileEditorIntent = (
           story: op.story,
         }),
       ];
+      // A row deletion that hands a vertical merge on moves the removed
+      // cell's paragraphs into the next row in place of the continuation's:
+      // the caret then stays in the paragraph the edit named.
+      const kept = new Set(
+        storyParagraphs(storyBody(applied.value.document, op.story)).flatMap(
+          ({ paragraph }) =>
+            paragraph.paraId === undefined ? [] : [idKey(paragraph.paraId)],
+        ),
+      );
+      if (!kept.has(idKey(blockId)) && kept.has(idKey(operation.blockId)))
+        blockId = operation.blockId;
       selection = { story: op.story, blockId, offset: 0 };
       break;
     }
@@ -2871,10 +2961,13 @@ export const compileEditorIntent = (
               policy: RUN_SEAM_POLICIES.plain,
             });
             if (depth === 0) continue;
+            // A seam join, so a concurrent edit beside the typed run leaves
+            // it apart rather than refusing it.
             const join = {
               type: DOCUMENT_OP_TYPES.JOIN_INLINE,
               at: { ...at, ...seam },
               depth,
+              ifAlike: true,
             } as const;
             const joined = applyDocumentOp(current, join);
             if (joined.isErr()) return Result.err(joined.error);
@@ -3390,7 +3483,10 @@ export const compileEditorIntent = (
         if (offset >= 0) editedSeams.push({ ...selection, offset });
     }
     // Merge only the edited seams, keeping every authored interior run boundary.
-    const plannedSeams = new Map<string, { at: TextPosition; depth: number }>();
+    const plannedSeams = new Map<
+      string,
+      { at: TextPosition; depth: number; seam: boolean }
+    >();
     const seams = [
       ...editedSeams.map((at) => ({ at, policy: RUN_SEAM_POLICIES.plain })),
       ...sourceRunSeams.map((at) => ({
@@ -3414,14 +3510,24 @@ export const compileEditorIntent = (
         at.offset,
         at.zeroWidthBefore ?? 0,
       ]);
-      plannedSeams.set(key, { at, depth });
+      // An edited seam, and a source cut that rejoins runs, join alike runs
+      // where they still meet; a deeper source cut puts a record back.
+      const seam =
+        (policy === RUN_SEAM_POLICIES.plain || depth === 1) &&
+        (plannedSeams.get(key)?.seam ?? true);
+      plannedSeams.set(key, { at, depth, seam });
     }
-    for (const { at, depth } of [...plannedSeams.values()].toSorted(
+    for (const { at, depth, seam } of [...plannedSeams.values()].toSorted(
       (left, right) =>
         right.at.offset - left.at.offset ||
         (right.at.zeroWidthBefore ?? 0) - (left.at.zeroWidthBefore ?? 0),
     )) {
-      const join = { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth } as const;
+      const join: JoinInlineOp = {
+        type: DOCUMENT_OP_TYPES.JOIN_INLINE,
+        at,
+        depth,
+        ...(seam ? { ifAlike: true } : {}),
+      };
       const joined = applyDocumentOp(current, join);
       if (joined.isErr()) return Result.err(joined.error);
       compact.push(join);

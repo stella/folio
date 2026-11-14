@@ -104,6 +104,12 @@ export type HiddenEditorApi = {
   applyCanonicalSectionProperties: (
     patch: FormattingPatch<SectionProperties>,
   ) => CanonicalSectionPropertiesResult | null;
+  /**
+   * Where the editor of a header, footer or note shows its text selection in
+   * the story's current projection: the selection it last reported or
+   * committed, moved over every peer's edit since. Null for the body, before
+   * the editor reported one, and for any other kind of selection.
+   */
   getCanonicalStorySelection: (
     story: OpStory,
   ) => { anchor: number; head: number } | null;
@@ -113,6 +119,7 @@ export type HiddenEditorApi = {
    * The editor a person is working in for `story`: public operations on that
    * story read its state, so its selection maps through them, and publish to
    * it. A later view for the story replaces it; a destroyed one is ignored.
+   * The session records the selection it shows, which peers' edits move.
    */
   noteCanonicalStoryView: (options: {
     story: OpStory;

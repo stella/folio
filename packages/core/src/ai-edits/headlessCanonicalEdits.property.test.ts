@@ -1,9 +1,9 @@
 /**
  * A canonical headless reviewer edits and resolves through its session.
  *
- * Each case draws a document a reviewer lists every story of (or a body with
- * review marks of every shape) and one public operation built from the
- * blocks a reader sees, then holds the reviewer's edits to three laws:
+ * Each case draws a body with review marks of every shape and one operation
+ * to stage on a body paragraph, built from the blocks a reader sees, then
+ * holds the reviewer's edits to three laws:
  *
  * - rejecting every change after the operation in tracked mode gives what
  *   rejecting every change gives without it;
@@ -20,11 +20,12 @@ import fc from "fast-check";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
+import { bodyReviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
 import {
+  bodyBlockIds,
   type OperationDraw,
-  operationDrawArbitrary,
   operationFor,
+  stagingDrawArbitrary,
 } from "../../../../test/generators/reviewerOperationDraws";
 import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
@@ -131,18 +132,54 @@ type EditOutcome =
   | "refusedOperation"
   | "resolutionRefused";
 
+/** Why a case stopped short of the laws, counted beside the outcomes. */
+type Refusals = Map<string, number>;
+
+const noteRefusal = (refusals: Refusals | undefined, detail: string) =>
+  refusals?.set(detail, (refusals.get(detail) ?? 0) + 1);
+
+/**
+ * The operation applied, or nothing when the session refuses it by throwing
+ * its typed refusal, which is counted.
+ */
+const applyOrRefuse = (
+  reviewer: Reviewer,
+  operation: FolioDocumentOperation,
+  mode: "direct" | "tracked-changes",
+  refusals?: Refusals,
+): ReturnType<typeof apply> | null => {
+  try {
+    return apply(reviewer, operation, mode);
+  } catch (error) {
+    if (!CanonicalSessionError.is(error)) throw error;
+    noteRefusal(
+      refusals,
+      `${operation.type} ${mode} threw: ${JSON.stringify(error.ground)}: ${error.message}`,
+    );
+    return null;
+  }
+};
+
 /** The resolution of every change, or the session's refusal of it. */
 const resolvedText = (
   reviewer: Reviewer,
   resolution: "accept" | "reject",
+  refusals?: Refusals,
 ): string[] | null => {
   try {
     const { skipped } =
       resolution === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
     // A change a lock holds stays pending; the laws are about the rest.
+    if (skipped.length > 0) noteRefusal(refusals, `${resolution}: held`);
     return skipped.length > 0 ? null : bodyText(reviewer);
   } catch (error) {
-    if (CanonicalSessionError.is(error)) return null;
+    if (CanonicalSessionError.is(error)) {
+      noteRefusal(
+        refusals,
+        `${resolution}: ${JSON.stringify(error.ground)}: ${error.message}`,
+      );
+      return null;
+    }
     throw error;
   }
 };
@@ -150,64 +187,105 @@ const resolvedText = (
 const editLaws = async (
   buffer: ArrayBuffer,
   draw: OperationDraw,
+  refusals?: Refusals,
 ): Promise<EditOutcome> => {
   let base: Reviewer;
   try {
     base = await open(buffer);
   } catch (error) {
-    if (CanonicalSessionError.is(error)) return "sessionRefused";
+    if (CanonicalSessionError.is(error)) {
+      noteRefusal(
+        refusals,
+        `open: ${JSON.stringify(error.ground)}: ${error.message}`,
+      );
+      return "sessionRefused";
+    }
     throw error;
   }
-  const operation = operationFor(base, draw);
+  const operation = operationFor(base, draw, {
+    replaceIn: "blocksWithWords",
+    among: bodyBlockIds(base.toDocument().package.document.content),
+  });
   if (operation === null) return "noOperation";
 
   // Undo gives back every read and the document.
   const before = reads(base);
-  const edited = apply(base, operation, "direct");
-  if (edited.applied.length === 0 || edited.undoHandle === null)
+  const edited = applyOrRefuse(base, operation, "direct", refusals);
+  if (edited === null) return "refusedOperation";
+  if (edited.applied.length === 0 || edited.undoHandle === null) {
+    const [skip] = edited.skipped;
+    noteRefusal(
+      refusals,
+      `${operation.type} direct: ${skip?.reason ?? "no undo"} ${skip?.canonicalRefusal?.gap ?? ""}`,
+    );
     return "refusedOperation";
+  }
   expect(base.undoDocumentOperations(edited.undoHandle)).toMatchObject({
     status: "undone",
   });
   expect(reads(base)).toEqual(before);
 
   const tracked = await open(buffer);
-  if (apply(tracked, operation, "tracked-changes").applied.length === 0)
+  const trackedResult = applyOrRefuse(
+    tracked,
+    operation,
+    "tracked-changes",
+    refusals,
+  );
+  if (trackedResult === null) return "refusedOperation";
+  if (trackedResult.applied.length === 0) {
+    const [skip] = trackedResult.skipped;
+    noteRefusal(
+      refusals,
+      `${operation.type} tracked: ${skip?.reason ?? ""} ${skip?.canonicalRefusal?.gap ?? ""}`,
+    );
     return "refusedOperation";
+  }
   const untouched = await open(buffer);
-  const rejectedWithout = resolvedText(untouched, "reject");
-  const rejected = resolvedText(tracked, "reject");
+  const rejectedWithout = resolvedText(untouched, "reject", refusals);
+  const rejected = resolvedText(tracked, "reject", refusals);
   if (rejected === null || rejectedWithout === null) return "resolutionRefused";
   expect(rejected).toEqual(rejectedWithout);
 
   const accepted = await open(buffer);
-  apply(accepted, operation, "tracked-changes");
+  if (applyOrRefuse(accepted, operation, "tracked-changes", refusals) === null)
+    return "refusedOperation";
   const direct = await open(buffer);
-  apply(direct, operation, "direct");
-  const acceptedText = resolvedText(accepted, "accept");
-  const directText = resolvedText(direct, "accept");
+  if (applyOrRefuse(direct, operation, "direct", refusals) === null)
+    return "refusedOperation";
+  const acceptedText = resolvedText(accepted, "accept", refusals);
+  const directText = resolvedText(direct, "accept", refusals);
   if (acceptedText === null || directText === null) return "resolutionRefused";
   expect(words(acceptedText)).toBe(words(directText));
   return "edited";
 };
 
 /** The generated model as a package, or nothing when the writer refuses it. */
-const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
+const packaged = async (
+  document: Document,
+  refusals?: Refusals,
+): Promise<ArrayBuffer | null> => {
   try {
     return await ingested(await createDocx(structuredClone(document)));
-  } catch {
+  } catch (error) {
+    noteRefusal(
+      refusals,
+      `package: ${error instanceof Error ? error.message.slice(0, 120) : String(error)}`,
+    );
     return null;
   }
 };
 
-const generatedEdits = (tally: Map<EditOutcome, number>) =>
+const generatedEdits = (tally: Map<EditOutcome, number>, refusals?: Refusals) =>
   fc.asyncProperty(
-    reviewerDocumentArbitrary,
-    operationDrawArbitrary,
+    bodyReviewerDocumentArbitrary,
+    stagingDrawArbitrary,
     async (document, draw) => {
-      const buffer = await packaged(document);
+      const buffer = await packaged(document, refusals);
       const outcome =
-        buffer === null ? "notAPackage" : await editLaws(buffer, draw);
+        buffer === null
+          ? "notAPackage"
+          : await editLaws(buffer, draw, refusals);
       tally.set(outcome, (tally.get(outcome) ?? 0) + 1);
     },
   );
@@ -250,10 +328,22 @@ describe("a canonical reviewer edits and resolves through its session", () => {
     "most generated cases reach the laws",
     async () => {
       const tally = new Map<EditOutcome, number>();
-      await checkCoverageSample(generatedEdits(tally), COVERAGE_RUNS);
-      expect(tally.get("edited") ?? 0).toBeGreaterThanOrEqual(
-        COVERAGE_RUNS / 3,
+      const refusals: Refusals = new Map();
+      await checkCoverageSample(generatedEdits(tally, refusals), COVERAGE_RUNS);
+      // What still refuses is measured on every run, and the tally and the
+      // refusals behind it are in a failure, so a shortfall names its causes.
+      console.info(
+        "edit coverage:",
+        JSON.stringify({
+          tally: Object.fromEntries(tally),
+          refusals: Object.fromEntries(refusals),
+        }),
       );
+      expect({
+        reached: (tally.get("edited") ?? 0) >= COVERAGE_RUNS / 3,
+        tally: Object.fromEntries(tally),
+        refusals: Object.fromEntries(refusals),
+      }).toMatchObject({ reached: true });
     },
     propertyTestTimeout(120_000),
   );

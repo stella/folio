@@ -546,6 +546,7 @@ import {
 } from "vue";
 
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import { isCanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
@@ -995,6 +996,7 @@ const {
   externalPlugins,
   historyShortcuts: historyShortcutOwner(props.hostShortcuts ?? []),
   onCanonicalHistory: (effect) => props.onCanonicalHistory?.(effect),
+  onCanonicalHistoryDrop: (drop) => props.onCanonicalHistoryDrop?.(drop),
   collaboration: () => props.collaboration,
   // Anonymization highlights + template directives are driven by the overlay
   // components below; these thread the plugin callbacks and the directive gate.
@@ -1322,6 +1324,9 @@ const commentManagement = useCommentManagement({
   getDocument,
   author: () => props.author,
   commentsProp: () => props.comments,
+  commentsFromRoom: () =>
+    props.collaboration !== undefined &&
+    isCanonicalRoomCollaboration(props.collaboration),
   canonicalTick: stateTick,
   onCommentsChange: (next) => {
     props.onCommentsChange?.(next);

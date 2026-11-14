@@ -13,7 +13,9 @@ import { serializeTextFormatting } from "./textFormattingSerializer";
 export const serializeStylesXml = (definitions: StyleDefinitions): string => {
   const docDefaults = serializeDocumentDefaults(definitions);
   const latentStyles = serializeLatentStyles(definitions);
-  const styles = definitions.styles.map(serializeStyle).join("");
+  const styles = definitions.styles
+    .map((style) => serializeStyle(style))
+    .join("");
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     serializePartElement({
@@ -26,7 +28,10 @@ export const serializeStylesXml = (definitions: StyleDefinitions): string => {
   );
 };
 
-const serializeDocumentDefaults = (definitions: StyleDefinitions): string => {
+/** The `w:docDefaults` element a style table's defaults serialize to. */
+export const serializeDocumentDefaults = (
+  definitions: StyleDefinitions,
+): string => {
   const rPr = serializeTextFormatting(definitions.docDefaults?.rPr);
   const rPrDefault =
     rPr === "" ? "<w:rPrDefault/>" : `<w:rPrDefault>${rPr}</w:rPrDefault>`;
@@ -35,11 +40,9 @@ const serializeDocumentDefaults = (definitions: StyleDefinitions): string => {
   return `<w:docDefaults>${rPrDefault}<w:pPrDefault>${pPr}</w:pPrDefault></w:docDefaults>`;
 };
 
-const serializeLatentStyles = (definitions: StyleDefinitions): string => {
-  const latent = definitions.latentStyles;
-  if (!latent) {
-    return "";
-  }
+type LatentStyles = NonNullable<StyleDefinitions["latentStyles"]>;
+
+const latentStylesAttributes = (latent: LatentStyles): string[] => {
   const attrs: string[] = [];
   pushBooleanAttr(attrs, "w:defLockedState", latent.defLockedState);
   if (latent.defUIPriority !== undefined) {
@@ -48,10 +51,106 @@ const serializeLatentStyles = (definitions: StyleDefinitions): string => {
   pushBooleanAttr(attrs, "w:defSemiHidden", latent.defSemiHidden);
   pushBooleanAttr(attrs, "w:defUnhideWhenUsed", latent.defUnhideWhenUsed);
   pushBooleanAttr(attrs, "w:defQFormat", latent.defQFormat);
+  return attrs;
+};
+
+const serializeLatentStyles = (definitions: StyleDefinitions): string => {
+  const latent = definitions.latentStyles;
+  if (!latent) {
+    return "";
+  }
+  const attrs = latentStylesAttributes(latent);
   return `<w:latentStyles${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}/>`;
 };
 
-export const serializeStyle = (style: Style): string => {
+/**
+ * A `w:latentStyles` element carrying the model's defaults around the
+ * exceptions the source element listed, which the model does not hold.
+ */
+export const serializeLatentStylesAround = (
+  latent: LatentStyles,
+  exceptions: string,
+): string => {
+  const attrs = latentStylesAttributes(latent);
+  if (latent.count !== undefined) attrs.push(`w:count="${latent.count}"`);
+  const open = `<w:latentStyles${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}`;
+  return exceptions === ""
+    ? `${open}/>`
+    : `${open}>${exceptions}</w:latentStyles>`;
+};
+
+/** ECMA-376 `CT_Style` child order. */
+const STYLE_CHILD_ORDER: readonly string[] = [
+  "name",
+  "aliases",
+  "basedOn",
+  "next",
+  "link",
+  "autoRedefine",
+  "hidden",
+  "uiPriority",
+  "semiHidden",
+  "unhideWhenUsed",
+  "qFormat",
+  "locked",
+  "personal",
+  "personalCompose",
+  "personalReply",
+  "rsid",
+  "pPr",
+  "rPr",
+  "tblPr",
+  "trPr",
+  "tcPr",
+  "tblStylePr",
+];
+
+/** The `w:style` children and attributes the model holds. */
+export const MODELED_STYLE_CHILDREN: ReadonlySet<string> = new Set([
+  "name",
+  "basedOn",
+  "next",
+  "link",
+  "uiPriority",
+  "hidden",
+  "semiHidden",
+  "unhideWhenUsed",
+  "qFormat",
+  "personal",
+  "pPr",
+  "rPr",
+  "tblPr",
+  "trPr",
+  "tcPr",
+  "tblStylePr",
+]);
+export const MODELED_STYLE_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "type",
+  "styleId",
+  "default",
+]);
+
+// A child of another namespace has no schema slot and goes last.
+const styleChildRank = (localName: string): number => {
+  const rank = STYLE_CHILD_ORDER.indexOf(localName);
+  return rank < 0 ? STYLE_CHILD_ORDER.length : rank;
+};
+
+/**
+ * Markup the model does not hold, kept from a source definition the style
+ * replaces: its unmodeled attributes, spelled for the written element, and its
+ * unmodeled children with their `CT_Style` local name (empty for a child of
+ * another namespace).
+ */
+export type StyleSourceMarkup = {
+  attributes: readonly string[];
+  children: readonly { localName: string; xml: string }[];
+};
+
+export const serializeStyle = (
+  style: Style,
+  source?: StyleSourceMarkup,
+): string => {
   const attrs = [
     `w:type="${style.type}"`,
     `w:styleId="${escapeXmlAttribute(style.styleId)}"`,
@@ -59,37 +158,63 @@ export const serializeStyle = (style: Style): string => {
   if (style.default) {
     attrs.push('w:default="1"');
   }
-  const parts = [
+  const named: { localName: string; xml: string }[] = [];
+  const push = (localName: string, xml: string) => {
+    if (xml !== "") named.push({ localName, xml });
+  };
+  push(
+    "name",
     `<w:name w:val="${escapeXmlAttribute(style.name ?? style.styleId)}"/>`,
-  ];
+  );
   if (style.basedOn) {
-    parts.push(`<w:basedOn w:val="${escapeXmlAttribute(style.basedOn)}"/>`);
+    push(
+      "basedOn",
+      `<w:basedOn w:val="${escapeXmlAttribute(style.basedOn)}"/>`,
+    );
   }
   if (style.next) {
-    parts.push(`<w:next w:val="${escapeXmlAttribute(style.next)}"/>`);
+    push("next", `<w:next w:val="${escapeXmlAttribute(style.next)}"/>`);
   }
   if (style.link) {
-    parts.push(`<w:link w:val="${escapeXmlAttribute(style.link)}"/>`);
+    push("link", `<w:link w:val="${escapeXmlAttribute(style.link)}"/>`);
   }
   if (style.uiPriority !== undefined) {
-    parts.push(`<w:uiPriority w:val="${style.uiPriority}"/>`);
+    push("uiPriority", `<w:uiPriority w:val="${style.uiPriority}"/>`);
   }
-  pushOnOffElement(parts, style.hidden, "hidden");
-  pushOnOffElement(parts, style.semiHidden, "semiHidden");
-  pushOnOffElement(parts, style.unhideWhenUsed, "unhideWhenUsed");
-  pushOnOffElement(parts, style.qFormat, "qFormat");
-  pushOnOffElement(parts, style.personal, "personal");
-  parts.push(serializeParagraphFormatting(style.pPr));
-  parts.push(serializeTextFormatting(style.rPr));
-  parts.push(serializeTableFormatting(style.tblPr));
-  parts.push(serializeTableRowFormatting(style.trPr));
-  parts.push(serializeTableCellFormatting(style.tcPr));
+  for (const name of [
+    "hidden",
+    "semiHidden",
+    "unhideWhenUsed",
+    "qFormat",
+    "personal",
+  ] as const) {
+    const parts: string[] = [];
+    pushOnOffElement(parts, style[name], name);
+    push(name, parts.join(""));
+  }
+  push("pPr", serializeParagraphFormatting(style.pPr));
+  push("rPr", serializeTextFormatting(style.rPr));
+  push("tblPr", serializeTableFormatting(style.tblPr));
+  push("trPr", serializeTableRowFormatting(style.trPr));
+  push("tcPr", serializeTableCellFormatting(style.tcPr));
   for (const conditional of style.tblStylePr ?? []) {
-    parts.push(
+    push(
+      "tblStylePr",
       `<w:tblStylePr w:type="${conditional.type}">${serializeParagraphFormatting(conditional.pPr)}${serializeTextFormatting(conditional.rPr)}${serializeTableFormatting(conditional.tblPr)}${serializeTableRowFormatting(conditional.trPr)}${serializeTableCellFormatting(conditional.tcPr)}</w:tblStylePr>`,
     );
   }
-  return `<w:style ${attrs.join(" ")}>${parts.join("")}</w:style>`;
+  // Each kept source child goes before the first written child that follows
+  // it in schema order; the model's own children keep their order.
+  for (const child of source?.children ?? []) {
+    const rank = styleChildRank(child.localName);
+    const at = named.findIndex(
+      (written) => styleChildRank(written.localName) > rank,
+    );
+    named.splice(at < 0 ? named.length : at, 0, child);
+  }
+  attrs.push(...(source?.attributes ?? []));
+  const children = named.map(({ xml }) => xml).join("");
+  return `<w:style ${attrs.join(" ")}>${children}</w:style>`;
 };
 
 const pushBooleanAttr = (

@@ -40,8 +40,10 @@ const readsEffects = (ops: readonly DocumentOp[]): boolean =>
  * A selection moved across `over` by paragraph id and offset. A cell or
  * inline-node selection becomes a text selection over the same ends, which
  * the remote edit may have reshaped. Undefined when an end cannot be mapped.
+ * The session moves its own selection this way and a peer's presence moves
+ * the same way, so both land where the other expects.
  */
-const remapSelection = (
+export const remapSelection = (
   selection: CanonicalSelection,
   over: SequencedBatch,
 ): CanonicalSelection | undefined => {
@@ -113,7 +115,11 @@ const nearestPosition = ({
   return { story: target, blockId: first, offset: 0 };
 };
 
-/** The local selection after a remote edit, moved by paragraph id and offset. */
+/**
+ * The local selection after a remote edit, moved by paragraph id and offset.
+ * Each end moves on its own: an end the edit leaves no offset to follow goes
+ * to the nearest position, and the other end still moves with its text.
+ */
 export const remoteSelection = ({
   selection,
   over,
@@ -130,16 +136,15 @@ export const remoteSelection = ({
   const mapped =
     selection === null ? undefined : remapSelection(selection, over);
   if (mapped !== undefined) return mapped;
-  const caret = nearestPosition({
-    position: selection?.head,
-    previous,
-    document,
-    story,
-  });
+  const move = (position: TextPosition | undefined) =>
+    (position === undefined
+      ? undefined
+      : transformPosition(position, [over], REMOTE_AFFINITY)) ??
+    nearestPosition({ position, previous, document, story });
   return {
     type: selection?.type === "all" ? "all" : "text",
-    anchor: caret,
-    head: caret,
+    anchor: move(selection?.anchor),
+    head: move(selection?.head),
   };
 };
 
