@@ -17,17 +17,17 @@ import {
   type SequencedBatch,
 } from "@stll/docx-core/ops";
 
-import { readModel } from "../types/documentModel";
-import type {
-  CanonicalRoomSubmission,
-  CanonicalRoomTransport,
-} from "./canonicalRoomTransport";
 import type {
   CanonicalCommit,
   CanonicalCommittedBatch,
   CanonicalSession,
   CanonicalSessionError,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { readModel } from "../types/documentModel";
+import type {
+  CanonicalRoomSubmission,
+  CanonicalRoomTransport,
+} from "./canonicalRoomTransport";
 
 const CanonicalCollaborationErrorBase: TaggedErrorClass<"CanonicalCollaborationError"> =
   TaggedError("CanonicalCollaborationError");

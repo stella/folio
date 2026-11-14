@@ -8,6 +8,12 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  type CanonicalCommit,
+  type CanonicalSessionError,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { parseDocx } from "../docx/parser";
 import {
   type BatchMeta,
@@ -34,12 +40,6 @@ import {
   canonicalSnapshotId,
   createCanonicalMemoryRoom,
 } from "./canonicalRoomTransport";
-import {
-  type CanonicalCommit,
-  type CanonicalSessionError,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
