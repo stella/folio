@@ -244,7 +244,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "The headless reviewer has no canonical session selector while its mutations remain PM-owned.";
+    readonly summary: "A canonical headless reviewer only reads; its mutations, save and undo remain PM-owned and refuse.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -412,7 +412,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "The headless reviewer has no canonical session selector while its mutations remain PM-owned.",
+      "A canonical headless reviewer only reads; its mutations, save and undo remain PM-owned and refuse.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",
@@ -430,6 +430,28 @@ export const usesCanonicalSession = (
   session: "canonical" | undefined,
   _gap: CanonicalGap,
 ): boolean => session === "canonical";
+
+/**
+ * The engine a headless reviewer holds its document in. The editors say
+ * `experimentalSession: "canonical"` and leave legacy unnamed; a reviewer
+ * names both, so a host can pin either one.
+ */
+export type HeadlessReviewerSession = "legacy" | "canonical";
+
+/** Every host keeps the legacy reviewer until it opts in. */
+export const DEFAULT_HEADLESS_REVIEWER_SESSION = "legacy";
+
+/**
+ * Whether a headless reviewer runs on the canonical session: the one place
+ * the reviewer's default is decided.
+ */
+export const headlessReviewerUsesCanonicalSession = (
+  session: HeadlessReviewerSession = DEFAULT_HEADLESS_REVIEWER_SESSION,
+): boolean =>
+  usesCanonicalSession(
+    session === "canonical" ? session : undefined,
+    CANONICAL_GAP.publicHeadlessSession,
+  );
 
 export const canonicalRefusalMessage = (
   gap: CanonicalGap,

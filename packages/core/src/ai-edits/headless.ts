@@ -12,9 +12,17 @@ import {
   REVIEW_CARRIERS,
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
-import { reconcileDocumentPartRelationships } from "@stll/docx-core/ops";
+import {
+  reconcileDocumentPartRelationships,
+  withoutPendingSuggestions,
+} from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import {
+  type CanonicalSession,
+  CanonicalSessionError,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import {
   matchInlineAtoms,
   type MatchInlineAtomsOptions,
@@ -37,6 +45,7 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { removeCommentMarkers } from "../docx/commentAnchorIndex";
 import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
 /**
@@ -158,6 +167,11 @@ import { schema, singletonManager } from "../prosemirror/schema";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import { collapseEmptyTextBoxHosts } from "../prosemirror/textBoxHostCollapse";
+import {
+  CANONICAL_GAP,
+  type HeadlessReviewerSession,
+  headlessReviewerUsesCanonicalSession,
+} from "../types/canonicalCapabilities";
 import type { Comment } from "../types/content";
 import type {
   BlockContent,
@@ -171,6 +185,7 @@ import type {
   SectionProperties,
   StyleDefinitions,
 } from "../types/document";
+import { readModel } from "../types/documentModel";
 import { canonicalJson } from "../utils/canonicalJson";
 import type {
   FolioReplacementBackground,
@@ -285,7 +300,37 @@ export type FolioDocxReviewerOptions = {
   author?: string;
   /** Password for Agile-encrypted .docx files (Office 2010+). */
   password?: string | undefined;
+  /**
+   * The engine the document is held in. (default: `"legacy"`)
+   *
+   * `"canonical"` loads the document into the canonical session the editors'
+   * canonical mode runs, and every read comes from it. Edits, review
+   * resolution, undo and save are not on that session yet: they throw a
+   * `CanonicalSessionError` whose ground is the `publicOps.headlessSession`
+   * gap, and never fall back to the legacy engine.
+   */
+  session?: HeadlessReviewerSession;
 };
+
+/**
+ * Where a reviewer's document lives. The reads are one implementation over
+ * either: a canonical reviewer's main state holds the session's projection,
+ * exactly the document a canonical editor shows, and its model is the
+ * session's document.
+ */
+type FolioReviewerEngine =
+  { type: "legacy" } | { type: "canonical"; session: CanonicalSession };
+
+/** The refusal of a canonical reviewer for what it cannot do on the session yet. */
+const canonicalReviewerRefusal = (action: string): CanonicalSessionError =>
+  new CanonicalSessionError({
+    ground: { gap: CANONICAL_GAP.publicHeadlessSession },
+    reason: "refused",
+    message: `A canonical headless reviewer cannot ${action} yet.`,
+  });
+
+/** Reviewers on the canonical session, which give out no comparison access. */
+const canonicalReviewers = new WeakSet<FolioDocxReviewer>();
 
 /** Options for {@link FolioDocxReviewer.applyOperations}. */
 export type FolioApplyOperationsOptions = {
@@ -1178,17 +1223,20 @@ export class FolioDocxReviewer {
    * types its inputs `readonly Comment[]`).
    */
   private readonly resolvedOverrides = new Map<number, boolean>();
+  private readonly engine: FolioReviewerEngine;
 
   private constructor(args: {
     baseDocument: Document;
     originalBuffer: ArrayBuffer;
     state: EditorState;
     author: string;
+    engine: FolioReviewerEngine;
   }) {
     this.baseDocument = args.baseDocument;
     this.originalBuffer = args.originalBuffer;
     this.state = args.state;
     this.author = args.author;
+    this.engine = args.engine;
     seedCommentAllocator(
       createCommentIdAllocator(),
       args.baseDocument.package.document.comments,
@@ -1197,6 +1245,11 @@ export class FolioDocxReviewer {
       },
     );
     this.loadedMainCommentIds = anchoredCommentIdsInProseDoc(args.state.doc);
+    if (args.engine.type === "canonical") {
+      // Comparison stages its result into the reviewer's PM states.
+      canonicalReviewers.add(this);
+      return;
+    }
     comparisonAccessByReviewer.set(
       this,
       Object.freeze({
@@ -1594,6 +1647,8 @@ export class FolioDocxReviewer {
     buffer: ArrayBuffer,
     options: FolioDocxReviewerOptions = {},
   ): Promise<FolioDocxReviewer> {
+    if (headlessReviewerUsesCanonicalSession(options.session))
+      return FolioDocxReviewer.fromCanonicalBuffer(buffer, options);
     const baseDocument = await parseDocx(buffer, {
       detectVariables: false,
       preloadFonts: false,
@@ -1630,7 +1685,56 @@ export class FolioDocxReviewer {
       originalBuffer: baseDocument.originalBuffer ?? buffer,
       state,
       author: options.author ?? "AI",
+      engine: { type: "legacy" },
     });
+  }
+
+  /**
+   * Load as a canonical editor does: the same input normalization (paragraph
+   * and content control ids minted in the package), then the session over the
+   * parsed document. A document the session cannot hold throws its refusal.
+   *
+   * The body is the session's projection. Headers, footers and notes are
+   * still read by the legacy story converters, from the session's document;
+   * they move to the session's own story projections with the secondary story
+   * edits.
+   */
+  private static async fromCanonicalBuffer(
+    buffer: ArrayBuffer,
+    options: FolioDocxReviewerOptions,
+  ): Promise<FolioDocxReviewer> {
+    const prepared = await prepareCanonicalDocxInput(buffer);
+    if (prepared.isErr()) throw prepared.error;
+    const parsed = await parseDocx(prepared.value, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const created = createCanonicalSession(parsed, parsed.package.styles);
+    if (created.isErr()) throw created.error;
+    const session = created.value;
+    // Read-only: every path that would change it refuses on this engine.
+    const document = readModel(session.document);
+    return new FolioDocxReviewer({
+      baseDocument: document,
+      originalBuffer: parsed.originalBuffer ?? buffer,
+      // No paragraph id or bidi pass: the projection is what the editor shows.
+      state: EditorState.create({
+        schema,
+        doc: session.projection.doc,
+        plugins: createHeadlessPlugins(
+          document.package.styles,
+          document.package.numbering,
+        ),
+      }),
+      author: options.author ?? "AI",
+      engine: { type: "canonical", session },
+    });
+  }
+
+  /** Refuse what a canonical reviewer cannot do on its session yet. */
+  private requireLegacyEngine(action: string): void {
+    if (this.engine.type === "canonical")
+      throw canonicalReviewerRefusal(action);
   }
 
   /**
@@ -1697,6 +1801,7 @@ export class FolioDocxReviewer {
   loadPendingSuggestions(
     records: readonly unknown[],
   ): FolioPendingSuggestionLoadResult[] {
+    this.requireLegacyEngine("restage pending suggestions");
     return this.pendingSuggestions.loadPendingSuggestions({
       records,
       snapshotForStory: (story) => this.snapshotStory(story),
@@ -1810,6 +1915,9 @@ export class FolioDocxReviewer {
         receivedView: view,
       });
     }
+    // The resolved views run review resolution, which is not on the session yet.
+    if (view !== "current-markup")
+      this.requireLegacyEngine("read a resolved view");
     const sourceState = this.getEditableStoryState(story);
     return sourceState
       ? createStateSnapshot(resolveReviewedState(sourceState, view))
@@ -1875,6 +1983,8 @@ export class FolioDocxReviewer {
         receivedView: view,
       });
     }
+    if (view !== "current-markup")
+      this.requireLegacyEngine("read a resolved view");
     const sourceState = this.getEditableStoryState(story);
     return sourceState
       ? folioStoryTables(resolveReviewedState(sourceState, view).doc)
@@ -1898,6 +2008,7 @@ export class FolioDocxReviewer {
     pairings,
     revisionStamp,
   }: FolioMatchStoryTableGeometryOptions): number {
+    this.requireLegacyEngine("change table properties");
     const state = this.getEditableStoryState(story);
     if (!state || pairings.length === 0) {
       return revisionStamp.idSeed;
@@ -1944,6 +2055,7 @@ export class FolioDocxReviewer {
     story = MAIN_STORY,
     view,
   }: FolioResolveReviewedStoryOptions): boolean {
+    this.requireLegacyEngine("resolve a story");
     return this.resolveReviewedStorySnapshotInternal({ story, view }) !== null;
   }
 
@@ -1983,6 +2095,7 @@ export class FolioDocxReviewer {
     operations: FolioAIEditOperation[],
     options: FolioApplyOperationsOptions,
   ): FolioAIEditApplyResult {
+    this.requireLegacyEngine("apply operations");
     const { applied, skipped } = this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
       batch: {
@@ -2011,6 +2124,7 @@ export class FolioDocxReviewer {
     batch: FolioDocumentOperationBatch,
     options: FolioApplyDocumentOperationsOptions,
   ): FolioDocumentOperationResult {
+    this.requireLegacyEngine("apply operations");
     return this.applyDocumentOperationsInternal({
       story: MAIN_STORY,
       batch,
@@ -2035,6 +2149,7 @@ export class FolioDocxReviewer {
     replacementBackground,
     undefinedReferences,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
+    this.requireLegacyEngine("apply operations");
     return this.applyDocumentOperationsInternal({
       story,
       batch,
@@ -2176,6 +2291,7 @@ export class FolioDocxReviewer {
   undoDocumentOperations(
     undoHandle: FolioDocumentOperationUndoHandle,
   ): FolioDocumentOperationUndoResult {
+    this.requireLegacyEngine("undo operations");
     const entryIndex = this.documentOperationUndoEntries.findIndex(
       (entry) =>
         entry.undoHandle.type === undoHandle.type &&
@@ -2469,6 +2585,7 @@ export class FolioDocxReviewer {
     target: FolioReviewComment | number,
     input: FolioReviewReplyInput,
   ): FolioReviewCommentReply | null {
+    this.requireLegacyEngine("reply to a comment");
     const parentId = typeof target === "number" ? target : target.id;
     const existing = [
       ...(this.baseDocument.package.document.comments ?? []),
@@ -2564,6 +2681,7 @@ export class FolioDocxReviewer {
     commentId: string,
     options: { resolved?: boolean } = {},
   ): boolean {
+    this.requireLegacyEngine("resolve a comment");
     const resolved = options.resolved ?? true;
     const existing = [
       ...(this.baseDocument.package.document.comments ?? []),
@@ -2773,6 +2891,7 @@ export class FolioDocxReviewer {
    * removal. A held change stays pending as it is.
    */
   acceptChange(target: FolioReviewChange | number): boolean {
+    this.requireLegacyEngine("accept a change");
     return this.resolveWithSectionReferenceHistory(() =>
       this.withNotesFollowingReferences(() =>
         this.acceptChangeInternal(target),
@@ -2810,6 +2929,7 @@ export class FolioDocxReviewer {
    * deletion's text is restored. See {@link acceptChange} for targeting.
    */
   rejectChange(target: FolioReviewChange | number): boolean {
+    this.requireLegacyEngine("reject a change");
     return this.resolveWithSectionReferenceHistory(() =>
       this.withNotesFollowingReferences(() =>
         this.rejectChangeInternal(target),
@@ -2844,6 +2964,7 @@ export class FolioDocxReviewer {
     suggestionId: string,
     options?: { author?: string },
   ): boolean {
+    this.requireLegacyEngine("accept a suggestion");
     return this.resolveWithSectionReferenceHistory(() => {
       let accepted = false;
       for (const handle of this.listStoryHandlesInternal()) {
@@ -2870,6 +2991,7 @@ export class FolioDocxReviewer {
 
   /** Remove one pending suggestion without applying it. */
   rejectSuggestion(suggestionId: string): boolean {
+    this.requireLegacyEngine("reject a suggestion");
     return this.resolveWithSectionReferenceHistory(() => {
       let rejected = false;
       for (const handle of this.listStoryHandlesInternal()) {
@@ -2904,11 +3026,13 @@ export class FolioDocxReviewer {
    * ordinary changes resolved.
    */
   acceptAll(): FolioReviewResolution {
+    this.requireLegacyEngine("accept every change");
     return this.resolveAll("accept");
   }
 
   /** Reject every tracked change in the package. See {@link acceptAll}. */
   rejectAll(): FolioReviewResolution {
+    this.requireLegacyEngine("reject every change");
     return this.resolveAll("reject");
   }
 
@@ -3298,11 +3422,13 @@ export class FolioDocxReviewer {
 
   /** Resolve ordinary revisions on a detached in-memory document. */
   toResolvedDocument(decision: "accept" | "reject"): Document {
+    this.requireLegacyEngine("resolve changes");
     const copy = new FolioDocxReviewer({
       baseDocument: this.toDocument(),
       originalBuffer: this.originalBuffer,
       state: this.state,
       author: this.author,
+      engine: { type: "legacy" },
     });
     if (decision === "accept") copy.acceptAll();
     else copy.rejectAll();
@@ -3311,6 +3437,16 @@ export class FolioDocxReviewer {
 
   /** The current document model with edits merged back in. */
   toDocument(): Document {
+    // The session's document as it holds it, with pending suggestions
+    // rejected as the legacy model has them. The save's own pruning (notes no
+    // reference reaches, lists nothing uses) is the save's, not the model's.
+    if (this.engine.type === "canonical") {
+      const model = withoutPendingSuggestions(
+        this.engine.session.captureSaveSnapshot().document,
+      );
+      if (model.isErr()) throw model.error;
+      return model.value;
+    }
     const document = this.documentFromStateSnapshot(
       this.captureReviewerState(),
     );
@@ -3621,6 +3757,7 @@ export class FolioDocxReviewer {
    * structural edits — the same two-tier path the editor's save uses.
    */
   async toBuffer(): Promise<ArrayBuffer> {
+    this.requireLegacyEngine("save");
     const result = await this.save();
     if (result.type === "repackRefused") {
       return panic("A save that allows a full repack refused to repack", {
@@ -3638,6 +3775,7 @@ export class FolioDocxReviewer {
   async save({
     repack: repackPolicy = "allow",
   }: FolioReviewerSaveOptions = {}): Promise<FolioReviewerSaveResult> {
+    this.requireLegacyEngine("save");
     const save = this.captureSaveSnapshot();
     const selective =
       save.path.type === "selective-first"
@@ -3817,6 +3955,12 @@ export class FolioDocxReviewer {
       : this.getNoteStory(story);
   }
 
+  /**
+   * On either engine a secondary story is converted from the reviewer's
+   * model. A canonical reviewer's model is the session's document, so its
+   * headers, footers and notes are read from the session but not through the
+   * session's story projections yet.
+   */
   private secondaryStoryDoc(story: FolioSecondaryStoryHandle): PMNode | null {
     const source = this.secondaryStorySource(story);
     if (!source) {
@@ -4394,9 +4538,15 @@ export class FolioDocxReviewer {
 /** @internal Comparison-only access to atomic and fresh reviewer projections. */
 export const getFolioDocxComparisonAccess = (
   reviewer: FolioDocxReviewer,
-): FolioDocxComparisonAccess =>
-  comparisonAccessByReviewer.get(reviewer) ??
-  panic("Comparison access was requested for an uninitialized DOCX reviewer");
+): FolioDocxComparisonAccess => {
+  const access = comparisonAccessByReviewer.get(reviewer);
+  if (access) return access;
+  if (canonicalReviewers.has(reviewer))
+    throw canonicalReviewerRefusal("compare documents");
+  return panic(
+    "Comparison access was requested for an uninitialized DOCX reviewer",
+  );
+};
 
 /** Options for {@link applyFolioAIEditsToBuffer}. */
 export type ApplyFolioAIEditsToBufferOptions = {

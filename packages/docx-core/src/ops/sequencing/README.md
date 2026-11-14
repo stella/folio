@@ -54,6 +54,25 @@ insertion and repeated revision decisions. Overlapping revision decisions with
 opposite outcomes reject. Text inherited at a paragraph's start takes the run
 after it, so a concurrent format from the start covers it in either order.
 
+## Tracked changes beside concurrent cuts
+
+A tracked deletion or insertion records, on its wrapper, how many records it
+cut at each edge and how many ran across its whole range, so that rejecting
+or accepting it joins them again. Whether a record runs across depends on
+what was applied first: when a concurrent edit cuts or merges records at an
+edge or inside the range (another tracked edge, an insertion point, a
+format's end, an inline split or join, a paragraph split, an inverse
+deletion's join), the cut goes to whichever applies first and the two orders
+record different joins. A direct deletion that reaches one edge and not the
+other removes what lay against that edge in one order and moves the edge in
+the other. Two tracked deletions that overlap (nested, equal or crossing
+ranges) leave the shared content to whichever wraps it first, under its
+author and id. All of these pairs are refused with `unsupportedPair`, in
+either order. Tracked changes apart from every concurrent cut commute, and
+so does a direct deletion inside a tracked one or covering it whole.
+
+## Block-scoped operations
+
 Every other operation is block-scoped: paragraph replacement, inline
 replacement and paragraph review, inline splits and joins, content insertion,
 paragraph deletion, table insertion, deletion and structure edits, numbering
