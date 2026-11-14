@@ -1,10 +1,4 @@
-import { contentWidth } from "../offsets";
-import {
-  DOCUMENT_OP_TYPES,
-  type InsertContentOp,
-  OP_STORIES,
-  type TextPosition,
-} from "../types";
+import { DOCUMENT_OP_TYPES, OP_STORIES, type TextPosition } from "../types";
 import { restoreDocumentOp } from "../wire";
 import { sameStory } from "./address";
 import {
@@ -14,32 +8,6 @@ import {
 import type { SequencedBatch } from "./envelope";
 import { isInlineInsertion, mapPoint } from "./points";
 import { operationStory, operationTargets } from "./transform";
-
-/**
- * A position across inline content inserted in its paragraph: content before
- * it moves it on by the content's width. At the content's own offset,
- * `before` keeps a position that stands at or before the zero-width children
- * the content goes after; any other position there is undefined, since the
- * content's own zero-width children change its place among them.
- */
-const pastInsertedContent = (
-  point: TextPosition,
-  over: InsertContentOp,
-  affinity: "before" | "after",
-): TextPosition | undefined => {
-  if (point.blockId !== over.at.blockId || point.offset < over.at.offset)
-    return point;
-  if (point.offset > over.at.offset)
-    return {
-      ...point,
-      offset: point.offset + contentWidth(over.slice.content),
-    };
-  return affinity === "before" &&
-    point.zeroWidthBefore !== undefined &&
-    point.zeroWidthBefore <= (over.at.zeroWidthBefore ?? 0)
-    ? point
-    : undefined;
-};
 
 /**
  * Where a position lands after an ordered journal tail, by paragraph identity
@@ -66,19 +34,6 @@ export const transformPosition = (
         point = positionPastCommentAnchor(point, op, affinity);
         continue;
       }
-      // Inline content and the records it cuts or merges move a position by
-      // offset alone, whatever else they touched in its paragraph.
-      if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT) {
-        const mapped = pastInsertedContent(point, op, affinity);
-        if (mapped === undefined) return undefined;
-        point = mapped;
-        continue;
-      }
-      if (
-        op.type === DOCUMENT_OP_TYPES.SPLIT_INLINE ||
-        op.type === DOCUMENT_OP_TYPES.JOIN_INLINE
-      )
-        continue;
       if (effect?.type === "touchedBlocks") {
         if (effect.blockIds.includes(point.blockId)) return undefined;
         continue;
