@@ -44,6 +44,7 @@ const JOIN_FIELDS = {
   acceptance: true,
   plainSides: true,
   retainedEnclosing: true,
+  keptFrom: true,
 } as const satisfies Record<RecordField<ResolutionJoins>, true>;
 type EnclosingHandoff = NonNullable<
   ResolutionJoins["retainedEnclosing"]
@@ -79,6 +80,8 @@ const PARAGRAPH_MARK_FIELDS = {
 const DEFERRED_REMOVAL_FIELDS = {
   depth: true,
   blockers: true,
+  keptFrom: true,
+  edge: true,
 } as const satisfies Record<RecordField<DeferredRemoval>, true>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -145,6 +148,11 @@ const deferredRemoval = (value: unknown): value is DeferredRemoval => {
   const depth = value["depth"];
   const blockers = value["blockers"];
   return (
+    (!Object.hasOwn(value, "keptFrom") ||
+      typeof value["keptFrom"] === "string") &&
+    (!Object.hasOwn(value, "edge") ||
+      value["edge"] === "start" ||
+      value["edge"] === "end") &&
     natural(depth) &&
     depth <= MAX_REVISION_ID &&
     Array.isArray(blockers) &&
@@ -167,8 +175,8 @@ const deferredRemovals = (
     !value.every(deferredRemoval)
   )
     return false;
-  const groups = value.map(({ depth, blockers }) =>
-    JSON.stringify({ depth, blockers }),
+  const groups = value.map(({ depth, blockers, keptFrom, edge }) =>
+    JSON.stringify({ depth, blockers, keptFrom, edge }),
   );
   return new Set(groups).size === groups.length;
 };
@@ -179,6 +187,8 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   natural(value["before"]) &&
   natural(value["after"]) &&
   natural(value["remove"]) &&
+  (!Object.hasOwn(value, "keptFrom") ||
+    typeof value["keptFrom"] === "string") &&
   (!Object.hasOwn(value, "acceptance") ||
     (typeof value["acceptance"] === "string" &&
       Object.hasOwn(ACCEPTANCE_POLICIES, value["acceptance"]))) &&

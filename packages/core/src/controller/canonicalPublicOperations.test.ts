@@ -18,6 +18,10 @@ import {
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
 import {
+  CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
+  CanonicalPublicOperations,
+} from "../canonical/canonicalPublicOperations";
+import {
   type CanonicalCommit,
   createCanonicalSession,
   publishCanonicalProjection,
@@ -32,10 +36,6 @@ import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import type { FlowBlock } from "../layout-engine/types";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
-import {
-  CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
-  CanonicalPublicOperations,
-} from "./canonicalPublicOperations";
 
 const setup = (source: string | Document = "alpha beta") => {
   const document =
