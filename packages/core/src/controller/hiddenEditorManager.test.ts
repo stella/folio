@@ -1932,6 +1932,98 @@ test("canonical command execution reports descriptor refusals without mutation",
   }
 });
 
+test("selecting a table, a row or a column in a canonical session selects what the command selects alone", () => {
+  const releaseDom = acquireHarnessDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Before" });
+  const cell = (paraId: string, text: string) => ({
+    type: "tableCell" as const,
+    content: [
+      {
+        type: "paragraph" as const,
+        paraId,
+        content: [
+          { type: "run" as const, content: [{ type: "text" as const, text }] },
+        ],
+      },
+    ],
+  });
+  source.package.document.content.push(
+    {
+      type: "table",
+      columnWidths: [2000, 2000, 2000],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            { ...cell("20000001", "A1"), formatting: { gridSpan: 2 } },
+            cell("20000002", "C1"),
+          ],
+        },
+        {
+          type: "tableRow",
+          cells: [
+            cell("20000003", "A2"),
+            cell("20000004", "B2"),
+            cell("20000005", "C2"),
+          ],
+        },
+      ],
+    },
+    { type: "paragraph", paraId: "10000002", content: [] },
+  );
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected a canonical view");
+    const baseline = manager.api.getCanonicalDocument();
+    let checked = 0;
+    view.state.doc.descendants((node, position) => {
+      if (node.type.name !== "paragraph") return true;
+      if (view.state.doc.resolve(position).parent.type.name === "doc")
+        return false;
+      for (const name of [
+        "selectTable",
+        "selectRow",
+        "selectColumn",
+      ] as const) {
+        view.dispatch(
+          view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, position + 1),
+          ),
+        );
+        const command = singletonManager.getCommand(name)?.();
+        if (command === undefined) return panic(`Missing ${name}`);
+        let alone: EditorState | undefined;
+        command(view.state, (transaction) => {
+          alone = view.state.apply(transaction);
+        });
+        if (alone === undefined) return panic(`${name} selects nothing`);
+        expect(manager.api.executeCommand(command)).toBe(true);
+        expect(view.state.selection.toJSON()).toEqual(alone.selection.toJSON());
+        expect(view.state.doc.eq(alone.doc)).toBe(true);
+        expect(manager.api.getCanonicalDocument()).toEqual(baseline);
+        expect(manager.api.canUndo()).toBe(false);
+        checked += 1;
+      }
+      return false;
+    });
+    expect(checked).toBe(15);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    releaseDom();
+  }
+});
+
 test("TOC view helper publishes through the controller and keeps handled refusal atomic", () => {
   GlobalRegistrator.register();
   const host = document.createElement("div");
