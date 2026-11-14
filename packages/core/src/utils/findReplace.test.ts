@@ -25,6 +25,7 @@ import {
   findAllMatches,
   findInDocument,
   getFindParagraphText,
+  replaceEligibility,
 } from "./findReplace";
 
 const document: Document = {
@@ -873,15 +874,15 @@ describe("document-wide story search", () => {
     for (const [index, match] of matches.entries()) {
       if (match.story === "main" && match.textBoxIndex === undefined) continue;
       expect(manager.goTo(index)?.match).toEqual(match);
-      expect(manager.replaceCurrent(doc, "changed")).toBeNull();
+      expect(replaceEligibility(match)).toEqual({
+        status: "blocked",
+        reason: "non-body-story",
+      });
     }
-    expect(manager.replaceAll(doc, matches, "changed")).toMatchObject({
-      replacedCount: 2,
-      skippedCount: 9,
-    });
-    expect(findInDocument(doc, "hit", createDefaultFindOptions())).toHaveLength(
-      11,
-    );
+    expect(
+      matches.filter((match) => replaceEligibility(match).status === "allowed"),
+    ).toHaveLength(2);
+    expect(matches).toHaveLength(11);
   });
 
   test("only rendered variants count when the view supplies story eligibility", () => {
@@ -975,14 +976,9 @@ describe("document-wide story search", () => {
     expect(matches).toMatchObject([
       { story: "main", commentId: 7, paragraphIndex: 0, startOffset: 0 },
     ]);
-    const manager = new FindReplaceManager<(typeof matches)[number]>();
-    manager.setMatches(matches);
-    expect(manager.replaceCurrent(doc, "changed")).toBeNull();
-    expect(manager.replaceAll(doc, matches, "changed")).toEqual({
-      document: doc,
-      replacedCount: 0,
-      skippedCount: 1,
-    });
+    expect(matches.map(replaceEligibility)).toEqual([
+      { status: "blocked", reason: "non-body-story" },
+    ]);
   });
 
   test.each(["all-markup", "simple-markup", "no-markup", "original"] as const)(
