@@ -15,7 +15,8 @@
 
 import { panic } from "better-result";
 
-import { projectAcceptedBlocks } from "../internal/acceptedBlockProjection";
+import { resolvedDocumentView } from "@stll/docx-core/ops";
+
 import type { BlockContent } from "../types/document";
 import { ALT_CHUNK_READER_DIAGNOSTIC, isAltChunkMarkup } from "./altChunk";
 import {
@@ -92,9 +93,15 @@ const collectResolvedBlockTexts = (
 export const collectBlockTexts = (
   blocks: readonly BlockContent[],
 ): string[] => {
-  const projection = projectAcceptedBlocks(blocks, undefined);
-  const texts = collectResolvedBlockTexts(projection?.blocks ?? blocks);
-  if (projection?.completeness === "partial") {
+  // The blocks read as one story, accepted as Accept All accepts it.
+  const view = resolvedDocumentView(
+    { package: { document: { content: [...blocks] } } },
+    "accept",
+  );
+  const texts = collectResolvedBlockTexts(
+    view.document.package.document.content,
+  );
+  if (view.unresolved.length > 0) {
     texts.push("[Unresolved tracked structural changes]");
   }
   return texts;

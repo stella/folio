@@ -15,10 +15,8 @@ import {
   OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
   opaqueRevisionCarrierName,
 } from "../docx/opaqueCarrier";
-import { projectAcceptedBlocks } from "../internal/acceptedBlockProjection";
 import type { BlockContent, DocxPackage } from "../types/document";
 import { escapePlainTextBlock } from "./escape";
-import { pushWarning } from "./internals";
 import {
   type RenderedParagraph,
   renderParagraphBlock,
@@ -37,15 +35,6 @@ export function renderBlocks(
   ctx.listIndentWidths = [];
   const out: string[] = [];
   let prevWasListItem = false;
-
-  const projection =
-    ctx.opts.trackedChanges === "clean"
-      ? projectAcceptedBlocks(blocks, pkg)
-      : null;
-  if (projection?.completeness === "partial") {
-    pushWarning(ctx, "Some tracked structural changes could not be resolved.");
-  }
-  const ordered = projection?.blocks ?? blocks;
 
   const renderBlock = (block: BlockContent): RenderedBlock => {
     switch (block.type) {
@@ -107,7 +96,7 @@ export function renderBlocks(
 
   // Every emitted block passes this boundary owner, including wrapper and
   // preserved-content projections. Only explicitly tight list items can join.
-  for (const block of ordered) {
+  for (const block of blocks) {
     const rendered = renderBlock(block);
     switch (rendered.type) {
       case "delimiter":

@@ -22,9 +22,11 @@
  * live outside `document.content`, which is the only block stream walked here.
  */
 
+import { resolvedDocumentView } from "@stll/docx-core/ops";
+
 import { withoutExhaustedComments } from "../docx/commentRangeIntegrity";
 import type { Document } from "../types/document";
-import { newContext } from "./internals";
+import { newContext, pushWarning } from "./internals";
 import { renderBlocks } from "./renderBlock";
 import { appendTrailers } from "./trailers";
 import type { MarkdownOptions, MarkdownResult } from "./types";
@@ -66,6 +68,16 @@ function renderDocument(
 ): MarkdownResult {
   doc = withoutExhaustedComments(doc);
   const ctx = newContext(opts, doc.package.styles, doc.package.numbering);
+  // Clean Markdown is the accepted view, resolved as Accept All resolves it.
+  if (ctx.opts.trackedChanges === "clean") {
+    const view = resolvedDocumentView(doc, "accept");
+    if (view.unresolved.length > 0)
+      pushWarning(
+        ctx,
+        "Some tracked structural changes could not be resolved.",
+      );
+    doc = view.document;
+  }
   const body = renderBlocks(ctx, doc.package, doc.package.document.content);
   const markdown = appendTrailers(ctx, doc, body);
   if (doc.warnings) {
