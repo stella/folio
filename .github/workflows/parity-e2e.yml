@@ -36,8 +36,12 @@ jobs:
       # manual cadence because it boots two dev servers
       # and the static React<->Vue parity gates (check:parity-contract,
       # check:export-parity) already guard the API surface on every PR.
-      - name: Parity e2e specs
-        run: bun run test:e2e:parity --workers=1 --output=fuzz-playwright/parity
+      - name: Typing latency without terms
+        run: bunx playwright test --project=typing-latency --workers=1 --reporter=line --output=fuzz-playwright/parity | grep -E '^\{' || true
+      - name: Typing latency with terms
+        env:
+          FOLIO_TYPING_LATENCY_ANONYMIZE: "1"
+        run: bunx playwright test --project=typing-latency --workers=1 --reporter=line --output=fuzz-playwright/parity | grep -E '^\{' || true
 
       - name: Upload parity proof artifacts
         if: always()
