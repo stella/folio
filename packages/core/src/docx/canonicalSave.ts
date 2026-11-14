@@ -46,6 +46,8 @@ export const serializeCanonicalSave = async ({
   featureFlags,
 }: SerializeCanonicalSaveOptions): Promise<{
   buffer: ArrayBuffer;
+  /** Whether the buffer is the selective patch of the baseline or a repack. */
+  path: "selective" | "full-repack";
   document: Document;
   version: number;
   diagnostics: SaveDiagnostic[];
@@ -167,6 +169,7 @@ export const serializeCanonicalSave = async ({
   for (const diagnostic of diagnostics) options?.onDiagnostic?.(diagnostic);
   return {
     buffer,
+    path: fullBuffer === buffer ? "full-repack" : "selective",
     document,
     version: snapshot.version,
     diagnostics,
