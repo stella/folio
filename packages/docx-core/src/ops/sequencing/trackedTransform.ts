@@ -7,9 +7,10 @@
  * edit that cuts records at the same offset (a tracked edge, an insertion
  * point, a format's end, an inline split or join, a paragraph split) leaves
  * the cut to whichever applies first, and the two orders record different
- * joins. A direct deletion reaching one edge of a tracked change and not the
- * other removes what lay against that edge in one order and moves the edge
- * to where it ends in the other. Two tracked deletions that overlap leave
+ * joins. So does a cut inside the range, which decides whether a record
+ * runs across the whole of it. A direct deletion reaching one edge of a
+ * tracked change and not the other removes what lay against that edge in
+ * one order and moves the edge to where it ends in the other. Two tracked deletions that overlap leave
  * the shared content to whichever wraps it first. Such pairs are refused;
  * tracked changes away from every concurrent cut commute.
  */
@@ -59,13 +60,24 @@ const cutPoints = (op: DocumentOp): readonly TextPosition[] => {
   }
 };
 
-const meets = (
+/**
+ * Whether a cut lies at a tracked change's edge or inside its range: the
+ * depth of the records running across the whole range, which removing the
+ * change joins again, depends on it as much as an edge's does.
+ */
+const reaches = (
   edges: readonly TextPosition[],
   cuts: readonly TextPosition[],
-): boolean =>
-  edges.some((edge) =>
-    cuts.some((cut) => sameParagraph(edge, cut) && edge.offset === cut.offset),
+): boolean => {
+  const [start, end = start] = edges;
+  if (start === undefined) return false;
+  return cuts.some(
+    (cut) =>
+      sameParagraph(start, cut) &&
+      start.offset <= cut.offset &&
+      cut.offset <= end.offset,
   );
+};
 
 // Whether a direct deletion reaches some of the tracked edges and not all.
 const crossesEdges = (
@@ -98,12 +110,13 @@ const overlappingDeletions = (left: DocumentOp, right: DocumentOp): boolean =>
 // The rule in one direction: the tracked side is `op`.
 const conflictsOneWay = (op: DocumentOp, over: DocumentOp): boolean => {
   const edges = trackedEdges(op);
-  return meets(edges, cutPoints(over)) || crossesEdges(edges, over);
+  return reaches(edges, cutPoints(over)) || crossesEdges(edges, over);
 };
 
 /**
- * Refuse a pair in which a tracked change's edge meets a concurrent cut, a
- * direct deletion reaches one edge of a tracked change and not the other, or
+ * Refuse a pair in which a concurrent cut lies at a tracked change's edge or
+ * inside its range, a direct deletion reaches one edge of a tracked change
+ * and not the other, or
  * two tracked deletions overlap. Undefined leaves the pair to the position
  * transform. The rule is symmetric, so both orders refuse alike.
  */
