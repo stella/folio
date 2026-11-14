@@ -831,6 +831,62 @@ const holdsTextBox = (paragraph: Paragraph): boolean => {
   return found;
 };
 
+/**
+ * The selection a publish shows, read back as addresses, with the
+ * transaction's text selection moved to exactly where those addresses place
+ * it. Undo and redo restore a selection by its addresses, so a publish must
+ * show the position its address gives back: one of several editor positions
+ * an address names (either side of a link's edge) becomes the one restoring
+ * gives, and a position no address names (inside a character, or where an
+ * unplaceable selection fell back) moves to the nearest one that has one.
+ */
+const placeShownSelection = (
+  transaction: Transaction,
+  projection: CanonicalProjection,
+): CanonicalSelection | undefined => {
+  const current = transaction.selection;
+  if (current instanceof TextSelection) {
+    const size = transaction.doc.content.size;
+    const nearestAddressable = (position: number): number | undefined => {
+      for (let distance = 0; distance <= size; distance += 1)
+        for (const candidate of [position - distance, position + distance])
+          if (
+            candidate >= 0 &&
+            candidate <= size &&
+            projection.addressAt(candidate).isOk()
+          )
+            return candidate;
+      return undefined;
+    };
+    const anchor = nearestAddressable(current.anchor);
+    const head = nearestAddressable(current.head);
+    if (anchor === undefined || head === undefined) return undefined;
+    const addressed = {
+      anchor: projection.addressAt(anchor).unwrap(),
+      head: projection.addressAt(head).unwrap(),
+    };
+    const placed = {
+      anchor: projection.positionAt(addressed.anchor),
+      head: projection.positionAt(addressed.head),
+    };
+    if (placed.anchor.isErr() || placed.head.isErr()) return undefined;
+    if (
+      placed.anchor.value !== current.anchor ||
+      placed.head.value !== current.head
+    )
+      transaction.setSelection(
+        TextSelection.create(
+          transaction.doc,
+          placed.anchor.value,
+          placed.head.value,
+        ),
+      );
+    return { type: "text", ...addressed };
+  }
+  const read = projection.selectionAt(transaction);
+  return read.isOk() ? read.value : undefined;
+};
+
 const structureRefusal = () =>
   new CanonicalSessionError({
     ground: { gap: CANONICAL_GAP.storyContentProjection },
@@ -3427,14 +3483,13 @@ class CanonicalSession {
           "Canonical history cannot restore the selected inline atom.",
         );
     }
-    // A position the projection cannot place falls back near the old caret,
-    // so history keeps the selection read back from what is shown.
-    const read =
-      sameStory(selection.anchor.story, projectedStory) &&
+    // History keeps what this publish shows, so the selection shown is one
+    // an address places exactly; see `placeShownSelection`.
+    const shown =
+      (sameStory(selection.anchor.story, projectedStory) &&
       sameStory(selection.head.story, projectedStory)
-        ? projected.value.selectionAt(transaction)
-        : undefined;
-    const shown = read !== undefined && read.isOk() ? read.value : selection;
+        ? placeShownSelection(transaction, projected.value)
+        : undefined) ?? selection;
     // The transaction now ends on a document equal to the projection.
     const held = projected.value.heldAs(transaction.doc);
     const heldBody =
