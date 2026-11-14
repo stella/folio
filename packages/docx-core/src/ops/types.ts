@@ -41,6 +41,7 @@ import type {
   ParagraphMarkChange,
   ParagraphPropertyChange,
   RecordField,
+  SdtProperties,
   Section,
   SectionProperties,
   Table,
@@ -305,6 +306,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   readonly DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance";
   readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
   readonly SET_PACKAGE_RESOURCES: "setPackageResources";
+  readonly SET_CONTENT_CONTROL: "setContentControl";
 }> = Object.freeze({
   CREATE_COMMENT: "createComment",
   UPDATE_COMMENT_CONTENT: "updateCommentContent",
@@ -352,6 +354,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance",
   SET_SECTION_ENDPOINT: "setSectionEndpoint",
   SET_PACKAGE_RESOURCES: "setPackageResources",
+  SET_CONTENT_CONTROL: "setContentControl",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -917,6 +920,25 @@ export type PackageResourceMapChange<Value> = {
   entries: readonly PackageResourceEntryChange<Value>[];
 };
 
+/**
+ * Set one content control's properties exactly: its value (`w:lastValue`,
+ * `w14:checked`, `w:fullDate`), placeholder state and binding. The control is
+ * addressed by its `w:sdtPr/w:id`, block-level or inline, in one story.
+ * `expected` is what its properties are now and `properties` what they become;
+ * the inverse swaps the two. The control's id and type do not change, and its
+ * content is edited by the text operations. `blockIds` names the paragraphs
+ * the control holds (block-level) or sits in (inline), in document order: the
+ * blocks a concurrent change conflicts with.
+ */
+export type SetContentControlOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL;
+  story: OpStory;
+  controlId: number;
+  blockIds: readonly string[];
+  expected: SdtProperties;
+  properties: SdtProperties;
+};
+
 /** Replace merged definitions and change keyed package entries, refusing stale package data. */
 export type SetPackageResourcesOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
@@ -1246,6 +1268,7 @@ export type DocumentOp = (
   | DeleteNumberingInstanceOp
   | SetSectionEndpointOp
   | SetPackageResourcesOp
+  | SetContentControlOp
 ) & {
   /** Own undefined fields recorded by the operation capture boundary. */
   undefinedFields?: readonly (readonly string[])[];

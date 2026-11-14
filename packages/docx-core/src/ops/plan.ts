@@ -128,6 +128,7 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return op;
     default: {
       const unreachable: never = op;
