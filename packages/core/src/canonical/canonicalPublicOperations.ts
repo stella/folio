@@ -2144,15 +2144,16 @@ export class CanonicalPublicOperations {
       ? selection
       : session.prepareOps(state, ops, selection.value);
     if (prepared.isErr()) {
+      // A batch that changes nothing is a no-op, not a capability gap.
+      const noChange = prepared.error.reason === "noChange";
       for (const { id } of appliedById.values()) {
-        refusals.set(id, {
-          gap: CANONICAL_GAP.publicUnsupportedInline,
-        });
+        if (!noChange)
+          refusals.set(id, {
+            gap: CANONICAL_GAP.publicUnsupportedInline,
+          });
         skip(
           id,
-          prepared.error.reason === "noChange"
-            ? "noopOperation"
-            : "unsupportedBlock",
+          noChange ? "noopOperation" : "unsupportedBlock",
           prepared.error.message,
         );
       }

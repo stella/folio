@@ -141,10 +141,23 @@ describe("operations on the canonical reviewer", () => {
             1,
             `${context}: neither applied nor refused`,
           );
-          const legacy = apply(await openOn(bytes, "legacy"), operation, mode);
+          const legacyReviewer = await openOn(bytes, "legacy");
+          const legacyBefore = reads(legacyReviewer);
+          const legacy = apply(legacyReviewer, operation, mode);
           if (result.applied.length === 0) {
             assert.ok(result.issues.length > 0, `${context}: no issue`);
             const skip = result.skipped[0];
+            // A no-op on the canonical reviewer changes nothing on the
+            // legacy one either, whatever that one reports.
+            if (skip?.reason === "noopOperation") {
+              assert.deepEqual(
+                reads(legacyReviewer),
+                legacyBefore,
+                `${context}: the canonical no-op changed the legacy reviewer`,
+              );
+              log.push(`${type}: no-op`);
+              continue;
+            }
             if (legacy.applied.length > 0)
               countRefusal(
                 skip?.canonicalRefusal === undefined

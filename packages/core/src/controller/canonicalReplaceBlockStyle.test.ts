@@ -253,7 +253,16 @@ describe("a replacement that names a paragraph style", () => {
           example.mode,
         );
         expect(canonical.refusals).toEqual([]);
-        expect(canonical.skipped).toEqual(legacy.skipped);
+        // A blank paragraph given no words and no other style is left as it
+        // is: the default engine names that unsupportedBlock, the canonical
+        // session a no-op.
+        const blankLeftBlank =
+          target.text === "" &&
+          operation.text === "" &&
+          legacy.skipped.join() === "unsupportedBlock";
+        expect(canonical.skipped).toEqual(
+          blankLeftBlank ? ["noopOperation"] : legacy.skipped,
+        );
         expect(await outcomes(canonical.bytes)).toEqual(
           await outcomes(legacy.bytes),
         );

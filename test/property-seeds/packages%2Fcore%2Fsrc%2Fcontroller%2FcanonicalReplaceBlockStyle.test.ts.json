@@ -1,0 +1,10 @@
+{
+  "restyles the paragraph in both engines alike, pending, accepted and rejected": [
+    {
+      "seed": 905168447,
+      "path": "1:3:2:3:3:3:3:3:3:3:2:3:3:3",
+      "note": "A blank paragraph given no words and its own style: neither engine changes it.",
+      "date": "2026-11-14"
+    }
+  ]
+}
