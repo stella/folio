@@ -715,6 +715,10 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     if (event === undefined || peer === undefined) return;
     const before = peer.client.document;
     const pending = peer.client.pending.flatMap(({ ops }) => ops);
+    const queued = peer.client.pending.map(({ opId, ops }) => ({
+      opId,
+      paragraphs: paragraphsIn(ops),
+    }));
     const noticed = peer.client.notices.length;
     let changes: readonly ClientDocumentChange[];
     if (event.type === "broadcast") {
@@ -726,7 +730,9 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       changes = [];
     } else changes = peer.client.receiveReject(event.result);
     // A dropped batch depends on what dropped it: it shares a paragraph with
-    // the remote or rejected batch, or with a batch dropped before it.
+    // the remote or rejected batch, or with a pending batch before it: a
+    // dropped one, or a kept one the remote batch may not carry past, when
+    // the batches after it cross its inverse.
     const cause = new Set(
       paragraphsIn(
         event.type === "broadcast"
@@ -738,9 +744,19 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       .slice(noticed)
       .entries()) {
       const touched = paragraphsIn(notice.ops);
+      const earlier = new Set(queued
+        .slice(
+          0,
+          Math.max(
+            0,
+            queued.findIndex(({ opId }) => opId === notice.opId),
+          ),
+        )
+        .flatMap(({ paragraphs }) => paragraphs));
       if (
         index > 0 || event.type === "broadcast"
-          ? touched.length > 0 && touched.every((id) => !cause.has(id))
+          ? touched.length > 0 &&
+            touched.every((id) => !cause.has(id) && !earlier.has(id))
           : false
       )
         outcome.independentDrops.push(
