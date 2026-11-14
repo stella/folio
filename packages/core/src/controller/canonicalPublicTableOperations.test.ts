@@ -617,6 +617,9 @@ const sameAsDefaultEngine =
     const legacy = await viaDefaultEngine(source, op, mode);
     const canonical = await viaCanonicalEngine(source, op, mode);
     expect(canonical.refusals).toEqual([]);
+    const closes = operation.endsWith(" after") && endsTheBody(body, anchor);
+    const asCanonicalCloses = (outcome: Outcomes) =>
+      closes ? closedOutcomes(outcome) : outcome;
     // A suggestion the default engine cannot record, such as a split or a
     // column through a merged cell: accepting it gives the direct edit,
     // rejecting it the document as it was.
@@ -627,18 +630,18 @@ const sameAsDefaultEngine =
     ) {
       const direct = await viaDefaultEngine(source, op, "direct");
       expect(direct.skipped).toEqual([]);
+      // Every other change the body already held is resolved alike.
       const resolved = await outcomes(canonical.bytes);
-      expect(resolved.accepted).toEqual(await blocksOf(direct.bytes));
-      expect(resolved.rejected).toEqual(await blocksOf(source));
+      expect(resolved.accepted).toEqual(
+        asCanonicalCloses(await outcomes(direct.bytes)).accepted,
+      );
+      expect(resolved.rejected).toEqual((await outcomes(source)).rejected);
       return;
     }
     expect(canonical.skipped).toEqual(legacy.skipped);
     if (legacy.skipped.length > 0) return;
-    const expected = await outcomes(legacy.bytes);
     expect(await outcomes(canonical.bytes)).toEqual(
-      operation.endsWith(" after") && endsTheBody(body, anchor)
-        ? closedOutcomes(expected)
-        : expected,
+      asCanonicalCloses(await outcomes(legacy.bytes)),
     );
   };
 
