@@ -24,7 +24,7 @@ function firstTable(pmDoc: PMNode): PMNode {
 }
 
 describe("toProseDoc — literal empty <w:tr/> rows", () => {
-  test("renders a fallback cell spanning the table width", () => {
+  test("renders a filler spanning the table width, with no cell of its own", () => {
     const doc = makeDoc({
       type: "table",
       columnWidths: [2400, 2400, 2400],
@@ -77,9 +77,10 @@ describe("toProseDoc — literal empty <w:tr/> rows", () => {
     const emptyRow = table.child(1);
     expect(emptyRow.childCount).toBe(1);
     expect(emptyRow.child(0).attrs["colspan"]).toBe(3);
+    expect(emptyRow.child(0).attrs["_omittedGridSlot"]).toBe("after");
   });
 
-  test("falls back to colspan 1 when the table has no grid columns", () => {
+  test("fills one position when the table has no grid columns", () => {
     const doc = makeDoc({
       type: "table",
       formatting: {
@@ -93,16 +94,13 @@ describe("toProseDoc — literal empty <w:tr/> rows", () => {
 
     const table = firstTable(toProseDoc(doc));
     const row = table.child(0);
-    const borders = row.child(0).attrs["borders"] as {
-      right?: { style?: string };
-    } | null;
 
     expect(row.childCount).toBe(1);
     expect(row.child(0).attrs["colspan"]).toBe(1);
-    expect(borders?.right?.style).toBe("single");
+    expect(row.child(0).attrs["_omittedGridSlot"]).toBe("after");
   });
 
-  test("derives fallback colspan from later rows when the first row is empty", () => {
+  test("derives the filler's span from later rows when the first row is empty", () => {
     const doc = makeDoc({
       type: "table",
       rows: [
@@ -132,9 +130,10 @@ describe("toProseDoc — literal empty <w:tr/> rows", () => {
 
     expect(emptyRow.childCount).toBe(1);
     expect(emptyRow.child(0).attrs["colspan"]).toBe(3);
+    expect(emptyRow.child(0).attrs["_omittedGridSlot"]).toBe("after");
   });
 
-  test("breaks active vertical merges before inserting a fallback cell", () => {
+  test("breaks active vertical merges across a row with no cells", () => {
     const emptyParagraph = { type: "paragraph" as const, content: [] };
     const doc = makeDoc({
       type: "table",
