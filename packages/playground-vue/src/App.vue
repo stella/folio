@@ -22,6 +22,7 @@
         :show-margin-guides="showMarginGuides"
         :initial-zoom="1"
         :collaboration="collaboration"
+        :anonymization-terms="anonymizationTerms"
         :on-copy="() => clipboardCallbackCounts.copy++"
         :on-cut="() => clipboardCallbackCounts.cut++"
         :on-paste="() => clipboardCallbackCounts.paste++"
@@ -52,6 +53,7 @@ import type {
   DocxEditorRef,
   EditorMode,
   FindResult,
+  FolioAnonymizationTerm,
 } from "@stll/folio-vue";
 
 import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
@@ -83,6 +85,9 @@ declare global {
 }
 
 const editorRef = ref<DocxEditorRef | null>(null);
+const anonymizationTerms = shallowRef<
+  readonly FolioAnonymizationTerm[] | undefined
+>(undefined);
 const scrollParityHost = buildScrollParityBridge(() => editorRef.value);
 const documentBuffer = shallowRef<ArrayBuffer | null>(null);
 const currentDocument = shallowRef<FolioDocument | null>(null);
@@ -126,6 +131,9 @@ onMounted(() => {
   globalThis.__folioParity = buildParityBridge(
     () => editorRef.value,
     (kind) => clipboardCallbackCounts[kind],
+    (terms) => {
+      anonymizationTerms.value = terms;
+    },
   );
 });
 

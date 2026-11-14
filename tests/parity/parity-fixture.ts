@@ -56,8 +56,11 @@ export async function openEditor(
   page: Page,
   adapter: AdapterFixture,
   fixture = DEFAULT_FIXTURE,
+  options: { session?: "canonical" } = {},
 ): Promise<void> {
-  await page.goto(`${adapter.baseUrl}/?file=${fixture}`);
+  const session =
+    options.session === undefined ? "" : `session=${options.session}&`;
+  await page.goto(`${adapter.baseUrl}/?${session}file=${fixture}`);
   await page.waitForSelector(PAGES_SELECTOR, { timeout: 30_000 });
   await expect
     .poll(

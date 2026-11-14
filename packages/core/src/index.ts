@@ -255,13 +255,10 @@ export {
   setActiveCitationMeta,
   type AICitationRange,
 } from "./prosemirror/plugins/aiCitationDecorations";
-export {
-  anonymizationDecorationsKey,
-  getAnonymizationMatches,
-  setAnonymizationTermsMeta,
-  type AnonymizationMatch,
-  type AnonymizationTerm,
-} from "./prosemirror/plugins/anonymizationDecorations";
+export type {
+  FolioAnonymizationMatch,
+  FolioAnonymizationTerm,
+} from "./types/anonymization";
 export {
   getTemplateDirectives,
   scanDirectives,

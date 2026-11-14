@@ -64,6 +64,7 @@ import {
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import { NO_ANONYMIZATION_HIGHLIGHTS } from "@stll/folio-core/controller/anonymizationHighlights";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
 import { isCanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
@@ -234,7 +235,6 @@ import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjec
 import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
@@ -657,6 +657,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       onEditorViewReady,
       onCanonicalHistory,
       onCanonicalHistoryDrop,
+      anonymizationTerms,
       onAnonymizationMatchesChange,
       onAnonymizationTermClick,
       selectedAnonymizationCanonical = null,
@@ -972,21 +973,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => createAICitationDecorationsPlugin(),
       [],
     );
-    // Workspace anonymization-term highlights. Always installed;
-    // renders nothing until the host pushes a term list via
-    // `setAnonymizationTermsMeta`.
-    // Keep plugin identity stable while publishing host callbacks after commit.
-    const [anonymizationCallback] = useState(() =>
-      createCallbackSlot(onAnonymizationMatchesChange),
-    );
-    useLayoutEffect(() => {
-      anonymizationCallback.commit(onAnonymizationMatchesChange);
-    });
-    const [anonymizationDecorationsPlugin] = useState(() =>
-      createAnonymizationDecorationsPlugin({
-        onMatchesChange: anonymizationCallback.invoke,
-      }),
-    );
     // Inline autocomplete. Always installed and idle by default;
     // becomes active only when the host pushes a `start` meta via
     // {@link startAutocompleteSuggestion}. The keymap option lets
@@ -1037,7 +1023,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
-        anonymizationDecorationsPlugin,
         ...(showTemplateDirectives
           ? [templateDirectivesPlugin, templateSlashMenu]
           : []),
@@ -1050,7 +1035,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
-        anonymizationDecorationsPlugin,
         showTemplateDirectives,
         templateDirectivesPlugin,
         templateSlashMenu,
@@ -4745,6 +4729,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             pagedEditorRef.current?.getPageNumberForPmPos(range.from) ?? null
           );
         },
+        getAnonymizationMatches: () =>
+          pagedEditorRef.current?.getEditor()?.getAnonymizationHighlights()
+            .matches ?? NO_ANONYMIZATION_HIGHLIGHTS.matches,
         getBlockRect: (blockId) =>
           pagedEditorRef.current?.getBlockRect(blockId) ?? null,
         getBlockRects: (blockIds) =>
@@ -6318,6 +6305,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             onContextMenu={handleContextMenu}
                             pageEndGutter={panelLayout.commentsGutter}
                             anchorPositionMode="comments"
+                            anonymizationTerms={anonymizationTerms}
+                            onAnonymizationMatchesChange={
+                              onAnonymizationMatchesChange
+                            }
                             onAnonymizationTermClick={onAnonymizationTermClick}
                             selectedAnonymizationCanonical={
                               selectedAnonymizationCanonical
