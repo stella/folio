@@ -51,6 +51,7 @@ import type {
 } from "../types/document";
 import { readModel } from "../types/documentModel";
 import { collectHeadings } from "../utils/headingCollector";
+import { prepareContentControlValue } from "./canonicalContentControlValue";
 
 const DEFAULT_TOC_PAGE_WIDTH_TWIPS = 12240;
 const DEFAULT_TOC_MARGIN_TWIPS = 1440;
@@ -322,6 +323,20 @@ export const prepareCanonicalCommands = (
   )
     return refuse(CELL_SELECTION_PLACEMENT_REFUSAL);
   const intents: EditorIntent[] = [];
+  const valueCommands = commands.filter(
+    (
+      command,
+    ): command is Extract<
+      CanonicalCommandIntent,
+      { type: "setContentControlValue" }
+    > => command.type === "setContentControlValue",
+  );
+  if (valueCommands.length > 0) {
+    const [valueCommand] = valueCommands;
+    if (valueCommand === undefined || commands.length !== 1)
+      return refuse("A content control's value must be set on its own.");
+    return prepareContentControlValue(session, state, valueCommand);
+  }
   const sectionCommands = commands.filter(
     (command) =>
       command.type === "setSectionBreak" ||
@@ -583,6 +598,8 @@ export const prepareCanonicalCommands = (
       case "insertNote":
       case "deleteNote":
         return panic("Note commands are prepared before editor intents.");
+      case "setContentControlValue":
+        return panic("Control values are prepared before editor intents.");
       case "formatRun": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;

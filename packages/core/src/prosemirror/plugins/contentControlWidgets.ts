@@ -21,11 +21,13 @@ import {
   ContentControlLockedError,
   ContentControlTypeError,
 } from "../../content-controls";
+import type { SetContentControlValueInput } from "../../content-controls";
 import { readPaintedContentControlKey } from "../../utils/paintedPositions";
 import {
   findBlockSdtMatch,
-  setContentControlValueTr,
+  setContentControlValueCommand,
 } from "../commands/contentControls";
+import { executeEditorCommand } from "../executeEditorCommand";
 import { createPluginKeyOwner } from "../pluginKeyOwner";
 import { selectLockedInlineControl } from "./lockedControlKeyHandling";
 
@@ -76,7 +78,7 @@ type ContentControlWidgetClickEvent = {
   target: unknown;
 };
 
-type ContentControlWidgetView = Pick<EditorView, "dispatch" | "state">;
+type ContentControlWidgetView = EditorView;
 
 type HandleContentControlWidgetClickOptions = {
   event: ContentControlWidgetClickEvent;
@@ -187,16 +189,16 @@ export const handleContentControlWidgetClick = ({
   try {
     if (sdtType === SDT_TYPE.checkbox) {
       const current = anchor.dataset[SDT_DATASET_KEY.checked] === "true";
-      const tr = setContentControlValueTr(
-        view.state,
-        { pmPos },
-        {
+      // The click is the checkbox's, applied or refused; a refused toggle
+      // has been reported by the command owner and changed nothing.
+      const handled = executeEditorCommand(
+        view,
+        setContentControlValueCommand(pmPos, {
           kind: SDT_TYPE.checkbox,
           checked: !current,
-        },
+        }),
       );
-      if (tr) {
-        view.dispatch(tr);
+      if (handled || findBlockSdtMatch(view.state.doc, { pmPos }) !== null) {
         event.preventDefault();
         return true;
       }
@@ -317,35 +319,28 @@ export function createContentControlWidgetsPlugin(
 
 /**
  * Stable resolver helpers exposed for the UI shell so a popover menu or
- * date picker can dispatch the same transaction the plugin would.
+ * date picker applies the same command the plugin would, through the view's
+ * command owner: a canonical session journals it, and reports a refusal.
  *
  * Both take the PM `pmPos` of the clicked SDT (from the widget event's
- * `pmPos` field) so the dispatch lands on the exact instance the user
- * interacted with — duplicate-tag SDTs are no longer ambiguous.
+ * `pmPos` field) so the change lands on the exact instance the user
+ * interacted with — duplicate-tag SDTs are no longer ambiguous. Each returns
+ * whether the value changed: `false` when the control is gone or the change
+ * was refused.
  */
-export function dispatchDropdownPick(
+const applyContentControlValue = (
   view: EditorView,
   pmPos: number,
-  value: string,
-): boolean {
-  const match = findBlockSdtMatch(view.state.doc, { pmPos });
-  if (!match) {
+  input: SetContentControlValueInput,
+): boolean => {
+  if (!findBlockSdtMatch(view.state.doc, { pmPos })) {
     return false;
   }
   try {
-    const tr = setContentControlValueTr(
-      view.state,
-      { pmPos },
-      {
-        kind: "dropdown",
-        value,
-      },
+    return executeEditorCommand(
+      view,
+      setContentControlValueCommand(pmPos, input),
     );
-    if (!tr) {
-      return false;
-    }
-    view.dispatch(tr);
-    return true;
   } catch (error) {
     // The click-time preflight should have caught lock refusals, but the
     // doc could have changed mid-picker (or the control turned out to be
@@ -360,6 +355,14 @@ export function dispatchDropdownPick(
     }
     throw error;
   }
+};
+
+export function dispatchDropdownPick(
+  view: EditorView,
+  pmPos: number,
+  value: string,
+): boolean {
+  return applyContentControlValue(view, pmPos, { kind: "dropdown", value });
 }
 
 export function dispatchDatePick(
@@ -367,30 +370,7 @@ export function dispatchDatePick(
   pmPos: number,
   date: string,
 ): boolean {
-  try {
-    const tr = setContentControlValueTr(
-      view.state,
-      { pmPos },
-      {
-        kind: "date",
-        date,
-      },
-    );
-    if (!tr) {
-      return false;
-    }
-    view.dispatch(tr);
-    return true;
-  } catch (error) {
-    if (
-      error instanceof ContentControlLockedError ||
-      error instanceof ContentControlTypeError ||
-      error instanceof ContentControlBoundError
-    ) {
-      return false;
-    }
-    throw error;
-  }
+  return applyContentControlValue(view, pmPos, { kind: "date", date });
 }
 
 /**

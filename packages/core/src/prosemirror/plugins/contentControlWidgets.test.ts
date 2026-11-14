@@ -74,7 +74,7 @@ const clickWidget = ({
   const events: ContentControlWidgetEvent[] = [];
   let prevented = false;
   const handled = handleContentControlWidgetClick({
-    view: viewLike(stateRef),
+    view: viewLike(stateRef) as EditorView,
     event: {
       target,
       preventDefault: () => {

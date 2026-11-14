@@ -284,6 +284,8 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     // A row's or cell's own revision sits outside every paragraph too.
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
+    // A block-level control's properties sit outside its paragraphs.
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return true;
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
