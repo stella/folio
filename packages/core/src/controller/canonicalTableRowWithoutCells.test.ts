@@ -83,16 +83,11 @@ type Mode = "direct" | "tracked-changes";
 
 type ParsedDocument = Awaited<ReturnType<typeof parseDocx>>;
 
-const viaCanonicalEngine = async (
-  source: ArrayBuffer,
-  mode: Mode,
-  prepare: (document: ParsedDocument) => void = () => undefined,
-) => {
+const viaCanonicalEngine = async (source: ArrayBuffer, mode: Mode) => {
   const document = await parseDocx(source.slice(0), {
     preloadFonts: false,
     detectVariables: false,
   });
-  prepare(document);
   const session = createCanonicalSession(
     document,
     document.package.styles,
@@ -154,8 +149,8 @@ describe.each(Object.entries(ROWS))(
 );
 
 /**
- * The check above notices the fallback cell-less rows used to get: one empty
- * cell across the grid, which saves a cell the file never had.
+ * The fallback cell-less rows used to get: one empty cell across the grid,
+ * whose paragraph no source paragraph accounts for.
  */
 const giveCellLessRowsAPlaceholder = (document: ParsedDocument) => {
   for (const block of document.package.document.content) {
@@ -172,16 +167,16 @@ const giveCellLessRowsAPlaceholder = (document: ParsedDocument) => {
 };
 
 test.each(["nothing at all", "only properties"] as const)(
-  "a row of %s given a placeholder cell saves a cell the file never had",
+  "a row of %s given the old placeholder cell keeps the session from opening",
   async (name) => {
-    const source = await docx(ROWS[name]);
-    const canonical = await viaCanonicalEngine(
-      source,
-      "direct",
-      giveCellLessRowsAPlaceholder,
+    const document = await parseDocx((await docx(ROWS[name])).slice(0), {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    giveCellLessRowsAPlaceholder(document);
+    const session = createCanonicalSession(document, document.package.styles);
+    expect(session.isErr() ? session.error.message : "opened").toBe(
+      "The projection changed paragraph structure.",
     );
-    const rows = await savedRows(canonical.bytes);
-    expect(rows[1]?.cells).toBe(1);
-    expect(rows[1]).not.toEqual((await savedRows(source))[1]);
   },
 );
