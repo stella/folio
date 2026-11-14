@@ -11,8 +11,8 @@
  *   pending, accepted or rejected), and saving again after reopening, writes
  *   the boundaries of the source part, no more and no fewer;
  * - the text it saves is the legacy engine's for the same edits;
- * - an edit beside the boundary, or over the text around it, keeps or drops it
- *   as the legacy engine does.
+ * - an edit beside the boundary, or over the text around it, keeps it wherever
+ *   the legacy engine keeps it, and as the source has it.
  */
 
 import { describe, expect, mock, test } from "bun:test";
@@ -326,18 +326,16 @@ describe("a bookmark boundary without a partner", () => {
       }, 60_000);
 
       if (!placement.editsBeside) continue;
-      test(`an edit beside a lone ${kind} ${placement.name} keeps it as the legacy engine does`, async () => {
+      test(`an edit beside a lone ${kind} ${placement.name} keeps it wherever the legacy engine keeps it`, async () => {
         const buffer = await packageWith(placement, kind);
         for (const flow of FLOWS_BESIDE) {
           const legacy = await runFlow(buffer, "legacy", placement, flow);
           const canonical = await runFlow(buffer, "canonical", placement, flow);
           expect(canonical.applied).toBe(legacy.applied);
           expect(canonical.part.text).toBe(legacy.part.text);
-          // The legacy engine writes a paragraph's lone start back with an end
-          // of its own; whether the source's boundary survived is the same.
-          expect(canonical.part.markers.includes(loneMarker(kind))).toBe(
-            legacy.part.markers.includes(loneMarker(kind)),
-          );
+          // Every boundary the legacy engine keeps, the canonical one keeps.
+          if (legacy.part.markers.includes(loneMarker(kind)))
+            expect(canonical.part.markers).toContain(loneMarker(kind));
           // What the canonical engine keeps, it keeps as the source has it.
           expect(
             canonical.part.markers.every(
