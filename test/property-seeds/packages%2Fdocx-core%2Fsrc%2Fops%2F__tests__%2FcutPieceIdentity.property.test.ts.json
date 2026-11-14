@@ -1,6 +1,18 @@
 {
   "a replacement keeps the id of another reviewer's record it cuts, in every resolution order": [
     {
+      "seed": -1029407963,
+      "path": "2:0:0:0:2:2:2:2",
+      "note": "debug",
+      "date": "2026-11-14"
+    },
+    {
+      "seed": -1134467811,
+      "path": "5:0:0:0:2:2:2:2",
+      "note": "debug",
+      "date": "2026-11-14"
+    },
+    {
       "seed": -778714905,
       "path": "0:0:0:2:2:2:2:2:2:2",
       "note": "A replacement of a record's first character with paragraphs, rejected change by change, joins the record's pieces again across the paragraphs it inserted.",
