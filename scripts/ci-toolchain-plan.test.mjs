@@ -350,16 +350,16 @@ describe("shared toolchain CI selection", () => {
 
 describe("required shared toolchain policy", () => {
   // Its dated exceptions expire on a date, so it runs beside lint.
-  const policy = workflow.jobs["dated-policies"];
+  const policyJob = workflow.jobs["dated-policies"];
   const evaluation = workflow.jobs["ci-result"].steps.find(
     (step) => step.name === "Evaluate CI outcome",
   );
 
   test("the dated policy job runs the policy without error tolerance unless CI is reused", () => {
-    expect(policy.needs).toBe("ci-plan");
-    expect(policy.if).toBe("needs.ci-plan.outputs.reused_run == ''");
-    expect(policy["continue-on-error"]).toBeUndefined();
-    const guards = policy.steps.filter(
+    expect(policyJob.needs).toBe("ci-plan");
+    expect(policyJob.if).toBe("needs.ci-plan.outputs.reused_run == ''");
+    expect(policyJob["continue-on-error"]).toBeUndefined();
+    const guards = policyJob.steps.filter(
       (step) => step.run === "bun run check:toolchain",
     );
     expect(guards).toEqual([

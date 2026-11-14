@@ -32,7 +32,7 @@ const ROOT = path.resolve(import.meta.dir, "..");
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TOOLCHAIN_FILE = "stll-toolchain.json";
 /** Fields that name a toolchain entry, in the order they are tried. */
-const NAME_FIELDS = ["pin", "path", "dependency", "name", "package", "rule"];
+const NAME_FIELDS = ["path", "pin", "dependency", "name", "package", "rule"];
 
 export type DatedException = {
   /** The file that declares it, repo-relative. */
