@@ -12,6 +12,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
@@ -22,7 +23,6 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 
 const NS =
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
