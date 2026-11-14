@@ -14,6 +14,7 @@
       v-if="surface === 'rail'"
       type="button"
       class="folio-outline-icon-button"
+      :style="controlMinimumStyle"
       data-testid="folio-outline-expand"
       :aria-label="outlineLabel"
       :aria-expanded="expanded"
@@ -29,6 +30,7 @@
           v-if="surface === 'expanded'"
           type="button"
           class="folio-outline-icon-button"
+          :style="controlMinimumStyle"
           :aria-label="t('common.closeDialog')"
           :title="t('common.closeDialog')"
           @click="emit('close')"
@@ -127,6 +129,11 @@ const onDepthChange = (event: Event) => {
     return;
   }
   emit("outlineDepthChange", value === "3" ? 3 : 2);
+};
+// Every shared panel control keeps the minimum target size, as in React.
+const controlMinimumStyle = {
+  minWidth: `${String(PANEL_METRICS.controlMinimumSize)}px`,
+  minHeight: `${String(PANEL_METRICS.controlMinimumSize)}px`,
 };
 const surfaceWidth = computed(
   () => props.width ?? SURFACE_WIDTH[props.surface],
