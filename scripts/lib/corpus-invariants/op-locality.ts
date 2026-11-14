@@ -53,6 +53,7 @@ import {
   type CorpusInvariantInput,
   type CorpusInvariantOutcome,
   EXTENDED_CORPUS_INVARIANTS,
+  invariantBudgetClock,
   timeStage,
 } from "./contract";
 import { opErrorOutcome } from "./op-outcome";
@@ -1017,11 +1018,17 @@ export const runOpLocalityInvariant = async (
   const outcome = await timeStage(timings, "sequences", () =>
     Result.tryPromise({
       try: async () => {
+        const clock = invariantBudgetClock(input.budgetMs);
         const document = await prepareOpDocument(input);
         const seed = seedFromBytes(input.bytes);
         const failures: string[] = [];
         const control = await serializedOpParts(document);
-        for (const salt of OP_SEQUENCE_SEEDS) {
+        const stopped = (sequences: number) => ({
+          failures: [...new Set(failures)],
+          stoppedAfter: `${sequences} of ${OP_SEQUENCE_SEEDS.length} sequences`,
+        });
+        for (const [sequenceIndex, salt] of OP_SEQUENCE_SEEDS.entries()) {
+          if (clock.spent()) return stopped(sequenceIndex);
           const sequence = generateOpSequence(document, seed ^ salt);
           failures.push(
             ...sequence.mutations.map(
@@ -1038,6 +1045,7 @@ export const runOpLocalityInvariant = async (
           });
           let classified = false;
           for (const step of sequence.steps) {
+            if (clock.spent()) return stopped(sequenceIndex);
             const modelFailures = localityStepFailures(step);
             if (compoundFailures.length === 0 && modelFailures.length === 0)
               continue;
@@ -1073,7 +1081,7 @@ export const runOpLocalityInvariant = async (
                 ),
               );
         }
-        return [...new Set(failures)];
+        return { failures: [...new Set(failures)], stoppedAfter: undefined };
       },
       catch: (cause: unknown) => cause,
     }),
@@ -1084,11 +1092,15 @@ export const runOpLocalityInvariant = async (
       error: outcome.error,
       timings,
     });
-  return {
-    status: "evaluated",
-    timings,
-    failures: outcome.value.map((message) =>
-      failureFromAssertion(INVARIANT, message),
-    ),
-  };
+  const failures = outcome.value.failures.map((message) =>
+    failureFromAssertion(INVARIANT, message),
+  );
+  return outcome.value.stoppedAfter === undefined
+    ? { status: "evaluated", timings, failures }
+    : {
+        status: "budget-stopped",
+        timings,
+        failures,
+        checked: outcome.value.stoppedAfter,
+      };
 };
