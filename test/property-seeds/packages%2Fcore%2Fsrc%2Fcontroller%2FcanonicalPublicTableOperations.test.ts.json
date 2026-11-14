@@ -1,0 +1,10 @@
+{
+  "table structure operations in the canonical session give the default engine's package": [
+    {
+      "seed": 561990721,
+      "path": "0:1:1",
+      "note": "A tracked deletion of a table with a vertical merge gives the default engine's tables once resolved; pending cell text inside a deletion counts as the cell's text.",
+      "date": "2026-11-14"
+    }
+  ]
+}

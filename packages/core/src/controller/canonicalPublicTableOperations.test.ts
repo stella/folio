@@ -146,21 +146,34 @@ const OPERATIONS = {
 
 type Mode = "direct" | "tracked-changes";
 
+/**
+ * A paragraph's words, those a pending change holds included: a pending
+ * table is compared by its structure and text, and the changes themselves
+ * by what accepting and rejecting them give.
+ */
+const wordsOf = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.flatMap(wordsOf);
+  if (typeof value !== "object" || value === null) return [];
+  const type: unknown = Reflect.get(value, "type");
+  if (type === "text") {
+    const text: unknown = Reflect.get(value, "text");
+    return typeof text === "string" ? [text] : [];
+  }
+  if (type === "run") return wordsOf(Reflect.get(value, "content"));
+  if (
+    type === "insertion" ||
+    type === "deletion" ||
+    type === "moveFrom" ||
+    type === "moveTo"
+  )
+    return wordsOf(Reflect.get(value, "content"));
+  if (type === "hyperlink") return wordsOf(Reflect.get(value, "children"));
+  return [];
+};
+
 const textOf = (blocks: readonly BlockContent[]): string[] =>
   blocks.flatMap((block) =>
-    block.type === "paragraph"
-      ? [
-          block.content
-            .flatMap((item) =>
-              item.type === "run"
-                ? item.content.flatMap((leaf) =>
-                    leaf.type === "text" ? [leaf.text] : [],
-                  )
-                : [],
-            )
-            .join(""),
-        ]
-      : [],
+    block.type === "paragraph" ? [wordsOf(block.content).join("")] : [],
   );
 
 const cellShape = (tableCell: TableCell) => ({
