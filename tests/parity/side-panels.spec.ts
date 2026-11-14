@@ -116,9 +116,10 @@ forEachAdapter(
           ),
       )
       .toBeGreaterThan(1000);
+    // The comments become a drawer before the outline gives up its rail.
     const expected = {
       tier: "narrow",
-      outline: "column",
+      outline: "rail",
       comments: "drawer",
     } as const;
     await expect.poll(() => readPanelState(page)).toEqual(expected);

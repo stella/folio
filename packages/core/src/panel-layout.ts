@@ -162,3 +162,27 @@ export const computePanelLayout = (input: PanelLayoutInput): PanelLayout => {
 
 /** Which drawer is open over the page: at most one at a time. */
 export type PanelOverlay = "none" | "outline" | "comments";
+
+/**
+ * The outline presentation a layout is asked for: an opened outline takes a
+ * track of its own beside the page rather than a drawer over it.
+ */
+export const requestedOutline = (
+  overlay: PanelOverlay,
+  outline: PanelLayoutInput["outline"],
+): PanelLayoutInput["outline"] =>
+  overlay === "outline" && outline !== "absent" ? "expanded" : outline;
+
+/** An overlay stays open only while its panel is still opened by it. */
+export const overlayAfterLayout = (
+  overlay: PanelOverlay,
+  layout: Pick<PanelLayout, "outline" | "comments">,
+): PanelOverlay => {
+  if (
+    overlay === "outline" &&
+    (layout.outline === "none" || layout.outline === "column")
+  )
+    return "none";
+  if (overlay === "comments" && layout.comments !== "drawer") return "none";
+  return overlay;
+};
