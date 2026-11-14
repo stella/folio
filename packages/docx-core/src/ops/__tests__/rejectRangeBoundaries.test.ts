@@ -351,6 +351,55 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
   });
 });
 
+describe("a tracked insertion records every copy of a boundary it adds", () => {
+  const ab = (): ParagraphContent[] => [
+    { type: "run", content: [{ type: "text", text: "ab" }] },
+  ];
+  const boundaries = (document: Document) =>
+    firstParagraph(document).filter(({ type }) => type !== "run");
+
+  test("a slice holding a bookmark twice adds the second as a copy, so rejecting keeps one", () => {
+    const link = (): ParagraphContent => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [{ type: "bookmarkStart", id: 4, name: "_Link" }],
+    });
+    const tracked = insertAt(documentWith(ab()), [link(), link()], 1);
+    expect(
+      JSON.stringify(firstParagraph(tracked)).match(/copyOriginAncestors/gu),
+    ).toHaveLength(1);
+    expect(boundaries(rejectAll(tracked, [3]))).toEqual([
+      { type: "bookmarkStart", id: 4, name: "_Link" },
+    ]);
+  });
+
+  test("a slice holding a whole range whose start the story holds copies both halves", () => {
+    const base = documentWith([
+      { type: "bookmarkStart", id: 7, name: "_Ref7" },
+      ...ab(),
+    ]);
+    const tracked = insertAt(
+      base,
+      [
+        { type: "bookmarkStart", id: 7, name: "_Ref7" },
+        { type: "run", content: [{ type: "text", text: "x" }] },
+        { type: "bookmarkEnd", id: 7 },
+      ],
+      1,
+    );
+    expect(
+      JSON.stringify(firstParagraph(tracked)).match(/copyOriginAncestors/gu),
+    ).toHaveLength(2);
+    // Rejecting takes the whole copied range away and gives the paragraph back.
+    const rejected = rejectAll(tracked, [3]);
+    expect(boundaries(rejected)).toEqual([
+      { type: "bookmarkStart", id: 7, name: "_Ref7" },
+    ]);
+    expect(JSON.stringify(rejected)).not.toContain('"x"');
+  });
+});
+
 describe("a join places a kept boundary only inside the pieces it merges", () => {
   // A paragraph split inside an insertion, its pieces either side of the
   // inserted mark, and a content control after the right piece.

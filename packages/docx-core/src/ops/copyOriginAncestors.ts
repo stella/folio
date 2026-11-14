@@ -84,19 +84,65 @@ export const isTrackedRunContent = (
 export const copyOriginBoundaryKey = (node: InlineNode): string | undefined =>
   isCopyOriginBoundary(node) ? `${node.type}:${node.id}` : undefined;
 
+/** The other half of a boundary's range: a start's end, an end's start. */
+const PARTNER_TYPES = {
+  bookmarkStart: "bookmarkEnd",
+  bookmarkEnd: "bookmarkStart",
+  moveFromRangeStart: "moveFromRangeEnd",
+  moveFromRangeEnd: "moveFromRangeStart",
+  moveToRangeStart: "moveToRangeEnd",
+  moveToRangeEnd: "moveToRangeStart",
+} as const satisfies Record<CopyOriginBoundary["type"], string>;
+
+const partnerKeyOf = (node: InlineNode): string | undefined =>
+  isCopyOriginBoundary(node)
+    ? `${PARTNER_TYPES[node.type]}:${node.id}`
+    : undefined;
+
+/**
+ * The incoming content with each copied boundary cloned and recorded as a
+ * copy. A boundary is copied when the story already holds it, when the
+ * content holds it earlier itself, or when the content holds its whole range
+ * and the story holds the other half: a range is copied whole. Only the first
+ * occurrence of a boundary is the boundary, so rejecting the insertion keeps
+ * that one and takes every copy away.
+ */
 export const cloneIncomingCopyBoundaries = (
   nodes: readonly ParagraphContent[],
   existingBoundaryKeys: ReadonlySet<string>,
 ): { content: ParagraphContent[]; copiedBoundaries: Set<InlineNode> } => {
   const copiedBoundaries = new Set<InlineNode>();
+  const held = new Set(existingBoundaryKeys);
+  const incoming = new Set<string>();
+  const collect = (current: readonly InlineNode[]): void => {
+    for (const node of current) {
+      const key = copyOriginBoundaryKey(node);
+      if (key !== undefined) incoming.add(key);
+      collect(childNodes(node) ?? []);
+    }
+  };
+  collect(nodes);
+  const copiedRange = (node: InlineNode): boolean => {
+    const partner = partnerKeyOf(node);
+    return (
+      partner !== undefined &&
+      incoming.has(partner) &&
+      existingBoundaryKeys.has(partner)
+    );
+  };
   const visit = (current: readonly InlineNode[]): InlineNode[] => {
     const out: InlineNode[] = [];
     for (const node of current) {
       const key = copyOriginBoundaryKey(node);
-      if (key !== undefined && existingBoundaryKeys.has(key)) {
+      if (key !== undefined && (held.has(key) || copiedRange(node))) {
         const copy = { ...node };
         copiedBoundaries.add(copy);
         out.push(copy);
+        continue;
+      }
+      if (key !== undefined) {
+        held.add(key);
+        out.push(node);
         continue;
       }
       const children = childNodes(node);
