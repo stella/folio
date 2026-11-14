@@ -57,6 +57,7 @@ import { isInlineInsertion, sameParagraph } from "../points";
 import { isBlockScoped } from "../scope";
 import { type BatchSubmission, createSequencer } from "../sequencer";
 import * as trackedTransform from "../trackedTransform";
+import * as transformModule from "../transform";
 import { transformBatch } from "../transform";
 import {
   canonicalBase,
@@ -1453,6 +1454,47 @@ describe("canonical sequencing", () => {
       expect(counts.resubmitted).toBeGreaterThan(0);
     },
     propertyTestTimeout(180_000),
+  );
+
+  test(
+    "a client that drops every batch after a dropped one is caught",
+    async () => {
+      // The test-only break: no pending batch rebases over its own actor's
+      // batch, which only a dropped batch's inverse is, so a drop takes
+      // every later pending batch with it.
+      const original = { ...transformModule };
+      mock.module("../transform", () => ({
+        ...original,
+        transformBatch: (
+          ...args: Parameters<typeof original.transformBatch>
+        ) => {
+          const [batch, over] = args;
+          return over.some(({ actor }) => actor === batch.actor)
+            ? Result.err(
+                new envelope.BatchRejection({
+                  reason: BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+                  message: "Break: no rebase over an own batch.",
+                }),
+              )
+            : original.transformBatch(...args);
+        },
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: 1,
+            examples: [[independentAfterDropped]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+      } finally {
+        mock.module("../transform", () => original);
+      }
+    },
+    propertyTestTimeout(60_000),
   );
 
   test("a pending batch dropped while rebasing takes only the batches that depend on it", () => {
