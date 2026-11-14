@@ -1,4 +1,5 @@
 import { Result } from "better-result";
+import { appendFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -711,8 +712,56 @@ export const localityStepFailures = ({
       originalUntouched.package.document.content,
       editedUntouched.package.document.content,
     )
-  )
+  ) {
     failures.push(`${op.type} changed an untouched block or container`);
+    const firstDiff = (
+      a: unknown,
+      b: unknown,
+      at: string,
+    ): string | undefined => {
+      if (sameOpModel(a, b)) return undefined;
+      if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) {
+          for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
+            const inner = firstDiff(a[i], b[i], `${at}[${String(i)}]`);
+            if (inner !== undefined)
+              return `${inner} (len ${String(a.length)}->${String(b.length)})`;
+          }
+          return `${at} len ${String(a.length)}->${String(b.length)} tail=${JSON.stringify(a.length > b.length ? a.slice(b.length) : b.slice(a.length)).slice(0, 600)}`;
+        }
+        for (let i = 0; i < a.length; i += 1) {
+          const inner = firstDiff(a[i], b[i], `${at}[${String(i)}]`);
+          if (inner !== undefined) return inner;
+        }
+        return `${at} (array equal elementwise)`;
+      }
+      if (
+        a !== null &&
+        b !== null &&
+        typeof a === "object" &&
+        typeof b === "object"
+      ) {
+        const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+        for (const key of keys) {
+          const inner = firstDiff(
+            (a as Record<string, unknown>)[key],
+            (b as Record<string, unknown>)[key],
+            `${at}.${key}`,
+          );
+          if (inner !== undefined) {
+            const t = (a as Record<string, unknown>)["type"];
+            return typeof t === "string" ? `${inner} <in ${t}>` : inner;
+          }
+        }
+        return `${at} (object equal by keys)`;
+      }
+      return `${at} ${JSON.stringify(a)?.slice(0, 400)} -> ${JSON.stringify(b)?.slice(0, 400)}`;
+    };
+    appendFileSync(
+      process.env["DIAG_OUT"] ?? "/tmp/diag.txt",
+      `DIAG CONTAINER op=${JSON.stringify(op).slice(0, 300)} diff=${firstDiff(originalUntouched.package.document.content, editedUntouched.package.document.content, "content")}\n`,
+    );
+  }
   if (
     serializeOpDocument(originalUntouched) !==
     serializeOpDocument(editedUntouched)
