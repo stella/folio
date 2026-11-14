@@ -85,6 +85,7 @@ import {
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
+import { findPageNumberAtEditorPosition } from "@stll/folio-core/layout-engine/pmPageIndex";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
 import {
   DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
@@ -4770,13 +4771,16 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   doc: view.state.doc,
                   snapshot,
                 });
-          if (range === null) {
+          const layout =
+            pagedEditorRef.current?.getEditor()?.getLayout() ?? null;
+          if (range === null || layout === null) {
             return null;
           }
-          return (
-            pagedEditorRef.current?.getPageNumberForPmPos(range.from) ?? null
-          );
+          return findPageNumberAtEditorPosition(layout, range.from);
         },
+        getPositionPage: (position) =>
+          pagedEditorRef.current?.getEditor()?.getPositionPage(position) ??
+          null,
         getBlockRect: (blockId) =>
           pagedEditorRef.current?.getBlockRect(blockId) ?? null,
         getBlockRects: (blockIds) =>

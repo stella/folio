@@ -11,12 +11,15 @@ import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { OP_STORIES } from '@stll/docx-core/ops';
+import { OpStory } from '@stll/docx-core/ops';
 import { ParagraphMarkChangeKind } from '@stll/docx-core/model';
 import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
 import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
+import { TextPosition } from '@stll/docx-core/ops';
 import { Transaction } from 'prosemirror-state';
 
 // @public (undocumented)
@@ -1863,6 +1866,10 @@ export function mergeDocumentContent(target: import__stll_docx_core_model.Docume
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
 
+export { OP_STORIES }
+
+export { OpStory }
+
 // @public
 export type OutlineDepth = 2 | 3 | "all";
 
@@ -2013,6 +2020,8 @@ export type TemplateSlashMenuState = {
     to: number;
     query: string;
 };
+
+export { TextPosition }
 
 // @public
 export function toMarkdown(doc: import__stll_docx_core_model.Document, opts?: MarkdownOptions): string;
