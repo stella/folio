@@ -63,6 +63,12 @@ const SAMPLES: readonly RunContent[] = Object.values(LEAVES);
 const BLOCK = "00000001";
 
 /**
+ * The footnote a run holding a note's own mark lies in: not the note the
+ * sampled note references name, which a deletion of one would remove.
+ */
+const NOTE = 9;
+
+/**
  * Where the run lies: in the body, or in a footnote when it holds a note's
  * own reference mark, which the contract keeps to its note's story.
  */
@@ -80,13 +86,13 @@ const placeOf = (
       document: { package: { document: { content: [paragraph] } } },
     };
   return {
-    story: { kind: "footnote", id: 1 },
+    story: { kind: "footnote", id: NOTE },
     document: {
       package: {
         document: {
           content: [{ type: "paragraph", paraId: "0000000F", content: [] }],
         },
-        footnotes: [{ type: "footnote", id: 1, content: [paragraph] }],
+        footnotes: [{ type: "footnote", id: NOTE, content: [paragraph] }],
       },
     },
   };
@@ -227,6 +233,21 @@ const EXAMPLES: [Scenario][] = [
       formatFrom: { offset: 2, zeroWidthBefore: 0 },
       formatTo: { offset: 3, zeroWidthBefore: 0 },
       deleteTo: { offset: 3, zeroWidthBefore: 0 },
+    },
+  ],
+  // A deletion of a note reference inside another note's paragraph.
+  [
+    {
+      content: [
+        LEAVES.noteMarker,
+        { type: "text", text: "fgh" },
+        LEAVES.footnoteRef,
+        { type: "text", text: "ab" },
+      ],
+      deleteFrom: { offset: 0, zeroWidthBefore: 1 },
+      formatFrom: { offset: 0, zeroWidthBefore: 1 },
+      formatTo: { offset: 3, zeroWidthBefore: 0 },
+      deleteTo: { offset: 5, zeroWidthBefore: 0 },
     },
   ],
   // A format and a deletion of all the text, a note's mark right after it.
