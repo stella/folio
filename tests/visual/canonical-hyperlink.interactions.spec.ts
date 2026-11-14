@@ -223,12 +223,14 @@ for (const { adapter, port } of [
         globalThis.__folioCanonical?.setMode("suggesting"),
       ),
     ).toBe(true);
-    const refusalActions = [
+    // A suggestion strikes the linked text and inserts its changed copy;
+    // undo takes back each one whole.
+    const suggestedActions = [
       {
         type: "setHyperlink",
         from: 6,
         to: 10,
-        href: "https://refused.example/path",
+        href: "https://suggested.example/path",
       },
       { type: "removeHyperlink", from: 6, to: 10 },
       {
@@ -236,34 +238,32 @@ for (const { adapter, port } of [
         from: 6,
         to: 10,
         text: "Replacement",
-        href: "https://refused.example/path",
+        href: "https://suggested.example/path",
       },
     ] as const satisfies readonly CanonicalHyperlinkAction[];
-    for (const action of refusalActions) {
+    for (const action of suggestedActions) {
       await select({ page, from: action.from, to: action.to });
       await page.evaluate(() => {
         globalThis.__folioCanonicalFuzzErrors = [];
       });
-      const beforeRefusal = await waitForProjection(page);
-      expect(await execute(page, action)).toBe(false);
-      const refused = await waitForProjection(page);
-      expect(refused.document).toEqual(beforeRefusal.document);
-      expect(refused.projectionJSON).toEqual(beforeRefusal.projectionJSON);
-      expect(refused.selectionJSON).toEqual(beforeRefusal.selectionJSON);
-      expect(refused.canUndo).toBe(beforeRefusal.canUndo);
-      expect(refused.canRedo).toBe(beforeRefusal.canRedo);
+      const beforeSuggestion = await waitForProjection(page);
+      const suggested = await expectCommandUndoRedo({
+        page,
+        action,
+        before: beforeSuggestion,
+      });
+      expect(suggested.document).not.toEqual(beforeSuggestion.document);
       if (adapter === "React") {
         expect(
           await page.evaluate(() =>
             globalThis.__folioCanonicalFuzzErrors?.splice(0),
           ),
-        ).toEqual([
-          expect.objectContaining({
-            type: "CanonicalSessionRefusalError",
-            gap: "tracked-hyperlink-resolution",
-          }),
-        ]);
+        ).toEqual([]);
       }
+      await page.keyboard.press(`${MODIFIER}+z`);
+      expect((await waitForProjection(page)).document).toEqual(
+        beforeSuggestion.document,
+      );
     }
   });
 }
