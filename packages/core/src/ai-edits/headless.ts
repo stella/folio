@@ -52,6 +52,7 @@ import {
   matchInlineAtoms,
   type MatchInlineAtomsOptions,
 } from "../compare/inline-atoms";
+import { matchInlineAtomsOnModel } from "../compare/inline-atoms-model";
 import {
   type InlineProvenanceTargetOptions,
   matchInlineProvenance,
@@ -2068,7 +2069,45 @@ export class FolioDocxReviewer {
       stageTargetStyles: (options) => this.stageTargetStyles(options),
       createComparisonHeaderFooter: (source, story) =>
         this.createComparisonHeaderFooter(source, story),
-      matchInlineAtoms: () => refuse("match inline atoms"),
+      matchInlineAtoms: ({
+        story,
+        targetReviewer,
+        targetStory,
+        targetSnapshot,
+        noteReferenceLabels,
+        ...options
+      }) => {
+        if (
+          this.engine.type !== "canonical" ||
+          targetReviewer.engine.type !== "canonical"
+        )
+          return refuse("match inline atoms against a legacy target");
+        const result = matchInlineAtomsOnModel({
+          ...options,
+          document: this.engine.session.document,
+          story: canonicalOpStory(story),
+          target: {
+            document: targetReviewer.engine.session.document,
+            story: canonicalOpStory(targetStory),
+            snapshot: targetSnapshot,
+          },
+          noteReferenceLabels:
+            noteReferenceLabels ??
+            refuse("match inline atoms without the comparison's note labels"),
+          author: this.author,
+        });
+        if (result.status !== "matched") return result;
+        // The whole batch is one session commit; a refusal throws.
+        if (result.operations.length > 0)
+          this.commitOpsOnSession(result.operations);
+        return {
+          status: "matched",
+          nextRevisionId: result.nextRevisionId,
+          changedTargetBlockIds: result.changedTargetBlockIds,
+          rangeCount: result.rangeCount,
+          documentChanged: result.operations.length > 0,
+        };
+      },
       matchInlineProvenance: () => refuse("match inline provenance"),
       projectStories: (mode) => this.projectComparisonStoriesOnSession(mode),
       snapshotReviewedStory: (options) =>
