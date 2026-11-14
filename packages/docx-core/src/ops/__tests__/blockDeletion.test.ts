@@ -143,6 +143,60 @@ test("interior deletion preserves the following object and reports physical chan
   });
 });
 
+test.each([
+  [
+    "a bookmark the deleted paragraph holds",
+    [
+      { type: "bookmarkStart", id: 0, name: "_GoBack" },
+      { type: "bookmarkEnd", id: 0 },
+    ],
+    [],
+  ],
+  [
+    "the start of a bookmark ending in the paragraph after it",
+    [{ type: "bookmarkStart", id: 3, name: "_Ref3" }],
+    [{ type: "bookmarkEnd", id: 3 }],
+  ],
+] as const)(
+  "direct deletion of a paragraph holding %s declares the paragraph that takes it",
+  (_shape, inDeleted, inFollowing) => {
+    const before = paragraph("00000001", "before");
+    const removed: Paragraph = {
+      type: "paragraph",
+      paraId: "00000002",
+      content: [
+        ...inDeleted,
+        { type: "run", content: [{ type: "text", text: "remove" }] },
+      ],
+    };
+    const following: Paragraph = {
+      type: "paragraph",
+      paraId: "00000003",
+      content: [
+        ...inFollowing,
+        { type: "run", content: [{ type: "text", text: "keep" }] },
+      ],
+    };
+    const after = paragraph("00000004", "after");
+    const { direct } = assertLaws(
+      documentOf([before, removed, following, after]),
+      deletion([removed.paraId ?? ""]),
+    );
+    const content = direct.document.package.document.content;
+    expect(content.at(0)).toBe(before);
+    expect(content.at(-1)).toBe(after);
+    expect(content.at(1)).toStrictEqual({
+      ...following,
+      content: [...inDeleted, ...following.content],
+    });
+    expect(direct.touched).toEqual({
+      modified: [following.paraId],
+      inserted: [],
+      removed: [removed.paraId],
+    });
+  },
+);
+
 test("inverse restores a retired comment whose surviving anchors followed the deleted block", () => {
   const removed: Paragraph = {
     ...paragraph("00000001", "remove"),
