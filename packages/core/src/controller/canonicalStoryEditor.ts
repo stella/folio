@@ -12,7 +12,10 @@ import {
   CANONICAL_GAP,
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
-import { createCanonicalInputBoundary } from "./canonicalInput";
+import {
+  createCanonicalInputBoundary,
+  unclassifiedMutationMessage,
+} from "./canonicalInput";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 
 type CanonicalStoryEditorOptions = {
@@ -142,7 +145,12 @@ export const createCanonicalStoryEditor = ({
         getApi()?.updateCanonicalInputLifecycle("breakUndoGroup");
       const applied = view.state.applyTransaction(transaction);
       if (!applied.state.doc.eq(view.state.doc)) {
-        refuse("A plugin attempted an unclassified canonical story mutation.");
+        refuse(
+          unclassifiedMutationMessage(
+            applied.transactions,
+            "A plugin attempted an unclassified canonical story mutation.",
+          ),
+        );
         view.updateState(view.state);
         return true;
       }
