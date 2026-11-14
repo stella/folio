@@ -91,7 +91,7 @@ export class RemoteSelectionOverlay {
           RANGE_CLASS,
           zIndex,
         );
-        element.dataset["clientId"] = String(selection.clientId);
+        element.dataset["peer"] = selection.peer;
         element.style.background = `color-mix(in srgb, ${selection.color} 24%, transparent)`;
         setBox(element, rect);
         pagesContainer.appendChild(element);
@@ -106,7 +106,7 @@ export class RemoteSelectionOverlay {
         CARET_CLASS,
         zIndex + 1,
       );
-      caretElement.dataset["clientId"] = String(selection.clientId);
+      caretElement.dataset["peer"] = selection.peer;
       // `backgroundColor` (unlike the `background` shorthand) only accepts a
       // <color> value, so a collaborator color that somehow carries a CSS
       // `url(...)` payload can't be turned into a background-image beacon.
@@ -119,7 +119,7 @@ export class RemoteSelectionOverlay {
         LABEL_CLASS,
         zIndex + 2,
       );
-      label.dataset["clientId"] = String(selection.clientId);
+      label.dataset["peer"] = selection.peer;
       label.textContent = selection.name;
       label.style.backgroundColor = selection.color;
       label.style.color = "var(--background, #fff)";
