@@ -287,6 +287,11 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
       fc.boolean(),
       fc.array(inputArbitrary, { minLength: 3, maxLength: 9 }),
       async (bookmarks, inputs) => {
+        const diag =
+          inputs[0]?.left === 210726530 || inputs[0]?.left === 261132902;
+        const log = (entry: unknown) => {
+          if (diag) console.log(`GI3DIAG ${JSON.stringify(entry)}`);
+        };
         for (const mode of [
           { type: "editing" },
           { type: "suggesting", author: "Reviewer" },
@@ -361,6 +366,19 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
             expect(state.storedMarks).toBe(marks);
             session.breakUndoGroup();
             const prepared = prepareCanonicalCommands(session, state, intents);
+            log({
+              mode: mode.type,
+              step: index,
+              name,
+              left,
+              right,
+              text,
+              intents,
+              beforeSelection,
+              prepared: prepared.isErr()
+                ? prepared.error.message
+                : prepared.value.selection,
+            });
             if (prepared.isErr()) {
               if (
                 mode.type === "editing" &&
@@ -389,6 +407,14 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
             // so only an edit made directly leaves the selection in place.
             if (name !== "insertHyperlink" && mode.type === "editing")
               expect(state.selection.toJSON()).toEqual(beforeSelection);
+            log({
+              published: state.selection.toJSON(),
+              shownAddress: session.projection
+                .selectionAt(state)
+                .unwrapOr(null),
+              text: session.projection.paragraph("12345678")?.text,
+              doc: state.doc.toJSON(),
+            });
             history.push({
               before,
               after: session.document,
@@ -407,6 +433,11 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
               state,
               commit: session.prepareUndo(state).unwrap(),
             }).unwrap().state;
+            log({
+              undo: state.selection.toJSON(),
+              expected: entry.beforeSelection,
+              documentEqual: Bun.deepEquals(session.document, entry.before),
+            });
             expect(session.document).toStrictEqual(entry.before);
             expect(state.selection.toJSON()).toEqual(entry.beforeSelection);
           }
@@ -417,6 +448,11 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
               state,
               commit: session.prepareRedo(state).unwrap(),
             }).unwrap().state;
+            log({
+              redo: state.selection.toJSON(),
+              expected: entry.afterSelection,
+              documentEqual: Bun.deepEquals(session.document, entry.after),
+            });
             expect(session.document).toStrictEqual(entry.after);
             expect(state.selection.toJSON()).toEqual(entry.afterSelection);
           }
