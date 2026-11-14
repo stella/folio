@@ -575,6 +575,8 @@ jobs:
           # A pull request builds its merge with the current base, and the
           # event's base SHA can trail that base, so compare with the merge's
           # first parent: growth already on the base is not this change's.
+          # A hand-started run names no base; the budget then compares with
+          # where HEAD left main.
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             API_BASE="$(git rev-parse HEAD^1)"
             export API_BASE
