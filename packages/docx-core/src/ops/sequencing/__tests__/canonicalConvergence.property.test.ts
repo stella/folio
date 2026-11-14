@@ -37,7 +37,7 @@ import {
 import { restoreDocumentOp } from "../../wire";
 import * as applyBatchModule from "../applyBatch";
 import { applyBatch } from "../applyBatch";
-import { createClient } from "../client";
+import { type ClientDocumentChange, createClient } from "../client";
 import * as commentTransform from "../commentTransform";
 import {
   anchorPoints,
@@ -74,7 +74,12 @@ type Step =
   | { type: "edit"; peer: number; seed: EditSeed }
   | { type: "undo"; peer: number }
   | { type: "submit"; peer: number }
-  | { type: "deliver"; seed: number };
+  | { type: "deliver"; seed: number }
+  /**
+   * The peer's connection drops before its answer arrives: the answer is
+   * lost and the batch in flight is submitted again under its operation id.
+   */
+  | { type: "reconnect"; peer: number };
 
 type Peer = {
   author: EditAuthor;
@@ -120,6 +125,146 @@ type Outcome = {
   typingRefusals: string[];
   /** Typing pairs refused because one side cuts or rejoins an identified record. */
   identifiedTypingRefusals: string[];
+  /** Accepted batches that did not commute, all of a declared tracked pair kind. */
+  trackedOrder: Record<trackedTransform.TrackedOrderPair, number>;
+  /** Refusals of a declared tracked pair kind: the bar is none. */
+  trackedRefusals: string[];
+  /** Changes a peer with pending batches got as a replacement, by the pair kinds they met. */
+  replaced: Tally;
+  /** Changes a peer with pending batches got rebased, by the pair kinds they met. */
+  rebasedChanges: Tally;
+  /** Batches submitted again after a lost answer. */
+  resubmitted: number;
+};
+
+const noTrackedOrder = (): Record<
+  trackedTransform.TrackedOrderPair,
+  number
+> => ({
+  cutAtTrackedChange: 0,
+  deletionAtTrackedEdge: 0,
+  overlappingDeletions: 0,
+});
+const TRACKED_ORDER_KINDS = Object.values(trackedTransform.TRACKED_ORDER_PAIRS);
+
+/**
+ * The declared tracked pairs a batch forms with the tail it was rebased
+ * over, each compared in one coordinate space: the batch moved over the
+ * tail batches sequenced before the one it meets.
+ */
+const declaredOver = (
+  batch: DocumentBatch,
+  tail: readonly SequencedBatch[],
+): Set<trackedTransform.TrackedOrderPair> => {
+  const kinds = new Set<trackedTransform.TrackedOrderPair>();
+  for (const [index, remote] of tail.entries()) {
+    const moved = transformBatch(batch, tail.slice(0, index));
+    if (moved.isErr()) break;
+    for (const kind of trackedOrderPairs(moved.value.ops, remote.ops))
+      kinds.add(kind);
+  }
+  return kinds;
+};
+
+// The batch's operations where they meet the tail batch that refuses them.
+const opsAtRefusal = (
+  batch: DocumentBatch,
+  tail: readonly SequencedBatch[],
+): readonly DocumentOp[] => {
+  const index = tail.findIndex((_, at) =>
+    transformBatch(batch, tail.slice(0, at + 1)).isErr(),
+  );
+  if (index <= 0) return batch.ops;
+  const moved = transformBatch(batch, tail.slice(0, index));
+  return moved.isOk() ? moved.value.ops : batch.ops;
+};
+
+// Where two values first differ, for a failure message.
+const differenceAt = (
+  left: unknown,
+  right: unknown,
+  path: string,
+): string | undefined => {
+  if (equalForStaleness(left, right)) return undefined;
+  if (
+    typeof left === "object" &&
+    left !== null &&
+    typeof right === "object" &&
+    right !== null
+  )
+    for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+      const found = differenceAt(
+        Reflect.get(left, key),
+        Reflect.get(right, key),
+        `${path}.${key}`,
+      );
+      if (found !== undefined) return found;
+    }
+  return `${path}: ${JSON.stringify(left)?.slice(0, 300) ?? "undefined"} != ${JSON.stringify(right)?.slice(0, 300) ?? "undefined"}`;
+};
+
+// An insertion and a deletion, either way round.
+const insertionAgainstDeletion = (
+  op: DocumentOp,
+  other: DocumentOp,
+): boolean => {
+  const inserts = (candidate: DocumentOp) =>
+    candidate.type === DOCUMENT_OP_TYPES.INSERT_CONTENT ||
+    candidate.type === DOCUMENT_OP_TYPES.INSERT_TEXT;
+  return (
+    (inserts(op) && other.type === DOCUMENT_OP_TYPES.DELETE_RANGE) ||
+    (inserts(other) && op.type === DOCUMENT_OP_TYPES.DELETE_RANGE)
+  );
+};
+
+// A split or a join that is not a seam join: it cuts or merges records exactly.
+const cutsRecordsExactly = (op: DocumentOp): boolean =>
+  op.type === DOCUMENT_OP_TYPES.SPLIT_INLINE ||
+  (op.type === DOCUMENT_OP_TYPES.JOIN_INLINE && op.ifAlike !== true);
+
+// An inverse whose preconditions or joins pin the range it restores.
+const holdsPreconditions = (op: DocumentOp): boolean => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+      return op.expected !== undefined || op.join !== undefined;
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return (
+        op.expected !== undefined ||
+        op.joinStart !== undefined ||
+        op.joinEnd !== undefined
+      );
+    default:
+      return false;
+  }
+};
+
+/** Changes a peer with pending batches got, by the pair kinds they met. */
+type Tally = Record<PairKind | "other", number>;
+const noTally = (): Tally => ({
+  typingTyping: 0,
+  typingFormat: 0,
+  typingDeletion: 0,
+  typingComment: 0,
+  replyReply: 0,
+  suggestedDeletions: 0,
+  suggestedEdits: 0,
+  suggestionAgainstDirect: 0,
+  other: 0,
+});
+
+// The declared order-dependent tracked pairs between a batch's operations
+// and some concurrent ones.
+const trackedOrderPairs = (
+  ops: readonly DocumentOp[],
+  others: readonly DocumentOp[],
+): Set<trackedTransform.TrackedOrderPair> => {
+  const kinds = new Set<trackedTransform.TrackedOrderPair>();
+  for (const op of restoredOps(ops))
+    for (const other of restoredOps(others)) {
+      const kind = trackedTransform.trackedOrderPair(op, other);
+      if (kind !== undefined) kinds.add(kind);
+    }
+  return kinds;
 };
 
 /**
@@ -387,8 +532,15 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     pairs: noPairs(),
     typingRefusals: [],
     identifiedTypingRefusals: [],
+    trackedOrder: noTrackedOrder(),
+    trackedRefusals: [],
+    replaced: noTally(),
+    rebasedChanges: noTally(),
+    resubmitted: 0,
   };
   const delivery: Delivery[] = [];
+  // The batch each peer last submitted, which a reconnection submits again.
+  const inFlight = new Map<number, DocumentBatch>();
   let serial = 10;
 
   const enqueue = (peer: Peer, ops: readonly DocumentOp[]): void => {
@@ -432,9 +584,11 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     if (batch === undefined) return;
     const tail = sequencer.broadcasts.slice(batch.baseRev);
     const result = sequencer.submit(wire(batch));
+    inFlight.set(index, batch);
     delivery.push({ peer: index, type: "result", result });
     if (result.type === "reject") {
       outcome.rejected.push(result.reason.reason);
+      const { opType, overType } = result.reason;
       // Two typings refuse each other only through their insertions and
       // seam joins; another operation of the batch may refuse instead.
       const typingPair = [result.reason.opType, result.reason.overType].every(
@@ -443,6 +597,30 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           type === DOCUMENT_OP_TYPES.JOIN_INLINE,
       );
       const refusing = refusingOps(batch, tail);
+      // No declared tracked pair is refused: the authority's order decides.
+      // An inverse keeps its preconditions, which refuse by their own rule,
+      // an insertion against a deletion's range is the typing and deletion
+      // class, and a hard inline split or join (rejoining or cutting a
+      // record exactly) the record cutting class, each with rules of its own.
+      for (const op of restoredOps(opsAtRefusal(batch, tail)))
+        for (const other of restoredOps(refusing)) {
+          const kind = trackedTransform.trackedOrderPair(op, other);
+          const named =
+            (op.type === opType && other.type === overType) ||
+            (op.type === overType && other.type === opType);
+          if (
+            kind !== undefined &&
+            named &&
+            !holdsPreconditions(op) &&
+            !holdsPreconditions(other) &&
+            !insertionAgainstDeletion(op, other) &&
+            !cutsRecordsExactly(op) &&
+            !cutsRecordsExactly(other)
+          )
+            outcome.trackedRefusals.push(
+              `${kind}: ${String(opType)} over ${String(overType)}: ${result.reason.message} (${describeOps(batch.ops)} over ${describeOps(refusing)})`,
+            );
+        }
       // An edit that cuts an identified record (a revision or a content
       // control) at the shared point, or joins its pieces again, would give
       // the record's second half the id of whichever applied first.
@@ -479,7 +657,14 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       if (meetsTrackedDeletion(batch, tail)) outcome.trackedPairs += 1;
       const proven = commutes(history, batch, tail, sequencer.document);
       if (proven === true) outcome.proven += 1;
-      if (proven === false) outcome.diverged.push(batch.opId);
+      if (proven === false) {
+        // Only a declared tracked pair may record other cuts, or leave
+        // shared content to another deletion, in the other order; every
+        // peer still reaches the authority's document by replay.
+        const declared = declaredOver(batch, tail);
+        if (declared.size === 0) outcome.diverged.push(batch.opId);
+        for (const kind of declared) outcome.trackedOrder[kind] += 1;
+      }
     }
     const broadcast = sequencer.broadcasts.at(-1);
     if (broadcast === undefined) return;
@@ -495,12 +680,66 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     const event = delivery.splice(seed % delivery.length, 1).at(0);
     const peer = event === undefined ? undefined : team.at(event.peer);
     if (event === undefined || peer === undefined) return;
+    const before = peer.client.document;
+    const pending = peer.client.pending.flatMap(({ ops }) => ops);
+    let changes: readonly ClientDocumentChange[];
     if (event.type === "broadcast") {
       const received = peer.client.receiveBroadcast(event.batch);
       if (received.isErr()) throw received.error;
-    } else if (event.result.type === "ack")
+      changes = received.value;
+    } else if (event.result.type === "ack") {
       peer.client.receiveAck(event.result);
-    else peer.client.receiveReject(event.result);
+      changes = [];
+    } else changes = peer.client.receiveReject(event.result);
+    // Every change takes the peer's document exactly where the client is:
+    // a rebased one is never trusted short of it.
+    let document = before;
+    for (const change of changes) {
+      const applied = applyBatch(document, change.batch.ops);
+      if (applied.isErr()) throw applied.error;
+      document = applied.value.document;
+      if (change.type === "replaced" && change.moves !== undefined) {
+        const moved = applyBatch(before, change.moves.ops);
+        if (moved.isErr())
+          throw new Error(
+            `A replacement's moves do not apply where it does: ${moved.error.message}`,
+          );
+      }
+    }
+    if (!equalForStaleness(document, peer.client.document))
+      throw new Error(
+        `The ${changes.map(({ type }) => type).join(", ")} change of ${event.type === "broadcast" ? event.batch.opId : event.result.opId} leaves another document than the client's, first at ${JSON.stringify(differenceAt(document, peer.client.document, "document"))}`,
+      );
+    if (event.type !== "broadcast" || pending.length === 0) return;
+    const kinds = [...pairKinds(pending, event.batch.ops)];
+    for (const change of changes) {
+      const tally =
+        change.type === "replaced" ? outcome.replaced : outcome.rebasedChanges;
+      if (kinds.length === 0) tally.other += 1;
+      for (const kind of kinds) tally[kind] += 1;
+    }
+  };
+
+  // The connection drops before the answer arrives: the answer is lost and
+  // the batch is submitted again under its operation id, which the
+  // sequencer answers as it did the first time.
+  const reconnect = (index: number): void => {
+    const peer = team.at(index);
+    const batch = inFlight.get(index);
+    if (peer === undefined || batch === undefined) return;
+    if (!peer.client.pending.some(({ opId }) => opId === batch.opId)) return;
+    for (let at = delivery.length - 1; at >= 0; at -= 1) {
+      const event = delivery[at];
+      if (
+        event?.type === "result" &&
+        event.peer === index &&
+        event.result.opId === batch.opId
+      )
+        delivery.splice(at, 1);
+    }
+    const result = sequencer.submit(wire(batch));
+    outcome.resubmitted += 1;
+    delivery.push({ peer: index, type: "result", result });
   };
 
   for (const step of steps) {
@@ -513,6 +752,10 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     if (peer === undefined) continue;
     if (step.type === "submit") {
       submit(index);
+      continue;
+    }
+    if (step.type === "reconnect") {
+      reconnect(index);
       continue;
     }
     if (step.type === "undo") {
@@ -553,6 +796,7 @@ const stepArbitrary = (
   peers: number,
   seeds: fc.Arbitrary<EditSeed> = editSeedArbitrary,
   undo = true,
+  reconnect = false,
 ): fc.Arbitrary<Step> => {
   const peer = fc.nat({ max: peers - 1 });
   const editStep = {
@@ -578,9 +822,17 @@ const stepArbitrary = (
       seed: fc.nat({ max: 100_000 }),
     }),
   };
-  return undo
-    ? fc.oneof(editStep, undoStep, submitStep, deliverStep)
-    : fc.oneof(editStep, submitStep, deliverStep);
+  const reconnectStep = {
+    weight: 1,
+    arbitrary: fc.record({ type: fc.constant("reconnect" as const), peer }),
+  };
+  return fc.oneof(
+    editStep,
+    submitStep,
+    deliverStep,
+    ...(undo ? [undoStep] : []),
+    ...(reconnect ? [reconnectStep] : []),
+  );
 };
 
 type Scenario = [number, Step[]];
@@ -588,11 +840,12 @@ type Scenario = [number, Step[]];
 const scenarioArbitrary = (
   seeds?: fc.Arbitrary<EditSeed>,
   undo?: boolean,
+  reconnect?: boolean,
 ): fc.Arbitrary<Scenario> =>
   fc.integer({ min: 3, max: 4 }).chain((peers) =>
     fc.tuple(
       fc.constant(peers),
-      fc.array(stepArbitrary(peers, seeds, undo), {
+      fc.array(stepArbitrary(peers, seeds, undo, reconnect), {
         minLength: 8,
         maxLength: 30,
       }),
@@ -638,6 +891,20 @@ const sameParagraphScenarioArbitrary = scenarioArbitrary(
   ),
 );
 
+/**
+ * Suggesting and direct typing, erases and replacements in one paragraph,
+ * mostly suggesting, with lost answers submitted again. A format at a
+ * tracked change's edge is pinned (`formatAcrossSuggestedErase`).
+ */
+const trackedScenarioArbitrary = scenarioArbitrary(
+  focusedSeeds(
+    ["type", "type", "erase", "erase", "replace", "tab"],
+    fc.constantFrom(true, true, false),
+  ),
+  true,
+  true,
+);
+
 const bytes = async (document: Document): Promise<Uint8Array> =>
   new Uint8Array(await serializeDocumentToDocx(document));
 
@@ -652,6 +919,10 @@ type Counts = {
   typingRefusals: string[];
   /** Typing pairs refused because one side cuts or rejoins an identified record. */
   identifiedTypingRefusals: string[];
+  trackedOrder: Record<trackedTransform.TrackedOrderPair, number>;
+  replaced: Tally;
+  rebasedChanges: Tally;
+  resubmitted: number;
 };
 
 const noCounts = (): Counts => ({
@@ -663,6 +934,10 @@ const noCounts = (): Counts => ({
   pairs: noPairs(),
   typingRefusals: [],
   identifiedTypingRefusals: [],
+  trackedOrder: noTrackedOrder(),
+  replaced: noTally(),
+  rebasedChanges: noTally(),
+  resubmitted: 0,
 });
 
 const convergence = (
@@ -684,6 +959,15 @@ const convergence = (
     }
     counts.typingRefusals.push(...outcome.typingRefusals);
     counts.identifiedTypingRefusals.push(...outcome.identifiedTypingRefusals);
+    for (const kind of TRACKED_ORDER_KINDS)
+      counts.trackedOrder[kind] += outcome.trackedOrder[kind];
+    for (const kind of [...PAIR_KINDS, "other"] as const) {
+      counts.replaced[kind] += outcome.replaced[kind];
+      counts.rebasedChanges[kind] += outcome.rebasedChanges[kind];
+    }
+    counts.resubmitted += outcome.resubmitted;
+    // No declared tracked pair is refused.
+    expect(outcome.trackedRefusals).toEqual([]);
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
@@ -942,6 +1226,45 @@ const undoAgainstRepeatedDecision: Scenario = [
   ],
 ];
 
+/** A suggesting edit of the body's first paragraph at `a`. */
+const suggested = (
+  peer: number,
+  seed: Omit<EditSeed, "focus" | "suggest">,
+): Step => ({
+  type: "edit",
+  peer,
+  seed: { ...seed, suggest: true, focus: true },
+});
+
+/**
+ * Tracked changes meeting in the first paragraph, each phase concurrent:
+ * 1. peer 0 suggests erasing 4..5 and typing at 10, both pending, while
+ *    peer 1 suggests erasing 5..6, sequenced first; both lose their first
+ *    answer and submit again; peer 2 has nothing pending;
+ * 2. peer 0 suggests erasing 12..15, peer 1 erases 14..17 directly (one
+ *    edge of it), peer 2 suggests erasing 13..14 (inside it).
+ */
+const trackedPending: Scenario = [
+  3,
+  [
+    suggestedErase(0, { a: 4, b: 0 }),
+    suggested(0, { kind: "type", a: 10, b: 0 }),
+    suggestedErase(1, { a: 5, b: 0 }),
+    { type: "submit", peer: 1 },
+    { type: "reconnect", peer: 1 },
+    { type: "submit", peer: 0 },
+    { type: "deliver", seed: 0 },
+    { type: "reconnect", peer: 0 },
+    ...drain(24),
+    { type: "submit", peer: 0 },
+    ...drain(24),
+    suggestedErase(0, { a: 12, b: 2 }),
+    focused(1, { kind: "erase", a: 14, b: 2 }),
+    suggestedErase(2, { a: 13, b: 0 }),
+    ...submitAll,
+  ],
+];
+
 /**
  * A direct format of 10..12 in the first paragraph's one run while another
  * peer erases 9..12 directly: the format cut the run, and the erase rebased
@@ -975,6 +1298,7 @@ const PINNED: readonly Scenario[] = [
   concurrentSuggestedErases,
   formatAcrossSuggestedErase,
   undoAgainstRepeatedDecision,
+  trackedPending,
   formatInsideErase,
 ];
 
@@ -1056,37 +1380,73 @@ describe("canonical sequencing", () => {
     propertyTestTimeout(180_000),
   );
 
-  test("concurrent tracked deletions commute when apart and refuse with a typed reason when they meet", () => {
-    const adjacent = simulate(...adjacentSuggestedErases);
-    // The second erase is refused, reported to its peer, and nothing diverges.
-    expect(adjacent.diverged).toEqual([]);
-    expect(adjacent.rejected).toEqual([
-      BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
-    ]);
-    expect(adjacent.dropped).toEqual(["edit-11"]);
-    for (const document of adjacent.documents)
-      expect(equalForStaleness(document, adjacent.authority)).toBe(true);
-    // Nested, adjacent and equal ranges are refused; the erase apart from
-    // them and the direct deletion inside a tracked one are accepted and
-    // proven to commute.
-    const phases = simulate(...concurrentSuggestedErases);
-    expect(phases.diverged).toEqual([]);
-    expect(phases.rejected).toEqual(
-      Array.from({ length: 3 }, () => BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR),
-    );
+  test("concurrent tracked changes that meet are accepted in the authority's order", () => {
+    const accepted = (scenario: Scenario) => {
+      const outcome = simulate(...scenario);
+      // Nothing is refused or dropped, every batch the authority accepted
+      // commutes or forms a declared tracked pair, and every peer ends on
+      // the authority's document.
+      expect(outcome.rejected).toEqual([]);
+      expect(outcome.dropped).toEqual([]);
+      expect(outcome.diverged).toEqual([]);
+      for (const document of outcome.documents)
+        expect(equalForStaleness(document, outcome.authority)).toBe(true);
+      return outcome;
+    };
+    // Adjacent tracked deletions: whichever wraps first records the cut
+    // between them.
+    expect(
+      accepted(adjacentSuggestedErases).trackedOrder.cutAtTrackedChange,
+    ).toBeGreaterThan(0);
+    // Nested, adjacent and equal ranges: the deletion sequenced first holds
+    // the shared content.
+    const phases = accepted(concurrentSuggestedErases);
+    expect(phases.trackedOrder.overlappingDeletions).toBeGreaterThan(0);
     expect(phases.trackedPairs).toBeGreaterThan(0);
-    expect(phases.proven).toBe(phases.rebased);
-    for (const document of phases.documents)
-      expect(equalForStaleness(document, phases.authority)).toBe(true);
-    // A format cutting runs inside a tracked range is refused too.
-    const crossing = simulate(...formatAcrossSuggestedErase);
-    expect(crossing.diverged).toEqual([]);
-    expect(crossing.rejected).toEqual([
-      BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
-    ]);
-    for (const document of crossing.documents)
-      expect(equalForStaleness(document, crossing.authority)).toBe(true);
+    // A format cutting runs inside a tracked range.
+    expect(
+      accepted(formatAcrossSuggestedErase).trackedOrder.cutAtTrackedChange,
+    ).toBeGreaterThan(0);
+    // A peer with two pending batches gets the authority's document as a
+    // replacement; answers lost to a reconnection are answered again.
+    const pending = accepted(trackedPending);
+    expect(pending.replaced.suggestedDeletions).toBeGreaterThan(0);
+    expect(pending.resubmitted).toBe(2);
+    expect(pending.trackedOrder.cutAtTrackedChange).toBeGreaterThan(0);
+    expect(pending.trackedOrder.deletionAtTrackedEdge).toBeGreaterThan(0);
   });
+
+  test(
+    "concurrent tracked changes in one paragraph are never refused for the cuts they record",
+    async () => {
+      // The bar: no declared tracked pair is refused (checked for every
+      // scenario); other refusals stay typed.
+      await assertProperty(convergence(noCounts(), trackedScenarioArbitrary), {
+        numRuns: NUM_RUNS,
+        id: "canonical sequencing tracked pairs",
+        examples: [[trackedPending]],
+      });
+      const counts = noCounts();
+      await checkCoverageSample(
+        convergence(counts, trackedScenarioArbitrary),
+        NUM_RUNS + 2,
+        {
+          map: (value, index) => {
+            const pinned = [trackedPending, concurrentSuggestedErases][index];
+            return pinned === undefined ? value : [pinned];
+          },
+        },
+      );
+      expect(
+        TRACKED_ORDER_KINDS.filter((kind) => counts.trackedOrder[kind] === 0),
+      ).toEqual([]);
+      expect(counts.pairs.suggestedDeletions.accepted).toBeGreaterThan(0);
+      expect(counts.pairs.suggestedEdits.accepted).toBeGreaterThan(0);
+      expect(counts.replaced.suggestedDeletions).toBeGreaterThan(0);
+      expect(counts.resubmitted).toBeGreaterThan(0);
+    },
+    propertyTestTimeout(180_000),
+  );
 
   test("an undo that puts back a change a concurrent peer decided is refused", () => {
     const outcome = simulate(...undoAgainstRepeatedDecision);
@@ -1242,14 +1602,15 @@ describe("canonical sequencing", () => {
   );
 
   test(
-    "adjacent tracked deletions accepted without the cut rule are caught",
+    "a non-commuting pair outside the declared tracked kinds is caught",
     async () => {
-      // The test-only break: no tracked change meets a concurrent cut, so
-      // two adjacent suggesting erases are both accepted.
+      // The test-only break: no pair is declared order-dependent, so the two
+      // adjacent suggesting erases, accepted in the authority's order, no
+      // longer have a declared reason to differ in the other order.
       const original = { ...trackedTransform };
       mock.module("../trackedTransform", () => ({
         ...original,
-        trackedCutConflict: () => undefined,
+        trackedOrderPair: () => undefined,
       }));
       try {
         const result = await fc.check(

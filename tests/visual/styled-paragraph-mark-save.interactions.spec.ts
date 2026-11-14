@@ -52,7 +52,7 @@ const savedDocument = async (page: Page) => {
 test("a run keeps the properties its paragraph mark repeats after typing beside it", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?session=canonical");
   await page.locator("#file-input").setInputFiles({
     name: "styled-mark.docx",
     mimeType:

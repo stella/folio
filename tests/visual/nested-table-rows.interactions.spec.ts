@@ -118,8 +118,11 @@ const loadDocument = async (page: Page, query: string, rowCount: number) => {
 };
 
 for (const { painter, query } of [
-  { painter: "default", query: "" },
-  { painter: "display-list", query: "?pageRenderer=display-list" },
+  { painter: "default", query: "?session=canonical" },
+  {
+    painter: "display-list",
+    query: "?session=canonical&pageRenderer=display-list",
+  },
 ]) {
   test(`every row of a nested table taller than a page shows on the ${painter} painter`, async ({
     page,

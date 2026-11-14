@@ -21,6 +21,7 @@ import type { FolioDocumentOperation } from "../ai-edits";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
@@ -31,7 +32,6 @@ import { parseDocx } from "../docx/parser";
 import { createEmptyDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import type { BlockContent, TableCell } from "../types/document";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 

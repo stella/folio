@@ -152,8 +152,12 @@ export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 
 // @public
 export type ClientDocumentChange = {
-    type: "rebased" | "replaced";
+    type: "rebased";
     batch: SequencedBatch;
+} | {
+    type: "replaced";
+    batch: SequencedBatch;
+    moves?: SequencedBatch;
 };
 
 // @public (undocumented)
