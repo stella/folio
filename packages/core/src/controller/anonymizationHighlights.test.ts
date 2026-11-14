@@ -6,7 +6,7 @@
  */
 
 import { panic } from "better-result";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
@@ -320,7 +320,8 @@ describe("anonymization highlights: reads", () => {
     ]);
   });
 
-  test("rescans only the paragraphs an edit replaced", () => {
+  /** Edits a document under the owner and checks which paragraphs it rescans. */
+  const expectRescansOnlyReplacedParagraphs = () => {
     const highlights = createAnonymizationHighlights();
     let addressed = 0;
     const source = (doc: PMNode): AnonymizationStorySource => ({
@@ -356,6 +357,20 @@ describe("anonymization highlights: reads", () => {
     // New terms rescan everything.
     highlights.read([...terms], () => [source(moved.doc)]);
     expect(addressed).toBe(10);
+  };
+
+  test("rescans only the paragraphs an edit replaced", () => {
+    expectRescansOnlyReplacedParagraphs();
+  });
+
+  test("the rescan check fails when every read rescans every paragraph", () => {
+    // Turn the per-paragraph cache off: the owner then rescans on each read.
+    const get = spyOn(WeakMap.prototype, "get").mockReturnValue(undefined);
+    try {
+      expect(expectRescansOnlyReplacedParagraphs).toThrow();
+    } finally {
+      get.mockRestore();
+    }
   });
 
   test("keeps each story's occurrences with that story", () => {
