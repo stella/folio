@@ -1297,6 +1297,7 @@ export class FolioDocxReviewer {
     applyOperations(operations: FolioAIEditOperation[], options: FolioApplyOperationsOptions): FolioAIEditApplyResult;
     readonly author: string;
     exportPendingSuggestions(): FolioPendingSuggestionRecord[];
+    fork(): FolioDocxReviewer;
     static fromBuffer(buffer: ArrayBuffer, options?: FolioDocxReviewerOptions): Promise<FolioDocxReviewer>;
     getChanges(filter?: FolioReviewChangeFilter): FolioReviewChange[];
     getComments(filter?: FolioReviewCommentFilter): FolioReviewComment[];

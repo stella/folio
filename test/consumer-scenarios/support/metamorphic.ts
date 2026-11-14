@@ -61,6 +61,7 @@ import {
   projectMarkdownIdentities,
   projectSnapshotIdentities,
 } from "./identity.ts";
+import { holdsPendingSuggestions } from "./invariants.ts";
 import type { Finding } from "./known-issues.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Mode } from "./operations.ts";
@@ -1049,52 +1050,11 @@ const minimizeTrace = async (
 // ---------------------------------------------------------------------------
 
 /**
- * A live pre-batch copy, including pending suggestions that a DOCX save drops.
- * Applying a no-op transaction gives each copy its own editor and plugin
- * state. Mutable reviewer collections are copied too. The recorder's own
- * method wrappers are omitted, leaving the prototype's operation methods.
+ * A live pre-batch copy, including pending suggestions that a DOCX save
+ * drops: the reviewer's own fork, on either engine. The recorder's method
+ * wrappers stay with the recorded reviewer.
  */
-const cloneReviewer = (reviewer: Reviewer): Reviewer => {
-  // SAFETY: this test-only clone retains FolioDocxReviewer's prototype and
-  // every own field. Its EditorState copies have independent plugin state.
-  const copy = Object.create(Object.getPrototypeOf(reviewer)) as Reviewer;
-  for (const key of Reflect.ownKeys(reviewer)) {
-    if (
-      key === "applyDocumentOperations" ||
-      key === "applyDocumentOperationsToStory"
-    )
-      continue;
-    const descriptor = Object.getOwnPropertyDescriptor(reviewer, key);
-    if (!descriptor) continue;
-    const value = descriptor.value;
-    let cloned = value;
-    if (key === "state") {
-      cloned = value.apply(value.tr);
-    } else if (key === "secondaryStoryStates") {
-      cloned = new Map(
-        [...value].map(([storyKey, entry]) => [
-          storyKey,
-          {
-            ...entry,
-            state: entry.state.apply(entry.state.tr),
-            initialState: entry.initialState.apply(entry.initialState.tr),
-          },
-        ]),
-      );
-    } else if (value instanceof Map) {
-      cloned = new Map(value);
-    } else if (value instanceof Set) {
-      cloned = new Set(value);
-    } else if (Array.isArray(value)) {
-      cloned = [...value];
-    }
-    Object.defineProperty(copy, key, {
-      ...descriptor,
-      value: cloned,
-    });
-  }
-  return copy;
-};
+const cloneReviewer = (reviewer: Reviewer): Reviewer => reviewer.fork();
 
 type Recorded = { story: Story; batch: Batch; result: Result; pre: Reviewer };
 
@@ -1431,7 +1391,7 @@ export const startRelations = async ({
     afterStep: async (live, saved, context) => {
       const batches = recorded.splice(0);
       instrument(live);
-      const pending = mode === "suggested" && live.getChanges().length > 0;
+      const pending = mode === "suggested" && holdsPendingSuggestions(live);
       for (const entry of batches) {
         await replay(entry, context);
         await onCopies(entry, context);

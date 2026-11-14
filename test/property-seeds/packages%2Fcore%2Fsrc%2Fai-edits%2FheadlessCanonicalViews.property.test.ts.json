@@ -1,0 +1,10 @@
+{
+  "generated documents read their resolved views as the legacy reviewer does": [
+    {
+      "seed": -671094358,
+      "path": "4:1:1:1:1:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
+      "note": "A footnote whose only reference is an inserted one inside a hyperlink: the original view no longer holds the note, which the legacy reviewer still reads.",
+      "date": "2026-11-14"
+    }
+  ]
+}
