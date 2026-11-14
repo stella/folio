@@ -22,7 +22,10 @@ import type {
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
-import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
+import type {
+  CanonicalHistoryDrop,
+  CanonicalHistoryEffect,
+} from "@stll/folio-core/controller/canonicalSession";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
@@ -355,6 +358,13 @@ export type DocxEditorProps = {
    * through `DocxEditorRef.undo` / `redo`.
    */
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
+  /**
+   * With the canonical session: called when a peer's edit in a canonical
+   * room left local history steps unusable, with how many of each stack it
+   * dropped, counted from the bottom. A host that mirrors the steps in its
+   * own undo stack removes as many.
+   */
+  onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
   /**
    * Host ProseMirror plugins for the body editor, retained across document
    * replacements. Keep the array and plugin instances stable for a mounted

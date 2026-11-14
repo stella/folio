@@ -34,7 +34,10 @@ import type { EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
-import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
+import type {
+  CanonicalHistoryDrop,
+  CanonicalHistoryEffect,
+} from "@stll/folio-core/controller/canonicalSession";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import {
@@ -123,6 +126,8 @@ export type HiddenProseMirrorProps = {
   onEditorViewReady?: (view: EditorView) => void;
   /** A canonical commit was published, with what it did to the undo history. */
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
+  /** A peer's edit dropped local history steps. */
+  onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
   /**
    * Reads the initial state the parent converts for its pre-view layout. Read
    * only when the view is built from the document, never when a canonical
@@ -221,6 +226,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     extensionManager,
     onEditorViewReady,
     onCanonicalHistory,
+    onCanonicalHistoryDrop,
     onEditorViewDestroy,
     onKeyDown,
     onCopy,
@@ -276,6 +282,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onEditorViewReadyRef = useRef(onEditorViewReady);
   const onCanonicalHistoryRef = useRef(onCanonicalHistory);
+  const onCanonicalHistoryDropRef = useRef(onCanonicalHistoryDrop);
   const onEditorViewDestroyRef = useRef(onEditorViewDestroy);
   const onKeyDownRef = useRef(onKeyDown);
   const onCopyRef = useRef(onCopy);
@@ -307,6 +314,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onSelectionChangeRef.current = onSelectionChange;
     onEditorViewReadyRef.current = onEditorViewReady;
     onCanonicalHistoryRef.current = onCanonicalHistory;
+    onCanonicalHistoryDropRef.current = onCanonicalHistoryDrop;
     onEditorViewDestroyRef.current = onEditorViewDestroy;
     onKeyDownRef.current = onKeyDown;
     onCopyRef.current = onCopy;
@@ -337,6 +345,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getExperimentalSession: () => experimentalSessionRef.current,
         getHistoryShortcuts: () => historyShortcutsRef.current,
         onCanonicalHistory: (effect) => onCanonicalHistoryRef.current?.(effect),
+        onCanonicalHistoryDrop: (drop) =>
+          onCanonicalHistoryDropRef.current?.(drop),
         getEditingMode: () =>
           suggestionModeActiveRef.current ? "suggesting" : "editing",
         getSuggestionAuthor: () => suggestionAuthorRef.current,

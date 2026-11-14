@@ -656,6 +656,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       onCompatibilityChange,
       onEditorViewReady,
       onCanonicalHistory,
+      onCanonicalHistoryDrop,
       onAnonymizationMatchesChange,
       onAnonymizationTermClick,
       selectedAnonymizationCanonical = null,
@@ -6240,6 +6241,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             {...(onCanonicalHistory === undefined
                               ? {}
                               : { onCanonicalHistory })}
+                            {...(onCanonicalHistoryDrop === undefined
+                              ? {}
+                              : { onCanonicalHistoryDrop })}
                             documentIO={documentIO}
                             documentIdentity={loadedDocumentIdentity}
                             markupView={displayMode}

@@ -32,7 +32,10 @@ import {
   type CanonicalRoomCollaboration,
   isCanonicalRoomCollaboration,
 } from "@stll/folio-core/controller/canonicalRoomEditor";
-import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
+import type {
+  CanonicalHistoryDrop,
+  CanonicalHistoryEffect,
+} from "@stll/folio-core/controller/canonicalSession";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
@@ -423,6 +426,8 @@ export type UseDocxEditorOptions = {
   historyShortcuts?: HistoryShortcutOwner;
   /** A canonical commit was published, with what it did to the undo history. */
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
+  /** A peer's edit dropped local history steps, counted from the bottom. */
+  onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
   /**
    * Reactive collaboration: the canonical room the canonical session joins,
    * or the Yjs fragment a legacy session edits with its binding plugins.
@@ -615,6 +620,7 @@ export function useDocxEditor(
     externalPlugins = [],
     historyShortcuts = "editor",
     onCanonicalHistory,
+    onCanonicalHistoryDrop,
     collaboration,
     onAnonymizationMatchesChange,
     showTemplateDirectives,
@@ -1101,6 +1107,7 @@ export function useDocxEditor(
     getExperimentalSession: () => toValue(experimentalSession),
     getHistoryShortcuts: () => historyShortcuts,
     onCanonicalHistory: (effect) => onCanonicalHistory?.(effect),
+    onCanonicalHistoryDrop: (drop) => onCanonicalHistoryDrop?.(drop),
     getEditingMode: () => toValue(editorMode) ?? "editing",
     getSuggestionAuthor,
     onSessionRefusal: (message, ground, error) => {
