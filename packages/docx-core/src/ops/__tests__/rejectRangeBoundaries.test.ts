@@ -904,7 +904,9 @@ describe("a boundary kept beside a pending deletion's pieces stays out of the de
 describe("a seam joins only pieces that stand, whatever the order", () => {
   // A link cut in two: its first piece held in another reviewer's pending
   // removal (a deletion, or a move's source), its second piece standing, and
-  // between them an insertion holding a bookmark end that keeps the cut.
+  // between them an insertion holding a bookmark end that keeps the cut. The
+  // seam waits as resolution records it: on both, each naming the other, the
+  // removal at the edge where its piece meets the seam.
   const link = (text: string): ParagraphContent => ({
     type: "hyperlink",
     rId: "rId9",
@@ -917,7 +919,12 @@ describe("a seam joins only pieces that stand, whatever the order", () => {
         type: removal,
         info: { id: 20, author: "B", date: "2026-03-04T05:00:01Z" },
         content: [link("x")],
-        resolutionJoins: { before: 0, after: 2, remove: 0 },
+        resolutionJoins: {
+          before: 0,
+          after: 2,
+          remove: 0,
+          deferredRemove: [{ depth: 2, blockers: [20, 2], edge: "end" }],
+        },
       },
       {
         type: "insertion",
@@ -927,7 +934,7 @@ describe("a seam joins only pieces that stand, whatever the order", () => {
           before: 0,
           after: 0,
           remove: 0,
-          deferredRemove: [{ depth: 2, blockers: [2] }],
+          deferredRemove: [{ depth: 2, blockers: [20, 2] }],
         },
       },
       link("a"),

@@ -72,6 +72,7 @@ import { SetContentControlValueInput } from '@stll/folio-core/content-controls';
 import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
 import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
+import { TextPosition } from '@stll/folio-core/controller/folioEditor';
 import { Theme } from '@stll/folio-core/types/document';
 import { Transaction } from 'prosemirror-state';
 import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
@@ -193,6 +194,7 @@ export type DocxEditorRef = {
     getSelectionText: () => string;
     getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
+    getPositionPage: (position: TextPosition) => number | null;
     getBlockRect: (blockId: string) => BlockRect | null;
     getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
     getScrollRoot: () => HTMLElement | null;
