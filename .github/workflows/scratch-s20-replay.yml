@@ -1,0 +1,20 @@
+name: scratch s20 note wire
+on:
+  push:
+    branches: ["scratch/s20-yjs-note-wire-*"]
+permissions:
+  contents: read
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bun
+        with:
+          package-json: package.json
+      - run: bun install --frozen-lockfile
+      - working-directory: packages/core
+        run: bun test ./src/controller/noteWireDebug.test.ts 2>&1 | cut -c1-3000
