@@ -128,6 +128,12 @@ export type BatchRejectionReason = (typeof BATCH_REJECTION_REASONS)[keyof typeof
 export type BatchSubmission = BatchAck | BatchReject;
 
 // @public
+export const blockControlHolding: (blocks: readonly BlockContent[], blockId: string) => {
+    control: BlockSdt;
+    paragraphs: Paragraph[];
+} | undefined;
+
+// @public
 export type BlockInsertionPoint = {
     type: "before";
     blockId: string;
@@ -464,6 +470,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance";
     readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
     readonly SET_PACKAGE_RESOURCES: "setPackageResources";
+    readonly SET_CONTENT_CONTROL: "setContentControl";
 }>;
 
 // @public
@@ -477,7 +484,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | SetRevisionInfoOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
+export type DocumentOp = (CommentOp | CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | SetRevisionInfoOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp | SetContentControlOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -1330,6 +1337,16 @@ export type SetContainerBlocksOp = {
     blockId: string;
     expected: readonly BlockContent[];
     blocks: readonly BlockContent[];
+};
+
+// @public
+export type SetContentControlOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL;
+    story: OpStory;
+    controlId: number;
+    blockIds: readonly string[];
+    expected: SdtProperties;
+    properties: SdtProperties;
 };
 
 // @public
