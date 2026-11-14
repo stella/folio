@@ -2230,9 +2230,10 @@ export const createHiddenEditorManager = (
         }
       },
       getCanonicalStorySelection: (story) => {
-        if (editorSession.type !== "canonical") return null;
+        if (editorSession.type !== "canonical" || story === OP_STORIES.MAIN)
+          return null;
         const session = editorSession.session;
-        const selection = session.selection;
+        const selection = session.storySelection(story);
         if (!selection) return null;
         const projection = session.projectStory(story);
         if (projection.isErr()) return null;
@@ -2303,6 +2304,12 @@ export const createHiddenEditorManager = (
         );
         if (index >= 0) storyViews.splice(index, 1);
         storyViews.push({ story, view: storyView });
+        // A stale or composing editor shows no selection the session can hold.
+        if (editorSession.type === "canonical")
+          void editorSession.session.recordStorySelection(
+            storyView.state,
+            story,
+          );
       },
       replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly())
