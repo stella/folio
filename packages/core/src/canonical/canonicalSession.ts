@@ -179,7 +179,7 @@ const noChange = (message: string) =>
 /**
  * What the session says for an intent the compiler or the engine refused. A
  * change the engine cannot record belongs to the capability that would record
- * it: a link edit cutting markup folio does not model, and the tracked table records for a
+ * it: the tracked table records for a
  * suggested row, column or table change. Every other refusal is unclassified.
  */
 const intentRefusal = (
@@ -202,11 +202,6 @@ const intentRefusal = (
     return refuse(message);
   let gap: CanonicalGap;
   switch (intent.type) {
-    case "setHyperlink":
-    case "removeHyperlink":
-    case "insertHyperlink":
-      gap = CANONICAL_GAP.trackedHyperlinkResolution;
-      break;
     case "table":
     case "tableRow":
     case "tableBlock":
@@ -3020,8 +3015,8 @@ class CanonicalSession {
    * It journals no undo step and opens no undo group. The local undo and redo
    * steps are rebased over it; a step that no longer rebases is dropped with
    * every step beneath it and reported to `onHistoryDrop`, and a `replaced`
-   * change drops them all. The selection moves by paragraph id and offset.
-   * It waits while a composition is pending; any other refusal means this
+   * change drops them all. The selection moves by paragraph id and offset,
+   * over a `replaced` change's `moves` when it has them. It waits while a composition is pending; any other refusal means this
    * session no longer follows the shared document.
    */
   prepareRemote(
@@ -3039,7 +3034,12 @@ class CanonicalSession {
     const before = shown.isOk() ? shown.value : this.currentSelection;
     const selection = remoteSelection({
       selection: before,
-      over: change.batch,
+      // A replacement that only re-cut records moves positions as its
+      // rebased change does.
+      over:
+        change.type === "replaced"
+          ? (change.moves ?? change.batch)
+          : change.batch,
       previous: this.currentDocument,
       document: applied.value.document,
       story,
