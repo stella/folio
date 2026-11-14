@@ -342,7 +342,9 @@ const checkLinkEdit = async (
   if (direct.isErr()) return undefined;
   const tracked = compiled(document, intent, true);
   if (tracked.isErr()) {
-    expect(tracked.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    expect(tracked.error.reason).toBe(
+      DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION,
+    );
     expect(TYPED_REFUSALS).toContain(tracked.error.message);
     return tracked.error.message;
   }

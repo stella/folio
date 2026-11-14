@@ -183,7 +183,9 @@ test("hyperlink intents have exact inverses and refuse unrepresentable suggestio
           });
           // A suggestion applies; only the two shapes it cannot record refuse.
           if (tracked.isErr()) {
-            expect(tracked.error.reason).toBe("untrackable");
+            expect(tracked.error.reason).toBe(
+              DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION,
+            );
             expect([
               "A link suggestion cannot strike text beside a marker inside the same link.",
               "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",

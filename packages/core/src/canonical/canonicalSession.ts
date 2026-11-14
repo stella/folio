@@ -179,7 +179,7 @@ const noChange = (message: string) =>
 /**
  * What the session says for an intent the compiler or the engine refused. A
  * change the engine cannot record belongs to the capability that would record
- * it: review provenance for hyperlinks, and the tracked table records for a
+ * it: a link edit cutting markup folio does not model, and the tracked table records for a
  * suggested row, column or table change. Every other refusal is unclassified.
  */
 const intentRefusal = (
@@ -189,6 +189,15 @@ const intentRefusal = (
 ) => {
   if (reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE)
     return noChange(message);
+  // The suggestion's shape is one review records cannot hold: a rule, not a gap.
+  if (reason === DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION)
+    return Result.err(
+      new CanonicalSessionError({
+        ground: { rule: CANONICAL_RULE.linkSuggestionShape },
+        message,
+        reason: "refused",
+      }),
+    );
   if (reason !== DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE)
     return refuse(message);
   let gap: CanonicalGap;

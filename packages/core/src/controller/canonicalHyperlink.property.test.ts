@@ -23,7 +23,7 @@ import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import type { CanonicalCommandIntent } from "../prosemirror/canonicalCommands";
 import { insertPageBreak } from "../prosemirror/commands/pageBreak";
 import { schema, singletonManager } from "../prosemirror/schema";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import { CANONICAL_RULE } from "../types/canonicalCapabilities";
 import type { Document, ParagraphContent } from "../types/document";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 
@@ -369,9 +369,10 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
                 panic(prepared.error.message);
               expect(["refused", "noChange"]).toContain(prepared.error.reason);
               if (prepared.error.reason === "refused") {
-                expect(prepared.error.ground.gap).toBe(
-                  CANONICAL_GAP.trackedHyperlinkResolution,
-                );
+                // Only the suggestion shapes review records cannot hold refuse.
+                expect(prepared.error.ground).toEqual({
+                  rule: CANONICAL_RULE.linkSuggestionShape,
+                });
               }
               expect(session.document).toBe(before);
               expect(session.version).toBe(version);

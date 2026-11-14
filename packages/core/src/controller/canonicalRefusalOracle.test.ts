@@ -136,7 +136,7 @@ test.each([
   {
     gap: CANONICAL_GAP.trackedHyperlinkResolution,
     message:
-      "Hyperlink suggestions require serializable wrapper review provenance.",
+      "Hyperlink edits cannot cut a content control or markup folio does not model.",
   },
   {
     gap: CANONICAL_GAP.storyContentProjection,

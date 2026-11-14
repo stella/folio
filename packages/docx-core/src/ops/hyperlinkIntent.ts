@@ -467,6 +467,7 @@ const compileTrackedLinkEdit = (
     if (leavesMarkerOnlyLinkPiece(paragraph, segments))
       return refuse(
         "A link suggestion cannot strike text beside a marker inside the same link.",
+        DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION,
       );
     for (const segment of segments) {
       const [, slice = []] = partitionContent(paragraph.content, [
@@ -488,6 +489,7 @@ const compileTrackedLinkEdit = (
       )
         return refuse(
           "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",
+          DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION,
         );
       steps.push({ blockId, start: segment.start, end: segment.end, copy });
     }
