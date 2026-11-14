@@ -115,7 +115,7 @@ const openWithDisplayListRenderer = async (
   fixture: string,
 ): Promise<void> => {
   await page.goto(
-    `/?session=legacy&file=${fixture}&pageRenderer=display-list`,
+    `/?session=canonical&file=${fixture}&pageRenderer=display-list`,
     {
       timeout: 60_000,
     },

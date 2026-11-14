@@ -6,7 +6,7 @@ import { withLegacyEngine } from "../parity/playgroundHosts";
 test("deferred view readiness requests follow the current bridge", async ({
   page,
 }) => {
-  await page.goto("/?session=legacy&paragraphs=12");
+  await page.goto("/?session=canonical&paragraphs=12");
   await expect
     .poll(() => page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0))
     .toBeGreaterThan(0);

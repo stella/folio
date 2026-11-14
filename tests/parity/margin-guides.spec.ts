@@ -8,7 +8,9 @@ forEachAdapter(
       marginGuides: "1",
       marginGuideColor: "rgb(12, 34, 56)",
     });
-    await page.goto(`${adapter.baseUrl}/?session=legacy&${query.toString()}`);
+    await page.goto(
+      `${adapter.baseUrl}/?session=canonical&${query.toString()}`,
+    );
 
     const guide = page.locator(".layout-page-margin-guide").first();
     const content = page.locator(".layout-page-content").first();

@@ -82,9 +82,12 @@ const installInstrumentation = async (page: Page): Promise<void> => {
 const open = async (page: Page, renderer: string): Promise<void> => {
   // A ninety-page document takes a while to lay out for the first time, and
   // this spec opens it twice in one test.
-  await page.goto(`/?session=legacy&file=${FIXTURE}&pageRenderer=${renderer}`, {
-    timeout: 60_000,
-  });
+  await page.goto(
+    `/?session=canonical&file=${FIXTURE}&pageRenderer=${renderer}`,
+    {
+      timeout: 60_000,
+    },
+  );
   await page.waitForSelector('[data-testid="folio-editor"]');
   await page.waitForFunction(
     () => document.querySelectorAll(".layout-page").length > 4,

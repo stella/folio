@@ -21,7 +21,7 @@ for (const host of EDITOR_HOSTS) {
         failedFontRequests.push(`${response.status()} ${response.url()}`);
       }
     });
-    await page.goto(`${host.url}/?session=legacy&file=${FIXTURE}`);
+    await page.goto(`${host.url}/?session=canonical&file=${FIXTURE}`);
     await page.waitForSelector(".layout-page .layout-line", {
       timeout: 30_000,
     });

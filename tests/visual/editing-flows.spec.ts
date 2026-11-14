@@ -27,7 +27,7 @@ const MOD = isMac ? "Meta" : "Control";
 
 /** Mount a fixture and force the (deferred) editor view to materialise. */
 async function mountFixture(page: Page, fixture: string): Promise<void> {
-  await page.goto(`/?session=legacy&file=${encodeURIComponent(fixture)}`);
+  await page.goto(`/?session=canonical&file=${encodeURIComponent(fixture)}`);
   await page.waitForSelector('[data-testid="folio-editor"]', {
     timeout: 15_000,
   });

@@ -71,9 +71,12 @@ type Landing = {
 };
 
 const open = async (page: Page, renderer: string): Promise<void> => {
-  await page.goto(`/?session=legacy&file=${FIXTURE}&pageRenderer=${renderer}`, {
-    timeout: 60_000,
-  });
+  await page.goto(
+    `/?session=canonical&file=${FIXTURE}&pageRenderer=${renderer}`,
+    {
+      timeout: 60_000,
+    },
+  );
   await page.waitForSelector('[data-testid="folio-editor"]');
   await page.waitForSelector(".layout-page");
   await page.evaluate(async () => {

@@ -14,6 +14,6 @@ export const PLAYGROUND_HOSTS = {
 export const withLegacyEngine = (path: string): string => {
   const [route = "/", query = ""] = path.split("?");
   const params = new URLSearchParams(query);
-  params.set("session", "legacy");
+  params.set("session", "canonical");
   return `${route}?${params.toString()}`;
 };

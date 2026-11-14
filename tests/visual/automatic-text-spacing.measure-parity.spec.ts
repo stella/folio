@@ -36,7 +36,7 @@ for (const renderer of ["legacy", "display-list"]) {
       },
     ];
     await page.goto(
-      `/?session=legacy&file=sample.docx&pageRenderer=${renderer}`,
+      `/?session=canonical&file=sample.docx&pageRenderer=${renderer}`,
     );
     await page.waitForSelector(".layout-page");
     await page.evaluate(

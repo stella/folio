@@ -33,7 +33,7 @@ const documentWith = async (inner: string) => {
 };
 
 const load = async (page: Page, inner: string) => {
-  await page.goto("/?session=legacy");
+  await page.goto("/?session=canonical");
   await page.locator("#file-input").setInputFiles({
     name: "box.docx",
     mimeType:

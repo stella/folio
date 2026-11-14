@@ -61,7 +61,7 @@ const documentWith = async (rows: readonly Row[]): Promise<Buffer> => {
 };
 
 const load = async (page: Page, rows: readonly Row[]) => {
-  await page.goto("/?session=legacy");
+  await page.goto("/?session=canonical");
   await page.locator("#file-input").setInputFiles({
     name: "omitted.docx",
     mimeType:
@@ -246,7 +246,7 @@ test.describe("a table row with no cells", () => {
   ] as const) {
     test(`opens and paints its neighbours with ${name}`, async ({ page }) => {
       const rows = SHAPES["short rows"] ?? [];
-      await page.goto("/?session=legacy");
+      await page.goto("/?session=canonical");
       const zip = await ZipArchive.read(await documentWith(rows));
       const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
       zip.set(

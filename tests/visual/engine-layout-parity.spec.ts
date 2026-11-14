@@ -58,7 +58,7 @@ const FIXTURES = [
 
 /** Load a document and wait for the first page to paint with fonts settled. */
 async function openFixture(page: Page, fixture: string): Promise<void> {
-  await page.goto(`/?session=legacy&file=${encodeURIComponent(fixture)}`);
+  await page.goto(`/?session=canonical&file=${encodeURIComponent(fixture)}`);
   await page.waitForSelector(".layout-page .layout-line", { timeout: 60_000 });
   await page.evaluate(async () => {
     await document.fonts.ready;
