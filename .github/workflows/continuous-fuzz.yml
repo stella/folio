@@ -34,7 +34,9 @@ on:
 
 # Never two runs at once: a run that comes due while one is going waits.
 concurrency:
-  group: continuous-fuzz
+  # A hand-started run checks one fixed commit: no push and no other
+  # dispatch replaces or cancels it, so each dispatch has its own group.
+  group: ${{ github.event_name == 'workflow_dispatch' && format('continuous-fuzz-dispatch-{0}', github.run_id) || 'continuous-fuzz' }}
   cancel-in-progress: false
 
 permissions: {}

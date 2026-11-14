@@ -13,6 +13,7 @@ import {
 import path from "node:path";
 
 import { installFrozenRepositoryDependencies } from "./clean-room-install";
+import { resolveComparisonBase } from "./lib/comparison-base";
 import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
 import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 
@@ -597,12 +598,32 @@ const selfTest = (): number => {
   return 0;
 };
 
+type ResolveBudgetBaseOptions = {
+  argument: string | undefined;
+  environment: Readonly<Record<string, string | undefined>>;
+  root?: string;
+};
+
+/**
+ * The commit a budget check compares with: `--base`, else the workflow's
+ * API_BASE. A hand-started run names neither, so the comparison-base owner
+ * resolves where HEAD left main, as it does for the toolchain plan.
+ */
+export const resolveBudgetBase = ({
+  argument,
+  environment,
+  root = REPOSITORY_ROOT,
+}: ResolveBudgetBaseOptions): string =>
+  resolveComparisonBase({
+    root,
+    requested: argument ?? environment["API_BASE"],
+  });
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const mode = args.at(0) ?? "--check";
   const baseIndex = args.indexOf("--base");
   const baseArgument = baseIndex === -1 ? undefined : args.at(baseIndex + 1);
-  const base = baseArgument ?? process.env["API_BASE"];
   const expectedLength = baseArgument === undefined ? 1 : 3;
   if (
     args.length > expectedLength ||
@@ -633,7 +654,10 @@ if (import.meta.main) {
       );
       process.exit(0);
     }
-    if (!base) throw new TypeError("API budget checks require --base <sha>.");
+    const base = resolveBudgetBase({
+      argument: baseArgument,
+      environment: process.env,
+    });
     process.exit(check(measureBase(base), measured, baseRaiseFileNames(base)));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
