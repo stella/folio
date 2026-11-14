@@ -1279,6 +1279,72 @@ const PINNED: readonly Scenario[] = [
 
 describe("canonical sequencing", () => {
   test(
+    "SEED713 note pair outcome",
+    async () => {
+      const scenario: Scenario = [
+        3,
+        [
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "deleteNote", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 1,
+            seed: { kind: "note", a: 541, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "note", a: 0, b: 0, suggest: false },
+          },
+          { type: "deliver", seed: 0 },
+          { type: "deliver", seed: 0 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          { type: "submit", peer: 0 },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+          {
+            type: "edit",
+            peer: 0,
+            seed: { kind: "type", a: 0, b: 0, suggest: false },
+          },
+        ],
+      ];
+      const result = await fc.check(
+        convergence(),
+        propertyConfig({
+          numRuns: 1,
+          examples: [[scenario]],
+          reporter: () => undefined,
+        }),
+      );
+      // oxlint-disable-next-line no-console
+      console.log(
+        `SEED713 failed=${String(result.failed)} ${String(result.errorInstance).slice(0, 3000)}`,
+      );
+    },
+    propertyTestTimeout(60_000),
+  );
+  test(
     "concurrent canonical edits converge on the authority's bytes and commute where accepted",
     async () => {
       await assertProperty(convergence(), {
