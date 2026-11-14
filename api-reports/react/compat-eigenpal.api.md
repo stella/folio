@@ -44,6 +44,7 @@ import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioPendingSuggestionLoadResult } from '@stll/folio-core/ai-edits';
 import { FolioPendingSuggestionRecord } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
+import { FolioSaveOptions } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
@@ -63,7 +64,6 @@ import { ReadonlyDocument } from '@stll/folio-core/types/documentModel';
 import { RefAttributes } from 'react';
 import { RefObject } from 'react';
 import { ReviewDisplayMode } from '@stll/folio-core/managers/reviewDisplayMode';
-import { SaveDiagnosticOptions } from '@stll/folio-core/docx/saveDiagnostics';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
 import { SdtProperties } from '@stll/folio-core/types/document';
 import { Select } from '@base-ui/react/select';
@@ -140,11 +140,7 @@ export type DocxEditorRef = {
     hasPendingChanges: () => boolean;
     getEditorRef: () => PagedEditorRef | null;
     getEditor: () => FolioEditor | null;
-    save: (options?: {
-        selective?: boolean;
-        onDiagnostic?: SaveDiagnosticOptions["onDiagnostic"];
-        onSelectiveDecline?: SaveDiagnosticOptions["onSelectiveDecline"];
-    }) => Promise<ArrayBuffer | null>;
+    save: (options?: FolioSaveOptions) => Promise<ArrayBuffer | null>;
     setZoom: (zoom: number) => void;
     getZoom: () => number;
     focus: () => void;
