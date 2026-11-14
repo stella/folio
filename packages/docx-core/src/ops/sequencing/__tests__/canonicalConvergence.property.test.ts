@@ -119,6 +119,12 @@ type Outcome = {
   typingRefusals: string[];
   /** Typing pairs refused because one side cuts or rejoins an identified record. */
   identifiedTypingRefusals: string[];
+  /** Measurement: refusal reasons by pair kind, at the sequencer and at a client. */
+  reasons: Record<string, number>;
+  /** Measurement: client changes that dropped the peer's history. */
+  replaced: number;
+  /** Measurement: pending batches a client dropped while rebasing. */
+  clientDrops: number;
 };
 
 /**
@@ -386,6 +392,12 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     pairs: noPairs(),
     typingRefusals: [],
     identifiedTypingRefusals: [],
+    reasons: {},
+    replaced: 0,
+    clientDrops: 0,
+  };
+  const note = (key: string): void => {
+    outcome.reasons[key] = (outcome.reasons[key] ?? 0) + 1;
   };
   const delivery: Delivery[] = [];
   let serial = 10;
@@ -451,7 +463,11 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           (op) =>
             op.type === DOCUMENT_OP_TYPES.JOIN_INLINE && op.ifAlike !== true,
         );
-      for (const kind of pairKinds(batch.ops, refusing)) {
+      const kinds = pairKinds(batch.ops, refusing);
+      const why = `${String(result.reason.opType)} over ${String(result.reason.overType)}: ${result.reason.message} (${describeOps(batch.ops)} over ${describeOps(refusing)})`;
+      if (kinds.size === 0) note(`sequencer | other | ${why}`);
+      for (const kind of kinds) note(`sequencer | ${kind} | ${why}`);
+      for (const kind of kinds) {
         if (kind === "typingTyping" && !typingPair) continue;
         outcome.pairs[kind].refused += 1;
         if (kind !== "typingTyping") continue;
@@ -495,8 +511,19 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     const peer = event === undefined ? undefined : team.at(event.peer);
     if (event === undefined || peer === undefined) return;
     if (event.type === "broadcast") {
+      const noticed = peer.client.notices.length;
       const received = peer.client.receiveBroadcast(event.batch);
       if (received.isErr()) throw received.error;
+      outcome.replaced += received.value.filter(
+        ({ type }) => type === "replaced",
+      ).length;
+      for (const notice of peer.client.notices.slice(noticed)) {
+        outcome.clientDrops += 1;
+        const kinds = pairKinds(notice.ops, event.batch.ops);
+        const why = `${String(notice.reason.opType)} over ${String(notice.reason.overType)}: ${notice.reason.message} (${describeOps(notice.ops)} over ${describeOps(event.batch.ops)})`;
+        if (kinds.size === 0) note(`client | other | ${why}`);
+        for (const kind of kinds) note(`client | ${kind} | ${why}`);
+      }
     } else if (event.result.type === "ack")
       peer.client.receiveAck(event.result);
     else peer.client.receiveReject(event.result);
@@ -941,6 +968,52 @@ const undoAgainstRepeatedDecision: Scenario = [
   ],
 ];
 
+const suggested = (
+  peer: number,
+  seed: Omit<EditSeed, "focus" | "suggest">,
+): Step => ({
+  type: "edit",
+  peer,
+  seed: { ...seed, suggest: true, focus: true },
+});
+
+// Measurement: two suggesting typists at one point, typing in and beside a
+// suggested erase, adjacent and overlapping suggested erases.
+const suggestingAtOnePoint: Scenario = [
+  3,
+  [
+    suggested(0, { kind: "type", a: 4, b: 0 }),
+    suggested(1, { kind: "type", a: 4, b: 1 }),
+    suggested(2, { kind: "type", a: 5, b: 0 }),
+    ...submitAll,
+    ...drain(24),
+    suggested(0, { kind: "erase", a: 9, b: 1 }),
+    suggested(1, { kind: "type", a: 10, b: 0 }),
+    focused(2, { kind: "type", a: 9, b: 0 }),
+    ...submitAll,
+    ...drain(24),
+    suggested(0, { kind: "erase", a: 12, b: 0 }),
+    suggested(1, { kind: "erase", a: 13, b: 0 }),
+    suggested(2, { kind: "erase", a: 12, b: 2 }),
+    ...submitAll,
+    ...drain(24),
+    suggested(0, { kind: "erase", a: 2, b: 0 }),
+    focused(1, { kind: "erase", a: 1, b: 1 }),
+    suggested(2, { kind: "type", a: 0, b: 0 }),
+    ...submitAll,
+  ],
+];
+
+const SUGGESTING_KINDS: readonly [EditKind, ...EditKind[]] = [
+  "type",
+  "type",
+  "erase",
+  "erase",
+  "replace",
+  "tab",
+  "format",
+];
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -954,6 +1027,89 @@ const PINNED: readonly Scenario[] = [
 ];
 
 describe("canonical sequencing", () => {
+  test(
+    "PAIRMEASURE same-paragraph refusal shares",
+    () => {
+      const report = (name: string, scenarios: readonly Scenario[]): void => {
+        const pairs = noPairs();
+        const reasons: Record<string, number> = {};
+        const totals = {
+          runs: scenarios.length,
+          enqueued: 0,
+          sequenced: 0,
+          rejected: 0,
+          dropped: 0,
+          clientDrops: 0,
+          replaced: 0,
+          rebased: 0,
+          proven: 0,
+          diverged: 0,
+          threw: 0,
+        };
+        for (const scenario of scenarios) {
+          let outcome: Outcome;
+          try {
+            outcome = simulate(...scenario);
+          } catch (error) {
+            totals.threw += 1;
+            const key = `threw | ${String(error).slice(0, 160)}`;
+            reasons[key] = (reasons[key] ?? 0) + 1;
+            continue;
+          }
+          totals.enqueued += outcome.enqueued.length;
+          totals.sequenced += outcome.sequenced.length;
+          totals.rejected += outcome.rejected.length;
+          totals.dropped += outcome.dropped.length;
+          totals.clientDrops += outcome.clientDrops;
+          totals.replaced += outcome.replaced;
+          totals.rebased += outcome.rebased;
+          totals.proven += outcome.proven;
+          totals.diverged += outcome.diverged.length;
+          for (const kind of PAIR_KINDS) {
+            pairs[kind].accepted += outcome.pairs[kind].accepted;
+            pairs[kind].refused += outcome.pairs[kind].refused;
+          }
+          for (const [key, count] of Object.entries(outcome.reasons))
+            reasons[key] = (reasons[key] ?? 0) + count;
+        }
+        // oxlint-disable-next-line no-console
+        console.log(
+          `PAIRMEASURE ${name} ${JSON.stringify({ totals, pairs, reasons }, undefined, 1)}`,
+        );
+      };
+      const runs = 150;
+      report(
+        "mixed",
+        fc.sample(sameParagraphScenarioArbitrary, { seed: 20, numRuns: runs }),
+      );
+      report(
+        "suggestingMixed",
+        fc.sample(
+          scenarioArbitrary(focusedSeeds(SUGGESTING_KINDS, fc.boolean())),
+          { seed: 20, numRuns: runs },
+        ),
+      );
+      report(
+        "suggestingOnly",
+        fc.sample(
+          scenarioArbitrary(
+            focusedSeeds(SUGGESTING_KINDS, fc.constant(true)),
+            false,
+          ),
+          { seed: 20, numRuns: runs },
+        ),
+      );
+      report("pinnedSuggesting", [suggestingAtOnePoint]);
+      report("pinnedErases", [
+        adjacentSuggestedErases,
+        concurrentSuggestedErases,
+        formatAcrossSuggestedErase,
+      ]);
+      report("pinnedTyping", [sameParagraphTyping]);
+    },
+    propertyTestTimeout(900_000),
+  );
+
   test(
     "concurrent canonical edits converge on the authority's bytes and commute where accepted",
     async () => {
