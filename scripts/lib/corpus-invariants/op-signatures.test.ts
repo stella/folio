@@ -518,19 +518,27 @@ test("revision info written on a deleted row, a cell or a table changes only the
       },
     },
   } satisfies Document;
+  const stepOf = (id: number) =>
+    stepFor(
+      {
+        type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+        story: OP_STORIES.MAIN,
+        infos: [{ id, author: "Corpus adopter", date: "2026-02-02T00:00:00Z" }],
+      },
+      before,
+    );
   for (const id of [5, 6, 7, 8])
-    expect(
-      localityStepFailures(
-        stepFor(
-          {
-            type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
-            story: OP_STORIES.MAIN,
-            infos: [
-              { id, author: "Corpus adopter", date: "2026-02-02T00:00:00Z" },
-            ],
-          },
-          before,
-        ),
-      ),
-    ).toEqual([]);
+    expect(localityStepFailures(stepOf(id))).toEqual([]);
+  // The check sees the row's own revision: the same edit reporting none of
+  // the row's paragraphs is a finding.
+  const rowDeletion = stepOf(5);
+  expect(
+    localityStepFailures({
+      ...rowDeletion,
+      edit: {
+        ...rowDeletion.edit,
+        touched: { modified: [], inserted: [], removed: [] },
+      },
+    }),
+  ).toContain("setRevisionInfo changed an untouched block or container");
 });
