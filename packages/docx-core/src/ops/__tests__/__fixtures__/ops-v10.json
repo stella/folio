@@ -38,12 +38,7 @@
               "value": {
                 "path": "word/media/clipboard.png",
                 "mimeType": "image/png",
-                "data": [
-                  137,
-                  80,
-                  78,
-                  71
-                ]
+                "data": [137, 80, 78, 71]
               }
             }
           }
@@ -87,12 +82,7 @@
               "value": {
                 "path": "word/media/clipboard.png",
                 "mimeType": "image/png",
-                "data": [
-                  137,
-                  80,
-                  78,
-                  71
-                ]
+                "data": [137, 80, 78, 71]
               }
             },
             "next": {
@@ -136,21 +126,14 @@
           "offset": 0
         }
       },
-      "undefinedFields": [
-        [
-          "comment",
-          "initials"
-        ]
-      ]
+      "undefinedFields": [["comment", "initials"]]
     }
   },
   {
     "schema": 10,
     "op": {
       "type": "restoreCommentState",
-      "ids": [
-        400
-      ],
+      "ids": [400],
       "scaffoldIds": {
         "revision": [],
         "control": []
@@ -327,15 +310,7 @@
           }
         ]
       },
-      "undefinedFields": [
-        [
-          "expected",
-          "records",
-          "0",
-          "comment",
-          "initials"
-        ]
-      ]
+      "undefinedFields": [["expected", "records", "0", "comment", "initials"]]
     }
   },
   {
@@ -369,9 +344,7 @@
     "schema": 10,
     "op": {
       "type": "restoreCommentState",
-      "ids": [
-        400
-      ],
+      "ids": [400],
       "scaffoldIds": {
         "revision": [],
         "control": []
@@ -464,20 +437,8 @@
         "anchors": []
       },
       "undefinedFields": [
-        [
-          "expected",
-          "records",
-          "0",
-          "comment",
-          "initials"
-        ],
-        [
-          "state",
-          "records",
-          "0",
-          "comment",
-          "initials"
-        ]
+        ["expected", "records", "0", "comment", "initials"],
+        ["state", "records", "0", "comment", "initials"]
       ]
     }
   },
@@ -493,9 +454,7 @@
     "schema": 10,
     "op": {
       "type": "restoreCommentState",
-      "ids": [
-        400
-      ],
+      "ids": [400],
       "scaffoldIds": {
         "revision": [],
         "control": []
@@ -599,20 +558,8 @@
         "anchors": []
       },
       "undefinedFields": [
-        [
-          "expected",
-          "records",
-          "0",
-          "comment",
-          "initials"
-        ],
-        [
-          "state",
-          "records",
-          "0",
-          "comment",
-          "initials"
-        ]
+        ["expected", "records", "0", "comment", "initials"],
+        ["state", "records", "0", "comment", "initials"]
       ]
     }
   },
@@ -628,9 +575,7 @@
     "schema": 10,
     "op": {
       "type": "restoreCommentState",
-      "ids": [
-        400
-      ],
+      "ids": [400],
       "scaffoldIds": {
         "revision": [],
         "control": []
@@ -828,15 +773,7 @@
           }
         ]
       },
-      "undefinedFields": [
-        [
-          "state",
-          "records",
-          "0",
-          "comment",
-          "initials"
-        ]
-      ]
+      "undefinedFields": [["state", "records", "0", "comment", "initials"]]
     }
   },
   {
@@ -1078,9 +1015,7 @@
     "op": {
       "type": "deleteBlocks",
       "story": "main",
-      "blockIds": [
-        "0000000D"
-      ],
+      "blockIds": ["0000000D"],
       "revision": {
         "id": 81,
         "author": "Reviewer",
@@ -1258,9 +1193,7 @@
     "op": {
       "type": "resolveRevision",
       "story": "main",
-      "revisionIds": [
-        81
-      ],
+      "revisionIds": [81],
       "decision": "accept"
     }
   },
@@ -1893,9 +1826,7 @@
       },
       "newBlockId": "0000000A",
       "newIds": {
-        "revision": [
-          50
-        ]
+        "revision": [50]
       }
     }
   },
@@ -1984,9 +1915,7 @@
       "text": "Y",
       "runProps": "inherit",
       "newIds": {
-        "revision": [
-          61
-        ]
+        "revision": [61]
       },
       "revision": {
         "id": 60,
@@ -2064,10 +1993,7 @@
         "offset": 5
       },
       "newIds": {
-        "revision": [
-          63,
-          64
-        ]
+        "revision": [63, 64]
       },
       "revision": {
         "id": 62,
@@ -2327,10 +2253,7 @@
         }
       },
       "newIds": {
-        "revision": [
-          66,
-          67
-        ]
+        "revision": [66, 67]
       },
       "revision": {
         "id": 65,
@@ -2409,9 +2332,7 @@
                 "date": "2026-02-03T04:05:06Z",
                 "initials": "R"
               },
-              "boundaryJoins": [
-                "after"
-              ]
+              "boundaryJoins": ["after"]
             }
           ]
         },
@@ -2588,10 +2509,7 @@
       },
       "newBlockId": "0000000B",
       "newIds": {
-        "revision": [
-          70,
-          71
-        ]
+        "revision": [70, 71]
       },
       "revision": {
         "id": 69,
@@ -2630,9 +2548,7 @@
       "blockId": "0000000A",
       "nextBlockId": "00000002",
       "newIds": {
-        "revision": [
-          73
-        ]
+        "revision": [73]
       },
       "revision": {
         "id": 72,
@@ -2721,12 +2637,7 @@
     "op": {
       "type": "resolveRevision",
       "story": "main",
-      "revisionIds": [
-        60,
-        62,
-        65,
-        68
-      ],
+      "revisionIds": [60, 62, 65, 68],
       "decision": "accept"
     }
   },
@@ -2857,9 +2768,7 @@
                 "date": "2026-02-03T04:05:06Z",
                 "initials": "R"
               },
-              "boundaryJoins": [
-                "after"
-              ]
+              "boundaryJoins": ["after"]
             }
           ]
         },
@@ -2969,9 +2878,7 @@
                 "date": "2026-02-03T04:05:06Z",
                 "initials": "R"
               },
-              "boundaryJoins": [
-                "after"
-              ]
+              "boundaryJoins": ["after"]
             }
           ]
         },
@@ -3227,10 +3134,7 @@
     "op": {
       "type": "resolveRevision",
       "story": "main",
-      "revisionIds": [
-        69,
-        72
-      ],
+      "revisionIds": [69, 72],
       "decision": "reject"
     }
   },
@@ -3561,10 +3465,7 @@
         "initials": "R"
       },
       "newIds": {
-        "revision": [
-          201,
-          204
-        ]
+        "revision": [201, 204]
       }
     }
   },
@@ -3747,10 +3648,7 @@
         "initials": "R"
       },
       "newIds": {
-        "revision": [
-          203,
-          205
-        ]
+        "revision": [203, 205]
       }
     }
   },
@@ -4397,13 +4295,7 @@
         "initials": "R"
       },
       "newIds": {
-        "revision": [
-          221,
-          222,
-          223,
-          224,
-          225
-        ]
+        "revision": [221, 222, 223, 224, 225]
       }
     }
   },
@@ -4701,14 +4593,7 @@
     "op": {
       "type": "resolveRevision",
       "story": "main",
-      "revisionIds": [
-        220,
-        221,
-        222,
-        223,
-        224,
-        225
-      ],
+      "revisionIds": [220, 221, 222, 223, 224, 225],
       "decision": "accept"
     }
   },
@@ -4969,14 +4854,7 @@
     "op": {
       "type": "resolveRevision",
       "story": "main",
-      "revisionIds": [
-        220,
-        221,
-        222,
-        223,
-        224,
-        225
-      ],
+      "revisionIds": [220, 221, 222, 223, 224, 225],
       "decision": "reject"
     }
   },
@@ -5302,13 +5180,7 @@
         "initials": "R"
       },
       "newIds": {
-        "revision": [
-          231,
-          232,
-          233,
-          234,
-          235
-        ]
+        "revision": [231, 232, 233, 234, 235]
       }
     }
   },
@@ -5527,14 +5399,7 @@
     "op": {
       "type": "resolveRevision",
       "story": "main",
-      "revisionIds": [
-        230,
-        231,
-        232,
-        233,
-        234,
-        235
-      ],
+      "revisionIds": [230, 231, 232, 233, 234, 235],
       "decision": "accept"
     }
   },
@@ -5718,14 +5583,7 @@
     "op": {
       "type": "resolveRevision",
       "story": "main",
-      "revisionIds": [
-        230,
-        231,
-        232,
-        233,
-        234,
-        235
-      ],
+      "revisionIds": [230, 231, 232, 233, 234, 235],
       "decision": "reject"
     }
   },
@@ -6030,11 +5888,7 @@
         "initials": "R"
       },
       "newIds": {
-        "revision": [
-          241,
-          242,
-          243
-        ]
+        "revision": [241, 242, 243]
       }
     }
   },
@@ -6158,12 +6012,7 @@
     "op": {
       "type": "resolveRevision",
       "story": "main",
-      "revisionIds": [
-        240,
-        243,
-        241,
-        242
-      ],
+      "revisionIds": [240, 243, 241, 242],
       "decision": "accept"
     }
   },
@@ -6324,12 +6173,7 @@
     "op": {
       "type": "resolveRevision",
       "story": "main",
-      "revisionIds": [
-        240,
-        243,
-        241,
-        242
-      ],
+      "revisionIds": [240, 243, 241, 242],
       "decision": "reject"
     }
   },
@@ -7307,9 +7151,7 @@
                 "date": "2026-02-03T04:05:06Z",
                 "initials": "R"
               },
-              "boundaryJoins": [
-                "after"
-              ]
+              "boundaryJoins": ["after"]
             }
           ]
         },
@@ -7478,13 +7320,7 @@
       "newParagraph": {
         "formatting": {}
       },
-      "undefinedFields": [
-        [
-          "newParagraph",
-          "formatting",
-          "numPr"
-        ]
-      ]
+      "undefinedFields": [["newParagraph", "formatting", "numPr"]]
     }
   },
   {
@@ -7503,16 +7339,8 @@
         "formatting": {}
       },
       "undefinedFields": [
-        [
-          "expectedRetired",
-          "formatting",
-          "numPr"
-        ],
-        [
-          "expectedSurvivor",
-          "formatting",
-          "numPr"
-        ]
+        ["expectedRetired", "formatting", "numPr"],
+        ["expectedSurvivor", "formatting", "numPr"]
       ]
     }
   },
@@ -7526,12 +7354,7 @@
       "expected": {
         "numPr": null
       },
-      "undefinedFields": [
-        [
-          "patch",
-          "numPr"
-        ]
-      ]
+      "undefinedFields": [["patch", "numPr"]]
     }
   },
   {
@@ -7545,12 +7368,7 @@
       },
       "whenEmpty": "omit",
       "expected": {},
-      "undefinedFields": [
-        [
-          "expected",
-          "numPr"
-        ]
-      ]
+      "undefinedFields": [["expected", "numPr"]]
     }
   },
   {
@@ -7953,29 +7771,16 @@
         "undefinedFields": [
           {
             "target": "body",
-            "keys": [
-              "background",
-              "finalSectionProperties",
-              "comments"
-            ]
+            "keys": ["background", "finalSectionProperties", "comments"]
           },
           {
             "target": "package",
-            "keys": [
-              "headers",
-              "footers",
-              "footnotes",
-              "endnotes",
-              "settings"
-            ]
+            "keys": ["headers", "footers", "footnotes", "endnotes", "settings"]
           },
           {
             "target": "section",
             "index": 0,
-            "keys": [
-              "headers",
-              "footers"
-            ]
+            "keys": ["headers", "footers"]
           }
         ]
       },
@@ -8001,29 +7806,16 @@
         "undefinedFields": [
           {
             "target": "body",
-            "keys": [
-              "background",
-              "finalSectionProperties",
-              "comments"
-            ]
+            "keys": ["background", "finalSectionProperties", "comments"]
           },
           {
             "target": "package",
-            "keys": [
-              "headers",
-              "footers",
-              "footnotes",
-              "endnotes",
-              "settings"
-            ]
+            "keys": ["headers", "footers", "footnotes", "endnotes", "settings"]
           },
           {
             "target": "section",
             "index": 0,
-            "keys": [
-              "headers",
-              "footers"
-            ]
+            "keys": ["headers", "footers"]
           }
         ]
       }
@@ -8035,22 +7827,13 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "insertColumn",
       "column": 1,
       "width": 1500,
-      "newBlockIds": [
-        "00000200",
-        "00000201"
-      ]
+      "newBlockIds": ["00000200", "00000201"]
     }
   },
   {
@@ -8061,11 +7844,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1500,
-          1800
-        ],
+        "columnWidths": [1200, 1500, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -8170,10 +7949,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -8264,14 +8040,8 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "deleteColumn",
       "column": 1
@@ -8285,9 +8055,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200
-        ],
+        "columnWidths": [1200],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -8344,10 +8112,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -8438,23 +8203,15 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "mergeCells",
       "top": 0,
       "bottom": 2,
       "left": 0,
       "right": 2,
-      "newBlockIds": [
-        "00000202"
-      ]
+      "newBlockIds": ["00000202"]
     }
   },
   {
@@ -8465,10 +8222,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -8527,10 +8281,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -8621,20 +8372,11 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "setTableGrid",
-      "columnWidths": [
-        1600,
-        2200
-      ]
+      "columnWidths": [1600, 2200]
     }
   },
   {
@@ -8645,10 +8387,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1600,
-          2200
-        ],
+        "columnWidths": [1600, 2200],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -8733,10 +8472,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -8827,14 +8563,8 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "setCellProps",
       "patch": {
@@ -8856,10 +8586,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -8948,10 +8675,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -9042,14 +8766,8 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "setRowProps",
       "patch": {
@@ -9071,10 +8789,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -9163,10 +8878,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -9257,14 +8969,8 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "setTableProps",
       "patch": {
@@ -9283,10 +8989,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "right",
           "layout": "autofit",
@@ -9371,10 +9074,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -9465,19 +9165,12 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          501,
-          502,
-          503
-        ]
+        "revision": [501, 502, 503]
       },
       "type": "insertColumn",
       "column": 2,
       "width": 1300,
-      "newBlockIds": [
-        "00000203",
-        "00000204"
-      ],
+      "newBlockIds": ["00000203", "00000204"],
       "revision": {
         "id": 500,
         "author": "Reviewer",
@@ -9494,21 +9187,14 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800,
-          1300
-        ],
+        "columnWidths": [1200, 1800, 1300],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
           "styleId": "Old",
           "gridChange": {
             "id": 502,
-            "columnWidths": [
-              1200,
-              1800
-            ]
+            "columnWidths": [1200, 1800]
           }
         },
         "rows": [
@@ -9644,10 +9330,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -9738,11 +9421,7 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          511,
-          512,
-          513
-        ]
+        "revision": [511, 512, 513]
       },
       "type": "deleteColumn",
       "column": 1,
@@ -9762,10 +9441,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -9868,10 +9544,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -9962,15 +9635,10 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          521
-        ]
+        "revision": [521]
       },
       "type": "setTableGrid",
-      "columnWidths": [
-        1300,
-        1900
-      ],
+      "columnWidths": [1300, 1900],
       "revision": {
         "id": 520,
         "author": "Reviewer",
@@ -9987,20 +9655,14 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1300,
-          1900
-        ],
+        "columnWidths": [1300, 1900],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
           "styleId": "Old",
           "gridChange": {
             "id": 520,
-            "columnWidths": [
-              1200,
-              1800
-            ]
+            "columnWidths": [1200, 1800]
           }
         },
         "rows": [
@@ -10098,10 +9760,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -10192,14 +9851,8 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "setCellProps",
       "patch": {
@@ -10221,10 +9874,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -10325,10 +9975,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -10419,14 +10066,8 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "setRowProps",
       "patch": {
@@ -10448,10 +10089,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -10552,10 +10190,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -10646,14 +10281,8 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          700,
-          701,
-          702
-        ],
-        "control": [
-          703
-        ]
+        "revision": [700, 701, 702],
+        "control": [703]
       },
       "type": "setTableProps",
       "patch": {
@@ -10675,10 +10304,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -10780,10 +10406,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -10874,13 +10497,7 @@
       "story": "main",
       "blockId": "00000100",
       "newIds": {
-        "revision": [
-          561,
-          562,
-          563,
-          564,
-          565
-        ]
+        "revision": [561, 562, 563, 564, 565]
       },
       "type": "mergeCells",
       "top": 0,
@@ -10904,10 +10521,7 @@
       "blockId": "00000100",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -11044,10 +10658,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -11138,14 +10749,9 @@
       "story": "main",
       "blockId": "00000300",
       "type": "splitCell",
-      "newBlockIds": [
-        "00000302"
-      ],
+      "newBlockIds": ["00000302"],
       "newIds": {
-        "revision": [
-          710,
-          711
-        ]
+        "revision": [710, 711]
       }
     }
   },
@@ -11157,10 +10763,7 @@
       "blockId": "00000300",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -11224,10 +10827,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -11288,13 +10888,9 @@
       "story": "main",
       "blockId": "00000300",
       "type": "splitCell",
-      "newBlockIds": [
-        "00000302"
-      ],
+      "newBlockIds": ["00000302"],
       "newIds": {
-        "revision": [
-          571
-        ]
+        "revision": [571]
       },
       "revision": {
         "id": 570,
@@ -11312,10 +10908,7 @@
       "blockId": "00000300",
       "expected": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
@@ -11402,10 +10995,7 @@
       },
       "table": {
         "type": "table",
-        "columnWidths": [
-          1200,
-          1800
-        ],
+        "columnWidths": [1200, 1800],
         "formatting": {
           "justification": "center",
           "layout": "fixed",
