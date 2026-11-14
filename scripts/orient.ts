@@ -252,7 +252,11 @@ export const classifySeam = (file: string): Seam => {
   ) {
     return SEAM.domRender;
   }
-  if (file.includes("/controller/") || file.includes("/managers/"))
+  if (
+    file.includes("/controller/") ||
+    file.includes("/canonical/") ||
+    file.includes("/managers/")
+  )
     return SEAM.controller;
   if (file.includes("/prosemirror/")) return SEAM.editableModel;
   if (file.startsWith("packages/core/src/docx/")) return SEAM.parserSerializer;

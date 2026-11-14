@@ -8,13 +8,13 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { schema } from "../prosemirror/schema";
-import { createEmptyDocument } from "../utils/createDocument";
-import { createCanonicalInputBoundary } from "./canonicalInput";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { schema } from "../prosemirror/schema";
+import { createEmptyDocument } from "../utils/createDocument";
+import { createCanonicalInputBoundary } from "./canonicalInput";
 
 beforeAll(() => GlobalRegistrator.register());
 afterAll(() => GlobalRegistrator.unregister());

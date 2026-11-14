@@ -16,12 +16,12 @@ import type {
   FolioReviewChange,
   FolioUndefinedReferencePolicy,
 } from "@stll/folio-core/ai-edits";
+import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
 import type {
   ContentControlFilter,
   SetContentControlContentInput,
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
-import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";

@@ -17,17 +17,22 @@ import {
   type SequencedBatch,
 } from "@stll/docx-core/ops";
 
-import { readModel } from "../types/documentModel";
-import type {
-  CanonicalRoomSubmission,
-  CanonicalRoomTransport,
-} from "./canonicalRoomTransport";
 import type {
   CanonicalCommit,
   CanonicalCommittedBatch,
   CanonicalSession,
   CanonicalSessionError,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { readModel } from "../types/documentModel";
+import {
+  type CanonicalPresenceUser,
+  type CanonicalRemotePresence,
+  createPresenceTracker,
+} from "./canonicalPresence";
+import type {
+  CanonicalRoomSubmission,
+  CanonicalRoomTransport,
+} from "./canonicalRoomTransport";
 
 const CanonicalCollaborationErrorBase: TaggedErrorClass<"CanonicalCollaborationError"> =
   TaggedError("CanonicalCollaborationError");
@@ -102,6 +107,31 @@ export type CanonicalCollaborationOptions = {
   onEvent?: (event: CanonicalCollaborationEvent) => void;
   /** Ask for another block of a kind once fewer ids than this remain. */
   renewBelow?: number;
+  /**
+   * Share this peer's selection with the room's other peers and follow
+   * theirs, over the transport's presence channel.
+   */
+  presence?: { user: CanonicalPresenceUser };
+};
+
+/** Another peer's presence, as this session shows it. */
+export type CanonicalRemotePeer = CanonicalRemotePresence & {
+  /** Editor positions in the session's projection, when both ends show there. */
+  shown: { anchor: number; head: number } | undefined;
+};
+
+/** The room's other peers' selections, and this peer's own. */
+export type CanonicalCollaborationPresence = {
+  /**
+   * Publish this peer's selection as the editor shows it now. The host
+   * calls it when the selection moves; the controller publishes after each
+   * remote edit and each revision the room confirms.
+   */
+  update(): void;
+  /** Every other peer that published, moved into this session's document. */
+  peers(): readonly CanonicalRemotePeer[];
+  /** Called when what `peers` returns may have changed; returns the unsubscribe. */
+  onChange(listener: () => void): () => void;
 };
 
 export type CanonicalCollaboration = {
@@ -111,6 +141,8 @@ export type CanonicalCollaboration = {
   /** Local batches the room has not sequenced yet. */
   readonly pending: readonly DocumentBatch[];
   readonly stopped: boolean;
+  /** Undefined unless the host asked for presence and the transport carries it. */
+  readonly presence: CanonicalCollaborationPresence | undefined;
   /**
    * Apply what waited for a composition. The controller also catches up on
    * its next delivery.
@@ -178,6 +210,7 @@ export const connectCanonicalRoom = async (
     open,
     onEvent = () => {},
     renewBelow = DEFAULT_RENEW_BELOW,
+    presence: presenceOptions,
   }: CanonicalCollaborationOptions,
   fault?: CanonicalCollaborationFault,
 ): Promise<Result<CanonicalCollaboration, CanonicalCollaborationError>> => {
@@ -210,6 +243,17 @@ export const connectCanonicalRoom = async (
   let draining = false;
   let stopped = false;
   let unsubscribe = (): void => {};
+  const presence =
+    presenceOptions === undefined || transport.presence === undefined
+      ? undefined
+      : followPresence({
+          channel: transport.presence,
+          actor,
+          user: presenceOptions.user,
+          session,
+          editor,
+          headRev: () => client.headRev,
+        });
 
   const stop = (error: CanonicalCollaborationError): void => {
     if (stopped) return;
@@ -254,12 +298,14 @@ export const connectCanonicalRoom = async (
       if (batch.revision <= client.headRev) return true;
       if (awaiting?.opId === batch.opId) awaiting = undefined;
       if (fault === "unrebasedRemote") unrebased.set(batch.revision, batch);
+      const before = client.headRev;
+      presence?.received(batch);
       const received = client.receiveBroadcast(batch);
       if (received.isErr()) {
         diverge(received.error.message, received.error);
         return false;
       }
-      return received.value.every((change) => {
+      const shown = received.value.every((change) => {
         const sequenced = unrebased.get(change.batch.revision);
         // The defect: the sequenced ops as sequenced, not as rebased over
         // the pending local batches.
@@ -269,6 +315,10 @@ export const connectCanonicalRoom = async (
             : change,
         );
       });
+      // Peers' selections move once the editor shows the batches, so a host
+      // reading them on change resolves them in the projection it shows.
+      if (shown) presence?.applied(before, client.headRev);
+      return shown;
     }
     const { outcome } = item;
     if (outcome.type === "disconnected") return true;
@@ -316,6 +366,7 @@ export const connectCanonicalRoom = async (
       onEvent({ type: "synced", rev: client.headRev });
     }
     pump();
+    presence?.publish();
   };
 
   const renewKind = async (kind: IdLeaseKind): Promise<void> => {
@@ -389,6 +440,7 @@ export const connectCanonicalRoom = async (
     unsubscribe();
     offCommitted();
     offConnection();
+    presence?.leave();
   };
 
   if (transport.connected) subscribe();
@@ -406,7 +458,112 @@ export const connectCanonicalRoom = async (
     get stopped() {
       return stopped;
     },
+    presence: presence?.api,
     flush: drain,
     leave,
   });
+};
+
+type FollowPresenceOptions = {
+  channel: NonNullable<CanonicalRoomTransport["presence"]>;
+  actor: string;
+  user: CanonicalPresenceUser;
+  session: CanonicalSession;
+  editor: CanonicalCollaborationEditor;
+  headRev: () => number;
+};
+
+/**
+ * This peer's presence on the channel and every other peer's, moved over
+ * each sequenced batch the session applies.
+ */
+const followPresence = ({
+  channel,
+  actor,
+  user,
+  session,
+  editor,
+  headRev,
+}: FollowPresenceOptions) => {
+  const tracker = createPresenceTracker(actor);
+  // Sequenced batches received and not applied yet, by revision.
+  const unapplied = new Map<number, SequencedBatch>();
+  const listeners = new Set<() => void>();
+  const instance = crypto.randomUUID();
+  let clock = 0;
+  let published: string | undefined;
+  let left = false;
+  const changed = (): void => {
+    for (const listener of listeners) listener();
+  };
+
+  const publish = (): void => {
+    if (left) return;
+    const shown = session.projection.selectionAt(editor.state());
+    const selection = shown.isOk()
+      ? { anchor: shown.value.anchor, head: shown.value.head }
+      : null;
+    const rev = headRev();
+    const key = JSON.stringify([rev, selection]);
+    if (key === published) return;
+    published = key;
+    clock += 1;
+    channel.publish({ actor, instance, clock, user, rev, selection });
+  };
+
+  const shownAt = (
+    selection: CanonicalRemotePresence["selection"],
+  ): CanonicalRemotePeer["shown"] => {
+    if (selection === undefined) return undefined;
+    const anchor = session.projection.positionAt(selection.anchor);
+    const head = session.projection.positionAt(selection.head);
+    return anchor.isOk() && head.isOk()
+      ? { anchor: anchor.value, head: head.value }
+      : undefined;
+  };
+
+  const unsubscribe = channel.subscribe((peer, state) => {
+    if (!left && tracker.receive(peer, state)) changed();
+  });
+
+  return {
+    received(batch: SequencedBatch): void {
+      unapplied.set(batch.revision, batch);
+    },
+    /** The client went from revision `from` to `to`. */
+    applied(from: number, to: number): void {
+      let moved = false;
+      for (let revision = from + 1; revision <= to; revision += 1) {
+        const batch = unapplied.get(revision);
+        unapplied.delete(revision);
+        if (batch !== undefined && tracker.applied(batch)) moved = true;
+      }
+      if (moved) changed();
+    },
+    publish,
+    leave(): void {
+      if (left) return;
+      left = true;
+      unsubscribe();
+      channel.publish(null);
+    },
+    api: {
+      update: publish,
+      peers: () =>
+        tracker
+          .peers()
+          .map(({ actor: peerActor, user: peerUser, selection }) => ({
+            actor: peerActor,
+            user: peerUser,
+            selection,
+            shown: shownAt(selection),
+          })),
+      onChange: (listener: () => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    } satisfies CanonicalCollaborationPresence,
+  };
 };

@@ -160,7 +160,8 @@ export type TableRowIntentOperation =
 
 /**
  * A table inserted after the paragraph `blockId`, with an empty paragraph
- * after it, as the editor inserts one; or the table holding `blockId`,
+ * after it, as the editor inserts one, or between the blocks beside that
+ * paragraph alone; or the table holding `blockId`,
  * removed, or in suggesting mode recorded as deleted. An inserted table's
  * paragraphs take fresh identities from the compiler.
  */
@@ -182,6 +183,13 @@ export type TableBlockIntentOperation =
        * a table it inserts after another, so the two never touch.
        */
       separated?: boolean;
+      /**
+       * The empty paragraph after the table: written, as the editor gives
+       * the caret a place after a table it inserts (the default), or left
+       * out, for a table that goes between blocks already standing on both
+       * sides of it.
+       */
+      paragraphAfter?: "empty" | "none";
     };
 
 /** Positions use canonical physical offsets, including retained deleted content. */
@@ -2361,22 +2369,28 @@ export const compileEditorIntent = (
     case "tableBlock": {
       if (intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE) {
         const { story, blockId, table } = intent.operation;
+        const separated = intent.operation.separated === true;
+        const trailing = intent.operation.paragraphAfter !== "none";
         const fresh = freshParagraphIds({
           document,
           reserved: mode.reservedBlockIds,
           lease: mode.idLease,
           count:
             storyParagraphs({ content: [{ type: "table", rows: table.rows }] })
-              .length + (intent.operation.separated === true ? 2 : 1),
+              .length +
+            (separated ? 1 : 0) +
+            (trailing ? 1 : 0),
           opType: DOCUMENT_OP_TYPES.INSERT_TABLE,
         });
         if (fresh.isErr()) return Result.err(fresh.error);
-        const separated = intent.operation.separated === true;
         const leadingId = separated ? fresh.value[0] : undefined;
-        const [paragraphId, ...tableIds] = separated
-          ? fresh.value.slice(1)
-          : fresh.value;
-        if (paragraphId === undefined || (separated && leadingId === undefined))
+        const afterLeading = separated ? fresh.value.slice(1) : fresh.value;
+        const paragraphId = trailing ? afterLeading.at(0) : undefined;
+        const tableIds = trailing ? afterLeading.slice(1) : afterLeading;
+        if (
+          (trailing && paragraphId === undefined) ||
+          (separated && leadingId === undefined)
+        )
           return panic("A fresh paragraph id is missing.");
         let next = 0;
         const rows = table.rows.map((row: TableRow) => {
@@ -2388,37 +2402,34 @@ export const compileEditorIntent = (
           return withFreshParagraphIds(row, ids);
         });
         const before = intent.operation.side === "before";
-        const sequence: DocumentOp[] = [
-          // The empty paragraph first, then the table ahead of it: after the
-          // anchor, or before it at the story's start.
-          {
-            type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-            story,
-            at: { type: before ? "before" : "after", blockId },
-            blocks: [
-              ...(leadingId === undefined
-                ? []
-                : [
-                    {
-                      type: "paragraph" as const,
-                      paraId: leadingId,
-                      content: [],
-                    },
-                  ]),
-              { type: "paragraph", paraId: paragraphId, content: [] },
-            ],
-            ...tracked,
-          },
-          {
-            type: DOCUMENT_OP_TYPES.INSERT_TABLE,
-            story,
-            at: before
-              ? { type: "before", blockId: paragraphId }
-              : { type: "after", blockId },
-            table: { ...table, rows },
-            ...tracked,
-          },
-        ];
+        const paragraphs = [leadingId, paragraphId].flatMap((paraId) =>
+          paraId === undefined
+            ? []
+            : [{ type: "paragraph" as const, paraId, content: [] }],
+        );
+        // The empty paragraphs first, then the table ahead of the one after
+        // it: after the anchor, or before it at the story's start.
+        const sequence: DocumentOp[] =
+          paragraphs.length === 0
+            ? []
+            : [
+                {
+                  type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+                  story,
+                  at: { type: before ? "before" : "after", blockId },
+                  blocks: paragraphs,
+                  ...tracked,
+                },
+              ];
+        sequence.push({
+          type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+          story,
+          at: before
+            ? { type: "before", blockId: paragraphId ?? blockId }
+            : { type: "after", blockId },
+          table: { ...table, rows },
+          ...tracked,
+        });
         let current = document;
         ops = [];
         // The two operations share one pool of revision ids: each takes the

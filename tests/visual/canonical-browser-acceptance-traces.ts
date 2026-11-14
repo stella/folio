@@ -1,4 +1,4 @@
-import type { CanonicalSessionError } from "../../packages/core/src/controller/canonicalSession";
+import type { CanonicalSessionError } from "../../packages/core/src/canonical/canonicalSession";
 import { CANONICAL_GAP } from "../../packages/core/src/types/canonicalCapabilities";
 import {
   BROWSER_PASTE_PAYLOADS,

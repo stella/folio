@@ -11,6 +11,10 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { parseDocx } from "../docx/parser";
@@ -21,10 +25,6 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 

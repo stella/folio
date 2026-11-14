@@ -14,12 +14,12 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import type { Document } from "../types/document";
 import {
   controlsOf,
   controlsOfWholeDocument,
   lockViolationBetween,
-} from "./canonicalLockGuard";
+} from "../canonical/canonicalLockGuard";
+import type { Document } from "../types/document";
 
 // Synchronous generated edit chains use a 15-second base budget.
 setDefaultTimeout(propertyTestTimeout(15_000));

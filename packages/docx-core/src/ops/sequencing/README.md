@@ -124,6 +124,25 @@ so does a direct deletion inside a tracked one or covering it whole.
 
 ## Block-scoped operations
 
+## Tracked changes beside concurrent cuts
+
+A tracked deletion or insertion records, on its wrapper, how many records it
+cut at each edge and how many ran across its whole range, so that rejecting
+or accepting it joins them again. Whether a record runs across depends on
+what was applied first: when a concurrent edit cuts or merges records at an
+edge or inside the range (another tracked edge, an insertion point, a
+format's end, an inline split or join, a paragraph split, an inverse
+deletion's join), the cut goes to whichever applies first and the two orders
+record different joins. A direct deletion that reaches one edge and not the
+other removes what lay against that edge in one order and moves the edge in
+the other. Two tracked deletions that overlap (nested, equal or crossing
+ranges) leave the shared content to whichever wraps it first, under its
+author and id. All of these pairs are refused with `unsupportedPair`, in
+either order. Tracked changes apart from every concurrent cut commute, and
+so does a direct deletion inside a tracked one or covering it whole.
+
+## Block-scoped operations
+
 Every other operation is block-scoped: paragraph replacement, inline
 replacement and paragraph review, content insertion with open or
 document-dependent slices, paragraph deletion, table insertion, deletion and structure edits, numbering
@@ -250,4 +269,69 @@ taken back the same way and reported to the host (`localEditRefused`), never
 lost silently. After a disconnection the unanswered batch is submitted again
 under the same operation id, so the sequencer answers it once. The controller
 asks for another lease block when a kind runs low. A remote batch waits while
-a composition is pending. Rooms hold no Yjs state.
+a composition is pending. The controller holds no Yjs state.
+
+## Room transports
+
+A room has exactly one authority: one sequencer over the room's base
+document. Its durable state is an ordered list of records, every sequenced
+batch and every leased id block (`CanonicalRoomRecord`).
+`restoreCanonicalRoomAuthority` rebuilds the sequencer from them: the leased
+blocks go back into the lease table, then every batch is submitted again at
+its own revision and must sequence there. An authority stores the records a
+call added before it broadcasts or answers anything, so a successor never
+forgets an edit somebody heard of, and a batch submitted again under an
+operation id it already sequenced gets its first answer.
+
+`openCanonicalTabRoom` (controller/canonicalTabRoom.ts) shares a room
+between the tabs of one origin. The authority runs in the tab that holds the
+room's Web Lock (`navigator.locks`), a leader tab rather than a SharedWorker:
+the library ships no worker script a host would have to serve, it works
+where SharedWorker does not, and a durable journal is needed either way, so
+the room outlives the tabs. Every tab, the leader included, reaches the
+authority over a BroadcastChannel. When the leading tab goes away the lock
+passes to a waiting tab, which reads the durable journal
+(`openCanonicalIndexedDbJournal`, one IndexedDB database per origin),
+rebuilds the sequencer and stores a higher leadership term before it
+announces itself. Clients follow only a higher term: the old leader's
+unanswered submissions count as lost to a disconnection, and the controller
+submits them again under the same operation id.
+
+`openCanonicalYjsRoom` (controller/canonicalYjsRoom.ts) carries a room in a
+Yjs document, for hosts that already sync one. The document is a transport,
+not the shared model: a client appends submissions and lease requests to an
+inbox array, and the authority helper a host server runs on its copy of the
+document (`serveCanonicalYjsRoom`, for example in a y-websocket or Hocuspocus
+server) takes each request in order and, in one transaction, appends the
+records to a journal array, writes the answer to an answers map keyed by
+actor and operation id, and removes the request. Only the authority writes
+the journal, under its own Yjs client id (`CANONICAL_YJS_AUTHORITY` unless
+the host picks another): a client refuses an entry any other Yjs client
+wrote (`foreignJournalEntry`) and goes on, and stops following the room if
+an authority entry is deleted or two claim one revision. Every Yjs client
+picks its own client id, so this check catches a client that writes the
+journal by mistake, not one that writes it under the authority's id on
+purpose: the room trusts its participants, and a host that does not trust
+one drops that client's updates touching the journal, the answers or the
+room map before it relays them. A lease call that the room can no longer
+forward, because the transport closed or stopped following the journal, is
+answered with an `unavailable` refusal. The host persists
+the document's updates before it sends them on, so a restarted authority
+finds every entry a client saw. The module imports no Yjs code; it works on
+the host's own document and awareness. A serverless room (y-webrtc) has no
+authority and cannot carry a canonical room until it gets one: a peer that
+is always present or a server that joins the room.
+
+## Presence
+
+With the `presence` option, `joinCanonicalRoom` shares the peer's selection
+over the transport's presence channel (the tab room's BroadcastChannel, the
+Yjs room's awareness): canonical positions (story, paragraph id, offset), the
+revision the peer had applied, and its user's name and color. A viewer moves
+every other peer's selection over each sequenced batch it applies after that
+revision, other than the peer's own, with the transform the session moves
+its own selection with, and `presence.peers()` gives each peer's selection
+in the viewer's projection (`positionAt`). A peer publishes again after each
+remote edit and each revision the room confirms, and the host calls
+`presence.update()` when the selection moves. Presence uses no Yjs relative
+positions.
