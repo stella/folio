@@ -22,6 +22,11 @@ import {
   type CanonicalInlineShapeFixture,
 } from "../../typecheck/canonical-inline-shapes.typecheck";
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
+import { projectCanonicalInline } from "../canonical/canonicalInlineProjection";
+import {
+  CanonicalSessionError,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import {
   collectPairedBookmarkIds,
   footnoteToProseDoc,
@@ -30,11 +35,6 @@ import {
 import { schema } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { ParagraphContent, RunContent } from "../types/document";
-import { projectCanonicalInline } from "./canonicalInlineProjection";
-import {
-  CanonicalSessionError,
-  createCanonicalSession,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 

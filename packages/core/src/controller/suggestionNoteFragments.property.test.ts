@@ -15,10 +15,10 @@ import {
   resolveAllChanges,
   saveHarnessState,
 } from "../__tests__/editorHarness";
+import { deletionRange } from "../canonical/canonicalSession";
 import { createDocx } from "../docx/rezip";
 import { noteReferenceStates } from "../prosemirror/noteReferenceReview";
 import { createEmptyDocument } from "../utils/createDocument";
-import { deletionRange } from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 

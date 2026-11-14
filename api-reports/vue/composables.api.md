@@ -6,7 +6,7 @@
 
 import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { App } from 'vue';
-import { CanonicalHistoryEffect } from '@stll/folio-core/controller/canonicalSession';
+import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
 import { Command } from 'prosemirror-state';

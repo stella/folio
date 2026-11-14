@@ -7,12 +7,12 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Comment, Document, ParagraphContent } from "../types/document";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Comment, Document, ParagraphContent } from "../types/document";
 
 // Projection fixtures edited at fixed positions; none followed the caret after replacement.
 test(

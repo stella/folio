@@ -13,12 +13,12 @@ import {
   runConformanceCase,
 } from "../__tests__/editorCommandConformance";
 import { EDITOR_MODES, parseShapeDocument } from "../__tests__/editorHarness";
+import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { collectHeadings } from "../utils/headingCollector";
-import { CanonicalSessionError } from "./canonicalSession";
 import * as canonicalStructure from "./canonicalStructure";
 
 const CASE = {

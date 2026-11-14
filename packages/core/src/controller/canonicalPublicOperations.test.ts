@@ -17,6 +17,11 @@ import {
   createFolioAITextRangeHandle,
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
+import {
+  type CanonicalCommit,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import type {
   FolioDocumentOperation,
   FolioDocumentOperationBatch,
@@ -29,11 +34,6 @@ import {
   CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
   CanonicalPublicOperations,
 } from "./canonicalPublicOperations";
-import {
-  type CanonicalCommit,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 const setup = (source: string | Document = "alpha beta") => {
   const document =

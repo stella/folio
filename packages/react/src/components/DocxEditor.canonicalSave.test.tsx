@@ -14,7 +14,7 @@ import {
   createCanonicalHeaderFooterOperation,
   DOCUMENT_OP_TYPES,
   withCanonicalParagraphIds,
-} from "@stll/folio-core/controller/canonicalOperations";
+} from "@stll/folio-core/canonical/canonicalOperations";
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";

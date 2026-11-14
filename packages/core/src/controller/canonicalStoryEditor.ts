@@ -3,6 +3,7 @@ import type { EditorView } from "prosemirror-view";
 
 import type { OpStory } from "@stll/docx-core/ops";
 
+import { CanonicalSessionError } from "../canonical/canonicalSession";
 import {
   adoptNativeSelection,
   isCompositionKeyDown,
@@ -12,7 +13,6 @@ import {
   type CanonicalRefusalGround,
 } from "../types/canonicalCapabilities";
 import { createCanonicalInputBoundary } from "./canonicalInput";
-import { CanonicalSessionError } from "./canonicalSession";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 
 type CanonicalStoryEditorOptions = {

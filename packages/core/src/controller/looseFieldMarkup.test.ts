@@ -17,11 +17,11 @@ import {
   parseShapeDocument,
   saveHarnessState,
 } from "../__tests__/editorHarness";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createEmptyDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
-import { createCanonicalSession } from "./canonicalSession";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const run = (inner: string) => `<w:r>${inner}</w:r>`;

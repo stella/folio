@@ -17,17 +17,17 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
+import { mapTocSelection } from "../canonical/canonicalTocSelection";
+import {
   bookmarkMarkerFromAttrs,
   readBookmarkBoundaryAttrs,
 } from "../prosemirror/bookmarkBoundaryAttrs";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { schema, singletonManager } from "../prosemirror/schema";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
-import { mapTocSelection } from "./canonicalTocSelection";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 

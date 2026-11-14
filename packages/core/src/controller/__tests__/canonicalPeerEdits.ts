@@ -36,15 +36,15 @@ import {
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { serializeCanonicalSave } from "../../docx/canonicalSave";
-import { prepareCanonicalDocxInput } from "../../docx/canonicalSessionInput";
-import { createDocx } from "../../docx/rezip";
-import type { Document } from "../../types/document";
 import type {
   CanonicalCommit,
   CanonicalSession,
   CanonicalSessionError,
-} from "../canonicalSession";
+} from "../../canonical/canonicalSession";
+import { serializeCanonicalSave } from "../../docx/canonicalSave";
+import { prepareCanonicalDocxInput } from "../../docx/canonicalSessionInput";
+import { createDocx } from "../../docx/rezip";
+import type { Document } from "../../types/document";
 
 const HOME_TEXT = "AAAABBBB";
 const CARET = 4;

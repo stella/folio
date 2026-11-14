@@ -13,12 +13,12 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { schema } from "../prosemirror/schema";
-import { createEmptyDocument } from "../utils/createDocument";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { schema } from "../prosemirror/schema";
+import { createEmptyDocument } from "../utils/createDocument";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 

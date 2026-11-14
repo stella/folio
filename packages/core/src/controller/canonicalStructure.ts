@@ -17,6 +17,11 @@ import {
 } from "@stll/docx-core/ops";
 
 import {
+  type CanonicalCommit,
+  type CanonicalSession,
+  CanonicalSessionError,
+} from "../canonical/canonicalSession";
+import {
   BUILT_IN_STYLE_NAME,
   createBuiltInStyleIndex,
 } from "../docx/builtInStyles";
@@ -46,11 +51,6 @@ import type {
 } from "../types/document";
 import { readModel } from "../types/documentModel";
 import { collectHeadings } from "../utils/headingCollector";
-import {
-  type CanonicalCommit,
-  type CanonicalSession,
-  CanonicalSessionError,
-} from "./canonicalSession";
 
 const DEFAULT_TOC_PAGE_WIDTH_TWIPS = 12240;
 const DEFAULT_TOC_MARGIN_TWIPS = 1440;

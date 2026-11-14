@@ -21,6 +21,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { shapeArrayBuffer } from "../__tests__/documentShapes";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { normalizeDrawingIds } from "../docx/drawingIdNormalization";
 import { imageDerivedFactsOf, resolveImageData } from "../docx/imageParser";
@@ -52,7 +53,6 @@ import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { canonicalJson } from "../utils/canonicalJson";
 import { AUTHORED_IMAGE_FACTS } from "./__fixtures__/authoredImageFacts";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
-import { createCanonicalSession } from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 const STORIES = {

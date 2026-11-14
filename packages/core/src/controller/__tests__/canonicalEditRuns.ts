@@ -14,6 +14,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { DOCUMENT_SHAPES } from "../../__tests__/documentShapes";
+import { type CanonicalSession } from "../../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../../docx/canonicalSessionInput";
 import { mintListInstance } from "../../docx/listNumberingInstances";
 import { NO_NUMBERING_IDS_IN_USE } from "../../docx/numberingIds";
@@ -22,7 +23,6 @@ import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import type { BlockContent, Document, Paragraph } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
-import { type CanonicalSession } from "../canonicalSession";
 import { prepareCanonicalCommands } from "../canonicalStructure";
 
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";

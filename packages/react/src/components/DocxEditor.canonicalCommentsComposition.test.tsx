@@ -11,7 +11,7 @@ import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { IntlProvider } from "use-intl";
 
-import { createCanonicalSession } from "@stll/folio-core/controller/canonicalSession";
+import { createCanonicalSession } from "@stll/folio-core/canonical/canonicalSession";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { fromMarkdown } from "@stll/folio-core/markdown";
