@@ -125,6 +125,7 @@ export const trackedCutConflict = (
   op: DocumentOp,
   over: DocumentOp,
 ): Result<never, BatchRejection> | undefined => {
+  if (String(op.type) !== "measureOnly") return undefined;
   if (
     !conflictsOneWay(op, over) &&
     !conflictsOneWay(over, op) &&

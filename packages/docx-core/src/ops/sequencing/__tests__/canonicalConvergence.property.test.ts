@@ -494,7 +494,16 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       if (meetsTrackedDeletion(batch, tail)) outcome.trackedPairs += 1;
       const proven = commutes(history, batch, tail, sequencer.document);
       if (proven === true) outcome.proven += 1;
-      if (proven === false) outcome.diverged.push(batch.opId);
+      if (proven === false) {
+        outcome.diverged.push(batch.opId);
+        const kinds = pairKinds(
+          batch.ops,
+          tail.flatMap(({ ops }) => ops),
+        );
+        const what = `${describeOps(batch.ops)} over ${describeOps(tail.flatMap(({ ops }) => ops))}`;
+        if (kinds.size === 0) note(`diverged | other | ${what}`);
+        for (const kind of kinds) note(`diverged | ${kind} | ${what}`);
+      }
     }
     const broadcast = sequencer.broadcasts.at(-1);
     if (broadcast === undefined) return;
