@@ -12,6 +12,11 @@
  * - rejecting the suggestion gives the document before it back;
  * - accepting it adopts it as ordinary tracked changes: accepting every
  *   change then gives the words of the same operation applied directly.
+ *   A paragraph put beside one whose break is pending removal is the
+ *   exception: a suggestion reads the document as it stands and goes right
+ *   beside the paragraph it names, where a direct edit reads the paragraphs
+ *   the pending join runs together as one and goes beside all of them, as
+ *   both engines place them.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -76,6 +81,12 @@ const reads = (reviewer: Reviewer) => ({
 
 const words = (text: string): string => text.replace(/\s+/gu, "");
 
+/** The paragraph ids a reader's text names, in reading order. */
+const blockIds = (text: string): string[] =>
+  [...text.matchAll(/\[([0-9A-F]{8})\]/gu)].flatMap(([, id]) =>
+    id === undefined ? [] : [id],
+  );
+
 type SuggestionOutcome =
   | "suggested"
   | "notAPackage"
@@ -100,9 +111,27 @@ const suggestionLaws = async (
   });
   if (operation === null) return "noOperation";
   const before = reads(reviewer);
+  const insertion =
+    operation.type === "insertBeforeBlock" ||
+    operation.type === "insertAfterBlock"
+      ? operation
+      : null;
+  const besidePendingJoin =
+    insertion !== null &&
+    reviewer.getChanges().some(({ type }) => type === "paragraphMarkDeleted");
   const result = apply(reviewer, operation, "suggested");
   if (result.applied.length === 0) return "refusedOperation";
   const suggested = reads(reviewer);
+  if (insertion !== null && besidePendingJoin) {
+    // As it stands: the new paragraph is right beside the one it names.
+    const ids = blockIds(suggested.text);
+    const known = new Set(blockIds(before.text));
+    const at = ids.indexOf(insertion.blockId);
+    expect(at).toBeGreaterThanOrEqual(0);
+    const beside =
+      ids[insertion.type === "insertBeforeBlock" ? at - 1 : at + 1];
+    expect(beside !== undefined && !known.has(beside)).toBe(true);
+  }
   const records = reviewer.exportPendingSuggestions();
   expect(records.length).toBeGreaterThan(0);
   const suggestionIds = [
@@ -139,9 +168,10 @@ const suggestionLaws = async (
     if (CanonicalSessionError.is(error)) return "resolutionRefused";
     throw error;
   }
-  expect(words(reviewer.getContentAsText())).toBe(
-    words(direct.getContentAsText()),
-  );
+  if (!besidePendingJoin)
+    expect(words(reviewer.getContentAsText())).toBe(
+      words(direct.getContentAsText()),
+    );
   return "suggested";
 };
 
