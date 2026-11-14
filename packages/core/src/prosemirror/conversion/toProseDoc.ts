@@ -3162,24 +3162,11 @@ function convertTableRow(
       ? totalColumns
       : Math.max(numCells, 1);
 
-  // A literal `<w:tr/>` from a non-Word producer parses with zero cells. PM's
-  // tableRow content is `(tableCell | tableHeader)+`, so emit one placeholder
-  // cell spanning the table's grid width to keep the row valid.
-  let effectiveCells: TableCell[] = row.cells;
-  const uncoveredColumns = Math.max(0, totalCols - gridBefore - gridAfter);
-  if (effectiveCells.length === 0 && uncoveredColumns > 0) {
-    const fallback: TableCell = {
-      type: "tableCell",
-      // convertTableCell supplies the PM-required empty paragraph. Keeping
-      // this source-model placeholder empty avoids inventing authored nodes
-      // that cannot belong to the entrypoint's source ownership index.
-      content: [],
-    };
-    if (uncoveredColumns > 1) {
-      fallback.formatting = { gridSpan: uncoveredColumns };
-    }
-    effectiveCells = [fallback];
-  }
+  // A literal `<w:tr/>` from a non-Word producer parses with zero cells. Its
+  // positions are as absent as omitted ones: they render as filler cells,
+  // which keep PM's `(tableCell | tableHeader)+` row valid and save as
+  // nothing, so the row is written back without a cell it never had.
+  const effectiveCells: readonly TableCell[] = row.cells;
 
   // Track column index for mapping to columnWidths (accounting for colspan)
   let colIndex = gridBefore;
@@ -3273,7 +3260,12 @@ function convertTableRow(
   // A row may simply stop short of the table's width, with no `w:gridAfter` to
   // say so. Those positions are as absent as declared ones, and the table map
   // needs them filled: left empty, any edit to the table would add real cells.
-  const omittedAfter = Math.max(gridAfter, (mapWidth ?? 0) - colIndex);
+  // A cell-less row of a table with no width still needs one filler.
+  const omittedAfter = Math.max(
+    gridAfter,
+    (mapWidth ?? 0) - colIndex,
+    cells.length === 0 ? 1 : 0,
+  );
   if (omittedAfter > 0) {
     cells.push(
       createOmittedGridSlotCell({
