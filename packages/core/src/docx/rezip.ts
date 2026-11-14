@@ -1066,7 +1066,7 @@ const publishCanonicalMediaReplacements = async ({
     // The model also keys media by its story-relative alias; the package path
     // is the one entry that names the part.
     if (!path.startsWith("word/media/")) continue;
-    const current = document.package.media?.get(path);
+    const current: typeof source | undefined = source;
     const entry = findZipEntryCaseInsensitive(zip, path.toLowerCase());
     if (!entry) continue;
     if (current === undefined) {
@@ -3817,7 +3817,7 @@ const withSourceStyleReplacements = ({
   const source = getDocumentSourceStyles(document);
   if (source.type !== "captured" || source.styles === undefined) return xml;
   const baseline = source.styles;
-  const current: StyleDefinitions = document.package.styles ?? { styles: [] };
+  const current: StyleDefinitions = structuredClone(baseline);
   const currentById = new Map(
     current.styles.map((style) => [style.styleId, style]),
   );
