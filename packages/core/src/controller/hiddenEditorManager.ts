@@ -19,7 +19,6 @@ import type {
 import {
   EditorState as PMEditorState,
   Plugin as PMPlugin,
-  TextSelection,
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { DirectEditorProps } from "prosemirror-view";
@@ -41,16 +40,13 @@ import type * as Yjs from "yjs";
 
 import {
   type CreateCommentOp,
-  DOCUMENT_OP_SCHEMA_VERSION,
   freshCommentId,
   OP_STORIES,
   type OpStory,
   sameStory,
-  type SequencedBatch,
 } from "@stll/docx-core/ops";
 
 import { createCanonicalSectionPropertiesOperation } from "../canonical/canonicalOperations";
-import { remapSelection } from "../canonical/canonicalRemoteHistory";
 import { restoreCanonicalSelection } from "../canonical/canonicalSelection";
 import {
   type CanonicalCommit,
@@ -891,65 +887,6 @@ export const createHiddenEditorManager = (
     deps.onCanonicalHistory?.(commit.history);
     return true;
   };
-  /** Each open story editor that shows its story as committed, with its selection. */
-  const openStorySelections = (session: CanonicalSession) =>
-    storyViews.flatMap(({ story, view: storyView }) => {
-      if (storyView.isDestroyed) return [];
-      const projected = session.projectStory(story);
-      if (projected.isErr() || !storyView.state.doc.eq(projected.value.doc))
-        return [];
-      const selection = projected.value.selectionAt(storyView.state);
-      return selection.isOk()
-        ? [{ story, storyView, selection: selection.value }]
-        : [];
-    });
-  /**
-   * A peer's edit may change a story another editor shows (a header, a
-   * footer, a note): that editor takes the story's new projection at once,
-   * its selection moved over the edit as the body's is.
-   */
-  const refreshStoryViews = (
-    session: CanonicalSession,
-    stories: ReturnType<typeof openStorySelections>,
-    commit: CanonicalCommit,
-  ): void => {
-    const edit: SequencedBatch = {
-      schema: DOCUMENT_OP_SCHEMA_VERSION,
-      opId: "remote",
-      actor: "remote",
-      baseRev: 0,
-      revision: 1,
-      ops: commit.ops,
-    };
-    for (const { story, storyView, selection } of stories) {
-      const projected = session.projectStory(story);
-      if (projected.isErr() || storyView.state.doc.eq(projected.value.doc))
-        continue;
-      const projection = projected.value;
-      const transaction = storyView.state.tr.replaceWith(
-        0,
-        storyView.state.doc.content.size,
-        projection.doc.content,
-      );
-      const moved = remapSelection(selection, edit);
-      const anchor = moved && projection.positionAt(moved.anchor);
-      const head = moved && projection.positionAt(moved.head);
-      transaction.setSelection(
-        anchor?.isOk() && head?.isOk()
-          ? TextSelection.create(transaction.doc, anchor.value, head.value)
-          : TextSelection.near(
-              transaction.doc.resolve(
-                Math.min(
-                  storyView.state.selection.anchor,
-                  transaction.doc.content.size,
-                ),
-              ),
-            ),
-      );
-      transaction.setMeta("addToHistory", false);
-      storyView.updateState(storyView.state.apply(transaction));
-    }
-  };
   /**
    * Show a peer's edit the room sequenced: the same publication as a local
    * commit, whether or not the editor takes local edits.
@@ -971,7 +908,6 @@ export const createHiddenEditorManager = (
           reason: "refused",
         }),
       );
-    const stories = openStorySelections(session);
     const published = publishCanonicalProjection({
       state: view.state,
       commit,
@@ -980,7 +916,6 @@ export const createHiddenEditorManager = (
     if (published.isErr()) return Result.err(published.error);
     const staged = published.value;
     view.updateState(staged.state);
-    refreshStoryViews(session, stories, commit);
     deps.onTransaction({
       transactions: staged.transactions,
       newState: staged.state,

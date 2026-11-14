@@ -275,21 +275,21 @@ for (const adapter of adapters) {
     await firstNote.click();
     await first.keyboard.press("End");
 
-    // The second tab types at the start of the footnote the first tab has
-    // open, ahead of the first tab's caret.
+    // The second tab types in the footnote the first tab has open.
     await secondNote.click();
-    await second.keyboard.press("Home");
-    await second.keyboard.type("Remote ");
-    await expect(secondNote).toContainText("Remote Footnote seed");
-    await expect(firstNote).toContainText("Remote Footnote seed", {
+    await second.keyboard.press("End");
+    await second.keyboard.type(" remote");
+    await expect(secondNote).toContainText("Footnote seed remote");
+    await expect(firstNote).toContainText("Footnote seed remote", {
       timeout: JOIN_TIMEOUT,
     });
 
-    // The first tab's caret moved over the peer's text: typing goes on where
-    // it was, at the end of the note, without placing the caret again.
+    // The first tab's editor took the peer's edit: typing in it goes on.
+    await firstNote.click();
+    await first.keyboard.press("End");
     await first.keyboard.type(" local");
-    await expect(firstNote).toContainText("Remote Footnote seed local");
-    await expect(secondNote).toContainText("Remote Footnote seed local", {
+    await expect(firstNote).toContainText("Footnote seed remote local");
+    await expect(secondNote).toContainText("Footnote seed remote local", {
       timeout: JOIN_TIMEOUT,
     });
     await expectConverged([first, second]);
