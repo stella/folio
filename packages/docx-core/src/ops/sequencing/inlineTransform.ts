@@ -15,12 +15,12 @@
  * offset would leave other boundaries in the two orders, and refuses.
  *
  * A seam join (`ifAlike`, as typing and other edits join their runs to alike
- * neighbours) merges only alike records that carry no ids, and changes
- * nothing elsewhere. It moves like a point: at a concurrent insertion's
- * point the sequence order decides, so the seams of typing at one point
- * follow their own runs. An insertion, a format, a deletion or another seam
- * join at its offset passes it: whichever order applies, alike runs at every
- * edited seam end up joined and unlike ones apart.
+ * neighbours) merges only alike runs that carry no ids, and changes nothing
+ * elsewhere. It moves like a point. Content a concurrent insertion puts at
+ * its gap separates the records it would have joined, whichever applies
+ * first, so the join is dropped there: two typings at one point stay two
+ * runs in either order. An insertion, a format, a deletion or another seam
+ * join at its offset passes it.
  */
 import { Result } from "better-result";
 
@@ -234,6 +234,9 @@ const pointOverInsertion = (
     op.at.offset === over.at.offset &&
     compareGapsAtOffset(op.at, over.at) === 0;
   const seam = isSeamJoin(op);
+  // Content inserted at a seam join's gap separates the records it would
+  // have joined, in either order: the join has nothing left to do.
+  if (seam && tie) return Result.ok([]);
   if (
     sameParagraph(op.at, over.at) &&
     op.at.offset === over.at.offset &&

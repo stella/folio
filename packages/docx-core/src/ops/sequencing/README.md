@@ -89,14 +89,14 @@ there and a paragraph split or join of the same paragraph refuse, since the
 two orders would leave other boundaries.
 
 Typing and other edits join their runs to alike neighbours with seam joins
-(`joinInline` with `ifAlike`), which merge only alike records carrying no
-ids and change nothing where the records beside the seam differ or are
-already one. A seam join moves like a point: at a concurrent insertion's
-point the sequence order decides, so the seams of two typings at one point
-follow their own runs. A concurrent insertion, format, direct deletion or
-seam join at its offset passes, and so does a paragraph split or join away
-from it: in either order, alike runs at every edited seam end up joined and
-unlike ones apart. A split at its offset, a hard join there, a tracked
+(`joinInline` with `ifAlike`), which merge only alike runs carrying no ids
+and change nothing where the records beside the seam differ or a run
+already runs across it. A seam join moves like a point. Content a
+concurrent insertion puts at its gap separates the records it would have
+joined, whichever applies first, so the join is dropped there: two typings
+at one point stay two runs in either order. A concurrent insertion, format,
+direct deletion or seam join at its offset passes, and so does a paragraph
+split or join away from it. A split at its offset, a hard join there, a tracked
 change's edge there and a comment anchor there still refuse.
 
 A slice with open ends merges with the records at its point, and a slice

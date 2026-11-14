@@ -122,6 +122,18 @@ describe("block-scoped sequencing", () => {
       );
     }
     expect(seen.size).toBeGreaterThan(30);
+    // Typed text is an inline insertion, rebased by position.
+    const typed: DocumentOp = {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { story: "main", blockId: "00000001", offset: 1 },
+      slice: {
+        openStart: 0,
+        openEnd: 0,
+        content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+      },
+    };
+    insertions.add(isInlineInsertion(typed));
+    expect(isBlockScoped(typed)).toBe(false);
     expect(insertions.has(true)).toBe(true);
   });
 

@@ -457,9 +457,9 @@ export type SplitInlineOp = {
  * `zeroWidthBefore` is `0`.
  *
  * With `ifAlike`, the join is the seam of an edit rather than a record it
- * restores: records that are not alike, or that carry ids the merge would
- * retire, and a position where no records meet are left as they are, and
- * the operation changes nothing. Typing joins its run to alike runs this
+ * restores: records that are not alike, that carry ids the merge would
+ * retire, or that a run already runs across, and a position where no
+ * records meet are left as they are, and the operation changes nothing. Typing joins its run to alike runs this
  * way, so the join still applies, or keeps out, where a concurrent edit has
  * changed the records beside it.
  */

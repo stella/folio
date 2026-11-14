@@ -121,13 +121,24 @@ type Outcome = {
  * tail it was rebased over: inline insertions against each other, a format,
  * a deletion and a comment anchor; two replies to one parent.
  */
-const PAIR_KINDS = [
+const TYPING_PAIR_KINDS = [
   "typingTyping",
   "typingFormat",
   "typingDeletion",
   "typingComment",
   "replyReply",
 ] as const;
+/**
+ * Suggesting pairs in one paragraph: two tracked deletions, two other
+ * tracked changes (two suggesting typists among them), and a tracked change
+ * against a direct edit.
+ */
+const SUGGESTING_PAIR_KINDS = [
+  "suggestedDeletions",
+  "suggestedEdits",
+  "suggestionAgainstDirect",
+] as const;
+const PAIR_KINDS = [...TYPING_PAIR_KINDS, ...SUGGESTING_PAIR_KINDS] as const;
 type PairKind = (typeof PAIR_KINDS)[number];
 type PairCounts = Record<PairKind, { accepted: number; refused: number }>;
 const noPairs = (): PairCounts => ({
@@ -136,6 +147,9 @@ const noPairs = (): PairCounts => ({
   typingDeletion: { accepted: 0, refused: 0 },
   typingComment: { accepted: 0, refused: 0 },
   replyReply: { accepted: 0, refused: 0 },
+  suggestedDeletions: { accepted: 0, refused: 0 },
+  suggestedEdits: { accepted: 0, refused: 0 },
+  suggestionAgainstDirect: { accepted: 0, refused: 0 },
 });
 
 // The paragraph position an operation of a counted pair addresses.
@@ -178,10 +192,37 @@ const typingAgainst = (
   }
 };
 
-const pairKind = (
+// Whether an operation records a text change as tracked.
+const tracksText = (op: DocumentOp): boolean =>
+  (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE ||
+    op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT ||
+    op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) &&
+  op.revision !== undefined;
+
+const suggestingPair = (
   left: DocumentOp,
   right: DocumentOp,
 ): PairKind | undefined => {
+  const leftPoint = pairPoint(left);
+  const rightPoint = pairPoint(right);
+  if (
+    leftPoint === undefined ||
+    rightPoint === undefined ||
+    left.type === DOCUMENT_OP_TYPES.CREATE_COMMENT ||
+    right.type === DOCUMENT_OP_TYPES.CREATE_COMMENT ||
+    !sameParagraph(leftPoint, rightPoint)
+  )
+    return undefined;
+  const tracked = [tracksText(left), tracksText(right)];
+  if (tracked.every(Boolean))
+    return left.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+      right.type === DOCUMENT_OP_TYPES.DELETE_RANGE
+      ? "suggestedDeletions"
+      : "suggestedEdits";
+  return tracked.some(Boolean) ? "suggestionAgainstDirect" : undefined;
+};
+
+const pairKindsOf = (left: DocumentOp, right: DocumentOp): PairKind[] => {
   if (
     left.type === DOCUMENT_OP_TYPES.CREATE_COMMENT &&
     right.type === DOCUMENT_OP_TYPES.CREATE_COMMENT &&
@@ -189,8 +230,11 @@ const pairKind = (
     right.anchor.kind === "reply" &&
     left.anchor.parentId === right.anchor.parentId
   )
-    return "replyReply";
-  return typingAgainst(left, right) ?? typingAgainst(right, left);
+    return ["replyReply"];
+  return [
+    typingAgainst(left, right) ?? typingAgainst(right, left),
+    suggestingPair(left, right),
+  ].filter((kind): kind is PairKind => kind !== undefined);
 };
 
 const restoredOps = (ops: readonly DocumentOp[]): DocumentOp[] =>
@@ -207,8 +251,7 @@ const pairKinds = (
   const kinds = new Set<PairKind>();
   for (const op of restoredOps(ops))
     for (const other of restoredOps(others)) {
-      const kind = pairKind(op, other);
-      if (kind !== undefined) kinds.add(kind);
+      for (const kind of pairKindsOf(op, other)) kinds.add(kind);
     }
   return kinds;
 };
@@ -916,7 +959,7 @@ describe("canonical sequencing", () => {
         },
       );
       expect(
-        PAIR_KINDS.filter((kind) => counts.pairs[kind].accepted === 0),
+        TYPING_PAIR_KINDS.filter((kind) => counts.pairs[kind].accepted === 0),
       ).toEqual([]);
       expect(counts.pairs.typingTyping.refused).toBe(0);
     },
@@ -932,7 +975,7 @@ describe("canonical sequencing", () => {
     expect(outcome.dropped).toEqual([]);
     expect(outcome.diverged).toEqual([]);
     expect(
-      PAIR_KINDS.filter((kind) => outcome.pairs[kind].accepted === 0),
+      TYPING_PAIR_KINDS.filter((kind) => outcome.pairs[kind].accepted === 0),
     ).toEqual([]);
     for (const document of outcome.documents)
       expect(equalForStaleness(document, outcome.authority)).toBe(true);

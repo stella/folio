@@ -1233,8 +1233,16 @@ const joinInline = (document: Document, op: JoinInlineOp): Applied => {
     joinAt(location.paragraph.content, gap, op.depth),
     `at ${op.at.offset} in ${op.at.blockId}`,
   );
-  // A seam join keeps records apart that are not alike or carry ids.
-  if (op.ifAlike === true && (joined.isErr() || namesIds(joined.value.retired)))
+  // A seam join merges runs: it keeps records apart that are not alike or
+  // carry ids, and leaves the inside of a run that already runs across.
+  if (
+    op.ifAlike === true &&
+    (joined.isErr() ||
+      namesIds(joined.value.retired) ||
+      spanningRecords(location.paragraph.content, [gap], 0, 1).some(
+        ({ type }) => type === "run",
+      ))
+  )
     return unchanged(document);
   if (joined.isErr()) {
     return Result.err(joined.error);
