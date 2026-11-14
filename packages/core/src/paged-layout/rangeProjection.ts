@@ -54,8 +54,7 @@ const storyPmSpans = (
   story: OpStory,
 ): HTMLElement[] => {
   if (story === OP_STORIES.MAIN) return findBodyPmSpans(container);
-  if (story.kind === "header" || story.kind === "footer")
-    return findHfPmSpans(container, story.kind, story.rId);
+  if ("rId" in story) return findHfPmSpans(container, story.kind, story.rId);
   return Array.from(
     container.querySelectorAll<HTMLElement>(
       `[data-note-kind="${story.kind}"][data-note-id="${String(story.id)}"] span${PAINTED_RANGE_SELECTOR}`,
