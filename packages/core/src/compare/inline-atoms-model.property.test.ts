@@ -315,7 +315,10 @@ const matchOn = async ({
     noteReferenceLabels: prematched.labels,
     baseNotes: baseNotesOf(reviewer),
     revisionStamp: { date: DATE, idSeed: prematched.nextRevisionId },
-    originalRevisionIdSeed: ORIGINAL_SEED,
+    // Deliberate break: the canonical side reads the comparison's own
+    // insertions as someone else's.
+    originalRevisionIdSeed:
+      session === "canonical" ? ORIGINAL_SEED + 1_000_000 : ORIGINAL_SEED,
     maxRanges: MAX_RANGES,
   });
   return { outcome: outcomeOf(result), buffer: await reviewer.toBuffer() };
