@@ -522,7 +522,7 @@ function buildParityBridge(
     anonymizeFirstWord: () => {
       const word = getRef()
         ?.createAIEditSnapshot()
-        .blocks.map((block) => block.text.trimStart().split(/\s+/u)[0] ?? "")
+        ?.blocks.map((block) => block.text.trimStart().split(/\s+/u)[0] ?? "")
         .find((candidate) => candidate.length > 0);
       if (word === undefined) return null;
       setAnonymizationTerms([{ canonical: word, label: "person" }]);
