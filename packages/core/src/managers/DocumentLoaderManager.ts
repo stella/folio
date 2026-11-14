@@ -81,6 +81,14 @@ export class DocumentLoaderManager {
     this.callbacks = callbacks;
   }
 
+  /** Whether loads open in a canonical session. */
+  private opensCanonicalSession(): boolean {
+    return usesCanonicalSession(
+      this.callbacks.getExperimentalSession?.(),
+      CANONICAL_GAP.authorityRouting,
+    );
+  }
+
   /** Reset color/UI state coupled to the previous document. */
   resetForNewDocument(): void {
     resetAuthorColors();
@@ -97,13 +105,7 @@ export class DocumentLoaderManager {
    */
   loadParsedDocument(doc: Document): void {
     const generation = ++this.loadGeneration;
-    if (
-      !usesCanonicalSession(
-        this.callbacks.getExperimentalSession?.(),
-        CANONICAL_GAP.authorityRouting,
-      ) ||
-      holdsUniqueParagraphIds(doc)
-    ) {
+    if (!this.opensCanonicalSession() || holdsUniqueParagraphIds(doc)) {
       this.commitParsedDocument(doc, generation);
       return;
     }
@@ -179,12 +181,7 @@ export class DocumentLoaderManager {
       let doc: Document;
       try {
         let input = buffer;
-        if (
-          usesCanonicalSession(
-            this.callbacks.getExperimentalSession?.(),
-            CANONICAL_GAP.authorityRouting,
-          )
-        ) {
+        if (this.opensCanonicalSession()) {
           const prepared = await prepareCanonicalDocxInput(buffer);
           if (prepared.isErr()) throw prepared.error;
           input = prepared.value;
