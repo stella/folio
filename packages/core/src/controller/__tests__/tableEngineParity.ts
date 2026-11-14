@@ -12,6 +12,7 @@ import type { FolioDocumentOperation } from "../../ai-edits";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { getTrackedChangeStatsFromDoc } from "../../ai-edits/read";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
+import { CanonicalPublicOperations } from "../../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
@@ -22,7 +23,6 @@ import { parseDocx } from "../../docx/parser";
 import { createEmptyDocx } from "../../docx/rezip";
 import { schema } from "../../prosemirror/schema";
 import type { BlockContent, TableCell } from "../../types/document";
-import { CanonicalPublicOperations } from "../canonicalPublicOperations";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
