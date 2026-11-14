@@ -14,8 +14,12 @@
 
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
+import { parseDocx } from "../../packages/core/src/docx/parser";
+import { createDocx } from "../../packages/core/src/docx/rezip";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
+import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
 
 declare global {
   var __folioPlayground:
@@ -26,8 +30,13 @@ const isMac = process.platform === "darwin";
 const MOD = isMac ? "Meta" : "Control";
 
 /** Mount a fixture and force the (deferred) editor view to materialise. */
-async function mountFixture(page: Page, fixture: string): Promise<void> {
-  await page.goto(`/?file=${encodeURIComponent(fixture)}`);
+async function mountFixture(
+  page: Page,
+  fixture: string,
+  session?: "legacy" | "canonical",
+): Promise<void> {
+  const engine = session === undefined ? "" : `session=${session}&`;
+  await page.goto(`/?${engine}file=${encodeURIComponent(fixture)}`);
   await page.waitForSelector('[data-testid="folio-editor"]', {
     timeout: 15_000,
   });
@@ -95,6 +104,23 @@ function paintedBodyContains(page: Page, text: string): Promise<boolean> {
         element.textContent?.includes(expected),
       ),
     text,
+  );
+}
+
+/** Bookmark endpoints in the document the host reads. */
+function documentBookmarkCount(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      (
+        globalThis.__folioPlayground?.getEditorRef()?.getDocument()?.package
+          .document.content ?? []
+      ).flatMap((block) =>
+        block.type === "paragraph"
+          ? block.content.filter(
+              ({ type }) => type === "bookmarkStart" || type === "bookmarkEnd",
+            )
+          : [],
+      ).length,
   );
 }
 
@@ -420,108 +446,89 @@ test.describe("lists", () => {
       .toMatchObject({ numPr: null });
   });
 
-  test("Backspace continues into text after exiting a style-numbered paragraph", async ({
-    page,
-  }) => {
-    await mountFixture(page, "sample.docx");
-    const marker = page.locator(".layout-list-marker").first();
-    await marker.click();
-    await page.keyboard.press("End");
-    await page.keyboard.press("Enter");
-    const inserted = "Synthetic paired deletion target";
-    await page.keyboard.type(inserted);
-
-    await page.evaluate((expected) => {
-      const view = globalThis.__folioPlayground
-        ?.getEditorRef()
-        ?.getEditorRef()
-        ?.getView();
-      if (!view) throw new Error("Editor view is unavailable");
-      const boundary = view.state.schema.nodes.bookmarkBoundary;
-      if (!boundary) throw new Error("Bookmark boundary node is unavailable");
-      let targetStart: number | null = null;
-      view.state.doc.descendants((node, position) => {
-        const matchIndex = node.text?.indexOf(expected) ?? -1;
-        if (matchIndex >= 0) {
-          targetStart = position + matchIndex;
-          return false;
-        }
-        return true;
+  for (const session of ["legacy", "canonical"] as const) {
+    test(`Backspace continues into text after exiting a style-numbered paragraph (${session} session)`, async ({
+      page,
+    }) => {
+      await mountFixture(page, "sample.docx", session);
+      // The document holds a bookmark around the text of a style-numbered list
+      // item, as an opened package carries it.
+      const inserted = "Synthetic paired deletion target";
+      const source = await parseDocx(
+        readFileSync(new URL("fixtures/sample.docx", import.meta.url)),
+        { preloadFonts: false, detectVariables: false },
+      );
+      const body = source.package.document.content;
+      const listItem = body.findIndex(
+        (block) =>
+          block.type === "paragraph" &&
+          block.formatting?.styleId === "ListBullet",
+      );
+      expect(listItem).toBeGreaterThanOrEqual(0);
+      body.splice(listItem + 1, 0, {
+        type: "paragraph",
+        formatting: { styleId: "ListBullet" },
+        content: [
+          { type: "bookmarkStart", id: 707, name: "synthetic-range" },
+          { type: "run", content: [{ type: "text", text: inserted }] },
+          { type: "bookmarkEnd", id: 707 },
+        ],
       });
-      if (targetStart === null)
-        throw new Error("Synthetic target is unavailable");
-      const targetEnd = targetStart + expected.length;
-      const transaction = view.state.tr
-        .insert(targetEnd, boundary.create({ type: "end", id: 707 }))
-        .insert(
-          targetStart,
-          boundary.create({ type: "start", id: 707, name: "synthetic-range" }),
-        );
-      view.dispatch(transaction);
-      view.focus();
-    }, inserted);
+      const { bytes } = await canonicalLoadFixture(await createDocx(source));
+      await page.evaluate(async (array) => {
+        const ref = globalThis.__folioPlayground?.getEditorRef();
+        await ref?.loadDocumentBuffer(new Uint8Array(array));
+        ref?.ensureEditorView({ focus: true });
+      }, bytes);
+      await expect.poll(() => paintedBodyContains(page, inserted)).toBe(true);
+      expect(await documentBookmarkCount(page)).toBe(2);
 
-    // One edit removes visible text and one invisible endpoint. Its partner
-    // must disappear atomically, and paint must consume the full transaction
-    // batch rather than only the initiating edit.
-    await page.evaluate(() => {
-      const view = globalThis.__folioPlayground
-        ?.getEditorRef()
-        ?.getEditorRef()
-        ?.getView();
-      if (!view) throw new Error("Editor view is unavailable");
-      let endPosition: number | null = null;
-      view.state.doc.descendants((node, position) => {
-        if (
-          node.type.name === "bookmarkBoundary" &&
-          node.attrs.type === "end"
-        ) {
-          endPosition = position;
-          return false;
-        }
-        return true;
-      });
-      if (endPosition === null)
-        throw new Error("Synthetic endpoint is unavailable");
-      view.dispatch(view.state.tr.delete(endPosition - 1, endPosition + 1));
-      view.focus();
-    });
-    await expect.poll(() => countNodes(page, "bookmarkBoundary")).toBe(0);
-    await expect
-      .poll(async () => (await bodyText(page)).includes(inserted))
-      .toBe(false);
-    await expect.poll(() => paintedBodyContains(page, inserted)).toBe(false);
-
-    for (let index = 0; index < inserted.length - 1; index += 1) {
+      // One edit removes visible text and the invisible endpoint after it. Its
+      // partner must disappear with it, and paint must consume the whole edit.
+      await page
+        .locator(".layout-paragraph", { hasText: inserted })
+        .first()
+        .click();
+      await page.keyboard.press("End");
+      await page.keyboard.press("Shift+ArrowLeft");
       await page.keyboard.press("Backspace");
-    }
-    await page.keyboard.press("Backspace");
-    await expect
-      .poll(() => caretParagraphListState(page))
-      .toMatchObject({
-        numPr: { kind: "none" },
-      });
+      await expect.poll(() => documentBookmarkCount(page)).toBe(0);
+      await expect
+        .poll(async () => (await bodyText(page)).includes(inserted))
+        .toBe(false);
+      await expect.poll(() => paintedBodyContains(page, inserted)).toBe(false);
 
-    // Backspace at a paragraph start may clear indentation or join a block
-    // before it reaches visible text. Every keypress must still mutate the
-    // document; none may be swallowed while those structural steps complete.
-    const modelLengthBeforeDelete = (await bodyText(page)).length;
-    let deletedText = false;
-    for (let index = 0; index < 6; index += 1) {
-      const documentBeforeKey = await bodyDocumentFingerprint(page);
+      for (let index = 0; index < inserted.length - 1; index += 1) {
+        await page.keyboard.press("Backspace");
+      }
       await page.keyboard.press("Backspace");
       await expect
-        .poll(() => bodyDocumentFingerprint(page))
-        .not.toBe(documentBeforeKey);
-      const currentLength = (await bodyText(page)).length;
-      if (currentLength < modelLengthBeforeDelete) {
-        expect(currentLength).toBe(modelLengthBeforeDelete - 1);
-        deletedText = true;
-        break;
+        .poll(() => caretParagraphListState(page))
+        .toMatchObject({
+          numPr: { kind: "none" },
+        });
+
+      // Backspace at a paragraph start may clear indentation or join a block
+      // before it reaches visible text. Every keypress must still mutate the
+      // document; none may be swallowed while those structural steps complete.
+      const modelLengthBeforeDelete = (await bodyText(page)).length;
+      let deletedText = false;
+      for (let index = 0; index < 6; index += 1) {
+        const documentBeforeKey = await bodyDocumentFingerprint(page);
+        await page.keyboard.press("Backspace");
+        await expect
+          .poll(() => bodyDocumentFingerprint(page))
+          .not.toBe(documentBeforeKey);
+        const currentLength = (await bodyText(page)).length;
+        if (currentLength < modelLengthBeforeDelete) {
+          expect(currentLength).toBe(modelLengthBeforeDelete - 1);
+          deletedText = true;
+          break;
+        }
       }
-    }
-    expect(deletedText).toBe(true);
-  });
+      expect(deletedText).toBe(true);
+    });
+  }
 });
 
 test.describe("table", () => {
