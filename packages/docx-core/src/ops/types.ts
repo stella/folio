@@ -457,11 +457,19 @@ export type SplitInlineOp = {
  * already run across it. Merged records must be alike in everything but
  * their content and ids; the first's ids stand for both. Absent
  * `zeroWidthBefore` is `0`.
+ *
+ * With `ifAlike`, the join is the seam of an edit rather than a record it
+ * restores: records that are not alike, that carry ids the merge would
+ * retire, or that a run already runs across, and a position where no
+ * records meet are left as they are, and the operation changes nothing. Typing joins its run to alike runs this
+ * way, so the join still applies, or keeps out, where a concurrent edit has
+ * changed the records beside it.
  */
 export type JoinInlineOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_INLINE;
   at: TextPosition;
   depth: number;
+  ifAlike?: true;
 };
 
 /** Whether a tracked run patch appends an independently rejectable review. */

@@ -93,6 +93,14 @@ export type SequencedOpEffect =
   | { type: "splitBlock"; newHalf: SplitHalf }
   | { type: "joinBlocks"; firstLength: number }
   | {
+      type: "insertContent";
+      /**
+       * Whether the insertion cut a record carrying an id (a revision or a
+       * content control) in two, its second half taking a new id.
+       */
+      cutIdentified: boolean;
+    }
+  | {
       type: "touchedBlocks";
       /** Paragraphs the operation changed, inserted or removed. */
       blockIds: readonly string[];
@@ -252,9 +260,9 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
   joinBlocks: "joinBlocks",
   resolveRevision: "touchedBlocks",
   deleteBlocks: "touchedBlocks",
-  insertContent: "touchedBlocks",
-  splitInline: "touchedBlocks",
-  joinInline: "touchedBlocks",
+  insertContent: "insertContent",
+  splitInline: NO_SEQUENCED_EFFECT,
+  joinInline: NO_SEQUENCED_EFFECT,
   replaceBlocks: "touchedBlocks",
   setParagraphReview: "touchedBlocks",
   replaceInline: "touchedBlocks",
@@ -538,6 +546,7 @@ const operationFields = {
     type: literal("joinInline"),
     at: position,
     depth: natural,
+    ifAlike: optional(literal(true)),
   } satisfies OperationFields<"joinInline">,
   replaceBlocks: {
     type: literal("replaceBlocks"),
@@ -856,6 +865,11 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
             return object({
               type: literal("joinBlocks"),
               firstLength: natural,
+            })(effect);
+          case "insertContent":
+            return object({
+              type: literal("insertContent"),
+              cutIdentified: boolean,
             })(effect);
           case "touchedBlocks":
             return object({

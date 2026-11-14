@@ -18,6 +18,7 @@ import {
   type SequencedBatch,
   sequencedEffectType,
 } from "./envelope";
+import { isInlineInsertion } from "./points";
 import { isBlockScoped } from "./scope";
 import { transformBatch } from "./transform";
 
@@ -100,10 +101,18 @@ const typing = (blockId: string, offset = 1) =>
 describe("block-scoped sequencing", () => {
   test("every sendable kind is block-scoped exactly when it records touched paragraphs", () => {
     const seen = new Set<string>();
+    const insertions = new Set<boolean>();
     for (const { op } of envelopes()) {
       const effect = sequencedEffectType(op.type);
       if (effect === undefined) continue;
       seen.add(op.type);
+      // Content merged into the records at its point is block-scoped; an
+      // inline insertion is rebased by position.
+      if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT) {
+        insertions.add(isInlineInsertion(op));
+        expect(isBlockScoped(op)).toBe(!isInlineInsertion(op));
+        continue;
+      }
       // Decisions and range or point comments are rebased by position and
       // still record the paragraphs they changed.
       expect(isBlockScoped(op)).toBe(
@@ -113,6 +122,19 @@ describe("block-scoped sequencing", () => {
       );
     }
     expect(seen.size).toBeGreaterThan(30);
+    // Typed text is an inline insertion, rebased by position.
+    const typed: DocumentOp = {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { story: "main", blockId: "00000001", offset: 1 },
+      slice: {
+        openStart: 0,
+        openEnd: 0,
+        content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+      },
+    };
+    insertions.add(isInlineInsertion(typed));
+    expect(isBlockScoped(typed)).toBe(false);
+    expect(insertions.has(true)).toBe(true);
   });
 
   test("two structure edits of one table refuse; edits of other paragraphs pass and commute", () => {

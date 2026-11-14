@@ -879,6 +879,7 @@ export type JoinInlineOp = {
     type: typeof DOCUMENT_OP_TYPES.JOIN_INLINE;
     at: TextPosition;
     depth: number;
+    ifAlike?: true;
 };
 
 // @public

@@ -12,7 +12,7 @@ import {
   positionPastCommentAnchor,
 } from "./commentTransform";
 import type { SequencedBatch } from "./envelope";
-import { mapPoint } from "./points";
+import { isInlineInsertion, mapPoint } from "./points";
 import { operationStory, operationTargets } from "./transform";
 
 /**
@@ -88,9 +88,17 @@ export const transformPosition = (
         continue;
       switch (op.type) {
         case DOCUMENT_OP_TYPES.INSERT_TEXT:
+        case DOCUMENT_OP_TYPES.INSERT_CONTENT:
         case DOCUMENT_OP_TYPES.DELETE_RANGE:
         case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
         case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
+          // Content merged into the records at its point leaves no offset
+          // to follow in its paragraph.
+          if (
+            op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT &&
+            !isInlineInsertion(op)
+          )
+            return undefined;
           const mapped = mapPoint(point, affinity, {
             over: op,
             effect,
@@ -101,9 +109,12 @@ export const transformPosition = (
           point = mapped;
           continue;
         }
-        // Formatting, paragraph insertion beside the position, and package
-        // metadata leave every offset where it was.
+        // Formatting, inline record splits and joins, paragraph insertion
+        // beside the position, and package metadata leave every offset where
+        // it was.
         case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+        case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+        case DOCUMENT_OP_TYPES.JOIN_INLINE:
         case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
         case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
         case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
