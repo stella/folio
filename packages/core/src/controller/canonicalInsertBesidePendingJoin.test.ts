@@ -17,6 +17,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
@@ -31,7 +32,6 @@ import { parseDocx } from "../docx/parser";
 import { createDocx, createEmptyDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { schema } from "../prosemirror/schema";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 
 const CLAUSE = "The Buyer pays each invoice within thirty days.";
 const SURVIVOR = "Signed in two copies.";

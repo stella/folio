@@ -108,6 +108,7 @@ import { identitySlots } from "./slots";
 import { tableEditParagraphDemand } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import { rowsWithoutRow } from "./tableRowRemoval";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import {
   type BlockInsertionPoint,
@@ -528,6 +529,20 @@ export const createEditorIntentIdAllocator = ({
         demand += 4 * (1 + span.ancestors.length);
     }
     if (incoming.length > 0) demand += 8;
+    // A suggested link change strikes the text it changes and inserts the
+    // changed copy after each stretch of it; a suggested contents list
+    // records every paragraph it inserts and the split it may make.
+    if (
+      intent.type === "setHyperlink" ||
+      intent.type === "removeHyperlink" ||
+      intent.type === "insertHyperlink"
+    )
+      demand = 2 * demand + 8;
+    if (intent.type === "generateTOC")
+      demand +=
+        8 +
+        (intent.headings.length + 1) *
+          (PARAGRAPH_REVISION_DEMAND + 4 * leafRevisionDemand(3));
     if (intent.type === "moveFragment") {
       const target = storyParagraphs(
         storyBody(document, intent.target.story),
@@ -1483,7 +1498,17 @@ export const compileEditorIntent = (
   const editedSeams: TextPosition[] = [];
   switch (intent.type) {
     case "generateTOC": {
-      const compiled = compileGenerateTOCIntent(document, intent, mode);
+      const compiled = compileGenerateTOCIntent(
+        document,
+        intent,
+        mode,
+        (source, part, partMode) =>
+          compileEditorIntent(source, {
+            intent: part,
+            mode: partMode,
+            ...(firstBlockId === undefined ? {} : { firstBlockId }),
+          }),
+      );
       if (compiled.isErr()) return compiled;
       ops = compiled.value.ops;
       selection = compiled.value.selection;
@@ -1495,10 +1520,11 @@ export const compileEditorIntent = (
       return compileHyperlinkIntent(document, {
         intent,
         mode,
-        compileEmptyReplacement: (source, { from, to }) =>
+        compileIntent: (source, part, partMode) =>
           compileEditorIntent(source, {
-            intent: { type: "replaceText", from, to, text: "" },
-            mode,
+            intent: part,
+            mode: partMode,
+            ...(firstBlockId === undefined ? {} : { firstBlockId }),
           }),
       });
     case "replaceFragment": {
@@ -2345,10 +2371,13 @@ export const compileEditorIntent = (
       } else {
         op = { ...operation, ...tracked };
         // The caret lands in a row that stays, or beside the table when its
-        // last row goes with it.
+        // last row goes with it. A direct deletion's rows are those the
+        // removal leaves, a merge it starts handed on to the next row.
         blockId =
           tableRowAnchor(
-            table.rows.filter((_row, index) => index !== rowIndex),
+            op.revision === undefined
+              ? rowsWithoutRow(table, rowIndex)
+              : table.rows.filter((_row, index) => index !== rowIndex),
           ) ??
           storyParagraphs(storyBody(document, op.story)).find(
             (paragraph) =>
@@ -2374,17 +2403,6 @@ export const compileEditorIntent = (
           story: op.story,
         }),
       ];
-      // A row deletion that hands a vertical merge on moves the removed
-      // cell's paragraphs into the next row in place of the continuation's:
-      // the caret then stays in the paragraph the edit named.
-      const kept = new Set(
-        storyParagraphs(storyBody(applied.value.document, op.story)).flatMap(
-          ({ paragraph }) =>
-            paragraph.paraId === undefined ? [] : [idKey(paragraph.paraId)],
-        ),
-      );
-      if (!kept.has(idKey(blockId)) && kept.has(idKey(operation.blockId)))
-        blockId = operation.blockId;
       selection = { story: op.story, blockId, offset: 0 };
       break;
     }

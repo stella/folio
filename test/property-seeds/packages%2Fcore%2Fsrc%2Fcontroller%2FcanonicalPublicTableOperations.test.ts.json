@@ -11,6 +11,18 @@
       "path": "49",
       "note": "Deleting the row a vertical merge starts hands the merge and its words to the next row.",
       "date": "2026-11-14"
+    },
+    {
+      "seed": 267996798,
+      "path": "8",
+      "note": "Accepting a suggested deletion of the row a vertical merge starts hands the merged cell and its words to the next row.",
+      "date": "2026-11-14"
+    },
+    {
+      "seed": 918864278,
+      "path": "9:3",
+      "note": "Deleting the row a vertical merge starts, addressed through another cell of that row, puts the caret in the merged cell the next row takes over.",
+      "date": "2026-11-14"
     }
   ]
 }

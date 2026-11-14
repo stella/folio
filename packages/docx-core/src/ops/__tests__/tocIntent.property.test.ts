@@ -8,7 +8,7 @@ import {
 } from "../../../../../test/property-testing";
 import type { Document } from "../../model/document";
 import { applyDocumentOps } from "../apply";
-import { compileEditorIntent } from "../editorIntent";
+import { allocateEditorIntentIds, compileEditorIntent } from "../editorIntent";
 import { OP_STORIES } from "../types";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -124,19 +124,31 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
         expect(
           applyDocumentOps(undone.document, undone.inverse).unwrap().document,
         ).toStrictEqual(applied.document);
+        // A suggestion with the ids its allocation names records what it
+        // inserts, and its inverse is exact.
+        const allocation = allocateEditorIntentIds(document, intent);
         const suggested = compileEditorIntent(document, {
           intent,
           mode: {
             type: "suggesting",
             revision: {
-              id: 20,
+              id: allocation.revisionId,
               author: "Reviewer",
               date: "2026-01-01T00:00:00Z",
             },
-            newIds: {},
+            newIds: allocation.newIds,
           },
-        });
-        expect(suggested.isErr()).toBe(true);
+        }).unwrap();
+        const pending = applyDocumentOps(document, suggested.ops).unwrap();
+        const restored = applyDocumentOps(
+          pending.document,
+          pending.inverse,
+        ).unwrap();
+        expect(restored.document).toStrictEqual(document);
+        expect(
+          applyDocumentOps(restored.document, restored.inverse).unwrap()
+            .document,
+        ).toStrictEqual(pending.document);
       },
     ),
     {
