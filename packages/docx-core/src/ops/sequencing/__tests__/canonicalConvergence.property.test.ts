@@ -494,7 +494,12 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       if (meetsTrackedDeletion(batch, tail)) outcome.trackedPairs += 1;
       const proven = commutes(history, batch, tail, sequencer.document);
       if (proven === true) outcome.proven += 1;
-      if (proven === false) outcome.diverged.push(batch.opId);
+      if (proven === false) {
+        outcome.diverged.push(batch.opId);
+        note(
+          `divergedDetail | ${JSON.stringify({ batch, tail: tail.map(({ opId, actor, revision, ops, effects }) => ({ opId, actor, revision, ops, effects })) })}`,
+        );
+      }
     }
     const broadcast = sequencer.broadcasts.at(-1);
     if (broadcast === undefined) return;
@@ -1046,7 +1051,7 @@ describe("canonical sequencing", () => {
           diverged: 0,
           threw: 0,
         };
-        for (const scenario of scenarios) {
+        for (const [index, scenario] of scenarios.entries()) {
           let outcome: Outcome;
           try {
             outcome = simulate(...scenario);
@@ -1071,6 +1076,11 @@ describe("canonical sequencing", () => {
           }
           for (const [key, count] of Object.entries(outcome.reasons))
             reasons[key] = (reasons[key] ?? 0) + count;
+          if (outcome.diverged.length > 0)
+            // oxlint-disable-next-line no-console
+            console.log(
+              `PAIRDIVERGED ${name} #${String(index)} ${JSON.stringify(scenario)} ${JSON.stringify(Object.keys(outcome.reasons).filter((key) => key.startsWith("divergedDetail")))}`,
+            );
         }
         // oxlint-disable-next-line no-console
         console.log(
