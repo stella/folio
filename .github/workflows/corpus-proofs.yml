@@ -12,6 +12,7 @@ permissions: {}
 jobs:
   check:
     name: Check ${{ matrix.name }}
+    if: ${{ inputs.scope != 'diag' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -50,3 +51,28 @@ jobs:
           else
             echo "CHECK no census"
           fi
+
+  diag:
+    name: Diagnose comment reference
+    if: ${{ inputs.scope == 'diag' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Point the corpus cache outside the checkout
+        run: echo "FOLIO_CORPUS_CACHE=$RUNNER_TEMP/folio-corpus" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: stella/.github/actions/setup-bun-cached@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d
+        with:
+          bun-version-file: "package.json"
+      - name: Diagnose
+        run: |
+          set +e
+          bun install --frozen-lockfile > "$RUNNER_TEMP/install.log" 2>&1 || tail -20 "$RUNNER_TEMP/install.log"
+          bun run corpus:fetch > "$RUNNER_TEMP/fetch.log" 2>&1 || tail -20 "$RUNNER_TEMP/fetch.log"
+          f=$(find "$FOLIO_CORPUS_CACHE" -path '*docxtemplater*' -name expected-tag-with-comment.docx | head -1)
+          echo "DIAG file $f"
+          timeout 1800 bun scripts/zz-scratch-comment-diag.ts "$f" 2>&1 | tail -80
