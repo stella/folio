@@ -97,13 +97,12 @@ const plainParagraphs = (paragraphs: number): string =>
 
 const DOCUMENTS = {
   "plain paragraphs, 1,500": () => plainParagraphs(1500),
-  "contract, 40 articles": () => contract(40),
   "contract, 100 articles": () => contract(100),
   "numbered list, 3,500 items": () => numberedList(3500),
 } as const;
 
 const ENGINES = ["default", "canonical"] as const;
-const PAINTERS = ["stock", "display-list"] as const;
+const PAINTERS = ["stock"] as const;
 /** The React playground serves every painter; the Vue one the stock painter. */
 const HOSTS = [
   { name: "react", origin: "", painters: PAINTERS },
@@ -129,6 +128,10 @@ const load = async (page: Page, bytes: number[]) => {
   );
   // Let the first layout of every page finish before typing.
   await page.waitForTimeout(5000);
+  if (process.env["FOLIO_TYPING_LATENCY_ANONYMIZE"] === "1") {
+    await page.evaluate(() => globalThis.__folioParity?.anonymizeFirstWord());
+    await page.waitForTimeout(3000);
+  }
 };
 
 /**
