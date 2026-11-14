@@ -111,6 +111,9 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
+const bodyOf = (document: Document | undefined): unknown =>
+  document?.package.document.content;
+
 /**
  * Each run applies an operation and checks it several ways, so the base count
  * is kept small: the nightly factor of ten takes it to 10^4, and the five-fold
@@ -1310,7 +1313,27 @@ describe("tracked operations and their resolution", () => {
             order,
             REVISION_DECISIONS.REJECT,
           );
-          assertExactModel(projected(atOnce, "π′"), projected(inOrder, "π′"));
+          try {
+            assertExactModel(projected(atOnce, "π′"), projected(inOrder, "π′"));
+          } catch (error) {
+            const steps: unknown[] = [];
+            let step = current;
+            for (const ids of order) {
+              step = resolved(step, ids, REVISION_DECISIONS.REJECT);
+              steps.push({ ids, body: bodyOf(step) });
+            }
+            console.error(
+              `L3DEBUG reject-any-order ${JSON.stringify({
+                original: bodyOf(document),
+                current: bodyOf(current),
+                all,
+                order,
+                atOnce: bodyOf(atOnce),
+                steps,
+              })}`,
+            );
+            throw error;
+          }
           expectSettledDeferredSeams(atOnce);
           expectSettledDeferredSeams(inOrder);
         },
