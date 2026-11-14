@@ -1177,6 +1177,26 @@ export type DeleteCommentOp = {
   id: number;
   scope: "thread" | "reply";
 };
+/**
+ * A comment range marker standing between blocks rather than in a paragraph,
+ * addressed by the nearest block of its own block list that holds a
+ * paragraph: the nearest such block after it, or before it when none follows.
+ */
+export type CommentBoundaryAnchor = {
+  story: OpStory;
+  /** That block's first paragraph after the marker, or its last before it. */
+  blockId: string;
+  /** How many block lists that paragraph's own list lies below the marker's. */
+  depth: number;
+  /** Whether the marker stands before or after that block. */
+  side: "before" | "after";
+  /** How many blocks, other markers of the same comments aside, stand between the two. */
+  gap: number;
+  node: Extract<
+    BlockContent,
+    { type: "commentRangeStart" } | { type: "commentRangeEnd" }
+  >;
+};
 /** Exact owned comment records and the paragraph fragments containing their anchors. */
 export type CommentState = {
   relationshipPresence: "absent" | "undefined" | "present";
@@ -1192,6 +1212,12 @@ export type CommentState = {
     blockId: string;
     content: readonly ParagraphContent[];
   }[];
+  /**
+   * The owned markers standing between blocks, in document order; absent
+   * when there are none. Each one's addressing paragraph is also one of
+   * `anchors`, so an edit to it conflicts with the restoration.
+   */
+  boundaries?: readonly CommentBoundaryAnchor[];
 };
 export type RestoreCommentStateOp = {
   type: typeof DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE;

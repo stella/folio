@@ -430,6 +430,18 @@ const commentState: Validator = object({
   anchors: array(
     object({ story: isOpStory, blockId, content: array(inlineContent) }),
   ),
+  boundaries: optional(
+    array(
+      object({
+        story: isOpStory,
+        blockId,
+        depth: natural,
+        side: literal("before", "after"),
+        gap: natural,
+        node: blockContent,
+      }),
+    ),
+  ),
 } satisfies Record<keyof CommentState, Validator>);
 
 /**
