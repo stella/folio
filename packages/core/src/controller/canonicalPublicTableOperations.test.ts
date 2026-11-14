@@ -123,7 +123,33 @@ const MORE_BODIES = {
   },
 } as const;
 
-const ALL_BODIES = { ...BODIES, ...MORE_BODIES };
+/** A paragraph whose break is pending deletion, before a table and before a paragraph. */
+const deletedBreak = (id: string, text: string) =>
+  `<w:p w14:paraId="${id}"><w:pPr><w:rPr><w:del w:id="90" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+
+/** Bodies tables are inserted into, beside paragraphs and tables. */
+const PLACEMENT_BODIES = {
+  "a deleted break before a table": {
+    xml: [
+      deletedBreak("70000001", "Joined"),
+      table([cell("70000002", "A1") + cell("70000003", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000001", "70000002", "70000003", "10000002"],
+  },
+  "a deleted break before a paragraph": {
+    xml: [
+      paragraph("10000001", "Before"),
+      deletedBreak("70000004", "Joined"),
+      paragraph("70000005", "Next"),
+      table([cell("70000006", "A1")], 1),
+      paragraph("10000002", ""),
+    ],
+    anchors: ["10000001", "70000004", "70000005", "70000006"],
+  },
+} as const;
+
+const ALL_BODIES = { ...BODIES, ...MORE_BODIES, ...PLACEMENT_BODIES };
 type Body = keyof typeof ALL_BODIES;
 
 const packageOf = async (body: Body) => {
@@ -370,16 +396,66 @@ const viaCanonicalEngine = async (
   };
 };
 
+const INSERTIONS = {
+  "insertTable after": (blockId: string) => ({
+    id: "op",
+    type: "insertTable",
+    blockId,
+    position: "after",
+    rows: [
+      ["N1", "N2"],
+      ["N3", ""],
+    ],
+  }),
+  "insertTable before": (blockId: string) => ({
+    id: "op",
+    type: "insertTable",
+    blockId,
+    position: "before",
+    rows: [["N1"]],
+  }),
+  "insertSignatureTable after": (blockId: string) => ({
+    id: "op",
+    type: "insertSignatureTable",
+    blockId,
+    parties: [
+      { name: "Buyer", signatory: "A. Person", title: "Director" },
+      { name: "Seller" },
+    ],
+  }),
+  "insertSignatureTable before": (blockId: string) => ({
+    id: "op",
+    type: "insertSignatureTable",
+    blockId,
+    position: "before",
+    parties: [{ name: "Buyer" }],
+  }),
+} as const satisfies Record<
+  string,
+  (blockId: string, last: string) => FolioDocumentOperation
+>;
+
 const caseArbitrary = (
   bodies: readonly Body[],
   operations: Readonly<
     Record<string, (blockId: string, last: string) => FolioDocumentOperation>
   >,
+  /** Paragraphs beside the table the operations may also name, where the body has them. */
+  besides: readonly string[] = [],
 ) =>
   fc.constantFrom(...bodies).chain((body) =>
     fc.record({
       body: fc.constant(body),
-      anchor: fc.constantFrom(...ALL_BODIES[body].anchors),
+      anchor: fc.constantFrom(
+        ...new Set<string>([
+          ...ALL_BODIES[body].anchors,
+          ...besides.filter((id) =>
+            ALL_BODIES[body].xml.some((xml) =>
+              xml.startsWith(`<w:p w14:paraId="${id}"`),
+            ),
+          ),
+        ]),
+      ),
       operation: fc.constantFrom(...Object.keys(operations)),
       mode: fc.constantFrom<Mode>("direct", "tracked-changes"),
     }),
@@ -450,12 +526,37 @@ describe("table structure operations in the canonical session", () => {
   test("cell merges, splits and column changes give the default engine's package", async () => {
     await assertProperty(
       fc.asyncProperty(
-        caseArbitrary(Object.keys(ALL_BODIES) as Body[], CELL_OPERATIONS),
+        caseArbitrary(
+          [...Object.keys(BODIES), ...Object.keys(MORE_BODIES)] as Body[],
+          CELL_OPERATIONS,
+        ),
         sameAsDefaultEngine(CELL_OPERATIONS),
       ),
       {
         numRuns: 120,
         id: "cell merges, splits and column changes in the canonical session give the default engine's package",
+      },
+    );
+  });
+
+  test("tables inserted beside paragraphs and tables give the default engine's package", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        caseArbitrary(
+          [
+            "a plain table",
+            "a vertical merge",
+            "a table ending the body",
+            ...(Object.keys(PLACEMENT_BODIES) as Body[]),
+          ],
+          INSERTIONS,
+          ["10000001", "10000002"],
+        ),
+        sameAsDefaultEngine(INSERTIONS),
+      ),
+      {
+        numRuns: 100,
+        id: "tables inserted beside paragraphs and tables in the canonical session give the default engine's package",
       },
     );
   });

@@ -230,7 +230,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public signature tables and tables beside a table need canonical table descriptors.";
+    readonly summary: "Public table insertions beside a table with no paragraph on that side need a table insertion point.";
   };
   readonly "publicOps.pendingParagraphMarkProperties": {
     readonly owner: "document-operations";
@@ -396,7 +396,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Public signature tables and tables beside a table need canonical table descriptors.",
+      "Public table insertions beside a table with no paragraph on that side need a table insertion point.",
   },
   [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
     owner: "document-operations",

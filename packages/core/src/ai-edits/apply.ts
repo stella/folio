@@ -2660,7 +2660,7 @@ type BuildSignatureTableNodeOptions = {
  * required node types — callers should surface the op as a skip
  * rather than crashing.
  */
-const buildSignatureTableNode = ({
+export const buildSignatureTableNode = ({
   schema,
   parties,
 }: BuildSignatureTableNodeOptions): PMNode | null => {
