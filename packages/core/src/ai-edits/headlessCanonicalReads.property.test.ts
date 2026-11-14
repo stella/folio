@@ -562,7 +562,7 @@ describe("a canonical reviewer refuses what is not on the session yet", () => {
     expect(thrown).toMatchObject(refusal);
   };
 
-  test("table geometry staging and comparison throw the typed refusal", async () => {
+  test("table geometry and comparison staging throw the typed refusal", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       readFixture("upstream-styled-content.docx"),
       { session: "canonical" },
@@ -575,7 +575,17 @@ describe("a canonical reviewer refuses what is not on the session yet", () => {
         revisionStamp: { date: "2026-01-02T03:04:05Z", idSeed: 1 },
       }),
     );
-    expectRefusal(() => getFolioDocxComparisonAccess(reviewer));
+    // Comparison reads the session; staging into it refuses.
+    expect(getFolioDocxComparisonAccess(reviewer).styleDefinitions()).toEqual(
+      reviewer.toDocument().package.styles,
+    );
+    expectRefusal(() =>
+      getFolioDocxComparisonAccess(reviewer).stageTargetNumbering(
+        null,
+        [],
+        new Map(),
+      ),
+    );
     // An unknown undo handle is rejected, as on the legacy engine.
     expect(
       reviewer.undoDocumentOperations({

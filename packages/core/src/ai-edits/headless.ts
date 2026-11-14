@@ -413,9 +413,6 @@ const canonicalReviewerRefusal = (action: string): CanonicalSessionError =>
     message: `A canonical headless reviewer cannot ${action} yet.`,
   });
 
-/** Reviewers on the canonical session, which give out no comparison access. */
-const canonicalReviewers = new WeakSet<FolioDocxReviewer>();
-
 /** Options for {@link FolioDocxReviewer.applyOperations}. */
 export type FolioApplyOperationsOptions = {
   /** Required policy for undefined style and numbering references. */
@@ -1425,8 +1422,7 @@ export class FolioDocxReviewer {
 
   private registerComparisonAccess(): void {
     if (this.engine.type === "canonical") {
-      // Comparison stages its result into the reviewer's PM states.
-      canonicalReviewers.add(this);
+      comparisonAccessByReviewer.set(this, this.canonicalComparisonAccess());
       return;
     }
     comparisonAccessByReviewer.set(
@@ -1991,6 +1987,78 @@ export class FolioDocxReviewer {
     }
     copy.registerComparisonAccess();
     return copy;
+  }
+
+  /**
+   * Comparison access on the session: what it reads comes from the session;
+   * a story projection resolves each story to its final view through the
+   * session. Staging the target's content into this reviewer is not on the
+   * session yet and refuses with the reviewer's typed refusal.
+   */
+  private canonicalComparisonAccess(): FolioDocxComparisonAccess {
+    const refuse = (action: string): never => {
+      throw canonicalReviewerRefusal(action);
+    };
+    return Object.freeze({
+      stageTerminalTableReviewCarrier: () =>
+        refuse("stage a terminal table's review carrier"),
+      stageTargetStyles: () => refuse("stage the target's styles"),
+      createComparisonHeaderFooter: () =>
+        refuse("import the target's header or footer"),
+      matchInlineAtoms: () => refuse("match inline atoms"),
+      matchInlineProvenance: () => refuse("match inline provenance"),
+      projectStories: (mode) => this.projectComparisonStoriesOnSession(mode),
+      snapshotReviewedStory: (options) =>
+        this.snapshotReviewedStoryInternal(options),
+      numberingDefinitions: () => this.baseDocument.package.numbering,
+      styleDefinitions: () => this.baseDocument.package.styles,
+      planTargetNumberingReferences: (target, references) =>
+        this.planTargetNumberingReferences(target, references),
+      stageTargetNumbering: () => refuse("stage the target's numbering"),
+      finalSectionProperties: () => this.currentFinalSectionProperties(),
+      stageFinalSectionProperties: () =>
+        refuse("stage the target's final section properties"),
+      stageMappedSectionBoundaries: () =>
+        refuse("stage the target's section boundaries"),
+    });
+  }
+
+  /**
+   * Every story with its revisions counted, then resolved to its final view
+   * on the session, as the legacy projection resolves them.
+   */
+  private projectComparisonStoriesOnSession(
+    mode: FolioDocxComparisonProjectionMode,
+  ): FolioDocxComparisonProjection {
+    if (this.engine.type !== "canonical")
+      return panic("Only a canonical reviewer projects on the session");
+    const { session } = this.engine;
+    const handles = this.listStoryHandlesInternal();
+    const ids = new Set<number>();
+    let present = false;
+    if (mode === "with-revision-census") {
+      for (const change of this.currentFinalSectionProperties()
+        ?.propertyChanges ?? []) {
+        ids.add(change.info.id);
+        present = true;
+      }
+      for (const handle of handles) {
+        const state = this.getEditableStoryState(handle);
+        if (!state) continue;
+        const stats = getTrackedChangeStatsFromDoc(state.doc);
+        for (const id of stats.ids) ids.add(id);
+        present ||= stats.present;
+      }
+    }
+    const stories: FolioDocxComparisonStoryProjection[] = [];
+    for (const handle of handles) {
+      const exists = this.resolveStoryOnSession(session, handle, "final");
+      stories.push({
+        handle,
+        snapshot: exists ? this.snapshotStory(handle) : null,
+      });
+    }
+    return { stories, revisions: { ids: [...ids], present } };
   }
 
   /** Refuse what a canonical reviewer cannot do on its session yet. */
@@ -5383,8 +5451,6 @@ export const getFolioDocxComparisonAccess = (
 ): FolioDocxComparisonAccess => {
   const access = comparisonAccessByReviewer.get(reviewer);
   if (access) return access;
-  if (canonicalReviewers.has(reviewer))
-    throw canonicalReviewerRefusal("compare documents");
   return panic(
     "Comparison access was requested for an uninitialized DOCX reviewer",
   );
