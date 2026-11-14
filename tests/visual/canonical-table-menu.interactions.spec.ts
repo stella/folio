@@ -60,9 +60,10 @@ const savedTables = async (page: Page) => {
   expect(saved).not.toBeNull();
   const zip = await ZipArchive.read(Uint8Array.from(saved ?? []).buffer);
   const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
-  return [...xml.matchAll(/<w:tbl>.*?<\/w:tbl>/gsu)].map(([table]) =>
+  // A rewritten table may carry attributes on any of these elements.
+  return [...xml.matchAll(/<w:tbl[ >].*?<\/w:tbl>/gsu)].map(([table]) =>
     [...table.matchAll(/<w:tr[ >].*?<\/w:tr>/gsu)].map(([row]) =>
-      [...row.matchAll(/<w:tc>.*?<\/w:tc>/gsu)].map(([tableCell]) =>
+      [...row.matchAll(/<w:tc[ >].*?<\/w:tc>/gsu)].map(([tableCell]) =>
         [...tableCell.matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/gu)]
           .map(([, text]) => text)
           .join(""),
