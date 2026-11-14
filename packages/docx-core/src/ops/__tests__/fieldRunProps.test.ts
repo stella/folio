@@ -205,10 +205,10 @@ describe("run properties over a field", () => {
 describe("resolving tracked formats inside field results", () => {
   test("one batch, two batches and the other order agree, accepting and rejecting", () => {
     const second = { ...revision, id: 72 };
-    let tracked = applied(original, { ...bold(0, 4), revision }).document;
+    let tracked = applied(original, { ...bold(0, 3), revision }).document;
     tracked = applied(tracked, {
       type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
-      from: at(4),
+      from: at(5),
       to: at(8),
       patch: { strike: true },
       revision: second,

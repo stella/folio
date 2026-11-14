@@ -141,10 +141,18 @@ describe("formatting a selection that holds a field on the session", () => {
       package: { document: { content: proseDocToBlocks(legacy.doc) } },
     };
     const expected = [
-      [{ formatting: { italic: true, bold: true }, previous: undefined }],
       [
-        { formatting: { italic: true, bold: true }, previous: undefined },
-        { formatting: { bold: true }, previous: undefined },
+        {
+          formatting: { italic: true, bold: true, boldCs: true },
+          previous: undefined,
+        },
+      ],
+      [
+        {
+          formatting: { italic: true, bold: true, boldCs: true },
+          previous: undefined,
+        },
+        { formatting: { bold: true, boldCs: true }, previous: undefined },
       ],
     ];
     expect(fieldResults(session.document)).toEqual(expected);
@@ -182,7 +190,12 @@ describe("formatting a selection that holds a field on the session", () => {
     expect(
       fieldResults(formatOnSession("editing", 1, 3).session.document),
     ).toEqual([
-      [{ formatting: { italic: true, bold: true }, previous: undefined }],
+      [
+        {
+          formatting: { italic: true, bold: true, boldCs: true },
+          previous: undefined,
+        },
+      ],
       [
         { formatting: { italic: true }, previous: undefined },
         { formatting: undefined, previous: undefined },
@@ -198,16 +211,16 @@ describe("formatting a selection that holds a field on the session", () => {
     const expected = [
       [
         {
-          formatting: { italic: true, bold: true },
+          formatting: { italic: true, bold: true, boldCs: true },
           previous: [{ italic: true }],
         },
       ],
       [
         {
-          formatting: { italic: true, bold: true },
+          formatting: { italic: true, bold: true, boldCs: true },
           previous: [{ italic: true }],
         },
-        { formatting: { bold: true }, previous: [undefined] },
+        { formatting: { bold: true, boldCs: true }, previous: [undefined] },
       ],
     ];
     expect(fieldResults(session.document)).toEqual(expected);
