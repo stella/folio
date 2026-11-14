@@ -48,6 +48,7 @@ jobs:
           cat test-results/flows.log >> test-results/nightly-consumer-fuzz.log
         env:
           FOLIO_SCENARIO_SEED: "1"
+          FOLIO_SCENARIO_ENGINE: canonical
 
       - name: Keep the consumer fuzz log
         if: always()
