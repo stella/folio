@@ -237,6 +237,53 @@ const moved = (
   }
 };
 
+/** Whether a paragraph of `story` holds the note's own reference mark. */
+const holdsMark = (document: Document, story: OpStory, blockId: string) =>
+  storyParagraphs(storyBody(document, story)).some(
+    ({ paragraph: item }) =>
+      item.paraId === blockId &&
+      item.content.some(
+        (child) =>
+          child.type === "run" &&
+          child.content.some((leaf) => leaf.type === "noteMarker"),
+      ),
+  );
+
+/**
+ * Where a selection end may go over the peer's edit. The note's own mark is
+ * a zero-width child at offset 0 of its paragraph, so an end and an insertion
+ * or split both at that offset are ordered by which side of the mark each
+ * stands on, which the paragraph model does not track: either side is right.
+ */
+const candidates = (
+  place: Place,
+  edit: PeerEdit,
+  before: Document,
+  after: Document,
+  story: OpStory,
+): Place[] => {
+  const ahead = moved(place, edit, before, after, story);
+  const at =
+    edit.type === "insert" || edit.type === "split" ? edit.at : undefined;
+  if (
+    at === undefined ||
+    at.blockId !== place.blockId ||
+    at.offset !== 0 ||
+    place.offset !== 0 ||
+    !holdsMark(before, story, place.blockId)
+  )
+    return [ahead];
+  // Past the inserted text, or at the start of the split's second half.
+  const past: Place =
+    edit.type === "insert"
+      ? { ...place, offset: edit.text.length }
+      : {
+          ...moved({ ...place, offset: 1 }, edit, before, after, story),
+          offset: 0,
+        };
+  return [ahead, past];
+};
+
 type Step =
   | { type: "peer"; story: number; kind: number; seed: number; text: string }
   | { type: "select"; story: number; anchor: number; head: number };
@@ -438,10 +485,18 @@ const followsEveryPeerEdit = (
     body = body.apply(commit.transaction);
     expect(commit.publish().isOk()).toBe(true);
     const ends = expectedAt(step.story);
-    expected[step.story] = {
-      anchor: moved(ends.anchor, edit, before, peer.document, story),
-      head: moved(ends.head, edit, before, peer.document, story),
-    };
+    const actual = (index: number) =>
+      endsOf(
+        index === 0
+          ? local.selection
+          : local.storySelection(SECONDARY.at(index - 1) ?? panic("No story.")),
+      ) ?? panic("The session holds no selection.");
+    const shown = actual(step.story);
+    for (const end of ["anchor", "head"] as const)
+      expect(
+        candidates(ends[end], edit, before, peer.document, story),
+      ).toContainEqual(shown[end]);
+    expected[step.story] = shown;
     // The body's selection is the editor's; the others are the session's.
     expect(endsOf(local.selection)).toEqual(expectedAt(0));
     for (const secondary of SECONDARY) {
