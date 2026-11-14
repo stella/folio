@@ -39,13 +39,14 @@
  */
 
 import { panic } from "better-result";
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { describe, expect, mock, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { assertExactModel } from "../../../../../test/exactModel";
 import { checkCoverageSample } from "../../../../../test/property-coverage";
 import {
   assertProperty,
+  propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
 import { projectReview } from "../../../../../test/reviewProjection";
@@ -66,6 +67,7 @@ import {
   paragraphIdsIn,
 } from "../ids";
 import { gapAfterInserted } from "../inline";
+import * as keptJoinsModule from "../keptJoins";
 import {
   childNodes,
   compareGaps,
@@ -800,6 +802,89 @@ const TRACKING_REFUSALS: readonly string[] = [
 // The laws
 // ---------------------------------------------------------------------------
 
+/**
+ * The pinned counterexample of {@link twoBatchesLaw} where pieces of an
+ * inserted link are accepted before the insertion made inside the link.
+ */
+const JOIN_MEETS_PENDING_INSERTION = {
+  seed: 1693779915,
+  path: "746:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:12:15:1:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:6:8:9:10:10:10:10:12:14:17:16:16:20:24:34:36:38:41:41:41:41:41:41:71:71:71:79:7:7:69:61:61:10:51:50:52:53:51:51:51:51:51:51:51:51:51:51:51:51:51:51:51:57:55:50:50:15:14:16:14:14:16:14:14:14:18:16:14:14:14:18:18:18:18:18:18:18:18:20:26:24:25:19:22:22:22:27:27:30:22:24:22:22:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:26:27:14:14:15:24:24:24:24:24:24:4:4:19:19:19:20:20:17:18:17:22:17:30:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:20:21:20:20:21:8:11:14:14:16:16:16:16:17:16:16",
+};
+
+/**
+ * Resolving a run's accepted and rejected revisions as two batches, in
+ * either order, leaves the document resolving each operation's in turn does.
+ */
+const twoBatchesLaw = (tally: Tally) =>
+  fc.property(
+    reviewDocumentArbitrary,
+    fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
+    fc.array(fc.nat(), { minLength: 6, maxLength: 6 }),
+    fc.array(decisionArbitrary, { minLength: 6, maxLength: 6 }),
+    (document, seeds: OpSeed[], keys: number[], decisions) => {
+      let current = document;
+      const stamps: RevisionStamp[] = [];
+      const kinds: DocumentOpType[] = [];
+      for (const [index, seed] of seeds.entries()) {
+        const op = trackedOpFor(current, seed, index);
+        const applied = applyDocumentOp(current, op);
+        if (applied.isErr()) continue;
+        const stamp = stampOf(op);
+        if (stamp === undefined) continue;
+        kinds.push(kindOf(op));
+        stamps.push(stamp);
+        current = applied.value.document;
+      }
+      const perOp = stamps.map((stamp, index) => ({
+        ids: stampedIds(current, [stamp]),
+        decision: decisions[index] ?? REVISION_DECISIONS.ACCEPT,
+      }));
+      const idsDecided = (decision: RevisionDecision): number[] =>
+        perOp.flatMap((group) =>
+          group.decision === decision ? group.ids : [],
+        );
+      const accepted = idsDecided(REVISION_DECISIONS.ACCEPT);
+      const rejected = idsDecided(REVISION_DECISIONS.REJECT);
+      if (accepted.length + rejected.length === 0) return;
+      // A kind counts once its revisions reach the checks below.
+      for (const [index, { ids }] of perOp.entries())
+        if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
+      if (accepted.length > 0 && rejected.length > 0) count(tally, "mixed");
+      // The operations' revisions in an order the keys draw, earlier
+      // operations' before later ones' as often as after.
+      const order = perOp
+        .map((group, index) => ({
+          group,
+          key: keys[index] ?? index,
+          index,
+        }))
+        .toSorted(
+          (left, right) => left.key - right.key || left.index - right.index,
+        )
+        .map(({ group }) => group);
+      let oneByOne = current;
+      for (const { ids, decision } of order) {
+        oneByOne = resolved(oneByOne, ids, decision);
+        expectSettledDeferredSeams(oneByOne);
+      }
+      const expected = projected(oneByOne, "π′");
+      const acceptedFirst = resolved(
+        resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
+        rejected,
+        REVISION_DECISIONS.REJECT,
+      );
+      expectSettledDeferredSeams(acceptedFirst);
+      assertExactModel(projected(acceptedFirst, "π′"), expected);
+      const rejectedFirst = resolved(
+        resolved(current, rejected, REVISION_DECISIONS.REJECT),
+        accepted,
+        REVISION_DECISIONS.ACCEPT,
+      );
+      expectSettledDeferredSeams(rejectedFirst);
+      assertExactModel(projected(rejectedFirst, "π′"), expected);
+    },
+  );
+
 describe("tracked operations and their resolution", () => {
   test("L3: copied bookmark boundaries keep their source position across rejection order", () => {
     const source = normalizeForOps({
@@ -1336,81 +1421,12 @@ describe("tracked operations and their resolution", () => {
     // every rejected one's, or the other way round. Both give, under π′,
     // what resolving one operation's revisions at a time does, in an order
     // the keys draw, each with its own decision.
-    const law = (tally: Tally) =>
-      fc.property(
-        reviewDocumentArbitrary,
-        fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
-        fc.array(fc.nat(), { minLength: 6, maxLength: 6 }),
-        fc.array(decisionArbitrary, { minLength: 6, maxLength: 6 }),
-        (document, seeds: OpSeed[], keys: number[], decisions) => {
-          let current = document;
-          const stamps: RevisionStamp[] = [];
-          const kinds: DocumentOpType[] = [];
-          for (const [index, seed] of seeds.entries()) {
-            const op = trackedOpFor(current, seed, index);
-            const applied = applyDocumentOp(current, op);
-            if (applied.isErr()) continue;
-            const stamp = stampOf(op);
-            if (stamp === undefined) continue;
-            kinds.push(kindOf(op));
-            stamps.push(stamp);
-            current = applied.value.document;
-          }
-          const perOp = stamps.map((stamp, index) => ({
-            ids: stampedIds(current, [stamp]),
-            decision: decisions[index] ?? REVISION_DECISIONS.ACCEPT,
-          }));
-          const idsDecided = (decision: RevisionDecision): number[] =>
-            perOp.flatMap((group) =>
-              group.decision === decision ? group.ids : [],
-            );
-          const accepted = idsDecided(REVISION_DECISIONS.ACCEPT);
-          const rejected = idsDecided(REVISION_DECISIONS.REJECT);
-          if (accepted.length + rejected.length === 0) return;
-          // A kind counts once its revisions reach the checks below.
-          for (const [index, { ids }] of perOp.entries())
-            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
-          if (accepted.length > 0 && rejected.length > 0) count(tally, "mixed");
-          // The operations' revisions in an order the keys draw, earlier
-          // operations' before later ones' as often as after.
-          const order = perOp
-            .map((group, index) => ({
-              group,
-              key: keys[index] ?? index,
-              index,
-            }))
-            .toSorted(
-              (left, right) => left.key - right.key || left.index - right.index,
-            )
-            .map(({ group }) => group);
-          let oneByOne = current;
-          for (const { ids, decision } of order) {
-            oneByOne = resolved(oneByOne, ids, decision);
-            expectSettledDeferredSeams(oneByOne);
-          }
-          const expected = projected(oneByOne, "π′");
-          const acceptedFirst = resolved(
-            resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
-            rejected,
-            REVISION_DECISIONS.REJECT,
-          );
-          expectSettledDeferredSeams(acceptedFirst);
-          assertExactModel(projected(acceptedFirst, "π′"), expected);
-          const rejectedFirst = resolved(
-            resolved(current, rejected, REVISION_DECISIONS.REJECT),
-            accepted,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          expectSettledDeferredSeams(rejectedFirst);
-          assertExactModel(projected(rejectedFirst, "π′"), expected);
-        },
-      );
-    assertProperty(law(new Map()), {
+    assertProperty(twoBatchesLaw(new Map()), {
       numRuns: NUM_RUNS / 5,
       id: "L3: a run's accepted and rejected revisions resolved as two batches, in either order, equal resolving each operation's in any order",
     });
     const tally: Tally = new Map();
-    checkCoverageSample(law(tally), RUN_COVERAGE_RUNS, {
+    checkCoverageSample(twoBatchesLaw(tally), RUN_COVERAGE_RUNS, {
       // Decisions alternate, so every sampled run of two or more mixes them.
       map: ([document, seeds, keys, decisions], index) => [
         document,
@@ -1427,6 +1443,33 @@ describe("tracked operations and their resolution", () => {
     expect((tally.get("mixed") ?? 0) > 0).toBe(true);
   });
 
+  test("L3: a kept piece's join left on the piece fails the pinned two-batch seed", () => {
+    // The test-only break: a kept piece's join that meets a pending
+    // insertion made inside its record stays on the piece, so accepting the
+    // insertion afterwards leaves three links where accepting everything at
+    // once leaves one.
+    const original = { ...keptJoinsModule };
+    mock.module("../keptJoins", () => ({
+      ...original,
+      withJoinAtLeast: (node: Parameters<typeof original.withJoinAtLeast>[0]) =>
+        node,
+    }));
+    try {
+      const result = fc.check(
+        twoBatchesLaw(new Map()),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          ...JOIN_MEETS_PENDING_INSERTION,
+          numRuns: 1,
+          endOnFailure: true,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    } finally {
+      mock.module("../keptJoins", () => original);
+    }
+  });
   test("L4: tracked operations and resolutions are undone exactly by their inverses", () => {
     const law = (tally: Tally) =>
       fc.property(
