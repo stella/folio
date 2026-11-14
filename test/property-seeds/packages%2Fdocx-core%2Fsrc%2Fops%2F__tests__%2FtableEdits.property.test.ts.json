@@ -35,6 +35,12 @@
       "path": "0:0:0:0:0",
       "note": "Merge/split generator must distinguish refused vertical-group targets from successful horizontal owner splits",
       "date": "2026-10-02"
+    },
+    {
+      "seed": 290360961,
+      "path": "0:0:0:0:0:1",
+      "note": "Merging cells that each hold one empty paragraph keeps the first cell's paragraph alone.",
+      "date": "2026-11-14"
     }
   ],
   "table semantic allocation excludes lifetime-retired paragraph ids": [

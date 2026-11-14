@@ -1,9 +1,10 @@
 /**
- * Table, row and column public operations in the canonical session give the
- * package the default engine gives: the same tables, rows, cells and cell
- * texts pending, once every change is accepted, and once every change is
- * rejected, in direct and tracked mode, addressed through any cell's
- * paragraph.
+ * Table, row, column and cell public operations in the canonical session
+ * give the package the default engine gives: the same tables, rows, cells
+ * and cell texts pending, once every change is accepted, and once every
+ * change is rejected, in direct and tracked mode, addressed through any
+ * cell's paragraph. A suggestion the default engine cannot record gives the
+ * direct edit once accepted and the document as it was once rejected.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -93,17 +94,48 @@ const BODIES = {
   },
 } as const;
 
-type Body = keyof typeof BODIES;
+/** Bodies the cell and column operations also run on. */
+const MORE_BODIES = {
+  "a horizontal merge": {
+    xml: [
+      paragraph("10000001", "Before"),
+      table(
+        [
+          cell("50000001", "A1", '<w:gridSpan w:val="2"/>') +
+            cell("50000002", "C1"),
+          cell("50000003", "A2") +
+            cell("50000004", "") +
+            cell("50000005", "C2"),
+        ],
+        3,
+      ),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["50000001", "50000002", "50000003", "50000004", "50000005"],
+  },
+  "a one-column table": {
+    xml: [
+      paragraph("10000001", "Before"),
+      table([cell("60000001", "S1"), cell("60000002", "")], 1),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["60000001", "60000002"],
+  },
+} as const;
+
+const ALL_BODIES = { ...BODIES, ...MORE_BODIES };
+type Body = keyof typeof ALL_BODIES;
 
 const packageOf = async (body: Body) => {
   const zip = await ZipArchive.read(await createEmptyDocx());
   zip.set(
     "word/document.xml",
-    `${HEAD}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${BODIES[body].xml.join("")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
+    `${HEAD}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${ALL_BODIES[body].xml.join("")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
   );
   return (await zip.generate({ compression: "store" })).buffer;
 };
 
+/** Each operation, addressed through a cell's paragraph and, for a merge's far corner, the body's last cell. */
 const OPERATIONS = {
   deleteTable: (blockId: string) => ({
     id: "op",
@@ -141,7 +173,50 @@ const OPERATIONS = {
   }),
 } as const satisfies Record<
   string,
-  (blockId: string) => FolioDocumentOperation
+  (blockId: string, last: string) => FolioDocumentOperation
+>;
+
+const CELL_OPERATIONS = {
+  deleteTableColumn: OPERATIONS.deleteTableColumn,
+  "insertTableColumn after": (blockId: string) => ({
+    id: "op",
+    type: "insertTableColumn",
+    blockId,
+    position: "after",
+    cellTexts: ["New"],
+  }),
+  "insertTableColumn before, two cells": (blockId: string) => ({
+    id: "op",
+    type: "insertTableColumn",
+    blockId,
+    position: "before",
+    cellTexts: ["First\nSecond", "Third"],
+  }),
+  "insertTableColumn empty": (blockId: string) => ({
+    id: "op",
+    type: "insertTableColumn",
+    blockId,
+  }),
+  "mergeTableCells down": (blockId: string) => ({
+    id: "op",
+    type: "mergeTableCells",
+    blockId,
+    rowCount: 2,
+  }),
+  "mergeTableCells to the last cell": (blockId: string, last: string) => ({
+    id: "op",
+    type: "mergeTableCells",
+    blockId,
+    endBlockId: last,
+  }),
+  splitTableCell: (blockId: string) => ({
+    id: "op",
+    type: "splitTableCell",
+    blockId,
+  }),
+} as const satisfies Record<
+  string,
+  (blockId: string, last: string) => FolioDocumentOperation
 >;
 
 type Mode = "direct" | "tracked-changes";
@@ -295,40 +370,92 @@ const viaCanonicalEngine = async (
   };
 };
 
-const caseArbitrary = fc
-  .constantFrom(...(Object.keys(BODIES) as Body[]))
-  .chain((body) =>
+const caseArbitrary = (
+  bodies: readonly Body[],
+  operations: Readonly<
+    Record<string, (blockId: string, last: string) => FolioDocumentOperation>
+  >,
+) =>
+  fc.constantFrom(...bodies).chain((body) =>
     fc.record({
       body: fc.constant(body),
-      anchor: fc.constantFrom(...BODIES[body].anchors),
-      operation: fc.constantFrom(
-        ...(Object.keys(OPERATIONS) as (keyof typeof OPERATIONS)[]),
-      ),
+      anchor: fc.constantFrom(...ALL_BODIES[body].anchors),
+      operation: fc.constantFrom(...Object.keys(operations)),
       mode: fc.constantFrom<Mode>("direct", "tracked-changes"),
     }),
   );
+
+/** The operation in both engines gives the same package, pending, accepted and rejected. */
+const sameAsDefaultEngine =
+  (
+    operations: Readonly<
+      Record<string, (blockId: string, last: string) => FolioDocumentOperation>
+    >,
+  ) =>
+  async ({
+    body,
+    anchor,
+    operation,
+    mode,
+  }: {
+    body: Body;
+    anchor: string;
+    operation: string;
+    mode: Mode;
+  }) => {
+    const source = await packageOf(body);
+    const last = ALL_BODIES[body].anchors.at(-1) ?? anchor;
+    const build = operations[operation];
+    if (build === undefined) throw new Error(`No operation ${operation}.`);
+    const op = build(anchor, last);
+    const legacy = await viaDefaultEngine(source, op, mode);
+    const canonical = await viaCanonicalEngine(source, op, mode);
+    expect(canonical.refusals).toEqual([]);
+    // A suggestion the default engine cannot record, such as a split or a
+    // column through a merged cell: accepting it gives the direct edit,
+    // rejecting it the document as it was.
+    if (
+      mode === "tracked-changes" &&
+      legacy.skipped.length > 0 &&
+      canonical.skipped.length === 0
+    ) {
+      const direct = await viaDefaultEngine(source, op, "direct");
+      expect(direct.skipped).toEqual([]);
+      const resolved = await outcomes(canonical.bytes);
+      expect(resolved.accepted).toEqual(await blocksOf(direct.bytes));
+      expect(resolved.rejected).toEqual(await blocksOf(source));
+      return;
+    }
+    expect(canonical.skipped).toEqual(legacy.skipped);
+    if (legacy.skipped.length > 0) return;
+    expect(await outcomes(canonical.bytes)).toEqual(
+      await outcomes(legacy.bytes),
+    );
+  };
 
 describe("table structure operations in the canonical session", () => {
   test("give the default engine's package, pending, accepted and rejected", async () => {
     await assertProperty(
       fc.asyncProperty(
-        caseArbitrary,
-        async ({ body, anchor, operation, mode }) => {
-          const source = await packageOf(body);
-          const op = OPERATIONS[operation](anchor);
-          const legacy = await viaDefaultEngine(source, op, mode);
-          const canonical = await viaCanonicalEngine(source, op, mode);
-          expect(canonical.refusals).toEqual([]);
-          expect(canonical.skipped).toEqual(legacy.skipped);
-          if (legacy.skipped.length > 0) return;
-          expect(await outcomes(canonical.bytes)).toEqual(
-            await outcomes(legacy.bytes),
-          );
-        },
+        caseArbitrary(Object.keys(BODIES) as Body[], OPERATIONS),
+        sameAsDefaultEngine(OPERATIONS),
       ),
       {
         numRuns: 60,
         id: "table structure operations in the canonical session give the default engine's package",
+      },
+    );
+  });
+
+  test("cell merges, splits and column changes give the default engine's package", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        caseArbitrary(Object.keys(ALL_BODIES) as Body[], CELL_OPERATIONS),
+        sameAsDefaultEngine(CELL_OPERATIONS),
+      ),
+      {
+        numRuns: 120,
+        id: "cell merges, splits and column changes in the canonical session give the default engine's package",
       },
     );
   });
