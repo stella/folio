@@ -90,21 +90,54 @@ const select = async (page: Page, from: number, to: number) => {
   ).toBe(true);
 };
 
-/** Open the menu over the first paragraph, keeping the selection. */
-const openMenu = async (page: Page, target: Locator): Promise<Locator> => {
+/** Right-click `target` (or the painted `word` inside it) and wait for a menu. */
+const openMenu = async (
+  page: Page,
+  target: Locator,
+  word?: string,
+): Promise<Locator> => {
   await target.scrollIntoViewIfNeeded();
-  const box = await target.boundingBox();
+  // Right-clicking inside the selection keeps it; the word's own box is.
+  const box =
+    word === undefined
+      ? await target.boundingBox()
+      : await target.evaluate((element, text) => {
+          const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT,
+          );
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const at = node.textContent?.indexOf(text) ?? -1;
+            if (at < 0) continue;
+            const range = document.createRange();
+            range.setStart(node, at);
+            range.setEnd(node, at + text.length);
+            const rect = range.getBoundingClientRect();
+            return {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            };
+          }
+          return null;
+        }, word);
   if (!box) throw new Error("no painted target");
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, {
     button: "right",
   });
-  // React's menu is a labelled ARIA menu; Vue's is a list of buttons.
+  // React's menu is a labelled ARIA menu; Vue's are lists of buttons.
   const menu = page
-    .locator('[role="menu"][aria-label="Text editing menu"], .ctx-menu')
+    .locator(
+      '[role="menu"][aria-label="Text editing menu"], .ctx-menu, .image-ctx-menu',
+    )
     .first();
   await menu.waitFor({ state: "visible", timeout: 5000 });
   return menu;
 };
+
+const DELETE = /^\s*Delete(?!\s*image)/u;
+const CUT = /^\s*Cut\b/u;
 
 const choose = async (menu: Locator, item: RegExp) => {
   await menu
@@ -122,10 +155,7 @@ for (const adapter of adapters) {
     test("Delete removes the selection", async ({ page }) => {
       await open(page, adapter.port);
       await select(page, BETA.from - 1, BETA.to);
-      await choose(
-        await openMenu(page, firstParagraph(page)),
-        /^\s*Delete\s*$/u,
-      );
+      await choose(await openMenu(page, firstParagraph(page), "Beta"), DELETE);
       await expect(firstParagraph(page)).not.toContainText("Beta");
       expect(savedParagraphs(await savedBody(page))[0]).toBe("Alpha Gamma");
     });
@@ -140,10 +170,7 @@ for (const adapter of adapters) {
         ),
       ).toBe(true);
       await select(page, BETA.from, BETA.to);
-      await choose(
-        await openMenu(page, firstParagraph(page)),
-        /^\s*Delete\s*$/u,
-      );
+      await choose(await openMenu(page, firstParagraph(page), "Beta"), DELETE);
       await expect
         .poll(async () => /<w:del [^>]*>.*?Beta/su.test(await savedBody(page)))
         .toBe(true);
@@ -152,7 +179,7 @@ for (const adapter of adapters) {
     test("Cut removes the selection", async ({ page }) => {
       await open(page, adapter.port);
       await select(page, BETA.from - 1, BETA.to);
-      await choose(await openMenu(page, firstParagraph(page)), /^\s*Cut\s*$/u);
+      await choose(await openMenu(page, firstParagraph(page), "Beta"), CUT);
       await expect(firstParagraph(page)).not.toContainText("Beta");
       expect(savedParagraphs(await savedBody(page))[0]).toBe("Alpha Gamma");
     });
@@ -162,7 +189,7 @@ for (const adapter of adapters) {
       await page.evaluate(() => navigator.clipboard.writeText("Zeta"));
       await select(page, BETA.from, BETA.to);
       await choose(
-        await openMenu(page, firstParagraph(page)),
+        await openMenu(page, firstParagraph(page), "Beta"),
         /Paste (as Plain Text|without formatting)/iu,
       );
       await expect(firstParagraph(page)).toContainText("Alpha Zeta Gamma");
@@ -176,14 +203,11 @@ for (const adapter of adapters) {
 // Only Vue's menu carries the picture actions.
 const vue = adapters[1];
 test.describe("Vue canonical picture menu edits", () => {
-  for (const item of [/^\s*Delete image\s*$/u, /^\s*Cut\s*$/u]) {
+  for (const item of [DELETE, CUT]) {
     test(`${item.source} removes the selected picture`, async ({ page }) => {
       await open(page, vue.port);
       const image = page.locator(".layout-run-image, .layout-image").first();
       await image.waitFor({ state: "visible" });
-      const box = await image.boundingBox();
-      if (!box) throw new Error("no painted picture");
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await choose(await openMenu(page, image), item);
       await expect(
         page.locator(".layout-run-image, .layout-image"),

@@ -37,10 +37,9 @@ export const replaceRangeText = ({
       )
         return true;
       dispatch(
-        (text === ""
+        text === ""
           ? state.tr.delete(from, to)
-          : state.tr.insertText(text, from, to)
-        ).scrollIntoView(),
+          : state.tr.insertText(text, from, to),
       );
       return true;
     },
