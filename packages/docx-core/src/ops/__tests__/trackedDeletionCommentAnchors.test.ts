@@ -1,19 +1,17 @@
 /**
- * A tracked deletion takes in no comment anchor, at any depth.
+ * A tracked deletion of a range takes in a record it covers whole with the
+ * comment anchors the record holds, at any depth.
  *
- * Deleting a range directly removes the comment anchors inside it. Accepting
- * a tracked deletion keeps the anchors of comment ranges that continue past
- * it. So a tracked deletion that took in a record holding such an anchor
- * accepted to another document than the direct deletion. It is refused, as a
- * deletion of a bare anchor is; a planned deletion leaves the anchor standing
- * and deletes around it.
+ * Deleting a range directly removes the comment anchors inside it, so
+ * accepting the tracked deletion removes every anchor it holds too, those of
+ * comment ranges that continue past it included. A planned deletion still
+ * leaves a bare anchor standing and deletes around it.
  */
 import { describe, expect, test } from "bun:test";
 
 import type { Document } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { planTrackedDeletion } from "../plan";
-import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   type DeleteRangeOp,
   DOCUMENT_OP_TYPES,
@@ -134,18 +132,35 @@ const commentEnds = (document: Document): number[] => {
   return found;
 };
 
-describe("a tracked deletion takes in no comment anchor", () => {
-  test("a deletion over a content control holding a comment's end is refused", () => {
+describe("a tracked deletion over a record holding a comment anchor", () => {
+  test("a deletion over a content control holding a comment's end accepts to the direct deletion", () => {
     const document = documentOf();
     const tracked = applyDocumentOp(document, trackedDeletion(0, 3));
-    expect(tracked.isErr()).toBe(true);
-    if (tracked.isOk()) return;
-    expect(tracked.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    if (tracked.isErr()) throw tracked.error;
+    const accepted = applyDocumentOp(tracked.value.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: tracked.value.revisions,
+      decision: REVISION_DECISIONS.ACCEPT,
+    });
+    if (accepted.isErr()) throw accepted.error;
 
     // Deleting the range directly removes the control and the end with it.
     const deleted = applyDocumentOp(document, directDeletion(0, 3));
     if (deleted.isErr()) throw deleted.error;
     expect(commentEnds(deleted.value.document)).toEqual([1]);
+    expect(accepted.value.document.package.document.content).toEqual(
+      deleted.value.document.package.document.content,
+    );
+
+    const rejected = applyDocumentOp(tracked.value.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: tracked.value.revisions,
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    if (rejected.isErr()) throw rejected.error;
+    expect(commentEnds(rejected.value.document)).toEqual([1, 24]);
   });
 
   test("a deletion beside the record holding the anchor accepts to the direct deletion", () => {

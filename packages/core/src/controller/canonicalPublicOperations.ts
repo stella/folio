@@ -1019,6 +1019,23 @@ const statedNumbering = (
   };
 };
 
+/**
+ * Whether the story's editor document holds the paragraph `blockId`. One the
+ * session's projection does not address still exists: a text box's
+ * paragraphs belong to its shape, not to the story, so no story operation
+ * reaches them.
+ */
+const holdsParagraph = (doc: PMNode, blockId: string): boolean => {
+  let found = false;
+  doc.descendants((node) => {
+    if (found) return false;
+    if (node.type.name === "paragraph" && node.attrs["paraId"] === blockId)
+      found = true;
+    return !found && !node.isTextblock;
+  });
+  return found;
+};
+
 const canonicalPublicStory = (story: FolioDocumentOperationStory): OpStory => {
   if (story === "main") return story;
   switch (story.type) {
@@ -1109,6 +1126,20 @@ export class CanonicalPublicOperations {
         reason,
         ...(message === undefined ? {} : { message }),
       });
+    };
+    // A refused resolution names its gap: its own, or for a block the
+    // compiler does not support, the unsupported public payload gap.
+    const refuseResolution = (
+      id: string,
+      error: CanonicalPublicOperationResolutionError,
+    ) => {
+      const gap =
+        error.gap ??
+        (error.reason === "unsupportedBlock"
+          ? CANONICAL_GAP.publicUnsupportedInline
+          : undefined);
+      if (gap !== undefined) refusals.set(id, { gap });
+      skip(id, error.reason, error.message);
     };
     const result = (
       applied: FolioDocumentOperationResult["applied"],
@@ -1213,13 +1244,7 @@ export class CanonicalPublicOperations {
         besideDeletions,
       });
       if (compiled.isErr()) {
-        const gap =
-          compiled.error.gap ??
-          (compiled.error.reason === "unsupportedBlock"
-            ? CANONICAL_GAP.publicUnsupportedInline
-            : undefined);
-        if (gap !== undefined) refusals.set(operation.id, { gap });
-        skip(operation.id, compiled.error.reason, compiled.error.message);
+        refuseResolution(operation.id, compiled.error);
         continue;
       }
       if (overlapsResolved(compiled.value)) {
@@ -1264,7 +1289,7 @@ export class CanonicalPublicOperations {
         },
       });
       if (alone.isErr()) {
-        skip(operation.id, alone.error.reason, alone.error.message);
+        refuseResolution(operation.id, alone.error);
         continue;
       }
       if (overlapsResolved(alone.value)) {
@@ -1939,7 +1964,13 @@ export class CanonicalPublicOperations {
     const projection = this.options.session.projectStory(story);
     if (!anchor || projection.isErr()) return refusal("missingBlock");
     const paragraph = projection.value.paragraph(blockId);
-    if (!paragraph) return refusal("missingBlock");
+    if (!paragraph)
+      return holdsParagraph(state.doc, blockId)
+        ? refusal(
+            "unsupportedBlock",
+            "The canonical session holds no address in this paragraph, such as one in a text box.",
+          )
+        : refusal("missingBlock");
     // A block beside a paragraph whose break is pending removal is placed
     // by the join it is part of (`besidePendingJoin`); any other operation
     // on it waits for that change to be resolved.
