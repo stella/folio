@@ -456,10 +456,19 @@ describe("semantic table edit properties", () => {
         });
         const table = tableOf(merged.document, f.nested);
         const first = table.rows.at(0)?.cells.at(0);
+        // A cell holding one empty paragraph gives the merge nothing; the
+        // first cell's content stays when no cell holds any.
+        const merging = before.rows.flatMap((row) => row.cells.slice(0, 2));
+        const holding = merging.filter(
+          (cell) =>
+            cell.content.length !== 1 ||
+            cell.content[0]?.type !== "paragraph" ||
+            cell.content[0].content.length > 0,
+        );
         exact(
           first?.content,
-          before.rows.flatMap((row) =>
-            row.cells.slice(0, 2).flatMap((cell) => cell.content),
+          (holding.length === 0 ? merging.slice(0, 1) : holding).flatMap(
+            (cell) => cell.content,
           ),
         );
         expect(first?.formatting?.gridSpan).toBe(2);
