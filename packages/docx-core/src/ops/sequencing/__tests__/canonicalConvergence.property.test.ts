@@ -751,16 +751,18 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     // a rebased one is never trusted short of it.
     let document = before;
     for (const change of changes) {
-      const applied = applyBatch(document, change.batch.ops);
-      if (applied.isErr()) throw applied.error;
-      document = applied.value.document;
+      // An answer may bring several revisions: each change, and its
+      // moves, apply where the one before it left the document.
       if (change.type === "replaced" && change.moves !== undefined) {
-        const moved = applyBatch(before, change.moves.ops);
+        const moved = applyBatch(document, change.moves.ops);
         if (moved.isErr())
           throw new Error(
             `A replacement's moves do not apply where it does: ${moved.error.message}`,
           );
       }
+      const applied = applyBatch(document, change.batch.ops);
+      if (applied.isErr()) throw applied.error;
+      document = applied.value.document;
     }
     if (!equalForStaleness(document, peer.client.document))
       throw new Error(
@@ -884,9 +886,9 @@ const stepArbitrary = (
   };
   return fc.oneof(
     editStep,
+    ...(undo ? [undoStep] : []),
     submitStep,
     deliverStep,
-    ...(undo ? [undoStep] : []),
     ...(reconnect ? [reconnectStep] : []),
   );
 };
