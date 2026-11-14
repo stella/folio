@@ -322,14 +322,19 @@ describe("table edit review fixes", () => {
     expect(direct.isErr() && direct.error.reason).toBe(
       DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
     );
+    // Through its owner, the merge splits into each row's own cell.
     const owner = applyDocumentOp(document, {
       ...tableAddress(id(100)),
       type: DOCUMENT_OP_TYPES.SPLIT_CELL,
       newBlockIds: [],
     });
-    expect(owner.isErr() && owner.error.reason).toBe(
-      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+    if (owner.isErr()) throw owner.error;
+    const split = owner.value.document.package.document.content.find(
+      (block) => block.type === "table",
     );
+    if (split?.type !== "table") throw new Error("The table stays.");
+    for (const row of split.rows)
+      expect(row.cells.at(0)?.formatting?.vMerge).toBeUndefined();
   });
 
   test("table intent allocates zero ids for empty vertical merge and rows minus one otherwise", () => {

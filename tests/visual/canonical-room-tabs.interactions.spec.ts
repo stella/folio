@@ -2,6 +2,7 @@ import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
+import { createEmptyHeaderFooter } from "../../packages/core/src/utils/headerFooter";
 import type {} from "../parity/canonicalBridge";
 import {
   reactPort,
@@ -209,9 +210,27 @@ for (const adapter of adapters) {
   });
 }
 
-/** A body paragraph with a footnote reference, and the footnote. */
-const noteDocument = async () => {
-  const document = createEmptyDocument({ initialText: "Body seed" });
+/** A body paragraph with a footnote reference, the footnote and a header. */
+const storyDocument = async () => {
+  const source = createEmptyDocument({ initialText: "Body seed" });
+  const document = createEmptyHeaderFooter(source, "header", false);
+  if (!document) throw new TypeError("Could not create the header.");
+  const headers = document.package.headers;
+  const headerRId = [...(headers?.keys() ?? [])].at(0);
+  const header = headerRId === undefined ? undefined : headers?.get(headerRId);
+  if (!headers || headerRId === undefined || !header)
+    throw new TypeError("Expected a header.");
+  headers.set(headerRId, {
+    ...header,
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          { type: "run", content: [{ type: "text", text: "Header seed" }] },
+        ],
+      },
+    ],
+  });
   const body = document.package.document.content.at(0);
   if (body?.type !== "paragraph")
     throw new TypeError("Expected a body paragraph.");
@@ -233,7 +252,7 @@ const noteDocument = async () => {
       ],
     },
   ];
-  return [...new Uint8Array(await createDocx(document))];
+  return { bytes: [...new Uint8Array(await createDocx(document))], headerRId };
 };
 
 /** Open the footnote's editor in `page`; returns its ProseMirror. */
@@ -252,46 +271,69 @@ const openFootnote = async (page: Page) => {
   return editor;
 };
 
+/** Open the header's editor in `page`; returns its ProseMirror. */
+const openHeader = async (page: Page, rId: string) => {
+  const painted = page.locator(".layout-page-header").first();
+  await expect(painted).toBeVisible({ timeout: JOIN_TIMEOUT });
+  await painted.dblclick();
+  await expect(page.locator(".hf-inline-editor")).toBeVisible();
+  const editor = page.locator(`[data-hf-r-id="${rId}"] .ProseMirror`);
+  await expect(editor).toBeAttached();
+  return editor;
+};
+
 for (const adapter of adapters) {
-  test(`an open note editor follows a peer's edit to its note [${adapter.name}]`, async ({
+  test(`open note and header editors keep their caret when a peer types ahead of it [${adapter.name}]`, async ({
     context,
   }, testInfo) => {
     test.setTimeout(120_000);
-    await context.addInitScript(
-      (bytes) => {
-        globalThis.__folioCanonicalRoomSeed = bytes;
-      },
-      await noteDocument(),
-    );
-    const room = `notes-${adapter.name.toLowerCase()}-${testInfo.testId}-${Date.now()}`;
+    const { bytes, headerRId } = await storyDocument();
+    await context.addInitScript((seed) => {
+      globalThis.__folioCanonicalRoomSeed = seed;
+    }, bytes);
+    const room = `stories-${adapter.name.toLowerCase()}-${testInfo.testId}-${Date.now()}`;
     const url = `http://localhost:${adapter.port}/?collaboration=1#${room}`;
     const first = await openTab(context, url);
     const second = await openTab(context, url);
     await expectConverged([first, second]);
 
+    // The first tab's caret sits at the end of its footnote; the second tab
+    // types at the start of the same footnote, ahead of that caret.
     const firstNote = await openFootnote(first);
     const secondNote = await openFootnote(second);
-    // The first tab's caret sits in its footnote while the peer types there.
     await firstNote.click();
     await first.keyboard.press("End");
-
-    // The second tab types in the footnote the first tab has open.
     await secondNote.click();
-    await second.keyboard.press("End");
-    await second.keyboard.type(" remote");
-    await expect(secondNote).toContainText("Footnote seed remote");
-    await expect(firstNote).toContainText("Footnote seed remote", {
+    await second.keyboard.press("Home");
+    await second.keyboard.type("Remote ");
+    await expect(secondNote).toContainText("Remote Footnote seed");
+    await expect(firstNote).toContainText("Remote Footnote seed", {
+      timeout: JOIN_TIMEOUT,
+    });
+    // The first tab's caret moved over the peer's text: typing goes on at the
+    // end of the note, without placing the caret again.
+    await first.keyboard.type(" local");
+    await expect(firstNote).toContainText("Remote Footnote seed local");
+    await expect(secondNote).toContainText("Remote Footnote seed local", {
       timeout: JOIN_TIMEOUT,
     });
 
-    // The first tab's editor took the peer's edit: typing in it goes on.
-    await firstNote.click();
+    // The same in the header both tabs open.
+    const firstHeader = await openHeader(first, headerRId);
     await first.keyboard.press("End");
-    await first.keyboard.type(" local");
-    await expect(firstNote).toContainText("Footnote seed remote local");
-    await expect(secondNote).toContainText("Footnote seed remote local", {
+    const secondHeader = await openHeader(second, headerRId);
+    await second.keyboard.press("Home");
+    await second.keyboard.type("Remote ");
+    await expect(secondHeader).toContainText("Remote Header seed");
+    await expect(firstHeader).toContainText("Remote Header seed", {
       timeout: JOIN_TIMEOUT,
     });
+    await first.keyboard.type(" local");
+    await expect(firstHeader).toContainText("Remote Header seed local");
+    await expect(secondHeader).toContainText("Remote Header seed local", {
+      timeout: JOIN_TIMEOUT,
+    });
+
     await expectConverged([first, second]);
     expect((await roomBridge(first))?.notice).toBeUndefined();
     expect((await roomBridge(second))?.notice).toBeUndefined();
