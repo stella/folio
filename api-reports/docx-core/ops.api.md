@@ -830,7 +830,7 @@ export type InsertRowOp = {
 export type InsertTableOp = {
     type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
     story: OpStory;
-    at: BlockInsertionPoint;
+    at: TableInsertionPoint;
     table: Table;
     revision?: RevisionStamp;
     newIds?: NewIds;
@@ -1496,10 +1496,20 @@ export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds
     side?: "after" | "before";
     separated?: boolean;
     paragraphAfter?: "empty" | "none";
+    besideTable?: true;
 };
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;
+
+// @public
+export type TableInsertionPoint = BlockInsertionPoint | {
+    type: "beforeTable";
+    blockId: string;
+} | {
+    type: "afterTable";
+    blockId: string;
+};
 
 // @public
 export type TableIntentOperation = { [Kind in TableEditOp["type"]]: Omit<Extract<TableEditOp, {

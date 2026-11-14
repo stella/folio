@@ -124,7 +124,65 @@ const MORE_BODIES = {
   },
 } as const;
 
-const ALL_BODIES = { ...BODIES, ...MORE_BODIES };
+/** A paragraph whose break is pending deletion, before a table and before a paragraph. */
+const deletedBreak = (id: string, text: string) =>
+  `<w:p w14:paraId="${id}"><w:pPr><w:rPr><w:del w:id="90" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+
+/** Bodies tables are inserted into, beside paragraphs and tables. */
+const PLACEMENT_BODIES = {
+  "a deleted break before a table": {
+    xml: [
+      deletedBreak("70000001", "Joined"),
+      table([cell("70000002", "A1") + cell("70000003", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000001", "70000002", "70000003", "10000002"],
+  },
+  "a deleted break before a paragraph": {
+    xml: [
+      paragraph("10000001", "Before"),
+      deletedBreak("70000004", "Joined"),
+      paragraph("70000005", "Next"),
+      table([cell("70000006", "A1")], 1),
+      paragraph("10000002", ""),
+    ],
+    anchors: ["10000001", "70000004", "70000005", "70000006"],
+  },
+  "a table starting the body": {
+    xml: [
+      table([cell("80000001", "A1") + cell("80000002", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["80000001", "80000002", "10000002"],
+  },
+  "a table at the body's end": {
+    xml: [paragraph("10000001", "Before"), table([cell("80000003", "A1")], 1)],
+    anchors: ["10000001", "80000003"],
+  },
+  "two tables touching": {
+    xml: [
+      paragraph("10000001", "Before"),
+      table([cell("80000004", "A1")], 1),
+      table([cell("80000005", "X1")], 1),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["80000004", "80000005"],
+  },
+  "a nested table": {
+    xml: [
+      table(
+        [
+          `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr>${table([cell("80000006", "N1")], 1)}${paragraph("80000007", "Outer")}</w:tc>`,
+        ],
+        1,
+      ),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["80000006", "80000007", "10000002"],
+  },
+} as const;
+
+const ALL_BODIES = { ...BODIES, ...MORE_BODIES, ...PLACEMENT_BODIES };
 type Body = keyof typeof ALL_BODIES;
 
 /** Bodies the canonical session's own review also runs on. */
@@ -442,20 +500,96 @@ const viaCanonicalEngine = async (
   };
 };
 
+const INSERTIONS = {
+  "insertTable after": (blockId: string) => ({
+    id: "op",
+    type: "insertTable",
+    blockId,
+    position: "after",
+    rows: [
+      ["N1", "N2"],
+      ["N3", ""],
+    ],
+  }),
+  "insertTable before": (blockId: string) => ({
+    id: "op",
+    type: "insertTable",
+    blockId,
+    position: "before",
+    rows: [["N1"]],
+  }),
+  "insertSignatureTable after": (blockId: string) => ({
+    id: "op",
+    type: "insertSignatureTable",
+    blockId,
+    parties: [
+      { name: "Buyer", signatory: "A. Person", title: "Director" },
+      { name: "Seller" },
+    ],
+  }),
+  "insertSignatureTable before": (blockId: string) => ({
+    id: "op",
+    type: "insertSignatureTable",
+    blockId,
+    position: "before",
+    parties: [{ name: "Buyer" }],
+  }),
+} as const satisfies Record<
+  string,
+  (blockId: string, last: string) => FolioDocumentOperation
+>;
+
 const caseArbitrary = (
   bodies: readonly Body[],
   operations: Readonly<
     Record<string, (blockId: string, last: string) => FolioDocumentOperation>
   >,
+  /** Paragraphs beside the table the operations may also name, where the body has them. */
+  besides: readonly string[] = [],
 ) =>
   fc.constantFrom(...bodies).chain((body) =>
     fc.record({
       body: fc.constant(body),
-      anchor: fc.constantFrom(...ALL_BODIES[body].anchors),
+      anchor: fc.constantFrom(
+        ...new Set<string>([
+          ...ALL_BODIES[body].anchors,
+          ...besides.filter((id) =>
+            ALL_BODIES[body].xml.some((xml) =>
+              xml.startsWith(`<w:p w14:paraId="${id}"`),
+            ),
+          ),
+        ]),
+      ),
       operation: fc.constantFrom(...Object.keys(operations)),
       mode: fc.constantFrom<Mode>("direct", "tracked-changes"),
     }),
   );
+
+/** Whether the paragraph `anchor` is the last block of the body. */
+const endsTheBody = (body: Body, anchor: string): boolean =>
+  ALL_BODIES[body].xml.at(-1)?.startsWith(`<w:p w14:paraId="${anchor}"`) ??
+  false;
+
+type Outcomes = Awaited<ReturnType<typeof outcomes>>;
+
+/**
+ * A table put after the body's last paragraph: a body that ended with a
+ * paragraph still ends with one, an empty paragraph after the table, where
+ * the default engine lets the table end the body. Nothing else differs.
+ */
+const closedOutcomes = (outcome: Outcomes): Outcomes => {
+  const closed = (blocks: Outcomes["pending"]): Outcomes["pending"] => {
+    const last = blocks.at(-1);
+    return last !== undefined && "rows" in last
+      ? [...blocks, { text: [""] }]
+      : blocks;
+  };
+  return {
+    pending: closed(outcome.pending),
+    accepted: closed(outcome.accepted),
+    rejected: closed(outcome.rejected),
+  };
+};
 
 /** The operation in both engines gives the same package, pending, accepted and rejected. */
 const sameAsDefaultEngine =
@@ -483,6 +617,9 @@ const sameAsDefaultEngine =
     const legacy = await viaDefaultEngine(source, op, mode);
     const canonical = await viaCanonicalEngine(source, op, mode);
     expect(canonical.refusals).toEqual([]);
+    const closes = operation.endsWith(" after") && endsTheBody(body, anchor);
+    const asCanonicalCloses = (outcome: Outcomes) =>
+      closes ? closedOutcomes(outcome) : outcome;
     // A suggestion the default engine cannot record, such as a split or a
     // column through a merged cell: accepting it gives the direct edit,
     // rejecting it the document as it was.
@@ -493,15 +630,18 @@ const sameAsDefaultEngine =
     ) {
       const direct = await viaDefaultEngine(source, op, "direct");
       expect(direct.skipped).toEqual([]);
+      // Every other change the body already held is resolved alike.
       const resolved = await outcomes(canonical.bytes);
-      expect(resolved.accepted).toEqual(await blocksOf(direct.bytes));
-      expect(resolved.rejected).toEqual(await blocksOf(source));
+      expect(resolved.accepted).toEqual(
+        asCanonicalCloses(await outcomes(direct.bytes)).accepted,
+      );
+      expect(resolved.rejected).toEqual((await outcomes(source)).rejected);
       return;
     }
     expect(canonical.skipped).toEqual(legacy.skipped);
     if (legacy.skipped.length > 0) return;
     expect(await outcomes(canonical.bytes)).toEqual(
-      await outcomes(legacy.bytes),
+      asCanonicalCloses(await outcomes(legacy.bytes)),
     );
   };
 
@@ -522,7 +662,10 @@ describe("table structure operations in the canonical session", () => {
   test("cell merges, splits and column changes give the default engine's package", async () => {
     await assertProperty(
       fc.asyncProperty(
-        caseArbitrary(Object.keys(ALL_BODIES) as Body[], CELL_OPERATIONS),
+        caseArbitrary(
+          [...Object.keys(BODIES), ...Object.keys(MORE_BODIES)] as Body[],
+          CELL_OPERATIONS,
+        ),
         sameAsDefaultEngine(CELL_OPERATIONS),
       ),
       {
@@ -531,6 +674,46 @@ describe("table structure operations in the canonical session", () => {
       },
     );
   });
+
+  test("tables inserted beside paragraphs and tables give the default engine's package", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        caseArbitrary(
+          [
+            "a plain table",
+            "a vertical merge",
+            "a table ending the body",
+            ...(Object.keys(PLACEMENT_BODIES) as Body[]),
+          ],
+          INSERTIONS,
+          ["10000001", "10000002"],
+        ),
+        sameAsDefaultEngine(INSERTIONS),
+      ),
+      {
+        numRuns: 160,
+        id: "tables inserted beside paragraphs and tables in the canonical session give the default engine's package",
+      },
+    );
+  });
+
+  for (const mode of ["direct", "tracked-changes"] as const)
+    test(`a table after the body's last paragraph leaves the body ending with a paragraph (${mode})`, async () => {
+      const source = await packageOf("two tables touching");
+      const op = INSERTIONS["insertTable after"]("10000002");
+      const legacy = await outcomes(
+        (await viaDefaultEngine(source, op, mode)).bytes,
+      );
+      const canonical = await viaCanonicalEngine(source, op, mode);
+      expect(canonical.refusals).toEqual([]);
+      expect(canonical.skipped).toEqual([]);
+      const resolved = await outcomes(canonical.bytes);
+      expect(resolved.pending.at(-1)).toEqual({ text: [""] });
+      expect(resolved.accepted.at(-1)).toEqual({ text: [""] });
+      // Only the closing paragraph differs from the default engine's package.
+      expect(resolved).not.toEqual(legacy);
+      expect(resolved).toEqual(closedOutcomes(legacy));
+    });
 
   test("resolve in the canonical session as the default engine resolves them", async () => {
     await assertProperty(

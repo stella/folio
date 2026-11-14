@@ -39,6 +39,7 @@ import {
 } from "@stll/docx-core/ops";
 
 import {
+  buildSignatureTableNode,
   buildTableNode,
   SUGGESTED_SUPPORTED_OPERATION_TYPES,
 } from "../ai-edits/apply";
@@ -156,7 +157,7 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   readonly commentOnBlock: "compile";
   readonly commentOnRange: "compile";
   readonly insertTable: "compile";
-  readonly insertSignatureTable: "publicOps.tableStructure";
+  readonly insertSignatureTable: "compile";
   readonly deleteTable: "compile";
   readonly insertTableRow: "compile";
   readonly deleteTableRow: "compile";
@@ -178,7 +179,7 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   commentOnBlock: "compile",
   commentOnRange: "compile",
   insertTable: "compile",
-  insertSignatureTable: CANONICAL_GAP.publicTableStructure,
+  insertSignatureTable: "compile",
   deleteTable: "compile",
   insertTableRow: "compile",
   deleteTableRow: "compile",
@@ -392,13 +393,18 @@ const isBlockInsertion = (
   operation.type === "insertAfterBlock" ||
   operation.type === "insertBeforeBlock";
 
-type TableInsertion = Extract<FolioDocumentOperation, { type: "insertTable" }>;
+type TableInsertion = Extract<
+  FolioDocumentOperation,
+  { type: "insertTable" | "insertSignatureTable" }
+>;
 
 /** An operation that puts a new block, a paragraph or a table, beside a paragraph. */
 const placesBlock = (
   operation: FolioDocumentOperation,
 ): operation is BlockInsertion | TableInsertion =>
-  isBlockInsertion(operation) || operation.type === "insertTable";
+  isBlockInsertion(operation) ||
+  operation.type === "insertTable" ||
+  operation.type === "insertSignatureTable";
 
 type ProjectedParagraph = NonNullable<
   ReturnType<CanonicalProjection["paragraph"]>
@@ -686,19 +692,21 @@ type ResolveTableInsertionOptions = {
     reason: FolioAIEditSkipReason,
     message?: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
-  tableGap: (
+  skipAlike: (
+    reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
 };
 
 /**
- * A table beside the anchor, built from the cell texts as the default engine
- * builds it (`buildTableNode`) and placed as a paragraph beside the anchor is
- * (`besidePendingJoin`): between the paragraph it goes beside and the one
- * next to it, and after a container's last paragraph with the empty
- * paragraph the container ends with. Beside a table, the anchor's own or a
- * neighbouring one, or any block other than a paragraph, it stays under the
- * table structure gap.
+ * A table beside the anchor, built as the default engine builds it (from the
+ * cell texts, `buildTableNode`, or the parties, `buildSignatureTableNode`)
+ * and placed where it places it. Beside a paragraph it goes as a paragraph
+ * beside the anchor does (`besidePendingJoin`), or beside the paragraph as
+ * it stands where no pending join reads that side: between the paragraph and
+ * the block next to it, and after a container's last paragraph with the
+ * empty paragraph the container ends with. From inside a table it goes
+ * beside the outermost one, touching it.
  */
 const resolveTableInsertion = ({
   operation,
@@ -707,31 +715,25 @@ const resolveTableInsertion = ({
   story,
   noteReferences,
   refusal,
-  tableGap,
+  skipAlike,
 }: ResolveTableInsertionOptions) => {
   const side = operation.position ?? "after";
-  if (findOutermostTableBoundary(projection.doc, paragraph.start - 1) !== null)
-    return tableGap("Canonical table insertion beside a table is unavailable.");
-  const placed = besidePendingJoin({
-    side,
-    paragraph,
-    projection,
-    noteReferences,
-  });
-  if (placed === undefined) return refusal("pendingDeletion");
-  const { place } = placed;
-  const $place = projection.doc.resolve(place.start - 1);
-  const neighbour = $place.parent.maybeChild(
-    $place.index() + (side === "after" ? 1 : -1),
-  );
-  if (neighbour !== null && neighbour.type.name !== "paragraph")
-    return tableGap(
-      "Canonical table insertion needs a paragraph or the container's edge beside it.",
-    );
-  const node = buildTableNode({
-    schema: projection.doc.type.schema,
-    rows: operation.rows,
-  });
+  const { schema } = projection.doc.type;
+  let node: PMNode | null;
+  if (operation.type === "insertTable")
+    node = buildTableNode({ schema, rows: operation.rows });
+  else {
+    if (operation.parties.length === 0)
+      return skipAlike("emptyOperation", "A signature table needs a party.");
+    // A comment across the whole table would cross its cells, as the
+    // default engine finds.
+    if (operation.comment !== undefined)
+      return skipAlike(
+        "unsupportedBlock",
+        "A signature table takes no comment.",
+      );
+    node = buildSignatureTableNode({ schema, parties: operation.parties });
+  }
   if (node === null) return refusal("unsupportedBlock");
   const attrs = expectTableAttrs(node);
   const formatting = tableAttrsToFormatting(attrs);
@@ -743,28 +745,81 @@ const resolveTableInsertion = ({
       : { columnWidths: [...attrs.columnWidths] }),
     rows: standaloneTableRowsFromProseMirror(node),
   };
-  const position =
-    side === "after" ? place.start + place.node.content.size : place.start;
-  const intent: EditorIntent = {
-    type: "tableBlock",
-    operation: {
-      type: DOCUMENT_OP_TYPES.INSERT_TABLE,
-      story,
-      blockId: place.blockId,
-      table,
-      side,
-      // After a container's last paragraph the container still ends with one.
-      paragraphAfter: side === "after" && neighbour === null ? "empty" : "none",
-    },
+  const inserted = (
+    place: ProjectedParagraph,
+    placeSide: "before" | "after",
+    paragraphAfter: "empty" | "none",
+  ) => {
+    const position =
+      placeSide === "after"
+        ? place.start + place.node.content.size
+        : place.start;
+    const intent: EditorIntent = {
+      type: "tableBlock",
+      operation: {
+        type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+        story,
+        blockId: place.blockId,
+        table,
+        side: placeSide,
+        paragraphAfter,
+      },
+    };
+    return Result.ok({
+      type: "plain" as const,
+      operation,
+      intents: [intent],
+      normalizations: [],
+      from: position,
+      to: position,
+    });
   };
-  return Result.ok({
-    type: "plain" as const,
-    operation,
-    intents: [intent],
-    normalizations: [],
-    from: position,
-    to: position,
-  });
+  const outer = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
+  if (outer !== null) {
+    // Beside the outermost table, touching it, as the default engine puts
+    // it: addressed by a paragraph of that table's own.
+    const outerTable = projection.doc.nodeAt(outer.before);
+    const blockId =
+      outerTable === null
+        ? undefined
+        : tableBlockAddress(projection, {
+            table: outerTable,
+            tableStart: outer.before + 1,
+          });
+    if (blockId === undefined) return refusal("unsupportedBlock");
+    const intent: EditorIntent = {
+      type: "tableBlock",
+      operation: {
+        type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+        story,
+        blockId,
+        table,
+        side,
+        besideTable: true,
+      },
+    };
+    return Result.ok({
+      type: "plain" as const,
+      operation,
+      intents: [intent],
+      normalizations: [],
+      from: outer[side],
+      to: outer[side],
+    });
+  }
+  const { place } =
+    besidePendingJoin({ side, paragraph, projection, noteReferences }) ??
+    besideAsItStands(paragraph);
+  const $place = projection.doc.resolve(place.start - 1);
+  const neighbour = $place.parent.maybeChild(
+    $place.index() + (side === "after" ? 1 : -1),
+  );
+  // After a container's last paragraph the container still ends with one.
+  return inserted(
+    place,
+    side,
+    side === "after" && neighbour === null ? "empty" : "none",
+  );
 };
 
 /** A paragraph of the table's own that addresses a table edit, by its id. */
@@ -2397,14 +2452,6 @@ export class CanonicalPublicOperations {
           message: message ?? `The operation was refused: ${reason}.`,
         }),
       );
-    const tableGap = (message: string) =>
-      Result.err(
-        new CanonicalPublicOperationResolutionError({
-          reason: "unsupportedBlock",
-          message,
-          gap: CANONICAL_GAP.publicTableStructure,
-        }),
-      );
     const skipAlike = (reason: FolioAIEditSkipReason, message: string) =>
       Result.err(
         new CanonicalPublicOperationResolutionError({
@@ -2429,6 +2476,7 @@ export class CanonicalPublicOperations {
       case "insertAfterBlock":
       case "insertBeforeBlock":
       case "insertTable":
+      case "insertSignatureTable":
       case "deleteTable":
       case "insertTableRow":
       case "deleteTableRow":
@@ -2437,11 +2485,10 @@ export class CanonicalPublicOperations {
       case "mergeTableCells":
       case "splitTableCell":
         break;
-      default:
-        return refusal(
-          "unsupportedBlock",
-          `Canonical public operation ${operation.type} is unavailable.`,
-        );
+      default: {
+        const unreachable: never = operation;
+        return unreachable;
+      }
     }
     const blockId =
       operation.type === "replaceRange" ||
@@ -2503,7 +2550,10 @@ export class CanonicalPublicOperations {
         notInTable,
         skipAlike,
       });
-    if (operation.type === "insertTable")
+    if (
+      operation.type === "insertTable" ||
+      operation.type === "insertSignatureTable"
+    )
       return resolveTableInsertion({
         operation,
         paragraph,
@@ -2511,7 +2561,7 @@ export class CanonicalPublicOperations {
         story,
         noteReferences,
         refusal,
-        tableGap,
+        skipAlike,
       });
     if (isBlockInsertion(operation)) {
       const besideDeletion =
