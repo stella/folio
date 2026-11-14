@@ -28,6 +28,7 @@ import { statedTestBudget } from "./property-budget";
 import {
   EXPLORATION_DIR_ENV,
   type ExplorationContext,
+  explorationFailureReports,
   explorationReportsOnly,
   isExplorationFailure,
   pinnedReplayPath,
@@ -537,9 +538,13 @@ const replayReporter =
       throw details.errorInstance;
     }
     const counterexamplePath = details.counterexamplePath;
+    const explorationFailure = isExplorationFailure(
+      exploration,
+      counterexamplePath,
+    );
     const reportOnly =
-      isExplorationFailure(exploration, counterexamplePath) &&
-      explorationReportsOnly(process.env);
+      explorationFailure &&
+      explorationFailureReports(process.env, identity.site?.file);
     const replay = replayCommand(identity, {
       seed: details.seed,
       path: counterexamplePath,
@@ -564,6 +569,14 @@ const replayReporter =
       );
     }
     lines.push(`Replay: ${replay}`);
+    if (
+      explorationFailure &&
+      !reportOnly &&
+      explorationReportsOnly(process.env)
+    )
+      lines.push(
+        `${identity.site?.file ?? "This file"} is added or changed by this change, so its generated cases fail the run instead of reporting.`,
+      );
     if (
       pinned === undefined &&
       identity.key !== undefined &&

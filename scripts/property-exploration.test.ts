@@ -18,6 +18,8 @@ import path from "node:path";
 
 import {
   type ExplorationContext,
+  explorationFailureReports,
+  explorationOwnedFiles,
   explorationReportsOnly,
   isExplorationFailure,
 } from "../test/property-exploration";
@@ -46,6 +48,7 @@ const ENV_KEYS = [
   "FOLIO_FUZZ_HEALTH",
   "FOLIO_FUZZ_EXPLORATION",
   "FOLIO_FUZZ_EXPLORATION_DIR",
+  "FOLIO_FUZZ_EXPLORATION_OWNED",
   "FOLIO_PROPERTY_FAILURES_DIR",
 ] as const;
 const savedEnv = Object.fromEntries(
@@ -139,6 +142,28 @@ describe("which failures are exploration", () => {
     ).toBe(false);
     expect(explorationReportsOnly({ CI: "true" })).toBe(false);
   });
+
+  test("a file the change owns never reports", () => {
+    const env = {
+      CI: "true",
+      FOLIO_FUZZ_EXPLORATION: "report",
+      FOLIO_FUZZ_EXPLORATION_OWNED: JSON.stringify(["a.test.ts"]),
+    };
+    expect(explorationFailureReports(env, "a.test.ts")).toBe(false);
+    expect(explorationFailureReports(env, "b.test.ts")).toBe(true);
+    expect(explorationFailureReports(env, undefined)).toBe(true);
+    expect(
+      explorationFailureReports(
+        { ...env, FOLIO_FUZZ_EXPLORATION: "fail" },
+        "b.test.ts",
+      ),
+    ).toBe(false);
+    expect(explorationOwnedFiles({})).toEqual(new Set());
+    for (const raw of ["{", '"a.test.ts"', "[1]"])
+      expect(() =>
+        explorationOwnedFiles({ FOLIO_FUZZ_EXPLORATION_OWNED: raw }),
+      ).toThrow();
+  });
 });
 
 describe("report mode", () => {
@@ -182,6 +207,34 @@ describe("report mode", () => {
     const findings = readFindings([], [directory]);
     expect(findings).toHaveLength(1);
     expect(blockingFindings(findings)).toEqual([]);
+  });
+
+  test("a property file the change adds or changes fails on a generated case", () => {
+    const directory = reportingCi({
+      FOLIO_FUZZ_EXPLORATION_OWNED: JSON.stringify([FILE]),
+    });
+    const lines = logged(() => {
+      expect(() => {
+        assertProperty(
+          fc.property(fc.nat(), (value) => value < 10),
+          { id: "owned generated failure fails", numRuns: 200 },
+        );
+      }).toThrow(`${FILE} is added or changed by this change`);
+    });
+    const markers = extractFailureMarkers(lines.join("\n"));
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.exploration).toBeUndefined();
+    expect(readdirSync(directory)).toEqual([]);
+    // Another change's file list leaves this file reporting.
+    reportingCi({
+      FOLIO_FUZZ_EXPLORATION_OWNED: JSON.stringify(["scripts/other.test.ts"]),
+    });
+    logged(() => {
+      assertProperty(
+        fc.property(fc.nat(), (value) => value < 10),
+        { id: "unowned generated failure reports", numRuns: 200 },
+      );
+    });
   });
 
   test("a caller seed, PROPERTY_TEST_SEED or an example still fails", () => {
