@@ -335,6 +335,9 @@ export const createNoteEditorManager = (
                 : TextSelection.near(transaction.doc.resolve(anchor)),
             );
             transaction.setMeta("addToHistory", false);
+            ((globalThis as { __folioDbg?: string[] }).__folioDbg ??= []).push(
+              `note sync restored=${JSON.stringify(restored ?? null)} viewAnchor=${existing.view.state.selection.anchor} session=${JSON.stringify(deps.getCanonicalApi?.()?.getCanonicalStorySelection(OP_STORIES.MAIN) ?? null)}`,
+            );
             existing.view.updateState(existing.view.state.apply(transaction));
           }
           existing.appliedNote = note;

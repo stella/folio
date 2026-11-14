@@ -2975,6 +2975,11 @@ class CanonicalSession {
     if (checked.isErr()) return checked;
     const applied = applyDocumentOps(this.currentDocument, change.batch.ops);
     if (applied.isErr()) return refuse(applied.error.message);
+    const debugLog = ((globalThis as { __folioDbg?: string[] }).__folioDbg ??=
+      []);
+    debugLog.push(
+      `remote ${change.type} ${JSON.stringify(change.batch.ops).slice(0, 900)} effects=${JSON.stringify(change.batch.effects ?? null).slice(0, 300)}`,
+    );
     const shown = projected.value.selectionAt(state);
     const before = shown.isOk() ? shown.value : this.currentSelection;
     const selection = remoteSelection({
