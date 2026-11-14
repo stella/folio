@@ -108,6 +108,7 @@ import { identitySlots } from "./slots";
 import { tableEditParagraphDemand } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import { rowsWithoutRow } from "./tableRowRemoval";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import {
   type BlockInsertionPoint,
@@ -2352,10 +2353,13 @@ export const compileEditorIntent = (
       } else {
         op = { ...operation, ...tracked };
         // The caret lands in a row that stays, or beside the table when its
-        // last row goes with it.
+        // last row goes with it. A direct deletion's rows are those the
+        // removal leaves, a merge it starts handed on to the next row.
         blockId =
           tableRowAnchor(
-            table.rows.filter((_row, index) => index !== rowIndex),
+            op.revision === undefined
+              ? rowsWithoutRow(table, rowIndex)
+              : table.rows.filter((_row, index) => index !== rowIndex),
           ) ??
           storyParagraphs(storyBody(document, op.story)).find(
             (paragraph) =>
@@ -2381,17 +2385,6 @@ export const compileEditorIntent = (
           story: op.story,
         }),
       ];
-      // A row deletion that hands a vertical merge on moves the removed
-      // cell's paragraphs into the next row in place of the continuation's:
-      // the caret then stays in the paragraph the edit named.
-      const kept = new Set(
-        storyParagraphs(storyBody(applied.value.document, op.story)).flatMap(
-          ({ paragraph }) =>
-            paragraph.paraId === undefined ? [] : [idKey(paragraph.paraId)],
-        ),
-      );
-      if (!kept.has(idKey(blockId)) && kept.has(idKey(operation.blockId)))
-        blockId = operation.blockId;
       selection = { story: op.story, blockId, offset: 0 };
       break;
     }
