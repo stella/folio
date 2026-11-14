@@ -2223,7 +2223,8 @@ export class CanonicalPublicOperations {
           clean.text.length > 0 &&
           operation.styleId !== undefined &&
           operation.styleId !== (paragraph.source.formatting?.styleId ?? null));
-      return editsProperties
+      return editsProperties &&
+        PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL.reason === "unused"
         ? refusal(
             PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL.reason,
             PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL.message,
