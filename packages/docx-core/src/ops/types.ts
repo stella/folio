@@ -424,10 +424,12 @@ export type InsertContentOp = {
  * already inside a deletion or moved away is left as it is; content inside an
  * insertion or a move gets a deletion nested inside that record; everything
  * else is wrapped in a `Deletion` carrying the stamp, an inline content
- * control the range covers whole going in with its content. A range holding
- * a comment boundary or reference is refused, since no tracked change can
- * hold one; `planTrackedDeletion` plans the deletions around them. A tracked
- * deletion joins nothing, so `join` must be absent.
+ * control the range covers whole going in with its content. A record the
+ * range covers whole goes in with the comment anchors it holds, and accepting
+ * the deletion removes them, as the direct deletion does. A range holding a
+ * bare comment boundary or reference is refused, since no tracked change
+ * takes one in; `planTrackedDeletion` plans the deletions around them. A
+ * tracked deletion joins nothing, so `join` must be absent.
  */
 export type DeleteRangeOp = {
   type: typeof DOCUMENT_OP_TYPES.DELETE_RANGE;
@@ -455,11 +457,19 @@ export type SplitInlineOp = {
  * already run across it. Merged records must be alike in everything but
  * their content and ids; the first's ids stand for both. Absent
  * `zeroWidthBefore` is `0`.
+ *
+ * With `ifAlike`, the join is the seam of an edit rather than a record it
+ * restores: records that are not alike, that carry ids the merge would
+ * retire, or that a run already runs across, and a position where no
+ * records meet are left as they are, and the operation changes nothing. Typing joins its run to alike runs this
+ * way, so the join still applies, or keeps out, where a concurrent edit has
+ * changed the records beside it.
  */
 export type JoinInlineOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_INLINE;
   at: TextPosition;
   depth: number;
+  ifAlike?: true;
 };
 
 /** Whether a tracked run patch appends an independently rejectable review. */

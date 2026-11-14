@@ -120,6 +120,7 @@ import {
   type InlineSlice,
   type InsertContentOp,
   type InsertRowOp,
+  type JoinInlineOp,
   type NewIds,
   type OpStory,
   type ParagraphPropsPatch,
@@ -2882,10 +2883,13 @@ export const compileEditorIntent = (
               policy: RUN_SEAM_POLICIES.plain,
             });
             if (depth === 0) continue;
+            // A seam join, so a concurrent edit beside the typed run leaves
+            // it apart rather than refusing it.
             const join = {
               type: DOCUMENT_OP_TYPES.JOIN_INLINE,
               at: { ...at, ...seam },
               depth,
+              ifAlike: true,
             } as const;
             const joined = applyDocumentOp(current, join);
             if (joined.isErr()) return Result.err(joined.error);
@@ -3401,7 +3405,10 @@ export const compileEditorIntent = (
         if (offset >= 0) editedSeams.push({ ...selection, offset });
     }
     // Merge only the edited seams, keeping every authored interior run boundary.
-    const plannedSeams = new Map<string, { at: TextPosition; depth: number }>();
+    const plannedSeams = new Map<
+      string,
+      { at: TextPosition; depth: number; seam: boolean }
+    >();
     const seams = [
       ...editedSeams.map((at) => ({ at, policy: RUN_SEAM_POLICIES.plain })),
       ...sourceRunSeams.map((at) => ({
@@ -3425,14 +3432,24 @@ export const compileEditorIntent = (
         at.offset,
         at.zeroWidthBefore ?? 0,
       ]);
-      plannedSeams.set(key, { at, depth });
+      // An edited seam, and a source cut that rejoins runs, join alike runs
+      // where they still meet; a deeper source cut puts a record back.
+      const seam =
+        (policy === RUN_SEAM_POLICIES.plain || depth === 1) &&
+        (plannedSeams.get(key)?.seam ?? true);
+      plannedSeams.set(key, { at, depth, seam });
     }
-    for (const { at, depth } of [...plannedSeams.values()].toSorted(
+    for (const { at, depth, seam } of [...plannedSeams.values()].toSorted(
       (left, right) =>
         right.at.offset - left.at.offset ||
         (right.at.zeroWidthBefore ?? 0) - (left.at.zeroWidthBefore ?? 0),
     )) {
-      const join = { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth } as const;
+      const join: JoinInlineOp = {
+        type: DOCUMENT_OP_TYPES.JOIN_INLINE,
+        at,
+        depth,
+        ...(seam ? { ifAlike: true } : {}),
+      };
       const joined = applyDocumentOp(current, join);
       if (joined.isErr()) return Result.err(joined.error);
       compact.push(join);

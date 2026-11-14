@@ -40,9 +40,15 @@ import {
   staticMemberName,
   walkAst,
 } from "./lib/oxc-ast";
+import { ROOT_TEST_DIRS } from "./property-areas";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const SCANNED_ROOTS = ["packages", "scripts", "parity"] as const;
+/**
+ * Every directory the property planner runs property files from: the
+ * packages and the root test directories it declares, which its own test
+ * holds to every root directory with a property driver.
+ */
+const SCANNED_ROOTS = ["packages", ...ROOT_TEST_DIRS] as const;
 const BUDGET_HELPER = "propertyTestTimeout";
 const SUBPROCESS_BUDGET_HELPER = "subprocessTestTimeout";
 const RUN_COUNT_HELPER = "propertyConfig";

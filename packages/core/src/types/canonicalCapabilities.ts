@@ -9,7 +9,6 @@ export const CANONICAL_GAP = {
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
   watermark: "watermark-model-edits",
-  collaboration: "collaboration-session",
   dispatch: "unclassified-transactions",
   save: "pm-save-projection",
   resourceReplacement: "canonical-resource-replacement",
@@ -157,12 +156,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["vue"];
     readonly summary: "Vue watermark mutations still change the model directly.";
   };
-  readonly "collaboration-session": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Collaboration cannot activate a canonical session.";
-  };
   readonly "unclassified-transactions": {
     readonly owner: "controller";
     readonly kind: "refusal";
@@ -251,7 +244,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "The headless reviewer has no canonical session selector while its mutations remain PM-owned.";
+    readonly summary: "A canonical headless reviewer only reads; its mutations, save and undo remain PM-owned and refuse.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -321,12 +314,6 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["vue"],
     summary: "Vue watermark mutations still change the model directly.",
-  },
-  [CANONICAL_GAP.collaboration]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary: "Collaboration cannot activate a canonical session.",
   },
   [CANONICAL_GAP.dispatch]: {
     owner: "controller",
@@ -425,7 +412,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "The headless reviewer has no canonical session selector while its mutations remain PM-owned.",
+      "A canonical headless reviewer only reads; its mutations, save and undo remain PM-owned and refuse.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",
@@ -443,6 +430,28 @@ export const usesCanonicalSession = (
   session: "canonical" | undefined,
   _gap: CanonicalGap,
 ): boolean => session === "canonical";
+
+/**
+ * The engine a headless reviewer holds its document in. The editors say
+ * `experimentalSession: "canonical"` and leave legacy unnamed; a reviewer
+ * names both, so a host can pin either one.
+ */
+export type HeadlessReviewerSession = "legacy" | "canonical";
+
+/** Every host keeps the legacy reviewer until it opts in. */
+export const DEFAULT_HEADLESS_REVIEWER_SESSION = "legacy";
+
+/**
+ * Whether a headless reviewer runs on the canonical session: the one place
+ * the reviewer's default is decided.
+ */
+export const headlessReviewerUsesCanonicalSession = (
+  session: HeadlessReviewerSession = DEFAULT_HEADLESS_REVIEWER_SESSION,
+): boolean =>
+  usesCanonicalSession(
+    session === "canonical" ? session : undefined,
+    CANONICAL_GAP.publicHeadlessSession,
+  );
 
 export const canonicalRefusalMessage = (
   gap: CanonicalGap,
