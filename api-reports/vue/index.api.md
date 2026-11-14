@@ -37,6 +37,7 @@ import { AutocompleteTriggerSkipReason } from '@stll/folio-core/prosemirror/plug
 import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { buildPositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
+import { CanonicalRoomCollaboration } from '@stll/folio-core/controller/canonicalRoomEditor';
 import { clearAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ColorValue } from '@stll/folio-core/types/document';
@@ -366,18 +367,7 @@ export type DocxEditorApplyDocumentOperationsOptions = {
 };
 
 // @public (undocumented)
-export type DocxEditorCollaboration = {
-    awareness?: {
-        clientID: number;
-        getStates: () => Map<number, unknown>;
-        off: (event: "change" | "update", handler: () => void) => void;
-        on: (event: "change" | "update", handler: () => void) => void;
-    } | undefined;
-    onSeeded?: (() => void) | undefined;
-    plugins?: Plugin_2[] | undefined;
-    shouldSeed?: boolean | undefined;
-    yXmlFragment: XmlFragment;
-};
+export type DocxEditorCollaboration = CanonicalRoomCollaboration | DocxEditorYjsCollaboration;
 
 // @public
 export type DocxEditorHandle = EditorHandle & {
@@ -563,6 +553,21 @@ export type DocxEditorRef = {
         keepContent?: boolean;
         force?: boolean;
     }) => boolean;
+};
+
+// @public
+export type DocxEditorYjsCollaboration = {
+    awareness?: {
+        clientID: number;
+        getStates: () => Map<number, unknown>;
+        off: (event: "change" | "update", handler: () => void) => void;
+        on: (event: "change" | "update", handler: () => void) => void;
+    } | undefined;
+    onSeeded?: (() => void) | undefined;
+    plugins?: Plugin_2[] | undefined;
+    shouldSeed?: boolean | undefined;
+    yXmlFragment: XmlFragment;
+    connect?: never;
 };
 
 // @public

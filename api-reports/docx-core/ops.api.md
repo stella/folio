@@ -705,6 +705,7 @@ export const ID_LEASE_REFUSAL_REASONS: Readonly<{
     readonly EXHAUSTED: "exhausted";
     readonly NOT_DUE: "notDue";
     readonly INVALID_STATE: "invalidState";
+    readonly UNAVAILABLE: "unavailable";
 }>;
 
 // @public

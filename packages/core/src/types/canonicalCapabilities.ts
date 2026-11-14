@@ -9,7 +9,6 @@ export const CANONICAL_GAP = {
   modelEdits: "direct-model-edits",
   sectionProperties: "section-properties",
   watermark: "watermark-model-edits",
-  collaboration: "collaboration-session",
   dispatch: "unclassified-transactions",
   save: "pm-save-projection",
   resourceReplacement: "canonical-resource-replacement",
@@ -156,12 +155,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly kind: "refusal";
     readonly adapters: readonly ["vue"];
     readonly summary: "Vue watermark mutations still change the model directly.";
-  };
-  readonly "collaboration-session": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Collaboration cannot activate a canonical session.";
   };
   readonly "unclassified-transactions": {
     readonly owner: "controller";
@@ -321,12 +314,6 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["vue"],
     summary: "Vue watermark mutations still change the model directly.",
-  },
-  [CANONICAL_GAP.collaboration]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary: "Collaboration cannot activate a canonical session.",
   },
   [CANONICAL_GAP.dispatch]: {
     owner: "controller",

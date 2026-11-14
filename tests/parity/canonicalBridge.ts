@@ -37,7 +37,7 @@ import { canonicalTextSelection } from "./canonicalTextSelection";
  * by its order of appearance, which keeps every anchor tied to its box.
  */
 const MINTED_ID_ATTRS = new Set(["_docxGroupId", "_docxAnchorId", "anchorId"]);
-const withoutMintedIds = (value: unknown): unknown => {
+export const withoutMintedIds = (value: unknown): unknown => {
   const salts = new Map<string, string>();
   return JSON.parse(
     JSON.stringify(value, (key, field: unknown) => {

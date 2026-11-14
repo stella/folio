@@ -40,8 +40,10 @@ const readsEffects = (ops: readonly DocumentOp[]): boolean =>
  * A selection moved across `over` by paragraph id and offset. A cell or
  * inline-node selection becomes a text selection over the same ends, which
  * the remote edit may have reshaped. Undefined when an end cannot be mapped.
+ * The session moves its own selection this way and a peer's presence moves
+ * the same way, so both land where the other expects.
  */
-const remapSelection = (
+export const remapSelection = (
   selection: CanonicalSelection,
   over: SequencedBatch,
 ): CanonicalSelection | undefined => {
