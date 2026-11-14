@@ -111,6 +111,9 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
+const bodyOf = (document: Document | undefined): unknown =>
+  document?.package.document.content;
+
 /**
  * Each run applies an operation and checks it several ways, so the base count
  * is kept small: the nightly factor of ten takes it to 10^4, and the five-fold
@@ -1310,7 +1313,27 @@ describe("tracked operations and their resolution", () => {
             order,
             REVISION_DECISIONS.REJECT,
           );
-          assertExactModel(projected(atOnce, "π′"), projected(inOrder, "π′"));
+          try {
+            assertExactModel(projected(atOnce, "π′"), projected(inOrder, "π′"));
+          } catch (error) {
+            const steps: unknown[] = [];
+            let step = current;
+            for (const ids of order) {
+              step = resolved(step, ids, REVISION_DECISIONS.REJECT);
+              steps.push({ ids, body: bodyOf(step) });
+            }
+            console.error(
+              `L3DEBUG reject-any-order ${JSON.stringify({
+                original: bodyOf(document),
+                current: bodyOf(current),
+                all,
+                order,
+                atOnce: bodyOf(atOnce),
+                steps,
+              })}`,
+            );
+            throw error;
+          }
           expectSettledDeferredSeams(atOnce);
           expectSettledDeferredSeams(inOrder);
         },
@@ -1383,26 +1406,64 @@ describe("tracked operations and their resolution", () => {
               (left, right) => left.key - right.key || left.index - right.index,
             )
             .map(({ group }) => group);
-          let oneByOne = current;
-          for (const { ids, decision } of order) {
-            oneByOne = resolved(oneByOne, ids, decision);
-            expectSettledDeferredSeams(oneByOne);
+          try {
+            let oneByOne = current;
+            for (const { ids, decision } of order) {
+              oneByOne = resolved(oneByOne, ids, decision);
+              expectSettledDeferredSeams(oneByOne);
+            }
+            const expected = projected(oneByOne, "π′");
+            const acceptedFirst = resolved(
+              resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
+              rejected,
+              REVISION_DECISIONS.REJECT,
+            );
+            expectSettledDeferredSeams(acceptedFirst);
+            assertExactModel(projected(acceptedFirst, "π′"), expected);
+            const rejectedFirst = resolved(
+              resolved(current, rejected, REVISION_DECISIONS.REJECT),
+              accepted,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            expectSettledDeferredSeams(rejectedFirst);
+            assertExactModel(projected(rejectedFirst, "π′"), expected);
+          } catch (error) {
+            const steps: unknown[] = [];
+            let step = current;
+            for (const { ids, decision } of order) {
+              step = resolved(step, ids, decision);
+              steps.push({ ids, decision, body: bodyOf(step) });
+            }
+            const aFirst = resolved(
+              current,
+              accepted,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            const rFirst = resolved(
+              current,
+              rejected,
+              REVISION_DECISIONS.REJECT,
+            );
+            console.error(
+              `L3DEBUG two-batch ${JSON.stringify({
+                original: bodyOf(document),
+                current: bodyOf(current),
+                accepted,
+                rejected,
+                steps,
+                acceptedOnly: bodyOf(aFirst),
+                acceptedThenRejected: bodyOf(
+                  resolved(aFirst, rejected, REVISION_DECISIONS.REJECT),
+                ),
+                rejectedOnly: bodyOf(rFirst),
+                rejectedThenAccepted: bodyOf(
+                  resolved(rFirst, accepted, REVISION_DECISIONS.ACCEPT),
+                ),
+                message: String(error).slice(0, 600),
+              })}`,
+            );
+            throw error;
           }
-          const expected = projected(oneByOne, "π′");
-          const acceptedFirst = resolved(
-            resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
-            rejected,
-            REVISION_DECISIONS.REJECT,
-          );
-          expectSettledDeferredSeams(acceptedFirst);
-          assertExactModel(projected(acceptedFirst, "π′"), expected);
-          const rejectedFirst = resolved(
-            resolved(current, rejected, REVISION_DECISIONS.REJECT),
-            accepted,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          expectSettledDeferredSeams(rejectedFirst);
-          assertExactModel(projected(rejectedFirst, "π′"), expected);
         },
       );
     assertProperty(law(new Map()), {
