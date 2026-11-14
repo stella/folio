@@ -151,6 +151,9 @@ export type BoundaryOccurrence = {
 export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 
 // @public
+export const captureStoryParts: (document: Document_2, owned: StoryParts) => StoryParts;
+
+// @public
 export type ClientDocumentChange = {
     type: "rebased" | "replaced";
     batch: SequencedBatch;
@@ -1469,6 +1472,33 @@ export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
 export const storyParagraphs: (body: DocumentBody) => ParagraphLocation[];
+
+// @public
+export type StoryParts = {
+    undefinedFields?: readonly ({
+        target: "body";
+        keys: readonly (keyof NonNullable<StoryParts["body"]>)[];
+    } | {
+        target: "package";
+        keys: readonly (keyof Omit<StoryParts, "body" | "sections" | "undefinedFields">)[];
+    } | {
+        target: "section";
+        index: number;
+        keys: readonly (keyof Omit<NonNullable<StoryParts["sections"]>[number], "index">)[];
+    })[];
+    body?: { [Key in Exclude<RecordField<DocumentBody>, "sections">]?: Key extends "content" ? DocumentBody[Key] : Exclude<DocumentBody[Key], undefined> | null; };
+    sections?: readonly {
+        index: number;
+        properties?: Section["properties"];
+        headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+        footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+    }[];
+    headers?: readonly (readonly [string, HeaderFooter])[] | null;
+    footers?: readonly (readonly [string, HeaderFooter])[] | null;
+    footnotes?: readonly Footnote[] | null;
+    endnotes?: readonly Endnote[] | null;
+    settings?: DocumentSettings | null;
+};
 
 // @public
 export const suggestedCommentIds: (document: Document_2, suggestionId?: string) => number[];

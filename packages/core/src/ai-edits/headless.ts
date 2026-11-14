@@ -3467,8 +3467,8 @@ export class FolioDocxReviewer {
    * one session commit; the readers' state is rebuilt with them.
    */
   private stagePackageResourcesOnSession(resources: {
-    styles?: StyleDefinitions;
-    numbering?: NumberingDefinitions;
+    styles?: StyleDefinitions | undefined;
+    numbering?: NumberingDefinitions | undefined;
   }): void {
     const before = this.baseDocument;
     this.commitOpsOnSession([
