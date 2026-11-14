@@ -664,3 +664,84 @@ describe("table row review", () => {
     },
   );
 });
+
+describe("a row whose revision was decided apart from its cells' final marks", () => {
+  // A word processor writes an inserted row's cell-final marks as revisions
+  // of their own, with the row's author and date under their own ids.
+  const stamp = { author: "Author", date: "2017-03-24T22:16:00Z" };
+  const insertedRow = (): TableRow => ({
+    type: "tableRow",
+    structuralChange: { type: "tableRowInsertion", info: { ...stamp, id: 0 } },
+    cells: [
+      {
+        type: "tableCell",
+        content: [
+          makeParagraph("00000011", "1a", {
+            pPrMark: { kind: "ins", info: { ...stamp, id: 1 } },
+          }),
+        ],
+      },
+    ],
+  });
+  const original = () =>
+    documentOf(
+      tableOf(makeRow("00000010"), insertedRow(), makeRow("00000012")),
+    );
+  const adopted = { author: "Adopter", date: "2026-02-02T00:00:00Z" };
+  const decisions: Record<string, DocumentOp> = {
+    "the row's insertion accepted alone": {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [0],
+      decision: REVISION_DECISIONS.ACCEPT,
+    },
+    "the row's insertion re-attributed alone": {
+      type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+      story: OP_STORIES.MAIN,
+      infos: [{ ...adopted, id: 0 }],
+    },
+    "the cell's final mark re-attributed alone": {
+      type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+      story: OP_STORIES.MAIN,
+      infos: [{ ...adopted, id: 1 }],
+    },
+  };
+  for (const [name, decision] of Object.entries(decisions)) {
+    test(`with ${name}, deleting the row undoes exactly`, () => {
+      const decided = applied(original(), decision).document;
+      const body = decided.package.document;
+      const final = storyParagraphs(body).find(
+        ({ paragraph }) => paragraph.paraId === "00000011",
+      );
+      if (final === undefined) throw new Error("The cell's mark is missing.");
+      // The mark no longer carries the row's stamp: only an exact inverse
+      // may write it back.
+      expect(permitsCellFinalMark(body, final)).toBe(false);
+      const deleted = applied(decided, {
+        type: DOCUMENT_OP_TYPES.DELETE_ROW,
+        story: OP_STORIES.MAIN,
+        blockId: "00000011",
+      });
+      expect(
+        storyParagraphs(deleted.document.package.document).map(
+          ({ paragraph }) => paragraph.paraId,
+        ),
+      ).toEqual(["00000001", "00000010", "00000012", "00000002"]);
+      const suggested = applyDocumentOp(decided, {
+        type: DOCUMENT_OP_TYPES.DELETE_ROW,
+        story: OP_STORIES.MAIN,
+        blockId: "00000011",
+        revision,
+        newIds,
+      });
+      if (suggested.isOk()) {
+        const undone = applyDocumentOps(
+          suggested.value.document,
+          suggested.value.inverse,
+        );
+        if (undone.isErr()) throw undone.error;
+        expect(undone.value.document).toStrictEqual(decided);
+      }
+    });
+  }
+});
