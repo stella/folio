@@ -190,7 +190,7 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       const index =
         findPageIndexContainingPmPos(layout, at) ??
         (at > 0 ? findPageIndexContainingPmPos(layout, at - 1) : null);
-      return index === null ? null : index + 1;
+      return index === null ? null : index;
     },
 
     relayout: () => {
