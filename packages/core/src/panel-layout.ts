@@ -169,7 +169,7 @@ export type PanelOverlay = "none" | "outline" | "comments";
  */
 export const requestedOutline = (
   overlay: PanelOverlay,
-  outline: "absent" | "available",
+  outline: PanelLayoutInput["outline"],
 ): PanelLayoutInput["outline"] =>
   overlay === "outline" && outline !== "absent" ? "expanded" : outline;
 
