@@ -17,7 +17,6 @@
  * comes within the key's own handling.
  */
 
-import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "../../packages/core/src/controller/documentChangeNotification";
@@ -29,6 +28,7 @@ import { type AdapterFixture, ensureLiveView } from "../parity/parity-fixture";
 import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
 import { waitForPanels } from "../support/panelLayoutAssertions";
 import { buildPanelLayoutDocument } from "../support/panelLayoutDocument";
+import { expect, test } from "../support/unclassifiedProbe";
 
 type DocumentBuild = { kind: DocumentBuildKind; at: number };
 

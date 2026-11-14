@@ -11,10 +11,9 @@
  * blank paragraphs, and fails every comparison here.
  */
 
-import { type Page, test } from "@playwright/test";
-
 import { expect, forEachAdapter, openEditor } from "../parity/parity-fixture";
 import type { AdapterFixture } from "../parity/parity-fixture";
+import { type Page, test } from "../support/unclassifiedProbe";
 
 const TRACKED_FIXTURE = "markup-views.docx";
 

@@ -20,7 +20,7 @@
  * reader waits for is a screen, not a document.
  */
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 // Repeated repaints of a 91-page document for both renderers.
 test.setTimeout(180_000);

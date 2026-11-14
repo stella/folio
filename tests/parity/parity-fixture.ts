@@ -10,9 +10,8 @@
  * in both adapters.
  */
 
-import { expect, type Page, test } from "@playwright/test";
-
 import type { FolioParityBridge } from "../../packages/playground-vue/src/parityBridge";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 declare global {
   // Window augmentation requires an interface (declaration merging).

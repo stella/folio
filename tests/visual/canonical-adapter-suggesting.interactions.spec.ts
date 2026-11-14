@@ -1,5 +1,3 @@
-import { expect, type Page, test } from "@playwright/test";
-
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import type { Document } from "../../packages/core/src/types/document";
@@ -7,6 +5,7 @@ import { createEmptyDocument } from "../../packages/core/src/utils/createDocumen
 import { createEmptyHeaderFooter } from "../../packages/core/src/utils/headerFooter";
 import type {} from "../parity/canonicalBridge";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const adapters = [

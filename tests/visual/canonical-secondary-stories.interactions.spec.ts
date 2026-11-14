@@ -1,11 +1,10 @@
-import { expect, type Page, test } from "@playwright/test";
-
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { reviewDifferences } from "../../test/reviewDifferences";
 import type {} from "../parity/canonicalBridge";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 const adapters = [
   { name: "React", port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200 },

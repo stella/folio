@@ -47,7 +47,12 @@
  * parser whose advances it is checking would prove nothing about that parser.
  */
 
-import { expect, type Page, test, type TestInfo } from "@playwright/test";
+import {
+  expect,
+  type Page,
+  test,
+  type TestInfo,
+} from "../support/unclassifiedProbe";
 
 /**
  * On a platform whose canvas returns fractional advances, how far the two

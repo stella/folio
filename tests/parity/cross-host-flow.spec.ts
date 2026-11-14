@@ -1,4 +1,3 @@
-import { expect, test } from "@playwright/test";
 import fc from "fast-check";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -24,6 +23,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../test/property-testing";
+import { expect, test } from "../support/unclassifiedProbe";
 import { assertGeneratedFlowReceipt } from "./flow-receipt";
 import { openEditor } from "./parity-fixture";
 

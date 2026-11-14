@@ -1,11 +1,10 @@
-import { expect, type Page, test } from "@playwright/test";
-
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const snapshot = async (page: Page) => {

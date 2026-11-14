@@ -1,6 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
-
 import { ZipArchive } from "@stll/docx-core/zip";
+
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 /**
  * A comment whose range opens between blocks, beside a content control or

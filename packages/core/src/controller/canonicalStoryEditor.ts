@@ -14,6 +14,12 @@ import {
 } from "../types/canonicalCapabilities";
 import { createCanonicalInputBoundary } from "./canonicalInput";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
+import {
+  describeTransaction,
+  probeContext,
+  probeInput,
+  reportUnclassified,
+} from "./unclassifiedProbe";
 
 type CanonicalStoryEditorOptions = {
   story: OpStory;
@@ -37,6 +43,7 @@ export const createCanonicalStoryEditor = ({
   const refuse = (reason: string) => {
     const ground = { gap: CANONICAL_GAP.dispatch };
     const message = reason;
+    reportUnclassified(`story:${JSON.stringify(story)}`, message);
     if (onRefusal) onRefusal(message, ground);
     else
       throw new CanonicalSessionError({ ground, message, reason: "refused" });
@@ -82,6 +89,8 @@ export const createCanonicalStoryEditor = ({
     dispatch: (transaction: Transaction): boolean => {
       if (!enabled()) return false;
       const view = getView();
+      probeInput(view);
+      probeContext({ transaction: describeTransaction(transaction) });
       // Public operations on this story work through the editor in use.
       getApi()?.noteCanonicalStoryView({ story, view });
       if (transaction.docChanged) {
@@ -95,6 +104,10 @@ export const createCanonicalStoryEditor = ({
         getApi()?.updateCanonicalInputLifecycle("breakUndoGroup");
       const applied = view.state.applyTransaction(transaction);
       if (!applied.state.doc.eq(view.state.doc)) {
+        probeContext({
+          transaction: describeTransaction(transaction),
+          appended: applied.transactions.slice(1).map(describeTransaction),
+        });
         refuse("A plugin attempted an unclassified canonical story mutation.");
         view.updateState(view.state);
         return true;

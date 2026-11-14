@@ -13,9 +13,8 @@
  * surface which characters a run holds, cannot agree here by accident.
  */
 
-import { expect, type Page, test } from "@playwright/test";
-
 import { ensureLiveView } from "../parity/parity-fixture";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 // Two full editor sessions, each probed five times.
 test.setTimeout(120_000);

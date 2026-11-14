@@ -13,9 +13,8 @@
  * opening the document.
  */
 
-import { expect, type Page, test } from "@playwright/test";
-
 import { collectLineParity, PER_RUN_TOLERANCE_PX } from "../support/lineParity";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 const FIXTURE = "font-subsets.docx";
 const EDITOR_HOSTS = [

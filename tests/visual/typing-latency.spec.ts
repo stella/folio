@@ -1,4 +1,3 @@
-import { type Page, test } from "@playwright/test";
 /**
  * Typing latency in long documents, report-only.
  *
@@ -31,6 +30,7 @@ import { join } from "node:path";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { fromMarkdown } from "../../packages/core/src/markdown/fromMarkdown";
 import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
+import { type Page, test } from "../support/unclassifiedProbe";
 
 const WARM_KEYS = 5;
 const MEASURED_KEYS = Number(process.env["FOLIO_TYPING_LATENCY_KEYS"] ?? 30);

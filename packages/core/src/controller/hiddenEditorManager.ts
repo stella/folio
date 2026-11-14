@@ -149,6 +149,12 @@ import {
 } from "./canonicalStructure";
 import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
 import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
+import {
+  describeTransaction,
+  probeContext,
+  probeInput,
+  reportUnclassified,
+} from "./unclassifiedProbe";
 
 const CanonicalSessionRefusalErrorBase: TaggedErrorClass<"CanonicalSessionRefusalError"> =
   TaggedError("CanonicalSessionRefusalError");
@@ -739,6 +745,8 @@ export const createHiddenEditorManager = (
     ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch },
   ): void => {
     const message = reason;
+    if (ground.gap === CANONICAL_GAP.dispatch)
+      reportUnclassified("main", message);
     if (deps.onSessionRefusal) deps.onSessionRefusal(message, ground);
     else throw new CanonicalSessionRefusalError({ ground, message });
   };
@@ -1410,6 +1418,7 @@ export const createHiddenEditorManager = (
         }
 
         if (editorSession.type === "refused") return;
+        probeContext({ transaction: describeTransaction(transaction) });
         if (editorSession.type === "canonical" && transaction.docChanged) {
           if (input.acceptComposition(view, transaction)) return;
           if (!input.commitNativeProposal(view, transaction)) {
@@ -1446,6 +1455,10 @@ export const createHiddenEditorManager = (
           editorSession.type === "canonical" &&
           !applied.state.doc.eq(view.state.doc)
         ) {
+          probeContext({
+            transaction: describeTransaction(transaction),
+            appended: applied.transactions.slice(1).map(describeTransaction),
+          });
           refuse(
             "A plugin attempted an unclassified canonical document mutation.",
           );
@@ -1662,6 +1675,7 @@ export const createHiddenEditorManager = (
 
     const viewStartedAt = performance.now();
     view = new EditorView(host, editorProps);
+    probeInput(view);
     if (editorSession.type === "canonical")
       registerClipboardIntentHandler(view, (slice, plain) => {
         if (!view || editorSession.type !== "canonical") return false;

@@ -12,10 +12,10 @@
  * via the imperative `DocxEditorRef`; they never depend on pixels.
  */
 
-import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
+import { expect, test } from "../support/unclassifiedProbe";
 
 declare global {
   var __folioPlayground:

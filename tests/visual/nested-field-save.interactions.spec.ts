@@ -1,10 +1,10 @@
+import { ZipArchive } from "@stll/docx-core/zip";
+
 /**
  * A citation field nested in another field's result keeps its text when the
  * editor saves after a structural edit elsewhere in the document.
  */
-import { expect, type Page, test } from "@playwright/test";
-
-import { ZipArchive } from "@stll/docx-core/zip";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";

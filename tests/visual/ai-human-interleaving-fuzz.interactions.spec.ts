@@ -1,4 +1,3 @@
-import { expect, type Page, test } from "@playwright/test";
 import fc from "fast-check";
 import { createHash } from "node:crypto";
 
@@ -10,6 +9,7 @@ import {
   logFailureMarker,
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 import { parseBrowserInputTraceConfig } from "./browserInputTrace";
 import type {} from "./browserTestBridge";
 import {

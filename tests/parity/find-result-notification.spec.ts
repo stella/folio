@@ -1,6 +1,5 @@
-import { test } from "@playwright/test";
-
 import type { FindNotificationBridge } from "../../packages/playground-vue/src/findNotificationBridge";
+import { test } from "../support/unclassifiedProbe";
 import { expect, openEditor, VUE_ADAPTER } from "./parity-fixture";
 
 declare global {

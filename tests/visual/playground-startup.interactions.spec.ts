@@ -1,6 +1,5 @@
-import { expect, test } from "@playwright/test";
-
 import { ensureLiveView } from "../parity/parity-fixture";
+import { expect, test } from "../support/unclassifiedProbe";
 
 test("deferred view readiness requests follow the current bridge", async ({
   page,

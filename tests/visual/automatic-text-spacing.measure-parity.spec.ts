@@ -1,7 +1,6 @@
-import { expect, test } from "@playwright/test";
-
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
+import { expect, test } from "../support/unclassifiedProbe";
 
 declare global {
   var __folioPlayground:

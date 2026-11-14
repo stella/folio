@@ -1,4 +1,3 @@
-import { expect, test } from "@playwright/test";
 import fs from "node:fs/promises";
 
 import vuePlayground from "../../packages/playground-vue/package.json" with { type: "json" };
@@ -7,6 +6,7 @@ import config, {
   PLAYGROUND_SERVER_MODE,
   PLAYGROUND_SERVERS,
 } from "../../playwright.config";
+import { expect, test } from "../support/unclassifiedProbe";
 import type {} from "./browserTestBridge";
 
 const servers = PLAYGROUND_SERVERS;

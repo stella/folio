@@ -1,9 +1,8 @@
-import { type Frame, test as base } from "@playwright/test";
-
 import {
   attachProtocolEvidence,
   protocolEvidenceOffset,
 } from "../support/playwrightProtocolCapture";
+import { type Frame, test as base } from "../support/unclassifiedProbe";
 import { observeCanonicalPageNavigation } from "../visual/canonicalPageNavigation";
 
 /** Preserve navigation evidence when an evaluation loses its document context. */

@@ -1,4 +1,3 @@
-import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import fc from "fast-check";
 import { readFile, writeFile } from "node:fs/promises";
@@ -24,6 +23,7 @@ import {
   propertyTestTimeout,
 } from "../../test/property-testing";
 import { buildScrollRootDocument } from "../support/scrollRootDocument";
+import { expect, test } from "../support/unclassifiedProbe";
 import { generateDocxFixture } from "../support/validatedDocxFixture";
 import {
   HOST_FLOW_REGRESSION,

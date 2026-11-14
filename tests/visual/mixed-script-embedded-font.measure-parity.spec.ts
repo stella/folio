@@ -1,6 +1,5 @@
-import { expect, test } from "@playwright/test";
-
 import { collectLineParity, PER_RUN_TOLERANCE_PX } from "../support/lineParity";
+import { expect, test } from "../support/unclassifiedProbe";
 
 const FIXTURE = "mixed-script-font-measure.docx";
 const EDITOR_HOSTS = [

@@ -1,5 +1,4 @@
-import { test } from "@playwright/test";
-
+import { test } from "../support/unclassifiedProbe";
 import { expect } from "./parity-fixture";
 
 const VUE_PLAYGROUND = "http://localhost:4201";

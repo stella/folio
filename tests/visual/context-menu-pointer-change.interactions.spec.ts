@@ -1,3 +1,5 @@
+import { ZipArchive } from "@stll/docx-core/zip";
+
 /**
  * A context menu's Accept and Reject items act on the tracked change under
  * the pointer.
@@ -7,10 +9,7 @@
  * selection's start, so it offered no review items for the change the user
  * right-clicked.
  */
-import { expect, type Page, test } from "@playwright/test";
-
-import { ZipArchive } from "@stll/docx-core/zip";
-
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 import type {} from "./interleavingBridge";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";

@@ -1,6 +1,5 @@
-import { expect, test } from "@playwright/test";
-
 import { VUE_ADAPTER } from "../parity/parity-fixture";
+import { expect, test } from "../support/unclassifiedProbe";
 
 test("Vue header editing uses the shared persistent view and saves outside the body", async ({
   page,

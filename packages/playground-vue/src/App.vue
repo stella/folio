@@ -93,9 +93,7 @@ const query = new URLSearchParams(window.location.search);
 const collaborationEnabled = query.has("collaboration");
 // The collaboration demo runs a canonical room, which the canonical session joins.
 const experimentalSession =
-  query.get("session") === "canonical" || collaborationEnabled
-    ? "canonical"
-    : undefined;
+  query.get("session") === "legacy" ? undefined : "canonical";
 const editorMode = ref<EditorMode>(
   query.get("mode") === "suggesting" ? "suggesting" : "editing",
 );

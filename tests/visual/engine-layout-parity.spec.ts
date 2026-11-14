@@ -20,10 +20,10 @@
  * kerning, and which font stack each document actually resolved.
  */
 
-import { expect, type Page, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 import {
   diffRecords,
   type DocumentRecord,

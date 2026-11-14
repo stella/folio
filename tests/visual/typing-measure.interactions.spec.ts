@@ -16,13 +16,12 @@
  * once: a table is measured at most once per such build.
  */
 
-import { expect, type Page, test } from "@playwright/test";
-
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import type { LayoutInstrumentation } from "../../packages/core/src/layout-engine/layoutInstrumentation";
 import { fromMarkdown } from "../../packages/core/src/markdown/fromMarkdown";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 type MeasureCounts = {
   layouts: number;

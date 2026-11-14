@@ -12,7 +12,6 @@
  * `DocxEditorRef` via the playground's `window.__folioPlayground` test hook.
  */
 
-import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
 import { parseDocx } from "../../packages/core/src/docx/parser";
@@ -20,6 +19,7 @@ import { getDocumentText } from "../../packages/core/src/docx/storyPlainText";
 import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../../packages/playground/src/playgroundStatus";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import { readEditorReadinessState } from "../../parity/editorReadiness";
+import { expect, test } from "../support/unclassifiedProbe";
 
 declare global {
   var __folioPlayground:

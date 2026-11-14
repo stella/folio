@@ -20,13 +20,12 @@
  * what is drawn, the page is laid out against a fiction.
  */
 
-import { expect, type Page, test } from "@playwright/test";
-
 import {
   collectLineParity,
   type LineParity,
   PER_RUN_TOLERANCE_PX,
 } from "../support/lineParity";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 /**
  * How far a repaired cursive line may diverge, as a fraction of its width.

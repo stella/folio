@@ -1,4 +1,3 @@
-import { expect, type Page, test, type TestInfo } from "@playwright/test";
 import fc from "fast-check";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
@@ -34,6 +33,12 @@ import { reportFuzzHealth } from "../../test/consumer-scenarios/support/fuzz-hea
 import { classifyFuzzRun } from "../../test/fuzz-health";
 import type {} from "../parity/canonicalFuzzErrors";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import {
+  expect,
+  type Page,
+  test,
+  type TestInfo,
+} from "../support/unclassifiedProbe";
 import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import {

@@ -1,11 +1,10 @@
-import { test } from "@playwright/test";
-
 import {
   ensureLiveView,
   expect,
   openEditor,
   VUE_ADAPTER,
 } from "../parity/parity-fixture";
+import { test } from "../support/unclassifiedProbe";
 
 test("Vue applies and clears a watermark from the Insert menu", async ({
   page,

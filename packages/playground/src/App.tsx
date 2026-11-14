@@ -795,7 +795,7 @@ const DocumentPlayground = () => {
   const query = new URLSearchParams(window.location.search);
   const parityFonts = globalThis.__folioParityFonts;
   const experimentalSession =
-    query.get("session") === "canonical" ? "canonical" : undefined;
+    query.get("session") === "legacy" ? undefined : "canonical";
   const showMarginGuides = query.has("marginGuides");
   const marginGuideColor = query.get("marginGuideColor") ?? undefined;
   // The editor paints with the legacy renderer by default. `?pageRenderer=display-list`

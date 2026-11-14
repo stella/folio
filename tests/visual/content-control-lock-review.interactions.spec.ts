@@ -1,10 +1,3 @@
-/**
- * Accepting or rejecting a tracked change inside a content control whose
- * content is locked is refused in the editors' own review controls, with the
- * reason, while a change outside it still resolves.
- */
-import { expect, type Page, test } from "@playwright/test";
-
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
@@ -12,6 +5,12 @@ import {
   openEditor,
   VUE_ADAPTER,
 } from "../parity/parity-fixture";
+/**
+ * Accepting or rejecting a tracked change inside a content control whose
+ * content is locked is refused in the editors' own review controls, with the
+ * reason, while a change outside it still resolves.
+ */
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";

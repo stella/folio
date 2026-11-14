@@ -11,9 +11,10 @@
  *   bunx playwright show-report                       # view diff report
  */
 
-import { expect, test } from "@playwright/test";
 import * as fs from "node:fs";
 import path from "node:path";
+
+import { expect, test } from "../support/unclassifiedProbe";
 
 const __dirname = import.meta.dirname;
 const FIXTURES_DIR = path.join(__dirname, "fixtures");

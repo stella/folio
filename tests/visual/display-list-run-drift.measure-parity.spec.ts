@@ -23,7 +23,7 @@
  * editor.
  */
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 /**
  * How far a run's painted geometry may sit from its declared geometry.

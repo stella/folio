@@ -1,4 +1,3 @@
-import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import type {
@@ -11,6 +10,7 @@ import type {
   CounterBucket,
   LayoutMeasurementStats,
 } from "../support/layoutMeasurement";
+import { expect, test } from "../support/unclassifiedProbe";
 
 const PARAGRAPH_COUNT = 1500;
 const TYPING_TEXT = "abc";

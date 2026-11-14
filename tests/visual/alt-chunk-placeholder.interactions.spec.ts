@@ -1,8 +1,7 @@
-import { expect, type Page, test } from "@playwright/test";
-
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 declare global {
   var __folioPlayground:

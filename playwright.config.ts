@@ -11,6 +11,7 @@ const managedConfig = defineConfig({
     "./tests/parity/previewSetup.ts",
     "./tests/parity/playgroundSetup.ts",
   ],
+  globalTeardown: "./tests/support/unclassifiedReport.ts",
   testDir: "./tests/visual",
   // Bun unit tests share helper directories; browser projects discover only specs.
   testMatch: /\.spec\.ts$/u,

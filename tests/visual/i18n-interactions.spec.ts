@@ -9,8 +9,9 @@
  * machines and runs in CI's `interactions` project.
  */
 
-import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+
+import { expect, test } from "../support/unclassifiedProbe";
 
 // Stable toolbar Bold aria-label per locale (FormattingBar `ariaLabel={t("bold")}`).
 const BOLD_LABEL = {

@@ -1,9 +1,8 @@
-import { expect, test } from "@playwright/test";
-
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import type {} from "../parity/canonicalFuzzErrors";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { expect, test } from "../support/unclassifiedProbe";
 import { driveBrowserIme } from "./browserImeDriver";
 
 declare global {

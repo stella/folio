@@ -1,5 +1,3 @@
-import { type BrowserContext, expect, type Page, test } from "@playwright/test";
-
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import type {} from "../parity/canonicalBridge";
@@ -9,6 +7,12 @@ import {
   vuePort,
 } from "../parity/canonicalInteractionAssertions";
 import type {} from "../parity/canonicalRoomBridge";
+import {
+  type BrowserContext,
+  expect,
+  type Page,
+  test,
+} from "../support/unclassifiedProbe";
 
 /*
  * Two tabs of one browser share a canonical room through the playgrounds'

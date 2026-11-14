@@ -1,5 +1,3 @@
-import { expect, type Page, test } from "@playwright/test";
-
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
@@ -11,6 +9,7 @@ import { assertExactModel } from "../../test/exactModel";
 import { expectParagraphBlock } from "../../test/paragraphBlock";
 import type { buildCanonicalBridge } from "../parity/canonicalBridge";
 import { evaluateCanonicalLoad } from "../parity/canonicalLoadEvaluation";
+import { expect, type Page, test } from "../support/unclassifiedProbe";
 
 declare global {
   var __folioPlayground:

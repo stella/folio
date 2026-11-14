@@ -3,7 +3,6 @@
  * Shared panel geometry and drawer behavior live in tests/parity/side-panels.spec.ts.
  */
 
-import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
@@ -18,6 +17,7 @@ import {
   type PanelLayoutReview,
   type PanelLayoutSections,
 } from "../support/panelLayoutDocument";
+import { expect, test } from "../support/unclassifiedProbe";
 
 declare global {
   var __folioPlayground:

@@ -1,4 +1,3 @@
-import { test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import {
@@ -7,6 +6,7 @@ import {
   SCROLL_TARGET_PARA_ID,
 } from "../../packages/playground/src/scrollParityBridge";
 import { buildScrollRootDocument } from "../support/scrollRootDocument";
+import { test } from "../support/unclassifiedProbe";
 import {
   ensureLiveView,
   expect,

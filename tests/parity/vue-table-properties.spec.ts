@@ -1,5 +1,4 @@
-import { test } from "@playwright/test";
-
+import { test } from "../support/unclassifiedProbe";
 import {
   type AdapterFixture,
   ensureLiveView,
