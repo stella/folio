@@ -5,48 +5,36 @@ import {
   openEditor,
 } from "./parity-fixture";
 
-// DocxEditorRef.getEditorRef() returns a PagedEditorRef-shaped handle in both
-// adapters. React sources it from the real PagedEditor component; Vue has no
-// ported PagedEditor, so useDocxEditorRefApi.ts synthesizes an equivalent
-// handle from the same primitives (see the "getEditorRef" pairedNote in
-// scripts/parity/parity.contract.json). Exercise two of its methods
-// end-to-end — dispatch (through the nested ref, not the raw ProseMirror
-// view.dispatch other specs use) and getPageNumberForPmPos — and confirm both
-// adapters agree.
+// DocxEditorRef.getPositionPage resolves a public text position (story,
+// paragraph id, offset) to the rendered page that shows it, in the canonical
+// session, and both adapters agree.
 forEachAdapter(
-  "getEditorRef(): dispatch + getPageNumberForPmPos",
+  "getPositionPage resolves paragraph positions to rendered pages",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openEditor(page, adapter, undefined, { session: "canonical" });
     await ensureLiveView(page);
-
-    const before = await page.evaluate(
-      () => window.__folioParity?.getDocumentText() ?? "",
-    );
-
-    const inserted = await page.evaluate(
-      () =>
-        window.__folioParity?.insertTextViaPagedEditorRef(
-          "via-paged-ref-marker",
-        ) ?? false,
-    );
-    expect(inserted).toBe(true);
 
     await expect
       .poll(() =>
-        page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""),
+        page.evaluate(
+          () => window.__folioParity?.getParagraphEdgePages() ?? null,
+        ),
       )
-      .toContain("via-paged-ref-marker");
-
-    const after = await page.evaluate(
-      () => window.__folioParity?.getDocumentText() ?? "",
+      .not.toBeNull();
+    const edges = await page.evaluate(
+      () => window.__folioParity?.getParagraphEdgePages() ?? null,
     );
-    expect(after).not.toBe(before);
-
-    // The selection anchor sits somewhere on the (now laid-out) first page.
-    const pageNumber = await page.evaluate(
-      () => window.__folioParity?.getPageNumberForSelection() ?? 0,
+    const totalPages = await page.evaluate(
+      () => window.__folioParity?.getTotalPages() ?? 0,
     );
-    expect(pageNumber).toBeGreaterThanOrEqual(1);
+    expect(edges?.first).toBe(1);
+    expect(edges?.last).toBeGreaterThanOrEqual(1);
+    expect(edges?.last).toBeLessThanOrEqual(totalPages);
+
+    const unknown = await page.evaluate(
+      () => window.__folioParity?.getUnknownPositionPage() ?? "no bridge",
+    );
+    expect(unknown).toBeNull();
   },
 );
 

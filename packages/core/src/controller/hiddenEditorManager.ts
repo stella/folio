@@ -2011,6 +2011,11 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical"
         ? editorSession.session.document
         : null,
+    canonicalEditorPositionAt: (position) => {
+      if (editorSession.type !== "canonical") return undefined;
+      const shown = editorSession.session.projection.positionAt(position);
+      return shown.isOk() ? shown.value : null;
+    },
     setCanonicalMode: (mode) => {
       if (editorSession.type !== "canonical") return false;
       modeOverride = mode;

@@ -13,7 +13,12 @@ import { NodeSelection, Selection, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 
-import type { DocumentOp, FormattingPatch, OpStory } from "@stll/docx-core/ops";
+import type {
+  DocumentOp,
+  FormattingPatch,
+  OpStory,
+  TextPosition,
+} from "@stll/docx-core/ops";
 
 import type { CanonicalSessionMode } from "../canonical/canonicalSession";
 import type {
@@ -34,6 +39,7 @@ import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
 import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
+import { legacyEditorPositionAt } from "./textPositionLookup";
 
 type CanonicalStoryHistoryOptions = {
   view: EditorView;
@@ -157,6 +163,12 @@ export type HiddenEditorApi = {
   setCellSelection: (anchorCellPos: number, headCellPos: number) => void;
   /** Scroll the PM view to selection (no-op since hidden) */
   scrollToSelection: () => void;
+  /**
+   * Where a body text position shows in the editor's current document, or
+   * null when the editor has no view or the position names no paragraph
+   * there. Layout and painted pages are addressed by this position.
+   */
+  editorPositionAt: (position: TextPosition) => number | null;
 };
 
 export type HiddenEditorApiDeps = {
@@ -165,6 +177,13 @@ export type HiddenEditorApiDeps = {
   getCanonicalComments?: () => Comment[] | null;
   getCanonicalCommittedVersion?: HiddenEditorApi["getCanonicalCommittedVersion"];
   getCanonicalDocument?: () => ReadonlyDocument | null;
+  /**
+   * The editor position of `position` in the canonical session's projection;
+   * undefined outside a canonical session.
+   */
+  canonicalEditorPositionAt?: (
+    position: TextPosition,
+  ) => number | null | undefined;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
@@ -277,6 +296,15 @@ export const createHiddenEditorApi = (
       return canonical
         ? cloneDocumentWithParagraphPropertySources(canonical)
         : null;
+    },
+
+    editorPositionAt: (position) => {
+      const view = deps.getView();
+      if (!view) return null;
+      const canonical = deps.canonicalEditorPositionAt?.(position);
+      return canonical === undefined
+        ? legacyEditorPositionAt(view.state.doc, position)
+        : canonical;
     },
 
     getDocument: () => {

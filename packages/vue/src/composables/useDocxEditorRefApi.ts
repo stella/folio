@@ -475,14 +475,6 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       scrollToPage,
       scrollToParaId,
       setPassageHighlight: opts.setPassageHighlight,
-      getPageNumberForPmPos: (pmPos: number) => {
-        const currentLayout = opts.layout.value;
-        if (!currentLayout) {
-          return null;
-        }
-        const pageIndex = findPageIndexContainingPmPos(currentLayout, pmPos);
-        return pageIndex == null ? null : pageIndex + 1;
-      },
       getBlockRect,
       getBlockRects,
       getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),
@@ -1122,6 +1114,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const pageIndex = findPageIndexContainingPmPos(currentLayout, range.from);
       return pageIndex == null ? null : pageIndex + 1;
     },
+    getPositionPage: (position) => opts.editor.getPositionPage(position),
     getBlockRect,
     getBlockRects,
     getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),

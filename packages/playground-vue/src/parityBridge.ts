@@ -549,26 +549,29 @@ export function buildParityBridge(
       if (!saved) throw new Error("The editor did not save");
       return [...new Uint8Array(saved)];
     },
-    insertTextViaPagedEditorRef: (text) => {
-      const pagedRef = getRef()?.getEditorRef();
-      const view = pagedRef?.getView();
-      if (!pagedRef || !view) {
-        return false;
-      }
-      const { state } = view;
-      pagedRef.dispatch(
-        state.tr.insertText(text, state.selection.from, state.selection.to),
+    getParagraphEdgePages: () => {
+      const ref = getRef();
+      const ids = (ref?.getDocument()?.package.document.content ?? []).flatMap(
+        (block) =>
+          block.type === "paragraph" && block.paraId !== undefined
+            ? [block.paraId]
+            : [],
       );
-      return true;
+      const firstId = ids.at(0);
+      const lastId = ids.at(-1);
+      if (!ref || firstId === undefined || lastId === undefined) return null;
+      const pageOf = (blockId: string) =>
+        ref.getPositionPage({ story: "main", blockId, offset: 0 });
+      const first = pageOf(firstId);
+      const last = pageOf(lastId);
+      return first === null || last === null ? null : { first, last };
     },
-    getPageNumberForSelection: () => {
-      const pagedRef = getRef()?.getEditorRef();
-      const view = pagedRef?.getView();
-      if (!pagedRef || !view) {
-        return 0;
-      }
-      return pagedRef.getPageNumberForPmPos(view.state.selection.from) ?? 0;
-    },
+    getUnknownPositionPage: () =>
+      getRef()?.getPositionPage({
+        story: "main",
+        blockId: "parity-no-such-paragraph",
+        offset: 0,
+      }) ?? null,
     typeThenReloadDocument: (marker) => {
       const ref = getRef();
       const view = liveView();

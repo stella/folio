@@ -122,16 +122,13 @@ export type FolioParityBridge = {
   /** Whether the live editor has edits not yet serialized by save(). */
   hasPendingChanges: () => boolean;
   /**
-   * Insert text through `getEditorRef().dispatch` (the nested `PagedEditorRef`
-   * handle), not the raw ProseMirror `view.dispatch` the other insert methods
-   * use. Exercises the Vue-synthesized ref's `dispatch` method end-to-end.
+   * Rendered pages (1-indexed) of the starts of the first and the last body
+   * paragraph, each resolved through `getPositionPage` from its paragraph id;
+   * null before the document or its layout is ready.
    */
-  insertTextViaPagedEditorRef: (text: string) => boolean;
-  /**
-   * Page number (1-indexed) containing the current selection anchor, resolved
-   * through `getEditorRef().getPageNumberForPmPos`. 0 with no live view/layout.
-   */
-  getPageNumberForSelection: () => number;
+  getParagraphEdgePages: () => { first: number; last: number } | null;
+  /** `getPositionPage` for a paragraph id no paragraph has. */
+  getUnknownPositionPage: () => number | null;
   /**
    * Type `marker` at the selection, then in the same task load the document as
    * it was before the keystroke through `loadDocument`, as a host applying a
