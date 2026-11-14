@@ -524,6 +524,55 @@ describe("createHiddenEditorClipboardHandlers", () => {
   });
 });
 
+for (const session of ["legacy", "canonical"] as const) {
+  for (const readOnly of [false, true]) {
+    test(`${session} ${readOnly ? "read-only" : "editable"} view tells the host of clipboard events as legacy does`, () => {
+      const releaseDom = acquireHarnessDom();
+      const host = document.createElement("div");
+      document.body.append(host);
+      const source = createEmptyDocument({ initialText: "Start" });
+      const paragraph = source.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+      paragraph.paraId = "12345678";
+      const { deps, spies } = makeDeps({
+        getHost: () => host,
+        getDocument: () => source,
+        getDocumentContext: () => source,
+        getExperimentalSession: () => session,
+        getReadOnly: () => readOnly,
+      });
+      const manager = createHiddenEditorManager(deps);
+      try {
+        manager.ensureView();
+        const view = manager.getView() ?? panic("Expected a body view");
+        manager.api.setSelection(1);
+        for (const kind of ["copy", "cut", "paste"] as const) {
+          const event = new Event(kind, { bubbles: true, cancelable: true });
+          // The pasted text the clipboard holds.
+          Object.defineProperty(event, "clipboardData", {
+            value: {
+              types: ["text/plain"],
+              files: [],
+              getData: (type: string) => (type === "text/plain" ? "x" : ""),
+            },
+          });
+          view.dom.dispatchEvent(event);
+        }
+        expect(spies["onCopy"].calls).toBe(1);
+        expect(spies["onCut"].calls).toBe(readOnly ? 0 : 1);
+        expect(spies["onPaste"].calls).toBe(readOnly ? 0 : 1);
+        expect(spies["onReadOnlyEditAttempt"].calls).toBe(readOnly ? 2 : 0);
+        // An editable view takes the paste; a read-only one refuses it.
+        expect(view.state.doc.textContent).toBe(readOnly ? "Start" : "xStart");
+      } finally {
+        manager.destroyView();
+        host.remove();
+        releaseDom();
+      }
+    });
+  }
+}
+
 test("canonical manager refuses transaction bypasses and shares one input journal", () => {
   GlobalRegistrator.register();
   const host = document.createElement("div");
