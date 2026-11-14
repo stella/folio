@@ -66,6 +66,16 @@ import {
   editSeedArbitrary,
 } from "./canonicalEdits";
 
+// Injected break: an inline insertion pair always takes the later side's
+// tie-break, so at one gap both orders put the other insertion first.
+const realInline = { ...inlineTransform };
+void mock.module("../inlineTransform", () => ({
+  ...realInline,
+  transformInlinePair: (
+    pair: Parameters<typeof realInline.transformInlinePair>[0],
+  ) => realInline.transformInlinePair({ ...pair, order: "after" }),
+}));
+
 const NUM_RUNS = 25;
 
 type Step =
