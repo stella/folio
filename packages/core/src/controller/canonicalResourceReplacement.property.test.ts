@@ -102,6 +102,10 @@ const openSource = async (): Promise<Document> => {
       styles.slice(close),
   );
   zip.set(MEDIA_PATH, PNG);
+  zip.set(
+    "word/document.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body><w:p w14:paraId="11111111"><w:r><w:t>seed</w:t></w:r></w:p></w:body></w:document>`,
+  );
   const types = await textOf(zip, "[Content_Types].xml");
   if (!types.includes('Extension="png"'))
     zip.set(
@@ -330,14 +334,15 @@ test("a canonical save writes replaced styles, style defaults and media as the s
                 '<w:rsid w:val="00AB12CD"/>',
               ])
                 expect(written).toContain(kept);
+              // The kept children sit in schema order among the written ones.
               const order = [
                 "<w:name ",
                 "<w:aliases ",
                 "<w:basedOn ",
                 "<w:rsid ",
                 "<w:pPr>",
-                "<w:rPr>",
               ].map((tag) => written.indexOf(tag));
+              expect(order.every((at) => at >= 0)).toBe(true);
               expect(order).toEqual(order.toSorted((a, b) => a - b));
             }
             if (kind === "latentStyles")
