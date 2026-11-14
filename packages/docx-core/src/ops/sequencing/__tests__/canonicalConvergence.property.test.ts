@@ -402,7 +402,44 @@ const commutes = (
       effects: placed.value.effects,
     };
   }
-  return equalForStaleness(document, result);
+  const same = equalForStaleness(document, result);
+  if (!same) {
+    // oxlint-disable-next-line no-console
+    console.log(
+      `PAIRDIFF ${JSON.stringify(firstDifference(document.package.document, result.package.document, "body"))} ${JSON.stringify(batch.ops)} OVER ${JSON.stringify(tail.map(({ ops }) => ops))}`,
+    );
+  }
+  return same;
+};
+
+// Measurement: the first path where two values differ, with both sides.
+const firstDifference = (
+  left: unknown,
+  right: unknown,
+  path: string,
+): { path: string; left: string; right: string } | undefined => {
+  if (equalForStaleness(left, right)) return undefined;
+  if (
+    typeof left === "object" &&
+    left !== null &&
+    typeof right === "object" &&
+    right !== null
+  ) {
+    const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+    for (const key of keys) {
+      const found = firstDifference(
+        Reflect.get(left, key),
+        Reflect.get(right, key),
+        `${path}.${key}`,
+      );
+      if (found !== undefined) return found;
+    }
+  }
+  return {
+    path,
+    left: JSON.stringify(left)?.slice(0, 400) ?? "undefined",
+    right: JSON.stringify(right)?.slice(0, 400) ?? "undefined",
+  };
 };
 
 const simulate = (peers: number, steps: readonly Step[]): Outcome => {
@@ -561,7 +598,11 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           batch.ops,
           tail.flatMap(({ ops }) => ops),
         );
-        if (declared.size === 0) outcome.diverged.push(batch.opId);
+        if (declared.size === 0) {
+          outcome.diverged.push(batch.opId);
+          // oxlint-disable-next-line no-console
+          console.log("PAIRUNDECLAREDBATCH (the PAIRDIFF above)");
+        }
         for (const kind of declared) outcome.trackedOrder[kind] += 1;
       }
     }
@@ -1169,6 +1210,82 @@ const PINNED: readonly Scenario[] = [
 ];
 
 describe("canonical sequencing", () => {
+  test(
+    "PAIRMEASURE divergences",
+    () => {
+      const scenarios: Scenario[] = [
+        [
+          3,
+          [
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "type", a: 4, b: 0, suggest: true, focus: true },
+            },
+            {
+              type: "edit",
+              peer: 1,
+              seed: {
+                kind: "erase",
+                a: 18,
+                b: 90185,
+                suggest: false,
+                focus: true,
+              },
+            },
+            { type: "deliver", seed: 0 },
+            { type: "submit", peer: 0 },
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "reply", a: 0, b: 0, suggest: false, focus: true },
+            },
+            { type: "deliver", seed: 0 },
+            { type: "deliver", seed: 0 },
+            { type: "deliver", seed: 0 },
+            {
+              type: "edit",
+              peer: 0,
+              seed: {
+                kind: "erase",
+                a: 3,
+                b: 6872,
+                suggest: true,
+                focus: true,
+              },
+            },
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "type", a: 0, b: 0, suggest: false, focus: true },
+            },
+          ],
+        ],
+        ...fc.sample(sameParagraphScenarioArbitrary, {
+          seed: 20,
+          numRuns: 150,
+        }),
+        ...fc.sample(trackedScenarioArbitrary, { seed: 20, numRuns: 150 }),
+      ];
+      for (const [index, scenario] of scenarios.entries()) {
+        try {
+          const outcome = simulate(...scenario);
+          if (outcome.diverged.length > 0)
+            // oxlint-disable-next-line no-console
+            console.log(
+              `PAIRUNDECLARED #${String(index)} ${outcome.diverged.join(",")}`,
+            );
+        } catch (error) {
+          // oxlint-disable-next-line no-console
+          console.log(
+            `PAIRTHREW #${String(index)} ${String(error).slice(0, 300)}`,
+          );
+        }
+      }
+    },
+    propertyTestTimeout(900_000),
+  );
+
   test(
     "concurrent canonical edits converge on the authority's bytes and commute where accepted",
     async () => {
