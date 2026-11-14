@@ -5253,13 +5253,22 @@ export class FolioDocxReviewer {
     };
     if (this.engine.type === "canonical") {
       // The part and its media join the package unreferenced, as on the
-      // legacy engine: the section's reference is staged on its own.
+      // legacy engine: the section's reference is staged on its own. Its
+      // paragraph takes an identity the session mints.
       const document = this.baseDocument;
+      const minted = this.engine.session.freshBlockIds([1]);
+      if (minted.isErr()) throw minted.error;
+      const paraId = minted.value.at(0)?.at(0);
+      if (paraId === undefined)
+        return panic("The session minted no paragraph id for a header part");
       const entries: (readonly [string, HeaderFooter])[] = [
         ...((story.type === "header"
           ? document.package.headers
           : document.package.footers) ?? new Map<string, HeaderFooter>()),
-        [relationshipId, empty],
+        [
+          relationshipId,
+          { ...empty, content: [{ type: "paragraph", paraId, content: [] }] },
+        ],
       ];
       const parts: StoryParts =
         story.type === "header" ? { headers: entries } : { footers: entries };

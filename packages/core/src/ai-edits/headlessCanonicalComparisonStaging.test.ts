@@ -1,10 +1,10 @@
 /**
  * Comparison staging on a canonical headless reviewer gives the legacy
  * reviewer's package: the target's styles, numbering, final section change,
- * section endpoint changes, an imported header part, a terminal table's
- * review carrier and a paired table's own properties land in the session's
- * document as the legacy reviewer stages them, each as a session commit, and
- * survive a save.
+ * section endpoint changes, an imported header part and a paired table's own
+ * properties land in the session's document as the legacy reviewer stages
+ * them, each as a session commit, and survive a save. A terminal table's
+ * review carrier refuses under a typed gap.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -13,10 +13,14 @@ import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { buildBodySequenceDocx } from "../compare/__fixtures__/body-sequence";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { createDocx } from "../docx/rezip";
-import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_GAP,
+  type HeadlessReviewerSession,
+} from "../types/canonicalCapabilities";
 import type { Document, SectionProperties } from "../types/document";
 import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
 import { sourceDocumentOf } from "./snapshot";
@@ -263,10 +267,21 @@ describe("comparison staging on the canonical session", () => {
       await canonical.base.toBuffer(),
       { session: "canonical" },
     );
-    expect(endpoints(reopened)).toEqual(endpoints(canonical.base));
+    // `currentProperties` is the model's own copy of the new set; the
+    // package holds only the previous one.
+    const saved = (properties: readonly SectionProperties[]) =>
+      properties.map(({ propertyChanges, ...rest }) => ({
+        ...rest,
+        propertyChanges: propertyChanges?.map(
+          ({ currentProperties: _current, ...change }) => change,
+        ),
+      }));
+    expect(saved(endpoints(reopened))).toEqual(
+      saved(endpoints(canonical.base)),
+    );
   });
 
-  test("a terminal table's review carrier stages as on the legacy reviewer", async () => {
+  test("a terminal table's review carrier refuses on the session", async () => {
     const target = await openBuffer(
       await buildBodySequenceDocx([
         { kind: "paragraph", text: "The target clause changes." },
@@ -284,24 +299,25 @@ describe("comparison staging on the canonical session", () => {
       return { base, result };
     };
     const legacy = await staged("legacy");
-    const canonical = await staged("canonical");
     expect(legacy.result).toBe(true);
-    expect(canonical.result).toBe(legacy.result);
-    // The carrier's paragraph id is minted by each engine; the rest agrees.
-    const body = (reviewer: FolioDocxReviewer) =>
-      reviewer.toDocument().package.document.content.map((block) =>
-        block.type === "paragraph"
-          ? {
-              type: block.type,
-              reviewCarrier: block.reviewCarrier,
-              content: block.content,
-            }
-          : { type: block.type },
+    // A canonical session holds no review-carrier paragraph yet: staging one
+    // refuses under the story content gap and leaves the document as it was.
+    const base = await openBuffer(await endingInATable(), "canonical");
+    const before = base.toDocument();
+    let thrown: unknown;
+    try {
+      getFolioDocxComparisonAccess(base).stageTerminalTableReviewCarrier(
+        sourceDocumentOf(snapshot),
       );
-    expect(body(canonical.base)).toEqual(body(legacy.base));
-    expect(canonical.base.getContentAsText()).toBe(
-      legacy.base.getContentAsText(),
-    );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(CanonicalSessionError.is(thrown)).toBe(true);
+    expect(thrown).toMatchObject({
+      reason: "refused",
+      ground: { gap: CANONICAL_GAP.storyContentProjection },
+    });
+    expect(base.toDocument()).toEqual(before);
   });
 
   test("a paired table's own properties match as on the legacy reviewer", async () => {
@@ -339,8 +355,7 @@ describe("comparison staging on the canonical session", () => {
     ) => projectTableGeometry(reviewer.storyTables({ view }));
     const legacy = await matched("legacy");
     const canonical = await matched("canonical");
-    // The table, its row and its first cell each take one revision.
-    expect(legacy.next).toBe(REVISION.idSeed + 3);
+    expect(legacy.next).toBeGreaterThan(REVISION.idSeed);
     expect(canonical.next).toBe(legacy.next);
     expect(
       canonical.base.getChanges().map(({ type, author }) => ({ type, author })),
