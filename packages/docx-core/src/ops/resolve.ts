@@ -2174,10 +2174,7 @@ const resolveList = (
         !resolution.ids.has(node.info.id) &&
         kept.keptFrom !== undefined &&
         (node.info.date ?? "") > kept.keptFrom;
-      // A seam with nothing on one side joins nothing, so it takes nothing.
       const piecesMeet =
-        before !== undefined &&
-        after !== undefined &&
         !heldInRemoval(before) &&
         !heldInRemoval(after) &&
         !laterInsertion(before) &&
