@@ -143,7 +143,7 @@ describe("setting revision info", () => {
                       { type: "deletion", info: info(6), content: [run("c")] },
                     ]),
                     cell("00000005", [
-                      { type: "deletion", info: info(6), content: [run("d")] },
+                      { type: "deletion", info: info(9), content: [run("d")] },
                     ]),
                   ],
                 },
@@ -165,7 +165,7 @@ describe("setting revision info", () => {
       return applied.touched.modified.toSorted();
     };
     expect(declaredFor(5)).toEqual(["00000004", "00000005"]);
-    expect(declaredFor(6)).toEqual(["00000004", "00000005"]);
+    expect(declaredFor(6)).toEqual(["00000004"]);
     expect(declaredFor(8)).toEqual(["00000002"]);
     expect(declaredFor(7)).toEqual([
       "00000002",

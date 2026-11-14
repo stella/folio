@@ -453,7 +453,7 @@ test("revision info written on a deleted row, a cell or a table changes only the
     type: "tableCell" as const,
     content: [paragraph(paraId)],
   });
-  const deletedCell = (paraId: string) => ({
+  const deletedCell = (paraId: string, id: number) => ({
     type: "tableCell" as const,
     content: [
       {
@@ -462,7 +462,7 @@ test("revision info written on a deleted row, a cell or a table changes only the
         content: [
           {
             type: "deletion" as const,
-            info: info(6),
+            info: info(id),
             content: [
               {
                 type: "run" as const,
@@ -508,7 +508,7 @@ test("revision info written on a deleted row, a cell or a table changes only the
               {
                 type: "tableRow",
                 structuralChange: { type: "tableRowDeletion", info: info(5) },
-                cells: [deletedCell("00000004"), deletedCell("00000005")],
+                cells: [deletedCell("00000004", 6), deletedCell("00000005", 9)],
               },
               { type: "tableRow", cells: [cell("00000006")] },
             ],
@@ -527,7 +527,7 @@ test("revision info written on a deleted row, a cell or a table changes only the
       },
       before,
     );
-  for (const id of [5, 6, 7, 8])
+  for (const id of [5, 6, 7, 8, 9])
     expect(localityStepFailures(stepOf(id))).toEqual([]);
   // The check sees the row's own revision: the same edit reporting none of
   // the row's paragraphs is a finding.
