@@ -47,6 +47,7 @@ export const ID_LEASE_REFUSAL_REASONS: Readonly<{
   readonly EXHAUSTED: "exhausted";
   readonly NOT_DUE: "notDue";
   readonly INVALID_STATE: "invalidState";
+  readonly UNAVAILABLE: "unavailable";
 }> = Object.freeze({
   /** No free block of the kind is left below the kind's id limit. */
   EXHAUSTED: "exhausted",
@@ -54,6 +55,12 @@ export const ID_LEASE_REFUSAL_REASONS: Readonly<{
   NOT_DUE: "notDue",
   /** A restored lease table is malformed or its blocks overlap. */
   INVALID_STATE: "invalidState",
+  /**
+   * No authority answered: the transport closed or stopped following the
+   * room before an answer arrived. Asking again on a working transport may
+   * succeed.
+   */
+  UNAVAILABLE: "unavailable",
 } as const);
 
 export type IdLeaseRefusalReason =

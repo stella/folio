@@ -61,6 +61,11 @@ export type UseCommentManagementOptions = {
   commentsProp: () => Comment[] | undefined;
   /** Fires on every comment-list mutation (controlled and uncontrolled). */
   onCommentsChange: (comments: Comment[]) => void;
+  /**
+   * Whether the comments are a canonical room's: the controlled prop then
+   * only reports them and is never read back into the session.
+   */
+  commentsFromRoom?: () => boolean;
   /** Reactive invalidation for the canonical document reader. */
   canonicalTick?: Ref<number>;
   /** Re-run layout after a mutation that changed marks in the document. */
@@ -233,7 +238,11 @@ export function useCommentManagement(
       controlledRetry,
     ],
     ([ready, serialized], _previous, onCleanup) => {
-      if (!ready || serialized === undefined) {
+      if (
+        !ready ||
+        serialized === undefined ||
+        options.commentsFromRoom?.() === true
+      ) {
         lastControlledComments = undefined;
         return;
       }

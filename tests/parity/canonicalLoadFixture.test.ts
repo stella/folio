@@ -6,7 +6,10 @@ import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
-import { assertProperty } from "../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../test/property-testing";
 import { canonicalLoadFixture } from "./canonicalLoadFixture";
 
 const AUTHORED_ID = "12345678";
@@ -38,70 +41,76 @@ const IDENTITY_CLASSES: Record<
   ],
 };
 
-test("canonical load fixtures match the loader across paragraph identity input classes", async () => {
-  await assertProperty(
-    fc.asyncProperty(
-      fc.string({
-        unit: fc.constantFrom("a", "b", " ", "é", "😀"),
-        maxLength: 20,
-      }),
-      async (text) => {
-        for (const identity of identities) {
-          const written = IDENTITY_CLASSES[identity];
-          const document = createEmptyDocument({ initialText: text });
-          const first = document.package.document.content.at(0);
-          if (first?.type !== "paragraph")
-            throw new TypeError("Expected fixture paragraph.");
-          const [own, ...repeated] = written;
-          delete first.paraId;
-          delete first.textId;
-          Object.assign(first, own);
-          for (const ids of repeated)
-            document.package.document.content.push({
-              type: "paragraph",
-              ...ids,
-              content: [{ type: "run", content: [{ type: "text", text }] }],
+// Each case writes, prepares and parses a package per identity class, so the
+// test's time grows with the run factor, as its budget does.
+test(
+  "canonical load fixtures match the loader across paragraph identity input classes",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.string({
+          unit: fc.constantFrom("a", "b", " ", "é", "😀"),
+          maxLength: 20,
+        }),
+        async (text) => {
+          for (const identity of identities) {
+            const written = IDENTITY_CLASSES[identity];
+            const document = createEmptyDocument({ initialText: text });
+            const first = document.package.document.content.at(0);
+            if (first?.type !== "paragraph")
+              throw new TypeError("Expected fixture paragraph.");
+            const [own, ...repeated] = written;
+            delete first.paraId;
+            delete first.textId;
+            Object.assign(first, own);
+            for (const ids of repeated)
+              document.package.document.content.push({
+                type: "paragraph",
+                ...ids,
+                content: [{ type: "run", content: [{ type: "text", text }] }],
+              });
+            const fixture = await canonicalLoadFixture(
+              await createDocx(document),
+            );
+            // The real loader prepares the already-prepared browser fixture again.
+            const input = (
+              await prepareCanonicalDocxInput(new Uint8Array(fixture.bytes))
+            ).unwrap();
+            const loaded = await parseDocx(input, {
+              preloadFonts: false,
+              detectVariables: false,
             });
-          const fixture = await canonicalLoadFixture(
-            await createDocx(document),
-          );
-          // The real loader prepares the already-prepared browser fixture again.
-          const input = (
-            await prepareCanonicalDocxInput(new Uint8Array(fixture.bytes))
-          ).unwrap();
-          const loaded = await parseDocx(input, {
-            preloadFonts: false,
-            detectVariables: false,
-          });
-          const content = normalizeForOps(loaded).package.document.content;
-          expect(JSON.stringify(content)).toBe(fixture.content);
-          const paragraphs = content.flatMap((block) =>
-            block.type === "paragraph" ? [block] : [],
-          );
-          expect(paragraphs).toHaveLength(written.length);
-          const seen = new Set<string>();
-          for (const [index, paragraph] of paragraphs.entries()) {
-            const source: WrittenIds = written.at(index) ?? {};
-            expect(paragraph.paraId).toMatch(HEX_ID);
-            const paraId = paragraph.paraId ?? "";
-            if (source.paraId !== undefined && !seen.has(source.paraId)) {
-              // The package's own first id is kept, its text id as written.
-              expect(paraId).toBe(source.paraId);
-              expect(paragraph.textId).toBe(source.textId);
-            } else {
-              // A missing or repeated id is minted with a matching text id.
-              expect(paraId).not.toBe(source.paraId);
-              expect(paragraph.textId).toBe(paraId);
+            const content = normalizeForOps(loaded).package.document.content;
+            expect(JSON.stringify(content)).toBe(fixture.content);
+            const paragraphs = content.flatMap((block) =>
+              block.type === "paragraph" ? [block] : [],
+            );
+            expect(paragraphs).toHaveLength(written.length);
+            const seen = new Set<string>();
+            for (const [index, paragraph] of paragraphs.entries()) {
+              const source: WrittenIds = written.at(index) ?? {};
+              expect(paragraph.paraId).toMatch(HEX_ID);
+              const paraId = paragraph.paraId ?? "";
+              if (source.paraId !== undefined && !seen.has(source.paraId)) {
+                // The package's own first id is kept, its text id as written.
+                expect(paraId).toBe(source.paraId);
+                expect(paragraph.textId).toBe(source.textId);
+              } else {
+                // A missing or repeated id is minted with a matching text id.
+                expect(paraId).not.toBe(source.paraId);
+                expect(paragraph.textId).toBe(paraId);
+              }
+              expect(seen.has(paraId)).toBe(false);
+              seen.add(paraId);
             }
-            expect(seen.has(paraId)).toBe(false);
-            seen.add(paraId);
           }
-        }
+        },
+      ),
+      {
+        numRuns: 20,
+        id: "canonical load fixtures match the loader across paragraph identity input classes",
       },
-    ),
-    {
-      numRuns: 20,
-      id: "canonical load fixtures match the loader across paragraph identity input classes",
-    },
-  );
-});
+    );
+  },
+  propertyTestTimeout(15_000),
+);

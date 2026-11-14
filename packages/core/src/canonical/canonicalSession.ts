@@ -1707,7 +1707,7 @@ class CanonicalSession {
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly allocatedBlockIds = new Set<string>();
   private nextBlockId = 1;
-  private readonly leased: CanonicalIdLease | undefined;
+  private leased: CanonicalIdLease | undefined;
   private readonly sourceOwners = new Map<string, Paragraph>();
   private readonly storyProjections = new Map<string, CachedStoryProjection>();
   private currentSelection: CanonicalSelection | null = null;
@@ -2025,6 +2025,19 @@ class CanonicalSession {
   /** The ids this session may still mint, when it holds a lease. */
   get idLease(): IdLease | undefined {
     return this.leased?.lease;
+  }
+  /**
+   * Take the lease a room granted a session opened before it joined: from
+   * then on every id it mints comes from the lease. Only an unedited session
+   * without a lease takes one.
+   */
+  adoptIdLease(lease: IdLease): Result<void, CanonicalSessionError> {
+    if (this.leased !== undefined)
+      return refuse("The session already holds an id lease.");
+    if (this.currentVersion !== 0)
+      return refuse("The session was edited before it took an id lease.");
+    this.leased = new CanonicalIdLease(lease, this.currentDocument);
+    return Result.ok(undefined);
   }
   /** Add blocks the authority granted; ids this session already minted stay spent. */
   extendIdLease(lease: IdLease): Result<void, CanonicalSessionError> {

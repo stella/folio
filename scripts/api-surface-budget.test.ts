@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
+import { subprocessTestTimeout } from "../test/subprocess";
 import {
   evaluateBudget,
   parseRaise,
+  resolveBudgetBase,
   sumRaises,
   type SurfaceSize,
 } from "./api-surface-budget";
@@ -156,4 +162,87 @@ describe("API surface budget raise files", () => {
       ["cli", { reportLines: 1 }],
     ]);
   });
+});
+
+describe("API surface budget base", () => {
+  // A clone whose main moved on after the checked-out branch left it.
+  const branchFixture = () => {
+    const root = mkdtempSync(path.join(tmpdir(), "folio-api-budget-base-"));
+    const git = (...args: string[]) => {
+      const result = spawnSync(
+        "git",
+        [
+          "-c",
+          "user.name=Fixture",
+          "-c",
+          "user.email=fixture@example.test",
+          "-c",
+          "commit.gpgsign=false",
+          ...args,
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      if (result.status !== 0) throw new Error(result.stderr);
+      return result.stdout.trim();
+    };
+    const commit = (content: string) => {
+      writeFileSync(path.join(root, "file"), content);
+      git("add", "file");
+      git("commit", "--quiet", "-m", content);
+      return git("rev-parse", "HEAD");
+    };
+    git("init", "--quiet", "--initial-branch=main");
+    const forkPoint = commit("one");
+    git("switch", "--quiet", "-c", "topic");
+    commit("topic");
+    git("switch", "--quiet", "main");
+    git("update-ref", "refs/remotes/origin/main", commit("two"));
+    git("switch", "--quiet", "topic");
+    return { root, forkPoint };
+  };
+
+  test(
+    "a hand-started run compares with where its branch left main",
+    () => {
+      const { root, forkPoint } = branchFixture();
+      try {
+        // The workflow passes an empty API_BASE when the event names none.
+        for (const environment of [{ API_BASE: "" }, {}])
+          expect(
+            resolveBudgetBase({ argument: undefined, environment, root }),
+          ).toBe(forkPoint);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+    subprocessTestTimeout(16),
+  );
+
+  test(
+    "a base the run names wins over the resolved one",
+    () => {
+      const { root } = branchFixture();
+      const named = "0123456789abcdef0123456789abcdef01234567";
+      const other = "89abcdef0123456789abcdef0123456789abcdef";
+      try {
+        expect(
+          resolveBudgetBase({
+            argument: undefined,
+            environment: { API_BASE: named },
+            root,
+          }),
+        ).toBe(named);
+        expect(
+          resolveBudgetBase({
+            argument: named,
+            environment: { API_BASE: other },
+            root,
+          }),
+        ).toBe(named);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+    subprocessTestTimeout(14),
+  );
 });

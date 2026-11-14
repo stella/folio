@@ -90,6 +90,11 @@ export type EditSeed = {
   a: number;
   b: number;
   suggest: boolean;
+  /**
+   * Edit the body's first paragraph at offset `a`, so concurrent edits meet
+   * in one paragraph, rather than a paragraph and offset both drawn from `a`.
+   */
+  focus?: true;
 };
 
 export const editSeedArbitrary: fc.Arbitrary<EditSeed> = fc.record({
@@ -301,11 +306,15 @@ export const compileCanonicalEdit = (
   const locations = storyParagraphs(body).filter(
     ({ paragraph }) => paragraph.paraId !== undefined,
   );
-  const location = pick(locations, seed.a);
+  const location =
+    seed.focus === true ? locations.at(0) : pick(locations, seed.a);
   const paraId = location?.paragraph.paraId;
   if (location === undefined || paraId === undefined) return undefined;
   const length = paragraphLength(location.paragraph);
-  const offset = Math.floor(seed.a / 7) % (length + 1);
+  const offset =
+    seed.focus === true
+      ? seed.a % (length + 1)
+      : Math.floor(seed.a / 7) % (length + 1);
   const at = (point: number): TextPosition => ({
     story: OP_STORIES.MAIN,
     blockId: paraId,

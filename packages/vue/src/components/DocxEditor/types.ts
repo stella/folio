@@ -19,12 +19,16 @@ import type {
   FolioReviewChange,
   FolioUndefinedReferencePolicy,
 } from "@stll/folio-core/ai-edits";
-import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
+import type {
+  CanonicalHistoryDrop,
+  CanonicalHistoryEffect,
+} from "@stll/folio-core/canonical/canonicalSession";
 import type {
   ContentControlFilter,
   SetContentControlContentInput,
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
+import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
@@ -310,8 +314,9 @@ export type DocxEditorProps = {
   /**
    * Controlled comments array. When provided, the editor reads comment thread
    * metadata from this prop and emits every change through `onCommentsChange`.
-   * Use with collaboration backends (Yjs, etc.); PM carries range markers,
-   * thread metadata lives outside the doc.
+   * In a canonical room the comments are operations of the room's journal:
+   * the editor reports them through `onCommentsChange` and never reads this
+   * prop back.
    */
   comments?: Comment[];
   /** Current document search results, including the zero-based current hit. */
@@ -329,12 +334,23 @@ export type DocxEditorProps = {
    */
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
   /**
+   * With the canonical session: called when a peer's edit in a canonical
+   * room left local history steps unusable, with how many of each stack it
+   * dropped, counted from the bottom. A host that mirrors the steps in its
+   * own undo stack removes as many.
+   */
+  onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
+  /**
    * Fires when the live ProseMirror view is captured (or torn down). The host
    * wires this to drive the AI suggestion overlay (decoration meta, apply,
    * scroll-to) from outside the editor.
    */
   onEditorViewReady?: (view: EditorView | null) => void;
-  /** Yjs-backed collaboration owner. Experimental and opt-in. */
+  /**
+   * Edit together with other editors. With the canonical session, the
+   * canonical room the session joins; with the legacy session, the Yjs
+   * fragment it edits. Experimental and opt-in.
+   */
   collaboration?: DocxEditorCollaboration | undefined;
   /**
    * Fires with the current anonymization match list every time the decoration
@@ -415,7 +431,11 @@ export type DocxEditorProps = {
 
 export type { FolioSelectiveSaveFlags, TripwireResult };
 
-export type DocxEditorCollaboration = {
+export type DocxEditorCollaboration =
+  CanonicalRoomCollaboration | DocxEditorYjsCollaboration;
+
+/** A Yjs fragment the legacy session edits, and the plugins that bind it. */
+export type DocxEditorYjsCollaboration = {
   awareness?:
     | {
         clientID: number;
@@ -428,6 +448,8 @@ export type DocxEditorCollaboration = {
   plugins?: Plugin[] | undefined;
   shouldSeed?: boolean | undefined;
   yXmlFragment: XmlFragment;
+  /** A canonical room is reached through `connect`; a Yjs fragment has none. */
+  connect?: never;
 };
 
 export type DocxEditorApplyDocumentOperationsOptions = {
