@@ -1,4 +1,5 @@
 import { Result } from "better-result";
+import { appendFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -1037,15 +1038,37 @@ export const runOpLocalityInvariant = async (
             documentPart: input.documentPart,
           });
           let classified = false;
-          for (const step of sequence.steps) {
+          const diag = (line: string) =>
+            appendFileSync(
+              process.env["DIAG_OUT"] ?? "/tmp/diag.txt",
+              `DIAG salt=${String(salt)} ${line}\n`,
+            );
+          diag(`compound=${JSON.stringify(compoundFailures).slice(0, 400)}`);
+          for (const [index, step] of sequence.steps.entries()) {
             const modelFailures = localityStepFailures(step);
+            diag(
+              `step=${String(index)} op=${JSON.stringify(step.op).slice(0, 300)} model=${JSON.stringify(modelFailures)}`,
+            );
+            let pair: Awaited<ReturnType<typeof serializedOpParts>>[];
+            try {
+              // oxlint-disable-next-line no-await-in-loop -- diagnostics
+              pair = await Promise.all([
+                serializedOpParts(step.before),
+                serializedOpParts(step.edit.document),
+              ]);
+            } catch (error) {
+              diag(
+                `step=${String(index)} SAVE-ERROR ${String(error).slice(0, 400)}`,
+              );
+              throw error;
+            }
+            const beforeParts = pair[0]!;
+            const editedParts = pair[1]!;
+            diag(
+              `step=${String(index)} serialized=${JSON.stringify(serializedLocalityStepFailures({ step, control: beforeParts, edited: editedParts, documentPart: input.documentPart }))}`,
+            );
             if (compoundFailures.length === 0 && modelFailures.length === 0)
               continue;
-            // oxlint-disable-next-line no-await-in-loop -- extra package saves classify only observed failures
-            const [beforeParts, editedParts] = await Promise.all([
-              serializedOpParts(step.before),
-              serializedOpParts(step.edit.document),
-            ]);
             const stepFailures = serializedLocalityStepFailures({
               step,
               control: beforeParts,
