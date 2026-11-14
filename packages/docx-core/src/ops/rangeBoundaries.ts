@@ -31,6 +31,7 @@ import type {
 } from "../model/document";
 import {
   copyOriginAncestorsOf,
+  isTrackedRunContent,
   recordsCopyOrigin,
   rejectCopyOriginAncestorsInNodes,
 } from "./copyOriginAncestors";
@@ -173,6 +174,13 @@ export const noRelocatedBoundaries = (): RelocatedBoundaries => ({
  * order. Rejecting keeps every one and records it in `relocated`, for
  * {@link wellFormedRanges}; accepting keeps the anchors of
  * `pairedComments`, as a direct deletion does.
+ *
+ * A pending deletion nested in rejected content that this resolution does not
+ * resolve (`leavesPending`) keeps the boundaries it holds inside it, still
+ * pending: rejecting the content around it says nothing about the deletion,
+ * so accepting it later removes them, as deleting them directly does, and
+ * rejecting it keeps them. A deletion holding no such boundary goes with the
+ * content.
  */
 export const removedContentBoundaries = ({
   nodes,
@@ -180,6 +188,7 @@ export const removedContentBoundaries = ({
   pairedComments,
   relocated,
   revisionDate = "",
+  leavesPending = () => false,
 }: {
   nodes: readonly InlineNode[];
   rejecting: boolean;
@@ -187,21 +196,39 @@ export const removedContentBoundaries = ({
   relocated: RelocatedBoundaries;
   /** The date of the revision whose content is removed. */
   revisionDate?: string;
+  /** Whether the resolution leaves the revision with this id pending. */
+  leavesPending?: (revisionId: number) => boolean;
 }): InlineNode[] =>
-  nodes.flatMap((node) => {
+  nodes.flatMap((node): InlineNode[] => {
     if (isBoundary(node) && rejecting) {
       relocated.ranges.add(rangeKey(node));
       relocated.nodes.set(node, revisionDate);
       return [node];
     }
     if (isCommentAnchor(node)) return pairedComments.has(node.id) ? [node] : [];
-    return removedContentBoundaries({
+    const inner = removedContentBoundaries({
       nodes: childNodes(node) ?? [],
       rejecting,
       pairedComments,
       relocated,
       revisionDate,
+      leavesPending,
     });
+    if (
+      rejecting &&
+      node.type === "deletion" &&
+      inner.length > 0 &&
+      leavesPending(node.info.id)
+    ) {
+      const { resolutionJoins: _joins, ...deletion } = node;
+      const content = inner.map((kept) =>
+        isTrackedRunContent(kept)
+          ? kept
+          : panic("A kept boundary is tracked run content."),
+      );
+      return [{ ...deletion, content }];
+    }
+    return inner;
   });
 
 /** A boundary a block list holds between its blocks. */
