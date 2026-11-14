@@ -1,9 +1,10 @@
 /**
- * Every edit leaves the paragraph it touched in its run normal form: no two
- * consecutive runs that could merge. For the same text, formatting and ids
- * that structure is unique, so two orders of edits reaching the same content
- * reach the same runs. Every edit's inverse restores the previous document
- * exactly, the runs the normal form joined split again.
+ * A direct deletion and a direct format leave no two runs that could merge
+ * meeting at their own points (the deletion's point, the format's edges), so
+ * a format and a deletion that meet reach one structure in either order.
+ * Runs meeting anywhere else, authored boundaries among them, stay. Every
+ * edit's inverse restores the previous document exactly, the runs joined at
+ * its points split again.
  */
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
@@ -33,19 +34,19 @@ const at = (offset: number) => ({
   offset,
 });
 
-const base = (): Document => ({
+const base = (
+  texts: readonly string[] = ["Paragraph text here"],
+): Document => ({
   package: {
     document: {
       content: [
         {
           type: "paragraph",
           paraId: BLOCK_ID,
-          content: [
-            {
-              type: "run",
-              content: [{ type: "text", text: "Paragraph text here" }],
-            },
-          ],
+          content: texts.map((text) => ({
+            type: "run" as const,
+            content: [{ type: "text" as const, text }],
+          })),
         },
       ],
     },
@@ -89,6 +90,18 @@ const editArbitrary: fc.Arbitrary<Edit> = fc.oneof(
   }),
 );
 
+/** Where a direct deletion or format meets the runs it left. */
+const pointsOf = (op: DocumentOp): number[] => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+      return [op.from.offset];
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return [op.from.offset, op.to.offset];
+    default:
+      return [];
+  }
+};
+
 /** The operation an edit makes of the paragraph as it stands. */
 const opOf = (document: Document, edit: Edit): DocumentOp | undefined => {
   const length = paragraphLength(paragraphOf(document));
@@ -127,7 +140,7 @@ const opOf = (document: Document, edit: Edit): DocumentOp | undefined => {
 
 describe("run normal form", () => {
   test(
-    "every edit leaves its paragraph in normal form and its inverse restores the previous structure",
+    "a direct deletion or format leaves no mergeable runs at its points, and every inverse restores the previous structure",
     async () => {
       await assertProperty(
         fc.property(
@@ -140,7 +153,12 @@ describe("run normal form", () => {
               const applied = applyDocumentOps(document, [op]);
               if (applied.isErr()) continue;
               const next = applied.value.document;
-              expect(runSeams(paragraphOf(next))).toEqual([]);
+              const points = pointsOf(op);
+              expect(
+                runSeams(paragraphOf(next)).filter(({ at: gap }) =>
+                  points.includes(gap.offset),
+                ),
+              ).toEqual([]);
               const undone = applyDocumentOps(next, applied.value.inverse);
               if (undone.isErr()) throw undone.error;
               expect(equalForStaleness(undone.value.document, document)).toBe(
@@ -177,5 +195,48 @@ describe("run normal form", () => {
       paragraphOf(deletionFirst.value.document),
     );
     expect(paragraphOf(formatFirst.value.document).content).toHaveLength(1);
+  });
+
+  test("an authored boundary at a deletion's end: the same runs in either order, and undo restores it", () => {
+    // Two alike authored runs, "Paragraph " and "text here"; the deletion
+    // of "h " ends where the second starts, and the format lies inside it.
+    const authored = base(["Paragraph ", "text here"]);
+    const format: DocumentOp = {
+      type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+      from: at(8),
+      to: at(10),
+      patch: { bold: true },
+    };
+    const deletion: DocumentOp = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at(8),
+      to: at(10),
+    };
+    const formatFirst = applyDocumentOps(authored, [format, deletion]);
+    const deletionFirst = applyDocumentOps(authored, [deletion]);
+    if (formatFirst.isErr()) throw formatFirst.error;
+    if (deletionFirst.isErr()) throw deletionFirst.error;
+    expect(paragraphOf(formatFirst.value.document)).toEqual(
+      paragraphOf(deletionFirst.value.document),
+    );
+    // The runs meeting at the deletion's point are one; undo puts the
+    // deleted text and the authored boundary back.
+    expect(paragraphOf(deletionFirst.value.document).content).toHaveLength(1);
+    const undone = applyDocumentOps(
+      deletionFirst.value.document,
+      deletionFirst.value.inverse,
+    );
+    if (undone.isErr()) throw undone.error;
+    expect(equalForStaleness(undone.value.document, authored)).toBe(true);
+    // An edit elsewhere leaves the authored boundary alone.
+    const elsewhere = applyDocumentOps(authored, [
+      {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: at(2),
+        to: at(3),
+      },
+    ]);
+    if (elsewhere.isErr()) throw elsewhere.error;
+    expect(paragraphOf(elsewhere.value.document).content).toHaveLength(2);
   });
 });

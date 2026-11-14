@@ -1,14 +1,14 @@
 /**
- * The run normal form of a paragraph: consecutive runs that can merge are
- * one run, at the paragraph's top level and inside hyperlinks, as the parser
- * consolidates them. A run holding nothing and every record other than a run
- * keep the runs beside them apart, and so does anything that makes two runs
- * differ (formatting, ids, preserved markup: `runsMergeable`).
+ * Where a paragraph's consecutive runs could merge: at the paragraph's top
+ * level and inside hyperlinks, as the parser consolidates them. A run holding
+ * nothing and every record other than a run keep the runs beside them apart,
+ * and so does anything that makes two runs differ (formatting, ids, preserved
+ * markup: `runsMergeable`). Runs inside tracked changes, content controls and
+ * other wrappers are not considered.
  *
- * Every operation leaves the paragraphs it touched in this form, so the same
- * text, formatting and ids have one run structure whichever order of edits
- * reached them. Runs inside tracked changes, content controls and other
- * wrappers are left as they are.
+ * A direct deletion and a direct format join the runs that can merge at their
+ * own points (apply.ts), so a format and a deletion that meet leave one
+ * structure in either order.
  */
 import type { Paragraph, Run } from "../model/document";
 import { alikeDepth, type Gap, type InlineNode, runGaps } from "./leaves";

@@ -6,7 +6,6 @@ import { EditorState } from "prosemirror-state";
 
 import {
   DOCUMENT_OP_TYPES,
-  INHERIT_RUN_PROPS,
   OP_STORIES,
   paragraphLength,
   paragraphLogicalText,
@@ -25,11 +24,11 @@ import { schema } from "../prosemirror/schema";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 
 /*
- * Every edit leaves the paragraphs it touched in their run normal form, and
- * only those: in each corpus document, a character typed at the start of one
- * paragraph and deleted again leaves that paragraph in normal form, and the
- * selective save writes every other paragraph byte for byte as the source
- * held it.
+ * A direct format joins the alike runs meeting at its edges, in the
+ * paragraph it touched and nowhere else: in each corpus document, italic set
+ * on the first character of one paragraph and removed again leaves no
+ * mergeable runs at the format's edges, and the selective save writes every
+ * other paragraph byte for byte as the source held it.
  */
 
 setDefaultTimeout(scanTestTimeout(120_000));
@@ -84,23 +83,15 @@ test("an edit leaves only the paragraph it touched rewritten, in run normal form
     const text = paragraphLogicalText(target);
     let state = EditorState.create({ schema, doc: session.projection.doc });
     const at = { story: OP_STORIES.MAIN, blockId, offset: 0 };
-    for (const ops of [
-      [
+    for (const patch of [{ italic: true }, { italic: null }] as const) {
+      const ops = [
         {
-          type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-          at,
-          text: "x",
-          runProps: INHERIT_RUN_PROPS,
-        },
-      ],
-      [
-        {
-          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+          type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
           from: at,
           to: { ...at, offset: 1 },
+          patch,
         },
-      ],
-    ] as const) {
+      ] as const;
       const commit = session.prepareOperations(state, ops);
       if (commit.isErr()) break;
       state = state.apply(commit.value.transaction);
@@ -110,7 +101,10 @@ test("an edit leaves only the paragraph it touched rewritten, in run normal form
       ({ paragraph }) => paragraph.paraId === blockId,
     )?.paragraph;
     if (edited === undefined || paragraphLogicalText(edited) !== text) continue;
-    expect({ name, seams: runSeams(edited) }).toEqual({ name, seams: [] });
+    expect({
+      name,
+      seams: runSeams(edited).filter(({ at: gap }) => gap.offset <= 1),
+    }).toEqual({ name, seams: [] });
 
     const diagnostics: SaveDiagnostic[] = [];
     const snapshot = session.captureSaveSnapshot();

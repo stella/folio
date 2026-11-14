@@ -3042,80 +3042,73 @@ const preserveParagraphPropertySnapshots = (options: {
 
 /** Apply one operation to a document that meets the seed contract. */
 /**
- * Operations that put the records they are given in place exactly: a split
- * separates runs on purpose, and an inline, block, container or story
- * replacement restores what it names. They are left as they put it.
+ * The points where a direct edit leaves runs side by side: a direct
+ * deletion's point, where the records before and after the removed range
+ * meet, and a direct format's two edges, where it cut runs and may have made
+ * them alike again. A tracked edit, an edit carrying an inverse's
+ * preconditions or joins, and every other operation have none: their
+ * structure is recorded or restored exactly.
  */
-const PLACES_RECORDS_EXACTLY: ReadonlySet<DocumentOp["type"]> = new Set([
-  DOCUMENT_OP_TYPES.SPLIT_INLINE,
-  DOCUMENT_OP_TYPES.REPLACE_INLINE,
-  DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
-  DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-  DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-  DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
-]);
+const directEditPoints = (op: DocumentOp): readonly TextPosition[] => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+      return op.revision === undefined &&
+        op.expected === undefined &&
+        op.join === undefined
+        ? [op.from]
+        : [];
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return op.revision === undefined &&
+        op.expected === undefined &&
+        op.joinStart === undefined &&
+        op.joinEnd === undefined
+        ? [op.from, op.to]
+        : [];
+    default:
+      return [];
+  }
+};
 
 /**
- * The paragraphs an edit touched, in their run normal form (runNormalForm.ts):
- * each seam is joined as a seam join, whose inverse splits it again, so the
- * edit's inverse first splits the joined runs and then undoes the edit, and
- * undo restores the structure exactly. Only a paragraph that was in normal
- * form before the edit is brought to it: one the edit inserted, or one that
- * held no seam. An undo passes through paragraphs its splits took out of
- * normal form, and an edit of a paragraph some caller built out of normal
- * form leaves its other runs as they were.
+ * A direct edit's own seams in their run normal form (runNormalForm.ts): the
+ * alike runs meeting at its points are joined as seam joins, whose inverses
+ * split them again first, so undo restores the structure exactly. Runs that
+ * meet anywhere else stay as they are, authored boundaries among them, so the
+ * same text and formatting reached by a format and a deletion in either order
+ * has one structure where the two meet, and nothing else moves.
  */
-const inRunNormalForm = ({
+const joinedAtDirectEdit = ({
   op,
   edit,
   before,
-  story,
 }: {
   op: DocumentOp;
   edit: DocumentEdit;
   before: Document;
-  story: OpStory | undefined;
 }): Applied => {
-  if (PLACES_RECORDS_EXACTLY.has(op.type)) return Result.ok(edit);
-  const touched = new Set(
-    [...edit.touched.modified, ...edit.touched.inserted].map(idKey),
-  );
-  if (touched.size === 0) return Result.ok(edit);
+  const points = directEditPoints(op);
+  if (points.length === 0) return Result.ok(edit);
   let document = edit.document;
   const joins: DocumentEdit[] = [];
-  for (const target of story === undefined
-    ? documentStories(document)
-    : [story]) {
-    const body = findStoryBody(document, target);
-    if (body === undefined) continue;
-    const previous = findStoryBody(before, target);
-    const wasNormal = new Map(
-      (previous === undefined ? [] : storyParagraphs(previous)).flatMap(
-        ({ paragraph }) =>
-          paragraph.paraId === undefined
-            ? []
-            : [[idKey(paragraph.paraId), runSeams(paragraph).length === 0]],
-      ),
-    );
-    for (const { paragraph } of storyParagraphs(body)) {
-      const blockId = paragraph.paraId;
-      if (
-        blockId === undefined ||
-        !touched.has(idKey(blockId)) ||
-        wasNormal.get(idKey(blockId)) === false
-      )
-        continue;
-      for (const seam of runSeams(paragraph).toReversed()) {
-        const joined = joinInline(document, {
-          type: DOCUMENT_OP_TYPES.JOIN_INLINE,
-          at: { story: target, blockId, ...seam.at },
-          depth: seam.depth,
-          ifAlike: true,
-        });
-        if (joined.isErr()) return Result.err(joined.error);
-        document = joined.value.document;
-        joins.push(joined.value);
-      }
+  for (const point of points.toReversed()) {
+    const body = findStoryBody(document, point.story);
+    const paragraph = (body === undefined ? [] : storyParagraphs(body)).find(
+      ({ paragraph: candidate }) =>
+        candidate.paraId !== undefined &&
+        idKey(candidate.paraId) === idKey(point.blockId),
+    )?.paragraph;
+    if (paragraph?.paraId === undefined) continue;
+    for (const seam of runSeams(paragraph).toReversed()) {
+      if (seam.at.offset !== point.offset) continue;
+      const joined = joinInline(document, {
+        type: DOCUMENT_OP_TYPES.JOIN_INLINE,
+        at: { story: point.story, blockId: paragraph.paraId, ...seam.at },
+        depth: seam.depth,
+        ifAlike: true,
+      });
+      if (joined.isErr()) return Result.err(joined.error);
+      document = joined.value.document;
+      joins.push(joined.value);
     }
   }
   return Result.ok(
@@ -3232,12 +3225,7 @@ export const applyDocumentOp = (
       }
     }
   }
-  const normal = inRunNormalForm({
-    op,
-    edit,
-    before: document,
-    story: addressed,
-  });
+  const normal = joinedAtDirectEdit({ op, edit, before: document });
   if (normal.isErr()) return Result.err(normal.error);
   const normalized = normal.value;
   // Check all operation outputs before trusting them, including caller-supplied block/review records.

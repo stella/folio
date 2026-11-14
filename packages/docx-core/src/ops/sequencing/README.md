@@ -93,24 +93,23 @@ Typing and other edits join their runs to alike neighbours with seam joins
 and change nothing where the records beside the seam differ or a run
 already runs across it. A seam join moves like a point. Content a
 concurrent insertion puts at its gap separates the records it would have
-joined, whichever applies first, so the join is dropped there; the run
-normal form below then merges two alike typings at one point in either
-order. A concurrent insertion, format
+joined, whichever applies first, so the join is dropped there: two typings
+at one point stay two runs in either order. A concurrent insertion, format
 or seam join at its offset passes, and so does a paragraph split or join
 away from it. A direct deletion reaching its offset refuses: it may remove
 whole records beside the seam, so other records meet there in one order than
 in the other. A split at its offset, a hard join there, a tracked
 change's edge there and a comment anchor there still refuse.
 
-Every operation leaves the paragraphs it touched in their run normal form
-(`runSeams`): consecutive runs that can merge, at the paragraph's top level
-and inside hyperlinks, are one run, as the parser consolidates them. The same
-text, formatting and ids then have one run structure whichever order the
-edits arrived in, so, for example, a format lying inside a concurrent direct
-deletion leaves no cut behind in either order. The joins are part of the
-edit: its inverse splits the runs again first, and a split, an inline, block,
-container or story replacement, and an edit of a paragraph that was not in
-normal form before keep the runs as they are.
+A direct deletion joins the runs that meet at its point, and a direct format
+the runs that meet at its two edges, when they can merge (`runSeams`: alike
+runs carrying no ids, at the paragraph's top level and inside hyperlinks, as
+the parser consolidates them). A format lying inside a concurrent direct
+deletion then leaves the same runs in either order: cut and joined again in
+one, never cut in the other. Runs meeting anywhere else stay as they are,
+authored boundaries among them. The joins are part of the edit, so its
+inverse splits them again first; tracked edits and an inverse's own
+deletions and formats join nothing.
 
 A slice with open ends merges with the records at its point, and a slice
 holding zero-width leaves, comment references or paragraphs depends on
