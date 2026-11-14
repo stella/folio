@@ -21,25 +21,149 @@ export type DocxParagraphSurfaces = {
   endnotes?: readonly Endnote[] | undefined;
 };
 
+/**
+ * A rewrite of one array a record owns: it returns its input when nothing
+ * changes, so a copy-on-write caller keeps every untouched record as is.
+ */
+export type InlineContentRewrite = <Item extends ParagraphContent>(
+  content: Item[],
+) => Item[];
+
+/**
+ * The record with `rewrite` applied to each inline-content array it owns, or
+ * the record itself when it owns none or the rewrite changed nothing.
+ *
+ * This is the one list of wrappers that are transparent to a range marker
+ * (`w:hyperlink`, `w:fldSimple`, `w:sdt`, `w:ins`, `w:del`, `w:moveFrom`,
+ * `w:moveTo`, `w:dir`, `w:bdo`, `w:smartTag`, `w:customXml`). The slot visitor
+ * below descends through it as well, so a copy-on-write normaliser and a
+ * visitor cannot reach different marker positions.
+ *
+ * A complex field's runs are not inline content: `fieldCode` and
+ * `fieldResult` hold runs only, and a run is not a marker position.
+ */
+export const withInlineContentRewritten = <Item extends ParagraphContent>(
+  item: Item,
+  rewrite: InlineContentRewrite,
+): Item => {
+  const record: ParagraphContent = item;
+  switch (record.type) {
+    case "hyperlink": {
+      const children = rewrite(record.children);
+      return children === record.children ? item : { ...item, children };
+    }
+    case "simpleField": {
+      const content = rewrite(record.content);
+      return content === record.content ? item : { ...item, content };
+    }
+    case "inlineSdt": {
+      const content = rewrite(record.content);
+      return content === record.content ? item : { ...item, content };
+    }
+    case "insertion":
+    case "deletion":
+    case "moveFrom":
+    case "moveTo": {
+      const content = rewrite(record.content);
+      return content === record.content ? item : { ...item, content };
+    }
+    case "inlineWrapper": {
+      const content = rewrite(record.content);
+      return content === record.content ? item : { ...item, content };
+    }
+    case "run":
+    case "complexField":
+    case "bookmarkStart":
+    case "bookmarkEnd":
+    case "commentRangeStart":
+    case "commentRangeEnd":
+    case "commentReference":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
+    case "mathEquation":
+    case "preservedInline":
+      return item;
+    default: {
+      const unsupported: never = record;
+      return panic(
+        `Unsupported paragraph content: ${JSON.stringify(unsupported)}`,
+      );
+    }
+  }
+};
+
+/**
+ * The record with `rewrite` applied to each run it owns directly (itself, or
+ * a complex field's code and result runs), or the record itself when it owns
+ * none or the rewrite changed nothing.
+ */
+export const withDirectRunsRewritten = <Item extends ParagraphContent>(
+  item: Item,
+  rewrite: (run: Run) => Run,
+): Item => {
+  const record: ParagraphContent = item;
+  switch (record.type) {
+    case "run": {
+      const run = rewrite(record);
+      return run === record ? item : { ...item, ...run };
+    }
+    case "complexField": {
+      const fieldCode = rewriteRuns(record.fieldCode, rewrite);
+      const fieldResult = rewriteRuns(record.fieldResult, rewrite);
+      return fieldCode === record.fieldCode &&
+        fieldResult === record.fieldResult
+        ? item
+        : { ...item, fieldCode, fieldResult };
+    }
+    default:
+      return item;
+  }
+};
+
+const rewriteRuns = (runs: Run[], rewrite: (run: Run) => Run): Run[] => {
+  let changed = false;
+  const next = runs.map((run) => {
+    const rewritten = rewrite(run);
+    if (rewritten !== run) changed = true;
+    return rewritten;
+  });
+  return changed ? next : runs;
+};
+
+/**
+ * The run with `rewrite` applied to the blocks of each text box it holds
+ * (`w:txbxContent` hangs off a shape inside a run), or the run itself when
+ * it holds none or the rewrite changed nothing.
+ */
+export const withRunTextBoxBlocksRewritten = (
+  run: Run,
+  rewrite: (blocks: BlockContent[]) => BlockContent[],
+): Run => {
+  let changed = false;
+  const content = run.content.map((child) => {
+    if (child.type !== "shape" || !child.shape.textBody) return child;
+    const { textBody } = child.shape;
+    const blocks = rewrite(textBody.content);
+    if (blocks === textBody.content) return child;
+    changed = true;
+    return {
+      ...child,
+      shape: { ...child.shape, textBody: { ...textBody, content: blocks } },
+    };
+  });
+  return changed ? { ...run, content } : run;
+};
+
 const visitDirectParagraphRuns = (
   content: ParagraphContent,
   visit: (run: Run) => void,
 ): void => {
-  switch (content.type) {
-    case "run":
-      visit(content);
-      return;
-    case "complexField":
-      for (const run of content.fieldCode) {
-        visit(run);
-      }
-      for (const run of content.fieldResult) {
-        visit(run);
-      }
-      return;
-    default:
-      return;
-  }
+  withDirectRunsRewritten(content, (run) => {
+    visit(run);
+    return run;
+  });
 };
 
 /** Visit every run directly owned by a paragraph's inline-content tree. */
@@ -65,16 +189,14 @@ export type InlineContentSlot = {
 
 /**
  * Visit every inline-content position a paragraph owns, in document order,
- * descending through every wrapper that is transparent to a range marker.
+ * descending through every wrapper that is transparent to a range marker
+ * (see `withInlineContentRewritten`).
  *
  * The model validator walks the whole inline tree; a normaliser that walks
  * only `paragraph.content` sees a different document from the one the
  * validator judges, and a marker inside `w:ins`, `w:hyperlink`, `w:sdt`,
  * `w:bdo` or `w:dir` then reaches the validator unnormalised. Both sides read
  * the tree through this one traversal so they cannot disagree again.
- *
- * A complex field's runs are skipped: `fieldCode` and `fieldResult` hold runs
- * only, and a run is not a marker position.
  */
 export const visitInlineContentSlots = (
   paragraph: Paragraph,
@@ -90,40 +212,10 @@ export const visitInlineContentSlotsInContent = (
   const visitContent = (items: ParagraphContent[]): void => {
     for (const [index, item] of items.entries()) {
       visit({ content: items, index, item });
-      switch (item.type) {
-        case "hyperlink":
-          visitContent(item.children);
-          break;
-        case "simpleField":
-        case "inlineSdt":
-        case "insertion":
-        case "deletion":
-        case "moveFrom":
-        case "moveTo":
-        case "inlineWrapper":
-          visitContent(item.content);
-          break;
-        case "run":
-        case "complexField":
-        case "bookmarkStart":
-        case "bookmarkEnd":
-        case "commentRangeStart":
-        case "commentRangeEnd":
-        case "commentReference":
-        case "moveFromRangeStart":
-        case "moveFromRangeEnd":
-        case "moveToRangeStart":
-        case "moveToRangeEnd":
-        case "mathEquation":
-        case "preservedInline":
-          break;
-        default: {
-          const unsupported: never = item;
-          panic(
-            `Unsupported paragraph content: ${JSON.stringify(unsupported)}`,
-          );
-        }
-      }
+      withInlineContentRewritten(item, (children) => {
+        visitContent(children);
+        return children;
+      });
     }
   };
 
@@ -149,11 +241,10 @@ const visitRunBlockChildren = (
   run: Run,
   visitBlocks: (blocks: BlockContent[]) => void,
 ): void => {
-  for (const content of run.content) {
-    if (content.type === "shape" && content.shape.textBody) {
-      visitBlocks(content.shape.textBody.content);
-    }
-  }
+  withRunTextBoxBlocksRewritten(run, (blocks) => {
+    visitBlocks(blocks);
+    return blocks;
+  });
 };
 
 const visitBlockChildren = ({

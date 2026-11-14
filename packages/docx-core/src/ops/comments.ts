@@ -455,9 +455,14 @@ const coveredCommentIds = (document: Document): Set<number> => {
           continue;
         }
         // A bookmark or other range boundary inside the range marks a position,
-        // not content: a range left holding only those covers nothing.
+        // not content: a range left holding only those covers nothing. An
+        // empty run or text node holds nothing either, and normalizing for
+        // operations removes it (see `contract.ts`): counting it would let a
+        // comment the source anchors over empty runs count as covering text
+        // on load and as exhausted once normalized, with no edit in between.
         if (
           isCommentAnchor(node) ||
+          isEmptyRecord(node) ||
           (isParagraphContent(node) && isRangeBoundary(node))
         )
           continue;
