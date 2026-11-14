@@ -2,7 +2,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 // The `anonymizationTerms` prop highlights a term wherever it occurs in the
@@ -13,7 +13,7 @@ import {
 forEachAdapter(
   "anonymization: a term from the prop paints a highlight rect",
   async (adapter, { page }) => {
-    await openEditor(page, adapter, undefined, { session: "canonical" });
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
     const word = await page.evaluate(

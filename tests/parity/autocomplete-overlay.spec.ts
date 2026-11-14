@@ -2,7 +2,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 // The ref's autocomplete API shows ghost text at the caret in the canonical
@@ -12,7 +12,7 @@ import {
 forEachAdapter(
   "projects autocomplete suggestions onto painted pages",
   async (adapter, { page }) => {
-    await openEditor(page, adapter, undefined, { session: "canonical" });
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
     // Put the caret at the end of the first painted run of body text.

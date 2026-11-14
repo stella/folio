@@ -136,30 +136,6 @@ export type AISuggestionSeverity = "typo" | "style" | "substantive";
 export type AISuggestionStatus = "pending" | "accepted" | "rejected" | "stale";
 
 // @public (undocumented)
-export const anonymizationDecorationsKey: Readonly<{
-    key: string;
-    createKey: () => PluginKey<AnonymizationDecorationState>;
-    owns: (plugin: Plugin_2<AnonymizationDecorationState>) => boolean;
-    get: (state: EditorState) => Plugin_2<AnonymizationDecorationState> | undefined;
-    getState: (state: EditorState) => AnonymizationDecorationState | undefined;
-}>;
-
-// @public (undocumented)
-export type AnonymizationMatch = {
-    from: number;
-    to: number;
-    label: string;
-    canonical: string;
-};
-
-// @public (undocumented)
-export type AnonymizationTerm = {
-    canonical: string;
-    label: string;
-    variants?: readonly string[];
-};
-
-// @public (undocumented)
 export const appendAutocompleteToken: (tr: Transaction, requestId: string, delta: string) => Transaction;
 
 // @public (undocumented)
@@ -1309,6 +1285,21 @@ export type FolioAISignatureParty = {
 };
 
 // @public
+export type FolioAnonymizationMatch = {
+    start: TextPosition;
+    end: TextPosition;
+    label: string;
+    canonical: string;
+};
+
+// @public
+export type FolioAnonymizationTerm = {
+    canonical: string;
+    label: string;
+    variants?: readonly string[];
+};
+
+// @public
 export type FolioBlockId = string & {
     readonly __brand: "folio.blockId";
 };
@@ -1732,9 +1723,6 @@ export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionErr
 // @public
 export function fromMarkdown(markdown: string): import__stll_docx_core_model.Document;
 
-// @public
-export const getAnonymizationMatches: (state: EditorState) => readonly AnonymizationMatch[];
-
 // @public (undocumented)
 export const getAutocompleteSuggestion: (state: EditorState) => AutocompleteSuggestionState;
 
@@ -1934,15 +1922,6 @@ export function setAISuggestionsMeta(suggestions: AISuggestion[]): {
     payload: {
         type: typeof SET_META_2;
         suggestions: AISuggestion[];
-    };
-};
-
-// @public (undocumented)
-export const setAnonymizationTermsMeta: (terms: readonly AnonymizationTerm[]) => {
-    key: PluginKeyOwner<AnonymizationDecorationState>;
-    payload: {
-        type: typeof SET_META_3;
-        terms: readonly AnonymizationTerm[];
     };
 };
 

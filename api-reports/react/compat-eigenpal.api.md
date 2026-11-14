@@ -4,7 +4,6 @@
 
 ```ts
 
-import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { CanonicalHistoryDrop } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
@@ -34,6 +33,8 @@ import { FolioAIEditApplyMode } from '@stll/folio-core/ai-edits';
 import { FolioAIEditApplyResult } from '@stll/folio-core/ai-edits';
 import { FolioAIEditOperation } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
+import { FolioAnonymizationMatch } from '@stll/folio-core/controller/anonymizationHighlights';
+import { FolioAnonymizationTerm } from '@stll/folio-core/controller/anonymizationHighlights';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentNavigationTarget } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
@@ -72,7 +73,6 @@ import { SetContentControlValueInput } from '@stll/folio-core/content-controls';
 import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
 import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
-import { TextPosition } from '@stll/folio-core/controller/folioEditor';
 import { Theme } from '@stll/folio-core/types/document';
 import { Transaction } from 'prosemirror-state';
 import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
@@ -194,7 +194,7 @@ export type DocxEditorRef = {
     getSelectionText: () => string;
     getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
-    getPositionPage: (position: TextPosition) => number | null;
+    getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
     getBlockRect: (blockId: string) => BlockRect | null;
     getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
     getScrollRoot: () => HTMLElement | null;
