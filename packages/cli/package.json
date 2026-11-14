@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
-    "@stll/agent-input": "0.3.0",
+    "@stll/agent-input": "0.4.2",
     "@stll/docx-core": "workspace:^",
     "@stll/folio-agents": "workspace:^",
     "@stll/folio-core": "workspace:^",
