@@ -1048,7 +1048,7 @@ const resolveTableStructure = ({
         },
         ...(operation.cellTexts === undefined
           ? {}
-          : { cellContent: operation.cellTexts.map(cellParagraphs) }),
+          : { cellContent: operation.cellTexts.slice(1).map(cellParagraphs) }),
       };
       return resolved(
         intent,
