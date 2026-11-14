@@ -548,12 +548,7 @@ export const withBoundariesOutsideDeletion = (
   return { nodes: visit(nodes), standing };
 };
 
-/**
- * Which kept boundaries each container may hold, as its model declares. A
- * pending deletion or move source holds none it did not hold already: a
- * boundary kept from content beside its pieces was never in it, so accepting
- * it must not take the boundary away.
- */
+/** Which kept boundaries each container may hold, as its model declares. */
 const HOLDS: Partial<
   Record<InlineNode["type"], (boundary: Boundary) => boolean>
 > = {
@@ -561,6 +556,8 @@ const HOLDS: Partial<
   hyperlink: isHyperlinkChild,
   inlineWrapper: () => true,
   insertion: () => true,
+  deletion: () => true,
+  moveFrom: () => true,
   moveTo: () => true,
 };
 
