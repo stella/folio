@@ -2,6 +2,11 @@ import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import type { EditorState } from "prosemirror-state";
 
+import {
+  type CanonicalSession,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { parseDocx } from "../docx/parser";
 import { readModel } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
@@ -26,11 +31,6 @@ import {
   createCanonicalMemoryRoom,
 } from "./canonicalRoomTransport";
 import { toWireJson } from "./canonicalRoomWire";
-import {
-  type CanonicalSession,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 /** Presence channels between the editors of one process. */
 const createPresenceHub = () => {

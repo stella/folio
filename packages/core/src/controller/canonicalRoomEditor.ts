@@ -1,6 +1,11 @@
 import type { Result } from "better-result";
 import { EditorState } from "prosemirror-state";
 
+import type {
+  CanonicalCommit,
+  CanonicalSession,
+  CanonicalSessionError,
+} from "../canonical/canonicalSession";
 import type { Document } from "../types/document";
 import { readModel } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
@@ -11,11 +16,6 @@ import {
 } from "./canonicalCollaboration";
 import type { CanonicalPresenceUser } from "./canonicalPresence";
 import type { CanonicalRoomTransport } from "./canonicalRoomTransport";
-import type {
-  CanonicalCommit,
-  CanonicalSession,
-  CanonicalSessionError,
-} from "./canonicalSession";
 
 /*
  * An editor's place in a canonical room: the hidden editor's canonical
