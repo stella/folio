@@ -1572,6 +1572,8 @@ const resolveList = (
   };
   /** Seams a removed revision recorded between the source pieces around it. */
   const removalSeams = new Set<number>();
+  /** Those of them a removed insertion or move destination recorded. */
+  const addedRemovalSeams = new Set<number>();
   const recordSourceSeam = (index: number, depth: number): void => {
     recordExactSeam(index, depth);
     if (depth > 0)
@@ -1725,6 +1727,8 @@ const resolveList = (
           const removalCut = cutLevelsOnceResolved(node, index);
           recordSourceSeam(out.length, removalCut);
           if (removalCut > 0) removalSeams.add(out.length);
+          if (removalCut > 0 && isAddedRevision(node))
+            addedRemovalSeams.add(out.length);
           const keptFrom = node.resolutionJoins.keptFrom;
           if (removalCut > 0 && keptFrom !== undefined)
             exactKeptFrom.set(out.length, keptFrom);
@@ -1968,6 +1972,30 @@ const resolveList = (
   }
   if (!changed) {
     return { nodes: out.map(({ node }) => node), changed };
+  }
+  // A container this resolution rebuilt can meet the seam with an inner cut
+  // at its edge whose other piece lies beyond the seam: a removed insertion
+  // at that edge cut deeper than the seam does. Once the seam joins the
+  // container's level, that cut continues through it, as the seam deferred
+  // on a pending insertion there joins when the insertion is rejected later.
+  for (const seam of addedRemovalSeams) {
+    const depth = exactSeams.get(seam);
+    if (depth === undefined) continue;
+    const standing = floating.get(seam)?.count ?? 0;
+    const left = out.at(seam - standing - 1)?.node;
+    const right = out.at(seam)?.node;
+    const reach = Math.max(
+      depth,
+      seam - standing > 0 && left !== undefined
+        ? (resolution.cutEdges.get(left)?.last ?? 0)
+        : 0,
+      right === undefined ? 0 : (resolution.cutEdges.get(right)?.first ?? 0),
+    );
+    if (reach === depth) continue;
+    exactSeams.set(seam, reach);
+    sourceEdges.set(seam, Math.max(sourceEdges.get(seam) ?? 0, reach));
+    const kept = floating.get(seam);
+    if (kept !== undefined) floating.set(seam, { ...kept, depth: reach });
   }
   const edges: CutEdges = {};
   const firstDepth = sourceEdges.get(0);
