@@ -7,12 +7,12 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import type { Document } from "../types/document";
 import {
   createCanonicalHeaderFooterOperation,
   removeCanonicalHeaderFooterOperations,
   withCanonicalParagraphIds,
-} from "./canonicalOperations";
+} from "../canonical/canonicalOperations";
+import type { Document } from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
 

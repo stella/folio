@@ -36,7 +36,7 @@ import { AutocompleteTriggerOptions } from '@stll/folio-core/prosemirror/plugins
 import { AutocompleteTriggerSkipReason } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { buildPositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
-import { CanonicalHistoryEffect } from '@stll/folio-core/controller/canonicalSession';
+import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalRoomCollaboration } from '@stll/folio-core/controller/canonicalRoomEditor';
 import { clearAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';

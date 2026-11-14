@@ -12,7 +12,7 @@ import { createRoot } from "react-dom/client";
 import type { EditorState } from "prosemirror-state";
 import { IntlProvider, useTranslations } from "use-intl";
 
-import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
+import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
 import type { HostShortcut } from "@stll/folio-core/managers/editorShortcuts";
 import {
   hasStructuralChanges,

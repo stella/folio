@@ -6,7 +6,7 @@ import {
   type TextPosition,
 } from "@stll/docx-core/ops";
 
-import { remapSelection } from "./canonicalRemoteHistory";
+import { remapSelection } from "../canonical/canonicalRemoteHistory";
 
 /*
  * Presence: where each peer's selection is, in canonical positions

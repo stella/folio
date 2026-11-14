@@ -143,6 +143,7 @@ export type BoundaryOccurrence = {
     side: "start" | "end";
     kept: boolean;
     copied: boolean;
+    copiesMarked: boolean;
     keptFrom?: string;
 };
 
@@ -1136,6 +1137,9 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
 export const reconcileDocumentPartRelationships: (document: Document_2) => Document_2;
 
 // @public
+export const recordsCopyOrigin: (node: InlineNode) => boolean;
+
+// @public
 export const registerParagraphPropertySnapshot: (input: RegisterParagraphPropertySnapshotOptions) => void;
 
 // @public (undocumented)
@@ -1484,6 +1488,7 @@ export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds
     table: Table;
     side?: "after" | "before";
     separated?: boolean;
+    paragraphAfter?: "empty" | "none";
 };
 
 // @public (undocumented)

@@ -11,6 +11,12 @@ import { expect } from "bun:test";
 
 import type { SequencedBatch } from "@stll/docx-core/ops";
 
+import {
+  type CanonicalCommit,
+  type CanonicalSessionError,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../../canonical/canonicalSession";
 import { parseDocx } from "../../docx/parser";
 import type { Document } from "../../types/document";
 import {
@@ -23,12 +29,6 @@ import type {
   CanonicalRoomTransport,
 } from "../canonicalRoomTransport";
 import { canonicalSnapshotId } from "../canonicalRoomTransport";
-import {
-  type CanonicalCommit,
-  type CanonicalSessionError,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "../canonicalSession";
 import {
   type BatchMeta,
   caretOf,

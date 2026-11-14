@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { getSuggestions } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import type { Document, ParagraphContent } from "../types/document";
-import { createCanonicalSession } from "./canonicalSession";
 
 const run = (text: string): ParagraphContent => ({
   type: "run",

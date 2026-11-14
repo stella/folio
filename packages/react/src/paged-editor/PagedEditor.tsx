@@ -41,14 +41,14 @@ import type { EditorView } from "prosemirror-view";
 
 import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
-import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
-import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
-import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
-import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
+import type { OpStory } from "@stll/folio-core/canonical/canonicalOperations";
 import type {
   CanonicalHistoryDrop,
   CanonicalHistoryEffect,
-} from "@stll/folio-core/controller/canonicalSession";
+} from "@stll/folio-core/canonical/canonicalSession";
+import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
+import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type {

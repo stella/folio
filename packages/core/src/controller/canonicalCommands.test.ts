@@ -2,14 +2,14 @@ import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { type Command, EditorState, TextSelection } from "prosemirror-state";
 
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
 import { schema, singletonManager } from "../prosemirror/schema";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 
 describe("canonical command integration", () => {

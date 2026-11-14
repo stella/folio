@@ -23,14 +23,14 @@ import {
   canonicalReviewBlocks,
   storyRevisionIds,
 } from "../../../../test/reviewProjection";
+import {
+  type CanonicalCommit,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
-import {
-  type CanonicalCommit,
-  createCanonicalSession,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 

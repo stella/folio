@@ -24,13 +24,13 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { table } from "../docx/server/build";
-import type { Document } from "../types/document";
 import {
   unsupportedEditReason,
   unsupportedSeedReason,
   unsupportedSeedReasonWholeDocument,
-} from "./canonicalSeedContent";
+} from "../canonical/canonicalSeedContent";
+import { table } from "../docx/server/build";
+import type { Document } from "../types/document";
 
 // Synchronous generated edit chains use a 15-second base budget.
 setDefaultTimeout(propertyTestTimeout(23_000));

@@ -92,6 +92,7 @@ const LAYOUT_OWNED_SOURCES = [
   "paged-layout",
   "prosemirror",
   "controller",
+  "canonical",
   "docx",
   "ai-edits",
   "compare",

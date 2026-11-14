@@ -4,13 +4,16 @@ import { CellSelection } from "prosemirror-tables";
 import { ReplaceStep } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
+import {
+  deletionRange,
+  isCanonicalJoinBoundary,
+} from "../canonical/canonicalSession";
 import { textCaretOf } from "../prosemirror/nativeSelection";
 import {
   getEditorInputTargetRange,
   handleEditorBeforeInput,
 } from "../prosemirror/textInput";
 import { createCanonicalComposition } from "./canonicalComposition";
-import { deletionRange, isCanonicalJoinBoundary } from "./canonicalSession";
 
 export const CANONICAL_COMPOSITION_INPUT_TYPES = [
   "insertCompositionText",

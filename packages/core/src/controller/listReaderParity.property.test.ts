@@ -21,6 +21,7 @@ import {
   subprocessTestTimeout,
 } from "../../../../test/subprocess";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { normalizeCanonicalListRendering } from "../canonical/canonicalListRendering";
 import {
   computeListMarker,
   type ComputeListMarkerOptions,
@@ -56,7 +57,6 @@ import type {
   Paragraph,
   ParagraphFormatting,
 } from "../types/document";
-import { normalizeCanonicalListRendering } from "./canonicalListRendering";
 
 // Each production import of a counting owner belongs to an exercised reader.
 // Discovery below also catches aliases and new files, so this registry cannot

@@ -14,13 +14,13 @@ import {
   createCanonicalEditorHarness,
   saveCanonicalHarnessDocument,
 } from "../../../../test/canonicalEditorHarness";
-import { parseDocx } from "../docx/parser";
-import { RELATIONSHIP_TYPES } from "../docx/relsParser";
-import type { Document } from "../types/document";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { parseDocx } from "../docx/parser";
+import { RELATIONSHIP_TYPES } from "../docx/relsParser";
+import type { Document } from "../types/document";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";

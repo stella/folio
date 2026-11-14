@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
-import { createCanonicalSession } from "../../packages/core/src/controller/canonicalSession";
+import { createCanonicalSession } from "../../packages/core/src/canonical/canonicalSession";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";

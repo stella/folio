@@ -8,6 +8,10 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
+import {
   cloneDocumentWithParagraphPropertySources,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
@@ -20,10 +24,6 @@ import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import { canonicalJson } from "../utils/canonicalJson";
 import { createEmptyDocument } from "../utils/createDocument";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
