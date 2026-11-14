@@ -158,7 +158,8 @@ type PairOptions = {
  * cut one run of the paragraph reaching past both ends of the deletion
  * (`cutRun`): in the other order that run was never cut, and the deletion
  * leaves one run there. So the deletion joins the run's two pieces again
- * with a seam join at its point. Undefined for every other pair.
+ * with seam joins at its point, whichever leaves meet there. Undefined for
+ * every other pair.
  */
 const rejoinedOverFormat = ({
   op,
@@ -187,14 +188,17 @@ const rejoinedOverFormat = ({
     op.to.offset >= run.to
   )
     return undefined;
+  // Two runs whose meeting leaves are both text merge with those leaves
+  // (depth 2); runs meeting at any other leaf merge as runs alone (depth
+  // 1), which the deeper join, when it applied, leaves with nothing to do.
   return Result.ok([
     op,
-    {
+    ...[2, 1].map((depth) => ({
       type: DOCUMENT_OP_TYPES.JOIN_INLINE,
       at: op.from,
-      depth: 2,
+      depth,
       ifAlike: true,
-    },
+    })),
   ]);
 };
 
