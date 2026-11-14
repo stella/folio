@@ -4,10 +4,11 @@
  * Framework-agnostic store for the editor context-menu state.
  * Extracted from the React `useContextMenu` hook.
  *
- * `openMenu` derives the selection-, table-, and tracked-change-aware menu
- * flags from the live ProseMirror state. The tracked-change flag is passed in
- * by the adapter because its detection currently lives in the React layer; the
- * rest is computed here from core's ProseMirror queries.
+ * `openMenu` derives the selection- and table-aware menu flags from the live
+ * ProseMirror state. The tracked change is the one under the pointer, which
+ * the adapter resolves from the event's position, never from the selection:
+ * a right-click inside a range selection keeps the range, which can start
+ * outside the change the pointer is on.
  */
 
 import type { EditorState } from "prosemirror-state";
@@ -18,7 +19,11 @@ import {
   NO_LIST_NUMBERING_MENU,
 } from "../prosemirror/listNumbering";
 import { Subscribable } from "./Subscribable";
-import type { ContextMenuAnchor, ContextMenuSnapshot } from "./types";
+import type {
+  ContextMenuAnchor,
+  ContextMenuSnapshot,
+  ContextMenuTrackedChange,
+} from "./types";
 
 const CLOSED_STATE: ContextMenuSnapshot = {
   isOpen: false,
@@ -26,7 +31,7 @@ const CLOSED_STATE: ContextMenuSnapshot = {
   hasSelection: false,
   selectionRange: { from: 0, to: 0 },
   cursorInTable: false,
-  cursorInTrackedChange: false,
+  trackedChange: null,
   listNumbering: NO_LIST_NUMBERING_MENU,
 };
 
@@ -39,8 +44,8 @@ export type OpenContextMenuOptions = {
    * `hasSelection` is derived from the ProseMirror selection.
    */
   hasSelectionOverride?: boolean | undefined;
-  /** Whether the cursor sits inside a tracked change (detected by the adapter). */
-  cursorInTrackedChange: boolean;
+  /** The tracked change under the pointer (resolved by the adapter). */
+  trackedChange: ContextMenuTrackedChange | null;
 };
 
 export class ContextMenuManager extends Subscribable<ContextMenuSnapshot> {
@@ -51,11 +56,7 @@ export class ContextMenuManager extends Subscribable<ContextMenuSnapshot> {
   /** Open the menu at `anchor`, deriving menu flags from the editor state. */
   openMenu(
     anchor: ContextMenuAnchor,
-    {
-      state,
-      hasSelectionOverride,
-      cursorInTrackedChange,
-    }: OpenContextMenuOptions,
+    { state, hasSelectionOverride, trackedChange }: OpenContextMenuOptions,
   ): void {
     const selection = state?.selection ?? { from: 0, to: 0 };
     const hasSelection =
@@ -68,7 +69,7 @@ export class ContextMenuManager extends Subscribable<ContextMenuSnapshot> {
       hasSelection,
       selectionRange: { from: selection.from, to: selection.to },
       cursorInTable,
-      cursorInTrackedChange,
+      trackedChange,
       listNumbering: state
         ? listNumberingMenuState(state)
         : NO_LIST_NUMBERING_MENU,

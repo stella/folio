@@ -265,7 +265,7 @@ const unproven = [
   },
 ] as const satisfies readonly DocumentOp[];
 
-test("unproven numbering and unrelated section transforms refuse atomically in either direction", () => {
+test("numbering and section edits pass text edits elsewhere and conflict on their own part", () => {
   for (const op of unproven) {
     for (const reverse of [false, true]) {
       const incoming = batch(reverse ? [insertion] : [insertion, op]);
@@ -277,14 +277,18 @@ test("unproven numbering and unrelated section transforms refuse atomically in e
       const before = structuredClone(incoming);
       const foreignBefore = structuredClone(foreign);
       const transformed = transformBatch(incoming, [foreign]);
-      expect(transformed.isErr()).toBe(true);
-      if (transformed.isOk())
-        throw new TypeError("Unproven transform pair unexpectedly accepted.");
-      expect(transformed.error.reason).toBe(
-        BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+      if (transformed.isErr()) throw transformed.error;
+      expect(transformed.value.ops.at(-1)?.type).toBe(
+        reverse ? insertion.type : op.type,
       );
       deepStrictEqual(incoming, before);
       deepStrictEqual(foreign, foreignBefore);
     }
+    const same = transformBatch(batch([op]), [
+      { ...batch([op]), opId: "foreign", revision: 1 },
+    ]);
+    expect(same.isErr()).toBe(true);
+    if (same.isErr())
+      expect(same.error.reason).toBe(BATCH_REJECTION_REASONS.PART_CONFLICT);
   }
 });

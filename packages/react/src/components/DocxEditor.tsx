@@ -1767,6 +1767,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const {
       loadBuffer,
       loadParsedDocument,
+      heldUnreferencedNotes,
       originalBufferRef,
       loadedDocumentIdentity,
     } = documentLoader;
@@ -2916,9 +2917,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     // Context menu handler
     const handleEditorContextMenu = useCallback(
       (e: React.MouseEvent) => {
+        // The pages opened the menu with the position under the pointer.
+        if (e.defaultPrevented) return;
         e.preventDefault();
         e.stopPropagation();
-        openContextMenu({ x: e.clientX, y: e.clientY });
+        openContextMenu({ x: e.clientX, y: e.clientY }, { pointer: null });
       },
       [openContextMenu],
     );
@@ -3268,10 +3271,25 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     }, [captureFormatPainter, paintFormatToSelection, setFormatPainterMode]);
 
     const handleContextMenu = useCallback(
-      (data: { x: number; y: number; hasSelection: boolean }) => {
-        openContextMenu({ x: data.x, y: data.y }, data.hasSelection);
+      (data: {
+        x: number;
+        y: number;
+        hasSelection: boolean;
+        position: number | null;
+      }) => {
+        const view = getActiveEditorView();
+        openContextMenu(
+          { x: data.x, y: data.y },
+          {
+            hasSelectionOverride: data.hasSelection,
+            pointer:
+              view && data.position !== null
+                ? { state: view.state, position: data.position }
+                : null,
+          },
+        );
       },
-      [openContextMenu],
+      [getActiveEditorView, openContextMenu],
     );
 
     const handleContextMenuClose = closeContextMenu;
@@ -3349,12 +3367,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           },
         );
       }
-      if (contextMenu.cursorInTrackedChange) {
-        // The change at the selection, which the actions resolve.
-        const held = state.activeTrackedChange?.heldByLock ?? {
-          accept: false,
-          reject: false,
-        };
+      if (contextMenu.trackedChange) {
+        // The change under the pointer, which the actions resolve.
+        const held = contextMenu.trackedChange.heldByLock;
         const reason = t("trackedChanges.heldByLock");
         items.push(
           {
@@ -3397,16 +3412,16 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     }, [
       contextMenu.hasSelection,
       contextMenu.cursorInTable,
-      contextMenu.cursorInTrackedChange,
+      contextMenu.trackedChange,
       contextMenu.listNumbering,
       customContextMenuItems,
       readOnly,
-      state.activeTrackedChange?.heldByLock,
       t,
     ]);
 
     const { from: contextSelectionFrom, to: contextSelectionTo } =
       contextMenu.selectionRange;
+    const contextTrackedChange = contextMenu.trackedChange;
     const handleContextMenuAction = useCallback(
       async (action: TextContextAction) => {
         const view = getActiveEditorView();
@@ -3597,8 +3612,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             break;
           }
           case "acceptChange": {
-            const { from, to } = view.state.selection;
-            const range = findChangeAtPosition(view.state, from, to);
+            const range = contextTrackedChange;
+            if (!range) break;
             if (
               resolveCanonicalReviewRange({
                 editor: pagedEditorRef.current?.getEditor(),
@@ -3611,8 +3626,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             break;
           }
           case "rejectChange": {
-            const { from, to } = view.state.selection;
-            const range = findChangeAtPosition(view.state, from, to);
+            const range = contextTrackedChange;
+            if (!range) break;
             if (
               resolveCanonicalReviewRange({
                 editor: pagedEditorRef.current?.getEditor(),
@@ -3650,6 +3665,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         readOnly,
         contextSelectionFrom,
         contextSelectionTo,
+        contextTrackedChange,
         commentDraftMode,
         setAddCommentYPosition,
         setCommentSelectionRange,
@@ -3815,7 +3831,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             // Build the current document from the selected session. A note goes with its
             // reference: one nothing refers to any more is not saved.
             const current = buildCurrentDocument();
-            const doc = current ? withoutUnreferencedNotes(current) : null;
+            const doc = current
+              ? withoutUnreferencedNotes(current, heldUnreferencedNotes())
+              : null;
             if (!doc) {
               return null;
             }
@@ -3929,6 +3947,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       },
       [
         buildCurrentDocument,
+        heldUnreferencedNotes,
         onError,
         originalBufferRef,
         featureFlags,
