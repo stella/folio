@@ -430,7 +430,7 @@
     "postcss-selector-parser": "7.1.6",
     "prosemirror-model": "1.25.12",
     "prosemirror-view": "1.42.9",
-    "seroval": "1.7.5",
+    "seroval": "1.7.10",
     "shell-quote": "1.11.0",
     "source-map-js": "1.2.2",
     "tinypool": "2.2.0",
@@ -2110,7 +2110,7 @@
 
     "serialize-javascript": ["serialize-javascript@7.0.7", "", {}, "sha512-YAy8Od6KV+uuwUuU50np8fGB/Aues6Y0nAhA9y/hId74PlKUcme4pXcBD46NWKr1Q4osN/iseZ17YqO1XfmI8g=="],
 
-    "seroval": ["seroval@1.7.5", "", {}, "sha512-UdNgpHdq0gVpme5JdQF+S3jNscnjFr4NTwUWOc1qcOa8OuWZmbV0+YX2hsqxkUZshBpHnpxDZfAKVZG2ugbrJA=="],
+    "seroval": ["seroval@1.7.10", "", {}, "sha512-6Ya73+E5T7ToU9AJQSAvEt+WsLYfc7jM9C93KVcUGM14REPU9/eLn6Ho6fqBb+QkpjSQMPewWBzxI80WiNl7Mg=="],
 
     "serve-placeholder": ["serve-placeholder@2.0.2", "", { "dependencies": { "defu": "^6.1.4" } }, "sha512-/TMG8SboeiQbZJWRlfTCqMs2DD3SZgWp0kDQePz9yUuCnDfDh/92gf7/PxGhzXTKBIPASIHxFcZndoNbp6QOLQ=="],
 
