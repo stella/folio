@@ -12,6 +12,8 @@ import {
   DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  OP_STORIES,
+  type OpStory,
   type TextPosition,
 } from "../../types";
 import { applyBatch } from "../applyBatch";
@@ -60,22 +62,41 @@ const SAMPLES: readonly RunContent[] = Object.values(LEAVES);
 
 const BLOCK = "00000001";
 
-const documentOf = (content: readonly RunContent[]): Document => ({
-  package: {
+/**
+ * Where the run lies: in the body, or in a footnote when it holds a note's
+ * own reference mark, which the contract keeps to its note's story.
+ */
+const placeOf = (
+  content: readonly RunContent[],
+): { story: OpStory; document: Document } => {
+  const paragraph = {
+    type: "paragraph" as const,
+    paraId: BLOCK,
+    content: [{ type: "run" as const, content: [...content] }],
+  };
+  if (!content.some(({ type }) => type === "noteMarker"))
+    return {
+      story: OP_STORIES.MAIN,
+      document: { package: { document: { content: [paragraph] } } },
+    };
+  return {
+    story: { kind: "footnote", id: 1 },
     document: {
-      content: [
-        {
-          type: "paragraph",
-          paraId: BLOCK,
-          content: [{ type: "run", content: [...content] }],
+      package: {
+        document: {
+          content: [{ type: "paragraph", paraId: "0000000F", content: [] }],
         },
-      ],
+        footnotes: [{ type: "footnote", id: 1, content: [paragraph] }],
+      },
     },
-  },
-});
+  };
+};
 
-const position = ({ offset, zeroWidthBefore }: Gap): TextPosition => ({
-  story: "main",
+const position = (
+  story: OpStory,
+  { offset, zeroWidthBefore }: Gap,
+): TextPosition => ({
+  story,
   blockId: BLOCK,
   offset,
   zeroWidthBefore,
@@ -231,17 +252,17 @@ const rejoined = (forget = false) =>
         deleteTo === undefined
       )
         throw new Error("Four gaps are picked.");
-      const base = documentOf(content);
+      const { story, document: base } = placeOf(content);
       const format = batchOf("format", {
         type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
-        from: position(formatFrom),
-        to: position(formatTo),
+        from: position(story, formatFrom),
+        to: position(story, formatTo),
         patch: { bold: true },
       });
       const deletion = batchOf("deletion", {
         type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-        from: position(deleteFrom),
-        to: position(deleteTo),
+        from: position(story, deleteFrom),
+        to: position(story, deleteTo),
       });
       const formatFirst = inOrder(base, format, deletion, forget);
       const deletionFirst = inOrder(base, deletion, format, forget);
