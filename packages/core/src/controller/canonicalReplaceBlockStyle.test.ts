@@ -190,9 +190,14 @@ const viaCanonicalEngine = async (
       return true;
     },
   });
+  // Injected break: the canonical engine is given the replacement without its style.
+  const broken =
+    operation.type === "replaceBlock"
+      ? { ...operation, styleId: undefined }
+      : operation;
   const result = executor.apply({
     snapshot: createFolioAIEditSnapshot(state.doc),
-    batch: { version: 1, mode, operations: [operation] },
+    batch: { version: 1, mode, operations: [broken] },
   });
   return {
     skipped: result.skipped.map(({ reason }) => reason),
