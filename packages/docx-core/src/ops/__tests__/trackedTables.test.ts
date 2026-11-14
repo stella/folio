@@ -544,39 +544,6 @@ describe("tracked table refusals", () => {
                     ...cell,
                     content: [
                       {
-                        type: "table",
-                        rows: [
-                          {
-                            type: "tableRow",
-                            cells: [
-                              {
-                                type: "tableCell",
-                                content: [makeParagraph("00000030")],
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                      makeParagraph("00000010"),
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        },
-        {
-          value: {
-            ...source,
-            rows: [
-              {
-                ...row,
-                cells: [
-                  {
-                    ...cell,
-                    content: [
-                      {
                         ...makeParagraph("00000010"),
                         pPrMark: { kind: "ins", info: foreign },
                       },
@@ -644,6 +611,54 @@ describe("tracked table refusals", () => {
       }
     },
   );
+
+  test("a suggested table deletion records a nested table through its words", () => {
+    const source = makeTable();
+    const row = source.rows.at(0);
+    const cell = row?.cells.at(0);
+    if (row === undefined || cell === undefined)
+      throw new Error("Fixture has a row and cell.");
+    const value: Table = {
+      ...source,
+      rows: [
+        {
+          ...row,
+          cells: [
+            {
+              ...cell,
+              content: [
+                {
+                  type: "table",
+                  rows: [
+                    {
+                      type: "tableRow",
+                      cells: [
+                        {
+                          type: "tableCell",
+                          content: [makeParagraph("00000030")],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                makeParagraph("00000010"),
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = applied(documentOf([value, makeParagraph("00000002")]), {
+      type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+      story: OP_STORIES.MAIN,
+      blockId: "00000010",
+      revision,
+      newIds,
+    });
+    expect(JSON.stringify(result.document.package.document)).toContain(
+      '"tableRowDeletion"',
+    );
+  });
 
   test("exact review primitives restore cell-ending marks while story-ending mark creation remains refused", () => {
     const value = makeTable();
