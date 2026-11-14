@@ -1,8 +1,11 @@
 import { panic, Result } from "better-result";
 
 import type { Document } from "../../model/document";
+import { storyParagraphs } from "../blocks";
 import { validateOpsDocument } from "../contract";
-import { equalForStaleness } from "../equality";
+import { equalForStaleness, structurallyEqual } from "../equality";
+import { paragraphLength } from "../offsets";
+import { documentStories, findStoryBody } from "../stories";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
@@ -48,11 +51,30 @@ export type ClientNotice = {
  * and history can be transformed over it. `replaced`: a pending batch could not
  * be rebased, or the rebased change would not reach the replayed document, so
  * the change undoes every pending batch, applies what the authority sequenced
- * and replays the survivors; only the document is exact.
+ * and replays the survivors; only the document is exact. When every pending
+ * batch survived and the rebased change reaches a document with the same
+ * paragraphs at the same lengths (the two differ only in how records are cut
+ * or which tracked change holds some content), `moves` is that rebased
+ * change: positions move over it exactly as over a `rebased` one.
  */
-export type ClientDocumentChange = {
-  type: "rebased" | "replaced";
-  batch: SequencedBatch;
+export type ClientDocumentChange =
+  | { type: "rebased"; batch: SequencedBatch }
+  | { type: "replaced"; batch: SequencedBatch; moves?: SequencedBatch };
+
+// Whether two documents hold the same paragraphs, story by story, at the same
+// lengths: a position by paragraph id and offset means the same place in both.
+const sameOffsets = (left: Document, right: Document): boolean => {
+  const shape = (document: Document) =>
+    documentStories(document).map((story) => {
+      const body = findStoryBody(document, story);
+      return body === undefined
+        ? []
+        : storyParagraphs(body).map(({ paragraph }) => [
+            paragraph.paraId,
+            paragraphLength(paragraph),
+          ]);
+    });
+  return structurallyEqual(shape(left), shape(right));
 };
 
 /** Optimistic state with ordered authoritative replay and one causal submission in flight. */
@@ -96,6 +118,7 @@ export const createClient = (
     previousEntries: readonly PendingEntry[],
     sequenced: readonly DocumentOp[],
     source: Pick<SequencedBatch, "opId" | "actor" | "revision">,
+    moves?: SequencedBatch,
   ): ClientDocumentChange => {
     const ops = [
       ...[...previousEntries].reverse().flatMap(({ inverse }) => inverse),
@@ -116,15 +139,25 @@ export const createClient = (
         ops,
         effects: applied.value.effects,
       },
+      ...(moves === undefined ? {} : { moves }),
     };
   };
 
   // A rebased change is trusted only when it lands where the replay did: a
   // transform that does not commute for some pair then costs the history,
-  // never a document that differs from the authority's.
-  const lands = (previous: Document, change: SequencedBatch): boolean => {
+  // never a document that differs from the authority's. Where it lands
+  // short of the replay, positions still follow it when the two documents
+  // hold the same paragraphs at the same lengths.
+  const landing = (
+    previous: Document,
+    change: SequencedBatch,
+  ): "exact" | "offsets" | "elsewhere" => {
     const applied = applyBatch(previous, change.ops);
-    return applied.isOk() && equalForStaleness(applied.value.document, current);
+    if (applied.isErr()) return "elsewhere";
+    if (equalForStaleness(applied.value.document, current)) return "exact";
+    return sameOffsets(applied.value.document, current)
+      ? "offsets"
+      : "elsewhere";
   };
 
   const replay = (): void => {
@@ -345,11 +378,21 @@ export const createClient = (
       actor: entry.batch.actor,
       revision: headRev + 1,
     };
-    return [
-      notices.length === noticesAfterDrop && lands(previous, inverse)
-        ? { type: "rebased", batch: inverse }
-        : replacement(previous, previousEntries, [], source),
-    ];
+    if (notices.length > noticesAfterDrop)
+      return [replacement(previous, previousEntries, [], source)];
+    const landed = landing(previous, inverse);
+    switch (landed) {
+      case "exact":
+        return [{ type: "rebased", batch: inverse }];
+      case "offsets":
+        return [replacement(previous, previousEntries, [], source, inverse)];
+      case "elsewhere":
+        return [replacement(previous, previousEntries, [], source)];
+      default: {
+        const exhaustive: never = landed;
+        return exhaustive;
+      }
+    }
   };
 
   const receiveBroadcast = (
@@ -489,22 +532,45 @@ export const createClient = (
       received.delete(headRev);
       history.set(headRev, next);
       replay();
+      const source = {
+        opId: next.opId,
+        actor: next.actor,
+        revision: next.revision,
+      };
       // An own batch coming back moves nothing the client had not shown.
-      if (
-        notices.length > noticesBefore ||
-        (rebasedRemote !== undefined &&
-          previousEntries.length > 0 &&
-          !lands(previous, rebasedRemote))
-      )
-        changes.push(
-          replacement(previous, previousEntries, next.ops, {
-            opId: next.opId,
-            actor: next.actor,
-            revision: next.revision,
-          }),
-        );
-      else if (rebasedRemote !== undefined)
-        changes.push({ type: "rebased", batch: rebasedRemote });
+      if (notices.length > noticesBefore)
+        changes.push(replacement(previous, previousEntries, next.ops, source));
+      else if (rebasedRemote !== undefined) {
+        const landed =
+          previousEntries.length > 0
+            ? landing(previous, rebasedRemote)
+            : "exact";
+        switch (landed) {
+          case "exact":
+            changes.push({ type: "rebased", batch: rebasedRemote });
+            break;
+          case "offsets":
+            changes.push(
+              replacement(
+                previous,
+                previousEntries,
+                next.ops,
+                source,
+                rebasedRemote,
+              ),
+            );
+            break;
+          case "elsewhere":
+            changes.push(
+              replacement(previous, previousEntries, next.ops, source),
+            );
+            break;
+          default: {
+            const exhaustive: never = landed;
+            return exhaustive;
+          }
+        }
+      }
     }
     return Result.ok(changes);
   };
