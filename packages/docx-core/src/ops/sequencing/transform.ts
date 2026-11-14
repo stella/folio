@@ -31,7 +31,6 @@ import {
   sameParagraph,
 } from "./points";
 import { transformByFootprint } from "./scope";
-import { trackedCutConflict } from "./trackedTransform";
 
 type TransformOptions = { order?: "before" | "after" };
 
@@ -190,9 +189,6 @@ const transformRestoredOp = ({
       "The operation targets a structurally changed block.",
     );
   }
-  // Tracked changes whose recorded cuts depend on the order.
-  const tracked = trackedCutConflict(op, over);
-  if (tracked !== undefined) return tracked;
   // Inline insertions, and inline record splits and joins.
   const inline = transformInlinePair({ op, over, effect, order });
   if (inline !== undefined) return inline;
