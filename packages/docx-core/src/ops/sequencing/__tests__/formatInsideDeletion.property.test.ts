@@ -274,16 +274,20 @@ describe("a direct format inside a concurrent direct deletion", () => {
     propertyTestTimeout(60_000),
   );
 
-  test("a format that records no cut records is caught", () => {
-    const result = fc.check(
-      rejoined(true),
-      // The break is a counterexample on purpose: report nothing.
-      propertyConfig({
-        numRuns: 1,
-        examples: EXAMPLES,
-        reporter: () => undefined,
-      }),
-    );
-    expect(result.failed).toBe(true);
-  });
+  test(
+    "a format that records no cut records is caught",
+    () => {
+      const result = fc.check(
+        rejoined(true),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          numRuns: 1,
+          examples: EXAMPLES,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    },
+    propertyTestTimeout(30_000),
+  );
 });
