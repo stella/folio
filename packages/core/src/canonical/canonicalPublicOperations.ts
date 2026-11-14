@@ -91,6 +91,10 @@ import type {
   FolioAIParagraphIndentation,
   FolioAIParagraphSpacing,
 } from "../ai-edits/types";
+import {
+  findUndefinedOperationReference,
+  styleDefinitionLookup,
+} from "../ai-edits/undefinedReferences";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
 import {
@@ -114,6 +118,7 @@ import {
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { insertedColumnWidth } from "../prosemirror/tableGridMutation";
 import {
   CANONICAL_GAP,
@@ -1575,6 +1580,13 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
     const resolved: ResolvedOperation[] = [];
+    const model = readModel(session.document);
+    const definedStyles = styleDefinitionLookup(
+      createStyleResolver(model.package.styles),
+    );
+    const definedNumberingInstances = new Set(
+      model.package.numbering?.nums.map(({ numId }) => numId) ?? [],
+    );
     const mintList = createBatchListMinter(() => readModel(session.document));
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
@@ -1694,6 +1706,22 @@ export class CanonicalPublicOperations {
           operation.id,
           "unsupportedBlock",
           "This canonical compiler does not support the supplied execution options.",
+        );
+        continue;
+      }
+      // The same reference check the default engine runs, in the same
+      // place: before the operation compiles.
+      const undefinedReference = findUndefinedOperationReference({
+        operation,
+        styles: definedStyles,
+        numberingInstanceIds: definedNumberingInstances,
+        undefinedReferences: "refuse",
+      });
+      if (undefinedReference !== undefined) {
+        skip(
+          operation.id,
+          undefinedReference.reason,
+          undefinedReference.message,
         );
         continue;
       }

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "title": "PINNED seed 60595689: an insertion naming a paragraph style the document does not define is refused",
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 60595689,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3588268621,
+      "atomic": true,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": { "alignment": "center" }
+        }
+      ]
+    },
+    { "action": "add_comment", "seed": 3204621439 },
+    {
+      "action": "story batch",
+      "seed": 677278759,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "412DDC7F",
+          "text": "Second added clause."
+        }
+      ]
+    },
+    { "action": "mistake", "seed": 3076739045 }
+  ],
+  "origin": "shrunk from collisions flow seed 60595689"
+}
