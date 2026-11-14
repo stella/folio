@@ -7,10 +7,6 @@ import type {
   Table,
   TableRow,
 } from "../model/document";
-import {
-  TABLE_CELL_VERTICAL_MERGES,
-  tableCellVerticalMerge,
-} from "../model/tableCellVerticalMerge";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import {
   endsItsContainer,
@@ -39,12 +35,16 @@ import { cloneModel } from "./modelClone";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
-import { tableGrid } from "./tableGrid";
 import {
   locateTableRow,
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
+import {
+  mergeOwnersContinuedBelow,
+  removalOrphansAMerge,
+  rowsWithoutRow,
+} from "./tableRowRemoval";
 import { applyTableOp } from "./tables";
 import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
 import {
@@ -157,6 +157,17 @@ const commitRows = ({
       op: op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       message: "Every row has cells, and every cell has a paragraph.",
+    });
+  }
+  if (
+    op.type === DOCUMENT_OP_TYPES.DELETE_ROW &&
+    removalOrphansAMerge(location.table, rows)
+  ) {
+    return refused({
+      op: op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message:
+        "A removed row hands the merges it starts to the next row with their content.",
     });
   }
   if (
@@ -292,63 +303,6 @@ const commitRows = ({
   });
 };
 
-/**
- * The row after `rowIndex` once that row is removed directly, when the
- * removed row starts a vertical merge the next row continues: the merge then
- * starts in the next row, with the removed cell's properties and content, so
- * the merged cell keeps its words; it is no merge at all when no later row
- * continues it. Content the continuation held stays after the moved content.
- * `undefined` when the removed row starts no merge that continues.
- */
-const withMergesHandedOn = (
-  table: Table,
-  rowIndex: number,
-): TableRow | undefined => {
-  const grid = tableGrid(table, DOCUMENT_OP_TYPES.DELETE_ROW);
-  if (grid.isErr()) return undefined;
-  const removed = grid.value.rows[rowIndex] ?? [];
-  const following = grid.value.rows[rowIndex + 1] ?? [];
-  const later = grid.value.rows[rowIndex + 2] ?? [];
-  const nextRow = table.rows[rowIndex + 1];
-  if (nextRow === undefined) return undefined;
-  let handed = false;
-  const cells = nextRow.cells.map((cell, index) => {
-    const slot = following.find((entry) => entry.index === index);
-    if (
-      slot === undefined ||
-      slot.ownerRow !== rowIndex ||
-      tableCellVerticalMerge(cell.formatting?.vMerge) !==
-        TABLE_CELL_VERTICAL_MERGES.CONTINUE
-    )
-      return cell;
-    const owner = removed.find((entry) => entry.index === slot.ownerIndex);
-    if (owner === undefined) return cell;
-    handed = true;
-    const continues = later.some(
-      (entry) => entry.start === slot.start && entry.ownerRow === rowIndex,
-    );
-    const { vMerge: _vMerge, ...formatting } = owner.cell.formatting ?? {};
-    const held = cell.content.filter(
-      (block) => block.type !== "paragraph" || block.content.length > 0,
-    );
-    const moved = { ...owner.cell, content: [...owner.cell.content, ...held] };
-    if (continues)
-      return {
-        ...moved,
-        formatting: {
-          ...formatting,
-          vMerge: TABLE_CELL_VERTICAL_MERGES.RESTART,
-        },
-      };
-    if (Object.keys(formatting).length === 0) {
-      const { formatting: _formatting, ...plain } = moved;
-      return plain;
-    }
-    return { ...moved, formatting };
-  });
-  return handed ? { ...nextRow, cells } : undefined;
-};
-
 export const applyRowOp = (
   document: Document,
   op: RowOp,
@@ -433,25 +387,28 @@ export const applyRowOp = (
         });
       }
       if (op.revision === undefined) {
-        const next = withMergesHandedOn(location.table, location.rowIndex);
-        rows.splice(
-          location.rowIndex,
-          next === undefined ? 1 : 2,
-          ...(next === undefined ? [] : [next]),
-        );
-      } else {
-        const tracked = trackTableRows({
+        return commitRows({
           document,
           op,
-          rows: [row],
-          revision: op.revision,
-          newIds: op.newIds,
-          kind: WRAP_KINDS.DELETION,
+          location,
+          rows: rowsWithoutRow(location.table, location.rowIndex),
         });
-        if (tracked.isErr()) return Result.err(tracked.error);
-        rows[location.rowIndex] =
-          tracked.value.at(0) ?? panic("A tracked deletion lost its row.");
       }
+      const tracked = trackTableRows({
+        document,
+        op,
+        rows: [row],
+        revision: op.revision,
+        newIds: op.newIds,
+        kind: WRAP_KINDS.DELETION,
+        survivingCells: mergeOwnersContinuedBelow(
+          location.table,
+          location.rowIndex,
+        ),
+      });
+      if (tracked.isErr()) return Result.err(tracked.error);
+      rows[location.rowIndex] =
+        tracked.value.at(0) ?? panic("A tracked deletion lost its row.");
       return commitRows({
         document: document,
         op: op,

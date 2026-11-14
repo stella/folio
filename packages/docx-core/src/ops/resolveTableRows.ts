@@ -16,6 +16,7 @@ import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import { removalOrphansAMerge, rowsWithoutRow } from "./tableRowRemoval";
 import {
   DOCUMENT_OP_TYPES,
   type OpStory,
@@ -636,15 +637,40 @@ export const resolveTableRows = ({
     } as const;
     const located = locateTableRow(current, target);
     if (located.isErr()) return Result.err(located.error);
-    const rows = located.value.table.rows.flatMap((row) => {
-      const change = row.structuralChange;
-      if (change === undefined || !ids.has(change.info.id)) return [row];
+    // A row the decision takes out hands the merges it starts to the next
+    // row, as removing it directly does, so a merged cell keeps its content.
+    const table = located.value.table;
+    const rows = [...table.rows];
+    let rowIndex = 0;
+    while (rowIndex < rows.length) {
+      const row = rows[rowIndex];
+      const change = row?.structuralChange;
+      if (
+        row === undefined ||
+        change === undefined ||
+        !ids.has(change.info.id)
+      ) {
+        rowIndex += 1;
+        continue;
+      }
       const added = change.type === "tableRowInsertion";
-      if (added !== (op.decision === REVISION_DECISIONS.ACCEPT)) return [];
+      if (added !== (op.decision === REVISION_DECISIONS.ACCEPT)) {
+        const remaining = rowsWithoutRow({ ...table, rows }, rowIndex);
+        rows.splice(0, rows.length, ...remaining);
+        continue;
+      }
       const next = { ...row };
       delete next.structuralChange;
-      return [next];
-    });
+      rows[rowIndex] = next;
+      rowIndex += 1;
+    }
+    if (removalOrphansAMerge(table, rows))
+      return Result.err(
+        refusal(
+          op,
+          "A removed row hands the merges it starts to the next row with their content.",
+        ),
+      );
     const applied = applyOps(current, [
       {
         type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
