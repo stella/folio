@@ -778,3 +778,129 @@ describe("suggested operations in the canonical session", () => {
     ]);
   });
 });
+
+describe("a paragraph after one whose mark is pending deletion", () => {
+  /** Every paragraph's words, as resolving every revision leaves them. */
+  const resolvedWords = (
+    editor: ReturnType<typeof setup>,
+    resolution: "accept" | "reject",
+  ) => {
+    const ids = new Set<number>();
+    const visit = (value: unknown): void => {
+      if (typeof value !== "object" || value === null) return;
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      const record = value as Record<string, unknown>;
+      const info = record["info"] as { id?: unknown } | undefined;
+      if (typeof info?.id === "number") ids.add(info.id);
+      for (const child of Object.values(record)) visit(child);
+    };
+    visit(editor.session.document.package.document.content);
+    if (ids.size > 0) {
+      const commit = editor.session
+        .prepareResolve(editor.state(), { revisionIds: [...ids], resolution })
+        .unwrap();
+      expect(editor.publish(commit)).toBe(true);
+    }
+    return createFolioAIEditSnapshot(editor.state().doc)
+      .blocks.map(({ text }) => text)
+      .join("")
+      .replace(/\s+/gu, "");
+  };
+
+  // The first paragraph's mark is deleted or moved away, so in the editing
+  // view the two paragraphs show as one; the second ends the body.
+  const documentOf = (kind: "del" | "moveFrom", text: string) =>
+    ({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "12345678",
+              formatting: { alignment: "center" },
+              pPrMark: {
+                kind,
+                info: {
+                  id: 1,
+                  author: "Earlier",
+                  date: "2026-01-02T03:04:05Z",
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "alpha beta" }],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              paraId: "23456789",
+              formatting: { alignment: "end" },
+              content:
+                text === ""
+                  ? []
+                  : [{ type: "run", content: [{ type: "text", text }] }],
+            },
+          ],
+        },
+      },
+    }) satisfies Document;
+
+  for (const kind of ["del", "moveFrom"] as const)
+    for (const text of ["gamma", ""])
+      describe(`pending as ${kind}, the second ${text === "" ? "empty" : "with words"}`, () => {
+        const deletion = {
+          id: "delete",
+          type: "deleteBlock",
+          blockId: "23456789",
+        } as const;
+
+        test("deleting the second directly applies and undoes exactly", () => {
+          const editor = setup(documentOf(kind, text));
+          const original = editor.session.document;
+          const result = editor.apply([deletion]);
+          expect(result.applied).toHaveLength(1);
+          expect(
+            editor.executor.undo(result.undoHandle ?? panic("Missing handle"))
+              .status,
+          ).toBe("undone");
+          expect(editor.session.document).toEqual(original);
+        });
+
+        test("deleting the second tracked: rejecting restores, accepting matches the direct deletion", () => {
+          const untouched = setup(documentOf(kind, text));
+          const tracked = setup(documentOf(kind, text));
+          expect(
+            tracked.apply([deletion], { mode: "tracked-changes" }).applied,
+          ).toHaveLength(1);
+          expect(resolvedWords(tracked, "reject")).toBe(
+            resolvedWords(untouched, "reject"),
+          );
+          const accepted = setup(documentOf(kind, text));
+          accepted.apply([deletion], { mode: "tracked-changes" });
+          const direct = setup(documentOf(kind, text));
+          expect(direct.apply([deletion]).applied).toHaveLength(1);
+          expect(resolvedWords(accepted, "accept")).toBe(
+            resolvedWords(direct, "accept"),
+          );
+        });
+
+        test("merging the first with the second directly applies and undoes exactly", () => {
+          const editor = setup(documentOf(kind, text));
+          const original = editor.session.document;
+          const result = editor.apply([
+            { id: "merge", type: "mergeBlockWithNext", blockId: "12345678" },
+          ]);
+          expect(result.applied).toHaveLength(1);
+          expect(
+            editor.executor.undo(result.undoHandle ?? panic("Missing handle"))
+              .status,
+          ).toBe("undone");
+          expect(editor.session.document).toEqual(original);
+        });
+      });
+});
