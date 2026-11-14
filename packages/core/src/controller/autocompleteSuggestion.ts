@@ -72,9 +72,35 @@ export const classifyAutocompleteEdit = ({
   if (origin === "remote") return { type: "moved", ops };
   if (origin !== "input") return { type: "other" };
   const [op, ...rest] = ops;
-  return op?.type === DOCUMENT_OP_TYPES.INSERT_TEXT && rest.length === 0
-    ? { type: "typed", at: op.at, text: op.text }
-    : { type: "other" };
+  if (op === undefined || rest.length > 0) return { type: "other" };
+  if (op.type === DOCUMENT_OP_TYPES.INSERT_TEXT)
+    return { type: "typed", at: op.at, text: op.text };
+  // Typing that continues a run's formatting, or a tracked insertion,
+  // inserts a slice of runs holding the typed text.
+  if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT) {
+    const text = sliceText(op.slice.content);
+    if (text !== null) return { type: "typed", at: op.at, text };
+  }
+  return { type: "other" };
+};
+
+/** The text a slice holds, or null when it holds anything but text in runs. */
+const sliceText = (items: readonly unknown[]): string | null => {
+  let text = "";
+  const visit = (nodes: readonly unknown[]): boolean =>
+    nodes.every((node) => {
+      if (typeof node !== "object" || node === null || !("type" in node))
+        return false;
+      if (node.type === "text") {
+        if (!("text" in node) || typeof node.text !== "string") return false;
+        text += node.text;
+        return true;
+      }
+      return "content" in node && Array.isArray(node.content)
+        ? visit(node.content)
+        : false;
+    });
+  return visit(items) ? text : null;
 };
 
 /**
