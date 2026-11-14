@@ -682,3 +682,112 @@ describe("a split seam with nothing left on one side joins nothing", () => {
     expect(atOnce?.[0]).toEqual({ type: "bookmarkEnd", id: 1 });
   });
 });
+
+describe("a boundary kept beside a pending deletion's pieces stays out of the deletion", () => {
+  // Text another reviewer deleted, and a link holding a bookmark inserted in
+  // the middle of it, between the deletion's two pieces.
+  const tracked = (): Document => {
+    const deleted = applyDocumentOp(
+      documentWith([{ type: "run", content: [{ type: "text", text: "aa" }] }]),
+      {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: at,
+        to: { ...at, offset: 2 },
+        newIds: { revision: [800, 801], control: [810, 811] },
+        revision: { id: 1, author: "B", date: "2026-03-04T05:00:01Z" },
+      },
+    );
+    if (deleted.isErr()) throw deleted.error;
+    return insertAt(
+      deleted.value.document,
+      [
+        {
+          type: "hyperlink",
+          rId: "rId9",
+          href: "https://example.org",
+          children: [{ type: "bookmarkStart", id: 1, name: "_Link" }],
+        },
+      ],
+      1,
+    );
+  };
+  const resolveIds = (
+    document: Document,
+    ids: number[],
+    decision: (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS],
+  ): Document => {
+    const applied = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: ids,
+      decision,
+    });
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+  const deletionIds = (document: Document): number[] => {
+    const ids: number[] = [];
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      if (typeof value !== "object" || value === null) return;
+      if (
+        "type" in value &&
+        value.type === "deletion" &&
+        "info" in value &&
+        typeof value.info === "object" &&
+        value.info !== null &&
+        "id" in value.info &&
+        typeof value.info.id === "number"
+      )
+        ids.push(value.info.id);
+      for (const child of Object.values(value)) visit(child);
+    };
+    visit(firstParagraph(document));
+    return ids;
+  };
+  const boundaries = (document: Document) =>
+    JSON.stringify(firstParagraph(document)).match(/"bookmarkStart"/gu) ?? [];
+  const { ACCEPT, REJECT } = REVISION_DECISIONS;
+
+  test("accepting the deletion keeps the bookmark whether the insertion is rejected before or after", () => {
+    const document = tracked();
+    const deletions = deletionIds(document);
+    expect(deletions.length).toBeGreaterThan(0);
+    const rejectedFirst = resolveIds(
+      resolveIds(document, [3], REJECT),
+      deletionIds(resolveIds(document, [3], REJECT)),
+      ACCEPT,
+    );
+    const acceptedFirst = resolveIds(
+      resolveIds(document, deletions, ACCEPT),
+      [3],
+      REJECT,
+    );
+    expect(firstParagraph(rejectedFirst)).toEqual(
+      firstParagraph(acceptedFirst),
+    );
+    expect(boundaries(rejectedFirst)).toHaveLength(1);
+  });
+
+  test("rejecting both keeps the bookmark between the restored text in either order and at once", () => {
+    const document = tracked();
+    const deletions = deletionIds(document);
+    const insertionFirst = resolveIds(
+      resolveIds(document, [3], REJECT),
+      deletionIds(resolveIds(document, [3], REJECT)),
+      REJECT,
+    );
+    const deletionFirst = resolveIds(
+      resolveIds(document, deletions, REJECT),
+      [3],
+      REJECT,
+    );
+    const atOnce = resolveIds(document, [3, ...deletions], REJECT);
+    expect(firstParagraph(insertionFirst)).toEqual(firstParagraph(atOnce));
+    expect(firstParagraph(deletionFirst)).toEqual(firstParagraph(atOnce));
+    expect(boundaries(atOnce)).toHaveLength(1);
+  });
+});
