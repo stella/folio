@@ -1358,32 +1358,22 @@ const create = (
       // A reply's marker follows the owner's one and the markers of the
       // thread's comments that come before it, so concurrent replies land in
       // the same order whichever applies first.
+      // A parent whose range opens or closes between blocks takes no reply,
+      // so the thread's markers all stand in paragraphs.
       const gapAfterThread = (span: StoryAnchorSpan): Gap => {
-        // The thread's markers in the paragraph, at the parent marker's
-        // offset, in document order. A parent marker between blocks stands
-        // after the paragraph's own markers, so its replies' markers lie
-        // before it in the walk.
-        const cluster = anchors.filter((next) => {
+        let gap = span.after;
+        for (const next of anchors.slice(anchors.indexOf(span) + 1)) {
           const id = anchorId(next.node);
-          return (
-            next !== span &&
-            next.betweenBlocks !== true &&
-            id !== undefined &&
-            sameStory(next.story, span.story) &&
-            idKey(next.blockId) === idKey(span.blockId) &&
-            next.before.offset === span.after.offset &&
-            isUnder(id)
-          );
-        });
-        let gap =
-          span.betweenBlocks === true
-            ? (cluster.at(0)?.before ?? span.after)
-            : span.after;
-        for (const next of cluster) {
-          const id = anchorId(next.node);
-          const order = compareGaps(next.before, gap);
-          if (order < 0) continue;
-          if (order !== 0 || id === undefined || !precedes(id)) break;
+          if (
+            next.betweenBlocks === true ||
+            id === undefined ||
+            !sameStory(next.story, span.story) ||
+            idKey(next.blockId) !== idKey(span.blockId) ||
+            compareGaps(next.before, gap) !== 0 ||
+            !isUnder(id) ||
+            !precedes(id)
+          )
+            break;
           gap = next.after;
         }
         return gap;
