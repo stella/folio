@@ -12,6 +12,10 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
+  canonicalCommentBody,
+  compileCanonicalComments,
+} from "../canonical/canonicalComments";
+import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
@@ -21,10 +25,6 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import type { Document, Paragraph } from "../types/document";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
-import {
-  canonicalCommentBody,
-  compileCanonicalComments,
-} from "./canonicalComments";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 

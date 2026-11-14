@@ -51,7 +51,7 @@ const savedDocument = async (page: Page) => {
 test("a nested citation survives a save after a new paragraph", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?session=canonical");
   await page.locator("#file-input").setInputFiles({
     name: "nested-field.docx",
     mimeType:

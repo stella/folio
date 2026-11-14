@@ -36,6 +36,7 @@ type ReturnedExpression = Readonly<{
 
 const canonicalWrapperNames = new Set([
   "withCanonicalCommand",
+  "withCanonicalHistory",
   "withCanonicalParagraphFormatting",
   "withCanonicalStartParagraphFormatting",
 ]);

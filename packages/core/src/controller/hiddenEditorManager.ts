@@ -46,7 +46,13 @@ import {
   sameStory,
 } from "@stll/docx-core/ops";
 
+import {
+  canonicalCommentBody,
+  type CanonicalCommentCommand,
+  compileCanonicalComments,
+} from "../canonical/canonicalComments";
 import { createCanonicalSectionPropertiesOperation } from "../canonical/canonicalOperations";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import { restoreCanonicalSelection } from "../canonical/canonicalSelection";
 import {
   type CanonicalCommit,
@@ -66,7 +72,10 @@ import {
 import type { EditorMode } from "../managers/EditorModeManager";
 import { suppressHiddenEditorScrollToSelection } from "../paged-layout/hiddenEditorScroll";
 import { isReadOnlyEditKey } from "../paged-layout/readOnlyEditAttempt";
-import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import {
+  getCanonicalCommandIntents,
+  getCanonicalHistoryDirection,
+} from "../prosemirror/canonicalCommands";
 import { registerClipboardIntentHandler } from "../prosemirror/clipboardIntent";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import {
@@ -130,13 +139,7 @@ import {
 } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
-import {
-  canonicalCommentBody,
-  type CanonicalCommentCommand,
-  compileCanonicalComments,
-} from "./canonicalComments";
 import { createCanonicalInputBoundary } from "./canonicalInput";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import {
   type CanonicalRoomCollaboration,
   type CanonicalRoomEditor,
@@ -742,6 +745,9 @@ export const createHiddenEditorManager = (
     if (deps.onSessionRefusal) deps.onSessionRefusal(message, ground);
     else throw new CanonicalSessionRefusalError({ ground, message });
   };
+  // The committed version the host last saved, or the one the session opened at.
+  let canonicalSaved:
+    { session: CanonicalSession; version: number } | undefined;
   let offHistoryDrop = (): void => {};
   const leaveRoom = (): void => {
     room?.leave();
@@ -791,6 +797,7 @@ export const createHiddenEditorManager = (
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
+    canonicalSaved = { session: result.value, version: result.value.version };
     offHistoryDrop();
     offHistoryDrop = result.value.onHistoryDrop((drop) =>
       deps.onCanonicalHistoryDrop?.(drop),
@@ -818,6 +825,8 @@ export const createHiddenEditorManager = (
       doc: session.projection.doc,
       plugins: [
         createDocumentNumberingPlugin(document.package.numbering),
+        // The VS Code host still reports its save strategy from this tracker;
+        // pending changes come from the session's own history.
         createParagraphChangeTrackerPlugin(),
         createNativeSelectionRefreshPlugin(),
         createDocumentStyleContextPlugin(
@@ -953,6 +962,9 @@ export const createHiddenEditorManager = (
         (transaction) => view?.dispatch(transaction),
         view,
       );
+    // The registry's undo and redo step the session's journal, as the keys do.
+    const direction = getCanonicalHistoryDirection(command);
+    if (direction !== undefined) return history(direction);
     if (editorSession.session.isComposing) {
       refuse("Composition must finish before formatting.");
       return false;
@@ -1307,20 +1319,24 @@ export const createHiddenEditorManager = (
       if (!view || deps.getReadOnly() || editorSession.type !== "canonical")
         return;
       syncCanonicalMode();
-      const rule = prepareCanonicalAutoformat(
-        editorSession.session,
-        view.state,
-        intent,
-      );
-      const prepared =
-        rule ?? editorSession.session.prepareReplace(view.state, intent);
-      if (prepared.isErr()) {
-        if (prepared.error.reason !== "noChange")
-          refuse(prepared.error.message, prepared.error.ground);
+      const session = editorSession.session;
+      const typed = session.prepareReplace(view.state, intent);
+      if (typed.isErr()) {
+        if (typed.error.reason !== "noChange")
+          refuse(typed.error.message, typed.error.ground);
         return;
       }
-      const session = editorSession.session;
-      if (publishCommit(prepared.value) && rule !== undefined && view !== null)
+      if (!publishCommit(typed.value) || view === null) return;
+      // The rule the typed text completes is a history step of its own, so
+      // undoing it gives back exactly what was typed.
+      const rule = prepareCanonicalAutoformat(session, view.state, intent);
+      if (rule === undefined) return;
+      if (rule.isErr()) {
+        if (rule.error.reason !== "noChange")
+          refuse(rule.error.message, rule.error.ground);
+        return;
+      }
+      if (publishCommit(rule.value) && view !== null)
         lastInputRule = {
           session,
           version: session.version,
@@ -1997,6 +2013,20 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical" &&
       !editorSession.session.isComposing &&
       editorSession.session.version === version,
+    markCanonicalSaved: (version) => {
+      if (editorSession.type === "canonical")
+        canonicalSaved = { session: editorSession.session, version };
+    },
+    // The session's journal is the one source: any committed version other
+    // than the one last saved (or opened) is a pending change, in any story.
+    hasCanonicalPendingChanges: () => {
+      if (editorSession.type !== "canonical") return null;
+      const { session } = editorSession;
+      return (
+        canonicalSaved?.session !== session ||
+        session.version !== canonicalSaved.version
+      );
+    },
     captureCanonicalSave: () =>
       editorSession.type === "canonical"
         ? editorSession.session.captureSaveSnapshot()
@@ -2230,10 +2260,12 @@ export const createHiddenEditorManager = (
         }
       },
       getCanonicalStorySelection: (story) => {
-        if (editorSession.type !== "canonical") return null;
+        if (editorSession.type !== "canonical" || story === OP_STORIES.MAIN)
+          return null;
         const session = editorSession.session;
-        const selection = session.selection;
-        if (!selection) return null;
+        const selection = session.storySelection(story);
+        // Only a text selection is restored as text; the editor keeps others.
+        if (selection?.type !== "text") return null;
         const projection = session.projectStory(story);
         if (projection.isErr()) return null;
         const anchor = projection.value.positionAt(selection.anchor);
@@ -2303,6 +2335,12 @@ export const createHiddenEditorManager = (
         );
         if (index >= 0) storyViews.splice(index, 1);
         storyViews.push({ story, view: storyView });
+        // A stale or composing editor shows no selection the session can hold.
+        if (editorSession.type === "canonical")
+          void editorSession.session.recordStorySelection(
+            storyView.state,
+            story,
+          );
       },
       replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly())

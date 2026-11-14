@@ -92,6 +92,12 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * properties, a join at a section break, a record inside a field.
    */
   readonly UNTRACKABLE: "untrackable";
+  /**
+   * A suggested link change would leave a piece of a link holding only
+   * bookmark or comment markers, or would copy content that names a record of
+   * its own (a drawing, shape, note reference or preserved run markup).
+   */
+  readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
   /** Seed contract: a main-story paragraph has no `paraId`. */
   readonly MISSING_BLOCK_ID: "missingBlockId";
   /** Seed contract: two paragraphs in the package carry one id. */
@@ -185,6 +191,12 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
    * properties, a join at a section break, a record inside a field.
    */
   UNTRACKABLE: "untrackable",
+  /**
+   * A suggested link change would leave a piece of a link holding only
+   * bookmark or comment markers, or would copy content that names a record of
+   * its own (a drawing, shape, note reference or preserved run markup).
+   */
+  UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion",
   /** Seed contract: a main-story paragraph has no `paraId`. */
   MISSING_BLOCK_ID: "missingBlockId",
   /** Seed contract: two paragraphs in the package carry one id. */

@@ -32,11 +32,6 @@ const DIAGNOSTICS = {
     type: "sourceReplayUnavailable",
     part: "word/document.xml",
   },
-  canonicalResourceReplacement: {
-    type: "canonicalResourceReplacement",
-    gap: CANONICAL_GAP.resourceReplacement,
-    part: "word/numbering.xml",
-  },
 } as const satisfies Record<SaveDiagnostic["type"], SaveDiagnostic>;
 
 const PHASES = {

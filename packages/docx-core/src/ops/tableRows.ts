@@ -40,6 +40,11 @@ import {
   tableRowAnchor,
   type TableRowLocation,
 } from "./tableLocation";
+import {
+  mergeOwnersContinuedBelow,
+  removalOrphansAMerge,
+  rowsWithoutRow,
+} from "./tableRowRemoval";
 import { applyTableOp } from "./tables";
 import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
 import {
@@ -152,6 +157,17 @@ const commitRows = ({
       op: op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       message: "Every row has cells, and every cell has a paragraph.",
+    });
+  }
+  if (
+    op.type === DOCUMENT_OP_TYPES.DELETE_ROW &&
+    removalOrphansAMerge(location.table, rows)
+  ) {
+    return refused({
+      op: op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message:
+        "A removed row hands the merges it starts to the next row with their content.",
     });
   }
   if (
@@ -371,20 +387,28 @@ export const applyRowOp = (
         });
       }
       if (op.revision === undefined) {
-        rows.splice(location.rowIndex, 1);
-      } else {
-        const tracked = trackTableRows({
+        return commitRows({
           document,
           op,
-          rows: [row],
-          revision: op.revision,
-          newIds: op.newIds,
-          kind: WRAP_KINDS.DELETION,
+          location,
+          rows: rowsWithoutRow(location.table, location.rowIndex),
         });
-        if (tracked.isErr()) return Result.err(tracked.error);
-        rows[location.rowIndex] =
-          tracked.value.at(0) ?? panic("A tracked deletion lost its row.");
       }
+      const tracked = trackTableRows({
+        document,
+        op,
+        rows: [row],
+        revision: op.revision,
+        newIds: op.newIds,
+        kind: WRAP_KINDS.DELETION,
+        survivingCells: mergeOwnersContinuedBelow(
+          location.table,
+          location.rowIndex,
+        ),
+      });
+      if (tracked.isErr()) return Result.err(tracked.error);
+      rows[location.rowIndex] =
+        tracked.value.at(0) ?? panic("A tracked deletion lost its row.");
       return commitRows({
         document: document,
         op: op,

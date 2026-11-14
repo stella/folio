@@ -11,7 +11,6 @@ export const CANONICAL_GAP = {
   watermark: "watermark-model-edits",
   dispatch: "unclassified-transactions",
   save: "pm-save-projection",
-  resourceReplacement: "canonical-resource-replacement",
   history: "pm-history",
   suggestionPlugin: "pm-suggestion-plugin",
   paragraphTracker: "pm-paragraph-tracker",
@@ -35,8 +34,16 @@ export type CanonicalGap = (typeof CANONICAL_GAP)[keyof typeof CANONICAL_GAP];
  */
 export const CANONICAL_RULE: {
   readonly contentControlLock: "contentControlLock";
+  readonly linkSuggestionShape: "linkSuggestionShape";
 } = {
   contentControlLock: "contentControlLock",
+  /**
+   * A suggested link change cannot leave a piece of a link holding only
+   * bookmark or comment markers, nor copy content that names a record of its
+   * own (a drawing, shape, note reference or preserved run markup). The same
+   * change made directly applies.
+   */
+  linkSuggestionShape: "linkSuggestionShape",
 } as const;
 
 export type CanonicalRule =
@@ -45,8 +52,10 @@ export type CanonicalRule =
 /** The editor message, in the folio catalog, a host shows for a refusal under each rule. */
 export const CANONICAL_RULE_MESSAGE_KEYS: {
   readonly contentControlLock: "editor.contentLocked";
+  readonly linkSuggestionShape: "editor.linkSuggestionUnavailable";
 } = {
   contentControlLock: "editor.contentLocked",
+  linkSuggestionShape: "editor.linkSuggestionUnavailable",
 } as const satisfies Record<CanonicalRule, string>;
 
 /**
@@ -78,7 +87,7 @@ export const canonicalRefusalNotice = (
 
 /**
  * The ground for a refusal: a capability the session does not have yet, or a
- * rule the document states. A host tells "not supported yet" from "not
+ * rule the document or its review records state. A host tells "not supported yet" from "not
  * allowed" by which one is present.
  */
 export type CanonicalRefusalGround =
@@ -118,7 +127,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Hyperlink and TOC suggestions and edits intersecting review identities require serializable wrapper review provenance.";
+    readonly summary: "Link edits cutting a content control, a direction or smart tag wrapper, an equation or a move marker.";
   };
   readonly "tracked-table-structure": {
     readonly owner: "controller";
@@ -167,12 +176,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly kind: "routing";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Legacy save and read paths reconstruct documents from PM.";
-  };
-  readonly "canonical-resource-replacement": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Canonical save refuses existing style, style-default, and media replacements the package writers cannot express.";
   };
   readonly "pm-history": {
     readonly owner: "prosemirror";
@@ -230,7 +233,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public table operations other than a table inserted beside a paragraph require canonical table operation descriptors.";
+    readonly summary: "Public signature tables and tables beside a table need canonical table descriptors.";
   };
   readonly "publicOps.pendingParagraphMarkProperties": {
     readonly owner: "document-operations";
@@ -244,7 +247,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A canonical headless reviewer only reads; its mutations, save and undo remain PM-owned and refuse.";
+    readonly summary: "A canonical headless reviewer edits, resolves and undoes in the body; other stories, suggestions, comment edits and save refuse.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -272,7 +275,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Hyperlink and TOC suggestions and edits intersecting review identities require serializable wrapper review provenance.",
+      "Link edits cutting a content control, a direction or smart tag wrapper, an equation or a move marker.",
   },
   [CANONICAL_GAP.trackedTableStructure]: {
     owner: "controller",
@@ -327,13 +330,6 @@ export const CANONICAL_CAPABILITIES: {
     kind: "routing",
     adapters: ["react", "vue"],
     summary: "Legacy save and read paths reconstruct documents from PM.",
-  },
-  [CANONICAL_GAP.resourceReplacement]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Canonical save refuses existing style, style-default, and media replacements the package writers cannot express.",
   },
   [CANONICAL_GAP.history]: {
     owner: "prosemirror",
@@ -396,7 +392,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Public table operations other than a table inserted beside a paragraph require canonical table operation descriptors.",
+      "Public signature tables and tables beside a table need canonical table descriptors.",
   },
   [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
     owner: "document-operations",
@@ -412,7 +408,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "A canonical headless reviewer only reads; its mutations, save and undo remain PM-owned and refuse.",
+      "A canonical headless reviewer edits, resolves and undoes in the body; other stories, suggestions, comment edits and save refuse.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",

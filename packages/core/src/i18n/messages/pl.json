@@ -341,6 +341,7 @@
       "contentLocked": "Ta część dokumentu jest zablokowana.",
       "editing": "Edytowanie",
       "editingDescription": "Edytuj dokument bezpośrednio",
+      "linkSuggestionUnavailable": "Tej zmiany linku nie można śledzić. Wprowadź ją w trybie Edytowanie albo przenieś komentarz lub zakładkę poza link.",
       "outlineDepthAll": "Wszystkie poziomy",
       "outlineDepthLabel": "Pokaż nagłówki",
       "outlineDepthThree": "Poziomy 1–3",

@@ -15,6 +15,7 @@ import type { EditorView } from "prosemirror-view";
 
 import type { DocumentOp, FormattingPatch, OpStory } from "@stll/docx-core/ops";
 
+import type { CanonicalPublicOperationOptions } from "../canonical/canonicalPublicOperations";
 import type { CanonicalSessionMode } from "../canonical/canonicalSession";
 import type {
   FolioDocumentOperationResult,
@@ -33,7 +34,6 @@ import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
-import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
 
 type CanonicalStoryHistoryOptions = {
   view: EditorView;
@@ -74,6 +74,13 @@ export type HiddenEditorApi = {
   captureCanonicalSave: () => CanonicalSaveSnapshot | null;
   /** A save cannot acknowledge newer edits or an unfinished composition. */
   isCanonicalSaveCurrent: (version: number) => boolean;
+  /** Record that the host saved the canonical session at `version`. */
+  markCanonicalSaved: (version: number) => void;
+  /**
+   * Whether the canonical session holds edits since it opened or was last
+   * saved, from its own journal; null in the default session.
+   */
+  hasCanonicalPendingChanges: () => boolean | null;
   /** Set the explicit mode for an active canonical session. */
   setCanonicalMode: (mode: CanonicalSessionMode) => boolean;
   /** Resolve canonical revisions as one batch and journal its exact inverse. */
@@ -104,6 +111,12 @@ export type HiddenEditorApi = {
   applyCanonicalSectionProperties: (
     patch: FormattingPatch<SectionProperties>,
   ) => CanonicalSectionPropertiesResult | null;
+  /**
+   * Where the editor of a header, footer or note shows its text selection in
+   * the story's current projection: the selection it last reported or
+   * committed, moved over every peer's edit since. Null for the body, before
+   * the editor reported one, and for any other kind of selection.
+   */
   getCanonicalStorySelection: (
     story: OpStory,
   ) => { anchor: number; head: number } | null;
@@ -113,6 +126,7 @@ export type HiddenEditorApi = {
    * The editor a person is working in for `story`: public operations on that
    * story read its state, so its selection maps through them, and publish to
    * it. A later view for the story replaces it; a destroyed one is ignored.
+   * The session records the selection it shows, which peers' edits move.
    */
   noteCanonicalStoryView: (options: {
     story: OpStory;
@@ -160,6 +174,8 @@ export type HiddenEditorApiDeps = {
   getCanonicalDocument?: () => ReadonlyDocument | null;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
+  markCanonicalSaved?: HiddenEditorApi["markCanonicalSaved"];
+  hasCanonicalPendingChanges?: HiddenEditorApi["hasCanonicalPendingChanges"];
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
   resolveCanonicalRevisions?: HiddenEditorApi["resolveCanonicalRevisions"];
   resolveCanonicalSuggestion?: HiddenEditorApi["resolveCanonicalSuggestion"];
@@ -264,6 +280,11 @@ export const createHiddenEditorApi = (
     captureCanonicalSave: () => deps.captureCanonicalSave?.() ?? null,
     isCanonicalSaveCurrent: (version) =>
       deps.isCanonicalSaveCurrent?.(version) ?? false,
+    markCanonicalSaved: (version) => {
+      deps.markCanonicalSaved?.(version);
+    },
+    hasCanonicalPendingChanges: () =>
+      deps.hasCanonicalPendingChanges?.() ?? null,
 
     getCanonicalDocument: () => {
       const canonical = deps.getCanonicalDocument?.();

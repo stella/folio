@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "Ši dokumento dalis užrakinta.",
       "editing": "Redagavimas",
       "editingDescription": "Redaguokite dokumentą tiesiogiai",
+      "linkSuggestionUnavailable": "Šio nuorodos pakeitimo negalima sekti. Atlikite jį redagavimo režimu arba perkelkite komentarą ar žymę už nuorodos ribų.",
       "outlineDepthAll": "Visi lygiai",
       "outlineDepthLabel": "Rodyti antraštes",
       "outlineDepthThree": "1–3 lygiai",

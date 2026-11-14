@@ -6,7 +6,8 @@ import {
   type TaggedErrorClass,
 } from "better-result";
 import { Mark, type Node as PMNode } from "prosemirror-model";
-import type { EditorState } from "prosemirror-state";
+import { EditorState } from "prosemirror-state";
+import { TableMap } from "prosemirror-tables";
 
 import {
   CONTENT_CONTROL_LOCK,
@@ -65,7 +66,21 @@ import {
   hashFolioAIBlockContent,
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
-import { findOutermostTableBoundary } from "../ai-edits/table-targets";
+import type { TableRectangle } from "../ai-edits/table-mutation-plan";
+import {
+  applyTableRowInsertion,
+  describeUnplacedCellTexts,
+  findTableColumnInsertion,
+  findTableRowInsertion,
+  getInsertedPhysicalColumnRows,
+  splitCellParagraphTexts,
+} from "../ai-edits/table-row-column-mutations";
+import {
+  findEnclosingTableCell,
+  findEnclosingTableRow,
+  findOutermostTableBoundary,
+  tableRectangleCutsMergedCell,
+} from "../ai-edits/table-targets";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
@@ -77,12 +92,6 @@ import type {
   FolioAIParagraphSpacing,
 } from "../ai-edits/types";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
-import { lockViolationBetween } from "../canonical/canonicalLockGuard";
-import {
-  type CanonicalCommit,
-  type CanonicalProjection,
-  type CanonicalSession,
-} from "../canonical/canonicalSession";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
 import {
   type ApplyFolioDocumentOperationsOptions,
@@ -99,11 +108,13 @@ import {
   withDistinctSuggestionIds,
 } from "../document-operations";
 import { expectTableAttrs } from "../prosemirror/attrs";
+import { tableAnchor } from "../prosemirror/canonicalTableCommands";
 import {
   standaloneTableRowsFromProseMirror,
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
+import { insertedColumnWidth } from "../prosemirror/tableGridMutation";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -119,6 +130,12 @@ import {
   canonicalCommentBody,
   compileCanonicalComments,
 } from "./canonicalComments";
+import { lockViolationBetween } from "./canonicalLockGuard";
+import {
+  type CanonicalCommit,
+  type CanonicalProjection,
+  type CanonicalSession,
+} from "./canonicalSession";
 
 type CanonicalPublicOperationRefusal = NonNullable<
   FolioAIEditSkippedOperation["canonicalRefusal"]
@@ -140,13 +157,13 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   readonly commentOnRange: "compile";
   readonly insertTable: "compile";
   readonly insertSignatureTable: "publicOps.tableStructure";
-  readonly deleteTable: "publicOps.tableStructure";
-  readonly insertTableRow: "publicOps.tableStructure";
-  readonly deleteTableRow: "publicOps.tableStructure";
-  readonly insertTableColumn: "publicOps.tableStructure";
-  readonly deleteTableColumn: "publicOps.tableStructure";
-  readonly mergeTableCells: "publicOps.tableStructure";
-  readonly splitTableCell: "publicOps.tableStructure";
+  readonly deleteTable: "compile";
+  readonly insertTableRow: "compile";
+  readonly deleteTableRow: "compile";
+  readonly insertTableColumn: "compile";
+  readonly deleteTableColumn: "compile";
+  readonly mergeTableCells: "compile";
+  readonly splitTableCell: "compile";
 } = {
   replaceInBlock: "compile",
   replaceRange: "compile",
@@ -162,13 +179,13 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   commentOnRange: "compile",
   insertTable: "compile",
   insertSignatureTable: CANONICAL_GAP.publicTableStructure,
-  deleteTable: CANONICAL_GAP.publicTableStructure,
-  insertTableRow: CANONICAL_GAP.publicTableStructure,
-  deleteTableRow: CANONICAL_GAP.publicTableStructure,
-  insertTableColumn: CANONICAL_GAP.publicTableStructure,
-  deleteTableColumn: CANONICAL_GAP.publicTableStructure,
-  mergeTableCells: CANONICAL_GAP.publicTableStructure,
-  splitTableCell: CANONICAL_GAP.publicTableStructure,
+  deleteTable: "compile",
+  insertTableRow: "compile",
+  deleteTableRow: "compile",
+  insertTableColumn: "compile",
+  deleteTableColumn: "compile",
+  mergeTableCells: "compile",
+  splitTableCell: "compile",
 } as const satisfies Record<
   FolioDocumentOperation["type"],
   "compile" | CanonicalGap
@@ -750,6 +767,457 @@ const resolveTableInsertion = ({
   });
 };
 
+/** A paragraph of the table's own that addresses a table edit, by its id. */
+const tableBlockAddress = (
+  projection: CanonicalProjection,
+  row: { table: PMNode; tableStart: number },
+): string | undefined => {
+  const at = tableAnchor({
+    map: TableMap.get(row.table),
+    table: row.table,
+    tableStart: row.tableStart,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  });
+  const addressed = at === undefined ? undefined : projection.addressAt(at);
+  return addressed === undefined || addressed.isErr()
+    ? undefined
+    : addressed.value.blockId;
+};
+
+/**
+ * A new cell's paragraphs from its text: a line break starts a new
+ * paragraph, as in a new row's cells.
+ */
+const cellParagraphs = (text: string): Paragraph[] =>
+  splitCellParagraphTexts(text).map((line) => ({
+    type: "paragraph",
+    content: line === "" ? [] : [{ type: "run", content: inlineText(line) }],
+  }));
+
+/** The table offsets of the cells the rectangle covers, a merged one once per slot. */
+const cellsIn = (map: TableMap, rectangle: TableRectangle): number[] => {
+  const cells: number[] = [];
+  for (let row = rectangle.top; row < rectangle.bottom; row += 1)
+    for (let column = rectangle.left; column < rectangle.right; column += 1) {
+      const offset = map.map[row * map.width + column];
+      if (offset !== undefined) cells.push(offset);
+    }
+  return cells;
+};
+
+/** Whether a cell the rectangle covers is a slot its row omits. */
+const holdsOmittedSlot = (
+  table: PMNode,
+  map: TableMap,
+  rectangle: TableRectangle,
+) => {
+  for (let row = rectangle.top; row < rectangle.bottom; row += 1)
+    for (let column = rectangle.left; column < rectangle.right; column += 1) {
+      const offset = map.map[row * map.width + column];
+      const cell = offset === undefined ? null : table.nodeAt(offset);
+      if (cell === null || cell.attrs["_omittedGridSlot"] != null) return true;
+    }
+  return false;
+};
+
+/**
+ * Whether the rectangle is one column of one-cell rows, every cell below
+ * the first holding nothing but empty paragraphs: the merge a suggestion
+ * records, as merge state alone.
+ */
+const mergesDownOverEmptyCells = (
+  table: PMNode,
+  map: TableMap,
+  rectangle: TableRectangle,
+) => {
+  if (rectangle.right - rectangle.left !== 1) return false;
+  for (let row = rectangle.top; row < rectangle.bottom; row += 1) {
+    const offset = map.map[row * map.width + rectangle.left];
+    const cell = offset === undefined ? null : table.nodeAt(offset);
+    if (offset === undefined || cell === null) return false;
+    const rect = map.findCell(offset);
+    if (rect.top !== row || rect.bottom !== row + 1) return false;
+    if (row === rectangle.top) continue;
+    let empty = true;
+    cell.forEach((child) => {
+      if (!child.isTextblock || child.content.size > 0) empty = false;
+    });
+    if (!empty) return false;
+  }
+  return true;
+};
+
+type TableStructureOperation = Extract<
+  FolioDocumentOperation,
+  {
+    type:
+      | "deleteTable"
+      | "insertTableRow"
+      | "deleteTableRow"
+      | "insertTableColumn"
+      | "deleteTableColumn"
+      | "mergeTableCells"
+      | "splitTableCell";
+  }
+>;
+
+const isTableStructureOperation = (
+  operation: FolioDocumentOperation,
+): operation is TableStructureOperation =>
+  operation.type === "deleteTable" ||
+  operation.type === "insertTableRow" ||
+  operation.type === "deleteTableRow" ||
+  operation.type === "insertTableColumn" ||
+  operation.type === "deleteTableColumn" ||
+  operation.type === "mergeTableCells" ||
+  operation.type === "splitTableCell";
+
+type ResolveTableStructureOptions = {
+  operation: TableStructureOperation;
+  paragraph: ProjectedParagraph;
+  projection: CanonicalProjection;
+  story: OpStory;
+  refusal: (
+    reason: FolioAIEditSkipReason,
+    message?: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
+  /** Whether the batch records its changes as suggestions. */
+  tracked: boolean;
+  /** Resolve another paragraph the operation names, in the same story. */
+  paragraphOf: (blockId: string) => ProjectedParagraph | undefined;
+  /** The default engine skips an operation whose block is in no table alike. */
+  notInTable: () => Result<never, CanonicalPublicOperationResolutionError>;
+  /** A skip the default engine gives alike: no capability is missing. */
+  skipAlike: (
+    reason: FolioAIEditSkipReason,
+    message: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
+};
+
+/**
+ * A table, row or column change, addressed through the paragraph the
+ * operation names, as the table edit the editor's own command lowers to. The
+ * table it acts on is the innermost one holding that paragraph, as in the
+ * default engine. A new row is the row the default engine builds
+ * (`applyTableRowInsertion`, from the row beside it and the cell texts),
+ * read off the table it leaves; the engine records it, tracked or not.
+ */
+const resolveTableStructure = ({
+  operation,
+  paragraph,
+  projection,
+  story,
+  refusal,
+  tracked,
+  paragraphOf,
+  notInTable,
+  skipAlike,
+}: ResolveTableStructureOptions) => {
+  const { doc } = projection;
+  const blockFrom = paragraph.start - 1;
+  const row = findEnclosingTableRow(doc, blockFrom);
+  if (row === null) return notInTable();
+  const resolved = (intent: EditorIntent, from: number, to: number) =>
+    Result.ok({
+      type: "plain" as const,
+      operation,
+      intents: [intent],
+      normalizations: [],
+      from,
+      to,
+    });
+  switch (operation.type) {
+    case "deleteTable":
+      return resolved(
+        {
+          type: "tableBlock",
+          operation: {
+            type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+            story,
+            blockId: paragraph.blockId,
+          },
+        },
+        row.tablePosition,
+        row.tablePosition + row.table.nodeSize,
+      );
+    case "deleteTableRow":
+      return resolved(
+        {
+          type: "tableRow",
+          operation: {
+            type: DOCUMENT_OP_TYPES.DELETE_ROW,
+            story,
+            blockId: paragraph.blockId,
+          },
+        },
+        // The whole row: an edit inside it in the same batch overlaps.
+        row.rowPosition,
+        row.rowPosition + row.table.child(row.rowIndex).nodeSize,
+      );
+    case "deleteTableColumn": {
+      const cell = findEnclosingTableCell(doc, blockFrom);
+      if (cell === null) return notInTable();
+      const map = TableMap.get(row.table);
+      // The whole table: column indices of one table shift with each
+      // deletion, so another edit of that table in the batch overlaps.
+      const table = {
+        from: row.tablePosition,
+        to: row.tablePosition + row.table.nodeSize,
+      };
+      // Removing a table's only column removes the table.
+      if (map.width === 1)
+        return resolved(
+          {
+            type: "tableBlock",
+            operation: {
+              type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+              story,
+              blockId: paragraph.blockId,
+            },
+          },
+          table.from,
+          table.to,
+        );
+      const column = {
+        left: cell.leftColumnIndex,
+        right: cell.leftColumnIndex + 1,
+      };
+      // The table is addressed by a paragraph the deletion keeps, as the
+      // editor's column deletion addresses it.
+      const at = tableAnchor(
+        {
+          map,
+          table: row.table,
+          tableStart: row.tableStart,
+          ...column,
+          top: 0,
+          bottom: 0,
+        },
+        column,
+      );
+      const addressed = at === undefined ? undefined : projection.addressAt(at);
+      if (addressed === undefined || addressed.isErr())
+        return refusal("unsupportedBlock");
+      const address = addressed.value;
+      return resolved(
+        {
+          type: "table",
+          operation: {
+            type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+            story,
+            blockId: address.blockId,
+            column: cell.leftColumnIndex,
+          },
+        },
+        table.from,
+        table.to,
+      );
+    }
+    case "insertTableColumn": {
+      const insertion = findTableColumnInsertion({
+        doc,
+        blockFrom,
+        position: operation.position ?? "after",
+      });
+      if (insertion === null) return notInTable();
+      const overflow = describeUnplacedCellTexts({
+        cellTexts: operation.cellTexts,
+        capacity: getInsertedPhysicalColumnRows(
+          TableMap.get(row.table),
+          row.table,
+          insertion.columnIndex,
+        ).length,
+        target: "column",
+      });
+      if (overflow !== null) return refusal("payloadDoesNotFit", overflow);
+      const blockId = tableBlockAddress(projection, row);
+      if (blockId === undefined) return refusal("unsupportedBlock");
+      const intent: EditorIntent = {
+        type: "table",
+        operation: {
+          type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+          story,
+          blockId,
+          column: insertion.columnIndex,
+          // The neighbour's width, as the default engine gives it; a table
+          // that states no grid keeps none, whatever the width.
+          width: insertedColumnWidth(row.table, insertion.columnIndex) ?? 1,
+        },
+        ...(operation.cellTexts === undefined
+          ? {}
+          : { cellContent: operation.cellTexts.map(cellParagraphs) }),
+      };
+      return resolved(
+        intent,
+        row.tablePosition,
+        row.tablePosition + row.table.nodeSize,
+      );
+    }
+    case "mergeTableCells": {
+      const start = findEnclosingTableCell(doc, blockFrom);
+      if (start === null) return notInTable();
+      const map = TableMap.get(row.table);
+      let rectangle: TableRectangle;
+      if (operation.rowCount === undefined) {
+        const end = paragraphOf(operation.endBlockId);
+        if (end === undefined) return refusal("missingBlock");
+        const corner = findEnclosingTableCell(doc, end.start - 1);
+        if (corner === null || corner.tablePosition !== start.tablePosition)
+          return skipAlike(
+            "unsupportedBlock",
+            "The merge's corners are not in one table.",
+          );
+        rectangle = {
+          left: Math.min(start.leftColumnIndex, corner.leftColumnIndex),
+          top: Math.min(start.topRowIndex, corner.topRowIndex),
+          right: Math.max(start.rightColumnIndex, corner.rightColumnIndex),
+          bottom: Math.max(start.bottomRowIndex, corner.bottomRowIndex),
+        };
+      } else {
+        rectangle = {
+          left: start.leftColumnIndex,
+          top: start.topRowIndex,
+          right: start.rightColumnIndex,
+          bottom: start.topRowIndex + operation.rowCount,
+        };
+        if (
+          rectangle.right - rectangle.left !== 1 ||
+          rectangle.bottom > map.height ||
+          operation.rowCount < 2
+        )
+          return skipAlike(
+            "unsupportedBlock",
+            "A merge down takes one column and rows the table has.",
+          );
+      }
+      if (
+        rectangle.right - rectangle.left === 1 &&
+        rectangle.bottom - rectangle.top === 1
+      )
+        return skipAlike(
+          "noopOperation",
+          "A merge of one cell changes nothing.",
+        );
+      if (
+        tableRectangleCutsMergedCell(map, rectangle) ||
+        holdsOmittedSlot(row.table, map, rectangle)
+      )
+        return skipAlike(
+          "unsupportedBlock",
+          "The merge would cut a merged cell or a slot its row omits.",
+        );
+      if (new Set(cellsIn(map, rectangle)).size < 2)
+        return skipAlike(
+          "unsupportedBlock",
+          "The merge covers a single merged cell.",
+        );
+      // A suggestion records a merge down over empty cells; a merge that
+      // moves content between cells has no tracked form.
+      if (tracked && !mergesDownOverEmptyCells(row.table, map, rectangle))
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested merge takes one column over empty cells.",
+        );
+      const blockId = tableBlockAddress(projection, row);
+      if (blockId === undefined) return refusal("unsupportedBlock");
+      return resolved(
+        {
+          type: "table",
+          operation: {
+            type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+            story,
+            blockId,
+            ...rectangle,
+          },
+        },
+        row.tablePosition,
+        row.tablePosition + row.table.nodeSize,
+      );
+    }
+    case "splitTableCell": {
+      const cell = findEnclosingTableCell(doc, blockFrom);
+      if (cell === null) return notInTable();
+      if (
+        cell.rightColumnIndex - cell.leftColumnIndex === 1 &&
+        cell.bottomRowIndex - cell.topRowIndex === 1
+      )
+        return skipAlike(
+          "noopOperation",
+          "A one-row, one-column cell has nothing to split.",
+        );
+      // The cell is addressed by its own paragraph, the merge's first.
+      return resolved(
+        {
+          type: "table",
+          operation: {
+            type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+            story,
+            blockId: paragraph.blockId,
+          },
+        },
+        row.tablePosition,
+        row.tablePosition + row.table.nodeSize,
+      );
+    }
+    case "insertTableRow": {
+      const side = operation.position ?? "after";
+      const insertion = findTableRowInsertion({
+        doc,
+        blockFrom,
+        position: side,
+      });
+      if (insertion === null) return notInTable();
+      const overflow = describeUnplacedCellTexts({
+        cellTexts: operation.cellTexts,
+        capacity: insertion.cells.length,
+        target: "row",
+      });
+      if (overflow !== null) return refusal("payloadDoesNotFit", overflow);
+      const built = applyTableRowInsertion({
+        tr: EditorState.create({ doc }).tr,
+        insertion,
+        cellTexts: operation.cellTexts,
+        revision: null,
+      });
+      if (built.type !== "applied") return refusal("unsupportedBlock");
+      const table = built.transaction.doc.nodeAt(
+        built.transaction.mapping.map(row.tablePosition, -1),
+      );
+      if (table === null || table.type.name !== "table")
+        return refusal("unsupportedBlock");
+      const index = side === "before" ? row.rowIndex : row.rowIndex + 1;
+      const inserted = standaloneTableRowsFromProseMirror(table)[index];
+      if (inserted === undefined) return refusal("unsupportedBlock");
+      const {
+        structuralChange: _structuralChange,
+        propertyChanges: _propertyChanges,
+        ...plain
+      } = inserted;
+      return resolved(
+        {
+          type: "tableRow",
+          operation: {
+            type: DOCUMENT_OP_TYPES.INSERT_ROW,
+            story,
+            blockId: paragraph.blockId,
+            at: index,
+            row: plain,
+          },
+        },
+        insertion.rowPosition,
+        insertion.rowPosition,
+      );
+    }
+    default: {
+      const unreachable: never = operation;
+      return unreachable;
+    }
+  }
+};
+
 /**
  * The operations a canonical suggestion can carry: the default engine's;
  * splits and merges, which the canonical session records as tracked paragraph
@@ -971,8 +1439,12 @@ const CanonicalPublicOperationResolutionErrorBase: TaggedErrorClass<"CanonicalPu
 class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationResolutionErrorBase<{
   message: string;
   reason: FolioAIEditSkipReason;
-  /** The capability the refusal waits for, when it is not the compiler's inline one. */
-  gap?: CanonicalGap;
+  /**
+   * The capability the refusal waits for, when it is not the compiler's
+   * inline one; `null` for an operation the default engine skips alike, such
+   * as a row operation whose block is in no table.
+   */
+  gap?: CanonicalGap | null;
 }> {}
 
 type ResolveCanonicalPublicOperationOptions = {
@@ -1134,10 +1606,12 @@ export class CanonicalPublicOperations {
       error: CanonicalPublicOperationResolutionError,
     ) => {
       const gap =
-        error.gap ??
-        (error.reason === "unsupportedBlock"
-          ? CANONICAL_GAP.publicUnsupportedInline
-          : undefined);
+        error.gap === null
+          ? undefined
+          : (error.gap ??
+            (error.reason === "unsupportedBlock"
+              ? CANONICAL_GAP.publicUnsupportedInline
+              : undefined));
       if (gap !== undefined) refusals.set(id, { gap });
       skip(id, error.reason, error.message);
     };
@@ -1931,6 +2405,16 @@ export class CanonicalPublicOperations {
           gap: CANONICAL_GAP.publicTableStructure,
         }),
       );
+    const skipAlike = (reason: FolioAIEditSkipReason, message: string) =>
+      Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason,
+          message,
+          gap: null,
+        }),
+      );
+    const notInTable = () =>
+      skipAlike("unsupportedBlock", "The block is not in a table.");
     switch (operation.type) {
       case "replaceInBlock":
       case "replaceRange":
@@ -1945,6 +2429,13 @@ export class CanonicalPublicOperations {
       case "insertAfterBlock":
       case "insertBeforeBlock":
       case "insertTable":
+      case "deleteTable":
+      case "insertTableRow":
+      case "deleteTableRow":
+      case "insertTableColumn":
+      case "deleteTableColumn":
+      case "mergeTableCells":
+      case "splitTableCell":
         break;
       default:
         return refusal(
@@ -1997,6 +2488,21 @@ export class CanonicalPublicOperations {
     const followed =
       state.doc.resolve(paragraph.start + paragraph.node.content.size + 1)
         .nodeAfter?.type.name === "paragraph";
+    if (isTableStructureOperation(operation))
+      return resolveTableStructure({
+        operation,
+        paragraph,
+        projection: projection.value,
+        story,
+        refusal,
+        tracked,
+        paragraphOf: (id) =>
+          Object.hasOwn(options.snapshot.anchors, id)
+            ? projection.value.paragraph(id)
+            : undefined,
+        notInTable,
+        skipAlike,
+      });
     if (operation.type === "insertTable")
       return resolveTableInsertion({
         operation,

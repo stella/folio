@@ -179,7 +179,7 @@ const noChange = (message: string) =>
 /**
  * What the session says for an intent the compiler or the engine refused. A
  * change the engine cannot record belongs to the capability that would record
- * it: review provenance for hyperlinks, and the tracked table records for a
+ * it: a link edit cutting markup folio does not model, and the tracked table records for a
  * suggested row, column or table change. Every other refusal is unclassified.
  */
 const intentRefusal = (
@@ -189,6 +189,15 @@ const intentRefusal = (
 ) => {
   if (reason === DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE)
     return noChange(message);
+  // The suggestion's shape is one review records cannot hold: a rule, not a gap.
+  if (reason === DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION)
+    return Result.err(
+      new CanonicalSessionError({
+        ground: { rule: CANONICAL_RULE.linkSuggestionShape },
+        message,
+        reason: "refused",
+      }),
+    );
   if (reason !== DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE)
     return refuse(message);
   let gap: CanonicalGap;
@@ -656,7 +665,7 @@ class CanonicalProjection {
   }
 
   selectionAt(
-    state: EditorState,
+    state: Pick<EditorState, "doc" | "selection">,
   ): Result<CanonicalSelection, CanonicalSessionError> {
     const selection = state.selection;
     let type: CanonicalSelection["type"];
@@ -1617,7 +1626,15 @@ type StageOptions = {
   stagedApplied?: AppliedDocumentOp;
   story?: OpStory;
   previousProjection?: CanonicalProjection;
-  onPublish: (inverse: readonly DocumentOp[], version: number) => void;
+  /**
+   * `shown` is the selection the published projection holds, read back from
+   * it, so history restores exactly what this publish showed.
+   */
+  onPublish: (
+    inverse: readonly DocumentOp[],
+    version: number,
+    shown: CanonicalSelection,
+  ) => void;
   /** A remote commit's sequenced id; a local commit mints a fresh one. */
   opId?: string;
 };
@@ -1678,9 +1695,10 @@ type CachedStoryProjection = {
   projection: CanonicalProjection;
 };
 
-const storyProjectionKey = (
-  story: Exclude<OpStory, typeof OP_STORIES.MAIN>,
-): string => {
+/** A header, footer, footnote or endnote: a story with its own editor. */
+export type CanonicalSecondaryStory = Exclude<OpStory, typeof OP_STORIES.MAIN>;
+
+const storyProjectionKey = (story: CanonicalSecondaryStory): string => {
   switch (story.kind) {
     case "header":
     case "footer":
@@ -1711,6 +1729,13 @@ class CanonicalSession {
   private readonly sourceOwners = new Map<string, Paragraph>();
   private readonly storyProjections = new Map<string, CachedStoryProjection>();
   private currentSelection: CanonicalSelection | null = null;
+  /**
+   * The selection the editor of each header, footer or note last showed,
+   * keyed by story. Its editor records it whenever it changes, an edit in the
+   * story commits it, and every peer's edit moves it with the text, as the
+   * body's selection moves.
+   */
+  private readonly storySelections = new Map<string, CanonicalSelection>();
   private readonly applied: AppliedJournalGroup[] = [];
   private groupingBoundary = 0;
   private lifecycle: { type: "committed" } | { type: "composing" } = {
@@ -2018,6 +2043,37 @@ class CanonicalSession {
   get selection(): CanonicalSelection | null {
     return this.currentSelection;
   }
+  /**
+   * Record the selection the editor of a header, footer or note shows, so a
+   * peer's edit to the story moves it with the text (`storySelection`). The
+   * state must show the story's current projection.
+   */
+  recordStorySelection(
+    state: EditorState,
+    story: CanonicalSecondaryStory,
+  ): Result<void, CanonicalSessionError> {
+    const projected = this.projectStory(story);
+    if (projected.isErr()) return projected;
+    const projection = projected.value;
+    if (state.doc !== projection.doc && !state.doc.eq(projection.doc))
+      return refuse("The story editor shows a stale canonical projection.");
+    const selection = projection.selectionAt(state);
+    // A selection the session cannot hold (a node selection on a note's
+    // mark) replaces the one held before, so nothing restores that one.
+    if (selection.isErr()) {
+      this.storySelections.delete(storyProjectionKey(story));
+      return selection;
+    }
+    this.storySelections.set(storyProjectionKey(story), selection.value);
+    return Result.ok(undefined);
+  }
+  /**
+   * The selection the editor of `story` last recorded or committed, moved
+   * over every peer's edit since; null before its editor recorded one.
+   */
+  storySelection(story: CanonicalSecondaryStory): CanonicalSelection | null {
+    return this.storySelections.get(storyProjectionKey(story)) ?? null;
+  }
   /** Every paragraph identity this session has read or minted, live or retired. */
   get reservedBlockIds(): ReadonlySet<string> {
     return this.allocatedBlockIds;
@@ -2267,7 +2323,7 @@ class CanonicalSession {
       ...(compiled.value.applied === undefined
         ? {}
         : { stagedApplied: compiled.value.applied }),
-      onPublish: (inverse, version) => {
+      onPublish: (inverse, version, shown) => {
         const entry = {
           type: "applied",
           ops,
@@ -2280,13 +2336,13 @@ class CanonicalSession {
         } as const satisfies AppliedJournalEntry;
         if (group !== undefined && joins) {
           group.entries.push(entry);
-          group.postSelection = postSelection;
+          group.postSelection = shown;
         } else {
           this.applied.push({
             entries: [entry],
             undo: { type: "entries" },
             preSelection: preSelection.value,
-            postSelection,
+            postSelection: shown,
           });
         }
         this.undone.length = 0;
@@ -2381,22 +2437,6 @@ class CanonicalSession {
       edits.push(imported.value);
     }
     for (const intent of intents) {
-      if (
-        this.mode.type === "suggesting" &&
-        (intent.type === "setHyperlink" ||
-          intent.type === "removeHyperlink" ||
-          intent.type === "insertHyperlink" ||
-          intent.type === "generateTOC")
-      ) {
-        return Result.err(
-          new CanonicalSessionError({
-            ground: { gap: CANONICAL_GAP.trackedHyperlinkResolution },
-            reason: "refused",
-            message:
-              "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
-          }),
-        );
-      }
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
@@ -2414,7 +2454,27 @@ class CanonicalSession {
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
-      if (intent.type === "generateTOC") {
+      if (
+        this.mode.type === "suggesting" &&
+        (intent.type === "setHyperlink" || intent.type === "removeHyperlink")
+      ) {
+        // The struck text keeps its place and each changed copy follows it,
+        // so the selection runs from its start to the end of the last copy.
+        postSelection = {
+          type: "text",
+          anchor: intent.from,
+          head: compiled.value.selection,
+        };
+      } else if (
+        this.mode.type === "suggesting" &&
+        intent.type === "generateTOC"
+      ) {
+        postSelection = {
+          type: "text",
+          anchor: compiled.value.selection,
+          head: compiled.value.selection,
+        };
+      } else if (intent.type === "generateTOC") {
         const mapping = {
           at: intent.at,
           after: compiled.value.selection,
@@ -2482,13 +2542,13 @@ class CanonicalSession {
       origin: "input",
       history: "opened",
       ...(stagedApplied === undefined ? {} : { stagedApplied }),
-      onPublish: (inverse, version) => {
+      onPublish: (inverse, version, shown) => {
         const entry = {
           type: "applied",
           ops,
           inverse,
           preSelection: preSelection.value,
-          postSelection,
+          postSelection: shown,
           preDocument,
           postDocument: this.currentDocument,
           version,
@@ -2502,7 +2562,7 @@ class CanonicalSession {
           entries: [entry],
           undo: { type: "entries" },
           preSelection: preSelection.value,
-          postSelection,
+          postSelection: shown,
         });
         this.undone.length = 0;
       },
@@ -2875,7 +2935,7 @@ class CanonicalSession {
       selection: postSelection,
       origin: "input",
       history: "opened",
-      onPublish: (inverse, version) => {
+      onPublish: (inverse, version, shown) => {
         this.applied.push({
           entries: [
             {
@@ -2883,7 +2943,7 @@ class CanonicalSession {
               ops: preparedOps,
               inverse,
               preSelection: selected.value,
-              postSelection,
+              postSelection: shown,
               preDocument,
               postDocument: this.currentDocument,
               version,
@@ -2896,7 +2956,7 @@ class CanonicalSession {
           ],
           undo: { type: "entries" },
           preSelection: selected.value,
-          postSelection,
+          postSelection: shown,
         });
         this.undone.length = 0;
       },
@@ -2990,6 +3050,23 @@ class CanonicalSession {
       story,
     });
     const history = this.rebasedHistory(change, selection);
+    // Each header, footer and note selection moves with the text as well.
+    const storySelections = [...this.storySelections].flatMap(([key, held]) =>
+      findStoryBody(applied.value.document, held.head.story) === undefined
+        ? []
+        : [
+            [
+              key,
+              remoteSelection({
+                selection: held,
+                over: change.batch,
+                previous: this.currentDocument,
+                document: applied.value.document,
+                story: held.head.story,
+              }),
+            ] as const,
+          ],
+    );
     return this.stage({
       state,
       story,
@@ -3001,6 +3078,16 @@ class CanonicalSession {
       previousProjection: projected.value,
       opId: change.batch.opId,
       onPublish: () => {
+        this.storySelections.clear();
+        for (const [key, moved] of storySelections)
+          this.storySelections.set(key, moved);
+        // A batch shown in a story's own editor keeps the selection it shows.
+        const shownStory = selection.head.story;
+        if (
+          shownStory !== OP_STORIES.MAIN &&
+          findStoryBody(applied.value.document, shownStory) !== undefined
+        )
+          this.storySelections.set(storyProjectionKey(shownStory), selection);
         this.applied.splice(0, this.applied.length, ...history.applied);
         this.undone.splice(0, this.undone.length, ...history.undone);
         this.breakUndoGroup();
@@ -3345,6 +3432,14 @@ class CanonicalSession {
           "Canonical history cannot restore the selected inline atom.",
         );
     }
+    // A position the projection cannot place falls back near the old caret,
+    // so history keeps the selection read back from what is shown.
+    const read =
+      sameStory(selection.anchor.story, projectedStory) &&
+      sameStory(selection.head.story, projectedStory)
+        ? projected.value.selectionAt(transaction)
+        : undefined;
+    const shown = read !== undefined && read.isOk() ? read.value : selection;
     // The transaction now ends on a document equal to the projection.
     const held = projected.value.heldAs(transaction.doc);
     const heldBody =
@@ -3409,6 +3504,17 @@ class CanonicalSession {
           });
         }
         this.currentSelection = selection;
+        const selectedStory = selection.head.story;
+        if (selectedStory !== OP_STORIES.MAIN)
+          this.storySelections.set(
+            storyProjectionKey(selectedStory),
+            selection,
+          );
+        for (const [key, kept] of this.storySelections)
+          if (
+            findStoryBody(applied.value.document, kept.head.story) === undefined
+          )
+            this.storySelections.delete(key);
         this.currentDocument = applied.value.document;
         this.currentProjection = heldBody;
         if (leaseJudgement?.type === "allowed")
@@ -3437,7 +3543,7 @@ class CanonicalSession {
         )
           this.saveStructure = "changed";
         this.currentVersion = baseVersion + 1;
-        onPublish(applied.value.inverse, this.currentVersion);
+        onPublish(applied.value.inverse, this.currentVersion, shown);
         const committed: CanonicalCommittedBatch = {
           opId: opId ?? this.newOpId(),
           ops,

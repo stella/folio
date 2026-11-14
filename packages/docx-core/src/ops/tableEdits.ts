@@ -261,6 +261,11 @@ const hasStructuralMarkup = (table: Table) =>
       row.carrierStack !== undefined ||
       row.contentControls !== undefined,
   );
+/** A cell holding one paragraph with nothing in it. */
+const isEmptyCell = (cell: TableCell) =>
+  cell.content.length === 1 &&
+  cell.content[0]?.type === "paragraph" &&
+  cell.content[0].content.length === 0;
 const hasReview = (table: Table) =>
   table.formatting?.gridChange !== undefined ||
   table.propertyChanges !== undefined ||
@@ -784,8 +789,12 @@ const merge = ({
   if (fresh.isErr()) return Result.err(fresh.error);
   const first = selected.at(0)?.at(0);
   if (first === undefined) return mismatch(op, "No cells are selected.");
-  const content = selected.flatMap((row) =>
-    row.flatMap(({ cell }) => cell.content),
+  // A cell holding one empty paragraph gives the merged cell nothing; the
+  // first cell's content stays when it holds any, or when no cell does.
+  const merged = selected.flatMap((row) => row.map(({ cell }) => cell));
+  const holding = merged.filter((cell) => !isEmptyCell(cell));
+  const content = (holding.length === 0 ? [first.cell] : holding).flatMap(
+    (cell) => cell.content,
   );
   const mergedCellWidth = mergedWidth(
     selected.at(0)?.map(({ cell }) => cell) ?? [],
@@ -864,17 +873,14 @@ const split = ({
         cell.ownerIndex === target.ownerIndex,
     ),
   );
-  if (group.length > 1)
-    return mismatch(
-      op,
-      "Splitting a cell inside a vertical merge is unsupported.",
-    );
+  // A vertical merge splits into its rows' own cells, each of which keeps
+  // its content and identity, as a span splits into its columns.
   const span = target.end - target.start;
-  if (span === 1)
+  if (span === 1 && group.length === 1)
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
-      message: "A one-cell, one-column split would not change the table.",
+      message: "A one-row, one-column cell has nothing to split.",
     });
   if (
     group.some(({ cell }) => {
@@ -996,17 +1002,12 @@ export const tableEditParagraphDemand = (
             cell.ownerIndex === target.ownerIndex,
         ),
       );
-      if (group.length > 1)
-        return mismatch(
-          op,
-          "Splitting a cell inside a vertical merge is unsupported.",
-        );
       const span = target.end - target.start;
-      if (span === 1)
+      if (span === 1 && group.length === 1)
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
-          message: "A one-cell, one-column split would not change the table.",
+          message: "A one-row, one-column cell has nothing to split.",
         });
       const height = group.length;
       return Result.ok(height * (span - 1));
