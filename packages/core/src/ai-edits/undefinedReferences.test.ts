@@ -4,7 +4,7 @@
  * with the same message, and leave the document as it was.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -14,6 +14,7 @@ import {
 } from "../document-operations";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { FolioDocxReviewer } from "./headless";
+import * as undefinedReferences from "./undefinedReferences";
 
 const FIXTURE = path.join(
   import.meta.dir,
@@ -135,5 +136,38 @@ describe("undefined style and numbering references", () => {
         expect(outcomes[1]).toEqual(outcomes[0]);
       });
     }
+  }
+});
+
+// The refusal must come from the shared check: with it turned off, the
+// canonical engine applies the operation and the refusal above would fail.
+test("turning the shared check off lets the canonical engine apply an undefined style", async () => {
+  const original = { ...undefinedReferences };
+  await mock.module("./undefinedReferences", () => ({
+    ...original,
+    findUndefinedOperationReference: () => undefined,
+  }));
+  try {
+    const reviewer = await open(await ingested(), "canonical");
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "op-1",
+            type: "insertAfterBlock",
+            blockId: firstParagraphId(reviewer),
+            text: "x",
+            styleId: "NoSuchStyle",
+          },
+        ],
+      },
+      { undefinedReferences: "refuse" },
+    );
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toHaveLength(1);
+  } finally {
+    await mock.module("./undefinedReferences", () => original);
   }
 });
