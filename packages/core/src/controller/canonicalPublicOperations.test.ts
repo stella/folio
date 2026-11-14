@@ -778,3 +778,242 @@ describe("suggested operations in the canonical session", () => {
     ]);
   });
 });
+
+describe("a paragraph after one whose mark is pending deletion", () => {
+  /** Every paragraph's words, as resolving every revision leaves them. */
+  const resolvedWords = (
+    editor: ReturnType<typeof setup>,
+    resolution: "accept" | "reject",
+  ) => {
+    const ids = new Set<number>();
+    const visit = (value: unknown): void => {
+      if (typeof value !== "object" || value === null) return;
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      const record = value as Record<string, unknown>;
+      const info = record["info"] as { id?: unknown } | undefined;
+      if (typeof info?.id === "number") ids.add(info.id);
+      for (const child of Object.values(record)) visit(child);
+    };
+    visit(editor.session.document.package.document.content);
+    if (ids.size > 0) {
+      const commit = editor.session
+        .prepareResolve(editor.state(), { revisionIds: [...ids], resolution })
+        .unwrap();
+      expect(editor.publish(commit)).toBe(true);
+    }
+    return createFolioAIEditSnapshot(editor.state().doc)
+      .blocks.map(({ text }) => text)
+      .join("")
+      .replace(/\s+/gu, "");
+  };
+
+  // The first paragraph's mark is deleted or moved away, so in the editing
+  // view the two paragraphs show as one; the second ends the body.
+  const documentOf = (kind: "del" | "moveFrom", text: string) =>
+    ({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "12345678",
+              formatting: { alignment: "center" },
+              pPrMark: {
+                kind,
+                info: {
+                  id: 1,
+                  author: "Earlier",
+                  date: "2026-01-02T03:04:05Z",
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "alpha beta" }],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              paraId: "23456789",
+              formatting: { alignment: "end" },
+              content:
+                text === ""
+                  ? []
+                  : [{ type: "run", content: [{ type: "text", text }] }],
+            },
+          ],
+        },
+      },
+    }) satisfies Document;
+
+  for (const kind of ["del", "moveFrom"] as const)
+    for (const text of ["gamma", ""])
+      describe(`pending as ${kind}, the second ${text === "" ? "empty" : "with words"}`, () => {
+        const deletion = {
+          id: "delete",
+          type: "deleteBlock",
+          blockId: "23456789",
+        } as const;
+
+        test("deleting the second directly applies and undoes exactly", () => {
+          const editor = setup(documentOf(kind, text));
+          const original = editor.session.document;
+          const result = editor.apply([deletion]);
+          expect(result.applied).toHaveLength(1);
+          expect(
+            editor.executor.undo(result.undoHandle ?? panic("Missing handle"))
+              .status,
+          ).toBe("undone");
+          expect(editor.session.document).toEqual(original);
+        });
+
+        if (text === "")
+          test("deleting the empty second tracked records nothing", () => {
+            // No words to mark deleted, and the mark before it already is.
+            const editor = setup(documentOf(kind, text));
+            const original = editor.session.document;
+            const result = editor.apply([deletion], {
+              mode: "tracked-changes",
+            });
+            expect(result.skipped.map(({ reason }) => reason)).toEqual([
+              "noopOperation",
+            ]);
+            expect(editor.session.document).toEqual(original);
+          });
+        else
+          test("deleting the second tracked: rejecting restores, accepting matches the direct deletion", () => {
+            const untouched = setup(documentOf(kind, text));
+            const tracked = setup(documentOf(kind, text));
+            expect(
+              tracked.apply([deletion], { mode: "tracked-changes" }).applied,
+            ).toHaveLength(1);
+            expect(resolvedWords(tracked, "reject")).toBe(
+              resolvedWords(untouched, "reject"),
+            );
+            const accepted = setup(documentOf(kind, text));
+            accepted.apply([deletion], { mode: "tracked-changes" });
+            const direct = setup(documentOf(kind, text));
+            expect(direct.apply([deletion]).applied).toHaveLength(1);
+            expect(resolvedWords(accepted, "accept")).toBe(
+              resolvedWords(direct, "accept"),
+            );
+          });
+      });
+});
+
+describe("a paragraph the session holds no address in", () => {
+  // A text box's paragraph belongs to its shape, not to the body story.
+  const document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "12345678",
+            content: [
+              {
+                type: "run",
+                content: [{ type: "text", text: "The box restates it. " }],
+              },
+              {
+                type: "run",
+                content: [
+                  {
+                    type: "shape",
+                    shape: {
+                      type: "shape",
+                      shapeType: "textBox",
+                      id: "box",
+                      size: { width: 2_000_000, height: 800_000 },
+                      textBody: {
+                        content: [
+                          {
+                            type: "paragraph",
+                            paraId: "34567890",
+                            content: [
+                              {
+                                type: "run",
+                                content: [
+                                  { type: "text", text: "Boxed note." },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          { type: "paragraph", paraId: "23456789", content: [] },
+        ],
+      },
+    },
+  } satisfies Document;
+
+  const operations = [
+    {
+      id: "insertAfterBlock",
+      type: "insertAfterBlock",
+      blockId: "34567890",
+      text: "Added note.",
+    },
+    {
+      id: "insertBeforeBlock",
+      type: "insertBeforeBlock",
+      blockId: "34567890",
+      text: "Added note.",
+    },
+    {
+      id: "replaceInBlock",
+      type: "replaceInBlock",
+      blockId: "34567890",
+      find: "Boxed",
+      replace: "Framed",
+    },
+    { id: "deleteBlock", type: "deleteBlock", blockId: "34567890" },
+  ] as const satisfies readonly FolioDocumentOperation[];
+
+  for (const mode of ["direct", "tracked-changes"] as const)
+    for (const operation of operations)
+      test(`${operation.type} refuses under a typed gap, ${mode}`, () => {
+        const editor = setup(document);
+        // A reader lists the paragraph, so the operation names a block that exists.
+        expect(
+          editor.snapshot().blocks.some(({ id }) => id === "34567890"),
+        ).toBe(true);
+        const original = editor.session.document;
+        const result = editor.apply([operation], { mode });
+        expect(result.applied).toEqual([]);
+        expect(
+          result.skipped.map(({ reason, canonicalRefusal }) => ({
+            reason,
+            gap: canonicalRefusal?.gap,
+          })),
+        ).toEqual([
+          { reason: "unsupportedBlock", gap: "publicOps.unsupportedInline" },
+        ]);
+        expect(editor.session.document).toEqual(original);
+      });
+
+  test("a block no reader lists is still missing", () => {
+    const editor = setup(document);
+    const result = editor.apply([
+      {
+        id: "insertAfterBlock",
+        type: "insertAfterBlock",
+        blockId: "7FFFFFF0",
+        text: "Added note.",
+      },
+    ]);
+    expect(result.skipped.map(({ reason }) => reason)).toEqual([
+      "missingBlock",
+    ]);
+  });
+});

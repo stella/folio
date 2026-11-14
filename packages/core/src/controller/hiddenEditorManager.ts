@@ -50,6 +50,7 @@ import { createCanonicalSectionPropertiesOperation } from "../canonical/canonica
 import { restoreCanonicalSelection } from "../canonical/canonicalSelection";
 import {
   type CanonicalCommit,
+  type CanonicalHistoryDrop,
   type CanonicalHistoryEffect,
   type CanonicalSession,
   CanonicalSessionError,
@@ -594,6 +595,11 @@ export type HiddenEditorManagerDeps = {
    * undo stack.
    */
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
+  /**
+   * A peer's edit left local history steps unusable; for a host that
+   * mirrors the steps, how many it dropped from the bottom of each stack.
+   */
+  onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
   getEditingMode?: () => EditorMode;
   getSuggestionAuthor?: () => string;
   onSessionRefusal?: (
@@ -736,6 +742,7 @@ export const createHiddenEditorManager = (
     if (deps.onSessionRefusal) deps.onSessionRefusal(message, ground);
     else throw new CanonicalSessionRefusalError({ ground, message });
   };
+  let offHistoryDrop = (): void => {};
   const leaveRoom = (): void => {
     room?.leave();
     room = undefined;
@@ -784,6 +791,10 @@ export const createHiddenEditorManager = (
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
+    offHistoryDrop();
+    offHistoryDrop = result.value.onHistoryDrop((drop) =>
+      deps.onCanonicalHistoryDrop?.(drop),
+    );
     canonicalSessionEpoch += 1;
     modeOverride = null;
     syncCanonicalMode();

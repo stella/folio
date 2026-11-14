@@ -57,14 +57,17 @@ export const buildCanonicalRoomBridge = (
       return found;
     },
     /**
-     * The session's body and comments as JSON: the same string in every tab
-     * that applied the same journal.
+     * The session's body, comments and notes as JSON: the same string in
+     * every tab that applied the same journal.
      */
     document: (): string | null => {
       const document = getEditor()?.getCanonicalDocument();
       if (!document) return null;
       const { content, comments = [] } = document.package.document;
-      return JSON.stringify(withoutMintedIds({ content, comments }));
+      const { footnotes = [], endnotes = [] } = document.package;
+      return JSON.stringify(
+        withoutMintedIds({ content, comments, footnotes, endnotes }),
+      );
     },
     comments: () =>
       getEditor()

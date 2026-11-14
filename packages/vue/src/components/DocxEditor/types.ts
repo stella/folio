@@ -19,7 +19,10 @@ import type {
   FolioReviewChange,
   FolioUndefinedReferencePolicy,
 } from "@stll/folio-core/ai-edits";
-import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
+import type {
+  CanonicalHistoryDrop,
+  CanonicalHistoryEffect,
+} from "@stll/folio-core/canonical/canonicalSession";
 import type {
   ContentControlFilter,
   SetContentControlContentInput,
@@ -330,6 +333,13 @@ export type DocxEditorProps = {
    * ref.
    */
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
+  /**
+   * With the canonical session: called when a peer's edit in a canonical
+   * room left local history steps unusable, with how many of each stack it
+   * dropped, counted from the bottom. A host that mirrors the steps in its
+   * own undo stack removes as many.
+   */
+  onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
   /**
    * Fires when the live ProseMirror view is captured (or torn down). The host
    * wires this to drive the AI suggestion overlay (decoration meta, apply,
