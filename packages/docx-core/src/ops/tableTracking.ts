@@ -7,6 +7,7 @@ import {
   type DocumentBody,
   MAX_REVISION_ID,
   type Paragraph,
+  type Table,
   type TableCell,
   type TableRow,
   type TrackedChangeInfo,
@@ -123,7 +124,38 @@ const trackableInline = (nodes: readonly InlineNode[]): boolean =>
     }
   });
 
-/** Nested tables, captured blocks and moves have no tracked-row construction. */
+/**
+ * A nested table records a suggestion through the words in its cells, as the
+ * row holding it records it: its own rows and cells need nothing a row
+ * suggestion cannot carry.
+ */
+const trackableTable = (table: Table): boolean =>
+  table.preserved === undefined &&
+  table.bookmarks === undefined &&
+  table.carrierStack === undefined &&
+  (table.propertyChanges?.length ?? 0) === 0 &&
+  table.rows.every(
+    (row) =>
+      row.structuralChange === undefined &&
+      row.preserved === undefined &&
+      row.bookmarks === undefined &&
+      row.contentControls === undefined &&
+      row.carrierStack === undefined &&
+      row.cells.every(
+        (cell) =>
+          cell.structuralChange === undefined &&
+          (cell.propertyChanges?.length ?? 0) === 0 &&
+          cell.contentControls === undefined &&
+          cell.carrierStack === undefined &&
+          trackableBlocks(cell.content),
+      ),
+  );
+
+/**
+ * Captured blocks, section breaks and moves have no tracked-row
+ * construction. Bookmark and comment boundaries hold no words to mark, and
+ * a nested table records the suggestion through its words.
+ */
 const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
   blocks.every((block) => {
     switch (block.type) {
@@ -138,11 +170,13 @@ const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
       case "blockCustomXml":
         return trackableBlocks(block.content);
       case "table":
-      case "preservedBlock":
+        return trackableTable(block);
       case "bookmarkStart":
       case "bookmarkEnd":
       case "commentRangeStart":
       case "commentRangeEnd":
+        return true;
+      case "preservedBlock":
       case "moveFromRangeStart":
       case "moveFromRangeEnd":
       case "moveToRangeStart":
@@ -233,7 +267,9 @@ export const trackTableRows = ({
           (cell) =>
             cell.structuralChange !== undefined ||
             (cell.propertyChanges?.length ?? 0) > 0 ||
-            cell.contentControls !== undefined ||
+            // A content control around a deleted cell goes with its row.
+            (cell.contentControls !== undefined &&
+              kind !== WRAP_KINDS.DELETION) ||
             cell.carrierStack !== undefined ||
             (!survivingCells.has(cell) && !trackableBlocks(cell.content)),
         ),
@@ -245,7 +281,7 @@ export const trackTableRows = ({
       message: rows.some((row) =>
         row.cells.some((cell) => holdsTable(cell.content)),
       )
-        ? "A suggestion cannot yet record a row that holds a nested table."
+        ? "A suggestion cannot record a nested table that holds captured markup or review records."
         : "The rows contain an unsupported tracked structure.",
     });
   }
