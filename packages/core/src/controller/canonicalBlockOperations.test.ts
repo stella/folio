@@ -15,6 +15,7 @@ import type { FolioDocumentOperation } from "../ai-edits";
 import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/apply";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
@@ -23,7 +24,6 @@ import {
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseDocx } from "../docx/parser";
 import { schema } from "../prosemirror/schema";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
