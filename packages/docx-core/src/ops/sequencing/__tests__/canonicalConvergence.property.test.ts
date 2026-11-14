@@ -969,6 +969,13 @@ describe("canonical sequencing", () => {
         NUM_RUNS,
       );
       expect(counts.pairs.typingTyping.accepted).toBeGreaterThan(0);
+      // Measurement only: print the pair counts and typing refusals.
+      expect({
+        typing: counts.pairs,
+        refusals: counts.typingRefusals,
+        rebased: counts.rebased,
+        proven: counts.proven,
+      }).toEqual({});
       expect(counts.typingRefusals).toEqual([]);
       expect(counts.proven).toBeGreaterThan(0);
     },
@@ -1001,6 +1008,13 @@ describe("canonical sequencing", () => {
       expect(
         TYPING_PAIR_KINDS.filter((kind) => counts.pairs[kind].accepted === 0),
       ).toEqual([]);
+      // Measurement only: print the pair counts and typing refusals.
+      expect({
+        mixed: counts.pairs,
+        refusals: counts.typingRefusals,
+        rebased: counts.rebased,
+        proven: counts.proven,
+      }).toEqual({});
       expect(counts.typingRefusals).toEqual([]);
     },
     propertyTestTimeout(180_000),
