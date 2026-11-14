@@ -1,5 +1,12 @@
 # @stll/folio-nuxt
 
+## 0.4.8
+
+### Patch Changes
+
+- Updated dependencies [[`e535690`](https://github.com/stella/folio/commit/e535690d6f25f5f20f45a952a6e1e12020d186ce), [`5e8f4fc`](https://github.com/stella/folio/commit/5e8f4fc1592ef3fe29e6076e9cf16305e441cc74), [`f0a4643`](https://github.com/stella/folio/commit/f0a4643f5dd0bc1dee6b70e11973daec910eaf28), [`4fdd329`](https://github.com/stella/folio/commit/4fdd32901ffd192e9031015e9783d26066ab6072), [`fbd8288`](https://github.com/stella/folio/commit/fbd8288eb600d7cc9e68f38007340906be97044e), [`81fbd40`](https://github.com/stella/folio/commit/81fbd4009b684bb742aa546ac8b950235f80c1f2), [`310b4d1`](https://github.com/stella/folio/commit/310b4d1aa35f6af6f2eec1a0b96f161bd49a01b3), [`6a909b6`](https://github.com/stella/folio/commit/6a909b696a74285339bfad1ff8832f7f8658d645), [`18a8580`](https://github.com/stella/folio/commit/18a85802e24393becf6ce52827474712e4621298), [`23229cc`](https://github.com/stella/folio/commit/23229ccc27efeeb571d2d532dd14bcb32c5a9752), [`29c388f`](https://github.com/stella/folio/commit/29c388fa62102e3f2eade93a5b7582e3c61262ea), [`1212c0b`](https://github.com/stella/folio/commit/1212c0bcb7b03c585300b72fead8cdb95518048c), [`36fcfa0`](https://github.com/stella/folio/commit/36fcfa0cabd5202423049254ad57e7225edf1389), [`76c535f`](https://github.com/stella/folio/commit/76c535f54056197ffa2916026867ebc6c1b689e4), [`92ce1e9`](https://github.com/stella/folio/commit/92ce1e943a2c450221ba145f3af2807876231c0e), [`42c58ae`](https://github.com/stella/folio/commit/42c58ae8cdd7d7da1970265e85791aa8a8809606), [`f06880c`](https://github.com/stella/folio/commit/f06880c12f60cf05ee84f9096fc65821ef9039f0), [`863c79e`](https://github.com/stella/folio/commit/863c79ec7cc3a1f346b298a81b293521daa0aea7)]:
+  - @stll/folio-vue@0.29.0
+
 ## 0.4.7
 
 ### Patch Changes
