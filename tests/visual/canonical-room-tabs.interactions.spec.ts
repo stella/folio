@@ -271,6 +271,9 @@ for (const adapter of adapters) {
 
     const firstNote = await openFootnote(first);
     const secondNote = await openFootnote(second);
+    // The first tab's caret sits in its footnote while the peer types there.
+    await firstNote.click();
+    await first.keyboard.press("End");
 
     // The second tab types in the footnote the first tab has open.
     await secondNote.click();
