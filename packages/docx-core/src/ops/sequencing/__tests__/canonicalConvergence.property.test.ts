@@ -663,8 +663,17 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       // an insertion against a deletion's range is the typing and deletion
       // class, and a hard inline split or join (rejoining or cutting a
       // record exactly) the record cutting class, each with rules of its own.
-      for (const op of restoredOps(opsAtRefusal(batch, tail)))
-        for (const other of restoredOps(refusing)) {
+      // The refusal names operation types only: when an excluded operation
+      // of a named type is among them, it may be the one refused.
+      const atRefusal = restoredOps(opsAtRefusal(batch, tail));
+      const remoteOps = restoredOps(refusing);
+      const excluded = (op: DocumentOp): boolean =>
+        holdsPreconditions(op) || cutsRecordsExactly(op);
+      const ambiguous = [...atRefusal, ...remoteOps].some(
+        (op) => (op.type === opType || op.type === overType) && excluded(op),
+      );
+      for (const op of ambiguous ? [] : atRefusal)
+        for (const other of remoteOps) {
           const kind = trackedTransform.trackedOrderPair(op, other);
           const named =
             (op.type === opType && other.type === overType) ||
