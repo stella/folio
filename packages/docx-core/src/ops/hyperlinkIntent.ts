@@ -397,13 +397,19 @@ const linkSegments = (
   for (const span of leafSpans(paragraph.content)) {
     const { ancestors, before, after } = span;
     const linked = ancestors.some(({ type }) => type === "hyperlink");
+    // Setting a link changes text in a run, also inside a content control
+    // or wrapper, as the direct edit links it there.
     const changes =
       linked ||
       (intent.type === "setHyperlink" &&
         ancestors.some(({ type }) => type === "run") &&
         ancestors.every(
           ({ type }) =>
-            type === "run" || type === "insertion" || type === "moveTo",
+            type === "run" ||
+            type === "insertion" ||
+            type === "moveTo" ||
+            type === "inlineSdt" ||
+            type === "inlineWrapper",
         ));
     if (
       after.offset <= start.offset ||
