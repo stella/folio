@@ -136,7 +136,7 @@ const viaDefaultEngine = async (
   const result = reviewer.applyOperations([operation], { mode });
   return {
     skipped: result.skipped.map(({ reason }) => reason),
-    refusals: result.issues.flatMap(({ canonicalRefusal }) =>
+    refusals: result.skipped.flatMap(({ canonicalRefusal }) =>
       canonicalRefusal === undefined ? [] : [canonicalRefusal],
     ),
     bytes: await reviewer.toBuffer(),
