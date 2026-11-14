@@ -281,7 +281,7 @@ test("every range intent handles AllSelection and restores exact undo redo", () 
   );
 });
 
-test("generated hyperlink command histories, made directly and suggested, preserve targets, bookmarks, probes and exact inverse", async () => {
+test("generated hyperlink command histories preserve targets, bookmarks, probes and exact inverse", async () => {
   await assertProperty(
     fc.asyncProperty(
       fc.boolean(),
@@ -424,7 +424,7 @@ test("generated hyperlink command histories, made directly and suggested, preser
     ),
     {
       numRuns: 15,
-      id: "generated hyperlink command histories, made directly and suggested, preserve targets, bookmarks, probes and exact inverse",
+      id: "generated hyperlink command histories preserve targets, bookmarks, probes and exact inverse",
     },
   );
 });

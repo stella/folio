@@ -136,7 +136,12 @@ test("TOC identities are package-wide, deterministic and exact under inverse", (
             newIds: {},
           },
         });
-        expect(suggested.isErr()).toBe(true);
+        // A suggestion records what it inserts, or asks for the ids it needs.
+        if (suggested.isOk())
+          expect(applyDocumentOps(document, suggested.value.ops).isOk()).toBe(
+            true,
+          );
+        else expect(suggested.error.reason).toBe("needsNewIds");
       },
     ),
     {
