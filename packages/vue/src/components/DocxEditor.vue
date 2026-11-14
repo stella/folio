@@ -1684,8 +1684,8 @@ function handleInsertTOCAction(): void {
 // the horizontal + vertical rulers (showRuler); the page-setup dialog reuses
 // handlePageSetupApply. Margin / page-size writes mutate section properties
 // directly (no PM transaction), so they notify the host through `onChange` here;
-// indent / tab-stop edits dispatch PM commands and already notify via the
-// transaction pipeline.
+// indent / tab-stop edits run through the view's command owner and already
+// notify via the transaction pipeline.
 const {
   handlePageSetupApply,
   handleLeftMarginChange,
