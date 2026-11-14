@@ -63,7 +63,7 @@ const run = (text: string, bold = false) =>
   `<w:r>${bold ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t xml:space="preserve">${text}</w:t></w:r>`;
 
 /**
- * The sample package with three matches of "editor": one in a plain run, one
+ * The sample package with three matches of "quokka": one in a plain run, one
  * split across a bold run and a plain run, and one in a table cell.
  */
 const findReplaceDocument = async (): Promise<number[]> => {
@@ -76,10 +76,10 @@ const findReplaceDocument = async (): Promise<number[]> => {
   if (bodyStart < "<w:body>".length || sectionStart < bodyStart)
     throw new TypeError("The sample body is missing");
   const body = [
-    paragraph("3FA00001", run("alpha editor beta")),
-    paragraph("3FA00002", `${run("edi", true)}${run("tor gamma")}`),
+    paragraph("3FA00001", run("alpha quokka beta")),
+    paragraph("3FA00002", `${run("quo", true)}${run("kka gamma")}`),
     '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="4000" w:type="dxa"/></w:tcPr>',
-    paragraph("3FA00003", run("cell editor")),
+    paragraph("3FA00003", run("cell quokka")),
     "</w:tc></w:tr></w:tbl>",
     paragraph("3FA00004", run("closing")),
   ].join("");
@@ -103,18 +103,18 @@ const openFindReplaceDocument = async (
     .poll(() =>
       page.evaluate(() => window.__folioParity?.getDocumentText() ?? ""),
     )
-    .toContain("cell editor");
+    .toContain("cell quokka");
 };
 
-/** Open the replace row from the public ref and search for "editor". */
-const searchForEditor = async (page: Page, adapter: AdapterFixture) => {
+/** Open the replace row from the public ref and search for "quokka". */
+const searchForQuokka = async (page: Page, adapter: AdapterFixture) => {
   await page.evaluate(() => window.__folioParity?.openReplace());
   const dialog = page.getByTestId("find-replace-dialog");
   await expect(dialog).toBeVisible();
   const replaceInput = dialog.getByLabel("Replacement text");
   if (adapter.name === "vue" && !(await replaceInput.isVisible()))
     await dialog.getByTestId("find-replace-toggle").click();
-  await dialog.getByLabel("Find text").fill("editor");
+  await dialog.getByLabel("Find text").fill("quokka");
   await expect(
     page.locator('[data-find-match-index="0"][data-current="true"]').first(),
   ).toBeVisible();
@@ -152,14 +152,14 @@ const savedText = async (page: Page, decision: "accept" | "reject") => {
   };
 };
 
-const SOURCE_TEXT = "alpha editor betaeditor gammacell editorclosing";
+const SOURCE_TEXT = "alpha quokka betaquokka gammacell quokkaclosing";
 const REPLACED_TEXT = `alpha ${REPLACEMENT} beta${REPLACEMENT} gammacell ${REPLACEMENT}closing`;
 
 forEachAdapter(
   "find/replace: replace current writes the highlighted match on the canonical session",
   async (adapter, { page }) => {
     await openFindReplaceDocument(page, adapter, "editing");
-    const { dialog, replaceCurrent } = await searchForEditor(page, adapter);
+    const { dialog, replaceCurrent } = await searchForQuokka(page, adapter);
     await replaceCurrent.click();
     await expect
       .poll(() =>
@@ -169,8 +169,8 @@ forEachAdapter(
     await expect(dialog).toContainText("1 / 2");
     const saved = await savedText(page, "accept");
     expect(saved.text).toContain(`alpha ${REPLACEMENT} beta`);
-    expect(saved.text).toContain("editor gamma");
-    expect(saved.text).toContain("cell editor");
+    expect(saved.text).toContain("quokka gamma");
+    expect(saved.text).toContain("cell quokka");
   },
 );
 
@@ -178,7 +178,7 @@ forEachAdapter(
   "find/replace: replace all writes a split match and a table cell on the canonical session",
   async (adapter, { page }) => {
     await openFindReplaceDocument(page, adapter, "editing");
-    const { replaceAll } = await searchForEditor(page, adapter);
+    const { replaceAll } = await searchForQuokka(page, adapter);
     await replaceAll.click();
     await expect
       .poll(() =>
@@ -196,7 +196,7 @@ forEachAdapter(
   "find/replace: replace all while suggesting records tracked changes on the canonical session",
   async (adapter, { page }) => {
     await openFindReplaceDocument(page, adapter, "suggesting");
-    const { replaceAll } = await searchForEditor(page, adapter);
+    const { replaceAll } = await searchForQuokka(page, adapter);
     await replaceAll.click();
     await expect
       .poll(() =>
