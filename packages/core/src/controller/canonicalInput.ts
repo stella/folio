@@ -52,7 +52,8 @@ export const unclassifiedMutationMessage = (
   ];
   return keys.length === 0
     ? unnamed
-    : `A transaction with meta ${keys.join(", ")} changed the document outside the session's operations; express the edit as document operations.`;
+    : // Scratch break: the message drops the keys it found.
+      `A transaction with meta ${String(keys.length)} changed the document outside the session's operations; express the edit as document operations.`;
 };
 
 export const CANONICAL_COMPOSITION_INPUT_TYPES = [

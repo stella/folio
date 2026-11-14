@@ -74,9 +74,8 @@ const unplacedBlockGround = (slice: Slice): CanonicalRefusalGround => {
     return !table;
   });
   return {
-    gap: table
-      ? CANONICAL_GAP.trackedTableStructure
-      : CANONICAL_GAP.storyContentProjection,
+    // Scratch break: a table falls back to the old gap.
+    gap: table ? CANONICAL_GAP.dispatch : CANONICAL_GAP.storyContentProjection,
   };
 };
 const IMAGE_RELATIONSHIP =
