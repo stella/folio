@@ -16,11 +16,9 @@ export const reviewerDocumentArbitrary: fc.Arbitrary<Document> = fc.oneof(
 );
 
 /**
- * Mostly bodies with review marks of every shape, for properties about the
- * body's edits and resolutions; sometimes a package with every story, whose
- * own edits and resolutions the story properties hold to their laws.
+ * Bodies with review marks of every shape, for properties about the body's
+ * edits and resolutions. Headers, footers, notes and text boxes have their
+ * own story properties.
  */
-export const bodyReviewerDocumentArbitrary: fc.Arbitrary<Document> = fc.oneof(
-  { weight: 3, arbitrary: reviewDocumentArbitrary },
-  { weight: 1, arbitrary: packageDocumentArbitrary },
-);
+export const bodyReviewerDocumentArbitrary: fc.Arbitrary<Document> =
+  reviewDocumentArbitrary;
