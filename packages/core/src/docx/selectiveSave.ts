@@ -10,6 +10,7 @@ import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
  * Returns null on any failure, signaling the caller to fall back to full repack.
  */
 
+import { recordSelectiveSaveAttempt } from "../layout-engine/layoutInstrumentation";
 import type { Document } from "../types/document";
 import { decodeText } from "../utils/textEncoding";
 import {
@@ -418,6 +419,17 @@ const queueSettingsUpdates = async (
 };
 
 export async function attemptSelectiveSave(
+  doc: Document,
+  originalBuffer: ArrayBuffer,
+  options: SelectiveSaveOptions,
+): Promise<ArrayBuffer | null> {
+  const buffer = await writeChangedParts(doc, originalBuffer, options);
+  // Measurements read which save path a save took through this hook.
+  recordSelectiveSaveAttempt(buffer !== null);
+  return buffer;
+}
+
+async function writeChangedParts(
   doc: Document,
   originalBuffer: ArrayBuffer,
   options: SelectiveSaveOptions,

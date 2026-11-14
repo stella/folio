@@ -13,6 +13,7 @@ const WORKFLOWS = path.resolve(import.meta.dir, "../.github/workflows");
 const ROUND_GROUPS: Readonly<Record<string, string>> = {
   "ci.yml": "format('ci-{0}-{1}', github.workflow, github.ref)",
   "continuous-fuzz.yml": "'continuous-fuzz'",
+  "engine-measurements.yml": "format('engine-measurements-{0}', github.ref)",
   "nightly-long-fuzz.yml": "format('nightly-long-fuzz-{0}', github.ref)",
   "nightly-public-corpus-flows.yml":
     "format('nightly-public-corpus-flows-{0}', github.ref)",

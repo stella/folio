@@ -46,6 +46,11 @@ export type LayoutInstrumentation = {
    */
   onDocumentBuilt?: (event: { kind: DocumentBuildKind }) => void;
   onLayoutComplete?: (event: { reason: LayoutRunReason }) => void;
+  /**
+   * A save tried to write only the changed parts into the source package:
+   * `written` says whether it did, or handed the save to the full repack.
+   */
+  onSelectiveSaveAttempt?: (event: { written: boolean }) => void;
   onLayoutError?: (event: { message: string; reason: LayoutRunReason }) => void;
   onLayoutStart?: (event: { reason: LayoutRunReason }) => void;
   /**
@@ -135,6 +140,12 @@ export function recordDocumentBuilt(kind: DocumentBuildKind): void {
 
 export function recordLayoutComplete(reason: LayoutRunReason = "manual"): void {
   globalThis.__folioLayoutInstrumentation?.onLayoutComplete?.({ reason });
+}
+
+export function recordSelectiveSaveAttempt(written: boolean): void {
+  globalThis.__folioLayoutInstrumentation?.onSelectiveSaveAttempt?.({
+    written,
+  });
 }
 
 export function recordLayoutStart(reason: LayoutRunReason): void {

@@ -97,6 +97,12 @@ const managedConfig = defineConfig({
     { name: "performance", testMatch: /editing-performance\.spec\.ts/u },
     // Report-only: typing latency in long documents.
     { name: "typing-latency", testMatch: /typing-latency\.spec\.ts/u },
+    // Report-only: typing, open and save times on both editing engines, run
+    // by the engine measurements workflow.
+    {
+      name: "engine-measurements",
+      testMatch: /engine-measurements\.spec\.ts/u,
+    },
     {
       name: "parity",
       testDir: "./tests/parity",
