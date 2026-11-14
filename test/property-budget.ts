@@ -189,9 +189,10 @@ export const statedTestBudget = (
       continue;
     const budgets = budgetsOf(absolute);
     if (budgets === undefined) continue;
-    const enclosing = budgets.tests
-      .filter((span) => span.startLine <= line && line <= span.endLine)
-      .at(-1);
+    // Spans are in source order, so the last one holding the line is innermost.
+    const enclosing = budgets.tests.findLast(
+      (span) => span.startLine <= line && line <= span.endLine,
+    );
     if (enclosing === undefined) continue;
     const stated = enclosing.timeout ?? budgets.defaultTimeout;
     return {

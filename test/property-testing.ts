@@ -441,6 +441,7 @@ let onTestFinished: OnTestFinished | undefined;
 if (process.versions["bun"] !== undefined) {
   void import("bun:test").then((bunTest) => {
     onTestFinished = bunTest.onTestFinished;
+    return onTestFinished;
   });
 }
 
