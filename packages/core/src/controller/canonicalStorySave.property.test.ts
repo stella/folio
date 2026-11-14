@@ -29,6 +29,7 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
@@ -44,7 +45,6 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import type { BlockContent, Document } from "../types/document";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 
 /** The stories the generated package holds besides the body, as an operation names them. */
 const STORIES = [
