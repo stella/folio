@@ -349,6 +349,8 @@
                   :editor-state="editorState"
                   :zoom="zoom"
                   :sync-coordinator="syncCoordinator"
+                  :autocomplete="editor.autocomplete"
+                  :on-change="props.onAutocompleteChange"
                 />
                 <DecorationLayer
                   :get-view="() => editorView"

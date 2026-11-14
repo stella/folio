@@ -2,11 +2,11 @@
  * Autocomplete Caret Overlay
  *
  * Paints the inline ghost-text and the streaming "stella" caret
- * badge for the {@link autocompleteSuggestionPlugin}. Like
+ * badge for the editor's inline autocomplete suggestion. Like
  * {@link AnonymizationRectsOverlay}, this component lives above
  * the visible paged document because PM decorations attached in
  * folio's hidden editor never reach the visible page DOM. The
- * host (PagedEditor) reads the plugin state, projects the
+ * host (PagedEditor) reads the suggestion, projects the
  * suggestion anchor to a container-relative coordinate via
  * {@link selectionToRects}, and passes it down.
  *
