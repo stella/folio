@@ -226,52 +226,83 @@ const startingPackage = async ({
   return reviewer.toBuffer();
 };
 
+type Case = typeof caseArbitrary extends fc.Arbitrary<infer T> ? T : never;
+
+/**
+ * One case through both engines, compared. `forCanonical` is what the
+ * canonical session is given in place of the operation: the operation
+ * itself, or, to show the comparison notices it, one that lost its style.
+ */
+const compareEngines = async (
+  example: Case,
+  forCanonical: (operation: FolioDocumentOperation) => FolioDocumentOperation,
+) => {
+  const bytes = await startingPackage(example);
+  const blocks = (
+    await FolioDocxReviewer.fromBuffer(bytes.slice(0))
+  ).getContent();
+  const target =
+    blocks[example.target % blocks.length] ??
+    panic("The package lost its paragraphs.");
+  const operation: FolioDocumentOperation = {
+    id: "op",
+    type: "replaceBlock",
+    blockId: target.id,
+    text: example.keepWords ? target.text : example.words,
+    ...(example.styleId === undefined ? {} : { styleId: example.styleId }),
+  };
+  const legacy = await viaDefaultEngine(bytes, operation, example.mode);
+  const canonical = await viaCanonicalEngine(
+    bytes,
+    forCanonical(operation),
+    example.mode,
+  );
+  expect(canonical.refusals).toEqual([]);
+  // A blank paragraph given no words and no other style is left as it is:
+  // the default engine names that unsupportedBlock, the canonical session a
+  // no-op.
+  const blankLeftBlank =
+    target.text === "" &&
+    operation.text === "" &&
+    legacy.skipped.join() === "unsupportedBlock";
+  expect(canonical.skipped).toEqual(
+    blankLeftBlank ? ["noopOperation"] : legacy.skipped,
+  );
+  expect(await outcomes(canonical.bytes)).toEqual(await outcomes(legacy.bytes));
+};
+
 describe("a replacement that names a paragraph style", () => {
   test("restyles the paragraph in both engines alike, pending, accepted and rejected", async () => {
     await assertProperty(
-      fc.asyncProperty(caseArbitrary, async (example) => {
-        const bytes = await startingPackage(example);
-        const blocks = (
-          await FolioDocxReviewer.fromBuffer(bytes.slice(0))
-        ).getContent();
-        const target =
-          blocks[example.target % blocks.length] ??
-          panic("The package lost its paragraphs.");
-        const operation: FolioDocumentOperation = {
-          id: "op",
-          type: "replaceBlock",
-          blockId: target.id,
-          text: example.keepWords ? target.text : example.words,
-          ...(example.styleId === undefined
-            ? {}
-            : { styleId: example.styleId }),
-        };
-        const legacy = await viaDefaultEngine(bytes, operation, example.mode);
-        const canonical = await viaCanonicalEngine(
-          bytes,
-          operation,
-          example.mode,
-        );
-        expect(canonical.refusals).toEqual([]);
-        // A blank paragraph given no words and no other style is left as it
-        // is: the default engine names that unsupportedBlock, the canonical
-        // session a no-op.
-        const blankLeftBlank =
-          target.text === "" &&
-          operation.text === "" &&
-          legacy.skipped.join() === "unsupportedBlock";
-        expect(canonical.skipped).toEqual(
-          blankLeftBlank ? ["noopOperation"] : legacy.skipped,
-        );
-        expect(await outcomes(canonical.bytes)).toEqual(
-          await outcomes(legacy.bytes),
-        );
-      }),
+      fc.asyncProperty(caseArbitrary, (example) =>
+        compareEngines(example, (operation) => operation),
+      ),
       {
         id: "restyles the paragraph in both engines alike, pending, accepted and rejected",
         numRuns: 80,
       },
     );
+  });
+
+  test("the comparison notices a canonical replacement that loses its style", async () => {
+    const withoutStyle = (
+      operation: FolioDocumentOperation,
+    ): FolioDocumentOperation =>
+      operation.type === "replaceBlock"
+        ? {
+            id: operation.id,
+            type: "replaceBlock",
+            blockId: operation.blockId,
+            text: operation.text,
+          }
+        : operation;
+    const outcome = await fc.check(
+      fc.asyncProperty(caseArbitrary, (example) =>
+        compareEngines(example, withoutStyle),
+      ),
+      { numRuns: 80, seed: 1 },
+    );
+    expect(outcome.failed).toBe(true);
   });
 
   test("restyles the paragraph a saved accepted or rejected join leaves, with the same words", async () => {
