@@ -15,6 +15,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   assertProperty,
+  propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import type { FolioDocumentOperation } from "../ai-edits";
@@ -300,7 +301,7 @@ describe("a replacement that names a paragraph style", () => {
       fc.asyncProperty(caseArbitrary, (example) =>
         compareEngines(example, withoutStyle),
       ),
-      { numRuns: 80, seed: 1 },
+      propertyConfig({ numRuns: 80 }),
     );
     expect(outcome.failed).toBe(true);
   });
