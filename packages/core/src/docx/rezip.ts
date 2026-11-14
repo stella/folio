@@ -89,7 +89,10 @@ import {
   withoutOrphanCommentRanges,
 } from "./commentRangeIntegrity";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
-import { registerContentTypeParts } from "./contentTypeRegistry";
+import {
+  registerContentTypeParts,
+  replaceContentTypePart,
+} from "./contentTypeRegistry";
 import {
   type DocumentSectionFacts,
   type HeaderFooterReference,
@@ -98,7 +101,10 @@ import {
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { rebindDrawingImageRelationship } from "./drawingRelationships";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
-import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
+import {
+  getDocumentSourceBaseline,
+  getDocumentSourceStyles,
+} from "./headerFooterVerbatim";
 import { assertValidFolioDocumentModel } from "./modelValidation";
 import { isNewDataUrlDrawing } from "./newImage";
 import {
@@ -167,6 +173,10 @@ import {
 } from "./serializer/partNamespaces";
 import { serializeSettingsXml } from "./serializer/settingsSerializer";
 import {
+  MODELED_STYLE_ATTRIBUTES,
+  MODELED_STYLE_CHILDREN,
+  serializeDocumentDefaults,
+  serializeLatentStylesAround,
   serializeStyle,
   serializeStylesXml,
 } from "./serializer/stylesSerializer";
@@ -191,6 +201,7 @@ import {
   OOXML_NAMESPACE_SCOPE,
   parseXml,
   parseXmlDocument,
+  resolveAttributeNamespaceUri,
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
@@ -1021,12 +1032,83 @@ type PublishCanonicalImageResourcesOptions = {
   compressionLevel: number;
 };
 
+/**
+ * Write the media a canonical session replaced or removed since the package
+ * was opened. A replaced part takes the model's bytes, and its content type
+ * when that changed; a removed part leaves the package unless a relationship
+ * still targets it, since dropping it then would break that relationship.
+ */
+const publishCanonicalMediaReplacements = async ({
+  document,
+  zip,
+  compressionLevel,
+}: PublishCanonicalImageResourcesOptions): Promise<void> => {
+  const baseline = getDocumentSourceBaseline(document);
+  if (baseline.type !== "captured") return;
+  const contentTypes: { partName: string; contentType: string | undefined }[] =
+    [];
+  let targets: ReadonlySet<string> | undefined;
+  const relationshipTargets = async (): Promise<ReadonlySet<string>> => {
+    const found = new Set<string>();
+    for (const entry of zip.entries()) {
+      if (!entry.path.toLowerCase().endsWith(".rels")) continue;
+      // oxlint-disable-next-line no-await-in-loop -- read only when media leaves the package
+      const xml = decodeText(await entry.bytes(), { ignoreBOM: true });
+      for (const relationship of parseRelationships(xml).values())
+        if (relationship.targetMode !== "External")
+          found.add(
+            resolveRelativePath(entry.path, relationship.target).toLowerCase(),
+          );
+    }
+    return found;
+  };
+  for (const [path, source] of baseline.resourceMedia) {
+    // The model also keys media by its story-relative alias; the package path
+    // is the one entry that names the part.
+    if (!path.startsWith("word/media/")) continue;
+    const current = document.package.media?.get(path);
+    const entry = findZipEntryCaseInsensitive(zip, path.toLowerCase());
+    if (!entry) continue;
+    if (current === undefined) {
+      targets ??= await relationshipTargets();
+      if (targets.has(path.toLowerCase())) continue;
+      zip.delete(entry.path);
+      contentTypes.push({ partName: `/${entry.path}`, contentType: undefined });
+      continue;
+    }
+    const sourceBytes = new Uint8Array(source.data);
+    const currentBytes = new Uint8Array(current.data);
+    if (
+      source.mimeType === current.mimeType &&
+      sourceBytes.length === currentBytes.length &&
+      sourceBytes.every((byte, index) => byte === currentBytes[index])
+    )
+      continue;
+    zip.set(entry.path, currentBytes, { level: compressionLevel });
+    if (source.mimeType !== current.mimeType)
+      contentTypes.push({
+        partName: `/${entry.path}`,
+        contentType: current.mimeType,
+      });
+  }
+  if (contentTypes.length === 0) return;
+  const registry = zip.entry("[Content_Types].xml");
+  if (!registry)
+    throw new DocxPackageFidelityError(
+      "Cannot record replaced media: the DOCX package is missing content types",
+    );
+  let xml = decodeText(await registry.bytes(), { ignoreBOM: true });
+  for (const part of contentTypes) xml = replaceContentTypePart(xml, part);
+  zip.set(registry.path, xml, { level: compressionLevel });
+};
+
 /** Publish allocated pictures into each owning story without rebinding canonical ids. */
 export const publishCanonicalImageResources = async ({
   document,
   zip,
   compressionLevel,
 }: PublishCanonicalImageResourcesOptions): Promise<void> => {
+  await publishCanonicalMediaReplacements({ document, zip, compressionLevel });
   const baseline = getDocumentSourceBaseline(document);
   for (const { relsPath, blocks } of collectDocxParts(document, zip)) {
     const images: Image[] = [];
@@ -1794,12 +1876,13 @@ const finishRepack = async ({
     outputZip,
     compressionLevel,
   );
-  await serializeAddedStylesIntoZip(
-    document,
+  await serializeStylesIntoZip({
+    doc: document,
     originalZip,
-    outputZip,
+    newZip: outputZip,
     compressionLevel,
-  );
+    bodyAuthority,
+  });
   await serializeHeaderFooterSettingsIntoZip(
     document,
     outputZip,
@@ -2045,12 +2128,13 @@ export async function repackDocxFromRaw(
     newZip,
     compressionLevel,
   );
-  await serializeAddedStylesIntoZip(
-    exportDocument,
-    rawContent.originalZip,
+  await serializeStylesIntoZip({
+    doc: exportDocument,
+    originalZip: rawContent.originalZip,
     newZip,
     compressionLevel,
-  );
+    bodyAuthority: options.bodyAuthority,
+  });
 
   // Serialize comments
   await serializeCommentsToZip(exportDocument, newZip, compressionLevel);
@@ -3579,7 +3663,7 @@ const seedStylesXmlWith = (missing: readonly Style[]): string => {
   const rootClose = SEED_STYLES_XML.lastIndexOf(STYLES_CLOSE_ROOT);
   return (
     SEED_STYLES_XML.slice(0, rootClose) +
-    missing.map(serializeStyle).join("") +
+    missing.map((style) => serializeStyle(style)).join("") +
     SEED_STYLES_XML.slice(rootClose)
   );
 };
@@ -3591,7 +3675,7 @@ const seedStylesXmlWith = (missing: readonly Style[]): string => {
  * `w:styleId="Header &amp; Footer"` is escaped, and either may sit behind an
  * attribute value containing `>`. A reader that misses one of those reports a
  * style the part already defines as missing, and
- * {@link serializeAddedStylesIntoZip} appends it — on every save, for ever.
+ * {@link serializeStylesIntoZip} appends it — on every save, for ever.
  */
 const definedStyleIds = (stylesXml: string): ReadonlySet<string> => {
   const root = parseXml(stylesXml);
@@ -3657,13 +3741,247 @@ type AddedStylesPlan =
   | { type: "materialize"; styles: StyleDefinitions }
   | { type: "patch"; path: string; xml: string };
 
-/** One append-only style owner for full repack and selective overlays. */
-export async function planAddedStyles(
+/**
+ * The attributes of a source `w:style` the model does not hold, such as
+ * `w:customStyle`, spelled for an element the serializer writes under `w:`.
+ */
+const unmodeledStyleAttributes = (element: XmlElement): string[] =>
+  Object.entries(element.attributes ?? {}).flatMap(([name, value]) => {
+    if (name === "xmlns" || name.startsWith("xmlns:")) return [];
+    const local = getLocalName(name);
+    const word = WORDPROCESSINGML_NAMESPACE_URIS.has(
+      resolveAttributeNamespaceUri(element, name) ?? "",
+    );
+    if (word && MODELED_STYLE_ATTRIBUTES.has(local)) return [];
+    return [
+      `${word ? `w:${local}` : name}="${escapeXmlAttribute(String(value))}"`,
+    ];
+  });
+
+type UnmodeledStyleChildrenOptions = {
+  element: XmlElement;
+  xml: string;
+  canonicalPrefixes: boolean;
+};
+
+/**
+ * The children of a source `w:style` the model does not hold (`w:aliases`,
+ * `w:locked`, `w:rsid`, extensions): byte for byte from a part spelled with
+ * the serializer's prefixes, otherwise with their own namespace bindings.
+ */
+const unmodeledStyleChildren = ({
+  element,
+  xml,
+  canonicalPrefixes,
+}: UnmodeledStyleChildrenOptions): { localName: string; xml: string }[] =>
+  getChildElements(element).flatMap((child) => {
+    const word = WORDPROCESSINGML_NAMESPACE_URIS.has(
+      getNamespaceUri(child) ?? "",
+    );
+    const local = getLocalName(child.name ?? "");
+    if (word && MODELED_STYLE_CHILDREN.has(local)) return [];
+    const range = getXmlSourceRange(child);
+    if (!range)
+      throw new DocxPackageFidelityError(
+        "Cannot locate a style definition child in word/styles.xml",
+      );
+    return [
+      {
+        localName: word ? local : "",
+        xml: canonicalPrefixes
+          ? xml.slice(range.start, range.end)
+          : captureVerbatimXml(child),
+      },
+    ];
+  });
+
+type SourceStyleReplacementOptions = {
+  document: Document;
+  xml: string;
+  partPath: string;
+};
+
+/**
+ * The source style part with every definition the canonical document changed
+ * since it was opened written in place: a changed style is replaced by the
+ * model's serialization, a removed one is dropped, and changed defaults or
+ * latent-style defaults replace their element. Every other byte of the part
+ * stays as authored. Latent-style exceptions are not modeled, so the source's
+ * own are kept inside the replaced element.
+ */
+const withSourceStyleReplacements = ({
+  document,
+  xml,
+  partPath,
+}: SourceStyleReplacementOptions): string => {
+  const source = getDocumentSourceStyles(document);
+  if (source.type !== "captured" || source.styles === undefined) return xml;
+  const baseline = source.styles;
+  const current: StyleDefinitions = document.package.styles ?? { styles: [] };
+  const currentById = new Map(
+    current.styles.map((style) => [style.styleId, style]),
+  );
+  const changedStyleIds = new Set(
+    baseline.styles
+      .filter(
+        (style) =>
+          canonicalJson(style) !==
+          canonicalJson(currentById.get(style.styleId)),
+      )
+      .map(({ styleId }) => styleId),
+  );
+  const defaultsChanged =
+    canonicalJson(baseline.docDefaults) !== canonicalJson(current.docDefaults);
+  const latentChanged =
+    canonicalJson(baseline.latentStyles) !==
+    canonicalJson(current.latentStyles);
+  if (changedStyleIds.size === 0 && !defaultsChanged && !latentChanged)
+    return xml;
+  const fail = (message: string): never => {
+    throw new DocxPackageFidelityError(`${message} in ${partPath}`);
+  };
+  const parsed = parseStreamingXmlWithSourceRanges(xml);
+  if (parsed.status !== "parsed") return fail("Cannot read the style table");
+  const root = getChildElements(parsed.value).find(
+    (element) =>
+      getLocalName(element.name ?? "") === "styles" &&
+      WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? ""),
+  );
+  const rootRange = root ? getXmlSourceRange(root) : undefined;
+  if (!root || !rootRange) return fail("Cannot find the style table root");
+  const rootClose = xml.lastIndexOf("</", rootRange.end);
+  if (rootClose < rootRange.start)
+    return fail("Cannot extend an empty style table");
+  // The serializer writes `w:`; a part spelled otherwise gets each written
+  // element with its own namespace declarations, so the prefixes resolve.
+  const canonicalPrefixes = hasCanonicalWordprocessingPrefixes(xml);
+  const fragment = canonicalPrefixes
+    ? (markup: string) => markup
+    : (markup: string) =>
+        markup === "" ? "" : selfBoundFragment(markup, partPath);
+  const splices: { start: number; end: number; newXml: string }[] = [];
+  let firstChild: number | undefined;
+  const seen: {
+    defaults: boolean;
+    latent: boolean;
+    firstStyle: number | undefined;
+  } = { defaults: false, latent: false, firstStyle: undefined };
+  type Range = { start: number; end: number };
+  // The elements a replacement rewrites, by local name. A child with no entry,
+  // and any element the session left alone, keeps its source bytes.
+  const rewrite = new Map<string, (child: XmlElement, range: Range) => void>([
+    [
+      "docDefaults",
+      (_child, range) => {
+        seen.defaults = true;
+        if (!defaultsChanged) return;
+        splices.push({
+          ...range,
+          newXml:
+            current.docDefaults === undefined
+              ? ""
+              : fragment(serializeDocumentDefaults(current)),
+        });
+      },
+    ],
+    [
+      "latentStyles",
+      (child, range) => {
+        seen.latent = true;
+        if (!latentChanged) return;
+        // A part spelled with the serializer's prefixes keeps each exception
+        // byte for byte; any other spelling carries its own bindings.
+        const exceptions = getChildElements(child).map((exception) => {
+          const exceptionRange = getXmlSourceRange(exception);
+          if (!exceptionRange)
+            return fail("Cannot locate a latent style exception");
+          return canonicalPrefixes
+            ? xml.slice(exceptionRange.start, exceptionRange.end)
+            : captureVerbatimXml(exception);
+        });
+        splices.push({
+          ...range,
+          newXml:
+            current.latentStyles === undefined
+              ? ""
+              : fragment(
+                  serializeLatentStylesAround(
+                    current.latentStyles,
+                    exceptions.join(""),
+                  ),
+                ),
+        });
+      },
+    ],
+    [
+      "style",
+      (child, range) => {
+        seen.firstStyle ??= range.start;
+        const styleId = getAttributeByNamespaceUri(
+          child,
+          WORDPROCESSINGML_NAMESPACE_URIS,
+          "styleId",
+        );
+        if (styleId === null || !changedStyleIds.has(styleId)) return;
+        const next = currentById.get(styleId);
+        splices.push({
+          ...range,
+          newXml:
+            next === undefined
+              ? ""
+              : fragment(
+                  serializeStyle(next, {
+                    attributes: unmodeledStyleAttributes(child),
+                    children: unmodeledStyleChildren({
+                      element: child,
+                      xml,
+                      canonicalPrefixes,
+                    }),
+                  }),
+                ),
+        });
+      },
+    ],
+  ]);
+  for (const child of getChildElements(root)) {
+    const range = getXmlSourceRange(child);
+    if (!range) return fail("Cannot locate a style table element");
+    firstChild ??= range.start;
+    if (WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? ""))
+      rewrite.get(getLocalName(child.name ?? ""))?.(child, range);
+  }
+  // ECMA-376 orders the defaults first, then the latent styles, then styles;
+  // two elements the part lacks may land at one position, in that order.
+  const insertions = new Map<number, string>();
+  const insert = (at: number, markup: string) =>
+    insertions.set(at, (insertions.get(at) ?? "") + fragment(markup));
+  if (defaultsChanged && !seen.defaults && current.docDefaults !== undefined)
+    insert(firstChild ?? rootClose, serializeDocumentDefaults(current));
+  if (latentChanged && !seen.latent && current.latentStyles !== undefined)
+    insert(
+      seen.firstStyle ?? rootClose,
+      serializeLatentStylesAround(current.latentStyles, ""),
+    );
+  for (const [at, newXml] of insertions)
+    splices.push({ start: at, end: at, newXml });
+  return spliceXml(xml, splices) ?? fail("Cannot splice the style table");
+};
+
+/**
+ * One style owner for full repack and selective overlays: styles the model
+ * defines but the part lacks are appended, and on a canonical save every
+ * definition the session changed is written in place.
+ */
+export async function planStyles(
   doc: Document,
   originalZip: ZipArchive,
+  bodyAuthority: "canonical" | "model" | undefined,
 ): Promise<AddedStylesPlan> {
   const styles = doc.package.styles;
-  if (!styles || styles.styles.length === 0) {
+  const replacing =
+    bodyAuthority === "canonical" &&
+    getDocumentSourceStyles(doc).type === "captured";
+  if (!replacing && (!styles || styles.styles.length === 0)) {
     return { type: "unchanged" };
   }
   const file = findNotePartEntry(originalZip, STYLES_PART_PATH);
@@ -3684,14 +4002,23 @@ export async function planAddedStyles(
       ? originalXml.lastIndexOf(`</${rootName}>`)
       : -1;
   if (file === null || originalXml === null || rootClose < 0) {
-    return { type: "materialize", styles };
+    return !styles || styles.styles.length === 0
+      ? { type: "unchanged" }
+      : { type: "materialize", styles };
   }
+  const replaced = replacing
+    ? withSourceStyleReplacements({
+        document: doc,
+        xml: originalXml,
+        partPath: file.path,
+      })
+    : originalXml;
   // The part's ids and the ids already appended in this pass: two model styles
   // sharing an id would otherwise both be written, and a duplicate `w:styleId`
   // makes the style a paragraph resolves to a matter of document order.
   const existing = new Set(definedStyleIds(originalXml));
   const added: Style[] = [];
-  for (const style of styles.styles) {
+  for (const style of styles?.styles ?? []) {
     if (existing.has(style.styleId)) {
       continue;
     }
@@ -3699,13 +4026,16 @@ export async function planAddedStyles(
     added.push(style);
   }
   if (added.length === 0) {
-    return { type: "unchanged" };
+    return replaced === originalXml
+      ? { type: "unchanged" }
+      : { type: "patch", path: file.path, xml: replaced };
   }
   // The serializer writes `w:`; a part spelled otherwise gets each appended
   // style with its own namespace declarations, so the prefixes resolve.
-  const canonical = hasCanonicalWordprocessingPrefixes(originalXml);
+  const canonical = hasCanonicalWordprocessingPrefixes(replaced);
+  const close = replaced.lastIndexOf(`</${rootName}>`);
   const patched =
-    originalXml.slice(0, rootClose) +
+    replaced.slice(0, close) +
     added
       .map((style) =>
         canonical
@@ -3713,17 +4043,26 @@ export async function planAddedStyles(
           : selfBoundFragment(serializeStyle(style), file.path),
       )
       .join("") +
-    originalXml.slice(rootClose);
+    replaced.slice(close);
   return { type: "patch", path: file.path, xml: patched };
 }
 
-async function serializeAddedStylesIntoZip(
-  doc: Document,
-  originalZip: ZipArchive,
-  newZip: ZipArchive,
-  compressionLevel: number,
-): Promise<void> {
-  const plan = await planAddedStyles(doc, originalZip);
+type SerializeStylesIntoZipOptions = {
+  doc: Document;
+  originalZip: ZipArchive;
+  newZip: ZipArchive;
+  compressionLevel: number;
+  bodyAuthority: "canonical" | "model" | undefined;
+};
+
+async function serializeStylesIntoZip({
+  doc,
+  originalZip,
+  newZip,
+  compressionLevel,
+  bodyAuthority,
+}: SerializeStylesIntoZipOptions): Promise<void> {
+  const plan = await planStyles(doc, originalZip, bodyAuthority);
   switch (plan.type) {
     case "unchanged":
       return;

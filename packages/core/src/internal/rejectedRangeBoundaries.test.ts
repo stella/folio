@@ -411,7 +411,8 @@ describe("rejecting an insertion keeps its range boundaries", () => {
       // insertion holds (the rejection removes it whole), two nested so, or
       // one around the insertion (it stays, emptied).
       // Or a deletion inside the insertion holding what it holds: rejecting
-      // the insertion takes that deletion with it.
+      // the insertion leaves that deletion pending around the boundaries it
+      // held.
       const controls = fc.constantFrom(
         "none",
         "inside",
@@ -620,6 +621,36 @@ describe("a pending deletion nested in a rejected insertion keeps its boundaries
         ({ type, revisionId }) => ({ type, revisionId }),
       ),
     ).toEqual([{ type: "deletion", revisionId: deletion.id }]);
+  });
+
+  test("a move range end in the deletion stays apart from its start outside it, in both", () => {
+    const document = documentWith([
+      { type: "moveToRangeStart", id: 1, name: "move1", author: "A" },
+      {
+        type: "insertion",
+        info: insertion,
+        content: [
+          {
+            type: "deletion",
+            info: deletion,
+            content: [{ type: "moveToRangeEnd", id: 1 }],
+          },
+        ],
+      },
+      { type: "run", content: [{ type: "text", text: "b" }] },
+    ]);
+    const editor = inEditor(
+      createHarnessState(document, "editing"),
+      document,
+      rejectAIEditRevision(insertion.id),
+    );
+    const engine = firstParagraphContent(
+      inEngine(document, [insertion.id], REVISION_DECISIONS.REJECT),
+    );
+    expect(deletedOutline(editor.content)).toEqual(deletedOutline(engine));
+    expect(deletedOutline(editor.content)).toEqual([
+      ["type:moveToRangeEnd,id:1"],
+    ]);
   });
 
   test("accepting all then removes the bookmark and rejecting all keeps it, leaving no wrapper", () => {
