@@ -5,7 +5,7 @@
  * reach the same runs. Every edit's inverse restores the previous document
  * exactly, the runs the normal form joined split again.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import fc from "fast-check";
 
 import {
@@ -25,6 +25,9 @@ import {
   OP_STORIES,
   type RunPropsPatch,
 } from "../types";
+
+// Break: no paragraph has a seam, so apply never normalizes.
+mock.module("../runNormalForm", () => ({ runSeams: () => [] }));
 
 const BLOCK_ID = "10000000";
 const at = (offset: number) => ({
