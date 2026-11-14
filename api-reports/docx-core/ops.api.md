@@ -155,8 +155,12 @@ export const captureStoryParts: (document: Document_2, owned: StoryParts) => Sto
 
 // @public
 export type ClientDocumentChange = {
-    type: "rebased" | "replaced";
+    type: "rebased";
     batch: SequencedBatch;
+} | {
+    type: "replaced";
+    batch: SequencedBatch;
+    moves?: SequencedBatch;
 };
 
 // @public (undocumented)
@@ -404,6 +408,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly REVISION_CONFLICT: "revisionConflict";
     readonly CONTAINER_FINAL_MARK: "containerFinalMark";
     readonly UNTRACKABLE: "untrackable";
+    readonly UNRECORDABLE_LINK_SUGGESTION: "unrecordableLinkSuggestion";
     readonly MISSING_BLOCK_ID: "missingBlockId";
     readonly DUPLICATE_BLOCK_ID: "duplicateBlockId";
     readonly DUPLICATE_RECORD_ID: "duplicateRecordId";

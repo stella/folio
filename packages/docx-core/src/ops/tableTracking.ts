@@ -7,6 +7,7 @@ import {
   type DocumentBody,
   MAX_REVISION_ID,
   type Paragraph,
+  type TableCell,
   type TableRow,
   type TrackedChangeInfo,
 } from "../model/document";
@@ -170,6 +171,11 @@ type TrackTableRowsOptions = {
   revision: RevisionStamp;
   newIds: NewIds | undefined;
   kind: WrapKind;
+  /**
+   * Cells whose content outlives the rows' removal, merged cells the next
+   * row continues: their content stays unmarked, as accepting hands it on.
+   */
+  survivingCells?: ReadonlySet<TableCell>;
 };
 
 /** Row stamps own distinct final-cell marks as well as the inline revisions. */
@@ -180,6 +186,7 @@ export const trackTableRows = ({
   revision,
   newIds,
   kind,
+  survivingCells = new Set(),
 }: TrackTableRowsOptions): Result<TableRow[], DocumentOpRefusal> => {
   if (rows.some((row) => row.structuralChange !== undefined)) {
     return refused({
@@ -189,9 +196,15 @@ export const trackTableRows = ({
     });
   }
   const finals = new Set<Paragraph>();
+  const surviving = new Set<Paragraph>();
   let missingFinalParagraph = false;
   for (const row of rows) {
     for (const cell of row.cells) {
+      if (survivingCells.has(cell)) {
+        for (const { paragraph } of storyParagraphs({ content: cell.content }))
+          surviving.add(paragraph);
+        continue;
+      }
       const body = { content: cell.content };
       const final = storyParagraphs(body).at(-1);
       if (final === undefined) {
@@ -222,7 +235,7 @@ export const trackTableRows = ({
             (cell.propertyChanges?.length ?? 0) > 0 ||
             cell.contentControls !== undefined ||
             cell.carrierStack !== undefined ||
-            !trackableBlocks(cell.content),
+            (!survivingCells.has(cell) && !trackableBlocks(cell.content)),
         ),
     )
   ) {
@@ -299,6 +312,10 @@ export const trackTableRows = ({
   }
   const after: Paragraph[] = [];
   for (const paragraph of before) {
+    if (surviving.has(paragraph)) {
+      after.push(paragraph);
+      continue;
+    }
     const wrapped = wrapTracked({
       items: paragraph.content,
       from: { offset: 0, zeroWidthBefore: 0 },
