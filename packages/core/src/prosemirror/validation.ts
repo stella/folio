@@ -137,9 +137,9 @@ export const validateProseMirrorDocument = (
 /**
  * Where a bookmark boundary came from. A boundary is either a node or a
  * positioned marker on a table or row. Positioned starts participate in
- * pairing because their other boundary may be an inline node; unmatched
- * positioned markers are tolerated because imported documents can omit their
- * other carrier. A
+ * pairing because their other boundary may be an inline node. A boundary of
+ * any origin may stand without a partner, because imported documents can omit
+ * the other half. A
  * `paragraph.attrs.bookmarks` entry is input data the conversion could not pair
  * (see `collectPairedBookmarkIds`) and is written back out as a start and an end
  * around that one paragraph. The distinction decides how strictly a duplicate
@@ -252,7 +252,7 @@ const validateBookmarkBoundaryStructure = (
   // codebase emits itself, in pairs, so a collision there means an editing
   // operation (a paste carrying an id the document already uses) produced an
   // ambiguous anchor rather than an input document being untidy.
-  const open = new Map<number, OpenBookmarkBoundary>();
+  const open = new Set<number>();
   const startedBy = new Map<number, BookmarkBoundaryOrigin>();
 
   /** Whether the boundary opened, and so needs a matching end registered later. */
@@ -270,18 +270,26 @@ const validateBookmarkBoundaryStructure = (
       return false;
     }
     startedBy.set(id, origin);
-    open.set(id, boundary);
+    open.add(id);
     return true;
   };
 
+  // A boundary without a partner is source content, not damage: Word writes a
+  // lone `_GoBack` start, keeps a start whose end a template dropped, and opens
+  // either. It stays where the source put it and saves as it was read. What
+  // stays an error is an id with two starts or two ends, which no reading of
+  // the source pairs unambiguously. A pair an edit breaks is the integrity
+  // pass's to repair, by comparing the document before and after the edit.
+  const ended = new Set<number>();
   const registerEnd = (id: number, path: string, paragraph: string): void => {
-    if (!open.has(id)) {
+    if (ended.has(id)) {
       issues.push({
         path,
-        message: `${describeBookmark(id, null)} has no open start boundary (${paragraph}).`,
+        message: `${describeBookmark(id, null)} has more than one end boundary (${paragraph}).`,
       });
       return;
     }
+    ended.add(id);
     open.delete(id);
   };
 
@@ -428,15 +436,6 @@ const validateBookmarkBoundaryStructure = (
   };
 
   visit(doc, "doc", "the document root");
-  for (const boundary of open.values()) {
-    if (boundary.origin === "positioned") {
-      continue;
-    }
-    issues.push({
-      path: boundary.path,
-      message: `${describeBookmark(boundary.id, boundary.name)} has no matching end boundary (${boundary.paragraph}).`,
-    });
-  }
 };
 
 export const assertValidProseMirrorDocument = (

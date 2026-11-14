@@ -15,10 +15,12 @@ export const reviewerDocumentArbitrary: fc.Arbitrary<Document> = fc.oneof(
   reviewDocumentArbitrary,
 );
 
-/** Range markers that a package holds only in pairs, by their pair. */
+/**
+ * Range markers that a package holds only in pairs, by their pair. A bookmark
+ * boundary without a partner is source content a package keeps, so the
+ * generator's lone bookmarks stay.
+ */
 const PAIRED_MARKERS: Readonly<Record<string, string>> = {
-  bookmarkStart: "bookmark",
-  bookmarkEnd: "bookmark",
   moveToRangeStart: "moveTo",
   moveToRangeEnd: "moveTo",
   moveFromRangeStart: "moveFrom",
@@ -43,9 +45,9 @@ const markerOf = (node: unknown): { key: string; end: boolean } | undefined => {
 };
 
 /**
- * The document with every bookmark and move range marker whose partner is
- * missing left out, so that the writer packages it: the review generator
- * draws markers one by one.
+ * The document with every move range marker whose partner is missing left
+ * out, so that the writer packages it: the review generator draws markers one
+ * by one.
  */
 const withPairedMarkers = (document: Document): Document => {
   const starts = new Set<string>();
