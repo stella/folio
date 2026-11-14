@@ -94,6 +94,8 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 12 adds `setContentControl`, which sets a block-level content
+ * control's properties by its id.
  * Version 11 records, as a sequenced format's effect, the run a direct
  * format cut (`setRunProps` effect).
  * Version 9 adds exact, JSON-safe package resource replacement for clipboard imports.
@@ -118,7 +120,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 11;
+export const DOCUMENT_OP_SCHEMA_VERSION = 12;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
