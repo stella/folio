@@ -321,6 +321,12 @@ const matchOn = async ({
   return { outcome: outcomeOf(result), buffer: await reviewer.toBuffer() };
 };
 
+const withoutNextRevisionId = (outcome: MatchOutcome) => {
+  if (outcome.status !== "matched") return outcome;
+  const { nextRevisionId: _nextRevisionId, ...rest } = outcome;
+  return rest;
+};
+
 /** A saved document with every change accepted, then with every change rejected. */
 const resolvedViews = async (buffer: ArrayBuffer) => {
   const accepting = await FolioDocxReviewer.fromBuffer(buffer.slice(0));
@@ -348,7 +354,19 @@ const expectAgreement = async (
     target,
     session: "canonical",
   });
-  expect(canonical.outcome).toEqual(legacy.outcome);
+  // A record an atom lands inside is cut in two, and each half keeps an id
+  // of its own on the session, where the editor state let both halves share
+  // one: the session may take more ids, never fewer.
+  expect(withoutNextRevisionId(canonical.outcome)).toEqual(
+    withoutNextRevisionId(legacy.outcome),
+  );
+  if (
+    canonical.outcome.status === "matched" &&
+    legacy.outcome.status === "matched"
+  )
+    expect(canonical.outcome.nextRevisionId).toBeGreaterThanOrEqual(
+      legacy.outcome.nextRevisionId,
+    );
   const [legacyViews, canonicalViews] = [
     await resolvedViews(legacy.buffer),
     await resolvedViews(canonical.buffer),
