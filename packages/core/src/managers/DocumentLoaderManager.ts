@@ -1,4 +1,8 @@
-import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import {
+  holdsUniqueParagraphIds,
+  prepareCanonicalDocumentInput,
+  prepareCanonicalDocxInput,
+} from "../docx/canonicalSessionInput";
 /**
  * DocumentLoaderManager
  *
@@ -86,10 +90,43 @@ export class DocumentLoaderManager {
   /**
    * Load an already-parsed document. Allocates a load generation like
    * `loadBuffer`, so a buffer parse still in flight when this lands is
-   * discarded instead of overwriting the newer document.
+   * discarded instead of overwriting the newer document. A canonical session
+   * opens a model whose paragraphs lack unique ids once
+   * `prepareCanonicalDocumentInput` has established them; any other model
+   * lands at once.
    */
   loadParsedDocument(doc: Document): void {
-    this.commitParsedDocument(doc, ++this.loadGeneration);
+    const generation = ++this.loadGeneration;
+    if (
+      !usesCanonicalSession(
+        this.callbacks.getExperimentalSession?.(),
+        CANONICAL_GAP.authorityRouting,
+      ) ||
+      holdsUniqueParagraphIds(doc)
+    ) {
+      this.commitParsedDocument(doc, generation);
+      return;
+    }
+    void this.loadCanonicalDocument(doc, generation);
+  }
+
+  private async loadCanonicalDocument(
+    doc: Document,
+    generation: number,
+  ): Promise<void> {
+    const { history, onError, setDocumentLoadState } = this.callbacks;
+    if (history.state === null) setDocumentLoadState({ status: "loading" });
+    const prepared = await prepareCanonicalDocumentInput(doc);
+    if (this.loadGeneration !== generation) return;
+    if (prepared.isErr()) {
+      setDocumentLoadState({
+        status: "error",
+        message: prepared.error.message,
+      });
+      onError?.(prepared.error);
+      return;
+    }
+    this.commitParsedDocument(prepared.value, generation);
   }
 
   /**
