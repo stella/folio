@@ -32,12 +32,12 @@ import {
   alikeDepth,
   childNodes,
   type Cursor,
-  fieldResultOf,
   type Gap,
   type InlineNode,
   isCommentAnchor,
   isParagraphContent,
   mergeLists,
+  ownRunPropertyChanges,
   partitionNode,
   rebuildNode,
   spanningRecords,
@@ -113,13 +113,9 @@ const revisionInfosOf = (paragraph: Paragraph): TrackedChangeInfo[] => {
   if (paragraph.pPrMark !== undefined) out.push(paragraph.pPrMark.info);
   const visit = (nodes: readonly InlineNode[]): void => {
     for (const node of nodes) {
-      if (isTrackedWrapper(node)) {
-        out.push(node.info);
-      } else if (node.type === "run") {
-        for (const change of node.propertyChanges ?? []) out.push(change.info);
-      }
-      // A field's result runs carry the changes a run patch records there.
-      visit(childNodes(node) ?? fieldResultOf(node) ?? []);
+      if (isTrackedWrapper(node)) out.push(node.info);
+      for (const change of ownRunPropertyChanges(node)) out.push(change.info);
+      visit(childNodes(node) ?? []);
     }
   };
   visit(paragraph.content);

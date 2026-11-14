@@ -27,7 +27,9 @@ import {
   asParagraphContent,
   childNodes,
   type InlineNode,
+  nestedRecords,
   rebuildNode,
+  withNestedRecords,
 } from "./leaves";
 import { isAddedRevision, isTrackedWrapper } from "./review";
 import {
@@ -43,7 +45,7 @@ const visitNodes = (
 ): void => {
   for (const node of nodes) {
     visit(node);
-    visitNodes(childNodes(node) ?? [], visit);
+    visitNodes(nestedRecords(node) ?? [], visit);
   }
 };
 
@@ -624,11 +626,11 @@ export const freshenIdentities = ({
     for (const node of nodes) {
       const ids = idsFor(node, identitySlots(node));
       const own = ids === undefined ? node : withInlineIdentity(node, ids);
-      const children = childNodes(node);
+      const children = nestedRecords(node);
       const freshened =
         children === undefined ? children : freshenNodes(children);
       const result =
-        freshened === children ? own : rebuildNode(own, freshened ?? []);
+        freshened === children ? own : withNestedRecords(own, freshened ?? []);
       changed ||= result !== node;
       out.push(result);
     }

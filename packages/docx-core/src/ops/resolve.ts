@@ -60,6 +60,7 @@ import {
   leafSpans,
   mergeAlike,
   mergeLists,
+  ownRunPropertyChanges,
   rebuildNode,
   sameOwnFields,
   withFieldResult,
@@ -2562,10 +2563,7 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
   const visit = (nodes: readonly InlineNode[]): void => {
     for (const node of nodes) {
       if (isTrackedWrapper(node)) out.add(node.info.id);
-      if (node.type === "run") {
-        for (const change of node.propertyChanges ?? [])
-          out.add(change.info.id);
-      }
+      for (const change of ownRunPropertyChanges(node)) out.add(change.info.id);
       visit(childNodes(node) ?? []);
     }
   };
