@@ -18,13 +18,16 @@ import {
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
 import {
+  captureStoryParts,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type FormattingPatch,
   freshCommentId,
   OP_STORIES,
   type OpStory,
+  packageResourcesOpOf,
   reconcileDocumentPartRelationships,
+  type StoryParts,
   suggestedCommentIds,
   suggestionRevisionInfos,
   withoutPendingSuggestions,
@@ -1338,6 +1341,37 @@ const finalSectionChangesResolved = (
       });
 };
 
+/**
+ * The final section staged as a tracked change from `previous` to
+ * `target`, or `null` when they are the same.
+ */
+const stagedFinalSectionProperties = ({
+  target,
+  previous,
+  revision,
+  author,
+}: {
+  target: SectionProperties;
+  previous: SectionProperties;
+  revision: FolioRevisionStamp;
+  author: string;
+}): SectionProperties | null => {
+  if (canonicalJson(target) === canonicalJson(previous)) return null;
+  const previousReferences = sectionReferenceHistory({ previous, target });
+  return {
+    ...target,
+    propertyChanges: [
+      {
+        type: "sectionPropertyChange",
+        info: { id: revision.idSeed, author, date: revision.date },
+        previousProperties: previous,
+        ...(previousReferences !== undefined && { previousReferences }),
+        currentProperties: target,
+      },
+    ],
+  };
+};
+
 /** The patch that turns the final section's properties into `next`. */
 const finalSectionPatch = (
   current: SectionProperties,
@@ -1643,6 +1677,10 @@ export class FolioDocxReviewer {
       reservedStyleIds: [...reservedStyleIds],
       materializeDefaultParagraphStyle,
     });
+    if (result.status === "imported" && this.engine.type === "canonical") {
+      this.stagePackageResourcesOnSession({ styles: result.styles });
+      return result;
+    }
     if (result.status === "imported") {
       this.importedStyles = result.styles;
       this.state = withDocumentStyles(this.state, result.styles);
@@ -1762,6 +1800,10 @@ export class FolioDocxReviewer {
       abstractNums: [...abstracts.values()],
       nums: [...nums.values()],
     };
+    if (this.engine.type === "canonical") {
+      this.stagePackageResourcesOnSession({ numbering });
+      return "staged";
+    }
     this.baseDocument.package.numbering = numbering;
     this.state = withDocumentNumbering(this.state, numbering);
     for (const entry of this.secondaryStoryStates.values()) {
@@ -2002,9 +2044,9 @@ export class FolioDocxReviewer {
     return Object.freeze({
       stageTerminalTableReviewCarrier: () =>
         refuse("stage a terminal table's review carrier"),
-      stageTargetStyles: () => refuse("stage the target's styles"),
-      createComparisonHeaderFooter: () =>
-        refuse("import the target's header or footer"),
+      stageTargetStyles: (options) => this.stageTargetStyles(options),
+      createComparisonHeaderFooter: (source, story) =>
+        this.createComparisonHeaderFooter(source, story),
       matchInlineAtoms: () => refuse("match inline atoms"),
       matchInlineProvenance: () => refuse("match inline provenance"),
       projectStories: (mode) => this.projectComparisonStoriesOnSession(mode),
@@ -2014,10 +2056,11 @@ export class FolioDocxReviewer {
       styleDefinitions: () => this.baseDocument.package.styles,
       planTargetNumberingReferences: (target, references) =>
         this.planTargetNumberingReferences(target, references),
-      stageTargetNumbering: () => refuse("stage the target's numbering"),
+      stageTargetNumbering: (target, references, remappedNumIds) =>
+        this.stageTargetNumbering(target, references, remappedNumIds),
       finalSectionProperties: () => this.currentFinalSectionProperties(),
-      stageFinalSectionProperties: () =>
-        refuse("stage the target's final section properties"),
+      stageFinalSectionProperties: (options) =>
+        this.stageFinalSectionPropertiesOnSession(options),
       stageMappedSectionBoundaries: () =>
         refuse("stage the target's section boundaries"),
     });
@@ -3368,25 +3411,61 @@ export class FolioDocxReviewer {
     previous: SectionProperties;
     revision: FolioRevisionStamp;
   }): boolean {
-    if (canonicalJson(target) === canonicalJson(previous)) return false;
-    const previousReferences = sectionReferenceHistory({ previous, target });
-    this.finalSectionPropertiesOverride = {
-      ...target,
-      propertyChanges: [
-        {
-          type: "sectionPropertyChange",
-          info: {
-            id: revision.idSeed,
-            author: this.author,
-            date: revision.date,
-          },
-          previousProperties: previous,
-          ...(previousReferences !== undefined && { previousReferences }),
-          currentProperties: target,
-        },
-      ],
-    };
+    const staged = stagedFinalSectionProperties({
+      target,
+      previous,
+      revision,
+      author: this.author,
+    });
+    if (!staged) return false;
+    this.finalSectionPropertiesOverride = staged;
     return true;
+  }
+
+  /** The final section's change to `target` as one session commit. */
+  private stageFinalSectionPropertiesOnSession(options: {
+    target: SectionProperties;
+    previous: SectionProperties;
+    revision: FolioRevisionStamp;
+  }): boolean {
+    const staged = stagedFinalSectionProperties({
+      ...options,
+      author: this.author,
+    });
+    const op = staged && this.finalSectionOperation(() => staged);
+    return op ? this.commitOpsOnSession([op]) : false;
+  }
+
+  /**
+   * The package's style or numbering definitions replaced by `resources`, as
+   * one session commit; the readers' state is rebuilt with them.
+   */
+  private stagePackageResourcesOnSession(resources: {
+    styles?: StyleDefinitions;
+    numbering?: NumberingDefinitions;
+  }): void {
+    const before = this.baseDocument;
+    this.commitOpsOnSession([
+      packageResourcesOpOf({
+        before,
+        after: { ...before, package: { ...before.package, ...resources } },
+      }),
+    ]);
+  }
+
+  /**
+   * Operations as one journalled session commit. `false` when they change
+   * nothing; any refusal throws.
+   */
+  private commitOpsOnSession(ops: readonly DocumentOp[]): boolean {
+    if (this.engine.type !== "canonical")
+      return panic("Only a canonical reviewer commits session operations");
+    const prepared = this.engine.session.prepareOperations(this.state, ops);
+    if (prepared.isErr()) {
+      if (prepared.error.reason === "noChange") return false;
+      throw prepared.error;
+    }
+    return this.publishOnSession(prepared.value);
   }
 
   private stageMappedSectionBoundaries({
@@ -5027,6 +5106,43 @@ export class FolioDocxReviewer {
       ...importedWatermark,
       content: [{ type: "paragraph", content: [] }],
     };
+    if (this.engine.type === "canonical") {
+      // The part and its media join the package unreferenced, as on the
+      // legacy engine: the section's reference is staged on its own.
+      const document = this.baseDocument;
+      const entries: (readonly [string, HeaderFooter])[] = [
+        ...((story.type === "header"
+          ? document.package.headers
+          : document.package.footers) ?? new Map<string, HeaderFooter>()),
+        [relationshipId, empty],
+      ];
+      const parts: StoryParts =
+        story.type === "header" ? { headers: entries } : { footers: entries };
+      const ops: DocumentOp[] = [];
+      if (importedMedia)
+        ops.push(
+          packageResourcesOpOf({
+            before: document,
+            after: {
+              ...document,
+              package: {
+                ...document.package,
+                media: new Map([
+                  ...(document.package.media ?? new Map()),
+                  [importedMedia.path, importedMedia],
+                ]),
+              },
+            },
+          }),
+        );
+      ops.push({
+        type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+        expected: captureStoryParts(document, parts),
+        parts,
+      });
+      this.commitOpsOnSession(ops);
+      return handle;
+    }
     if (importedMedia)
       this.importedMedia.set(importedMedia.path, importedMedia);
     (story.type === "header" ? this.importedHeaders : this.importedFooters).set(
