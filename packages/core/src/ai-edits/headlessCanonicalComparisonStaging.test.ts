@@ -1,9 +1,10 @@
 /**
  * Comparison staging on a canonical headless reviewer gives the legacy
  * reviewer's package: the target's styles, numbering, final section change,
- * section endpoint changes, an imported header part and a terminal table's
- * review carrier land in the session's document as the legacy reviewer
- * stages them, each as a session commit, and survive a save.
+ * section endpoint changes, an imported header part, a terminal table's
+ * review carrier and a paired table's own properties land in the session's
+ * document as the legacy reviewer stages them, each as a session commit, and
+ * survive a save.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -19,6 +20,7 @@ import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Document, SectionProperties } from "../types/document";
 import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
 import { sourceDocumentOf } from "./snapshot";
+import { projectTableGeometry } from "./table-geometry";
 
 const corpus = (name: string) =>
   path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus", name);
@@ -86,6 +88,31 @@ const twoSections = (first: SectionProperties): Document => ({
     },
   },
 });
+
+/** One table of two cells, its own, its row's and its first cell's properties given. */
+const oneTable = ({
+  fill,
+  height,
+  justification,
+}: {
+  fill: string;
+  height: number;
+  justification: "left" | "center";
+}) =>
+  buildBodySequenceDocx([
+    { kind: "paragraph", text: "Schedule" },
+    {
+      kind: "table",
+      properties: { justification },
+      rows: [
+        {
+          height,
+          cells: [{ content: "Amount", shadingFill: fill }, "Due"],
+        },
+      ],
+    },
+    { kind: "paragraph", text: "End" },
+  ]);
 
 /** A body that ends in a table, with no paragraph after it. */
 const endingInATable = async (): Promise<ArrayBuffer> => {
@@ -274,6 +301,71 @@ describe("comparison staging on the canonical session", () => {
     expect(body(canonical.base)).toEqual(body(legacy.base));
     expect(canonical.base.getContentAsText()).toBe(
       legacy.base.getContentAsText(),
+    );
+  });
+
+  test("a paired table's own properties match as on the legacy reviewer", async () => {
+    const matched = async (session: HeadlessReviewerSession) => {
+      const base = await openBuffer(
+        await oneTable({ fill: "FFFFFF", height: 400, justification: "left" }),
+        session,
+      );
+      const target = await openBuffer(
+        await oneTable({
+          fill: "FF0000",
+          height: 800,
+          justification: "center",
+        }),
+        session,
+      );
+      const targetTables = new Map(
+        target
+          .storyTables({ view: "current-markup" })
+          .map(({ index, node }) => [index, node] as const),
+      );
+      const next = base.matchStoryTableGeometry({
+        targetTables,
+        pairings: [0, 1].map((cellIndex) => ({
+          base: { tableIndex: 0, rowIndex: 0, cellIndex },
+          target: { tableIndex: 0, rowIndex: 0, cellIndex },
+        })),
+        revisionStamp: REVISION,
+      });
+      return { base, target, next };
+    };
+    const geometry = (
+      reviewer: FolioDocxReviewer,
+      view: "original" | "final" | "current-markup",
+    ) => projectTableGeometry(reviewer.storyTables({ view }));
+    const legacy = await matched("legacy");
+    const canonical = await matched("canonical");
+    // The table, its row and its first cell each take one revision.
+    expect(legacy.next).toBe(REVISION.idSeed + 3);
+    expect(canonical.next).toBe(legacy.next);
+    expect(
+      canonical.base.getChanges().map(({ type, author }) => ({ type, author })),
+    ).toEqual(
+      legacy.base.getChanges().map(({ type, author }) => ({ type, author })),
+    );
+    // Accepting gives the target's geometry; rejecting gives the base's.
+    expect(geometry(canonical.base, "final")).toEqual(
+      geometry(legacy.base, "final"),
+    );
+    expect(geometry(canonical.base, "final")).toEqual(
+      geometry(canonical.target, "current-markup"),
+    );
+    expect(geometry(canonical.base, "original")).toEqual(
+      geometry(legacy.base, "original"),
+    );
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await canonical.base.toBuffer(),
+      { session: "canonical" },
+    );
+    expect(geometry(reopened, "final")).toEqual(
+      geometry(canonical.base, "final"),
+    );
+    expect(geometry(reopened, "original")).toEqual(
+      geometry(canonical.base, "original"),
     );
   });
 });

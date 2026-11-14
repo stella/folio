@@ -264,6 +264,7 @@ import {
 } from "./snapshot";
 import {
   matchTableGeometry,
+  matchTableGeometryOperations,
   type TableGeometryPairing,
 } from "./table-geometry";
 import {
@@ -2133,12 +2134,6 @@ export class FolioDocxReviewer {
     return { stories, revisions: { ids: [...ids], present } };
   }
 
-  /** Refuse what a canonical reviewer cannot do on its session yet. */
-  private requireLegacyEngine(action: string): void {
-    if (this.engine.type === "canonical")
-      throw canonicalReviewerRefusal(action);
-  }
-
   /**
    * The model the readers read: the parsed package on the legacy engine, the
    * session's document, as it is after every commit, on the canonical one.
@@ -2619,10 +2614,29 @@ export class FolioDocxReviewer {
     pairings,
     revisionStamp,
   }: FolioMatchStoryTableGeometryOptions): number {
-    this.requireLegacyEngine("change table properties");
     const state = this.getEditableStoryState(story);
     if (!state || pairings.length === 0) {
       return revisionStamp.idSeed;
+    }
+    if (this.engine.type === "canonical") {
+      const matched = matchTableGeometryOperations({
+        story: canonicalOpStory(story),
+        baseTables: folioStoryTables(state.doc),
+        targetTables,
+        pairings,
+        revision: {
+          author: this.author,
+          date: revisionStamp.date,
+          idSeed: revisionStamp.idSeed,
+        },
+      });
+      if (matched.status === "unaddressable")
+        throw canonicalReviewerRefusal(
+          "change the properties of a table cell without a paragraph id",
+        );
+      if (matched.operations.length > 0)
+        this.commitOpsOnSession(matched.operations);
+      return matched.nextRevisionId;
     }
     const transaction = state.tr;
     const { nextRevisionId } = matchTableGeometry({

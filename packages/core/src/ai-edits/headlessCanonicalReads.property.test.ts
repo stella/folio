@@ -37,10 +37,7 @@ import {
   headerFooterToProseDoc,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
-import {
-  CANONICAL_GAP,
-  type HeadlessReviewerSession,
-} from "../types/canonicalCapabilities";
+import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type {
   BlockContent,
   Document,
@@ -544,47 +541,22 @@ describe("headless reviewer reads agree on both engines", () => {
   );
 });
 
-describe("a canonical reviewer refuses what is not on the session yet", () => {
-  const refusal = {
-    _tag: "CanonicalSessionError",
-    reason: "refused",
-    ground: { gap: CANONICAL_GAP.publicHeadlessSession },
-  };
-
-  const expectRefusal = (action: () => unknown) => {
-    let thrown: unknown;
-    try {
-      action();
-    } catch (error) {
-      thrown = error;
-    }
-    expect(CanonicalSessionError.is(thrown)).toBe(true);
-    expect(thrown).toMatchObject(refusal);
-  };
-
-  test("table geometry and comparison staging throw the typed refusal", async () => {
+describe("a canonical reviewer's comparison access", () => {
+  test("reads come from the session and an empty geometry match changes nothing", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       readFixture("upstream-styled-content.docx"),
       { session: "canonical" },
     );
     const before = reads(reviewer);
-    expectRefusal(() =>
+    expect(
       reviewer.matchStoryTableGeometry({
         targetTables: new Map(),
         pairings: [],
         revisionStamp: { date: "2026-01-02T03:04:05Z", idSeed: 1 },
       }),
-    );
-    // Comparison reads the session; staging into it refuses.
+    ).toBe(1);
     expect(getFolioDocxComparisonAccess(reviewer).styleDefinitions()).toEqual(
       reviewer.toDocument().package.styles,
-    );
-    expectRefusal(() =>
-      getFolioDocxComparisonAccess(reviewer).stageTargetNumbering(
-        null,
-        [],
-        new Map(),
-      ),
     );
     // An unknown undo handle is rejected, as on the legacy engine.
     expect(
@@ -593,7 +565,6 @@ describe("a canonical reviewer refuses what is not on the session yet", () => {
         id: "undo",
       }),
     ).toMatchObject({ status: "rejected", reason: "unknownHandle" });
-    // A refusal changes nothing a read sees.
     expect(reads(reviewer)).toEqual(before);
   });
 });

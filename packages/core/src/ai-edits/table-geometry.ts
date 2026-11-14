@@ -27,6 +27,13 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import type { PropertyRevisionKind } from "@stll/docx-core/model";
+import {
+  DOCUMENT_OP_TYPES,
+  type OpStory,
+  type SetCellPropsOp,
+  type SetRowPropsOp,
+  type SetTablePropsOp,
+} from "@stll/docx-core/ops";
 
 import {
   tableCellRejectAttrPatch,
@@ -159,6 +166,15 @@ type PropertyChangeTarget = {
   changeAttr: "tblPrChange" | "trPrChange" | "tcPrChange";
   changeType: GeometryPropertyRevisionKind;
   previousFormatting: unknown;
+  /** The base node's own property set, as it serializes. */
+  liveFormatting: unknown;
+  /** The target's property set the match writes. */
+  targetFormatting: unknown;
+  /**
+   * A paragraph directly in the paired base cell: what a model operation
+   * addresses the cell, its row and its table by.
+   */
+  anchorParaId: string | undefined;
 };
 
 const childPositions = (node: PMNode, start: number): number[] => {
@@ -349,6 +365,7 @@ const propertyChangeFor = <TFormatting>(
   target: PMNode,
   position: number,
   scope: PropertyScope<TFormatting>,
+  anchorParaId: string | undefined,
 ): PropertyChangeTarget | null => {
   const live = scopedValues(base.attrs, scope.keys);
   const previousFormatting = scope.formattingOf(base);
@@ -377,7 +394,20 @@ const propertyChangeFor = <TFormatting>(
     changeAttr: scope.changeAttr,
     changeType: scope.changeType,
     previousFormatting,
+    liveFormatting: previousFormatting,
+    targetFormatting,
+    anchorParaId,
   };
+};
+
+/** The paragraph id of the last paragraph directly in a cell. */
+const cellAnchorParaId = (cell: PMNode): string | undefined => {
+  let paraId: string | undefined;
+  cell.forEach((child) => {
+    const id: unknown = child.attrs["paraId"];
+    if (child.type.name === "paragraph" && typeof id === "string") paraId = id;
+  });
+  return paraId;
 };
 
 /**
@@ -392,13 +422,14 @@ const propertyChangeFor = <TFormatting>(
  * without restructuring the rows around it leaves the map inconsistent with
  * its own grid. That is the rule a reject of a `w:tcPrChange` follows too.
  */
-export const matchTableGeometry = ({
-  tr,
+const planTableGeometry = ({
   baseTables,
   targetTables,
   pairings,
-  revision,
-}: MatchTableGeometryOptions): MatchTableGeometryResult => {
+}: Pick<
+  MatchTableGeometryOptions,
+  "baseTables" | "targetTables" | "pairings"
+>): PropertyChangeTarget[] => {
   const baseByIndex = new Map(baseTables.map((table) => [table.index, table]));
   const targets: PropertyChangeTarget[] = [];
   const claimed = new Set<number>();
@@ -408,12 +439,19 @@ export const matchTableGeometry = ({
     target: PMNode,
     position: number,
     scope: PropertyScope<TFormatting>,
+    anchorParaId: string | undefined,
   ): void => {
     if (claimed.has(position)) {
       return;
     }
     claimed.add(position);
-    const change = propertyChangeFor(base, target, position, scope);
+    const change = propertyChangeFor(
+      base,
+      target,
+      position,
+      scope,
+      anchorParaId,
+    );
     if (change) {
       targets.push(change);
     }
@@ -439,26 +477,40 @@ export const matchTableGeometry = ({
     if (!baseCell || !targetCell || cellPosition === undefined) {
       continue;
     }
+    const anchorParaId = cellAnchorParaId(baseCell);
     consider(
       baseTable.node,
       targetTable,
       baseTable.start,
       GEOMETRY_SCOPES.tablePropertyChange,
+      anchorParaId,
     );
     consider(
       baseRow,
       targetRow,
       rowPosition,
       GEOMETRY_SCOPES.tableRowPropertyChange,
+      anchorParaId,
     );
     consider(
       baseCell,
       targetCell,
       cellPosition,
       GEOMETRY_SCOPES.tableCellPropertyChange,
+      anchorParaId,
     );
   }
+  return targets;
+};
 
+export const matchTableGeometry = ({
+  tr,
+  baseTables,
+  targetTables,
+  pairings,
+  revision,
+}: MatchTableGeometryOptions): MatchTableGeometryResult => {
+  const targets = planTableGeometry({ baseTables, targetTables, pairings });
   let revisionId = revision.idSeed;
   for (const target of targets) {
     const node = tr.doc.nodeAt(target.position);
@@ -491,4 +543,124 @@ export const matchTableGeometry = ({
     markStructuralChange(tr);
   }
   return { nextRevisionId: revisionId, matched: targets.length };
+};
+
+/**
+ * Keys a property operation cannot write: they shape the grid or hold the
+ * source's own markup, and move only through a topology operation, as the
+ * transaction above never moves a span.
+ */
+const FIXED_KEYS = {
+  tablePropertyChange: [
+    "sourceXml",
+    "gridSourceXml",
+    "gridChange",
+    "preserved",
+  ],
+  tableRowPropertyChange: ["sourceXml", "gridBefore", "gridAfter", "preserved"],
+  tableCellPropertyChange: ["sourceXml", "gridSpan", "vMerge", "preserved"],
+} as const satisfies Record<GeometryPropertyRevisionKind, readonly string[]>;
+
+const recordOf = (value: unknown): Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null
+    ? Object.fromEntries(Object.entries(value))
+    : {};
+
+/** The patch that turns `live` into `target`, fixed keys left as they are. */
+const patchTo = (
+  live: unknown,
+  target: unknown,
+  fixed: readonly string[],
+): Record<string, unknown> => {
+  const from = recordOf(live);
+  const to = recordOf(target);
+  const patch: Record<string, unknown> = {};
+  for (const key of new Set([...Object.keys(from), ...Object.keys(to)])) {
+    if (fixed.includes(key)) continue;
+    patch[key] = to[key] ?? null;
+  }
+  return patch;
+};
+
+export type TableGeometryOperation =
+  SetTablePropsOp | SetRowPropsOp | SetCellPropsOp;
+
+export type MatchTableGeometryOperationsResult =
+  | {
+      status: "matched";
+      operations: readonly TableGeometryOperation[];
+      /** First revision id a following batch may allocate. */
+      nextRevisionId: number;
+    }
+  /** A paired base cell holds no identified paragraph to address it by. */
+  | { status: "unaddressable" };
+
+/**
+ * {@link matchTableGeometry} as model operations: the same tables, rows and
+ * cells, matched in the same order under the same revision ids, each written
+ * as a tracked table, row or cell property operation addressed by a
+ * paragraph directly in the paired cell. The operation records the
+ * element's own previous property set, which is what a reject restores.
+ */
+export const matchTableGeometryOperations = ({
+  story,
+  baseTables,
+  targetTables,
+  pairings,
+  revision,
+}: Omit<MatchTableGeometryOptions, "tr"> & {
+  story: OpStory;
+}): MatchTableGeometryOperationsResult => {
+  const targets = planTableGeometry({ baseTables, targetTables, pairings });
+  const operations: TableGeometryOperation[] = [];
+  let revisionId = revision.idSeed;
+  for (const target of targets) {
+    if (target.anchorParaId === undefined) return { status: "unaddressable" };
+    const address = {
+      story,
+      blockId: target.anchorParaId,
+      revision: {
+        id: revisionId,
+        author: revision.author,
+        date: revision.date,
+      },
+    };
+    const patch = patchTo(
+      target.liveFormatting,
+      target.targetFormatting,
+      FIXED_KEYS[target.changeType],
+    );
+    switch (target.changeType) {
+      case "tablePropertyChange":
+        operations.push({
+          ...address,
+          type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+          // SAFETY: the keys are a table property set's, read off one.
+          patch: patch as SetTablePropsOp["patch"],
+        });
+        break;
+      case "tableRowPropertyChange":
+        operations.push({
+          ...address,
+          type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+          // SAFETY: the keys are a row property set's, read off one.
+          patch: patch as SetRowPropsOp["patch"],
+        });
+        break;
+      case "tableCellPropertyChange":
+        operations.push({
+          ...address,
+          type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+          // SAFETY: the keys are a cell property set's, read off one.
+          patch: patch as SetCellPropsOp["patch"],
+        });
+        break;
+      default: {
+        const unreachable: never = target.changeType;
+        return unreachable;
+      }
+    }
+    revisionId += 1;
+  }
+  return { status: "matched", operations, nextRevisionId: revisionId };
 };
