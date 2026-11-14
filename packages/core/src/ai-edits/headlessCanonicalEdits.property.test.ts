@@ -138,6 +138,28 @@ type Refusals = Map<string, number>;
 const noteRefusal = (refusals: Refusals | undefined, detail: string) =>
   refusals?.set(detail, (refusals.get(detail) ?? 0) + 1);
 
+/**
+ * The operation applied, or nothing when the session refuses it by throwing
+ * its typed refusal, which is counted.
+ */
+const applyOrRefuse = (
+  reviewer: Reviewer,
+  operation: FolioDocumentOperation,
+  mode: "direct" | "tracked-changes",
+  refusals?: Refusals,
+): ReturnType<typeof apply> | null => {
+  try {
+    return apply(reviewer, operation, mode);
+  } catch (error) {
+    if (!CanonicalSessionError.is(error)) throw error;
+    noteRefusal(
+      refusals,
+      `${operation.type} ${mode} threw: ${JSON.stringify(error.ground)}: ${error.message}`,
+    );
+    return null;
+  }
+};
+
 /** The resolution of every change, or the session's refusal of it. */
 const resolvedText = (
   reviewer: Reviewer,
@@ -188,7 +210,8 @@ const editLaws = async (
 
   // Undo gives back every read and the document.
   const before = reads(base);
-  const edited = apply(base, operation, "direct");
+  const edited = applyOrRefuse(base, operation, "direct", refusals);
+  if (edited === null) return "refusedOperation";
   if (edited.applied.length === 0 || edited.undoHandle === null) {
     const [skip] = edited.skipped;
     noteRefusal(
@@ -203,7 +226,13 @@ const editLaws = async (
   expect(reads(base)).toEqual(before);
 
   const tracked = await open(buffer);
-  const trackedResult = apply(tracked, operation, "tracked-changes");
+  const trackedResult = applyOrRefuse(
+    tracked,
+    operation,
+    "tracked-changes",
+    refusals,
+  );
+  if (trackedResult === null) return "refusedOperation";
   if (trackedResult.applied.length === 0) {
     const [skip] = trackedResult.skipped;
     noteRefusal(
@@ -219,9 +248,11 @@ const editLaws = async (
   expect(rejected).toEqual(rejectedWithout);
 
   const accepted = await open(buffer);
-  apply(accepted, operation, "tracked-changes");
+  if (applyOrRefuse(accepted, operation, "tracked-changes", refusals) === null)
+    return "refusedOperation";
   const direct = await open(buffer);
-  apply(direct, operation, "direct");
+  if (applyOrRefuse(direct, operation, "direct", refusals) === null)
+    return "refusedOperation";
   const acceptedText = resolvedText(accepted, "accept", refusals);
   const directText = resolvedText(direct, "accept", refusals);
   if (acceptedText === null || directText === null) return "resolutionRefused";
