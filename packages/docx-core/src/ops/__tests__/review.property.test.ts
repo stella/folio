@@ -111,6 +111,12 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
+const bodyOf = (document: Document | undefined): unknown =>
+  document?.package.document.content;
+const debugDump = (label: string, payload: Record<string, unknown>): void => {
+  console.error(`L3DEBUG ${label} ${JSON.stringify(payload)}`);
+};
+
 /**
  * Each run applies an operation and checks it several ways, so the base count
  * is kept small: the nightly factor of ten takes it to 10^4, and the five-fold
@@ -1193,69 +1199,103 @@ describe("tracked operations and their resolution", () => {
           // A kind counts once its revisions reach the checks below.
           for (const [index, ids] of perOp.entries())
             if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
-          // The run's own revisions: at once, and one operation's at a time.
-          const rejectedAtOnce = resolved(
-            current,
-            all,
-            REVISION_DECISIONS.REJECT,
-          );
-          const rejectedInTurn = resolvedInTurn(
-            current,
-            perOp.toReversed(),
-            REVISION_DECISIONS.REJECT,
-          );
-          assertExactModel(
-            projected(rejectedAtOnce, "π′"),
-            projected(rejectedInTurn, "π′"),
-          );
-          expectSettledDeferredSeams(rejectedAtOnce);
-          expectSettledDeferredSeams(rejectedInTurn);
-          // A split at a paragraph's end is given back under the new paragraph's id.
-          if (!keptEarlier) {
-            expectRejectedTo({
-              rejected: rejectedAtOnce,
-              tracked: current,
-              ids: all,
-              expected: document,
-              projection: "π′",
-            });
-          }
-          // Every revision (A*, J*): the run's in turn first, or all at once.
-          const acceptedInTurn = resolvedInTurn(
-            current,
-            perOp,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
-          const turnAccepted = resolvedAll(
-            acceptedInTurn,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          expectSettledDeferredSeams(acceptedInTurn);
-          if (allAccepted !== undefined && turnAccepted !== undefined) {
-            count(tally, "A*");
-            expectSettledDeferredSeams(allAccepted);
-            expectSettledDeferredSeams(turnAccepted);
-            assertExactModel(
-              projected(allAccepted, "π′"),
-              projected(turnAccepted, "π′"),
+          try {
+            // The run's own revisions: at once, and one operation's at a time.
+            const rejectedAtOnce = resolved(
+              current,
+              all,
+              REVISION_DECISIONS.REJECT,
             );
-          }
-          const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
-          const originalRejected = resolvedAll(
-            document,
-            REVISION_DECISIONS.REJECT,
-          );
-          if (allRejected !== undefined && originalRejected !== undefined) {
-            count(tally, "J*");
-            expectSettledDeferredSeams(allRejected);
-            expectRejectedTo({
-              rejected: allRejected,
-              tracked: current,
-              ids: all,
-              expected: originalRejected,
-              projection: "π′",
+            const rejectedInTurn = resolvedInTurn(
+              current,
+              perOp.toReversed(),
+              REVISION_DECISIONS.REJECT,
+            );
+            assertExactModel(
+              projected(rejectedAtOnce, "π′"),
+              projected(rejectedInTurn, "π′"),
+            );
+            expectSettledDeferredSeams(rejectedAtOnce);
+            expectSettledDeferredSeams(rejectedInTurn);
+            // A split at a paragraph's end is given back under the new paragraph's id.
+            if (!keptEarlier) {
+              expectRejectedTo({
+                rejected: rejectedAtOnce,
+                tracked: current,
+                ids: all,
+                expected: document,
+                projection: "π′",
+              });
+            }
+            // Every revision (A*, J*): the run's in turn first, or all at once.
+            const acceptedInTurn = resolvedInTurn(
+              current,
+              perOp,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
+            const turnAccepted = resolvedAll(
+              acceptedInTurn,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            expectSettledDeferredSeams(acceptedInTurn);
+            if (allAccepted !== undefined && turnAccepted !== undefined) {
+              count(tally, "A*");
+              expectSettledDeferredSeams(allAccepted);
+              expectSettledDeferredSeams(turnAccepted);
+              assertExactModel(
+                projected(allAccepted, "π′"),
+                projected(turnAccepted, "π′"),
+              );
+            }
+            const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
+            const originalRejected = resolvedAll(
+              document,
+              REVISION_DECISIONS.REJECT,
+            );
+            if (allRejected !== undefined && originalRejected !== undefined) {
+              count(tally, "J*");
+              expectSettledDeferredSeams(allRejected);
+              expectRejectedTo({
+                rejected: allRejected,
+                tracked: current,
+                ids: all,
+                expected: originalRejected,
+                projection: "π′",
+              });
+            }
+          } catch (error) {
+            const turnSteps: unknown[] = [];
+            let step = current;
+            for (const ids of perOp.toReversed()) {
+              step = resolved(step, ids, REVISION_DECISIONS.REJECT);
+              turnSteps.push({ ids, body: bodyOf(step) });
+            }
+            const acceptSteps: unknown[] = [];
+            let acceptStep = current;
+            for (const ids of perOp) {
+              acceptStep = resolved(acceptStep, ids, REVISION_DECISIONS.ACCEPT);
+              acceptSteps.push({ ids, body: bodyOf(acceptStep) });
+            }
+            debugDump("in-turn", {
+              original: bodyOf(document),
+              current: bodyOf(current),
+              perOp,
+              atOnce: bodyOf(resolved(current, all, REVISION_DECISIONS.REJECT)),
+              turnSteps,
+              acceptSteps,
+              allRejected: bodyOf(
+                resolvedAll(current, REVISION_DECISIONS.REJECT),
+              ),
+              originalRejected: bodyOf(
+                resolvedAll(document, REVISION_DECISIONS.REJECT),
+              ),
+              allAccepted: bodyOf(
+                resolvedAll(current, REVISION_DECISIONS.ACCEPT),
+              ),
+              message: String(error).slice(0, 600),
             });
+            throw error;
           }
         },
       );
