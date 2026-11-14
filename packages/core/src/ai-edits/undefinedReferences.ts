@@ -16,6 +16,7 @@ import type {
 } from "../prosemirror/styles/styleResolver";
 import type { FolioAIStagedEditOperation } from "./newListNumbering";
 import { classifyResourceReference } from "./referenceClassification";
+import type { FolioAIEditOperation } from "./types";
 
 /**
  * What an editing request does with a style or numbering reference the
@@ -24,7 +25,8 @@ import { classifyResourceReference } from "./referenceClassification";
  */
 export type FolioUndefinedReferencePolicy = "refuse" | "keep";
 
-type StagedOperation = FolioAIStagedEditOperation;
+/** An operation as either engine holds it: staged (new lists deferred) or as parsed. */
+type StagedOperation = FolioAIStagedEditOperation | FolioAIEditOperation;
 type StagedOperationNumbering = NonNullable<
   Extract<
     StagedOperation,
