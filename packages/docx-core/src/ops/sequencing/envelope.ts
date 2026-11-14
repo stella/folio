@@ -342,6 +342,11 @@ const newIds = optional(idSet);
 const half = optional(literal("first", "second"));
 const whenEmpty = optional(literal("omit", "keep"));
 const blockAnchor = object({ type: literal("before", "after"), blockId });
+/** A table goes beside a paragraph, or beside the table holding one. */
+const tableAnchor = object({
+  type: literal("before", "after", "beforeTable", "afterTable"),
+  blockId,
+});
 const runProps = properties(runPropertyFields);
 const runPatch = properties(runPropertyFields, true);
 const paragraphPatch = properties(paragraphPropertyFields, true);
@@ -578,7 +583,7 @@ const operationFields = {
   insertTable: {
     type: literal("insertTable"),
     story: isOpStory,
-    at: blockAnchor,
+    at: tableAnchor,
     table,
     revision,
     newIds,
