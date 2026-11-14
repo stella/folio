@@ -76,6 +76,7 @@ test("host plugins process transactions after replacing the body document", asyn
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            experimentalSession="legacy"
             accessibleName="Document editor"
             ref={editor}
             document={document}
@@ -121,6 +122,7 @@ test("replacing the document resets the scroll position", async () => {
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            experimentalSession="legacy"
             accessibleName="Document editor"
             document={createEmptyDocument({ initialText: text })}
             showToolbar={false}
@@ -194,6 +196,7 @@ test("host view-ready navigation wins over a pending initial scroll offset", asy
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            experimentalSession="legacy"
             accessibleName="Document editor"
             ref={editor}
             document={initialDocument}
@@ -258,6 +261,7 @@ for (const existingMarker of [undefined, "host-owned"]) {
             messages={getFolioMessages("en")}
           >
             <PagedEditor
+              experimentalSession="legacy"
               accessibleName="Document editor"
               ref={editor}
               document={null}
@@ -316,6 +320,7 @@ test("stable editor plugins publish only the latest committed host callbacks", a
             messages={getFolioMessages("en")}
           >
             <DocxEditor
+              experimentalSession="legacy"
               accessibleName="Document editor"
               ref={editor}
               document={initialDocument}

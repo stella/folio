@@ -91,10 +91,15 @@ const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const findResultNotifications: (FindResult | null)[] = [];
 const query = new URLSearchParams(window.location.search);
 const collaborationEnabled = query.has("collaboration");
-// The collaboration demo runs a canonical room, which the canonical session joins.
+// The canonical session is the editor's default; `?session=legacy` selects the
+// ProseMirror-owned engine and `?session=canonical` states the default. The
+// collaboration demo runs a canonical room, which only the canonical session
+// joins, so it keeps the default whatever `?session=` names.
+const requestedSession = query.get("session");
 const experimentalSession =
-  query.get("session") === "canonical" || collaborationEnabled
-    ? "canonical"
+  !collaborationEnabled &&
+  (requestedSession === "legacy" || requestedSession === "canonical")
+    ? requestedSession
     : undefined;
 const editorMode = ref<EditorMode>(
   query.get("mode") === "suggesting" ? "suggesting" : "editing",

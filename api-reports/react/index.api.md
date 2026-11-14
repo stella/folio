@@ -75,6 +75,7 @@ import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorReadOnlyReason } from '@stll/folio-core/managers/EditorModeManager';
+import { EditorSession } from '@stll/folio-core/types/canonicalCapabilities';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { EndnoteProperties } from '@stll/folio-core/types/document';
@@ -375,7 +376,7 @@ export type DocxEditorProps = {
     documentBuffer?: DocxInput | null;
     password?: string | undefined;
     document?: Document_2 | null;
-    experimentalSession?: "canonical";
+    experimentalSession?: EditorSession;
     onSave?: (buffer: ArrayBuffer) => void;
     author?: string;
     onChange?: (document: Document_2) => void;

@@ -1,6 +1,6 @@
 /**
  * Block-level public operations in the canonical session give the document
- * the default engine gives: the same blocks and paragraph properties pending,
+ * the legacy engine gives: the same blocks and paragraph properties pending,
  * once every change is accepted, and once every change is rejected.
  */
 
@@ -188,7 +188,7 @@ const withoutIds = (blocks: readonly object[]) =>
   blocks.map((block) => ({ ...block, id: undefined }));
 
 /**
- * Shapes where the default engine, reading the canonical session's file back,
+ * Shapes where the legacy engine, reading the canonical session's file back,
  * rejects an insertion after the anchor by joining the anchor into the new
  * paragraph under the new paragraph's id. The file records the anchor as the
  * paragraph that stays, as it does at the end of a container; the canonical
@@ -200,10 +200,10 @@ const READ_BACK_UNDER_NEW_ID: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The canonical session's outcomes against the default engine's. Rejecting a
+ * The canonical session's outcomes against the legacy engine's. Rejecting a
  * tracked insertion after a container's final paragraph gives the source back
  * from the canonical session's file, ids included: it records which paragraph
- * rejecting the mark keeps. The default engine's file does not, so there the
+ * rejecting the mark keeps. The legacy engine's file does not, so there the
  * anchor's words come back under the new paragraph's id. Everything else is
  * the same.
  */
@@ -261,7 +261,7 @@ const viaDefaultEngine = async (
  * The canonical session's saved package after the batch; a suggested batch
  * is resolved as `suggestion` says before the save.
  */
-/** The default engine's package after a suggested batch it then resolves. */
+/** The legacy engine's package after a suggested batch it then resolves. */
 const viaDefaultSuggested = async (
   source: ArrayBuffer,
   operation: FolioDocumentOperation | readonly FolioDocumentOperation[],
@@ -570,7 +570,7 @@ const OPERATIONS = {
   },
 } as const satisfies Record<string, FolioDocumentOperation>;
 
-describe("block-level public operations match the default engine", () => {
+describe("block-level public operations match the legacy engine", () => {
   for (const [kind, operation] of Object.entries(OPERATIONS))
     for (const [shape, body] of Object.entries(BODIES))
       for (const mode of ["direct", "tracked-changes"] as const) {
@@ -639,7 +639,7 @@ describe("block-level public operations match the default engine", () => {
             source,
             shape,
           );
-          // The default engine's suggestion resolves the same way; it
+          // The legacy engine's suggestion resolves the same way; it
           // carries no splits or merges.
           if (
             operation.type === "splitBlock" ||
@@ -693,7 +693,7 @@ describe("a split's second half after an insertion in one batch", () => {
 });
 
 describe("inline line breaks", () => {
-  // CRLF and a lone CR are each one line break, as LF is. The default engine
+  // CRLF and a lone CR are each one line break, as LF is. The legacy engine
   // keeps a carriage return as a text character, which saves as no break.
   for (const mode of ["direct", "tracked-changes"] as const)
     test(`CRLF and CR insert one line break each, ${mode}`, async () => {
@@ -760,7 +760,7 @@ describe("a new list beside a dangling list reference", () => {
 });
 
 describe("an insertion beside a table cell's paragraph", () => {
-  // The default engine places it beside the table, not inside the cell.
+  // The legacy engine places it beside the table, not inside the cell.
   for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
     for (const mode of ["direct", "tracked-changes"] as const)
       test(`${type}, ${mode}`, async () => {
@@ -848,7 +848,7 @@ describe("paragraph identities across undo", () => {
 });
 
 describe("an insertion beside the paragraph the batch deletes", () => {
-  // Both apply, as in the default engine, in either order, as a move when
+  // Both apply, as in the legacy engine, in either order, as a move when
   // both halves name one.
   for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
     for (const moveId of [undefined, "move"] as const)
@@ -882,7 +882,7 @@ describe("an insertion beside the paragraph the batch deletes", () => {
                 await viaDefaultEngine(source, operations, mode),
               );
               // Tracked, a move of the paragraph that ends the body beside
-              // itself: the default engine keeps both paragraphs pending,
+              // itself: the legacy engine keeps both paragraphs pending,
               // each with a mark, the last one on the body's final paragraph,
               // and leaves the moved paragraph behind, empty, once accepted.
               // Here no mark stands on the final paragraph: the moved words
@@ -922,7 +922,7 @@ describe("an insertion beside the paragraph the batch deletes", () => {
                 return;
               }
               // Tracked after a paragraph a block content control follows,
-              // the default engine keeps the deleted paragraph apart and
+              // the legacy engine keeps the deleted paragraph apart and
               // leaves it behind, empty, once everything is accepted. Here
               // its struck words join the new paragraph that holds its mark,
               // as at the end of the body: accepting gives what the batch
@@ -963,7 +963,7 @@ describe("an insertion beside the paragraph the batch deletes", () => {
 
 describe("paragraphs inserted beside the paragraph the batch deletes", () => {
   // Each line its own paragraph, beside a paragraph that ends the body, as
-  // the default engine places and records them.
+  // the legacy engine places and records them.
   for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
     for (const reversed of [false, true])
       for (const mode of ["direct", "tracked-changes"] as const)
@@ -1090,7 +1090,7 @@ describe("a move whose source a content lock keeps", () => {
     });
 });
 
-describe("a block move matches the default engine", () => {
+describe("a block move matches the legacy engine", () => {
   /** The source paragraph moved after the anchor, both halves naming one move. */
   const move = (destination: "insertAfterBlock" | "insertBeforeBlock") =>
     [
@@ -1165,7 +1165,7 @@ describe("a block move matches the default engine", () => {
         });
 });
 
-describe("a comment on an edit in a table cell matches the default engine", () => {
+describe("a comment on an edit in a table cell matches the legacy engine", () => {
   const operation = {
     id: "op",
     type: "replaceInBlock",
@@ -1188,7 +1188,7 @@ describe("a comment on an edit in a table cell matches the default engine", () =
     });
 });
 
-describe("a commented insertion inside a block content control matches the default engine", () => {
+describe("a commented insertion inside a block content control matches the legacy engine", () => {
   for (const type of ["insertAfterBlock", "insertBeforeBlock"] as const)
     for (const mode of ["direct", "tracked-changes"] as const)
       test(`${type}, ${mode}`, async () => {
@@ -1249,7 +1249,7 @@ describe("an insertion before a block content control", () => {
   ] as const satisfies readonly (readonly [string, FolioDocumentOperation])[])
     test(name, async () => {
       const source = await packageOf(body);
-      // Read back by the default engine, rejecting the canonical file joins
+      // Read back by the legacy engine, rejecting the canonical file joins
       // the anchor into the new paragraph under the new paragraph's id, as at
       // the end of a container; everything else is the same.
       const actual = await outcomes(

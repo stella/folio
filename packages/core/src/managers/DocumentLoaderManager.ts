@@ -21,6 +21,7 @@ import { recordDocumentLoadPhase } from "../layout-engine/layoutInstrumentation"
 import { heldUnreferencedNotes } from "../prosemirror/noteReferenceReview";
 import {
   CANONICAL_GAP,
+  type EditorSession,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
@@ -48,7 +49,7 @@ export type DocumentLoaderHistory = {
 export type DocumentLoaderCallbacks = {
   /** Editor history to reset/seed with the loaded document. */
   history: DocumentLoaderHistory;
-  getExperimentalSession?: () => "canonical" | undefined;
+  getExperimentalSession?: () => EditorSession | undefined;
   /**
    * Receives the identity of the document that just landed in history. Every
    * load allocates a fresh identity, so the adapter can tell an external load

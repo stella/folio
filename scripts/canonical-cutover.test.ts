@@ -37,7 +37,9 @@ describe("canonical cutover guard", () => {
     );
     for (const id of Object.values(CANONICAL_GAP)) {
       expect(usesCanonicalSession("canonical", id)).toBe(true);
-      expect(usesCanonicalSession(undefined, id)).toBe(false);
+      // The canonical session is the default; only "legacy" opts out.
+      expect(usesCanonicalSession(undefined, id)).toBe(true);
+      expect(usesCanonicalSession("legacy", id)).toBe(false);
     }
   });
 

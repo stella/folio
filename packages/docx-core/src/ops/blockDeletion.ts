@@ -364,7 +364,7 @@ export const deleteBlocks = ({
   const following = list[last.index + 1];
   const terminal = last.index === list.length - 1;
   // Tracked, a paragraph a table or another block follows loses its words
-  // and its own mark, as the default editor records it; accepting removes
+  // and its own mark, as the legacy editor records it; accepting removes
   // it, which needs what resolving that mark needs.
   const trackedBeforeTable =
     op.revision !== undefined &&

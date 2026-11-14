@@ -66,6 +66,7 @@ test("a handle held across a load reads and saves the document it loaded", async
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            experimentalSession="legacy"
             accessibleName="Document editor"
             ref={editor}
             documentBuffer={source}

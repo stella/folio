@@ -55,7 +55,7 @@ test("typing in a large document does not remeasure every block during the burst
 }) => {
   await installLayoutMeasurement(page);
 
-  await page.goto(`/?paragraphs=${PARAGRAPH_COUNT}`);
+  await page.goto(`/?session=legacy&paragraphs=${PARAGRAPH_COUNT}`);
   await page.waitForSelector('[data-testid="folio-editor"]');
   await page.waitForFunction(
     () => document.querySelectorAll(".layout-page").length >= 20,
@@ -149,7 +149,7 @@ test("fixture initial load does not perform duplicate font-ready relayout", asyn
 }) => {
   await installLayoutMeasurement(page);
 
-  await page.goto("/?file=docx-editor-demo.docx");
+  await page.goto("/?session=legacy&file=docx-editor-demo.docx");
   await page.waitForSelector('[data-testid="folio-editor"]');
   await page.waitForFunction(
     () => document.querySelectorAll(".layout-page").length >= 3,
@@ -180,7 +180,7 @@ test("incremental layout after editing stays stable and matches a fresh full rel
 }) => {
   await installLayoutMeasurement(page);
 
-  await page.goto(`/?paragraphs=${PARAGRAPH_COUNT}`);
+  await page.goto(`/?session=legacy&paragraphs=${PARAGRAPH_COUNT}`);
   await page.waitForSelector('[data-testid="folio-editor"]');
   await page.waitForFunction(
     () => document.querySelectorAll(".layout-page").length >= 20,
@@ -231,7 +231,7 @@ test("incremental layout after editing stays stable and matches a fresh full rel
 test("virtualized long documents render later pages on scroll", async ({
   page,
 }) => {
-  await page.goto(`/?paragraphs=${PARAGRAPH_COUNT}`);
+  await page.goto(`/?session=legacy&paragraphs=${PARAGRAPH_COUNT}`);
   await page.waitForSelector('[data-testid="folio-editor"]');
   await page.waitForFunction(
     () => document.querySelectorAll(".layout-page").length >= 20,
@@ -256,7 +256,7 @@ test("virtualized long documents render later pages on scroll", async ({
 test("block geometry becomes available when a virtual page is painted", async ({
   page,
 }) => {
-  await page.goto(`/?paragraphs=${PARAGRAPH_COUNT}`);
+  await page.goto(`/?session=legacy&paragraphs=${PARAGRAPH_COUNT}`);
   await page.waitForSelector('[data-testid="folio-editor"]');
   await page.waitForFunction(
     () => document.querySelectorAll(".layout-page").length >= 20,

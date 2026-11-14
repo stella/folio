@@ -997,7 +997,7 @@ describe("canonical structural commands", () => {
     ["a paragraph refers to it", "used", undefined],
     ["only a paragraph accepting removes refers to it", "outgoing", 901],
   ] as const)(
-    "a numbered marker takes the defined instance when %s, as the default editor does",
+    "a numbered marker takes the defined instance when %s, as the legacy editor does",
     (_name, use, expected) => {
       const info = { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z" };
       const levels = Array.from({ length: 9 }, (_, ilvl) => ({

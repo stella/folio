@@ -79,6 +79,7 @@ import type { OutlineDepth } from "@stll/folio-core/utils/outlineDepth";
 // union from the adapter's own type surface rather than reaching into core.
 export type { EditorMode };
 import type { DocumentLoadState } from "@stll/folio-core/managers/DocumentLoaderManager";
+import type { EditorSession } from "@stll/folio-core/types/canonicalCapabilities";
 import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 
 import type { FolioUIComponents } from "../../ui/folio-ui";
@@ -130,8 +131,12 @@ export type DocxEditorProps = {
   password?: string | undefined;
   /** Pre-parsed document (alternative to documentBuffer) */
   document?: Document | null;
-  /** Experimental plain-text canonical session; unsupported edits are refused. */
-  experimentalSession?: "canonical";
+  /**
+   * The editing engine. Unset, the editor runs the canonical session, which
+   * refuses an edit it cannot make yet with a notice. `"legacy"` selects the
+   * ProseMirror-owned engine.
+   */
+  experimentalSession?: EditorSession;
   /** Callback when document is saved */
   onSave?: (buffer: ArrayBuffer) => void;
   /** Author name used for comments and track changes */

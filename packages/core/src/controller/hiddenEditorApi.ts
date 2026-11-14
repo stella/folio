@@ -66,7 +66,7 @@ export type HiddenEditorApi = {
    * a writer copies it first (`cloneDocumentWithParagraphPropertySources`).
    */
   getDocument: () => ReadonlyDocument | null;
-  /** Canonical snapshot, or null in the default session. */
+  /** Canonical snapshot, or null in the legacy session. */
   getCanonicalComments: () => Comment[] | null;
   /** Committed session/version identity; safe during provisional composition. */
   getCanonicalCommittedVersion: () => string | null;
@@ -107,7 +107,7 @@ export type HiddenEditorApi = {
   applyCanonicalComment: (
     request: CanonicalCommentRequest,
   ) => CanonicalCommentResult | null;
-  /** Apply a final-section patch; null is reserved for default sessions. */
+  /** Apply a final-section patch; null is reserved for legacy sessions. */
   applyCanonicalSectionProperties: (
     patch: FormattingPatch<SectionProperties>,
   ) => CanonicalSectionPropertiesResult | null;

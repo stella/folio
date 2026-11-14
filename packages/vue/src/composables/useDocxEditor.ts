@@ -170,6 +170,7 @@ import {
   CANONICAL_GAP,
   type CanonicalGap,
   canonicalRefusalMessage,
+  type EditorSession,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment, Footnote } from "@stll/folio-core/types/content";
@@ -397,8 +398,12 @@ export type UseDocxEditorOptions = {
   pagesContainer: Ref<HTMLElement | null>;
   /** Whether the editor is read-only. Reactive. */
   readOnly?: MaybeRefOrGetter<boolean>;
-  /** Experimental plain-text canonical session; unsupported edits are refused. */
-  experimentalSession?: MaybeRefOrGetter<"canonical" | undefined>;
+  /**
+   * The editing engine. Unset, the editor runs the canonical session, which
+   * refuses an edit it cannot make yet with a notice. `"legacy"` selects the
+   * ProseMirror-owned engine.
+   */
+  experimentalSession?: MaybeRefOrGetter<EditorSession | undefined>;
   /** Gap between pages in pixels. */
   pageGap?: number;
   /** Whether to paint each page's effective body-content boundary. Reactive. */

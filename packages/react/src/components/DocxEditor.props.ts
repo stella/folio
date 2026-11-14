@@ -58,6 +58,7 @@ import type {
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/server";
+import type { EditorSession } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
 import type {
   Document,
@@ -123,8 +124,12 @@ export type DocxEditorProps = {
   password?: string | undefined;
   /** Pre-parsed document (alternative to documentBuffer) */
   document?: Document | null;
-  /** Experimental plain-text canonical session; unsupported edits are refused. */
-  experimentalSession?: "canonical";
+  /**
+   * The editing engine. Unset, the editor runs the canonical session, which
+   * refuses an edit it cannot make yet with a notice. `"legacy"` selects the
+   * ProseMirror-owned engine.
+   */
+  experimentalSession?: EditorSession;
   /** Callback when document is saved */
   onSave?: (buffer: ArrayBuffer) => void;
   /** Author name used for comments and track changes */

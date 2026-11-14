@@ -43,6 +43,7 @@ import {
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   CANONICAL_GAP,
+  type EditorSession,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Document } from "@stll/folio-core/types/document";
@@ -110,7 +111,7 @@ export type UsePagesPointerOptions = {
   hyperlinkPopupData: Ref<HyperlinkPopupData | null>;
   readOnly: Ref<boolean>;
   showHeaderFooterEditing: Ref<boolean>;
-  getExperimentalSession?: () => "canonical" | undefined;
+  getExperimentalSession?: () => EditorSession | undefined;
   applyCanonicalOperations?: (operations: readonly DocumentOp[]) => boolean;
   zoom: Ref<number>;
   layout: Ref<Layout | null>;

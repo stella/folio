@@ -181,6 +181,7 @@ test("persistent hidden view reads committed callbacks and read-only inputs", as
     await act(async () =>
       root.render(
         <HiddenProseMirror
+          experimentalSession="legacy"
           ref={editor}
           document={documentModel}
           documentIdentity="initial"
@@ -292,6 +293,7 @@ test("persistent paged controller reads document I/O from the latest commit", as
       root.render(
         <IntlProvider locale="en" timeZone="UTC" messages={messages}>
           <PagedEditor
+            experimentalSession="legacy"
             accessibleName="Document editor"
             ref={editor}
             document={null}
@@ -334,6 +336,7 @@ test("read-only pages route selection keys but preserve native scrolling and ref
     root.render(
       <IntlProvider locale="en" timeZone="UTC" messages={messages}>
         <PagedEditor
+          experimentalSession="legacy"
           accessibleName="Document editor"
           ref={editor}
           document={createEmptyDocument({ initialText: "Read only text" })}
@@ -418,6 +421,7 @@ test("deferred hidden view reuses the latest committed pre-view document seed", 
       root.render(
         <IntlProvider locale="en" timeZone="UTC" messages={messages}>
           <PagedEditor
+            experimentalSession="legacy"
             accessibleName="Document editor"
             ref={editor}
             document={documentModel}

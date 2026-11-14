@@ -19,7 +19,7 @@ export const PUBLIC_OPERATION_SOURCE_GAPS = Object.entries(
   .filter(
     ([, capability]) =>
       capability.owner === "document-operations" &&
-      capability.defaultSessionMutation === "pm-public-operations",
+      capability.legacySessionMutation === "pm-public-operations",
   )
   .map(([gap]) => gap);
 

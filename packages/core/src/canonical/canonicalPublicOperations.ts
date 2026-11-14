@@ -523,7 +523,7 @@ const besidePendingJoin = ({
 };
 
 /**
- * One new paragraph beside the anchor, as the default engine writes it: the
+ * One new paragraph beside the anchor, as the legacy engine writes it: the
  * anchor's stated paragraph properties unless `inheritFormatting` is false,
  * with the operation's own on top, holding the text as one plain run.
  */
@@ -550,7 +550,7 @@ const resolveBlockInsertion = ({
       "unsupportedBlock",
       "Canonical block insertion requires plain text.",
     );
-  // Each line its own paragraph, blank lines dropped, as the default engine
+  // Each line its own paragraph, blank lines dropped, as the legacy engine
   // splits them; inline, line breaks stay in the one paragraph. A tab is a
   // tab element either way.
   const split = !inline && LINE_BREAK_PATTERN.test(text);
@@ -641,7 +641,7 @@ const resolveBlockInsertion = ({
   ];
   const { position } = place;
   // A comment covers the inserted text, so an insertion with no text has
-  // nothing for it to cover, as the default engine finds.
+  // nothing for it to cover, as the legacy engine finds.
   if (
     operation.comment !== undefined &&
     texts.every((line) => line.length === 0)
@@ -1219,7 +1219,7 @@ const resolveTableStructure = ({
 };
 
 /**
- * The operations a canonical suggestion can carry: the default engine's;
+ * The operations a canonical suggestion can carry: the legacy engine's;
  * splits and merges, which the canonical session records as tracked paragraph
  * marks stamped with the suggestion; and comments, which it holds as proposed
  * by the suggestion until it is accepted or rejected.
@@ -1237,7 +1237,7 @@ const CANONICAL_SUGGESTED_OPERATION_TYPES: ReadonlySet<
 /**
  * Whether one of two resolved operations inserts beside the paragraph the
  * other deletes by identity: they touch only at that paragraph's edge, and
- * both apply, as in the default engine. A deletion of a paragraph that ends
+ * both apply, as in the legacy engine. A deletion of a paragraph that ends
  * its container still refuses the insertion beside it.
  */
 const besideItsDeletion = (
@@ -1473,7 +1473,7 @@ type BesideDeletions = {
 
 /**
  * The stated numbering a request names, minting its new list once for the
- * operation, as the default engine allocates one instance per operation.
+ * operation, as the legacy engine allocates one instance per operation.
  */
 const statedNumbering = (
   numbering: FolioAIListNumbering | undefined,
@@ -1773,7 +1773,7 @@ export class CanonicalPublicOperations {
       resolved.push(alone.value);
     }
     // A move id names one relocation, a move only when it reaches exactly one
-    // source and one destination, as the default engine pairs them; an
+    // source and one destination, as the legacy engine pairs them; an
     // unpaired id records a plain insertion or deletion and is reported.
     const moveSides = new Map<string, { from: number; to: number }>();
     for (const { operation } of resolved) {
@@ -1996,7 +1996,7 @@ export class CanonicalPublicOperations {
             continue;
           }
           // A tracked edit's comment covers what the edit changed, from its
-          // first revision to its last, as the default engine anchors it.
+          // first revision to its last, as the legacy engine anchors it.
           const changed =
             batch.mode === "direct"
               ? undefined
@@ -2726,7 +2726,7 @@ export class CanonicalPublicOperations {
         const next = projection.value.nextParagraphInContainer(blockId);
         if (next === undefined) return refusal("missingBlock");
         // The merged paragraph keeps the first one's identity, as the
-        // default engine's merge does.
+        // legacy engine's merge does.
         intent = {
           type: "joinParagraphs",
           story,
@@ -2931,7 +2931,7 @@ export class CanonicalPublicOperations {
       intent.type === "splitParagraph"
     ) {
       intents.push(intent);
-      // Each half's properties, as the default engine sets them once the
+      // Each half's properties, as the legacy engine sets them once the
       // split is made: the first half keeps the paragraph's identity, the
       // second takes the new one.
       for (const [half, properties] of [

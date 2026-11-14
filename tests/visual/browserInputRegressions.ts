@@ -1127,7 +1127,7 @@ export const CANONICAL_TABLE_PASTE_OVER_EMPTIED_FIELDS_SEED_11 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (single-decimal-list), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (single-decimal-list), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_44ACBA1A39AE6967 = {
   authority: "canonical",
   seed: 29,
@@ -1143,7 +1143,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_44ACBA1A39AE6967 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0AE2A73B64015980 = {
   authority: "canonical",
   seed: 83,
@@ -1155,7 +1155,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0AE2A73B64015980 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_F833D2A2C838868E = {
   authority: "canonical",
   seed: 263,
@@ -1178,7 +1178,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_F833D2A2C838868E = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (notes), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (notes), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_6B03AAC751613037 = {
   authority: "canonical",
   seed: 1793897521,
@@ -1203,7 +1203,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_6B03AAC751613037 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (single-bullet-list), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (single-bullet-list), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_CAED1ECA237779C4 = {
   authority: "canonical",
   seed: 1793946574,
@@ -1226,7 +1226,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_CAED1ECA237779C4 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (tables), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (tables), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_7AF616E1D95C9131 = {
   authority: "canonical",
   seed: 1794032767,
@@ -1248,7 +1248,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_7AF616E1D95C9131 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (notes), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (notes), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_1EDA02BD7E61236F = {
   authority: "canonical",
   seed: 83,
@@ -1264,7 +1264,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_1EDA02BD7E61236F = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (image), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (image), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B2E6A69C90DD0380 = {
   authority: "canonical",
   seed: 431,
@@ -1283,7 +1283,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B2E6A69C90DD0380 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (fields-links-bookmarks), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_88B32B907B27833C = {
   authority: "canonical",
   seed: 1794119234,
@@ -1306,7 +1306,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_88B32B907B27833C = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (invisible-markers), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (invisible-markers), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_40F31C41449DD72E = {
   authority: "canonical",
   seed: 1794292116,
@@ -1321,7 +1321,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_40F31C41449DD72E = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2300 (rtl-cjk), replayed in the canonical session. */
+/** A legacy-editor finding of #2300 (rtl-cjk), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_050B871DCD760539 = {
   authority: "canonical",
   seed: 1794378562,
@@ -1336,7 +1336,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_050B871DCD760539 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2302 (single-decimal-list), replayed in the canonical session. */
+/** A legacy-editor finding of #2302 (single-decimal-list), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_16B45BECAB03610E = {
   authority: "canonical",
   seed: 431,
@@ -1351,7 +1351,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_16B45BECAB03610E = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2302 (single-bullet-list), replayed in the canonical session. */
+/** A legacy-editor finding of #2302 (single-bullet-list), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_5736502082EB3A9B = {
   authority: "canonical",
   seed: 1793914965,
@@ -1366,7 +1366,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_5736502082EB3A9B = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2302 (notes), replayed in the canonical session. */
+/** A legacy-editor finding of #2302 (notes), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B3A7D52FAF40115D = {
   authority: "canonical",
   seed: 29,
@@ -1385,7 +1385,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_B3A7D52FAF40115D = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2302 (rtl-cjk), replayed in the canonical session. */
+/** A legacy-editor finding of #2302 (rtl-cjk), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97 = {
   authority: "canonical",
   seed: 1794206220,
@@ -1400,7 +1400,7 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_0F194A9C3F728F97 = {
   },
 } satisfies CanonicalRegression;
 
-/** A default-editor finding of #2596 (mixed-lists), replayed in the canonical session. */
+/** A legacy-editor finding of #2596 (mixed-lists), replayed in the canonical session. */
 export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
   authority: "canonical",
   seed: 1794465004,

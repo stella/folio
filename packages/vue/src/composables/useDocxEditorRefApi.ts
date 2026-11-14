@@ -108,6 +108,7 @@ import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findPa
 import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import {
   CANONICAL_GAP,
+  type EditorSession,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type { Comment } from "@stll/folio-core/types/content";
@@ -240,7 +241,7 @@ export type UseDocxEditorRefApiOptions = {
   /** The session's own document in a canonical session, without a copy; otherwise null. */
   readDocumentModel: () => ReadonlyDocument | null;
   getActiveView: () => EditorView | null;
-  getExperimentalSession?: () => "canonical" | undefined;
+  getExperimentalSession?: () => EditorSession | undefined;
   getActiveCanonicalStory?: () => OpStory;
   closeNoteStory: () => void;
   getHeaderFooterView: (rId: string) => EditorView | null;

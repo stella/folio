@@ -185,6 +185,7 @@ test("a reactive document a host loads is held raw, so the host's copies can clo
     defineComponent({
       setup() {
         holder.editor = useDocxEditor({
+          experimentalSession: "legacy",
           hiddenContainer: shallowRef(null),
           pagesContainer: shallowRef(null),
           onError: (error) => panic(error.message),
@@ -209,7 +210,7 @@ test("a reactive document a host loads is held raw, so the host's copies can clo
   }
 });
 
-/** Mounts a Vue editor in the default session, loaded with `text`. */
+/** Mounts a Vue editor in the legacy session, loaded with `text`. */
 const mountDefaultEditor = async (text: string) => {
   const container = document.createElement("div");
   const hidden = document.createElement("div");
@@ -223,6 +224,7 @@ const mountDefaultEditor = async (text: string) => {
     defineComponent({
       setup() {
         holder.editor = useDocxEditor({
+          experimentalSession: "legacy",
           hiddenContainer: shallowRef(hidden),
           pagesContainer: shallowRef(pages),
           onChange: (changed) => changes.push(changed),
@@ -251,7 +253,7 @@ const mountDefaultEditor = async (text: string) => {
   };
 };
 
-test("typing in the default session's body hands the host one copy per settled change, never the model", async () => {
+test("typing in the legacy session's body hands the host one copy per settled change, never the model", async () => {
   const mounted = await mountDefaultEditor("Body");
   const counter = { stop: () => {} };
   try {
@@ -311,6 +313,7 @@ test("a document holding a reactive proxy deeper down is held as raw data", () =
     defineComponent({
       setup() {
         holder.editor = useDocxEditor({
+          experimentalSession: "legacy",
           hiddenContainer: shallowRef(null),
           pagesContainer: shallowRef(null),
           onError: (error) => panic(error.message),
@@ -342,7 +345,7 @@ test("a document holding a reactive proxy deeper down is held as raw data", () =
   }
 });
 
-test("the controller's getDocument in the default session is read-only: a host writes its own copy, and the editor's model stays", async () => {
+test("the controller's getDocument in the legacy session is read-only: a host writes its own copy, and the editor's model stays", async () => {
   const mounted = await mountDefaultEditor("Body");
   try {
     const { adapter } = mounted;

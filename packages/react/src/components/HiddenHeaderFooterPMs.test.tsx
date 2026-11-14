@@ -52,6 +52,7 @@ test("persistent header/footer views refuse edits through read-only switches", a
     await act(async () =>
       root.render(
         <HiddenHeaderFooterPMs
+          experimentalSession="legacy"
           ref={ref}
           document={persistentHeaderDocument}
           readCanonicalDocument={readNoCanonicalDocument}
@@ -65,6 +66,7 @@ test("persistent header/footer views refuse edits through read-only switches", a
       await act(async () =>
         root.render(
           <HiddenHeaderFooterPMs
+            experimentalSession="legacy"
             ref={ref}
             document={persistentHeaderDocument}
             readCanonicalDocument={readNoCanonicalDocument}

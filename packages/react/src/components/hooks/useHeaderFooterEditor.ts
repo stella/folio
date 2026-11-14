@@ -22,6 +22,7 @@ import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   CANONICAL_GAP,
+  type EditorSession,
   usesCanonicalSession,
 } from "@stll/folio-core/types/canonicalCapabilities";
 import type {
@@ -52,7 +53,7 @@ type UseHeaderFooterEditorParams = {
   history: UseHistoryReturn<ReadonlyDocument | null>;
   pushDocument: (document: ReadonlyDocument) => ReadonlyDocument;
   getCanonicalApi?: () => HiddenEditorApi | null;
-  experimentalSession?: "canonical";
+  experimentalSession?: EditorSession;
   /**
    * Look up the persistent hidden HF EditorView for an rId. Returns null
    * when the view isn't mounted (e.g. the chrome unmounted before the

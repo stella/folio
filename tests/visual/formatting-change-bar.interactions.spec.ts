@@ -36,7 +36,7 @@ const HOSTS = [
   { name: "Vue", port: vuePort },
 ] as const;
 const SESSIONS = [
-  { name: "default", query: "" },
+  { name: "legacy", query: "?session=legacy" },
   { name: "canonical", query: "?session=canonical" },
 ] as const;
 

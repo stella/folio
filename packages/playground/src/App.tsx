@@ -725,8 +725,13 @@ const DocumentPlayground = () => {
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
   const query = new URLSearchParams(window.location.search);
   const parityFonts = globalThis.__folioParityFonts;
+  // The canonical session is the editor's default; `?session=legacy` selects the
+  // ProseMirror-owned engine and `?session=canonical` states the default.
+  const requestedSession = query.get("session");
   const experimentalSession =
-    query.get("session") === "canonical" ? "canonical" : undefined;
+    requestedSession === "legacy" || requestedSession === "canonical"
+      ? requestedSession
+      : undefined;
   const showMarginGuides = query.has("marginGuides");
   const marginGuideColor = query.get("marginGuideColor") ?? undefined;
   // The editor paints with the legacy renderer by default. `?pageRenderer=display-list`

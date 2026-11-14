@@ -52,7 +52,10 @@ import {
 import { HIDDEN_EDITOR_WRAPPER_CLASS } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
-import type { CanonicalRefusalGround } from "@stll/folio-core/types/canonicalCapabilities";
+import type {
+  CanonicalRefusalGround,
+  EditorSession,
+} from "@stll/folio-core/types/canonicalCapabilities";
 import type { StyleDefinitions, Theme } from "@stll/folio-core/types/document";
 import type {
   DeepReadonly,
@@ -83,7 +86,7 @@ const EMPTY_EXTERNAL_PLUGINS: Plugin[] = [];
 export type HiddenProseMirrorProps = {
   /** The document model to edit; the editor reads it and never writes it. */
   document: ReadonlyDocument | null;
-  experimentalSession?: "canonical";
+  experimentalSession?: EditorSession;
   /** Who answers the undo and redo keys; the editor when unset. */
   historyShortcuts?: HistoryShortcutOwner;
   suggestionModeActive?: boolean;

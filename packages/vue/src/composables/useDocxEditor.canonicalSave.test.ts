@@ -111,7 +111,7 @@ test.each([
     }
   },
 );
-test.each(["canonical", "default"] as const)(
+test.each(["canonical", "legacy"] as const)(
   "%s history keys have one editor owner and no document-level owner",
   async (session) => {
     const container = document.createElement("div");
@@ -127,9 +127,7 @@ test.each(["canonical", "default"] as const)(
           holder.editor = useDocxEditor({
             hiddenContainer: shallowRef(hidden),
             pagesContainer: shallowRef(pages),
-            ...(session === "canonical"
-              ? { experimentalSession: "canonical" as const }
-              : {}),
+            experimentalSession: session,
           });
           useKeyboardShortcuts({
             showFindReplace: shallowRef(false),

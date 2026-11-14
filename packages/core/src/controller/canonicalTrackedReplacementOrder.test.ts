@@ -389,7 +389,7 @@ describe("a tracked replacement puts the struck text first", () => {
       const saved = await saveCanonicalHarnessDocument(harness.snapshot());
       const actual = await readings(saved.bytes.slice().buffer);
       // As the public replacement of the same words saves in both engines.
-      // The default editor's typing puts the new text after the comment's
+      // The legacy editor's typing puts the new text after the comment's
       // end instead, so accepting there leaves the comment nothing to cover.
       const replaced = await readings(
         await viaDefaultEngine(source, "Documentation", "XY"),

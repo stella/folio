@@ -70,8 +70,8 @@ const createHostMutationObserver = () => {
   };
 };
 
-for (const experimentalSession of [undefined, "canonical"] as const) {
-  test(`document history shortcuts ${experimentalSession === "canonical" ? "leave canonical history to the editor" : "remain enabled by default"}`, async () => {
+for (const experimentalSession of ["legacy", "canonical"] as const) {
+  test(`document history shortcuts ${experimentalSession === "canonical" ? "leave canonical history to the editor" : "remain enabled in the legacy session"}`, async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -87,7 +87,7 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
             <DocxEditor
               accessibleName="Document editor"
               document={initialDocument}
-              {...(experimentalSession ? { experimentalSession } : {})}
+              experimentalSession={experimentalSession}
               showToolbar={false}
             />
           </IntlProvider>,

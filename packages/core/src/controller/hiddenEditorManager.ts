@@ -129,6 +129,7 @@ import {
   CANONICAL_GAP,
   CANONICAL_RULE,
   type CanonicalRefusalGround,
+  type EditorSession,
   usesCanonicalSession,
 } from "../types/canonicalCapabilities";
 import type { StyleDefinitions } from "../types/document";
@@ -162,7 +163,7 @@ export class CanonicalSessionRefusalError extends CanonicalSessionRefusalErrorBa
   message: string;
 }> {}
 
-type EditorSession =
+type ActiveEditorSession =
   | { type: "prosemirror" }
   | { type: "canonical"; session: CanonicalSession }
   | { type: "refused"; reason: string; documentIdentity: string | null };
@@ -585,7 +586,7 @@ export type HiddenEditorManagerDeps = {
    */
   getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
-  getExperimentalSession?: () => "canonical" | undefined;
+  getExperimentalSession?: () => EditorSession | undefined;
   /**
    * Who answers the undo and redo keys in a canonical session; the editor's
    * when unset. With `"host"`, the keys change nothing in any story's view and
@@ -722,7 +723,7 @@ export const createHiddenEditorManager = (
   };
   let view: EditorView | null = null;
   let releaseCommandOwner: (() => void) | undefined;
-  let editorSession: EditorSession = { type: "prosemirror" };
+  let editorSession: ActiveEditorSession = { type: "prosemirror" };
   let canonicalSessionEpoch = 0;
   let modeOverride: CanonicalSessionMode | null = null;
   const syncCanonicalMode = (): void => {
