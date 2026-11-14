@@ -208,7 +208,7 @@ export const openCanonicalRoomEditor = ({
 
   return {
     get editable() {
-      return status === "joined";
+      return status === "joined" && !left;
     },
     selectionChanged: () => {
       if (!left) joined?.presence?.update();

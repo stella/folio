@@ -170,14 +170,13 @@ test("an editor takes local edits once the room granted its lease, and shows its
   expect(second.room.editable).toBe(true);
   expect(room.seeded()).toBe(1);
 
-  room.type(first, "a");
-  room.type(second, "b");
+  room.type(first, "[first]");
+  room.type(second, "[second]");
   for (let round = 0; round < 10; round += 1) await settle();
-  expect(documentText(readModel(first.session.document))).toBe(
-    documentText(readModel(second.session.document)),
-  );
-  expect(documentText(readModel(first.session.document))).toContain("a");
-  expect(documentText(readModel(first.session.document))).toContain("b");
+  const text = documentText(readModel(first.session.document));
+  expect(text).toBe(documentText(readModel(second.session.document)));
+  expect(text).toContain("[first]");
+  expect(text).toContain("[second]");
   expect(
     first.events.filter(({ type }) => type === "localEditRefused"),
   ).toEqual([]);
@@ -216,7 +215,7 @@ test("leaving the room closes its connection, clears the peers' selections and t
   expect(first.selections).toEqual([]);
   expect(first.room.editable).toBe(false);
   const before = documentText(readModel(first.session.document));
-  room.type(second, "c");
+  room.type(second, "[after]");
   for (let round = 0; round < 10; round += 1) await settle();
   expect(documentText(readModel(first.session.document))).toBe(before);
 });
