@@ -1,4 +1,4 @@
-import type { Transaction } from "prosemirror-state";
+import { TextSelection, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { OpStory } from "@stll/docx-core/ops";
@@ -23,6 +23,53 @@ type CanonicalStoryEditorOptions = {
   onSelectionChange: () => void;
   onRefusal:
     ((reason: string, ground: CanonicalRefusalGround) => void) | undefined;
+};
+
+/**
+ * Show the story's current projection in its open editor, with the selection
+ * the session holds for the story: the one the editor last reported, moved
+ * over every edit since. A peer's edit can move it without changing what the
+ * story shows, so it is restored then too. An editor that never reported one
+ * keeps its position, within the new content.
+ */
+export const refreshCanonicalStoryView = ({
+  view,
+  story,
+  api,
+}: {
+  view: EditorView;
+  story: OpStory;
+  api: HiddenEditorApi | null | undefined;
+}): void => {
+  const projected = api?.getCanonicalStoryProjection(story);
+  if (!api || !projected) return;
+  const held = api.getCanonicalStorySelection(story);
+  if (view.state.doc.eq(projected)) {
+    const { anchor, head } = view.state.selection;
+    if (!held || (held.anchor === anchor && held.head === head)) return;
+    const moved = view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, held.anchor, held.head),
+    );
+    moved.setMeta("addToHistory", false);
+    view.updateState(view.state.apply(moved));
+    return;
+  }
+  const transaction = view.state.tr.replaceWith(
+    0,
+    view.state.doc.content.size,
+    projected.content,
+  );
+  transaction.setSelection(
+    held
+      ? TextSelection.create(transaction.doc, held.anchor, held.head)
+      : TextSelection.near(
+          transaction.doc.resolve(
+            Math.min(view.state.selection.anchor, projected.content.size),
+          ),
+        ),
+  );
+  transaction.setMeta("addToHistory", false);
+  view.updateState(view.state.apply(transaction));
 };
 
 /** Secondary views compile classified native input into the shared Document journal. */
@@ -100,8 +147,11 @@ export const createCanonicalStoryEditor = ({
         return true;
       }
       view.updateState(applied.state);
-      if (applied.transactions.some((step) => step.selectionSet))
+      if (applied.transactions.some((step) => step.selectionSet)) {
+        // The selection it now shows, which a peer's edit moves with the text.
+        getApi()?.noteCanonicalStoryView({ story, view });
         onSelectionChange();
+      }
       return true;
     },
     props: {
