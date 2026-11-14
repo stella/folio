@@ -33,6 +33,7 @@ import { allocateCommentAnchorIds, planTrackedDeletion } from "../plan";
 import { documentStories, storyBody } from "../stories";
 import {
   type CommentOp,
+  DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   OP_STORIES,
@@ -453,7 +454,7 @@ test("comment inverses refuse changed owned text and preserve unrelated package 
   expect(applyDocumentOps(changed.document, applied.inverse).isErr()).toBe(
     true,
   );
-  expect(toOpEnvelope(op).schema).toBe(10);
+  expect(toOpEnvelope(op).schema).toBe(DOCUMENT_OP_SCHEMA_VERSION);
 });
 
 test("every comment package-operation generator exercises its exact inverse in every story", () => {

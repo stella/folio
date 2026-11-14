@@ -93,7 +93,11 @@ import {
   CanonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
-import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
+import {
+  holdsUniqueParagraphIds,
+  prepareCanonicalDocumentInput,
+  prepareCanonicalDocxInput,
+} from "@stll/folio-core/docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { parseDocx } from "@stll/folio-core/docx/parser";
@@ -1458,7 +1462,11 @@ export function useDocxEditor(
 
   // ---- Public loading API -------------------------------------------------
 
+  // A load started later supersedes one still preparing its document.
+  let loadGeneration = 0;
+
   async function loadBuffer(buffer: DocxInput): Promise<void> {
+    loadGeneration += 1;
     parseError.value = null;
     isReady.value = false;
     try {
@@ -1480,11 +1488,37 @@ export function useDocxEditor(
   }
 
   function loadDocument(doc: Document): void {
+    const generation = (loadGeneration += 1);
     parseError.value = null;
     // A host's document may hold reactive proxies; the model is its raw
     // data, which the copies the host is handed can clone.
+    const raw = rawDocument(doc);
+    if (!isCanonicalSession() || holdsUniqueParagraphIds(raw)) {
+      commitLoadedDocument(raw);
+      return;
+    }
+    // A canonical session opens the model with the paragraph ids the byte
+    // path establishes for it.
+    void loadCanonicalDocument(raw, generation);
+  }
+
+  async function loadCanonicalDocument(
+    doc: Document,
+    generation: number,
+  ): Promise<void> {
+    const prepared = await prepareCanonicalDocumentInput(doc);
+    if (generation !== loadGeneration) return;
+    if (prepared.isErr()) {
+      parseError.value = prepared.error.message;
+      onError?.(prepared.error);
+      return;
+    }
+    commitLoadedDocument(prepared.value);
+  }
+
+  function commitLoadedDocument(doc: Document): void {
     heldNotes = heldUnreferencedNotes(doc);
-    docModel.value = rawDocument(doc);
+    docModel.value = doc;
     noteFollower.reset();
     remountForNewDocument();
   }
