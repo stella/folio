@@ -41,6 +41,7 @@ import {
   type DeleteRowOp,
   type DeleteTableOp,
   DOCUMENT_OP_TYPES,
+  type DocumentOp,
   type InsertRowOp,
   type InsertTableOp,
   type NewIds,
@@ -445,6 +446,31 @@ export const permitsCellFinalMark = (
       return unreachable;
     }
   }
+};
+
+/**
+ * A cell-final mark an exact inverse may write back. Resolving or
+ * re-attributing a row's revision apart from its cells' final marks leaves
+ * those marks without the row's stamp; the inverse of a later edit to the
+ * cells or rows puts them back as they were.
+ */
+export const permitsRestoredCellFinalMark = ({
+  body,
+  location,
+  opType,
+}: {
+  body: DocumentBody;
+  location: ParagraphLocation;
+  opType: DocumentOp["type"];
+}): boolean => {
+  if (permitsCellFinalMark(body, location)) return true;
+  const mark = location.paragraph.pPrMark;
+  return (
+    (opType === DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS ||
+      opType === DOCUMENT_OP_TYPES.SET_TABLE_ROWS) &&
+    location.list.some((step) => step.kind === "tableCell") &&
+    (mark?.kind === "ins" || mark?.kind === "del")
+  );
 };
 
 /** Newly stamped table, row, cell and grid ids, including nested tables. */
