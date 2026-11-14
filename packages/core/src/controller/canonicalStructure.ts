@@ -809,24 +809,16 @@ export const prepareCanonicalCommands = (
   return session.prepareIntents(state, { intents });
 };
 
-type CanonicalAutoformatTrigger = { from: number; to: number; text: string };
+type CanonicalAutoformatInput = { from: number; to: number; text: string };
 
-/**
- * The rule that `typed`, already committed as typed, completes at the caret of
- * `state`: the marker's removal and the paragraph change as one atomic edit.
- *
- * The typed text is its own history step before the rule, so undoing the rule
- * (or Backspace straight after it) gives back exactly what was typed, the
- * trigger space included.
- */
+/** Rules compile their replacement and paragraph change as one atomic edit. */
 export const prepareCanonicalAutoformat = (
   session: CanonicalSession,
   state: EditorState,
-  typed: CanonicalAutoformatTrigger,
+  { from, to, text }: CanonicalAutoformatInput,
 ): Result<CanonicalCommit, CanonicalSessionError> | undefined => {
-  if (typed.text !== " " || typed.from !== typed.to) return undefined;
-  if (!state.selection.empty) return undefined;
-  const at = session.projection.addressAt(state.selection.head);
+  if (text !== " " || from !== to) return undefined;
+  const at = session.projection.addressAt(from);
   if (at.isErr()) return undefined;
   const document = readModel(session.document);
   const logical = editorPositionAtPhysicalPosition(document, at.value);
@@ -841,7 +833,7 @@ export const prepareCanonicalAutoformat = (
   );
   if (group === undefined) panic("Autoformat lost its logical paragraph");
   const source = address.source;
-  const prefix = group.text.slice(0, logical.offset);
+  const prefix = group.text.slice(0, logical.offset) + text;
   const requests = listRequestsForMarker(prefix);
   const heading = /^(?<hashes>#{1,6}) $/u.exec(prefix)?.groups?.["hashes"];
   if (requests === null && heading === undefined) return undefined;
