@@ -439,3 +439,106 @@ test("the first locality part is chosen across relationship, content type and by
     "restoreStoryParts changed unrelated package content types: [Content_Types].xml",
   ]);
 });
+
+test("revision info written on a deleted row, a cell or a table changes only the paragraphs it declares", () => {
+  // The corpus shape of a tracked row deletion: the row's own deletion, a
+  // deletion around the text it held, and property changes on a cell and on
+  // the table, between untouched paragraphs.
+  const info = (id: number) => ({
+    id,
+    author: "Reviewer",
+    date: "2026-01-01T00:00:00Z",
+  });
+  const cell = (paraId: string) => ({
+    type: "tableCell" as const,
+    content: [paragraph(paraId)],
+  });
+  const deletedCell = (paraId: string, id: number) => ({
+    type: "tableCell" as const,
+    content: [
+      {
+        type: "paragraph" as const,
+        paraId,
+        content: [
+          {
+            type: "deletion" as const,
+            info: info(id),
+            content: [
+              {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: "gone" }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  const before = {
+    package: {
+      document: {
+        content: [
+          paragraph("00000001"),
+          {
+            type: "table",
+            propertyChanges: [
+              {
+                type: "tablePropertyChange",
+                info: info(7),
+                previousFormatting: {},
+              },
+            ],
+            rows: [
+              {
+                type: "tableRow",
+                cells: [
+                  {
+                    ...cell("00000002"),
+                    propertyChanges: [
+                      {
+                        type: "tableCellPropertyChange",
+                        info: info(8),
+                        previousFormatting: {},
+                      },
+                    ],
+                  },
+                  cell("00000003"),
+                ],
+              },
+              {
+                type: "tableRow",
+                structuralChange: { type: "tableRowDeletion", info: info(5) },
+                cells: [deletedCell("00000004", 6), deletedCell("00000005", 9)],
+              },
+              { type: "tableRow", cells: [cell("00000006")] },
+            ],
+          },
+          paragraph("00000007"),
+        ],
+      },
+    },
+  } satisfies Document;
+  const stepOf = (id: number) =>
+    stepFor(
+      {
+        type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+        story: OP_STORIES.MAIN,
+        infos: [{ id, author: "Corpus adopter", date: "2026-02-02T00:00:00Z" }],
+      },
+      before,
+    );
+  for (const id of [5, 6, 7, 8, 9])
+    expect(localityStepFailures(stepOf(id))).toEqual([]);
+  // The check sees the row's own revision: the same edit reporting none of
+  // the row's paragraphs is a finding.
+  const rowDeletion = stepOf(5);
+  expect(
+    localityStepFailures({
+      ...rowDeletion,
+      edit: {
+        ...rowDeletion.edit,
+        touched: { modified: [], inserted: [], removed: [] },
+      },
+    }),
+  ).toContain("setRevisionInfo changed an untouched block or container");
+});

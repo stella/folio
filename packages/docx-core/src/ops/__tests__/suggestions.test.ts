@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document, ParagraphContent } from "../../model/document";
+import type {
+  Document,
+  Paragraph,
+  ParagraphContent,
+  TableCell,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { withoutPendingSuggestions } from "../suggestions";
 import { DOCUMENT_OP_TYPES, OP_STORIES } from "../types";
@@ -81,6 +86,93 @@ describe("setting revision info", () => {
     expect(
       applyDocumentOps(applied.document, applied.inverse).unwrap().document,
     ).toEqual(suggested);
+  });
+
+  test("declares the paragraphs of the row, cell or table whose own revision it writes", () => {
+    // A tracked row deletion as a package records it: the row's own
+    // deletion, a deletion around the text it held, and property changes on
+    // a cell and on the table.
+    const paragraph = (
+      paraId: string,
+      content: ParagraphContent[],
+    ): Paragraph => ({ type: "paragraph", paraId, content });
+    const cell = (
+      paraId: string,
+      content: ParagraphContent[],
+      extra: Partial<TableCell> = {},
+    ): TableCell => ({
+      ...extra,
+      type: "tableCell",
+      content: [paragraph(paraId, content)],
+    });
+    const tabled: Document = {
+      package: {
+        document: {
+          content: [
+            paragraph("00000001", [run("Before")]),
+            {
+              type: "table",
+              propertyChanges: [
+                {
+                  type: "tablePropertyChange",
+                  info: info(7),
+                  previousFormatting: {},
+                },
+              ],
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    cell("00000002", [run("a")], {
+                      propertyChanges: [
+                        {
+                          type: "tableCellPropertyChange",
+                          info: info(8),
+                          previousFormatting: {},
+                        },
+                      ],
+                    }),
+                    cell("00000003", [run("b")]),
+                  ],
+                },
+                {
+                  type: "tableRow",
+                  structuralChange: { type: "tableRowDeletion", info: info(5) },
+                  cells: [
+                    cell("00000004", [
+                      { type: "deletion", info: info(6), content: [run("c")] },
+                    ]),
+                    cell("00000005", [
+                      { type: "deletion", info: info(9), content: [run("d")] },
+                    ]),
+                  ],
+                },
+              ],
+            },
+            paragraph("00000006", [run("After")]),
+          ],
+        },
+      },
+    };
+    const declaredFor = (id: number) => {
+      const applied = applyDocumentOp(tabled, {
+        ...adopt,
+        infos: [{ ...adopted, id }],
+      }).unwrap();
+      expect(
+        applyDocumentOps(applied.document, applied.inverse).unwrap().document,
+      ).toEqual(tabled);
+      return applied.touched.modified.toSorted();
+    };
+    expect(declaredFor(5)).toEqual(["00000004", "00000005"]);
+    expect(declaredFor(6)).toEqual(["00000004"]);
+    expect(declaredFor(8)).toEqual(["00000002"]);
+    expect(declaredFor(7)).toEqual([
+      "00000002",
+      "00000003",
+      "00000004",
+      "00000005",
+    ]);
   });
 
   test("refuses an id the story does not hold", () => {
