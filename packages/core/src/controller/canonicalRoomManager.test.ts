@@ -2,13 +2,13 @@ import { panic } from "better-result";
 import { expect, test } from "bun:test";
 
 import { acquireHarnessDom } from "../../../../test/harnessDom";
+import type { CanonicalHistoryDrop } from "../canonical/canonicalSession";
 import { createEmptyDocument } from "../utils/createDocument";
 import type { CanonicalRoomCollaboration } from "./canonicalRoomEditor";
 import {
   type CanonicalMemoryRoom,
   createCanonicalMemoryRoom,
 } from "./canonicalRoomTransport";
-import type { CanonicalHistoryDrop } from "./canonicalSession";
 import { createHiddenEditorManager } from "./hiddenEditorManager";
 
 /*
