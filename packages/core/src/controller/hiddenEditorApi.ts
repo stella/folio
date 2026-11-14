@@ -20,6 +20,7 @@ import type {
   TextPosition,
 } from "@stll/docx-core/ops";
 
+import type { CanonicalPublicOperationOptions } from "../canonical/canonicalPublicOperations";
 import type { CanonicalSessionMode } from "../canonical/canonicalSession";
 import type {
   FolioDocumentOperationResult,
@@ -38,7 +39,6 @@ import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
-import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
 import { legacyEditorPositionAt } from "./textPositionLookup";
 
 type CanonicalStoryHistoryOptions = {
@@ -80,6 +80,13 @@ export type HiddenEditorApi = {
   captureCanonicalSave: () => CanonicalSaveSnapshot | null;
   /** A save cannot acknowledge newer edits or an unfinished composition. */
   isCanonicalSaveCurrent: (version: number) => boolean;
+  /** Record that the host saved the canonical session at `version`. */
+  markCanonicalSaved: (version: number) => void;
+  /**
+   * Whether the canonical session holds edits since it opened or was last
+   * saved, from its own journal; null in the default session.
+   */
+  hasCanonicalPendingChanges: () => boolean | null;
   /** Set the explicit mode for an active canonical session. */
   setCanonicalMode: (mode: CanonicalSessionMode) => boolean;
   /** Resolve canonical revisions as one batch and journal its exact inverse. */
@@ -186,6 +193,8 @@ export type HiddenEditorApiDeps = {
   ) => number | null | undefined;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
+  markCanonicalSaved?: HiddenEditorApi["markCanonicalSaved"];
+  hasCanonicalPendingChanges?: HiddenEditorApi["hasCanonicalPendingChanges"];
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
   resolveCanonicalRevisions?: HiddenEditorApi["resolveCanonicalRevisions"];
   resolveCanonicalSuggestion?: HiddenEditorApi["resolveCanonicalSuggestion"];
@@ -290,6 +299,11 @@ export const createHiddenEditorApi = (
     captureCanonicalSave: () => deps.captureCanonicalSave?.() ?? null,
     isCanonicalSaveCurrent: (version) =>
       deps.isCanonicalSaveCurrent?.(version) ?? false,
+    markCanonicalSaved: (version) => {
+      deps.markCanonicalSaved?.(version);
+    },
+    hasCanonicalPendingChanges: () =>
+      deps.hasCanonicalPendingChanges?.() ?? null,
 
     getCanonicalDocument: () => {
       const canonical = deps.getCanonicalDocument?.();

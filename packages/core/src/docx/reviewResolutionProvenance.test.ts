@@ -61,11 +61,15 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
     assertProperty(
       fc.property(
         fc.constantFrom("history", "capture", "different"),
-        fc.record({
-          before: fc.integer({ min: 0, max: 3 }),
-          after: fc.integer({ min: 0, max: 3 }),
-          remove: fc.integer({ min: 0, max: 3 }),
-        }),
+        fc.record(
+          {
+            before: fc.integer({ min: 0, max: 3 }),
+            after: fc.integer({ min: 0, max: 3 }),
+            remove: fc.integer({ min: 0, max: 3 }),
+            keptFrom: fc.constantFrom("2026-03-04T05:00:01Z", ""),
+          },
+          { requiredKeys: ["before", "after", "remove"] },
+        ),
         fc.subarray(["before", "after"] as const),
         fc.constantFrom(...PARAGRAPH_MARK_CHANGE_KINDS),
         fc.oneof(
@@ -75,17 +79,21 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
         ),
         fc.option(
           fc.uniqueArray(
-            fc.record({
-              depth: fc.integer({ min: 0, max: 4 }),
-              blockers: fc.uniqueArray(
-                fc.oneof(
-                  fc.constant(0),
-                  fc.constant(MAX_REVISION_ID),
-                  fc.integer({ min: 1, max: MAX_REVISION_ID - 1 }),
+            fc.record(
+              {
+                depth: fc.integer({ min: 0, max: 4 }),
+                keptFrom: fc.constantFrom("2026-03-04T05:00:02Z", ""),
+                blockers: fc.uniqueArray(
+                  fc.oneof(
+                    fc.constant(0),
+                    fc.constant(MAX_REVISION_ID),
+                    fc.integer({ min: 1, max: MAX_REVISION_ID - 1 }),
+                  ),
+                  { minLength: 1, maxLength: 3 },
                 ),
-                { minLength: 1, maxLength: 3 },
-              ),
-            }),
+              },
+              { requiredKeys: ["depth", "blockers"] },
+            ),
             {
               minLength: 1,
               maxLength: 3,
@@ -123,10 +131,13 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
             ...(deferredRemove === undefined
               ? {}
               : {
-                  deferredRemove: deferredRemove.map(({ depth, blockers }) => ({
-                    depth,
-                    blockers,
-                  })),
+                  deferredRemove: deferredRemove.map(
+                    ({ depth, blockers, keptFrom }) => ({
+                      depth,
+                      blockers,
+                      ...(keptFrom === undefined ? {} : { keptFrom }),
+                    }),
+                  ),
                 }),
             retainedAfter: [
               {

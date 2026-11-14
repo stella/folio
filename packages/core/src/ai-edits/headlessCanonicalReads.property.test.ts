@@ -571,42 +571,31 @@ describe("a canonical reviewer refuses what is not on the session yet", () => {
     expect(thrown).toMatchObject(refusal);
   };
 
-  test("every mutation, resolution, undo and save throws the typed refusal", async () => {
+  test("every edit outside the body, suggestion, comment edit, resolved view and save throws the typed refusal", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       readFixture("upstream-styled-content.docx"),
       { session: "canonical" },
     );
     const before = reads(reviewer);
-    expectRefusal(() =>
-      reviewer.applyOperations([], { undefinedReferences: "refuse" }),
-    );
-    expectRefusal(() =>
-      reviewer.applyDocumentOperations(batch, {
-        undefinedReferences: "refuse",
-      }),
-    );
+    // Any story but the body refuses, before the story is looked up.
     expectRefusal(() =>
       reviewer.applyDocumentOperationsToStory({
-        story: { type: "main" },
+        story: { type: "header", relationshipId: "rId1" },
         batch,
         undefinedReferences: "refuse",
       }),
     );
     expectRefusal(() =>
-      reviewer.undoDocumentOperations({
-        type: "documentOperationUndo",
-        id: "undo",
-      }),
+      reviewer.applyDocumentOperations(
+        { ...batch, mode: "suggested" },
+        { undefinedReferences: "refuse" },
+      ),
     );
     expectRefusal(() => reviewer.loadPendingSuggestions([]));
     expectRefusal(() => reviewer.replyTo(1, { text: "reply" }));
     expectRefusal(() => reviewer.resolveComment("1"));
-    expectRefusal(() => reviewer.acceptChange(1));
-    expectRefusal(() => reviewer.rejectChange(1));
     expectRefusal(() => reviewer.acceptSuggestion("suggestion"));
     expectRefusal(() => reviewer.rejectSuggestion("suggestion"));
-    expectRefusal(() => reviewer.acceptAll());
-    expectRefusal(() => reviewer.rejectAll());
     expectRefusal(() => reviewer.toResolvedDocument("accept"));
     expectRefusal(() => reviewer.resolveReviewedStory({ view: "final" }));
     expectRefusal(() => reviewer.readReviewedStory({ view: "final" }));
@@ -621,6 +610,13 @@ describe("a canonical reviewer refuses what is not on the session yet", () => {
     expectRefusal(() => getFolioDocxComparisonAccess(reviewer));
     await expect(reviewer.toBuffer()).rejects.toMatchObject(refusal);
     await expect(reviewer.save()).rejects.toMatchObject(refusal);
+    // An unknown undo handle is rejected, as on the legacy engine.
+    expect(
+      reviewer.undoDocumentOperations({
+        type: "documentOperationUndo",
+        id: "undo",
+      }),
+    ).toMatchObject({ status: "rejected", reason: "unknownHandle" });
     // A refusal changes nothing a read sees.
     expect(reads(reviewer)).toEqual(before);
   });

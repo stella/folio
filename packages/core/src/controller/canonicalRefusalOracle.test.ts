@@ -51,7 +51,7 @@ test("canonical refusal table covers exactly the declared concrete cases", () =>
   ).toThrow("Duplicate canonical refusal case");
 });
 
-test("TOC generation has an editing descriptor and a precise suggesting refusal contract", async () => {
+test("TOC generation applies in editing and is recorded as a suggestion", async () => {
   const cases = EDITOR_MODES.map(
     (mode) =>
       ({
@@ -62,17 +62,7 @@ test("TOC generation has an editing descriptor and a precise suggesting refusal 
       }) as const,
   );
   const rows = declareCanonicalRefusalCases(cases);
-  expect([...rows.values()]).toEqual([
-    [],
-    [
-      {
-        id: CANONICAL_GAP.trackedHyperlinkResolution,
-        gap: CANONICAL_GAP.trackedHyperlinkResolution,
-        message:
-          "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
-      },
-    ],
-  ]);
+  expect([...rows.values()]).toEqual([[], []]);
   const operation = CONFORMANCE_OPERATIONS.find(
     ({ id }) => id === "command:generateTOC",
   );
@@ -83,7 +73,7 @@ test("TOC generation has an editing descriptor and a precise suggesting refusal 
     placement: "caret-middle",
     refusalCases: rows,
   });
-  expect(result?.runs).toEqual({ editing: "changed", suggesting: "refused" });
+  expect(result?.runs).toEqual({ editing: "changed", suggesting: "changed" });
   expect(result?.violations).toEqual([]);
 });
 
@@ -143,11 +133,6 @@ test.each(EDITOR_MODES)(
 // Inject the same ledger ids the old planner preview automatically allowed.
 // The control proves bold is supported; the ablation must fail the conformance oracle.
 test.each([
-  {
-    gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message:
-      "Hyperlink suggestions require serializable wrapper review provenance.",
-  },
   {
     gap: CANONICAL_GAP.storyContentProjection,
     message: "The operations produce unsupported canonical story content.",

@@ -21,6 +21,7 @@ import {
   createFolioAIEditSnapshot,
   createFolioAITextRangeHandle,
 } from "../ai-edits/snapshot";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
@@ -35,7 +36,6 @@ import { createDocx } from "../docx/rezip";
 import { paragraph } from "../docx/server/build";
 import { getSuggestions } from "../prosemirror/commands/comments";
 import { createEmptyDocument } from "../utils/createDocument";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 
 const FIRST_ID = "10000001";
 const SECOND_ID = "10000002";

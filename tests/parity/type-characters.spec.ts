@@ -2,19 +2,18 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 forEachAdapter(
-  "smoke: inserts text through the bridge",
+  "smoke: typed text reaches the document",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
-    const inserted = await page.evaluate(
-      () => window.__folioParity?.insertText(" smoke") ?? false,
-    );
-    expect(inserted).toBe(true);
+    await page.locator(".layout-paragraph").first().click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(" smoke");
 
     await expect
       .poll(() =>
