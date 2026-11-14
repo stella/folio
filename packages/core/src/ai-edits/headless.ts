@@ -20,10 +20,13 @@ import {
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type FormattingPatch,
   freshCommentId,
   OP_STORIES,
   type OpStory,
   reconcileDocumentPartRelationships,
+  suggestedCommentIds,
+  suggestionRevisionInfos,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
@@ -33,6 +36,7 @@ import {
   type CanonicalCommentCommand,
   compileCanonicalComments,
 } from "../canonical/canonicalComments";
+import { createCanonicalSectionPropertiesOperation } from "../canonical/canonicalOperations";
 import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
@@ -1262,6 +1266,93 @@ const lockHeldChanges = (
   return held;
 };
 
+/**
+ * The final section's properties once its change `id` is resolved, the
+ * changes after it rebased onto the result; `null` when it has no such
+ * change. Both engines resolve a final section change through this.
+ */
+const finalSectionChangeResolved = (
+  current: SectionProperties,
+  mode: "accept" | "reject",
+  id: number,
+): SectionProperties | null => {
+  const changes = current.propertyChanges;
+  const targetIndex = changes?.findIndex(({ info }) => info.id === id);
+  if (
+    !changes ||
+    changes.length === 0 ||
+    targetIndex === undefined ||
+    targetIndex < 0
+  )
+    return null;
+  const { propertyChanges: _propertyChanges, ...liveProperties } = current;
+  const previousStates = changes.map((change) =>
+    sectionRejectProperties({
+      live: current,
+      previousProperties: change.previousProperties,
+      previousReferences: change.previousReferences,
+    }),
+  );
+  let resolvedProperties: SectionProperties =
+    previousStates[0] ?? liveProperties;
+  const remaining = [];
+  for (const [index, change] of changes.entries()) {
+    const nextProperties = previousStates[index + 1] ?? liveProperties;
+    if (index === targetIndex) {
+      if (mode === "accept") resolvedProperties = nextProperties;
+      continue;
+    }
+    remaining.push({
+      ...change,
+      previousProperties: resolvedProperties,
+      ...(change.previousReferences !== undefined && {
+        previousReferences: {
+          ...(resolvedProperties.headerReferences !== undefined && {
+            headerReferences: resolvedProperties.headerReferences,
+          }),
+          ...(resolvedProperties.footerReferences !== undefined && {
+            footerReferences: resolvedProperties.footerReferences,
+          }),
+        },
+      }),
+    });
+    resolvedProperties = nextProperties;
+  }
+  return {
+    ...resolvedProperties,
+    ...(remaining.length > 0 && { propertyChanges: remaining }),
+  };
+};
+
+/** The final section's properties with every change resolved, or `null` with none. */
+const finalSectionChangesResolved = (
+  current: SectionProperties,
+  mode: "accept" | "reject",
+): SectionProperties | null => {
+  const firstChange = current.propertyChanges?.at(0);
+  if (!firstChange) return null;
+  const { propertyChanges: _propertyChanges, ...liveProperties } = current;
+  return mode === "accept"
+    ? liveProperties
+    : sectionRejectProperties({
+        live: current,
+        previousProperties: firstChange.previousProperties,
+        previousReferences: firstChange.previousReferences,
+      });
+};
+
+/** The patch that turns the final section's properties into `next`. */
+const finalSectionPatch = (
+  current: SectionProperties,
+  next: SectionProperties,
+): FormattingPatch<SectionProperties> =>
+  Object.fromEntries(
+    [...new Set([...Object.keys(current), ...Object.keys(next)])].map((key) => [
+      key,
+      Object.hasOwn(next, key) ? Reflect.get(next, key) : null,
+    ]),
+  );
+
 export class FolioDocxReviewer {
   /** Default author for tracked changes and comments. */
   readonly author: string;
@@ -1965,16 +2056,19 @@ export class FolioDocxReviewer {
   }
 
   /**
-   * What the session cannot resolve yet refuses before anything changes:
-   * final section property changes.
+   * The operation that sets the final section's properties to what
+   * `resolve` makes of them, or `null` when it resolves nothing.
    */
-  private requireSessionReview(action: string): void {
-    if (
-      (this.currentFinalSectionProperties()?.propertyChanges?.length ?? 0) > 0
-    )
-      throw canonicalReviewerRefusal(
-        `${action} in the final section's properties`,
-      );
+  private finalSectionOperation(
+    resolve: (current: SectionProperties) => SectionProperties | null,
+  ): DocumentOp | null {
+    const current = this.currentFinalSectionProperties();
+    const next = current && resolve(current);
+    if (!current || !next) return null;
+    return createCanonicalSectionPropertiesOperation(
+      this.baseDocument,
+      finalSectionPatch(current, next),
+    );
   }
 
   /** Every change of the headers, footers and notes, as resolution operations. */
@@ -1989,10 +2083,6 @@ export class FolioDocxReviewer {
       const state = this.getEditableStoryState(handle);
       if (!state) continue;
       const { doc } = state;
-      if (resolution === "reject" && getSuggestions(state).length > 0)
-        throw canonicalReviewerRefusal(
-          "reject a suggestion in headers, footers or notes",
-        );
       // Accepting every change leaves pending suggestions staged.
       const changes = getTrackedChangesFromDoc(doc).filter(
         ({ id }) => suggestionIdOfRevision(state, id) === null,
@@ -3288,54 +3378,9 @@ export class FolioDocxReviewer {
     id: number,
   ): number {
     const current = this.currentFinalSectionProperties();
-    const changes = current?.propertyChanges;
-    const targetIndex = changes?.findIndex(({ info }) => info.id === id);
-    if (
-      !current ||
-      !changes ||
-      changes.length === 0 ||
-      targetIndex === undefined ||
-      targetIndex < 0
-    ) {
-      return 0;
-    }
-    const { propertyChanges: _propertyChanges, ...liveProperties } = current;
-    const previousStates = changes.map((change) =>
-      sectionRejectProperties({
-        live: current,
-        previousProperties: change.previousProperties,
-        previousReferences: change.previousReferences,
-      }),
-    );
-    let resolvedProperties: SectionProperties =
-      previousStates[0] ?? liveProperties;
-    const remaining = [];
-    for (const [index, change] of changes.entries()) {
-      const nextProperties = previousStates[index + 1] ?? liveProperties;
-      if (index === targetIndex) {
-        if (mode === "accept") resolvedProperties = nextProperties;
-        continue;
-      }
-      remaining.push({
-        ...change,
-        previousProperties: resolvedProperties,
-        ...(change.previousReferences !== undefined && {
-          previousReferences: {
-            ...(resolvedProperties.headerReferences !== undefined && {
-              headerReferences: resolvedProperties.headerReferences,
-            }),
-            ...(resolvedProperties.footerReferences !== undefined && {
-              footerReferences: resolvedProperties.footerReferences,
-            }),
-          },
-        }),
-      });
-      resolvedProperties = nextProperties;
-    }
-    this.finalSectionPropertiesOverride = {
-      ...resolvedProperties,
-      ...(remaining.length > 0 && { propertyChanges: remaining }),
-    };
+    const resolved = current && finalSectionChangeResolved(current, mode, id);
+    if (!resolved) return 0;
+    this.finalSectionPropertiesOverride = resolved;
     return 1;
   }
 
@@ -3536,14 +3581,18 @@ export class FolioDocxReviewer {
       );
       if (!adopted || resolution === "reject") return adopted;
     }
-    if (
-      this.currentFinalSectionProperties()?.propertyChanges?.some(
-        ({ info }) => info.id === id,
-      ) === true
-    )
-      throw canonicalReviewerRefusal(
-        `${resolution} a final section properties change`,
-      );
+    // A final section properties change is the section's own record.
+    const sectionOp = this.finalSectionOperation((current) =>
+      finalSectionChangeResolved(current, resolution, id),
+    );
+    if (sectionOp !== null)
+      return this.resolveOnSession(
+        session.prepareResolve(this.state, {
+          revisionIds: [],
+          resolution,
+          before: [sectionOp],
+        }),
+      ).resolved;
     return this.resolveOnSession(
       session.prepareResolve(this.state, {
         revisionIds: [id],
@@ -3555,8 +3604,7 @@ export class FolioDocxReviewer {
   /**
    * One pending suggestion through the session's suggestion intent: rejected
    * with the comments it proposes, or adopted as ordinary tracked changes by
-   * `author`. The session resolves suggestions in the body; one staged in a
-   * header, footer or note refuses.
+   * `author`, in every story it stages revisions in, as one commit.
    */
   private resolveSuggestionOnSession(
     session: CanonicalSession,
@@ -3564,33 +3612,90 @@ export class FolioDocxReviewer {
     resolution: "accept" | "reject",
     author: string,
   ): boolean {
-    for (const handle of this.listStoryHandlesInternal()) {
-      if (handle.type === "main") continue;
-      const state = this.getEditableStoryState(handle);
-      if (
-        state &&
-        getSuggestions(state).some(
-          (entry) => entry.suggestionId === suggestionId,
-        )
-      )
-        throw canonicalReviewerRefusal(
-          `${resolution} a suggestion in headers, footers or notes`,
-        );
-    }
-    if (
-      !getSuggestions(this.state).some(
-        (entry) => entry.suggestionId === suggestionId,
-      )
-    )
-      return false;
-    return this.resolveOnSession(
-      session.prepareSuggestion(this.state, {
+    const document = readModel(session.document);
+    const stories = this.listStoryHandlesInternal().map((handle) => ({
+      story: canonicalOpStory(handle),
+      ids: suggestionRevisionInfos(
+        document,
+        canonicalOpStory(handle),
         suggestionId,
-        resolution,
-        author,
-        date: new Date().toISOString(),
+      ).map(({ id }) => id),
+    }));
+    const elsewhere = stories.filter(
+      ({ story, ids }) => story !== OP_STORIES.MAIN && ids.length > 0,
+    );
+    // A suggestion of the body alone is the editor's suggestion intent.
+    if (elsewhere.length === 0)
+      return this.resolveOnSession(
+        session.prepareSuggestion(this.state, {
+          suggestionId,
+          resolution,
+          author,
+          date: new Date().toISOString(),
+        }),
+      ).resolved;
+    // One that reaches a header, footer or note: the same operations, in
+    // every story it stages revisions in, as one commit.
+    const commentIds = suggestedCommentIds(document, suggestionId);
+    const mainIds =
+      stories.find(({ story }) => story === OP_STORIES.MAIN)?.ids ?? [];
+    if (resolution === "reject")
+      return this.resolveOnSession(
+        session.prepareResolve(this.state, {
+          revisionIds: mainIds,
+          resolution: "reject",
+          // The comments go first, while the text they cover is still there.
+          before: [
+            ...commentIds.map((id): DocumentOp => ({
+              type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+              id,
+              scope: "thread",
+            })),
+            ...elsewhere.map(({ story, ids }): DocumentOp => ({
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story,
+              revisionIds: ids,
+              decision: "reject",
+            })),
+          ],
+        }),
+      ).resolved;
+    const date = new Date().toISOString();
+    const comments = document.package.document.comments ?? [];
+    return this.resolveOnSession(
+      session.prepareResolve(this.state, {
+        revisionIds: [],
+        resolution: "accept",
+        before: [
+          ...stories
+            .filter(({ ids }) => ids.length > 0)
+            .map(({ story, ids }): DocumentOp => ({
+              type: DOCUMENT_OP_TYPES.SET_REVISION_INFO,
+              story,
+              infos: ids.map((id) => ({ id, author, date })),
+            })),
+          ...comments
+            .filter(({ id }) => commentIds.includes(id))
+            .map((comment): DocumentOp => ({
+              type: DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT,
+              id: comment.id,
+              content: comment.content,
+              patch: { suggestionId: null },
+            })),
+        ],
       }),
     ).resolved;
+  }
+
+  /** Tracked changes in every story, as the readers list them. */
+  private trackedChangeCount(): number {
+    let count = getTrackedChangesFromDoc(this.state.doc).length;
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (handle.type === "main") continue;
+      const doc = this.readSecondaryStoryDoc(handle);
+      if (doc) count += getTrackedChangesFromDoc(doc).length;
+    }
+    return count;
   }
 
   /**
@@ -3602,23 +3707,32 @@ export class FolioDocxReviewer {
     session: CanonicalSession,
     resolution: "accept" | "reject",
   ): FolioReviewResolution {
-    this.requireSessionReview(`${resolution} every change`);
-    // Rejecting every change rejects every pending suggestion first, each
-    // with the comments it proposes; accepting leaves them staged.
-    const stories = this.storyResolutions(resolution);
+    // Rejecting every change rejects every pending suggestion first, in
+    // every story, each with the comments it proposes; accepting leaves
+    // them staged.
     let rejectedSuggested = 0;
     if (resolution === "reject")
-      for (const { suggestionId } of getSuggestions(this.state)) {
-        const before = getTrackedChangesFromDoc(this.state.doc).length;
+      for (const suggestionId of this.activeSuggestionIds()) {
+        const before = this.trackedChangeCount();
         this.resolveSuggestionOnSession(
           session,
           suggestionId,
           "reject",
           this.author,
         );
-        rejectedSuggested +=
-          before - getTrackedChangesFromDoc(this.state.doc).length;
+        rejectedSuggested += before - this.trackedChangeCount();
       }
+    const stories = this.storyResolutions(resolution);
+    // The final section's changes resolve in the body's commit too.
+    const sectionChanges =
+      this.currentFinalSectionProperties()?.propertyChanges?.length ?? 0;
+    const sectionOp = this.finalSectionOperation((current) =>
+      finalSectionChangesResolved(current, resolution),
+    );
+    if (sectionOp !== null) {
+      stories.ops.push(sectionOp);
+      stories.count += sectionChanges;
+    }
     const before = this.state;
     const changes = getTrackedChangesFromDoc(before.doc).filter(
       ({ id }) => suggestionIdOfRevision(before, id) === null,
@@ -3713,18 +3827,10 @@ export class FolioDocxReviewer {
 
   private resolveEveryFinalSectionChange(mode: "accept" | "reject"): number {
     const current = this.currentFinalSectionProperties();
-    const firstChange = current?.propertyChanges?.at(0);
-    if (!current || !firstChange) return 0;
-    const { propertyChanges, ...liveProperties } = current;
-    this.finalSectionPropertiesOverride =
-      mode === "accept"
-        ? liveProperties
-        : sectionRejectProperties({
-            live: current,
-            previousProperties: firstChange.previousProperties,
-            previousReferences: firstChange.previousReferences,
-          });
-    return propertyChanges?.length ?? 0;
+    const resolved = current && finalSectionChangesResolved(current, mode);
+    if (!current || !resolved) return 0;
+    this.finalSectionPropertiesOverride = resolved;
+    return current.propertyChanges?.length ?? 0;
   }
 
   private resolveEveryStory(
@@ -4108,7 +4214,6 @@ export class FolioDocxReviewer {
     // to the view, `false` for one that does not.
     const state = this.getEditableStoryState(story);
     if (!state) return false;
-    this.requireSessionReview(`resolve a story to its ${view} view`);
     const resolution = view === "final" ? "accept" : "reject";
     const ids = getTrackedChangesFromDoc(state.doc).flatMap(({ id }) =>
       getTrackedChangeGroupIdsFromDoc(state.doc, id),

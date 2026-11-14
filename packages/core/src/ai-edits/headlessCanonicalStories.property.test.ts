@@ -10,7 +10,9 @@
  * - undoing it gives back every read and the document exactly;
  * - tracked, then every change rejected, gives every story as rejecting
  *   every change without it gives;
- * - tracked or direct, a save and a reopen give back every story's text.
+ * - tracked or direct, a save and a reopen give back every story's text;
+ * - suggested, rejecting the suggestion gives every story back, and
+ *   accepting it reads as the tracked edit.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -38,7 +40,7 @@ import type { Document } from "../types/document";
 import { type FolioDocumentStoryHandle, FolioDocxReviewer } from "./headless";
 
 type Reviewer = FolioDocxReviewer;
-type Mode = "direct" | "tracked-changes";
+type Mode = "direct" | "tracked-changes" | "suggested";
 type StoryHandle = Exclude<FolioDocumentStoryHandle, { type: "main" }>;
 
 const open = (buffer: ArrayBuffer): Promise<Reviewer> =>
@@ -145,6 +147,26 @@ const storyLaws = async (
   const rejectedWithout = rejected(await open(buffer));
   if (rejectedEdit !== null && rejectedWithout !== null)
     expect(rejectedEdit).toEqual(rejectedWithout);
+  // Suggested in the story: rejecting the suggestion gives every story back,
+  // and accepting it adopts it as ordinary tracked changes there.
+  const suggested = await open(buffer);
+  const original = storyTexts(suggested);
+  if (apply(suggested, story, operation, "suggested").applied.length > 0) {
+    const ids = [
+      ...new Set(
+        suggested
+          .exportPendingSuggestions()
+          .map(({ suggestionId }) => suggestionId),
+      ),
+    ];
+    expect(ids.length).toBeGreaterThan(0);
+    const accepting = suggested.fork();
+    for (const id of ids) expect(suggested.rejectSuggestion(id)).toBe(true);
+    expect(storyTexts(suggested)).toEqual(original);
+    for (const id of ids) expect(accepting.acceptSuggestion(id)).toBe(true);
+    expect(accepting.exportPendingSuggestions()).toEqual([]);
+    expect(storyTexts(accepting)).toEqual(trackedTexts);
+  }
   return "edited";
 };
 
