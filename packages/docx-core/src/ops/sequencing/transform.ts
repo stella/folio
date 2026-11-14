@@ -1,5 +1,6 @@
 import { panic, Result } from "better-result";
 
+import { compareGaps, type Gap } from "../leaves";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -153,13 +154,17 @@ type PairOptions = {
   effect: SequencedOpEffect | undefined;
   order: "before" | "after";
 };
+const gapOf = ({ offset, zeroWidthBefore }: TextPosition): Gap => ({
+  offset,
+  zeroWidthBefore: zeroWidthBefore ?? 0,
+});
+
 /**
- * A direct deletion over a concurrent direct format lying inside it, which
- * cut one run of the paragraph reaching past both ends of the deletion
- * (`cutRun`): in the other order that run was never cut, and the deletion
- * leaves one run there. So the deletion joins the run's two pieces again
- * with seam joins at its point, whichever leaves meet there. Undefined for
- * every other pair.
+ * A direct deletion over a concurrent direct format lying inside it: in the
+ * other order the records the format cut (`cutRecords`) were whole, and the
+ * deletion kept each that reaches past both of its ends one record. So the
+ * deletion joins their pieces again at its point, that many levels below
+ * the records still running across it. Undefined for every other pair.
  */
 const rejoinedOverFormat = ({
   op,
@@ -174,31 +179,27 @@ const rejoinedOverFormat = ({
     op.join !== undefined ||
     over.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS ||
     effect?.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS ||
-    effect.cutRun === undefined ||
+    effect.cutRecords === undefined ||
     !sameParagraph(op.from, op.to) ||
     !sameParagraph(op.from, over.from) ||
     !sameParagraph(over.from, over.to)
   )
     return undefined;
-  const run = effect.cutRun;
+  const from = gapOf(op.from);
+  const to = gapOf(op.to);
   if (
-    over.from.offset < op.from.offset ||
-    op.to.offset < over.to.offset ||
-    run.from >= op.from.offset ||
-    op.to.offset >= run.to
+    compareGaps(gapOf(over.from), from) < 0 ||
+    compareGaps(to, gapOf(over.to)) < 0
   )
     return undefined;
-  // Two runs whose meeting leaves are both text merge with those leaves
-  // (depth 2); runs meeting at any other leaf merge as runs alone (depth
-  // 1), which the deeper join, when it applied, leaves with nothing to do.
+  const depth = effect.cutRecords.filter(
+    (record) =>
+      compareGaps(record.from, from) < 0 && compareGaps(to, record.to) < 0,
+  ).length;
+  if (depth === 0) return undefined;
   return Result.ok([
     op,
-    ...[2, 1].map((depth) => ({
-      type: DOCUMENT_OP_TYPES.JOIN_INLINE,
-      at: op.from,
-      depth,
-      ifAlike: true,
-    })),
+    { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at: op.from, depth, ifAlike: true },
   ]);
 };
 

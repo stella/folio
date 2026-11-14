@@ -4,6 +4,7 @@ import { encodeUtf8 } from "@stll/utf8-boundaries";
 
 import { INSERTION_SEAM_POLICIES } from "../../model/content";
 import type { IdLeaseKind } from "../idLease";
+import type { Gap } from "../leaves";
 import { cloneModel } from "../modelClone";
 import {
   type CommentState,
@@ -103,12 +104,13 @@ export type SequencedOpEffect =
   | {
       type: "setRunProps";
       /**
-       * Where the run a direct format lay inside, and cut, began and ended
-       * before the format, when it was a paragraph's own run: its pieces
-       * are one run again where a concurrent deletion removes the formatted
-       * part with something on both sides of it.
+       * The records a direct format cut at both of its ends, outermost
+       * first, by the gaps before their first leaf and after their last one
+       * before the format: a run, and the text the range lay inside. Where
+       * a concurrent deletion holds the format's range and reaches past
+       * neither end of such a record, the deletion keeps it one record.
        */
-      cutRun?: { from: number; to: number };
+      cutRecords?: readonly { from: Gap; to: Gap }[];
     }
   | {
       type: "touchedBlocks";
@@ -884,7 +886,14 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
           case "setRunProps":
             return object({
               type: literal("setRunProps"),
-              cutRun: optional(object({ from: natural, to: natural })),
+              cutRecords: optional(
+                array(
+                  object({
+                    from: object({ offset: natural, zeroWidthBefore: natural }),
+                    to: object({ offset: natural, zeroWidthBefore: natural }),
+                  }),
+                ),
+              ),
             })(effect);
           case "touchedBlocks":
             return object({
