@@ -19,6 +19,7 @@ import {
 } from "../../../../test/property-testing";
 import type { FolioDocumentOperation } from "../ai-edits";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import {
   type CanonicalCommit,
@@ -126,11 +127,37 @@ const MORE_BODIES = {
 const ALL_BODIES = { ...BODIES, ...MORE_BODIES };
 type Body = keyof typeof ALL_BODIES;
 
-const packageOf = async (body: Body) => {
+/** Bodies the canonical session's own review also runs on. */
+const REVIEW_BODIES = {
+  ...BODIES,
+  "a vertical merge over three rows": {
+    xml: [
+      paragraph("10000001", "Before"),
+      table(
+        [
+          cell("70000001", "A1", '<w:vMerge w:val="restart"/>') +
+            cell("70000002", "B1"),
+          cell("70000003", "", "<w:vMerge/>") + cell("70000004", "B2"),
+          cell("70000005", "", "<w:vMerge/>") + cell("70000006", "B3"),
+          cell("70000007", "A4") + cell("70000008", "B4"),
+        ],
+        2,
+      ),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["70000001", "70000002", "70000004", "70000006", "70000007"],
+  },
+} as const;
+
+type ReviewBody = keyof typeof REVIEW_BODIES;
+
+const PACKAGE_BODIES = { ...ALL_BODIES, ...REVIEW_BODIES };
+
+const packageOf = async (body: keyof typeof PACKAGE_BODIES) => {
   const zip = await ZipArchive.read(await createEmptyDocx());
   zip.set(
     "word/document.xml",
-    `${HEAD}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${ALL_BODIES[body].xml.join("")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
+    `${HEAD}<w:document xmlns:w="${W}" xmlns:w14="${W14}"><w:body>${PACKAGE_BODIES[body].xml.join("")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`,
   );
   return (await zip.generate({ compression: "store" })).buffer;
 };
@@ -318,6 +345,51 @@ const outcomes = async (bytes: ArrayBuffer) => {
   };
 };
 
+/**
+ * The canonical session's own review of a saved package: every change
+ * accepted, and every change rejected, in the session that opens it.
+ */
+const reviewedInSession = async (bytes: ArrayBuffer) => {
+  const resolved = async (resolution: "accept" | "reject") => {
+    const document = await parseDocx(bytes.slice(0), {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    const session = createCanonicalSession(
+      document,
+      document.package.styles,
+    ).unwrap();
+    const state = EditorState.create({ schema, doc: session.projection.doc });
+    const revisionIds = [
+      ...new Set([
+        ...getTrackedChangeStatsFromDoc(state.doc).ids,
+        ...[
+          ...JSON.stringify(session.document.package.document.content).matchAll(
+            /"info":\{"id":(\d+)/gu,
+          ),
+        ].map(([, id]) => Number(id)),
+      ]),
+    ];
+    if (revisionIds.length > 0) {
+      const commit = session
+        .prepareResolve(state, { revisionIds, resolution })
+        .unwrap();
+      expect(commit.publish().isOk()).toBe(true);
+    }
+    return blocksOf(
+      (
+        await serializeCanonicalSave({
+          snapshot: session.captureSaveSnapshot(),
+        })
+      ).buffer,
+    );
+  };
+  return {
+    accepted: await resolved("accept"),
+    rejected: await resolved("reject"),
+  };
+};
+
 const viaDefaultEngine = async (
   source: ArrayBuffer,
   operation: FolioDocumentOperation,
@@ -456,6 +528,46 @@ describe("table structure operations in the canonical session", () => {
       {
         numRuns: 120,
         id: "cell merges, splits and column changes in the canonical session give the default engine's package",
+      },
+    );
+  });
+
+  test("resolve in the canonical session as the default engine resolves them", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc
+          .constantFrom(...(Object.keys(REVIEW_BODIES) as ReviewBody[]))
+          .chain((body) =>
+            fc.record({
+              body: fc.constant(body),
+              anchor: fc.constantFrom(...REVIEW_BODIES[body].anchors),
+              operation: fc.constantFrom(
+                ...(Object.keys(OPERATIONS) as (keyof typeof OPERATIONS)[]),
+              ),
+            }),
+          ),
+        async ({ body, anchor, operation }) => {
+          const source = await packageOf(body);
+          const op = OPERATIONS[operation](anchor);
+          const legacy = await viaDefaultEngine(source, op, "tracked-changes");
+          const canonical = await viaCanonicalEngine(
+            source,
+            op,
+            "tracked-changes",
+          );
+          expect(canonical.refusals).toEqual([]);
+          expect(canonical.skipped).toEqual(legacy.skipped);
+          if (legacy.skipped.length > 0) return;
+          const { accepted, rejected } = await outcomes(legacy.bytes);
+          expect(await reviewedInSession(canonical.bytes)).toEqual({
+            accepted,
+            rejected,
+          });
+        },
+      ),
+      {
+        numRuns: 40,
+        id: "table structure suggestions resolve in the canonical session as the default engine resolves them",
       },
     );
   });
