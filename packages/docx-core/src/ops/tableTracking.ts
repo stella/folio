@@ -267,10 +267,11 @@ export const trackTableRows = ({
           (cell) =>
             cell.structuralChange !== undefined ||
             (cell.propertyChanges?.length ?? 0) > 0 ||
-            // A content control around a deleted cell goes with its row.
-            (cell.contentControls !== undefined &&
+            // A content control around a deleted cell, and the order of
+            // the wrappers holding it, go with its row.
+            ((cell.contentControls !== undefined ||
+              cell.carrierStack !== undefined) &&
               kind !== WRAP_KINDS.DELETION) ||
-            cell.carrierStack !== undefined ||
             (!survivingCells.has(cell) && !trackableBlocks(cell.content)),
         ),
     )
