@@ -3,12 +3,15 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
+import { DOCUMENT_OP_TYPES, type DocumentOp } from "@stll/docx-core/ops";
+
 import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
   type CanonicalCommit,
+  type CanonicalCommittedBatch,
   type CanonicalSession,
   createCanonicalSession,
 } from "../canonical/canonicalSession";
@@ -151,7 +154,9 @@ const shownText = (document: Document): string =>
               run.content.flatMap((leaf) => {
                 if (leaf.type === "text") return [leaf.text];
                 // A checkbox shows its state as a symbol.
-                return leaf.type === "symbol" ? [JSON.stringify(leaf)] : [];
+                return leaf.type === "symbol"
+                  ? [`[${leaf.font} ${leaf.char}]`]
+                  : [];
               }),
             );
           })
@@ -190,11 +195,27 @@ describe("a typed control's value in the canonical session", () => {
     test(`${kind}: one undo step sets and restores the value and its text, and save keeps it`, async () => {
       const current = await session(kind);
       const before = current.document;
+      const batches: CanonicalCommittedBatch[] = [];
+      current.onCommitted((batch) => batches.push(batch));
       let state = accept(
         stateFor(current),
         pick(current, stateFor(current), kind).unwrap(),
       );
       const set = control(current.document);
+      // One batch sets the value and the text, and its inverse restores both.
+      expect(batches).toHaveLength(1);
+      const settings = (ops: readonly DocumentOp[]) =>
+        ops.flatMap((op) =>
+          op.type === DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL
+            ? [value(op.properties)]
+            : [],
+        );
+      expect(settings(batches.at(0)?.ops ?? [])).toEqual([
+        value(set.properties),
+      ]);
+      expect(settings(batches.at(0)?.inverse ?? [])).toEqual([
+        value(control(before).properties),
+      ]);
       expect(shownText(current.document)).not.toBe(SHOWN[kind]);
       const reopened = await save(current);
       expect(value(control(reopened).properties)).toEqual(
@@ -202,6 +223,12 @@ describe("a typed control's value in the canonical session", () => {
       );
       expect(shownText(reopened)).toBe(shownText(current.document));
       state = accept(state, current.prepareUndo(state).unwrap());
+      expect(settings(batches.at(-1)?.ops ?? [])).toEqual([
+        value(control(before).properties),
+      ]);
+      expect(value(control(current.document).properties)).toEqual(
+        value(control(before).properties),
+      );
       expect(current.document).toEqual(before);
       expect(current.canUndo).toBe(false);
       accept(state, current.prepareRedo(state).unwrap());
