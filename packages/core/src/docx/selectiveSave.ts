@@ -425,7 +425,10 @@ export async function attemptSelectiveSave(
 ): Promise<ArrayBuffer | null> {
   const buffer = await writeChangedParts(doc, originalBuffer, options);
   // Measurements read which save path a save took through this hook.
-  recordSelectiveSaveAttempt(buffer !== null);
+  recordSelectiveSaveAttempt({
+    written: buffer !== null,
+    structural: options.structuralChange,
+  });
   return buffer;
 }
 

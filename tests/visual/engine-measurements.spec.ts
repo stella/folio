@@ -9,9 +9,10 @@ import { type Page, test } from "@playwright/test";
  *   and to the last layout pass before layout goes quiet (fully laid out);
  * - typing: per key, from keydown to the end of the first task after the next
  *   animation frame, typed at a caret in the middle of the document;
- * - save: the host's `save()` after a text edit and after a structural edit
- *   (Enter), with the save path each one took (selective or full repack), and
- *   a forced full repack for reference.
+ * - save: the host's `save()` in rounds of a text edit, then Enter, then
+ *   another text edit, each followed by a save in the same session, with the
+ *   path each save took (a selective text patch, a structural splice or the
+ *   full repack), and a forced full repack for reference.
  *
  * Each test writes one JSON file into `FOLIO_MEASURE_OUT` (default
  * `.cache/engine-measurements`); `scripts/engine-measurements-report.ts` turns
@@ -27,21 +28,22 @@ import { type Page, test } from "@playwright/test";
  * - `FOLIO_MEASURE_PROFILE=1`: also write a CPU profile of a typing burst and
  *   of one more open for each test, which the numbers above never include.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { join } from "node:path";
 
+import { FIXTURES } from "../../benchmarks/fixtures";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { fromMarkdown } from "../../packages/core/src/markdown/fromMarkdown";
 import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
-import { contract, numberedList } from "../support/generatedDocuments";
+import { contract, numberedList, tables } from "../support/generatedDocuments";
 
 const WARM_KEYS = 5;
 const MEASURED_KEYS = Number(process.env["FOLIO_MEASURE_KEYS"] ?? 300);
 const PROFILED_KEYS = 40;
 const PAUSE_MS = 150;
 const OPEN_SAMPLES = 3;
-const SAVE_SAMPLES = 3;
+const SAVE_ROUNDS = 3;
 const QUIET_MS = 1500;
 const STEP_TIMEOUT_MS = 180_000;
 const OUT_DIRECTORY =
@@ -50,23 +52,19 @@ const PROFILE = process.env["FOLIO_MEASURE_PROFILE"] === "1";
 const MODE =
   process.env["FOLIO_MEASURE_MODE"] === "suggesting" ? "suggesting" : "editing";
 
-const fixture = (name: string) => () =>
-  new Uint8Array(readFileSync(join(import.meta.dirname, "fixtures", name)));
 const generated = (markdown: () => string) => async () =>
   new Uint8Array(await createDocx(fromMarkdown(markdown())));
 
-/** Small, real, long contract, long list, long table. */
+/**
+ * The benchmark corpus (small to large; the large one is a real document with
+ * bookmarks and fields), a long contract, a long list and many tables.
+ */
 const DOCUMENTS = [
-  {
-    id: "small",
-    label: "small document (docx-editor-demo.docx)",
-    bytes: fixture("docx-editor-demo.docx"),
-  },
-  {
-    id: "real",
-    label: "real document (podily-bps.docx)",
-    bytes: fixture("podily-bps.docx"),
-  },
+  ...FIXTURES.map((fixture) => ({
+    id: fixture.size,
+    label: `${fixture.size} benchmark fixture (${fixture.name})`,
+    bytes: async () => new Uint8Array(fixture.buffer),
+  })),
   {
     id: "contract",
     label: "contract, 65 articles (generated)",
@@ -78,11 +76,11 @@ const DOCUMENTS = [
     bytes: generated(() => numberedList(3500)),
   },
   {
-    id: "table",
-    label: "long table (performance-long-split-table.docx)",
-    bytes: fixture("performance-long-split-table.docx"),
+    id: "tables",
+    label: "40 tables of 30 rows (generated)",
+    bytes: generated(() => tables(40, 30)),
   },
-] as const;
+];
 
 const ENGINES = ["legacy", "canonical"] as const;
 const HOSTS = [
@@ -102,7 +100,7 @@ type Recorder = {
   lastCompleteAt: number;
   layoutCompletes: number;
   measuredBlocks: number;
-  selectiveAttempts: boolean[];
+  selectiveAttempts: { written: boolean; structural: boolean }[];
   frames: number[];
 };
 
@@ -135,8 +133,8 @@ const installRecorder = () => {
     onMeasureBlock: () => {
       recorder.measuredBlocks += 1;
     },
-    onSelectiveSaveAttempt: ({ written }) => {
-      recorder.selectiveAttempts.push(written);
+    onSelectiveSaveAttempt: ({ written, structural }) => {
+      recorder.selectiveAttempts.push({ written, structural });
     },
   };
   // Keydown to the end of the first task after the next frame: the edit and
@@ -304,7 +302,11 @@ const readRecorder = (page: Page) =>
 
 type SaveSample = {
   ms: number;
-  path: "selective" | "full: selective refused" | "full: selective not tried";
+  path:
+    | "selective text patch"
+    | "structural splice"
+    | "full repack: selective declined"
+    | "full repack: selective not tried";
   bytes: number | null;
 };
 
@@ -324,10 +326,12 @@ const saveOnce = (page: Page, selective: boolean) =>
       ms,
       path:
         attempt === undefined
-          ? "full: selective not tried"
-          : attempt
-            ? "selective"
-            : "full: selective refused",
+          ? "full repack: selective not tried"
+          : !attempt.written
+            ? "full repack: selective declined"
+            : attempt.structural
+              ? "structural splice"
+              : "selective text patch",
       bytes: buffer?.byteLength ?? null,
     };
   }, selective);
@@ -392,6 +396,7 @@ for (const host of HOSTS) {
           save: {
             text: [] as SaveSample[],
             structural: [] as SaveSample[],
+            textAfterStructural: [] as SaveSample[],
             full: [] as SaveSample[],
           },
           errors,
@@ -459,28 +464,24 @@ for (const host of HOSTS) {
               },
             );
           });
+        // Each round: a text edit, Enter, a text edit, each saved in the
+        // same session, so later rounds save after earlier structural edits.
+        const edits = [
+          ["text", "y"],
+          ["structural", "Enter"],
+          ["textAfterStructural", "y"],
+        ] as const;
         if (errors.length === 0)
-          await step("save after a text edit", async () => {
-            for (let sample = 0; sample < SAVE_SAMPLES; sample += 1) {
-              if (sample > 0) {
+          await step("save", async () => {
+            for (let round = 0; round < SAVE_ROUNDS; round += 1) {
+              for (const [kind, key] of edits) {
                 // oxlint-disable-next-line no-await-in-loop -- one edit before each save
-                await page.keyboard.press("y");
+                await page.keyboard.press(key);
+                // oxlint-disable-next-line no-await-in-loop -- save after layout settles
+                await waitForQuiet(page, 500);
+                // oxlint-disable-next-line no-await-in-loop -- saves are timed one after another
+                result.save[kind].push(await saveOnce(page, true));
               }
-              // oxlint-disable-next-line no-await-in-loop -- save after layout settles
-              await waitForQuiet(page, 500);
-              // oxlint-disable-next-line no-await-in-loop -- saves are timed one after another
-              result.save.text.push(await saveOnce(page, true));
-            }
-          });
-        if (errors.length === 0)
-          await step("save after Enter", async () => {
-            for (let sample = 0; sample < SAVE_SAMPLES; sample += 1) {
-              // oxlint-disable-next-line no-await-in-loop -- one edit before each save
-              await page.keyboard.press("Enter");
-              // oxlint-disable-next-line no-await-in-loop -- save after layout settles
-              await waitForQuiet(page, 500);
-              // oxlint-disable-next-line no-await-in-loop -- saves are timed one after another
-              result.save.structural.push(await saveOnce(page, true));
             }
             await page.keyboard.press("z");
             await waitForQuiet(page, 500);
@@ -503,8 +504,12 @@ for (const host of HOSTS) {
               ? ["an open did not finish"]
               : [],
           ),
-          ...[...result.save.text, ...result.save.structural].flatMap(
-            (sample) => (sample.bytes === null ? ["a save returned null"] : []),
+          ...[
+            ...result.save.text,
+            ...result.save.structural,
+            ...result.save.textAfterStructural,
+          ].flatMap((sample) =>
+            sample.bytes === null ? ["a save returned null"] : [],
           ),
         ];
         if (errors.length > 0 || missing.length > 0)

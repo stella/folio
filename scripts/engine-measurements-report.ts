@@ -29,7 +29,12 @@ type Measurement = {
     layoutsPerKey: number;
     measuredBlocksPerKey: number;
   };
-  save: { text: SaveSample[]; structural: SaveSample[]; full: SaveSample[] };
+  save: {
+    text: SaveSample[];
+    structural: SaveSample[];
+    textAfterStructural: SaveSample[];
+    full: SaveSample[];
+  };
   errors: string[];
 };
 
@@ -76,6 +81,10 @@ const summarize = (measurement: Measurement) => {
         measurement.save.structural.map((sample) => sample.ms),
       ),
       structuralPath: paths(measurement.save.structural),
+      textAfterStructuralMs: median(
+        measurement.save.textAfterStructural.map((sample) => sample.ms),
+      ),
+      textAfterStructuralPath: paths(measurement.save.textAfterStructural),
       fullMs: median(measurement.save.full.map((sample) => sample.ms)),
     },
     errors: measurement.errors,
@@ -199,28 +208,48 @@ for (const host of hosts) {
       ]),
     ),
     "",
-    "### Save (median of 3 saves; save path in brackets)",
+    "### Save in one session: rounds of a text edit, Enter, a text edit, each saved (median of 3 rounds; the paths the saves took, in round order, in brackets)",
     "",
     table(
       [
         "Document",
-        "Legacy after text edit",
-        "Canonical after text edit",
-        "Ratio",
-        "Legacy after Enter",
-        "Canonical after Enter",
-        "Ratio",
-        "Full repack legacy / canonical",
+        "Engine",
+        "Text edit",
+        "Enter",
+        "Text edit after Enter",
+        "Forced full repack",
       ],
+      hostRows.flatMap(({ document, engines }) =>
+        ENGINES.map((engine) => {
+          const save = engines[engine]?.save;
+          const cell = (
+            value: number | null | undefined,
+            path: readonly string[] | undefined,
+          ) => `${ms(value)} (${path?.join(", ") ?? "n/a"})`;
+          return [
+            document.label,
+            engine,
+            cell(save?.textMs, save?.textPath),
+            cell(save?.structuralMs, save?.structuralPath),
+            cell(save?.textAfterStructuralMs, save?.textAfterStructuralPath),
+            ms(save?.fullMs),
+          ];
+        }),
+      ),
+    ),
+    "",
+    "### Save ratios (canonical / legacy, medians)",
+    "",
+    table(
+      ["Document", "Text edit", "Enter", "Text edit after Enter"],
       hostRows.map(({ document, engines: { legacy, canonical } }) => [
         document.label,
-        `${ms(legacy?.save.textMs)} (${legacy?.save.textPath.join(", ") ?? "n/a"})`,
-        `${ms(canonical?.save.textMs)} (${canonical?.save.textPath.join(", ") ?? "n/a"})`,
         ratio(canonical?.save.textMs, legacy?.save.textMs),
-        `${ms(legacy?.save.structuralMs)} (${legacy?.save.structuralPath.join(", ") ?? "n/a"})`,
-        `${ms(canonical?.save.structuralMs)} (${canonical?.save.structuralPath.join(", ") ?? "n/a"})`,
         ratio(canonical?.save.structuralMs, legacy?.save.structuralMs),
-        `${ms(legacy?.save.fullMs)} / ${ms(canonical?.save.fullMs)}`,
+        ratio(
+          canonical?.save.textAfterStructuralMs,
+          legacy?.save.textAfterStructuralMs,
+        ),
       ]),
     ),
     "",

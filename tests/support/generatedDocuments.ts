@@ -57,3 +57,19 @@ export const plainParagraphs = (paragraphs: number): string =>
     { length: paragraphs },
     (_, index) => `Paragraph ${index + 1} holds a sentence of plain text.`,
   ).join("\n\n");
+
+/** Many fee tables of short cells, each under a heading. */
+export const tables = (count: number, rows: number): string =>
+  Array.from({ length: count }, (_, table) =>
+    [
+      `## Schedule ${table + 1}`,
+      "",
+      "| Item | Quantity | Fee | Term |",
+      "|---|---|---|---|",
+      ...Array.from(
+        { length: rows },
+        (_, row) =>
+          `| Item ${table + 1}.${row + 1} | ${row + 1} | ${(row + 1) * 100} | ${row % 12} months |`,
+      ),
+    ].join("\n"),
+  ).join("\n\n");

@@ -48,9 +48,14 @@ export type LayoutInstrumentation = {
   onLayoutComplete?: (event: { reason: LayoutRunReason }) => void;
   /**
    * A save tried to write only the changed parts into the source package:
-   * `written` says whether it did, or handed the save to the full repack.
+   * `written` says whether it did, or handed the save to the full repack, and
+   * `structural` whether paragraphs were added, removed or reordered, which
+   * the selective path writes as a structural splice.
    */
-  onSelectiveSaveAttempt?: (event: { written: boolean }) => void;
+  onSelectiveSaveAttempt?: (event: {
+    written: boolean;
+    structural: boolean;
+  }) => void;
   onLayoutError?: (event: { message: string; reason: LayoutRunReason }) => void;
   onLayoutStart?: (event: { reason: LayoutRunReason }) => void;
   /**
@@ -142,10 +147,11 @@ export function recordLayoutComplete(reason: LayoutRunReason = "manual"): void {
   globalThis.__folioLayoutInstrumentation?.onLayoutComplete?.({ reason });
 }
 
-export function recordSelectiveSaveAttempt(written: boolean): void {
-  globalThis.__folioLayoutInstrumentation?.onSelectiveSaveAttempt?.({
-    written,
-  });
+export function recordSelectiveSaveAttempt(event: {
+  written: boolean;
+  structural: boolean;
+}): void {
+  globalThis.__folioLayoutInstrumentation?.onSelectiveSaveAttempt?.(event);
 }
 
 export function recordLayoutStart(reason: LayoutRunReason): void {

@@ -436,10 +436,10 @@ describe("attemptSelectiveSave", () => {
   test("tells the instrumentation hook whether each attempt wrote the package", async () => {
     const buffer = await loadFixture("example-with-image.docx");
     const doc = await parseDocx(buffer, { preloadFonts: false });
-    const attempts: boolean[] = [];
+    const attempts: { written: boolean; structural: boolean }[] = [];
     const previous = globalThis.__folioLayoutInstrumentation;
     globalThis.__folioLayoutInstrumentation = {
-      onSelectiveSaveAttempt: ({ written }) => attempts.push(written),
+      onSelectiveSaveAttempt: (attempt) => attempts.push(attempt),
     };
     try {
       const refused = await attemptSelectiveSave(doc, buffer, {
@@ -453,7 +453,10 @@ describe("attemptSelectiveSave", () => {
         hasUntrackedChanges: false,
       });
       expect([refused === null, written === null]).toEqual([true, false]);
-      expect(attempts).toEqual([false, true]);
+      expect(attempts).toEqual([
+        { written: false, structural: false },
+        { written: true, structural: false },
+      ]);
     } finally {
       globalThis.__folioLayoutInstrumentation = previous;
     }
