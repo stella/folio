@@ -144,10 +144,7 @@ import {
   LayoutPainter,
   releaseDisplayPageResources,
 } from "@stll/folio-core/layout-painter";
-import {
-  findPageShellForPmPos,
-  PAINTER_PAINTED_EVENT,
-} from "@stll/folio-core/layout-painter/renderPage";
+import { PAINTER_PAINTED_EVENT } from "@stll/folio-core/layout-painter/renderPage";
 import type {
   FootnoteRenderItem,
   HeaderFooterContent,
@@ -261,7 +258,6 @@ import {
 import { resolveEffectiveSectionProperties } from "@stll/folio-core/utils/headerFooter";
 import {
   hasPaintedStart,
-  PAINTED_START_SELECTOR,
   readPaintedStart,
   readPaintedTableStart,
 } from "@stll/folio-core/utils/paintedPositions";
@@ -587,10 +583,6 @@ export type PagedEditorRef = {
    * The overlay is cleared automatically on the next doc-changing transaction.
    */
   setPassageHighlight: (range: { from: number; to: number } | null) => void;
-  /** Resolve the page number (1-indexed) that contains the given PM position,
-   *  or null if no layout is available yet. Works for unrendered pages too via
-   *  the page shell map. */
-  getPageNumberForPmPos: (pmPos: number) => number | null;
   /** Painted geometry for one AI-snapshot block. */
   getBlockRect: (blockId: string) => BlockRect | null;
   /** Painted geometry for many AI-snapshot blocks in one layout read. */
@@ -6610,66 +6602,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         scrollToPage: scrollToPageImpl,
         scrollToParaId: scrollToParaIdImpl,
         setPassageHighlight: setPassageHighlightImpl,
-        getPageNumberForPmPos(pmPos) {
-          const container = pagesContainerRef.current;
-          if (!container) {
-            return null;
-          }
-          // Fast path: virtualised docs keep a pm-to-shell map.
-          const hit = findPageShellForPmPos(container, pmPos);
-          if (hit) {
-            const raw = hit.element.dataset["pageNumber"];
-            const parsed = raw === undefined ? Number.NaN : Number(raw);
-            if (Number.isFinite(parsed)) {
-              return parsed;
-            }
-          }
-          // Fallback for non-virtualised docs (< 8 pages): every page is in the
-          // DOM eagerly, so scan shells and find the one whose pm range covers
-          // the target.
-          const shells =
-            container.querySelectorAll<HTMLElement>("[data-page-number]");
-          let bestNumber: number | null = null;
-          let bestStart = Number.NEGATIVE_INFINITY;
-          for (const shell of shells) {
-            const anchors = shell.querySelectorAll<HTMLElement>(
-              PAINTED_START_SELECTOR,
-            );
-            if (anchors.length === 0) {
-              continue;
-            }
-            let pageStart = Number.POSITIVE_INFINITY;
-            let pageEnd = Number.NEGATIVE_INFINITY;
-            for (const el of anchors) {
-              const pm = readPaintedStart(el) ?? Number.NaN;
-              if (!Number.isFinite(pm)) {
-                continue;
-              }
-              if (pm < pageStart) {
-                pageStart = pm;
-              }
-              if (pm > pageEnd) {
-                pageEnd = pm;
-              }
-            }
-            if (pageStart === Number.POSITIVE_INFINITY) {
-              continue;
-            }
-            const raw = shell.dataset["pageNumber"];
-            const parsed = raw === undefined ? Number.NaN : Number(raw);
-            if (!Number.isFinite(parsed)) {
-              continue;
-            }
-            if (pageStart <= pmPos && pmPos <= pageEnd) {
-              return parsed;
-            }
-            if (pageStart <= pmPos && pageStart > bestStart) {
-              bestStart = pageStart;
-              bestNumber = parsed;
-            }
-          }
-          return bestNumber;
-        },
         getBlockRect(blockId) {
           const state = folioEditor.getState();
           const pagesContainer = pagesContainerRef.current;
