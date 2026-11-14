@@ -86,6 +86,21 @@ describe("shared toolchain CI selection", () => {
     }
   });
 
+  // A hand-started run names no base; the detector reads the one the shared
+  // comparison-base owner resolves instead of reporting an unreadable base.
+  test("the detector compares with the base the owner resolves", () => {
+    const steps = workflow.jobs["ci-plan"].steps;
+    const resolver = steps.findIndex((step) => step.id === "toolchain-base");
+    expect(steps[resolver].run).toBe(
+      'bun scripts/lib/comparison-base.ts >> "$GITHUB_OUTPUT"',
+    );
+    expect(steps[resolver].env).toBeUndefined();
+    expect(steps.indexOf(detector)).toBe(resolver + 1);
+    expect(detector.env).toEqual({
+      TOOLCHAIN_BASE: "${{ steps.toolchain-base.outputs.base }}",
+    });
+  });
+
   test("compiler proofs run only through the manual workflow", () => {
     expect(proofs.on).toEqual({ workflow_dispatch: null });
     expect(proofs.permissions).toEqual({ contents: "read" });
@@ -456,23 +471,31 @@ describe("published Node minimum", () => {
   );
   const floor = configuration.engineFloors.at(0);
 
-  test("the Hawk exception matches the workflow and invoked toolchain", () => {
-    const exception = configuration.rustExceptions.at(0);
-    expect(exception).toEqual({
-      pin: "1.97.1",
-      reason:
-        "cargo-hawk requires Rust 1.97.1; remove when Hawk supports the shared Rust pin.",
-      tracking: "https://github.com/stella/tooling/issues/99",
-      expires: "2026-11-11",
-    });
-    expect(workflow.env.HAWK_RUST_TOOLCHAIN).toBe(exception.pin);
+  // Hawk runs only with the compiler it was built with, so it builds with
+  // rust-toolchain.toml and neither the script nor the workflow names another.
+  test("Hawk builds and runs with the repository's Rust pin", () => {
+    expect(configuration.rustExceptions).toBeUndefined();
     const manifest = JSON.parse(
       readFileSync(path.join(repo, "package.json"), "utf8"),
     );
-    expect(manifest.scripts["rust:hawk"]).toStartWith(
-      `cargo +${exception.pin} hawk check `,
-    );
+    expect(manifest.scripts["rust:hawk"]).toStartWith("cargo hawk check ");
     expect(manifest.scripts["kernel:check"]).toContain("bun run rust:hawk");
+    const steps = workflow.jobs["docx-kernel"].steps;
+    const install = steps.find((step) => step.name === "Install pinned Hawk");
+    expect(install.run).toContain(
+      'RUSTC_BOOTSTRAP=1 cargo install cargo-hawk --version "=${HAWK_VERSION}" --locked',
+    );
+    expect(install.run).toContain("rustup component add rustc-dev\n");
+    expect(install.run).not.toMatch(/(?:cargo|rustc) \+|--toolchain/u);
+    const cacheKeys = steps
+      .filter((step) => step.with?.path === "~/.cache/cargo-hawk")
+      .map((step) => step.with.key);
+    expect(cacheKeys).toHaveLength(2);
+    for (const key of cacheKeys)
+      expect(key).toContain("${{ hashFiles('rust-toolchain.toml') }}");
+    expect(
+      Object.keys(workflow.env).filter((name) => name.startsWith("HAWK_")),
+    ).toEqual(["HAWK_VERSION", "HAWK_CRATE_SHA256"]);
   });
 
   test("the minimum consumer run owns a scoped floor and reuses default-runtime tarballs", () => {

@@ -126,11 +126,11 @@ describe("CI result", () => {
     ["fast", "pull_request", "true", "false"],
     ["fast", "pull_request", "false", "false"],
     ["fast", "push", "true", "false"],
-    ["fast", "workflow_dispatch", "true", "false"],
     ["fast", "schedule", "true", "false"],
     ["full", "merge_group", "true", "false"],
     ["full", "pull_request", "true", "true"],
     ["full", "push", "true", "true"],
+    ["full", "workflow_dispatch", "true", "false"],
     ["full", "workflow_dispatch", "true", "true"],
     ["full", "schedule", "true", "true"],
   ];
@@ -250,25 +250,20 @@ describe("CI result", () => {
     needs["ci-plan"].result = "cancelled";
     expect(runResult("pull_request", needs).exitCode).toBe(1);
 
-    for (const event of [
-      "pull_request",
-      "push",
-      "workflow_dispatch",
-      "schedule",
-    ]) {
+    for (const event of ["pull_request", "push", "schedule"]) {
       for (const depth of ["full", "invalid"]) {
         const run = runResult(event, needsFor({ depth, event }));
         expect(run.exitCode).toBe(1);
         expect(run.stdout).toContain(`wrong suite depth for ${event}`);
       }
     }
-    for (const depth of ["fast", "invalid"]) {
-      const run = runResult(
-        "merge_group",
-        needsFor({ depth, event: "merge_group" }),
-      );
-      expect(run.exitCode).toBe(1);
-      expect(run.stdout).toContain("wrong suite depth for merge_group");
+    // Merge groups and hand-started runs check every area at full depth.
+    for (const event of ["merge_group", "workflow_dispatch"]) {
+      for (const depth of ["fast", "invalid"]) {
+        const run = runResult(event, needsFor({ depth, event }));
+        expect(run.exitCode).toBe(1);
+        expect(run.stdout).toContain(`wrong suite depth for ${event}`);
+      }
     }
 
     const untrusted = needsFor({ depth: "full", event: "merge_group" });

@@ -12,12 +12,14 @@ import {
   CONTENT_CONTROL_LOCK,
   lockedControlMessage,
   paragraphNumberingReference,
+  type Table,
 } from "@stll/docx-core/model";
 import {
   applyDocumentOps,
   type BlockInsertionPoint,
   compileEditorIntent,
   createEditorIntentIdAllocator,
+  DOCUMENT_OP_TYPES,
   type DocumentOp,
   documentStories,
   type EditorIntent,
@@ -35,7 +37,10 @@ import {
   type TextPosition,
 } from "@stll/docx-core/ops";
 
-import { SUGGESTED_SUPPORTED_OPERATION_TYPES } from "../ai-edits/apply";
+import {
+  buildTableNode,
+  SUGGESTED_SUPPORTED_OPERATION_TYPES,
+} from "../ai-edits/apply";
 import {
   splitsGraphemeCluster,
   splitsSurrogatePair,
@@ -93,6 +98,11 @@ import {
   parseFolioDocumentOperationBatch,
   withDistinctSuggestionIds,
 } from "../document-operations";
+import { expectTableAttrs } from "../prosemirror/attrs";
+import {
+  standaloneTableRowsFromProseMirror,
+  tableAttrsToFormatting,
+} from "../prosemirror/conversion/fromProseDoc";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import {
   CANONICAL_GAP,
@@ -128,7 +138,7 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   readonly deleteBlock: "compile";
   readonly commentOnBlock: "compile";
   readonly commentOnRange: "compile";
-  readonly insertTable: "publicOps.tableStructure";
+  readonly insertTable: "compile";
   readonly insertSignatureTable: "publicOps.tableStructure";
   readonly deleteTable: "publicOps.tableStructure";
   readonly insertTableRow: "publicOps.tableStructure";
@@ -150,7 +160,7 @@ export const CANONICAL_PUBLIC_OPERATION_DISPOSITIONS: {
   deleteBlock: "compile",
   commentOnBlock: "compile",
   commentOnRange: "compile",
-  insertTable: CANONICAL_GAP.publicTableStructure,
+  insertTable: "compile",
   insertSignatureTable: CANONICAL_GAP.publicTableStructure,
   deleteTable: CANONICAL_GAP.publicTableStructure,
   insertTableRow: CANONICAL_GAP.publicTableStructure,
@@ -365,6 +375,14 @@ const isBlockInsertion = (
   operation.type === "insertAfterBlock" ||
   operation.type === "insertBeforeBlock";
 
+type TableInsertion = Extract<FolioDocumentOperation, { type: "insertTable" }>;
+
+/** An operation that puts a new block, a paragraph or a table, beside a paragraph. */
+const placesBlock = (
+  operation: FolioDocumentOperation,
+): operation is BlockInsertion | TableInsertion =>
+  isBlockInsertion(operation) || operation.type === "insertTable";
+
 type ProjectedParagraph = NonNullable<
   ReturnType<CanonicalProjection["paragraph"]>
 >;
@@ -439,7 +457,7 @@ const besideAsItStands = (
 });
 
 type BesidePendingJoinOptions = {
-  operation: BlockInsertion;
+  side: "before" | "after";
   paragraph: ProjectedParagraph;
   projection: CanonicalProjection;
   noteReferences: NoteReferenceLabels;
@@ -458,7 +476,7 @@ type BesidePendingJoinOptions = {
  * the block to follow; before it, when the paragraph goes whole.
  */
 const besidePendingJoin = ({
-  operation,
+  side,
   paragraph,
   projection,
   noteReferences,
@@ -470,7 +488,7 @@ const besidePendingJoin = ({
   };
   const join = pendingJoinParagraphs(options);
   const breakGoes = isDeletedPPrMark(paragraph.node.attrs["pPrMark"]);
-  const after = operation.type === "insertAfterBlock";
+  const after = side === "after";
   if (
     breakGoes &&
     (after ? join.last === options.paragraphPos : !joinsIn(options))
@@ -641,6 +659,97 @@ const resolveBlockInsertion = ({
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/u;
 
+type ResolveTableInsertionOptions = {
+  operation: TableInsertion;
+  paragraph: ProjectedParagraph;
+  projection: CanonicalProjection;
+  story: OpStory;
+  noteReferences: NoteReferenceLabels;
+  refusal: (
+    reason: FolioAIEditSkipReason,
+    message?: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
+  tableGap: (
+    message: string,
+  ) => Result<never, CanonicalPublicOperationResolutionError>;
+};
+
+/**
+ * A table beside the anchor, built from the cell texts as the default engine
+ * builds it (`buildTableNode`) and placed as a paragraph beside the anchor is
+ * (`besidePendingJoin`): between the paragraph it goes beside and the one
+ * next to it, and after a container's last paragraph with the empty
+ * paragraph the container ends with. Beside a table, the anchor's own or a
+ * neighbouring one, or any block other than a paragraph, it stays under the
+ * table structure gap.
+ */
+const resolveTableInsertion = ({
+  operation,
+  paragraph,
+  projection,
+  story,
+  noteReferences,
+  refusal,
+  tableGap,
+}: ResolveTableInsertionOptions) => {
+  const side = operation.position ?? "after";
+  if (findOutermostTableBoundary(projection.doc, paragraph.start - 1) !== null)
+    return tableGap("Canonical table insertion beside a table is unavailable.");
+  const placed = besidePendingJoin({
+    side,
+    paragraph,
+    projection,
+    noteReferences,
+  });
+  if (placed === undefined) return refusal("pendingDeletion");
+  const { place } = placed;
+  const $place = projection.doc.resolve(place.start - 1);
+  const neighbour = $place.parent.maybeChild(
+    $place.index() + (side === "after" ? 1 : -1),
+  );
+  if (neighbour !== null && neighbour.type.name !== "paragraph")
+    return tableGap(
+      "Canonical table insertion needs a paragraph or the container's edge beside it.",
+    );
+  const node = buildTableNode({
+    schema: projection.doc.type.schema,
+    rows: operation.rows,
+  });
+  if (node === null) return refusal("unsupportedBlock");
+  const attrs = expectTableAttrs(node);
+  const formatting = tableAttrsToFormatting(attrs);
+  const table: Table = {
+    type: "table",
+    ...(formatting === undefined ? {} : { formatting }),
+    ...(attrs.columnWidths === undefined
+      ? {}
+      : { columnWidths: [...attrs.columnWidths] }),
+    rows: standaloneTableRowsFromProseMirror(node),
+  };
+  const position =
+    side === "after" ? place.start + place.node.content.size : place.start;
+  const intent: EditorIntent = {
+    type: "tableBlock",
+    operation: {
+      type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+      story,
+      blockId: place.blockId,
+      table,
+      side,
+      // After a container's last paragraph the container still ends with one.
+      paragraphAfter: side === "after" && neighbour === null ? "empty" : "none",
+    },
+  };
+  return Result.ok({
+    type: "plain" as const,
+    operation,
+    intents: [intent],
+    normalizations: [],
+    from: position,
+    to: position,
+  });
+};
+
 /**
  * The operations a canonical suggestion can carry: the default engine's;
  * splits and merges, which the canonical session records as tracked paragraph
@@ -691,7 +800,7 @@ const besideItsSplit = (
   right: Pick<ResolvedOperation, "operation" | "from" | "to">,
 ): boolean => {
   const pair = (insertion: typeof left, split: typeof left) =>
-    isBlockInsertion(insertion.operation) &&
+    placesBlock(insertion.operation) &&
     insertion.from === insertion.to &&
     split.operation.type === "splitBlock" &&
     (insertion.from === split.from || insertion.from === split.to);
@@ -862,6 +971,8 @@ const CanonicalPublicOperationResolutionErrorBase: TaggedErrorClass<"CanonicalPu
 class CanonicalPublicOperationResolutionError extends CanonicalPublicOperationResolutionErrorBase<{
   message: string;
   reason: FolioAIEditSkipReason;
+  /** The capability the refusal waits for, when it is not the compiler's inline one. */
+  gap?: CanonicalGap;
 }> {}
 
 type ResolveCanonicalPublicOperationOptions = {
@@ -1102,10 +1213,12 @@ export class CanonicalPublicOperations {
         besideDeletions,
       });
       if (compiled.isErr()) {
-        if (compiled.error.reason === "unsupportedBlock")
-          refusals.set(operation.id, {
-            gap: CANONICAL_GAP.publicUnsupportedInline,
-          });
+        const gap =
+          compiled.error.gap ??
+          (compiled.error.reason === "unsupportedBlock"
+            ? CANONICAL_GAP.publicUnsupportedInline
+            : undefined);
+        if (gap !== undefined) refusals.set(operation.id, { gap });
         skip(operation.id, compiled.error.reason, compiled.error.message);
         continue;
       }
@@ -1785,6 +1898,14 @@ export class CanonicalPublicOperations {
           message: message ?? `The operation was refused: ${reason}.`,
         }),
       );
+    const tableGap = (message: string) =>
+      Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason: "unsupportedBlock",
+          message,
+          gap: CANONICAL_GAP.publicTableStructure,
+        }),
+      );
     switch (operation.type) {
       case "replaceInBlock":
       case "replaceRange":
@@ -1798,6 +1919,7 @@ export class CanonicalPublicOperations {
       case "setBlockParagraphProperties":
       case "insertAfterBlock":
       case "insertBeforeBlock":
+      case "insertTable":
         break;
       default:
         return refusal(
@@ -1824,7 +1946,7 @@ export class CanonicalPublicOperations {
     if (
       (paragraph.source.pPrMark?.kind === "del" ||
         paragraph.source.pPrMark?.kind === "moveFrom") &&
-      !isBlockInsertion(operation)
+      !placesBlock(operation)
     )
       return refusal("pendingDeletion");
     const noteReferences = collectNoteReferenceLabels(state.doc);
@@ -1844,6 +1966,16 @@ export class CanonicalPublicOperations {
     const followed =
       state.doc.resolve(paragraph.start + paragraph.node.content.size + 1)
         .nodeAfter?.type.name === "paragraph";
+    if (operation.type === "insertTable")
+      return resolveTableInsertion({
+        operation,
+        paragraph,
+        projection: projection.value,
+        story,
+        noteReferences,
+        refusal,
+        tableGap,
+      });
     if (isBlockInsertion(operation)) {
       const besideDeletion =
         !tracked &&
@@ -1856,7 +1988,7 @@ export class CanonicalPublicOperations {
       const placed = suggested
         ? besideAsItStands(paragraph)
         : besidePendingJoin({
-            operation: insertion,
+            side: insertion.type === "insertAfterBlock" ? "after" : "before",
             paragraph,
             projection: projection.value,
             noteReferences,
