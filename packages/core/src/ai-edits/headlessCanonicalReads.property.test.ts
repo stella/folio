@@ -571,7 +571,7 @@ describe("a canonical reviewer refuses what is not on the session yet", () => {
     expect(thrown).toMatchObject(refusal);
   };
 
-  test("every suggestion and resolved view throws the typed refusal", async () => {
+  test("every suggestion, table geometry staging and comparison throws the typed refusal", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       readFixture("upstream-styled-content.docx"),
       { session: "canonical" },
@@ -586,9 +586,6 @@ describe("a canonical reviewer refuses what is not on the session yet", () => {
     expectRefusal(() => reviewer.loadPendingSuggestions([]));
     expectRefusal(() => reviewer.acceptSuggestion("suggestion"));
     expectRefusal(() => reviewer.rejectSuggestion("suggestion"));
-    expectRefusal(() => reviewer.resolveReviewedStory({ view: "final" }));
-    expectRefusal(() => reviewer.readReviewedStory({ view: "final" }));
-    expectRefusal(() => reviewer.storyTables({ view: "original" }));
     expectRefusal(() =>
       reviewer.matchStoryTableGeometry({
         targetTables: new Map(),

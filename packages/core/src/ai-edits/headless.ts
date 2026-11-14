@@ -325,9 +325,10 @@ export type FolioDocxReviewerOptions = {
    * canonical mode runs. Every read comes from it, and operations in every
    * story, their undo, comment replies and resolution, the resolution of
    * tracked changes and the save run on it as the canonical editor runs
-   * them. Suggestions, resolved views and comparison are not on the session
-   * yet: they throw a `CanonicalSessionError` whose ground is the
-   * `publicOps.headlessSession` gap, and never fall back to the legacy
+   * them, and resolved views are read from a second session resolved to
+   * the view. Suggestions, table geometry staging and comparison are not on
+   * the session yet: they throw a `CanonicalSessionError` whose ground is
+   * the `publicOps.headlessSession` gap, and never fall back to the legacy
    * engine.
    */
   session?: HeadlessReviewerSession;
@@ -2149,9 +2150,12 @@ export class FolioDocxReviewer {
         receivedView: view,
       });
     }
-    // The resolved views run review resolution, which is not on the session yet.
-    if (view !== "current-markup")
-      this.requireLegacyEngine("read a resolved view");
+    // A resolved view is read from a second session resolved that way.
+    if (this.engine.type === "canonical" && view !== "current-markup")
+      return this.resolvedSessionCopy(
+        this.engine.session,
+        view,
+      ).snapshotReviewedStoryInternal({ story, view: "current-markup" });
     const sourceState = this.getEditableStoryState(story);
     return sourceState
       ? createStateSnapshot(resolveReviewedState(sourceState, view))
@@ -2217,8 +2221,11 @@ export class FolioDocxReviewer {
         receivedView: view,
       });
     }
-    if (view !== "current-markup")
-      this.requireLegacyEngine("read a resolved view");
+    if (this.engine.type === "canonical" && view !== "current-markup")
+      return this.resolvedSessionCopy(this.engine.session, view).storyTables({
+        story,
+        view: "current-markup",
+      });
     const sourceState = this.getEditableStoryState(story);
     return sourceState
       ? folioStoryTables(resolveReviewedState(sourceState, view).doc)
@@ -2289,7 +2296,8 @@ export class FolioDocxReviewer {
     story = MAIN_STORY,
     view,
   }: FolioResolveReviewedStoryOptions): boolean {
-    this.requireLegacyEngine("resolve a story");
+    if (this.engine.type === "canonical")
+      return this.resolveStoryOnSession(this.engine.session, story, view);
     return this.resolveReviewedStorySnapshotInternal({ story, view }) !== null;
   }
 
@@ -3842,7 +3850,10 @@ export class FolioDocxReviewer {
   /** Resolve ordinary revisions on a detached in-memory document. */
   toResolvedDocument(decision: "accept" | "reject"): Document {
     if (this.engine.type === "canonical")
-      return this.resolvedOnSessionCopy(this.engine.session, decision);
+      return this.resolvedSessionCopy(
+        this.engine.session,
+        decision === "accept" ? "final" : "original",
+      ).toDocument();
     const copy = new FolioDocxReviewer({
       baseDocument: this.toDocument(),
       originalBuffer: this.originalBuffer,
@@ -3856,15 +3867,15 @@ export class FolioDocxReviewer {
   }
 
   /**
-   * Resolve on a second session over the current document, as a reviewer
-   * reopened on it would, so this reviewer's session and journal are left as
-   * they are. What the session cannot resolve yet refuses as `acceptAll` and
-   * `rejectAll` do.
+   * A reviewer on a second session over the current document, as a reviewer
+   * reopened on it would hold it, with every change resolved to `view`. This
+   * reviewer's session and journal are left as they are; what the session
+   * cannot resolve yet refuses as `acceptAll` and `rejectAll` do.
    */
-  private resolvedOnSessionCopy(
+  private resolvedSessionCopy(
     session: CanonicalSession,
-    decision: "accept" | "reject",
-  ): Document {
+    view: FolioResolvedReviewedView,
+  ): FolioDocxReviewer {
     const document = readModel(session.document);
     const created = createCanonicalSession(document, document.package.styles);
     if (created.isErr()) throw created.error;
@@ -3875,9 +3886,54 @@ export class FolioDocxReviewer {
       author: this.author,
       engine: { type: "canonical", session: created.value },
     });
-    if (decision === "accept") copy.acceptAll();
+    if (view === "final") copy.acceptAll();
     else copy.rejectAll();
-    return copy.toDocument();
+    return copy;
+  }
+
+  /**
+   * Resolve one story's changes to `view` in one session commit: the body's
+   * through the review intent, another story's as its resolution operation.
+   */
+  private resolveStoryOnSession(
+    session: CanonicalSession,
+    story: FolioEditableDocumentStoryHandle,
+    view: FolioResolvedReviewedView,
+  ): boolean {
+    if (!isFolioResolvedReviewedView(view))
+      throw new UnsupportedFolioReviewedViewError({
+        message:
+          "Only original and final views can replace editable story state.",
+        receivedView: view,
+      });
+    // As on the legacy engine: `true` for every story that exists, resolved
+    // to the view, `false` for one that does not.
+    const state = this.getEditableStoryState(story);
+    if (!state) return false;
+    this.requireSessionReview(`resolve a story to its ${view} view`);
+    const resolution = view === "final" ? "accept" : "reject";
+    const ids = getTrackedChangesFromDoc(state.doc).flatMap(({ id }) =>
+      getTrackedChangeGroupIdsFromDoc(state.doc, id),
+    );
+    if (ids.length === 0) return true;
+    const outcome = this.resolveOnSession(
+      story.type === "main"
+        ? session.prepareResolve(this.state, { revisionIds: ids, resolution })
+        : session.prepareResolve(this.state, {
+            revisionIds: [],
+            resolution,
+            before: [
+              {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: canonicalOpStory(story),
+                revisionIds: ids,
+                decision: resolution,
+              },
+            ],
+          }),
+    );
+    // A lock holds every change: the story cannot reach the view.
+    return outcome.resolved || outcome.reason === "noChange";
   }
 
   /** The current document model with edits merged back in. */
