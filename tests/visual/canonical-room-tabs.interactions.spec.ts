@@ -191,15 +191,14 @@ for (const adapter of adapters) {
       .toBe(true);
     await waitJoined(survivor);
     await typeAt(survivor, 0, "after ");
-    await expect
-      .poll(async () => (await roomBridge(survivor))?.document ?? "", {
-        timeout: JOIN_TIMEOUT,
-      })
-      .toContain("after ");
-    const afterHandover = await expectConverged([survivor]);
+    // A tab that joins now sees only what the room sequenced and stored.
+    const witness = await openTab(context, url);
+    const afterHandover = await expectConverged([survivor, witness]);
+    expect(afterHandover).toContain("after ");
 
     // With every tab closed, a new tab rebuilds the room from IndexedDB.
     await survivor.close();
+    await witness.close();
     const reopened = await openTab(context, url);
     expect((await roomBridge(reopened))?.leading).toBe(true);
     expect(await expectConverged([reopened])).toBe(afterHandover);

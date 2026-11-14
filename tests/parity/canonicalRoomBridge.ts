@@ -1,5 +1,7 @@
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 
+import { withoutMintedIds } from "./canonicalBridge";
+
 /** A playground's place in its canonical room, as the room bridge reports it. */
 export type CanonicalRoomBridgeStatus = {
   /** The editor's transport reaches the room's authority. */
@@ -62,7 +64,7 @@ export const buildCanonicalRoomBridge = (
       const document = getEditor()?.getCanonicalDocument();
       if (!document) return null;
       const { content, comments = [] } = document.package.document;
-      return JSON.stringify({ content, comments });
+      return JSON.stringify(withoutMintedIds({ content, comments }));
     },
     comments: () =>
       getEditor()
