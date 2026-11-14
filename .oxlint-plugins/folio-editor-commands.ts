@@ -194,8 +194,11 @@ export default {
         const filename = context.filename.replaceAll("\\", "/");
         const react = filename.endsWith(REACT);
         const vue = VUE.some((path) => filename.endsWith(path));
+        // Lint fixtures copy package paths under test/__fixtures__; they
+        // state their own expectations.
         const packageFile =
           PACKAGE_SOURCE.test(filename) &&
+          !filename.includes("/__fixtures__/") &&
           !filename.endsWith(OWNER) &&
           !filename.endsWith(EXECUTOR);
         const relative = filename.slice(filename.indexOf("packages/"));
