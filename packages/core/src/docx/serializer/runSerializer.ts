@@ -358,6 +358,19 @@ function serializeLineCap(cap: NonNullable<ShapeOutline["cap"]>): string {
   return "flat";
 }
 
+/** `a:headEnd` / `a:tailEnd` with only the attributes the model states. */
+function serializeLineEnd(
+  name: "headEnd" | "tailEnd",
+  end: NonNullable<ShapeOutline["headEnd"]>,
+): string {
+  const attrs = [
+    end.type === undefined ? "" : ` type="${end.type}"`,
+    end.width === undefined ? "" : ` w="${end.width}"`,
+    end.length === undefined ? "" : ` len="${end.length}"`,
+  ].join("");
+  return `<a:${name}${attrs}/>`;
+}
+
 function serializeOutline(outline: ShapeOutline | undefined): string {
   if (!outline) {
     return "";
@@ -392,20 +405,20 @@ function serializeOutline(outline: ShapeOutline | undefined): string {
     parts.push("<a:miter/>");
   }
   if (outline.headEnd) {
-    parts.push(
-      `<a:headEnd type="${outline.headEnd.type}"${outline.headEnd.width ? ` w="${outline.headEnd.width}"` : ""}${outline.headEnd.length ? ` len="${outline.headEnd.length}"` : ""}/>`,
-    );
+    parts.push(serializeLineEnd("headEnd", outline.headEnd));
   }
   if (outline.tailEnd) {
-    parts.push(
-      `<a:tailEnd type="${outline.tailEnd.type}"${outline.tailEnd.width ? ` w="${outline.tailEnd.width}"` : ""}${outline.tailEnd.length ? ` len="${outline.tailEnd.length}"` : ""}/>`,
-    );
+    parts.push(serializeLineEnd("tailEnd", outline.tailEnd));
   }
 
   if (parts.length === 0 && attrs.length === 0) {
     return "";
   }
-  return `<a:ln${attrs.length ? ` ${attrs.join(" ")}` : ""}>${parts.join("")}</a:ln>`;
+  const open = `<a:ln${attrs.length ? ` ${attrs.join(" ")}` : ""}`;
+  // An outline with no child elements is written as an empty element, the
+  // spelling the parser's verbatim capture of this element replays: writing
+  // it with a separate end tag made a second save differ from the first.
+  return parts.length === 0 ? `${open}/>` : `${open}>${parts.join("")}</a:ln>`;
 }
 
 /** Build wp:positionH and wp:positionV for floating drawings */

@@ -1185,13 +1185,15 @@ export type ShapeOutline = WritableRecord & {
   join?: "bevel" | "miter" | "round";
   /** Head arrow */
   headEnd?: WritableRecord & {
-    type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
+    /** `@type`; absent when the source omits it (the schema default is none). */
+    type?: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
     width?: "sm" | "med" | "lg";
     length?: "sm" | "med" | "lg";
   };
   /** Tail arrow */
   tailEnd?: WritableRecord & {
-    type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
+    /** `@type`; absent when the source omits it (the schema default is none). */
+    type?: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
     width?: "sm" | "med" | "lg";
     length?: "sm" | "med" | "lg";
   };
