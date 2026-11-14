@@ -2026,6 +2026,11 @@ const resolveList = (
     if (count === 0 || left === undefined || right === undefined) continue;
     exactSeams.delete(recorded);
     exactSeams.set(seam, Math.max(exactSeams.get(seam) ?? 0, depth));
+    // Boundaries this resolution kept there already float with the removal
+    // they came from, which knows the records it cut and the changes it held;
+    // a seam recorded beside it, as one a rejected deletion leaves, joins
+    // with them rather than replacing what they float with.
+    if (floating.has(seam)) continue;
     floating.set(seam, {
       count,
       depth,
