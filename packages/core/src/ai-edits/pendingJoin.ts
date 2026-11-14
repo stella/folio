@@ -21,7 +21,10 @@ import type { NoteReferenceLabels } from "./note-references";
  * the edit would not survive it. A merge carries its own result's properties
  * (`mergedParagraphProperties`).
  */
-export const PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL = {
+export const PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL: {
+  readonly reason: "pendingParagraphMarkDeletion";
+  readonly message: string;
+} = {
   reason: "pendingParagraphMarkDeletion",
   message:
     "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
