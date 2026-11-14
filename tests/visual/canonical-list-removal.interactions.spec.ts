@@ -6,9 +6,9 @@ import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import type { Paragraph } from "../../packages/core/src/types/document";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
+import { CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS } from "../../test/canonicalSaveDiagnostics";
 import {
   clearRefusals,
-  expectNoRefusals,
   loadReady,
   reactPort,
   vuePort,
@@ -55,6 +55,25 @@ const clickToolbarButton = async (page: Page, name: string) => {
   // An overflow popover left open would take the next click in the page.
   if (overflow) await page.keyboard.press("Escape");
 };
+
+/**
+ * No refusal: a full save in place of a selective one is a permitted outcome,
+ * reported as a diagnostic, not a refusal.
+ */
+const expectNoRefusals = async (page: Page) =>
+  expect(
+    (
+      await page.evaluate(() => globalThis.__folioCanonicalFuzzErrors ?? [])
+    ).filter(
+      (entry) =>
+        !(
+          entry.status === "saveDiagnostic" &&
+          "diagnostic" in entry &&
+          CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS[entry.diagnostic.type]
+            .status === "permitted"
+        ),
+    ),
+  ).toEqual([]);
 
 const clickText = (page: Page, text: string) =>
   page
