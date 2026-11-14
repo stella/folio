@@ -254,13 +254,32 @@ test("empty and omitted identity pools decode without a schema change", () => {
     if (decoded.isErr()) throw decoded.error;
     expect(decoded.value).toStrictEqual(batch);
   }
-  for (const schema of [1, 2, 3, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  // A peer still on the previous schema (whose sequenced formats record no
+  // cut run) is refused as cleanly as any other, and so is its journal.
+  for (const schema of [
+    1,
+    2,
+    3,
+    DOCUMENT_OP_SCHEMA_VERSION - 1,
+    DOCUMENT_OP_SCHEMA_VERSION + 1,
+  ]) {
     const decoded = parseDocumentBatch(
       JSON.stringify({ ...withOp(op), schema }),
     );
     expect(decoded.isErr()).toBe(true);
     if (decoded.isErr())
       expect(decoded.error.reason).toBe(
+        BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA,
+      );
+    const sequenced = validateSequencedBatch({
+      ...withOp(op),
+      schema,
+      revision: 1,
+      effects: [{ type: "none" }],
+    });
+    expect(sequenced.isErr()).toBe(true);
+    if (sequenced.isErr())
+      expect(sequenced.error.reason).toBe(
         BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA,
       );
   }
