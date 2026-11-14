@@ -1276,6 +1276,8 @@ export const createHiddenEditorManager = (
         deps.onReadOnlyEditAttempt();
         return true;
       }
+      // The host hears of a cut the editor takes, as on the legacy engine.
+      deps.onCut?.();
       if (editorSession.type !== "canonical" || pmView.state.selection.empty)
         return true;
       if (event.clipboardData === null) {
@@ -1628,9 +1630,15 @@ export const createHiddenEditorManager = (
             ? input.handleDOMEvents.input(pmView)
             : false,
         paste: (pmView, event) => {
-          if (editorSession.type === "canonical" && !deps.getReadOnly())
-            return input.handleDOMEvents.paste(pmView, event);
-          return createHiddenEditorClipboardHandlers(deps).paste(pmView, event);
+          if (editorSession.type !== "canonical" || deps.getReadOnly())
+            return createHiddenEditorClipboardHandlers(deps).paste(
+              pmView,
+              event,
+            );
+          const refused = input.handleDOMEvents.paste(pmView, event);
+          // The host hears of a paste the editor takes, as on the legacy engine.
+          if (!refused) deps.onPaste?.();
+          return refused;
         },
         cut: (pmView, event) =>
           editorSession.type === "canonical"
