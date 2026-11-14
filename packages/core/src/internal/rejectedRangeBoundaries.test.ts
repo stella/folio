@@ -201,6 +201,37 @@ describe("rejecting an insertion keeps its range boundaries", () => {
         type: "insertion",
         info: insertion,
         content: [
+          {
+            type: "moveToRangeStart",
+            id: 7,
+            name: "move7",
+            author: "A",
+            copyOriginAncestors: [0],
+          },
+        ],
+      },
+      { type: "moveToRangeStart", id: 7, name: "move7", author: "A" },
+      { type: "run", content: [{ type: "text", text: "two" }] },
+      { type: "moveToRangeEnd", id: 7 },
+    ]);
+    const editor = outline(rejectInEditor(document));
+    expect(editor).toEqual(outline(rejectInEngine(document)));
+    expect(editor).toEqual([
+      "type:moveToRangeStart,id:7",
+      "text:two",
+      "type:moveToRangeEnd,id:7",
+    ]);
+  });
+
+  test("an inserted move range start that is no copy stays beside the standing one, in both", () => {
+    // Without copy ancestry the inserted start is the range's own: rejecting
+    // keeps it, as it keeps any boundary that is no copy, whatever else the
+    // paragraph holds.
+    const document = documentWith([
+      {
+        type: "insertion",
+        info: insertion,
+        content: [
           { type: "moveToRangeStart", id: 7, name: "move7", author: "A" },
         ],
       },
@@ -211,6 +242,7 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     const editor = outline(rejectInEditor(document));
     expect(editor).toEqual(outline(rejectInEngine(document)));
     expect(editor).toEqual([
+      "type:moveToRangeStart,id:7",
       "type:moveToRangeStart,id:7",
       "text:two",
       "type:moveToRangeEnd,id:7",
@@ -311,9 +343,10 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     ]);
   });
 
-  test("dropping an inserted copy leaves the next range alone, in both", () => {
-    // The copy sits right before another range's end, which comes before its
-    // own start; only the range the rejection kept a boundary of is repaired.
+  test("a kept move range start beside a standing one leaves the next range alone, in both", () => {
+    // The kept start sits right before another range's end, which comes
+    // before its own start; only the range the rejection kept a boundary of
+    // is repaired, and one with two starts is left as it is.
     const document = documentWith([
       {
         type: "insertion",
@@ -332,6 +365,7 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     const editor = outline(rejectInEditor(document));
     expect(editor).toEqual(outline(rejectInEngine(document)));
     expect(editor).toEqual([
+      "type:moveToRangeStart,id:7",
       "type:moveToRangeEnd,id:8",
       "text:one",
       "type:moveToRangeStart,id:8",

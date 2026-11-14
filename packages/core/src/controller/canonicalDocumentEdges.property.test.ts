@@ -6,9 +6,9 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange";
 import type { Paragraph } from "../types/document";
-import { createCanonicalSession } from "./canonicalSession";
 
 test(
   "every canonical input owner resolves document edges as content gaps",

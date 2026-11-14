@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createEmptyDocx } from "../docx/rezip";
-import { createCanonicalSession } from "./canonicalSession";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const control = (id: number, text: string) =>

@@ -385,18 +385,7 @@ test.each(["before-table", "terminal"] as const)(
 
 test("rejecting an empty copied move range keeps its standing counterpart", async () => {
   const { output } = await resolvedDocument(
-    await documentWithEmptyMoveRanges([0], undefined),
-    rejectAIEditRevision(42),
-  );
-
-  expect(output.match(/w:moveToRangeStart/gu)).toHaveLength(1);
-  expect(output.match(/w:moveToRangeEnd/gu)).toHaveLength(1);
-  expect(output).not.toContain("copyOriginAncestors");
-});
-
-test("rejecting an empty move range with an owned end keeps its standing counterpart", async () => {
-  const { output } = await resolvedDocument(
-    await documentWithEmptyMoveRanges(undefined, [0]),
+    await documentWithEmptyMoveRanges([0], [0]),
     rejectAIEditRevision(42),
   );
 

@@ -3,6 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
+import {
+  type CanonicalSession,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
@@ -17,10 +21,6 @@ import {
   rowResizeCommand,
 } from "../prosemirror/tableResize";
 import type { Document } from "../types/document";
-import {
-  type CanonicalSession,
-  createCanonicalSession,
-} from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 
 const cell = (paraId: string, text: string) => ({

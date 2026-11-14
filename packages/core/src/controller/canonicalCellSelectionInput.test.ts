@@ -3,9 +3,9 @@ import { expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { schema } from "../prosemirror/schema";
 import type { Document, TableCell } from "../types/document";
-import { createCanonicalSession } from "./canonicalSession";
 
 const cell = (paraId: string, text: string): TableCell => ({
   type: "tableCell",

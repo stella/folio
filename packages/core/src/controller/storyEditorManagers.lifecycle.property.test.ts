@@ -21,16 +21,16 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import { deepFreeze } from "../__tests__/deepFreeze";
+import {
+  type CanonicalCommit,
+  CanonicalSessionError,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { schema } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document, Paragraph } from "../types/document";
 import { readModel } from "../types/documentModel";
-import {
-  type CanonicalCommit,
-  CanonicalSessionError,
-  createCanonicalSession,
-} from "./canonicalSession";
 import {
   createHeaderFooterEditorManager,
   enumerateDocumentHeaderFooterParts,

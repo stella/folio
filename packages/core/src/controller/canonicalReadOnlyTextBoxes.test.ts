@@ -4,17 +4,17 @@ import { EditorState, TextSelection } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import {
+  type CanonicalCommit,
+  type CanonicalSession,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
-import {
-  type CanonicalCommit,
-  type CanonicalSession,
-  createCanonicalSession,
-} from "./canonicalSession";
 
 const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const NS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="${R}" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"`;

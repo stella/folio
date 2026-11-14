@@ -86,6 +86,17 @@ test.each(["editing", "suggesting"] as const)(
   },
 );
 import {
+  CANONICAL_PROJECTION_META,
+  type CanonicalCommit,
+  type CanonicalSession,
+  CanonicalSessionError,
+  createCanonicalSession,
+  deletionRange,
+  isCanonicalJoinBoundary,
+  isCanonicalProjectionTransaction,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
+import {
   assignDocumentParagraphPropertySourceContract,
   assignParagraphPropertySource,
   getDocumentParagraphPropertySourceContract,
@@ -100,17 +111,6 @@ import type {
   Run,
   StyleDefinitions,
 } from "../types/document";
-import {
-  CANONICAL_PROJECTION_META,
-  type CanonicalCommit,
-  type CanonicalSession,
-  CanonicalSessionError,
-  createCanonicalSession,
-  deletionRange,
-  isCanonicalJoinBoundary,
-  isCanonicalProjectionTransaction,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 const seed = (text = "ab😀cd"): Document => ({
   package: {

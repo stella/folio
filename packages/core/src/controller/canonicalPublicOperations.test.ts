@@ -17,6 +17,11 @@ import {
   createFolioAITextRangeHandle,
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
+import {
+  type CanonicalCommit,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import type {
   FolioDocumentOperation,
   FolioDocumentOperationBatch,
@@ -29,11 +34,6 @@ import {
   CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
   CanonicalPublicOperations,
 } from "./canonicalPublicOperations";
-import {
-  type CanonicalCommit,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 const setup = (source: string | Document = "alpha beta") => {
   const document =
@@ -454,9 +454,10 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
       .apply([
         {
           id: "table",
-          type: "insertTable",
+          type: "insertTableRow",
           blockId: "12345678",
-          rows: [["cell"]],
+          position: "after",
+          cellTexts: ["cell"],
         },
       ])
       .issues.at(0)?.canonicalRefusal?.gap,

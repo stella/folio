@@ -4,6 +4,10 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
+import {
+  type CanonicalSession,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
@@ -12,10 +16,6 @@ import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Document, TableCell } from "../types/document";
-import {
-  type CanonicalSession,
-  createCanonicalSession,
-} from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 
 const cell = (paraId: string, text: string, gridSpan?: number): TableCell => ({

@@ -11,6 +11,11 @@ import {
 import { type DocumentOp, packageResourcesOpOf } from "@stll/docx-core/ops";
 
 import {
+  type CanonicalCommit,
+  type CanonicalSession,
+  CanonicalSessionError,
+} from "../canonical/canonicalSession";
+import {
   createNumberingIdAllocator,
   numberingNumIdsTaken,
 } from "../docx/numberingIds";
@@ -48,11 +53,6 @@ import {
   flattenClipboardStyleReferences,
   importClipboardStyles,
 } from "./canonicalClipboardResources";
-import {
-  type CanonicalCommit,
-  type CanonicalSession,
-  CanonicalSessionError,
-} from "./canonicalSession";
 
 const refuse = (message: string) =>
   Result.err(

@@ -3,6 +3,8 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { resolveComparisonBase } from "./comparison-base";
+
 export const TEST_DOM_BASELINE_PATH =
   ".oxlint-plugins/folio-test-dom.baseline.json";
 type DomBaseline = Readonly<Record<string, number>>;
@@ -123,13 +125,7 @@ export const checkTestDomBaseline = ({
   requestedBase = process.env.TOOLCHAIN_BASE,
 }: CheckTestDomBaselineOptions): CheckTestDomBaselineResult => {
   current = validateTestDomBaseline(current);
-  const baseSha =
-    requestedBase === undefined ||
-    requestedBase === "unavailable-toolchain-base"
-      ? runGit({ root, args: ["merge-base", "HEAD", "origin/main"] })
-          .toString("utf8")
-          .trim()
-      : requestedBase;
+  const baseSha = resolveComparisonBase({ root, requested: requestedBase });
   if (!/^[a-f\d]{40}$/u.test(baseSha))
     panic("Invalid DOM baseline base commit");
   runGit({ root, args: ["cat-file", "-e", baseSha + "^{commit}"] });
