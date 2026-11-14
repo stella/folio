@@ -3068,7 +3068,7 @@ export class FolioDocxReviewer {
     this.commitCommentOnSession(session, {
       type: "resolve",
       id: target.id,
-      status: resolved ? "resolved" : "open",
+      status: resolved ? "open" : "resolved",
     });
     return true;
   }
