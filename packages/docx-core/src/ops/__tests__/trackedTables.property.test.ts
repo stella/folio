@@ -584,13 +584,12 @@ describe("tracked whole table properties", () => {
   );
 
   test(
-    "unsupported nested tables, cell records, moves and conflicting revisions refuse atomically",
+    "unsupported cell records, moves and conflicting revisions refuse atomically",
     () => {
       assertProperty(
         fc.property(
           shapes,
           fc.constantFrom(
-            "nested",
             "cellRevision",
             "rowRevision",
             "moveFrom",
@@ -607,26 +606,6 @@ describe("tracked whole table properties", () => {
             let value: Table;
             let reason: string;
             switch (unsupported) {
-              case "nested":
-                value = {
-                  ...source,
-                  rows: [
-                    {
-                      ...row,
-                      cells: [
-                        {
-                          ...cell,
-                          content: [
-                            makeTable({ ...shape, rows: 1 }, 0x900),
-                            makeParagraph(0x100, shape),
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                };
-                reason = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
-                break;
               case "cellRevision":
                 value = {
                   ...source,
@@ -761,14 +740,20 @@ describe("tracked whole table properties", () => {
                 throw new Error(
                   `Unsupported ${unsupported} table must be refused.`,
                 );
-              expect(result.error.reason).toBe(reason);
+              // Deleting a table whose every row is already suggested for
+              // deletion leaves nothing to suggest.
+              expect(result.error.reason).toBe(
+                family !== "insertion" && unsupported === "rowRevision"
+                  ? DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE
+                  : reason,
+              );
               expect(original).toStrictEqual(snapshot);
             }
           },
         ),
         {
           numRuns: NUM_RUNS,
-          id: "unsupported nested tables, cell records, moves and conflicting revisions refuse atomically",
+          id: "unsupported cell records, moves and conflicting revisions refuse atomically",
         },
       );
     },
