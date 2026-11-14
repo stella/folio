@@ -4,11 +4,17 @@ import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   INHERIT_RUN_PROPS,
-  SPLIT_HALVES,
+  type OpStory,
   type TextPosition,
 } from "../types";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
 import { sameStory } from "./address";
+import {
+  anchorPoints,
+  isAnchoredComment,
+  moveCommentAnchor,
+  passCommentAnchor,
+} from "./commentTransform";
 import {
   BATCH_REJECTION_REASONS,
   BatchRejection,
@@ -16,10 +22,12 @@ import {
   type SequencedBatch,
   type SequencedOpEffect,
 } from "./envelope";
+import { mapPoint, type PointMapping, sameParagraph } from "./points";
+import { transformByFootprint } from "./scope";
 
 type TransformOptions = { order?: "before" | "after" };
 
-const operationStory = (op: DocumentOp) => {
+export const operationStory = (op: DocumentOp): OpStory | undefined => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
@@ -56,6 +64,7 @@ const operationStory = (op: DocumentOp) => {
     case DOCUMENT_OP_TYPES.SET_TABLE:
       return op.story;
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+      return isAnchoredComment(op) ? anchorPoints(op)[0]?.story : undefined;
     case DOCUMENT_OP_TYPES.UPDATE_COMMENT_CONTENT:
     case DOCUMENT_OP_TYPES.SET_COMMENT_RESOLUTION:
     case DOCUMENT_OP_TYPES.DELETE_COMMENT:
@@ -79,14 +88,9 @@ const operationStory = (op: DocumentOp) => {
   }
 };
 
-type ParagraphAddress = Pick<TextPosition, "story" | "blockId">;
-const sameParagraph = (
-  left: ParagraphAddress,
-  right: ParagraphAddress,
-): boolean =>
-  sameStory(left.story, right.story) && left.blockId === right.blockId;
-
-const targets = (op: DocumentOp): readonly string[] | undefined => {
+export const operationTargets = (
+  op: DocumentOp,
+): readonly string[] | undefined => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
@@ -103,14 +107,18 @@ const targets = (op: DocumentOp): readonly string[] | undefined => {
         op.at.blockId,
         ...op.blocks.flatMap((p) => (p.paraId ? [p.paraId] : [])),
       ];
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+      return isAnchoredComment(op)
+        ? anchorPoints(op).map(({ blockId }) => blockId)
+        : undefined;
     default:
       return undefined;
   }
 };
 
 const independent = (a: DocumentOp, b: DocumentOp): boolean => {
-  const left = targets(a);
-  const right = targets(b);
+  const left = operationTargets(a);
+  const right = operationTargets(b);
   return (
     left !== undefined &&
     right !== undefined &&
@@ -140,6 +148,8 @@ const transformRestoredOp = ({
   effect,
   order,
 }: PairOptions): Result<readonly DocumentOp[], BatchRejection> => {
+  const scoped = transformByFootprint({ op, over, effect, order });
+  if (scoped !== undefined) return scoped;
   const story = operationStory(op);
   const overStory = operationStory(over);
   if (story === undefined || overStory === undefined)
@@ -150,11 +160,16 @@ const transformRestoredOp = ({
     );
   if (!sameStory(story, overStory)) return Result.ok([op]);
   if (independent(op, over)) return Result.ok([op]);
+  // A range or point comment moves like text; text moves past its reference.
+  if (isAnchoredComment(op))
+    return moveCommentAnchor({ op, over, effect, order });
+  if (isAnchoredComment(over))
+    return passCommentAnchor({ op, over, effect, order });
   if (
     effect?.type === "touchedBlocks" &&
     op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION
   ) {
-    const addressed = targets(op);
+    const addressed = operationTargets(op);
     if (addressed && addressed.every((id) => !effect.blockIds.includes(id)))
       return Result.ok([op]);
     return refusal(
@@ -361,90 +376,17 @@ const transformRestoredOp = ({
       "Tracked deletion and zero-width boundaries require an unchanged range.",
     );
   }
+  const mapping: PointMapping = {
+    over,
+    effect,
+    order,
+    splitTiesToSecond:
+      op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK || order === "after",
+  };
   const map = (
     point: TextPosition,
     affinity: "before" | "after" = "after",
-  ): TextPosition | undefined => {
-    if (over.type === DOCUMENT_OP_TYPES.INSERT_TEXT) {
-      if (!sameParagraph(point, over.at)) return point;
-      const shift =
-        point.offset > over.at.offset ||
-        (point.offset === over.at.offset && order === "after");
-      return shift
-        ? { ...point, offset: point.offset + over.text.length }
-        : point;
-    }
-    if (over.type === DOCUMENT_OP_TYPES.DELETE_RANGE) {
-      if (!sameParagraph(point, over.from)) return point;
-      if (over.revision) return point;
-      if (
-        (point.zeroWidthBefore ?? 0) !== 0 &&
-        point.offset >= over.from.offset &&
-        point.offset <= over.to.offset
-      )
-        return undefined;
-      return {
-        ...point,
-        offset:
-          point.offset <= over.from.offset
-            ? point.offset
-            : Math.max(
-                over.from.offset,
-                point.offset - (over.to.offset - over.from.offset),
-              ),
-      };
-    }
-    if (over.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) {
-      if (!sameParagraph(point, over.at)) return point;
-      const half =
-        over.newHalf ??
-        (effect?.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK
-          ? effect.newHalf
-          : undefined);
-      if (
-        !half ||
-        (point.zeroWidthBefore ?? 0) !== 0 ||
-        (over.at.zeroWidthBefore ?? 0) !== 0
-      )
-        return undefined;
-      const second =
-        point.offset > over.at.offset ||
-        (point.offset === over.at.offset &&
-          affinity === "after" &&
-          (op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK || order === "after"));
-      return {
-        ...point,
-        blockId:
-          second === (half === SPLIT_HALVES.SECOND)
-            ? over.newBlockId
-            : over.at.blockId,
-        offset: second ? point.offset - over.at.offset : point.offset,
-      };
-    }
-    if (over.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) {
-      if (
-        !sameStory(point.story, over.story) ||
-        (point.blockId !== over.blockId && point.blockId !== over.nextBlockId)
-      )
-        return point;
-      if (over.revision) return point;
-      const length =
-        effect?.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
-          ? effect.firstLength
-          : undefined;
-      if (length === undefined) return undefined;
-      const survivor =
-        over.survivor === SPLIT_HALVES.FIRST ? over.blockId : over.nextBlockId;
-      return {
-        ...point,
-        blockId: survivor,
-        offset:
-          point.offset + (point.blockId === over.nextBlockId ? length : 0),
-      };
-    }
-    if (over.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) return point;
-    return undefined;
-  };
+  ): TextPosition | undefined => mapPoint(point, affinity, mapping);
   if (
     op.type === DOCUMENT_OP_TYPES.INSERT_TEXT ||
     op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK
@@ -512,13 +454,28 @@ const transformRestoredOp = ({
     to
   )
     to = { ...to, offset: op.to.offset + over.text.length };
+  // Text inherited at a paragraph's start takes the run after it, which a
+  // range formatted from the start covers: the range keeps the text.
+  const inheritsFormattedStart =
+    over.type === DOCUMENT_OP_TYPES.INSERT_TEXT &&
+    op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS &&
+    over.runProps === INHERIT_RUN_PROPS &&
+    sameParagraph(op.from, over.at) &&
+    over.at.offset === 0 &&
+    op.from.offset === 0 &&
+    op.to.offset > 0;
   const adjustedFrom =
     over.type === DOCUMENT_OP_TYPES.INSERT_TEXT &&
     ((op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && !op.revision) ||
       op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) &&
     op.from.offset === over.at.offset &&
     from
-      ? { ...from, offset: op.from.offset + over.text.length }
+      ? {
+          ...from,
+          offset: inheritsFormattedStart
+            ? 0
+            : op.from.offset + over.text.length,
+        }
       : from;
   if (
     over.type === DOCUMENT_OP_TYPES.INSERT_TEXT &&
@@ -680,6 +637,16 @@ export const transformBatch = (
               remoteEffect = {
                 type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
                 firstLength: remoteEffect.firstLength + op.text.length,
+              };
+            }
+            // A comment reference occupies one unit of the first paragraph.
+            if (
+              isAnchoredComment(op) &&
+              anchorPoints(op).at(-1)?.blockId === remoteOp.blockId
+            ) {
+              remoteEffect = {
+                type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+                firstLength: remoteEffect.firstLength + 1,
               };
             }
             if (

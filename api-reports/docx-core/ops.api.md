@@ -34,6 +34,9 @@ export type AppliedDocumentOp = {
 };
 
 // @public
+export const applyBatch: (document: Document_2, ops: readonly DocumentOp[]) => Result<AppliedBatch, DocumentOpRefusal>;
+
+// @public
 export const applyDocumentOp: (document: Document_2, input: DocumentOp) => Result<AppliedDocumentOp, DocumentOpRefusal>;
 
 // @public
@@ -54,11 +57,20 @@ export const BATCH_REJECTION_REASONS: {
     readonly STALE_BASE: "staleBase";
     readonly INVALID_OPERATION: "invalidOperation";
     readonly TABLE_REQUIRES_EXCLUSIVE_EDIT: "tableRequiresExclusiveEdit";
+    readonly BLOCK_CONFLICT: "blockConflict";
+    readonly PART_CONFLICT: "partConflict";
     readonly OUTSIDE_ID_LEASE: "outsideIdLease";
 };
 
 // @public (undocumented)
 export const BATCH_WIRE_OP_TYPES: readonly string[];
+
+// @public (undocumented)
+export type BatchAck = {
+    type: "ack";
+    opId: string;
+    rev: number;
+};
 
 // @public
 export type BatchBlockAccess<Block> = {
@@ -91,6 +103,14 @@ export type BatchOrderAddress = {
 };
 
 // @public (undocumented)
+export type BatchReject = {
+    type: "reject";
+    opId: string;
+    reason: BatchRejection;
+    headRev: number;
+};
+
+// @public (undocumented)
 export class BatchRejection extends BatchRejectionBase<{
     message: string;
     reason: BatchRejectionReason;
@@ -98,10 +118,14 @@ export class BatchRejection extends BatchRejectionBase<{
     opType?: DocumentOpType;
     overType?: DocumentOpType;
     idKind?: IdLeaseKind;
+    part?: ExclusivePart;
 }> {}
 
 // @public (undocumented)
 export type BatchRejectionReason = (typeof BATCH_REJECTION_REASONS)[keyof typeof BATCH_REJECTION_REASONS];
+
+// @public (undocumented)
+export type BatchSubmission = BatchAck | BatchReject;
 
 // @public
 export type BlockInsertionPoint = {
@@ -124,6 +148,19 @@ export type BoundaryOccurrence = {
 
 // @public
 export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
+
+// @public
+export type ClientDocumentChange = {
+    type: "rebased" | "replaced";
+    batch: SequencedBatch;
+};
+
+// @public (undocumented)
+export type ClientNotice = {
+    opId: string;
+    reason: BatchRejection;
+    ops: readonly DocumentOp[];
+};
 
 // @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
@@ -204,8 +241,8 @@ export const createClient: (document: Document_2) => {
     enqueue: (batch: DocumentBatch) => Result<DocumentBatch, BatchRejection>;
     nextSubmission: () => DocumentBatch | undefined;
     receiveAck: (ack: BatchAck) => void;
-    receiveReject: (rejection: BatchReject) => void;
-    receiveBroadcast: (batch: SequencedBatch) => Result<void, BatchRejection>;
+    receiveReject: (rejection: BatchReject) => readonly ClientDocumentChange[];
+    receiveBroadcast: (batch: SequencedBatch) => Result<readonly ClientDocumentChange[], BatchRejection>;
     readonly document: Document_2;
     readonly headRev: number;
     readonly pending: readonly DocumentBatch[];
@@ -586,6 +623,23 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 
 // @public
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
+
+// @public
+export const EXCLUSIVE_PARTS: Readonly<{
+    readonly NUMBERING: "numbering";
+    readonly STYLES: "styles";
+    readonly RELATIONSHIPS: "relationships";
+    readonly MEDIA: "media";
+    readonly SECTIONS: "sections";
+    readonly HEADERS_FOOTERS: "headersFooters";
+    readonly NOTES: "notes";
+    readonly SETTINGS: "settings";
+    readonly REVISIONS: "revisions";
+    readonly COMMENTS: "comments";
+}>;
+
+// @public
+export type ExclusivePart = (typeof EXCLUSIVE_PARTS)[keyof typeof EXCLUSIVE_PARTS];
 
 // @public
 export type FinalBreakCandidate<Paragraph> = {
@@ -1462,6 +1516,9 @@ export type TouchedBlocks = {
 
 // @public
 export const transformBatch: (batch: DocumentBatch, over: readonly SequencedBatch[], options?: TransformOptions) => Result<DocumentBatch, BatchRejection>;
+
+// @public
+export const transformPosition: (position: TextPosition, over: readonly SequencedBatch[], affinity?: "before" | "after") => TextPosition | undefined;
 
 // @public
 export const trimIdLease: (lease: IdLease, ids: readonly LeasedId[]) => IdLease;
