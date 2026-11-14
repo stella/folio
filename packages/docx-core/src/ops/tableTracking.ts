@@ -130,6 +130,7 @@ const trackableInline = (nodes: readonly InlineNode[]): boolean =>
  * suggestion cannot carry.
  */
 const trackableTable = (table: Table): boolean =>
+  table.type !== "table" &&
   table.preserved === undefined &&
   table.bookmarks === undefined &&
   table.carrierStack === undefined &&
