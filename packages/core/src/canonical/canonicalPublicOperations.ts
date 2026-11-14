@@ -55,7 +55,11 @@ import {
   createBatchListMinter,
   type MintedList,
 } from "../ai-edits/newListNumbering";
-import type { NoteReferenceLabels } from "../ai-edits/note-references";
+import {
+  type NoteReferenceLabels,
+  noteReferenceSpansWithin,
+  segmentsAroundNoteReferences,
+} from "../ai-edits/note-references";
 import {
   isDeletedPPrMark,
   joinsIn,
@@ -2647,21 +2651,38 @@ export class CanonicalPublicOperations {
       )
     )
       return refusal("splitsCharacter");
-    if (
-      clean.structuralBoundaries.some(
-        (boundary) =>
-          boundary.type === "noteReference" &&
-          start < boundary.offset + boundary.length &&
-          end > boundary.offset,
-      )
-    )
+    // A note reference is not text: a replacement rewrites the prose around
+    // the references its range holds, each kept in place, as the shared
+    // segmentation pairs them. A range that cuts a reference, an operation
+    // that does not replace text, and a replacement that drops, moves or
+    // invents a reference are refused.
+    const replacesText =
+      operation.type === "replaceInBlock" ||
+      operation.type === "replaceRange" ||
+      operation.type === "replaceBlock";
+    const references = noteReferenceSpansWithin(clean, start, end);
+    const cutsReference = clean.structuralBoundaries.some(
+      (boundary) =>
+        boundary.type === "noteReference" &&
+        start < boundary.offset + boundary.length &&
+        end > boundary.offset &&
+        (boundary.offset < start || boundary.offset + boundary.length > end),
+    );
+    if (cutsReference || (references.length > 0 && !replacesText))
       return refusal("protectedReference");
+    const segments = segmentsAroundNoteReferences(
+      clean.text.slice(start, end),
+      text,
+      references,
+    );
+    if (segments === null) return refusal("protectedReference");
+    const prose = segments.replacement.join("");
     if (stripInlineEmphasisMarkers(text) !== text)
       return refusal(
         "unsupportedBlock",
         "Canonical public emphasis replacements are unavailable.",
       );
-    if (/\[\^(?:e)?\d+\]/u.test(text) || /[\t\r\n]/u.test(text))
+    if (/\[\^(?:e)?\d+\]/u.test(prose) || /[\t\r\n]/u.test(prose))
       return refusal(
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
@@ -2808,32 +2829,39 @@ export class CanonicalPublicOperations {
     const intents: EditorIntent[] = [];
     const normalizations: FolioAIEditNormalization[] = [];
     if (intent.type === "replaceText") {
-      let offset = start;
-      let pending: { start: number; end: number; text: string } | null = null;
       const changes: { start: number; end: number; text: string }[] = [];
-      for (const segment of diff(clean.text.slice(start, end), text)) {
-        switch (segment.type) {
-          case "equal":
-            if (pending) changes.push(pending);
-            pending = null;
-            offset += segment.text.length;
-            break;
-          case "del":
-            pending ??= { start: offset, end: offset, text: "" };
-            offset += segment.text.length;
-            pending.end = offset;
-            break;
-          case "ins":
-            pending ??= { start: offset, end: offset, text: "" };
-            pending.text += segment.text;
-            break;
-          default: {
-            const unreachable: never = segment.type;
-            return panic(`Unknown replacement diff ${unreachable}`);
+      // Each piece of prose between kept references changes on its own, so
+      // no change reaches a reference.
+      for (const [index, piece] of segments.source.entries()) {
+        let offset = start + piece.offset;
+        let pending: { start: number; end: number; text: string } | null = null;
+        for (const segment of diff(
+          piece.text,
+          segments.replacement[index] ?? "",
+        )) {
+          switch (segment.type) {
+            case "equal":
+              if (pending) changes.push(pending);
+              pending = null;
+              offset += segment.text.length;
+              break;
+            case "del":
+              pending ??= { start: offset, end: offset, text: "" };
+              offset += segment.text.length;
+              pending.end = offset;
+              break;
+            case "ins":
+              pending ??= { start: offset, end: offset, text: "" };
+              pending.text += segment.text;
+              break;
+            default: {
+              const unreachable: never = segment.type;
+              return panic(`Unknown replacement diff ${unreachable}`);
+            }
           }
         }
+        if (pending) changes.push(pending);
       }
-      if (pending) changes.push(pending);
       for (const change of changes.toReversed()) {
         const gap = resolveCleanTextRange({
           cleanBlock: clean,
