@@ -94,9 +94,11 @@ and change nothing where the records beside the seam differ or a run
 already runs across it. A seam join moves like a point. Content a
 concurrent insertion puts at its gap separates the records it would have
 joined, whichever applies first, so the join is dropped there: two typings
-at one point stay two runs in either order. A concurrent insertion, format,
-direct deletion or seam join at its offset passes, and so does a paragraph
-split or join away from it. A split at its offset, a hard join there, a tracked
+at one point stay two runs in either order. A concurrent insertion, format
+or seam join at its offset passes, and so does a paragraph split or join
+away from it. A direct deletion reaching its offset refuses: it may remove
+whole records beside the seam, so other records meet there in one order than
+in the other. A split at its offset, a hard join there, a tracked
 change's edge there and a comment anchor there still refuse.
 
 A slice with open ends merges with the records at its point, and a slice

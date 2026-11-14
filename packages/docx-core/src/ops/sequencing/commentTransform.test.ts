@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import type { BlockContent, Document } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { createEditorIntentIdAllocator } from "../editorIntent";
 import { equalForStaleness } from "../equality";
@@ -368,4 +369,47 @@ test("two replies to one parent take the same places in either order", () => {
   const left = apply(apply(commented, first), second);
   const right = apply(apply(commented, second), first);
   expect(equalForStaleness(left, right)).toBe(true);
+  // The same with the parent's range ending between blocks, after the
+  // paragraph that holds its replies' end markers.
+  const between = endBetweenBlocks(commented);
+  const early = compiled(between, 1, "reply", 6);
+  const late = compiled(between, 2, "reply", 7);
+  expect(
+    equalForStaleness(
+      apply(apply(between, early), late),
+      apply(apply(between, late), early),
+    ),
+  ).toBe(true);
 });
+
+/** The document with each inline comment range end moved after its paragraph. */
+const endBetweenBlocks = (document: Document): Document => {
+  const content = document.package.document.content.flatMap(
+    (block): BlockContent[] => {
+      if (block.type !== "paragraph") return [block];
+      const ends = block.content.filter(
+        (node) => node.type === "commentRangeEnd",
+      );
+      if (ends.length === 0) return [block];
+      return [
+        {
+          ...block,
+          content: block.content.filter(
+            (node) => node.type !== "commentRangeEnd",
+          ),
+        },
+        ...ends.map((end): BlockContent => end),
+      ];
+    },
+  );
+  expect(content.length).toBeGreaterThan(
+    document.package.document.content.length,
+  );
+  return {
+    ...document,
+    package: {
+      ...document.package,
+      document: { ...document.package.document, content },
+    },
+  };
+};

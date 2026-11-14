@@ -216,6 +216,9 @@ const rangeOverInsertion = (
 const cutIdentified = (effect: SequencedOpEffect | undefined): boolean =>
   effect?.type === DOCUMENT_OP_TYPES.INSERT_CONTENT && effect.cutIdentified;
 
+const sameOffset = (left: TextPosition, right: TextPosition): boolean =>
+  sameParagraph(left, right) && left.offset === right.offset;
+
 /** A point operation (insertion, split) moved across an inline insertion. */
 const pointOverInsertion = (
   op: Extract<
@@ -236,6 +239,14 @@ const pointOverInsertion = (
     op.at.offset === over.at.offset &&
     compareGapsAtOffset(op.at, over.at) === 0;
   const seam = isSeamJoin(op);
+  // Text inheriting the run beside it, at the offset of content inserted
+  // concurrently, takes other formatting and another place in the two orders.
+  if (op.type === DOCUMENT_OP_TYPES.INSERT_TEXT && sameOffset(op.at, over.at))
+    return refusal(
+      op,
+      over,
+      "Text beside a concurrent insertion at its offset needs explicit formatting and affinity.",
+    );
   // Content inserted at a seam join's gap separates the records it would
   // have joined, in either order: the join has nothing left to do.
   if (seam && tie) return Result.ok([]);
@@ -310,7 +321,7 @@ const insertionOverRange = (
       "Structural inverse preconditions require an unchanged range.",
     );
   if (over.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS)
-    return inside && !splittable(over)
+    return inside && (!splittable(over) || op.at.zeroWidthBefore === undefined)
       ? refuse(
           "Splitting this range around an insertion requires new identities.",
         )
@@ -346,9 +357,6 @@ const rangeReaches = (
     ? range.from.offset <= point.offset && point.offset <= range.to.offset
     : range.from.offset === point.offset || range.to.offset === point.offset;
 };
-
-const sameOffset = (left: TextPosition, right: TextPosition): boolean =>
-  sameParagraph(left, right) && left.offset === right.offset;
 
 // Whether a point is the start of the paragraph a join appends.
 const atJoinedStart = (
@@ -452,6 +460,12 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
           );
         return Result.ok([op]);
       case DOCUMENT_OP_TYPES.INSERT_TEXT:
+        if (sameOffset(op.at, over.at))
+          return refusal(
+            op,
+            over,
+            "Text beside a concurrent insertion at its offset needs explicit formatting and affinity.",
+          );
         break;
       default:
         return undefined;
@@ -488,8 +502,10 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
           );
         }
         break;
+      // A deletion reaching a join's point may remove whole records beside
+      // it, so other records meet there in one order than in the other.
       case DOCUMENT_OP_TYPES.DELETE_RANGE:
-        if (namesZeroWidth(over) || (!seam && rangeReaches(over, op.at)))
+        if (namesZeroWidth(over) || rangeReaches(over, op.at))
           return refusal(
             op,
             over,
@@ -554,7 +570,8 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
           : Result.ok([op]);
       case DOCUMENT_OP_TYPES.DELETE_RANGE:
       case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
-        return (!seam && rangeReaches(op, over.at)) ||
+        return ((op.type === DOCUMENT_OP_TYPES.DELETE_RANGE || !seam) &&
+          rangeReaches(op, over.at)) ||
           (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
             namesZeroWidth(op) &&
             sameParagraph(op.from, over.at))

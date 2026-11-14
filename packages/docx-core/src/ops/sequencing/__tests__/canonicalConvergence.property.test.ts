@@ -864,8 +864,8 @@ const focused = (
  * Three peers in the first paragraph ("Paragraph 0 text"), each phase
  * concurrent and drained before the next:
  * 1. typing at one offset (4, twice) and the next one (5);
- * 2. typing at 8 inside a concurrent format of 6..9 and a deletion of 7..9,
- *    which overlap each other;
+ * 2. typing at 8 inside a concurrent format of 6..9, beside a concurrent
+ *    deletion of 9..11 that the format ends against;
  * 3. a comment over the text typed in phase 1 (4..6), with typing inside it
  *    (5) and after its reference (8);
  * 4. two replies to that comment.
@@ -880,7 +880,7 @@ const sameParagraphTyping: Scenario = [
     ...drain(24),
     focused(2, { kind: "type", a: 8, b: 1 }),
     focused(0, { kind: "format", a: 6, b: 2 }),
-    focused(1, { kind: "erase", a: 7, b: 1 }),
+    focused(1, { kind: "erase", a: 9, b: 1 }),
     { type: "submit", peer: 2 },
     { type: "submit", peer: 0 },
     { type: "submit", peer: 1 },
