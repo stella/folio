@@ -99,6 +99,9 @@ const FAST_CHECK_DEFAULT_NUM_RUNS = 100;
 /** Longest counterexample carried in the machine-readable failure line. */
 const MAX_REPORTED_COUNTEREXAMPLE = 4_000;
 
+/** Longest failure detail a reported (not failing) finding prints. */
+const MAX_REPORTED_FAILURE = 4_000;
+
 const SELF = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SELF), "..");
 
@@ -634,7 +637,15 @@ const replayReporter =
       console.error(
         `::warning title=Fuzz exploration finding::${identity.key ?? identity.title ?? "property"} failed on a generated case (reported, not failing this run). Replay: ${replay}`,
       );
-      console.error(lines.join("\n"));
+      // The failing path shows the cause (message, diff, refusal); a reported
+      // finding prints the same detail so its owner can read it without a replay.
+      console.error(
+        [
+          ...lines,
+          "",
+          `Failure: ${truncate(errorText(details.errorInstance), MAX_REPORTED_FAILURE)}`,
+        ].join("\n"),
+      );
       return;
     }
     throw new Error(lines.join("\n"), { cause: details.errorInstance });

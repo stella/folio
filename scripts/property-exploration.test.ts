@@ -209,6 +209,27 @@ describe("report mode", () => {
     expect(blockingFindings(findings)).toEqual([]);
   });
 
+  test("a reported finding prints its failure detail beside its marker", () => {
+    reportingCi();
+    const lines = logged(() => {
+      assertProperty(
+        fc.property(fc.nat(), (value) => {
+          expect({ value: value < 10 ? value : "too large" }).toEqual({
+            value: 0,
+          });
+        }),
+        { id: "reported finding detail", numRuns: 200 },
+      );
+    });
+    const output = lines.join("\n");
+    expect(extractFailureMarkers(output)).toHaveLength(1);
+    // The assertion's own message and diff, as the failing path's cause shows them.
+    const detail = lines.find((line) => line.includes("\nFailure: "));
+    expect(detail).toBeDefined();
+    expect(detail).toContain("toEqual");
+    expect(detail).toContain("too large");
+  });
+
   test("a property file the change adds or changes fails on a generated case", () => {
     const directory = reportingCi({
       FOLIO_FUZZ_EXPLORATION_OWNED: JSON.stringify([FILE]),
