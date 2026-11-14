@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "文档的这一部分已锁定。",
       "editing": "编辑",
       "editingDescription": "直接编辑文档",
+      "linkSuggestionUnavailable": "此链接更改无法记录为修订。请在编辑模式下进行，或将批注或书签移到链接之外。",
       "outlineDepthAll": "所有级别",
       "outlineDepthLabel": "显示标题",
       "outlineDepthThree": "第 1–3 级",

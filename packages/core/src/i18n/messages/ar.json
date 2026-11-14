@@ -341,6 +341,7 @@
       "contentLocked": "هذا الجزء من المستند مقفل.",
       "editing": "تحرير",
       "editingDescription": "تحرير المستند مباشرةً",
+      "linkSuggestionUnavailable": "لا يمكن تعقب تغيير الرابط هذا. أجرِه في وضع التحرير، أو انقل التعليق أو الإشارة المرجعية خارج الرابط.",
       "outlineDepthAll": "كل المستويات",
       "outlineDepthLabel": "إظهار العناوين",
       "outlineDepthThree": "المستويات 1–3",
