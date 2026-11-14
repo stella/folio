@@ -9,7 +9,7 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import {
   ensureLiveView,
-  openEditor,
+  openCanonicalEditor,
   VUE_ADAPTER,
 } from "../parity/parity-fixture";
 
@@ -125,7 +125,7 @@ test("Vue: a change card's buttons refuse a change a lock holds", async ({
   page,
 }) => {
   await serveFixture(page);
-  await openEditor(page, VUE_ADAPTER, FIXTURE);
+  await openCanonicalEditor(page, VUE_ADAPTER, FIXTURE);
   await ensureLiveView(page);
 
   // The sidebar opens by itself only for comment threads.
