@@ -66,7 +66,10 @@ import {
 import type { EditorMode } from "../managers/EditorModeManager";
 import { suppressHiddenEditorScrollToSelection } from "../paged-layout/hiddenEditorScroll";
 import { isReadOnlyEditKey } from "../paged-layout/readOnlyEditAttempt";
-import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import {
+  getCanonicalCommandIntents,
+  getCanonicalHistoryDirection,
+} from "../prosemirror/canonicalCommands";
 import { registerClipboardIntentHandler } from "../prosemirror/clipboardIntent";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import {
@@ -959,6 +962,9 @@ export const createHiddenEditorManager = (
         (transaction) => view?.dispatch(transaction),
         view,
       );
+    // The registry's undo and redo step the session's journal, as the keys do.
+    const direction = getCanonicalHistoryDirection(command);
+    if (direction !== undefined) return history(direction);
     if (editorSession.session.isComposing) {
       refuse("Composition must finish before formatting.");
       return false;
@@ -2250,10 +2256,12 @@ export const createHiddenEditorManager = (
         }
       },
       getCanonicalStorySelection: (story) => {
-        if (editorSession.type !== "canonical") return null;
+        if (editorSession.type !== "canonical" || story === OP_STORIES.MAIN)
+          return null;
         const session = editorSession.session;
-        const selection = session.selection;
-        if (!selection) return null;
+        const selection = session.storySelection(story);
+        // Only a text selection is restored as text; the editor keeps others.
+        if (selection?.type !== "text") return null;
         const projection = session.projectStory(story);
         if (projection.isErr()) return null;
         const anchor = projection.value.positionAt(selection.anchor);
@@ -2323,6 +2331,12 @@ export const createHiddenEditorManager = (
         );
         if (index >= 0) storyViews.splice(index, 1);
         storyViews.push({ story, view: storyView });
+        // A stale or composing editor shows no selection the session can hold.
+        if (editorSession.type === "canonical")
+          void editorSession.session.recordStorySelection(
+            storyView.state,
+            story,
+          );
       },
       replaceCanonicalStoryText: ({ view: storyView, story, intent }) => {
         if (!view || editorSession.type !== "canonical" || deps.getReadOnly())

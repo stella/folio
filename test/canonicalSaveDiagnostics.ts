@@ -21,5 +21,4 @@ export const CANONICAL_SAVE_DIAGNOSTIC_DISPOSITIONS = {
     diagnostic: CANONICAL_SAVE_FALLBACK_DIAGNOSTIC,
   },
   sourceReplayUnavailable: { status: "failure" },
-  canonicalResourceReplacement: { status: "failure" },
 } as const satisfies Record<SaveDiagnostic["type"], SaveDiagnosticDisposition>;

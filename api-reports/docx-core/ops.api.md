@@ -508,6 +508,7 @@ export const documentStories: (document: Document_2) => OpStory[];
 export type EditorIntent = HyperlinkEditorIntent | GenerateTOCIntent | {
     type: "table";
     operation: TableIntentOperation;
+    cellContent?: readonly (readonly Paragraph[])[];
 } | {
     type: "tableRow";
     operation: TableRowIntentOperation;

@@ -1,13 +1,17 @@
 import { panic } from "better-result";
 
 import { escapeXmlAttribute } from "@stll/docx-core";
-/** Register a package part without rewriting authored content-type entries. */
+import {
+  getXmlSourceRange,
+  parseStreamingXmlWithSourceRanges,
+} from "@stll/docx-core/xml";
 import { OOXML_NS } from "@stll/docx-core/xml/namespaces";
 
 import { resolvePackageRelationshipTarget } from "./packageParts";
 import { spliceXml } from "./selectiveXmlPatch";
 import {
   getAttribute,
+  getChildElements,
   getLocalName,
   getNamespacePrefix,
   getNamespaceUri,
@@ -16,6 +20,7 @@ import {
 
 type ContentTypePart = { partName: string; contentType: string };
 
+/** Register a package part without rewriting authored content-type entries. */
 export const registerContentTypeParts = (
   xml: string,
   parts: readonly ContentTypePart[],
@@ -98,4 +103,56 @@ export const registerContentTypeParts = (
     }
   }
   return panic("A content-type registry needs a closing root boundary.");
+};
+
+/**
+ * Give one existing part the content type its replacement bytes have: the
+ * part's own overrides go, and an override is registered unless the
+ * extension's default already names the type. Without a type the part is
+ * being removed, so only its overrides go.
+ */
+export const replaceContentTypePart = (
+  xml: string,
+  part: { partName: string; contentType: string | undefined },
+): string => {
+  const path = resolvePackageRelationshipTarget(part.partName, "_rels/.rels");
+  if (path === undefined)
+    return panic("A replaced part must have a safe package URI.");
+  const parsed = parseStreamingXmlWithSourceRanges(xml);
+  if (parsed.status !== "parsed")
+    return panic("The package content-type registry must be well formed.");
+  const root = getChildElements(parsed.value).find(
+    (element) =>
+      getLocalName(element.name) === "Types" &&
+      getNamespaceUri(element) === OOXML_NS.ct,
+  );
+  if (!root)
+    return panic(
+      "The package content-type registry must have a valid Types root.",
+    );
+  const splices = getChildElements(root).flatMap((element) => {
+    if (
+      getNamespaceUri(element) !== OOXML_NS.ct ||
+      getLocalName(element.name) !== "Override"
+    )
+      return [];
+    const name = getAttribute(element, null, "PartName");
+    const target =
+      name === null
+        ? undefined
+        : resolvePackageRelationshipTarget(name, "_rels/.rels");
+    if (target?.toLowerCase() !== path.toLowerCase()) return [];
+    const range = getXmlSourceRange(element);
+    return range
+      ? [{ ...range, newXml: "" }]
+      : panic("A content-type override must have a source range.");
+  });
+  const without =
+    spliceXml(xml, splices) ??
+    panic("A registry removal must preserve XML ranges.");
+  return part.contentType === undefined
+    ? without
+    : registerContentTypeParts(without, [
+        { partName: part.partName, contentType: part.contentType },
+      ]);
 };
