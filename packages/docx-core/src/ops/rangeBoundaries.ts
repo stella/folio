@@ -575,6 +575,17 @@ export const withBoundariesOutsideDeletion = (
   return { nodes: visit(nodes), standing };
 };
 
+/**
+ * What a rejection keeps where removed content was: a range boundary, or a
+ * pending deletion the rejection leaves, holding only such keeps
+ * ({@link removedContentBoundaries}). It is placed as the boundaries it holds.
+ */
+export const isKeptBoundaryCarrier = (node: InlineNode): boolean =>
+  isBoundary(node) ||
+  (node.type === "deletion" &&
+    node.content.length > 0 &&
+    node.content.every(isKeptBoundaryCarrier));
+
 /** Which kept boundaries each container may hold, as its model declares. */
 const HOLDS: Partial<
   Record<InlineNode["type"], (boundary: Boundary) => boolean>
@@ -604,12 +615,21 @@ export const withBoundariesAtEdge = (
   if (depth <= 0 || boundaries.length === 0) return undefined;
   const children = childNodes(node);
   const holds = HOLDS[node.type];
-  if (
-    children === undefined ||
-    holds === undefined ||
-    !boundaries.every((boundary) => isBoundary(boundary) && holds(boundary))
-  )
-    return undefined;
+  const holdsKept = (kept: InlineNode): boolean => {
+    if (holds === undefined) return false;
+    if (isBoundary(kept)) return holds(kept);
+    return (
+      kept.type === "deletion" &&
+      isKeptBoundaryCarrier(kept) &&
+      node.type !== "deletion" &&
+      node.type !== "moveFrom" &&
+      (node.type !== "hyperlink" || isHyperlinkChild(kept)) &&
+      kept.content.every(holdsKept)
+    );
+  };
+  if (children === undefined || holds === undefined) return undefined;
+  // As deep as the cut reaches first: a container on the way that cannot hold
+  // a kept deletion itself, as a link, still passes it to one inside that can.
   const inner = edge === "start" ? children.at(0) : children.at(-1);
   const nested =
     depth > 1 && inner !== undefined
@@ -622,6 +642,7 @@ export const withBoundariesAtEdge = (
         ? [nested, ...children.slice(1)]
         : [...children.slice(0, -1), nested],
     );
+  if (!boundaries.every(holdsKept)) return undefined;
   return rebuildNode(
     node,
     edge === "start"
@@ -681,7 +702,7 @@ export const withSeamBoundariesInside = ({
 };
 
 const isStandingBoundary = (node: InlineNode | undefined): boolean =>
-  node !== undefined && isBoundary(node);
+  node !== undefined && isKeptBoundaryCarrier(node);
 
 type Occurrence = { paragraph: string; node: Boundary };
 
