@@ -29,6 +29,10 @@ import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
 import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
+import {
+  type CanonicalRoomCollaboration,
+  isCanonicalRoomCollaboration,
+} from "@stll/folio-core/controller/canonicalRoomEditor";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
@@ -419,8 +423,13 @@ export type UseDocxEditorOptions = {
   historyShortcuts?: HistoryShortcutOwner;
   /** A canonical commit was published, with what it did to the undo history. */
   onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
-  /** Reactive Yjs collaboration owner and the ProseMirror binding plugins. */
-  collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | undefined>;
+  /**
+   * Reactive collaboration: the canonical room the canonical session joins,
+   * or the Yjs fragment a legacy session edits with its binding plugins.
+   */
+  collaboration?: MaybeRefOrGetter<
+    UseDocxEditorCollaboration | CanonicalRoomCollaboration | undefined
+  >;
   /**
    * Fires with the anonymization decoration plugin's current match list on
    * mount, term push, and every doc edit. The anonymization plugin is always
@@ -647,6 +656,20 @@ export function useDocxEditor(
   const editorView = shallowRef<EditorView | null>(null);
   const editorState = shallowRef<EditorState | null>(null);
   const collaborationModules = shallowRef<CollaborationModules | null>(null);
+  // A canonical room joins the canonical session; a Yjs fragment binds the
+  // legacy session's editor state.
+  const yjsCollaboration = (): UseDocxEditorCollaboration | undefined => {
+    const value = toValue(collaboration);
+    return value === undefined || isCanonicalRoomCollaboration(value)
+      ? undefined
+      : value;
+  };
+  const canonicalRoom = (): CanonicalRoomCollaboration | undefined => {
+    const value = toValue(collaboration);
+    return value !== undefined && isCanonicalRoomCollaboration(value)
+      ? value
+      : undefined;
+  };
   const remoteSelections = shallowRef<HiddenProseMirrorRemoteSelection[]>([]);
   const headerFooterSelection = shallowRef<HeaderFooterSelectionState | null>(
     null,
@@ -741,7 +764,7 @@ export function useDocxEditor(
       autocompletePlugin,
       suggestionPlugin,
       ...externalPlugins,
-      ...(toValue(collaboration)?.plugins ?? []),
+      ...(yjsCollaboration()?.plugins ?? []),
       anonymizationPlugin,
       ...(templatePluginsEnabled()
         ? [templateDirectivesPlugin, templateSlashMenu]
@@ -1070,8 +1093,9 @@ export function useDocxEditor(
     getStyles: readModelStyles,
     getExtensionManager: () => extensionManager,
     getExternalPlugins: buildExternalPlugins,
-    getCollaboration: () => toValue(collaboration),
+    getCollaboration: yjsCollaboration,
     getCollaborationModules: () => collaborationModules.value,
+    getCanonicalRoom: canonicalRoom,
     getPrecomputedInitialState: () => null,
     getReadOnly: () => toValue(readOnly),
     getExperimentalSession: () => toValue(experimentalSession),
@@ -1111,7 +1135,7 @@ export function useDocxEditor(
   });
 
   const publishRemoteSelections = (): void => {
-    const awareness = toValue(collaboration)?.awareness;
+    const awareness = yjsCollaboration()?.awareness;
     const modules = collaborationModules.value;
     const view = manager.getView();
     remoteSelections.value =
@@ -1124,7 +1148,10 @@ export function useDocxEditor(
     () => toValue(collaboration),
     (activeCollaboration, _previousCollaboration, onCleanup) => {
       remoteSelections.value = [];
-      if (!activeCollaboration) {
+      if (
+        !activeCollaboration ||
+        isCanonicalRoomCollaboration(activeCollaboration)
+      ) {
         collaborationModules.value = null;
         manager.retryViewCreation();
         manager.syncExternalDocument();
@@ -1162,11 +1189,13 @@ export function useDocxEditor(
 
   watch(
     () => ({
-      awareness: toValue(collaboration)?.awareness,
+      awareness: yjsCollaboration()?.awareness,
       modules: collaborationModules.value,
       view: editorView.value,
     }),
     ({ awareness, modules, view }, _previous, onCleanup) => {
+      // A canonical room's editor reports its peers' selections itself.
+      if (canonicalRoom() !== undefined) return;
       if (!awareness || !modules || !view) {
         remoteSelections.value = [];
         return;
@@ -1380,7 +1409,7 @@ export function useDocxEditor(
    */
   function paintFromPrecomputedState(): void {
     const model = docModel.value;
-    if (!model || toValue(collaboration)) {
+    if (!model || yjsCollaboration()) {
       return;
     }
     try {
