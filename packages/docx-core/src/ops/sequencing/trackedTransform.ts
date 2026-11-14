@@ -28,12 +28,16 @@ import {
 import { sameParagraph } from "./points";
 
 /** The kinds of concurrent pair whose two orders record different cuts. */
-export const TRACKED_ORDER_PAIRS = {
+export const TRACKED_ORDER_PAIRS: Readonly<{
   /** A cut at a tracked change's edge or inside its range. */
-  CUT_AT_TRACKED_CHANGE: "cutAtTrackedChange",
+  CUT_AT_TRACKED_CHANGE: "cutAtTrackedChange";
   /** A direct deletion reaching one edge of a tracked change and not the other. */
-  DELETION_AT_ONE_EDGE: "deletionAtOneEdge",
+  DELETION_AT_ONE_EDGE: "deletionAtOneEdge";
   /** Two tracked deletions sharing content: nested, equal or crossing. */
+  OVERLAPPING_DELETIONS: "overlappingDeletions";
+}> = {
+  CUT_AT_TRACKED_CHANGE: "cutAtTrackedChange",
+  DELETION_AT_ONE_EDGE: "deletionAtOneEdge",
   OVERLAPPING_DELETIONS: "overlappingDeletions",
 } as const;
 export type TrackedOrderPair =
