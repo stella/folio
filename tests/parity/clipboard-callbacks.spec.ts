@@ -2,13 +2,13 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openCanonicalEditor,
+  openEditor,
 } from "./parity-fixture";
 
 forEachAdapter(
   "fires host callbacks for clipboard events",
   async (adapter, { page }) => {
-    await openCanonicalEditor(page, adapter);
+    await openEditor(page, adapter);
     await ensureLiveView(page);
     const paragraph = page.locator(".layout-paragraph").first();
     // Each shortcut acts on a selection inside the page, as a user's does.
