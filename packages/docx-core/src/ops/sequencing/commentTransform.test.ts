@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
+import { applyDocumentOps } from "../apply";
 import { createEditorIntentIdAllocator } from "../editorIntent";
+import { equalForStaleness } from "../equality";
 import {
   type CommentOp,
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -161,12 +163,15 @@ describe("concurrent comment operations", () => {
     expect(over(update(3), deletion(7), removed).isOk()).toBe(true);
   });
 
-  test("a reply passes edits of its parent; two replies to one parent refuse", () => {
+  test("a reply passes edits of its parent and another reply to it", () => {
     expect(over(reply(9, 7), update(7)).isOk()).toBe(true);
     expect(over(reply(9, 7), resolution(7, "resolved")).isOk()).toBe(true);
-    expect(
-      refusal(over(reply(9, 7), reply(10, 7), touched([BLOCK], [10]))).part,
-    ).toBe(EXCLUSIVE_PARTS.COMMENTS);
+    expect(over(reply(9, 7), reply(10, 7), touched([BLOCK], [10])).isOk()).toBe(
+      true,
+    );
+    expect(over(reply(10, 7), reply(9, 7), touched([BLOCK], [9])).isOk()).toBe(
+      true,
+    );
   });
 
   test("a resolution after a deletion that removed a part relationship refuses", () => {
@@ -316,4 +321,51 @@ test("a comment keeps the author and date it was sent with on every receiver", (
     expect(comment?.author).toBe("actor-0");
     expect(comment?.date).toBe(created.comment.date);
   }
+});
+
+test("two replies to one parent take the same places in either order", () => {
+  const base = canonicalBase();
+  const sequencer = createSequencer(base);
+  const author = (index: number) => {
+    const lease = sequencer.grantIdLease(`actor-${index}`);
+    if (lease.isErr()) throw lease.error;
+    return {
+      actor: `actor-${index}`,
+      tag: String(index),
+      lease: lease.value,
+      allocate: createEditorIntentIdAllocator(),
+    };
+  };
+  const compiled = (
+    document: typeof base,
+    index: number,
+    kind: "comment" | "reply",
+    serial: number,
+  ) => {
+    const ops = compileCanonicalEdit(
+      document,
+      author(index),
+      { kind, a: 24, b: 0, suggest: false },
+      serial,
+    );
+    if (ops === undefined) throw new Error(`The ${kind} did not compile.`);
+    return ops;
+  };
+  const apply = (document: typeof base, ops: readonly DocumentOp[]) => {
+    const applied = applyDocumentOps(document, ops);
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+  const commented = apply(base, compiled(base, 0, "comment", 5));
+  const first = compiled(commented, 1, "reply", 6);
+  const second = compiled(commented, 2, "reply", 7);
+  // Neither reply refuses the other, and both orders give one document.
+  expect(
+    transformBatch(batch(second), [
+      { ...batch(first), opId: "first", revision: 1 },
+    ]).isOk(),
+  ).toBe(true);
+  const left = apply(apply(commented, first), second);
+  const right = apply(apply(commented, second), first);
+  expect(equalForStaleness(left, right)).toBe(true);
 });

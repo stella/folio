@@ -31,11 +31,18 @@ import {
   DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
+  type InsertContentOp,
+  type TextPosition,
 } from "../../types";
+import { restoreDocumentOp } from "../../wire";
 import { applyBatch } from "../applyBatch";
 import { createClient } from "../client";
 import * as commentTransform from "../commentTransform";
-import { isCommentOp } from "../commentTransform";
+import {
+  anchorPoints,
+  isAnchoredComment,
+  isCommentOp,
+} from "../commentTransform";
 import * as envelope from "../envelope";
 import {
   BATCH_REJECTION_REASONS,
@@ -44,7 +51,8 @@ import {
   type SequencedBatch,
   validateDocumentBatch,
 } from "../envelope";
-import { sameParagraph } from "../points";
+import * as inlineTransform from "../inlineTransform";
+import { isInlineInsertion, sameParagraph } from "../points";
 import { isBlockScoped } from "../scope";
 import { type BatchSubmission, createSequencer } from "../sequencer";
 import * as trackedTransform from "../trackedTransform";
@@ -53,6 +61,7 @@ import {
   canonicalBase,
   compileCanonicalEdit,
   type EditAuthor,
+  type EditKind,
   type EditSeed,
   editSeedArbitrary,
 } from "./canonicalEdits";
@@ -103,6 +112,116 @@ type Outcome = {
   diverged: string[];
   /** Accepted rebased batches with a tracked deletion in one paragraph as one in their tail. */
   trackedPairs: number;
+  /** Concurrent pairs in one paragraph or thread, accepted and refused. */
+  pairs: PairCounts;
+};
+
+/**
+ * Concurrent pairs in one paragraph (or on one thread) a batch met in the
+ * tail it was rebased over: inline insertions against each other, a format,
+ * a deletion and a comment anchor; two replies to one parent.
+ */
+const PAIR_KINDS = [
+  "typingTyping",
+  "typingFormat",
+  "typingDeletion",
+  "typingComment",
+  "replyReply",
+] as const;
+type PairKind = (typeof PAIR_KINDS)[number];
+type PairCounts = Record<PairKind, { accepted: number; refused: number }>;
+const noPairs = (): PairCounts => ({
+  typingTyping: { accepted: 0, refused: 0 },
+  typingFormat: { accepted: 0, refused: 0 },
+  typingDeletion: { accepted: 0, refused: 0 },
+  typingComment: { accepted: 0, refused: 0 },
+  replyReply: { accepted: 0, refused: 0 },
+});
+
+// The paragraph position an operation of a counted pair addresses.
+const pairPoint = (op: DocumentOp): TextPosition | undefined => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+      return op.at;
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return op.from;
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+      return isAnchoredComment(op) ? anchorPoints(op).at(0) : undefined;
+    default:
+      return undefined;
+  }
+};
+
+// Direct typing or an inserted atom: an inline insertion recording no change.
+const isTyping = (op: DocumentOp): op is InsertContentOp =>
+  isInlineInsertion(op) && op.revision === undefined;
+
+const typingAgainst = (
+  typed: DocumentOp,
+  other: DocumentOp,
+): PairKind | undefined => {
+  if (!isTyping(typed)) return undefined;
+  const point = pairPoint(other);
+  if (point === undefined || !sameParagraph(point, typed.at)) return undefined;
+  switch (other.type) {
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+      return isTyping(other) ? "typingTyping" : undefined;
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return "typingFormat";
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+      return "typingDeletion";
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+      return "typingComment";
+    default:
+      return undefined;
+  }
+};
+
+const pairKind = (
+  left: DocumentOp,
+  right: DocumentOp,
+): PairKind | undefined => {
+  if (
+    left.type === DOCUMENT_OP_TYPES.CREATE_COMMENT &&
+    right.type === DOCUMENT_OP_TYPES.CREATE_COMMENT &&
+    left.anchor.kind === "reply" &&
+    right.anchor.kind === "reply" &&
+    left.anchor.parentId === right.anchor.parentId
+  )
+    return "replyReply";
+  return typingAgainst(left, right) ?? typingAgainst(right, left);
+};
+
+const restoredOps = (ops: readonly DocumentOp[]): DocumentOp[] =>
+  ops.flatMap((op) => {
+    const restored = restoreDocumentOp(op);
+    return restored.isOk() ? [restored.value] : [];
+  });
+
+// The kinds of pair between a batch's operations and some concurrent ones.
+const pairKinds = (
+  ops: readonly DocumentOp[],
+  others: readonly DocumentOp[],
+): Set<PairKind> => {
+  const kinds = new Set<PairKind>();
+  for (const op of restoredOps(ops))
+    for (const other of restoredOps(others)) {
+      const kind = pairKind(op, other);
+      if (kind !== undefined) kinds.add(kind);
+    }
+  return kinds;
+};
+
+// The tail batch a refused batch could not be rebased over, else the whole tail.
+const refusingOps = (
+  batch: DocumentBatch,
+  tail: readonly SequencedBatch[],
+): readonly DocumentOp[] => {
+  for (const [index, remote] of tail.entries())
+    if (transformBatch(batch, tail.slice(0, index + 1)).isErr())
+      return remote.ops;
+  return tail.flatMap(({ ops }) => ops);
 };
 
 const isTrackedDeletion = (op: DocumentOp): op is DeleteRangeOp =>
@@ -197,6 +316,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     commentRebased: 0,
     diverged: [],
     trackedPairs: 0,
+    pairs: noPairs(),
   };
   const delivery: Delivery[] = [];
   let serial = 10;
@@ -245,11 +365,26 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     delivery.push({ peer: index, type: "result", result });
     if (result.type === "reject") {
       outcome.rejected.push(result.reason.reason);
+      // Two typings refuse each other only through their insertions and
+      // seam joins; another operation of the batch may refuse instead.
+      const typingPair = [result.reason.opType, result.reason.overType].every(
+        (type) =>
+          type === DOCUMENT_OP_TYPES.INSERT_CONTENT ||
+          type === DOCUMENT_OP_TYPES.JOIN_INLINE,
+      );
+      for (const kind of pairKinds(batch.ops, refusingOps(batch, tail)))
+        if (kind !== "typingTyping" || typingPair)
+          outcome.pairs[kind].refused += 1;
       return;
     }
     history.push(sequencer.document);
     if (tail.length > 0) {
       outcome.rebased += 1;
+      for (const kind of pairKinds(
+        batch.ops,
+        tail.flatMap(({ ops }) => ops),
+      ))
+        outcome.pairs[kind].accepted += 1;
       if (
         [batch, ...tail].some(({ ops }) => ops.some((op) => isBlockScoped(op)))
       )
@@ -329,49 +464,94 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
   };
 };
 
-const stepArbitrary = (peers: number): fc.Arbitrary<Step> =>
-  fc.oneof(
-    {
-      weight: 5,
-      arbitrary: fc.record({
-        type: fc.constant("edit" as const),
-        peer: fc.nat({ max: peers - 1 }),
-        seed: editSeedArbitrary,
-      }),
-    },
-    {
-      weight: 1,
-      arbitrary: fc.record({
-        type: fc.constant("undo" as const),
-        peer: fc.nat({ max: peers - 1 }),
-      }),
-    },
-    {
-      weight: 2,
-      arbitrary: fc.record({
-        type: fc.constant("submit" as const),
-        peer: fc.nat({ max: peers - 1 }),
-      }),
-    },
-    {
-      weight: 3,
-      arbitrary: fc.record({
-        type: fc.constant("deliver" as const),
-        seed: fc.nat({ max: 100_000 }),
-      }),
-    },
-  );
+const stepArbitrary = (
+  peers: number,
+  seeds: fc.Arbitrary<EditSeed> = editSeedArbitrary,
+  undo = true,
+): fc.Arbitrary<Step> => {
+  const peer = fc.nat({ max: peers - 1 });
+  const editStep = {
+    weight: 5,
+    arbitrary: fc.record({
+      type: fc.constant("edit" as const),
+      peer,
+      seed: seeds,
+    }),
+  };
+  const undoStep = {
+    weight: 1,
+    arbitrary: fc.record({ type: fc.constant("undo" as const), peer }),
+  };
+  const submitStep = {
+    weight: 2,
+    arbitrary: fc.record({ type: fc.constant("submit" as const), peer }),
+  };
+  const deliverStep = {
+    weight: 3,
+    arbitrary: fc.record({
+      type: fc.constant("deliver" as const),
+      seed: fc.nat({ max: 100_000 }),
+    }),
+  };
+  return undo
+    ? fc.oneof(editStep, undoStep, submitStep, deliverStep)
+    : fc.oneof(editStep, submitStep, deliverStep);
+};
 
 type Scenario = [number, Step[]];
 
-const scenarioArbitrary: fc.Arbitrary<Scenario> = fc
-  .integer({ min: 3, max: 4 })
-  .chain((peers) =>
+const scenarioArbitrary = (
+  seeds?: fc.Arbitrary<EditSeed>,
+  undo?: boolean,
+): fc.Arbitrary<Scenario> =>
+  fc.integer({ min: 3, max: 4 }).chain((peers) =>
     fc.tuple(
       fc.constant(peers),
-      fc.array(stepArbitrary(peers), { minLength: 8, maxLength: 30 }),
+      fc.array(stepArbitrary(peers, seeds, undo), {
+        minLength: 8,
+        maxLength: 30,
+      }),
     ),
   );
+
+/** Edits of the body's first paragraph, at the same and nearby offsets. */
+const focusedSeeds = (
+  kinds: readonly [EditKind, ...EditKind[]],
+  suggest: fc.Arbitrary<boolean>,
+): fc.Arbitrary<EditSeed> =>
+  fc.record({
+    kind: fc.constantFrom(...kinds),
+    a: fc.nat({ max: 24 }),
+    b: fc.nat({ max: 100_000 }),
+    suggest,
+    focus: fc.constant(true as const),
+  });
+
+/** Typing and inserted atoms only, as an author typing directly does. */
+const typingScenarioArbitrary = scenarioArbitrary(
+  focusedSeeds(["type", "type", "tab"], fc.constant(false)),
+  false,
+);
+
+/** Typing among formats, erases, comments and replies in one paragraph. */
+const sameParagraphScenarioArbitrary = scenarioArbitrary(
+  focusedSeeds(
+    [
+      "type",
+      "type",
+      "type",
+      "tab",
+      "erase",
+      "replace",
+      "format",
+      "comment",
+      "pointComment",
+      "reply",
+      "reply",
+    ],
+    fc.boolean(),
+  ),
+);
 
 const bytes = async (document: Document): Promise<Uint8Array> =>
   new Uint8Array(await serializeDocumentToDocx(document));
@@ -382,28 +562,43 @@ type Counts = {
   scopedRebased: number;
   commentRebased: number;
   trackedPairs: number;
+  pairs: PairCounts;
 };
 
+const noCounts = (): Counts => ({
+  rebased: 0,
+  proven: 0,
+  scopedRebased: 0,
+  commentRebased: 0,
+  trackedPairs: 0,
+  pairs: noPairs(),
+});
+
 const convergence = (
-  counts: Counts = {
-    rebased: 0,
-    proven: 0,
-    scopedRebased: 0,
-    commentRebased: 0,
-    trackedPairs: 0,
-  },
+  counts: Counts = noCounts(),
+  scenarios: fc.Arbitrary<Scenario> = scenarioArbitrary(),
+  // Whether every edit must be accepted, rather than refused with a type.
+  acceptAll = false,
 ) =>
-  fc.asyncProperty(scenarioArbitrary, async ([peers, steps]) => {
+  fc.asyncProperty(scenarios, async ([peers, steps]) => {
     const outcome = simulate(peers, steps);
     counts.rebased += outcome.rebased;
     counts.proven += outcome.proven;
     counts.scopedRebased += outcome.scopedRebased;
     counts.commentRebased += outcome.commentRebased;
     counts.trackedPairs += outcome.trackedPairs;
+    for (const kind of PAIR_KINDS) {
+      counts.pairs[kind].accepted += outcome.pairs[kind].accepted;
+      counts.pairs[kind].refused += outcome.pairs[kind].refused;
+    }
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
     );
+    if (acceptAll) {
+      expect(outcome.rejected).toEqual([]);
+      expect(outcome.dropped).toEqual([]);
+    }
     // Concurrent batches the authority accepted commute with what they were
     // rebased over: the transform never accepts a pair it maps wrongly.
     if (outcome.diverged.length > 0)
@@ -564,6 +759,56 @@ const concurrentSuggestedErases: Scenario = [
   ],
 ];
 
+/** An edit of the body's first paragraph at `a`. */
+const focused = (
+  peer: number,
+  seed: Omit<EditSeed, "focus" | "suggest">,
+): Step => ({
+  type: "edit",
+  peer,
+  seed: { ...seed, suggest: false, focus: true },
+});
+
+/**
+ * Three peers in the first paragraph ("Paragraph 0 text"), each phase
+ * concurrent and drained before the next:
+ * 1. typing at one offset (4, twice) and the next one (5);
+ * 2. typing at 8 inside a concurrent format of 6..9 and a deletion of 7..9,
+ *    which overlap each other;
+ * 3. a comment over the text typed in phase 1 (4..6), with typing inside it
+ *    (5) and after its reference (8);
+ * 4. two replies to that comment.
+ */
+const sameParagraphTyping: Scenario = [
+  3,
+  [
+    focused(0, { kind: "type", a: 4, b: 0 }),
+    focused(1, { kind: "type", a: 4, b: 1 }),
+    focused(2, { kind: "type", a: 5, b: 0 }),
+    ...submitAll,
+    ...drain(24),
+    focused(2, { kind: "type", a: 8, b: 1 }),
+    focused(0, { kind: "format", a: 6, b: 2 }),
+    focused(1, { kind: "erase", a: 7, b: 1 }),
+    { type: "submit", peer: 2 },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 1 },
+    ...drain(24),
+    focused(0, { kind: "comment", a: 4, b: 1 }),
+    focused(1, { kind: "type", a: 5, b: 0 }),
+    focused(2, { kind: "type", a: 8, b: 0 }),
+    ...submitAll,
+    ...drain(24),
+    focused(1, { kind: "reply", a: 0, b: 0 }),
+    focused(2, { kind: "reply", a: 0, b: 0 }),
+    { type: "submit", peer: 1 },
+    { type: "submit", peer: 2 },
+  ],
+];
+const SAME_PARAGRAPH_EDITS = sameParagraphTyping[1].filter(
+  ({ type }) => type === "edit",
+).length;
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -587,13 +832,7 @@ describe("canonical sequencing", () => {
       // schedules race: accepted batches are rebased over concurrent ones,
       // block-scoped, comment and tracked deletion ones among them, and the
       // commuted order is proven for them.
-      const counts = {
-        rebased: 0,
-        proven: 0,
-        scopedRebased: 0,
-        commentRebased: 0,
-        trackedPairs: 0,
-      };
+      const counts = noCounts();
       await checkCoverageSample(convergence(counts), NUM_RUNS + PINNED.length, {
         map: (value, index) => {
           const pinned = PINNED[index];
@@ -632,6 +871,111 @@ describe("canonical sequencing", () => {
     for (const document of phases.documents)
       expect(equalForStaleness(document, phases.authority)).toBe(true);
   });
+
+  test(
+    "concurrent typing in one paragraph is never refused",
+    async () => {
+      // Every typed edit is accepted: the bar for typing pairs is no refusal.
+      await assertProperty(
+        convergence(noCounts(), typingScenarioArbitrary, true),
+        { numRuns: NUM_RUNS, id: "canonical sequencing concurrent typing" },
+      );
+      const counts = noCounts();
+      await checkCoverageSample(
+        convergence(counts, typingScenarioArbitrary, true),
+        NUM_RUNS,
+      );
+      expect(counts.pairs.typingTyping.accepted).toBeGreaterThan(0);
+      expect(counts.pairs.typingTyping.refused).toBe(0);
+      expect(counts.proven).toBeGreaterThan(0);
+    },
+    propertyTestTimeout(180_000),
+  );
+
+  test(
+    "typing among formats, erases, comments and replies in one paragraph converges and commutes where accepted",
+    async () => {
+      await assertProperty(
+        convergence(noCounts(), sameParagraphScenarioArbitrary),
+        {
+          numRuns: NUM_RUNS,
+          id: "canonical sequencing same-paragraph convergence",
+          examples: [[sameParagraphTyping]],
+        },
+      );
+      // On a fixed sample, which starts with the pinned scenario, typing is
+      // rebased over every kind of concurrent edit of its paragraph, and two
+      // replies to one parent over each other; typing pairs are never
+      // refused.
+      const counts = noCounts();
+      await checkCoverageSample(
+        convergence(counts, sameParagraphScenarioArbitrary),
+        NUM_RUNS + 1,
+        {
+          map: (value, index) => (index === 0 ? [sameParagraphTyping] : value),
+        },
+      );
+      expect(
+        PAIR_KINDS.filter((kind) => counts.pairs[kind].accepted === 0),
+      ).toEqual([]);
+      expect(counts.pairs.typingTyping.refused).toBe(0);
+    },
+    propertyTestTimeout(180_000),
+  );
+
+  test("concurrent typing, formatting, deletion, comments and replies in one paragraph are never refused", () => {
+    const outcome = simulate(...sameParagraphTyping);
+    // Every edit compiled, none was refused or dropped, and each pair the
+    // scenario sets up was rebased, accepted and proven to commute.
+    expect(outcome.enqueued.length).toBe(SAME_PARAGRAPH_EDITS);
+    expect(outcome.rejected).toEqual([]);
+    expect(outcome.dropped).toEqual([]);
+    expect(outcome.diverged).toEqual([]);
+    expect(
+      PAIR_KINDS.filter((kind) => outcome.pairs[kind].accepted === 0),
+    ).toEqual([]);
+    for (const document of outcome.documents)
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+  });
+
+  test(
+    "an inverted tie between concurrent insertions at one point is caught",
+    async () => {
+      // The test-only break: an inline insertion pair always takes the
+      // later side's tie-break, so at one gap both orders put the other
+      // insertion first.
+      const original = { ...inlineTransform };
+      mock.module("../inlineTransform", () => ({
+        ...original,
+        transformInlinePair: (
+          pair: Parameters<typeof original.transformInlinePair>[0],
+        ) => original.transformInlinePair({ ...pair, order: "after" }),
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: NUM_RUNS,
+            examples: [[sameParagraphTyping]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+        // Caught by the commutation check, not by anything else.
+        expect(String(result.errorInstance)).toMatch(/do not commute/u);
+      } finally {
+        mock.module("../inlineTransform", () => original);
+      }
+      // Without the break the same scenario passes.
+      const restored = await fc.check(
+        convergence(),
+        propertyConfig({ numRuns: 1, examples: [[sameParagraphTyping]] }),
+      );
+      expect(restored.failed).toBe(false);
+    },
+    propertyTestTimeout(180_000),
+  );
 
   test(
     "adjacent tracked deletions accepted without the cut rule are caught",

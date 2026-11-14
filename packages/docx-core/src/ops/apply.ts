@@ -1233,6 +1233,9 @@ const joinInline = (document: Document, op: JoinInlineOp): Applied => {
     joinAt(location.paragraph.content, gap, op.depth),
     `at ${op.at.offset} in ${op.at.blockId}`,
   );
+  // A seam join keeps records apart that are not alike or carry ids.
+  if (op.ifAlike === true && (joined.isErr() || namesIds(joined.value.retired)))
+    return unchanged(document);
   if (joined.isErr()) {
     return Result.err(joined.error);
   }

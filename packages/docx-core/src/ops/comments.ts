@@ -1316,34 +1316,94 @@ const create = (
           op,
           "The parent comment has no representable owned anchors.",
         );
-      positions = parentAnchors
-        .toReversed()
-        .map(({ story, blockId, node, after }) => {
-          switch (node.type) {
-            case "commentRangeStart":
-            case "commentRangeEnd":
-            case "commentReference":
-              return {
-                at: {
-                  story,
-                  blockId,
-                  offset: after.offset,
-                  zeroWidthBefore: after.zeroWidthBefore,
-                },
-                content: [{ type: node.type, id: comment.id }],
-              };
-            default:
-              return {
-                at: {
-                  story,
-                  blockId,
-                  offset: after.offset,
-                  zeroWidthBefore: after.zeroWidthBefore,
-                },
-                content: [],
-              };
-          }
-        });
+      const threadOwner = anchorOwner ?? parentId;
+      const isUnder = (id: number): boolean => {
+        const seen = new Set<number>();
+        let current = parentById.get(id);
+        while (current !== undefined && !seen.has(current)) {
+          if (current === threadOwner) return true;
+          seen.add(current);
+          current = parentById.get(current);
+        }
+        return false;
+      };
+      // The path from the anchor owner down to a comment of its thread.
+      const pathOf = (id: number, parent: number | undefined): number[] => {
+        const path = [id];
+        const seen = new Set<number>([id]);
+        let current = parent;
+        while (
+          current !== undefined &&
+          current !== threadOwner &&
+          !seen.has(current)
+        ) {
+          path.unshift(current);
+          seen.add(current);
+          current = parentById.get(current);
+        }
+        return path;
+      };
+      const own = pathOf(comment.id, parentId);
+      // Whether a comment comes first in the thread's order: depth first,
+      // siblings by id, a parent before its replies.
+      const precedes = (id: number): boolean => {
+        const theirs = pathOf(id, parentById.get(id));
+        for (const [index, step] of theirs.entries()) {
+          const mine = own[index];
+          if (mine === undefined) return false;
+          if (step !== mine) return step < mine;
+        }
+        return true;
+      };
+      // A reply's marker follows the owner's one and the markers of the
+      // thread's comments that come before it, so concurrent replies land in
+      // the same order whichever applies first.
+      const gapAfterThread = (span: StoryAnchorSpan): Gap => {
+        let gap = span.after;
+        for (const next of anchors.slice(anchors.indexOf(span) + 1)) {
+          const id = anchorId(next.node);
+          if (
+            next.betweenBlocks === true ||
+            id === undefined ||
+            !sameStory(next.story, span.story) ||
+            idKey(next.blockId) !== idKey(span.blockId) ||
+            compareGaps(next.before, gap) !== 0 ||
+            !isUnder(id) ||
+            !precedes(id)
+          )
+            break;
+          gap = next.after;
+        }
+        return gap;
+      };
+      positions = parentAnchors.toReversed().map((span) => {
+        const { story, blockId, node } = span;
+        const after = gapAfterThread(span);
+        switch (node.type) {
+          case "commentRangeStart":
+          case "commentRangeEnd":
+          case "commentReference":
+            return {
+              at: {
+                story,
+                blockId,
+                offset: after.offset,
+                zeroWidthBefore: after.zeroWidthBefore,
+              },
+              content: [{ type: node.type, id: comment.id }],
+            };
+          default:
+            return {
+              at: {
+                story,
+                blockId,
+                offset: after.offset,
+                zeroWidthBefore: after.zeroWidthBefore,
+              },
+              content: [],
+            };
+        }
+      });
       break;
     }
     case "revision": {

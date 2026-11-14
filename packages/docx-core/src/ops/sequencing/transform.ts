@@ -22,7 +22,14 @@ import {
   type SequencedBatch,
   type SequencedOpEffect,
 } from "./envelope";
-import { mapPoint, type PointMapping, sameParagraph } from "./points";
+import { transformInlinePair } from "./inlineTransform";
+import {
+  insertionWidth,
+  isInlineInsertion,
+  mapPoint,
+  type PointMapping,
+  sameParagraph,
+} from "./points";
 import { transformByFootprint } from "./scope";
 import { trackedCutConflict } from "./trackedTransform";
 
@@ -94,6 +101,9 @@ export const operationTargets = (
 ): readonly string[] | undefined => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
       return [op.at.blockId];
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
@@ -182,6 +192,9 @@ const transformRestoredOp = ({
   // Tracked changes whose recorded cuts depend on the order.
   const tracked = trackedCutConflict(op, over);
   if (tracked !== undefined) return tracked;
+  // Inline insertions, and inline record splits and joins.
+  const inline = transformInlinePair({ op, over, effect, order });
+  if (inline !== undefined) return inline;
   if (
     op.type === DOCUMENT_OP_TYPES.RESOLVE_REVISION &&
     over.type === DOCUMENT_OP_TYPES.RESOLVE_REVISION
@@ -641,6 +654,12 @@ export const transformBatch = (
               remoteEffect = {
                 type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
                 firstLength: remoteEffect.firstLength + op.text.length,
+              };
+            }
+            if (isInlineInsertion(op) && op.at.blockId === remoteOp.blockId) {
+              remoteEffect = {
+                type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+                firstLength: remoteEffect.firstLength + insertionWidth(op),
               };
             }
             // A comment reference occupies one unit of the first paragraph.
