@@ -1531,10 +1531,11 @@ const writeActions = ({
   const withPictureResources = (
     picture: DeepReadonly<DrawingContent>,
   ): DeepReadonly<DrawingContent> | undefined => {
-    const data = PICTURE_DATA_URL.exec(picture.image.src ?? "");
+    const { src } = picture.image;
+    const data = src === undefined ? null : PICTURE_DATA_URL.exec(src);
     const mimeType = data?.at(1);
     const payload = data?.at(2);
-    if (mimeType === undefined || payload === undefined) {
+    if (src === undefined || mimeType === undefined || payload === undefined) {
       refusal ??= "A restored picture has no embedded image bytes.";
       return undefined;
     }
@@ -1558,7 +1559,7 @@ const writeActions = ({
       path,
       mimeType,
       data: base64ToBytes(payload).slice().buffer,
-      dataUrl: picture.image.src,
+      dataUrl: src,
     });
     relationships.set(id, {
       id,

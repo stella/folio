@@ -376,7 +376,9 @@ const targetBlockIdLookup = (snapshot: FolioAIEditSnapshot) => {
     let owner: (typeof anchors)[number] | undefined;
     for (let index = low - 1; index >= 0; index--) {
       const anchor = anchors[index];
-      if (!anchor || anchor.to < position) continue;
+      // An anchor spans its block's node, `[from, to)`: the block before
+      // ends where this one starts and does not hold its start.
+      if (!anchor || anchor.to <= position) continue;
       if (!owner || anchor.to - anchor.from < owner.to - owner.from)
         owner = anchor;
     }
