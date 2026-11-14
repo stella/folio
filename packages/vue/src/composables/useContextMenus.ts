@@ -32,7 +32,6 @@ import {
   listNumberingMenuState,
   NO_LIST_NUMBERING_MENU,
 } from "@stll/folio-core/prosemirror";
-import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
 
@@ -205,7 +204,7 @@ export function useContextMenus(
   );
 
   function runCommand(view: EditorView, command: Command): void {
-    executeEditorCommand(view, command);
+    command(view.state, (tr) => view.dispatch(tr), view);
   }
 
   function buildImageMenuState(

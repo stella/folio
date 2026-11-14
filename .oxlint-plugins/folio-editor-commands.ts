@@ -1,5 +1,4 @@
 import { RUN_FORMATTING_MARK_NAMES } from "../packages/core/src/prosemirror/runFormattingMarkNames.ts";
-import baseline from "./folio-editor-commands.baseline.json" with { type: "json" };
 
 /** Adapter commands enter the owning view's canonical journal before dispatch. */
 type AstNode = Record<string, unknown> & { type: string };
@@ -51,16 +50,6 @@ const stringValue = (node: unknown): string | undefined =>
         ? node.name
         : undefined;
 const OWNER = "packages/core/src/controller/hiddenEditorManager.ts";
-const EXECUTOR = "packages/core/src/prosemirror/executeEditorCommand.ts";
-/**
- * Package sources that still run a command against a view's own state and
- * dispatch, by count. Such a run skips the view's command owner, so a
- * canonical session refuses its transaction instead of taking the command's
- * intent. The list only shrinks.
- */
-const BASELINE: Readonly<Record<string, number>> = baseline;
-const PACKAGE_SOURCE =
-  /packages\/(?:react|vue|core)\/src\/(?!.*(?:__tests__|\.test\.|\.spec\.))/u;
 const REACT = "packages/react/src/components/DocxEditor.tsx";
 const VUE = [
   "packages/vue/src/components/Toolbar.vue",
@@ -124,7 +113,7 @@ export default {
         type: "problem",
         messages: {
           rawCommand:
-            "Execute commands through executeEditorCommand (or executeFirstEditorCommand), so the owning view classifies canonical intents before mutation. A file not migrated yet holds to its count in `.oxlint-plugins/folio-editor-commands.baseline.json`, which only shrinks.",
+            "Execute adapter commands through executeEditorCommand (or executeFirstEditorCommand), so the owning view classifies canonical intents before mutation.",
           foreignOwner:
             "Only hiddenEditorManager owns registerEditorCommandOwner; adapters execute commands against the selected view.",
         },
@@ -133,13 +122,6 @@ export default {
         const filename = context.filename.replaceAll("\\", "/");
         const react = filename.endsWith(REACT);
         const vue = VUE.some((path) => filename.endsWith(path));
-        const packageFile =
-          PACKAGE_SOURCE.test(filename) &&
-          !filename.endsWith(OWNER) &&
-          !filename.endsWith(EXECUTOR);
-        const relative = filename.slice(filename.indexOf("packages/"));
-        const allowed = BASELINE[relative] ?? 0;
-        let seen = 0;
         let handlerDepth = 0;
         return {
           ImportDeclaration: (node: unknown) => {
@@ -173,25 +155,16 @@ export default {
           },
           CallExpression: (node: unknown) => {
             if (
-              (!vue && !packageFile && handlerDepth === 0) ||
+              (!vue && handlerDepth === 0) ||
               !isNode(node) ||
               !Array.isArray(node.arguments)
             )
               return;
             const [state, dispatch] = node.arguments;
             if (
-              !(member(state, "state") || named(state, "commandState")) ||
-              !containsDispatch(dispatch)
+              (member(state, "state") || named(state, "commandState")) &&
+              containsDispatch(dispatch)
             )
-              return;
-            // The adapters' formatting handlers allow none; any other package
-            // source holds to its baseline.
-            if (vue || handlerDepth > 0) {
-              context.report({ node, messageId: "rawCommand" });
-              return;
-            }
-            seen += 1;
-            if (seen > allowed)
               context.report({ node, messageId: "rawCommand" });
           },
         };

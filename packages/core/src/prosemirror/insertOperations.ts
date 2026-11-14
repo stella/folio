@@ -27,12 +27,12 @@ export function insertTableInView(
   rows: number,
   columns: number,
 ): boolean {
-  return executeEditorCommand(view, insertTable(rows, columns));
+  return insertTable(rows, columns)(view.state, view.dispatch);
 }
 
 /** Insert a page break at the current selection. */
 export function insertPageBreakInView(view: EditorView): boolean {
-  return executeEditorCommand(view, insertPageBreak);
+  return insertPageBreak(view.state, view.dispatch);
 }
 
 /**

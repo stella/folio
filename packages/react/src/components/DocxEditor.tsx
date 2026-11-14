@@ -97,9 +97,14 @@ import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageI
 import { getPageSize } from "@stll/folio-core/paged-layout/sectionGeometry";
 // ProseMirror editor
 import {
+  addColumnLeft,
+  addColumnRight,
+  addRowAbove,
+  addRowBelow,
   applyFormatMarks,
   applyStyle,
   applyTableStyle,
+  autoFitContents,
   captureFormatMarks,
   clearFormatting,
   clearTextColor,
@@ -107,32 +112,56 @@ import {
   createStyleResolver,
   decreaseIndent,
   decreaseListLevel,
+  deleteColumn as pmDeleteColumn,
+  deleteRow as pmDeleteRow,
+  deleteTable as pmDeleteTable,
+  distributeColumns,
   extractSelectionState,
   getDocumentBuiltInStyles,
   getSelectedText,
   getTableContext,
   increaseIndent,
   increaseListLevel,
+  mergeCells as pmMergeCells,
+  removeTableBorders,
   removeTabStop,
   restartNumbering,
+  selectColumn as pmSelectColumn,
+  selectRow as pmSelectRow,
+  selectTable as pmSelectTable,
   setAlignment,
+  setAllTableBorders,
+  setCellBorder,
+  setCellFillColor,
+  setCellMargins,
+  setCellTextDirection,
+  setCellVerticalAlign,
   setFontFamily,
   setFontSize,
   setHighlight,
   setIndentFirstLine,
   setIndentLeft,
   setIndentRight,
+  setInsideTableBorders,
   setLineSpacing,
   setLtr,
   setNumberingValue,
+  setOutsideTableBorders,
+  setRowHeight,
   setRtl,
+  setTableBorderColor,
+  setTableBorderPreset,
+  setTableBorderWidth,
   setTableProperties,
   setTextColor,
+  splitCell as pmSplitCell,
   TextSelection,
   toggleBidi,
   toggleBold,
   toggleBulletList,
+  toggleHeaderRow,
   toggleItalic,
+  toggleNoWrap,
   toggleNumberedList,
   toggleStrike,
   toggleSubscript,
@@ -2634,174 +2663,148 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         if (!view) {
           return;
         }
-        // Every table action runs the registry's command through the view's
-        // command owner, so a canonical session takes it as its own intent.
-        const commands = extensionManager;
-        const run = (command: Parameters<typeof executeEditorCommand>[1]) =>
-          executeEditorCommand(view, command);
 
         switch (action) {
           case "addRowAbove":
-            run(commands.requireCommand("addRowAbove")());
+            addRowAbove(view.state, view.dispatch);
             break;
           case "addRowBelow":
-            run(commands.requireCommand("addRowBelow")());
+            addRowBelow(view.state, view.dispatch);
             break;
           case "addColumnLeft":
-            run(commands.requireCommand("addColumnLeft")());
+            addColumnLeft(view.state, view.dispatch);
             break;
           case "addColumnRight":
-            run(commands.requireCommand("addColumnRight")());
+            addColumnRight(view.state, view.dispatch);
             break;
           case "deleteRow":
-            run(commands.requireCommand("deleteRow")());
+            pmDeleteRow(view.state, view.dispatch);
             break;
           case "deleteColumn":
-            run(commands.requireCommand("deleteColumn")());
+            pmDeleteColumn(view.state, view.dispatch);
             break;
           case "deleteTable":
-            run(commands.requireCommand("deleteTable")());
+            pmDeleteTable(view.state, view.dispatch);
             break;
           case "selectTable":
-            run(commands.requireCommand("selectTable")());
+            pmSelectTable(view.state, view.dispatch);
             break;
           case "selectRow":
-            run(commands.requireCommand("selectRow")());
+            pmSelectRow(view.state, view.dispatch);
             break;
           case "selectColumn":
-            run(commands.requireCommand("selectColumn")());
+            pmSelectColumn(view.state, view.dispatch);
             break;
           case "mergeCells":
-            run(commands.requireCommand("mergeCells")());
+            pmMergeCells(view.state, view.dispatch);
             break;
           case "splitCell":
-            run(commands.requireCommand("splitCell")());
+            pmSplitCell(view.state, view.dispatch);
             break;
           // Border actions — use current border spec from toolbar
           case "borderAll":
-            run(
-              commands.requireCommand("setAllTableBorders")(
-                borderSpecRef.current,
-              ),
+            setAllTableBorders(
+              view.state,
+              view.dispatch,
+              borderSpecRef.current,
             );
             break;
           case "borderOutside":
-            run(
-              commands.requireCommand("setOutsideTableBorders")(
-                borderSpecRef.current,
-              ),
+            setOutsideTableBorders(
+              view.state,
+              view.dispatch,
+              borderSpecRef.current,
             );
             break;
           case "borderInside":
-            run(
-              commands.requireCommand("setInsideTableBorders")(
-                borderSpecRef.current,
-              ),
+            setInsideTableBorders(
+              view.state,
+              view.dispatch,
+              borderSpecRef.current,
             );
             break;
           case "borderNone":
-            run(commands.requireCommand("removeTableBorders")());
+            removeTableBorders(view.state, view.dispatch);
             break;
           // Per-side border actions (use current border spec)
           case "borderTop":
-            run(
-              commands.requireCommand("setCellBorder")(
-                "top",
-                borderSpecRef.current,
-                true,
-              ),
-            );
+            setCellBorder(
+              "top",
+              borderSpecRef.current,
+              true,
+            )(view.state, view.dispatch);
             break;
           case "borderBottom":
-            run(
-              commands.requireCommand("setCellBorder")(
-                "bottom",
-                borderSpecRef.current,
-                true,
-              ),
-            );
+            setCellBorder(
+              "bottom",
+              borderSpecRef.current,
+              true,
+            )(view.state, view.dispatch);
             break;
           case "borderLeft":
-            run(
-              commands.requireCommand("setCellBorder")(
-                "left",
-                borderSpecRef.current,
-                true,
-              ),
-            );
+            setCellBorder(
+              "left",
+              borderSpecRef.current,
+              true,
+            )(view.state, view.dispatch);
             break;
           case "borderRight":
-            run(
-              commands.requireCommand("setCellBorder")(
-                "right",
-                borderSpecRef.current,
-                true,
-              ),
-            );
+            setCellBorder(
+              "right",
+              borderSpecRef.current,
+              true,
+            )(view.state, view.dispatch);
             break;
           default:
             // Handle complex actions (with parameters)
             if (typeof action === "object") {
               if (action.type === "cellFillColor") {
-                run(commands.requireCommand("setCellFillColor")(action.color));
+                setCellFillColor(action.color)(view.state, view.dispatch);
               } else if (action.type === "borderColor") {
                 const rgb = action.color.replace(/^#/u, "");
                 borderSpecRef.current = {
                   ...borderSpecRef.current,
                   color: { rgb },
                 };
-                run(
-                  commands.requireCommand("setTableBorderColor")(action.color),
-                );
+                setTableBorderColor(action.color)(view.state, view.dispatch);
               } else if (action.type === "borderWidth") {
                 borderSpecRef.current = {
                   ...borderSpecRef.current,
                   size: action.size,
                 };
-                run(
-                  commands.requireCommand("setTableBorderWidth")(action.size),
-                );
+                setTableBorderWidth(action.size)(view.state, view.dispatch);
               } else if (action.type === "cellBorder") {
-                run(
-                  commands.requireCommand("setCellBorder")(action.side, {
-                    style: action.style,
-                    size: action.size,
-                    color: { rgb: action.color.replace(/^#/u, "") },
-                  }),
-                );
+                setCellBorder(action.side, {
+                  style: action.style,
+                  size: action.size,
+                  color: { rgb: action.color.replace(/^#/u, "") },
+                })(view.state, view.dispatch);
               } else if (action.type === "cellVerticalAlign") {
-                run(
-                  commands.requireCommand("setCellVerticalAlign")(action.align),
-                );
+                setCellVerticalAlign(action.align)(view.state, view.dispatch);
               } else if (action.type === "cellMargins") {
-                run(commands.requireCommand("setCellMargins")(action.margins));
+                setCellMargins(action.margins)(view.state, view.dispatch);
               } else if (action.type === "cellTextDirection") {
-                run(
-                  commands.requireCommand("setCellTextDirection")(
-                    action.direction,
-                  ),
+                setCellTextDirection(action.direction)(
+                  view.state,
+                  view.dispatch,
                 );
               } else if (action.type === "toggleNoWrap") {
-                run(commands.requireCommand("toggleNoWrap")());
+                toggleNoWrap()(view.state, view.dispatch);
               } else if (action.type === "rowHeight") {
-                run(
-                  commands.requireCommand("setRowHeight")(
-                    action.height,
-                    action.rule,
-                  ),
+                setRowHeight(action.height, action.rule)(
+                  view.state,
+                  view.dispatch,
                 );
               } else if (action.type === "toggleHeaderRow") {
-                run(commands.requireCommand("toggleHeaderRow")());
+                toggleHeaderRow()(view.state, view.dispatch);
               } else if (action.type === "distributeColumns") {
-                run(commands.requireCommand("distributeColumns")());
+                distributeColumns()(view.state, view.dispatch);
               } else if (action.type === "autoFitContents") {
-                run(commands.requireCommand("autoFitContents")());
+                autoFitContents()(view.state, view.dispatch);
               } else if (action.type === "openTableProperties") {
                 setTablePropsOpen(true);
               } else if (action.type === "tableProperties") {
-                run(
-                  commands.requireCommand("setTableProperties")(action.props),
-                );
+                setTableProperties(action.props)(view.state, view.dispatch);
               } else {
                 // Resolve style data from built-in presets or document styles
                 let preset: TableStylePreset | undefined = getBuiltinTableStyle(
@@ -2908,7 +2911,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   if (preset.look) {
                     styleArg.look = preset.look;
                   }
-                  run(commands.requireCommand("applyTableStyle")(styleArg));
+                  applyTableStyle(styleArg)(view.state, view.dispatch);
                 }
               }
             } else {
@@ -2921,7 +2924,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       },
       [
         tableSelection,
-        extensionManager,
         getActiveEditorView,
         focusActiveEditor,
         getCachedStyleResolver,
@@ -3565,52 +3567,28 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             break;
           // Table operations
           case "addRowAbove":
-            executeEditorCommand(
-              view,
-              extensionManager.requireCommand("addRowAbove")(),
-            );
+            addRowAbove(view.state, view.dispatch);
             break;
           case "addRowBelow":
-            executeEditorCommand(
-              view,
-              extensionManager.requireCommand("addRowBelow")(),
-            );
+            addRowBelow(view.state, view.dispatch);
             break;
           case "deleteRow":
-            executeEditorCommand(
-              view,
-              extensionManager.requireCommand("deleteRow")(),
-            );
+            pmDeleteRow(view.state, view.dispatch);
             break;
           case "addColumnLeft":
-            executeEditorCommand(
-              view,
-              extensionManager.requireCommand("addColumnLeft")(),
-            );
+            addColumnLeft(view.state, view.dispatch);
             break;
           case "addColumnRight":
-            executeEditorCommand(
-              view,
-              extensionManager.requireCommand("addColumnRight")(),
-            );
+            addColumnRight(view.state, view.dispatch);
             break;
           case "deleteColumn":
-            executeEditorCommand(
-              view,
-              extensionManager.requireCommand("deleteColumn")(),
-            );
+            pmDeleteColumn(view.state, view.dispatch);
             break;
           case "tableBordersAll":
-            executeEditorCommand(
-              view,
-              extensionManager.requireCommand("setTableBorderPreset")("all"),
-            );
+            setTableBorderPreset("all")(view.state, view.dispatch);
             break;
           case "tableBordersNone":
-            executeEditorCommand(
-              view,
-              extensionManager.requireCommand("setTableBorderPreset")("none"),
-            );
+            setTableBorderPreset("none")(view.state, view.dispatch);
             break;
           // Comment — same flow as floating comment button
           case "addComment": {
@@ -3695,7 +3673,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       },
       [
         getActiveEditorView,
-        extensionManager,
         focusActiveEditor,
         onCustomContextAction,
         onCopy,
