@@ -130,7 +130,12 @@ export type DocxEditorProps = {
   password?: string | undefined;
   /** Pre-parsed document (alternative to documentBuffer) */
   document?: Document | null;
-  /** Experimental plain-text canonical session; unsupported edits are refused. */
+  /**
+   * Experimental plain-text canonical session; unsupported edits are refused.
+   * A host plugin's transaction or a direct dispatch that changes the
+   * document is refused too, its refusal naming the transaction's meta keys:
+   * express such an edit as document operations (`applyDocumentOperations`).
+   */
   experimentalSession?: "canonical";
   /** Callback when document is saved */
   onSave?: (buffer: ArrayBuffer) => void;

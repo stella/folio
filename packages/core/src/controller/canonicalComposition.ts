@@ -15,11 +15,19 @@ import type { EditorView } from "prosemirror-view";
 
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import { CanonicalSessionError } from "../canonical/canonicalSession";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_GAP,
+  type CanonicalRefusalGround,
+} from "../types/canonicalCapabilities";
 import {
   CANONICAL_COMPOSITION_FLUSH_DELAY_MS,
   setCanonicalInputTimer,
 } from "./canonicalInputTimer";
+
+/** A composition over content the session cannot project, restored. */
+const UNSUPPORTED_COMPOSITION: CanonicalRefusalGround = {
+  gap: CANONICAL_GAP.storyContentProjection,
+};
 
 type CompositionOptions = {
   begin: () => boolean;
@@ -31,7 +39,7 @@ type CompositionOptions = {
     semantic: "composition";
     compositionPhase?: "correction";
   }) => void;
-  refuse: (reason: string) => void;
+  refuse: (reason: string, ground?: CanonicalRefusalGround) => void;
 };
 
 type CompositionCompletionEvidence = "provisional" | "explicitFinal";
@@ -459,6 +467,7 @@ export const createCanonicalComposition = (
     if (!input) {
       options.refuse(
         "Composition changed unsupported content; the canonical document was restored.",
+        UNSUPPORTED_COMPOSITION,
       );
       return { type: "refused", text: committedText };
     }
@@ -751,6 +760,7 @@ export const createCanonicalComposition = (
         };
         options.refuse(
           "Composition changed unsupported content; the canonical document was restored.",
+          UNSUPPORTED_COMPOSITION,
         );
         return true;
       }

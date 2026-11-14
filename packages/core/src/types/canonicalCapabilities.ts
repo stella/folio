@@ -133,13 +133,13 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express.";
+    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express; a pasted table refuses.";
   };
   readonly "story-content-projection": {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits.";
+    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references, and compositions over such content refuse.";
   };
   readonly "comment-model-edits": {
     readonly owner: "adapters";
@@ -169,7 +169,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unclassified native and plugin mutations are refused at the projection boundary.";
+    readonly summary: "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).";
   };
   readonly "pm-save-projection": {
     readonly owner: "controller";
@@ -226,7 +226,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
+    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap, as does typing in a text box, whose paragraphs belong to its shape.";
   };
   readonly "publicOps.tableStructure": {
     readonly owner: "document-operations";
@@ -282,14 +282,14 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Suggested row, column and table changes refuse content the tracked table records cannot express.",
+      "Suggested row, column and table changes refuse content the tracked table records cannot express; a pasted table refuses.",
   },
   [CANONICAL_GAP.storyContentProjection]: {
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported inline, field and review content cannot be projected after canonical edits.",
+      "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references, and compositions over such content refuse.",
   },
   [CANONICAL_GAP.comments]: {
     owner: "adapters",
@@ -323,7 +323,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unclassified native and plugin mutations are refused at the projection boundary.",
+      "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).",
   },
   [CANONICAL_GAP.save]: {
     owner: "controller",
@@ -384,7 +384,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported public payloads refuse with a typed compiler capability gap.",
+      "Unsupported public payloads refuse with a typed compiler capability gap, as does typing in a text box, whose paragraphs belong to its shape.",
   },
   [CANONICAL_GAP.publicTableStructure]: {
     owner: "document-operations",

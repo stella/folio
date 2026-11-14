@@ -68,13 +68,13 @@ export const harnessRefusalProblems = ({
 const clipboardTableRows: readonly HarnessRefusalRow[] = [
   {
     id: "clipboard-table",
-    gap: CANONICAL_GAP.dispatch,
+    gap: CANONICAL_GAP.trackedTableStructure,
     message:
       "Clipboard tables and embedded blocks require canonical table editing.",
   },
   {
     id: "clipboard-nested-blocks",
-    gap: CANONICAL_GAP.dispatch,
+    gap: CANONICAL_GAP.trackedTableStructure,
     message:
       "Clipboard tables and nested block containers require canonical table editing.",
   },
@@ -93,7 +93,7 @@ const SELECTED_CELL_REFUSALS = {
   imeReplacement: [
     {
       id: "selected-cells-composition",
-      gap: CANONICAL_GAP.dispatch,
+      gap: CANONICAL_GAP.storyContentProjection,
       message:
         "Composition changed unsupported content; the canonical document was restored.",
     },

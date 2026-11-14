@@ -150,14 +150,11 @@ export class CanonicalSessionError extends CanonicalSessionErrorBase<{
   ground: CanonicalRefusalGround;
 }> {}
 
-const refuse = (message: string) =>
-  Result.err(
-    new CanonicalSessionError({
-      ground: { gap: CANONICAL_GAP.dispatch },
-      message,
-      reason: "refused",
-    }),
-  );
+const refuse = (
+  message: string,
+  ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch },
+) =>
+  Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
 /** A change a content control's lock forbids: the document's rule, not a gap. */
 const lockRefusal = (violation: LockedControlViolation) =>
   Result.err(
@@ -497,6 +494,16 @@ class CanonicalProjection {
   }
 
   /** The paragraph whose content holds `position`, its ends included. */
+  /** Whether `position` lies in a text box's content. */
+  private insideTextBox(position: number): boolean {
+    const resolved = this.doc.resolve(
+      Math.max(0, Math.min(position, this.doc.content.size)),
+    );
+    for (let depth = resolved.depth; depth > 0; depth -= 1)
+      if (resolved.node(depth).type.name === "textBox") return true;
+    return false;
+  }
+
   private paragraphAround(position: number): ParagraphAddress | undefined {
     // The last top-level node starting before the position.
     let low = 0;
@@ -540,7 +547,14 @@ class CanonicalProjection {
     position = canonicalContentPosition(this.doc, position);
     const paragraph = this.paragraphAround(position);
     if (paragraph === undefined)
-      return refuse("The input is outside a plain paragraph.");
+      return this.insideTextBox(position)
+        ? // A text box's paragraphs belong to its shape, not to the story:
+          // the same rule a public operation on one meets.
+          refuse(
+            "The canonical session holds no address in this paragraph, such as one in a text box.",
+            { gap: CANONICAL_GAP.publicUnsupportedInline },
+          )
+        : refuse("The input is outside a plain paragraph.");
     const relative = position - paragraph.start;
     const offset = paragraph.boundaries.findIndex((gaps) =>
       gaps.some((gap) => gap.position === relative),

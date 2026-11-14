@@ -13,7 +13,47 @@ import {
   getEditorInputTargetRange,
   handleEditorBeforeInput,
 } from "../prosemirror/textInput";
+import type { CanonicalRefusalGround } from "../types/canonicalCapabilities";
 import { createCanonicalComposition } from "./canonicalComposition";
+
+/** Meta ProseMirror itself sets on native input and appended transactions. */
+const NATIVE_META_KEYS: ReadonlySet<string> = new Set([
+  "addToHistory",
+  "appendedTransaction",
+  "composition",
+  "paste",
+  "pointer",
+  "uiEvent",
+]);
+
+/** The meta keys a plugin or a host set on a transaction. */
+const transactionMetaKeys = (transaction: Transaction): string[] => {
+  const meta: unknown = Reflect.get(transaction, "meta");
+  return typeof meta === "object" && meta !== null
+    ? Object.keys(meta).filter((key) => !NATIVE_META_KEYS.has(key))
+    : [];
+};
+
+/**
+ * Why a document change the session cannot read as an intent is refused. A
+ * change a plugin or a host made names the transaction's meta keys, so its
+ * source can express the edit as document operations instead.
+ */
+export const unclassifiedMutationMessage = (
+  transactions: readonly Transaction[],
+  unnamed = "Unclassified native text is unavailable in this session.",
+): string => {
+  const keys = [
+    ...new Set(
+      transactions
+        .filter(({ docChanged }) => docChanged)
+        .flatMap(transactionMetaKeys),
+    ),
+  ];
+  return keys.length === 0
+    ? unnamed
+    : `A transaction with meta ${keys.join(", ")} changed the document outside the session's operations; express the edit as document operations.`;
+};
 
 export const CANONICAL_COMPOSITION_INPUT_TYPES = [
   "insertCompositionText",
@@ -56,7 +96,7 @@ type CanonicalInputOptions = {
   cut?: (view: EditorView, event: ClipboardEvent) => boolean;
   undo: () => boolean;
   redo: () => boolean;
-  refuse: (reason: string) => void;
+  refuse: (reason: string, ground?: CanonicalRefusalGround) => void;
 };
 
 type NativeProposal =
@@ -112,7 +152,7 @@ export const createCanonicalInputBoundary = (
     state: EditorState,
     transaction: Transaction,
   ) => ReplaceTextInput | null;
-  refuseNativeMutation: (view: EditorView) => void;
+  refuseNativeMutation: (view: EditorView, transaction?: Transaction) => void;
   commitNativeProposal: (view: EditorView, transaction: Transaction) => boolean;
 } => {
   const composition = createCanonicalComposition({
@@ -156,10 +196,13 @@ export const createCanonicalInputBoundary = (
     return true;
   };
 
-  const refuseNativeMutation = (view: EditorView): void => {
+  const refuseNativeMutation = (
+    view: EditorView,
+    transaction?: Transaction,
+  ): void => {
     if (!composition.active && proposal.type !== "refused") {
       options.refuse(
-        "Unclassified native text is unavailable in this session.",
+        unclassifiedMutationMessage(transaction ? [transaction] : []),
       );
       proposal = { type: "refused" };
     }

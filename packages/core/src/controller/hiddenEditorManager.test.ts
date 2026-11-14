@@ -1759,15 +1759,22 @@ test(
   "canonical undescribed commands preserve non-document effects and refuse raw mutations",
   () => {
     GlobalRegistrator.register();
-    type Counts = { selection: number; probe: number; mutation: number };
+    type Counts = {
+      selection: number;
+      probe: number;
+      mutation: number;
+      pluginMutation: number;
+    };
     try {
       const law = (counts: Counts) =>
         fc.property(
           fc.record({
             text: fc.string({ minLength: 1, maxLength: 16 }),
             position: fc.nat(),
+            // A plugin's own meta key, as a host plugin sets it.
+            metaKey: fc.stringMatching(/^host[A-Za-z]{0,8}\$?$/u),
           }),
-          ({ text, position }) => {
+          ({ text, position, metaKey }) => {
             const host = document.createElement("div");
             document.body.append(host);
             const source = createEmptyDocument({ initialText: text });
@@ -1797,7 +1804,12 @@ test(
               if (!view) panic("Expected generated canonical view");
               const baseline = manager.api.getCanonicalDocument();
               const target = 1 + (position % (text.length + 1));
-              for (const kind of ["selection", "probe", "mutation"] as const) {
+              for (const kind of [
+                "selection",
+                "probe",
+                "mutation",
+                "pluginMutation",
+              ] as const) {
                 let calls = 0;
                 const command: Command = (state, dispatch) => {
                   calls++;
@@ -1814,8 +1826,19 @@ test(
                     case "mutation":
                       dispatch?.(state.tr.insertText("unclassified", target));
                       return true;
+                    case "pluginMutation":
+                      dispatch?.(
+                        state.tr
+                          .insertText("unclassified", target)
+                          .setMeta(metaKey, true),
+                      );
+                      return true;
                   }
                 };
+                // Each refused change is its own gesture, as a key starts one.
+                view.dom.dispatchEvent(
+                  new KeyboardEvent("keydown", { key: "Shift", bubbles: true }),
+                );
                 const beforeState = view.state;
                 const beforeRefusals = reasons.length;
                 expect(manager.api.executeCommand(command)).toBe(
@@ -1836,6 +1859,12 @@ test(
                   expect(reasons.slice(beforeRefusals)).toEqual([
                     "Unclassified native text is unavailable in this session.",
                   ]);
+                } else if (kind === "pluginMutation") {
+                  // The refusal names the plugin that made the change.
+                  expect(view.state).toBe(beforeState);
+                  expect(reasons.slice(beforeRefusals)).toEqual([
+                    `A transaction with meta ${metaKey} changed the document outside the session's operations; express the edit as document operations.`,
+                  ]);
                 } else {
                   expect(reasons).toHaveLength(beforeRefusals);
                   expect(view.state.selection.from).toBe(target);
@@ -1847,13 +1876,21 @@ test(
             }
           },
         );
-      assertProperty(law({ selection: 0, probe: 0, mutation: 0 }), {
-        id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
-      });
+      assertProperty(
+        law({ selection: 0, probe: 0, mutation: 0, pluginMutation: 0 }),
+        {
+          id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
+        },
+      );
       // Every case runs each kind of command; a few cases of a fixed sample
       // show it.
       const RUNS = 3;
-      const counts: Counts = { selection: 0, probe: 0, mutation: 0 };
+      const counts: Counts = {
+        selection: 0,
+        probe: 0,
+        mutation: 0,
+        pluginMutation: 0,
+      };
       checkCoverageSample(law(counts), RUNS);
       for (const count of Object.values(counts))
         expect(count).toBeGreaterThan(0);

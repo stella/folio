@@ -307,18 +307,26 @@ export const createCanonicalEditorHarness = (
         paragraphsOnly &&= node.type.name === "paragraph";
         inlineOnly &&= node.isInline;
       });
+      // A table is the table gap's; any other block the story content's.
+      let holdsTable = false;
+      slice.content.descendants((node) => {
+        if (node.type.name === "table") holdsTable = true;
+      });
+      const blockGap = holdsTable
+        ? CANONICAL_GAP.trackedTableStructure
+        : CANONICAL_GAP.storyContentProjection;
       let row: HarnessRefusalRow | undefined;
       if (slice.openStart > 1 || slice.openEnd > 1)
         row = {
           id: "clipboard-nested-blocks",
-          gap: CANONICAL_GAP.dispatch,
+          gap: blockGap,
           message:
             "Clipboard tables and nested block containers require canonical table editing.",
         };
       else if (!paragraphsOnly && !inlineOnly)
         row = {
           id: "clipboard-table",
-          gap: CANONICAL_GAP.dispatch,
+          gap: blockGap,
           message:
             "Clipboard tables and embedded blocks require canonical table editing.",
         };
@@ -342,7 +350,7 @@ export const createCanonicalEditorHarness = (
         if (importsStoryParts)
           row = {
             id: "clipboard-story-parts",
-            gap: CANONICAL_GAP.dispatch,
+            gap: CANONICAL_GAP.storyContentProjection,
             message:
               "Clipboard comments and note references require importing their source story parts.",
           };

@@ -37,7 +37,10 @@ import { canonicalSelectionRange } from "../prosemirror/canonicalSelectionRange"
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
+import {
+  CANONICAL_GAP,
+  type CanonicalRefusalGround,
+} from "../types/canonicalCapabilities";
 import type {
   CounterFormat,
   Document,
@@ -54,14 +57,28 @@ import {
   importClipboardStyles,
 } from "./canonicalClipboardResources";
 
-const refuse = (message: string) =>
-  Result.err(
-    new CanonicalSessionError({
-      ground: { gap: CANONICAL_GAP.dispatch },
-      message,
-      reason: "refused",
-    }),
-  );
+const refuse = (
+  message: string,
+  ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch },
+) =>
+  Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
+
+/**
+ * The gap a clipboard block the paste cannot place falls under: a table's,
+ * or for any other block, the story content the session cannot project.
+ */
+const unplacedBlockGround = (slice: Slice): CanonicalRefusalGround => {
+  let table = false;
+  slice.content.descendants((node) => {
+    if (node.type.name === "table") table = true;
+    return !table;
+  });
+  return {
+    gap: table
+      ? CANONICAL_GAP.trackedTableStructure
+      : CANONICAL_GAP.storyContentProjection,
+  };
+};
 const IMAGE_RELATIONSHIP =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 const HYPERLINK_RELATIONSHIP =
@@ -348,7 +365,7 @@ export const canonicalClipboardStoryPartRefusal = (
   });
   if (!requiresStory) return undefined;
   return new CanonicalSessionError({
-    ground: { gap: CANONICAL_GAP.dispatch },
+    ground: { gap: CANONICAL_GAP.storyContentProjection },
     reason: "refused",
     message:
       "Clipboard comments and note references require importing their source story parts.",
@@ -394,6 +411,7 @@ export const prepareCanonicalPaste = ({
   if (slice.openStart > 1 || slice.openEnd > 1)
     return refuse(
       "Clipboard tables and nested block containers require canonical table editing.",
+      unplacedBlockGround(slice),
     );
   const paragraphType = state.schema.nodes["paragraph"];
   if (paragraphType === undefined)
@@ -407,6 +425,7 @@ export const prepareCanonicalPaste = ({
   if (!inline && !paragraphsOnly)
     return refuse(
       "Clipboard tables and embedded blocks require canonical table editing.",
+      unplacedBlockGround(slice),
     );
   // A same-parent document slice omits its paragraph; it still represents open inline edges.
   const importedSlice = inline
@@ -431,7 +450,10 @@ export const prepareCanonicalPaste = ({
   const paragraphs: Paragraph[] = [];
   for (const block of converted.value) {
     if (block.type !== "paragraph")
-      return refuse("The clipboard contains an unsupported block.");
+      return refuse(
+        "The clipboard contains an unsupported block.",
+        unplacedBlockGround(slice),
+      );
     const paragraph = structuredClone(block);
     copyParagraphIndentationProjection({ target: paragraph, source: block });
     paragraphs.push(paragraph);

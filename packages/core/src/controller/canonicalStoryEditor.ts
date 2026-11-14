@@ -134,7 +134,7 @@ export const createCanonicalStoryEditor = ({
       if (transaction.docChanged) {
         if (boundary.acceptComposition(view, transaction)) return true;
         if (!boundary.commitNativeProposal(view, transaction))
-          boundary.refuseNativeMutation(view);
+          boundary.refuseNativeMutation(view, transaction);
         view.updateState(view.state);
         return true;
       }
