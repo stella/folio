@@ -136,7 +136,9 @@ describe("a canonical edit inside an irregular table", () => {
         expect(intents).toBeDefined();
         if (intents === undefined) return;
         const commit = prepareCanonicalCommands(session, placed, intents);
-        expect(commit.isOk()).toBe(true);
+        expect(commit.isErr() ? commit.error.message : "prepared").toBe(
+          "prepared",
+        );
         if (commit.isErr()) return;
         const published = publishCanonicalProjection({
           state: placed,
