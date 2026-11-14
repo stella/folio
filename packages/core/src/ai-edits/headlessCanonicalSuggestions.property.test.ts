@@ -20,8 +20,8 @@ import fc from "fast-check";
 import { reviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
 import {
   type OperationDraw,
-  operationDrawArbitrary,
   operationFor,
+  stagingDrawArbitrary,
 } from "../../../../test/generators/reviewerOperationDraws";
 import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
@@ -95,7 +95,9 @@ const suggestionLaws = async (
     if (CanonicalSessionError.is(error)) return "sessionRefused";
     throw error;
   }
-  const operation = operationFor(reviewer, draw);
+  const operation = operationFor(reviewer, draw, {
+    replaceIn: "blocksWithWords",
+  });
   if (operation === null) return "noOperation";
   const before = reads(reviewer);
   const result = apply(reviewer, operation, "suggested");
@@ -160,7 +162,7 @@ const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
 const generatedSuggestions = (tally: Map<SuggestionOutcome, number>) =>
   fc.asyncProperty(
     reviewerDocumentArbitrary,
-    operationDrawArbitrary,
+    stagingDrawArbitrary,
     async (document, draw) => {
       const buffer = await packaged(document);
       const outcome =
@@ -169,10 +171,79 @@ const generatedSuggestions = (tally: Map<SuggestionOutcome, number>) =>
     },
   );
 
+/**
+ * A suggestion inserted beside a paragraph whose mark is a pending insertion
+ * and one whose mark is a pending deletion, in a document holding a comment
+ * with no anchor (a generated case, shrunk).
+ */
+const besidePendingMarks: Document = {
+  package: {
+    document: {
+      content: [
+        {
+          type: "paragraph",
+          content: [],
+          pPrMark: { kind: "ins", info: { id: 1, author: "A" } },
+          paraId: "00000001",
+        },
+        {
+          type: "paragraph",
+          content: [],
+          pPrMark: { kind: "del", info: { id: 2, author: "A" } },
+          formatting: { numPr: { kind: "reference", numId: 1, ilvl: 0 } },
+          paraId: "00000002",
+        },
+        { type: "paragraph", content: [], paraId: "00000003" },
+      ],
+      finalSectionProperties: { pageWidth: 12240, pageHeight: 15840 },
+      comments: [
+        {
+          id: 7,
+          author: "A",
+          content: [{ type: "paragraph", paraId: "7FFFFFF0", content: [] }],
+        },
+      ],
+    },
+    numbering: {
+      abstractNums: [
+        {
+          abstractNumId: 1,
+          levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+        },
+      ],
+      nums: [{ numId: 1, abstractNumId: 1 }],
+    },
+    footnotes: [
+      {
+        type: "footnote",
+        id: 2,
+        content: [{ type: "paragraph", paraId: "7FFFFFF1", content: [] }],
+      },
+    ],
+    settings: { defaultTabStop: 720 },
+    properties: { title: "synthetic" },
+  },
+  warnings: ["kept"],
+};
+
 const GENERATED_RUNS = 30;
 const COVERAGE_RUNS = 30;
 
 describe("a canonical reviewer's pending suggestions", () => {
+  test("a suggestion beside pending paragraph marks restages", async () => {
+    const buffer = await packaged(besidePendingMarks);
+    expect(buffer).not.toBeNull();
+    if (buffer === null) return;
+    expect(
+      await suggestionLaws(buffer, {
+        kind: "insertBeforeBlock",
+        block: 1,
+        word: 0,
+        text: "revised",
+      }),
+    ).toBe("suggested");
+  });
+
   test(
     "generated suggestions save, restage, reject and accept as the laws say",
     async () => {
@@ -189,9 +260,11 @@ describe("a canonical reviewer's pending suggestions", () => {
     async () => {
       const tally = new Map<SuggestionOutcome, number>();
       await checkCoverageSample(generatedSuggestions(tally), COVERAGE_RUNS);
-      expect(tally.get("suggested") ?? 0).toBeGreaterThanOrEqual(
-        COVERAGE_RUNS / 5,
-      );
+      // The whole tally is in the failure, so a shortfall names its outcomes.
+      expect({
+        staged: (tally.get("suggested") ?? 0) >= COVERAGE_RUNS / 3,
+        tally: Object.fromEntries(tally),
+      }).toMatchObject({ staged: true });
     },
     propertyTestTimeout(120_000),
   );
