@@ -10,8 +10,9 @@
 import type { EditorState } from "prosemirror-state";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
+import type { FolioAutocompleteState } from "@stll/folio-core/controller/autocompleteSuggestion";
+import type { HiddenEditorAutocomplete } from "@stll/folio-core/controller/hiddenEditorApi";
 import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
-import { getAutocompleteSuggestion } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
 
 import type { AutocompleteCaretRect } from "./AutocompleteCaretOverlay.types";
@@ -30,12 +31,16 @@ const props = defineProps<{
   editorState: EditorState | null;
   zoom: number;
   syncCoordinator: LayoutSelectionGate;
+  /** The editor's suggestion. */
+  autocomplete: HiddenEditorAutocomplete;
+  onChange?: ((state: FolioAutocompleteState) => void) | undefined;
 }>();
 
 const projection = ref<AutocompleteProjection | null>(null);
 const renderEpoch = ref(0);
 let rafId: number | null = null;
 let unsubscribeRender: (() => void) | null = null;
+let unsubscribeSuggestion: (() => void) | null = null;
 
 type ResolveMaxWidthOptions = {
   pagesContainer: HTMLElement;
@@ -80,14 +85,19 @@ const syncProjection = (): void => {
     return;
   }
 
-  const suggestion = getAutocompleteSuggestion(state);
-  if (suggestion.status === "idle" || suggestion.text.length === 0) {
+  const suggestion = props.autocomplete.get();
+  const anchor = props.autocomplete.editorAnchor();
+  if (
+    suggestion.status === "idle" ||
+    suggestion.text.length === 0 ||
+    anchor === null
+  ) {
     projection.value = null;
     return;
   }
 
   const context = createRenderedDomContext(pagesContainer, props.zoom);
-  const coordinates = context.getCoordinatesForPosition(suggestion.anchor);
+  const coordinates = context.getCoordinatesForPosition(anchor);
   if (!coordinates) {
     projection.value = null;
     return;
@@ -126,6 +136,10 @@ onMounted(() => {
   unsubscribeRender = props.syncCoordinator.onRender(() => {
     renderEpoch.value += 1;
   });
+  unsubscribeSuggestion = props.autocomplete.subscribe((state) => {
+    props.onChange?.(state);
+    scheduleSync();
+  });
   scheduleSync();
 });
 
@@ -135,6 +149,7 @@ onBeforeUnmount(() => {
     rafId = null;
   }
   unsubscribeRender?.();
+  unsubscribeSuggestion?.();
 });
 
 watch(

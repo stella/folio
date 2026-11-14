@@ -286,26 +286,10 @@ export {
   type TemplateSlashMenuKeyAction,
   type TemplateSlashMenuState,
 } from "./prosemirror/plugins/templateSlashMenu";
-export {
-  acceptAutocompleteSuggestion,
-  acceptAutocompleteWord,
-  appendAutocompleteToken,
-  autocompleteSuggestionKey,
-  autocompleteSuggestionPlugin,
-  clearAutocompleteSuggestion,
-  DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES,
-  finishAutocompleteSuggestion,
-  getAutocompleteSuggestion,
-  shouldTriggerAutocomplete,
-  startAutocompleteSuggestion,
-  type AcceptAutocompleteResult,
-  type AutocompleteSuggestionPluginOptions,
-  type AutocompleteSuggestionState,
-  type AutocompleteSuggestionStatus,
-  type AutocompleteTriggerCheck,
-  type AutocompleteTriggerOptions,
-  type AutocompleteTriggerSkipReason,
-} from "./prosemirror/plugins/autocompleteSuggestion";
+export type {
+  FolioAutocompleteApi,
+  FolioAutocompleteState,
+} from "./types/autocomplete";
 
 // DOCX-document ↔ Markdown bridge (also available at `@stll/folio/markdown`).
 export {

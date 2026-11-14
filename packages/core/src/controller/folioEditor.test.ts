@@ -8,7 +8,7 @@ import type { Document } from "../types/document";
 import { NO_ANONYMIZATION_HIGHLIGHTS } from "./anonymizationHighlights";
 import { createFolioEditor, type FolioEditorDocumentIO } from "./folioEditor";
 import { createFolioEditorEmitter } from "./folioEditorEvents";
-import type { HiddenEditorApi } from "./hiddenEditorApi";
+import { type HiddenEditorApi, NO_AUTOCOMPLETE } from "./hiddenEditorApi";
 import type { LayoutRunOptions } from "./layoutRunOptions";
 
 // Sentinels: opaque stand-ins for the heavy PM/layout objects. The controller
@@ -126,6 +126,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     scrollToSelection: record("scrollToSelection"),
     editorPositionAt: () => null,
     getAnonymizationHighlights: () => NO_ANONYMIZATION_HIGHLIGHTS,
+    autocomplete: NO_AUTOCOMPLETE,
   };
   return { api, calls };
 };

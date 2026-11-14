@@ -1115,6 +1115,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       return pageIndex == null ? null : pageIndex + 1;
     },
     getPositionPage: (position) => opts.editor.getPositionPage(position),
+    autocomplete: opts.editor.autocomplete,
     getAnonymizationMatches: () =>
       opts.editor.getAnonymizationHighlights().matches,
     getBlockRect,

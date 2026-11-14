@@ -107,6 +107,10 @@ export type FolioParityBridge = {
   finishAutocomplete: () => boolean;
   /** Dismiss the active autocomplete suggestion. */
   clearAutocomplete: () => boolean;
+  /** The suggestion's remaining ghost text, or null when there is none. */
+  readAutocompleteText: () => string | null;
+  /** Accept the suggestion's next word; false when nothing was inserted. */
+  acceptAutocompleteWord: () => boolean;
   /** Serialize to DOCX and return the byte length (0 on failure). */
   save: () => Promise<number>;
   /** Open a DOCX package through the public ref, with the editor view ready. */

@@ -148,7 +148,6 @@ import {
   heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
-import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -732,11 +731,6 @@ export function useDocxEditor(
   // manager installs it on every (re)created state.
   const suggestionPlugin = createSuggestionModePlugin(false);
   const notePlugins = [suggestionPlugin];
-  // Inline autocomplete is always installed and inert until a host dispatches
-  // start/token/finish metadata. Keep its keymap ahead of extension keymaps so
-  // Tab, Mod+ArrowRight, and Escape consume an active suggestion first.
-  const autocompletePlugin = autocompleteSuggestionPlugin({ keymap: true });
-
   // Template-directive scan + slash-menu trigger. Installed only when
   // `showTemplateDirectives` is on (see `buildExternalPlugins` /
   // `syncTemplatePlugins`). Preview plugin is inert until values are pushed.
@@ -756,7 +750,6 @@ export function useDocxEditor(
   // decorations. The template directive/slash-menu pair remains feature-gated.
   function buildExternalPlugins(): Plugin[] {
     return [
-      autocompletePlugin,
       suggestionPlugin,
       ...externalPlugins,
       ...(yjsCollaboration()?.plugins ?? []),

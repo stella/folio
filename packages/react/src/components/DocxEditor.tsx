@@ -73,6 +73,10 @@ import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
 } from "@stll/folio-core/controller/folioEditor";
+import {
+  delegateAutocomplete,
+  NO_AUTOCOMPLETE,
+} from "@stll/folio-core/controller/hiddenEditorApi";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import {
@@ -236,7 +240,6 @@ import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjec
 import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
   deleteSelectionAsSuggestion,
@@ -661,6 +664,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       anonymizationTerms,
       onAnonymizationMatchesChange,
       onAnonymizationTermClick,
+      onAutocompleteChange,
       selectedAnonymizationCanonical = null,
       anonymizationSelectionSeq,
       showTemplateDirectives = false,
@@ -974,16 +978,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => createAICitationDecorationsPlugin(),
       [],
     );
-    // Inline autocomplete. Always installed and idle by default;
-    // becomes active only when the host pushes a `start` meta via
-    // {@link startAutocompleteSuggestion}. The keymap option lets
-    // the plugin intercept Tab/⌘→/Esc; it sits early in the plugin
-    // array so it runs before list-indent Tab handlers in the
-    // extension chain.
-    const autocompletePlugin = useMemo(
-      () => autocompleteSuggestionPlugin({ keymap: true }),
-      [],
-    );
     // Template-directive widgets. Installed only for the template
     // editor (`showTemplateDirectives`); scans the doc for {{...}}
     // markers and exposes their ranges for the paged overlay.
@@ -1018,7 +1012,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     const [hostPlugins] = useState(() => plugins ?? []);
     const editorPlugins = useMemo(
       () => [
-        autocompletePlugin,
         ...hostPlugins,
         ...(yjsCollaboration?.plugins ?? []),
         suggestionPlugin,
@@ -1030,7 +1023,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         templatePreviewPlugin,
       ],
       [
-        autocompletePlugin,
         hostPlugins,
         yjsCollaboration?.plugins,
         suggestionPlugin,
@@ -4734,6 +4726,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         getPositionPage: (position) =>
           pagedEditorRef.current?.getEditor()?.getPositionPage(position) ??
           null,
+        autocomplete: delegateAutocomplete(
+          () =>
+            pagedEditorRef.current?.getEditor()?.autocomplete ??
+            NO_AUTOCOMPLETE,
+        ),
         getAnonymizationMatches: () =>
           pagedEditorRef.current?.getEditor()?.getAnonymizationHighlights()
             .matches ?? NO_ANONYMIZATION_HIGHLIGHTS.matches,
@@ -6315,6 +6312,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                               onAnonymizationMatchesChange
                             }
                             onAnonymizationTermClick={onAnonymizationTermClick}
+                            onAutocompleteChange={onAutocompleteChange}
                             selectedAnonymizationCanonical={
                               selectedAnonymizationCanonical
                             }

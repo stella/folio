@@ -1,11 +1,4 @@
-import {
-  appendAutocompleteToken,
-  clearAutocompleteSuggestion,
-  finishAutocompleteSuggestion,
-  getDocumentWatermark,
-  insertTableInView,
-  startAutocompleteSuggestion,
-} from "@stll/folio-vue";
+import { getDocumentWatermark, insertTableInView } from "@stll/folio-vue";
 import type { DocxEditorRef, FolioAnonymizationTerm } from "@stll/folio-vue";
 
 import type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
@@ -453,40 +446,28 @@ export function buildParityBridge(
         ({ start }) => `${start.blockId}:${String(start.offset)}`,
       ),
     startAutocomplete: (text) => {
-      const view = liveView();
-      if (!view) {
+      const autocomplete = getRef()?.autocomplete;
+      const requestId = autocomplete?.start({
+        requestId: autocompleteRequestId,
+      });
+      if (!autocomplete || requestId === null || requestId === undefined)
         return false;
-      }
-      view.dispatch(
-        startAutocompleteSuggestion(
-          view.state.tr,
-          view.state.selection.head,
-          autocompleteRequestId,
-        ),
-      );
-      view.dispatch(
-        appendAutocompleteToken(view.state.tr, autocompleteRequestId, text),
-      );
-      return true;
+      return autocomplete.append(requestId, text);
     },
-    finishAutocomplete: () => {
-      const view = liveView();
-      if (!view) {
-        return false;
-      }
-      view.dispatch(
-        finishAutocompleteSuggestion(view.state.tr, autocompleteRequestId),
-      );
-      return true;
-    },
+    finishAutocomplete: () =>
+      getRef()?.autocomplete.finish(autocompleteRequestId) ?? false,
     clearAutocomplete: () => {
-      const view = liveView();
-      if (!view) {
-        return false;
-      }
-      view.dispatch(clearAutocompleteSuggestion(view.state.tr));
+      const autocomplete = getRef()?.autocomplete;
+      if (!autocomplete) return false;
+      autocomplete.clear();
       return true;
     },
+    readAutocompleteText: () => {
+      const state = getRef()?.autocomplete.get();
+      return state === undefined || state.status === "idle" ? null : state.text;
+    },
+    acceptAutocompleteWord: () =>
+      getRef()?.autocomplete.accept("word") ?? false,
     save: async () => {
       const buffer = await (getRef()?.save() ?? Promise.resolve(null));
       return buffer?.byteLength ?? 0;
