@@ -57,7 +57,26 @@ export async function openEditor(
   adapter: AdapterFixture,
   fixture = DEFAULT_FIXTURE,
 ): Promise<void> {
-  await page.goto(`${adapter.baseUrl}/?session=legacy&file=${fixture}`);
+  await openEditorAt(
+    page,
+    `${adapter.baseUrl}/?session=legacy&file=${fixture}`,
+  );
+}
+
+/** {@link openEditor} on the canonical session, named in the URL. */
+export async function openCanonicalEditor(
+  page: Page,
+  adapter: AdapterFixture,
+  fixture = DEFAULT_FIXTURE,
+): Promise<void> {
+  await openEditorAt(
+    page,
+    `${adapter.baseUrl}/?session=canonical&file=${fixture}`,
+  );
+}
+
+async function openEditorAt(page: Page, url: string): Promise<void> {
+  await page.goto(url);
   await page.waitForSelector(PAGES_SELECTOR, { timeout: 30_000 });
   await expect
     .poll(

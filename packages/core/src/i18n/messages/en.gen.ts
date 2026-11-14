@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "This part of the document is locked.",
       "editing": "Editing",
       "editingDescription": "Edit the document directly",
+      "linkSuggestionUnavailable": "This link change can't be tracked. Make it in Editing, or move the comment or bookmark out of the link.",
       "outlineDepthAll": "All levels",
       "outlineDepthLabel": "Show headings",
       "outlineDepthThree": "Levels 1–3",

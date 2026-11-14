@@ -11,7 +11,7 @@
  * kept boundary is always one the repair sees.
  */
 
-import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
+import { Mark, type Node as PMNode, type Schema } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import {
@@ -445,12 +445,16 @@ const collapseEmptyMoveRanges = (tr: Transaction): void => {
       ) {
         const start = expectMoveRangeBoundaryAttrs(previous.node);
         const end = expectMoveRangeBoundaryAttrs(child);
+        // Only halves in the same tracked changes are one point: a half a
+        // pending deletion still holds, beside one it does not, stays apart,
+        // as the engine keeps that deletion around it.
         if (
           start.id === end.id &&
           ((start.type === "moveFromRangeStart" &&
             end.type === "moveFromRangeEnd") ||
             (start.type === "moveToRangeStart" &&
-              end.type === "moveToRangeEnd"))
+              end.type === "moveToRangeEnd")) &&
+          Mark.sameSet(previous.node.marks, child.marks)
         ) {
           pairs.push({
             position: previous.position,

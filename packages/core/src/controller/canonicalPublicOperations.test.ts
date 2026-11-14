@@ -18,6 +18,10 @@ import {
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
 import {
+  CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
+  CanonicalPublicOperations,
+} from "../canonical/canonicalPublicOperations";
+import {
   type CanonicalCommit,
   createCanonicalSession,
   publishCanonicalProjection,
@@ -30,10 +34,6 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
-import {
-  CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
-  CanonicalPublicOperations,
-} from "./canonicalPublicOperations";
 
 const setup = (source: string | Document = "alpha beta") => {
   const document =
@@ -210,14 +210,22 @@ describe("canonical public operation batches", () => {
       replace: "gamma",
     } as const;
     const refused = editor.apply(
-      [operation, { id: "table", type: "deleteTable", blockId: "12345678" }],
+      [
+        operation,
+        {
+          id: "table",
+          type: "insertTableColumn",
+          blockId: "12345678",
+          position: "after",
+        },
+      ],
       { atomic: true },
     );
+    // The block is in no table, so the batch is rejected whole.
     expect(refused.status).toBe("rejected");
     expect(
-      refused.issues.find(({ operationId }) => operationId === "table")
-        ?.canonicalRefusal,
-    ).toEqual({ gap: "publicOps.tableStructure" });
+      refused.issues.find(({ operationId }) => operationId === "table")?.code,
+    ).toBe("unsupportedBlock");
     expect(editor.session.document).toBe(before);
     expect(editor.state()).toBe(state);
     expect(editor.session.version).toBe(0);
@@ -449,19 +457,30 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
     editor.apply([{ ...operation, replace: "**gamma**" }]).issues.at(0)
       ?.canonicalRefusal?.gap,
   ).toBe("publicOps.unsupportedInline");
-  expect(
-    editor
-      .apply([
-        {
-          id: "table",
-          type: "insertTableRow",
-          blockId: "12345678",
-          position: "after",
-          cellTexts: ["cell"],
-        },
-      ])
-      .issues.at(0)?.canonicalRefusal?.gap,
-  ).toBe("publicOps.tableStructure");
+  // A row, column or cell operation on a block in no table is skipped as
+  // the default engine skips it, under no gap.
+  for (const outsideOperation of [
+    {
+      id: "row",
+      type: "insertTableRow",
+      blockId: "12345678",
+      position: "after",
+      cellTexts: ["cell"],
+    },
+    {
+      id: "column",
+      type: "insertTableColumn",
+      blockId: "12345678",
+      position: "after",
+      cellTexts: ["cell"],
+    },
+    { id: "split", type: "splitTableCell", blockId: "12345678" },
+    { id: "merge", type: "mergeTableCells", blockId: "12345678", rowCount: 2 },
+  ] as const) {
+    const outside = editor.apply([outsideOperation]);
+    expect(outside.skipped.at(0)?.reason).toBe("unsupportedBlock");
+    expect(outside.issues.at(0)?.canonicalRefusal).toBeUndefined();
+  }
   const before = editor.session.document;
   editor.session.beginComposition();
   expect(

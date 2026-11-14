@@ -67,9 +67,11 @@ import {
 } from "../ids";
 import { gapAfterInserted } from "../inline";
 import {
+  childNodes,
   compareGaps,
   defaultInsertionGap,
   type Gap,
+  type InlineNode,
   isCommentAnchor,
   leafSpans,
 } from "../leaves";
@@ -431,6 +433,35 @@ const stampedIds = (
   return stamps.flatMap((stamp) =>
     stampedRevisionIds(paragraphs, stamp, new Set()),
   );
+};
+
+/**
+ * No deferred seam outlives its blockers: every group a wrapper holds names
+ * only revisions still pending in the story. Once every revision in a
+ * paragraph is resolved, no group remains in it.
+ */
+const expectSettledDeferredSeams = (document: Document): void => {
+  const pending = new Set<number>();
+  const groups: { holder: number; blockers: readonly number[] }[] = [];
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const node of nodes) {
+      if (
+        node.type === "insertion" ||
+        node.type === "deletion" ||
+        node.type === "moveFrom" ||
+        node.type === "moveTo"
+      ) {
+        pending.add(node.info.id);
+        for (const group of node.resolutionJoins?.deferredRemove ?? [])
+          groups.push({ holder: node.info.id, blockers: group.blockers });
+      }
+      visit(childNodes(node) ?? []);
+    }
+  };
+  for (const { paragraph } of storyParagraphs(document.package.document))
+    visit(paragraph.content);
+  for (const group of groups)
+    expect(group.blockers.filter((id) => !pending.has(id))).toEqual([]);
 };
 
 /**
@@ -1177,6 +1208,8 @@ describe("tracked operations and their resolution", () => {
             projected(rejectedAtOnce, "π′"),
             projected(rejectedInTurn, "π′"),
           );
+          expectSettledDeferredSeams(rejectedAtOnce);
+          expectSettledDeferredSeams(rejectedInTurn);
           // A split at a paragraph's end is given back under the new paragraph's id.
           if (!keptEarlier) {
             expectRejectedTo({
@@ -1198,8 +1231,11 @@ describe("tracked operations and their resolution", () => {
             acceptedInTurn,
             REVISION_DECISIONS.ACCEPT,
           );
+          expectSettledDeferredSeams(acceptedInTurn);
           if (allAccepted !== undefined && turnAccepted !== undefined) {
             count(tally, "A*");
+            expectSettledDeferredSeams(allAccepted);
+            expectSettledDeferredSeams(turnAccepted);
             assertExactModel(
               projected(allAccepted, "π′"),
               projected(turnAccepted, "π′"),
@@ -1212,6 +1248,7 @@ describe("tracked operations and their resolution", () => {
           );
           if (allRejected !== undefined && originalRejected !== undefined) {
             count(tally, "J*");
+            expectSettledDeferredSeams(allRejected);
             expectRejectedTo({
               rejected: allRejected,
               tracked: current,
@@ -1267,13 +1304,15 @@ describe("tracked operations and their resolution", () => {
               (left, right) => left.key - right.key || left.index - right.index,
             )
             .map(({ ids }) => ids);
-          assertExactModel(
-            projected(resolved(current, all, REVISION_DECISIONS.REJECT), "π′"),
-            projected(
-              resolvedInTurn(current, order, REVISION_DECISIONS.REJECT),
-              "π′",
-            ),
+          const atOnce = resolved(current, all, REVISION_DECISIONS.REJECT);
+          const inOrder = resolvedInTurn(
+            current,
+            order,
+            REVISION_DECISIONS.REJECT,
           );
+          assertExactModel(projected(atOnce, "π′"), projected(inOrder, "π′"));
+          expectSettledDeferredSeams(atOnce);
+          expectSettledDeferredSeams(inOrder);
         },
       );
     assertProperty(law(new Map()), {
@@ -1345,20 +1384,24 @@ describe("tracked operations and their resolution", () => {
             )
             .map(({ group }) => group);
           let oneByOne = current;
-          for (const { ids, decision } of order)
+          for (const { ids, decision } of order) {
             oneByOne = resolved(oneByOne, ids, decision);
+            expectSettledDeferredSeams(oneByOne);
+          }
           const expected = projected(oneByOne, "π′");
           const acceptedFirst = resolved(
             resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
             rejected,
             REVISION_DECISIONS.REJECT,
           );
+          expectSettledDeferredSeams(acceptedFirst);
           assertExactModel(projected(acceptedFirst, "π′"), expected);
           const rejectedFirst = resolved(
             resolved(current, rejected, REVISION_DECISIONS.REJECT),
             accepted,
             REVISION_DECISIONS.ACCEPT,
           );
+          expectSettledDeferredSeams(rejectedFirst);
           assertExactModel(projected(rejectedFirst, "π′"), expected);
         },
       );

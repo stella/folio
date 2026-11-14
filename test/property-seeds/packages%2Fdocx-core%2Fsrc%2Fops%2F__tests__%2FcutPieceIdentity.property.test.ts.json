@@ -5,6 +5,12 @@
       "path": "0:0:0:2:2:2:2:2:2:2",
       "note": "A replacement of a record's first character with paragraphs, rejected change by change, joins the record's pieces again across the paragraphs it inserted.",
       "date": "2026-11-14"
+    },
+    {
+      "seed": 896455949,
+      "path": "2:0:0:0:0:2:2:2:2",
+      "note": "A replacement inside another reviewer's record, rejected change by change, joins the record's pieces again.",
+      "date": "2026-11-14"
     }
   ]
 }

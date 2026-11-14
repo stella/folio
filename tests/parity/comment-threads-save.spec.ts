@@ -122,19 +122,19 @@ const saveAndReopen = async (page: Page): Promise<SavedComments> => {
   return savedComments(bytes);
 };
 
-/** Each flow runs in the legacy session and in the canonical one. */
+/** Each flow runs in each editing engine, named in the URL. */
 const SESSIONS = [
-  { title: " in the legacy session", query: "/?session=legacy" },
-  { title: " in the canonical session", query: "/?session=canonical" },
+  { title: " in the legacy session", session: "legacy" },
+  { title: " in the canonical session", session: "canonical" },
 ] as const;
 
 const open = async (
   page: Page,
   adapter: AdapterFixture,
-  query: string,
+  session: (typeof SESSIONS)[number]["session"],
 ): Promise<void> => {
   // A blank editor, so the sidebar opens for the commented package.
-  await page.goto(`${adapter.baseUrl}${query}`);
+  await page.goto(`${adapter.baseUrl}/?session=${session}`);
   // Refusals are recorded from here on; each save checks there were none.
   await page.evaluate(() => {
     globalThis.__folioCanonicalFuzzErrors = [];
@@ -149,7 +149,7 @@ const open = async (
     await page.evaluate(
       () => globalThis.__folioCanonical?.snapshot()?.active ?? false,
     ),
-  ).toBe(query !== "");
+  ).toBe(session === "canonical");
   // Vue's sidebar opens by itself only for the first commented document an
   // editor shows; the blank editor's own document may have used that.
   const opened = await card(page, adapter, 3)
@@ -173,7 +173,7 @@ for (const session of SESSIONS) {
   forEachAdapter(
     `comment threads: a comment added in the sidebar is saved${session.title}`,
     async (adapter, { page }) => {
-      await open(page, adapter, session.query);
+      await open(page, adapter, session.session);
       await page
         .locator(".layout-page")
         .first()
@@ -204,7 +204,7 @@ for (const session of SESSIONS) {
   forEachAdapter(
     `comment threads: a deleted thread and its reply stay deleted after a save${session.title}`,
     async (adapter, { page }) => {
-      await open(page, adapter, session.query);
+      await open(page, adapter, session.session);
       const thread = card(page, adapter, 1);
       await thread.click();
       await thread.getByTitle("More options").click();
@@ -223,7 +223,7 @@ for (const session of SESSIONS) {
   forEachAdapter(
     `comment threads: a reply is saved under its thread${session.title}`,
     async (adapter, { page }) => {
-      await open(page, adapter, session.query);
+      await open(page, adapter, session.session);
       const thread = card(page, adapter, 3);
       await thread.click();
       await thread
@@ -247,7 +247,7 @@ for (const session of SESSIONS) {
   forEachAdapter(
     `comment threads: a resolved thread is saved resolved${session.title}`,
     async (adapter, { page }) => {
-      await open(page, adapter, session.query);
+      await open(page, adapter, session.session);
       const thread = card(page, adapter, 3);
       await thread.click();
       await thread.getByTitle("Resolve").click();
@@ -262,7 +262,7 @@ for (const session of SESSIONS) {
   forEachAdapter(
     `comment threads: undo brings back a deleted thread and its reply, and the save keeps them${session.title}`,
     async (adapter, { page }) => {
-      await open(page, adapter, session.query);
+      await open(page, adapter, session.session);
       const thread = card(page, adapter, 1);
       await thread.click();
       await thread.getByTitle("More options").click();
@@ -285,7 +285,7 @@ for (const session of SESSIONS) {
   forEachAdapter(
     `comment threads: undo reopens a resolved thread, and the save keeps it open${session.title}`,
     async (adapter, { page }) => {
-      await open(page, adapter, session.query);
+      await open(page, adapter, session.session);
       const thread = card(page, adapter, 3);
       await thread.click();
       await thread.getByTitle("Resolve").click();
@@ -302,7 +302,7 @@ for (const session of SESSIONS) {
   forEachAdapter(
     `comment threads: rejecting a suggested paragraph takes its comment with it, and undo brings both back${session.title}`,
     async (adapter, { page }) => {
-      await open(page, adapter, session.query);
+      await open(page, adapter, session.session);
       const suggestionId = await page.evaluate(
         () =>
           window.__folioParity?.suggestCommentedInsertion(

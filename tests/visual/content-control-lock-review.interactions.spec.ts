@@ -77,7 +77,7 @@ test("React: the toolbar and context menu refuse a change a lock holds", async (
   page,
 }) => {
   await serveFixture(page);
-  await page.goto(`/?session=legacy&file=${FIXTURE}`);
+  await page.goto(`/?session=canonical&file=${FIXTURE}`);
   await expect(insertion(page, "heldword")).toBeVisible({ timeout: 30_000 });
 
   const accept = page.getByTestId("toolbar-accept-change");

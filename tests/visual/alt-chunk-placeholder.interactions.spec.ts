@@ -106,10 +106,10 @@ const topOfText = (page: Page, text: string): Promise<number> =>
     }, text);
 
 for (const { painter, query } of [
-  { painter: "default", query: "?session=legacy" },
+  { painter: "default", query: "?session=canonical" },
   {
     painter: "display-list",
-    query: "?session=legacy&pageRenderer=display-list",
+    query: "?session=canonical&pageRenderer=display-list",
   },
 ]) {
   test(`an altChunk shows a placeholder in flow on the ${painter} painter`, async ({
@@ -155,10 +155,10 @@ const typeAtText = async (
 };
 
 for (const { painter, query } of [
-  { painter: "default", query: "?session=legacy" },
+  { painter: "default", query: "?session=canonical" },
   {
     painter: "display-list",
-    query: "?session=legacy&pageRenderer=display-list",
+    query: "?session=canonical&pageRenderer=display-list",
   },
 ]) {
   test(`a click in a placeholder types at the next block on the ${painter} painter`, async ({
@@ -180,7 +180,7 @@ for (const { painter, query } of [
 test("typing at a placeholder leaves the saved chunk untouched", async ({
   page,
 }) => {
-  await load(page, "/?session=legacy");
+  await load(page, "/?session=canonical");
   await typeAtText(page, "Content not displayed", "TYPED");
   await expect(page.locator(".layout-page").first()).toContainText(
     "TYPEDBETWEEN-CHUNKS",
@@ -201,7 +201,7 @@ test("typing at a placeholder leaves the saved chunk untouched", async ({
 });
 
 test("a long chunk in a header leaves the body its page", async ({ page }) => {
-  await page.goto("/?session=legacy");
+  await page.goto("/?session=canonical");
   await page.locator("#file-input").setInputFiles({
     name: "header-chunk.docx",
     mimeType:
@@ -215,7 +215,7 @@ test("a long chunk in a header leaves the body its page", async ({ page }) => {
 });
 
 test("the marker follows the editor's language", async ({ page }) => {
-  await load(page, "/?session=legacy");
+  await load(page, "/?session=canonical");
   await page
     .locator("select")
     .filter({ hasText: "English (en)" })

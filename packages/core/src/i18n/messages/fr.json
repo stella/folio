@@ -341,6 +341,7 @@
       "contentLocked": "Cette partie du document est verrouillée.",
       "editing": "Modification",
       "editingDescription": "Modifier directement le document",
+      "linkSuggestionUnavailable": "Cette modification de lien ne peut pas être suivie. Faites-la en mode Modification, ou déplacez le commentaire ou le signet hors du lien.",
       "outlineDepthAll": "Tous les niveaux",
       "outlineDepthLabel": "Afficher les titres",
       "outlineDepthThree": "Niveaux 1–3",

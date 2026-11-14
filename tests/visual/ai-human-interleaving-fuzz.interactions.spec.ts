@@ -151,7 +151,7 @@ for (const seed of config.seeds) {
         let stage = "load";
         try {
           const source = await shapeArrayBuffer(trace.shape);
-          await page.goto("/?session=legacy");
+          await page.goto("/?session=canonical");
           await page.waitForSelector(".layout-page");
           await page.evaluate(() =>
             globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView(),

@@ -52,7 +52,7 @@ const savedDocument = async (page: Page) => {
 test("a run keeps its character style's bold after typing beside it", async ({
   page,
 }) => {
-  await page.goto("/?session=legacy");
+  await page.goto("/?session=canonical");
   await page.locator("#file-input").setInputFiles({
     name: "strong-heading.docx",
     mimeType:

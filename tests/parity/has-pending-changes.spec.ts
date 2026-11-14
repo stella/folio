@@ -2,7 +2,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 // hasPendingChanges tracks whether the live editor has edits not yet serialized:
@@ -13,7 +13,7 @@ import {
 forEachAdapter(
   "hasPendingChanges: clean -> edit -> save",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
     // Freshly loaded document: nothing pending.
@@ -23,11 +23,10 @@ forEachAdapter(
       ),
     ).toBe(false);
 
-    // A doc edit makes changes pending.
-    const inserted = await page.evaluate(
-      () => window.__folioParity?.insertText(" pending") ?? false,
-    );
-    expect(inserted).toBe(true);
+    // A typed edit makes changes pending.
+    await page.locator(".layout-paragraph").first().click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(" pending");
     await expect
       .poll(() =>
         page.evaluate(() => window.__folioParity?.hasPendingChanges() ?? false),

@@ -16,10 +16,13 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
 import { parseDocx } from "../../packages/core/src/docx/parser";
+import { createDocx } from "../../packages/core/src/docx/rezip";
 import { getDocumentText } from "../../packages/core/src/docx/storyPlainText";
+import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../../packages/playground/src/playgroundStatus";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import { readEditorReadinessState } from "../../parity/editorReadiness";
+import { canonicalLoadFixture } from "../parity/canonicalLoadFixture";
 
 declare global {
   var __folioPlayground:
@@ -30,8 +33,13 @@ const isMac = process.platform === "darwin";
 const MOD = isMac ? "Meta" : "Control";
 
 /** Mount a fixture and force the (deferred) editor view to materialise. */
-async function mountFixture(page: Page, fixture: string): Promise<void> {
-  await page.goto(`/?session=legacy&file=${encodeURIComponent(fixture)}`);
+async function mountFixture(
+  page: Page,
+  fixture: string,
+  session?: "legacy" | "canonical",
+): Promise<void> {
+  const engine = session === undefined ? "" : `session=${session}&`;
+  await page.goto(`/?${engine}file=${encodeURIComponent(fixture)}`);
   await page.waitForSelector('[data-testid="folio-editor"]', {
     timeout: 15_000,
   });
@@ -109,26 +117,37 @@ function firstRowCellCount(page: Page): Promise<number> {
   });
 }
 
-test("showcase document loads from the recording URL and playground control", async ({
-  page,
-}) => {
-  await page.goto("/?session=legacy&showcase");
-  await expect(page.locator(".pg-filename")).toHaveText("folio-showcase.docx");
-  await expect(page.getByRole("status")).toHaveText("1 of 5");
-  await expect(
-    page.getByText("MASTER SERVICES AGREEMENT", { exact: true }),
-  ).toBeVisible();
+for (const session of ["legacy", "canonical"] as const) {
+  test(`showcase document loads from the recording URL and playground control (${session} session)`, async ({
+    page,
+  }) => {
+    await page.goto(`/?session=${session}&showcase`);
+    await expect(page.locator(".pg-filename")).toHaveText(
+      "folio-showcase.docx",
+    );
+    await expect(page.getByRole("status")).toHaveText("1 of 5");
+    // The title is painted on the first page; the editable body view may hold
+    // the same text off screen.
+    await expect(
+      page
+        .locator(".layout-page")
+        .first()
+        .getByText("MASTER SERVICES AGREEMENT", { exact: true }),
+    ).toBeVisible();
 
-  await page.goto("/?session=legacy");
-  await page.getByRole("button", { name: "Showcase", exact: true }).click();
-  await expect(page.locator(".pg-filename")).toHaveText("folio-showcase.docx");
-  await expect(page.getByRole("status")).toHaveText("1 of 5");
-});
+    await page.goto(`/?session=${session}`);
+    await page.getByRole("button", { name: "Showcase", exact: true }).click();
+    await expect(page.locator(".pg-filename")).toHaveText(
+      "folio-showcase.docx",
+    );
+    await expect(page.getByRole("status")).toHaveText("1 of 5");
+  });
+}
 
 test("fixture load failures expose a machine-readable error state", async ({
   page,
 }) => {
-  await page.goto("/?session=legacy&file=missing-parity-fixture.docx");
+  await page.goto("/?file=missing-parity-fixture.docx");
 
   await expect(page.locator(PLAYGROUND_ERROR_STATUS_SELECTOR)).toHaveText(
     "Fixture not found: missing-parity-fixture.docx",
@@ -166,24 +185,36 @@ test.describe("selection", () => {
     await page.locator(".layout-paragraph").first().click();
     await page.keyboard.press(`${MOD}+a`);
 
+    // The selection spans the document: from its first paragraph's text to
+    // its last one's, as the host reads it.
     const selection = await page.evaluate(() => {
-      const view = globalThis.__folioPlayground
-        ?.getEditorRef()
-        ?.getEditorRef()
-        ?.getView();
-      return view
-        ? {
-            from: view.state.selection.from,
-            to: view.state.selection.to,
-            size: view.state.doc.content.size,
-          }
-        : null;
+      const ref = globalThis.__folioPlayground?.getEditorRef();
+      const blocks = ref?.getDocument()?.package.document.content ?? [];
+      const texts = blocks
+        .map((block) =>
+          block.type === "paragraph"
+            ? block.content
+                .flatMap((item) =>
+                  item.type === "run"
+                    ? item.content.flatMap((part) =>
+                        part.type === "text" ? [part.text] : [],
+                      )
+                    : [],
+                )
+                .join("")
+            : "",
+        )
+        .filter((text) => text.trim() !== "");
+      return {
+        selected: ref?.getSelectionText().trim() ?? "",
+        first: texts.at(0)?.trim() ?? null,
+        last: texts.at(-1)?.trim() ?? null,
+      };
     });
-    expect(selection).toEqual({
-      from: 0,
-      to: selection?.size,
-      size: selection?.size,
-    });
+    expect(selection.first).not.toBeNull();
+    expect(selection.last).not.toBeNull();
+    expect(selection.selected.startsWith(selection.first ?? "")).toBe(true);
+    expect(selection.selected.endsWith(selection.last ?? "")).toBe(true);
 
     const pageCount = await page.locator(".layout-page").count();
     expect(pageCount).toBeGreaterThan(7);
@@ -313,29 +344,40 @@ async function caretAtParagraphStart(page: Page): Promise<void> {
 }
 
 test.describe("list autoformat", () => {
-  test("a marker typed at a paragraph start becomes a list item, and backspace undoes it", async ({
-    page,
-  }) => {
-    await mountFixture(page, "docx-editor-demo.docx");
-    await caretAtParagraphStart(page);
-    const before = await caretParagraph(page);
-    expect(before?.numPr).toBeNull();
+  for (const session of ["legacy", "canonical"] as const) {
+    for (const [marker, undo] of [
+      ["- ", "Backspace"],
+      ["1. ", "Backspace"],
+      // The canonical session keeps the typed marker as its own undo step.
+      ...(session === "canonical" ? [["- ", `${MOD}+z`] as const] : []),
+    ] as const) {
+      test(`${session}: "${marker}" typed at a paragraph start becomes a list item, and ${undo} gives back exactly what was typed`, async ({
+        page,
+      }) => {
+        await mountFixture(page, "docx-editor-demo.docx", session);
+        await caretAtParagraphStart(page);
+        const before = await caretParagraph(page);
+        expect(before?.numPr).toBeNull();
 
-    await page.keyboard.type("- ");
+        await page.keyboard.type(marker);
 
-    // A new list: whichever instance the document defines for it, at level 0.
-    await expect
-      .poll(async () => (await caretParagraph(page))?.numPr)
-      .toMatchObject({ kind: "reference", ilvl: 0 });
-    expect((await caretParagraph(page))?.text).toBe(before?.text);
+        // A new list: whichever instance the document defines, at level 0.
+        await expect
+          .poll(async () => (await caretParagraph(page))?.numPr)
+          .toMatchObject({ kind: "reference", ilvl: 0 });
+        expect((await caretParagraph(page))?.text).toBe(before?.text);
 
-    await page.keyboard.press("Backspace");
+        await page.keyboard.press(undo);
 
-    await expect
-      .poll(async () => (await caretParagraph(page))?.numPr)
-      .toBeNull();
-    expect((await caretParagraph(page))?.text).toBe(`- ${before?.text ?? ""}`);
-  });
+        await expect
+          .poll(async () => (await caretParagraph(page))?.numPr)
+          .toBeNull();
+        expect((await caretParagraph(page))?.text).toBe(
+          `${marker}${before?.text ?? ""}`,
+        );
+      });
+    }
+  }
 });
 
 test.describe("typing + undo", () => {
@@ -823,78 +865,93 @@ test.describe("image", () => {
 });
 
 test.describe("rendered page-break hints", () => {
-  test("cached hints remain advisory without duplicating structural breaks", async ({
-    page,
-  }) => {
-    await mountFixture(page, "sample.docx");
+  for (const session of ["legacy", "canonical"] as const) {
+    test(`cached hints remain advisory without duplicating structural breaks (${session} session)`, async ({
+      page,
+    }) => {
+      await mountFixture(page, "sample.docx", session);
 
-    const replaceDocument = async (
-      mode:
-        | "hintAfterContent"
-        | "hintAfterBreak"
-        | "explicitAndHintAfterContent"
-        | "explicitAndHintAfterBreak",
-    ) => {
-      await page.evaluate((nextMode) => {
-        const view = globalThis.__folioPlayground
-          ?.getEditorRef()
-          ?.getEditorRef()
-          ?.getView();
-        if (!view) {
-          throw new Error("Editor view unavailable");
-        }
-        const { schema } = view.state;
-        const first = schema.node("paragraph", null, [
-          schema.text("First page"),
-        ]);
-        const attrs = {
+      // A host replaces the document through the public loading API, so the
+      // editing engine sees the hints as any opened package carries them.
+      const replaceDocument = async (
+        mode:
+          | "hintAfterContent"
+          | "hintAfterBreak"
+          | "explicitAndHintAfterContent"
+          | "explicitAndHintAfterBreak",
+      ) => {
+        const document = createEmptyDocument({ initialText: "First page" });
+        const textParagraph = (text: string) => ({
+          type: "paragraph" as const,
+          content: [
+            {
+              type: "run" as const,
+              content: [{ type: "text" as const, text }],
+            },
+          ],
+        });
+        const hinted = {
+          ...textParagraph("Hinted paragraph"),
           renderedPageBreakBefore: true,
-          pageBreakBefore: nextMode.startsWith("explicit"),
+          ...(mode.startsWith("explicit")
+            ? { formatting: { pageBreakBefore: true } }
+            : {}),
         };
-        const hinted = schema.node("paragraph", attrs, [
-          schema.text("Hinted paragraph"),
-        ]);
-        const nodes = nextMode.endsWith("AfterContent")
-          ? [first, hinted]
-          : [first, schema.node("pageBreak"), hinted];
-        view.dispatch(
-          view.state.tr.replaceWith(0, view.state.doc.content.size, nodes),
+        const pageBreak = {
+          type: "paragraph" as const,
+          content: [
+            {
+              type: "run" as const,
+              content: [{ type: "break" as const, breakType: "page" as const }],
+            },
+          ],
+        };
+        document.package.document.content.push(
+          ...(mode.endsWith("AfterContent") ? [hinted] : [pageBreak, hinted]),
         );
-      }, mode);
-    };
+        const { bytes } = await canonicalLoadFixture(
+          await createDocx(document),
+        );
+        await page.evaluate(async (array) => {
+          await globalThis.__folioPlayground
+            ?.getEditorRef()
+            ?.loadDocumentBuffer(new Uint8Array(array));
+        }, bytes);
+      };
 
-    const waitForPages = async (count: number) => {
-      await page.waitForFunction(
-        (expected) =>
-          document.querySelectorAll(".layout-page").length === expected,
-        count,
-      );
-    };
+      const waitForPages = async (count: number) => {
+        await page.waitForFunction(
+          (expected) =>
+            document.querySelectorAll(".layout-page").length === expected,
+          count,
+        );
+      };
 
-    await replaceDocument("hintAfterContent");
-    await waitForPages(1);
+      await replaceDocument("hintAfterContent");
+      await waitForPages(1);
 
-    await replaceDocument("hintAfterBreak");
-    await waitForPages(2);
+      await replaceDocument("hintAfterBreak");
+      await waitForPages(2);
 
-    await replaceDocument("explicitAndHintAfterContent");
-    await waitForPages(2);
+      await replaceDocument("explicitAndHintAfterContent");
+      await waitForPages(2);
 
-    await replaceDocument("hintAfterContent");
-    await waitForPages(1);
+      await replaceDocument("hintAfterContent");
+      await waitForPages(1);
 
-    // The page break already opened a page, so w:pageBreakBefore starts there.
-    await replaceDocument("explicitAndHintAfterBreak");
-    await waitForPages(2);
-    await expect(
-      page
-        .locator(".layout-page")
-        .nth(1)
-        .locator(".layout-page-content .layout-line", {
-          hasText: "Hinted paragraph",
-        }),
-    ).toHaveCount(1);
-  });
+      // The page break already opened a page, so w:pageBreakBefore starts there.
+      await replaceDocument("explicitAndHintAfterBreak");
+      await waitForPages(2);
+      await expect(
+        page
+          .locator(".layout-page")
+          .nth(1)
+          .locator(".layout-page-content .layout-line", {
+            hasText: "Hinted paragraph",
+          }),
+      ).toHaveCount(1);
+    });
+  }
 });
 
 test.describe("document loading", () => {

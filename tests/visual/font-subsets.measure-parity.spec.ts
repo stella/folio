@@ -117,7 +117,7 @@ for (const host of EDITOR_HOSTS) {
   test.describe(`${host.name} bundled font subsets on a cold font set`, () => {
     test.beforeEach(async ({ page }) => {
       await installLayoutLog(page);
-      await page.goto(`${host.url}/?session=legacy&file=${FIXTURE}`);
+      await page.goto(`${host.url}/?session=canonical&file=${FIXTURE}`);
       await page.waitForSelector(".layout-page .layout-line", {
         timeout: 30_000,
       });

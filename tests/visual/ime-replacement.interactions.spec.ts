@@ -11,7 +11,7 @@ declare global {
 test("IME replacement preserves the selected text as a deletion after save @browser-input:imeReplacement", async ({
   page,
 }) => {
-  await page.goto("/?session=legacy&file=sample.docx");
+  await page.goto("/?session=canonical&file=sample.docx");
   await page.waitForSelector(".layout-page");
   await page.evaluate(() =>
     globalThis.__folioPlayground

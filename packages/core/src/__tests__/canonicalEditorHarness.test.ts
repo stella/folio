@@ -410,7 +410,7 @@ test.each(
   },
 );
 test.each(REVIEW_HYPERLINK_CASES)(
-  "$shape $command.id hyperlink refusal preserves the complete session in $mode",
+  "$shape $command.id hyperlink suggestion records the change and keeps every revision and comment in $mode",
   async ({ shape, mode, command }) => {
     const source = await parseShapeDocument(
       new Uint8Array(await shapeArrayBuffer(shape)),
@@ -422,10 +422,24 @@ test.each(REVIEW_HYPERLINK_CASES)(
         documentShape(shape).focus,
         command.placement,
       );
-      if (!placed) throw new TypeError("Review refusal fixture lost selection");
+      if (!placed) throw new TypeError("Review fixture lost selection");
       driver.dispatch(driver.state.tr.setSelection(placed.selection));
-      const before = driver.snapshot();
-      const state = driver.state;
+      // Authors and kinds of the pending changes, and the comments: a
+      // suggestion adds the suggester's own and never loses another's.
+      const census = () => {
+        const seen = new Set<string>();
+        driver.state.doc.descendants((node) => {
+          for (const mark of node.marks) {
+            if (mark.type.name === "insertion" || mark.type.name === "deletion")
+              seen.add(`${mark.type.name}:${String(mark.attrs["author"])}`);
+            if (mark.type.name === "comment")
+              seen.add(`comment:${String(mark.attrs["commentId"])}`);
+          }
+          return true;
+        });
+        return seen;
+      };
+      const before = census();
       driver.expectRefusals(
         canonicalConformanceRefusalRows({
           shape,
@@ -434,20 +448,24 @@ test.each(REVIEW_HYPERLINK_CASES)(
           placement: command.placement,
         }),
       );
-      expect(driver.execute(command.create())).toBe(false);
-      expect(driver.refusals).toEqual([
-        {
-          gap: CANONICAL_GAP.trackedHyperlinkResolution,
-          row: CANONICAL_GAP.trackedHyperlinkResolution,
-          expectation: "declared",
-          message:
-            "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
-        },
-      ]);
-      assertExactModel(driver.snapshot(), before);
-      expect(driver.state).toBe(state);
-      expect(driver.history.canUndo()).toBe(false);
-      expect(driver.history.canRedo()).toBe(false);
+      const snapshot = driver.snapshot();
+      const applied = driver.execute(command.create());
+      expect(driver.refusals).toEqual([]);
+      const after = census();
+      for (const entry of before) expect(after.has(entry)).toBe(true);
+      // The fixture's focus holds no link, so removing one changes nothing.
+      if (command.id === "remove") {
+        assertExactModel(driver.snapshot(), snapshot);
+        return;
+      }
+      expect(applied).toBe(true);
+      let linked = false;
+      driver.state.doc.descendants((node) => {
+        linked ||= node.marks.some((mark) => mark.type.name === "hyperlink");
+        return true;
+      });
+      expect(linked).toBe(true);
+      expect(driver.history.canUndo()).toBe(true);
     } finally {
       driver.dispose();
     }

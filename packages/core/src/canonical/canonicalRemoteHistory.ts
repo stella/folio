@@ -115,7 +115,11 @@ const nearestPosition = ({
   return { story: target, blockId: first, offset: 0 };
 };
 
-/** The local selection after a remote edit, moved by paragraph id and offset. */
+/**
+ * The local selection after a remote edit, moved by paragraph id and offset.
+ * Each end moves on its own: an end the edit leaves no offset to follow goes
+ * to the nearest position, and the other end still moves with its text.
+ */
 export const remoteSelection = ({
   selection,
   over,
@@ -132,16 +136,15 @@ export const remoteSelection = ({
   const mapped =
     selection === null ? undefined : remapSelection(selection, over);
   if (mapped !== undefined) return mapped;
-  const caret = nearestPosition({
-    position: selection?.head,
-    previous,
-    document,
-    story,
-  });
+  const move = (position: TextPosition | undefined) =>
+    (position === undefined
+      ? undefined
+      : transformPosition(position, [over], REMOTE_AFFINITY)) ??
+    nearestPosition({ position, previous, document, story });
   return {
     type: selection?.type === "all" ? "all" : "text",
-    anchor: caret,
-    head: caret,
+    anchor: move(selection?.anchor),
+    head: move(selection?.head),
   };
 };
 
