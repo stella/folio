@@ -492,3 +492,108 @@ describe("a join places a kept boundary only inside the pieces it merges", () =>
     }
   });
 });
+
+describe("a split seam with nothing left on one side joins nothing", () => {
+  // Three paragraphs a run of tracked edits split from one: the first holds a
+  // bookmark end inserted at its start, the last an insertion the first split
+  // cut at its very start, so no piece of it stands in the first paragraph.
+  const stamp = (id: number, second: number) => ({
+    id,
+    author: "C",
+    date: `2026-03-04T05:00:0${second}Z`,
+  });
+  const noJoins = { before: 0, after: 0, remove: 0 };
+  const tracked = (): Document => ({
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "10000001",
+            content: [
+              {
+                type: "insertion",
+                info: stamp(303649, 3),
+                content: [{ type: "bookmarkEnd", id: 1 }],
+                resolutionJoins: noJoins,
+              },
+              {
+                type: "insertion",
+                info: stamp(5002, 1),
+                content: [
+                  { type: "run", content: [{ type: "text", text: "a" }] },
+                ],
+                resolutionJoins: noJoins,
+              },
+            ],
+            pPrMark: { kind: "ins", info: stamp(5003, 2), resolutionJoin: 1 },
+          },
+          {
+            type: "paragraph",
+            paraId: "10000000",
+            content: [
+              {
+                type: "insertion",
+                info: stamp(303648, 1),
+                content: [
+                  { type: "run", content: [{ type: "text", text: "b" }] },
+                ],
+                resolutionJoins: noJoins,
+              },
+            ],
+            pPrMark: { kind: "ins", info: stamp(5001, 0), resolutionJoin: 0 },
+          },
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "insertion",
+                info: { id: 1, author: "A" },
+                content: [
+                  {
+                    type: "deletion",
+                    info: {
+                      id: 5000,
+                      author: "B",
+                      date: "2026-01-02T03:04:05Z",
+                    },
+                    content: [
+                      { type: "run", content: [{ type: "text", text: "a" }] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ] satisfies BlockContent[],
+      },
+    },
+  });
+  const rejected = (document: Document, ids: number[]): Document => {
+    const applied = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: ids,
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+  const contentOf = (document: Document) => {
+    const [paragraph, ...rest] = document.package.document.content;
+    expect(rest).toEqual([]);
+    return paragraph?.type === "paragraph" ? paragraph.content : undefined;
+  };
+
+  test("rejecting the bookmark's insertion last leaves it beside the next insertion, as rejecting at once does", () => {
+    const atOnce = contentOf(
+      rejected(tracked(), [5001, 5002, 303648, 5003, 303649]),
+    );
+    let inTurn = tracked();
+    for (const ids of [[5001], [5002, 303648], [5003], [303649]])
+      inTurn = rejected(inTurn, ids);
+    expect(contentOf(inTurn)).toEqual(atOnce);
+    expect(atOnce?.[0]).toEqual({ type: "bookmarkEnd", id: 1 });
+  });
+});
