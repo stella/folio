@@ -2485,11 +2485,10 @@ export class CanonicalPublicOperations {
       case "mergeTableCells":
       case "splitTableCell":
         break;
-      default:
-        return refusal(
-          "unsupportedBlock",
-          `Canonical public operation ${operation.type} is unavailable.`,
-        );
+      default: {
+        const unreachable: never = operation;
+        return unreachable;
+      }
     }
     const blockId =
       operation.type === "replaceRange" ||
