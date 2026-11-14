@@ -32,7 +32,6 @@ import {
   alikeDepth,
   childNodes,
   type Cursor,
-  fieldResultOf,
   type Gap,
   type InlineNode,
   isCommentAnchor,
@@ -118,8 +117,7 @@ const revisionInfosOf = (paragraph: Paragraph): TrackedChangeInfo[] => {
       } else if (node.type === "run") {
         for (const change of node.propertyChanges ?? []) out.push(change.info);
       }
-      // A field's result runs carry the changes a run patch records there.
-      visit(childNodes(node) ?? fieldResultOf(node) ?? []);
+      visit(childNodes(node) ?? []);
     }
   };
   visit(paragraph.content);
