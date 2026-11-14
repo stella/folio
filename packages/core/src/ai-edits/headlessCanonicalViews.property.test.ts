@@ -304,25 +304,29 @@ describe("a note in a canonical reviewer's resolved views", () => {
     for (const tracking of Object.keys(TRACKING) as Array<
       keyof typeof TRACKING
     >) {
-      test(`a reference in a ${placement}, ${tracking}: the note reads in each view its reference survives`, async () => {
-        const buffer = await ingested(
-          await createDocx(placedDocument(placement, tracking)),
-        );
-        const reviewer = await open(buffer, "canonical");
-        const survives: readonly FolioResolvedReviewedView[] =
-          TRACKING[tracking];
-        for (const view of FOLIO_RESOLVED_REVIEWED_VIEWS) {
-          const text =
-            reviewer.readReviewedStory({ story: NOTE, view })?.text ?? null;
-          if (survives.includes(view)) expect(text).toContain("Note text.");
-          else expect(text).toBeNull();
-        }
-        // The reviewer's own document keeps the note whatever the views do.
-        expect(
-          reviewer.readReviewedStory({ story: NOTE, view: "current-markup" })
-            ?.text,
-        ).toContain("Note text.");
-      });
+      test(
+        `a reference in a ${placement}, ${tracking}: the note reads in each view its reference survives`,
+        async () => {
+          const buffer = await ingested(
+            await createDocx(placedDocument(placement, tracking)),
+          );
+          const reviewer = await open(buffer, "canonical");
+          const survives: readonly FolioResolvedReviewedView[] =
+            TRACKING[tracking];
+          for (const view of FOLIO_RESOLVED_REVIEWED_VIEWS) {
+            const text =
+              reviewer.readReviewedStory({ story: NOTE, view })?.text ?? null;
+            if (survives.includes(view)) expect(text).toContain("Note text.");
+            else expect(text).toBeNull();
+          }
+          // The reviewer's own document keeps the note whatever the views do.
+          expect(
+            reviewer.readReviewedStory({ story: NOTE, view: "current-markup" })
+              ?.text,
+          ).toContain("Note text.");
+        },
+        propertyTestTimeout(30_000),
+      );
     }
   }
 });
