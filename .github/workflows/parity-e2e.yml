@@ -1,21 +1,66 @@
-name: Adapter parity proofs
+name: Engine measurements
+
+# Report-only: per-key typing latency, open time and save time on both editing
+# engines (the default one and the canonical session), for the React and the
+# Vue host, on one commit. No number fails a run; a job fails only when a
+# measurement could not run at all. Optionally renders the screenshot baselines
+# on both engines, and counts which documents of the checked-in fixtures and
+# the pinned public corpus a structural selective save could splice.
 
 on:
   workflow_dispatch:
+    inputs:
+      keys:
+        description: Measured keys per document
+        type: number
+        default: 300
+      mode:
+        description: Editing mode while typing
+        type: choice
+        options: [editing, suggesting]
+        default: editing
+      profile:
+        description: Write CPU profiles of a typing burst and an open
+        type: boolean
+        default: true
+      measurements:
+        description: Measure typing, open and save
+        type: boolean
+        default: true
+      rendering:
+        description: Render the screenshot baselines on both engines
+        type: boolean
+        default: false
+      census:
+        description: Count the documents a structural save would splice
+        type: boolean
+        default: true
+
+concurrency:
+  # A hand-started run checks one fixed commit: no push and no other
+  # dispatch replaces or cancels it, so each dispatch has its own group.
+  group: ${{ github.event_name == 'workflow_dispatch' && format('engine-measurements-dispatch-{0}', github.run_id) || format('engine-measurements-{0}', github.ref) }}
+  cancel-in-progress: false
 
 permissions: {}
 
 jobs:
-  parity-e2e:
-    name: Cross-adapter parity e2e (React vs Vue)
+  measure:
+    name: Measure (${{ matrix.host }} host)
+    if: inputs.measurements
+    # Both engines of a document run back to back on the same runner.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 150
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [react, vue]
 
     steps:
-      # persist-credentials: false — this job can be manually dispatched on any
-      # branch ref, so the checkout token must not linger in the git config.
+      # persist-credentials: false: this job can be dispatched on any branch
+      # ref, so the checkout token must not linger in the git config.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -29,20 +74,151 @@ jobs:
       - name: Install Playwright Chromium
         uses: ./.github/actions/playwright-deps
 
-      # The `parity` Playwright project boots both the React (4200) and Vue
-      # (4201) playground dev servers via the config's webServer array and runs
-      # each cross-adapter spec against both, asserting the two adapters behave
-      # identically through the shared `window.__folioParity` bridge. Kept on a
-      # manual cadence because it boots two dev servers
-      # and the static React<->Vue parity gates (check:parity-contract,
-      # check:export-parity) already guard the API surface on every PR.
-      - name: Parity e2e specs
-        run: bun run test:e2e:parity --workers=1 --output=fuzz-playwright/parity
+      - name: Measure both engines
+        env:
+          FOLIO_MEASURE_HOSTS: ${{ matrix.host }}
+          FOLIO_MEASURE_KEYS: ${{ inputs.keys }}
+          FOLIO_MEASURE_MODE: ${{ inputs.mode }}
+          FOLIO_MEASURE_PROFILE: ${{ inputs.profile && '1' || '0' }}
+          FOLIO_MEASURE_OUT: engine-measurements/${{ matrix.host }}
+          VITE_FOLIO_PLAYGROUND_SOURCEMAP: ${{ inputs.profile && '1' || '0' }}
+        run: bunx playwright test --project=engine-measurements --workers=1 --retries=0 --reporter=list --output="$FOLIO_MEASURE_OUT/playwright"
 
-      - name: Upload parity proof artifacts
+      # The profiles name minified functions; the source maps name them back.
+      - name: Keep the source maps of the measured build
+        if: always() && inputs.profile
+        env:
+          HOST: ${{ matrix.host }}
+        run: |
+          package=packages/playground
+          if [[ "$HOST" == "vue" ]]; then package=packages/playground-vue; fi
+          mkdir -p "engine-measurements/$HOST/sourcemaps"
+          cp "$package"/dist/assets/*.map "engine-measurements/$HOST/sourcemaps/" 2>/dev/null || true
+
+      - name: Upload measurements
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: adapter-parity-proofs
-          path: fuzz-playwright/parity
+          name: engine-measurements-${{ matrix.host }}
+          path: engine-measurements/${{ matrix.host }}
+          retention-days: 30
+
+  report:
+    name: Report
+    needs: measure
+    if: always() && inputs.measurements
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-measurements-*
+          path: downloaded
+
+      - name: Write the report
+        run: |
+          mkdir -p engine-measurements-report
+          cp downloaded/*/*.json engine-measurements-report/ 2>/dev/null || true
+          bun scripts/engine-measurements-report.ts engine-measurements-report
+          cat engine-measurements-report/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-measurements-report
+          path: engine-measurements-report
+          retention-days: 30
+
+  rendering:
+    name: Rendering baselines (${{ matrix.engine }} engine)
+    if: inputs.rendering
+    # The checked-in baselines are macOS renders.
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [legacy, canonical]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        uses: ./.github/actions/playwright-deps
+
+      - name: Render the fixtures
+        env:
+          FOLIO_RENDERING_SESSION: ${{ matrix.engine }}
+        run: bunx playwright test --project=rendering --workers=1 --retries=0 --reporter=list --output="rendering-output/$FOLIO_RENDERING_SESSION"
+
+      - name: Upload renders and differences
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rendering-${{ matrix.engine }}
+          path: rendering-output/${{ matrix.engine }}
           retention-days: 14
+
+  census:
+    name: Structural save census
+    if: inputs.census
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: stella/.github/actions/setup-bun-cached@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Set cache outside the checkout
+        run: echo "FOLIO_CORPUS_CACHE=$RUNNER_TEMP/folio-corpus" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FOLIO_CORPUS_CACHE }}
+          key: folio-corpus-${{ hashFiles('corpus/sources.lock.json') }}
+
+      - name: Fetch pinned public corpus
+        run: bun run corpus:fetch
+
+      - name: Count the documents a structural save could splice
+        run: |
+          bun scripts/structural-save-census.ts structural-save-census
+          cat structural-save-census/census.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the census
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: structural-save-census
+          path: structural-save-census
+          retention-days: 30
