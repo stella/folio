@@ -347,23 +347,46 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
   );
 
 /**
- * A tracked change takes in no comment anchor. A deletion takes in none at
- * any depth either: deleting directly removes the anchors inside the range,
- * but accepting keeps those of comment ranges that continue past it, so a
- * deletion holding one would accept to another document than the direct
- * deletion. An insertion may hold one inside a record it takes in whole:
- * rejecting keeps every boundary it held.
+ * A tracked change takes in no bare comment anchor. A deletion of a range,
+ * which records its resolution joins, takes in a record holding one:
+ * accepting it removes every comment anchor it holds, as deleting the range
+ * directly does. A deletion recording no joins, of a whole paragraph or row,
+ * takes in none at any depth: accepting it keeps the anchors of comment
+ * ranges that continue past it, which removing that content directly does
+ * not keep where they were. An insertion may hold one inside a record it
+ * takes in whole: rejecting keeps every boundary it held.
  */
-const coveredAction = (node: InlineNode, kind: WrapKind): CoveredAction => {
+const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
   if (isCommentAnchor(node)) {
     return "refuse";
   }
-  if (kind === WRAP_KINDS.DELETION) {
+  if (state.kind === WRAP_KINDS.DELETION) {
     if (isRemovedRevisionNode(node)) return "skip";
     if (isAddedRevision(node)) return "descend";
-    if (holdsCommentAnchor(node)) return "refuse";
+    if (state.resolutionJoin === undefined && holdsCommentAnchor(node))
+      return "refuse";
   }
   return "wrap";
+};
+
+/**
+ * Whether two deletions merge without changing what accepting removes. A
+ * deletion recording joins removes the comment anchors it holds; one
+ * recording none keeps those of ranges that continue past it, and a merge of
+ * the two records no joins. So a deletion recording joins that holds an
+ * anchor merges only with another recording joins.
+ */
+const mergeKeepsAnchorRemoval = (
+  left: TrackedWrapper,
+  right: TrackedWrapper,
+): boolean => {
+  if (left.type !== "deletion" || right.type !== "deletion") return true;
+  if (
+    (left.resolutionJoins === undefined) ===
+    (right.resolutionJoins === undefined)
+  )
+    return true;
+  return !holdsCommentAnchor(left.resolutionJoins === undefined ? right : left);
 };
 
 type Entry = {
@@ -426,7 +449,8 @@ const mergedCutDeletions = (
   if (
     !cut(leftJoins) ||
     !cut(rightJoins) ||
-    (leftJoins === undefined && rightJoins === undefined)
+    (leftJoins === undefined && rightJoins === undefined) ||
+    !mergeKeepsAnchorRemoval(left, right)
   )
     return undefined;
   const last = left.content.at(-1);
@@ -519,6 +543,7 @@ const mergeWithStampedNeighbour = (
         neighbour.resolutionJoins.after > 0 ||
         neighbour.resolutionJoins.remove > 0)
     ) &&
+    mergeKeepsAnchorRemoval(neighbour, wrapper) &&
     !state.created.has(neighbour) &&
     carriesStamp(neighbour.info, state.stamp);
   const left = out[index - 1];
@@ -625,7 +650,7 @@ const groupCovered = (
   };
   for (const entry of entries) {
     const { node, covered } = entry;
-    const action = covered ? coveredAction(node, state.kind) : "skip";
+    const action = covered ? coveredAction(node, state) : "skip";
     switch (action) {
       case "refuse":
         state.refusal = DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE;
