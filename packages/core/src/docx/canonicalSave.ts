@@ -15,10 +15,6 @@ import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
 } from "../types/docxSerialization";
-import {
-  canonicalResourceReplacementOf,
-  CanonicalResourceSaveRefusalError,
-} from "./canonicalResourceSave";
 import { repackWithCanonicalStoryRemovals } from "./canonicalStoryRepack";
 import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
 import type { SaveDiagnostic } from "./saveDiagnostics";
@@ -67,25 +63,6 @@ export const serializeCanonicalSave = async ({
       snapshot.heldUnreferencedNotes,
     ),
   );
-  // Package-resource operations conservatively retain structural save work through undo.
-  const replacementPart =
-    snapshot.structure === "changed"
-      ? canonicalResourceReplacementOf(document)
-      : undefined;
-  if (replacementPart) {
-    const diagnostic = {
-      type: "canonicalResourceReplacement",
-      gap: CANONICAL_GAP.resourceReplacement,
-      part: replacementPart,
-    } as const satisfies SaveDiagnostic;
-    options?.onDiagnostic?.(diagnostic);
-    throw new CanonicalResourceSaveRefusalError({
-      message:
-        "Canonical save cannot preserve this package resource replacement.",
-      gap: CANONICAL_GAP.resourceReplacement,
-      diagnostic,
-    });
-  }
   // A paragraph a pending suggestion adds is not in the file, so it is no
   // change to write: rejecting the suggestion only ever removes paragraphs
   // the suggestion itself added.
