@@ -147,7 +147,10 @@ describe("operations on the canonical reviewer", () => {
             const skip = result.skipped[0];
             if (legacy.applied.length > 0)
               countRefusal(
-                `${type} / ${mode}: ${skip?.canonicalRefusal?.gap ?? skip?.reason ?? "unknown"}`,
+                skip?.canonicalRefusal === undefined
+                  ? // Not a typed gap: name the fixture so it can be replayed.
+                    `${type} / ${mode}: untyped ${skip?.reason ?? "unknown"} on ${name}`
+                  : `${type} / ${mode}: ${skip.canonicalRefusal.gap}`,
               );
             log.push(`${type}: refused`);
             continue;
