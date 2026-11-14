@@ -207,6 +207,25 @@ export const withCanonicalTableAttributeCommand = (command: Command): Command =>
     lowerTableAttributeCommand(command, state),
   );
 
+/**
+ * Register a command whose whole effect is the selection, such as selecting a
+ * table, a row or a column: it runs as it is and changes no content. A
+ * command that would change the document has no such description.
+ */
+export const withCanonicalSelectionCommand = (command: Command): Command =>
+  withCanonicalCommand(command, (state) => {
+    let transaction: Transaction | undefined;
+    if (
+      !command(state, (dispatched) => {
+        transaction = dispatched;
+      }) ||
+      transaction === undefined ||
+      transaction.docChanged
+    )
+      return undefined;
+    return [{ type: "selection" }];
+  });
+
 /** A paragraph of the table's own, outside the given columns, that addresses it. */
 export const tableAnchor = (
   rect: TableRect,

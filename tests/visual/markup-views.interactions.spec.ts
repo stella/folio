@@ -13,7 +13,11 @@
 
 import { type Page, test } from "@playwright/test";
 
-import { expect, forEachAdapter, openEditor } from "../parity/parity-fixture";
+import {
+  expect,
+  forEachAdapter,
+  openCanonicalEditor,
+} from "../parity/parity-fixture";
 import type { AdapterFixture } from "../parity/parity-fixture";
 
 const TRACKED_FIXTURE = "markup-views.docx";
@@ -79,13 +83,13 @@ for (const { label, companion } of VIEWS) {
   forEachAdapter(
     `${label} paints the pages of the text it shows`,
     async (adapter, { page }) => {
-      await openEditor(page, adapter, companion);
+      await openCanonicalEditor(page, adapter, companion);
       await expect
         .poll(() => paintedBody(page).then((body) => body.length))
         .toBeGreaterThan(0);
       const expected = await paintedBody(page);
 
-      await openEditor(page, adapter, TRACKED_FIXTURE);
+      await openCanonicalEditor(page, adapter, TRACKED_FIXTURE);
       await expect.poll(() => paintedBody(page)).not.toEqual(expected);
       await chooseView(page, adapter, label);
 
@@ -96,7 +100,7 @@ for (const { label, companion } of VIEWS) {
 
 test("document scroll closes the Vue markup menu", async ({ page }) => {
   const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
-  await openEditor(
+  await openCanonicalEditor(
     page,
     { name: "vue", baseUrl: `http://localhost:${vuePort}` },
     TRACKED_FIXTURE,

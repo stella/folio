@@ -618,6 +618,9 @@ jobs:
       # fail (test/property-exploration.ts).
       FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
       FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
+      # The property files the change adds or changes fail on any generated
+      # case; the diff against this base names them.
+      FOLIO_FUZZ_EXPLORATION_BASE: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || '' }}
       TEST_SHARD: ${{ matrix.shard }}
       TEST_SHARDS: ${{ strategy.job-total }}
     steps:
@@ -723,9 +726,13 @@ jobs:
       # regressions and every other test still fail.
       FOLIO_FUZZ_EXPLORATION: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'report' || 'fail' }}
       FOLIO_FUZZ_EXPLORATION_DIR: ${{ github.workspace }}/test-results/fuzz-exploration
+      # The property files the change adds or changes fail on any generated
+      # case; the diff against this base names them.
+      FOLIO_FUZZ_EXPLORATION_BASE: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0 # the exploration step diffs the change's merge base
           persist-credentials: false
 
       - uses: ./.github/actions/bun
@@ -817,6 +824,7 @@ jobs:
         run: >-
           bun scripts/rust-property-exploration.ts --package stella-docx-kernel
           --crate crates/docx-kernel --records "$FOLIO_FUZZ_EXPLORATION_DIR"
+          --base "$FOLIO_FUZZ_EXPLORATION_BASE"
 
       # Filed by fuzz-ejection-replay.yml once the group's run completes.
       - name: Keep the exploration findings of a merge group
