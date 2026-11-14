@@ -308,6 +308,29 @@ export const createRoomPeers = async (coverage: RoomCoverage) => {
     for (const peer of peers)
       for (const opId of peer.local)
         expect(sequenced.has(opId) || peer.refused.has(opId)).toBe(true);
+    // oxlint-disable-next-line no-console
+    console.log(
+      `TABDIAG ${JSON.stringify({
+        journal: journal.map(({ revision, opId, actor, ops }) => ({
+          revision,
+          opId,
+          actor,
+          ops: ops.map((op) => JSON.stringify(op).slice(0, 220)),
+        })),
+        peers: peers.map((peer) => ({
+          actor: peer.actor,
+          index: peer.index,
+          held: caretOf(peer),
+          replaced: peer.replaced,
+          refused: [...peer.refused],
+          local: [...peer.local],
+          events: peer.events.map((event) =>
+            JSON.stringify(event).slice(0, 200),
+          ),
+          seen: peer.collaboration.presence?.peers(),
+        })),
+      })}`,
+    );
     for (const viewer of peers)
       for (const owner of peers) {
         if (owner === viewer) continue;

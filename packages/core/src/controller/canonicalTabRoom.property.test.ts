@@ -448,6 +448,19 @@ const leaderSkipsReplay: JournalFault = () => {
   });
 };
 
+test("TABREPLAY the failing counterexample", async () => {
+  const [peersCount, lateJoin, commands] = JSON.parse(
+    '[3,false,[{"type":"deliver","seed":0},{"type":"deliver","seed":0},{"type":"deliver","seed":0},{"type":"deliver","seed":0},{"type":"deliver","seed":8216240},{"type":"local","peer":0,"kind":"type","seed":0},{"type":"local","peer":0,"kind":"undo","seed":0},{"type":"deliver","seed":1279568},{"type":"deliver","seed":0},{"type":"deliver","seed":595962972},{"type":"local","peer":1,"kind":"type","seed":0},{"type":"local","peer":1,"kind":"type","seed":0},{"type":"kill"},{"type":"local","peer":0,"kind":"undo","seed":0},{"type":"deliver","seed":0},{"type":"repeat","seed":0},{"type":"deliver","seed":0},{"type":"local","peer":0,"kind":"undo","seed":0},{"type":"deliver","seed":0}]]',
+  ) as [number, boolean, Command[]];
+  await simulate({
+    peersCount,
+    lateJoin,
+    commands,
+    journalFault: undefined,
+    coverage: emptyCoverage(),
+  });
+});
+
 test("tabs sharing a room converge on the authority's document across leader handoffs", async () => {
   await assertProperty(law(undefined, emptyCoverage()), {
     numRuns: 12,
