@@ -58,32 +58,50 @@ const source = async () => {
 
 type Mode = "direct" | "tracked-changes";
 
-const operationArbitrary = fc.oneof(
-  fc
-    .record({
-      alignment: fc.constantFrom(...FOLIO_PARAGRAPH_ALIGNMENT_VALUES),
-      styleId: fc.constantFrom(undefined, "Heading1", null),
-    })
-    .map(
-      ({ alignment, styleId }) =>
-        (blockId: string, _text: string): FolioDocumentOperation => ({
-          id: "op",
-          type: "setBlockParagraphProperties",
-          blockId,
-          properties: {
-            alignment,
-            ...(styleId === undefined ? {} : { styleId }),
-          },
-        }),
-    ),
-  fc.constant((blockId: string, text: string): FolioDocumentOperation => ({
+const propertyEditArbitrary = fc
+  .record({
+    alignment: fc.constantFrom(...FOLIO_PARAGRAPH_ALIGNMENT_VALUES),
+    styleId: fc.constantFrom(undefined, "Heading1", null),
+  })
+  .map(
+    ({ alignment, styleId }) =>
+      (blockId: string, _text: string): FolioDocumentOperation => ({
+        id: "op",
+        type: "setBlockParagraphProperties",
+        blockId,
+        properties: {
+          alignment,
+          ...(styleId === undefined ? {} : { styleId }),
+        },
+      }),
+  );
+
+const styleReplacementArbitrary = fc.constant(
+  (blockId: string, text: string): FolioDocumentOperation => ({
     id: "op",
     type: "replaceBlock",
     blockId,
     text,
     styleId: "Heading1",
-  })),
+  }),
 );
+
+/**
+ * The resolution, then an operation for it. A style-changing replaceBlock of
+ * the paragraph an accepted join leaves is another capability (an
+ * unsupported inline payload in the canonical session), so after an accept
+ * only the property edit runs.
+ */
+const caseArbitrary = fc
+  .constantFrom("pending", "accept", "reject")
+  .chain((resolution) =>
+    fc.tuple(
+      fc.constant(resolution),
+      resolution === "accept"
+        ? propertyEditArbitrary
+        : fc.oneof(propertyEditArbitrary, styleReplacementArbitrary),
+    ),
+  );
 
 /** Each body paragraph's text and the properties these operations set. */
 const paragraphsOf = async (bytes: ArrayBuffer) => {
@@ -196,10 +214,9 @@ describe("a paragraph whose mark is pending deletion", () => {
     const sourceBytes = await source();
     await assertProperty(
       fc.asyncProperty(
-        operationArbitrary,
+        caseArbitrary,
         fc.constantFrom<Mode>("direct", "tracked-changes"),
-        fc.constantFrom("pending", "accept", "reject"),
-        async (operationFor, mode, resolution) => {
+        async ([resolution, operationFor], mode) => {
           let bytes = sourceBytes;
           if (resolution !== "pending") {
             const reviewer = await FolioDocxReviewer.fromBuffer(
