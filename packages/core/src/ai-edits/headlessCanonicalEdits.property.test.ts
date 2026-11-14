@@ -171,7 +171,13 @@ const editLaws = async (
   try {
     base = await open(buffer);
   } catch (error) {
-    if (CanonicalSessionError.is(error)) return "sessionRefused";
+    if (CanonicalSessionError.is(error)) {
+      noteRefusal(
+        refusals,
+        `open: ${JSON.stringify(error.ground)}: ${error.message}`,
+      );
+      return "sessionRefused";
+    }
     throw error;
   }
   const operation = operationFor(base, draw, {
@@ -223,10 +229,17 @@ const editLaws = async (
 };
 
 /** The generated model as a package, or nothing when the writer refuses it. */
-const packaged = async (document: Document): Promise<ArrayBuffer | null> => {
+const packaged = async (
+  document: Document,
+  refusals?: Refusals,
+): Promise<ArrayBuffer | null> => {
   try {
     return await ingested(await createDocx(structuredClone(document)));
-  } catch {
+  } catch (error) {
+    noteRefusal(
+      refusals,
+      `package: ${error instanceof Error ? error.message.slice(0, 120) : String(error)}`,
+    );
     return null;
   }
 };
@@ -236,7 +249,7 @@ const generatedEdits = (tally: Map<EditOutcome, number>, refusals?: Refusals) =>
     bodyReviewerDocumentArbitrary,
     stagingDrawArbitrary,
     async (document, draw) => {
-      const buffer = await packaged(document);
+      const buffer = await packaged(document, refusals);
       const outcome =
         buffer === null
           ? "notAPackage"
