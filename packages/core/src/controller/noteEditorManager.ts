@@ -1,5 +1,5 @@
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { EditorState } from "prosemirror-state";
 /** Framework-neutral lifecycle owner for editable footnote and endnote stories. */
 import type { EditorState as EditorStateT, Plugin } from "prosemirror-state";
 import { type DirectEditorProps, EditorView } from "prosemirror-view";
@@ -57,7 +57,10 @@ import {
   type ReadonlyDocument,
 } from "../types/documentModel";
 import type { NoteStoryKey } from "../types/editor-story";
-import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
+import {
+  createCanonicalStoryEditor,
+  refreshCanonicalStoryView,
+} from "./canonicalStoryEditor";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 
 export type { NoteStoryKey } from "../types/editor-story";
@@ -303,40 +306,11 @@ export const createNoteEditorManager = (
             CANONICAL_GAP.authorityRouting,
           )
         ) {
-          const projected = deps
-            .getCanonicalApi?.()
-            ?.getCanonicalStoryProjection({
-              kind: storyKey.kind,
-              id: storyKey.noteId,
-            });
-          if (projected && !existing.view.state.doc.eq(projected)) {
-            const transaction = existing.view.state.tr.replaceWith(
-              0,
-              existing.view.state.doc.content.size,
-              projected.content,
-            );
-            const restored = deps
-              .getCanonicalApi?.()
-              ?.getCanonicalStorySelection({
-                kind: storyKey.kind,
-                id: storyKey.noteId,
-              });
-            const anchor = Math.min(
-              existing.view.state.selection.anchor,
-              projected.content.size,
-            );
-            transaction.setSelection(
-              restored
-                ? TextSelection.create(
-                    transaction.doc,
-                    restored.anchor,
-                    restored.head,
-                  )
-                : TextSelection.near(transaction.doc.resolve(anchor)),
-            );
-            transaction.setMeta("addToHistory", false);
-            existing.view.updateState(existing.view.state.apply(transaction));
-          }
+          refreshCanonicalStoryView({
+            view: existing.view,
+            story: { kind: storyKey.kind, id: storyKey.noteId },
+            api: deps.getCanonicalApi?.(),
+          });
           existing.appliedNote = note;
           existing.appliedContent = note.content;
           existing.appliedProseDocument = existing.view.state.doc;

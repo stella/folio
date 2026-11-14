@@ -40,7 +40,7 @@ import {
   hasUnmaterializedHeaderFooter,
   hasUnmaterializedHyperlinkBindings,
   hasUnmaterializedInlineResources,
-  planAddedStyles,
+  planStyles,
   publishCanonicalImageResources,
   readRelsOrStub,
   updateCoreProperties,
@@ -720,9 +720,9 @@ export async function attemptSelectiveSave(
       return null;
     }
 
-    // Package resource operations may add styles without touching any body block.
-    // Share the full writer's append plan, preserving every existing definition.
-    const styles = await planAddedStyles(doc, zip);
+    // Package resource operations may add or replace styles without touching
+    // any body block. Share the full writer's plan, so both write the same part.
+    const styles = await planStyles(doc, zip, options.bodyAuthority);
     switch (styles.type) {
       case "unchanged":
         break;
