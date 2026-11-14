@@ -755,6 +755,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     const queued = peer.client.pending.map(({ opId, ops }) => ({
       opId,
       dependencies: dependenciesIn(ops),
+      positional: ops.every((op) => !isBlockScoped(op)),
     }));
     const noticed = peer.client.notices.length;
     let changes: readonly ClientDocumentChange[];
@@ -771,7 +772,13 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     // paragraph or a tracked change with the remote or rejected batch, or
     // with a pending batch before it: a dropped one, or a kept one the
     // remote batch may not carry past, when the batches after it cross its
-    // inverse.
+    // inverse. Block-scoped operations depend on parts, tables and numbering
+    // a value's names do not show, so the check covers answers where every
+    // batch involved edits by position only.
+    const remotePositional =
+      event.type === "broadcast"
+        ? event.batch.ops.every((op) => !isBlockScoped(op))
+        : true;
     const cause = new Set(
       dependenciesIn(
         event.type === "broadcast"
@@ -783,19 +790,21 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       .slice(noticed)
       .entries()) {
       const touched = dependenciesIn(notice.ops);
+      const ahead = queued.slice(
+        0,
+        Math.max(
+          0,
+          queued.findIndex(({ opId }) => opId === notice.opId),
+        ),
+      );
       const earlier = new Set(
-        queued
-          .slice(
-            0,
-            Math.max(
-              0,
-              queued.findIndex(({ opId }) => opId === notice.opId),
-            ),
-          )
-          .flatMap(({ dependencies }) => dependencies),
+        ahead.flatMap(({ dependencies }) => dependencies),
       );
       if (
         index > 0 &&
+        remotePositional &&
+        ahead.every(({ positional }) => positional) &&
+        notice.ops.every((op) => !isBlockScoped(op)) &&
         touched.length > 0 &&
         touched.every((id) => !cause.has(id) && !earlier.has(id))
       )
