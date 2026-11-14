@@ -57,11 +57,20 @@ export const BATCH_REJECTION_REASONS: {
     readonly STALE_BASE: "staleBase";
     readonly INVALID_OPERATION: "invalidOperation";
     readonly TABLE_REQUIRES_EXCLUSIVE_EDIT: "tableRequiresExclusiveEdit";
+    readonly BLOCK_CONFLICT: "blockConflict";
+    readonly PART_CONFLICT: "partConflict";
     readonly OUTSIDE_ID_LEASE: "outsideIdLease";
 };
 
 // @public (undocumented)
 export const BATCH_WIRE_OP_TYPES: readonly string[];
+
+// @public (undocumented)
+export type BatchAck = {
+    type: "ack";
+    opId: string;
+    rev: number;
+};
 
 // @public
 export type BatchBlockAccess<Block> = {
@@ -94,6 +103,14 @@ export type BatchOrderAddress = {
 };
 
 // @public (undocumented)
+export type BatchReject = {
+    type: "reject";
+    opId: string;
+    reason: BatchRejection;
+    headRev: number;
+};
+
+// @public (undocumented)
 export class BatchRejection extends BatchRejectionBase<{
     message: string;
     reason: BatchRejectionReason;
@@ -101,10 +118,14 @@ export class BatchRejection extends BatchRejectionBase<{
     opType?: DocumentOpType;
     overType?: DocumentOpType;
     idKind?: IdLeaseKind;
+    part?: ExclusivePart;
 }> {}
 
 // @public (undocumented)
 export type BatchRejectionReason = (typeof BATCH_REJECTION_REASONS)[keyof typeof BATCH_REJECTION_REASONS];
+
+// @public (undocumented)
+export type BatchSubmission = BatchAck | BatchReject;
 
 // @public
 export type BlockInsertionPoint = {
@@ -132,6 +153,13 @@ export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 export type ClientDocumentChange = {
     type: "rebased" | "replaced";
     batch: SequencedBatch;
+};
+
+// @public (undocumented)
+export type ClientNotice = {
+    opId: string;
+    reason: BatchRejection;
+    ops: readonly DocumentOp[];
 };
 
 // @public
@@ -595,6 +623,23 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 
 // @public
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
+
+// @public
+export const EXCLUSIVE_PARTS: Readonly<{
+    readonly NUMBERING: "numbering";
+    readonly STYLES: "styles";
+    readonly RELATIONSHIPS: "relationships";
+    readonly MEDIA: "media";
+    readonly SECTIONS: "sections";
+    readonly HEADERS_FOOTERS: "headersFooters";
+    readonly NOTES: "notes";
+    readonly SETTINGS: "settings";
+    readonly REVISIONS: "revisions";
+    readonly COMMENTS: "comments";
+}>;
+
+// @public
+export type ExclusivePart = (typeof EXCLUSIVE_PARTS)[keyof typeof EXCLUSIVE_PARTS];
 
 // @public
 export type FinalBreakCandidate<Paragraph> = {

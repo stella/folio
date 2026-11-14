@@ -64,6 +64,8 @@ type UseDocumentLoaderReturn = {
   ) => Promise<void>;
   /** Load a pre-parsed Document. */
   loadParsedDocument: (doc: Document) => void;
+  /** The notes the loaded document held without a reference, which a save keeps. */
+  heldUnreferencedNotes: () => ReadonlySet<string>;
   /** Reset internal + UI state for a fresh document. */
   resetForNewDocument: () => void;
   /** Ref holding the original ArrayBuffer for selective save / repack. */
@@ -115,6 +117,7 @@ export const useDocumentLoader = ({
       api: {
         loadBuffer: instance.loadBuffer.bind(instance),
         loadParsedDocument: instance.loadParsedDocument.bind(instance),
+        heldUnreferencedNotes: instance.heldUnreferencedNotes.bind(instance),
         resetForNewDocument: instance.resetForNewDocument.bind(instance),
       },
     };
@@ -193,6 +196,7 @@ export const useDocumentLoader = ({
   return {
     loadBuffer: api.loadBuffer,
     loadParsedDocument: api.loadParsedDocument,
+    heldUnreferencedNotes: api.heldUnreferencedNotes,
     resetForNewDocument: api.resetForNewDocument,
     originalBufferRef,
     loadedDocumentIdentity,

@@ -78,6 +78,7 @@ import {
   canonicalSelectionRange,
 } from "../prosemirror/canonicalSelectionRange";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
+import { storyConversionOptions } from "../prosemirror/conversion/storyConversionOptions";
 import {
   collectPairedBookmarkIds,
   footnoteToProseDoc,
@@ -86,6 +87,7 @@ import {
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_GAP,
@@ -358,6 +360,20 @@ export type CanonicalHistoryEffect =
  * edit is dropped with every step beneath it, never forced.
  */
 export type CanonicalHistoryDrop = { undo: number; redo: number };
+/**
+ * One published commit, as another actor would apply it: its operations
+ * against the document before it, their inverse, the session version it
+ * reached and where it came from. `opId` names the edit across actors: a
+ * fresh id for a local commit (`input`, `undo`, `redo`), the sequenced batch's
+ * own id for a `remote` one.
+ */
+export type CanonicalCommittedBatch = {
+  opId: string;
+  ops: readonly DocumentOp[];
+  inverse: readonly DocumentOp[];
+  version: number;
+  origin: CanonicalOrigin;
+};
 export type CanonicalSessionMode =
   { type: "editing" } | { type: "suggesting"; author: string };
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
@@ -1313,12 +1329,11 @@ const project = ({
   const currentStyles = Object.hasOwn(document.package, "styles")
     ? document.package.styles
     : styles;
-  const options = {
-    ...(currentStyles == null ? {} : { styles: currentStyles }),
-    ...(document.package.theme === undefined
-      ? {}
-      : { theme: document.package.theme }),
-  };
+  const options = storyConversionOptions({
+    styles: currentStyles,
+    theme: document.package.theme,
+    numbering: document.package.numbering,
+  });
   const converted = Result.try({
     try: () => {
       if (story === OP_STORIES.MAIN)
@@ -1603,6 +1618,8 @@ type StageOptions = {
   story?: OpStory;
   previousProjection?: CanonicalProjection;
   onPublish: (inverse: readonly DocumentOp[], version: number) => void;
+  /** A remote commit's sequenced id; a local commit mints a fresh one. */
+  opId?: string;
 };
 
 type JournalledOpsOptions = {
@@ -1621,6 +1638,7 @@ type CanonicalSessionSeedOptions = {
   sourceRestores?: readonly CanonicalSourceRestore[];
   caches: StoryProjectionCaches;
   idLease?: IdLease | undefined;
+  newOpId?: (() => string) | undefined;
 };
 
 /** How a session is created. */
@@ -1632,6 +1650,12 @@ export type CanonicalSessionOptions = {
    * session mints the lowest free ids.
    */
   idLease?: IdLease;
+  /**
+   * Mints the id of each local commit in the committed-batch feed. It must
+   * never repeat for one author, across reloads too: an authority answers a
+   * repeated id with its first outcome. Defaults to a random UUID.
+   */
+  newOpId?: () => string;
 };
 
 type CanonicalReplaceTextInput = {
@@ -1696,8 +1720,14 @@ class CanonicalSession {
   private readonly historyDropListeners = new Set<
     (drop: CanonicalHistoryDrop) => void
   >();
+  private readonly committedListeners = new Set<
+    (batch: CanonicalCommittedBatch) => void
+  >();
+  private readonly newOpId: () => string;
   private readonly styles: DeepReadonly<StyleDefinitions> | null | undefined;
   private readonly sourceRestores: readonly CanonicalSourceRestore[];
+  /** Notes the opened package held without a reference: content, kept on save. */
+  private readonly heldUnreferencedNotes: ReadonlySet<string>;
   /** What earlier projections converted, reused by every later one. */
   private readonly caches: StoryProjectionCaches;
 
@@ -1708,13 +1738,16 @@ class CanonicalSession {
     sourceRestores = [],
     caches,
     idLease,
+    newOpId = () => crypto.randomUUID(),
   }: CanonicalSessionSeedOptions) {
+    this.newOpId = newOpId;
     this.leased =
       idLease === undefined
         ? undefined
         : new CanonicalIdLease(idLease, document);
     this.sourceRestores = sourceRestores;
     this.caches = caches;
+    this.heldUnreferencedNotes = notesHeldWithoutReference(document);
     this.currentDocument = document;
     this.currentProjection = projection;
     const blockIds = packageParagraphIds(document.package);
@@ -1955,6 +1988,7 @@ class CanonicalSession {
         retainedBlockIdKeys.has(blockId.toUpperCase()),
       ),
       structure: this.saveStructure,
+      heldUnreferencedNotes: this.heldUnreferencedNotes,
     };
   }
 
@@ -2889,6 +2923,18 @@ class CanonicalSession {
     };
   }
 
+  /**
+   * Called with every commit once it is published, after the editor and its
+   * plugins accepted the projection and the session's history recorded it;
+   * returns the unsubscribe. A collaboration binding sends exactly these.
+   */
+  onCommitted(listener: (batch: CanonicalCommittedBatch) => void): () => void {
+    this.committedListeners.add(listener);
+    return () => {
+      this.committedListeners.delete(listener);
+    };
+  }
+
   private reportHistoryDrop(drop: CanonicalHistoryDrop): void {
     if (drop.undo === 0 && drop.redo === 0) return;
     for (const listener of this.historyDropListeners) listener(drop);
@@ -2935,6 +2981,7 @@ class CanonicalSession {
       history: "remote",
       stagedApplied: applied.value,
       previousProjection: projected.value,
+      opId: change.batch.opId,
       onPublish: () => {
         this.applied.splice(0, this.applied.length, ...history.applied);
         this.undone.splice(0, this.undone.length, ...history.undone);
@@ -3106,6 +3153,7 @@ class CanonicalSession {
     stagedApplied,
     story = OP_STORIES.MAIN,
     previousProjection,
+    opId,
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const previous =
       previousProjection === undefined
@@ -3372,6 +3420,14 @@ class CanonicalSession {
           this.saveStructure = "changed";
         this.currentVersion = baseVersion + 1;
         onPublish(applied.value.inverse, this.currentVersion);
+        const committed: CanonicalCommittedBatch = {
+          opId: opId ?? this.newOpId(),
+          ops,
+          inverse: applied.value.inverse,
+          version: this.currentVersion,
+          origin,
+        };
+        for (const listener of this.committedListeners) listener(committed);
         return Result.ok(undefined);
       },
     });
@@ -3385,7 +3441,7 @@ export { project as projectCanonicalStory };
 export const createCanonicalSession = (
   document: ReadonlyDocument,
   styles?: DeepReadonly<StyleDefinitions> | null,
-  { idLease }: CanonicalSessionOptions = {},
+  { idLease, newOpId }: CanonicalSessionOptions = {},
 ): Result<CanonicalSession, CanonicalSessionError> => {
   const owned = cloneDocumentWithParagraphPropertySources(document);
   const source = normalizeCanonicalSource(owned);
@@ -3412,6 +3468,7 @@ export const createCanonicalSession = (
       sourceRestores: canonicalSourceRestores(normalized, source.normalized),
       caches,
       idLease,
+      newOpId,
     }),
   );
 };
