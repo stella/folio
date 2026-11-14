@@ -720,7 +720,7 @@ const reportLines = (
 
 /** Load a document into the playground and wait for the first page to paint. */
 const openPlayground = async (page: Page): Promise<void> => {
-  await page.goto("/?file=docx-editor-demo.docx");
+  await page.goto("/?session=canonical&file=docx-editor-demo.docx");
   await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
   // Web fonts change advances, so a comparison taken mid-swap is meaningless.
   await page.evaluate(async () => {
