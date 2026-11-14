@@ -154,10 +154,10 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
       );
     // Inline content moves offsets like text; a slice that merges with the
     // records at its point depends on them and is block-scoped.
-    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
-      return isInlineInsertion(op)
-        ? positional([op.at.blockId])
-        : scoped([op.at.blockId]);
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT: {
+      const blocks = [op.at.blockId];
+      return isInlineInsertion(op) ? positional(blocks) : scoped(blocks);
+    }
     // Cutting or merging inline records moves no offset.
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
