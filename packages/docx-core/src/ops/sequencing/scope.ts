@@ -3,7 +3,7 @@ import { panic, Result } from "better-result";
 import type { Document } from "../../model/document";
 import { storyBody, storyParagraphs } from "../blocks";
 import { structurallyEqual } from "../equality";
-import { idKey } from "../ids";
+import { IDENTITY_SPACES, identityKeysIn, idKey } from "../ids";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -95,6 +95,26 @@ const sections = (changes: boolean): PartAccess[] =>
 
 const comment = (id: number): string => String(id);
 
+const REVISION_KEY_PREFIX = `${IDENTITY_SPACES.REVISION}:`;
+
+/**
+ * The revisions an operation's new content holds. Content put back as an
+ * undo puts back the tracked changes in it, so a concurrent decision of one
+ * of them would resolve a change in one order that the other order has
+ * already resolved: they write that revision.
+ */
+const heldRevisions = (content: unknown): PartAccess[] =>
+  identityKeysIn(content).flatMap((key) =>
+    key.startsWith(REVISION_KEY_PREFIX)
+      ? [
+          write(
+            EXCLUSIVE_PARTS.REVISIONS,
+            key.slice(REVISION_KEY_PREFIX.length),
+          ),
+        ]
+      : [],
+  );
+
 /** The footprint of every operation kind. */
 const footprintOf = (op: DocumentOp): OpFootprint => {
   const facts = payloadFacts(op);
@@ -160,14 +180,20 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
       return scoped(
         [],
-        sections(
-          op.sectionBoundaries !== undefined || op.sectionView !== undefined,
-        ),
+        [
+          ...sections(
+            op.sectionBoundaries !== undefined || op.sectionView !== undefined,
+          ),
+          ...heldRevisions(op.blocks),
+        ],
       );
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
+      return scoped([op.blockId], heldRevisions(op.review));
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
-    case DOCUMENT_OP_TYPES.DELETE_TABLE:
+      return scoped([op.blockId], heldRevisions(op.content));
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+      return scoped([op.blockId], heldRevisions(op.blocks));
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
     case DOCUMENT_OP_TYPES.INSERT_ROW:
     case DOCUMENT_OP_TYPES.DELETE_ROW:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:

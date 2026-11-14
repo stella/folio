@@ -91,8 +91,13 @@ and footers, notes, settings, revision metadata and comments) conflict when
 one operation writes a part both name, by entry where the operation names one
 (a numbering instance, a relationship id, a note, a comment): `partConflict`,
 with the part. A comment operation that may add or remove the comment part
-relationships writes the whole relationships part. Pairs of position-rebased operations the transform cannot map safely
-reject with `unsupportedPair`.
+relationships writes the whole relationships part. A revision decision reads
+the revisions it resolves, and a paragraph replacement, inline replacement,
+paragraph review or container replacement writes every revision its new
+content holds: an undo that puts a tracked change back conflicts with a
+concurrent decision of it, which would otherwise resolve the change in one
+order and find it already resolved in the other. Pairs of position-rebased
+operations the transform cannot map safely reject with `unsupportedPair`.
 
 ## Comments
 

@@ -45,6 +45,7 @@ import {
   validateDocumentBatch,
 } from "../envelope";
 import { sameParagraph } from "../points";
+import * as scope from "../scope";
 import { isBlockScoped } from "../scope";
 import { type BatchSubmission, createSequencer } from "../sequencer";
 import * as trackedTransform from "../trackedTransform";
@@ -583,6 +584,27 @@ const formatAcrossSuggestedErase: Scenario = [
   ],
 ];
 
+/**
+ * Two peers accept the same suggestion at once and the one sequenced first
+ * undoes its decision: the undo puts back the change the other peer decided.
+ */
+const undoAgainstRepeatedDecision: Scenario = [
+  3,
+  [
+    edit(1, { kind: "decide", a: 0, b: 0 }),
+    edit(0, { kind: "decide", a: 0, b: 0 }),
+    { type: "undo", peer: 0 },
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 0 },
+  ],
+];
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -592,6 +614,7 @@ const PINNED: readonly Scenario[] = [
   adjacentSuggestedErases,
   concurrentSuggestedErases,
   formatAcrossSuggestedErase,
+  undoAgainstRepeatedDecision,
 ];
 
 describe("canonical sequencing", () => {
@@ -660,6 +683,61 @@ describe("canonical sequencing", () => {
     for (const document of crossing.documents)
       expect(equalForStaleness(document, crossing.authority)).toBe(true);
   });
+
+  test("an undo that puts back a change a concurrent peer decided is refused", () => {
+    const outcome = simulate(...undoAgainstRepeatedDecision);
+    expect(outcome.diverged).toEqual([]);
+    expect(outcome.rejected).toContain(BATCH_REJECTION_REASONS.PART_CONFLICT);
+    for (const document of outcome.documents)
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+  });
+
+  test(
+    "an undo let through over a concurrent decision of its change is caught",
+    async () => {
+      // The test-only break: no pair conflicts over a revision, so an undo
+      // that puts a change back passes a concurrent decision of it.
+      const original = { ...scope };
+      mock.module("../scope", () => ({
+        ...original,
+        transformByFootprint: (
+          pair: Parameters<typeof original.transformByFootprint>[0],
+        ) => {
+          const result = original.transformByFootprint(pair);
+          return result?.isErr() &&
+            result.error.part === envelope.EXCLUSIVE_PARTS.REVISIONS
+            ? undefined
+            : result;
+        },
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: NUM_RUNS,
+            examples: [[undoAgainstRepeatedDecision]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+        // Caught by the commutation check, not by anything else.
+        expect(String(result.errorInstance)).toMatch(/do not commute/u);
+      } finally {
+        mock.module("../scope", () => original);
+      }
+      // Without the break the same scenario passes.
+      const restored = await fc.check(
+        convergence(),
+        propertyConfig({
+          numRuns: 1,
+          examples: [[undoAgainstRepeatedDecision]],
+        }),
+      );
+      expect(restored.failed).toBe(false);
+    },
+    propertyTestTimeout(180_000),
+  );
 
   test(
     "adjacent tracked deletions accepted without the cut rule are caught",
