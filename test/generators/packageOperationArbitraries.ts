@@ -19,6 +19,7 @@ import { applyDocumentOp } from "../../packages/docx-core/src/ops/apply";
 import {
   storyBody,
   storyParagraphs,
+  withBodyContent,
 } from "../../packages/docx-core/src/ops/blocks";
 import { freshCommentId } from "../../packages/docx-core/src/ops/comments";
 import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
@@ -882,12 +883,10 @@ export const PACKAGE_OP_CASES = {
       document: replaceStoryBody({
         document: args.document,
         story: args.story,
-        body: {
-          ...body,
-          content: body.content.map((block) =>
-            block === target ? withControl : block,
-          ),
-        },
+        body: withBodyContent(
+          body,
+          body.content.map((block) => (block === target ? withControl : block)),
+        ),
       }),
       op: {
         type: "setContentControl",

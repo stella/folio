@@ -15,6 +15,7 @@ import type {
   Paragraph,
   SdtProperties,
 } from "../model/document";
+import { withBodyContent } from "./blocks";
 import type { DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { idKey } from "./ids";
@@ -294,7 +295,8 @@ export const setContentControl = (
     document: replaceStoryBody({
       document,
       story: op.story,
-      body: { ...body, content: [...content] },
+      // The body's section view holds its blocks too, so it follows them.
+      body: withBodyContent(body, [...content]),
     }),
     inverse: [inverse],
     touched: {
