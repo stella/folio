@@ -207,7 +207,33 @@ export type CorpusInvariantOutcome =
       status: "declared-refusal";
       refusal: CorpusDeclaredRefusal;
       timings: StageTimings;
+    }
+  | {
+      /**
+       * The invariant stopped between two steps once its budget was spent:
+       * no verdict. Findings it recorded before the stop still count.
+       */
+      status: "budget-stopped";
+      failures: CorpusFailure[];
+      /** What it had checked when it stopped, e.g. `2 of 6 sequences`. */
+      checked: string;
+      timings: StageTimings;
     };
+
+/**
+ * A budget a long invariant reads between its own steps. Budgets stay
+ * advisory inside a step; between steps an invariant that has spent its
+ * budget stops, so one slow package cannot starve the file's other
+ * invariants.
+ */
+export type InvariantBudgetClock = { spent: () => boolean };
+
+export const invariantBudgetClock = (
+  budgetMs: number,
+): InvariantBudgetClock => {
+  const started = Bun.nanoseconds();
+  return { spent: () => (Bun.nanoseconds() - started) / 1e6 > budgetMs };
+};
 
 export type CorpusInvariantModule = {
   invariant: ExtendedCorpusInvariant;
