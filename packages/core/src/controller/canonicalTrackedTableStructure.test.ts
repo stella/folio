@@ -195,7 +195,9 @@ describe("table operations on tables holding more than words", () => {
         JSON.stringify(refusal),
       );
       if (refusals.length > 0) {
-        differences.push(`${label}: refused ${refusals.join("; ")}`);
+        differences.push(
+          `${label}: refused ${refusals.join("; ")} ${canonical.messages.join("; ")}`,
+        );
         return;
       }
       if (

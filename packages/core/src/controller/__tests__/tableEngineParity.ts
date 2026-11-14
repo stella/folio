@@ -256,6 +256,7 @@ export const viaCanonicalEngine = async (
   });
   return {
     skipped: result.skipped.map(({ reason }) => reason),
+    messages: result.skipped.map(({ message }) => message ?? ""),
     refusals: result.issues.flatMap(({ canonicalRefusal }) =>
       canonicalRefusal === undefined ? [] : [canonicalRefusal],
     ),
