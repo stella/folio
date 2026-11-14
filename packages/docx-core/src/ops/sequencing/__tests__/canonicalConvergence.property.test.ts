@@ -140,6 +140,11 @@ type Outcome = {
   rebasedChanges: Tally;
   /** Batches submitted again after a lost answer. */
   resubmitted: number;
+  /** Measurement: drops by kind of answer, the first in an answer and the rest. */
+  firstDrops: number;
+  cascadeDrops: number;
+  rejectCascadeDrops: number;
+  dropReasons: Record<string, number>;
 };
 
 const noTrackedOrder = (): Record<
@@ -570,6 +575,10 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     replaced: noTally(),
     rebasedChanges: noTally(),
     resubmitted: 0,
+    firstDrops: 0,
+    cascadeDrops: 0,
+    rejectCascadeDrops: 0,
+    dropReasons: {},
   };
   const delivery: Delivery[] = [];
   // The batch each peer last submitted, which a reconnection submits again.
@@ -744,15 +753,17 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       .slice(noticed)
       .entries()) {
       const touched = paragraphsIn(notice.ops);
-      const earlier = new Set(queued
-        .slice(
-          0,
-          Math.max(
+      const earlier = new Set(
+        queued
+          .slice(
             0,
-            queued.findIndex(({ opId }) => opId === notice.opId),
-          ),
-        )
-        .flatMap(({ paragraphs }) => paragraphs));
+            Math.max(
+              0,
+              queued.findIndex(({ opId }) => opId === notice.opId),
+            ),
+          )
+          .flatMap(({ paragraphs }) => paragraphs),
+      );
       if (
         index > 0 || event.type === "broadcast"
           ? touched.length > 0 &&
@@ -763,6 +774,15 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           `${notice.opId} (${describeOps(notice.ops)}) dropped by ${event.type === "broadcast" ? describeOps(event.batch.ops) : "a rejection"}: ${notice.reason.message}`,
         );
       for (const id of touched) cause.add(id);
+      if (event.type === "broadcast") {
+        if (index === 0) outcome.firstDrops += 1;
+        else outcome.cascadeDrops += 1;
+      } else if (index > 0) outcome.rejectCascadeDrops += 1;
+      const where = ["rejected", "rejectCascade", "first", "cascade"][
+        (event.type === "broadcast" ? 2 : 0) + (index === 0 ? 0 : 1)
+      ];
+      const key = `${String(where)} | ${String(notice.reason.opType)} over ${String(notice.reason.overType)} | ${notice.reason.message}`;
+      outcome.dropReasons[key] = (outcome.dropReasons[key] ?? 0) + 1;
     }
     // Every change takes the peer's document exactly where the client is:
     // a rebased one is never trusted short of it.
@@ -1376,6 +1396,83 @@ const PINNED: readonly Scenario[] = [
 ];
 
 describe("canonical sequencing", () => {
+  test(
+    "PAIRMEASURE same-paragraph loss shares",
+    () => {
+      const report = (name: string, scenarios: readonly Scenario[]): void => {
+        const totals = {
+          runs: scenarios.length,
+          enqueued: 0,
+          lost: 0,
+          sequencerRefused: 0,
+          firstDrops: 0,
+          cascadeDrops: 0,
+          rejectCascadeDrops: 0,
+          replaced: 0,
+          rebasedChanges: 0,
+          threw: 0,
+        };
+        const reasons: Record<string, number> = {};
+        for (const scenario of scenarios) {
+          let outcome: Outcome;
+          try {
+            outcome = simulate(...scenario);
+          } catch (error) {
+            totals.threw += 1;
+            const key = `threw | ${String(error).slice(0, 160)}`;
+            reasons[key] = (reasons[key] ?? 0) + 1;
+            continue;
+          }
+          totals.enqueued += outcome.enqueued.length;
+          totals.lost += outcome.dropped.length;
+          totals.sequencerRefused += outcome.rejected.length;
+          totals.firstDrops += outcome.firstDrops;
+          totals.cascadeDrops += outcome.cascadeDrops;
+          totals.rejectCascadeDrops += outcome.rejectCascadeDrops;
+          for (const count of Object.values(outcome.replaced))
+            totals.replaced += count;
+          for (const count of Object.values(outcome.rebasedChanges))
+            totals.rebasedChanges += count;
+          for (const [key, count] of Object.entries(outcome.dropReasons))
+            reasons[key] = (reasons[key] ?? 0) + count;
+        }
+        // oxlint-disable-next-line no-console
+        console.log(
+          `PAIRMEASURE ${name} ${JSON.stringify({ totals, reasons }, undefined, 1)}`,
+        );
+      };
+      const runs = 150;
+      const kinds: readonly [EditKind, ...EditKind[]] = [
+        "type",
+        "type",
+        "erase",
+        "erase",
+        "replace",
+        "tab",
+        "format",
+      ];
+      report(
+        "mixed",
+        fc.sample(sameParagraphScenarioArbitrary, { seed: 20, numRuns: runs }),
+      );
+      report(
+        "suggestingMixed",
+        fc.sample(scenarioArbitrary(focusedSeeds(kinds, fc.boolean())), {
+          seed: 20,
+          numRuns: runs,
+        }),
+      );
+      report(
+        "suggestingOnly",
+        fc.sample(
+          scenarioArbitrary(focusedSeeds(kinds, fc.constant(true)), false),
+          { seed: 20, numRuns: runs },
+        ),
+      );
+    },
+    propertyTestTimeout(900_000),
+  );
+
   test(
     "concurrent canonical edits converge on the authority's bytes and commute where accepted",
     async () => {
