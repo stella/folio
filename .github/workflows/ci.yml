@@ -322,6 +322,46 @@ jobs:
       - name: Dependency audit
         run: bun run audit
 
+  # Dated exceptions in the shared toolchain policy and the quarantine
+  # excludes expire on a calendar date, so these verdicts change without any
+  # change here. In their own job an expiry fails the run without hiding the
+  # lint and source guards (expiring-exceptions.yml warns a week ahead).
+  dated-policies:
+    name: Toolchain and quarantine policy
+    needs: ci-plan
+    if: needs.ci-plan.outputs.reused_run == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+          install-cache: actions
+
+      - run: bun install --frozen-lockfile
+
+      - name: Shared toolchain policy
+        run: bun run check:toolchain
+
+      - name: Quarantine-exclude guard
+        # The 5-day release-age quarantine is excluded per package for the
+        # first-party @stll/* code folio pulls from npm, and bun matches those
+        # entries EXACTLY (a `@stll/*` glob is accepted and ignored). List a
+        # napi package without its platform subpackages and the parent installs
+        # while its binaries stay quarantined — and a quarantined
+        # optionalDependency is skipped SILENTLY, so the package imports fine
+        # and throws on first use. This fails when the exclude list stops
+        # covering everything in the lock. Temporary third-party exemptions
+        # carry an exact expiry so the same check also fails once Bun's
+        # release-age gate can take over again. The guard's own self-test runs
+        # with `bun run test` below.
+        run: bun run check:quarantine-excludes
+
   lint:
     name: Lint and source guards
     needs: ci-plan
@@ -346,9 +386,6 @@ jobs:
       # field drifting behind its package.json (a plain `bun install` doesn't
       # rewrite that field either. The release path uses the same script in
       # byte-preserving --write mode; CI keeps it in check-only mode.
-      - name: Shared toolchain policy
-        run: bun run check:toolchain
-
       - name: Lockfile workspace-version check
         run: bun run check:lockfile-versions
 
@@ -357,20 +394,6 @@ jobs:
 
       - name: Lockfile deduplication check
         run: bun run check:dedupe
-
-      - name: Quarantine-exclude guard
-        # The 5-day release-age quarantine is excluded per package for the
-        # first-party @stll/* code folio pulls from npm, and bun matches those
-        # entries EXACTLY (a `@stll/*` glob is accepted and ignored). List a
-        # napi package without its platform subpackages and the parent installs
-        # while its binaries stay quarantined — and a quarantined
-        # optionalDependency is skipped SILENTLY, so the package imports fine
-        # and throws on first use. This fails when the exclude list stops
-        # covering everything in the lock. Temporary third-party exemptions
-        # carry an exact expiry so the same check also fails once Bun's
-        # release-age gate can take over again. The guard's own self-test runs
-        # with `bun run test` below.
-        run: bun run check:quarantine-excludes
 
       - name: Normalisation warning coverage
         # Folio's tolerance rule is that input Word accepts is normalised
@@ -1218,6 +1241,7 @@ jobs:
       - docs-format
       - lint
       - dependency-audit
+      - dated-policies
       - typecheck
       - build-api
       - browser-discovery
@@ -1251,6 +1275,7 @@ jobs:
             "docs-format":{"area":"code_required","value":"false","reuse":"forbidden"},
             "lint":{"reuse":"forbidden"},
             "dependency-audit":{"reuse":"forbidden"},
+            "dated-policies":{"reuse":"forbidden"},
             "warm-main-caches":{"event":"push","reuse":"required","warm":"required"},
             "typecheck":{"area":"code_required"},
             "build-api":{"area":"api_required"},

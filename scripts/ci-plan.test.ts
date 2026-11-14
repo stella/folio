@@ -52,13 +52,14 @@ setDefaultTimeout(subprocessTestTimeout(14));
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
 // The changeset gate runs beside the plan: it has its own pull-request-only
-// condition and nothing to scope. Lint and the dependency audit check policy
-// unless a push reuses CI.
+// condition and nothing to scope. Lint, the dependency audit and the dated
+// policies check policy unless a push reuses CI.
 const UNPLANNED_JOBS = new Set([
   PLAN_JOB,
   "changeset",
   "lint",
   "dependency-audit",
+  "dated-policies",
   "warm-main-caches",
   "ci-result",
 ]);
@@ -386,6 +387,32 @@ describe("CI plan", () => {
     expect(jobs["dependency-audit"]?.if).toBe(jobs["lint"]?.if);
     expect(jobs["dependency-audit"]?.needs).toBe(PLAN_JOB);
     expect(jobs["ci-result"]?.needs).toContain("dependency-audit");
+  });
+
+  // A dated exception expires with no change here; in their own job the
+  // toolchain policy and the quarantine guard fail the run without hiding
+  // the lint and source guards.
+  test("the dated policy checks run beside lint, never inside it", () => {
+    const runs = (id: string) => {
+      const steps = jobs[id]?.steps;
+      if (!Array.isArray(steps)) throw new TypeError(`Missing ${id} steps`);
+      return steps.flatMap((step) =>
+        isRecord(step) && typeof step["run"] === "string" ? [step["run"]] : [],
+      );
+    };
+    for (const check of [
+      "bun run check:toolchain",
+      "bun run check:quarantine-excludes",
+    ])
+      expect(runs("lint")).not.toContain(check);
+    expect(runs("dated-policies")).toEqual([
+      "bun install --frozen-lockfile",
+      "bun run check:toolchain",
+      "bun run check:quarantine-excludes",
+    ]);
+    expect(jobs["dated-policies"]?.if).toBe(jobs["lint"]?.if);
+    expect(jobs["dated-policies"]?.needs).toBe(PLAN_JOB);
+    expect(jobs["ci-result"]?.needs).toContain("dated-policies");
   });
 
   test("discovery includes new nested test files under every command root", () => {
@@ -1454,6 +1481,7 @@ describe("CI plan", () => {
     }
     expect(scopes["lint"]).toEqual({ reuse: "forbidden" });
     expect(scopes["dependency-audit"]).toEqual({ reuse: "forbidden" });
+    expect(scopes["dated-policies"]).toEqual({ reuse: "forbidden" });
     expect(scopes["docs-format"]).toEqual({
       area: "code_required",
       value: "false",
