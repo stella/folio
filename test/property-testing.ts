@@ -12,7 +12,6 @@ import {
 
 export { PROPERTY_SEEDS_FILE, seedFileFor } from "./seed-registry";
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -429,14 +428,17 @@ const runningTests = new Map<string, RunBudget>();
 
 type OnTestFinished = (callback: () => void) => void;
 
-/** Bun's `onTestFinished`, absent outside Bun (the Playwright specs). */
-const onTestFinished = (): OnTestFinished | undefined => {
-  if (process.versions["bun"] === undefined) return undefined;
-  const bunTest = createRequire(import.meta.url)("bun:test") as {
-    onTestFinished: OnTestFinished;
-  };
-  return bunTest.onTestFinished;
-};
+/**
+ * Bun's `onTestFinished`, loaded once this module is; absent outside Bun (the
+ * Playwright specs import this module too) and until the import settles,
+ * which is before any test runs.
+ */
+let onTestFinished: OnTestFinished | undefined;
+if (process.versions["bun"] !== undefined) {
+  void import("bun:test").then((bunTest) => {
+    onTestFinished = bunTest.onTestFinished;
+  });
+}
 
 /**
  * The budget of the Bun test this run belongs to, or `undefined` outside a
@@ -452,9 +454,9 @@ const runBudget = (): RunBudget | undefined => {
   // run of the same definition is a new test with a deadline of its own.
   if (running !== undefined && now - running.startedAt <= running.budgetMs)
     return running;
+  const register = onTestFinished;
+  if (register === undefined) return undefined;
   try {
-    const register = onTestFinished();
-    if (register === undefined) return undefined;
     register(() => {
       runningTests.delete(test.key);
     });
