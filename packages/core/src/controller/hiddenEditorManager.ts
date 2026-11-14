@@ -147,6 +147,7 @@ import {
   remoteSelectionColor,
 } from "./canonicalRoomEditor";
 import {
+  isCanonicalListParagraph,
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,
 } from "./canonicalStructure";
@@ -1130,7 +1131,7 @@ export const createHiddenEditorManager = (
             selection.value.head.blockId,
           )?.source;
           prepared =
-            source?.formatting?.numPr?.kind === "reference" &&
+            isCanonicalListParagraph(source) &&
             state.selection.$from.parent.content.size === 0
               ? prepareCanonicalCommands(session, state, [
                   { type: "removeList" },
@@ -1151,7 +1152,8 @@ export const createHiddenEditorManager = (
           const paragraph = session.projection.paragraph(
             selection.value.head.blockId,
           )?.source;
-          if (paragraph?.formatting?.numPr?.kind === "reference") {
+          // A paragraph its style numbers leaves the list as one of its own.
+          if (isCanonicalListParagraph(paragraph)) {
             prepared = prepareCanonicalCommands(session, state, [
               { type: "removeList" },
             ]);

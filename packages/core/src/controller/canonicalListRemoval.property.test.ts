@@ -21,7 +21,10 @@ import type { CanonicalCommandIntent } from "../prosemirror/canonicalCommands";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph, Style } from "../types/document";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
-import { prepareCanonicalCommands } from "./canonicalStructure";
+import {
+  isCanonicalListParagraph,
+  prepareCanonicalCommands,
+} from "./canonicalStructure";
 
 /**
  * Paragraph styles by whether their chain numbers a paragraph: none named, a
@@ -115,6 +118,11 @@ test(
           if (!style.numbers) expect(original).toBeUndefined();
 
           const session = createCanonicalSession(opened).unwrap();
+          // Enter and Backspace take a paragraph its style numbers out of the
+          // list as they take one numbered by its own properties.
+          expect(isCanonicalListParagraph(first(session.document))).toBe(
+            style.numbers,
+          );
           let state = EditorState.create({
             schema,
             doc: session.projection.doc,
@@ -139,6 +147,7 @@ test(
 
           const cleared = first(session.document);
           expect(cleared.listRendering).toBeUndefined();
+          expect(isCanonicalListParagraph(cleared)).toBe(false);
           // Only a style that numbers the paragraph needs the cancellation.
           expect(cleared.formatting?.numPr).toEqual(
             style.numbers ? { kind: "none" } : original,

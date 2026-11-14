@@ -143,6 +143,11 @@ const numberingRemoval = (session: CanonicalSession) => {
       : null;
 };
 
+/** Whether a paragraph is in a list, by numbering of its own or its style's. */
+export const isCanonicalListParagraph = (
+  paragraph: Paragraph | undefined,
+): boolean => effectiveNumbering(paragraph).kind === "reference";
+
 type ParagraphPosition = {
   container: readonly BlockContent[];
   index: number;
