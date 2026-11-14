@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "Táto časť dokumentu je uzamknutá.",
       "editing": "Úpravy",
       "editingDescription": "Upravujte dokument priamo",
+      "linkSuggestionUnavailable": "Túto zmenu odkazu nemožno sledovať. Vykonajte ju v režime Úpravy alebo presuňte komentár či záložku mimo odkazu.",
       "outlineDepthAll": "Všetky úrovne",
       "outlineDepthLabel": "Zobraziť nadpisy",
       "outlineDepthThree": "Úrovne 1–3",

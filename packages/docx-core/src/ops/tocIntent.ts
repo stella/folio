@@ -3,8 +3,9 @@ import { panic, Result } from "better-result";
 import type { Document, Paragraph, ParagraphContent } from "../model/document";
 import type { HeadingOutlineLevel } from "../model/outlineLevel";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
-import { applyDocumentOp } from "./apply";
+import { applyDocumentOp, applyDocumentOps } from "./apply";
 import { storyBody, storyParagraphs } from "./blocks";
+import { type CompileIntent, nextCompoundMode } from "./compoundIntent";
 import type { EditorIntentMode } from "./editorIntent";
 import { resolveGap } from "./gaps";
 import {
@@ -18,6 +19,7 @@ import { paragraphLength, paragraphLogicalText } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { sameStory } from "./stories";
 import {
+  type BlockInsertionPoint,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   OP_STORIES,
@@ -140,10 +142,15 @@ export const mapTocBookmarkPosition = (
   if (position.offset !== 0) return position;
   let prepended = 0;
   for (const op of ops) {
+    // Only a heading's bookmark wrapper; a suggestion's own records in the
+    // same paragraph add no marker before its first gap.
     if (
       op.type !== DOCUMENT_OP_TYPES.REPLACE_INLINE ||
       !sameStory(op.story, position.story) ||
-      idKey(op.blockId) !== idKey(position.blockId)
+      idKey(op.blockId) !== idKey(position.blockId) ||
+      op.content.length !== op.expected.length + 2 ||
+      op.content.at(0)?.type !== "bookmarkStart" ||
+      op.content.at(-1)?.type !== "bookmarkEnd"
     )
       continue;
     // bookmarkAtStart adds one opening marker before every original gap at offset zero.
@@ -248,20 +255,23 @@ const identifyTocParagraphs = (
   return paragraphs;
 };
 
+/**
+ * The table of contents at `intent.at`, its headings bookmarked. A suggestion
+ * records each paragraph it inserts, and the split it makes in a paragraph,
+ * as the editor records any; the bookmarks, which no tracked change records,
+ * are added as they are in an edit made directly.
+ */
 export const compileGenerateTOCIntent = (
   document: Document,
   intent: GenerateTOCIntent,
   mode: EditorIntentMode,
+  compileIntent: CompileIntent,
 ): Result<
   { ops: DocumentOp[]; selection: TextPosition },
   DocumentOpRefusal
 > => {
   if (intent.headings.length === 0)
     return Result.ok({ ops: [], selection: intent.at });
-  if (mode.type === "suggesting")
-    return refuse(
-      "TOC suggestions require serializable wrapper review provenance.",
-    );
   if (intent.at.story !== OP_STORIES.MAIN)
     return refuse(
       "TOC generation is supported in the main document story only.",
@@ -414,6 +424,58 @@ export const compileGenerateTOCIntent = (
     return refuse("TOC insertion cannot split pending review wrappers.");
   const toc = tocParagraphs(intent, links);
   const story = intent.at.story;
+  if (mode.type === "suggesting") {
+    let current = document;
+    let anchor: BlockInsertionPoint =
+      gap.offset === 0
+        ? { type: "before", blockId: intent.at.blockId }
+        : { type: "after", blockId: intent.at.blockId };
+    let selection: TextPosition = { ...insertionAt, ...gap };
+    let partMode: EditorIntentMode = mode;
+    if (gap.offset !== 0 && gap.offset !== targetLength) {
+      const newBlockId = takeParagraphIds({
+        document,
+        count: 1,
+        reserved: mode.reservedBlockIds,
+        lease: mode.idLease,
+      })?.at(0);
+      if (newBlockId === undefined)
+        return refuse("The paragraph identity space is exhausted.");
+      const split = compileIntent(
+        current,
+        {
+          type: "splitParagraph",
+          at: { ...insertionAt, ...gap },
+          newBlockId,
+          newHalf: SPLIT_HALVES.FIRST,
+        },
+        partMode,
+      );
+      if (split.isErr()) return split;
+      const applied = applyDocumentOps(current, split.value.ops);
+      if (applied.isErr()) return Result.err(applied.error);
+      ops.push(...split.value.ops);
+      const next = nextCompoundMode(partMode, current, applied.value.document);
+      if (next.isErr()) return Result.err(next.error);
+      partMode = next.value;
+      current = applied.value.document;
+      anchor = { type: "before", blockId: intent.at.blockId };
+      selection = {
+        story,
+        blockId: intent.at.blockId,
+        offset: 0,
+        zeroWidthBefore: 0,
+      };
+    }
+    const inserted = compileIntent(
+      current,
+      { type: "insertParagraphs", story, at: anchor, paragraphs: toc },
+      partMode,
+    );
+    if (inserted.isErr()) return inserted;
+    ops.push(...inserted.value.ops);
+    return Result.ok({ ops, selection });
+  }
   if (gap.offset === 0 || gap.offset === targetLength) {
     const ids = takeParagraphIds({
       document,

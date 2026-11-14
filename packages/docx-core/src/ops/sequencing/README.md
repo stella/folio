@@ -339,4 +339,6 @@ its own selection with, and `presence.peers()` gives each peer's selection
 in the viewer's projection (`positionAt`). A peer publishes again after each
 remote edit and each revision the room confirms, and the host calls
 `presence.update()` when the selection moves. Presence uses no Yjs relative
-positions.
+positions. Deliveries may reorder a sender's states; a tab room keeps each
+sender's latest by its clock, so a peer that starts following presence later
+is handed the latest state, not the one that arrived last.
