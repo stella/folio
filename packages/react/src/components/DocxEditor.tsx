@@ -3850,7 +3850,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                 );
             }
             tripwireResult = result.tripwireResult;
-            // Keep the parsed baseline: canonical touched ids are cumulative against it.
+            // Keep the parsed baseline: canonical touched ids are cumulative
+            // against it. The session's journal records what was saved.
             if (
               view &&
               pagedEditorRef.current?.getEditor() === editor &&
@@ -3858,6 +3859,9 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               view.state.doc === editorState?.doc &&
               editor.isCanonicalSaveCurrent(snapshot.version)
             ) {
+              editor.markCanonicalSaved(snapshot.version);
+              // The VS Code host still reads its save strategy from this
+              // tracker.
               view.dispatch(clearTrackedChanges(view.state));
             }
             savedBuffer = result.buffer;
@@ -4058,6 +4062,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           if (!view) {
             return false;
           }
+          const canonical = pagedEditorRef.current
+            ?.getEditor()
+            .hasCanonicalPendingChanges();
+          if (canonical !== null && canonical !== undefined)
+            return getCommentsDirty() || canonical;
           return (
             getCommentsDirty() ||
             getChangedParagraphIds(view.state).size > 0 ||
