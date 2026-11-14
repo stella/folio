@@ -56,7 +56,10 @@ import {
   type InlineProvenanceTargetOptions,
   matchInlineProvenance,
 } from "../compare/inline-provenance";
-import { stageSectionBoundaryProperties as stageMappedSectionBoundaryProperties } from "../compare/section-boundary-properties";
+import {
+  stageSectionBoundaryOperations,
+  stageSectionBoundaryProperties as stageMappedSectionBoundaryProperties,
+} from "../compare/section-boundary-properties";
 import {
   importReferencedStyleDefinitions,
   type ImportReferencedStyleDefinitionsResult,
@@ -2087,8 +2090,8 @@ export class FolioDocxReviewer {
       finalSectionProperties: () => this.currentFinalSectionProperties(),
       stageFinalSectionProperties: (options) =>
         this.stageFinalSectionPropertiesOnSession(options),
-      stageMappedSectionBoundaries: () =>
-        refuse("stage the target's section boundaries"),
+      stageMappedSectionBoundaries: (options) =>
+        this.stageMappedSectionBoundariesOnSession(options),
     });
   }
 
@@ -3586,6 +3589,41 @@ export class FolioDocxReviewer {
       rangeCount: result.rangeCount,
       nextRevisionId: result.nextRevisionId,
       documentChanged,
+    };
+  }
+
+  /**
+   * The target's section endpoints on the session: planned on the accepted
+   * projection of a second session over the current document, each boundary
+   * paragraph found in this session's document by its paragraph id, and
+   * staged as one section-endpoint operation per endpoint in one commit.
+   */
+  private stageMappedSectionBoundariesOnSession(
+    options: Parameters<
+      FolioDocxComparisonAccess["stageMappedSectionBoundaries"]
+    >[0],
+  ): ReturnType<FolioDocxComparisonAccess["stageMappedSectionBoundaries"]> {
+    if (this.engine.type !== "canonical")
+      return panic("Only a canonical reviewer stages on the session");
+    const { session } = this.engine;
+    const result = stageSectionBoundaryOperations({
+      document: readModel(session.document),
+      accepted: () => this.resolvedSessionCopy(session, "final").state.doc,
+      target: options.target,
+      originalRevisionIdSeed: options.originalRevisionIdSeed,
+      revisionStamp: options.revision,
+      author: this.author,
+      maxRanges: options.maxRanges,
+      mapTargetProperties: options.mapTargetProperties,
+    });
+    if (result.status !== "matched") return result;
+    return {
+      status: "matched",
+      rangeCount: result.operations.length,
+      nextRevisionId: result.nextRevisionId,
+      documentChanged:
+        result.operations.length > 0 &&
+        this.commitOpsOnSession(result.operations),
     };
   }
 

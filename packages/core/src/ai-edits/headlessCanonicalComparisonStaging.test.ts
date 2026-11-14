@@ -1,17 +1,24 @@
 /**
  * Comparison staging on a canonical headless reviewer gives the legacy
- * reviewer's package: the target's styles, numbering, final section change
- * and an imported header part land in the session's document as the legacy
- * reviewer stages them, each as a session commit, and survive a save.
+ * reviewer's package: the target's styles, numbering, final section change,
+ * section endpoint changes, an imported header part and a terminal table's
+ * review carrier land in the session's document as the legacy reviewer
+ * stages them, each as a session commit, and survive a save.
  */
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { ZipArchive } from "@stll/docx-core/zip";
+
+import { buildBodySequenceDocx } from "../compare/__fixtures__/body-sequence";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
+import { createDocx } from "../docx/rezip";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+import type { Document, SectionProperties } from "../types/document";
 import { FolioDocxReviewer, getFolioDocxComparisonAccess } from "./headless";
+import { sourceDocumentOf } from "./snapshot";
 
 const corpus = (name: string) =>
   path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus", name);
@@ -34,6 +41,69 @@ const open = async (name: string, session: HeadlessReviewerSession) =>
     author: "Comparison",
     session,
   });
+
+const openBuffer = async (
+  buffer: ArrayBuffer,
+  session: HeadlessReviewerSession,
+) => {
+  const prepared = await prepareCanonicalDocxInput(buffer.slice(0));
+  if (prepared.isErr()) throw prepared.error;
+  return FolioDocxReviewer.fromBuffer(prepared.value.slice().buffer, {
+    author: "Comparison",
+    session,
+  });
+};
+
+const PORTRAIT: SectionProperties = { pageWidth: 12240, pageHeight: 15840 };
+const LANDSCAPE: SectionProperties = {
+  pageWidth: 15840,
+  pageHeight: 12240,
+  orientation: "landscape",
+};
+
+/** Two sections: the first ends at "Before" with `first` as its properties. */
+const twoSections = (first: SectionProperties): Document => ({
+  package: {
+    document: {
+      content: [
+        {
+          type: "paragraph",
+          paraId: "00000001",
+          content: [
+            { type: "run", content: [{ type: "text", text: "Before" }] },
+          ],
+          sectionProperties: first,
+        },
+        {
+          type: "paragraph",
+          paraId: "00000002",
+          content: [
+            { type: "run", content: [{ type: "text", text: "After" }] },
+          ],
+        },
+      ],
+      finalSectionProperties: PORTRAIT,
+    },
+  },
+});
+
+/** A body that ends in a table, with no paragraph after it. */
+const endingInATable = async (): Promise<ArrayBuffer> => {
+  const zip = await ZipArchive.read(
+    await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The source clause changes." },
+      { kind: "table", rows: [["Source", "Amount"]] },
+    ]),
+  );
+  const entry = zip.entry("word/document.xml");
+  if (!entry) throw new Error("The fixture has no main document part.");
+  const xml = await entry.text();
+  const withoutCarrier = xml.replace(/<w:p\b[^>]*><\/w:p>(?=<w:sectPr>)/u, "");
+  if (withoutCarrier === xml)
+    throw new Error("The fixture has no terminal empty body paragraph.");
+  zip.set("word/document.xml", withoutCarrier);
+  return (await zip.generate({ compression: "store" })).buffer;
+};
 
 const REVISION = { date: "2026-01-02T03:04:05Z", idSeed: 9000 } as const;
 
@@ -115,5 +185,95 @@ describe("comparison staging on the canonical session", () => {
     expect(
       canonical.base.toDocument().package.document.finalSectionProperties,
     ).toEqual(legacy.base.toDocument().package.document.finalSectionProperties);
+  });
+
+  test("a section endpoint change stages as on the legacy reviewer", async () => {
+    const staged = async (session: HeadlessReviewerSession) => {
+      const base = await openBuffer(
+        await createDocx(twoSections(PORTRAIT)),
+        session,
+      );
+      const target = await openBuffer(
+        await createDocx(twoSections(LANDSCAPE)),
+        session,
+      );
+      const snapshot = target.snapshotStory({ type: "main" });
+      if (!snapshot) throw new Error("The target has no main story.");
+      const result = getFolioDocxComparisonAccess(
+        base,
+      ).stageMappedSectionBoundaries({
+        target: sourceDocumentOf(snapshot),
+        originalRevisionIdSeed: REVISION.idSeed,
+        maxRanges: 10,
+        revision: REVISION,
+        mapTargetProperties: ({ kind, current, target: properties }) => {
+          if (kind === "inserted") return { kind, target: properties };
+          if (current === undefined) return null;
+          return { kind, previous: current, target: properties };
+        },
+      });
+      return { base, result };
+    };
+    const legacy = await staged("legacy");
+    const canonical = await staged("canonical");
+    expect(legacy.result).toMatchObject({
+      status: "matched",
+      rangeCount: 1,
+      documentChanged: true,
+    });
+    expect(canonical.result).toEqual(legacy.result);
+    const endpoints = (reviewer: FolioDocxReviewer) =>
+      reviewer
+        .toDocument()
+        .package.document.content.flatMap((block) =>
+          block.type === "paragraph" && block.sectionProperties !== undefined
+            ? [block.sectionProperties]
+            : [],
+        );
+    expect(endpoints(canonical.base)).toEqual(endpoints(legacy.base));
+    expect(canonical.base.getChanges()).toEqual(legacy.base.getChanges());
+    const reopened = await FolioDocxReviewer.fromBuffer(
+      await canonical.base.toBuffer(),
+      { session: "canonical" },
+    );
+    expect(endpoints(reopened)).toEqual(endpoints(canonical.base));
+  });
+
+  test("a terminal table's review carrier stages as on the legacy reviewer", async () => {
+    const target = await openBuffer(
+      await buildBodySequenceDocx([
+        { kind: "paragraph", text: "The target clause changes." },
+        { kind: "paragraph", text: "Terminal target paragraph." },
+      ]),
+      "legacy",
+    );
+    const snapshot = target.snapshotStory({ type: "main" });
+    if (!snapshot) throw new Error("The target has no main story.");
+    const staged = async (session: HeadlessReviewerSession) => {
+      const base = await openBuffer(await endingInATable(), session);
+      const result = getFolioDocxComparisonAccess(
+        base,
+      ).stageTerminalTableReviewCarrier(sourceDocumentOf(snapshot));
+      return { base, result };
+    };
+    const legacy = await staged("legacy");
+    const canonical = await staged("canonical");
+    expect(legacy.result).toBe(true);
+    expect(canonical.result).toBe(legacy.result);
+    // The carrier's paragraph id is minted by each engine; the rest agrees.
+    const body = (reviewer: FolioDocxReviewer) =>
+      reviewer.toDocument().package.document.content.map((block) =>
+        block.type === "paragraph"
+          ? {
+              type: block.type,
+              reviewCarrier: block.reviewCarrier,
+              content: block.content,
+            }
+          : { type: block.type },
+      );
+    expect(body(canonical.base)).toEqual(body(legacy.base));
+    expect(canonical.base.getContentAsText()).toBe(
+      legacy.base.getContentAsText(),
+    );
   });
 });
