@@ -202,6 +202,60 @@ describe("run properties over a field", () => {
   });
 });
 
+describe("resolving tracked formats inside field results", () => {
+  test("one batch, two batches and the other order agree, accepting and rejecting", () => {
+    const second = { ...revision, id: 72 };
+    let tracked = applied(original, { ...bold(0, 4), revision }).document;
+    tracked = applied(tracked, {
+      type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+      from: at(4),
+      to: at(8),
+      patch: { strike: true },
+      revision: second,
+    }).document;
+    const resolve = (
+      document: Document,
+      ids: number[],
+      decision: "accept" | "reject",
+    ) =>
+      applied(document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: ids,
+        decision:
+          decision === "accept"
+            ? REVISION_DECISIONS.ACCEPT
+            : REVISION_DECISIONS.REJECT,
+      }).document;
+    for (const decision of ["accept", "reject"] as const) {
+      const batch = resolve(tracked, [revision.id, second.id], decision);
+      const inTurn = resolve(
+        resolve(tracked, [revision.id], decision),
+        [second.id],
+        decision,
+      );
+      const otherOrder = resolve(
+        resolve(tracked, [second.id], decision),
+        [revision.id],
+        decision,
+      );
+      expect(inTurn).toStrictEqual(batch);
+      expect(otherOrder).toStrictEqual(batch);
+      expect(
+        fieldsOf(batch).every((field) =>
+          (field.type === "simpleField"
+            ? field.content
+            : field.fieldResult
+          ).every(
+            (item) => item.type !== "run" || item.propertyChanges === undefined,
+          ),
+        ),
+      ).toBe(true);
+      if (decision === "reject") expect(batch).toStrictEqual(original);
+    }
+  });
+});
+
 describe("run properties over a note's own reference mark", () => {
   const story = { kind: "footnote", id: 1 } as const satisfies OpStory;
   const marker: Run = {

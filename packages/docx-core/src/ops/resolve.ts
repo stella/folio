@@ -55,12 +55,14 @@ import {
   alikeDepth,
   asParagraphContent,
   childNodes,
+  fieldResultOf,
   type InlineNode,
   leafSpans,
   mergeAlike,
   mergeLists,
   rebuildNode,
   sameOwnFields,
+  withFieldResult,
 } from "./leaves";
 import {
   paragraphHoldsContent,
@@ -396,6 +398,41 @@ const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
     delete next.propertyChanges;
   }
   return next;
+};
+
+/** Records with the run property changes of their runs resolved, the same list when none is. */
+const resolveRunsIn = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): readonly InlineNode[] => {
+  let changed = false;
+  const out = nodes.map((node) => {
+    let next: InlineNode = node;
+    if (node.type === "run") next = resolveRun(node, resolution);
+    else {
+      const children = childNodes(node);
+      const inner =
+        children === undefined ? children : resolveRunsIn(children, resolution);
+      if (inner !== children && inner !== undefined)
+        next = rebuildNode(node, inner);
+    }
+    if (next !== node) changed = true;
+    return next;
+  });
+  return changed ? out : nodes;
+};
+
+/**
+ * A field with the run property changes on the runs of its result resolved:
+ * a run property patch over the field records them there.
+ */
+const resolveFieldRuns = (
+  field: Extract<InlineNode, { type: "simpleField" | "complexField" }>,
+  resolution: Resolution,
+): InlineNode => {
+  const result = fieldResultOf(field) ?? [];
+  const next = resolveRunsIn(result, resolution);
+  return next === result ? field : withFieldResult(field, next);
 };
 
 /**
@@ -1861,7 +1898,12 @@ const resolveList = (
             }),
           });
     if (children === undefined || inner === undefined || !inner.changed) {
-      appendSource(recut(node), index);
+      const leaf =
+        node.type === "simpleField" || node.type === "complexField"
+          ? resolveFieldRuns(node, resolution)
+          : node;
+      if (leaf !== node) changed = true;
+      appendSource(recut(leaf), index);
       continue;
     }
     changed = true;
