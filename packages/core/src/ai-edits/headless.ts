@@ -1722,6 +1722,11 @@ export class FolioDocxReviewer {
    * Folio restore the raw source view.
    */
   private stageTerminalTableReviewCarrier(target: PMNode): boolean {
+    if (this.engine.type === "canonical")
+      return this.stageTerminalTableReviewCarrierOnSession(
+        this.engine.session,
+        target,
+      );
     const baseTerminalTable = this.state.doc.lastChild;
     if (
       baseTerminalTable?.type.name !== "table" ||
@@ -2063,8 +2068,8 @@ export class FolioDocxReviewer {
       throw canonicalReviewerRefusal(action);
     };
     return Object.freeze({
-      stageTerminalTableReviewCarrier: () =>
-        refuse("stage a terminal table's review carrier"),
+      stageTerminalTableReviewCarrier: (target) =>
+        this.stageTerminalTableReviewCarrier(target),
       stageTargetStyles: (options) => this.stageTargetStyles(options),
       createComparisonHeaderFooter: (source, story) =>
         this.createComparisonHeaderFooter(source, story),
@@ -3471,6 +3476,49 @@ export class FolioDocxReviewer {
         before,
         after: { ...before, package: { ...before.package, ...resources } },
       }),
+    ]);
+  }
+
+  /**
+   * The terminal-table review carrier on the session: the body's content
+   * restored exactly with the carrier paragraph after its final table, under
+   * a paragraph identity the session mints.
+   */
+  private stageTerminalTableReviewCarrierOnSession(
+    session: CanonicalSession,
+    target: PMNode,
+  ): boolean {
+    const document = this.baseDocument;
+    const content = document.package.document.content;
+    if (
+      content.at(-1)?.type !== "table" ||
+      target.lastChild?.type.name !== "paragraph"
+    )
+      return false;
+    const minted = session.freshBlockIds([1]);
+    if (minted.isErr()) throw minted.error;
+    const paraId = minted.value.at(0)?.at(0);
+    if (paraId === undefined)
+      return panic("The session minted no paragraph id for a review carrier");
+    const parts: StoryParts = {
+      body: {
+        content: [
+          ...content,
+          {
+            type: "paragraph",
+            paraId,
+            reviewCarrier: REVIEW_CARRIERS.TERMINAL_TABLE,
+            content: [],
+          },
+        ],
+      },
+    };
+    return this.commitOpsOnSession([
+      {
+        type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+        expected: captureStoryParts(document, parts),
+        parts,
+      },
     ]);
   }
 
