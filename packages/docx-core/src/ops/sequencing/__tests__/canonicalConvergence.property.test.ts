@@ -128,6 +128,11 @@ type Outcome = {
   trackedOrder: Record<trackedTransform.TrackedOrderPair, number>;
   /** Refusals of a declared tracked pair kind: the bar is none. */
   trackedRefusals: string[];
+  /**
+   * Restorations and positional edits of their paragraphs refused by the
+   * block footprint alone rather than by the restoration's span: none.
+   */
+  restoreRefusals: string[];
   /** Changes a peer with pending batches got as a replacement, by the pair kinds they met. */
   replaced: Tally;
   /** Changes a peer with pending batches got rebased, by the pair kinds they met. */
@@ -426,6 +431,54 @@ const describeOps = (ops: readonly DocumentOp[]): string =>
     .join(", ");
 
 // The tail batch a refused batch could not be rebased over, else the whole tail.
+const BLOCK_FOOTPRINT_REFUSAL =
+  "A concurrent operation changed a paragraph this operation addresses.";
+
+/** The paragraphs a restoration rewrites. */
+const restoredParagraphs = (op: DocumentOp) => {
+  if (op.type === DOCUMENT_OP_TYPES.REPLACE_INLINE) return [op];
+  if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
+    return op.expected.anchors;
+  return [];
+};
+
+/** Where a positional edit of one paragraph edits. */
+const editedAt = (op: DocumentOp) => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
+      return op.at;
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+      return isInlineInsertion(op) ? op.at : undefined;
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return sameParagraph(op.from, op.to) ? op.from : undefined;
+    default:
+      return undefined;
+  }
+};
+
+/** A restoration and a positional edit of one of its paragraphs among two op lists. */
+const restorePairs = (
+  mine: readonly DocumentOp[],
+  theirs: readonly DocumentOp[],
+): string[] =>
+  [
+    ...mine.flatMap((op) => theirs.map((other) => [op, other] as const)),
+    ...theirs.flatMap((op) => mine.map((other) => [op, other] as const)),
+  ]
+    .filter(([restoration, edit]) => {
+      const at = editedAt(edit);
+      return (
+        at !== undefined &&
+        restoredParagraphs(restoration).some((paragraph) =>
+          sameParagraph(paragraph, at),
+        )
+      );
+    })
+    .map(([restoration, edit]) => `${restoration.type} and ${edit.type}`);
+
 const refusingOps = (
   batch: DocumentBatch,
   tail: readonly SequencedBatch[],
@@ -533,6 +586,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     identifiedTypingRefusals: [],
     trackedOrder: noTrackedOrder(),
     trackedRefusals: [],
+    restoreRefusals: [],
     replaced: noTally(),
     rebasedChanges: noTally(),
     resubmitted: 0,
@@ -596,6 +650,13 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           type === DOCUMENT_OP_TYPES.JOIN_INLINE,
       );
       const refusing = refusingOps(batch, tail);
+      if (result.reason.message === BLOCK_FOOTPRINT_REFUSAL)
+        outcome.restoreRefusals.push(
+          ...restorePairs(
+            restoredOps(opsAtRefusal(batch, tail)),
+            restoredOps(refusing),
+          ).map((pair) => `refused: ${pair}`),
+        );
       // No declared tracked pair is refused: the authority's order decides.
       // An inverse keeps its preconditions, which refuse by their own rule,
       // an insertion against a deletion's range is the typing and deletion
@@ -681,6 +742,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     if (event === undefined || peer === undefined) return;
     const before = peer.client.document;
     const pending = peer.client.pending.flatMap(({ ops }) => ops);
+    const noticesBefore = peer.client.notices.length;
     let changes: readonly ClientDocumentChange[];
     if (event.type === "broadcast") {
       const received = peer.client.receiveBroadcast(event.batch);
@@ -690,6 +752,15 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       peer.client.receiveAck(event.result);
       changes = [];
     } else changes = peer.client.receiveReject(event.result);
+    if (event.type === "broadcast")
+      for (const notice of peer.client.notices.slice(noticesBefore))
+        if (notice.reason.message === BLOCK_FOOTPRINT_REFUSAL)
+          outcome.restoreRefusals.push(
+            ...restorePairs(
+              restoredOps(notice.ops),
+              restoredOps(event.batch.ops),
+            ).map((pair) => `dropped: ${pair}`),
+          );
     // Every change takes the peer's document exactly where the client is:
     // a rebased one is never trusted short of it.
     let document = before;
@@ -967,6 +1038,8 @@ const convergence = (
     counts.resubmitted += outcome.resubmitted;
     // No declared tracked pair is refused.
     expect(outcome.trackedRefusals).toEqual([]);
+    // A restoration meets an edit of its paragraph by its span alone.
+    expect(outcome.restoreRefusals).toEqual([]);
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
