@@ -901,7 +901,7 @@ const resolveTableStructure = ({
       const built = applyTableRowInsertion({
         tr: EditorState.create({ doc }).tr,
         insertion,
-        cellTexts: operation.cellTexts,
+        cellTexts: undefined,
         revision: null,
       });
       if (built.type !== "applied") return refusal("unsupportedBlock");
