@@ -35,6 +35,9 @@ afterEach(() => {
   }
 });
 
+/** Shrink steps taken so far: a run still shrinking after its test would add to them. */
+let shrinkSteps = 0;
+
 /** Every value shrinks to another value, so a failing run never stops shrinking on its own. */
 class EndlessShrink extends fc.Arbitrary<number> {
   generate(): fc.Value<number> {
@@ -44,6 +47,7 @@ class EndlessShrink extends fc.Arbitrary<number> {
     return typeof value === "number";
   }
   shrink(value: number): fc.Stream<fc.Value<number>> {
+    shrinkSteps += 1;
     return fc.Stream.of(new fc.Value(value + 1, undefined));
   }
 }
@@ -57,18 +61,19 @@ const rejection = async (run: Promise<void>): Promise<Error> => {
   return outcome as Error;
 };
 
-let endlessCases = 0;
+// Module-level so each test states its budget once, in its timeout argument.
+const ENDLESS_BUDGET_MS = propertyTestTimeout(2_000);
+const SHORT_BUDGET_MS = propertyTestTimeout(1_000);
 
 describe("property run budgets", () => {
   test(
     "a failure that would shrink forever is reported within its test's budget",
     async () => {
-      const budgetMs = propertyTestTimeout(2_000);
+      const budgetMs = ENDLESS_BUDGET_MS;
       const started = Date.now();
       const failure = await rejection(
         assertProperty(
           fc.asyncProperty(new EndlessShrink(), async (value) => {
-            endlessCases += 1;
             await Bun.sleep(5);
             throw new Error(`${String(value)} fails`);
           }),
@@ -77,28 +82,28 @@ describe("property run budgets", () => {
       );
       expect(Date.now() - started).toBeLessThan(budgetMs);
       expect(failure.message).toContain(
-        `Shrinking stopped at 75% of the test's ${String(budgetMs)} ms budget`,
+        `Shrinking stopped at 90% of the test's ${String(budgetMs)} ms budget`,
       );
       expect(failure.message).toMatch(/Shrunk \d+ time/);
       expect(failure.message).toMatch(
         /Replay: PROPERTY_TEST_SEED=-?\d+ PROPERTY_TEST_PATH=/,
       );
       // It shrank for most of the budget before it was stopped.
-      expect(endlessCases).toBeGreaterThan(10);
+      expect(shrinkSteps).toBeGreaterThan(10);
     },
     propertyTestTimeout(2_000),
   );
 
   test("nothing from the stopped run reaches the next test", async () => {
-    const before = endlessCases;
+    const before = shrinkSteps;
     await Bun.sleep(200);
-    expect(endlessCases).toBe(before);
+    expect(shrinkSteps).toBe(before);
   });
 
   test(
     "a run stopped before its planned cases fails and says how many ran",
     async () => {
-      const budgetMs = propertyTestTimeout(1_000);
+      const budgetMs = SHORT_BUDGET_MS;
       const failure = await rejection(
         assertProperty(
           fc.asyncProperty(fc.nat(), async () => {
@@ -109,7 +114,7 @@ describe("property run budgets", () => {
       );
       expect(failure.message).toMatch(
         new RegExp(
-          `too many cases for the budget ran \\d+ of \\d+ planned cases before stopping at 75% of the test's ${String(budgetMs)} ms budget`,
+          `too many cases for the budget ran \\d+ of \\d+ planned cases before stopping at 90% of the test's ${String(budgetMs)} ms budget`,
         ),
       );
     },

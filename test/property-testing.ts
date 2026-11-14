@@ -409,11 +409,11 @@ const errorText = (error: unknown): string => {
 
 /**
  * Share of a test's stated budget its property runs may use, counted from the
- * test's first run. The rest is the headroom scripts/property-test-budgets.test.ts
- * requires of every measured property file, so a stopped run still reports
- * before Bun's own timeout ends the test.
+ * test's first run. An async case in flight is cut at that moment, so the rest
+ * covers the test's own setup and the report; a run whose setup took longer
+ * still stops by then instead of running on into later tests.
  */
-const RUN_BUDGET_SHARE = 0.75;
+const RUN_BUDGET_SHARE = 0.9;
 
 type RunBudget = {
   /** The budget the test states, in milliseconds. */
