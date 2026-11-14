@@ -26,6 +26,7 @@ import {
   type SequencedOpEffect,
   TABLE_EXCLUSIVE_OP_TYPES,
 } from "./envelope";
+import { heldRevisionIds } from "./heldRevisions";
 import { isInlineInsertion } from "./points";
 
 type PartAccess = {
@@ -95,6 +96,14 @@ const sections = (changes: boolean): PartAccess[] =>
   changes ? [write(EXCLUSIVE_PARTS.SECTIONS)] : [];
 
 const comment = (id: number): string => String(id);
+
+/**
+ * Content put back as an undo puts back the tracked changes in it, so a
+ * concurrent decision of one of them would resolve a change in one order
+ * that the other order has already resolved: the operation writes them.
+ */
+const heldRevisions = (content: unknown): PartAccess[] =>
+  heldRevisionIds(content).map((id) => write(EXCLUSIVE_PARTS.REVISIONS, id));
 
 /** The footprint of every operation kind. */
 const footprintOf = (op: DocumentOp): OpFootprint => {
@@ -167,14 +176,20 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
       return scoped(
         [],
-        sections(
-          op.sectionBoundaries !== undefined || op.sectionView !== undefined,
-        ),
+        [
+          ...sections(
+            op.sectionBoundaries !== undefined || op.sectionView !== undefined,
+          ),
+          ...heldRevisions(op.blocks),
+        ],
       );
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
+      return scoped([op.blockId], heldRevisions(op.review));
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
-    case DOCUMENT_OP_TYPES.DELETE_TABLE:
+      return scoped([op.blockId], heldRevisions(op.content));
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+      return scoped([op.blockId], heldRevisions(op.blocks));
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
     case DOCUMENT_OP_TYPES.INSERT_ROW:
     case DOCUMENT_OP_TYPES.DELETE_ROW:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
