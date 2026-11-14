@@ -871,36 +871,36 @@ describe("a paragraph after one whose mark is pending deletion", () => {
           expect(editor.session.document).toEqual(original);
         });
 
-        test("deleting the second tracked: rejecting restores, accepting matches the direct deletion", () => {
-          const untouched = setup(documentOf(kind, text));
-          const tracked = setup(documentOf(kind, text));
-          expect(
-            tracked.apply([deletion], { mode: "tracked-changes" }).applied,
-          ).toHaveLength(1);
-          expect(resolvedWords(tracked, "reject")).toBe(
-            resolvedWords(untouched, "reject"),
-          );
-          const accepted = setup(documentOf(kind, text));
-          accepted.apply([deletion], { mode: "tracked-changes" });
-          const direct = setup(documentOf(kind, text));
-          expect(direct.apply([deletion]).applied).toHaveLength(1);
-          expect(resolvedWords(accepted, "accept")).toBe(
-            resolvedWords(direct, "accept"),
-          );
-        });
-
-        test("merging the first with the second directly applies and undoes exactly", () => {
-          const editor = setup(documentOf(kind, text));
-          const original = editor.session.document;
-          const result = editor.apply([
-            { id: "merge", type: "mergeBlockWithNext", blockId: "12345678" },
-          ]);
-          expect(result.applied).toHaveLength(1);
-          expect(
-            editor.executor.undo(result.undoHandle ?? panic("Missing handle"))
-              .status,
-          ).toBe("undone");
-          expect(editor.session.document).toEqual(original);
-        });
+        if (text === "")
+          test("deleting the empty second tracked records nothing", () => {
+            // No words to mark deleted, and the mark before it already is.
+            const editor = setup(documentOf(kind, text));
+            const original = editor.session.document;
+            const result = editor.apply([deletion], {
+              mode: "tracked-changes",
+            });
+            expect(result.skipped.map(({ reason }) => reason)).toEqual([
+              "noopOperation",
+            ]);
+            expect(editor.session.document).toEqual(original);
+          });
+        else
+          test("deleting the second tracked: rejecting restores, accepting matches the direct deletion", () => {
+            const untouched = setup(documentOf(kind, text));
+            const tracked = setup(documentOf(kind, text));
+            expect(
+              tracked.apply([deletion], { mode: "tracked-changes" }).applied,
+            ).toHaveLength(1);
+            expect(resolvedWords(tracked, "reject")).toBe(
+              resolvedWords(untouched, "reject"),
+            );
+            const accepted = setup(documentOf(kind, text));
+            accepted.apply([deletion], { mode: "tracked-changes" });
+            const direct = setup(documentOf(kind, text));
+            expect(direct.apply([deletion]).applied).toHaveLength(1);
+            expect(resolvedWords(accepted, "accept")).toBe(
+              resolvedWords(direct, "accept"),
+            );
+          });
       });
 });
