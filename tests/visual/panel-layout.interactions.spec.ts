@@ -6,6 +6,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../../packages/core/src/document-operations";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import {
   expectPanelsDoNotOverlap,
@@ -119,31 +120,42 @@ test.describe("side panel layout", () => {
     await items.last().focus();
 
     // Keep focus in the outline while a document edit removes its last entries.
-    await page.evaluate(
-      (removedHeadings) => {
-        const view = globalThis.__folioPlayground
-          ?.getEditorRef()
-          ?.getEditorRef()
-          ?.getView();
-        if (!view) throw new Error("Missing editor view");
-        const transaction = view.state.tr;
-        view.state.doc.descendants((node, pos) => {
-          if (
-            node.isTextblock &&
-            removedHeadings.some((heading) => heading === node.textContent)
-          ) {
-            transaction.delete(
-              transaction.mapping.map(pos),
-              transaction.mapping.map(pos + node.nodeSize),
-            );
-            return false;
-          }
-          return true;
+    // A host removes them through the document-operation API, as any editing
+    // engine accepts it, without moving focus into the page.
+    const removal = await page.evaluate(
+      ({ removedHeadings, version }) => {
+        const ref = globalThis.__folioPlayground?.getEditorRef();
+        const snapshot = ref?.createAIEditSnapshot();
+        if (!ref || !snapshot) throw new Error("Missing editor snapshot");
+        const blockIds = Object.values(snapshot.anchors)
+          .filter(({ text }) => removedHeadings.includes(text))
+          .map(({ id }) => id);
+        const result = ref.applyDocumentOperations({
+          undefinedReferences: "refuse",
+          snapshot,
+          batch: {
+            version,
+            mode: "direct",
+            operations: blockIds.map((blockId, index) => ({
+              id: `remove-heading-${index}`,
+              type: "deleteBlock" as const,
+              blockId,
+            })),
+          },
         });
-        view.dispatch(transaction);
+        return {
+          applied: result.applied.length,
+          skipped: result.skipped.map(({ reason }) => reason),
+        };
       },
-      PANEL_LAYOUT_HEADINGS.slice(2).map(({ text }) => text),
+      {
+        removedHeadings: PANEL_LAYOUT_HEADINGS.slice(2).map(
+          ({ text }): string => text,
+        ),
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      },
     );
+    expect(removal).toEqual({ applied: 2, skipped: [] });
 
     await expect(items).toHaveCount(2);
     await expect(items.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
