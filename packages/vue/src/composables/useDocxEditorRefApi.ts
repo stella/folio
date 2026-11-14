@@ -57,6 +57,7 @@ import type { OpStory } from "@stll/folio-core/canonical/canonicalOperations";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
+import { findPageNumberAtEditorPosition } from "@stll/folio-core/layout-engine/pmPageIndex";
 import type {
   DisplayMode,
   EditorReadOnlyReason,
@@ -475,14 +476,6 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       scrollToPage,
       scrollToParaId,
       setPassageHighlight: opts.setPassageHighlight,
-      getPageNumberForPmPos: (pmPos: number) => {
-        const currentLayout = opts.layout.value;
-        if (!currentLayout) {
-          return null;
-        }
-        const pageIndex = findPageIndexContainingPmPos(currentLayout, pmPos);
-        return pageIndex == null ? null : pageIndex + 1;
-      },
       getBlockRect,
       getBlockRects,
       getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),
@@ -1119,9 +1112,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (range === null) {
         return null;
       }
-      const pageIndex = findPageIndexContainingPmPos(currentLayout, range.from);
-      return pageIndex == null ? null : pageIndex + 1;
+      return findPageNumberAtEditorPosition(currentLayout, range.from);
     },
+    getPositionPage: (position) => opts.editor.getPositionPage(position),
     getBlockRect,
     getBlockRects,
     getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),

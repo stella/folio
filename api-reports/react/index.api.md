@@ -197,6 +197,7 @@ import { TemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/temp
 import { templateSlashMenuKey } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
+import { TextPosition } from '@stll/folio-core/controller/folioEditor';
 import { TextWatermark } from '@stll/folio-core/watermark';
 import { Theme } from '@stll/folio-core/types/document';
 import { toMarkdown } from '@stll/folio-core/markdown';
@@ -527,6 +528,7 @@ export type DocxEditorRef = {
     getSelectionText: () => string;
     getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
+    getPositionPage: (position: TextPosition) => number | null;
     getBlockRect: (blockId: string) => BlockRect | null;
     getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
     getScrollRoot: () => HTMLElement | null;
