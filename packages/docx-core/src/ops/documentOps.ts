@@ -208,6 +208,10 @@ export {
   revisionIdDemand,
 } from "./plan";
 export {
+  resolvedDocumentView,
+  type ResolvedDocumentView,
+} from "./resolvedView";
+export {
   DOCUMENT_OP_REFUSAL_REASONS,
   DocumentOpRefusal,
   type DocumentOpRefusalReason,
