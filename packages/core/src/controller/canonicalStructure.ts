@@ -564,6 +564,24 @@ export const prepareCanonicalCommands = (
         });
         break;
       }
+      case "replaceText": {
+        // The replaced text's own edges, as a selection typed over names them.
+        const edges = session.projection.rangeEdgesAt(command.from, command.to);
+        const from = session.projection.inputAddressAt(
+          command.from,
+          edges.start,
+        );
+        if (from.isErr()) return from;
+        const to = session.projection.inputAddressAt(command.to, edges.end);
+        if (to.isErr()) return to;
+        intents.push({
+          type: "replaceText",
+          from: from.value,
+          to: to.value,
+          text: command.text,
+        });
+        break;
+      }
       case "insertBreak": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;

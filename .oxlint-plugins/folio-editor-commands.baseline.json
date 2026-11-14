@@ -14,7 +14,6 @@
   "packages/vue/src/composables/useCommentManagement.ts": 3,
   "packages/vue/src/composables/useContextMenus.ts": 4,
   "packages/vue/src/composables/useDocxEditorRefApi.ts": 6,
-  "packages/vue/src/composables/useFindReplace.ts": 1,
   "packages/vue/src/composables/useHistory.ts": 2,
   "packages/vue/src/composables/useHyperlinkManagement.ts": 1,
   "packages/vue/src/composables/useImageActions.ts": 1,

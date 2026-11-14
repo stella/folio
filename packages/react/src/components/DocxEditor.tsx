@@ -2123,10 +2123,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         commentsRef,
       ],
     );
-    const getFindEditorState = useCallback(() => {
+    const getFindEditorView = useCallback(() => {
       pagedEditorRef.current?.ensureView({ focus: false });
-      return pagedEditorRef.current?.getView()?.state ?? null;
+      return pagedEditorRef.current?.getView() ?? null;
     }, []);
+    const getFindEditorState = useCallback(
+      () => getFindEditorView()?.state ?? null,
+      [getFindEditorView],
+    );
     const getFindBodyDoc = useCallback(
       () => getFindEditorState()?.doc,
       [getFindEditorState],
@@ -2140,7 +2144,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       if (readOnlyReason) onReadonlyEditAttempt?.(readOnlyReason);
     }, [readOnlyReason, onReadonlyEditAttempt]);
 
-    // Find/Replace handlers (depends on handleDocumentChange)
+    // Find/Replace handlers
     const {
       currentSearch: currentFindSearch,
       resetFindResult,
@@ -2156,8 +2160,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       documentState: history.state,
       getDocumentState: buildCurrentDocument,
       getEditorState: getFindEditorState,
+      getEditorView: getFindEditorView,
       containerRef,
-      handleDocumentChange,
       findReplace,
       selectMatch: selectFindMatch,
       getBodyDoc: getFindBodyDoc,

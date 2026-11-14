@@ -2,10 +2,11 @@
  * useFindReplace Hook
  *
  * Thin React binding around the framework-agnostic FindReplaceManager. The
- * manager owns the active find result (matches + cursor) and runs the
- * document-level replace operations; this hook keeps the React glue: the
- * `currentResult` the dialog reads, the live-document accessor, scroll/select
- * side effects, and the dialog-state wiring.
+ * manager owns the active find result (matches + cursor); replacement runs
+ * through the body editor's command owner, as in every adapter. This hook
+ * keeps the React glue: the `currentResult` the dialog reads, the
+ * live-document accessor, scroll/select side effects, and the dialog-state
+ * wiring.
  *
  * The dialog visibility/search-text state itself is managed by `useFindReplace`
  * from `dialogs/useFindReplace.ts`; this hook layers the document-aware
@@ -17,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 
 import type { Layout } from "@stll/folio-core/layout-engine/types";
 import { getReviewViewReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
@@ -26,6 +28,10 @@ import type {
 } from "@stll/folio-core/managers/EditorModeManager";
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
 import { findInDisplayedDocument } from "@stll/folio-core/prosemirror/findReplaceSelection";
+import {
+  replaceFindMatch,
+  replaceFindMatches,
+} from "@stll/folio-core/prosemirror/replaceFindMatches";
 import type { Document } from "@stll/folio-core/types/document";
 import {
   readModel,
@@ -43,7 +49,6 @@ import type {
 import {
   createFindQueryKey,
   createFindSearchKey,
-  sameFindBodyVersion,
   sameFindSearchKey,
 } from "@stll/folio-core/utils/findSearchKey";
 
@@ -67,8 +72,8 @@ type UseFindReplaceParams = {
   getEditorState?: () => EditorState | null;
   /** Ref to the document search surface */
   containerRef: React.RefObject<HTMLDivElement | null>;
-  /** Callback to push a new document state */
-  handleDocumentChange: (newDoc: Document) => void;
+  /** The body editor replacements are written through. */
+  getEditorView?: () => EditorView | null;
   /** Dialog state manager from useFindReplace (dialogs) */
   findReplace: FindReplaceStateReturn;
   /** Activate the thread containing a comment match */
@@ -112,13 +117,6 @@ type PublishedFindResult =
   | { status: "cleared" }
   | { status: "ready"; queryKey: string; result: FindResult };
 
-type ReplacementGate =
-  | { status: "ready" }
-  | {
-      status: "awaiting-document";
-      source: ReturnType<typeof createFindSearchKey>;
-    };
-
 // ============================================================================
 // HOOK
 // ============================================================================
@@ -128,7 +126,7 @@ export function useFindReplace({
   getDocumentState,
   getEditorState,
   containerRef,
-  handleDocumentChange,
+  getEditorView,
   findReplace,
   selectMatch,
   getBodyDoc,
@@ -152,7 +150,6 @@ export function useFindReplace({
   const searchSource = useRef<
     (ReturnType<typeof createFindSearchKey> & { intentKey: string }) | null
   >(null);
-  const replacementGate = useRef<ReplacementGate>({ status: "ready" });
   const resultCallback = useRef(onFindResultChange);
   useEffect(() => {
     resultCallback.current = onFindResultChange;
@@ -366,21 +363,6 @@ export function useFindReplace({
         ...(bodyDoc && { bodyVersion: bodyDoc }),
         ...(context && { context }),
       });
-      switch (replacementGate.current.status) {
-        case "awaiting-document":
-          if (
-            sameFindBodyVersion(replacementGate.current.source, currentSource)
-          )
-            return true;
-          replacementGate.current = { status: "ready" };
-          break;
-        case "ready":
-          break;
-        default: {
-          const exhaustive: never = replacementGate.current;
-          return exhaustive;
-        }
-      }
       if (sameFindSearchKey(searchSource.current, currentSource)) return false;
       handleFind(active.text, active.options);
       return true;
@@ -388,15 +370,14 @@ export function useFindReplace({
     [getBodyDoc, getLayout, handleFind, displayMode],
   );
 
-  const acceptReplacement = useCallback(
-    (nextDocument: Document) => {
-      const source = searchSource.current;
-      if (!source) panic("Replacement accepted without a search key");
-      replacementGate.current = { status: "awaiting-document", source };
-      clearFindResult();
-      handleDocumentChange(nextDocument);
+  /** Re-run the active query once a replacement changed the body. */
+  const refreshAfterReplacement = useCallback(
+    (view: EditorView, before: PMNode) => {
+      if (view.state.doc === before) return;
+      const active = query.current;
+      if (active) handleFind(active.text, active.options);
     },
-    [handleDocumentChange, clearFindResult],
+    [handleFind],
   );
 
   const handleReplace = useCallback(
@@ -411,16 +392,20 @@ export function useFindReplace({
       if (!match || replaceEligibility(match).status === "blocked")
         return false;
       if (match.text === replaceText) return true;
-
-      const newDoc = manager.replaceCurrent(currentDocument, replaceText);
-      if (!newDoc) {
-        return false;
-      }
-
-      acceptReplacement(newDoc);
-      return true;
+      const view = getEditorView?.();
+      if (!view) return false;
+      const before = view.state.doc;
+      const replaced = replaceFindMatch(view, match, replaceText);
+      refreshAfterReplacement(view, before);
+      return replaced;
     },
-    [readDocumentState, manager, acceptReplacement, refreshChangedSource],
+    [
+      readDocumentState,
+      manager,
+      getEditorView,
+      refreshAfterReplacement,
+      refreshChangedSource,
+    ],
   );
 
   const handleReplaceAll = useCallback(
@@ -452,35 +437,18 @@ export function useFindReplace({
       );
       if (matches === null)
         return { replacedCount: 0, skippedCount: previousCount };
-      const mutationMatches = matches.filter(
-        (match) =>
-          replaceEligibility(match).status === "blocked" ||
-          match.text !== replaceText,
-      );
-      const unchangedCount = matches.length - mutationMatches.length;
-      if (mutationMatches.length === 0)
-        return { replacedCount: unchangedCount, skippedCount: 0 };
-      const outcome = manager.replaceAll(
-        currentDocument,
-        mutationMatches,
-        replaceText,
-      );
-      if (!outcome) {
-        return { replacedCount: 0, skippedCount: 0 };
-      }
-
-      if (outcome.document && outcome.replacedCount > 0) {
-        acceptReplacement(outcome.document);
-      }
-      return {
-        replacedCount: outcome.replacedCount + unchangedCount,
-        skippedCount: outcome.skippedCount,
-      };
+      const view = getEditorView?.();
+      if (!view) return { replacedCount: 0, skippedCount: matches.length };
+      const before = view.state.doc;
+      const summary = replaceFindMatches(view, matches, replaceText);
+      refreshAfterReplacement(view, before);
+      return summary;
     },
     [
       readDocumentState,
       manager,
-      acceptReplacement,
+      getEditorView,
+      refreshAfterReplacement,
       displayMode,
       getLayout,
       findDisplayedMatches,
