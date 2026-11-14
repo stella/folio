@@ -61,7 +61,10 @@ import {
   watch,
 } from "vue";
 
-import { ContentControlWidgetController } from "@stll/folio-core/controller/contentControlWidgetController";
+import {
+  contentControlRefusalMessageKey,
+  ContentControlWidgetController,
+} from "@stll/folio-core/controller/contentControlWidgetController";
 
 import { useDocxPortalClass } from "../composables/usePortalClass";
 import { useTranslation } from "../i18n";
@@ -75,7 +78,12 @@ const props = defineProps<{
 const { t } = useTranslation();
 const { Button: FolioButton, DatePickerPopover } = useFolioUI();
 const portalClass = useDocxPortalClass();
-const controller = new ContentControlWidgetController();
+const emit = defineEmits<{ refused: [message: string] }>();
+// A refused widget says why, in the same notice as other refused edits.
+const controller = new ContentControlWidgetController({
+  onRefused: (event) =>
+    emit("refused", t(contentControlRefusalMessageKey(event))),
+});
 const snapshot = shallowRef(controller.getSnapshot());
 const unsubscribe = controller.subscribe(() => {
   snapshot.value = controller.getSnapshot();

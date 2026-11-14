@@ -528,6 +528,7 @@
     <ContentControlWidgetsOverlay
       :event-root="readOnly ? null : pagesRef"
       :view="editorView"
+      @refused="showRefusalNotice"
     />
   </div>
 </template>

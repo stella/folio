@@ -6,7 +6,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 const paragraph = (paraId: string, text: string) =>
@@ -39,7 +39,7 @@ const contentControlsDocument = async (): Promise<number[]> => {
 forEachAdapter(
   "edits dropdown and date content controls",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openCanonicalEditor(page, adapter);
     const bytes = await contentControlsDocument();
     await page.evaluate((data) => window.__folioParity?.loadDocx(data), bytes);
     await ensureLiveView(page);

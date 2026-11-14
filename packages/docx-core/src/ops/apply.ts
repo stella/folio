@@ -25,6 +25,7 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { applyCommentOp } from "./comments";
+import { setContentControl } from "./contentControls";
 /**
  * Apply a document operation and record its exact inverse.
  *
@@ -2896,6 +2897,8 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
       return applyRowOp(document, op);
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
       return applyPackageResourcesOp(document, op);
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
+      return setContentControl(document, op);
     case DOCUMENT_OP_TYPES.INSERT_COLUMN:
     case DOCUMENT_OP_TYPES.DELETE_COLUMN:
     case DOCUMENT_OP_TYPES.MERGE_CELLS:
@@ -2992,6 +2995,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return undefined;
     default: {
       const unreachable: never = op;

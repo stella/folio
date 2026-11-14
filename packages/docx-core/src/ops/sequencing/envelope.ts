@@ -277,6 +277,7 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
   joinInline: NO_SEQUENCED_EFFECT,
   replaceBlocks: "touchedBlocks",
   setParagraphReview: "touchedBlocks",
+  setContentControl: "touchedBlocks",
   replaceInline: "touchedBlocks",
   setRevisionInfo: "touchedBlocks",
   insertTable: "touchedBlocks",
@@ -708,6 +709,14 @@ const operationFields = {
     sectionIndex: natural,
     patch: properties(sectionPropertyFields, true),
   } satisfies OperationFields<"setSectionProps">,
+  setContentControl: {
+    type: literal("setContentControl"),
+    story: isOpStory,
+    controlId: natural,
+    blockIds: array(blockId),
+    expected: isRecord,
+    properties: isRecord,
+  } satisfies OperationFields<"setContentControl">,
   setPackageResources: {
     type: literal("setPackageResources"),
     expected: packageResources,

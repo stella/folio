@@ -185,6 +185,9 @@ const footprintOf = (op: DocumentOp): OpFootprint => {
       );
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
       return scoped([op.blockId], heldRevisions(op.review));
+    // A control's properties belong to the paragraphs it holds or sits in.
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
+      return scoped(op.blockIds);
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return scoped([op.blockId], heldRevisions(op.content));
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:

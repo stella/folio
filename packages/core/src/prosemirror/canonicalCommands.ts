@@ -10,6 +10,7 @@ import type {
   TableRowIntentOperation,
 } from "@stll/docx-core/ops";
 
+import type { SetContentControlValueInput } from "../content-controls";
 import type {
   BlockContent,
   ColorValue,
@@ -117,6 +118,12 @@ export type CanonicalCommandIntent =
       from: number;
       to: number;
       breakType: "page" | "textWrapping";
+    }
+  | {
+      /** A typed control's value: the block control whose open token is at `at`. */
+      type: "setContentControlValue";
+      at: number;
+      input: SetContentControlValueInput;
     };
 
 type CanonicalCommandDescriptor = (

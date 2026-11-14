@@ -19,11 +19,13 @@ import { applyDocumentOp } from "../../packages/docx-core/src/ops/apply";
 import {
   storyBody,
   storyParagraphs,
+  withBodyContent,
 } from "../../packages/docx-core/src/ops/blocks";
 import { freshCommentId } from "../../packages/docx-core/src/ops/comments";
 import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
 import { paragraphIdsIn } from "../../packages/docx-core/src/ops/ids";
 import { packageResourcesOpOf } from "../../packages/docx-core/src/ops/packageResources";
+import { replaceStoryBody } from "../../packages/docx-core/src/ops/stories";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -846,6 +848,56 @@ export const PACKAGE_OP_CASES = {
   }),
   setTable: (args: CaseArgs): GeneratedCase =>
     inverseCase(args, PACKAGE_OP_CASES.setTableGrid(args).op, "setTable"),
+  // An inline checkbox control added to the story's first paragraph, then
+  // toggled: the story's block structure and section view stay as they were.
+  setContentControl: (args: CaseArgs): GeneratedCase => {
+    const target = targetFor(args);
+    const expected = {
+      sdtType: "checkbox",
+      id: 1_000_000 + (args.seed.fresh % 1_000_000),
+      checked: args.seed.inherit,
+    } as const;
+    const withControl: Paragraph = {
+      ...target,
+      content: [
+        ...target.content,
+        {
+          type: "inlineSdt",
+          properties: expected,
+          content: [
+            {
+              type: "run",
+              content: [
+                {
+                  type: "text",
+                  text: args.seed.text === "" ? "x" : args.seed.text,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const body = storyBody(args.document, args.story);
+    return {
+      document: replaceStoryBody({
+        document: args.document,
+        story: args.story,
+        body: withBodyContent(
+          body,
+          body.content.map((block) => (block === target ? withControl : block)),
+        ),
+      }),
+      op: {
+        type: "setContentControl",
+        story: args.story,
+        controlId: expected.id,
+        blockIds: [target.paraId ?? panic("A target paragraph has an id.")],
+        expected,
+        properties: { ...expected, checked: !expected.checked },
+      },
+    };
+  },
 } satisfies Record<DocumentOp["type"], (args: CaseArgs) => GeneratedCase>;
 
 export const GENERATED_PACKAGE_OP_KINDS = Object.values(DOCUMENT_OP_TYPES);

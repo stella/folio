@@ -10,7 +10,7 @@
  */
 
 import type { Node as PMNode, Schema } from "prosemirror-model";
-import type { EditorState, Transaction } from "prosemirror-state";
+import type { Command, EditorState, Transaction } from "prosemirror-state";
 
 import type {
   ContentControlFilter,
@@ -31,6 +31,7 @@ import {
 } from "../../docx/sdtProperties";
 import type { PreservedMarkup, SdtProperties } from "../../types/document";
 import { expectBlockSdtAttrs } from "../attrs";
+import { withCanonicalCommand } from "../canonicalCommands";
 import { SUGGESTION_BYPASS_META } from "../plugins/suggestionMode";
 
 type ForceOption = { force?: boolean };
@@ -618,3 +619,23 @@ export function removeContentControlTr(
     .delete(match.pos, match.pos + match.node.nodeSize)
     .setMeta(SUGGESTION_BYPASS_META, true);
 }
+
+/**
+ * A typed control's value as an editor command: the dropdown, combo box, date
+ * and checkbox widgets run it through the view's command owner, so a canonical
+ * session journals the value and its shown text as one edit. A lock, type or
+ * binding refusal throws its typed error.
+ */
+export const setContentControlValueCommand = (
+  pmPos: number,
+  input: SetContentControlValueInput,
+): Command =>
+  withCanonicalCommand(
+    (state, dispatch) => {
+      const tr = setContentControlValueTr(state, { pmPos }, input);
+      if (!tr) return false;
+      dispatch?.(tr);
+      return true;
+    },
+    () => [{ type: "setContentControlValue", at: pmPos, input }],
+  );
