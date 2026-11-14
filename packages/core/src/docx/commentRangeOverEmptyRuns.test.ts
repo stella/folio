@@ -8,7 +8,11 @@
 import { describe, expect, test } from "bun:test";
 
 import { validateDocumentModel } from "@stll/docx-core";
-import { normalizeForOps, survivingComments } from "@stll/docx-core/ops";
+import {
+  normalizeForOps,
+  survivingComments,
+  withBodyContent,
+} from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import type {
@@ -166,10 +170,10 @@ const withoutTopLevelCommentMarkers = (document: Document): Document => {
     ...document,
     package: {
       ...document.package,
-      document: {
-        ...document.package.document,
-        content: blocks(document.package.document.content),
-      },
+      document: withBodyContent(
+        document.package.document,
+        blocks(document.package.document.content),
+      ),
     },
   };
 };

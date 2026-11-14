@@ -1,5 +1,5 @@
 import { setDocumentBodyComments } from "@stll/docx-core/model";
-import { survivingComments } from "@stll/docx-core/ops";
+import { survivingComments, withBodyContent } from "@stll/docx-core/ops";
 
 import type {
   BlockContent,
@@ -159,11 +159,10 @@ const withoutOrphanDocumentBodyMarkers = (
   if (!content && !comments) {
     return null;
   }
-  return {
-    ...document,
-    ...(content ? { content } : {}),
-    ...(comments ? { comments } : {}),
-  };
+  // The section view holds the same blocks as `content`: derive it again so
+  // it does not keep the markers this pass removed from the body.
+  const body = content ? withBodyContent(document, content) : document;
+  return comments ? { ...body, comments } : body;
 };
 
 // Comment bodies are paragraph stories of their own; a dangling
