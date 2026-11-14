@@ -6,4 +6,9 @@ export type CanonicalSaveSnapshot = {
   version: number;
   changedBlockIds: readonly string[];
   structure: "stable" | "changed";
+  /**
+   * The notes the opened package held without a reference. They are its
+   * content and survive the save; only a note an edit left without one goes.
+   */
+  heldUnreferencedNotes: ReadonlySet<string>;
 };

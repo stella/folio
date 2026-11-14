@@ -52,6 +52,7 @@ import {
 } from "./browserInputTrace";
 import type {} from "./browserTestBridge";
 import { clipboardHtmlProjection } from "./clipboardHtmlProjection";
+import { PINNED_REPLAY_FONT_DELAYS_MS } from "./pinnedReplayRepeats";
 
 declare global {
   var __folioPlayground:
@@ -59,6 +60,13 @@ declare global {
 }
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
+
+/**
+ * What the running pinned replay observed: each drag's selection and each
+ * mode's saved outcome. Repeated under other font timings, it must observe the
+ * same. Generated runs record nothing.
+ */
+let replayObservations: unknown[] | null = null;
 const INPUT_TRACE = browserInputTraceArbitrary();
 const missingCanonical = createMissingOpBurndown();
 test.afterAll(() => console.info(missingCanonical.markdown()));
@@ -268,6 +276,7 @@ const selectTableTarget = async (page: Page) => {
       return null;
     return { anchor: selectedAnchor.pos, head: selectedHead.pos };
   });
+  replayObservations?.push({ drag: "table", selected });
   expect(selected).toEqual({ anchor: target.anchor, head: target.head });
   return true;
 };
@@ -295,6 +304,7 @@ const selectTarget = async (page: Page, target: BrowserDragTarget) => {
       ?.getView()?.state.selection;
     return selection ? { from: selection.from, to: selection.to } : null;
   });
+  replayObservations?.push({ drag: target, selected });
   expect(selected).toEqual({ from: positions.from, to: positions.to });
   if (positions.targetType === "inline") {
     expect(selected?.from).toBeLessThanOrEqual(positions.targetFrom);
@@ -535,8 +545,10 @@ const runMode = async ({
     suggesting,
     authority,
   });
-  if (loaded.type === "activationRefused")
+  if (loaded.type === "activationRefused") {
+    replayObservations?.push({ authority, suggesting, refused: loaded.row });
     return { type: "activationRefused", row: loaded.row } as const;
+  }
   for (const action of trace.actions)
     await driveWithAuthority({ page, action, authority });
   await page.waitForTimeout(350);
@@ -566,11 +578,18 @@ const runMode = async ({
       message: "a fresh load paints what the page showed before it",
     })
     .toEqual(painted);
+  const changes = reopened.getChanges();
+  replayObservations?.push({
+    authority,
+    suggesting,
+    blocks: project(reopened),
+    changes: changes.map(({ type, text }) => ({ type, text })),
+  });
   return {
     type: "ready",
     buffer,
     blocks: project(reopened),
-    changes: reopened.getChanges(),
+    changes,
   } as const;
 };
 
@@ -798,20 +817,47 @@ test.describe("pinned browser input", () => {
       `regression seed ${seed} path ${path} / ${fingerprint}`,
       { tag: PINNED_BROWSER_INPUT_TAG },
       async ({ page }) => {
-        const source = await shapeArrayBuffer(trace.shape);
-        const baseline = project(await FolioDocxReviewer.fromBuffer(source));
-        if ("authority" in regression) {
-          await checkCanonicalTrace({ page, source, baseline, trace });
-          if ("comparesWithDefaultEditor" in regression)
-            await checkCommittedAsDefaultEditor({
-              page,
-              source,
-              baseline,
-              trace,
-            });
-          return;
+        // The replay runs once per font timing, the fonts arriving as served
+        // and then after the editor has painted, and must observe the same
+        // each time: a target read from paint a late face moves is read
+        // differently. Routing also keeps the cache from serving the fonts.
+        let fontDelay = 0;
+        await page.route(/\.woff2(?:\?|$)/u, async (route) => {
+          if (fontDelay > 0)
+            await new Promise((resolve) => setTimeout(resolve, fontDelay));
+          await route.continue();
+        });
+        const replay = async () => {
+          const source = await shapeArrayBuffer(trace.shape);
+          const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+          if ("authority" in regression) {
+            await checkCanonicalTrace({ page, source, baseline, trace });
+            if ("comparesWithDefaultEditor" in regression)
+              await checkCommittedAsDefaultEditor({
+                page,
+                source,
+                baseline,
+                trace,
+              });
+            return;
+          }
+          await checkDefaultEditorTrace({ page, source, baseline, trace });
+        };
+        const observed: { delay: number; observations: unknown[] }[] = [];
+        for (const delay of PINNED_REPLAY_FONT_DELAYS_MS) {
+          fontDelay = delay;
+          const observations: unknown[] = [];
+          replayObservations = observations;
+          await test.step(`fonts delivered after ${String(delay)} ms`, replay);
+          replayObservations = null;
+          observed.push({ delay, observations });
         }
-        await checkDefaultEditorTrace({ page, source, baseline, trace });
+        const [first] = observed;
+        for (const { delay, observations } of observed)
+          expect({ delay, observations }).toEqual({
+            delay,
+            observations: first?.observations,
+          });
       },
     );
   }

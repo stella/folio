@@ -19,22 +19,99 @@ in the broadcast journal. A rejection leaves the document and journal unchanged.
 Sequenced effects record document-dependent split identities and join lengths,
 so replay does not infer positions from a later document.
 
+Each authoritative answer returns how the client's document moved: a `rebased`
+change, transformable like a sequenced batch, or a `replaced` change, exact
+for the document only, when a pending batch was dropped or the rebased change
+would not reach the document the replay did. `transformPosition`
+moves a position across sequenced batches by paragraph id and offset, so an
+editor maps its selection and history without its own coordinates.
+
 `transformBatch` refuses operation pairs whose effects cannot be mapped safely.
 An inverse keeps its staleness preconditions: an invalid undo must be dropped,
 never applied by removing those preconditions. Supported story addresses derive
-from the operation contract; this schema has no `addComment` primitive.
+from the operation contract.
 
-The unknown-input decoder accepts a bounded subset of model records: scalar
-formatting, language properties, plain runs and basic inline atoms. It refuses
-unsupported embedded records and operation kinds. `BATCH_WIRE_OP_TYPES` declares
-the accepted kinds; `validateDocumentBatch` normalizes optional undefined object
-fields, and `validateSequencedBatch` checks assigned revisions and effects.
+The unknown-input decoder accepts every operation kind; `BATCH_WIRE_OP_TYPES`
+declares them, and a kind added to the schema without a wire form stops the
+decoder compiling. Embedded model records are validated within the
+decoder's JSON depth and byte bounds: every content node's kind is one the
+model defines for its slot, every record carries only the fields its model
+type declares, paragraph ids are well formed, scalar formatting values have
+their model types and nested content is checked recursively. Deep property
+records (borders, shading, drawings, style, numbering-level and section
+details) are bounded by the JSON checks alone. Comment records (a creation's
+comment, a content edit's paragraphs, the records and anchor paragraphs a
+comment inverse restores) are checked the same way; a reply's thread is its
+anchor's, never a field of the new comment. A comment's author and date are
+the operation's own: the sequencer and every receiver apply them as sent. `validateDocumentBatch`
+normalizes optional undefined object fields, and `validateSequencedBatch`
+checks assigned revisions and that each effect is the one its operation kind
+records.
 
-The initial transform supports text insertions, direct deletions, formatting,
-paragraph splits and joins, anchored paragraph insertion, and repeated revision
-decisions. Numbering and table structure require exclusive edits. Overlapping
-revision decisions with opposite outcomes reject. Unspecified pairs reject.
-Rich inverse preconditions stay intact and may refuse an undo after another edit.
+The position transform rebases text insertions, direct deletions, run and
+paragraph formatting, paragraph splits and joins, anchored paragraph
+insertion and repeated revision decisions. Overlapping revision decisions with
+opposite outcomes reject. Text inherited at a paragraph's start takes the run
+after it, so a concurrent format from the start covers it in either order.
+
+Every other operation is block-scoped: paragraph replacement, inline
+replacement and paragraph review, inline splits and joins, content insertion,
+paragraph deletion, table insertion, deletion and structure edits, numbering
+instances, section endpoints and properties, package resources, headers and
+footers, story-part restoration, notes and revision metadata. Its footprint is
+the paragraphs it addresses, reads or creates and the package parts it
+writes; when it is sequenced, its effect records every paragraph it changed,
+inserted or removed (`touchedBlocks`), and for a table structure edit every
+paragraph of that table. A batch passes a concurrent block-scoped operation
+unchanged when it addresses none of those paragraphs, and is refused with
+`blockConflict` when it does. A table structure edit is refused with
+`tableRequiresExclusiveEdit` only when the concurrent one restructured the
+same table; typing in that table's cells passes. Package parts
+(`EXCLUSIVE_PARTS`: numbering, styles, relationships, media, sections, headers
+and footers, notes, settings, revision metadata and comments) conflict when
+one operation writes a part both name, by entry where the operation names one
+(a numbering instance, a relationship id, a note, a comment): `partConflict`,
+with the part. A comment operation that may add or remove the comment part
+relationships writes the whole relationships part. Pairs of position-rebased operations the transform cannot map safely
+reject with `unsupportedPair`.
+
+## Comments
+
+Comment threads are sequenced in the journal like any other edit. A range or
+point comment is rebased by its anchor: its ends move like text over
+concurrent insertions, direct deletions, splits and joins, and stay over
+formatting, paragraph properties and paragraph insertion. Its comment
+reference occupies one offset unit at the range's end (or at the point), so a
+concurrent position after it moves past it. A position at an anchor's own
+offset has no affinity to follow and refuses with `unsupportedPair`, as does
+a concurrent deletion or format whose range reaches an anchor. A deletion
+that removes a range's text is therefore refused rather than collapsing the
+range: the apply contract makes a collapsed range a point comment, which the
+other order (a range comment whose text is then deleted) would not give. A
+reply, a deletion and a restoration find their anchors in the document they
+apply to; their effect records the paragraphs they changed, so a concurrent
+edit addressing one of those paragraphs refuses with `blockConflict`, and
+the comments they added or removed, replies of a deleted thread among them.
+
+Concurrent comment operations decide by the comments they use. Different
+comments pass: a new comment takes its place in the comment list by id, so
+concurrent creations land in the same order whichever applies first. On one
+comment, a content edit and a resolution pass, a reply passes an edit or a
+resolution of its parent, and the same resolution twice is one resolution.
+Everything else on one comment is refused with `partConflict` naming the
+`comments` part: two content edits, opposite resolutions, a deletion against
+any other use of its thread (a reply to a deleted parent included), two
+replies to one parent (their references would take opposite orders), and a
+restoration against anything but a content edit of another comment (it puts
+records and part relationships back as captured). A reply or a resolution
+after a concurrent deletion that removed a comment part relationship is
+refused naming `relationships`, since it would add the relationship under
+another id than it does before the deletion. Comment ids come from the
+actor's lease like every other id.
+
+Undo inverses are operations of the same kinds and follow the same rules.
+Rich inverse preconditions stay intact and may refuse an undo after another
+edit.
 
 Partially overlapping writes to the same run property require additional
 structural effects and currently reject. Nonzero marker-gap changes and
@@ -72,3 +149,30 @@ When no free block is left below that limit, granting or renewing refuses with
 `exhausted`; ids never wrap. An actor whose lease runs out cannot mint: its
 edits that need new ids are refused until the room is compacted into a new
 base document.
+
+## Joining a canonical session to a room
+
+`@stll/folio-core` binds one canonical editing session to a room
+(`joinCanonicalRoom`, controller/canonicalCollaboration.ts) over a transport
+that carries batches and leases only (`CanonicalRoomTransport`): the room's
+base snapshot identity (the SHA-256 of the DOCX it was seeded from, which
+revision 0 is), its head revision, `submit` answering an acknowledgement or
+a rejection, a subscription delivering the journal after a revision, and the
+actor's id lease. `createCanonicalMemoryRoom` is the in-memory reference
+transport around `createSequencer`.
+
+A session joins only the room seeded from the DOCX it opened, refusing any
+other snapshot, and only before it is edited; it creates its session with the
+granted lease and replays the journal from revision 0. Each commit the
+session publishes (its committed-batch feed, `onCommitted`) is enqueued on the
+optimistic client under the commit's operation id, at the client's head
+revision, and submitted one at a time. A sequenced batch goes to the client
+first, which rebases the pending batches over it, and the change the client
+reports enters the session through `prepareRemote`. Deliveries may repeat or
+arrive out of order: revisions already applied are ignored and later ones
+wait for the gap. A rejected batch, or a pending batch the client dropped, is
+taken back the same way and reported to the host (`localEditRefused`), never
+lost silently. After a disconnection the unanswered batch is submitted again
+under the same operation id, so the sequencer answers it once. The controller
+asks for another lease block when a kind runs low. A remote batch waits while
+a composition is pending. Rooms hold no Yjs state.

@@ -65,7 +65,18 @@ export function detectImageContext(
 export function detectActiveTrackedChange(
   state: EditorState,
 ): ActiveTrackedChangeInfo | null {
-  const { from } = state.selection;
+  return detectTrackedChangeAt(state, state.selection.from);
+}
+
+/**
+ * The tracked change at `from`, as {@link detectActiveTrackedChange} reads the
+ * one at the caret: what a context menu opened at a pointer position resolves.
+ */
+export function detectTrackedChangeAt(
+  state: EditorState,
+  from: number,
+): ActiveTrackedChangeInfo | null {
+  if (from < 0 || from > state.doc.content.size) return null;
   const $pos = state.doc.resolve(from);
   // The text on either side of the caret, also inside an inline container
   // such as a content control, the character before it first.

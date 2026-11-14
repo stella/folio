@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 1117110551,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3324747246,
+      "atomic": false,
+      "operations": [{ "type": "deleteBlock", "blockId": "5E88C024" }]
+    },
+    { "action": "accept one", "seed": 3764759325 },
+    {
+      "action": "story batch",
+      "seed": 669522172,
+      "atomic": false,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "5E88C024",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        },
+        { "type": "splitBlock", "blockId": "483CD5EB", "offset": 14 }
+      ]
+    }
+  ],
+  "origin": "Shrunk from random flow seed 1117110551 (#1757)"
+}
