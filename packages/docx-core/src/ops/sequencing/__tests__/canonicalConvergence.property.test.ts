@@ -27,6 +27,7 @@ import {
   trimIdLease,
 } from "../../idLease";
 import {
+  type DeleteRangeOp,
   DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -43,8 +44,11 @@ import {
   type SequencedBatch,
   validateDocumentBatch,
 } from "../envelope";
+import * as heldRevisions from "../heldRevisions";
+import { sameParagraph } from "../points";
 import { isBlockScoped } from "../scope";
 import { type BatchSubmission, createSequencer } from "../sequencer";
+import * as trackedTransform from "../trackedTransform";
 import { transformBatch } from "../transform";
 import {
   canonicalBase,
@@ -98,7 +102,28 @@ type Outcome = {
   commentRebased: number;
   /** Accepted rebased batches whose result differs from the commuted order. */
   diverged: string[];
+  /** Accepted rebased batches with a tracked deletion in one paragraph as one in their tail. */
+  trackedPairs: number;
 };
+
+const isTrackedDeletion = (op: DocumentOp): op is DeleteRangeOp =>
+  op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision !== undefined;
+
+// Whether the batch and its tail hold tracked deletions of one paragraph.
+const meetsTrackedDeletion = (
+  batch: DocumentBatch,
+  tail: readonly SequencedBatch[],
+): boolean =>
+  batch.ops.some(
+    (op) =>
+      isTrackedDeletion(op) &&
+      tail.some(({ ops }) =>
+        ops.some(
+          (other) =>
+            isTrackedDeletion(other) && sameParagraph(op.from, other.from),
+        ),
+      ),
+  );
 
 /**
  * Apply `batch` where it was authored, then each tail batch rebased over it:
@@ -172,6 +197,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     scopedRebased: 0,
     commentRebased: 0,
     diverged: [],
+    trackedPairs: 0,
   };
   const delivery: Delivery[] = [];
   let serial = 10;
@@ -231,6 +257,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         outcome.scopedRebased += 1;
       if ([batch, ...tail].some(({ ops }) => ops.some((op) => isCommentOp(op))))
         outcome.commentRebased += 1;
+      if (meetsTrackedDeletion(batch, tail)) outcome.trackedPairs += 1;
       const proven = commutes(history, batch, tail, sequencer.document);
       if (proven === true) outcome.proven += 1;
       if (proven === false) outcome.diverged.push(batch.opId);
@@ -355,6 +382,7 @@ type Counts = {
   proven: number;
   scopedRebased: number;
   commentRebased: number;
+  trackedPairs: number;
 };
 
 const convergence = (
@@ -363,6 +391,7 @@ const convergence = (
     proven: 0,
     scopedRebased: 0,
     commentRebased: 0,
+    trackedPairs: 0,
   },
 ) =>
   fc.asyncProperty(scenarioArbitrary, async ([peers, steps]) => {
@@ -371,6 +400,7 @@ const convergence = (
     counts.proven += outcome.proven;
     counts.scopedRebased += outcome.scopedRebased;
     counts.commentRebased += outcome.commentRebased;
+    counts.trackedPairs += outcome.trackedPairs;
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
@@ -464,6 +494,129 @@ const deleteAgainstResolve: Scenario = [
   ],
 ];
 
+/**
+ * Two suggesting peers erase one character each in the fifth body
+ * paragraph, the second ending where the first starts: the tracked
+ * deletions are adjacent, and whichever wraps first records the cut between
+ * them.
+ */
+const adjacentSuggestedErases: Scenario = [
+  4,
+  [
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "erase", a: 47_038, b: 0, suggest: true },
+    },
+    {
+      type: "edit",
+      peer: 1,
+      seed: { kind: "erase", a: 83_446, b: 0, suggest: true },
+    },
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "undo", peer: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+  ],
+];
+
+/** A suggesting erase of the body's first paragraph from `a`. */
+const suggestedErase = (
+  peer: number,
+  seed: Omit<EditSeed, "kind" | "focus" | "suggest">,
+): Step => ({
+  type: "edit",
+  peer,
+  seed: { ...seed, kind: "erase", suggest: true, focus: true },
+});
+
+const submitAll: Step[] = [0, 1, 2].map((peer) => ({ type: "submit", peer }));
+
+/**
+ * Concurrent erases in the first paragraph, each phase drained before the
+ * next: a tracked deletion of 2..5 with one nested in it (3..4) and one
+ * adjacent to it (5..7); the same range twice (10..12) beside a separate one
+ * (14..15); a tracked deletion of 6..9 with a direct one nested in it (7..8).
+ */
+const concurrentSuggestedErases: Scenario = [
+  3,
+  [
+    suggestedErase(0, { a: 2, b: 2 }),
+    suggestedErase(1, { a: 3, b: 0 }),
+    suggestedErase(2, { a: 5, b: 1 }),
+    ...submitAll,
+    ...drain(24),
+    suggestedErase(0, { a: 10, b: 1 }),
+    suggestedErase(1, { a: 10, b: 1 }),
+    suggestedErase(2, { a: 14, b: 0 }),
+    ...submitAll,
+    ...drain(24),
+    suggestedErase(0, { a: 6, b: 2 }),
+    {
+      type: "edit",
+      peer: 1,
+      seed: { kind: "erase", a: 7, b: 0, suggest: false, focus: true },
+    },
+    ...submitAll,
+  ],
+];
+
+/**
+ * A suggesting erase of 2..4 in the first paragraph while another peer
+ * formats 3..6: the format cuts the run inside the tracked range, which
+ * decides whether one record ran across all of it.
+ */
+const formatAcrossSuggestedErase: Scenario = [
+  3,
+  [
+    suggestedErase(0, { a: 2, b: 1 }),
+    {
+      type: "edit",
+      peer: 1,
+      seed: { kind: "format", a: 3, b: 2, suggest: false, focus: true },
+    },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 1 },
+  ],
+];
+
+/**
+ * Two peers accept the same suggestion at once and the one sequenced first
+ * undoes its decision: the undo puts back the change the other peer decided.
+ */
+const undoAgainstRepeatedDecision: Scenario = [
+  3,
+  [
+    edit(1, { kind: "decide", a: 0, b: 0 }),
+    edit(0, { kind: "decide", a: 0, b: 0 }),
+    { type: "undo", peer: 0 },
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 0 },
+  ],
+];
+
+/** The pinned scenarios, which the fixed coverage sample starts with. */
+const PINNED: readonly Scenario[] = [
+  concurrentRows,
+  commentOverErase,
+  concurrentThread,
+  deleteAgainstResolve,
+  adjacentSuggestedErases,
+  concurrentSuggestedErases,
+  formatAcrossSuggestedErase,
+  undoAgainstRepeatedDecision,
+];
+
 describe("canonical sequencing", () => {
   test(
     "concurrent canonical edits converge on the authority's bytes and commute where accepted",
@@ -471,27 +624,145 @@ describe("canonical sequencing", () => {
       await assertProperty(convergence(), {
         numRuns: NUM_RUNS,
         id: "canonical sequencing convergence",
-        examples: [
-          [concurrentRows],
-          [commentOverErase],
-          [concurrentThread],
-          [deleteAgainstResolve],
-        ],
+        examples: PINNED.map((scenario) => [scenario]),
       });
-      // On a fixed sample the schedules race: accepted batches are rebased
-      // over concurrent ones, block-scoped and comment ones among them, and
-      // the commuted order is proven for them.
+      // On a fixed sample, which starts with the pinned scenarios, the
+      // schedules race: accepted batches are rebased over concurrent ones,
+      // block-scoped, comment and tracked deletion ones among them, and the
+      // commuted order is proven for them.
       const counts = {
         rebased: 0,
         proven: 0,
         scopedRebased: 0,
         commentRebased: 0,
+        trackedPairs: 0,
       };
-      await checkCoverageSample(convergence(counts), NUM_RUNS);
+      await checkCoverageSample(convergence(counts), NUM_RUNS + PINNED.length, {
+        map: (value, index) => {
+          const pinned = PINNED[index];
+          return pinned === undefined ? value : [pinned];
+        },
+      });
       expect(counts.rebased).toBeGreaterThan(0);
       expect(counts.scopedRebased).toBeGreaterThan(0);
       expect(counts.commentRebased).toBeGreaterThan(0);
       expect(counts.proven).toBeGreaterThan(0);
+      expect(counts.trackedPairs).toBeGreaterThan(0);
+    },
+    propertyTestTimeout(180_000),
+  );
+
+  test("concurrent tracked deletions commute when apart and refuse with a typed reason when they meet", () => {
+    const adjacent = simulate(...adjacentSuggestedErases);
+    // The second erase is refused, reported to its peer, and nothing diverges.
+    expect(adjacent.diverged).toEqual([]);
+    expect(adjacent.rejected).toEqual([
+      BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+    ]);
+    expect(adjacent.dropped).toEqual(["edit-11"]);
+    for (const document of adjacent.documents)
+      expect(equalForStaleness(document, adjacent.authority)).toBe(true);
+    // Nested, adjacent and equal ranges are refused; the erase apart from
+    // them and the direct deletion inside a tracked one are accepted and
+    // proven to commute.
+    const phases = simulate(...concurrentSuggestedErases);
+    expect(phases.diverged).toEqual([]);
+    expect(phases.rejected).toEqual(
+      Array.from({ length: 3 }, () => BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR),
+    );
+    expect(phases.trackedPairs).toBeGreaterThan(0);
+    expect(phases.proven).toBe(phases.rebased);
+    for (const document of phases.documents)
+      expect(equalForStaleness(document, phases.authority)).toBe(true);
+    // A format cutting runs inside a tracked range is refused too.
+    const crossing = simulate(...formatAcrossSuggestedErase);
+    expect(crossing.diverged).toEqual([]);
+    expect(crossing.rejected).toEqual([
+      BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+    ]);
+    for (const document of crossing.documents)
+      expect(equalForStaleness(document, crossing.authority)).toBe(true);
+  });
+
+  test("an undo that puts back a change a concurrent peer decided is refused", () => {
+    const outcome = simulate(...undoAgainstRepeatedDecision);
+    expect(outcome.diverged).toEqual([]);
+    expect(outcome.rejected).toContain(BATCH_REJECTION_REASONS.PART_CONFLICT);
+    for (const document of outcome.documents)
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+  });
+
+  test(
+    "an undo let through over a concurrent decision of its change is caught",
+    async () => {
+      // The test-only break: no operation holds a revision, so an undo that
+      // puts a change back passes a concurrent decision of it.
+      const original = { ...heldRevisions };
+      mock.module("../heldRevisions", () => ({
+        ...original,
+        heldRevisionIds: () => [],
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: NUM_RUNS,
+            examples: [[undoAgainstRepeatedDecision]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+        // Caught by the commutation check, not by anything else.
+        expect(String(result.errorInstance)).toMatch(/do not commute/u);
+      } finally {
+        mock.module("../heldRevisions", () => original);
+      }
+      // Without the break the same scenario passes.
+      const restored = await fc.check(
+        convergence(),
+        propertyConfig({
+          numRuns: 1,
+          examples: [[undoAgainstRepeatedDecision]],
+        }),
+      );
+      expect(restored.failed).toBe(false);
+    },
+    propertyTestTimeout(180_000),
+  );
+
+  test(
+    "adjacent tracked deletions accepted without the cut rule are caught",
+    async () => {
+      // The test-only break: no tracked change meets a concurrent cut, so
+      // two adjacent suggesting erases are both accepted.
+      const original = { ...trackedTransform };
+      mock.module("../trackedTransform", () => ({
+        ...original,
+        trackedCutConflict: () => undefined,
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: NUM_RUNS,
+            examples: [[adjacentSuggestedErases]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+        // Caught by the commutation check, not by anything else.
+        expect(String(result.errorInstance)).toMatch(/do not commute/u);
+      } finally {
+        mock.module("../trackedTransform", () => original);
+      }
+      // Without the break the same scenario passes.
+      const restored = await fc.check(
+        convergence(),
+        propertyConfig({ numRuns: 1, examples: [[adjacentSuggestedErases]] }),
+      );
+      expect(restored.failed).toBe(false);
     },
     propertyTestTimeout(180_000),
   );

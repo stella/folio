@@ -66,6 +66,7 @@ import {
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
+import { isCanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
@@ -674,6 +675,17 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
     }: DocxEditorProps,
     ref,
   ) {
+    // A canonical room joins the canonical session; a Yjs fragment binds the
+    // legacy session's editor state.
+    const canonicalRoom =
+      collaboration !== undefined && isCanonicalRoomCollaboration(collaboration)
+        ? collaboration
+        : undefined;
+    const yjsCollaboration =
+      collaboration !== undefined &&
+      !isCanonicalRoomCollaboration(collaboration)
+        ? collaboration
+        : undefined;
     const pagedEditorRef = useRef<PagedEditorRef>(null);
     const [pagedEditorBinding] = useState(createPagedEditorBinding);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1020,7 +1032,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => [
         autocompletePlugin,
         ...hostPlugins,
-        ...(collaboration?.plugins ?? []),
+        ...(yjsCollaboration?.plugins ?? []),
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
@@ -1033,7 +1045,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       [
         autocompletePlugin,
         hostPlugins,
-        collaboration?.plugins,
+        yjsCollaboration?.plugins,
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
@@ -2053,9 +2065,12 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
           legacyComments: requestedComments,
           canonicalCommentsSerialized: currentCanonicalSerialized,
         } = inputs;
+        // In a canonical room the comments are the room's: the prop only
+        // reports them, and is never read back into the session.
         if (
           controlledComments === undefined ||
-          currentCanonicalComments === null
+          currentCanonicalComments === null ||
+          canonicalRoom !== undefined
         ) {
           lastControlledCommentsRef.current = undefined;
           return;
@@ -6289,8 +6304,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             onEditorViewReady={handleBodyViewReady}
                             externalPlugins={editorPlugins}
                             showTemplateDirectives={showTemplateDirectives}
-                            {...(collaboration !== undefined
-                              ? { collaboration }
+                            {...(yjsCollaboration !== undefined
+                              ? { collaboration: yjsCollaboration }
+                              : {})}
+                            {...(canonicalRoom !== undefined
+                              ? { canonicalRoom }
                               : {})}
                             onHyperlinkClick={handleHyperlinkClick}
                             onContextMenu={handleContextMenu}

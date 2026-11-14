@@ -424,10 +424,12 @@ export type InsertContentOp = {
  * already inside a deletion or moved away is left as it is; content inside an
  * insertion or a move gets a deletion nested inside that record; everything
  * else is wrapped in a `Deletion` carrying the stamp, an inline content
- * control the range covers whole going in with its content. A range holding
- * a comment boundary or reference is refused, since no tracked change can
- * hold one; `planTrackedDeletion` plans the deletions around them. A tracked
- * deletion joins nothing, so `join` must be absent.
+ * control the range covers whole going in with its content. A record the
+ * range covers whole goes in with the comment anchors it holds, and accepting
+ * the deletion removes them, as the direct deletion does. A range holding a
+ * bare comment boundary or reference is refused, since no tracked change
+ * takes one in; `planTrackedDeletion` plans the deletions around them. A
+ * tracked deletion joins nothing, so `join` must be absent.
  */
 export type DeleteRangeOp = {
   type: typeof DOCUMENT_OP_TYPES.DELETE_RANGE;

@@ -24,6 +24,7 @@ import {
 } from "./envelope";
 import { mapPoint, type PointMapping, sameParagraph } from "./points";
 import { transformByFootprint } from "./scope";
+import { trackedCutConflict } from "./trackedTransform";
 
 type TransformOptions = { order?: "before" | "after" };
 
@@ -178,6 +179,9 @@ const transformRestoredOp = ({
       "The operation targets a structurally changed block.",
     );
   }
+  // Tracked changes whose recorded cuts depend on the order.
+  const tracked = trackedCutConflict(op, over);
+  if (tracked !== undefined) return tracked;
   if (
     op.type === DOCUMENT_OP_TYPES.RESOLVE_REVISION &&
     over.type === DOCUMENT_OP_TYPES.RESOLVE_REVISION

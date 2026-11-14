@@ -1,9 +1,9 @@
 import { sliceText } from "@stll/folio-core/utils/sliceText";
 
-import type { CollaborativeUser } from "./useCollaboration";
+import type { CanonicalRoomDemoPeer } from "../../../../tests/parity/canonicalRoomDemo";
 
 type AvatarStackProps = {
-  users: CollaborativeUser[];
+  users: readonly CanonicalRoomDemoPeer[];
   max?: number;
 };
 
@@ -36,7 +36,7 @@ export function AvatarStack({ users, max = 5 }: AvatarStackProps) {
     >
       {visible.map((user) => (
         <div
-          key={user.clientId}
+          key={user.actor}
           className="pg-avatar"
           style={{ background: user.color }}
           title={user.isLocal ? `${user.name} (you)` : user.name}
