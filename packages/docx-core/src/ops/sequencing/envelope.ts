@@ -23,7 +23,7 @@ import {
   type TextPosition,
 } from "../types";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
-import { isOpStory } from "./address";
+import { headerFooterStory, isOpStory, noteStory } from "./address";
 import {
   abstractNumbering,
   array,
@@ -341,11 +341,6 @@ const slice = object({
   content: array(inlineContent),
   openStart: natural,
   openEnd: natural,
-});
-const noteStory = object({ kind: literal("footnote", "endnote"), id: natural });
-const headerFooterStory = object({
-  kind: literal("header", "footer"),
-  rId: nonemptyString,
 });
 const headerFooterType = literal("default", "first", "even");
 const tableTarget = { story: isOpStory, blockId, revision, newIds };
