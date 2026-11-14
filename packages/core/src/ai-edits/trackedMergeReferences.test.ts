@@ -17,7 +17,6 @@ import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
 import { resolveStateStory } from "../prosemirror/markupViewProjection";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { FolioDocxReviewer } from "./headless";
 
 const open = async (markdown: string) => {
@@ -43,10 +42,8 @@ const paragraphProjection = (doc: PMNode) => {
   return rows;
 };
 
-const refusedProperty = {
-  reason: "pendingParagraphMarkDeletion",
-  canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
-} as const;
+// An ordinary rule of the public operations, not a canonical gap.
+const refusedProperty = { reason: "pendingParagraphMarkDeletion" } as const;
 
 const propertiesArbitrary = fc.record({
   styleId: fc.integer({ min: 1, max: 6 }).map((level) => `Heading${level}`),
@@ -167,10 +164,10 @@ test(
                 });
                 expect(result.issues.at(0)).toMatchObject({
                   code: refusedProperty.reason,
-                  canonicalRefusal: refusedProperty.canonicalRefusal,
                   recovery: "resolveTrackedChange",
                   retryable: false,
                 });
+                expect(result.issues.at(0)?.canonicalRefusal).toBeUndefined();
                 expect(reviewer.state.doc.toJSON()).toEqual(before);
                 expect(reviewer.getChanges()).toEqual(changes);
               }

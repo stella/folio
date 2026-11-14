@@ -22,8 +22,6 @@ export const CANONICAL_GAP = {
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
   publicTableStructure: "publicOps.tableStructure",
-  publicPendingParagraphMarkProperties:
-    "publicOps.pendingParagraphMarkProperties",
   publicHeadlessSession: "publicOps.headlessSession",
 } as const;
 
@@ -232,13 +230,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Public column insertions, cell merges and splits, signature tables and tables beside a table need canonical table descriptors.";
   };
-  readonly "publicOps.pendingParagraphMarkProperties": {
-    readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.";
-  };
   readonly "publicOps.headlessSession": {
     readonly owner: "document-operations";
     readonly defaultSessionMutation: "pm-headless-reviewer";
@@ -397,14 +388,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Public column insertions, cell merges and splits, signature tables and tables beside a table need canonical table descriptors.",
-  },
-  [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
-    owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Separate paragraph property edits refuse while the paragraph mark is pending deletion; atomic merge properties remain supported.",
   },
   [CANONICAL_GAP.publicHeadlessSession]: {
     owner: "document-operations",
