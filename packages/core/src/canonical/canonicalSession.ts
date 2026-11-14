@@ -179,7 +179,7 @@ const noChange = (message: string) =>
 /**
  * What the session says for an intent the compiler or the engine refused. A
  * change the engine cannot record belongs to the capability that would record
- * it: a link edit cutting markup folio does not model, and the tracked table records for a
+ * it: the tracked table records for a
  * suggested row, column or table change. Every other refusal is unclassified.
  */
 const intentRefusal = (
@@ -202,11 +202,6 @@ const intentRefusal = (
     return refuse(message);
   let gap: CanonicalGap;
   switch (intent.type) {
-    case "setHyperlink":
-    case "removeHyperlink":
-    case "insertHyperlink":
-      gap = CANONICAL_GAP.trackedHyperlinkResolution;
-      break;
     case "table":
     case "tableRow":
     case "tableBlock":
