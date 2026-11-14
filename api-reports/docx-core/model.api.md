@@ -1259,6 +1259,9 @@ export type ParagraphPropertyChange = WritableRecord & {
 };
 
 // @public
+export const paragraphSpacingExplicit: (formatting: ParagraphFormatting) => SpacingExplicit | undefined;
+
+// @public
 export const PARSE_WARNING_CODES: {
     readonly packageDecrypted: "package-decrypted";
     readonly packageArchive: "package-archive";
