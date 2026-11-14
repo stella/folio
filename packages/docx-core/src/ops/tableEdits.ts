@@ -903,7 +903,10 @@ const split = ({
     count: group.length * (span - 1),
   });
   if (fresh.isErr()) return Result.err(fresh.error);
-  const stamps = stampsFor(op, group.length * span);
+  // A vertical merge records each row's leaving it as a cell merge change,
+  // which rejecting reverts to the merge state the cell had.
+  const vertical = group.length > 1;
+  const stamps = stampsFor(op, group.length * (span + (vertical ? 1 : 0)));
   if (stamps.isErr()) return Result.err(stamps.error);
   let stampIndex = 0;
   let freshIndex = 0;
@@ -934,6 +937,19 @@ const split = ({
             : { previousFormatting: entry.cell.formatting }),
         },
       ];
+    const mergeStamp = vertical ? stamps.value[stampIndex++] : undefined;
+    const vMerge = entry.cell.formatting?.vMerge;
+    if (mergeStamp !== undefined)
+      original.structuralChange = {
+        type: "tableCellMerge",
+        info: stampInfo(mergeStamp),
+        ...(vMerge === undefined
+          ? {}
+          : {
+              verticalMergeOriginal:
+                vMerge === CELL_VERTICAL_MERGES.RESTART ? "rest" : "continue",
+            }),
+      };
     const replacement: TableCell[] = [original];
     for (let column = 1; column < span; column += 1) {
       const cell = fresh.value[freshIndex++];
