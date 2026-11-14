@@ -22,7 +22,20 @@ import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/comm
 import { mintNoteReferenceOccurrenceId } from "../prosemirror/noteReferenceOccurrences";
 import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
 import { canonicalJson } from "../utils/canonicalJson";
+import {
+  type AlignableAtom,
+  atomActionRangeCount,
+  fieldResultOwnershipOf,
+  insertionAnchors,
+  matchingAtoms,
+  MISSING_NOTE_DETAIL,
+  ownsFieldResult,
+  sameBlockTopology,
+  sameSupportedAtoms,
+} from "./inline-atom-alignment";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
+
+export { MISSING_NOTE_DETAIL } from "./inline-atom-alignment";
 
 export type MatchInlineAtomsOptions = {
   state: EditorState;
@@ -60,17 +73,11 @@ export type MatchInlineAtomsResult =
     }
   | { status: "budget-exceeded" };
 
-/** A revised reference names a note the redline's package does not have. */
-export const MISSING_NOTE_DETAIL =
-  "a note reference names a footnote or endnote the base document does not have";
-
 type TextBlock = { node: PMNode; from: number };
 
-type InlineAtom = {
+type InlineAtom = AlignableAtom & {
   node: PMNode;
   from: number;
-  offset: number;
-  key: string;
 };
 
 /** A footnote or endnote reference read as its marker, over `length` clean-text characters. */
@@ -81,6 +88,7 @@ type NoteReferenceAt = NoteReferenceIdentity & {
 };
 
 type AtomBlock = TextBlock & {
+  blockType: string;
   cleanText: string;
   offsets: readonly number[];
   supported: readonly InlineAtom[];
@@ -144,16 +152,22 @@ type Action =
   | ReplaceAtomAction
   | NoteReferenceAction;
 
-const actionRangeCount = (action: Action): number =>
-  (action.kind === "replace-text" && action.textDisposition === "retained") ||
-  (action.kind === "replace-atom" && action.atomDisposition === "retained")
-    ? 2
-    : 1;
-
-// Inline atom groups normally contain only a few zero-width carriers. Keep the
-// exact ordered match bounded so a hostile document cannot make comparison
-// quadratic; larger groups retain only stable unique anchors.
-const MAX_INLINE_ATOM_LCS_CELLS = 16_384;
+const actionRangeCount = (action: Action): number => {
+  switch (action.kind) {
+    case "replace-text":
+      return atomActionRangeCount(action.textDisposition);
+    case "replace-atom":
+      return atomActionRangeCount(action.atomDisposition);
+    case "insert":
+    case "delete":
+    case "note-reference":
+      return atomActionRangeCount(null);
+    default: {
+      const unreachable: never = action;
+      return unreachable;
+    }
+  }
+};
 
 const isSupportedAtom = (node: PMNode): boolean =>
   node.isInline &&
@@ -330,12 +344,14 @@ const atomBlockOf = (
       from: position,
       offset,
       key: atomKey(prepared),
+      resultText: runFormattingInlineAtomResultText(prepared),
     });
     return false;
   });
   return {
     node,
     from,
+    blockType: node.type.name,
     cleanText: clean.text,
     offsets: clean.offsets,
     supported,
@@ -360,7 +376,9 @@ const targetBlockIdLookup = (snapshot: FolioAIEditSnapshot) => {
     let owner: (typeof anchors)[number] | undefined;
     for (let index = low - 1; index >= 0; index--) {
       const anchor = anchors[index];
-      if (!anchor || anchor.to < position) continue;
+      // An anchor spans its block's node, `[from, to)`: the block before
+      // ends where this one starts and does not hold its start.
+      if (!anchor || anchor.to <= position) continue;
       if (!owner || anchor.to - anchor.from < owner.to - owner.from)
         owner = anchor;
     }
@@ -424,220 +442,6 @@ const wroteNoteReferenceMarker = (
     return false;
   });
   return found;
-};
-
-const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean => {
-  if (left.node.type !== right.node.type || left.cleanText !== right.cleanText)
-    return false;
-  const supportedOffsets = new Set([
-    ...left.supported.map(({ offset }) => offset),
-    ...right.supported.map(({ offset }) => offset),
-  ]);
-  const relevantTopology = ({ unsupportedTopology }: AtomBlock) =>
-    unsupportedTopology.filter(({ offset }) => supportedOffsets.has(offset));
-  return (
-    canonicalJson(relevantTopology(left)) ===
-    canonicalJson(relevantTopology(right))
-  );
-};
-
-const supportedAtomProjection = (block: AtomBlock) =>
-  canonicalJson(block.supported.map(({ offset, key }) => ({ offset, key })));
-
-const sameSupportedAtoms = (left: AtomBlock, right: AtomBlock): boolean =>
-  left.node.type === right.node.type &&
-  supportedAtomProjection(left) === supportedAtomProjection(right);
-
-const fieldResultOwnershipOf = (
-  atoms: readonly InlineAtom[],
-): ReadonlyMap<number, ReadonlySet<string>> => {
-  const ownership = new Map<number, Set<string>>();
-  for (const atom of atoms) {
-    const resultText = runFormattingInlineAtomResultText(atom.node);
-    if (!resultText) continue;
-    let resultsAtOffset = ownership.get(atom.offset);
-    if (!resultsAtOffset) {
-      resultsAtOffset = new Set<string>();
-      ownership.set(atom.offset, resultsAtOffset);
-    }
-    resultsAtOffset.add(resultText);
-  }
-  return ownership;
-};
-
-const ownsFieldResult = ({
-  ownership,
-  offset,
-  resultText,
-}: {
-  ownership: ReadonlyMap<number, ReadonlySet<string>>;
-  offset: number;
-  resultText: string;
-}): boolean => ownership.get(offset)?.has(resultText) ?? false;
-
-const matchingAtomGroup = ({
-  live,
-  target,
-  liveStart,
-  targetStart,
-}: {
-  live: readonly InlineAtom[];
-  target: readonly InlineAtom[];
-  liveStart: number;
-  targetStart: number;
-}): readonly [number, number][] => {
-  if (
-    live.length === target.length &&
-    live.every((atom, index) => atom.key === target[index]?.key)
-  ) {
-    return live.map((_, index) => [liveStart + index, targetStart + index]);
-  }
-  if (live.length === 0 || target.length === 0) return [];
-
-  if (live.length <= Math.floor(MAX_INLINE_ATOM_LCS_CELLS / target.length)) {
-    const width = target.length + 1;
-    const table = new Uint16Array((live.length + 1) * width);
-    for (let liveIndex = live.length - 1; liveIndex >= 0; liveIndex--) {
-      for (
-        let targetIndex = target.length - 1;
-        targetIndex >= 0;
-        targetIndex--
-      ) {
-        const index = liveIndex * width + targetIndex;
-        if (live[liveIndex]?.key === target[targetIndex]?.key) {
-          table[index] =
-            (table[(liveIndex + 1) * width + targetIndex + 1] ?? 0) + 1;
-          continue;
-        }
-        table[index] = Math.max(
-          table[(liveIndex + 1) * width + targetIndex] ?? 0,
-          table[liveIndex * width + targetIndex + 1] ?? 0,
-        );
-      }
-    }
-    const matches: [number, number][] = [];
-    let liveIndex = 0;
-    let targetIndex = 0;
-    while (liveIndex < live.length && targetIndex < target.length) {
-      if (live[liveIndex]?.key === target[targetIndex]?.key) {
-        matches.push([liveStart + liveIndex, targetStart + targetIndex]);
-        liveIndex++;
-        targetIndex++;
-        continue;
-      }
-      const skipLive = table[(liveIndex + 1) * width + targetIndex] ?? 0;
-      const skipTarget = table[liveIndex * width + targetIndex + 1] ?? 0;
-      if (skipLive >= skipTarget) liveIndex++;
-      else targetIndex++;
-    }
-    return matches;
-  }
-
-  const targetIndexes = new Map<string, number | null>();
-  for (const [index, atom] of target.entries()) {
-    targetIndexes.set(atom.key, targetIndexes.has(atom.key) ? null : index);
-  }
-  const liveKeyCounts = new Map<string, number>();
-  for (const atom of live) {
-    liveKeyCounts.set(atom.key, (liveKeyCounts.get(atom.key) ?? 0) + 1);
-  }
-  const matches: [number, number][] = [];
-  let previousTargetIndex = -1;
-  for (const [liveIndex, atom] of live.entries()) {
-    const targetIndex = targetIndexes.get(atom.key);
-    if (
-      targetIndex === undefined ||
-      targetIndex === null ||
-      targetIndex <= previousTargetIndex ||
-      liveKeyCounts.get(atom.key) !== 1
-    ) {
-      continue;
-    }
-    matches.push([liveStart + liveIndex, targetStart + targetIndex]);
-    previousTargetIndex = targetIndex;
-  }
-  return matches;
-};
-
-const matchingAtoms = ({
-  live,
-  target,
-}: {
-  live: readonly InlineAtom[];
-  target: readonly InlineAtom[];
-}): readonly [number, number][] => {
-  const matched: [number, number][] = [];
-  let left = 0;
-  let right = 0;
-  while (left < live.length || right < target.length) {
-    const liveOffset = live[left]?.offset;
-    const targetOffset = target[right]?.offset;
-    const offset = Math.min(
-      liveOffset ?? Number.POSITIVE_INFINITY,
-      targetOffset ?? Number.POSITIVE_INFINITY,
-    );
-    if (!Number.isFinite(offset)) break;
-    const liveStart = left;
-    const targetStart = right;
-    while (live[left]?.offset === offset) left++;
-    while (target[right]?.offset === offset) right++;
-    const liveGroup = live.slice(liveStart, left);
-    const targetGroup = target.slice(targetStart, right);
-    matched.push(
-      ...matchingAtomGroup({
-        live: liveGroup,
-        target: targetGroup,
-        liveStart,
-        targetStart,
-      }),
-    );
-  }
-  return matched;
-};
-
-const insertionAnchors = ({
-  live,
-  target,
-  matches,
-}: {
-  live: readonly InlineAtom[];
-  target: readonly InlineAtom[];
-  matches: readonly [number, number][];
-}): ReadonlyMap<number, number> => {
-  const liveIndexByTargetIndex = new Map<number, number>();
-  for (const [liveIndex, targetIndex] of matches) {
-    liveIndexByTargetIndex.set(targetIndex, liveIndex);
-  }
-  const anchors = new Map<number, number>();
-  let groupStart = 0;
-  while (groupStart < target.length) {
-    const offset = target[groupStart]?.offset;
-    let groupEnd = groupStart + 1;
-    while (target[groupEnd]?.offset === offset) groupEnd++;
-    let nextMatchedLiveIndex: number | undefined;
-    for (let index = groupEnd - 1; index >= groupStart; index--) {
-      const matchedLiveIndex = liveIndexByTargetIndex.get(index);
-      if (matchedLiveIndex !== undefined)
-        nextMatchedLiveIndex = matchedLiveIndex;
-      else if (nextMatchedLiveIndex !== undefined)
-        anchors.set(index, live[nextMatchedLiveIndex]!.from);
-    }
-    let previousMatchedLiveIndex: number | undefined;
-    for (let index = groupStart; index < groupEnd; index++) {
-      const matchedLiveIndex = liveIndexByTargetIndex.get(index);
-      if (matchedLiveIndex !== undefined) {
-        previousMatchedLiveIndex = matchedLiveIndex;
-        continue;
-      }
-      if (!anchors.has(index) && previousMatchedLiveIndex !== undefined) {
-        const previous = live[previousMatchedLiveIndex];
-        if (previous)
-          anchors.set(index, previous.from + previous.node.nodeSize);
-      }
-    }
-    groupStart = groupEnd;
-  }
-  return anchors;
 };
 
 const mappedSourcePosition = ({
@@ -969,7 +773,7 @@ export const matchInlineAtoms = ({
         position: atom.from,
       });
       if (from === null) return { status: "unalignable" };
-      const resultText = runFormattingInlineAtomResultText(atom.node);
+      const { resultText } = atom;
       if (
         fieldResults === "text" &&
         resultText &&
@@ -1009,7 +813,17 @@ export const matchInlineAtoms = ({
     }
     for (const [targetIndex, atom] of target.supported.entries()) {
       if (matchedTarget.has(targetIndex)) continue;
-      const position = anchors.get(targetIndex) ?? live.offsets[atom.offset];
+      const anchor = anchors.get(targetIndex);
+      const anchorAtom =
+        anchor === undefined ? undefined : live.supported[anchor.liveIndex];
+      let position: number | undefined;
+      if (anchor === undefined || anchorAtom === undefined)
+        position = live.offsets[atom.offset];
+      else
+        position =
+          anchor.side === "before"
+            ? anchorAtom.from
+            : anchorAtom.from + anchorAtom.node.nodeSize;
       if (position === undefined) return { status: "unalignable" };
       const from =
         mappedSourcePosition({ mapping: reviewed.mapping, position }) ??
@@ -1021,7 +835,7 @@ export const matchInlineAtoms = ({
           noteReferences,
         });
       if (from === null) return { status: "unalignable" };
-      const resultText = runFormattingInlineAtomResultText(atom.node);
+      const { resultText } = atom;
       if (
         fieldResults === "text" &&
         resultText &&
