@@ -108,8 +108,13 @@ export type HiddenProseMirrorProps = {
   readOnly?: boolean;
   /** Callback when document changes via transaction */
   onTransaction?: (update: HiddenEditorTransactionUpdate) => void;
-  /** Callback when a canonical composition ends */
-  onCanonicalCompositionEnd?: () => void;
+  /**
+   * A canonical composition changed what the view shows without a document
+   * change (its provisional text, or its end): lay the live view out again.
+   */
+  onCanonicalCompositionLayout?: () => void;
+  /** The embedded-font families the painter resolves runs with. */
+  getEmbeddedFontFamilyMap?: () => ReadonlyMap<string, string> | undefined;
   /** Callback when selection changes */
   onSelectionChange?: (state: EditorState) => void;
   /** External ProseMirror plugins */
@@ -151,6 +156,8 @@ export type HiddenProseMirrorProps = {
 export type HiddenProseMirrorRef = HiddenEditorApi & {
   /** Internal composition availability for deferred document notifications. */
   isCanonicalComposing: () => boolean;
+  /** Draw the view's text again with the painter's current font context. */
+  refreshFonts: () => void;
   /** The canonical session's own document, read without a copy. */
   readCanonicalDocument: () => ReadonlyDocument | null;
   /** Get the off-screen host element. */
@@ -218,7 +225,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     widthPx = 612, // Default Letter width at 72dpi
     readOnly = false,
     onTransaction,
-    onCanonicalCompositionEnd,
+    onCanonicalCompositionLayout,
+    getEmbeddedFontFamilyMap,
     onSelectionChange,
     externalPlugins = EMPTY_EXTERNAL_PLUGINS,
     collaboration,
@@ -278,7 +286,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   // Store callbacks in refs to avoid dependency array issues that cause infinite loops
   // when the parent component passes unstable callback references
   const onTransactionRef = useRef(onTransaction);
-  const onCanonicalCompositionEndRef = useRef(onCanonicalCompositionEnd);
+  const onCanonicalCompositionLayoutRef = useRef(onCanonicalCompositionLayout);
+  const getEmbeddedFontFamilyMapRef = useRef(getEmbeddedFontFamilyMap);
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onEditorViewReadyRef = useRef(onEditorViewReady);
   const onCanonicalHistoryRef = useRef(onCanonicalHistory);
@@ -310,7 +319,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     externalPluginsRef.current = externalPlugins;
     getPrecomputedInitialStateRef.current = getPrecomputedInitialState;
     onTransactionRef.current = onTransaction;
-    onCanonicalCompositionEndRef.current = onCanonicalCompositionEnd;
+    onCanonicalCompositionLayoutRef.current = onCanonicalCompositionLayout;
+    getEmbeddedFontFamilyMapRef.current = getEmbeddedFontFamilyMap;
     onSelectionChangeRef.current = onSelectionChange;
     onEditorViewReadyRef.current = onEditorViewReady;
     onCanonicalHistoryRef.current = onCanonicalHistory;
@@ -355,8 +365,9 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,
         onTransaction: (update) => onTransactionRef.current?.(update),
-        onCanonicalCompositionEnd: () =>
-          onCanonicalCompositionEndRef.current?.(),
+        onCanonicalCompositionLayout: () =>
+          onCanonicalCompositionLayoutRef.current?.(),
+        getEmbeddedFontFamilyMap: () => getEmbeddedFontFamilyMapRef.current?.(),
         onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
         onKeyDown: (view, event) =>
           onKeyDownRef.current?.(view, event) ?? false,
@@ -457,6 +468,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
       getHostElement: () => hostRef.current,
       isCanonicalComposing: () =>
         managerRef.current?.isCanonicalComposing() ?? false,
+      refreshFonts: () => managerRef.current?.refreshFonts(),
       readCanonicalDocument: () =>
         managerRef.current?.readCanonicalDocument() ?? null,
     }),

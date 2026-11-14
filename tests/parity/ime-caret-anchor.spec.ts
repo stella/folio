@@ -4,6 +4,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
+  openCanonicalEditor,
   openEditor,
 } from "./parity-fixture";
 
@@ -231,7 +232,9 @@ forEachAdapter(
 forEachAdapter(
   "CJK IME input caret stays beside a composition as it grows",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    // The run's East Asian slot names a face the document embeds, so the kana
+    // draw with one face whatever fonts the machine has.
+    await openCanonicalEditor(page, adapter, "cjk-composition.docx");
     await ensureLiveView(page);
     await page
       .locator(".paged-editor__hidden-pm > .ProseMirror")
@@ -243,9 +246,9 @@ forEachAdapter(
       .click({ position: { x: 80, y: 8 } });
 
     // While composing, the anchor stays where the composition began and the
-    // provisional text is measured with the hidden editor's fonts, so the
-    // native caret, where the candidate window opens, may settle a few
-    // pixels from the painted one, but never anywhere else.
+    // hidden editor draws the provisional text with the faces the painter
+    // uses, so the native caret, where the candidate window opens, settles
+    // beside the painted one, within the rounding of the two measurements.
     const readDistance = () =>
       page.evaluate(() => {
         const selection = document.getSelection();

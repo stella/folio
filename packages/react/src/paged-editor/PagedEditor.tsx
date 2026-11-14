@@ -3638,6 +3638,24 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     );
 
     /**
+     * Lay out what the hidden view shows while a canonical composition grows
+     * or after it ends, as an edit would, without reporting a document change:
+     * the composition reaches the host once it commits.
+     */
+    const layoutCanonicalComposition = useCallback(() => {
+      syncCoordinator.incrementStateSeq();
+      const state = hiddenPMRef.current?.getState();
+      if (state) hideSelectionOverlayDuringInput(state);
+      scheduleLayout();
+      syncCoordinator.requestRender();
+    }, [syncCoordinator, hideSelectionOverlayDuringInput, scheduleLayout]);
+
+    const readEmbeddedFontFamilyMap = useCallback(
+      () => layoutSessionRef.current.embeddedFontFamilyMap,
+      [],
+    );
+
+    /**
      * Handle a transaction on a persistent hidden HF EditorView.
      *
      * Two responsibilities:
@@ -6310,6 +6328,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           // scoped family instead of the raw DOCX name — which is never
           // registered on `document.fonts` (see `fonts/embeddedFonts.ts`).
           layoutSessionRef.current.embeddedFontFamilyMap = new Map(familyMap);
+          hiddenPMRef.current?.refreshFonts();
           const view = hiddenPMRef.current?.getView();
           if (!view) {
             return undefined;
@@ -6909,7 +6928,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           getPrecomputedInitialState={readPrecomputedInitialState}
           readOnly={readOnly}
           onTransaction={handleTransaction}
-          onCanonicalCompositionEnd={scheduleLayout}
+          onCanonicalCompositionLayout={layoutCanonicalComposition}
+          getEmbeddedFontFamilyMap={readEmbeddedFontFamilyMap}
           onSelectionChange={handleSelectionChange}
           onRemoteSelectionsChange={setRemoteSelections}
           onEditorViewReady={handleEditorViewReady}

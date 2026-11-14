@@ -1120,7 +1120,8 @@ export function useDocxEditor(
     getDocumentIdentity: () => String(loadSequence),
     getDocumentContext: () => docModel.value,
     onTransaction: handleTransaction,
-    onCanonicalCompositionEnd: () => scheduler.schedule(),
+    onCanonicalCompositionLayout: layoutCanonicalComposition,
+    getEmbeddedFontFamilyMap: () => session.embeddedFontFamilyMap,
     onSelectionChange: (state) => {
       editorState.value = state;
       onSelectionUpdate?.(state);
@@ -1245,6 +1246,19 @@ export function useDocxEditor(
       scheduler.schedule();
       scheduleDocumentChangeNotification();
     }
+    syncCoordinator.requestRender();
+  }
+
+  /**
+   * Lay out what the hidden view shows while a canonical composition grows or
+   * after it ends, as an edit would, without reporting a document change: the
+   * composition reaches the host once it commits.
+   */
+  function layoutCanonicalComposition(): void {
+    const view = editorView.value;
+    if (view) editorState.value = view.state;
+    syncCoordinator.incrementStateSeq();
+    scheduler.schedule();
     syncCoordinator.requestRender();
   }
 
@@ -1848,11 +1862,9 @@ export function useDocxEditor(
     setEmbeddedFontFamilies: (
       families: ReadonlyMap<string, string> | null,
     ): void => {
-      if (families) {
-        session.embeddedFontFamilyMap = new Map(families);
-        return;
-      }
-      delete session.embeddedFontFamilyMap;
+      if (families) session.embeddedFontFamilyMap = new Map(families);
+      else delete session.embeddedFontFamilyMap;
+      manager.refreshFonts();
     },
     editor,
     editorView,
