@@ -92,7 +92,7 @@ const base = (placement: keyof typeof PLACEMENTS): Document => {
 };
 
 /** The neighbour's edits, each compiled against the peer's document. */
-const EDITS = {
+const EDITS: Readonly<Record<string, (lease: IdLease) => DocumentOp[]>> = {
   split: (lease: IdLease): DocumentOp[] => [
     {
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
@@ -130,7 +130,7 @@ const EDITS = {
       runProps: INHERIT_RUN_PROPS,
     },
   ],
-} as const;
+};
 
 const wire = <Value>(value: Value): Value => JSON.parse(JSON.stringify(value));
 
