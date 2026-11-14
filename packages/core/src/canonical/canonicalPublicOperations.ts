@@ -985,6 +985,20 @@ const resolveTableStructure = ({
         left: cell.leftColumnIndex,
         right: cell.leftColumnIndex + 1,
       };
+      // A suggestion marks whole cells deleted; a cell spanning the column
+      // and another has no suggested form narrower than itself, in either
+      // engine.
+      if (
+        tracked &&
+        Array.from({ length: map.height }, (_, rowIndex) => {
+          const position = map.map[rowIndex * map.width + column.left];
+          return position === undefined ? null : row.table.nodeAt(position);
+        }).some((node) => Number(node?.attrs["colspan"] ?? 1) !== 1)
+      )
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested column deletion cannot narrow a cell that spans other columns.",
+        );
       // The table is addressed by a paragraph the deletion keeps, as the
       // editor's column deletion addresses it.
       const at = tableAnchor(

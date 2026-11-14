@@ -24,5 +24,13 @@
       "note": "Deleting the row a vertical merge starts, addressed through another cell of that row, puts the caret in the merged cell the next row takes over.",
       "date": "2026-11-14"
     }
+  ],
+  "cell merges, splits and column changes in the canonical session give the default engine's package": [
+    {
+      "seed": 681634695,
+      "path": "70:1:1",
+      "note": "A suggested column deletion through a cell spanning two columns is skipped alike in both engines.",
+      "date": "2026-11-14"
+    }
   ]
 }
