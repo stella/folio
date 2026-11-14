@@ -100,8 +100,9 @@ at one point stay two runs in either order. A concurrent insertion, format
 or seam join at its offset passes, and so does a paragraph split or join
 away from it. A direct deletion reaching its offset refuses: it may remove
 whole records beside the seam, so other records meet there in one order than
-in the other. A split at its offset, a hard join there, a tracked
-change's edge there and a comment anchor there still refuse.
+in the other. A tracked deletion reaching it removes nothing and passes, as
+a pair that records other cuts in the two orders (see below). A split at its
+offset, a hard join there and a comment anchor there still refuse.
 
 A slice with open ends merges with the records at its point, and a slice
 holding zero-width leaves, comment references or paragraphs depends on
@@ -116,9 +117,10 @@ what was applied first: when a concurrent edit cuts or merges records at an
 edge or inside the range (another tracked edge, an insertion point, a
 format's end, an inline split or join, a paragraph split, an inverse
 deletion's join), the cut goes to whichever applies first and the two orders
-record different joins. A direct deletion that reaches one edge and not the
-other removes what lay against that edge in one order and moves the edge in
-the other. Two tracked deletions that overlap (nested, equal or crossing
+record different joins. A direct deletion that reaches an edge removes what
+lay against that edge in one order and moves the edge in the other, and one
+covering the change whole leaves the records around it cut in one order
+only. Two tracked deletions that overlap (nested, equal or crossing
 ranges) leave the shared content to the one sequenced first, under its
 author and id: the later one wraps only what is not deleted yet.
 
@@ -129,7 +131,8 @@ peer that applied its own edit of such a pair first gets the authority's
 document as a `replaced` change, so its undo and redo history is dropped,
 and its positions move over the change's `moves`. They are the only pairs
 the transform accepts without commuting. Tracked changes apart from every
-concurrent cut commute.
+concurrent cut commute, and so does a direct deletion strictly inside a
+tracked one.
 
 ## Block-scoped operations
 

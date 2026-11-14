@@ -14,6 +14,7 @@ import {
   type DocumentOp,
   ID_LEASE_KINDS,
   type IdLease,
+  INHERIT_RUN_PROPS,
   OP_STORIES,
   paragraphLogicalText,
   type SequencedBatch,
@@ -208,7 +209,7 @@ describe("overlapping tracked deletions", () => {
         const submitted = client.nextSubmission() ?? panic("A batch to send.");
         const answer = room.submit(submitted);
         // Neither is refused: the later one wraps only what is not deleted.
-        expect(answer.type).toBe("ack");
+        expect(answer).toMatchObject({ type: "ack" });
         if (answer.type === "ack") client.receiveAck(answer);
         broadcasts.push(room.broadcasts.at(-1) ?? panic("Sequenced."));
       }
@@ -270,9 +271,13 @@ describe("overlapping tracked deletions", () => {
           decision === "accept" ? removedOnAcceptingTheRest.accept : rejected();
         expect(acceptedText(decided, left)).toBe(without(expected));
         // It saves, and the saved file reopens to the same text.
-        const reopened = createCanonicalSession(
-          await open(await serializeDocumentToDocx(decided)),
-        ).unwrap().document;
+        const saved = (
+          await prepareCanonicalDocxInput(
+            await serializeDocumentToDocx(decided),
+          )
+        ).unwrap();
+        const reopened = createCanonicalSession(await open(saved)).unwrap()
+          .document;
         expect(acceptedText(reopened, left)).toBe(without(expected));
       }
     });
@@ -348,10 +353,11 @@ describe("a replaced change in a session", () => {
         type: DOCUMENT_OP_TYPES.INSERT_TEXT,
         at: at(blockId, 0),
         text: "xy",
+        runProps: INHERIT_RUN_PROPS,
       },
     ];
     const answer = room.submit(batch("remote", "remote-0", 0, remoteOps));
-    expect(answer.type).toBe("ack");
+    expect(answer).toMatchObject({ type: "ack" });
     const sequenced = room.broadcasts.at(-1) ?? panic("Sequenced.");
 
     const changes = localClient.receiveBroadcast(sequenced).unwrap();
@@ -380,7 +386,7 @@ describe("a replaced change in a session", () => {
     // ends on the authority's document.
     const submitted = localClient.nextSubmission() ?? panic("Pending.");
     const localAnswer = room.submit(submitted);
-    expect(localAnswer.type).toBe("ack");
+    expect(localAnswer).toMatchObject({ type: "ack" });
     if (localAnswer.type === "ack") localClient.receiveAck(localAnswer);
     localClient
       .receiveBroadcast(room.broadcasts.at(-1) ?? panic("Sequenced."))

@@ -8,9 +8,10 @@
  * offset (a tracked edge, an insertion point, a format's end, an inline split
  * or join, a paragraph split) leaves the cut to whichever applies first, and
  * a cut inside the range decides whether a record runs across the whole of
- * it. A direct deletion reaching one edge of a tracked change and not the
- * other removes what lay against that edge in one order and moves the edge
- * in the other. Two tracked deletions that overlap leave the shared content
+ * it. A direct deletion reaching an edge of a tracked change removes what
+ * lay against that edge in one order and moves the edge in the other, and
+ * one covering the change whole leaves the records around it cut in one
+ * order only. Two tracked deletions that overlap leave the shared content
  * to whichever wraps it first: the one sequenced first.
  *
  * Such pairs are accepted and rebased like any other: the authority's order
@@ -31,13 +32,13 @@ import { sameParagraph } from "./points";
 export const TRACKED_ORDER_PAIRS: Readonly<{
   /** A cut at a tracked change's edge or inside its range. */
   CUT_AT_TRACKED_CHANGE: "cutAtTrackedChange";
-  /** A direct deletion reaching one edge of a tracked change and not the other. */
-  DELETION_AT_ONE_EDGE: "deletionAtOneEdge";
+  /** A direct deletion reaching an edge of a tracked change, or covering it. */
+  DELETION_AT_TRACKED_EDGE: "deletionAtTrackedEdge";
   /** Two tracked deletions sharing content: nested, equal or crossing. */
   OVERLAPPING_DELETIONS: "overlappingDeletions";
 }> = {
   CUT_AT_TRACKED_CHANGE: "cutAtTrackedChange",
-  DELETION_AT_ONE_EDGE: "deletionAtOneEdge",
+  DELETION_AT_TRACKED_EDGE: "deletionAtTrackedEdge",
   OVERLAPPING_DELETIONS: "overlappingDeletions",
 } as const;
 export type TrackedOrderPair =
@@ -99,8 +100,10 @@ const reaches = (
   );
 };
 
-// Whether a direct deletion reaches some of the tracked edges and not all.
-const crossesEdges = (
+// Whether a direct deletion reaches a tracked edge: it removes what lay
+// against the edge in one order and moves the edge in the other, and
+// covering the change whole leaves the records around it cut in one order.
+const reachesEdge = (
   edges: readonly TextPosition[],
   deletion: DocumentOp,
 ): boolean => {
@@ -115,7 +118,7 @@ const crossesEdges = (
       deletion.from.offset <= edge.offset &&
       edge.offset <= deletion.to.offset,
   ).length;
-  return reached > 0 && reached < edges.length;
+  return reached > 0;
 };
 
 const overlappingDeletions = (left: DocumentOp, right: DocumentOp): boolean =>
@@ -139,8 +142,8 @@ export const trackedOrderPair = (
     return TRACKED_ORDER_PAIRS.OVERLAPPING_DELETIONS;
   const opEdges = trackedEdges(op);
   const overEdges = trackedEdges(over);
-  if (crossesEdges(opEdges, over) || crossesEdges(overEdges, op))
-    return TRACKED_ORDER_PAIRS.DELETION_AT_ONE_EDGE;
+  if (reachesEdge(opEdges, over) || reachesEdge(overEdges, op))
+    return TRACKED_ORDER_PAIRS.DELETION_AT_TRACKED_EDGE;
   if (reaches(opEdges, cutPoints(over)) || reaches(overEdges, cutPoints(op)))
     return TRACKED_ORDER_PAIRS.CUT_AT_TRACKED_CHANGE;
   return undefined;

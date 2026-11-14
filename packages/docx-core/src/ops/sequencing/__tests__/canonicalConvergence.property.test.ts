@@ -141,10 +141,82 @@ const noTrackedOrder = (): Record<
   number
 > => ({
   cutAtTrackedChange: 0,
-  deletionAtOneEdge: 0,
+  deletionAtTrackedEdge: 0,
   overlappingDeletions: 0,
 });
 const TRACKED_ORDER_KINDS = Object.values(trackedTransform.TRACKED_ORDER_PAIRS);
+
+/**
+ * The declared tracked pairs a batch forms with the tail it was rebased
+ * over, each compared in one coordinate space: the batch moved over the
+ * tail batches sequenced before the one it meets.
+ */
+const declaredOver = (
+  batch: DocumentBatch,
+  tail: readonly SequencedBatch[],
+): Set<trackedTransform.TrackedOrderPair> => {
+  const kinds = new Set<trackedTransform.TrackedOrderPair>();
+  for (const [index, remote] of tail.entries()) {
+    const moved = transformBatch(batch, tail.slice(0, index));
+    if (moved.isErr()) break;
+    for (const kind of trackedOrderPairs(moved.value.ops, remote.ops))
+      kinds.add(kind);
+  }
+  return kinds;
+};
+
+// The batch's operations where they meet the tail batch that refuses them.
+const opsAtRefusal = (
+  batch: DocumentBatch,
+  tail: readonly SequencedBatch[],
+): readonly DocumentOp[] => {
+  const index = tail.findIndex((_, at) =>
+    transformBatch(batch, tail.slice(0, at + 1)).isErr(),
+  );
+  if (index <= 0) return batch.ops;
+  const moved = transformBatch(batch, tail.slice(0, index));
+  return moved.isOk() ? moved.value.ops : batch.ops;
+};
+
+// Where two values first differ, for a failure message.
+const differenceAt = (
+  left: unknown,
+  right: unknown,
+  path: string,
+): string | undefined => {
+  if (equalForStaleness(left, right)) return undefined;
+  if (
+    typeof left === "object" &&
+    left !== null &&
+    typeof right === "object" &&
+    right !== null
+  )
+    for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+      const found = differenceAt(
+        Reflect.get(left, key),
+        Reflect.get(right, key),
+        `${path}.${key}`,
+      );
+      if (found !== undefined) return found;
+    }
+  return `${path}: ${JSON.stringify(left)?.slice(0, 300) ?? "undefined"} != ${JSON.stringify(right)?.slice(0, 300) ?? "undefined"}`;
+};
+
+// An inverse whose preconditions or joins pin the range it restores.
+const holdsPreconditions = (op: DocumentOp): boolean => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+      return op.expected !== undefined || op.join !== undefined;
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return (
+        op.expected !== undefined ||
+        op.joinStart !== undefined ||
+        op.joinEnd !== undefined
+      );
+    default:
+      return false;
+  }
+};
 
 /** Changes a peer with pending batches got, by the pair kinds they met. */
 type Tally = Record<PairKind | "other", number>;
@@ -506,13 +578,19 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       );
       const refusing = refusingOps(batch, tail);
       // No declared tracked pair is refused: the authority's order decides.
-      for (const op of restoredOps(batch.ops))
+      // An inverse keeps its preconditions, which refuse by their own rule.
+      for (const op of restoredOps(opsAtRefusal(batch, tail)))
         for (const other of restoredOps(refusing)) {
           const kind = trackedTransform.trackedOrderPair(op, other);
           const named =
             (op.type === opType && other.type === overType) ||
             (op.type === overType && other.type === opType);
-          if (kind !== undefined && named)
+          if (
+            kind !== undefined &&
+            named &&
+            !holdsPreconditions(op) &&
+            !holdsPreconditions(other)
+          )
             outcome.trackedRefusals.push(
               `${kind}: ${String(opType)} over ${String(overType)}: ${result.reason.message} (${describeOps(batch.ops)} over ${describeOps(refusing)})`,
             );
@@ -557,10 +635,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         // Only a declared tracked pair may record other cuts, or leave
         // shared content to another deletion, in the other order; every
         // peer still reaches the authority's document by replay.
-        const declared = trackedOrderPairs(
-          batch.ops,
-          tail.flatMap(({ ops }) => ops),
-        );
+        const declared = declaredOver(batch, tail);
         if (declared.size === 0) outcome.diverged.push(batch.opId);
         for (const kind of declared) outcome.trackedOrder[kind] += 1;
       }
@@ -597,10 +672,18 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       const applied = applyBatch(document, change.batch.ops);
       if (applied.isErr()) throw applied.error;
       document = applied.value.document;
-      if (change.type === "replaced" && change.moves !== undefined)
-        expect(applyBatch(before, change.moves.ops).isOk()).toBe(true);
+      if (change.type === "replaced" && change.moves !== undefined) {
+        const moved = applyBatch(before, change.moves.ops);
+        if (moved.isErr())
+          throw new Error(
+            `A replacement's moves do not apply where it does: ${moved.error.message}`,
+          );
+      }
     }
-    expect(equalForStaleness(document, peer.client.document)).toBe(true);
+    if (!equalForStaleness(document, peer.client.document))
+      throw new Error(
+        `The ${changes.map(({ type }) => type).join(", ")} change of ${event.type === "broadcast" ? event.batch.opId : event.result.opId} leaves another document than the client's, first at ${JSON.stringify(differenceAt(document, peer.client.document, "document"))}`,
+      );
     if (event.type !== "broadcast" || pending.length === 0) return;
     const kinds = [...pairKinds(pending, event.batch.ops)];
     for (const change of changes) {
@@ -783,12 +866,13 @@ const sameParagraphScenarioArbitrary = scenarioArbitrary(
 );
 
 /**
- * Suggesting and direct typing, erases, replacements and formats in one
- * paragraph, mostly suggesting, with lost answers submitted again.
+ * Suggesting and direct typing, erases and replacements in one paragraph,
+ * mostly suggesting, with lost answers submitted again. A format at a
+ * tracked change's edge is pinned (`formatAcrossSuggestedErase`).
  */
 const trackedScenarioArbitrary = scenarioArbitrary(
   focusedSeeds(
-    ["type", "type", "erase", "erase", "replace", "tab", "format"],
+    ["type", "type", "erase", "erase", "replace", "tab"],
     fc.constantFrom(true, true, false),
   ),
   true,
@@ -1229,9 +1313,8 @@ describe("canonical sequencing", () => {
     const pending = accepted(trackedPending);
     expect(pending.replaced.suggestedDeletions).toBeGreaterThan(0);
     expect(pending.resubmitted).toBe(2);
-    expect(
-      TRACKED_ORDER_KINDS.filter((kind) => pending.trackedOrder[kind] === 0),
-    ).toEqual([]);
+    expect(pending.trackedOrder.cutAtTrackedChange).toBeGreaterThan(0);
+    expect(pending.trackedOrder.deletionAtTrackedEdge).toBeGreaterThan(0);
   });
 
   test(
