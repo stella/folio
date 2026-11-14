@@ -1216,13 +1216,18 @@ type DeferredRemovalGroup = NonNullable<
 >[number];
 
 /**
- * The ids of the pending insertions in `nodes`, at any depth, that can hold a
+ * The ids of the pending changes in `nodes`, at any depth, that can hold a
  * deferred seam: the only records a deferred seam may name as its blockers.
+ * An insertion holds one it stands in; a deletion or move source holds one at
+ * the edge where a piece it holds meets the seam.
  */
 const seamHolderIds = (nodes: readonly InlineNode[]): Set<number> =>
   new Set(
     trackedWithin(nodes).flatMap((node) =>
-      isAddedRevision(node) && node.resolutionJoins !== undefined
+      node.resolutionJoins !== undefined &&
+      (isAddedRevision(node) ||
+        node.type === "deletion" ||
+        node.type === "moveFrom")
         ? [node.info.id]
         : [],
     ),
