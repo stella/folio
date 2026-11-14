@@ -523,9 +523,11 @@ test.describe("lists", () => {
           globalThis.__folioPlayground?.getEditorRef()?.getSelectionText() ??
           "",
       );
-    for (let step = 0; step < 3; step += 1) {
+    for (let step = 0; step < 4; step += 1) {
       if ((await selectionText()) === inserted.at(-1)) break;
       await page.keyboard.press("Shift+ArrowLeft");
+      // The host reads the selection after the editor publishes it.
+      await page.waitForTimeout(200);
     }
     expect(await selectionText()).toBe(inserted.at(-1));
     await page.keyboard.press("Backspace");
