@@ -9,7 +9,7 @@ import type { EditorState } from "prosemirror-state";
 
 import type { TextPosition } from "@stll/docx-core/ops";
 
-import { findPageIndexContainingPmPos } from "../layout-engine/pmPageIndex";
+import { findPageNumberAtEditorPosition } from "../layout-engine/pmPageIndex";
 import type { Layout } from "../layout-engine/types";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
@@ -186,11 +186,7 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       const layout = deps.getLayout();
       const at = deps.getEditorApi()?.editorPositionAt(position) ?? null;
       if (layout === null || at === null) return null;
-      // A caret at a paragraph's end sits on its last fragment's end bound.
-      const index =
-        findPageIndexContainingPmPos(layout, at) ??
-        (at > 0 ? findPageIndexContainingPmPos(layout, at - 1) : null);
-      return index === null ? null : index + 1;
+      return findPageNumberAtEditorPosition(layout, at);
     },
 
     relayout: () => {

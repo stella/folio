@@ -5,6 +5,7 @@ import { OP_STORIES, type TextPosition } from "@stll/docx-core/ops";
 import { createCanonicalSession } from "../canonical/canonicalSession";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { schema } from "../prosemirror/schema";
 import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaId";
 import { readModel } from "../types/documentModel";
 import { legacyEditorPositionAt } from "./textPositionLookup";
@@ -88,5 +89,22 @@ describe("legacyEditorPositionAt", () => {
         offset: 0,
       }),
     ).toBeNull();
+  });
+
+  test("a bookmark boundary takes no logical unit", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "0000000A" }, [
+        schema.node("bookmarkBoundary", { type: "start", id: 1 }),
+        schema.text("A"),
+      ]),
+    ]);
+    // The paragraph opens at 0: the boundary sits at 1, "A" at 2.
+    expect(
+      legacyEditorPositionAt(doc, {
+        story: OP_STORIES.MAIN,
+        blockId: "0000000A",
+        offset: 1,
+      }),
+    ).toBe(3);
   });
 });

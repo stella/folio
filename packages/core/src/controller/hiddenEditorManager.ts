@@ -2013,6 +2013,8 @@ export const createHiddenEditorManager = (
         : null,
     canonicalEditorPositionAt: (position) => {
       if (editorSession.type !== "canonical") return undefined;
+      // Pending composition text is painted but not yet in the projection.
+      if (editorSession.session.isComposing) return null;
       const shown = editorSession.session.projection.positionAt(position);
       return shown.isOk() ? shown.value : null;
     },
