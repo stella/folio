@@ -3275,7 +3275,7 @@ export class FolioDocxReviewer {
     const outcome = this.resolveOnSession(
       session.prepareResolve(before, {
         revisionIds: changes.map(({ id }) => id),
-        resolution,
+        resolution: "reject",
       }),
     );
     if (!outcome.resolved && outcome.reason === "noChange")
