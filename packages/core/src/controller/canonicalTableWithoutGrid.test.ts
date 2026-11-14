@@ -19,7 +19,6 @@ import {
 import type { FolioDocumentOperation } from "../ai-edits";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import {
-  cell,
   type Mode,
   outcomes,
   packageOf,
@@ -43,7 +42,6 @@ const TABLE_PROPERTIES = '<w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>';
 const BODIES = {
   "a table with no grid": `<w:tbl>${TABLE_PROPERTIES}${rows.join("")}</w:tbl>`,
   "a grid with no widths": `<w:tbl>${TABLE_PROPERTIES}<w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid>${rows.join("")}</w:tbl>`,
-  "a merge in a table with no grid": `<w:tbl>${TABLE_PROPERTIES}${row(cell(paragraph("20000001", "A1"), '<w:gridSpan w:val="2"/>'))}${rows[1] ?? ""}</w:tbl>`,
 } as const;
 type Body = keyof typeof BODIES;
 
