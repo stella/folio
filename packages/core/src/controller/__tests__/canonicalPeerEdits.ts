@@ -27,12 +27,17 @@ import { expect } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import {
+  captureDocumentOp,
+  DOCUMENT_OP_SCHEMA_VERSION,
+  type DocumentOp,
   INHERIT_RUN_PROPS,
   OP_STORIES,
   paragraphLength,
   paragraphLogicalText,
+  type SequencedBatch,
   storyParagraphs,
   type TextPosition,
+  transformPosition,
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
@@ -42,6 +47,7 @@ import { createDocx } from "../../docx/rezip";
 import type { Document } from "../../types/document";
 import type {
   CanonicalCommit,
+  CanonicalSelection,
   CanonicalSession,
   CanonicalSessionError,
 } from "../canonicalSession";
@@ -207,6 +213,28 @@ const placeCaret = (peer: EditingPeer, position: TextPosition) => {
     peer.state.tr.setSelection(TextSelection.create(peer.state.doc, shown)),
   );
 };
+/**
+ * The caret an edit leaves in place, moved over the edit's own operations as
+ * it moves over anyone's: an insertion or a deletion ahead of it in its
+ * paragraph shifts it. A caret put back where it stood before the edit would
+ * land inside what the edit moved.
+ */
+const keptCaret = (
+  caret: CanonicalSelection,
+  ops: readonly DocumentOp[],
+): CanonicalSelection => {
+  const edit: SequencedBatch = {
+    schema: DOCUMENT_OP_SCHEMA_VERSION,
+    opId: "kept-caret",
+    actor: "kept-caret",
+    baseRev: 0,
+    revision: 1,
+    ops: ops.map((op) => captureDocumentOp(op)),
+  };
+  const move = (position: TextPosition) =>
+    transformPosition(position, [edit]) ?? position;
+  return { ...caret, anchor: move(caret.anchor), head: move(caret.head) };
+};
 /** An editor state showing `session`, its caret in the peer's own paragraph. */
 export const homeState = (session: CanonicalSession, home: string) => {
   const doc = session.projection.doc;
@@ -239,7 +267,11 @@ export const localEdit = <P extends EditingPeer>({
   const others = peers.filter(({ index }) => index !== peer.index);
   const other = others.at(choice % Math.max(1, others.length)) ?? peer;
   const caret = caretOf(peer);
-  const restore = () => placeCaret(peer, caret.head);
+  // An edit away from the caret keeps it, moved over the edit itself.
+  const keeping = (ops: readonly DocumentOp[]) =>
+    peer.session.prepareOps(peer.state, ops, keptCaret(caret, ops));
+  const restore = (committed: CanonicalCommit) =>
+    placeCaret(peer, keptCaret(caret, committed.ops).head);
   switch (kind) {
     case "type": {
       const char = String.fromCodePoint(
@@ -272,18 +304,14 @@ export const localEdit = <P extends EditingPeer>({
     case "prefix": {
       const committed = commit(
         peer,
-        peer.session.prepareOps(
-          peer.state,
-          [
-            {
-              type: "insertText",
-              at: at(other.home, 0),
-              text: String(peer.index),
-              runProps: INHERIT_RUN_PROPS,
-            },
-          ],
-          caret,
-        ),
+        keeping([
+          {
+            type: "insertText",
+            at: at(other.home, 0),
+            text: String(peer.index),
+            runProps: INHERIT_RUN_PROPS,
+          },
+        ]),
         { peer: peer.index, kind: "other" },
       );
       if (committed === undefined) return;
@@ -306,7 +334,7 @@ export const localEdit = <P extends EditingPeer>({
       );
       if (committed === undefined) return;
       peer.history.push({ kind: "other", rebased: false });
-      restore();
+      restore(committed);
       return;
     }
     case "bold":
@@ -335,7 +363,7 @@ export const localEdit = <P extends EditingPeer>({
       );
       if (committed === undefined) return;
       peer.history.push({ kind: "other", rebased: false });
-      restore();
+      restore(committed);
       return;
     }
     case "splitEnd": {
@@ -349,18 +377,14 @@ export const localEdit = <P extends EditingPeer>({
       if (newBlockId === undefined) return;
       const committed = commit(
         peer,
-        peer.session.prepareOps(
-          peer.state,
-          [
-            {
-              type: "splitBlock",
-              at: at(owner.home, paragraphLength(target)),
-              newBlockId,
-              newHalf: "second",
-            },
-          ],
-          caret,
-        ),
+        keeping([
+          {
+            type: "splitBlock",
+            at: at(owner.home, paragraphLength(target)),
+            newBlockId,
+            newHalf: "second",
+          },
+        ]),
         { peer: peer.index, kind: "other" },
       );
       if (committed === undefined) return;
@@ -378,19 +402,15 @@ export const localEdit = <P extends EditingPeer>({
       if (next?.paraId === undefined || previous?.paraId === undefined) return;
       const committed = commit(
         peer,
-        peer.session.prepareOps(
-          peer.state,
-          [
-            {
-              type: "joinBlocks",
-              story: OP_STORIES.MAIN,
-              blockId: previous.paraId,
-              nextBlockId: next.paraId,
-              survivor: "first",
-            },
-          ],
-          caret,
-        ),
+        keeping([
+          {
+            type: "joinBlocks",
+            story: OP_STORIES.MAIN,
+            blockId: previous.paraId,
+            nextBlockId: next.paraId,
+            survivor: "first",
+          },
+        ]),
         { peer: peer.index, kind: "other" },
       );
       if (committed === undefined) return;
