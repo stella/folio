@@ -1998,7 +1998,7 @@ export const createHiddenEditorManager = (
       !editorSession.session.isComposing &&
       editorSession.session.version === version,
     markCanonicalSaved: (version) => {
-      if (editorSession.type === "canonical")
+      if (editorSession.type === "canonical" && version < 0)
         canonicalSaved = { session: editorSession.session, version };
     },
     // The session's journal is the one source: any committed version other
