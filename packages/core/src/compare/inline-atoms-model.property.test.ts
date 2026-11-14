@@ -330,13 +330,13 @@ const resolvedViews = async (buffer: ArrayBuffer) => {
   return [accepting.snapshot(), rejecting.snapshot()] as const;
 };
 
-type ParityCase = "unplanned" | "unchanged" | "restored" | "unalignable";
+type AgreementCase = "unplanned" | "unchanged" | "restored" | "unalignable";
 
 /** Run both matchers on one pair and hold them to the same result. */
-const expectParity = async (
+const expectAgreement = async (
   baseBody: Body,
   targetBody: Body,
-): Promise<ParityCase> => {
+): Promise<AgreementCase> => {
   const base = await ingested(await buildDocx(baseBody));
   const target = await ingested(await buildDocx(targetBody));
   const planned = await prematch(base, target);
@@ -514,10 +514,10 @@ const pairArbitrary = fc
     return { base, target };
   });
 
-const parityProperty = fc.asyncProperty(
+const agreementProperty = fc.asyncProperty(
   pairArbitrary,
   async ({ base, target }) => {
-    await expectParity(base, target);
+    await expectAgreement(base, target);
   },
 );
 
@@ -614,7 +614,7 @@ describe("matchInlineAtomsOnModel", () => {
     test(
       `matches the editor-state matcher: ${name}`,
       async () => {
-        await expectParity(base, target);
+        await expectAgreement(base, target);
       },
       propertyTestTimeout(30_000),
     );
@@ -622,9 +622,9 @@ describe("matchInlineAtomsOnModel", () => {
   test(
     "matches the editor-state matcher on generated document pairs",
     async () => {
-      await assertProperty(parityProperty, {
+      await assertProperty(agreementProperty, {
         numRuns: 25,
-        id: "model matcher parity with the editor-state matcher",
+        id: "model matcher agrees with the editor-state matcher",
       });
     },
     propertyTestTimeout(120_000),
@@ -633,9 +633,9 @@ describe("matchInlineAtomsOnModel", () => {
   test(
     "matches the editor-state matcher on a fixed sample that restores atoms",
     async () => {
-      const cases: ParityCase[] = [];
+      const cases: AgreementCase[] = [];
       for (const { base, target } of coverageSample(pairArbitrary, 25))
-        cases.push(await expectParity(base, target));
+        cases.push(await expectAgreement(base, target));
       expect(
         cases.filter((kind) => kind === "restored").length,
       ).toBeGreaterThanOrEqual(3);
