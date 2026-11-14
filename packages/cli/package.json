@@ -54,7 +54,7 @@
     "@stll/folio-agents": "workspace:^",
     "@stll/folio-core": "workspace:^",
     "@stll/folio-fonts": "workspace:^",
-    "@stll/fuzzy-search": "1.4.0",
+    "@stll/fuzzy-search": "1.4.2",
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1"
   },
