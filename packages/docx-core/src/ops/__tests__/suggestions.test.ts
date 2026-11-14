@@ -89,7 +89,7 @@ describe("setting revision info", () => {
   });
 
   test("declares the paragraphs of the row, cell or table whose own revision it writes", () => {
-    // The shape of a tracked row deletion as Word writes it: the row's own
+    // A tracked row deletion as a package records it: the row's own
     // deletion, a deletion around the text it held, and property changes on
     // a cell and on the table.
     const paragraph = (
