@@ -14,7 +14,7 @@ import { propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document, Paragraph, ParagraphContent } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
-import { repackDocx } from "./rezip";
+import { createDocx } from "./rezip";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -106,7 +106,7 @@ const resolved = (
 
 test("a deferred seam with its kept date survives a save and resolves as before, in every order", async () => {
   const source = tracked();
-  const saved = await repackDocx(source, { updateModifiedDate: false });
+  const saved = await createDocx(source);
   expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({
     valid: true,
   });

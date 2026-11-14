@@ -811,8 +811,7 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
     return false;
   if (joins.deferredRemove !== undefined) {
     const groups = joins.deferredRemove;
-    if (!Array.isArray(groups) || groups.length === 0 || !isAddedRevision(node))
-      return false;
+    if (!Array.isArray(groups) || groups.length === 0) return false;
     const groupKeys = new Set<string>();
     for (const deferred of groups) {
       if (
@@ -833,7 +832,12 @@ const validRetainedIdentities = (node: InlineNode): boolean => {
         new Set(deferred.blockers).size !== deferred.blockers.length ||
         !deferred.blockers.includes(node.info.id) ||
         (deferred.keptFrom !== undefined &&
-          typeof deferred.keptFrom !== "string")
+          typeof deferred.keptFrom !== "string") ||
+        // An insertion holds a seam it stands in; a deletion or move source
+        // holds one at the edge where its piece meets it.
+        (isAddedRevision(node)
+          ? deferred.edge !== undefined
+          : deferred.edge !== "start" && deferred.edge !== "end")
       )
         return false;
       const key = deferredGroupKey(deferred);
@@ -958,7 +962,11 @@ const settleDeferredRemovals = (
             (_, index) => fates[index] === "pending",
           );
           if (remaining.length === 0) {
-            joins.remove = Math.max(joins.remove, group.depth);
+            if (group.edge === "start")
+              joins.before = Math.max(joins.before, group.depth);
+            else if (group.edge === "end")
+              joins.after = Math.max(joins.after, group.depth);
+            else joins.remove = Math.max(joins.remove, group.depth);
             // The boundaries the seam kept float with its join, as of the
             // revision they were kept from.
             if (group.keptFrom !== undefined) joins.keptFrom = group.keptFrom;
@@ -1721,7 +1729,14 @@ const resolveList = (
       if (node.resolutionJoins === undefined) seams.push(out.length);
       else if (node.resolutionJoins.plainSides?.includes("before") === true)
         plainSeams.add(out.length);
-      else recordSourceSeam(out.length, node.resolutionJoins.before);
+      else {
+        recordSourceSeam(out.length, node.resolutionJoins.before);
+        if (
+          node.resolutionJoins.before > 0 &&
+          node.resolutionJoins.keptFrom !== undefined
+        )
+          exactKeptFrom.set(out.length, node.resolutionJoins.keptFrom);
+      }
       const resolved = resolveList(node.content, resolution);
       const content =
         isAddedRevision(node) &&
@@ -1759,7 +1774,14 @@ const resolveList = (
       if (node.resolutionJoins === undefined) seams.push(out.length);
       else if (node.resolutionJoins.plainSides?.includes("after") === true)
         plainSeams.add(out.length);
-      else recordSourceSeam(out.length, node.resolutionJoins.after);
+      else {
+        recordSourceSeam(out.length, node.resolutionJoins.after);
+        if (
+          node.resolutionJoins.after > 0 &&
+          node.resolutionJoins.keptFrom !== undefined
+        )
+          exactKeptFrom.set(out.length, node.resolutionJoins.keptFrom);
+      }
       continue;
     }
     if (node.type === "run") {
@@ -2236,12 +2258,43 @@ const resolveList = (
       while (leftEnd >= 0 && blocking(leftEnd)) leftEnd -= 1;
       let rightStart = seam;
       while (rightStart < out.length && blocking(rightStart)) rightStart += 1;
+      // A piece the seam joins can still be held in a pending deletion or
+      // move source at its edge: it stands only once that is rejected, and
+      // goes if it is accepted, so the seam waits on it too.
+      const holdsPiece = (index: number, edge: "start" | "end"): boolean => {
+        const node = out[index]?.node;
+        const other = out[edge === "end" ? rightStart : leftEnd]?.node;
+        if (
+          node === undefined ||
+          other === undefined ||
+          (node.type !== "deletion" && node.type !== "moveFrom") ||
+          node.resolutionJoins === undefined ||
+          resolution.ids.has(node.info.id)
+        )
+          return false;
+        const piece = edge === "end" ? node.content.at(-1) : node.content.at(0);
+        return piece !== undefined && sameOwnFields(piece, other);
+      };
+      const leftHolder =
+        leftEnd >= 0 && rightStart < out.length && holdsPiece(leftEnd, "end")
+          ? leftEnd
+          : undefined;
+      const rightHolder =
+        leftEnd >= 0 &&
+        rightStart < out.length &&
+        holdsPiece(rightStart, "start")
+          ? rightStart
+          : undefined;
       if (
-        (leftEnd !== keptEnd || rightStart !== seam) &&
+        (leftEnd !== keptEnd ||
+          rightStart !== seam ||
+          leftHolder !== undefined ||
+          rightHolder !== undefined) &&
         leftEnd >= 0 &&
         rightStart < out.length
       ) {
         const blockerIndices = [
+          ...(leftHolder === undefined ? [] : [leftHolder]),
           ...Array.from(
             { length: keptEnd - leftEnd },
             (_, offset) => leftEnd + 1 + offset,
@@ -2250,6 +2303,7 @@ const resolveList = (
             { length: rightStart - seam },
             (_, offset) => seam + offset,
           ),
+          ...(rightHolder === undefined ? [] : [rightHolder]),
         ];
         const blockers = blockerIndices.flatMap((index) => {
           const node = out[index]?.node;
@@ -2257,6 +2311,10 @@ const resolveList = (
             ? [node.info.id]
             : [];
         });
+        const keptFrom =
+          standingKept > 0 && kept?.keptFrom !== undefined
+            ? { keptFrom: kept.keptFrom }
+            : {};
         for (const index of blockerIndices) {
           const occurrence = out[index];
           const node = occurrence?.node;
@@ -2266,13 +2324,12 @@ const resolveList = (
             !isTrackedWrapper(node) ||
             node.resolutionJoins === undefined
           )
-            panic("A deferring seam blocker is a pending insertion.");
+            panic("A deferring seam blocker is a pending change with joins.");
           const groups = [...(node.resolutionJoins.deferredRemove ?? [])];
-          groups.push(
-            standingKept > 0 && kept?.keptFrom !== undefined
-              ? { depth: exactDepth, blockers, keptFrom: kept.keptFrom }
-              : { depth: exactDepth, blockers },
-          );
+          let edge: { edge?: "start" | "end" } = {};
+          if (index === leftHolder) edge = { edge: "end" };
+          if (index === rightHolder) edge = { edge: "start" };
+          groups.push({ depth: exactDepth, blockers, ...keptFrom, ...edge });
           out[index] = occurrenceOf(
             Object.assign({}, node, {
               resolutionJoins: Object.assign({}, node.resolutionJoins, {

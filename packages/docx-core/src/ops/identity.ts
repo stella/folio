@@ -65,7 +65,7 @@ type DeferredRemovalGroup = NonNullable<
 /** Identity substitutions can collapse distinct source groups into one exact fact. */
 /** What tells two deferred seam groups apart: depth, blockers, kept date. */
 export const deferredGroupKey = (group: DeferredRemovalGroup): string =>
-  `${group.depth}:${group.blockers.join(",")}:${group.keptFrom ?? ""}`;
+  `${group.depth}:${group.blockers.join(",")}:${group.keptFrom ?? ""}:${group.edge ?? ""}`;
 
 export const canonicalDeferredGroups = (
   groups: readonly DeferredRemovalGroup[],

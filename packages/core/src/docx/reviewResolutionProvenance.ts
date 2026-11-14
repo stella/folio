@@ -81,6 +81,7 @@ const DEFERRED_REMOVAL_FIELDS = {
   depth: true,
   blockers: true,
   keptFrom: true,
+  edge: true,
 } as const satisfies Record<RecordField<DeferredRemoval>, true>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -149,6 +150,9 @@ const deferredRemoval = (value: unknown): value is DeferredRemoval => {
   return (
     (!Object.hasOwn(value, "keptFrom") ||
       typeof value["keptFrom"] === "string") &&
+    (!Object.hasOwn(value, "edge") ||
+      value["edge"] === "start" ||
+      value["edge"] === "end") &&
     natural(depth) &&
     depth <= MAX_REVISION_ID &&
     Array.isArray(blockers) &&
@@ -171,8 +175,8 @@ const deferredRemovals = (
     !value.every(deferredRemoval)
   )
     return false;
-  const groups = value.map(({ depth, blockers, keptFrom }) =>
-    JSON.stringify({ depth, blockers, keptFrom }),
+  const groups = value.map(({ depth, blockers, keptFrom, edge }) =>
+    JSON.stringify({ depth, blockers, keptFrom, edge }),
   );
   return new Set(groups).size === groups.length;
 };

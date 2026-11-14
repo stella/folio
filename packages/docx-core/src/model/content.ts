@@ -1746,6 +1746,12 @@ type TrackedResolutionJoins = WritableRecord & {
      * waiting for its pieces to meet: they are placed as of that revision.
      */
     keptFrom?: string;
+    /**
+     * On a pending deletion or move source that holds a piece of the cut
+     * record: the edge of it where that piece meets the seam. Rejecting it
+     * joins there; accepting it retires the seam.
+     */
+    edge?: "start" | "end";
   })[];
   /**
    * The date of the revision whose kept range boundaries stand at the seam
