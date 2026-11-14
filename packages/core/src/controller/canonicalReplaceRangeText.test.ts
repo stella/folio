@@ -73,4 +73,19 @@ describe("replaceRangeText in a canonical session", () => {
     });
     expect(deletion).toBe(true);
   });
+
+  test("the same edit without its descriptor has no intent for the session", () => {
+    const session = createCanonicalSession(source()).unwrap();
+    const state = EditorState.create({ schema, doc: session.projection.doc });
+    const range = rangeOf(state, "Beta");
+    const command = replaceRangeText({ ...range, text: "" });
+    // The menus' former in-place edit: the same change, with no descriptor
+    // for the view's command owner to journal, so a session refuses it.
+    const undescribed: typeof command = (current, dispatch, view) =>
+      command(current, dispatch, view);
+    expect(getCanonicalCommandIntents(undescribed, state)).toBeUndefined();
+    expect(getCanonicalCommandIntents(command, state)).toEqual([
+      { type: "replaceText", ...range, text: "" },
+    ]);
+  });
 });
