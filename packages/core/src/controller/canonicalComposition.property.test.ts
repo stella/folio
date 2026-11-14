@@ -21,6 +21,11 @@ import {
 } from "../../../../test/property-testing";
 import { DOCUMENT_SHAPES, shapeArrayBuffer } from "../__tests__/documentShapes";
 import { splitsSurrogatePair } from "../ai-edits/character-boundaries";
+import {
+  CanonicalSessionError,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
@@ -37,11 +42,6 @@ import {
   CANONICAL_COMPOSITION_INPUT_TYPES,
   createCanonicalInputBoundary,
 } from "./canonicalInput";
-import {
-  CanonicalSessionError,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
 beforeAll(() => GlobalRegistrator.register());

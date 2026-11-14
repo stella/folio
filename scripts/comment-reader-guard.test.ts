@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 const REQUIRED_DERIVED_READERS = {
   "packages/core/src/ai-edits/headless.ts": "coveredCommentIdsInProseDoc",
-  "packages/core/src/controller/canonicalSession.ts": "survivingComments",
+  "packages/core/src/canonical/canonicalSession.ts": "survivingComments",
   "packages/core/src/controller/layoutPipeline.ts": "survivingComments",
   "packages/core/src/docx/rezip.ts": "withoutExhaustedComments",
   "packages/core/src/docx/selectiveSave.ts": "withoutExhaustedComments",

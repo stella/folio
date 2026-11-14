@@ -26,7 +26,7 @@ import {
   createCanonicalHeaderFooterOperation,
   type DocumentOp,
   removeCanonicalHeaderFooterOperations,
-} from "@stll/folio-core/controller/canonicalOperations";
+} from "@stll/folio-core/canonical/canonicalOperations";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import { clickToPositionInHfSlot } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
 import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";

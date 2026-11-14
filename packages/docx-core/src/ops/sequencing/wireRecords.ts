@@ -15,6 +15,7 @@
 import type {
   AbstractNumbering,
   BlockContent,
+  Comment,
   DocumentSettings,
   Endnote,
   Footnote,
@@ -423,6 +424,9 @@ export const paragraph: Validator = object({
   paraId: blockId,
 });
 
+/** A paragraph record whose identity, when it has one, is well formed. */
+export const paragraphRecord: Validator = object(paragraphFields);
+
 /** The fields a split gives its new paragraph, or a join retires. */
 export const splitParagraphFields: Validator = object(
   Object.fromEntries(
@@ -758,3 +762,32 @@ export const documentSettings: Validator = object({
   splitPageBreakAndParagraphMark: optional(boolean),
   endnotePr: boundedJson,
 } satisfies RecordFields<DocumentSettings>);
+
+const commentFields = {
+  id: natural,
+  anchorKind: optional(literal("point", "range")),
+  author: string,
+  initials: optional(string),
+  date: optional(string),
+  // A loaded comment's paragraphs may carry no identity of their own.
+  content: array(paragraphRecord),
+  annotationReferenceFormatting: optional(runProperties),
+  parentId: optional(natural),
+  done: optional(boolean),
+  suggestionId: optional(string),
+  preserved: boundedJson,
+} satisfies RecordFields<Comment>;
+
+/** A comment record as it stands in the comment list. */
+export const comment: Validator = object(commentFields);
+
+/**
+ * A comment as a creation or a content edit carries it: every paragraph has
+ * its own identity, and the thread a reply joins belongs to the anchor.
+ */
+export const newComment: Validator = object({
+  ...Object.fromEntries(
+    Object.entries(commentFields).filter(([key]) => key !== "parentId"),
+  ),
+  content: array(paragraph),
+});

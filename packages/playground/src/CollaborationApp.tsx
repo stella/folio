@@ -1,127 +1,189 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { IntlProvider } from "use-intl";
 
-import {
-  createEmptyDocument,
-  createStellaStyleDocumentPreset,
-  DocxEditor,
-} from "@stll/folio-react";
+import { DocxEditor, type DocxEditorRef } from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
 
+import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
+import { buildCanonicalRoomBridge } from "../../../tests/parity/canonicalRoomBridge";
+import {
+  type CanonicalRoomDemo,
+  type CanonicalRoomDemoState,
+  createCanonicalRoomDemo,
+} from "../../../tests/parity/canonicalRoomDemo";
 import { AvatarStack } from "./collaboration/AvatarStack";
 import {
   getOrCreateRoomFromUrl,
   loadOrCreateUser,
 } from "./collaboration/identity";
-import { useCollaboration } from "./collaboration/useCollaboration";
 
-const collaborationStatusLabel = (
-  status: "connecting" | "connected" | "disconnected",
-  room: string,
-): string => {
-  if (status === "connected") {
-    return `Live · ${room}`;
-  }
-  if (status === "connecting") {
-    return "Connecting…";
-  }
-  return "Offline";
-};
+const DEFAULT_FILE = "sample.docx";
+
+type Opened =
+  | { type: "loading" }
+  | { type: "error"; message: string }
+  | { type: "ready"; bytes: ArrayBuffer; demo: CanonicalRoomDemo };
 
 /**
- * Live Yjs + WebRTC collaboration demo.
- *
- * Open `/?collaboration=1` in two browser windows (or tabs) and share the
- * URL hash (`#room-…`) to sync document body and comment threads.
+ * Canonical room demo: every tab of this origin that opens the same room
+ * (the URL hash) and the same DOCX (`?file=`, `sample.docx` by default)
+ * edits one document. One tab runs the room's authority, the journal lives
+ * in IndexedDB, and comments travel in the journal with the text.
  */
 export function CollaborationApp() {
   const [user] = useState(loadOrCreateUser);
   const [room] = useState(getOrCreateRoomFromUrl);
-  const [shareCopied, setShareCopied] = useState(false);
-  const shareCopiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const [opened, setOpened] = useState<Opened>({ type: "loading" });
 
   useEffect(() => {
     if (!window.location.hash) {
-      window.history.replaceState(null, "", `#${room}`);
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.search}#${room}`,
+      );
     }
   }, [room]);
 
-  useEffect(
-    () => () => {
-      if (shareCopiedTimeoutRef.current) {
-        clearTimeout(shareCopiedTimeoutRef.current);
+  useEffect(() => {
+    let cancelled = false;
+    const file =
+      new URLSearchParams(window.location.search).get("file") ?? DEFAULT_FILE;
+    const open = async () => {
+      const response = await fetch(`/fixtures/${file}`);
+      if (!response.ok) {
+        setOpened({ type: "error", message: `Fixture not found: ${file}` });
+        return;
       }
-    },
-    [],
-  );
-
-  const { collaboration, users, status, comments, setComments } =
-    useCollaboration(room, user);
-  const seedDocument = useMemo(
-    () => createEmptyDocument({ preset: createStellaStyleDocumentPreset() }),
-    [],
-  );
-
-  const handleCopyShareLink = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setShareCopied(true);
-      if (shareCopiedTimeoutRef.current) {
-        clearTimeout(shareCopiedTimeoutRef.current);
-      }
-      shareCopiedTimeoutRef.current = setTimeout(
-        () => setShareCopied(false),
-        1500,
-      );
-    } catch {
-      setShareCopied(false);
-    }
-  }, []);
+      const bytes = await response.arrayBuffer();
+      const demo = await createCanonicalRoomDemo({ room, bytes, user });
+      if (!cancelled) setOpened({ type: "ready", bytes, demo });
+    };
+    open().catch((error: unknown) => {
+      if (!cancelled)
+        setOpened({
+          type: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [room, user]);
 
   return (
     <IntlProvider locale="en" messages={getFolioMessages("en")}>
       <div className="pg-shell pg-shell--collab">
-        <header className="pg-collab-header">
-          <div className="pg-collab-header__left">
-            <strong>folio collaboration demo</strong>
-            <span className="pg-collab-status" data-status={status}>
-              {collaborationStatusLabel(status, room)}
-            </span>
-          </div>
-          <div className="pg-collab-header__right">
-            <AvatarStack users={users} />
-            <button
-              type="button"
-              className="pg-button"
-              onClick={handleCopyShareLink}
-            >
-              {shareCopied ? "Link copied!" : "Share link"}
-            </button>
-          </div>
-        </header>
-        <main className="pg-editor-area">
-          {collaboration ? (
-            <DocxEditor
-              accessibleName="Document editor"
-              document={seedDocument}
-              author={user.name}
-              collaboration={collaboration}
-              // Collaboration still requires the legacy engine.
-              experimentalSession="legacy"
-              comments={comments}
-              onCommentsChange={setComments}
-              showToolbar={true}
-              showRuler={true}
-              initialZoom={1}
-            />
-          ) : (
-            <div className="pg-collab-loading">Connecting...</div>
-          )}
-        </main>
+        {opened.type === "ready" ? (
+          <RoomEditor bytes={opened.bytes} demo={opened.demo} room={room} />
+        ) : (
+          <>
+            <RoomHeader room={room} state={undefined} />
+            <main className="pg-editor-area">
+              <div className="pg-collab-loading">
+                {opened.type === "error" ? opened.message : "Opening..."}
+              </div>
+            </main>
+          </>
+        )}
       </div>
     </IntlProvider>
   );
 }
+
+const RoomEditor = ({
+  bytes,
+  demo,
+  room,
+}: {
+  bytes: ArrayBuffer;
+  demo: CanonicalRoomDemo;
+  room: string;
+}) => {
+  const editorRef = useRef<DocxEditorRef>(null);
+  const state = useSyncExternalStore(demo.subscribe, demo.getState);
+
+  useEffect(() => {
+    globalThis.__folioCanonical = buildCanonicalBridge(() => editorRef.current);
+    globalThis.__folioCanonicalReady = true;
+    globalThis.__folioCanonicalRoom = buildCanonicalRoomBridge(
+      () => editorRef.current?.getEditor() ?? null,
+      demo.status,
+    );
+    return () => {
+      globalThis.__folioCanonicalReady = false;
+      globalThis.__folioCanonical = undefined;
+      globalThis.__folioCanonicalRoom = undefined;
+    };
+  }, [demo]);
+
+  return (
+    <>
+      <RoomHeader room={room} state={state} />
+      <main className="pg-editor-area">
+        <DocxEditor
+          ref={editorRef}
+          accessibleName="Document editor"
+          documentBuffer={bytes}
+          author={demo.collaboration.user?.name ?? "Folio User"}
+          collaboration={demo.collaboration}
+          showToolbar={true}
+          showRuler={true}
+          initialZoom={1}
+        />
+      </main>
+    </>
+  );
+};
+
+const RoomHeader = ({
+  room,
+  state,
+}: {
+  room: string;
+  state: CanonicalRoomDemoState | undefined;
+}) => {
+  const connected = state?.connected === true;
+  return (
+    <header className="pg-collab-header">
+      <div className="pg-collab-header__left">
+        <strong>folio collaboration demo</strong>
+        <span
+          className="pg-collab-status"
+          data-status={connected ? "connected" : "connecting"}
+        >
+          {connected ? `Live · ${room}` : "Connecting..."}
+        </span>
+        {state?.notice === undefined ? null : (
+          <span className="pg-collab-status">{state.notice}</span>
+        )}
+      </div>
+      <div className="pg-collab-header__right">
+        <AvatarStack users={state?.users ?? []} />
+        <ShareLinkButton />
+      </div>
+    </header>
+  );
+};
+
+/** Copy the room's URL, which a second tab opens to join it. */
+const ShareLinkButton = () => {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return undefined;
+    const reset = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(reset);
+  }, [copied]);
+  const copy = () => {
+    navigator.clipboard.writeText(window.location.href).then(
+      () => setCopied(true),
+      () => setCopied(false),
+    );
+  };
+  return (
+    <button type="button" className="pg-button" onClick={copy}>
+      {copied ? "Link copied!" : "Share link"}
+    </button>
+  );
+};

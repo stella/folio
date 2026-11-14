@@ -17,7 +17,7 @@ import { TextSelection } from "prosemirror-state";
 const { createApp, defineComponent, h, ref, shallowRef, nextTick, toRaw } =
   await import("vue");
 
-import { CanonicalSessionError } from "@stll/folio-core/controller/canonicalSession";
+import { CanonicalSessionError } from "@stll/folio-core/canonical/canonicalSession";
 import { CanonicalDocxInputError } from "@stll/folio-core/docx/canonicalSessionInput";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx, validateDocx } from "@stll/folio-core/docx/rezip";
@@ -32,7 +32,7 @@ import {
   DOCUMENT_OP_TYPES,
   removeCanonicalHeaderFooterOperations,
   withCanonicalParagraphIds,
-} from "@stll/folio-core/controller/canonicalOperations";
+} from "@stll/folio-core/canonical/canonicalOperations";
 
 const { usePageSetupControls } = await import("./usePageSetupControls");
 import { CanonicalSaveDiagnosticError } from "@stll/folio-core/docx/canonicalSave";

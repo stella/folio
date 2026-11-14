@@ -6,7 +6,8 @@
 
 import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { App } from 'vue';
-import { CanonicalHistoryEffect } from '@stll/folio-core/controller/canonicalSession';
+import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
+import { CanonicalRoomCollaboration } from '@stll/folio-core/controller/canonicalRoomEditor';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
 import { Command } from 'prosemirror-state';
@@ -158,7 +159,7 @@ export type UseDocxEditorOptions = {
     externalPlugins?: readonly Plugin_2[];
     historyShortcuts?: HistoryShortcutOwner;
     onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
-    collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | undefined>;
+    collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | CanonicalRoomCollaboration | undefined>;
     onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
     showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;
     onSlashMenuChange?: (state: TemplateSlashMenuState) => void;

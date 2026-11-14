@@ -23,7 +23,7 @@ Import `DocxEditor` from `@stll/folio-vue` and load
 The editor edits through the canonical session, and refuses an edit it cannot
 make yet with a notice. Set `experimentalSession="legacy"` (on `DocxEditor`, or
 the `experimentalSession` option of `useDocxEditor`) to select the previous
-ProseMirror-owned engine, which collaboration still requires.
+ProseMirror-owned engine.
 
 Keyboard shortcuts default to the editor root. Set `keyboardShortcuts="document"`
 only when this editor should own shortcuts across the host page.

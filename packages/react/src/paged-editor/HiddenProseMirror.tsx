@@ -33,7 +33,8 @@ import { panic } from "better-result";
 import type { EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
+import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
+import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import {
@@ -115,6 +116,8 @@ export type HiddenProseMirrorProps = {
   externalPlugins?: Plugin[];
   /** Yjs-backed collaboration document owner. */
   collaboration?: HiddenProseMirrorCollaboration | undefined;
+  /** The canonical room the canonical session joins. */
+  canonicalRoom?: CanonicalRoomCollaboration | undefined;
   onRemoteSelectionsChange?:
     ((selections: HiddenProseMirrorRemoteSelection[]) => void) | undefined;
   /** Extension manager for plugins/schema/commands (optional — falls back to default) */
@@ -217,6 +220,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onSelectionChange,
     externalPlugins = EMPTY_EXTERNAL_PLUGINS,
     collaboration,
+    canonicalRoom,
     extensionManager,
     onEditorViewReady,
     onCanonicalHistory,
@@ -265,6 +269,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const externalPluginsRef = useRef(externalPlugins);
   const getPrecomputedInitialStateRef = useRef(getPrecomputedInitialState);
   const collaborationRef = useRef(collaboration);
+  const canonicalRoomRef = useRef(canonicalRoom);
   const collaborationModulesRef = useRef(collaborationModules);
 
   // Store callbacks in refs to avoid dependency array issues that cause infinite loops
@@ -313,6 +318,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     onReadOnlyEditAttemptRef.current = onReadOnlyEditAttempt;
     onRemoteSelectionsChangeRef.current = onRemoteSelectionsChange;
     collaborationRef.current = collaboration;
+    canonicalRoomRef.current = canonicalRoom;
     collaborationModulesRef.current = collaborationModules;
 
     // Keep document ref in sync
@@ -327,6 +333,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getExternalPlugins: () => externalPluginsRef.current,
         getCollaboration: () => collaborationRef.current,
         getCollaborationModules: () => collaborationModulesRef.current,
+        getCanonicalRoom: () => canonicalRoomRef.current,
         getPrecomputedInitialState: () =>
           getPrecomputedInitialStateRef.current?.() ?? null,
         getReadOnly: () => readOnlyRef.current,

@@ -87,6 +87,7 @@ import {
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { heldUnreferencedNotes as notesHeldWithoutReference } from "../prosemirror/noteReferenceReview";
 import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import {
   CANONICAL_GAP,
@@ -1706,7 +1707,7 @@ class CanonicalSession {
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly allocatedBlockIds = new Set<string>();
   private nextBlockId = 1;
-  private readonly leased: CanonicalIdLease | undefined;
+  private leased: CanonicalIdLease | undefined;
   private readonly sourceOwners = new Map<string, Paragraph>();
   private readonly storyProjections = new Map<string, CachedStoryProjection>();
   private currentSelection: CanonicalSelection | null = null;
@@ -1725,6 +1726,8 @@ class CanonicalSession {
   private readonly newOpId: () => string;
   private readonly styles: DeepReadonly<StyleDefinitions> | null | undefined;
   private readonly sourceRestores: readonly CanonicalSourceRestore[];
+  /** Notes the opened package held without a reference: content, kept on save. */
+  private readonly heldUnreferencedNotes: ReadonlySet<string>;
   /** What earlier projections converted, reused by every later one. */
   private readonly caches: StoryProjectionCaches;
 
@@ -1744,6 +1747,7 @@ class CanonicalSession {
         : new CanonicalIdLease(idLease, document);
     this.sourceRestores = sourceRestores;
     this.caches = caches;
+    this.heldUnreferencedNotes = notesHeldWithoutReference(document);
     this.currentDocument = document;
     this.currentProjection = projection;
     const blockIds = packageParagraphIds(document.package);
@@ -1984,6 +1988,7 @@ class CanonicalSession {
         retainedBlockIdKeys.has(blockId.toUpperCase()),
       ),
       structure: this.saveStructure,
+      heldUnreferencedNotes: this.heldUnreferencedNotes,
     };
   }
 
@@ -2020,6 +2025,19 @@ class CanonicalSession {
   /** The ids this session may still mint, when it holds a lease. */
   get idLease(): IdLease | undefined {
     return this.leased?.lease;
+  }
+  /**
+   * Take the lease a room granted a session opened before it joined: from
+   * then on every id it mints comes from the lease. Only an unedited session
+   * without a lease takes one.
+   */
+  adoptIdLease(lease: IdLease): Result<void, CanonicalSessionError> {
+    if (this.leased !== undefined)
+      return refuse("The session already holds an id lease.");
+    if (this.currentVersion !== 0)
+      return refuse("The session was edited before it took an id lease.");
+    this.leased = new CanonicalIdLease(lease, this.currentDocument);
+    return Result.ok(undefined);
   }
   /** Add blocks the authority granted; ids this session already minted stay spent. */
   extendIdLease(lease: IdLease): Result<void, CanonicalSessionError> {

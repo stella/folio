@@ -31,6 +31,7 @@ import type {
 } from "../model/document";
 import {
   copyOriginAncestorsOf,
+  recordsCopyOrigin,
   rejectCopyOriginAncestorsInNodes,
 } from "./copyOriginAncestors";
 import {
@@ -40,6 +41,7 @@ import {
   isCommentAnchor,
   isEmptyRecord,
   rebuildNode,
+  sameOwnFields,
 } from "./leaves";
 import { isHyperlinkChild } from "./offsets";
 
@@ -607,8 +609,11 @@ export const withBoundariesAtEdge = (
  * `right`, held by no record) moved inside the piece the join merges: the
  * start of `right`'s first record, else the end of `left`'s last. A
  * boundary a rejection kept there then lands where it lands when the join
- * happens first. Lists are returned as they are when no record either side
- * can hold the boundaries.
+ * happens first. The records either side are pieces the join merges only
+ * when they are alike, two pieces of one container its cut split; a record
+ * beside the seam that is no such piece, as a content control after
+ * pieces a rejection took away, never receives them. Lists are returned as
+ * they are when no piece either side can hold the boundaries.
  */
 export const withSeamBoundariesInside = ({
   left,
@@ -627,7 +632,12 @@ export const withSeamBoundariesInside = ({
   const boundaries = [...left.slice(leftEnd), ...right.slice(0, rightStart)];
   const before = left.at(leftEnd - 1);
   const after = right.at(rightStart);
-  if (boundaries.length === 0 || leftEnd === 0 || after === undefined)
+  if (
+    boundaries.length === 0 ||
+    before === undefined ||
+    after === undefined ||
+    !sameOwnFields(before, after)
+  )
     return { left, right };
   const intoAfter = withBoundariesAtEdge(after, boundaries, depth, "start");
   if (intoAfter !== undefined)
@@ -635,10 +645,7 @@ export const withSeamBoundariesInside = ({
       left: left.slice(0, leftEnd),
       right: [intoAfter, ...right.slice(rightStart + 1)],
     };
-  const intoBefore =
-    before === undefined
-      ? undefined
-      : withBoundariesAtEdge(before, boundaries, depth, "end");
+  const intoBefore = withBoundariesAtEdge(before, boundaries, depth, "end");
   if (intoBefore === undefined) return { left, right };
   return {
     left: [...left.slice(0, leftEnd - 1), intoBefore],
@@ -703,9 +710,15 @@ export type BoundaryOccurrence = {
   /**
    * Whether it is a copy an added revision still owns (its
    * `copyOriginAncestors`): rejecting that revision takes it away, so it is
-   * never the boundary itself, only a copy that may go.
+   * never the boundary itself.
    */
   copied: boolean;
+  /**
+   * Whether its kind records copies in copy ancestry, as bookmark and move
+   * range boundaries do. Comment boundaries record none, so a kept one the
+   * story holds otherwise is taken for a copy.
+   */
+  copiesMarked: boolean;
   /**
    * The date of the revision a kept boundary came from. Of a kept start and
    * end out of order, the one kept from the later revision moves: that edit
@@ -758,17 +771,23 @@ export const classifyRangeMultiplicity = (
 
 /**
  * The one rule that makes every range a rejection kept boundaries of
- * well-formed, for the engine's model and the editor's document alike. A
- * kept copy of a boundary the story still holds is no boundary of its own and
- * goes (of several kept copies, the first one that is no added revision's
- * copy stays, else the first). A copy an added revision still owns holds
- * nothing: rejecting its revision takes it away, so a boundary kept beside
- * it stays whichever is resolved first, and it counts for no range's order.
- * Then, where such a range's end comes before its start, the half the
- * rejection kept closes on the other: a kept end moves to just after the
- * start, or else a kept start to just before the end. A boundary that was
- * standing never moves, and a range still with more than one start or end is
- * left as it is.
+ * well-formed, for the engine's model and the editor's document alike.
+ *
+ * A bookmark or move range boundary that records copies never goes here,
+ * whatever else the story holds: one without copy ancestry is the boundary
+ * itself, and one with it goes only when its owner is rejected. Dropping
+ * either because another occurrence stands would make the result depend on
+ * which resolution came first, since accepting a copy leaves it standing as
+ * inserting it directly does. A comment boundary records no copies, so a
+ * kept one goes where the story holds it otherwise (of several kept and
+ * nothing else, the first stays).
+ *
+ * A copy an added revision still owns that stands counts for no range's
+ * order. Then, where such a range's end comes before its start, the
+ * half the rejection kept closes on the other: a kept end moves to just
+ * after the start, or else a kept start to just before the end. A boundary
+ * that was standing never moves, and a range still with more than one start
+ * or end is left as it is.
  */
 export const planWellFormedRanges = (
   occurrences: readonly BoundaryOccurrence[],
@@ -786,15 +805,11 @@ export const planWellFormedRanges = (
   const dropped = new Set<number>();
   for (const group of copies.values()) {
     if (group.length < 2) continue;
+    if (group.some((member) => occurrences[member]?.copiesMarked === true))
+      continue;
     const kept = group.filter((member) => occurrences[member]?.kept === true);
-    const held = group.some((member) => {
-      const occurrence = occurrences[member];
-      return occurrence?.kept === false && !occurrence.copied;
-    });
-    const survivor = held
-      ? undefined
-      : (kept.find((member) => occurrences[member]?.copied === false) ??
-        kept.at(0));
+    const held = group.some((member) => occurrences[member]?.kept === false);
+    const survivor = held ? undefined : kept.at(0);
     for (const member of kept) if (member !== survivor) dropped.add(member);
   }
   const ownedCopies = occurrences.flatMap(({ kept, copied }, index) =>
@@ -865,6 +880,7 @@ export const wellFormedRanges = ({
         side: BOUNDARY_SIDES[node.type].side,
         kept: keptFrom !== undefined,
         copied: copyOriginAncestorsOf(node) !== undefined,
+        copiesMarked: recordsCopyOrigin(node),
         ...(keptFrom === undefined ? {} : { keptFrom }),
       };
     }),

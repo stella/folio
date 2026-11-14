@@ -22,17 +22,17 @@ import {
 } from "../__tests__/editorHarness";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import {
+  type CanonicalCommit,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseDocx } from "../docx/parser";
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { buildPlainTextSlice } from "../prosemirror/commands/pastePlainText";
 import { schema } from "../prosemirror/schema";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
-import {
-  type CanonicalCommit,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";

@@ -29,18 +29,21 @@ editor maps its selection and history without its own coordinates.
 `transformBatch` refuses operation pairs whose effects cannot be mapped safely.
 An inverse keeps its staleness preconditions: an invalid undo must be dropped,
 never applied by removing those preconditions. Supported story addresses derive
-from the operation contract; this schema has no `addComment` primitive.
+from the operation contract.
 
-The unknown-input decoder accepts every operation kind except comment
-operations (`UNSENT_OP_TYPES`); `BATCH_WIRE_OP_TYPES` declares the accepted
-kinds, and a kind added to the schema without a wire form or an unsent entry
-stops the decoder compiling. Embedded model records are validated within the
+The unknown-input decoder accepts every operation kind; `BATCH_WIRE_OP_TYPES`
+declares them, and a kind added to the schema without a wire form stops the
+decoder compiling. Embedded model records are validated within the
 decoder's JSON depth and byte bounds: every content node's kind is one the
 model defines for its slot, every record carries only the fields its model
 type declares, paragraph ids are well formed, scalar formatting values have
 their model types and nested content is checked recursively. Deep property
 records (borders, shading, drawings, style, numbering-level and section
-details) are bounded by the JSON checks alone. `validateDocumentBatch`
+details) are bounded by the JSON checks alone. Comment records (a creation's
+comment, a content edit's paragraphs, the records and anchor paragraphs a
+comment inverse restores) are checked the same way; a reply's thread is its
+anchor's, never a field of the new comment. A comment's author and date are
+the operation's own: the sequencer and every receiver apply them as sent. `validateDocumentBatch`
 normalizes optional undefined object fields, and `validateSequencedBatch`
 checks assigned revisions and that each effect is the one its operation kind
 records.
@@ -50,6 +53,25 @@ paragraph formatting, paragraph splits and joins, anchored paragraph
 insertion and repeated revision decisions. Overlapping revision decisions with
 opposite outcomes reject. Text inherited at a paragraph's start takes the run
 after it, so a concurrent format from the start covers it in either order.
+
+## Tracked changes beside concurrent cuts
+
+A tracked deletion or insertion records, on its wrapper, how many records it
+cut at each edge and how many ran across its whole range, so that rejecting
+or accepting it joins them again. Whether a record runs across depends on
+what was applied first: when a concurrent edit cuts or merges records at an
+edge or inside the range (another tracked edge, an insertion point, a
+format's end, an inline split or join, a paragraph split, an inverse
+deletion's join), the cut goes to whichever applies first and the two orders
+record different joins. A direct deletion that reaches one edge and not the
+other removes what lay against that edge in one order and moves the edge in
+the other. Two tracked deletions that overlap (nested, equal or crossing
+ranges) leave the shared content to whichever wraps it first, under its
+author and id. All of these pairs are refused with `unsupportedPair`, in
+either order. Tracked changes apart from every concurrent cut commute, and
+so does a direct deletion inside a tracked one or covering it whole.
+
+## Block-scoped operations
 
 Every other operation is block-scoped: paragraph replacement, inline
 replacement and paragraph review, inline splits and joins, content insertion,
@@ -65,11 +87,51 @@ unchanged when it addresses none of those paragraphs, and is refused with
 `tableRequiresExclusiveEdit` only when the concurrent one restructured the
 same table; typing in that table's cells passes. Package parts
 (`EXCLUSIVE_PARTS`: numbering, styles, relationships, media, sections, headers
-and footers, notes, settings and revision metadata) conflict when one
-operation writes a part both name, by entry where the operation names one
-(a numbering instance, a relationship id, a note): `partConflict`, with the
-part. Pairs of position-rebased operations the transform cannot map safely
-reject with `unsupportedPair`.
+and footers, notes, settings, revision metadata and comments) conflict when
+one operation writes a part both name, by entry where the operation names one
+(a numbering instance, a relationship id, a note, a comment): `partConflict`,
+with the part. A comment operation that may add or remove the comment part
+relationships writes the whole relationships part. A revision decision reads
+the revisions it resolves, and a paragraph replacement, inline replacement,
+paragraph review or container replacement writes every revision its new
+content holds: an undo that puts a tracked change back conflicts with a
+concurrent decision of it, which would otherwise resolve the change in one
+order and find it already resolved in the other. Pairs of position-rebased
+operations the transform cannot map safely reject with `unsupportedPair`.
+
+## Comments
+
+Comment threads are sequenced in the journal like any other edit. A range or
+point comment is rebased by its anchor: its ends move like text over
+concurrent insertions, direct deletions, splits and joins, and stay over
+formatting, paragraph properties and paragraph insertion. Its comment
+reference occupies one offset unit at the range's end (or at the point), so a
+concurrent position after it moves past it. A position at an anchor's own
+offset has no affinity to follow and refuses with `unsupportedPair`, as does
+a concurrent deletion or format whose range reaches an anchor. A deletion
+that removes a range's text is therefore refused rather than collapsing the
+range: the apply contract makes a collapsed range a point comment, which the
+other order (a range comment whose text is then deleted) would not give. A
+reply, a deletion and a restoration find their anchors in the document they
+apply to; their effect records the paragraphs they changed, so a concurrent
+edit addressing one of those paragraphs refuses with `blockConflict`, and
+the comments they added or removed, replies of a deleted thread among them.
+
+Concurrent comment operations decide by the comments they use. Different
+comments pass: a new comment takes its place in the comment list by id, so
+concurrent creations land in the same order whichever applies first. On one
+comment, a content edit and a resolution pass, a reply passes an edit or a
+resolution of its parent, and the same resolution twice is one resolution.
+Everything else on one comment is refused with `partConflict` naming the
+`comments` part: two content edits, opposite resolutions, a deletion against
+any other use of its thread (a reply to a deleted parent included), two
+replies to one parent (their references would take opposite orders), and a
+restoration against anything but a content edit of another comment (it puts
+records and part relationships back as captured). A reply or a resolution
+after a concurrent deletion that removed a comment part relationship is
+refused naming `relationships`, since it would add the relationship under
+another id than it does before the deletion. Comment ids come from the
+actor's lease like every other id.
 
 Undo inverses are operations of the same kinds and follow the same rules.
 Rich inverse preconditions stay intact and may refuse an undo after another
@@ -137,4 +199,69 @@ taken back the same way and reported to the host (`localEditRefused`), never
 lost silently. After a disconnection the unanswered batch is submitted again
 under the same operation id, so the sequencer answers it once. The controller
 asks for another lease block when a kind runs low. A remote batch waits while
-a composition is pending. Rooms hold no Yjs state.
+a composition is pending. The controller holds no Yjs state.
+
+## Room transports
+
+A room has exactly one authority: one sequencer over the room's base
+document. Its durable state is an ordered list of records, every sequenced
+batch and every leased id block (`CanonicalRoomRecord`).
+`restoreCanonicalRoomAuthority` rebuilds the sequencer from them: the leased
+blocks go back into the lease table, then every batch is submitted again at
+its own revision and must sequence there. An authority stores the records a
+call added before it broadcasts or answers anything, so a successor never
+forgets an edit somebody heard of, and a batch submitted again under an
+operation id it already sequenced gets its first answer.
+
+`openCanonicalTabRoom` (controller/canonicalTabRoom.ts) shares a room
+between the tabs of one origin. The authority runs in the tab that holds the
+room's Web Lock (`navigator.locks`), a leader tab rather than a SharedWorker:
+the library ships no worker script a host would have to serve, it works
+where SharedWorker does not, and a durable journal is needed either way, so
+the room outlives the tabs. Every tab, the leader included, reaches the
+authority over a BroadcastChannel. When the leading tab goes away the lock
+passes to a waiting tab, which reads the durable journal
+(`openCanonicalIndexedDbJournal`, one IndexedDB database per origin),
+rebuilds the sequencer and stores a higher leadership term before it
+announces itself. Clients follow only a higher term: the old leader's
+unanswered submissions count as lost to a disconnection, and the controller
+submits them again under the same operation id.
+
+`openCanonicalYjsRoom` (controller/canonicalYjsRoom.ts) carries a room in a
+Yjs document, for hosts that already sync one. The document is a transport,
+not the shared model: a client appends submissions and lease requests to an
+inbox array, and the authority helper a host server runs on its copy of the
+document (`serveCanonicalYjsRoom`, for example in a y-websocket or Hocuspocus
+server) takes each request in order and, in one transaction, appends the
+records to a journal array, writes the answer to an answers map keyed by
+actor and operation id, and removes the request. Only the authority writes
+the journal, under its own Yjs client id (`CANONICAL_YJS_AUTHORITY` unless
+the host picks another): a client refuses an entry any other Yjs client
+wrote (`foreignJournalEntry`) and goes on, and stops following the room if
+an authority entry is deleted or two claim one revision. Every Yjs client
+picks its own client id, so this check catches a client that writes the
+journal by mistake, not one that writes it under the authority's id on
+purpose: the room trusts its participants, and a host that does not trust
+one drops that client's updates touching the journal, the answers or the
+room map before it relays them. A lease call that the room can no longer
+forward, because the transport closed or stopped following the journal, is
+answered with an `unavailable` refusal. The host persists
+the document's updates before it sends them on, so a restarted authority
+finds every entry a client saw. The module imports no Yjs code; it works on
+the host's own document and awareness. A serverless room (y-webrtc) has no
+authority and cannot carry a canonical room until it gets one: a peer that
+is always present or a server that joins the room.
+
+## Presence
+
+With the `presence` option, `joinCanonicalRoom` shares the peer's selection
+over the transport's presence channel (the tab room's BroadcastChannel, the
+Yjs room's awareness): canonical positions (story, paragraph id, offset), the
+revision the peer had applied, and its user's name and color. A viewer moves
+every other peer's selection over each sequenced batch it applies after that
+revision, other than the peer's own, with the transform the session moves
+its own selection with, and `presence.peers()` gives each peer's selection
+in the viewer's projection (`positionAt`). A peer publishes again after each
+remote edit and each revision the room confirms, and the host calls
+`presence.update()` when the selection moves. Presence uses no Yjs relative
+positions.

@@ -22,6 +22,7 @@ import { describePackageDifferences } from "../../../../scripts/lib/corpus-invar
 import { canonicalSaveParagraphXml } from "../../../../test/canonicalSaveSequence";
 import { assertExactModel } from "../../../../test/exactModel";
 import { shapeArrayBuffer } from "../__tests__/documentShapes";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { CanonicalResourceSaveRefusalError } from "../docx/canonicalResourceSave";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { ensureParaIds } from "../docx/ensureParaIds";
@@ -33,7 +34,6 @@ import { schema } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Style } from "../types/document";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
-import { createCanonicalSession } from "./canonicalSession";
 
 const IDS = ["11111111", "22222222", "33333333"] as const;
 const SOURCE_BLOCKS = IDS.map(

@@ -1333,6 +1333,7 @@ export class FolioDocxReviewer {
 export type FolioDocxReviewerOptions = {
     author?: string;
     password?: string | undefined;
+    session?: HeadlessReviewerSession;
 };
 
 // @public (undocumented)

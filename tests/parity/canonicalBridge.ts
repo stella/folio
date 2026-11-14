@@ -3,7 +3,7 @@ import { TextSelection } from "prosemirror-state";
 import type { Document } from "@stll/folio-core";
 import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "@stll/folio-core/ai-edits/types";
-import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
+import type { OpStory } from "@stll/folio-core/canonical/canonicalOperations";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioDocumentOperationUndoHandle } from "@stll/folio-core/document-operations";
 import {
@@ -37,7 +37,7 @@ import { canonicalTextSelection } from "./canonicalTextSelection";
  * by its order of appearance, which keeps every anchor tied to its box.
  */
 const MINTED_ID_ATTRS = new Set(["_docxGroupId", "_docxAnchorId", "anchorId"]);
-const withoutMintedIds = (value: unknown): unknown => {
+export const withoutMintedIds = (value: unknown): unknown => {
   const salts = new Map<string, string>();
   return JSON.parse(
     JSON.stringify(value, (key, field: unknown) => {

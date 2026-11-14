@@ -2,12 +2,10 @@ name: CI
 
 env:
   TOOLCHAIN_BASE: ${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || (github.event_name == 'push' && github.event.before) || 'unavailable-toolchain-base' }}
-  HAWK_RUST_TOOLCHAIN: "1.97.1"
-  HAWK_VERSION: "0.1.11"
-  HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256: "8380db63360ae94f9890d7e426cce00e479d884f516614cea998c85d5f30ab6d"
-  # The crates.io package of the same release, built when the release
-  # archive cannot be downloaded.
-  HAWK_CRATE_SHA256: "584421e8a97b7bbd33f4db455f53d95bc351a893d15f534c30240ac0969c248e"
+  HAWK_VERSION: "0.1.17"
+  # The crates.io package of that release. Hawk links the compiler it is built
+  # with, so it builds from this package against rust-toolchain.toml.
+  HAWK_CRATE_SHA256: "1806358550b05ac91fe2e511d9bcb6f69fc5b2dd0f8a560df3dc87064d57d510"
 
 on:
   push:
@@ -21,7 +19,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # A hand-started run checks one fixed commit: no push and no other
+  # dispatch replaces or cancels it, so each dispatch has its own group.
+  group: ${{ github.event_name == 'workflow_dispatch' && format('ci-dispatch-{0}', github.run_id) || format('ci-{0}-{1}', github.workflow, github.ref) }}
   cancel-in-progress: true
 
 permissions:
@@ -110,9 +110,10 @@ jobs:
   # One scheduling wave decides what the run checks; every other job waits on
   # it and skips when its area is not selected. The planner is the shared
   # stella/.github ci-plan action; `.github/ci-plan.json` holds folio's areas.
-  # Pull requests plan by changed path. Merge groups select every area.
-  # Toolchain changes select every area at full depth; unchanged pull requests
-  # retain path scopes. API preflight derives publication paths from manifests.
+  # Pull requests plan by changed path. Merge groups and hand-started runs
+  # select every area at full depth, and so do toolchain changes; unchanged
+  # pull requests retain path scopes. API preflight derives publication paths
+  # from manifests.
   # Drafts plan nothing until marked ready for review.
   ci-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
@@ -127,17 +128,17 @@ jobs:
       reused_run: ${{ steps.reuse.outputs.reused_run }}
       warm_caches: ${{ steps.warm.outputs.changed }}
       toolchain_changed: ${{ steps.toolchain.outputs.changed }}
-      suite_depth: ${{ (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true') && 'full' || 'fast' }}
+      suite_depth: ${{ (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true') && 'full' || 'fast' }}
       trusted: ${{ steps.plan.outputs.trusted }}
-      browser_discovery_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).browser_discovery) }}
-      api_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true') }}
-      code_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).code) }}
-      container_contract_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).container_contract) }}
-      docx_kernel_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).docx_kernel) }}
-      interactions_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions) }}
-      differential_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential) }}
+      browser_discovery_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).browser_discovery) }}
+      api_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true') }}
+      code_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).code) }}
+      container_contract_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).container_contract) }}
+      docx_kernel_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).docx_kernel) }}
+      interactions_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).interactions) }}
+      differential_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || fromJSON(steps.plan.outputs.areas).differential) }}
       test_shards: ${{ steps.test-shards.outputs.test_shards }}
-      packaged_consumer_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.packaged_consumer_required == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer) }}
+      packaged_consumer_required: ${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.packaged_consumer_required == 'true' || fromJSON(steps.plan.outputs.areas).packaged_consumer) }}
     steps:
       - name: Find successful merge-group coverage
         id: reuse
@@ -175,9 +176,16 @@ jobs:
       - name: Plan the test shards
         id: test-shards
         run: bun scripts/ci-test-shard-plan.ts
+      # An event that names a base keeps it; a hand-started run compares with
+      # where its branch left main, as its pull request would.
+      - name: Resolve the toolchain comparison base
+        id: toolchain-base
+        run: bun scripts/lib/comparison-base.ts >> "$GITHUB_OUTPUT"
       - name: Detect shared toolchain changes
         id: toolchain
         shell: bash
+        env:
+          TOOLCHAIN_BASE: ${{ steps.toolchain-base.outputs.base }}
         run: |
           set -euo pipefail
           changes=$(bunx --no-install stll-toolchain-changed --since "$TOOLCHAIN_BASE")
@@ -290,6 +298,30 @@ jobs:
       - name: Format check
         run: bun fmt --check
 
+  # Advisories are published at any hour, so the audit's verdict changes
+  # without any change here. It runs as its own job so a new advisory fails
+  # the run without stopping the lint and source guards from reporting.
+  dependency-audit:
+    name: Dependency audit
+    needs: ci-plan
+    if: needs.ci-plan.outputs.reused_run == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+          install-cache: actions
+
+      - run: bun install --frozen-lockfile
+
+      - name: Dependency audit
+        run: bun run audit
+
   lint:
     name: Lint and source guards
     needs: ci-plan
@@ -348,9 +380,6 @@ jobs:
         # fails when a normalisation module neither names a warning code nor
         # states why it loses nothing.
         run: bun run check:normalization-warnings
-
-      - name: Dependency audit
-        run: bun run audit
 
       - name: Canonical session capability ledger
         run: bun run check:canonical-cutover
@@ -548,6 +577,8 @@ jobs:
           # A pull request builds its merge with the current base, and the
           # event's base SHA can trail that base, so compare with the merge's
           # first parent: growth already on the base is not this change's.
+          # A hand-started run names no base; the budget then compares with
+          # where HEAD left main.
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             API_BASE="$(git rev-parse HEAD^1)"
             export API_BASE
@@ -712,44 +743,35 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/cargo-hawk
-          key: cargo-hawk-${{ runner.os }}-${{ runner.arch }}-${{ env.HAWK_VERSION }}-${{ env.HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256 }}-${{ env.HAWK_CRATE_SHA256 }}
+          key: cargo-hawk-${{ runner.os }}-${{ runner.arch }}-${{ env.HAWK_VERSION }}-${{ env.HAWK_CRATE_SHA256 }}-${{ hashFiles('rust-toolchain.toml') }}
 
-      # The release archive, checked against its pinned digest. When the
-      # release host does not answer, the same release builds from crates.io
-      # against the pinned toolchain, its package checked against its pinned
-      # digest and its dependencies against the lockfile it ships.
+      # Hawk runs only with the compiler it was built with, and the release
+      # archives carry the compiler Hawk itself pins. Building the release from
+      # crates.io with the repository's toolchain keeps one Rust pin; the
+      # package is checked against its pinned digest and its dependencies
+      # against the lockfile it ships.
       - name: Install pinned Hawk
         shell: bash
         env:
           HAWK_CACHE_HIT: ${{ steps.hawk-cache.outputs.cache-hit }}
         run: |
           set -euo pipefail
-          expected_hawk_script="cargo +${HAWK_RUST_TOOLCHAIN} hawk check --target-dir target/hawk -D warnings -A hawk::dead_public -A hawk::unnecessary_public"
+          expected_hawk_script="cargo hawk check --target-dir target/hawk -D warnings -A hawk::dead_public -A hawk::unnecessary_public"
           jq -e --arg expected "$expected_hawk_script" \
             '.scripts["rust:hawk"] == $expected' package.json >/dev/null
           install_dir="$HOME/.cache/cargo-hawk"
-          rustup toolchain install 1.97.1 --profile minimal # cargo-hawk exception tracked in stll-toolchain.json
           if [ "$HAWK_CACHE_HIT" != "true" ]; then
-            archive="$RUNNER_TEMP/cargo-hawk.tar.gz"
             mkdir -p "$install_dir"
-            if curl --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors -fsSL \
-              -o "$archive" \
-              "https://github.com/astral-sh/hawk/releases/download/${HAWK_VERSION}/cargo-hawk-x86_64-unknown-linux-gnu.tar.gz"; then
-              echo "${HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256}  ${archive}" | sha256sum --check
-              tar -xzf "$archive" -C "$install_dir" --strip-components=1
-            else
-              echo "::warning::The Hawk release host did not answer; building cargo-hawk ${HAWK_VERSION} from crates.io"
-              rustup component add rustc-dev --toolchain 1.97.1 # cargo-hawk exception tracked in stll-toolchain.json
-              build_root="$RUNNER_TEMP/cargo-hawk-build"
-              RUSTC_BOOTSTRAP=1 cargo +1.97.1 install cargo-hawk --version "=${HAWK_VERSION}" --locked --root "$build_root" # cargo-hawk exception tracked in stll-toolchain.json
-              package=$(find "$HOME/.cargo/registry/cache" -name "cargo-hawk-${HAWK_VERSION}.crate" -print -quit)
-              if [ -z "$package" ]; then
-                echo "::error::cargo did not keep the cargo-hawk ${HAWK_VERSION} package it built"
-                exit 1
-              fi
-              echo "${HAWK_CRATE_SHA256}  ${package}" | sha256sum --check
-              cp "$build_root/bin/"* "$install_dir/"
+            rustup component add rustc-dev
+            build_root="$RUNNER_TEMP/cargo-hawk-build"
+            RUSTC_BOOTSTRAP=1 cargo install cargo-hawk --version "=${HAWK_VERSION}" --locked --root "$build_root"
+            package=$(find "$HOME/.cargo/registry/cache" -name "cargo-hawk-${HAWK_VERSION}.crate" -print -quit)
+            if [ -z "$package" ]; then
+              echo "::error::cargo did not keep the cargo-hawk ${HAWK_VERSION} package it built"
+              exit 1
             fi
+            echo "${HAWK_CRATE_SHA256}  ${package}" | sha256sum --check
+            cp "$build_root/bin/"* "$install_dir/"
           fi
           echo "$install_dir" >> "$GITHUB_PATH"
 
@@ -758,7 +780,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/cargo-hawk
-          key: cargo-hawk-${{ runner.os }}-${{ runner.arch }}-${{ env.HAWK_VERSION }}-${{ env.HAWK_X86_64_UNKNOWN_LINUX_GNU_SHA256 }}-${{ env.HAWK_CRATE_SHA256 }}
+          key: cargo-hawk-${{ runner.os }}-${{ runner.arch }}-${{ env.HAWK_VERSION }}-${{ env.HAWK_CRATE_SHA256 }}-${{ hashFiles('rust-toolchain.toml') }}
 
       - *source-lint-cache
       - *source-lint-install
@@ -1195,6 +1217,7 @@ jobs:
       - changeset
       - docs-format
       - lint
+      - dependency-audit
       - typecheck
       - build-api
       - browser-discovery
@@ -1227,6 +1250,7 @@ jobs:
             "browser-discovery":{"event":"pull_request","area":"browser_discovery_required"},
             "docs-format":{"area":"code_required","value":"false","reuse":"forbidden"},
             "lint":{"reuse":"forbidden"},
+            "dependency-audit":{"reuse":"forbidden"},
             "warm-main-caches":{"event":"push","reuse":"required","warm":"required"},
             "typecheck":{"area":"code_required"},
             "build-api":{"area":"api_required"},
@@ -1301,7 +1325,7 @@ jobs:
             exit 1
           fi
           expected_depth=fast
-          if [[ "$EVENT" == "merge_group" || "$toolchain_changed" == "true" ]]; then
+          if [[ "$EVENT" == "merge_group" || "$EVENT" == "workflow_dispatch" || "$toolchain_changed" == "true" ]]; then
             expected_depth=full
             if ! jq -e --argjson plan "$PLAN" '[.[] | .area // empty] | unique | all(.[]; $plan[.] == "true")' <<< "$JOB_SCOPES" >/dev/null; then
               echo "::error::Full-suite CI plan must select every area."

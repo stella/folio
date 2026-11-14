@@ -1,9 +1,11 @@
+import { Result } from "better-result";
 /**
  * Peers editing one room concurrently with every kind of canonical edit,
- * through the real sequencer and optimistic client, with every batch crossing
- * the JSON wire: all of them end on the authority's bytes, no edit is lost
- * without a notice, and every concurrent batch the authority accepted
- * commutes with the journal tail it was rebased over.
+ * comment threads among them, through the real sequencer and optimistic
+ * client, with every batch crossing the JSON wire: all of them end on the
+ * authority's bytes, comments included, no edit is lost without a notice,
+ * and every concurrent batch the authority accepted commutes with the
+ * journal tail it was rebased over.
  */
 import { describe, expect, mock, test } from "bun:test";
 import fc from "fast-check";
@@ -18,10 +20,22 @@ import type { Document } from "../../../model/document";
 import { serializeDocumentToDocx } from "../../../serialize/docx";
 import { createEditorIntentIdAllocator } from "../../editorIntent";
 import { equalForStaleness } from "../../equality";
-import { introducedIds, leasedIdCensus, trimIdLease } from "../../idLease";
-import { DOCUMENT_OP_SCHEMA_VERSION, type DocumentOp } from "../../types";
+import {
+  ID_LEASE_KINDS,
+  introducedIds,
+  leasedIdCensus,
+  trimIdLease,
+} from "../../idLease";
+import {
+  type DeleteRangeOp,
+  DOCUMENT_OP_SCHEMA_VERSION,
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+} from "../../types";
 import { applyBatch } from "../applyBatch";
 import { createClient } from "../client";
+import * as commentTransform from "../commentTransform";
+import { isCommentOp } from "../commentTransform";
 import * as envelope from "../envelope";
 import {
   BATCH_REJECTION_REASONS,
@@ -30,8 +44,11 @@ import {
   type SequencedBatch,
   validateDocumentBatch,
 } from "../envelope";
+import * as heldRevisions from "../heldRevisions";
+import { sameParagraph } from "../points";
 import { isBlockScoped } from "../scope";
 import { type BatchSubmission, createSequencer } from "../sequencer";
+import * as trackedTransform from "../trackedTransform";
 import { transformBatch } from "../transform";
 import {
   canonicalBase,
@@ -81,9 +98,32 @@ type Outcome = {
   rebased: number;
   proven: number;
   scopedRebased: number;
+  /** Accepted rebased batches with a comment operation in them or their tail. */
+  commentRebased: number;
   /** Accepted rebased batches whose result differs from the commuted order. */
   diverged: string[];
+  /** Accepted rebased batches with a tracked deletion in one paragraph as one in their tail. */
+  trackedPairs: number;
 };
+
+const isTrackedDeletion = (op: DocumentOp): op is DeleteRangeOp =>
+  op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision !== undefined;
+
+// Whether the batch and its tail hold tracked deletions of one paragraph.
+const meetsTrackedDeletion = (
+  batch: DocumentBatch,
+  tail: readonly SequencedBatch[],
+): boolean =>
+  batch.ops.some(
+    (op) =>
+      isTrackedDeletion(op) &&
+      tail.some(({ ops }) =>
+        ops.some(
+          (other) =>
+            isTrackedDeletion(other) && sameParagraph(op.from, other.from),
+        ),
+      ),
+  );
 
 /**
  * Apply `batch` where it was authored, then each tail batch rebased over it:
@@ -155,7 +195,9 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     rebased: 0,
     proven: 0,
     scopedRebased: 0,
+    commentRebased: 0,
     diverged: [],
+    trackedPairs: 0,
   };
   const delivery: Delivery[] = [];
   let serial = 10;
@@ -213,6 +255,9 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         [batch, ...tail].some(({ ops }) => ops.some((op) => isBlockScoped(op)))
       )
         outcome.scopedRebased += 1;
+      if ([batch, ...tail].some(({ ops }) => ops.some((op) => isCommentOp(op))))
+        outcome.commentRebased += 1;
+      if (meetsTrackedDeletion(batch, tail)) outcome.trackedPairs += 1;
       const proven = commutes(history, batch, tail, sequencer.document);
       if (proven === true) outcome.proven += 1;
       if (proven === false) outcome.diverged.push(batch.opId);
@@ -332,16 +377,30 @@ const scenarioArbitrary: fc.Arbitrary<Scenario> = fc
 const bytes = async (document: Document): Promise<Uint8Array> =>
   new Uint8Array(await serializeDocumentToDocx(document));
 
-type Counts = { rebased: number; proven: number; scopedRebased: number };
+type Counts = {
+  rebased: number;
+  proven: number;
+  scopedRebased: number;
+  commentRebased: number;
+  trackedPairs: number;
+};
 
 const convergence = (
-  counts: Counts = { rebased: 0, proven: 0, scopedRebased: 0 },
+  counts: Counts = {
+    rebased: 0,
+    proven: 0,
+    scopedRebased: 0,
+    commentRebased: 0,
+    trackedPairs: 0,
+  },
 ) =>
   fc.asyncProperty(scenarioArbitrary, async ([peers, steps]) => {
     const outcome = simulate(peers, steps);
     counts.rebased += outcome.rebased;
     counts.proven += outcome.proven;
     counts.scopedRebased += outcome.scopedRebased;
+    counts.commentRebased += outcome.commentRebased;
+    counts.trackedPairs += outcome.trackedPairs;
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
@@ -383,6 +442,181 @@ const concurrentRows: Scenario = [
   ],
 ];
 
+// The queue drains in order: every answer and broadcast reaches its peer.
+const drain = (count: number): Step[] =>
+  Array.from({ length: count }, () => ({ type: "deliver", seed: 0 }));
+
+/**
+ * A comment on the first paragraph's fourth character while another peer
+ * erases its first: the comment's range moves back by one.
+ */
+const commentOverErase: Scenario = [
+  3,
+  [
+    edit(0, { kind: "erase", a: 0, b: 0 }),
+    edit(1, { kind: "comment", a: 24, b: 0 }),
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 1 },
+  ],
+];
+
+/**
+ * One thread, seen by every peer, then replied to, resolved and edited at
+ * once: the three commute.
+ */
+const concurrentThread: Scenario = [
+  3,
+  [
+    edit(0, { kind: "comment", a: 24, b: 0 }),
+    { type: "submit", peer: 0 },
+    ...drain(4),
+    edit(1, { kind: "reply", a: 0, b: 0 }),
+    edit(2, { kind: "resolveComment", a: 0, b: 0 }),
+    edit(0, { kind: "editComment", a: 0, b: 0 }),
+    { type: "submit", peer: 1 },
+    { type: "submit", peer: 2 },
+    { type: "submit", peer: 0 },
+  ],
+];
+
+/** A thread deleted while another peer resolves it: the later one refuses. */
+const deleteAgainstResolve: Scenario = [
+  3,
+  [
+    edit(0, { kind: "pointComment", a: 36, b: 0 }),
+    { type: "submit", peer: 0 },
+    ...drain(4),
+    edit(1, { kind: "deleteComment", a: 0, b: 0 }),
+    edit(2, { kind: "resolveComment", a: 0, b: 0 }),
+    { type: "undo", peer: 1 },
+    { type: "submit", peer: 1 },
+    { type: "submit", peer: 2 },
+  ],
+];
+
+/**
+ * Two suggesting peers erase one character each in the fifth body
+ * paragraph, the second ending where the first starts: the tracked
+ * deletions are adjacent, and whichever wraps first records the cut between
+ * them.
+ */
+const adjacentSuggestedErases: Scenario = [
+  4,
+  [
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "erase", a: 47_038, b: 0, suggest: true },
+    },
+    {
+      type: "edit",
+      peer: 1,
+      seed: { kind: "erase", a: 83_446, b: 0, suggest: true },
+    },
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "undo", peer: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+  ],
+];
+
+/** A suggesting erase of the body's first paragraph from `a`. */
+const suggestedErase = (
+  peer: number,
+  seed: Omit<EditSeed, "kind" | "focus" | "suggest">,
+): Step => ({
+  type: "edit",
+  peer,
+  seed: { ...seed, kind: "erase", suggest: true, focus: true },
+});
+
+const submitAll: Step[] = [0, 1, 2].map((peer) => ({ type: "submit", peer }));
+
+/**
+ * Concurrent erases in the first paragraph, each phase drained before the
+ * next: a tracked deletion of 2..5 with one nested in it (3..4) and one
+ * adjacent to it (5..7); the same range twice (10..12) beside a separate one
+ * (14..15); a tracked deletion of 6..9 with a direct one nested in it (7..8).
+ */
+const concurrentSuggestedErases: Scenario = [
+  3,
+  [
+    suggestedErase(0, { a: 2, b: 2 }),
+    suggestedErase(1, { a: 3, b: 0 }),
+    suggestedErase(2, { a: 5, b: 1 }),
+    ...submitAll,
+    ...drain(24),
+    suggestedErase(0, { a: 10, b: 1 }),
+    suggestedErase(1, { a: 10, b: 1 }),
+    suggestedErase(2, { a: 14, b: 0 }),
+    ...submitAll,
+    ...drain(24),
+    suggestedErase(0, { a: 6, b: 2 }),
+    {
+      type: "edit",
+      peer: 1,
+      seed: { kind: "erase", a: 7, b: 0, suggest: false, focus: true },
+    },
+    ...submitAll,
+  ],
+];
+
+/**
+ * A suggesting erase of 2..4 in the first paragraph while another peer
+ * formats 3..6: the format cuts the run inside the tracked range, which
+ * decides whether one record ran across all of it.
+ */
+const formatAcrossSuggestedErase: Scenario = [
+  3,
+  [
+    suggestedErase(0, { a: 2, b: 1 }),
+    {
+      type: "edit",
+      peer: 1,
+      seed: { kind: "format", a: 3, b: 2, suggest: false, focus: true },
+    },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 1 },
+  ],
+];
+
+/**
+ * Two peers accept the same suggestion at once and the one sequenced first
+ * undoes its decision: the undo puts back the change the other peer decided.
+ */
+const undoAgainstRepeatedDecision: Scenario = [
+  3,
+  [
+    edit(1, { kind: "decide", a: 0, b: 0 }),
+    edit(0, { kind: "decide", a: 0, b: 0 }),
+    { type: "undo", peer: 0 },
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 0 },
+  ],
+];
+
+/** The pinned scenarios, which the fixed coverage sample starts with. */
+const PINNED: readonly Scenario[] = [
+  concurrentRows,
+  commentOverErase,
+  concurrentThread,
+  deleteAgainstResolve,
+  adjacentSuggestedErases,
+  concurrentSuggestedErases,
+  formatAcrossSuggestedErase,
+  undoAgainstRepeatedDecision,
+];
+
 describe("canonical sequencing", () => {
   test(
     "concurrent canonical edits converge on the authority's bytes and commute where accepted",
@@ -390,16 +624,145 @@ describe("canonical sequencing", () => {
       await assertProperty(convergence(), {
         numRuns: NUM_RUNS,
         id: "canonical sequencing convergence",
-        examples: [[concurrentRows]],
+        examples: PINNED.map((scenario) => [scenario]),
       });
-      // On a fixed sample the schedules race: accepted batches are rebased
-      // over concurrent ones, block-scoped ones among them, and the commuted
-      // order is proven for them.
-      const counts = { rebased: 0, proven: 0, scopedRebased: 0 };
-      await checkCoverageSample(convergence(counts), NUM_RUNS);
+      // On a fixed sample, which starts with the pinned scenarios, the
+      // schedules race: accepted batches are rebased over concurrent ones,
+      // block-scoped, comment and tracked deletion ones among them, and the
+      // commuted order is proven for them.
+      const counts = {
+        rebased: 0,
+        proven: 0,
+        scopedRebased: 0,
+        commentRebased: 0,
+        trackedPairs: 0,
+      };
+      await checkCoverageSample(convergence(counts), NUM_RUNS + PINNED.length, {
+        map: (value, index) => {
+          const pinned = PINNED[index];
+          return pinned === undefined ? value : [pinned];
+        },
+      });
       expect(counts.rebased).toBeGreaterThan(0);
       expect(counts.scopedRebased).toBeGreaterThan(0);
+      expect(counts.commentRebased).toBeGreaterThan(0);
       expect(counts.proven).toBeGreaterThan(0);
+      expect(counts.trackedPairs).toBeGreaterThan(0);
+    },
+    propertyTestTimeout(180_000),
+  );
+
+  test("concurrent tracked deletions commute when apart and refuse with a typed reason when they meet", () => {
+    const adjacent = simulate(...adjacentSuggestedErases);
+    // The second erase is refused, reported to its peer, and nothing diverges.
+    expect(adjacent.diverged).toEqual([]);
+    expect(adjacent.rejected).toEqual([
+      BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+    ]);
+    expect(adjacent.dropped).toEqual(["edit-11"]);
+    for (const document of adjacent.documents)
+      expect(equalForStaleness(document, adjacent.authority)).toBe(true);
+    // Nested, adjacent and equal ranges are refused; the erase apart from
+    // them and the direct deletion inside a tracked one are accepted and
+    // proven to commute.
+    const phases = simulate(...concurrentSuggestedErases);
+    expect(phases.diverged).toEqual([]);
+    expect(phases.rejected).toEqual(
+      Array.from({ length: 3 }, () => BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR),
+    );
+    expect(phases.trackedPairs).toBeGreaterThan(0);
+    expect(phases.proven).toBe(phases.rebased);
+    for (const document of phases.documents)
+      expect(equalForStaleness(document, phases.authority)).toBe(true);
+    // A format cutting runs inside a tracked range is refused too.
+    const crossing = simulate(...formatAcrossSuggestedErase);
+    expect(crossing.diverged).toEqual([]);
+    expect(crossing.rejected).toEqual([
+      BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+    ]);
+    for (const document of crossing.documents)
+      expect(equalForStaleness(document, crossing.authority)).toBe(true);
+  });
+
+  test("an undo that puts back a change a concurrent peer decided is refused", () => {
+    const outcome = simulate(...undoAgainstRepeatedDecision);
+    expect(outcome.diverged).toEqual([]);
+    expect(outcome.rejected).toContain(BATCH_REJECTION_REASONS.PART_CONFLICT);
+    for (const document of outcome.documents)
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+  });
+
+  test(
+    "an undo let through over a concurrent decision of its change is caught",
+    async () => {
+      // The test-only break: no operation holds a revision, so an undo that
+      // puts a change back passes a concurrent decision of it.
+      const original = { ...heldRevisions };
+      mock.module("../heldRevisions", () => ({
+        ...original,
+        heldRevisionIds: () => [],
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: NUM_RUNS,
+            examples: [[undoAgainstRepeatedDecision]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+        // Caught by the commutation check, not by anything else.
+        expect(String(result.errorInstance)).toMatch(/do not commute/u);
+      } finally {
+        mock.module("../heldRevisions", () => original);
+      }
+      // Without the break the same scenario passes.
+      const restored = await fc.check(
+        convergence(),
+        propertyConfig({
+          numRuns: 1,
+          examples: [[undoAgainstRepeatedDecision]],
+        }),
+      );
+      expect(restored.failed).toBe(false);
+    },
+    propertyTestTimeout(180_000),
+  );
+
+  test(
+    "adjacent tracked deletions accepted without the cut rule are caught",
+    async () => {
+      // The test-only break: no tracked change meets a concurrent cut, so
+      // two adjacent suggesting erases are both accepted.
+      const original = { ...trackedTransform };
+      mock.module("../trackedTransform", () => ({
+        ...original,
+        trackedCutConflict: () => undefined,
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: NUM_RUNS,
+            examples: [[adjacentSuggestedErases]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+        // Caught by the commutation check, not by anything else.
+        expect(String(result.errorInstance)).toMatch(/do not commute/u);
+      } finally {
+        mock.module("../trackedTransform", () => original);
+      }
+      // Without the break the same scenario passes.
+      const restored = await fc.check(
+        convergence(),
+        propertyConfig({ numRuns: 1, examples: [[adjacentSuggestedErases]] }),
+      );
+      expect(restored.failed).toBe(false);
     },
     propertyTestTimeout(180_000),
   );
@@ -438,5 +801,115 @@ describe("canonical sequencing", () => {
       expect(restored.failed).toBe(false);
     },
     propertyTestTimeout(180_000),
+  );
+
+  test(
+    "a comment anchor left in place over a concurrent deletion is caught",
+    async () => {
+      // The test-only break: a comment's anchor no longer moves over a
+      // concurrent text or structure operation.
+      const original = { ...commentTransform };
+      mock.module("../commentTransform", () => ({
+        ...original,
+        moveCommentAnchor: ({ op }: { op: DocumentOp }) => Result.ok([op]),
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: NUM_RUNS,
+            examples: [[commentOverErase]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+        // Caught by the commutation check, not by anything else.
+        expect(String(result.errorInstance)).toMatch(/do not commute/u);
+      } finally {
+        mock.module("../commentTransform", () => original);
+      }
+      // Without the break the same scenario passes.
+      const restored = await fc.check(
+        convergence(),
+        propertyConfig({ numRuns: 1, examples: [[commentOverErase]] }),
+      );
+      expect(restored.failed).toBe(false);
+    },
+    propertyTestTimeout(180_000),
+  );
+
+  test(
+    "a comment id outside the submitter's lease is refused",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.nat({ max: 1023 }),
+          fc.constantFrom("comment" as const, "pointComment" as const),
+          (offset, kind) => {
+            const base = canonicalBase();
+            const sequencer = createSequencer(base);
+            const own = sequencer.grantIdLease("actor-0");
+            const other = sequencer.grantIdLease("actor-1");
+            if (own.isErr()) throw own.error;
+            if (other.isErr()) throw other.error;
+            const block = other.value.blocks.find(
+              ({ kind: leased }) => leased === ID_LEASE_KINDS.COMMENT,
+            );
+            if (block === undefined) throw new Error("No comment lease block.");
+            const ops = compileCanonicalEdit(
+              base,
+              {
+                actor: "actor-0",
+                tag: "0",
+                lease: own.value,
+                allocate: createEditorIntentIdAllocator(),
+              },
+              { kind, a: 24, b: 0, suggest: false },
+              1,
+            );
+            const created = ops?.at(0);
+            if (created?.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT)
+              throw new Error("The comment edit did not compile.");
+            // The same comment under an id another actor leases.
+            const forged = {
+              ...created,
+              comment: {
+                ...created.comment,
+                id: block.start + (offset % (block.end - block.start)),
+              },
+            };
+            const result = sequencer.submit(
+              wire({
+                schema: DOCUMENT_OP_SCHEMA_VERSION,
+                opId: "forged",
+                actor: "actor-0",
+                baseRev: 0,
+                ops: [forged],
+              }),
+            );
+            expect(result.type).toBe("reject");
+            if (result.type !== "reject") return;
+            expect(result.reason.reason).toBe(
+              BATCH_REJECTION_REASONS.OUTSIDE_ID_LEASE,
+            );
+            expect(result.reason.idKind).toBe(ID_LEASE_KINDS.COMMENT);
+            // The honest comment is accepted.
+            const honest = sequencer.submit(
+              wire({
+                schema: DOCUMENT_OP_SCHEMA_VERSION,
+                opId: "honest",
+                actor: "actor-0",
+                baseRev: 0,
+                ops: [created],
+              }),
+            );
+            expect(honest.type).toBe("ack");
+          },
+        ),
+        { numRuns: 20, id: "comment ids outside the submitter's lease" },
+      );
+    },
+    propertyTestTimeout(60_000),
   );
 });

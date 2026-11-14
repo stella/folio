@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document, ParagraphContent } from "../../model/document";
+import type {
+  BlockContent,
+  Document,
+  ParagraphContent,
+} from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
@@ -134,7 +138,7 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
     ]);
   });
 
-  test("dropping a kept copy leaves the content control that held it, emptied", () => {
+  test("a kept boundary that is no copy stays, though the paragraph holds it too", () => {
     const control = {
       type: "inlineSdt",
       properties: { sdtType: "richText", id: 41, tag: "clause" },
@@ -155,53 +159,89 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
       },
     ]);
 
+    // The insertion's bookmark carries no copy ancestry: it is a boundary of
+    // its own, so rejecting keeps it where the insertion was.
     expect(firstParagraph(rejectAll(document, [2]))).toEqual([
       { type: "bookmarkStart", id: 5, name: "_Ref5" },
       { type: "run", content: [{ type: "text", text: "a" }] },
       { type: "bookmarkEnd", id: 5 },
-      { ...control, content: [] },
+      {
+        ...control,
+        content: [{ type: "bookmarkStart", id: 5, name: "_Ref5" }],
+      },
     ]);
   });
 
-  // Known order dependence: a kept boundary goes when the story holds another
-  // occurrence of it, and accepting a pending copy first makes that copy
-  // one. Rejecting first keeps the original, and accepting then leaves two.
-  // Remove `.failing` once both orders agree.
-  test.failing(
-    "rejecting a bookmark's insertion and accepting its copy's leaves the same, in either order",
-    () => {
-      const bookmarked = (text: string): ParagraphContent[] => [
-        { type: "bookmarkStart", id: 7, name: "_Ref7" },
-        { type: "run", content: [{ type: "text", text }] },
-        { type: "bookmarkEnd", id: 7 },
-      ];
-      const base = documentWith([
-        { type: "run", content: [{ type: "text", text: "ab" }] },
-      ]);
-      const original = insertAt(base, bookmarked("x"), 1);
-      const applied = applyDocumentOp(original, {
-        type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
-        at: { ...at, offset: 3 },
-        slice: { content: bookmarked("y"), openStart: 0, openEnd: 0 },
-        revision: { id: 4, author: "A", date: "2026-03-04T05:00:04Z" },
+  // Accepting the copy makes it a boundary of its own, as inserting it
+  // directly would, and rejecting the original's insertion keeps the
+  // original, which is no copy: either order leaves both.
+  test("rejecting a bookmark's insertion and accepting its copy's leaves the same, in either order", () => {
+    const bookmarked = (text: string): ParagraphContent[] => [
+      { type: "bookmarkStart", id: 7, name: "_Ref7" },
+      { type: "run", content: [{ type: "text", text }] },
+      { type: "bookmarkEnd", id: 7 },
+    ];
+    const base = documentWith([
+      { type: "run", content: [{ type: "text", text: "ab" }] },
+    ]);
+    const original = insertAt(base, bookmarked("x"), 1);
+    const applied = applyDocumentOp(original, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { ...at, offset: 3 },
+      slice: { content: bookmarked("y"), openStart: 0, openEnd: 0 },
+      revision: { id: 4, author: "A", date: "2026-03-04T05:00:04Z" },
+    });
+    if (applied.isErr()) throw applied.error;
+    const tracked = applied.value.document;
+    const accepted = (document: Document): Document => {
+      const resolved = applyDocumentOp(document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [4],
+        decision: REVISION_DECISIONS.ACCEPT,
       });
-      if (applied.isErr()) throw applied.error;
-      const tracked = applied.value.document;
-      const accepted = (document: Document): Document => {
-        const resolved = applyDocumentOp(document, {
-          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-          story: OP_STORIES.MAIN,
-          revisionIds: [4],
-          decision: REVISION_DECISIONS.ACCEPT,
-        });
-        if (resolved.isErr()) throw resolved.error;
-        return resolved.value.document;
-      };
-      expect(firstParagraph(rejectAll(accepted(tracked), [3]))).toEqual(
-        firstParagraph(accepted(rejectAll(tracked, [3]))),
+      if (resolved.isErr()) throw resolved.error;
+      return resolved.value.document;
+    };
+    expect(firstParagraph(rejectAll(accepted(tracked), [3]))).toEqual(
+      firstParagraph(accepted(rejectAll(tracked, [3]))),
+    );
+  });
+
+  test("accepting a copy of a bookmark the paragraph holds leaves what inserting it directly does", () => {
+    const bookmark = [
+      { type: "bookmarkStart", id: 7, name: "_Ref7" },
+      { type: "run", content: [{ type: "text", text: "x" }] },
+      { type: "bookmarkEnd", id: 7 },
+    ] as const satisfies ParagraphContent[];
+    const base = documentWith([...bookmark]);
+    const tracked = insertAt(base, structuredClone([...bookmark]), 1);
+    const resolved = applyDocumentOp(tracked, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [3],
+      decision: REVISION_DECISIONS.ACCEPT,
+    });
+    if (resolved.isErr()) throw resolved.error;
+    const direct = applyDocumentOp(base, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: { ...at, offset: 1 },
+      slice: {
+        content: structuredClone([...bookmark]),
+        openStart: 0,
+        openEnd: 0,
+      },
+    });
+    if (direct.isErr()) throw direct.error;
+    const markers = (document: Document) =>
+      firstParagraph(document).filter(
+        ({ type }) => type === "bookmarkStart" || type === "bookmarkEnd",
       );
-    },
-  );
+    expect(markers(resolved.value.document)).toEqual(
+      markers(direct.value.document),
+    );
+    expect(markers(resolved.value.document)).toHaveLength(4);
+  });
 
   test("a bookmark inside a rejected insertion stays where the insertion was", () => {
     const base = documentWith([
@@ -308,5 +348,337 @@ describe("rejecting a tracked insertion keeps the range boundaries it held", () 
       { type: "commentRangeEnd", id: 9 },
       { type: "run", content: [{ type: "text", text: "b" }] },
     ]);
+  });
+});
+
+describe("a tracked insertion records every copy of a boundary it adds", () => {
+  const ab = (): ParagraphContent[] => [
+    { type: "run", content: [{ type: "text", text: "ab" }] },
+  ];
+  const boundaries = (document: Document) =>
+    firstParagraph(document).filter(({ type }) => type !== "run");
+
+  test("a slice holding a bookmark twice adds the second as a copy, so rejecting keeps one", () => {
+    const link = (): ParagraphContent => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [{ type: "bookmarkStart", id: 4, name: "_Link" }],
+    });
+    const tracked = insertAt(documentWith(ab()), [link(), link()], 1);
+    expect(
+      JSON.stringify(firstParagraph(tracked)).match(/copyOriginAncestors/gu),
+    ).toHaveLength(1);
+    expect(boundaries(rejectAll(tracked, [3]))).toEqual([
+      { type: "bookmarkStart", id: 4, name: "_Link" },
+    ]);
+  });
+
+  test("a slice holding a whole range whose start the story holds copies both halves", () => {
+    const base = documentWith([
+      { type: "bookmarkStart", id: 7, name: "_Ref7" },
+      ...ab(),
+    ]);
+    const tracked = insertAt(
+      base,
+      [
+        { type: "bookmarkStart", id: 7, name: "_Ref7" },
+        { type: "run", content: [{ type: "text", text: "x" }] },
+        { type: "bookmarkEnd", id: 7 },
+      ],
+      1,
+    );
+    expect(
+      JSON.stringify(firstParagraph(tracked)).match(/copyOriginAncestors/gu),
+    ).toHaveLength(2);
+    // Rejecting takes the whole copied range away and gives the paragraph back.
+    const rejected = rejectAll(tracked, [3]);
+    expect(boundaries(rejected)).toEqual([
+      { type: "bookmarkStart", id: 7, name: "_Ref7" },
+    ]);
+    expect(JSON.stringify(rejected)).not.toContain('"x"');
+  });
+});
+
+describe("a join places a kept boundary only inside the pieces it merges", () => {
+  // A paragraph split inside an insertion, its pieces either side of the
+  // inserted mark, and a content control after the right piece.
+  const tracked = (): Document => ({
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "insertion",
+                info: {
+                  id: 303650,
+                  author: "C",
+                  date: "2026-03-04T05:00:02Z",
+                },
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      {
+                        type: "text",
+                        text: "x",
+                      },
+                    ],
+                  },
+                ],
+                resolutionJoins: {
+                  before: 0,
+                  after: 3,
+                  remove: 0,
+                },
+              },
+              {
+                type: "insertion",
+                info: {
+                  id: 303649,
+                  author: "C",
+                  date: "2026-03-04T05:00:01Z",
+                },
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      {
+                        type: "text",
+                        text: "x",
+                      },
+                    ],
+                  },
+                ],
+                resolutionJoins: {
+                  before: 0,
+                  after: 0,
+                  remove: 0,
+                },
+              },
+            ],
+            paraId: "00000001",
+          },
+          {
+            type: "paragraph",
+            paraId: "10000000",
+            content: [
+              {
+                type: "run",
+                content: [
+                  {
+                    type: "text",
+                    text: "a",
+                  },
+                ],
+              },
+              {
+                type: "insertion",
+                info: {
+                  id: 1,
+                  author: "A",
+                },
+                content: [
+                  {
+                    type: "bookmarkEnd",
+                    id: 3,
+                  },
+                ],
+              },
+            ],
+            pPrMark: {
+              kind: "ins",
+              info: {
+                id: 2,
+                author: "C",
+                date: "2026-03-04T05:00:00Z",
+              },
+              resolutionJoin: 1,
+            },
+          },
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "insertion",
+                info: {
+                  id: 303648,
+                  author: "A",
+                },
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      {
+                        type: "text",
+                        text: "a",
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: "inlineSdt",
+                properties: {
+                  sdtType: "richText",
+                  id: 1,
+                  tag: "clause",
+                },
+                content: [],
+              },
+            ],
+            sectionProperties: {
+              pageWidth: 11906,
+            },
+            paraId: "00000002",
+          },
+        ] satisfies BlockContent[],
+      },
+    },
+  });
+  const resolveIds = (document: Document, ids: number[]): Document => {
+    const applied = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: ids,
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+  const joined = (document: Document) =>
+    document.package.document.content.at(-1);
+
+  test("rejecting both pieces with the mark leaves the boundary standing beside the control", () => {
+    const ids = [1, 2, 303648, 303649, 303650];
+    const atOnce = joined(resolveIds(tracked(), ids));
+    expect(atOnce).toMatchObject({
+      type: "paragraph",
+      content: [
+        { type: "run", content: [{ type: "text", text: "a" }] },
+        { type: "bookmarkEnd", id: 3 },
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText", id: 1, tag: "clause" },
+          content: [],
+        },
+      ],
+    });
+    // The join happening first, or last, places it the same.
+    for (const order of [
+      [[2], [1], [303649, 303650]],
+      [[1, 303648], [303649, 303650], [2]],
+    ]) {
+      let document = tracked();
+      for (const step of order) document = resolveIds(document, step);
+      expect(joined(document)).toEqual(atOnce);
+    }
+  });
+});
+
+describe("a split seam with nothing left on one side joins nothing", () => {
+  // Three paragraphs a run of tracked edits split from one: the first holds a
+  // bookmark end inserted at its start, the last an insertion the first split
+  // cut at its very start, so no piece of it stands in the first paragraph.
+  const stamp = (id: number, second: number) => ({
+    id,
+    author: "C",
+    date: `2026-03-04T05:00:0${second}Z`,
+  });
+  const noJoins = { before: 0, after: 0, remove: 0 };
+  const tracked = (): Document => ({
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "10000001",
+            content: [
+              {
+                type: "insertion",
+                info: stamp(303649, 3),
+                content: [{ type: "bookmarkEnd", id: 1 }],
+                resolutionJoins: noJoins,
+              },
+              {
+                type: "insertion",
+                info: stamp(5002, 1),
+                content: [
+                  { type: "run", content: [{ type: "text", text: "a" }] },
+                ],
+                resolutionJoins: noJoins,
+              },
+            ],
+            pPrMark: { kind: "ins", info: stamp(5003, 2), resolutionJoin: 1 },
+          },
+          {
+            type: "paragraph",
+            paraId: "10000000",
+            content: [
+              {
+                type: "insertion",
+                info: stamp(303648, 1),
+                content: [
+                  { type: "run", content: [{ type: "text", text: "b" }] },
+                ],
+                resolutionJoins: noJoins,
+              },
+            ],
+            pPrMark: { kind: "ins", info: stamp(5001, 0), resolutionJoin: 0 },
+          },
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              {
+                type: "insertion",
+                info: { id: 1, author: "A" },
+                content: [
+                  {
+                    type: "deletion",
+                    info: {
+                      id: 5000,
+                      author: "B",
+                      date: "2026-01-02T03:04:05Z",
+                    },
+                    content: [
+                      { type: "run", content: [{ type: "text", text: "a" }] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ] satisfies BlockContent[],
+      },
+    },
+  });
+  const rejected = (document: Document, ids: number[]): Document => {
+    const applied = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: ids,
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+  const contentOf = (document: Document) => {
+    const [paragraph, ...rest] = document.package.document.content;
+    expect(rest).toEqual([]);
+    return paragraph?.type === "paragraph" ? paragraph.content : undefined;
+  };
+
+  test("rejecting the bookmark's insertion last leaves it beside the next insertion, as rejecting at once does", () => {
+    const atOnce = contentOf(
+      rejected(tracked(), [5001, 5002, 303648, 5003, 303649]),
+    );
+    let inTurn = tracked();
+    for (const ids of [[5001], [5002, 303648], [5003], [303649]])
+      inTurn = rejected(inTurn, ids);
+    expect(contentOf(inTurn)).toEqual(atOnce);
+    expect(atOnce?.[0]).toEqual({ type: "bookmarkEnd", id: 1 });
   });
 });

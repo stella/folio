@@ -10,6 +10,7 @@ import { describe, expect, test } from "bun:test";
 import { deepFreeze } from "../__tests__/deepFreeze";
 import { DOCUMENT_SHAPES } from "../__tests__/documentShapes";
 import { sharedObjects } from "../__tests__/sharedObjects";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import {
   cloneCommentsWithParagraphPropertySources,
@@ -21,7 +22,6 @@ import { TableSelectionManager } from "../managers/TableSelectionManager";
 import type { ReadonlyDocument } from "../types/documentModel";
 import { findInDocument } from "../utils/findReplace";
 import type { TableAction } from "../utils/tableOperations";
-import { createCanonicalSession } from "./canonicalSession";
 
 const shapeDocument = async (id: string): Promise<ReadonlyDocument> => {
   const shape = DOCUMENT_SHAPES.find((candidate) => candidate.id === id);

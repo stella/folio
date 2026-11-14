@@ -18,6 +18,13 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  type CanonicalAddressEdge,
+  type CanonicalProjection,
+  createCanonicalSession,
+  newStoryProjectionCaches,
+  projectCanonicalStory,
+} from "../canonical/canonicalSession";
 import { schema } from "../prosemirror/schema";
 import type { Document } from "../types/document";
 import {
@@ -27,13 +34,6 @@ import {
   modelEditArbitrary,
   parsedSources,
 } from "./__tests__/canonicalEditRuns";
-import {
-  type CanonicalAddressEdge,
-  type CanonicalProjection,
-  createCanonicalSession,
-  newStoryProjectionCaches,
-  projectCanonicalStory,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(300_000));
 

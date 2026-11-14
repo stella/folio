@@ -22,6 +22,11 @@ import {
   createFolioAITextRangeHandle,
 } from "../ai-edits/snapshot";
 import {
+  type CanonicalCommit,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
+import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
 } from "../document-operations";
@@ -31,11 +36,6 @@ import { paragraph } from "../docx/server/build";
 import { getSuggestions } from "../prosemirror/commands/comments";
 import { createEmptyDocument } from "../utils/createDocument";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
-import {
-  type CanonicalCommit,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 const FIRST_ID = "10000001";
 const SECOND_ID = "10000002";

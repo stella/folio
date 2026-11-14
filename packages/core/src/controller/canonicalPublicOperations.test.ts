@@ -17,6 +17,11 @@ import {
   createFolioAITextRangeHandle,
   hashFolioAIBlockText,
 } from "../ai-edits/snapshot";
+import {
+  type CanonicalCommit,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import type {
   FolioDocumentOperation,
   FolioDocumentOperationBatch,
@@ -29,11 +34,6 @@ import {
   CANONICAL_PUBLIC_OPERATION_DISPOSITIONS,
   CanonicalPublicOperations,
 } from "./canonicalPublicOperations";
-import {
-  type CanonicalCommit,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 const setup = (source: string | Document = "alpha beta") => {
   const document =
@@ -454,9 +454,10 @@ test("read preconditions and session lifecycle cannot mutate the journal", () =>
       .apply([
         {
           id: "table",
-          type: "insertTable",
+          type: "insertTableRow",
           blockId: "12345678",
-          rows: [["cell"]],
+          position: "after",
+          cellTexts: ["cell"],
         },
       ])
       .issues.at(0)?.canonicalRefusal?.gap,
@@ -774,6 +775,119 @@ describe("suggested operations in the canonical session", () => {
     );
     expect(result.skipped.map(({ reason }) => reason)).toEqual([
       "unsupportedMode",
+    ]);
+  });
+});
+
+describe("a paragraph the session holds no address in", () => {
+  // A text box's paragraph belongs to its shape, not to the body story.
+  const document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "12345678",
+            content: [
+              {
+                type: "run",
+                content: [{ type: "text", text: "The box restates it. " }],
+              },
+              {
+                type: "run",
+                content: [
+                  {
+                    type: "shape",
+                    shape: {
+                      type: "shape",
+                      shapeType: "textBox",
+                      id: "box",
+                      size: { width: 2_000_000, height: 800_000 },
+                      textBody: {
+                        content: [
+                          {
+                            type: "paragraph",
+                            paraId: "34567890",
+                            content: [
+                              {
+                                type: "run",
+                                content: [
+                                  { type: "text", text: "Boxed note." },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          { type: "paragraph", paraId: "23456789", content: [] },
+        ],
+      },
+    },
+  } satisfies Document;
+
+  const operations = [
+    {
+      id: "insertAfterBlock",
+      type: "insertAfterBlock",
+      blockId: "34567890",
+      text: "Added note.",
+    },
+    {
+      id: "insertBeforeBlock",
+      type: "insertBeforeBlock",
+      blockId: "34567890",
+      text: "Added note.",
+    },
+    {
+      id: "replaceInBlock",
+      type: "replaceInBlock",
+      blockId: "34567890",
+      find: "Boxed",
+      replace: "Framed",
+    },
+    { id: "deleteBlock", type: "deleteBlock", blockId: "34567890" },
+  ] as const satisfies readonly FolioDocumentOperation[];
+
+  for (const mode of ["direct", "tracked-changes"] as const)
+    for (const operation of operations)
+      test(`${operation.type} refuses under a typed gap, ${mode}`, () => {
+        const editor = setup(document);
+        // A reader lists the paragraph, so the operation names a block that exists.
+        expect(
+          editor.snapshot().blocks.some(({ id }) => id === "34567890"),
+        ).toBe(true);
+        const original = editor.session.document;
+        const result = editor.apply([operation], { mode });
+        expect(result.applied).toEqual([]);
+        expect(
+          result.skipped.map(({ reason, canonicalRefusal }) => ({
+            reason,
+            gap: canonicalRefusal?.gap,
+          })),
+        ).toEqual([
+          { reason: "unsupportedBlock", gap: "publicOps.unsupportedInline" },
+        ]);
+        expect(editor.session.document).toEqual(original);
+      });
+
+  test("a block no reader lists is still missing", () => {
+    const editor = setup(document);
+    const result = editor.apply([
+      {
+        id: "insertAfterBlock",
+        type: "insertAfterBlock",
+        blockId: "7FFFFFF0",
+        text: "Added note.",
+      },
+    ]);
+    expect(result.skipped.map(({ reason }) => reason)).toEqual([
+      "missingBlock",
     ]);
   });
 });

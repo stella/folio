@@ -10,6 +10,7 @@ import {
   type DocumentOp,
 } from "../types";
 import { applyBatch } from "./applyBatch";
+import { isAnchoredComment } from "./commentTransform";
 import {
   BATCH_REJECTION_REASONS,
   type BatchRejection,
@@ -103,9 +104,12 @@ describe("block-scoped sequencing", () => {
       const effect = sequencedEffectType(op.type);
       if (effect === undefined) continue;
       seen.add(op.type);
+      // Decisions and range or point comments are rebased by position and
+      // still record the paragraphs they changed.
       expect(isBlockScoped(op)).toBe(
         effect === "touchedBlocks" &&
-          op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION &&
+          !isAnchoredComment(op),
       );
     }
     expect(seen.size).toBeGreaterThan(30);

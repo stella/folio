@@ -18,7 +18,7 @@ const { createApp, defineComponent, h, isProxy, reactive, shallowRef } =
 import {
   DOCUMENT_OP_TYPES,
   withCanonicalParagraphIds,
-} from "@stll/folio-core/controller/canonicalOperations";
+} from "@stll/folio-core/canonical/canonicalOperations";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import type { Document } from "@stll/folio-core/types/document";

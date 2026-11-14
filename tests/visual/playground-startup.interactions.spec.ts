@@ -80,7 +80,7 @@ for (const query of ["", "?paragraphs=12", "?file=sample.docx&paragraphs=12"]) {
 test("collaboration startup mounts its editor branch", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/?session=legacy&collaboration=1");
+  await page.goto("/?collaboration=1");
   await expect(page.locator(".pg-collab-header")).toContainText(
     "folio collaboration demo",
   );

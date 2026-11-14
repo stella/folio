@@ -13,6 +13,7 @@ import { type DirectEditorProps, EditorView } from "prosemirror-view";
 
 import { OP_STORIES } from "@stll/docx-core/ops";
 
+import { CanonicalSessionError } from "../canonical/canonicalSession";
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
@@ -53,7 +54,6 @@ import {
   readModel,
   type ReadonlyDocument,
 } from "../types/documentModel";
-import { CanonicalSessionError } from "./canonicalSession";
 import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 

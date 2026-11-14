@@ -9,14 +9,14 @@ import {
   OP_STORIES,
 } from "@stll/docx-core/ops";
 
-import { schema } from "../prosemirror/schema";
-import type { Document } from "../types/document";
-import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import {
   type CanonicalCommit,
   type CanonicalSession,
   createCanonicalSession,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { schema } from "../prosemirror/schema";
+import type { Document } from "../types/document";
+import { readModel, type ReadonlyDocument } from "../types/documentModel";
 
 const PARAGRAPH = "12345678";
 
