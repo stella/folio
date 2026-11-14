@@ -1355,8 +1355,13 @@ describe("canonical sequencing", () => {
       const counts = noCounts();
       await checkCoverageSample(
         convergence(counts, trackedScenarioArbitrary),
-        NUM_RUNS + 1,
-        { map: (value, index) => (index === 0 ? [trackedPending] : value) },
+        NUM_RUNS + 2,
+        {
+          map: (value, index) => {
+            const pinned = [trackedPending, concurrentSuggestedErases][index];
+            return pinned === undefined ? value : [pinned];
+          },
+        },
       );
       expect(
         TRACKED_ORDER_KINDS.filter((kind) => counts.trackedOrder[kind] === 0),
