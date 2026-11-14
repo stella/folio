@@ -184,8 +184,9 @@ export const createClient = (
     entry: PendingEntry,
     leading: readonly SequencedBatch[],
     at: Document,
+    fresh: Document,
   ): Result<
-    { batch: DocumentBatch; leading: SequencedBatch[] },
+    { batch: DocumentBatch; leading: SequencedBatch[]; fresh: Document },
     BatchRejection
   > => {
     const mine: SequencedBatch = {
@@ -195,6 +196,16 @@ export const createClient = (
     };
     const moved = transformBatch(entry.batch, leading);
     if (moved.isErr()) return Result.err(moved.error);
+    // A rebased batch that does not apply where it rebased is dropped like
+    // one that does not rebase.
+    const redone = applyBatch(fresh, moved.value.ops);
+    if (redone.isErr())
+      return Result.err(
+        new BatchRejection({
+          reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
+          message: redone.error.message,
+        }),
+      );
     const carried: SequencedBatch[] = [];
     let cursor = at;
     let carriedMine: SequencedBatch = mine;
@@ -226,7 +237,11 @@ export const createClient = (
       cursor = afterLead.value.document;
     }
     if (carried.length === leading.length)
-      return Result.ok({ batch: moved.value, leading: carried });
+      return Result.ok({
+        batch: moved.value,
+        leading: carried,
+        fresh: redone.value.document,
+      });
     // Later batches lose this one, cross `leading`, and take it back as
     // rebased: one that depends on it cannot lose it and is dropped.
     const made = applyBatch(at, entry.batch.ops);
@@ -235,13 +250,11 @@ export const createClient = (
         "Pending batch must replay in its original coordinate space.",
       );
     const undone = applyBatch(made.value.document, entry.inverse);
-    const base = documentAfter(at, leading);
-    const redone =
-      base === undefined ? undefined : applyBatch(base, moved.value.ops);
-    if (undone.isErr() || redone === undefined || redone.isErr())
-      return panic("A rebased pending batch must apply where it rebased.");
+    if (undone.isErr())
+      return panic("Recorded inverse must apply after its batch.");
     return Result.ok({
       batch: moved.value,
+      fresh: redone.value.document,
       leading: [
         {
           ...entry.batch,
@@ -281,6 +294,9 @@ export const createClient = (
     const kept: PendingEntry[] = [];
     let cursor = original;
     let carried = [...leading];
+    let fresh =
+      documentAfter(original, leading) ??
+      panic("The batches leading a pending run must apply in turn.");
     for (const [index, entry] of run.entries()) {
       const made = applyBatch(cursor, entry.batch.ops);
       if (made.isErr())
@@ -290,10 +306,11 @@ export const createClient = (
       const passed =
         index === 0 && forced !== undefined
           ? Result.err(forced)
-          : passOver(entry, carried, cursor);
+          : passOver(entry, carried, cursor, fresh);
       if (passed.isOk()) {
         kept.push({ ...entry, batch: passed.value.batch });
         carried = passed.value.leading;
+        fresh = passed.value.fresh;
       } else {
         drop(entry, passed.error);
         const undone = applyBatch(made.value.document, entry.inverse);
