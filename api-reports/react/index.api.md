@@ -18,9 +18,6 @@ import { AISuggestionApplyMode } from '@stll/folio-core/ai-suggestions/types';
 import { AISuggestionPreset } from '@stll/folio-core/ai-suggestions/types';
 import { AISuggestionSeverity } from '@stll/folio-core/ai-suggestions/types';
 import { AISuggestionStatus } from '@stll/folio-core/ai-suggestions/types';
-import { anonymizationDecorationsKey } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
-import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
-import { AnonymizationTerm } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { appendAutocompleteToken } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { applyFolioAIEditOperations } from '@stll/folio-core/ai-edits';
 import { ApplyResult } from '@stll/folio-core/ai-suggestions/apply';
@@ -100,6 +97,8 @@ import { FolioAIEditSkippedOperation } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSkipReason } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { FolioAISignatureParty } from '@stll/folio-core/ai-edits';
+import { FolioAnonymizationMatch } from '@stll/folio-core/controller/anonymizationHighlights';
+import { FolioAnonymizationTerm } from '@stll/folio-core/controller/anonymizationHighlights';
 import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentNavigationTarget } from '@stll/folio-core/ai-edits';
@@ -117,7 +116,6 @@ import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
 import { FootnoteProperties } from '@stll/folio-core/types/document';
 import { ForwardRefExoticComponent } from 'react';
 import { fromMarkdown } from '@stll/folio-core/markdown';
-import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { getDocumentWatermark } from '@stll/folio-core/watermark';
 import { getFolioCaretViewportRect } from '@stll/folio-core/paged-layout/selectionViewportRect';
@@ -176,7 +174,6 @@ import { SelectionState } from '@stll/folio-core/prosemirror';
 import { setActiveCitationMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
 import { setAICitationsMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
 import { setAISuggestionsMeta } from '@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations';
-import { setAnonymizationTermsMeta } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { SetContentControlContentInput } from '@stll/folio-core/content-controls';
 import { SetContentControlValueInput } from '@stll/folio-core/content-controls';
 import { setDocumentWatermark } from '@stll/folio-core/watermark';
@@ -234,12 +231,6 @@ export { AISuggestionPreset }
 export { AISuggestionSeverity }
 
 export { AISuggestionStatus }
-
-export { anonymizationDecorationsKey }
-
-export { AnonymizationMatch }
-
-export { AnonymizationTerm }
 
 export { appendAutocompleteToken }
 
@@ -440,7 +431,8 @@ export type DocxEditorProps = {
     onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
     plugins?: readonly Plugin_2[] | undefined;
     collaboration?: DocxEditorCollaboration | undefined;
-    onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
+    anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
+    onAnonymizationMatchesChange?: (matches: readonly FolioAnonymizationMatch[]) => void;
     onAnonymizationTermClick?: ((canonical: string, label: string) => void) | undefined;
     selectedAnonymizationCanonical?: string | null | undefined;
     anonymizationSelectionSeq?: number | undefined;
@@ -527,6 +519,7 @@ export type DocxEditorRef = {
     getSelectionText: () => string;
     getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
+    getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
     getBlockRect: (blockId: string) => BlockRect | null;
     getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
     getScrollRoot: () => HTMLElement | null;
@@ -646,6 +639,10 @@ export { FolioAIEditSnapshot }
 
 export { FolioAISignatureParty }
 
+export { FolioAnonymizationMatch }
+
+export { FolioAnonymizationTerm }
+
 export { FolioBlockId }
 
 // @public
@@ -721,8 +718,6 @@ export type FormattingBarProps = {
 export function formatZoom(zoom: number): string;
 
 export { fromMarkdown }
-
-export { getAnonymizationMatches }
 
 export { getAutocompleteSuggestion }
 
@@ -985,8 +980,6 @@ export { setActiveCitationMeta }
 export { setAICitationsMeta }
 
 export { setAISuggestionsMeta }
-
-export { setAnonymizationTermsMeta }
 
 export { setDocumentWatermark }
 
