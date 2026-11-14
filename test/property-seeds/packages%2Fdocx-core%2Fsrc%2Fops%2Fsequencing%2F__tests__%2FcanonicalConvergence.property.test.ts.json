@@ -9,6 +9,12 @@
       "seed": -424242,
       "note": "Fixed schedule of concurrent canonical edits with suggestions and undo",
       "date": "2026-11-12"
+    },
+    {
+      "seed": -1375031533,
+      "path": "2:4:0:18:21:23:24:44:45:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40",
+      "note": "Two suggesting erases of one paragraph, the second ending where the first starts",
+      "date": "2026-11-14"
     }
   ]
 }

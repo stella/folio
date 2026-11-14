@@ -45,6 +45,7 @@ import type { OpStory } from "@stll/folio-core/canonical/canonicalOperations";
 import type { CanonicalHistoryEffect } from "@stll/folio-core/canonical/canonicalSession";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
+import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type {
@@ -435,6 +436,8 @@ export type PagedEditorProps = {
   showTemplateDirectives?: boolean;
   /** Optional Yjs collaboration owner for the hidden ProseMirror state. */
   collaboration?: HiddenProseMirrorCollaboration | undefined;
+  /** The canonical room the canonical session joins. */
+  canonicalRoom?: CanonicalRoomCollaboration | undefined;
   /** Extension manager for plugins/schema/commands (optional — falls back to default) */
   extensionManager?: ExtensionManager;
   /** Current tracked-editing state for secondary note stories. */
@@ -1317,6 +1320,7 @@ const RemoteSelectionOverlay = ({
       {caretPosition && (
         <div
           className="pointer-events-none absolute z-20 rounded-sm px-1 py-0.5 text-[10px] leading-none shadow-sm"
+          data-peer={remoteSelection.peer}
           style={{
             backgroundColor: remoteSelection.color,
             color: "var(--background)",
@@ -1614,6 +1618,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       externalPlugins = EMPTY_PLUGINS,
       showTemplateDirectives = true,
       collaboration,
+      canonicalRoom,
       extensionManager,
       suggestionModeActive = false,
       suggestionAuthor,
@@ -6907,6 +6912,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           {...(styles !== undefined ? { styles } : {})}
           externalPlugins={externalPlugins}
           {...(collaboration !== undefined ? { collaboration } : {})}
+          {...(canonicalRoom !== undefined ? { canonicalRoom } : {})}
           {...(extensionManager !== undefined ? { extensionManager } : {})}
           {...(onReadOnlyEditAttempt !== undefined
             ? { onReadOnlyEditAttempt }
@@ -7017,7 +7023,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
             {layout &&
               remoteSelections.map((remoteSelection) => (
                 <RemoteSelectionOverlay
-                  key={remoteSelection.clientId}
+                  key={remoteSelection.peer}
                   blocks={blocks}
                   layout={layout}
                   measures={measures}

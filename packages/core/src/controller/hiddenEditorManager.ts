@@ -52,6 +52,7 @@ import {
   type CanonicalCommit,
   type CanonicalHistoryEffect,
   type CanonicalSession,
+  CanonicalSessionError,
   type CanonicalSessionMode,
   createCanonicalSession,
   publishCanonicalProjection,
@@ -135,6 +136,12 @@ import {
 } from "./canonicalComments";
 import { createCanonicalInputBoundary } from "./canonicalInput";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
+import {
+  type CanonicalRoomCollaboration,
+  type CanonicalRoomEditor,
+  openCanonicalRoomEditor,
+  remoteSelectionColor,
+} from "./canonicalRoomEditor";
 import {
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,
@@ -249,17 +256,6 @@ type AwarenessUser = {
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-/**
- * A remote collaborator's awareness `user.color` is read from another
- * peer's Yjs awareness state — effectively untrusted network input — and
- * gets fed straight into `element.style.background`/`backgroundColor` (see
- * `RemoteSelectionOverlay`). Restrict it to a plain 6-digit hex color before
- * accepting it so a crafted value (e.g. a CSS `url(...)` payload) can't ride
- * along as a CSS-injection / beacon vector; anything else falls back to the
- * default selection color below.
- */
-const AWARENESS_HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/u;
-
 const isYSyncState = (value: unknown, yjs: YjsModule): value is YSyncState => {
   if (!isObjectRecord(value)) {
     return false;
@@ -298,13 +294,9 @@ const readAwarenessUser = (state: unknown, clientId: number): AwarenessUser => {
   }
 
   const user = state["user"];
-  const rawColor = user["color"];
-  const color =
-    typeof rawColor === "string" && AWARENESS_HEX_COLOR_PATTERN.test(rawColor)
-      ? rawColor
-      : "var(--doc-image-selection)";
   return {
-    color,
+    // Another peer's awareness: only a plain hex colour reaches a style.
+    color: remoteSelectionColor(user["color"]),
     name: typeof user["name"] === "string" ? user["name"] : `User ${clientId}`,
   };
 };
@@ -352,7 +344,7 @@ export const collectRemoteSelections = (
     const user = readAwarenessUser(remoteState, clientId);
     selections.push({
       anchor,
-      clientId,
+      peer: String(clientId),
       color: user.color,
       head,
       name: user.name,
@@ -576,8 +568,11 @@ export type HiddenEditorManagerDeps = {
   getStyles: () => DeepReadonly<StyleDefinitions> | null | undefined;
   getExtensionManager: () => ExtensionManager | undefined;
   getExternalPlugins: () => Plugin[];
+  /** The Yjs fragment a legacy session edits. */
   getCollaboration: () => HiddenProseMirrorCollaboration | undefined;
   getCollaborationModules: () => CollaborationModules | null;
+  /** The room a canonical session joins. */
+  getCanonicalRoom?: () => CanonicalRoomCollaboration | undefined;
   /**
    * The state the adapter converted from the document for its pages before a
    * view existed. Read only when the view is built from the document: a
@@ -696,8 +691,26 @@ export type HiddenEditorManager = {
 };
 
 export const createHiddenEditorManager = (
-  deps: HiddenEditorManagerDeps,
+  hostDeps: HiddenEditorManagerDeps,
 ): HiddenEditorManager => {
+  /** The session's place in the canonical room the host named, if any. */
+  let room: CanonicalRoomEditor | undefined;
+  // A session in a room takes local edits only once the room granted its id
+  // lease, and none once it stopped following the room. Its peers' edits
+  // publish regardless (`publishRemote`).
+  const deps: HiddenEditorManagerDeps = {
+    ...hostDeps,
+    getReadOnly: () =>
+      hostDeps.getReadOnly() || (room !== undefined && !room.editable),
+    onSelectionChange: (state) => {
+      hostDeps.onSelectionChange(state);
+      room?.selectionChanged();
+    },
+    onTransaction: (update) => {
+      hostDeps.onTransaction(update);
+      if (update.docChanged) room?.documentChanged();
+    },
+  };
   let view: EditorView | null = null;
   let releaseCommandOwner: (() => void) | undefined;
   let editorSession: EditorSession = { type: "prosemirror" };
@@ -723,16 +736,30 @@ export const createHiddenEditorManager = (
     if (deps.onSessionRefusal) deps.onSessionRefusal(message, ground);
     else throw new CanonicalSessionRefusalError({ ground, message });
   };
+  const leaveRoom = (): void => {
+    room?.leave();
+    room = undefined;
+  };
   const seedSession = (document: ReadonlyDocument | null): boolean => {
+    leaveRoom();
+    const canonicalRoom = deps.getCanonicalRoom?.();
     if (
       !usesCanonicalSession(
         deps.getExperimentalSession?.(),
         CANONICAL_GAP.authorityRouting,
       )
     ) {
+      if (canonicalRoom !== undefined)
+        panic(
+          "A canonical room is joined by the canonical session; select it with experimentalSession.",
+        );
       editorSession = { type: "prosemirror" };
       return true;
     }
+    if (deps.getCollaboration() !== undefined)
+      panic(
+        "A canonical session collaborates in a canonical room (collaboration.connect); a Yjs fragment binds the legacy session.",
+      );
     const documentIdentity = deps.getDocumentIdentity();
     if (
       editorSession.type === "refused" &&
@@ -740,12 +767,10 @@ export const createHiddenEditorManager = (
     ) {
       return false;
     }
-    if (deps.getCollaboration() || !document) {
-      const reason = deps.getCollaboration()
-        ? "Canonical sessions do not support collaboration."
-        : "Canonical sessions require a loaded Document.";
+    if (!document) {
+      const reason = "Canonical sessions require a loaded Document.";
       editorSession = { type: "refused", reason, documentIdentity };
-      refuse(reason, { gap: CANONICAL_GAP.collaboration });
+      refuse(reason, { gap: CANONICAL_GAP.authorityRouting });
       return false;
     }
     const result = createCanonicalSession(document, deps.getStyles());
@@ -762,6 +787,18 @@ export const createHiddenEditorManager = (
     canonicalSessionEpoch += 1;
     modeOverride = null;
     syncCanonicalMode();
+    if (canonicalRoom !== undefined) {
+      const session = result.value;
+      room = openCanonicalRoomEditor({
+        collaboration: canonicalRoom,
+        session,
+        getState: () => view?.state ?? null,
+        publish: (commit) => publishRemote(session, commit),
+        onEditableChange: () => syncEditable(),
+        onRemoteSelections: (selections) =>
+          deps.onRemoteSelectionsChange(selections),
+      });
+    }
     return true;
   };
   const canonicalState = (session: CanonicalSession) => {
@@ -838,6 +875,44 @@ export const createHiddenEditorManager = (
     deps.onSelectionChange(staged.state);
     deps.onCanonicalHistory?.(commit.history);
     return true;
+  };
+  /**
+   * Show a peer's edit the room sequenced: the same publication as a local
+   * commit, whether or not the editor takes local edits.
+   */
+  const publishRemote = (
+    session: CanonicalSession,
+    commit: CanonicalCommit,
+  ): Result<void, CanonicalSessionError> => {
+    if (
+      !view ||
+      isDestroying ||
+      editorSession.type !== "canonical" ||
+      editorSession.session !== session
+    )
+      return Result.err(
+        new CanonicalSessionError({
+          ground: { gap: CANONICAL_GAP.dispatch },
+          message: "The editor showing the room is closed.",
+          reason: "refused",
+        }),
+      );
+    const published = publishCanonicalProjection({
+      state: view.state,
+      commit,
+      session,
+    });
+    if (published.isErr()) return Result.err(published.error);
+    const staged = published.value;
+    view.updateState(staged.state);
+    deps.onTransaction({
+      transactions: staged.transactions,
+      newState: staged.state,
+      docChanged: true,
+    });
+    deps.onSelectionChange(staged.state);
+    deps.onCanonicalHistory?.(commit.history);
+    return Result.ok(undefined);
   };
   const editorOwnsHistoryShortcuts = (): boolean =>
     (deps.getHistoryShortcuts?.() ?? "editor") === "editor";
@@ -1157,6 +1232,7 @@ export const createHiddenEditorManager = (
       if (editorSession.type !== "canonical") return;
       editorSession.session.endComposition();
       deps.onCanonicalCompositionEnd();
+      room?.flush();
     },
   };
   const input = createCanonicalInputBoundary({
@@ -1255,6 +1331,7 @@ export const createHiddenEditorManager = (
   // that originated from editing (which get passed back through props).
   let lastDocumentId: string | null = null;
   let lastCollaborationFragment: XmlFragment | null = null;
+  let lastCanonicalRoom: CanonicalRoomCollaboration | null = null;
 
   const tryCreate = (): void => {
     if (!requested || view !== null || isDestroying) {
@@ -1608,6 +1685,7 @@ export const createHiddenEditorManager = (
     isInitialized = true;
     lastDocumentId = deps.getDocumentIdentity();
     lastCollaborationFragment = collaboration?.yXmlFragment ?? null;
+    lastCanonicalRoom = deps.getCanonicalRoom?.() ?? null;
 
     // Notify that view is ready.
     deps.onEditorViewReady(view);
@@ -1631,6 +1709,7 @@ export const createHiddenEditorManager = (
       isDestroying = true;
 
       deps.onEditorViewDestroy();
+      leaveRoom();
 
       releaseCommandOwner?.();
       releaseCommandOwner = undefined;
@@ -1670,8 +1749,10 @@ export const createHiddenEditorManager = (
     const document = deps.getDocument();
     const currentDocId = deps.getDocumentIdentity();
     const currentCollaborationFragment = collaboration?.yXmlFragment ?? null;
+    const currentCanonicalRoom = deps.getCanonicalRoom?.() ?? null;
     const collaborationSourceChanged =
-      currentCollaborationFragment !== lastCollaborationFragment;
+      currentCollaborationFragment !== lastCollaborationFragment ||
+      currentCanonicalRoom !== lastCanonicalRoom;
 
     const sessionChanged =
       (editorSession.type !== "prosemirror") !== canonicalRequested;
@@ -1704,6 +1785,7 @@ export const createHiddenEditorManager = (
     isInitialized = true;
     lastDocumentId = currentDocId;
     lastCollaborationFragment = currentCollaborationFragment;
+    lastCanonicalRoom = currentCanonicalRoom;
 
     // Create new state from document
     const newState =
