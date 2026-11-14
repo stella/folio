@@ -1,32 +1,37 @@
-// Forbid truthiness tests on a comment id in folio source.
+// Forbid truthiness tests on an annotation id in folio source.
 //
-// A comment id is a `w:id`, and `0` is a real one: Word numbers a package's
-// comments from it, and an editing session gives it to the first comment it
-// creates in a document without any. A truthiness test reads that comment as
-// absent, so whatever it guards (a painted anchor, a sidebar card, a saved
-// range) silently skips the first comment. Absence is `undefined` or `null`
-// and is tested as such.
+// Comments, tracked changes, bookmarks, footnotes and endnotes are numbered by
+// `w:id`, and `0` is a real one: Word numbers a package's comments from it,
+// and an editing session gives it to the first comment it creates in a
+// document without any. A truthiness test reads that annotation as absent, so
+// whatever it guards (a painted anchor, a sidebar card, a saved range)
+// silently skips it. Absence is `undefined` or `null` and is tested as such.
 //
 // Flagged:
 //   if (commentId) { ... }
-//   const painted = mark.attrs.commentId && paint(mark);
+//   const painted = mark.attrs.revisionId && paint(mark);
 //   if (!activeCommentId) return;
 //
 // Not flagged:
 //   if (commentId !== undefined) { ... }
 //   if (commentIds.length > 0) { ... }   (a list, not an id)
+//   if (styleId) { ... }                 (a name, not a number)
 
 type AstNode = Record<string, unknown> & { type: string };
 
 type RuleContext = {
   report: (descriptor: {
     node: unknown;
-    messageId: "commentIdTruthiness";
+    messageId: "annotationIdTruthiness";
   }) => void;
 };
 
-/** `commentId`, `activeCommentId`, `node.attrs.commentId`, never `commentIds`. */
-const COMMENT_ID_NAME = /(?:^c|C)ommentId$/u;
+/**
+ * `commentId`, `activeCommentId`, `attrs.revisionId`, `footnoteRefId`, never
+ * `commentIds`: the numbered annotation families, whatever prefixes them.
+ */
+const ANNOTATION_ID_NAME =
+  /(?:^|[a-z])(?:[cC]omment|[rR]evision|[bB]ookmark|[fF]ootnote(?:Ref)?|[eE]ndnote(?:Ref)?|[nN]ote)Id$/u;
 
 const isAstNode = (value: unknown): value is AstNode =>
   typeof value === "object" &&
@@ -34,14 +39,15 @@ const isAstNode = (value: unknown): value is AstNode =>
   "type" in value &&
   typeof (value as { type: unknown }).type === "string";
 
-const namesCommentId = (value: unknown): boolean => {
+const namesAnnotationId = (value: unknown): boolean => {
   if (!isAstNode(value)) {
     return false;
   }
   switch (value.type) {
     case "Identifier":
       return (
-        typeof value["name"] === "string" && COMMENT_ID_NAME.test(value["name"])
+        typeof value["name"] === "string" &&
+        ANNOTATION_ID_NAME.test(value["name"])
       );
     case "MemberExpression": {
       const property = value["property"];
@@ -49,49 +55,49 @@ const namesCommentId = (value: unknown): boolean => {
         value["computed"] !== true &&
         isAstNode(property) &&
         typeof property["name"] === "string" &&
-        COMMENT_ID_NAME.test(property["name"])
+        ANNOTATION_ID_NAME.test(property["name"])
       );
     }
     case "ChainExpression":
     case "TSNonNullExpression":
-      return namesCommentId(value["expression"]);
+      return namesAnnotationId(value["expression"]);
     default:
       return false;
   }
 };
 
-/** The comment ids an expression tests for truth when it is itself a test. */
-const testedCommentIds = (value: unknown): AstNode[] => {
+/** The annotation ids an expression tests for truth when it is itself a test. */
+const testedAnnotationIds = (value: unknown): AstNode[] => {
   if (!isAstNode(value)) {
     return [];
   }
-  if (namesCommentId(value)) {
+  if (namesAnnotationId(value)) {
     return [value];
   }
   if (value.type === "UnaryExpression" && value["operator"] === "!") {
-    return testedCommentIds(value["argument"]);
+    return testedAnnotationIds(value["argument"]);
   }
   if (
     value.type === "LogicalExpression" &&
     (value["operator"] === "&&" || value["operator"] === "||")
   ) {
     return [
-      ...testedCommentIds(value["left"]),
-      ...testedCommentIds(value["right"]),
+      ...testedAnnotationIds(value["left"]),
+      ...testedAnnotationIds(value["right"]),
     ];
   }
   return [];
 };
 
 export default {
-  meta: { name: "folio-comment-ids" },
+  meta: { name: "folio-annotation-ids" },
   rules: {
-    "no-comment-id-truthiness": {
+    "no-annotation-id-truthiness": {
       meta: {
         type: "problem",
         messages: {
-          commentIdTruthiness:
-            "Compare a comment id with `undefined` or `null`. `0` is a real comment id, " +
+          annotationIdTruthiness:
+            "Compare an annotation id with `undefined` or `null`. `0` is a real `w:id`, " +
             "the first one a package or an editing session numbers, and a truthiness " +
             "test reads it as absent.",
         },
@@ -105,13 +111,13 @@ export default {
           const key = typeof start === "number" ? start : node;
           if (reported.has(key)) return;
           reported.add(key);
-          context.report({ node, messageId: "commentIdTruthiness" });
+          context.report({ node, messageId: "annotationIdTruthiness" });
         };
         const reportTest = (test: unknown) => {
-          for (const node of testedCommentIds(test)) report(node);
+          for (const node of testedAnnotationIds(test)) report(node);
         };
         const reportOperand = (operand: unknown) => {
-          if (isAstNode(operand) && namesCommentId(operand)) report(operand);
+          if (isAstNode(operand) && namesAnnotationId(operand)) report(operand);
         };
         return {
           IfStatement: (node: AstNode) => reportTest(node["test"]),

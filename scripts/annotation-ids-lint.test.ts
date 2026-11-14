@@ -1,4 +1,4 @@
-/** Wiring test for the comment-id truthiness lint rule. */
+/** Wiring test for the annotation-id truthiness lint rule. */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import path from "node:path";
@@ -10,7 +10,7 @@ import {
 } from "../test/subprocess";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
-const RULE_MARKER = "folio-comment-ids(no-comment-id-truthiness)";
+const RULE_MARKER = "folio-annotation-ids(no-annotation-id-truthiness)";
 
 setDefaultTimeout(subprocessTestTimeout());
 
@@ -33,12 +33,12 @@ const lintFixture = (fixture: string) => {
   return output.split(RULE_MARKER).length - 1;
 };
 
-describe("comment ids", () => {
-  test("rejects every truthiness test on a comment id", () => {
-    expect(lintFixture("comment-ids.invalid.ts")).toBe(4);
+describe("annotation ids", () => {
+  test("rejects every truthiness test on an annotation id", () => {
+    expect(lintFixture("annotation-ids.invalid.ts")).toBe(5);
   });
 
-  test("accepts absence tests and comment id lists", () => {
-    expect(lintFixture("comment-ids.valid.ts")).toBe(0);
+  test("accepts absence tests, id lists and named ids", () => {
+    expect(lintFixture("annotation-ids.valid.ts")).toBe(0);
   });
 });

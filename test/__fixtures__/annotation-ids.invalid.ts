@@ -1,4 +1,4 @@
-/** Deliberate violations: comment ids tested for truth, which skips comment 0. */
+/** Deliberate violations: annotation ids tested for truth, which skips id 0. */
 
 type CommentMark = { attrs: { commentId: number } };
 
@@ -21,3 +21,6 @@ export const firstMarkId = (marks: readonly CommentMark[]): number | null =>
 
 export const hasAnchor = (mark: CommentMark, painted: boolean): boolean =>
   Boolean(mark.attrs.commentId && painted);
+
+export const revisionOf = (attrs: { revisionId?: number }): string =>
+  attrs.revisionId ? String(attrs.revisionId) : "none";

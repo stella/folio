@@ -1,4 +1,4 @@
-/** Comment ids tested for absence, and lists of them tested for length. */
+/** Annotation ids tested for absence, lists tested for length, named ids. */
 
 type CommentMark = { attrs: { commentId: number } };
 
@@ -16,3 +16,6 @@ export const hasComments = (commentIds: readonly number[]): boolean =>
 
 export const fallbackId = (commentId: number | undefined): number =>
   commentId ?? -1;
+
+export const styleName = (styleId: string | undefined): string =>
+  styleId ? styleId : "Normal";
