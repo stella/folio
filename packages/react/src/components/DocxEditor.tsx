@@ -4002,7 +4002,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             options?.selective === false
               ? FOLIO_DOCX_SERIALIZATION_MODE.full
               : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
-          onDiagnostic: options?.onDiagnostic,
           onSelectiveDecline: options?.onSelectiveDecline,
         } as const satisfies FolioGetDocxOptions;
         const buffer = editor

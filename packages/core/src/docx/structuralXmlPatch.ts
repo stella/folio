@@ -165,7 +165,7 @@ export const buildStructuralDocumentPatch = ({
   originalXml,
   serializedXml,
   changedIds,
-  onRangeElement,
+  onRangeElement: _onRangeElement,
 }: StructuralPatchOptions): string | null => {
   const source = readBody(originalXml);
   const current = readBody(serializedXml);
@@ -179,7 +179,6 @@ export const buildStructuralDocumentPatch = ({
         WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
         RANGE_ELEMENTS.has(getLocalName(element.name))
       ) {
-        onRangeElement?.();
         return null;
       }
     }

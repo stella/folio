@@ -260,8 +260,8 @@ const createSession = (host: FolioEditorHost) => {
     };
     const buffer = await ref.save({
       onDiagnostic: (diagnostic) => {
-        if (diagnostic.type === "selectiveSaveRefused") written.refused = true;
-        else host.onError(canonicalSaveDiagnosticError(diagnostic).message);
+        if (diagnostic.type !== "selectiveSaveRefused")
+          host.onError(canonicalSaveDiagnosticError(diagnostic).message);
       },
       onSelectiveDecline: ({ reason }) => {
         written.decline = reason;
