@@ -27,6 +27,7 @@ import {
 import { readBookmarkBoundaryAttrs } from "../prosemirror/bookmarkBoundaryAttrs";
 import * as validation from "../prosemirror/validation";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
+import { canonicalReviewerSave } from "./__tests__/canonicalReviewerSave";
 import { FolioDocxReviewer } from "./headless";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -254,7 +255,10 @@ const runFlow = async (
     if (flow.resolution === "accepted") reviewer.acceptAll();
     if (flow.resolution === "rejected") reviewer.rejectAll();
   }
-  const saved = await reviewer.toBuffer();
+  const saved =
+    session === "canonical"
+      ? await canonicalReviewerSave(reviewer)
+      : await reviewer.toBuffer();
   return { applied, saved, part: await partOf(saved, placement.part) };
 };
 
