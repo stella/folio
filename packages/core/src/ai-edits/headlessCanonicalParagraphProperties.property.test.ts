@@ -31,6 +31,7 @@ import type {
   Paragraph,
   ParagraphFormatting,
 } from "../types/document";
+import { canonicalReviewerSave } from "./__tests__/canonicalReviewerSave";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIBlockParagraphProperties } from "./types";
 
@@ -221,7 +222,7 @@ const liveAndReopened = async (buffer: ArrayBuffer, draw: Draw) => {
     applied = false;
   }
   if (!applied) return null;
-  const reopened = await open(await live.toBuffer());
+  const reopened = await open(await canonicalReviewerSave(live));
   return {
     live: paragraphsOf(live.toDocument()),
     reopened: paragraphsOf(reopened.toDocument()),
