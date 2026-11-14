@@ -66,7 +66,10 @@ import {
 import type { EditorMode } from "../managers/EditorModeManager";
 import { suppressHiddenEditorScrollToSelection } from "../paged-layout/hiddenEditorScroll";
 import { isReadOnlyEditKey } from "../paged-layout/readOnlyEditAttempt";
-import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import {
+  getCanonicalCommandIntents,
+  getCanonicalHistoryDirection,
+} from "../prosemirror/canonicalCommands";
 import { registerClipboardIntentHandler } from "../prosemirror/clipboardIntent";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import {
@@ -953,6 +956,9 @@ export const createHiddenEditorManager = (
         (transaction) => view?.dispatch(transaction),
         view,
       );
+    // The registry's undo and redo step the session's journal, as the keys do.
+    const direction = getCanonicalHistoryDirection(command);
+    if (direction !== undefined) return history(direction);
     if (editorSession.session.isComposing) {
       refuse("Composition must finish before formatting.");
       return false;
