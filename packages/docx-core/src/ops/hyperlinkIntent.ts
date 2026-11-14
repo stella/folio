@@ -478,7 +478,7 @@ const compileTrackedLinkEdit = (
       const copy =
         intent.type === "setHyperlink"
           ? wrapLinkedChildren(intent, children)
-          : children;
+          : own;
       if (
         identityKeysIn(copy).length > 0 ||
         copy.some(({ type }) => type === "preservedInline") ||
