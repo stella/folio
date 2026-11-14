@@ -15,10 +15,12 @@ import {
 } from "../../../../test/property-testing";
 import { createHarnessState } from "../__tests__/editorHarness";
 import {
+  acceptAllChanges,
   rejectAIEditRevision,
   rejectAllChanges,
 } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { extractTrackedChanges } from "../prosemirror/utils/extractTrackedChanges";
 import type { Document, InlineSdt, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 
@@ -539,4 +541,123 @@ describe("rejecting an insertion keeps its range boundaries", () => {
     },
     propertyTestTimeout(60_000),
   );
+});
+
+describe("a pending deletion nested in a rejected insertion keeps its boundaries pending", () => {
+  const deletion = { id: 20, author: "B", date: "2026-03-04T05:00:04Z" };
+  const nested = (): Document =>
+    documentWith([
+      { type: "run", content: [{ type: "text", text: "a" }] },
+      {
+        type: "insertion",
+        info: insertion,
+        content: [
+          {
+            type: "deletion",
+            info: deletion,
+            content: [
+              { type: "bookmarkStart", id: 5, name: "_Ref5" },
+              { type: "bookmarkEnd", id: 5 },
+            ],
+          },
+        ],
+      },
+      { type: "run", content: [{ type: "text", text: "b" }] },
+    ]);
+  const inEditor = (
+    state: EditorState,
+    document: Document,
+    command: Command,
+  ) => {
+    let resolved = state;
+    expect(
+      command(state, (tr) => {
+        resolved = state.apply(tr);
+      }),
+    ).toBe(true);
+    return {
+      state: resolved,
+      content: firstParagraphContent(
+        fromProseDoc(resolved.doc, document, {
+          stylesheetSource: { type: "package" },
+        }),
+      ),
+    };
+  };
+  const inEngine = (
+    document: Document,
+    ids: number[],
+    decision: (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS],
+  ) => {
+    const applied = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: ids,
+      decision,
+    });
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+
+  test("rejecting the insertion leaves the deletion around the bookmark, in both", () => {
+    const document = nested();
+    const editor = inEditor(
+      createHarnessState(document, "editing"),
+      document,
+      rejectAIEditRevision(insertion.id),
+    );
+    const engine = firstParagraphContent(
+      inEngine(document, [insertion.id], REVISION_DECISIONS.REJECT),
+    );
+    expect(deletedOutline(editor.content)).toEqual(deletedOutline(engine));
+    expect(deletedOutline(editor.content)).toEqual([
+      ["type:bookmarkStart,id:5", "type:bookmarkEnd,id:5"],
+    ]);
+    expect(outline(editor.content)).toEqual(outline(engine));
+    // The change list shows it as an ordinary pending deletion.
+    expect(
+      extractTrackedChanges(editor.state).entries.map(
+        ({ type, revisionId }) => ({ type, revisionId }),
+      ),
+    ).toEqual([{ type: "deletion", revisionId: deletion.id }]);
+  });
+
+  test("accepting all then removes the bookmark and rejecting all keeps it, leaving no wrapper", () => {
+    const document = nested();
+    const rejected = inEditor(
+      createHarnessState(document, "editing"),
+      document,
+      rejectAIEditRevision(insertion.id),
+    );
+    const accepted = inEditor(rejected.state, document, acceptAllChanges());
+    expect(outline(accepted.content)).toEqual(["text:ab"]);
+    expect(deletedOutline(accepted.content)).toEqual([]);
+    const kept = inEditor(rejected.state, document, rejectAllChanges());
+    expect(outline(kept.content)).toEqual([
+      "text:a",
+      "type:bookmarkStart,id:5",
+      "type:bookmarkEnd,id:5",
+      "text:b",
+    ]);
+    expect(deletedOutline(kept.content)).toEqual([]);
+    const engineRejected = inEngine(
+      document,
+      [insertion.id],
+      REVISION_DECISIONS.REJECT,
+    );
+    expect(
+      outline(
+        firstParagraphContent(
+          inEngine(engineRejected, [deletion.id], REVISION_DECISIONS.ACCEPT),
+        ),
+      ),
+    ).toEqual(outline(accepted.content));
+    expect(
+      outline(
+        firstParagraphContent(
+          inEngine(engineRejected, [deletion.id], REVISION_DECISIONS.REJECT),
+        ),
+      ),
+    ).toEqual(outline(kept.content));
+  });
 });

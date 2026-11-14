@@ -11,6 +11,7 @@ import {
   type CanonicalRoomDemo,
   type CanonicalRoomDemoState,
   createCanonicalRoomDemo,
+  readCanonicalRoomSeed,
 } from "../../../tests/parity/canonicalRoomDemo";
 import { AvatarStack } from "./collaboration/AvatarStack";
 import {
@@ -51,12 +52,11 @@ export function CollaborationApp() {
     const file =
       new URLSearchParams(window.location.search).get("file") ?? DEFAULT_FILE;
     const open = async () => {
-      const response = await fetch(`/fixtures/${file}`);
-      if (!response.ok) {
+      const bytes = await readCanonicalRoomSeed(file);
+      if (bytes === undefined) {
         setOpened({ type: "error", message: `Fixture not found: ${file}` });
         return;
       }
-      const bytes = await response.arrayBuffer();
       const demo = await createCanonicalRoomDemo({ room, bytes, user });
       if (!cancelled) setOpened({ type: "ready", bytes, demo });
     };

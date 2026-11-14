@@ -321,6 +321,45 @@ describe("setRunProps", () => {
   });
 });
 
+describe("joinInline", () => {
+  test("a seam join merges alike runs and leaves runs that differ, or one run, as they are", () => {
+    const seam = {
+      type: DOCUMENT_OP_TYPES.JOIN_INLINE,
+      at: at("00000001", 2),
+      depth: 1,
+      ifAlike: true,
+    } as const;
+    const alike = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      content: [run("ab"), run("cd")],
+    });
+    const joined = applied(alike, seam);
+    expect(paragraphs(joined.document)[0]?.content).toHaveLength(1);
+    expect(undone(joined.document, joined.inverse)).toStrictEqual(alike);
+    // Within one run nothing meets at the seam.
+    const again = applied(joined.document, seam);
+    expect(again.document).toStrictEqual(joined.document);
+    expect(again.inverse).toEqual([]);
+    const unlike = documentOf({
+      type: "paragraph",
+      paraId: "00000001",
+      content: [run("ab"), run("cd", true)],
+    });
+    const kept = applied(unlike, seam);
+    expect(kept.document).toStrictEqual(unlike);
+    expect(kept.inverse).toEqual([]);
+    // Without `ifAlike` the same join refuses.
+    expect(
+      refusalOf(unlike, {
+        type: DOCUMENT_OP_TYPES.JOIN_INLINE,
+        at: at("00000001", 2),
+        depth: 1,
+      }),
+    ).toBeDefined();
+  });
+});
+
 describe("setParagraphProps", () => {
   test.each([
     {

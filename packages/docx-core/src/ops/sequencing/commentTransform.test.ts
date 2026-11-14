@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
+import type { BlockContent, Document } from "../../model/document";
+import { applyDocumentOps } from "../apply";
 import { createEditorIntentIdAllocator } from "../editorIntent";
+import { equalForStaleness } from "../equality";
 import {
   type CommentOp,
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -161,12 +164,15 @@ describe("concurrent comment operations", () => {
     expect(over(update(3), deletion(7), removed).isOk()).toBe(true);
   });
 
-  test("a reply passes edits of its parent; two replies to one parent refuse", () => {
+  test("a reply passes edits of its parent and another reply to it", () => {
     expect(over(reply(9, 7), update(7)).isOk()).toBe(true);
     expect(over(reply(9, 7), resolution(7, "resolved")).isOk()).toBe(true);
-    expect(
-      refusal(over(reply(9, 7), reply(10, 7), touched([BLOCK], [10]))).part,
-    ).toBe(EXCLUSIVE_PARTS.COMMENTS);
+    expect(over(reply(9, 7), reply(10, 7), touched([BLOCK], [10])).isOk()).toBe(
+      true,
+    );
+    expect(over(reply(10, 7), reply(9, 7), touched([BLOCK], [9])).isOk()).toBe(
+      true,
+    );
   });
 
   test("a resolution after a deletion that removed a part relationship refuses", () => {
@@ -317,3 +323,87 @@ test("a comment keeps the author and date it was sent with on every receiver", (
     expect(comment?.date).toBe(created.comment.date);
   }
 });
+
+test("two replies to one parent take the same places in either order", () => {
+  const base = canonicalBase();
+  const sequencer = createSequencer(base);
+  const author = (index: number) => {
+    const lease = sequencer.grantIdLease(`actor-${index}`);
+    if (lease.isErr()) throw lease.error;
+    return {
+      actor: `actor-${index}`,
+      tag: String(index),
+      lease: lease.value,
+      allocate: createEditorIntentIdAllocator(),
+    };
+  };
+  const compiled = (
+    document: typeof base,
+    index: number,
+    kind: "comment" | "reply",
+    serial: number,
+  ) => {
+    const ops = compileCanonicalEdit(
+      document,
+      author(index),
+      { kind, a: 24, b: 0, suggest: false },
+      serial,
+    );
+    if (ops === undefined) throw new Error(`The ${kind} did not compile.`);
+    return ops;
+  };
+  const apply = (document: typeof base, ops: readonly DocumentOp[]) => {
+    const applied = applyDocumentOps(document, ops);
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+  const commented = apply(base, compiled(base, 0, "comment", 5));
+  const first = compiled(commented, 1, "reply", 6);
+  const second = compiled(commented, 2, "reply", 7);
+  // Neither reply refuses the other, and both orders give one document.
+  expect(
+    transformBatch(batch(second), [
+      { ...batch(first), opId: "first", revision: 1 },
+    ]).isOk(),
+  ).toBe(true);
+  const left = apply(apply(commented, first), second);
+  const right = apply(apply(commented, second), first);
+  expect(equalForStaleness(left, right)).toBe(true);
+  // A parent whose range ends between blocks takes no reply at all, so no
+  // reply's end marker has to find its place beside such a boundary.
+  const between = endBetweenBlocks(commented);
+  expect(applyDocumentOps(between, first).isErr()).toBe(true);
+  expect(applyDocumentOps(between, second).isErr()).toBe(true);
+});
+
+/** The document with each inline comment range end moved after its paragraph. */
+const endBetweenBlocks = (document: Document): Document => {
+  const content = document.package.document.content.flatMap(
+    (block): BlockContent[] => {
+      if (block.type !== "paragraph") return [block];
+      const ends = block.content.filter(
+        (node) => node.type === "commentRangeEnd",
+      );
+      if (ends.length === 0) return [block];
+      return [
+        {
+          ...block,
+          content: block.content.filter(
+            (node) => node.type !== "commentRangeEnd",
+          ),
+        },
+        ...ends.map((end): BlockContent => end),
+      ];
+    },
+  );
+  expect(content.length).toBeGreaterThan(
+    document.package.document.content.length,
+  );
+  return {
+    ...document,
+    package: {
+      ...document.package,
+      document: { ...document.package.document, content },
+    },
+  };
+};
