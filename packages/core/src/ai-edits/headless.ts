@@ -18,6 +18,8 @@ import {
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
 import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
   freshCommentId,
   OP_STORIES,
   type OpStory,
@@ -1318,23 +1320,7 @@ export class FolioDocxReviewer {
     this.engine =
       args.engine.type === "legacy"
         ? args.engine
-        : {
-            ...args.engine,
-            operations: new CanonicalPublicOperations({
-              session: args.engine.session,
-              getState: (story) => {
-                if (story === OP_STORIES.MAIN) return this.state;
-                const projected = args.engine.session.projectStory(story);
-                return projected.isErr()
-                  ? null
-                  : canonicalStoryState(
-                      args.engine.session,
-                      projected.value.doc,
-                    );
-              },
-              publish: (commit) => this.publishOnSession(commit),
-            }),
-          };
+        : this.canonicalEngine(args.engine.session);
     seedCommentAllocator(
       createCommentIdAllocator(),
       args.baseDocument.package.document.comments,
@@ -1819,6 +1805,29 @@ export class FolioDocxReviewer {
       author: options.author ?? "AI",
       engine: { type: "canonical", session },
     });
+  }
+
+  /**
+   * The session and the editor's public operation compiler over it: the body
+   * compiles against the reviewer's main state, another story against its
+   * projection, and every commit publishes through {@link publishOnSession}.
+   */
+  private canonicalEngine(session: CanonicalSession): FolioReviewerEngine {
+    return {
+      type: "canonical",
+      session,
+      operations: new CanonicalPublicOperations({
+        session,
+        getState: (story) => {
+          if (story === OP_STORIES.MAIN) return this.state;
+          const projected = session.projectStory(story);
+          return projected.isErr()
+            ? null
+            : canonicalStoryState(session, projected.value.doc);
+        },
+        publish: (commit) => this.publishOnSession(commit),
+      }),
+    };
   }
 
   /** Refuse what a canonical reviewer cannot do on its session yet. */

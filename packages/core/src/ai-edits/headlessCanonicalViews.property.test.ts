@@ -6,7 +6,7 @@
  * blocks and the changes left) and the story's tables in each view are
  * read on both engines. A canonical reviewer reads them from a second
  * session resolved to the view, and leaves its own document as it was.
- * A story resolved to its final view then reads as that view did.
+ * A story resolved to its final view keeps that view and holds no change.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -99,10 +99,16 @@ const viewLaws = async (buffer: ArrayBuffer): Promise<ViewOutcome> => {
     expect(
       reviewer.resolveReviewedStory({ story: handle, view: "final" }),
     ).toBe(true);
+    // Its final view is unchanged, and no change of it is left pending.
+    const resolved = reviewer.readReviewedStory({
+      story: handle,
+      view: "final",
+    });
+    expect(resolved?.text).toBe(final?.text);
     expect(
       reviewer.readReviewedStory({ story: handle, view: "current-markup" })
-        ?.text,
-    ).toBe(final?.text);
+        ?.changes,
+    ).toEqual([]);
   }
   return "read";
 };
