@@ -843,12 +843,34 @@ const resolveTableStructure = ({
             blockId: paragraph.blockId,
           },
         },
+        // The whole row: an edit inside it in the same batch overlaps.
         row.rowPosition,
-        row.rowPosition,
+        row.rowPosition + row.table.child(row.rowIndex).nodeSize,
       );
     case "deleteTableColumn": {
       const cell = findEnclosingTableCell(doc, blockFrom);
       if (cell === null) return notInTable();
+      const map = TableMap.get(row.table);
+      // The whole table: column indices of one table shift with each
+      // deletion, so another edit of that table in the batch overlaps.
+      const table = {
+        from: row.tablePosition,
+        to: row.tablePosition + row.table.nodeSize,
+      };
+      // Removing a table's only column removes the table.
+      if (map.width === 1)
+        return resolved(
+          {
+            type: "tableBlock",
+            operation: {
+              type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+              story,
+              blockId: paragraph.blockId,
+            },
+          },
+          table.from,
+          table.to,
+        );
       const column = {
         left: cell.leftColumnIndex,
         right: cell.leftColumnIndex + 1,
@@ -857,7 +879,7 @@ const resolveTableStructure = ({
       // editor's column deletion addresses it.
       const at = tableAnchor(
         {
-          map: TableMap.get(row.table),
+          map,
           table: row.table,
           tableStart: row.tableStart,
           ...column,
@@ -880,8 +902,8 @@ const resolveTableStructure = ({
             column: cell.leftColumnIndex,
           },
         },
-        cell.cellPosition,
-        cell.cellPosition,
+        table.from,
+        table.to,
       );
     }
     case "insertTableRow": {
