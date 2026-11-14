@@ -128,6 +128,11 @@ type Outcome = {
   trackedOrder: Record<trackedTransform.TrackedOrderPair, number>;
   /** Refusals of a declared tracked pair kind: the bar is none. */
   trackedRefusals: string[];
+  /**
+   * Pending batches a client dropped that share no paragraph with the batch
+   * that dropped them nor with a batch dropped before them in that answer.
+   */
+  independentDrops: string[];
   /** Changes a peer with pending batches got as a replacement, by the pair kinds they met. */
   replaced: Tally;
   /** Changes a peer with pending batches got rebased, by the pair kinds they met. */
@@ -220,6 +225,33 @@ const insertionAgainstDeletion = (
 const cutsRecordsExactly = (op: DocumentOp): boolean =>
   op.type === DOCUMENT_OP_TYPES.SPLIT_INLINE ||
   (op.type === DOCUMENT_OP_TYPES.JOIN_INLINE && op.ifAlike !== true);
+
+/**
+ * The paragraph ids a value names anywhere: positions, block ids and the
+ * blocks an effect records. Undefined names none.
+ */
+const paragraphsIn = (value: unknown): string[] => {
+  const ids = new Set<string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    for (const [key, child] of Object.entries(node)) {
+      if (/blockId$/iu.test(key) && typeof child === "string") {
+        ids.add(child.toUpperCase());
+      } else if (key === "blockIds" && Array.isArray(child)) {
+        for (const id of child)
+          if (typeof id === "string") ids.add(id.toUpperCase());
+      } else {
+        visit(child);
+      }
+    }
+  };
+  visit(value);
+  return [...ids];
+};
 
 // An inverse whose preconditions or joins pin the range it restores.
 const holdsPreconditions = (op: DocumentOp): boolean => {
@@ -533,6 +565,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     identifiedTypingRefusals: [],
     trackedOrder: noTrackedOrder(),
     trackedRefusals: [],
+    independentDrops: [],
     replaced: noTally(),
     rebasedChanges: noTally(),
     resubmitted: 0,
@@ -681,6 +714,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     if (event === undefined || peer === undefined) return;
     const before = peer.client.document;
     const pending = peer.client.pending.flatMap(({ ops }) => ops);
+    const noticed = peer.client.notices.length;
     let changes: readonly ClientDocumentChange[];
     if (event.type === "broadcast") {
       const received = peer.client.receiveBroadcast(event.batch);
@@ -690,6 +724,29 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       peer.client.receiveAck(event.result);
       changes = [];
     } else changes = peer.client.receiveReject(event.result);
+    // A dropped batch depends on what dropped it: it shares a paragraph with
+    // the remote or rejected batch, or with a batch dropped before it.
+    const cause = new Set(
+      paragraphsIn(
+        event.type === "broadcast"
+          ? event.batch
+          : peer.client.notices.at(noticed)?.ops,
+      ),
+    );
+    for (const [index, notice] of peer.client.notices
+      .slice(noticed)
+      .entries()) {
+      const touched = paragraphsIn(notice.ops);
+      if (
+        index > 0 || event.type === "broadcast"
+          ? touched.length > 0 && touched.every((id) => !cause.has(id))
+          : false
+      )
+        outcome.independentDrops.push(
+          `${notice.opId} (${describeOps(notice.ops)}) dropped by ${event.type === "broadcast" ? describeOps(event.batch.ops) : "a rejection"}: ${notice.reason.message}`,
+        );
+      for (const id of touched) cause.add(id);
+    }
     // Every change takes the peer's document exactly where the client is:
     // a rebased one is never trusted short of it.
     let document = before;
@@ -967,6 +1024,8 @@ const convergence = (
     counts.resubmitted += outcome.resubmitted;
     // No declared tracked pair is refused.
     expect(outcome.trackedRefusals).toEqual([]);
+    // A dropped batch takes with it only the batches that depend on it.
+    expect(outcome.independentDrops).toEqual([]);
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
@@ -1264,6 +1323,25 @@ const trackedPending: Scenario = [
   ],
 ];
 
+/**
+ * Peer 1 suggests erasing 5..8 of the first paragraph, sequenced first,
+ * while peer 0 types at 6, inside it (refused: an insertion inside
+ * tracked-deleted content), and then in the third paragraph. Peer 0 hears
+ * of the erase with both batches pending: the typing inside it is dropped,
+ * the other is not.
+ */
+const independentAfterDropped: Scenario = [
+  3,
+  [
+    suggestedErase(1, { a: 5, b: 2 }),
+    { type: "submit", peer: 1 },
+    focused(0, { kind: "type", a: 6, b: 0 }),
+    edit(0, { kind: "type", a: 2, b: 0 }),
+    { type: "deliver", seed: 1 },
+    ...drain(24),
+  ],
+];
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -1275,6 +1353,7 @@ const PINNED: readonly Scenario[] = [
   formatAcrossSuggestedErase,
   undoAgainstRepeatedDecision,
   trackedPending,
+  independentAfterDropped,
 ];
 
 describe("canonical sequencing", () => {
