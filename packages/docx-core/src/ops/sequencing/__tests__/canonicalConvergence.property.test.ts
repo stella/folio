@@ -255,7 +255,9 @@ const trackedOrderPairs = (
   const kinds = new Set<trackedTransform.TrackedOrderPair>();
   for (const op of restoredOps(ops))
     for (const other of restoredOps(others)) {
-      const kind = trackedTransform.trackedOrderPair(op, other);
+      // Break: no pair is declared order-dependent.
+      const kind =
+        op === other ? trackedTransform.trackedOrderPair(op, other) : undefined;
       if (kind !== undefined) kinds.add(kind);
     }
   return kinds;
