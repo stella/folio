@@ -48,6 +48,14 @@ const COMMAND_REFUSAL_CONTRACTS = {
         gap: CANONICAL_GAP.dispatch,
         message: "Unclassified native text is unavailable in this session.",
       },
+      // Accepting and rejecting through the legacy commands: the refusal
+      // names the meta keys their transactions carry.
+      {
+        id: CANONICAL_GAP.commands,
+        gap: CANONICAL_GAP.dispatch,
+        message:
+          "A transaction with meta joinedRunsRestyled, closeHistory$ changed the document outside the session's operations; express the edit as document operations.",
+      },
     ],
   },
 } as const satisfies Record<

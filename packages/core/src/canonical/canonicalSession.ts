@@ -150,10 +150,16 @@ export class CanonicalSessionError extends CanonicalSessionErrorBase<{
   ground: CanonicalRefusalGround;
 }> {}
 
-const refuse = (
-  message: string,
-  ground: CanonicalRefusalGround = { gap: CANONICAL_GAP.dispatch },
-) =>
+const refuse = (message: string) =>
+  Result.err(
+    new CanonicalSessionError({
+      ground: { gap: CANONICAL_GAP.dispatch },
+      message,
+      reason: "refused",
+    }),
+  );
+/** A refusal under the gap or rule it belongs to. */
+const refuseUnder = (ground: CanonicalRefusalGround, message: string) =>
   Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
 /** A change a content control's lock forbids: the document's rule, not a gap. */
 const lockRefusal = (violation: LockedControlViolation) =>
@@ -550,9 +556,9 @@ class CanonicalProjection {
       return this.insideTextBox(position)
         ? // A text box's paragraphs belong to its shape, not to the story:
           // the same rule a public operation on one meets.
-          refuse(
-            "The canonical session holds no address in this paragraph, such as one in a text box.",
+          refuseUnder(
             { gap: CANONICAL_GAP.publicUnsupportedInline },
+            "The canonical session holds no address in this paragraph, such as one in a text box.",
           )
         : refuse("The input is outside a plain paragraph.");
     const relative = position - paragraph.start;
