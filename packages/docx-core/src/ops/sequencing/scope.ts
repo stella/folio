@@ -3,7 +3,7 @@ import { panic, Result } from "better-result";
 import type { Document } from "../../model/document";
 import { storyBody, storyParagraphs } from "../blocks";
 import { structurallyEqual } from "../equality";
-import { IDENTITY_SPACES, identityKeysIn, idKey } from "../ids";
+import { idKey } from "../ids";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -26,6 +26,7 @@ import {
   type SequencedOpEffect,
   TABLE_EXCLUSIVE_OP_TYPES,
 } from "./envelope";
+import { heldRevisionIds } from "./heldRevisions";
 
 type PartAccess = {
   part: ExclusivePart;
@@ -95,25 +96,13 @@ const sections = (changes: boolean): PartAccess[] =>
 
 const comment = (id: number): string => String(id);
 
-const REVISION_KEY_PREFIX = `${IDENTITY_SPACES.REVISION}:`;
-
 /**
- * The revisions an operation's new content holds. Content put back as an
- * undo puts back the tracked changes in it, so a concurrent decision of one
- * of them would resolve a change in one order that the other order has
- * already resolved: they write that revision.
+ * Content put back as an undo puts back the tracked changes in it, so a
+ * concurrent decision of one of them would resolve a change in one order
+ * that the other order has already resolved: the operation writes them.
  */
 const heldRevisions = (content: unknown): PartAccess[] =>
-  identityKeysIn(content).flatMap((key) =>
-    key.startsWith(REVISION_KEY_PREFIX)
-      ? [
-          write(
-            EXCLUSIVE_PARTS.REVISIONS,
-            key.slice(REVISION_KEY_PREFIX.length),
-          ),
-        ]
-      : [],
-  );
+  heldRevisionIds(content).map((id) => write(EXCLUSIVE_PARTS.REVISIONS, id));
 
 /** The footprint of every operation kind. */
 const footprintOf = (op: DocumentOp): OpFootprint => {

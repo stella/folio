@@ -44,8 +44,8 @@ import {
   type SequencedBatch,
   validateDocumentBatch,
 } from "../envelope";
+import * as heldRevisions from "../heldRevisions";
 import { sameParagraph } from "../points";
-import * as scope from "../scope";
 import { isBlockScoped } from "../scope";
 import { type BatchSubmission, createSequencer } from "../sequencer";
 import * as trackedTransform from "../trackedTransform";
@@ -695,20 +695,12 @@ describe("canonical sequencing", () => {
   test(
     "an undo let through over a concurrent decision of its change is caught",
     async () => {
-      // The test-only break: no pair conflicts over a revision, so an undo
-      // that puts a change back passes a concurrent decision of it.
-      const original = { ...scope };
-      mock.module("../scope", () => ({
+      // The test-only break: no operation holds a revision, so an undo that
+      // puts a change back passes a concurrent decision of it.
+      const original = { ...heldRevisions };
+      mock.module("../heldRevisions", () => ({
         ...original,
-        transformByFootprint: (
-          pair: Parameters<typeof original.transformByFootprint>[0],
-        ) => {
-          const result = original.transformByFootprint(pair);
-          return result?.isErr() &&
-            result.error.part === envelope.EXCLUSIVE_PARTS.REVISIONS
-            ? undefined
-            : result;
-        },
+        heldRevisionIds: () => [],
       }));
       try {
         const result = await fc.check(
@@ -724,7 +716,7 @@ describe("canonical sequencing", () => {
         // Caught by the commutation check, not by anything else.
         expect(String(result.errorInstance)).toMatch(/do not commute/u);
       } finally {
-        mock.module("../scope", () => original);
+        mock.module("../heldRevisions", () => original);
       }
       // Without the break the same scenario passes.
       const restored = await fc.check(
