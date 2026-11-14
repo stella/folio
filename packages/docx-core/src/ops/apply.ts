@@ -2634,6 +2634,20 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
   });
 };
 
+/**
+ * A note list with a new note before the first note of a greater id: notes
+ * added concurrently take the same places whichever is added first.
+ */
+const withNoteById = <Note extends { id: number }>(
+  notes: readonly Note[] | undefined,
+  note: Note,
+): Note[] => {
+  const list = [...(notes ?? [])];
+  const at = list.findIndex(({ id }) => id > note.id);
+  list.splice(at < 0 ? list.length : at, 0, note);
+  return list;
+};
+
 const editNote = (
   document: Document,
   op: AddNoteOp | RemoveNoteOp,
@@ -2693,14 +2707,14 @@ const editNote = (
             ...document,
             package: {
               ...document.package,
-              footnotes: [...(document.package.footnotes ?? []), note],
+              footnotes: withNoteById(document.package.footnotes, note),
             },
           }
         : {
             ...document,
             package: {
               ...document.package,
-              endnotes: [...(document.package.endnotes ?? []), note],
+              endnotes: withNoteById(document.package.endnotes, note),
             },
           };
     const valid = validateOpsDocument(withNote);

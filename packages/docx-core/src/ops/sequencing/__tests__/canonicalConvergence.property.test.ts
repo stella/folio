@@ -1570,6 +1570,28 @@ const replacementAmongRevisions: Scenario = [
   ],
 ];
 
+/**
+ * Peer 0 deletes a note while peers 0 and 1 each add one, then peer 0
+ * types: the two new notes take their places in the note list by id, so
+ * the list is the same whichever was added first.
+ */
+const concurrentNotes: Scenario = [
+  3,
+  [
+    edit(0, { kind: "deleteNote", a: 0, b: 0 }),
+    edit(1, { kind: "note", a: 541, b: 0 }),
+    edit(0, { kind: "note", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    { type: "deliver", seed: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "submit", peer: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+  ],
+];
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -1583,9 +1605,18 @@ const PINNED: readonly Scenario[] = [
   trackedPending,
   independentAfterDropped,
   formatInsideErase,
+  concurrentNotes,
 ];
 
 describe("canonical sequencing", () => {
+  test("notes added concurrently take the same places in the note list in either order", () => {
+    const outcome = simulate(...concurrentNotes);
+    expect(outcome.diverged).toEqual([]);
+    expect(outcome.proven).toBe(outcome.rebased);
+    for (const document of outcome.documents)
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+  });
+
   test("a format inside a concurrent direct erase leaves one run in either order", () => {
     const outcome = simulate(...formatInsideErase);
     expect(outcome.rejected).toEqual([]);
