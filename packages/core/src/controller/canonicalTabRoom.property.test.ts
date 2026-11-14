@@ -33,6 +33,12 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(180_000));
 
+// Break: no presence state parses, so a tab keeps whatever came last.
+mock.module("./canonicalPresence", () => ({
+  ...presence,
+  parseCanonicalPresence: () => undefined,
+}));
+
 /*
  * 3 or 4 tabs of one origin share a room: each tab is a real canonical
  * session joined through the controller to a tab room. The simulated browser
