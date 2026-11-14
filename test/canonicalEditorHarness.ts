@@ -271,18 +271,9 @@ export const createCanonicalEditorHarness = (
         bubbles: true,
         cancelable: true,
       });
-      const row =
-        (fields.key === "Backspace" || fields.key === "Delete") &&
-        (fields.ctrlKey || fields.metaKey || fields.altKey)
-          ? {
-              id: "modified-deletion",
-              gap: CANONICAL_GAP.dispatch,
-              message:
-                "Only plain character deletion is available in this session.",
-            }
-          : undefined;
-      const rows = row ? [row] : caseRefusalRows;
-      withRefusalRows(rows, () => editorView.dom.dispatchEvent(event));
+      withRefusalRows(caseRefusalRows, () =>
+        editorView.dom.dispatchEvent(event),
+      );
       return event.defaultPrevented;
     },
     typeText: (text: string) => {

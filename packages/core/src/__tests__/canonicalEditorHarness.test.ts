@@ -65,7 +65,7 @@ test("canonical refusal rows cannot survive a retired ledger id", () => {
 });
 
 test.each(["editing", "suggesting"] as const)(
-  "canonical modified deletion carries an exact ledger refusal in %s",
+  "canonical word deletion from a caret inside text is left to the browser, and over a selection deletes it, in %s",
   (mode) => {
     const source = createEmptyDocument({ initialText: "alpha beta" });
     const paragraph = source.package.document.content.at(0);
@@ -77,17 +77,10 @@ test.each(["editing", "suggesting"] as const)(
       driver.history.setSelection(4, 4);
       const before = driver.snapshot();
       const state = driver.state;
-      driver.pressKey("Mod-Backspace");
-      expect(driver.refusals).toEqual([
-        {
-          gap: CANONICAL_GAP.dispatch,
-          message:
-            "Only plain character deletion is available in this session.",
-          expectation: "declared",
-          row: "modified-deletion",
-        },
-      ]);
-      expect(driver.refusalRows).toHaveLength(1);
+      // The keydown leaves the deletion to the beforeinput that names the
+      // browser's word range; with no browser here nothing is deleted.
+      expect(driver.pressKey("Mod-Backspace")).toBe(false);
+      expect(driver.refusals).toEqual([]);
       expect(driver.state).toBe(state);
       assertExactModel(driver.snapshot(), before);
       expect(driver.history.canUndo()).toBe(false);
@@ -104,7 +97,14 @@ test.each(["editing", "suggesting"] as const)(
       assertExactModel(driver.snapshot(), before);
       driver.history.setSelection(2, 4);
       expect(driver.cut()).toBe(true);
-      expect(driver.refusals).toHaveLength(2);
+      expect(driver.refusals).toHaveLength(1);
+      expect(driver.history.canUndo()).toBe(true);
+      expect(driver.history.undo()).toBe(true);
+      assertExactModel(driver.snapshot(), before);
+      // Over a selection the modified key deletes it, as the plain key does.
+      driver.history.setSelection(2, 4);
+      expect(driver.pressKey("Mod-Backspace")).toBe(true);
+      expect(driver.refusals).toHaveLength(1);
       expect(driver.history.canUndo()).toBe(true);
       expect(driver.history.undo()).toBe(true);
       assertExactModel(driver.snapshot(), before);

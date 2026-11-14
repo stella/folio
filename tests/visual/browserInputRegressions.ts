@@ -1418,9 +1418,59 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
   },
 } satisfies CanonicalRegression;
 
+/**
+ * Word deletion with Ctrl+Backspace and Ctrl+Delete on the canonical session:
+ * inside a word, across runs, at a paragraph's edges (where it joins as the
+ * plain key does), in lists and in table cells. Each commits what the default
+ * editor commits.
+ */
+const CANONICAL_WORD_DELETION_TRACES = (
+  [
+    ["plain-markdown", ["ControlOrMeta+Home", "End", "Control+Backspace"]],
+    [
+      "plain-markdown",
+      ["ControlOrMeta+Home", "ArrowRight", "ArrowRight", "Control+Delete"],
+    ],
+    [
+      "plain-markdown",
+      ["ControlOrMeta+Home", "ArrowDown", "Home", "Control+Backspace"],
+    ],
+    ["plain-markdown", ["ControlOrMeta+Home", "End", "Control+Delete"]],
+    [
+      "fields-links-bookmarks",
+      ["ControlOrMeta+Home", "End", "Control+Backspace", "Control+Backspace"],
+    ],
+    ["rtl-cjk", ["ControlOrMeta+Home", "End", "Control+Backspace"]],
+    [
+      "mixed-lists",
+      ["ControlOrMeta+Home", "ArrowDown", "End", "Control+Backspace"],
+    ],
+    ["tables", ["ControlOrMeta+Home", "ArrowDown", "End", "Control+Backspace"]],
+    ["tables", ["ControlOrMeta+Home", "ArrowDown", "Home", "Control+Delete"]],
+  ] as const
+).map(
+  ([shape, keys], index) =>
+    ({
+      authority: "canonical",
+      seed: 0,
+      path: `word-deletion-${shape}-${String(index)}`,
+      fingerprint: "canonical-word-deletion",
+      comparesWithDefaultEditor: true,
+      trace: { shape, actions: [{ kind: "keys", keys: [...keys] }] },
+    }) satisfies {
+      authority: "canonical";
+      seed: number;
+      path: string;
+      fingerprint: string;
+      comparesWithDefaultEditor: true;
+      trace: BrowserInputTrace;
+    },
+);
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
+  ...CANONICAL_WORD_DELETION_TRACES,
   ...BROWSER_KEY_OVER_SELECTION_TRACES,
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,

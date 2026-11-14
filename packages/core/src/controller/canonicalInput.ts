@@ -16,6 +16,33 @@ import {
 import type { CanonicalRefusalGround } from "../types/canonicalCapabilities";
 import { createCanonicalComposition } from "./canonicalComposition";
 
+/** Deletions whose extent the browser measures: by word or by line. */
+const WORD_AND_LINE_DELETIONS: ReadonlySet<string> = new Set([
+  "deleteWordBackward",
+  "deleteWordForward",
+  "deleteSoftLineBackward",
+  "deleteSoftLineForward",
+  "deleteHardLineBackward",
+  "deleteHardLineForward",
+  "deleteEntireSoftLine",
+]);
+
+/** The document range a beforeinput event's first target range covers. */
+const browserTargetRange = (
+  view: EditorView,
+  event: InputEvent,
+): { from: number; to: number } | undefined => {
+  const [target] = event.getTargetRanges();
+  if (target === undefined) return undefined;
+  try {
+    const start = view.posAtDOM(target.startContainer, target.startOffset);
+    const end = view.posAtDOM(target.endContainer, target.endOffset);
+    return { from: Math.min(start, end), to: Math.max(start, end) };
+  } catch {
+    return undefined;
+  }
+};
+
 /** Meta ProseMirror itself sets on native input and appended transactions. */
 const NATIVE_META_KEYS: ReadonlySet<string> = new Set([
   "addToHistory",
@@ -410,8 +437,8 @@ export const createCanonicalInputBoundary = (
         return true;
       }
       if (event.key !== "Backspace" && event.key !== "Delete") return false;
-      event.preventDefault();
-      if (modifier || event.altKey || view.composing || composition.active) {
+      if (view.composing || composition.active) {
+        event.preventDefault();
         closeGroup();
         if (!composition.active)
           options.refuse(
@@ -420,6 +447,22 @@ export const createCanonicalInputBoundary = (
         return true;
       }
       const selection = view.state.selection;
+      // A word or line deletion from a caret inside text is the browser's to
+      // measure: its beforeinput names the range, which the session deletes.
+      // Over a selection, or at a paragraph edge, it deletes as the plain key
+      // does.
+      if (
+        (modifier || event.altKey) &&
+        selection.empty &&
+        !isCanonicalJoinBoundary(
+          view.state,
+          event.key === "Backspace" ? "backward" : "forward",
+        )
+      ) {
+        closeGroup();
+        return false;
+      }
+      event.preventDefault();
       // Every cell of a table selected: the key deletes the table, as the
       // editor's own table keymap does.
       if (
@@ -681,6 +724,25 @@ export const createCanonicalInputBoundary = (
           }
           proposal = { type: "replacement", state: view.state, input };
           return false;
+        }
+        if (WORD_AND_LINE_DELETIONS.has(event.inputType)) {
+          const range = browserTargetRange(view, event);
+          if (range === undefined)
+            return refuseEvent(
+              event,
+              "The browser named no range for this deletion.",
+            );
+          event.preventDefault();
+          closeGroup();
+          if (range.from === range.to) return true;
+          options.replace({
+            ...range,
+            text: "",
+            semantic: event.inputType.endsWith("Backward")
+              ? "deleteBackward"
+              : "deleteForward",
+          });
+          return true;
         }
         if (
           event.inputType === "historyUndo" ||
