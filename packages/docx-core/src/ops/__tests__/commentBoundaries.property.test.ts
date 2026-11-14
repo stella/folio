@@ -298,3 +298,29 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+test("the removal law catches a marker between blocks left behind", () => {
+  // What a removal blind to markers between blocks would leave: the
+  // thread's other markers and its record gone, its start still standing.
+  const document = documentFor({
+    start: "betweenParagraphs",
+    end: "inline",
+    neighbour: false,
+  });
+  const removed = applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+    id: 1,
+    scope: "thread",
+  }).unwrap().document;
+  const content = [...removed.package.document.content];
+  content.splice(1, 0, { type: "commentRangeStart", id: 1 });
+  const leftBehind: Document = {
+    ...removed,
+    package: {
+      ...removed.package,
+      document: { ...removed.package.document, content, sections: undefined },
+    },
+  };
+  expect(anchorsOf(leftBehind, 1)).not.toEqual([]);
+  expect(commentDocumentIssue(leftBehind)).toBeDefined();
+});
