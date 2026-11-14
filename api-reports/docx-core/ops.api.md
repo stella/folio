@@ -143,6 +143,7 @@ export type BoundaryOccurrence = {
     side: "start" | "end";
     kept: boolean;
     copied: boolean;
+    copiesMarked: boolean;
     keptFrom?: string;
 };
 
@@ -1133,6 +1134,9 @@ export const PROPERTY_REVIEW_POLICIES: Readonly<{
 
 // @public
 export const reconcileDocumentPartRelationships: (document: Document_2) => Document_2;
+
+// @public
+export const recordsCopyOrigin: (node: InlineNode) => boolean;
 
 // @public
 export const registerParagraphPropertySnapshot: (input: RegisterParagraphPropertySnapshotOptions) => void;

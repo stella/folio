@@ -40,6 +40,13 @@ const isCopyOriginBoundary = (node: InlineNode): node is CopyOriginBoundary =>
   node.type === "moveToRangeStart" ||
   node.type === "moveToRangeEnd";
 
+/**
+ * Whether a copy of `node` carries copy ancestry: true of bookmark and move
+ * range boundaries, false of comment boundaries and anything else.
+ */
+export const recordsCopyOrigin = (node: InlineNode): boolean =>
+  isCopyOriginBoundary(node);
+
 export const copyOriginAncestorsOf = (
   node: InlineNode,
 ): CopyOriginAncestorList | undefined =>
