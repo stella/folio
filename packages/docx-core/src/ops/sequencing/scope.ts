@@ -28,6 +28,7 @@ import {
 } from "./envelope";
 import { heldRevisionIds } from "./heldRevisions";
 import { isInlineInsertion } from "./points";
+import { transformRestorePair } from "./restoreTransform";
 
 type PartAccess = {
   part: ExclusivePart;
@@ -446,11 +447,15 @@ export const transformByFootprint = ({
       BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT,
       "A concurrent operation restructured the same table.",
     );
-  if (addressed.some((id) => changed.has(id)))
+  if (addressed.some((id) => changed.has(id))) {
+    // A restoration passes an edit of its paragraph outside what it changes.
+    const restored = transformRestorePair(op, over);
+    if (restored !== undefined) return restored;
     return refuse(
       BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
       "A concurrent operation changed a paragraph this operation addresses.",
     );
+  }
   return Result.ok([op]);
 };
 
