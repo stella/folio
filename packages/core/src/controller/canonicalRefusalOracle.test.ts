@@ -134,11 +134,6 @@ test.each(EDITOR_MODES)(
 // The control proves bold is supported; the ablation must fail the conformance oracle.
 test.each([
   {
-    gap: CANONICAL_GAP.trackedHyperlinkResolution,
-    message:
-      "Hyperlink edits cannot cut a content control or markup folio does not model.",
-  },
-  {
     gap: CANONICAL_GAP.storyContentProjection,
     message: "The operations produce unsupported canonical story content.",
   },
