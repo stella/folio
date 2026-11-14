@@ -150,7 +150,7 @@ describe("operations on the canonical reviewer", () => {
                 skip?.canonicalRefusal === undefined
                   ? // Not a typed gap: name the fixture so it can be replayed.
                     `${type} / ${mode}: untyped ${skip?.reason ?? "unknown"} on ${name}`
-                  : `${type} / ${mode}: ${skip.canonicalRefusal.gap}`,
+                  : `${type} / ${mode}: ${skip.canonicalRefusal.gap} on ${name}: ${skip.message ?? ""} :: ${JSON.stringify(operation)}`,
               );
             log.push(`${type}: refused`);
             continue;
