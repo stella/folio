@@ -78,10 +78,7 @@ import { registerEditorCommandOwner } from "../prosemirror/executeEditorCommand"
 import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import {
-  createParagraphChangeTrackerPlugin,
-  markPackageChange,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import {
   ensureParaIdsInDoc,
   ensureParaIdsInState,
@@ -742,6 +739,9 @@ export const createHiddenEditorManager = (
     if (deps.onSessionRefusal) deps.onSessionRefusal(message, ground);
     else throw new CanonicalSessionRefusalError({ ground, message });
   };
+  // The committed version the host last saved, or the one the session opened at.
+  let canonicalSaved:
+    { session: CanonicalSession; version: number } | undefined;
   let offHistoryDrop = (): void => {};
   const leaveRoom = (): void => {
     room?.leave();
@@ -791,6 +791,7 @@ export const createHiddenEditorManager = (
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
+    canonicalSaved = { session: result.value, version: result.value.version };
     offHistoryDrop();
     offHistoryDrop = result.value.onHistoryDrop((drop) =>
       deps.onCanonicalHistoryDrop?.(drop),
@@ -818,7 +819,6 @@ export const createHiddenEditorManager = (
       doc: session.projection.doc,
       plugins: [
         createDocumentNumberingPlugin(document.package.numbering),
-        createParagraphChangeTrackerPlugin(),
         createNativeSelectionRefreshPlugin(),
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? document.package.styles,
@@ -1997,6 +1997,20 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical" &&
       !editorSession.session.isComposing &&
       editorSession.session.version === version,
+    markCanonicalSaved: (version) => {
+      if (editorSession.type === "canonical")
+        canonicalSaved = { session: editorSession.session, version };
+    },
+    // The session's journal is the one source: any committed version other
+    // than the one last saved (or opened) is a pending change, in any story.
+    hasCanonicalPendingChanges: () => {
+      if (editorSession.type !== "canonical") return null;
+      const { session } = editorSession;
+      return (
+        canonicalSaved?.session !== session ||
+        session.version !== canonicalSaved.version
+      );
+    },
     captureCanonicalSave: () =>
       editorSession.type === "canonical"
         ? editorSession.session.captureSaveSnapshot()
