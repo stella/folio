@@ -1029,6 +1029,18 @@ export const runOpLocalityInvariant = async (
               (type) => `${type} mutated its input document`,
             ),
           );
+          for (const [index, step] of sequence.steps.entries()) {
+            try {
+              // oxlint-disable-next-line no-await-in-loop -- diagnostics
+              await serializedOpParts(step.edit.document);
+            } catch (error) {
+              appendFileSync(
+                process.env["DIAG_OUT"] ?? "/tmp/diag.txt",
+                `DIAG salt=${String(salt)} FIRST-INVALID step=${String(index)} op=${JSON.stringify(step.op).slice(0, 600)} model=${JSON.stringify(localityStepFailures(step))} error=${String(error).slice(0, 300)}\n`,
+              );
+              break;
+            }
+          }
           // oxlint-disable-next-line no-await-in-loop -- each sequence is checked against one shared control save
           const edited = await serializedOpParts(sequence.document);
           const compoundFailures = serializedLocalityFailures({

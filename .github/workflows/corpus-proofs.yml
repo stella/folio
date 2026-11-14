@@ -33,17 +33,17 @@ jobs:
       - run: bun run corpus:fetch
       - name: Diagnose
         env:
-          IDS: clippit/TestFiles/RP/RP009-Deleted-Table-Row.docx clippit/TestFiles/RP/RP037-Changed-Style-Para-Props.docx open-xml-sdk/test/DocumentFormat.OpenXml.Tests.Assets/assets/TestDataStorage/O15Conformance/WD/CommentExTest/Comments-Sample-15-12-01/Comment018.docx apache-poi/test-data/document/Tika-792.docx
+          IDS: open-xml-sdk/test/DocumentFormat.OpenXml.Tests.Assets/assets/TestDataStorage/O15Conformance/WD/CommentExTest/Comments-Sample-15-12-01/Comment018.docx apache-poi/test-data/document/Tika-792.docx apache-poi/test-data/document/rtl.docx apache-poi/test-data/document/61745.docx
         run: |
           set +e
-          for variant in fix main; do
+          for variant in fix; do
             if [ "$variant" = main ]; then git checkout -q origin/main -- packages/docx-core/src/ops/revisionInfo.ts; fi
             for id in $IDS; do
               out="$RUNNER_TEMP/diag-$variant-$(basename "$id").txt"
               DIAG_OUT="$out" timeout 900 bun scripts/corpus-gate.ts run --tiers 1 --only "$id" --concurrency 1 --invariant-budget 300000 --file-budget 900000 --timeout 900000 --out "$RUNNER_TEMP/c.json" > "$RUNNER_TEMP/run.log" 2>&1
               echo "==== $variant $id"
               grep -o 'op-[a-z]*[^"]*' "$RUNNER_TEMP/c.json" | sort | uniq -c | cut -c1-300 | head -30
-              grep -E 'model=\[".+|serialized=\[".+|SAVE-ERROR|compound=\[".+' "$out" | cut -c1-900 | head -40
+              grep -E 'FIRST-INVALID|model=\[".+|SAVE-ERROR' "$out" | cut -c1-1200 | head -30
               echo "lines $(grep -c . "$out")"
             done
           done
