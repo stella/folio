@@ -105,23 +105,37 @@ const batchOf = (opId: string, op: DocumentOp): DocumentBatch => ({
   ops: [op],
 });
 
-/** `first` sequenced, then `second` rebased over it; undefined on a refusal. */
+/** `first` sequenced, then `second` rebased over it, or the step refused. */
 const inOrder = (
   base: Document,
   first: DocumentBatch,
   second: DocumentBatch,
-): Document | undefined => {
+  forget: boolean,
+): { document: Document } | { refused: string } => {
   const applied = applyBatch(base, first.ops);
-  if (applied.isErr()) return undefined;
+  if (applied.isErr())
+    return { refused: `${first.opId}: ${applied.error.message}` };
   const sequenced: SequencedBatch = {
     ...first,
     revision: 1,
-    effects: applied.value.effects,
+    // The test-only break: a format that records no cut records.
+    effects: forget
+      ? applied.value.effects.map((effect) =>
+          effect.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS
+            ? { type: DOCUMENT_OP_TYPES.SET_RUN_PROPS }
+            : effect,
+        )
+      : applied.value.effects,
   };
   const rebased = transformBatch(second, [sequenced]);
-  if (rebased.isErr()) return undefined;
+  if (rebased.isErr())
+    return { refused: `${second.opId} rebased: ${rebased.error.message}` };
   const after = applyBatch(applied.value.document, rebased.value.ops);
-  return after.isErr() ? undefined : after.value.document;
+  return after.isErr()
+    ? {
+        refused: `${second.opId} as ${JSON.stringify(rebased.value.ops)}: ${after.error.message}`,
+      }
+    : { document: after.value.document };
 };
 
 /**
@@ -166,83 +180,110 @@ const scenario = fc
       );
   });
 
+type Scenario =
+  typeof scenario extends fc.Arbitrary<infer Value> ? Value : never;
+
+const EXAMPLES: [Scenario][] = [
+  // Separate text on both sides of a formatted tab stays separate.
+  [
+    {
+      content: [
+        { type: "text", text: "ab" },
+        LEAVES.tab,
+        { type: "text", text: "cde" },
+      ],
+      deleteFrom: { offset: 1, zeroWidthBefore: 0 },
+      formatFrom: { offset: 2, zeroWidthBefore: 0 },
+      formatTo: { offset: 3, zeroWidthBefore: 0 },
+      deleteTo: { offset: 4, zeroWidthBefore: 0 },
+    },
+  ],
+  // A zero-width leaf after the deletion keeps the run one.
+  [
+    {
+      content: [{ type: "text", text: "cde" }, LEAVES.renderedPageBreak],
+      deleteFrom: { offset: 1, zeroWidthBefore: 0 },
+      formatFrom: { offset: 2, zeroWidthBefore: 0 },
+      formatTo: { offset: 3, zeroWidthBefore: 0 },
+      deleteTo: { offset: 3, zeroWidthBefore: 0 },
+    },
+  ],
+];
+
+const rejoined = (forget = false) =>
+  fc.property(
+    scenario,
+    ({ content, deleteFrom, formatFrom, formatTo, deleteTo }) => {
+      if (
+        deleteFrom === undefined ||
+        formatFrom === undefined ||
+        formatTo === undefined ||
+        deleteTo === undefined
+      )
+        throw new Error("Four gaps are picked.");
+      const base = documentOf(content);
+      const format = batchOf("format", {
+        type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+        from: position(formatFrom),
+        to: position(formatTo),
+        patch: { bold: true },
+      });
+      const deletion = batchOf("deletion", {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: position(deleteFrom),
+        to: position(deleteTo),
+      });
+      const formatFirst = inOrder(base, format, deletion, forget);
+      const deletionFirst = inOrder(base, deletion, format, forget);
+      // Declared, a separate class: a position after zero-width leaves
+      // is refused against a concurrent deletion holding it, and a
+      // deletion bounded there refuses every concurrent operation.
+      const zeroWidthBound = [deleteFrom, formatFrom, formatTo, deleteTo].some(
+        ({ zeroWidthBefore }) => zeroWidthBefore > 0,
+      );
+      for (const outcome of [formatFirst, deletionFirst])
+        if ("refused" in outcome)
+          expect({ zeroWidthBound, refused: outcome.refused }).toEqual({
+            zeroWidthBound: true,
+            refused: expect.stringMatching(
+              /zero-width boundaries require an unchanged range|cannot be mapped without structural context/u,
+            ),
+          });
+      if (!("document" in formatFirst) || !("document" in deletionFirst))
+        return;
+      expect(
+        equalForStaleness(formatFirst.document, deletionFirst.document)
+          ? undefined
+          : {
+              formatFirst: formatFirst.document.package.document.content,
+              deletionFirst: deletionFirst.document.package.document.content,
+            },
+      ).toBeUndefined();
+    },
+  );
+
 describe("a direct format inside a concurrent direct deletion", () => {
   test(
     "leaves the same document in either order, whatever leaves the run holds",
     () => {
       fc.assert(
-        fc.property(
-          scenario,
-          ({ content, deleteFrom, formatFrom, formatTo, deleteTo }) => {
-            if (
-              deleteFrom === undefined ||
-              formatFrom === undefined ||
-              formatTo === undefined ||
-              deleteTo === undefined
-            )
-              throw new Error("Four gaps are picked.");
-            const base = documentOf(content);
-            const format = batchOf("format", {
-              type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
-              from: position(formatFrom),
-              to: position(formatTo),
-              patch: { bold: true },
-            });
-            const deletion = batchOf("deletion", {
-              type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-              from: position(deleteFrom),
-              to: position(deleteTo),
-            });
-            const formatFirst = inOrder(base, format, deletion);
-            const deletionFirst = inOrder(base, deletion, format);
-            expect(formatFirst).toBeDefined();
-            expect(deletionFirst).toBeDefined();
-            if (formatFirst === undefined || deletionFirst === undefined)
-              return;
-            expect(
-              equalForStaleness(formatFirst, deletionFirst)
-                ? undefined
-                : {
-                    formatFirst: formatFirst.package.document.content,
-                    deletionFirst: deletionFirst.package.document.content,
-                  },
-            ).toBeUndefined();
-          },
-        ),
-        propertyConfig({
-          numRuns: 300,
-          examples: [
-            // Separate text on both sides of a formatted tab stays separate.
-            [
-              {
-                content: [
-                  { type: "text", text: "ab" },
-                  LEAVES.tab,
-                  { type: "text", text: "cde" },
-                ],
-                deleteFrom: { offset: 1, zeroWidthBefore: 0 },
-                formatFrom: { offset: 2, zeroWidthBefore: 0 },
-                formatTo: { offset: 3, zeroWidthBefore: 0 },
-                deleteTo: { offset: 4, zeroWidthBefore: 0 },
-              },
-            ],
-            // A zero-width leaf before the deletion keeps the run one.
-            [
-              {
-                content: [
-                  LEAVES.renderedPageBreak,
-                  { type: "text", text: "cde" },
-                ],
-                deleteFrom: { offset: 0, zeroWidthBefore: 1 },
-                formatFrom: { offset: 1, zeroWidthBefore: 0 },
-                formatTo: { offset: 2, zeroWidthBefore: 0 },
-                deleteTo: { offset: 2, zeroWidthBefore: 0 },
-              },
-            ],
-          ],
-        }),
+        rejoined(),
+        propertyConfig({ numRuns: 300, examples: EXAMPLES }),
       );
     },
     propertyTestTimeout(60_000),
   );
+
+  test("a format that records no cut records is caught", () => {
+    const result = fc.check(
+      rejoined(true),
+      // The break is a counterexample on purpose: report nothing.
+      propertyConfig({
+        numRuns: 1,
+        examples: EXAMPLES,
+        reporter: () => undefined,
+      }),
+    );
+    expect(result.failed).toBe(true);
+  });
 });
