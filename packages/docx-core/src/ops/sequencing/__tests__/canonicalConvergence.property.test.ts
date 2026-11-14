@@ -227,11 +227,20 @@ const cutsRecordsExactly = (op: DocumentOp): boolean =>
   op.type === DOCUMENT_OP_TYPES.SPLIT_INLINE ||
   (op.type === DOCUMENT_OP_TYPES.JOIN_INLINE && op.ifAlike !== true);
 
+const REVISION_RECORDS = new Set([
+  "insertion",
+  "deletion",
+  "moveFrom",
+  "moveTo",
+]);
+
 /**
- * The paragraph ids a value names anywhere: positions, block ids and the
- * blocks an effect records. Undefined names none.
+ * What a value depends on, anywhere in it: the paragraphs it names
+ * (positions, block ids, the blocks an effect records) and the tracked
+ * changes it names or holds (a decision's revisions, a stamp, a wrapper).
+ * Undefined names none.
  */
-const paragraphsIn = (value: unknown): string[] => {
+const dependenciesIn = (value: unknown): string[] => {
   const ids = new Set<string>();
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
@@ -239,12 +248,31 @@ const paragraphsIn = (value: unknown): string[] => {
       return;
     }
     if (typeof node !== "object" || node === null) return;
+    const type: unknown = Reflect.get(node, "type");
+    const id: unknown = Reflect.get(node, "id");
+    if (
+      typeof type === "string" &&
+      REVISION_RECORDS.has(type) &&
+      typeof id === "number"
+    )
+      ids.add(`revision ${String(id)}`);
     for (const [key, child] of Object.entries(node)) {
       if (/blockId$/iu.test(key) && typeof child === "string") {
         ids.add(child.toUpperCase());
       } else if (key === "blockIds" && Array.isArray(child)) {
-        for (const id of child)
-          if (typeof id === "string") ids.add(id.toUpperCase());
+        for (const block of child)
+          if (typeof block === "string") ids.add(block.toUpperCase());
+      } else if (key === "revisionIds" && Array.isArray(child)) {
+        for (const revision of child)
+          if (typeof revision === "number")
+            ids.add(`revision ${String(revision)}`);
+      } else if (
+        key === "revision" &&
+        typeof child === "object" &&
+        child !== null &&
+        typeof Reflect.get(child, "id") === "number"
+      ) {
+        ids.add(`revision ${String(Reflect.get(child, "id"))}`);
       } else {
         visit(child);
       }
@@ -717,7 +745,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     const pending = peer.client.pending.flatMap(({ ops }) => ops);
     const queued = peer.client.pending.map(({ opId, ops }) => ({
       opId,
-      paragraphs: paragraphsIn(ops),
+      dependencies: dependenciesIn(ops),
     }));
     const noticed = peer.client.notices.length;
     let changes: readonly ClientDocumentChange[];
@@ -729,12 +757,14 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       peer.client.receiveAck(event.result);
       changes = [];
     } else changes = peer.client.receiveReject(event.result);
-    // A dropped batch depends on what dropped it: it shares a paragraph with
-    // the remote or rejected batch, or with a pending batch before it: a
-    // dropped one, or a kept one the remote batch may not carry past, when
-    // the batches after it cross its inverse.
+    // The first batch an answer drops failed against the remote or rejected
+    // batch itself. A later one depends on what dropped it: it shares a
+    // paragraph or a tracked change with the remote or rejected batch, or
+    // with a pending batch before it: a dropped one, or a kept one the
+    // remote batch may not carry past, when the batches after it cross its
+    // inverse.
     const cause = new Set(
-      paragraphsIn(
+      dependenciesIn(
         event.type === "broadcast"
           ? event.batch
           : peer.client.notices.at(noticed)?.ops,
@@ -743,7 +773,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     for (const [index, notice] of peer.client.notices
       .slice(noticed)
       .entries()) {
-      const touched = paragraphsIn(notice.ops);
+      const touched = dependenciesIn(notice.ops);
       const earlier = new Set(
         queued
           .slice(
@@ -753,13 +783,12 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
               queued.findIndex(({ opId }) => opId === notice.opId),
             ),
           )
-          .flatMap(({ paragraphs }) => paragraphs),
+          .flatMap(({ dependencies }) => dependencies),
       );
       if (
-        index > 0 || event.type === "broadcast"
-          ? touched.length > 0 &&
-            touched.every((id) => !cause.has(id) && !earlier.has(id))
-          : false
+        index > 0 &&
+        touched.length > 0 &&
+        touched.every((id) => !cause.has(id) && !earlier.has(id))
       )
         outcome.independentDrops.push(
           `${notice.opId} (${describeOps(notice.ops)}) dropped by ${event.type === "broadcast" ? describeOps(event.batch.ops) : "a rejection"}: ${notice.reason.message}`,
