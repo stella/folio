@@ -48,11 +48,81 @@ normalizes optional undefined object fields, and `validateSequencedBatch`
 checks assigned revisions and that each effect is the one its operation kind
 records.
 
-The position transform rebases text insertions, direct deletions, run and
-paragraph formatting, paragraph splits and joins, anchored paragraph
-insertion and repeated revision decisions. Overlapping revision decisions with
-opposite outcomes reject. Text inherited at a paragraph's start takes the run
-after it, so a concurrent format from the start covers it in either order.
+The position transform rebases text insertions, inline content insertions,
+inline record splits and joins, direct deletions, run and paragraph
+formatting, paragraph splits and joins, anchored paragraph insertion and
+repeated revision decisions. Overlapping revision decisions with opposite
+outcomes reject. Text inherited at a paragraph's start takes the run after
+it, so a concurrent format from the start covers it in either order.
+
+## Inline insertions
+
+Typing, an inserted atom and the inverse of a deletion that cut no record
+compile to `insertContent` with a closed slice (`openStart` and `openEnd` 0) of runs, text and atoms, without zero-width leaves, comment references or
+paragraphs (`isInlineInsertion`). Such an insertion moves every later offset
+of its paragraph by its width. At its own offset the zero-width gaps decide;
+at the same gap the batch sequenced later goes after the one sequenced
+earlier, so typing at one point keeps the sequence order whichever peer
+applies first. A gap whose count one side leaves absent and the other names
+as nonzero cannot be compared and refuses with `unsupportedPair`.
+
+A range that starts at the insertion point moves past the inserted content
+and a range that ends there stays before it: the inserted runs carry the
+formatting they were typed with, so a concurrent format or deletion never
+takes them in, in either order. A range the insertion falls strictly inside
+is split around it: a format into two formats, a direct deletion into two
+deletions. A tracked deletion around the point, a tracked insertion inside a
+direct deletion, and a range with preconditions or joins reaching the point
+refuse. Insertion at the start of a paragraph a concurrent join appends
+refuses, as for text.
+
+Each sequenced `insertContent` records whether it cut a record carrying an
+id (a revision or a content control) in two (`cutIdentified`). Two
+insertions at the same gap refuse when the earlier one cut such a record,
+since the record's second half would take the id of whichever applied
+first; in plain runs they pass.
+
+`splitInline` and `joinInline` only move record boundaries, so offsets map
+one to one across them. A concurrent insertion, split or join at the same
+offset, a deletion reaching it, a format ending there, a comment anchor
+there and a paragraph split or join of the same paragraph refuse, since the
+two orders would leave other boundaries.
+
+Typing and other edits join their runs to alike neighbours with seam joins
+(`joinInline` with `ifAlike`), which merge only alike runs carrying no ids
+and change nothing where the records beside the seam differ or a run
+already runs across it. A seam join moves like a point. Content a
+concurrent insertion puts at its gap separates the records it would have
+joined, whichever applies first, so the join is dropped there: two typings
+at one point stay two runs in either order. A concurrent insertion, format
+or seam join at its offset passes, and so does a paragraph split or join
+away from it. A direct deletion reaching its offset refuses: it may remove
+whole records beside the seam, so other records meet there in one order than
+in the other. A split at its offset, a hard join there, a tracked
+change's edge there and a comment anchor there still refuse.
+
+A slice with open ends merges with the records at its point, and a slice
+holding zero-width leaves, comment references or paragraphs depends on
+what lies there: such an `insertContent` stays block-scoped.
+
+## Tracked changes beside concurrent cuts
+
+A tracked deletion or insertion records, on its wrapper, how many records it
+cut at each edge and how many ran across its whole range, so that rejecting
+or accepting it joins them again. Whether a record runs across depends on
+what was applied first: when a concurrent edit cuts or merges records at an
+edge or inside the range (another tracked edge, an insertion point, a
+format's end, an inline split or join, a paragraph split, an inverse
+deletion's join), the cut goes to whichever applies first and the two orders
+record different joins. A direct deletion that reaches one edge and not the
+other removes what lay against that edge in one order and moves the edge in
+the other. Two tracked deletions that overlap (nested, equal or crossing
+ranges) leave the shared content to whichever wraps it first, under its
+author and id. All of these pairs are refused with `unsupportedPair`, in
+either order. Tracked changes apart from every concurrent cut commute, and
+so does a direct deletion inside a tracked one or covering it whole.
+
+## Block-scoped operations
 
 ## Tracked changes beside concurrent cuts
 
@@ -74,8 +144,8 @@ so does a direct deletion inside a tracked one or covering it whole.
 ## Block-scoped operations
 
 Every other operation is block-scoped: paragraph replacement, inline
-replacement and paragraph review, inline splits and joins, content insertion,
-paragraph deletion, table insertion, deletion and structure edits, numbering
+replacement and paragraph review, content insertion with open or
+document-dependent slices, paragraph deletion, table insertion, deletion and structure edits, numbering
 instances, section endpoints and properties, package resources, headers and
 footers, story-part restoration, notes and revision metadata. Its footprint is
 the paragraphs it addresses, reads or creates and the package parts it
@@ -91,8 +161,13 @@ and footers, notes, settings, revision metadata and comments) conflict when
 one operation writes a part both name, by entry where the operation names one
 (a numbering instance, a relationship id, a note, a comment): `partConflict`,
 with the part. A comment operation that may add or remove the comment part
-relationships writes the whole relationships part. Pairs of position-rebased operations the transform cannot map safely
-reject with `unsupportedPair`.
+relationships writes the whole relationships part. A revision decision reads
+the revisions it resolves, and a paragraph replacement, inline replacement,
+paragraph review or container replacement writes every revision its new
+content holds: an undo that puts a tracked change back conflicts with a
+concurrent decision of it, which would otherwise resolve the change in one
+order and find it already resolved in the other. Pairs of position-rebased
+operations the transform cannot map safely reject with `unsupportedPair`.
 
 ## Comments
 
@@ -101,8 +176,10 @@ point comment is rebased by its anchor: its ends move like text over
 concurrent insertions, direct deletions, splits and joins, and stay over
 formatting, paragraph properties and paragraph insertion. Its comment
 reference occupies one offset unit at the range's end (or at the point), so a
-concurrent position after it moves past it. A position at an anchor's own
-offset has no affinity to follow and refuses with `unsupportedPair`, as does
+concurrent position after it moves past it; typing and other inline
+insertions in the anchor's paragraph move the same way. A position at an
+anchor's own offset has no affinity to follow and refuses with
+`unsupportedPair`, as does
 a concurrent deletion or format whose range reaches an anchor. A deletion
 that removes a range's text is therefore refused rather than collapsing the
 range: the apply contract makes a collapsed range a point comment, which the
@@ -117,10 +194,13 @@ comments pass: a new comment takes its place in the comment list by id, so
 concurrent creations land in the same order whichever applies first. On one
 comment, a content edit and a resolution pass, a reply passes an edit or a
 resolution of its parent, and the same resolution twice is one resolution.
+Two replies to one parent pass: a reply's markers follow the parent's (or
+its nearest anchored ancestor's) and the markers of the thread's comments
+that come before it, in depth-first order with siblings by id, so
+concurrent replies take the same places whichever applies first.
 Everything else on one comment is refused with `partConflict` naming the
 `comments` part: two content edits, opposite resolutions, a deletion against
-any other use of its thread (a reply to a deleted parent included), two
-replies to one parent (their references would take opposite orders), and a
+any other use of its thread (a reply to a deleted parent included), and a
 restoration against anything but a content edit of another comment (it puts
 records and part relationships back as captured). A reply or a resolution
 after a concurrent deletion that removed a comment part relationship is
@@ -135,7 +215,7 @@ edit.
 Partially overlapping writes to the same run property require additional
 structural effects and currently reject. Nonzero marker-gap changes and
 identified ranges crossing a split also reject. Inserting within tracked-deleted content
-is refused by the apply contract. A join can preserve two adjacent runs; text
+is refused by the apply contract. A join can preserve two adjacent runs; an
 insertion at that boundary requires an affinity the current text operation
 does not express, so the transform refuses ambiguous boundary insertion.
 

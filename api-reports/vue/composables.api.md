@@ -6,6 +6,7 @@
 
 import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { App } from 'vue';
+import { CanonicalHistoryDrop } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalRoomCollaboration } from '@stll/folio-core/controller/canonicalRoomEditor';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
@@ -158,6 +159,7 @@ export type UseDocxEditorOptions = {
     externalPlugins?: readonly Plugin_2[];
     historyShortcuts?: HistoryShortcutOwner;
     onCanonicalHistory?: (effect: CanonicalHistoryEffect) => void;
+    onCanonicalHistoryDrop?: (drop: CanonicalHistoryDrop) => void;
     collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | CanonicalRoomCollaboration | undefined>;
     onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
     showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;
