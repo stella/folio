@@ -3896,6 +3896,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   structuralChange: hasStructuralChanges(editorState),
                   hasUntrackedChanges: hasUntrackedChanges(editorState),
                   maxBytes: flags.selectiveSaveMaxBytes,
+                  onSelectiveDecline: options?.onSelectiveDecline,
                 },
               );
             }

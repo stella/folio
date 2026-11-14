@@ -18,3 +18,14 @@ export type FolioGetDocxOptions = {
   onSelectiveDecline?: SaveDiagnosticOptions["onSelectiveDecline"];
   mode?: FolioDocxSerializationMode;
 };
+
+/**
+ * A host-facing save: `selective: false` forces a full repack; the callbacks
+ * receive the save's fidelity fallbacks instead of the adapter's `onError`,
+ * and why a selective patch declined.
+ */
+export type FolioSaveOptions = {
+  selective?: boolean;
+  onDiagnostic?: FolioGetDocxOptions["onDiagnostic"];
+  onSelectiveDecline?: FolioGetDocxOptions["onSelectiveDecline"];
+};

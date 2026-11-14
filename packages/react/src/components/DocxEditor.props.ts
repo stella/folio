@@ -26,10 +26,12 @@ import type {
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type {
+  FolioEditor,
+  FolioSaveOptions,
+} from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
-import type { SaveDiagnosticOptions } from "@stll/folio-core/docx/saveDiagnostics";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import type { EditorReadOnlyReason } from "@stll/folio-core/managers/EditorModeManager";
@@ -536,11 +538,7 @@ export type DocxEditorRef = {
    * fallbacks (a declined selective patch among them) there instead of
    * through `onError`; `onSelectiveDecline` names why the patch declined.
    */
-  save: (options?: {
-    selective?: boolean;
-    onDiagnostic?: SaveDiagnosticOptions["onDiagnostic"];
-    onSelectiveDecline?: SaveDiagnosticOptions["onSelectiveDecline"];
-  }) => Promise<ArrayBuffer | null>;
+  save: (options?: FolioSaveOptions) => Promise<ArrayBuffer | null>;
   /** Set zoom level */
   setZoom: (zoom: number) => void;
   /** Get current zoom level */

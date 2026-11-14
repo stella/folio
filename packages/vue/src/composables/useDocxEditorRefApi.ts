@@ -54,7 +54,10 @@ import {
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import type { OpStory } from "@stll/folio-core/canonical/canonicalOperations";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type {
+  FolioEditor,
+  FolioSaveOptions,
+} from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
 import type {
@@ -246,7 +249,7 @@ export type UseDocxEditorRefApiOptions = {
   getHeaderFooterView: (rId: string) => EditorView | null;
   setZoom: (zoom: number) => void;
   /** Serialize and commit a host-facing save through useDocxEditor. */
-  saveDocument: (options?: { selective?: boolean }) => Promise<Blob | null>;
+  saveDocument: (options?: FolioSaveOptions) => Promise<Blob | null>;
   /**
    * Open the find/replace panel. Backs `openFind` and `openReplace`: the Vue
    * panel has a single open state, so both land here.
@@ -262,12 +265,12 @@ export type UseDocxEditorRefApiOptions = {
 type SaveDocumentForHostOptions = {
   clearCommentsDirty: () => void;
   onSave: ((buffer: ArrayBuffer) => void) | undefined;
-  saveDocument: (options?: { selective?: boolean }) => Promise<Blob | null>;
+  saveDocument: (options?: FolioSaveOptions) => Promise<Blob | null>;
 };
 
 export const saveDocumentForHost = async (
   host: SaveDocumentForHostOptions,
-  options?: { selective?: boolean },
+  options?: FolioSaveOptions,
 ): Promise<ArrayBuffer | null> => {
   const blob = await host.saveDocument(options);
   if (!blob) {
@@ -289,9 +292,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     window.print();
   }
 
-  function save(options?: {
-    selective?: boolean;
-  }): Promise<ArrayBuffer | null> {
+  function save(options?: FolioSaveOptions): Promise<ArrayBuffer | null> {
     return saveDocumentForHost(
       {
         clearCommentsDirty: opts.clearCommentsDirty,
