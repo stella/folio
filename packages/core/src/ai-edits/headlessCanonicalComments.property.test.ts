@@ -231,6 +231,7 @@ describe("a comment on words a tracked replacement removes", () => {
                 run(
                   [
                     {
+                      id: `comment-${quote}`,
                       type: "commentOnBlock",
                       blockId: block.id,
                       quote,
@@ -244,6 +245,7 @@ describe("a comment on words a tracked replacement removes", () => {
               run(
                 [
                   {
+                    id: "replace",
                     type: "replaceBlock",
                     blockId: block.id,
                     text: "Invoice delivery payment agreement supplier buyer payment term.",

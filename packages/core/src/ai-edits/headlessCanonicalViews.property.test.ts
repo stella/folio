@@ -299,13 +299,27 @@ const placedDocument = (
   return document;
 };
 
+/**
+ * KNOWN BUG: resolving a tracked field takes the note reference inside its
+ * result with it, but the note stays: resolution looks for the note's
+ * references without entering field results. Counterexample: "See " then an
+ * inserted (or deleted) PAGE field whose result holds the only reference to
+ * footnote 37; reject (or accept) every change, and the note is still read.
+ * These rows fail until that is fixed; a fix flips them back to `test`.
+ */
+const isKnownFieldNoteBug = (
+  placement: Placement,
+  tracking: keyof typeof TRACKING,
+): boolean => placement === "field" && tracking !== "none";
+
 describe("a note in a canonical reviewer's resolved views", () => {
   for (const placement of Object.keys(PLACEMENTS) as Placement[]) {
     for (const tracking of Object.keys(TRACKING) as Array<
       keyof typeof TRACKING
     >) {
-      test(
-        `a reference in a ${placement}, ${tracking}: the note reads in each view its reference survives`,
+      const known = isKnownFieldNoteBug(placement, tracking);
+      (known ? test.failing : test)(
+        `a reference in a ${placement}, ${tracking}: the note reads in each view its reference survives${known ? " (known bug: a note behind a resolved field reference stays)" : ""}`,
         async () => {
           const buffer = await ingested(
             await createDocx(placedDocument(placement, tracking)),

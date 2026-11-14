@@ -81,11 +81,9 @@ const reads = (reviewer: Reviewer) => ({
 
 const words = (text: string): string => text.replace(/\s+/gu, "");
 
-/** The paragraph ids a reader's text names, in reading order. */
-const blockIds = (text: string): string[] =>
-  [...text.matchAll(/\[([0-9A-F]{8})\]/gu)].flatMap(([, id]) =>
-    id === undefined ? [] : [id],
-  );
+/** The block ids a reader lists, in reading order. */
+const blockIds = (reviewer: Reviewer): string[] =>
+  reviewer.getContent().map(({ id }) => id);
 
 type SuggestionOutcome =
   | "suggested"
@@ -111,6 +109,7 @@ const suggestionLaws = async (
   });
   if (operation === null) return "noOperation";
   const before = reads(reviewer);
+  const idsBefore = blockIds(reviewer);
   const insertion =
     operation.type === "insertBeforeBlock" ||
     operation.type === "insertAfterBlock"
@@ -124,8 +123,8 @@ const suggestionLaws = async (
   const suggested = reads(reviewer);
   if (insertion !== null && besidePendingJoin) {
     // As it stands: the new paragraph is right beside the one it names.
-    const ids = blockIds(suggested.text);
-    const known = new Set(blockIds(before.text));
+    const ids = blockIds(reviewer);
+    const known = new Set(idsBefore);
     const at = ids.indexOf(insertion.blockId);
     expect(at).toBeGreaterThanOrEqual(0);
     const beside =
