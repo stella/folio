@@ -4126,7 +4126,9 @@ export class FolioDocxReviewer {
     repackPolicy: "allow" | "refuse",
   ): Promise<FolioReviewerSaveResult> {
     const snapshot = session.captureSaveSnapshot();
-    const saved = await serializeCanonicalSave({ snapshot });
+    const saved = await serializeCanonicalSave({
+      snapshot: { ...snapshot, changedBlockIds: [] },
+    });
     if (saved.path === "selective")
       return { type: "selective", buffer: saved.buffer };
     const reason =
