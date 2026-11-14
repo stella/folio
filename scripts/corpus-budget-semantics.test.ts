@@ -9,6 +9,9 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
+import { parseDocx } from "@stll/folio-core/docx/parser";
+
 import { INVARIANT_ORDER, runExtendedChecks } from "./lib/corpus-extended";
 import {
   EXTENDED_CORPUS_INVARIANTS,
@@ -92,5 +95,53 @@ describe("the two ways a worker stops answering are not the same finding", () =>
 
   test("a worker that exits without a verdict still gates", () => {
     expect(isGatingFamily(familyOf(CORPUS_INVARIANTS.completes))).toBe(true);
+  });
+});
+
+describe("an operation invariant that spends its budget stops between steps", () => {
+  test("it reports no verdict, never a pass, and the file's later invariants still run", async () => {
+    const buffer = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "First paragraph." },
+      { kind: "paragraph", text: "Final paragraph." },
+    ]);
+    const result = await runExtendedChecks({
+      bytes: new Uint8Array(buffer),
+      buffer,
+      parsed: await parseDocx(buffer, { preloadFonts: false }),
+      documentPart: "word/document.xml",
+      // Spent before the first sequence: each operation invariant stops there.
+      invariantBudgetMs: -1,
+      fileBudgetMs: Number.MAX_SAFE_INTEGER,
+      only: new Set([
+        EXTENDED_CORPUS_INVARIANTS.opInverse,
+        EXTENDED_CORPUS_INVARIANTS.opLocality,
+      ]),
+    });
+    const noVerdict = result.failures.filter(
+      (failure) =>
+        failure.message ===
+        "the invariant time budget stopped it before an operation invariant verdict",
+    );
+    expect(noVerdict.map((failure) => failure.invariant).sort()).toEqual(
+      [
+        EXTENDED_CORPUS_INVARIANTS.opInverse,
+        EXTENDED_CORPUS_INVARIANTS.opLocality,
+      ].sort(),
+    );
+    expect(
+      result.failures
+        .filter(
+          (failure) =>
+            failure.invariant === EXTENDED_CORPUS_INVARIANTS.performance,
+        )
+        .map((failure) => failure.message)
+        .sort(),
+    ).toEqual(
+      [
+        `${EXTENDED_CORPUS_INVARIANTS.opInverse} stopped at its per-file time budget after N of N sequences`,
+        `${EXTENDED_CORPUS_INVARIANTS.opLocality} stopped at its per-file time budget after N of N sequences`,
+      ].sort(),
+    );
+    expect(result.truncatedAt).toBeUndefined();
   });
 });
