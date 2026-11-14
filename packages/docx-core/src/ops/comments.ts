@@ -1194,10 +1194,9 @@ const restore = (
     anchors: op.state.anchors,
   });
   if (restoredAnchors.isErr()) return restoredAnchors;
-  const placed = restoreCommentBoundaries(
-    withoutCommentBoundaries(restoredAnchors.value, ids),
-    op.state.boundaries ?? [],
-  );
+  const cleared = withoutCommentBoundaries(restoredAnchors.value, ids);
+  const placed =
+    cleared && restoreCommentBoundaries(cleared, op.state.boundaries ?? []);
   if (placed === undefined)
     return fail(
       op,
@@ -1864,7 +1863,10 @@ export const applyCommentOp = (
       current = changed.value;
     }
   }
-  current = withoutCommentBoundaries(current, ids);
+  const unbounded = withoutCommentBoundaries(current, ids);
+  if (unbounded === undefined)
+    return fail(op, "The section view cannot follow the comment's removal.");
+  current = unbounded;
   return edited(
     document,
     withComments(

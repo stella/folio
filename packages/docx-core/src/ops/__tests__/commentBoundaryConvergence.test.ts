@@ -63,20 +63,24 @@ const PLACEMENTS = {
 } as const;
 
 const base = (placement: keyof typeof PLACEMENTS): Document => {
+  const content: BlockContent[] = [
+    paragraph(OPENING, [run("Opening words")]),
+    ...PLACEMENTS[placement](
+      paragraph(COMMENTED, [
+        run("Please remit funds."),
+        { type: "commentRangeEnd", id: 1 },
+        { type: "commentReference", id: 1 },
+      ]),
+    ),
+    paragraph(CLOSING, [run("Closing words")]),
+  ];
+  // The section view holds the body's own blocks, as the parser builds it.
   const document: Document = {
     package: {
       document: {
-        content: [
-          paragraph(OPENING, [run("Opening words")]),
-          ...PLACEMENTS[placement](
-            paragraph(COMMENTED, [
-              run("Please remit funds."),
-              { type: "commentRangeEnd", id: 1 },
-              { type: "commentReference", id: 1 },
-            ]),
-          ),
-          paragraph(CLOSING, [run("Closing words")]),
-        ],
+        content,
+        sections: [{ properties: { pageWidth: 12240 }, content }],
+        finalSectionProperties: { pageWidth: 12240 },
       },
     },
   };

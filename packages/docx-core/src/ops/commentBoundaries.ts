@@ -7,6 +7,7 @@ import type { BlockContent, Document } from "../model/document";
 import {
   blockListAt,
   type ParagraphLocation,
+  rebuildSections,
   sameBlockList,
   storyParagraphs,
   updateBlockList,
@@ -17,6 +18,37 @@ import { documentStories, findStoryBody, replaceStoryBody } from "./stories";
 import type { CommentBoundaryAnchor, OpStory } from "./types";
 
 type BlockList = ParagraphLocation["list"];
+
+/**
+ * The document with a story's blocks replaced, its section view rebuilt
+ * around them, or undefined when the view cannot be. A marker between
+ * blocks bounds no section, so its going or coming keeps every boundary.
+ */
+const withStoryContent = (
+  document: Document,
+  story: OpStory,
+  content: readonly BlockContent[],
+): Document | undefined => {
+  const body = findStoryBody(document, story);
+  if (body === undefined) return undefined;
+  if (body.sections === undefined)
+    return replaceStoryBody({
+      document,
+      story,
+      body: { ...body, content: [...content] },
+    });
+  const sections = rebuildSections({
+    document,
+    content,
+    previous: body.sections,
+  });
+  if (sections.isErr()) return undefined;
+  return replaceStoryBody({
+    document,
+    story,
+    body: { ...body, content: [...content], sections: sections.value },
+  });
+};
 type BoundaryNode = CommentBoundaryAnchor["node"];
 
 const isBoundary = (block: BlockContent): block is BoundaryNode =>
@@ -206,22 +238,22 @@ const removedFrom = (
   return changed ? kept : undefined;
 };
 
-/** The document without the markers between blocks of the comments `ids` owns. */
+/**
+ * The document without the markers between blocks of the comments `ids`
+ * owns, or undefined when a story's section view cannot follow.
+ */
 export const withoutCommentBoundaries = (
   document: Document,
   ids: ReadonlySet<number>,
-): Document => {
+): Document | undefined => {
   let current = document;
   for (const story of documentStories(document)) {
     const body = findStoryBody(current, story);
-    if (body === undefined) continue;
-    const content = removedFrom(body.content, ids);
+    const content = body && removedFrom(body.content, ids);
     if (content === undefined) continue;
-    current = replaceStoryBody({
-      document: current,
-      story,
-      body: { ...body, content },
-    });
+    const next = withStoryContent(current, story, content);
+    if (next === undefined) return undefined;
+    current = next;
   }
   return current;
 };
@@ -268,16 +300,15 @@ export const restoreCommentBoundaries = (
         ? neighbour - boundary.gap
         : neighbour + 1 + boundary.gap;
     if (at < 0 || at > blockListAt(body.content, list).length) return undefined;
-    current = replaceStoryBody({
-      document: current,
-      story: boundary.story,
-      body: {
-        ...body,
-        content: updateBlockList(body.content, list, (blocks) =>
-          blocks.toSpliced(at, 0, cloneModel(boundary.node)),
-        ),
-      },
-    });
+    const placed = withStoryContent(
+      current,
+      boundary.story,
+      updateBlockList(body.content, list, (blocks) =>
+        blocks.toSpliced(at, 0, cloneModel(boundary.node)),
+      ),
+    );
+    if (placed === undefined) return undefined;
+    current = placed;
   }
   return current;
 };
