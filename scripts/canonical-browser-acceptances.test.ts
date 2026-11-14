@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { shapeArrayBuffer } from "../packages/core/src/__tests__/documentShapes";
-import { createCanonicalSession } from "../packages/core/src/controller/canonicalSession";
+import { createCanonicalSession } from "../packages/core/src/canonical/canonicalSession";
 import { cloneDocumentWithParagraphPropertySources } from "../packages/core/src/docx/paragraphPropertySource";
 import { parseDocx } from "../packages/core/src/docx/parser";
 import { toProseDoc } from "../packages/core/src/prosemirror/conversion/toProseDoc";

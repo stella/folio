@@ -52,16 +52,18 @@ setDefaultTimeout(subprocessTestTimeout(14));
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
 // The changeset gate runs beside the plan: it has its own pull-request-only
-// condition and nothing to scope. Lint checks policy unless a push reuses CI.
+// condition and nothing to scope. Lint and the dependency audit check policy
+// unless a push reuses CI.
 const UNPLANNED_JOBS = new Set([
   PLAN_JOB,
   "changeset",
   "lint",
+  "dependency-audit",
   "warm-main-caches",
   "ci-result",
 ]);
 const AREA_OUTPUT =
-  /^\$\{\{ steps\.reuse\.outputs\.reused_run == '' && \(github\.event_name == 'merge_group' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| (?:steps\.api-plan\.outputs\.packaged_consumer_required == 'true' \|\| )?fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*)\) \}\}$/u;
+  /^\$\{\{ steps\.reuse\.outputs\.reused_run == '' && \(github\.event_name == 'merge_group' \|\| github\.event_name == 'workflow_dispatch' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| (?:steps\.api-plan\.outputs\.packaged_consumer_required == 'true' \|\| )?fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*)\) \}\}$/u;
 const GATE =
   /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
 const PR_SCOPED_JOBS = new Set(["browser-discovery"]);
@@ -364,6 +366,26 @@ describe("CI plan", () => {
       { name: "Static source guards", run: "bun run test:source-guards" },
     ]);
     expect(jobs["lint"]?.if).toBe("needs.ci-plan.outputs.reused_run == ''");
+  });
+
+  // An advisory published overnight fails the audit with no change here; in its
+  // own job it fails the run without hiding the lint and source guards.
+  test("the dependency audit runs beside lint, never inside it", () => {
+    const runs = (id: string) => {
+      const steps = jobs[id]?.steps;
+      if (!Array.isArray(steps)) throw new TypeError(`Missing ${id} steps`);
+      return steps.flatMap((step) =>
+        isRecord(step) && typeof step["run"] === "string" ? [step["run"]] : [],
+      );
+    };
+    expect(runs("lint")).not.toContain("bun run audit");
+    expect(runs("dependency-audit")).toEqual([
+      "bun install --frozen-lockfile",
+      "bun run audit",
+    ]);
+    expect(jobs["dependency-audit"]?.if).toBe(jobs["lint"]?.if);
+    expect(jobs["dependency-audit"]?.needs).toBe(PLAN_JOB);
+    expect(jobs["ci-result"]?.needs).toContain("dependency-audit");
   });
 
   test("discovery includes new nested test files under every command root", () => {
@@ -740,12 +762,12 @@ describe("CI plan", () => {
   });
 
   // Path planning stays scoped; a shared toolchain change promotes the whole suite.
-  test("merge groups and shared toolchain changes select full depth", () => {
+  test("merge groups, hand-started runs and shared toolchain changes select full depth", () => {
     expect(planOutputs["toolchain_changed"]).toBe(
       "${{ steps.toolchain.outputs.changed }}",
     );
     expect(planOutputs["suite_depth"]).toBe(
-      "${{ (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true') && 'full' || 'fast' }}",
+      "${{ (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true') && 'full' || 'fast' }}",
     );
     expect(fullDepth).toBe("scoped");
   });
@@ -1283,7 +1305,7 @@ describe("CI plan", () => {
 
   test("published API preflight is selected before queue entry and evaluated by CI result", () => {
     expect(planOutputs["api_required"]).toBe(
-      "${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true') }}",
+      "${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true') }}",
     );
     expect(jobs["build-api"]?.if).toBe(
       "needs.ci-plan.outputs.api_required == 'true'",
@@ -1431,6 +1453,7 @@ describe("CI plan", () => {
       expect(condition.endsWith(areaGate)).toBe(true);
     }
     expect(scopes["lint"]).toEqual({ reuse: "forbidden" });
+    expect(scopes["dependency-audit"]).toEqual({ reuse: "forbidden" });
     expect(scopes["docs-format"]).toEqual({
       area: "code_required",
       value: "false",

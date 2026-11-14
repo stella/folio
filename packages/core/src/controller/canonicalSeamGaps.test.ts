@@ -16,13 +16,13 @@ import {
 
 import { DOCUMENT_SHAPES } from "../__tests__/documentShapes";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
-import { parseDocx } from "../docx/parser";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document } from "../types/document";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { parseDocx } from "../docx/parser";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document } from "../types/document";
 
 const SHAPES = ["comments", "invisible-markers"] as const;
 

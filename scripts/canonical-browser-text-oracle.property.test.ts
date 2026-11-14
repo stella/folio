@@ -5,7 +5,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import {
   createCanonicalSession,
   publishCanonicalProjection,
-} from "../packages/core/src/controller/canonicalSession";
+} from "../packages/core/src/canonical/canonicalSession";
 import { schema } from "../packages/core/src/prosemirror/schema";
 import { createEmptyDocument } from "../packages/core/src/utils/createDocument";
 import { assertProperty, propertyTestTimeout } from "../test/property-testing";

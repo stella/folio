@@ -10,6 +10,10 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { repackWithCanonicalStoryRemovals } from "../docx/canonicalStoryRepack";
 import { readDocumentSectionFacts } from "../docx/documentSectionFacts";
 import { parseDocx } from "../docx/parser";
@@ -17,10 +21,6 @@ import { createDocx, repackDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(10_000));
 

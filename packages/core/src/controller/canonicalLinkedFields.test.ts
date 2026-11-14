@@ -5,16 +5,16 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import {
+  type CanonicalCommit,
+  type CanonicalSession,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createEmptyDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
-import {
-  type CanonicalCommit,
-  type CanonicalSession,
-  createCanonicalSession,
-} from "./canonicalSession";
 
 const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';

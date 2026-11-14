@@ -13,6 +13,11 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { projectCanonicalInline } from "../canonical/canonicalInlineProjection";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import {
   collectPairedBookmarkIds,
   toProseDoc,
@@ -27,11 +32,6 @@ import type {
   ParagraphContent,
   Run,
 } from "../types/document";
-import { projectCanonicalInline } from "./canonicalInlineProjection";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 

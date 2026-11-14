@@ -184,7 +184,7 @@ const CONFORMANCE_PRODUCTION_IMPORTS = new Map<string, readonly string[]>([
     ["createHiddenEditorManager", "CanonicalSessionRefusalError"],
   ],
   [
-    "packages/core/src/controller/canonicalSession",
+    "packages/core/src/canonical/canonicalSession",
     ["createCanonicalSession", "publishCanonicalProjection"],
   ],
   [
@@ -332,13 +332,13 @@ test("the expectation import guard catches predicates in new and mixed modules",
     ).toHaveLength(1);
   expect(
     expectationImportProblems(
-      'import { createCanonicalSession, isEligible as allowed } from "../packages/core/src/controller/canonicalSession";',
+      'import { createCanonicalSession, isEligible as allowed } from "../packages/core/src/canonical/canonicalSession";',
       owner,
     ),
   ).toHaveLength(1);
   expect(
     expectationImportProblems(
-      'import * as decisions from "../packages/core/src/controller/canonicalSession";',
+      'import * as decisions from "../packages/core/src/canonical/canonicalSession";',
       owner,
     ),
   ).toHaveLength(1);
@@ -350,13 +350,13 @@ test("the expectation import guard catches predicates in new and mixed modules",
   ).toHaveLength(1);
   expect(
     expectationImportProblems(
-      'import { createCanonicalSession } from "../packages/core/src/controller/canonicalSession";',
+      'import { createCanonicalSession } from "../packages/core/src/canonical/canonicalSession";',
       owner,
     ),
   ).toEqual([]);
   expect(
     expectationImportProblems(
-      'import type { CanonicalSession } from "../packages/core/src/controller/canonicalSession";',
+      'import type { CanonicalSession } from "../packages/core/src/canonical/canonicalSession";',
       owner,
     ),
   ).toEqual([]);

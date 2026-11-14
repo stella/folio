@@ -5,10 +5,10 @@ import { CellSelection } from "prosemirror-tables";
 import { EditorView } from "prosemirror-view";
 
 import { acquireHarnessDom } from "../../../../test/harnessDom";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { schema } from "../prosemirror/schema";
 import type { Document, TableCell } from "../types/document";
 import { createCanonicalInputBoundary } from "./canonicalInput";
-import { createCanonicalSession } from "./canonicalSession";
 
 let releaseDom: ReturnType<typeof acquireHarnessDom>;
 beforeAll(() => {

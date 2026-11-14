@@ -20,6 +20,13 @@ import {
 } from "../../../../test/property-testing";
 import { storyRevisionIds } from "../../../../test/reviewProjection";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { normalizeCanonicalListRendering } from "../canonical/canonicalListRendering";
+import {
+  type CanonicalSession,
+  CanonicalSessionError,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { mintListInstance } from "../docx/listNumberingInstances";
@@ -40,13 +47,6 @@ import type { Paragraph } from "../types/document";
 import { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
 import { createEmptyDocument } from "../utils/createDocument";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
-import { normalizeCanonicalListRendering } from "./canonicalListRendering";
-import {
-  type CanonicalSession,
-  CanonicalSessionError,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 test(
   "generated LISTNUM level edits preserve child counters, history and save/reopen",

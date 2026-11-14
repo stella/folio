@@ -16,6 +16,13 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { projectCanonicalInline } from "../canonical/canonicalInlineProjection";
+import {
+  type CanonicalCommit,
+  type CanonicalSession,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import {
   assignDocumentParagraphPropertySourceContract,
   assignParagraphPropertySource,
@@ -36,13 +43,6 @@ import {
   TAB_LEADER_VALUES,
   TAB_STOP_ALIGNMENT_VALUES,
 } from "../types/documentEnumValues";
-import { projectCanonicalInline } from "./canonicalInlineProjection";
-import {
-  type CanonicalCommit,
-  type CanonicalSession,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 import {
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,

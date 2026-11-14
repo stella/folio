@@ -180,17 +180,20 @@ const rawTimerReferences = (source: string) => {
 };
 
 test("canonical controller timers use the tagged owner helper", () => {
-  const controllerDir = resolve(rootDir, "packages/core/src/controller");
-  const files = [
-    ...new Bun.Glob("canonical*.ts").scanSync({ cwd: controllerDir }),
-  ].filter(
-    (file) => !file.endsWith(".test.ts") && file !== "canonicalInputTimer.ts",
-  );
+  // The session core lives below the controller; its timers are the same owner's.
+  const files = ["packages/core/src/controller", "packages/core/src/canonical"]
+    .map((directory) => resolve(rootDir, directory))
+    .flatMap((directory) =>
+      [...new Bun.Glob("canonical*.ts").scanSync({ cwd: directory })]
+        .filter(
+          (file) =>
+            !file.endsWith(".test.ts") && file !== "canonicalInputTimer.ts",
+        )
+        .map((file) => resolve(directory, file)),
+    );
   expect(files.length).toBeGreaterThan(0);
   for (const file of files)
-    expect(
-      rawTimerReferences(readFileSync(resolve(controllerDir, file), "utf8")),
-    ).toBe(0);
+    expect(rawTimerReferences(readFileSync(file, "utf8"))).toBe(0);
   for (const schedule of [
     "setTimeout(callback, 25)",
     "window.setTimeout(callback, 25)",

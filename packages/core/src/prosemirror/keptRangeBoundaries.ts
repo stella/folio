@@ -18,6 +18,7 @@ import {
   type BoundaryOccurrence,
   paragraphRemains,
   planWellFormedRanges,
+  recordsCopyOrigin,
 } from "@stll/docx-core/ops";
 
 import type { CommentReference, ParagraphContent } from "../types/document";
@@ -179,6 +180,7 @@ const occurrenceOf = (
     kept,
     copied:
       "copyOriginAncestors" in item && item.copyOriginAncestors !== undefined,
+    copiesMarked: recordsCopyOrigin(item),
     ...(kept && keptFrom !== undefined ? { keptFrom } : {}),
   };
 };

@@ -17,6 +17,12 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  type CanonicalCommit,
+  type CanonicalSessionError,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { parseDocx } from "../docx/parser";
 import {
   type BatchMeta,
@@ -33,12 +39,6 @@ import {
   paragraphs,
   peerSeed,
 } from "./__tests__/canonicalPeerEdits";
-import {
-  type CanonicalCommit,
-  type CanonicalSessionError,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 

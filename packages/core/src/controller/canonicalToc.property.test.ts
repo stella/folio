@@ -9,16 +9,16 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document, Paragraph } from "../types/document";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
