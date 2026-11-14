@@ -2,13 +2,13 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 forEachAdapter(
   "smoke: applies bold through the bridge",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
     const applied = await page.evaluate(

@@ -29,7 +29,12 @@ import {
   leafSpans,
   partitionContent,
 } from "./leaves";
-import { contentWidth, isTrackedChild, paragraphLength } from "./offsets";
+import {
+  contentWidth,
+  isTrackedChild,
+  paragraphLength,
+  withChildren,
+} from "./offsets";
 import { selectedParagraphRuns } from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, type TextPosition } from "./types";
@@ -74,34 +79,6 @@ const refuse = (
  * tracked change are cut with it, and the halves after the first take fresh
  * ids; wrappers it cannot model (controls, opaque captures) are not cut.
  */
-const editable = (items: readonly ParagraphContent[]): boolean =>
-  items.every((item) => {
-    switch (item.type) {
-      case "run":
-        return true;
-      // The link goes inside the change, as the file nests it.
-      case "insertion":
-      case "deletion":
-      case "moveFrom":
-      case "moveTo":
-        return editable(item.content);
-      // Fields and zero-width markers stay where they are, between the linked runs.
-      case "simpleField":
-      case "complexField":
-      case "bookmarkStart":
-      case "bookmarkEnd":
-      case "commentRangeStart":
-      case "commentRangeEnd":
-      case "commentReference":
-      case "preservedInline":
-        return true;
-      case "hyperlink":
-        return editable(item.children);
-      default:
-        return false;
-    }
-  });
-
 /** Content rebuilt inside a tracked change, which admits every kind it held. */
 const trackedContent = (
   items: readonly ParagraphContent[],
@@ -157,6 +134,11 @@ const linkedChildren = (
       case "commentRangeEnd":
       case "commentReference":
       case "preservedInline":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+      case "mathEquation":
         children.push(item);
         break;
       case "insertion":
@@ -166,6 +148,16 @@ const linkedChildren = (
         children.push({
           ...item,
           content: trackedContent(linkedChildren(item.content, intent)),
+        });
+        break;
+      // A content control or wrapper stays whole; the link edit goes inside.
+      case "inlineSdt":
+        children.push(withChildren(item, linkedChildren(item.content, intent)));
+        break;
+      case "inlineWrapper":
+        children.push({
+          ...item,
+          content: linkedChildren(item.content, intent),
         });
         break;
       case "hyperlink":
@@ -178,10 +170,10 @@ const linkedChildren = (
           else children.push(child);
         }
         break;
-      default:
-        return panic(
-          "Validated hyperlink edit contains an unsupported inline node.",
-        );
+      default: {
+        const unhandled: never = item;
+        return unhandled;
+      }
     }
   }
   return children;
@@ -228,6 +220,22 @@ const wrapLinkedChildren = (
       });
       continue;
     }
+    // A content control or wrapper keeps its place; its own text is linked
+    // inside it.
+    if (child.type === "inlineSdt") {
+      result.push(
+        withChildren(child, wrapLinkedChildren(intent, child.content)),
+      );
+      continue;
+    }
+    if (child.type === "inlineWrapper") {
+      result.push({
+        ...child,
+        content: wrapLinkedChildren(intent, child.content),
+      });
+      continue;
+    }
+    // An equation, which a link cannot hold, stays between two pieces of it.
     result.push(child);
   }
   return result;
@@ -474,6 +482,18 @@ const compileTrackedLinkEdit = (
         segment.start,
         segment.end,
       ]);
+      // A copy would duplicate the content control or wrapper around it.
+      if (
+        leafSpans(asParagraphContent(slice)).some(({ ancestors }) =>
+          ancestors.some(
+            ({ type }) => type === "inlineSdt" || type === "inlineWrapper",
+          ),
+        )
+      )
+        return refuse(
+          "A link suggestion cannot copy text inside a content control or a direction or smart tag wrapper.",
+          DOCUMENT_OP_REFUSAL_REASONS.UNRECORDABLE_LINK_SUGGESTION,
+        );
       const own = withoutTrackedWrappers(asParagraphContent(slice));
       const children = linkedChildren(own, intent);
       const copy =
@@ -540,6 +560,118 @@ const compileTrackedLinkEdit = (
   });
 };
 
+/** A content control or a direction or smart tag wrapper. */
+type WholeContainer = Extract<
+  ParagraphContent,
+  { type: "inlineSdt" | "inlineWrapper" }
+>;
+
+const isWholeContainer = (item: ParagraphContent): item is WholeContainer =>
+  item.type === "inlineSdt" || item.type === "inlineWrapper";
+
+/**
+ * The index of the content control or wrapper the gap passes through, which
+ * cutting the content there splits in two; `undefined` when it passes
+ * through none.
+ */
+const cutContainer = (
+  items: readonly ParagraphContent[],
+  gap: Gap,
+): number | undefined => {
+  const [left = [], right = []] = partitionContent(items, [gap]);
+  if (left.length + right.length <= items.length) return undefined;
+  const index = left.length - 1;
+  const item = items[index];
+  return item !== undefined && isWholeContainer(item) ? index : undefined;
+};
+
+/** Two pieces of one container cut apart, or two that were never one. */
+const samePieces = (
+  left: ParagraphContent,
+  right: ParagraphContent,
+): boolean => {
+  if (left.type === "inlineSdt" && right.type === "inlineSdt")
+    return (
+      left.properties.id !== undefined &&
+      left.properties.id === right.properties.id
+    );
+  if (left.type === "inlineWrapper" && right.type === "inlineWrapper")
+    return structurallyEqual(
+      { ...left, content: [] },
+      { ...right, content: [] },
+    );
+  return false;
+};
+
+/** The pieces of one container cut apart, whole again. */
+const joinPieces = (
+  left: WholeContainer,
+  right: ParagraphContent,
+): ParagraphContent => {
+  if (left.type === "inlineSdt" && right.type === "inlineSdt")
+    return withChildren(left, joinContent(left.content, right.content));
+  if (left.type === "inlineWrapper" && right.type === "inlineWrapper")
+    return { ...left, content: joinContent(left.content, right.content) };
+  return panic("A cut container's pieces differ in kind.");
+};
+
+/** Content of two pieces, where a container nested in both is joined too. */
+const joinContent = (
+  left: readonly ParagraphContent[],
+  right: readonly ParagraphContent[],
+): ParagraphContent[] => {
+  const last = left.at(-1);
+  const first = right.at(0);
+  if (
+    last === undefined ||
+    first === undefined ||
+    !isWholeContainer(last) ||
+    !samePieces(last, first)
+  )
+    return [...left, ...right];
+  return [...left.slice(0, -1), joinPieces(last, first), ...right.slice(1)];
+};
+
+/**
+ * The edited paragraph content, where a content control or wrapper the
+ * range's ends cut stays one record, as it was: only its own content
+ * changes.
+ */
+const joinCutContainers = ({
+  before,
+  replacement,
+  after,
+  startCut,
+  endCut,
+}: {
+  before: readonly ParagraphContent[];
+  replacement: readonly ParagraphContent[];
+  after: readonly ParagraphContent[];
+  startCut: number | undefined;
+  endCut: number | undefined;
+}): ParagraphContent[] => {
+  let middle = [...replacement];
+  let head = [...before];
+  let tail = [...after];
+  if (startCut !== undefined) {
+    const left = head.at(-1);
+    const right = middle.at(0);
+    if (left === undefined || right === undefined || !isWholeContainer(left))
+      return panic("A cut container lost a piece.");
+    head = head.slice(0, -1);
+    middle = [joinPieces(left, right), ...middle.slice(1)];
+  }
+  if (endCut !== undefined) {
+    const left = middle.at(-1);
+    const right = tail.at(0);
+    if (left === undefined || right === undefined || !isWholeContainer(left))
+      return panic("A cut container lost a piece.");
+    tail = tail.slice(1);
+    middle = [...middle.slice(0, -1), joinPieces(left, right)];
+  }
+  return [...head, ...middle, ...tail];
+};
+
 /** Wrapper edits compile to exact-inverse content ops, never to a projection snapshot. */
 export const compileHyperlinkIntent = (
   document: Document,
@@ -567,10 +699,6 @@ export const compileHyperlinkIntent = (
   const locations = selected.value.flat();
   const pieces = [];
   for (const { paragraph } of locations) {
-    if (!editable(paragraph.content))
-      return refuse(
-        "Hyperlink edits cannot cut a content control or markup folio does not model.",
-      );
     const blockId = paragraph.paraId ?? "";
     const from =
       idKey(blockId) === idKey(intent.from.blockId)
@@ -613,6 +741,8 @@ export const compileHyperlinkIntent = (
       to,
       start,
       end,
+      startCut: cutContainer(paragraph.content, start),
+      endCut: cutContainer(paragraph.content, end),
       before: asParagraphContent(before),
       middle: asParagraphContent(middle),
       after: asParagraphContent(after),
@@ -707,7 +837,13 @@ export const compileHyperlinkIntent = (
     if (structurallyEqual(piece.middle, replacement)) continue;
     edited.push({
       paragraph: piece.paragraph,
-      content: piece.before.concat(replacement, piece.after),
+      content: joinCutContainers({
+        before: piece.before,
+        replacement,
+        after: piece.after,
+        startCut: piece.startCut,
+        endCut: piece.endCut,
+      }),
     });
   }
   const freshened = freshenedParagraphs(document, edited, mode);

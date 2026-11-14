@@ -35,18 +35,14 @@ export type FolioParityBridge = {
   getDocumentText: () => string;
   /** Text watermark content, or null when none/a non-text watermark is active. */
   getTextWatermark: () => string | null;
-  /** Insert text at the current selection. Returns false with no live view. */
-  insertText: (text: string) => boolean;
   /** Bold the first word of the document. Returns whether the mark applied. */
   boldFirstWord: () => boolean;
   /** Select the first word through the shared editor controller. */
   selectFirstWord: () => boolean;
   /** Count painted range-selection rectangles. */
   countSelectionRects: () => number;
-  /** Replace the live document with dropdown and date content controls. */
-  setupContentControls: () => boolean;
-  /** Dispatch a clipboard DOM event and return the matching host callback count. */
-  dispatchClipboardEvent: (kind: "copy" | "cut" | "paste") => number;
+  /** How many times the host's clipboard callback of this kind has fired. */
+  getClipboardCallbackCount: (kind: "copy" | "cut" | "paste") => number;
   /** Table properties at the live selection, or null outside a table. */
   getCurrentTableProperties: () => {
     width: number | null;
@@ -57,8 +53,8 @@ export type FolioParityBridge = {
   insertTable: (rows: number, cols: number) => boolean;
   /** Count `table` nodes in the live document (0 with no live view). */
   countTables: () => number;
-  /** Comment-mark the first word via the shared core schema. Returns success. */
-  commentFirstWord: () => boolean;
+  /** Comment the first block with text through the document-operation API. Returns success. */
+  commentFirstBlock: () => boolean;
   /** Count painted `[data-comment-id]` anchors in the pages (shared painter attr). */
   countCommentAnchors: () => number;
   /** Block count of the AI-edit snapshot over the live doc (0 with no live view). */
