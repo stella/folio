@@ -25,7 +25,12 @@ import {
   type ExclusivePart,
   type SequencedOpEffect,
 } from "./envelope";
-import { mapPoint, sameParagraph } from "./points";
+import {
+  insertionWidth,
+  isInlineInsertion,
+  mapPoint,
+  sameParagraph,
+} from "./points";
 
 export const isCommentOp = (op: DocumentOp): op is CommentOp => {
   switch (op.type) {
@@ -197,6 +202,42 @@ export const moveCommentAnchor = ({
             : point,
         ),
       );
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT: {
+      if (!isInlineInsertion(over)) return blockConflict(op, over);
+      if (
+        points.some(
+          (point) =>
+            sameParagraph(point, over.at) && point.offset === over.at.offset,
+        )
+      )
+        return unsupported(
+          op,
+          over,
+          "Insertion at a comment anchor's own offset needs explicit affinity.",
+        );
+      const width = insertionWidth(over);
+      return moved(
+        points.map((point) =>
+          sameParagraph(point, over.at) && point.offset > over.at.offset
+            ? { ...point, offset: point.offset + width }
+            : point,
+        ),
+      );
+    }
+    // Cutting or merging inline records moves no offset; at an anchor's own
+    // offset the markers' place among the cut records is not known.
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
+      return points.some(
+        (point) =>
+          sameParagraph(point, over.at) && point.offset === over.at.offset,
+      )
+        ? unsupported(
+            op,
+            over,
+            "Cutting records at a comment anchor's own offset needs explicit affinity.",
+          )
+        : Result.ok([op]);
     case DOCUMENT_OP_TYPES.DELETE_RANGE: {
       if (
         points.some(
@@ -273,7 +314,19 @@ export const passCommentAnchor = ({
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
       return Result.ok([op]);
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
+      if (
+        op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT &&
+        !isInlineInsertion(op)
+      )
+        return unsupported(
+          op,
+          over,
+          "This operation pair has no position transform.",
+        );
       if (atAnchor(op.at, over))
         return unsupported(
           op,
@@ -375,7 +428,8 @@ const commuting = (
   over: CommentOp,
 ): boolean => {
   if (mine === "record" || theirs === "record") return false;
-  if (mine === "thread" && theirs === "thread") return false;
+  // Replies only need their parent to stay; sibling replies take their
+  // places beside the parent's anchors by id.
   if (mine === "thread" || theirs === "thread") return true;
   if (mine !== theirs) return true;
   return (
@@ -415,9 +469,8 @@ const restorationCommutes = (other: CommentOp): boolean =>
 /**
  * Decide a pair of concurrent comment operations. Uses of one comment
  * commute when they edit different fields (content and resolution), when a
- * reply's parent is only edited or resolved, and when both set the same
- * resolution; any other use of one comment, two replies to one parent, a
- * restoration beside anything but a content edit, and a reply or resolution
+ * reply's parent is only edited, resolved or replied to again, and when both
+ * set the same resolution; any other use of one comment, a restoration beside anything but a content edit, and a reply or resolution
  * after a concurrent removal of a comment part relationship are refused
  * naming the part. A range or point anchor moves past a concurrent comment's
  * reference.

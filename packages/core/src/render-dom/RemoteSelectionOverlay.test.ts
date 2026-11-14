@@ -21,7 +21,7 @@ describe("resolveRemoteSelectionOverlayGeometry", () => {
     };
 
     const geometry = resolveRemoteSelectionOverlayGeometry(renderedDomContext, [
-      { anchor: 14, clientId: 7, color: "#123456", head: 5, name: "Ada" },
+      { anchor: 14, peer: "7", color: "#123456", head: 5, name: "Ada" },
     ]);
 
     expect(rangeCalls).toEqual([[5, 14]]);
@@ -32,7 +32,7 @@ describe("resolveRemoteSelectionOverlayGeometry", () => {
         rects: [{ x: 5, y: 4, width: 9, height: 12 }],
         selection: {
           anchor: 14,
-          clientId: 7,
+          peer: "7",
           color: "#123456",
           head: 5,
           name: "Ada",

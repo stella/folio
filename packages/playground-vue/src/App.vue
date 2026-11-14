@@ -40,18 +40,6 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
-import {
-  initProseMirrorDoc,
-  yCursorPlugin,
-  ySyncPlugin,
-  yUndoPlugin,
-} from "y-prosemirror";
-import {
-  applyAwarenessUpdate,
-  Awareness,
-  encodeAwarenessUpdate,
-} from "y-protocols/awareness";
-import * as Y from "yjs";
 
 import {
   createEmptyDocument,
@@ -67,6 +55,11 @@ import type {
 } from "@stll/folio-vue";
 
 import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
+import { buildCanonicalRoomBridge } from "../../../tests/parity/canonicalRoomBridge";
+import {
+  createCanonicalRoomDemo,
+  readCanonicalRoomSeed,
+} from "../../../tests/parity/canonicalRoomDemo";
 import { buildFindNotificationBridge } from "./findNotificationBridge";
 import type { FindNotificationBridge } from "./findNotificationBridge";
 import type { FolioParityBridge } from "./parityBridge";
@@ -87,18 +80,7 @@ declare global {
   var __folioParity: FolioParityBridge | undefined;
   var __folioScrollParity: ScrollParityBridge | undefined;
   var __folioVueFindNotifications: FindNotificationBridge | undefined;
-  // eslint-disable-next-line no-var
-  var __folioVueCollaboration:
-    | {
-        getSharedText: () => string;
-        showRemoteSelection: () => boolean;
-        wasSeeded: () => boolean;
-      }
-    | undefined;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
 
 const editorRef = ref<DocxEditorRef | null>(null);
 const scrollParityHost = buildScrollParityBridge(() => editorRef.value);
@@ -108,12 +90,15 @@ const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const findResultNotifications: (FindResult | null)[] = [];
 const query = new URLSearchParams(window.location.search);
+const collaborationEnabled = query.has("collaboration");
+// The collaboration demo runs a canonical room, which the canonical session joins.
 const experimentalSession =
-  query.get("session") === "canonical" ? "canonical" : undefined;
+  query.get("session") === "canonical" || collaborationEnabled
+    ? "canonical"
+    : undefined;
 const editorMode = ref<EditorMode>(
   query.get("mode") === "suggesting" ? "suggesting" : "editing",
 );
-const collaborationEnabled = query.has("collaboration");
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;
 const optionalEditorProps = {
@@ -122,34 +107,11 @@ const optionalEditorProps = {
     : ({ experimentalSession } as const)),
   ...(marginGuideColor === undefined ? {} : { marginGuideColor }),
 };
-const collaborationDocument = collaborationEnabled ? new Y.Doc() : null;
-const collaborationAwareness = collaborationDocument
-  ? new Awareness(collaborationDocument)
-  : null;
-let collaborationWasSeeded = false;
-const remoteCollaborationDocuments: Y.Doc[] = [];
-const remoteCollaborationAwareness: Awareness[] = [];
-const collaboration: DocxEditorCollaboration | undefined =
-  collaborationDocument && collaborationAwareness
-    ? {
-        awareness: collaborationAwareness,
-        onSeeded: () => {
-          collaborationWasSeeded = true;
-        },
-        plugins: [
-          ySyncPlugin(collaborationDocument.getXmlFragment("prosemirror")),
-          yCursorPlugin(collaborationAwareness),
-          yUndoPlugin(),
-        ],
-        shouldSeed: true,
-        yXmlFragment: collaborationDocument.getXmlFragment("prosemirror"),
-      }
-    : undefined;
-
-collaborationAwareness?.setLocalStateField("user", {
-  color: "#2563eb",
-  name: "Vue collaborator",
-});
+// `?collaboration=1`: a canonical room shared by this origin's tabs that
+// open the same URL hash and fixture, as in the React playground.
+const collaboration = shallowRef<DocxEditorCollaboration | undefined>(
+  undefined,
+);
 
 onMounted(() => {
   void loadFromQuery();
@@ -165,46 +127,6 @@ onMounted(() => {
     () => editorRef.value,
     (kind) => clipboardCallbackCounts[kind],
   );
-  if (collaboration) {
-    globalThis.__folioVueCollaboration = {
-      getSharedText: () => {
-        const view = editorRef.value?.getEditor()?.getView();
-        if (!view) {
-          return "";
-        }
-        return initProseMirrorDoc(collaboration.yXmlFragment, view.state.schema)
-          .doc.textContent;
-      },
-      showRemoteSelection: () => {
-        if (
-          !globalThis.__folioParity?.selectFirstWord() ||
-          !collaborationAwareness
-        ) {
-          return false;
-        }
-        const localState = collaborationAwareness.getLocalState();
-        if (!isRecord(localState) || !isRecord(localState["cursor"])) {
-          return false;
-        }
-
-        const remoteDocument = new Y.Doc();
-        const remoteAwareness = new Awareness(remoteDocument);
-        remoteAwareness.setLocalState({
-          cursor: localState["cursor"],
-          user: { color: "#dc2626", name: "Remote collaborator" },
-        });
-        applyAwarenessUpdate(
-          collaborationAwareness,
-          encodeAwarenessUpdate(remoteAwareness, [remoteAwareness.clientID]),
-          "parity-test",
-        );
-        remoteCollaborationDocuments.push(remoteDocument);
-        remoteCollaborationAwareness.push(remoteAwareness);
-        return true;
-      },
-      wasSeeded: () => collaborationWasSeeded,
-    };
-  }
 });
 
 onBeforeUnmount(() => {
@@ -213,20 +135,54 @@ onBeforeUnmount(() => {
   globalThis.__folioCanonical = undefined;
   globalThis.__folioParity = undefined;
   globalThis.__folioScrollParity = undefined;
-  globalThis.__folioVueCollaboration = undefined;
+  globalThis.__folioCanonicalRoom = undefined;
   globalThis.__folioVueFindNotifications = undefined;
-  collaborationAwareness?.destroy();
-  collaborationDocument?.destroy();
-  for (const awareness of remoteCollaborationAwareness) {
-    awareness.destroy();
-  }
-  for (const document of remoteCollaborationDocuments) {
-    document.destroy();
-  }
 });
+
+const roomName = (): string => {
+  const hash = window.location.hash.replace(/^#/u, "");
+  if (hash) return hash;
+  const room = `room-${crypto.randomUUID().slice(0, 8)}`;
+  window.history.replaceState(null, "", `${window.location.search}#${room}`);
+  return room;
+};
+
+async function openRoom(fixtureFile: string): Promise<void> {
+  status.value = "Opening the room...";
+  const bytes = await readCanonicalRoomSeed(fixtureFile);
+  if (bytes === undefined) {
+    status.value = `Fixture not found: ${fixtureFile}`;
+    return;
+  }
+  const demo = await createCanonicalRoomDemo({
+    room: roomName(),
+    bytes,
+    user: { name: "Vue collaborator", color: "#2563eb" },
+  });
+  globalThis.__folioCanonicalRoom = buildCanonicalRoomBridge(
+    () => editorRef.value?.getEditor() ?? null,
+    demo.status,
+  );
+  // The room and the bytes arrive together, so the first session joins it.
+  collaboration.value = demo.collaboration;
+  documentBuffer.value = bytes;
+  const showNotice = () => {
+    status.value = demo.getState().notice ?? "";
+  };
+  demo.subscribe(showNotice);
+  showNotice();
+}
 
 async function loadFromQuery(): Promise<void> {
   const fixtureFile = new URLSearchParams(window.location.search).get("file");
+  if (collaborationEnabled) {
+    try {
+      await openRoom(fixtureFile ?? "sample.docx");
+    } catch (error) {
+      status.value = error instanceof Error ? error.message : String(error);
+    }
+    return;
+  }
   if (!fixtureFile) {
     currentDocument.value = createEmptyDocument({
       preset: createStellaStyleDocumentPreset(),

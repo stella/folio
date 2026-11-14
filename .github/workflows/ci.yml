@@ -19,7 +19,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # A hand-started run checks one fixed commit: no push and no other
+  # dispatch replaces or cancels it, so each dispatch has its own group.
+  group: ${{ github.event_name == 'workflow_dispatch' && format('ci-dispatch-{0}', github.run_id) || format('ci-{0}-{1}', github.workflow, github.ref) }}
   cancel-in-progress: true
 
 permissions:
@@ -296,6 +298,30 @@ jobs:
       - name: Format check
         run: bun fmt --check
 
+  # Advisories are published at any hour, so the audit's verdict changes
+  # without any change here. It runs as its own job so a new advisory fails
+  # the run without stopping the lint and source guards from reporting.
+  dependency-audit:
+    name: Dependency audit
+    needs: ci-plan
+    if: needs.ci-plan.outputs.reused_run == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+          install-cache: actions
+
+      - run: bun install --frozen-lockfile
+
+      - name: Dependency audit
+        run: bun run audit
+
   lint:
     name: Lint and source guards
     needs: ci-plan
@@ -354,9 +380,6 @@ jobs:
         # fails when a normalisation module neither names a warning code nor
         # states why it loses nothing.
         run: bun run check:normalization-warnings
-
-      - name: Dependency audit
-        run: bun run audit
 
       - name: Canonical session capability ledger
         run: bun run check:canonical-cutover
@@ -554,6 +577,8 @@ jobs:
           # A pull request builds its merge with the current base, and the
           # event's base SHA can trail that base, so compare with the merge's
           # first parent: growth already on the base is not this change's.
+          # A hand-started run names no base; the budget then compares with
+          # where HEAD left main.
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             API_BASE="$(git rev-parse HEAD^1)"
             export API_BASE
@@ -1192,6 +1217,7 @@ jobs:
       - changeset
       - docs-format
       - lint
+      - dependency-audit
       - typecheck
       - build-api
       - browser-discovery
@@ -1224,6 +1250,7 @@ jobs:
             "browser-discovery":{"event":"pull_request","area":"browser_discovery_required"},
             "docs-format":{"area":"code_required","value":"false","reuse":"forbidden"},
             "lint":{"reuse":"forbidden"},
+            "dependency-audit":{"reuse":"forbidden"},
             "warm-main-caches":{"event":"push","reuse":"required","warm":"required"},
             "typecheck":{"area":"code_required"},
             "build-api":{"area":"api_required"},

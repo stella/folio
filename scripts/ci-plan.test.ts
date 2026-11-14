@@ -52,11 +52,13 @@ setDefaultTimeout(subprocessTestTimeout(14));
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
 // The changeset gate runs beside the plan: it has its own pull-request-only
-// condition and nothing to scope. Lint checks policy unless a push reuses CI.
+// condition and nothing to scope. Lint and the dependency audit check policy
+// unless a push reuses CI.
 const UNPLANNED_JOBS = new Set([
   PLAN_JOB,
   "changeset",
   "lint",
+  "dependency-audit",
   "warm-main-caches",
   "ci-result",
 ]);
@@ -364,6 +366,26 @@ describe("CI plan", () => {
       { name: "Static source guards", run: "bun run test:source-guards" },
     ]);
     expect(jobs["lint"]?.if).toBe("needs.ci-plan.outputs.reused_run == ''");
+  });
+
+  // An advisory published overnight fails the audit with no change here; in its
+  // own job it fails the run without hiding the lint and source guards.
+  test("the dependency audit runs beside lint, never inside it", () => {
+    const runs = (id: string) => {
+      const steps = jobs[id]?.steps;
+      if (!Array.isArray(steps)) throw new TypeError(`Missing ${id} steps`);
+      return steps.flatMap((step) =>
+        isRecord(step) && typeof step["run"] === "string" ? [step["run"]] : [],
+      );
+    };
+    expect(runs("lint")).not.toContain("bun run audit");
+    expect(runs("dependency-audit")).toEqual([
+      "bun install --frozen-lockfile",
+      "bun run audit",
+    ]);
+    expect(jobs["dependency-audit"]?.if).toBe(jobs["lint"]?.if);
+    expect(jobs["dependency-audit"]?.needs).toBe(PLAN_JOB);
+    expect(jobs["ci-result"]?.needs).toContain("dependency-audit");
   });
 
   test("discovery includes new nested test files under every command root", () => {
@@ -1431,6 +1453,7 @@ describe("CI plan", () => {
       expect(condition.endsWith(areaGate)).toBe(true);
     }
     expect(scopes["lint"]).toEqual({ reuse: "forbidden" });
+    expect(scopes["dependency-audit"]).toEqual({ reuse: "forbidden" });
     expect(scopes["docs-format"]).toEqual({
       area: "code_required",
       value: "false",
