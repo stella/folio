@@ -988,11 +988,7 @@ export const createHiddenEditorManager = (
       intents.length > 0 &&
       intents.every((intent) => intent.type === "selection")
     )
-      return command(
-        view.state,
-        (transaction) => view?.dispatch(transaction),
-        view,
-      );
+      return command(view.state, undefined, view);
     syncCanonicalMode();
     editorSession.session.breakUndoGroup();
     if (
