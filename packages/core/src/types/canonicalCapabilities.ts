@@ -456,10 +456,7 @@ export const DEFAULT_HEADLESS_REVIEWER_SESSION = "legacy";
 export const headlessReviewerUsesCanonicalSession = (
   session: HeadlessReviewerSession = DEFAULT_HEADLESS_REVIEWER_SESSION,
 ): boolean =>
-  usesCanonicalSession(
-    session === "canonical" ? session : undefined,
-    CANONICAL_GAP.publicHeadlessSession,
-  );
+  usesCanonicalSession(session, CANONICAL_GAP.publicHeadlessSession);
 
 export const canonicalRefusalMessage = (
   gap: CanonicalGap,
