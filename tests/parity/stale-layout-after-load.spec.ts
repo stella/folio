@@ -4,7 +4,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 // A keystroke schedules a layout pass; the host then loads another revision
@@ -109,7 +109,7 @@ for (const frames of [FRAMES.running, FRAMES.paused]) {
   forEachAdapter(
     `a keystroke's pass never paints over a loaded revision (frames ${frames})`,
     async (adapter, { page }) => {
-      await openEditor(page, adapter);
+      await openCanonicalEditor(page, adapter);
       await ensureLiveView(page);
 
       await typeThenReload(page, frames);
