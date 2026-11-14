@@ -54,6 +54,7 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { removeCommentMarkers } from "../docx/commentAnchorIndex";
 import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
@@ -315,12 +316,12 @@ export type FolioDocxReviewerOptions = {
    *
    * `"canonical"` loads the document into the canonical session the editors'
    * canonical mode runs. Every read comes from it, and the body's operations,
-   * their undo and the resolution of its changes run on it as the canonical
-   * editor runs them. Edits in headers, footers and notes, suggestions,
-   * comment replies and resolution, resolved views, comparison and save are
-   * not on the session yet: they throw a `CanonicalSessionError` whose ground
-   * is the `publicOps.headlessSession` gap, and never fall back to the legacy
-   * engine.
+   * their undo, the resolution of its changes and the save run on it as the
+   * canonical editor runs them. Edits in headers, footers and notes,
+   * suggestions, comment replies and resolution, resolved views and
+   * comparison are not on the session yet: they throw a
+   * `CanonicalSessionError` whose ground is the `publicOps.headlessSession`
+   * gap, and never fall back to the legacy engine.
    */
   session?: HeadlessReviewerSession;
 };
@@ -3687,13 +3688,39 @@ export class FolioDocxReviewer {
 
   /** Resolve ordinary revisions on a detached in-memory document. */
   toResolvedDocument(decision: "accept" | "reject"): Document {
-    this.requireLegacyEngine("resolve changes");
+    if (this.engine.type === "canonical")
+      return this.resolvedOnSessionCopy(this.engine.session, decision);
     const copy = new FolioDocxReviewer({
       baseDocument: this.toDocument(),
       originalBuffer: this.originalBuffer,
       state: this.state,
       author: this.author,
       engine: { type: "legacy" },
+    });
+    if (decision === "accept") copy.acceptAll();
+    else copy.rejectAll();
+    return copy.toDocument();
+  }
+
+  /**
+   * Resolve on a second session over the current document, as a reviewer
+   * reopened on it would, so this reviewer's session and journal are left as
+   * they are. What the session cannot resolve yet refuses as `acceptAll` and
+   * `rejectAll` do.
+   */
+  private resolvedOnSessionCopy(
+    session: CanonicalSession,
+    decision: "accept" | "reject",
+  ): Document {
+    const document = readModel(session.document);
+    const created = createCanonicalSession(document, document.package.styles);
+    if (created.isErr()) throw created.error;
+    const copy = new FolioDocxReviewer({
+      baseDocument: document,
+      originalBuffer: this.originalBuffer,
+      state: canonicalReviewerState(created.value),
+      author: this.author,
+      engine: { type: "canonical", session: created.value },
     });
     if (decision === "accept") copy.acceptAll();
     else copy.rejectAll();
@@ -4022,7 +4049,6 @@ export class FolioDocxReviewer {
    * structural edits — the same two-tier path the editor's save uses.
    */
   async toBuffer(): Promise<ArrayBuffer> {
-    this.requireLegacyEngine("save");
     const result = await this.save();
     if (result.type === "repackRefused") {
       return panic("A save that allows a full repack refused to repack", {
@@ -4040,7 +4066,8 @@ export class FolioDocxReviewer {
   async save({
     repack: repackPolicy = "allow",
   }: FolioReviewerSaveOptions = {}): Promise<FolioReviewerSaveResult> {
-    this.requireLegacyEngine("save");
+    if (this.engine.type === "canonical")
+      return this.saveOnSession(this.engine.session, repackPolicy);
     const save = this.captureSaveSnapshot();
     const selective =
       save.path.type === "selective-first"
@@ -4086,6 +4113,29 @@ export class FolioDocxReviewer {
       save.resolvedStoryExpectations,
     );
     return { type: "full-repack", reason, buffer };
+  }
+
+  /**
+   * The editor's canonical save of the session's committed snapshot: the
+   * selective patch of the loaded package when it applies, a repack
+   * otherwise. Pending suggestions are written as rejected, as the editor
+   * writes them.
+   */
+  private async saveOnSession(
+    session: CanonicalSession,
+    repackPolicy: "allow" | "refuse",
+  ): Promise<FolioReviewerSaveResult> {
+    const snapshot = session.captureSaveSnapshot();
+    const saved = await serializeCanonicalSave({ snapshot });
+    if (saved.path === "selective")
+      return { type: "selective", buffer: saved.buffer };
+    const reason =
+      snapshot.structure === "changed"
+        ? "structuralChange"
+        : "selectiveDeclined";
+    return repackPolicy === "refuse"
+      ? { type: "repackRefused", reason }
+      : { type: "full-repack", reason, buffer: saved.buffer };
   }
 
   private async assertResolvedStoriesSerialized(
