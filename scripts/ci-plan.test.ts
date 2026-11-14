@@ -61,7 +61,7 @@ const UNPLANNED_JOBS = new Set([
   "ci-result",
 ]);
 const AREA_OUTPUT =
-  /^\$\{\{ steps\.reuse\.outputs\.reused_run == '' && \(github\.event_name == 'merge_group' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| (?:steps\.api-plan\.outputs\.packaged_consumer_required == 'true' \|\| )?fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*)\) \}\}$/u;
+  /^\$\{\{ steps\.reuse\.outputs\.reused_run == '' && \(github\.event_name == 'merge_group' \|\| github\.event_name == 'workflow_dispatch' \|\| steps\.toolchain\.outputs\.changed == 'true' \|\| (?:steps\.api-plan\.outputs\.packaged_consumer_required == 'true' \|\| )?fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*)\) \}\}$/u;
 const GATE =
   /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
 const PR_SCOPED_JOBS = new Set(["browser-discovery"]);
@@ -740,12 +740,12 @@ describe("CI plan", () => {
   });
 
   // Path planning stays scoped; a shared toolchain change promotes the whole suite.
-  test("merge groups and shared toolchain changes select full depth", () => {
+  test("merge groups, hand-started runs and shared toolchain changes select full depth", () => {
     expect(planOutputs["toolchain_changed"]).toBe(
       "${{ steps.toolchain.outputs.changed }}",
     );
     expect(planOutputs["suite_depth"]).toBe(
-      "${{ (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true') && 'full' || 'fast' }}",
+      "${{ (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true') && 'full' || 'fast' }}",
     );
     expect(fullDepth).toBe("scoped");
   });
@@ -1283,7 +1283,7 @@ describe("CI plan", () => {
 
   test("published API preflight is selected before queue entry and evaluated by CI result", () => {
     expect(planOutputs["api_required"]).toBe(
-      "${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true') }}",
+      "${{ steps.reuse.outputs.reused_run == '' && (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || steps.toolchain.outputs.changed == 'true' || steps.api-plan.outputs.api_required == 'true') }}",
     );
     expect(jobs["build-api"]?.if).toBe(
       "needs.ci-plan.outputs.api_required == 'true'",
