@@ -200,8 +200,8 @@ describe("findings in property files the change owns", () => {
   });
 
   test("a test belongs to the deepest source whose module prefixes it", () => {
-    const at = (test: string) =>
-      findingSourceFile({ source: "src/lib.rs", test }, sources);
+    const at = (name: string) =>
+      findingSourceFile({ source: "src/lib.rs", test: name }, sources);
     expect(at("semantic::runs::tests::split")).toBe("src/semantic/runs/mod.rs");
     expect(at("semantic::tests::prefixes")).toBe("src/semantic.rs");
     expect(at("tests::root")).toBe("src/lib.rs");

@@ -50,10 +50,6 @@ import { builtinModules } from "node:module";
 import path from "node:path";
 import type { CallExpression } from "oxc-parser";
 
-import {
-  PROPERTY_SEEDS_FILE,
-  testFileForSeedFile,
-} from "../test/seed-registry";
 import { subprocessBudgetBaseMs } from "../test/subprocess";
 import {
   assignTestShards,
