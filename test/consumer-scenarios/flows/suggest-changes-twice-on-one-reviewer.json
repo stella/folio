@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "title": "Two suggest_changes requests on one reviewer each apply their operation",
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 20261114,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1,
+      "expectedApplied": 1,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "483CD5EB",
+          "properties": { "alignment": "center" }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2,
+      "expectedApplied": 1,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "412DDC7F",
+          "properties": { "alignment": "right" }
+        }
+      ]
+    }
+  ]
+}

@@ -116,9 +116,9 @@ export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> =
 export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   Record<string, readonly number[]>
 > = {
-  // These recorded operations are refused; the final numbering edit is the
+  // This recorded request is refused; the final numbering edit is the
   // reader disagreement this flow guards.
-  "1770-tracked-list-reader-agreement.json": [1, 2, 5],
+  "1770-tracked-list-reader-agreement.json": [1],
   // The recorded reply step finds no unresolved comment; the later list edits
   // and rejection are the behavior this flow guards.
   "issue-1770-list-review-sequence.json": [4],
@@ -134,10 +134,10 @@ export const VACUOUS_CHECKED_IN_FLOWS: Readonly<
   "tracked-final-retirement-spacing.json": [0],
   // These three recorded accept-one steps have no pending suggestion to accept.
   "long-saved-xml-unicode-split.json": [1, 11, 18],
-  // Recorded from the fuzzer: after the first batch is resolved, its range
-  // replacement, single accept and comment reply find nothing to act on; the
-  // table batch at the end is what the flow guards.
-  "suggested-table-row-beside-replaced-paragraph.json": [4, 6, 7],
+  // Recorded from the fuzzer: after the first batch is resolved, the single
+  // accept and comment reply find nothing to act on; the table batch at the
+  // end is what the flow guards.
+  "suggested-table-row-beside-replaced-paragraph.json": [6, 7],
 };
 
 /**
