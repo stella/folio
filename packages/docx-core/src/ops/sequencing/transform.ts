@@ -153,6 +153,51 @@ type PairOptions = {
   effect: SequencedOpEffect | undefined;
   order: "before" | "after";
 };
+/**
+ * A direct deletion over a concurrent direct format lying inside it, which
+ * cut one run of the paragraph reaching past both ends of the deletion
+ * (`cutRun`): in the other order that run was never cut, and the deletion
+ * leaves one run there. So the deletion joins the run's two pieces again
+ * with a seam join at its point. Undefined for every other pair.
+ */
+const rejoinedOverFormat = ({
+  op,
+  over,
+  effect,
+}: Pick<PairOptions, "op" | "over" | "effect">):
+  Result<readonly DocumentOp[], BatchRejection> | undefined => {
+  if (
+    op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE ||
+    op.revision !== undefined ||
+    op.expected !== undefined ||
+    op.join !== undefined ||
+    over.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS ||
+    effect?.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS ||
+    effect.cutRun === undefined ||
+    !sameParagraph(op.from, op.to) ||
+    !sameParagraph(op.from, over.from) ||
+    !sameParagraph(over.from, over.to)
+  )
+    return undefined;
+  const run = effect.cutRun;
+  if (
+    over.from.offset < op.from.offset ||
+    op.to.offset < over.to.offset ||
+    run.from >= op.from.offset ||
+    op.to.offset >= run.to
+  )
+    return undefined;
+  return Result.ok([
+    op,
+    {
+      type: DOCUMENT_OP_TYPES.JOIN_INLINE,
+      at: op.from,
+      depth: 2,
+      ifAlike: true,
+    },
+  ]);
+};
+
 const transformRestoredOp = ({
   op,
   over,
@@ -192,6 +237,9 @@ const transformRestoredOp = ({
   // Tracked changes whose recorded cuts depend on the order.
   const tracked = trackedCutConflict(op, over);
   if (tracked !== undefined) return tracked;
+  // A direct deletion over a direct format inside it.
+  const rejoined = rejoinedOverFormat({ op, over, effect });
+  if (rejoined !== undefined) return rejoined;
   // Inline insertions, and inline record splits and joins.
   const inline = transformInlinePair({ op, over, effect, order });
   if (inline !== undefined) return inline;

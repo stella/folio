@@ -409,7 +409,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 10;
+export const DOCUMENT_OP_SCHEMA_VERSION = 11;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -1239,15 +1239,6 @@ export type RevisionStamp = {
 
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
-
-// @public
-export type RunSeam = {
-    at: Gap;
-    depth: number;
-};
-
-// @public
-export const runSeams: (paragraph: Paragraph) => RunSeam[];
 
 // @public
 export function runsMergeable(a: MergeDecidedRun, b: MergeDecidedRun): boolean;

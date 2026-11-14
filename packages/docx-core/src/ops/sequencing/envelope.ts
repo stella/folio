@@ -101,6 +101,16 @@ export type SequencedOpEffect =
       cutIdentified: boolean;
     }
   | {
+      type: "setRunProps";
+      /**
+       * Where the run a direct format lay inside, and cut, began and ended
+       * before the format, when it was a paragraph's own run: its pieces
+       * are one run again where a concurrent deletion removes the formatted
+       * part with something on both sides of it.
+       */
+      cutRun?: { from: number; to: number };
+    }
+  | {
       type: "touchedBlocks";
       /** Paragraphs the operation changed, inserted or removed. */
       blockIds: readonly string[];
@@ -253,7 +263,7 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
 > = Object.freeze({
   insertText: NO_SEQUENCED_EFFECT,
   deleteRange: NO_SEQUENCED_EFFECT,
-  setRunProps: NO_SEQUENCED_EFFECT,
+  setRunProps: "setRunProps",
   setParagraphProps: NO_SEQUENCED_EFFECT,
   insertBlocks: NO_SEQUENCED_EFFECT,
   splitBlock: "splitBlock",
@@ -870,6 +880,11 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
             return object({
               type: literal("insertContent"),
               cutIdentified: boolean,
+            })(effect);
+          case "setRunProps":
+            return object({
+              type: literal("setRunProps"),
+              cutRun: optional(object({ from: natural, to: natural })),
             })(effect);
           case "touchedBlocks":
             return object({

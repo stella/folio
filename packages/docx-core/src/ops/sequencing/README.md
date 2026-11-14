@@ -53,7 +53,12 @@ inline record splits and joins, direct deletions, run and paragraph
 formatting, paragraph splits and joins, anchored paragraph insertion and
 repeated revision decisions. Overlapping revision decisions with opposite
 outcomes reject. Text inherited at a paragraph's start takes the run after
-it, so a concurrent format from the start covers it in either order.
+it, so a concurrent format from the start covers it in either order. A
+direct format lying inside a concurrent direct deletion cut a run that the
+deletion, applied first, would have left whole: the sequenced format records
+that run (`cutRun` in its effect), and when the run reaches past both ends of
+the deletion, the deletion rebased over the format joins the run's pieces
+again with a seam join at its point.
 
 ## Inline insertions
 
@@ -100,16 +105,6 @@ away from it. A direct deletion reaching its offset refuses: it may remove
 whole records beside the seam, so other records meet there in one order than
 in the other. A split at its offset, a hard join there, a tracked
 change's edge there and a comment anchor there still refuse.
-
-A direct deletion joins the runs that meet at its point, and a direct format
-the runs that meet at its two edges, when they can merge (`runSeams`: alike
-runs carrying no ids, at the paragraph's top level and inside hyperlinks, as
-the parser consolidates them). A format lying inside a concurrent direct
-deletion then leaves the same runs in either order: cut and joined again in
-one, never cut in the other. Runs meeting anywhere else stay as they are,
-authored boundaries among them. The joins are part of the edit, so its
-inverse splits them again first; tracked edits and an inverse's own
-deletions and formats join nothing.
 
 A slice with open ends merges with the records at its point, and a slice
 holding zero-width leaves, comment references or paragraphs depends on

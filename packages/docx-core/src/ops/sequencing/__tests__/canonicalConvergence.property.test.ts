@@ -35,6 +35,7 @@ import {
   type TextPosition,
 } from "../../types";
 import { restoreDocumentOp } from "../../wire";
+import * as applyBatchModule from "../applyBatch";
 import { applyBatch } from "../applyBatch";
 import { createClient } from "../client";
 import * as commentTransform from "../commentTransform";
@@ -941,6 +942,29 @@ const undoAgainstRepeatedDecision: Scenario = [
   ],
 ];
 
+/**
+ * A direct format of 10..12 in the first paragraph's one run while another
+ * peer erases 9..12 directly: the format cut the run, and the erase rebased
+ * over it joins the run's pieces again, so both orders leave one run.
+ */
+const formatInsideErase: Scenario = [
+  3,
+  [
+    {
+      type: "edit",
+      peer: 0,
+      seed: { kind: "format", a: 10, b: 1, suggest: false, focus: true },
+    },
+    {
+      type: "edit",
+      peer: 1,
+      seed: { kind: "erase", a: 9, b: 2, suggest: false, focus: true },
+    },
+    { type: "submit", peer: 0 },
+    { type: "submit", peer: 1 },
+  ],
+];
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -951,9 +975,59 @@ const PINNED: readonly Scenario[] = [
   concurrentSuggestedErases,
   formatAcrossSuggestedErase,
   undoAgainstRepeatedDecision,
+  formatInsideErase,
 ];
 
 describe("canonical sequencing", () => {
+  test("a format inside a concurrent direct erase leaves one run in either order", () => {
+    const outcome = simulate(...formatInsideErase);
+    expect(outcome.rejected).toEqual([]);
+    expect(outcome.dropped).toEqual([]);
+    expect(outcome.diverged).toEqual([]);
+    expect(outcome.rebased).toBeGreaterThan(0);
+    expect(outcome.proven).toBe(outcome.rebased);
+    for (const document of outcome.documents)
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+  });
+
+  test(
+    "a format effect without its cut run is caught",
+    async () => {
+      // The test-only break: sequenced formats record no cut run, so the
+      // erase rebased over one leaves the run cut.
+      const original = { ...applyBatchModule };
+      mock.module("../applyBatch", () => ({
+        ...original,
+        applyBatch: (...args: Parameters<typeof original.applyBatch>) =>
+          original.applyBatch(...args).map((applied) =>
+            Object.assign({}, applied, {
+              effects: applied.effects.map((effect) =>
+                effect.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS
+                  ? { type: DOCUMENT_OP_TYPES.SET_RUN_PROPS }
+                  : effect,
+              ),
+            }),
+          ),
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: 1,
+            examples: [[formatInsideErase]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+        expect(String(result.errorInstance)).toMatch(/do not commute/u);
+      } finally {
+        mock.module("../applyBatch", () => original);
+      }
+    },
+    propertyTestTimeout(60_000),
+  );
+
   test(
     "concurrent canonical edits converge on the authority's bytes and commute where accepted",
     async () => {

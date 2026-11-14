@@ -4,12 +4,14 @@ import type { Document } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "../ids";
+import { runGaps } from "../leaves";
 import { paragraphLength } from "../offsets";
 import type { DocumentOpRefusal } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type InsertContentOp,
+  type SetRunPropsOp,
   SPLIT_HALVES,
 } from "../types";
 import {
@@ -58,6 +60,43 @@ const cutIdentified = (
   return paragraphIdentities(after, op).some((key) => !known.has(key));
 };
 
+/**
+ * Where the run a direct format lies inside, and cuts, begins and ends: a
+ * run of the paragraph's own, holding the whole range with more on at least
+ * one side. Undefined for a tracked format, one carrying an inverse's
+ * preconditions or joins, and one that cuts no such run.
+ */
+const cutRun = (
+  document: Document,
+  op: SetRunPropsOp,
+): { from: number; to: number } | undefined => {
+  if (
+    op.revision !== undefined ||
+    op.expected !== undefined ||
+    op.joinStart !== undefined ||
+    op.joinEnd !== undefined ||
+    idKey(op.from.blockId) !== idKey(op.to.blockId)
+  )
+    return undefined;
+  const paragraph = storyParagraphs(storyBody(document, op.from.story)).find(
+    ({ paragraph: candidate }) =>
+      candidate.paraId !== undefined &&
+      idKey(candidate.paraId) === idKey(op.from.blockId),
+  )?.paragraph;
+  if (paragraph === undefined) return undefined;
+  const own = new Set<unknown>(paragraph.content);
+  const run = runGaps(paragraph.content).find(
+    ({ node, before, after }) =>
+      own.has(node) &&
+      before.offset <= op.from.offset &&
+      op.to.offset <= after.offset &&
+      (before.offset < op.from.offset || op.to.offset < after.offset),
+  );
+  return run === undefined
+    ? undefined
+    : { from: run.before.offset, to: run.after.offset };
+};
+
 /** Capture position facts before each operation, including within an atomic batch. */
 export const applyBatch = (
   document: Document,
@@ -95,6 +134,13 @@ export const applyBatch = (
           firstLength: paragraphLength(paragraph),
         };
       }
+    }
+    if (op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
+      const cut = cutRun(current, op);
+      effect = {
+        type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+        ...(cut === undefined ? {} : { cutRun: cut }),
+      };
     }
     const applied = applyDocumentOps(current, [op]);
     if (applied.isErr()) {

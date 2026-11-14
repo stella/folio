@@ -172,7 +172,6 @@ import {
   wrapTracked,
 } from "./review";
 import { setRevisionInfo } from "./revisionInfo";
-import { runSeams } from "./runNormalForm";
 import { documentStories, findStoryBody, sameStory } from "./stories";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
 import { tableEditBoundaryRefusal } from "./tableEditBoundary";
@@ -3041,83 +3040,6 @@ const preserveParagraphPropertySnapshots = (options: {
 };
 
 /** Apply one operation to a document that meets the seed contract. */
-/**
- * The points where a direct edit leaves runs side by side: a direct
- * deletion's point, where the records before and after the removed range
- * meet, and a direct format's two edges, where it cut runs and may have made
- * them alike again. A tracked edit, an edit carrying an inverse's
- * preconditions or joins, and every other operation have none: their
- * structure is recorded or restored exactly.
- */
-const directEditPoints = (op: DocumentOp): readonly TextPosition[] => {
-  switch (op.type) {
-    case DOCUMENT_OP_TYPES.DELETE_RANGE:
-      return op.revision === undefined &&
-        op.expected === undefined &&
-        op.join === undefined
-        ? [op.from]
-        : [];
-    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
-      return op.revision === undefined &&
-        op.expected === undefined &&
-        op.joinStart === undefined &&
-        op.joinEnd === undefined
-        ? [op.from, op.to]
-        : [];
-    default:
-      return [];
-  }
-};
-
-/**
- * A direct edit's own seams in their run normal form (runNormalForm.ts): the
- * alike runs meeting at its points are joined as seam joins, whose inverses
- * split them again first, so undo restores the structure exactly. Runs that
- * meet anywhere else stay as they are, authored boundaries among them, so the
- * same text and formatting reached by a format and a deletion in either order
- * has one structure where the two meet, and nothing else moves.
- */
-const joinedAtDirectEdit = ({
-  op,
-  edit,
-  before,
-}: {
-  op: DocumentOp;
-  edit: DocumentEdit;
-  before: Document;
-}): Applied => {
-  const points = directEditPoints(op);
-  if (points.length === 0) return Result.ok(edit);
-  let document = edit.document;
-  const joins: DocumentEdit[] = [];
-  for (const point of points.toReversed()) {
-    const body = findStoryBody(document, point.story);
-    const paragraph = (body === undefined ? [] : storyParagraphs(body)).find(
-      ({ paragraph: candidate }) =>
-        candidate.paraId !== undefined &&
-        idKey(candidate.paraId) === idKey(point.blockId),
-    )?.paragraph;
-    if (paragraph?.paraId === undefined) continue;
-    for (const seam of runSeams(paragraph).toReversed()) {
-      if (seam.at.offset !== point.offset) continue;
-      const joined = joinInline(document, {
-        type: DOCUMENT_OP_TYPES.JOIN_INLINE,
-        at: { story: point.story, blockId: paragraph.paraId, ...seam.at },
-        depth: seam.depth,
-        ifAlike: true,
-      });
-      if (joined.isErr()) return Result.err(joined.error);
-      document = joined.value.document;
-      joins.push(joined.value);
-    }
-  }
-  return Result.ok(
-    joins.length === 0
-      ? edit
-      : { ...edit, ...combineEdits(before, [edit, ...joins]) },
-  );
-};
-
 export const applyDocumentOp = (
   document: Document,
   input: DocumentOp,
@@ -3171,11 +3093,11 @@ export const applyDocumentOp = (
   if (badStamp !== undefined) {
     return Result.err(badStamp);
   }
-  const dispatched = dispatch(document, op);
-  if (dispatched.isErr()) {
-    return Result.err(dispatched.error);
+  const applied = dispatch(document, op);
+  if (applied.isErr()) {
+    return Result.err(applied.error);
   }
-  const edit = dispatched.value;
+  const edit = applied.value;
   const beforeSections = document.package.document.sections;
   const afterSections = edit.document.package.document.sections;
   const structural =
@@ -3225,11 +3147,8 @@ export const applyDocumentOp = (
       }
     }
   }
-  const normal = joinedAtDirectEdit({ op, edit, before: document });
-  if (normal.isErr()) return Result.err(normal.error);
-  const normalized = normal.value;
   // Check all operation outputs before trusting them, including caller-supplied block/review records.
-  if (hasMultipleParagraphPropertyChanges(normalized.document)) {
+  if (hasMultipleParagraphPropertyChanges(edit.document)) {
     return Result.err(
       refusal(
         op,
@@ -3240,16 +3159,16 @@ export const applyDocumentOp = (
   }
   // The contract keeps paragraph ids unique: an edit that would repeat one,
   // however its operation came by it, is refused here, where it is owned.
-  const repeatedId = repeatedParagraphId(normalized.document);
+  const repeatedId = repeatedParagraphId(edit.document);
   if (repeatedId !== undefined)
     return Result.err(refusal(op, repeatedId.reason, repeatedId.message));
-  meetsContract(normalized.document);
-  preserveParagraphPropertySnapshots({ before: document, edit: normalized });
+  meetsContract(edit.document);
+  preserveParagraphPropertySnapshots({ before: document, edit });
   return Result.ok({
-    ...normalized,
-    inverse: normalized.inverse.map(captureDocumentOp),
+    ...edit,
+    inverse: edit.inverse.map(captureDocumentOp),
     revisions:
-      stamp === undefined ? [] : recordedRevisions(document, normalized, stamp),
+      stamp === undefined ? [] : recordedRevisions(document, edit, stamp),
   });
 };
 
