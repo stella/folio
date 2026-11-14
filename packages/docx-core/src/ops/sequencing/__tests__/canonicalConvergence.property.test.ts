@@ -58,6 +58,21 @@ import {
   editSeedArbitrary,
 } from "./canonicalEdits";
 
+// Injected break: no pair conflicts over a revision.
+const realScope = { ...scope };
+void mock.module("../scope", () => ({
+  ...realScope,
+  transformByFootprint: (
+    pair: Parameters<typeof realScope.transformByFootprint>[0],
+  ) => {
+    const result = realScope.transformByFootprint(pair);
+    return result?.isErr() &&
+      result.error.part === envelope.EXCLUSIVE_PARTS.REVISIONS
+      ? undefined
+      : result;
+  },
+}));
+
 const NUM_RUNS = 25;
 
 type Step =
