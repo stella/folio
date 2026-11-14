@@ -26,8 +26,13 @@ const isMac = process.platform === "darwin";
 const MOD = isMac ? "Meta" : "Control";
 
 /** Mount a fixture and force the (deferred) editor view to materialise. */
-async function mountFixture(page: Page, fixture: string): Promise<void> {
-  await page.goto(`/?file=${encodeURIComponent(fixture)}`);
+async function mountFixture(
+  page: Page,
+  fixture: string,
+  session?: "legacy" | "canonical",
+): Promise<void> {
+  const engine = session === undefined ? "" : `session=${session}&`;
+  await page.goto(`/?${engine}file=${encodeURIComponent(fixture)}`);
   await page.waitForSelector('[data-testid="folio-editor"]', {
     timeout: 15_000,
   });
@@ -388,37 +393,38 @@ test.describe("footer", () => {
 });
 
 test.describe("lists", () => {
-  test("the toolbar list buttons toggle bullet and numbered lists on the caret paragraph", async ({
-    page,
-  }) => {
-    await mountFixture(page, "sample.docx");
-    await page.locator(".layout-paragraph").first().click();
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: the toolbar list buttons toggle bullet and numbered lists on the caret paragraph`, async ({
+      page,
+    }) => {
+      await mountFixture(page, "sample.docx", session);
+      await page.locator(".layout-paragraph").first().click();
 
-    // Imported documents may assign any numbering id to a bullet definition.
-    await clickToolbarButton(page, "Bullet List");
-    await expect
-      .poll(() => caretParagraphListState(page))
-      .toMatchObject({
-        numPr: { kind: "reference" },
-        listIsBullet: true,
-      });
+      // Imported documents may assign any numbering id to a bullet definition.
+      await clickToolbarButton(page, "Bullet List");
+      await expect
+        .poll(() => caretParagraphListState(page))
+        .toMatchObject({
+          numPr: { kind: "reference" },
+          listIsBullet: true,
+        });
 
-    // Switching resolves a numbered definition instead of relying on a conventional id.
-    // A numbered level states no bullet flag, as an imported one does.
-    await clickToolbarButton(page, "Numbered List");
-    await expect
-      .poll(() => caretParagraphListState(page))
-      .toMatchObject({
-        numPr: { kind: "reference" },
-        listIsBullet: null,
-      });
+      // Switching resolves a numbered definition instead of relying on a conventional id.
+      // A numbered level states no bullet flag, as an imported one does.
+      await clickToolbarButton(page, "Numbered List");
+      await expect
+        .poll(() => caretParagraphListState(page))
+        .toMatchObject({
+          numPr: { kind: "reference" },
+          listIsBullet: null,
+        });
 
-    // Clicking the already-active numbered-list button clears list formatting.
-    await clickToolbarButton(page, "Numbered List");
-    await expect
-      .poll(() => caretParagraphListState(page))
-      .toMatchObject({ numPr: null });
-  });
+      // Clicking the already-active numbered-list button clears list formatting.
+      await clickToolbarButton(page, "Numbered List");
+      await expect
+        .poll(() => caretParagraphListState(page))
+        .toMatchObject({ numPr: null });
+    });
 
   test("Backspace continues into text after exiting a style-numbered paragraph", async ({
     page,
