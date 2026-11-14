@@ -16,6 +16,10 @@ setDefaultTimeout(propertyTestTimeout(30_000));
 
 const BOUNDARY_SIDES = rangeBoundaryDefinitions();
 
+/** Bookmark and move range boundaries record copies; comment boundaries do not. */
+const marksCopies = (type: keyof typeof BOUNDARY_SIDES): boolean =>
+  BOUNDARY_SIDES[type].family !== "comment";
+
 const marker = (
   type: keyof typeof BOUNDARY_SIDES,
   kept: boolean,
@@ -25,6 +29,7 @@ const marker = (
   side: BOUNDARY_SIDES[type].side,
   kept,
   copied: false,
+  copiesMarked: marksCopies(type),
 });
 
 test("standing duplicate ends remain ambiguous when a rejection keeps their start", () => {
@@ -52,21 +57,29 @@ test("a boundary kept beside a copy an added revision owns stays, and the copy o
       marker("bookmarkStart", true),
     ]),
   ).toEqual({ dropped: [], moved: [] });
-  // Of a kept copy and a kept original, the original stays.
+  // A kept copy stays beside a kept original: only rejecting its owner
+  // takes it away, and accepting its owner leaves it as inserting it would.
   expect(
     planWellFormedRanges([
       { ...marker("bookmarkStart", true), copied: true },
       marker("bookmarkStart", true),
     ]).dropped,
-  ).toEqual([0]);
-  // A standing original still holds the boundary.
+  ).toEqual([]);
+  // A kept original stays beside a standing one: it is no copy.
   expect(
     planWellFormedRanges([
       marker("bookmarkStart", false),
       copy("bookmarkStart"),
       marker("bookmarkStart", true),
     ]).dropped,
-  ).toEqual([2]);
+  ).toEqual([]);
+  // So does a kept copy beside a standing original.
+  expect(
+    planWellFormedRanges([
+      marker("bookmarkStart", false),
+      { ...marker("bookmarkStart", true), copied: true },
+    ]).dropped,
+  ).toEqual([]);
   // The kept start closes on the end, not on the copy before it.
   expect(
     planWellFormedRanges([
@@ -75,6 +88,23 @@ test("a boundary kept beside a copy an added revision owns stays, and the copy o
       marker("bookmarkStart", true),
     ]).moved,
   ).toEqual([{ moving: 2, anchor: 1, side: "before" }]);
+});
+
+test("a kept comment boundary the story holds otherwise goes, as comments record no copies", () => {
+  expect(
+    planWellFormedRanges([
+      marker("commentRangeStart", false),
+      marker("commentRangeStart", true),
+    ]).dropped,
+  ).toEqual([1]);
+  // Of several kept and nothing standing, the first stays.
+  expect(
+    planWellFormedRanges([
+      marker("commentRangeStart", true),
+      marker("commentRangeStart", true),
+      marker("commentRangeEnd", true),
+    ]).dropped,
+  ).toEqual([1]);
 });
 
 test("a unique reversed pair moves only the kept half", () => {
@@ -123,13 +153,17 @@ const occurrenceArbitrary = fc
     kept: fc.boolean(),
     copied: fc.boolean(),
   })
-  .map(({ definition: [type, { family, side }], id, kept, copied }) => ({
-    boundary: `${type}:${id}`,
-    range: `${family}:${id}`,
-    side,
-    kept,
-    copied,
-  }));
+  .map(({ definition: [type, { family, side }], id, kept, copied }) => {
+    const copiesMarked = family !== "comment";
+    return {
+      boundary: `${type}:${id}`,
+      range: `${family}:${id}`,
+      side,
+      kept,
+      copied: copiesMarked && copied,
+      copiesMarked,
+    };
+  });
 
 test("normalization preserves standing occurrences, retained quotas, and reaches a fixed point", () => {
   assertProperty(
@@ -147,17 +181,20 @@ test("normalization preserves standing occurrences, retained quotas, and reaches
             (item) => item.boundary === boundary,
           );
           const standing = source.filter(({ kept }) => !kept);
-          const held = standing.some(({ copied }) => !copied);
+          const keptSource = source.filter(({ kept }) => kept);
           const kept = normalized.filter(
             (item) => item.boundary === boundary && item.kept,
           );
-          // A copy an added revision owns holds nothing: one kept boundary
-          // stays beside it, and one that is no copy when there is one.
+          // A boundary that records copies stays whatever else the story
+          // holds. A kept comment boundary goes where one stands, and of
+          // several kept and nothing standing, one stays.
+          const commentKept =
+            standing.length > 0 || keptSource.length === 0 ? 0 : 1;
           expect(kept.length).toBe(
-            held || standing.length === source.length ? 0 : 1,
+            source.some(({ copiesMarked }) => copiesMarked)
+              ? keptSource.length
+              : commentKept,
           );
-          if (source.some((item) => item.kept && !item.copied))
-            expect(kept.every(({ copied }) => !copied)).toBe(true);
           expect(
             normalized.filter((item) => item.boundary === boundary).length,
           ).toBe(standing.length + kept.length);
