@@ -694,16 +694,36 @@ export const applyTableOp = (
               "Tracked table deletion does not support captured markup or table property revisions.",
           });
         }
+        // A row already suggested for deletion keeps its own suggestion; the
+        // table's deletion marks every other row.
+        const pending = location.table.rows.filter(
+          (row) => row.structuralChange?.type !== "tableRowDeletion",
+        );
+        if (pending.length === 0)
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+            message:
+              "Every row of the table is already suggested for deletion.",
+          });
         const tracked = trackTableRows({
           document,
           op,
-          rows: location.table.rows,
+          rows: pending,
           revision: op.revision,
           newIds: op.newIds,
           kind: WRAP_KINDS.DELETION,
         });
         if (tracked.isErr()) return Result.err(tracked.error);
-        blocks[location.index] = { ...location.table, rows: tracked.value };
+        const marked = [...tracked.value];
+        blocks[location.index] = {
+          ...location.table,
+          rows: location.table.rows.map((row) =>
+            row.structuralChange?.type === "tableRowDeletion"
+              ? row
+              : (marked.shift() ?? panic("A tracked deletion lost its row.")),
+          ),
+        };
       }
       return commitBlocks({ document, op, anchor, blocks });
     }
