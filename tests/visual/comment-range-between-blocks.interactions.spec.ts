@@ -141,34 +141,36 @@ for (const [placement, commented] of Object.entries(PLACEMENTS)) {
 }
 
 for (const [placement, commented] of Object.entries(PLACEMENTS)) {
-  test(`a comment opening ${placement} deleted through its card leaves no marker`, async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await page.locator("#file-input").setInputFiles({
-      name: "commented.docx",
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      buffer: await documentWith(commented),
-    });
-    await expect(page.locator(".layout-page").first()).toContainText(
-      "Closing words",
-    );
-    const card = page.locator('.docx-comment-card[data-comment-id="1"]');
-    await expect(card).toBeVisible();
-    await card.click();
-    await card.getByTitle("More options").click();
-    await page
-      .getByRole("menu")
-      .getByRole("button", { name: "Delete" })
-      .click();
-    await expect(card).toHaveCount(0);
-    await page.waitForTimeout(300);
+  for (const session of ["legacy", "canonical"] as const)
+    test(`${session}: a comment opening ${placement} deleted through its card leaves no marker`, async ({
+      page,
+    }) => {
+      await page.goto(`/?session=${session}`);
+      await page.locator("#file-input").setInputFiles({
+        name: "commented.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        buffer: await documentWith(commented),
+      });
+      await expect(page.locator(".layout-page").first()).toContainText(
+        "Closing words",
+      );
+      const card = page.locator('.docx-comment-card[data-comment-id="1"]');
+      await expect(card).toBeVisible();
+      await card.click();
+      await card.getByTitle("More options").click();
+      await page
+        .getByRole("menu")
+        .getByRole("button", { name: "Delete" })
+        .click();
+      await expect(card).toHaveCount(0);
+      await page.waitForTimeout(300);
 
-    const xml = await documentXml(await save(page));
-    expect(
-      xml.match(/<w:comment(?:RangeStart|RangeEnd|Reference) [^>]*\/>/gu) ?? [],
-    ).toEqual([]);
-    expect(xml).toContain("Please remit funds.");
-  });
+      const xml = await documentXml(await save(page));
+      expect(
+        xml.match(/<w:comment(?:RangeStart|RangeEnd|Reference) [^>]*\/>/gu) ??
+          [],
+      ).toEqual([]);
+      expect(xml).toContain("Please remit funds.");
+    });
 }

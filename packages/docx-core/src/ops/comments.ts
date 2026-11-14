@@ -12,6 +12,11 @@ import {
   setDocumentBodyComments,
 } from "../model/document";
 import { replaceParagraphs, storyParagraphs } from "./blocks";
+import {
+  captureCommentBoundaries,
+  restoreCommentBoundaries,
+  withoutCommentBoundaries,
+} from "./commentBoundaries";
 import { contractViolation } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -187,6 +192,12 @@ type BlockCommentBoundary = Extract<
   { type: "commentRangeStart" } | { type: "commentRangeEnd" }
 >;
 
+/**
+ * Markers between blocks placed at the end of the paragraph before them,
+ * rather than at the start of the one after.
+ */
+const trailingBoundaries = new WeakSet<StoryAnchorSpan>();
+
 type StoryAnchorWalk = {
   anchors: StoryAnchorSpan[];
   /**
@@ -252,7 +263,11 @@ const storyAnchors = (
           break;
         case "commentRangeEnd":
           if (previous === undefined) waiting.push(block);
-          else anchors.push(boundary(block, previous.blockId, previous.end));
+          else {
+            const span = boundary(block, previous.blockId, previous.end);
+            trailingBoundaries.add(span);
+            anchors.push(span);
+          }
           break;
         case "preservedBlock":
         case "bookmarkStart":
@@ -271,14 +286,15 @@ const storyAnchors = (
   };
   walk(body.content);
   // Markers after the story's last paragraph close on its end.
-  for (const node of waiting)
-    anchors.push(
-      boundary(
-        node,
-        previous?.blockId ?? "",
-        previous?.end ?? { offset: 0, zeroWidthBefore: 0 },
-      ),
+  for (const node of waiting) {
+    const span = boundary(
+      node,
+      previous?.blockId ?? "",
+      previous?.end ?? { offset: 0, zeroWidthBefore: 0 },
     );
+    if (previous !== undefined) trailingBoundaries.add(span);
+    anchors.push(span);
+  }
   return { anchors, heldForFirstParagraph, heldToEnd: waiting.length };
 };
 
@@ -384,14 +400,37 @@ const threadIds = (document: Document, id: number): number[] => {
 };
 
 /**
- * Comments with a range marker between blocks. Removing or replying to one
- * would have to edit that block, which the comment operations do not do yet.
+ * Whether some marker between blocks of the comments `ids` owns has no
+ * address an inverse could put it back by: one in a text box, or one whose
+ * block list holds no paragraph.
  */
-const blockAnchoredCommentIds = (document: Document): Set<number> =>
-  new Set(
-    anchorsIn(document)
-      .filter(({ betweenBlocks }) => betweenBlocks === true)
-      .map(({ node }) => anchorId(node) ?? -1),
+const hasUnaddressedBoundary = (
+  document: Document,
+  ids: ReadonlySet<number>,
+): boolean => {
+  const between = anchorsIn(document).filter(
+    ({ betweenBlocks, node }) =>
+      betweenBlocks === true && ids.has(anchorId(node) ?? -1),
+  ).length;
+  return (
+    between > 0 && captureCommentBoundaries(document, ids)?.length !== between
+  );
+};
+
+/** The paragraphs that address a state's markers between blocks. */
+const boundaryNeighbours = (
+  document: Document,
+  ids: ReadonlySet<number>,
+): CommentState["anchors"] =>
+  (captureCommentBoundaries(document, ids) ?? []).flatMap(
+    ({ story, blockId }) => {
+      const paragraph = storyParagraphs(storyBody(document, story)).find(
+        ({ paragraph: value }) => idKey(value.paraId ?? "") === idKey(blockId),
+      )?.paragraph;
+      return paragraph === undefined
+        ? []
+        : [{ story, blockId, content: paragraph.content }];
+    },
   );
 
 /** Every leaf of a story with its comment range markers between blocks, in order. */
@@ -728,12 +767,14 @@ const capture = (
       )?.paragraph;
     if (paragraph) anchors.push({ story, blockId, content: paragraph.content });
   }
+  const boundaries = captureCommentBoundaries(document, ids) ?? [];
   return {
     relationshipPresence: propertyPresence(document.package, "relationships"),
     relationships,
     listPresence: propertyPresence(body, "comments"),
     records,
     anchors,
+    ...(boundaries.length > 0 ? { boundaries } : {}),
   };
 };
 
@@ -914,7 +955,22 @@ const edited = (
   // An edit may keep a loaded orphan, never strand another comment.
   const issue = commentDocumentIssue(after, orphanRootCommentIds(before));
   if (issue && !restoresExhaustedState) return fail(op, issue);
-  const anchors = changedAnchors(before, after);
+  // A paragraph addressing a marker between blocks is part of the state, so
+  // a concurrent edit to it conflicts with the inverse as an anchor's does.
+  const anchors: CommentState["anchors"][number][] = [];
+  for (const entry of [
+    ...changedAnchors(before, after),
+    ...boundaryNeighbours(before, ids),
+    ...boundaryNeighbours(after, ids),
+  ])
+    if (
+      !anchors.some(
+        ({ story, blockId }) =>
+          sameStory(story, entry.story) &&
+          idKey(blockId) === idKey(entry.blockId),
+      )
+    )
+      anchors.push(entry);
   const prior = capture(before, ids, anchors);
   const next = capture(after, ids, anchors);
   if (structurallyEqual(prior, next))
@@ -1120,8 +1176,34 @@ const restore = (
       op,
       "A comment inverse cannot replace text or unowned anchors.",
     );
-  const anchors = restoreAnchors({ document, op, anchors: op.state.anchors });
-  if (anchors.isErr()) return anchors;
+  if (
+    [...(op.expected.boundaries ?? []), ...(op.state.boundaries ?? [])].some(
+      ({ node }) =>
+        (node.type !== "commentRangeStart" &&
+          node.type !== "commentRangeEnd") ||
+        !ids.has(node.id),
+    )
+  )
+    return fail(
+      op,
+      "A comment inverse can only restore its own markers between blocks.",
+    );
+  const restoredAnchors = restoreAnchors({
+    document,
+    op,
+    anchors: op.state.anchors,
+  });
+  if (restoredAnchors.isErr()) return restoredAnchors;
+  const placed = restoreCommentBoundaries(
+    withoutCommentBoundaries(restoredAnchors.value, ids),
+    op.state.boundaries ?? [],
+  );
+  if (placed === undefined)
+    return fail(
+      op,
+      "A paragraph beside a restored comment marker is missing.",
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+    );
   const comments = (document.package.document.comments ?? []).filter(
     ({ id }) => !ids.has(id),
   );
@@ -1139,7 +1221,7 @@ const restore = (
       op,
       "A missing comment list cannot discard unowned definitions.",
     );
-  const relationships = [...(anchors.value.package.relationships ?? [])].filter(
+  const relationships = [...(placed.package.relationships ?? [])].filter(
     ([, relation]) => !isCommentRelationship(relation.type),
   );
   for (const { index, key, relationship } of op.state.relationships) {
@@ -1169,7 +1251,7 @@ const restore = (
       op,
       "A missing relationship map cannot discard unowned relationships.",
     );
-  const restored = withComments(anchors.value, comments, op.state.listPresence);
+  const restored = withComments(placed, comments, op.state.listPresence);
   const pkg = { ...restored.package };
   switch (op.state.relationshipPresence) {
     case "present":
@@ -1355,17 +1437,40 @@ const create = (
         }
         return true;
       };
+      // An owner's marker after a paragraph's text: the reply's goes at that
+      // text's end, before the markers of the thread's later comments there.
+      const gapBeforeLaterThread = (span: StoryAnchorSpan): Gap => {
+        let gap = span.before;
+        for (const previous of anchors
+          .slice(0, anchors.indexOf(span))
+          .toReversed()) {
+          const id = anchorId(previous.node);
+          if (previous.betweenBlocks === true) continue;
+          if (
+            id === undefined ||
+            !sameStory(previous.story, span.story) ||
+            idKey(previous.blockId) !== idKey(span.blockId) ||
+            compareGaps(previous.after, gap) !== 0 ||
+            !isUnder(id) ||
+            precedes(id)
+          )
+            break;
+          gap = previous.before;
+        }
+        return gap;
+      };
       // A reply's marker follows the owner's one and the markers of the
       // thread's comments that come before it, so concurrent replies land in
-      // the same order whichever applies first.
-      // A parent whose range opens or closes between blocks takes no reply,
-      // so the thread's markers all stand in paragraphs.
+      // the same order whichever applies first. A reply's own markers stand
+      // in paragraphs: beside an owner's marker between blocks, at the edge
+      // of the text that marker is placed at.
       const gapAfterThread = (span: StoryAnchorSpan): Gap => {
+        if (trailingBoundaries.has(span)) return gapBeforeLaterThread(span);
         let gap = span.after;
         for (const next of anchors.slice(anchors.indexOf(span) + 1)) {
           const id = anchorId(next.node);
+          if (next.betweenBlocks === true) continue;
           if (
-            next.betweenBlocks === true ||
             id === undefined ||
             !sameStory(next.story, span.story) ||
             idKey(next.blockId) !== idKey(span.blockId) ||
@@ -1574,20 +1679,13 @@ export const applyCommentOp = (
   )
     return fail(op, issue);
   const orphans = orphanRootCommentIds(document);
-  const blockAnchored = blockAnchoredCommentIds(document);
   if (
-    blockAnchored.size > 0 &&
-    ((op.type === DOCUMENT_OP_TYPES.DELETE_COMMENT &&
-      threadIds(document, op.id).some((id) => blockAnchored.has(id))) ||
-      (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT &&
-        op.anchor?.kind === "reply" &&
-        threadIds(document, op.anchor.parentId).some((id) =>
-          blockAnchored.has(id),
-        )))
+    op.type === DOCUMENT_OP_TYPES.DELETE_COMMENT &&
+    hasUnaddressedBoundary(document, new Set(threadIds(document, op.id)))
   )
     return fail(
       op,
-      "A comment whose range opens or closes between blocks cannot be removed or replied to yet.",
+      "A comment with a range marker between blocks in a text box cannot be removed.",
     );
   if (op.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
     if (op.anchor?.kind === "reply" && orphans.has(op.anchor.parentId))
@@ -1766,6 +1864,7 @@ export const applyCommentOp = (
       current = changed.value;
     }
   }
+  current = withoutCommentBoundaries(current, ids);
   return edited(
     document,
     withComments(
