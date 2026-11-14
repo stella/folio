@@ -503,8 +503,12 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
         }
         break;
       // A deletion reaching a join's point may remove whole records beside
-      // it, so other records meet there in one order than in the other.
+      // it, so other records meet there in one order than in the other. A
+      // tracked deletion removes nothing, and a seam join beside or inside
+      // it applies in either order: the pair records other cuts in the two
+      // orders, and the authority's decides.
       case DOCUMENT_OP_TYPES.DELETE_RANGE:
+        if (seam && over.revision !== undefined && !namesZeroWidth(over)) break;
         if (namesZeroWidth(over) || rangeReaches(over, op.at))
           return refusal(
             op,
@@ -570,6 +574,14 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
           : Result.ok([op]);
       case DOCUMENT_OP_TYPES.DELETE_RANGE:
       case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+        // A tracked deletion wraps whatever a seam join left there.
+        if (
+          seam &&
+          op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
+          op.revision !== undefined &&
+          !namesZeroWidth(op)
+        )
+          return Result.ok([op]);
         return ((op.type === DOCUMENT_OP_TYPES.DELETE_RANGE || !seam) &&
           rangeReaches(op, over.at)) ||
           (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
