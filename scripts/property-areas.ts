@@ -50,10 +50,6 @@ import { builtinModules } from "node:module";
 import path from "node:path";
 import type { CallExpression } from "oxc-parser";
 
-import {
-  PROPERTY_SEEDS_FILE,
-  testFileForSeedFile,
-} from "../test/seed-registry";
 import { subprocessBudgetBaseMs } from "../test/subprocess";
 import {
   assignTestShards,
@@ -61,7 +57,7 @@ import {
   shardLoads,
   type TestTimings,
 } from "./ci-test-shard-plan";
-import { junitFileTimings } from "./ci-test-shards";
+import { changedTestFiles, junitFileTimings } from "./ci-test-shards";
 import { type Node, nodeText, parseSourceModule, walkAst } from "./lib/oxc-ast";
 import measuredPropertyTimings from "./property-test-timings.json";
 
@@ -495,11 +491,7 @@ export const selectPropertyFiles = (
   all: readonly PropertyFile[],
 ): PropertyFile[] => {
   const areas = touchedAreas(changed);
-  const named = new Set(changed);
-  for (const file of changed) {
-    if (file.startsWith(`${PROPERTY_SEEDS_FILE}/`))
-      named.add(testFileForSeedFile(file));
-  }
+  const named = changedTestFiles(changed);
   return all.filter(({ area, file }) => areas.has(area) || named.has(file));
 };
 
