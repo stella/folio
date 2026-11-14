@@ -108,6 +108,7 @@ import { identitySlots } from "./slots";
 import { tableEditParagraphDemand } from "./tableEdits";
 import { tableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import { rowsWithoutRow } from "./tableRowRemoval";
 import { compileGenerateTOCIntent, type GenerateTOCIntent } from "./tocIntent";
 import {
   type BlockInsertionPoint,
@@ -196,7 +197,18 @@ export type TableBlockIntentOperation =
 export type EditorIntent =
   | HyperlinkEditorIntent
   | GenerateTOCIntent
-  | { type: "table"; operation: TableIntentOperation }
+  | {
+      type: "table";
+      operation: TableIntentOperation;
+      /**
+       * What each cell an inserted column creates holds, in row order: the
+       * compiler writes it into the new cells after the column, as text
+       * typed there, so a suggestion records it as inserted. A cell past
+       * the list, or given no paragraphs, stays empty. Only a column
+       * insertion takes it.
+       */
+      cellContent?: readonly (readonly Paragraph[])[];
+    }
   | { type: "tableRow"; operation: TableRowIntentOperation }
   | { type: "tableBlock"; operation: TableBlockIntentOperation }
   | {
@@ -596,6 +608,15 @@ export const createEditorIntentIdAllocator = ({
         switch (op.type) {
           case DOCUMENT_OP_TYPES.INSERT_COLUMN:
             demand = located.value.table.rows.length + 2;
+            // Each new cell's content, as a fragment written into it.
+            for (const paragraphs of intent.cellContent ?? []) {
+              demand += 8;
+              for (const paragraph of paragraphs) {
+                demand += 4;
+                for (const span of leafSpans(paragraph.content))
+                  demand += 4 * (1 + span.ancestors.length);
+              }
+            }
             break;
           case DOCUMENT_OP_TYPES.DELETE_COLUMN: {
             const table = located.value.table;
@@ -616,10 +637,13 @@ export const createEditorIntentIdAllocator = ({
             demand = (op.bottom - op.top + 1) * 2;
             break;
           case DOCUMENT_OP_TYPES.SPLIT_CELL:
+            // A cell for each column of the span in each row a vertical
+            // merge reaches, which is at most every row.
             demand =
-              located.value.table.rows
+              (located.value.table.rows
                 .at(located.value.rowIndex)
-                ?.cells.at(located.value.cellIndex)?.formatting?.gridSpan ?? 1;
+                ?.cells.at(located.value.cellIndex)?.formatting?.gridSpan ??
+                1) * located.value.table.rows.length;
             break;
           case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
             demand = 2;
@@ -2277,6 +2301,52 @@ export const compileEditorIntent = (
         }),
       ];
       selection = { story: op.story, blockId, offset: 0 };
+      if (intent.cellContent === undefined) break;
+      if (
+        op.type !== DOCUMENT_OP_TYPES.INSERT_COLUMN ||
+        intent.cellContent.length > newBlockIds.length
+      )
+        return Result.err(
+          new DocumentOpRefusal({
+            opType: op.type,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+            message: "Cell content needs a cell the column insertion creates.",
+          }),
+        );
+      // Each new cell holds one empty paragraph, its fresh id in row order;
+      // the content goes into it as a fragment typed there.
+      let filled = applied.value.document;
+      for (const [index, paragraphs] of intent.cellContent.entries()) {
+        const cellBlockId = newBlockIds[index];
+        if (
+          cellBlockId === undefined ||
+          paragraphs.length === 0 ||
+          (paragraphs.length === 1 && paragraphs[0]?.content.length === 0)
+        )
+          continue;
+        const at = { story: op.story, blockId: cellBlockId, offset: 0 };
+        const fill = compileEditorIntent(filled, {
+          intent: {
+            type: "replaceFragment",
+            from: at,
+            to: at,
+            paragraphs,
+            openStart: 1,
+            openEnd: 1,
+          },
+          mode: {
+            ...modeAfterOps(filled, mode),
+            ...(mode.reservedBlockIds === undefined
+              ? {}
+              : { reservedBlockIds: mode.reservedBlockIds }),
+          },
+        });
+        if (fill.isErr()) return Result.err(fill.error);
+        const written = applyDocumentOps(filled, fill.value.ops);
+        if (written.isErr()) return Result.err(written.error);
+        filled = written.value.document;
+        ops.push(...fill.value.ops);
+      }
       break;
     }
     case "tableRow": {
@@ -2301,10 +2371,13 @@ export const compileEditorIntent = (
       } else {
         op = { ...operation, ...tracked };
         // The caret lands in a row that stays, or beside the table when its
-        // last row goes with it.
+        // last row goes with it. A direct deletion's rows are those the
+        // removal leaves, a merge it starts handed on to the next row.
         blockId =
           tableRowAnchor(
-            table.rows.filter((_row, index) => index !== rowIndex),
+            op.revision === undefined
+              ? rowsWithoutRow(table, rowIndex)
+              : table.rows.filter((_row, index) => index !== rowIndex),
           ) ??
           storyParagraphs(storyBody(document, op.story)).find(
             (paragraph) =>
@@ -2330,17 +2403,6 @@ export const compileEditorIntent = (
           story: op.story,
         }),
       ];
-      // A row deletion that hands a vertical merge on moves the removed
-      // cell's paragraphs into the next row in place of the continuation's:
-      // the caret then stays in the paragraph the edit named.
-      const kept = new Set(
-        storyParagraphs(storyBody(applied.value.document, op.story)).flatMap(
-          ({ paragraph }) =>
-            paragraph.paraId === undefined ? [] : [idKey(paragraph.paraId)],
-        ),
-      );
-      if (!kept.has(idKey(blockId)) && kept.has(idKey(operation.blockId)))
-        blockId = operation.blockId;
       selection = { story: op.story, blockId, offset: 0 };
       break;
     }

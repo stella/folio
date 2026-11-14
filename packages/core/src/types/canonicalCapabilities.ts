@@ -10,7 +10,6 @@ export const CANONICAL_GAP = {
   watermark: "watermark-model-edits",
   dispatch: "unclassified-transactions",
   save: "pm-save-projection",
-  resourceReplacement: "canonical-resource-replacement",
   history: "pm-history",
   suggestionPlugin: "pm-suggestion-plugin",
   paragraphTracker: "pm-paragraph-tracker",
@@ -171,12 +170,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Legacy save and read paths reconstruct documents from PM.";
   };
-  readonly "canonical-resource-replacement": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Canonical save refuses existing style, style-default, and media replacements the package writers cannot express.";
-  };
   readonly "pm-history": {
     readonly owner: "prosemirror";
     readonly kind: "mutation-source";
@@ -233,7 +226,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public column insertions, cell merges and splits, signature tables and tables beside a table need canonical table descriptors.";
+    readonly summary: "Public signature tables and tables beside a table need canonical table descriptors.";
   };
   readonly "publicOps.pendingParagraphMarkProperties": {
     readonly owner: "document-operations";
@@ -324,13 +317,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary: "Legacy save and read paths reconstruct documents from PM.",
   },
-  [CANONICAL_GAP.resourceReplacement]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Canonical save refuses existing style, style-default, and media replacements the package writers cannot express.",
-  },
   [CANONICAL_GAP.history]: {
     owner: "prosemirror",
     kind: "mutation-source",
@@ -392,7 +378,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Public column insertions, cell merges and splits, signature tables and tables beside a table need canonical table descriptors.",
+      "Public signature tables and tables beside a table need canonical table descriptors.",
   },
   [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
     owner: "document-operations",

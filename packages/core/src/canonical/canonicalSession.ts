@@ -1690,9 +1690,10 @@ type CachedStoryProjection = {
   projection: CanonicalProjection;
 };
 
-const storyProjectionKey = (
-  story: Exclude<OpStory, typeof OP_STORIES.MAIN>,
-): string => {
+/** A header, footer, footnote or endnote: a story with its own editor. */
+export type CanonicalSecondaryStory = Exclude<OpStory, typeof OP_STORIES.MAIN>;
+
+const storyProjectionKey = (story: CanonicalSecondaryStory): string => {
   switch (story.kind) {
     case "header":
     case "footer":
@@ -1723,6 +1724,13 @@ class CanonicalSession {
   private readonly sourceOwners = new Map<string, Paragraph>();
   private readonly storyProjections = new Map<string, CachedStoryProjection>();
   private currentSelection: CanonicalSelection | null = null;
+  /**
+   * The selection the editor of each header, footer or note last showed,
+   * keyed by story. Its editor records it whenever it changes, an edit in the
+   * story commits it, and every peer's edit moves it with the text, as the
+   * body's selection moves.
+   */
+  private readonly storySelections = new Map<string, CanonicalSelection>();
   private readonly applied: AppliedJournalGroup[] = [];
   private groupingBoundary = 0;
   private lifecycle: { type: "committed" } | { type: "composing" } = {
@@ -2029,6 +2037,37 @@ class CanonicalSession {
   }
   get selection(): CanonicalSelection | null {
     return this.currentSelection;
+  }
+  /**
+   * Record the selection the editor of a header, footer or note shows, so a
+   * peer's edit to the story moves it with the text (`storySelection`). The
+   * state must show the story's current projection.
+   */
+  recordStorySelection(
+    state: EditorState,
+    story: CanonicalSecondaryStory,
+  ): Result<void, CanonicalSessionError> {
+    const projected = this.projectStory(story);
+    if (projected.isErr()) return projected;
+    const projection = projected.value;
+    if (state.doc !== projection.doc && !state.doc.eq(projection.doc))
+      return refuse("The story editor shows a stale canonical projection.");
+    const selection = projection.selectionAt(state);
+    // A selection the session cannot hold (a node selection on a note's
+    // mark) replaces the one held before, so nothing restores that one.
+    if (selection.isErr()) {
+      this.storySelections.delete(storyProjectionKey(story));
+      return selection;
+    }
+    this.storySelections.set(storyProjectionKey(story), selection.value);
+    return Result.ok(undefined);
+  }
+  /**
+   * The selection the editor of `story` last recorded or committed, moved
+   * over every peer's edit since; null before its editor recorded one.
+   */
+  storySelection(story: CanonicalSecondaryStory): CanonicalSelection | null {
+    return this.storySelections.get(storyProjectionKey(story)) ?? null;
   }
   /** Every paragraph identity this session has read or minted, live or retired. */
   get reservedBlockIds(): ReadonlySet<string> {
@@ -3001,6 +3040,23 @@ class CanonicalSession {
       story,
     });
     const history = this.rebasedHistory(change, selection);
+    // Each header, footer and note selection moves with the text as well.
+    const storySelections = [...this.storySelections].flatMap(([key, held]) =>
+      findStoryBody(applied.value.document, held.head.story) === undefined
+        ? []
+        : [
+            [
+              key,
+              remoteSelection({
+                selection: held,
+                over: change.batch,
+                previous: this.currentDocument,
+                document: applied.value.document,
+                story: held.head.story,
+              }),
+            ] as const,
+          ],
+    );
     return this.stage({
       state,
       story,
@@ -3012,6 +3068,16 @@ class CanonicalSession {
       previousProjection: projected.value,
       opId: change.batch.opId,
       onPublish: () => {
+        this.storySelections.clear();
+        for (const [key, moved] of storySelections)
+          this.storySelections.set(key, moved);
+        // A batch shown in a story's own editor keeps the selection it shows.
+        const shownStory = selection.head.story;
+        if (
+          shownStory !== OP_STORIES.MAIN &&
+          findStoryBody(applied.value.document, shownStory) !== undefined
+        )
+          this.storySelections.set(storyProjectionKey(shownStory), selection);
         this.applied.splice(0, this.applied.length, ...history.applied);
         this.undone.splice(0, this.undone.length, ...history.undone);
         this.breakUndoGroup();
@@ -3428,6 +3494,17 @@ class CanonicalSession {
           });
         }
         this.currentSelection = selection;
+        const selectedStory = selection.head.story;
+        if (selectedStory !== OP_STORIES.MAIN)
+          this.storySelections.set(
+            storyProjectionKey(selectedStory),
+            selection,
+          );
+        for (const [key, kept] of this.storySelections)
+          if (
+            findStoryBody(applied.value.document, kept.head.story) === undefined
+          )
+            this.storySelections.delete(key);
         this.currentDocument = applied.value.document;
         this.currentProjection = heldBody;
         if (leaseJudgement?.type === "allowed")
