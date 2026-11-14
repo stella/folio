@@ -58,6 +58,11 @@ import {
   editSeedArbitrary,
 } from "./canonicalEdits";
 
+// Injected break: no operation holds a revision.
+void mock.module("../heldRevisions", () => ({
+  heldRevisionIds: () => [],
+}));
+
 const NUM_RUNS = 25;
 
 type Step =
