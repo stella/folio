@@ -1,9 +1,9 @@
-import { expect, forEachAdapter, openEditor } from "./parity-fixture";
+import { expect, forEachAdapter, openCanonicalEditor } from "./parity-fixture";
 
 forEachAdapter(
   "smoke: editor mounts and lays out pages",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openCanonicalEditor(page, adapter);
     const pageCount = await page.evaluate(
       () => window.__folioParity?.getTotalPages() ?? 0,
     );
