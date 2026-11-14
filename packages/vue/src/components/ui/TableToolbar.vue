@@ -39,10 +39,11 @@
 </template>
 
 <script setup lang="ts">
-import type { Command, Transaction } from "prosemirror-state";
+import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { computed, watch } from "vue";
 
+import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import type { Theme } from "@stll/folio-core/types/document";
 import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
@@ -184,7 +185,7 @@ function exec(name: string, ...args: unknown[]): boolean {
   const factory = props.getCommands()[name];
   if (!factory) return false;
   const command = factory(...args);
-  command(v.state, (tr: Transaction) => v.dispatch(tr), v);
+  executeEditorCommand(v, command);
   v.focus();
   return true;
 }
