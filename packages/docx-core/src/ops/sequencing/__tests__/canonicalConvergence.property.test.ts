@@ -202,6 +202,20 @@ const differenceAt = (
   return `${path}: ${JSON.stringify(left)?.slice(0, 300) ?? "undefined"} != ${JSON.stringify(right)?.slice(0, 300) ?? "undefined"}`;
 };
 
+// An insertion and a deletion, either way round.
+const insertionAgainstDeletion = (
+  op: DocumentOp,
+  other: DocumentOp,
+): boolean => {
+  const inserts = (candidate: DocumentOp) =>
+    candidate.type === DOCUMENT_OP_TYPES.INSERT_CONTENT ||
+    candidate.type === DOCUMENT_OP_TYPES.INSERT_TEXT;
+  return (
+    (inserts(op) && other.type === DOCUMENT_OP_TYPES.DELETE_RANGE) ||
+    (inserts(other) && op.type === DOCUMENT_OP_TYPES.DELETE_RANGE)
+  );
+};
+
 // An inverse whose preconditions or joins pin the range it restores.
 const holdsPreconditions = (op: DocumentOp): boolean => {
   switch (op.type) {
@@ -578,7 +592,9 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       );
       const refusing = refusingOps(batch, tail);
       // No declared tracked pair is refused: the authority's order decides.
-      // An inverse keeps its preconditions, which refuse by their own rule.
+      // An inverse keeps its preconditions, which refuse by their own rule,
+      // and an insertion against a deletion's range is the typing and
+      // deletion class, with rules of its own.
       for (const op of restoredOps(opsAtRefusal(batch, tail)))
         for (const other of restoredOps(refusing)) {
           const kind = trackedTransform.trackedOrderPair(op, other);
@@ -589,7 +605,8 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
             kind !== undefined &&
             named &&
             !holdsPreconditions(op) &&
-            !holdsPreconditions(other)
+            !holdsPreconditions(other) &&
+            !insertionAgainstDeletion(op, other)
           )
             outcome.trackedRefusals.push(
               `${kind}: ${String(opType)} over ${String(overType)}: ${result.reason.message} (${describeOps(batch.ops)} over ${describeOps(refusing)})`,
