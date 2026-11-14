@@ -135,6 +135,27 @@ export const withCanonicalCommand = (
   return command;
 };
 
+/** A history command's direction through a canonical session's journal. */
+export type CanonicalHistoryDirection = "undo" | "redo";
+const historyCommands = new WeakMap<Command, CanonicalHistoryDirection>();
+
+/**
+ * Register an undo or redo command: on a canonical session it steps the
+ * session's own journal, as the undo keys do, instead of running on the view.
+ * Registration leaves execution on a default session unchanged.
+ */
+export const withCanonicalHistory = (
+  command: Command,
+  direction: CanonicalHistoryDirection,
+): Command => {
+  historyCommands.set(command, direction);
+  return command;
+};
+
+export const getCanonicalHistoryDirection = (
+  command: Command,
+): CanonicalHistoryDirection | undefined => historyCommands.get(command);
+
 export const getCanonicalCommandIntents = (
   command: Command,
   state: EditorState,
