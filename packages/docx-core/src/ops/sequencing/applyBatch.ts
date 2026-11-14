@@ -1,15 +1,17 @@
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import type { Document } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "../ids";
+import { type Gap, leafSpans, spanningRecords } from "../leaves";
 import { paragraphLength } from "../offsets";
 import type { DocumentOpRefusal } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type InsertContentOp,
+  type SetRunPropsOp,
   SPLIT_HALVES,
 } from "../types";
 import {
@@ -58,6 +60,58 @@ const cutIdentified = (
   return paragraphIdentities(after, op).some((key) => !known.has(key));
 };
 
+const formatParagraph = (document: Document, op: SetRunPropsOp) =>
+  storyParagraphs(storyBody(document, op.from.story)).find(
+    ({ paragraph }) =>
+      paragraph.paraId !== undefined &&
+      idKey(paragraph.paraId) === idKey(op.from.blockId),
+  )?.paragraph;
+
+/**
+ * The records a direct format cuts at both of its ends, outermost first, by
+ * their gaps before it: those holding leaves on both sides of its range
+ * before the format and no longer after it. Undefined for a tracked format,
+ * one carrying an inverse's preconditions or joins, and one that cuts none.
+ */
+const cutRecords = (
+  before: Document,
+  after: Document,
+  op: SetRunPropsOp,
+): { from: Gap; to: Gap }[] | undefined => {
+  if (
+    op.revision !== undefined ||
+    op.expected !== undefined ||
+    op.joinStart !== undefined ||
+    op.joinEnd !== undefined ||
+    idKey(op.from.blockId) !== idKey(op.to.blockId)
+  )
+    return undefined;
+  const original = formatParagraph(before, op);
+  const formatted = formatParagraph(after, op);
+  if (original === undefined || formatted === undefined) return undefined;
+  const gaps = [op.from, op.to].map(({ offset, zeroWidthBefore }): Gap => ({
+    offset,
+    zeroWidthBefore: zeroWidthBefore ?? 0,
+  }));
+  // Formatting cuts records from the innermost out and never one around
+  // the runs, so the records still spanning the range lead the chain.
+  const cut = spanningRecords(original.content, gaps, 0, 2).slice(
+    spanningRecords(formatted.content, gaps, 0, 2).length,
+  );
+  if (cut.length === 0) return undefined;
+  const leaves = leafSpans(original.content);
+  return cut.map((record) => {
+    const held = leaves.filter(
+      ({ node, ancestors }) => node === record || ancestors.includes(record),
+    );
+    const first = held.at(0);
+    const last = held.at(-1);
+    if (first === undefined || last === undefined)
+      return panic("A record holding leaves on both sides holds a leaf.");
+    return { from: first.before, to: last.after };
+  });
+};
+
 /** Capture position facts before each operation, including within an atomic batch. */
 export const applyBatch = (
   document: Document,
@@ -104,6 +158,12 @@ export const applyBatch = (
       effect = {
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
         cutIdentified: cutIdentified(current, applied.value.document, op),
+      };
+    } else if (op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
+      const cut = cutRecords(current, applied.value.document, op);
+      effect = {
+        type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+        ...(cut === undefined ? {} : { cutRecords: cut }),
       };
     } else if (
       op.type === DOCUMENT_OP_TYPES.DELETE_BLOCKS ||

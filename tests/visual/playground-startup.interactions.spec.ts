@@ -1,80 +1,103 @@
 import { expect, test } from "@playwright/test";
 
 import { ensureLiveView } from "../parity/parity-fixture";
-import { withLegacyEngine } from "../parity/playgroundHosts";
 
-test("deferred view readiness requests follow the current bridge", async ({
-  page,
-}) => {
-  await page.goto("/?session=legacy&paragraphs=12");
-  await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0))
-    .toBeGreaterThan(0);
-  await page.evaluate(() => {
-    const bridge = window.__folioParity;
-    if (!bridge) throw new Error("Expected editor bridge");
-    const ensure = bridge.ensureView;
-    const hasView = bridge.hasView;
-    let requests = 0;
-    bridge.ensureView = () => {
-      requests++;
-      if (requests > 1) ensure();
-    };
-    // A request against a loading editor can finish before its replacement is ready.
-    bridge.hasView = () => requests > 1 && hasView();
-  });
-  await ensureLiveView(page);
-  expect(await page.evaluate(() => window.__folioParity?.hasView())).toBe(true);
-});
+// A generated document is a host model whose paragraphs have no ids; the
+// canonical session opens it with the ids its package gets.
+const SESSIONS = [
+  { name: "legacy", query: "session=legacy" },
+  { name: "canonical", query: "session=canonical" },
+] as const;
 
-for (const query of ["", "?paragraphs=12", "?file=sample.docx&paragraphs=12"]) {
-  test(`playground initializes its document and keeps the scroll bridge through rerenders (${query || "default"})`, async ({
+const withSession = (query: string, session: string): string => {
+  if (session === "") return query;
+  return query === "" ? `?${session}` : `${query}&${session}`;
+};
+
+for (const session of SESSIONS) {
+  test(`deferred view readiness requests follow the current bridge (${session.name})`, async ({
     page,
   }) => {
-    await page.goto(withLegacyEngine(`/${query}`));
+    await page.goto(`/${withSession("?paragraphs=12", session.query)}`);
     await expect
       .poll(() =>
         page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0),
       )
       .toBeGreaterThan(0);
+    await page.evaluate(() => {
+      const bridge = window.__folioParity;
+      if (!bridge) throw new Error("Expected editor bridge");
+      const ensure = bridge.ensureView;
+      const hasView = bridge.hasView;
+      let requests = 0;
+      bridge.ensureView = () => {
+        requests++;
+        if (requests > 1) ensure();
+      };
+      // A request against a loading editor can finish before its replacement is ready.
+      bridge.hasView = () => requests > 1 && hasView();
+    });
     await ensureLiveView(page);
-    const initialText = await page.evaluate(() =>
-      window.__folioParity?.getDocumentText(),
-    );
-    if (query === "?paragraphs=12") {
-      expect(initialText?.length).toBeGreaterThan(0);
-      expect(initialText?.match(/Performance paragraph /gu)).toHaveLength(12);
-    } else {
-      if (query.includes("file="))
-        expect(initialText?.length).toBeGreaterThan(0);
-      expect(initialText).not.toContain("Performance paragraph ");
-    }
-    expect(await page.evaluate(() => !!globalThis.__folioScrollParity)).toBe(
+    expect(await page.evaluate(() => window.__folioParity?.hasView())).toBe(
       true,
     );
-    await page.evaluate(() => {
-      globalThis.__startupScrollBridge = globalThis.__folioScrollParity;
-    });
-    await page
-      .getByRole("button", { name: "Track Changes", exact: true })
-      .click();
-    expect(
-      await page.evaluate(
-        () =>
-          globalThis.__startupScrollBridge === globalThis.__folioScrollParity,
-      ),
-    ).toBe(true);
-    await page.getByRole("button", { name: "New", exact: true }).click();
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0),
-      )
-      .toBeGreaterThan(0);
-    await ensureLiveView(page);
-    await expect
-      .poll(() => page.evaluate(() => window.__folioParity?.getDocumentText()))
-      .toBe("");
   });
+
+  for (const query of [
+    "",
+    "?paragraphs=12",
+    "?file=sample.docx&paragraphs=12",
+  ]) {
+    test(`playground initializes its document and keeps the scroll bridge through rerenders (${query || "default"}, ${session.name})`, async ({
+      page,
+    }) => {
+      await page.goto(`/${withSession(query, session.query)}`);
+      await expect
+        .poll(() =>
+          page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0),
+        )
+        .toBeGreaterThan(0);
+      await ensureLiveView(page);
+      const initialText = await page.evaluate(() =>
+        window.__folioParity?.getDocumentText(),
+      );
+      if (query === "?paragraphs=12") {
+        expect(initialText?.length).toBeGreaterThan(0);
+        expect(initialText?.match(/Performance paragraph /gu)).toHaveLength(12);
+      } else {
+        if (query.includes("file="))
+          expect(initialText?.length).toBeGreaterThan(0);
+        expect(initialText).not.toContain("Performance paragraph ");
+      }
+      expect(await page.evaluate(() => !!globalThis.__folioScrollParity)).toBe(
+        true,
+      );
+      await page.evaluate(() => {
+        globalThis.__startupScrollBridge = globalThis.__folioScrollParity;
+      });
+      await page
+        .getByRole("button", { name: "Track Changes", exact: true })
+        .click();
+      expect(
+        await page.evaluate(
+          () =>
+            globalThis.__startupScrollBridge === globalThis.__folioScrollParity,
+        ),
+      ).toBe(true);
+      await page.getByRole("button", { name: "New", exact: true }).click();
+      await expect
+        .poll(() =>
+          page.evaluate(() => window.__folioParity?.getTotalPages() ?? 0),
+        )
+        .toBeGreaterThan(0);
+      await ensureLiveView(page);
+      await expect
+        .poll(() =>
+          page.evaluate(() => window.__folioParity?.getDocumentText()),
+        )
+        .toBe("");
+    });
+  }
 }
 
 test("collaboration startup mounts its editor branch", async ({ page }) => {
