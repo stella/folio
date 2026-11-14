@@ -18,12 +18,18 @@ import {
   setDocumentBodyComments,
 } from "@stll/docx-core/model";
 import {
+  freshCommentId,
   OP_STORIES,
   reconcileDocumentPartRelationships,
   withoutPendingSuggestions,
 } from "@stll/docx-core/ops";
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import {
+  canonicalCommentBody,
+  type CanonicalCommentCommand,
+  compileCanonicalComments,
+} from "../canonical/canonicalComments";
 import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
@@ -2775,8 +2781,9 @@ export class FolioDocxReviewer {
     target: FolioReviewComment | number,
     input: FolioReviewReplyInput,
   ): FolioReviewCommentReply | null {
-    this.requireLegacyEngine("reply to a comment");
     const parentId = typeof target === "number" ? target : target.id;
+    if (this.engine.type === "canonical")
+      return this.replyOnSession(this.engine.session, parentId, input);
     const existing = [
       ...(this.baseDocument.package.document.comments ?? []),
       ...this.createdComments,
@@ -2871,8 +2878,13 @@ export class FolioDocxReviewer {
     commentId: string,
     options: { resolved?: boolean } = {},
   ): boolean {
-    this.requireLegacyEngine("resolve a comment");
     const resolved = options.resolved ?? true;
+    if (this.engine.type === "canonical")
+      return this.resolveCommentOnSession(
+        this.engine.session,
+        commentId,
+        resolved,
+      );
     const existing = [
       ...(this.baseDocument.package.document.comments ?? []),
       ...this.createdComments,
@@ -2882,6 +2894,77 @@ export class FolioDocxReviewer {
       return false;
     }
     this.resolvedOverrides.set(target.id, resolved);
+    return true;
+  }
+
+  /** Run a semantic comment command as one session commit, as the editor does. */
+  private commitCommentOnSession(
+    session: CanonicalSession,
+    command: CanonicalCommentCommand,
+  ): void {
+    const compiled = compileCanonicalComments({
+      document: readModel(session.document),
+      command,
+      idLease: session.idLease,
+    });
+    if (compiled.isErr()) throw compiled.error;
+    if (compiled.value.ops.length === 0) return;
+    const prepared = session.prepareOperations(this.state, compiled.value.ops);
+    if (prepared.isErr()) throw prepared.error;
+    this.publishOnSession(prepared.value);
+  }
+
+  /**
+   * A reply on the session: a comment anchored as a reply to `parentId`,
+   * which the session threads under the parent's root and anchors on its
+   * range, as the editor's reply does.
+   */
+  private replyOnSession(
+    session: CanonicalSession,
+    parentId: number,
+    input: FolioReviewReplyInput,
+  ): FolioReviewCommentReply | null {
+    const document = readModel(session.document);
+    if (
+      !(document.package.document.comments ?? []).some(
+        ({ id }) => id === parentId,
+      )
+    )
+      return null;
+    const id = freshCommentId(document, session.idLease);
+    if (id.isErr()) throw canonicalReviewerRefusal("mint a comment id");
+    const author = input.author ?? this.author;
+    const date = input.date ?? new Date().toISOString();
+    this.commitCommentOnSession(session, {
+      type: "create",
+      anchor: { kind: "reply", parentId },
+      comment: {
+        id: id.value,
+        author,
+        done: false,
+        date,
+        ...(input.initials !== undefined && { initials: input.initials }),
+        content: canonicalCommentBody(document, input.text, session.idLease),
+      },
+    });
+    return { id: id.value, author, date, text: input.text };
+  }
+
+  /** Resolve or reopen one comment through the session's comment record. */
+  private resolveCommentOnSession(
+    session: CanonicalSession,
+    commentId: string,
+    resolved: boolean,
+  ): boolean {
+    const target = (
+      readModel(session.document).package.document.comments ?? []
+    ).find(({ id }) => String(id) === commentId);
+    if (!target) return false;
+    this.commitCommentOnSession(session, {
+      type: "resolve",
+      id: target.id,
+      status: resolved ? "resolved" : "open",
+    });
     return true;
   }
 

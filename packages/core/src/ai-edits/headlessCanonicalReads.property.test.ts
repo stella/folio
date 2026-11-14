@@ -571,7 +571,7 @@ describe("a canonical reviewer refuses what is not on the session yet", () => {
     expect(thrown).toMatchObject(refusal);
   };
 
-  test("every edit outside the body, suggestion, comment edit and resolved view throws the typed refusal", async () => {
+  test("every edit outside the body, suggestion and resolved view throws the typed refusal", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       readFixture("upstream-styled-content.docx"),
       { session: "canonical" },
@@ -592,8 +592,6 @@ describe("a canonical reviewer refuses what is not on the session yet", () => {
       ),
     );
     expectRefusal(() => reviewer.loadPendingSuggestions([]));
-    expectRefusal(() => reviewer.replyTo(1, { text: "reply" }));
-    expectRefusal(() => reviewer.resolveComment("1"));
     expectRefusal(() => reviewer.acceptSuggestion("suggestion"));
     expectRefusal(() => reviewer.rejectSuggestion("suggestion"));
     expectRefusal(() => reviewer.resolveReviewedStory({ view: "final" }));
