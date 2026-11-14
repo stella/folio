@@ -117,7 +117,8 @@ export type CanonicalCommandIntent =
       from: number;
       to: number;
       breakType: "page" | "textWrapping";
-    };
+    }
+  | { type: "replaceText"; from: number; to: number; text: string };
 
 type CanonicalCommandDescriptor = (
   state: EditorState,
