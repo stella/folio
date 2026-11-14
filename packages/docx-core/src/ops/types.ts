@@ -943,15 +943,26 @@ export type SetSectionEndpointOp = {
 };
 
 /**
- * Insert a table before or after a paragraph. Tracking records each row,
- * cell content and cell-ending paragraph mark. At a container's end,
- * `terminal` moves the source content into a new preceding paragraph while
- * retaining the source id and fields on the untracked final paragraph.
+ * Where a table goes: beside a paragraph, or beside the innermost table
+ * holding the paragraph `blockId` names, in the block list holding that
+ * table, touching it, where no paragraph stands on that side to name.
+ */
+export type TableInsertionPoint =
+  | BlockInsertionPoint
+  | { type: "beforeTable"; blockId: string }
+  | { type: "afterTable"; blockId: string };
+
+/**
+ * Insert a table before or after a paragraph, or beside a table. Tracking
+ * records each row, cell content and cell-ending paragraph mark. At a
+ * container's end, `terminal` moves the source content into a new preceding
+ * paragraph while retaining the source id and fields on the untracked final
+ * paragraph.
  */
 export type InsertTableOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
   story: OpStory;
-  at: BlockInsertionPoint;
+  at: TableInsertionPoint;
   table: Table;
   revision?: RevisionStamp;
   newIds?: NewIds;

@@ -47,6 +47,7 @@ import {
   DOCUMENT_OP_TYPES,
   type InsertTableOp,
   type SetContainerBlocksOp,
+  type TableInsertionPoint,
 } from "./types";
 
 type TableOp = InsertTableOp | DeleteTableOp | SetContainerBlocksOp;
@@ -166,8 +167,11 @@ const commitBlocks = ({
     blocks.length === 0 ||
     !validStructure(before) ||
     !validStructure(blocks) ||
+    // A container that ends in a paragraph keeps it; one a file ends with a
+    // table, as a body may, is left no worse.
     (endsItsContainer(body, { list: anchor.list, index: before.length - 1 }) &&
-      (!endsInParagraph(before) || !endsInParagraph(blocks)))
+      endsInParagraph(before) &&
+      !endsInParagraph(blocks))
   ) {
     return refuse({
       op,
@@ -425,6 +429,82 @@ const commitBlocks = ({
   });
 };
 
+type InsertBesideTableOptions = {
+  document: Document;
+  op: InsertTableOp;
+  at: Extract<TableInsertionPoint, { type: "beforeTable" | "afterTable" }>;
+};
+
+/**
+ * A table put straight before or after the innermost table holding the
+ * paragraph `at` names, in the block list holding that table. The list's
+ * last paragraph, which stays, carries the structural inverse.
+ */
+const insertBesideTable = ({
+  document,
+  op,
+  at,
+}: InsertBesideTableOptions): Result<DocumentEdit, DocumentOpRefusal> => {
+  if (op.terminal !== undefined)
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: "A table beside a table takes no terminal paragraph.",
+    });
+  const located = locateTableRow(document, {
+    type: op.type,
+    story: op.story,
+    blockId: at.blockId,
+  });
+  if (located.isErr()) return Result.err(located.error);
+  const { list, index } = located.value;
+  const body = storyBody(document, op.story);
+  const blocks = [...blockListAt(body.content, list)];
+  const carrierIndex = blocks.findLastIndex(
+    (block) => block.type === "paragraph",
+  );
+  const carrier = blocks[carrierIndex];
+  if (carrier?.type !== "paragraph")
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: "The table's block list ends without a paragraph.",
+    });
+  const tableIndex = index + (at.type === "afterTable" ? 1 : 0);
+  const anchor: ParagraphLocation = {
+    list,
+    index: carrierIndex,
+    paragraph: carrier,
+  };
+  if (op.revision === undefined) {
+    blocks.splice(tableIndex, 0, op.table);
+    return commitBlocks({ document, op, anchor, blocks });
+  }
+  if (
+    op.table.preserved !== undefined ||
+    op.table.bookmarks !== undefined ||
+    op.table.carrierStack !== undefined ||
+    (op.table.propertyChanges?.length ?? 0) > 0
+  )
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      message:
+        "Tracked table construction does not support captured markup or table property revisions.",
+    });
+  const tracked = trackTableRows({
+    document,
+    op,
+    rows: op.table.rows,
+    revision: op.revision,
+    newIds: op.newIds,
+    kind: WRAP_KINDS.INSERTION,
+  });
+  if (tracked.isErr()) return Result.err(tracked.error);
+  blocks.splice(tableIndex, 0, { ...op.table, rows: tracked.value });
+  return commitBlocks({ document, op, anchor, blocks });
+};
+
 export const applyTableOp = (
   document: Document,
   op: TableOp,
@@ -432,15 +512,17 @@ export const applyTableOp = (
   const body = storyBody(document, op.story);
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_TABLE: {
-      if (op.at.type !== "before" && op.at.type !== "after")
+      const at = op.at;
+      if (at.type === "beforeTable" || at.type === "afterTable")
+        return insertBesideTable({ document, op, at });
+      if (at.type !== "before" && at.type !== "after")
         return refuse({
           op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
           message: "Insert before or after a paragraph.",
         });
       const anchor = storyParagraphs(body).find(
-        ({ paragraph }) =>
-          idKey(paragraph.paraId ?? "") === idKey(op.at.blockId),
+        ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(at.blockId),
       );
       if (anchor === undefined)
         return refuse({

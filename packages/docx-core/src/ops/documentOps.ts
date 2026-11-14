@@ -207,6 +207,7 @@ export {
   type SetSectionPropsOp,
   type RestoreStoryPartsOp,
   type BlockInsertionPoint,
+  type TableInsertionPoint,
   type CreateNumberingInstanceOp,
   type InsertBlocksOp,
   type DeleteBlocksOp,

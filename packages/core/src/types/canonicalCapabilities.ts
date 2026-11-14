@@ -21,7 +21,6 @@ export const CANONICAL_GAP = {
   aiSnapshots: "pm-ai-snapshots",
   publicComments: "publicOps.comments",
   publicUnsupportedInline: "publicOps.unsupportedInline",
-  publicTableStructure: "publicOps.tableStructure",
   publicPendingParagraphMarkProperties:
     "publicOps.pendingParagraphMarkProperties",
   publicHeadlessSession: "publicOps.headlessSession",
@@ -225,13 +224,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
   };
-  readonly "publicOps.tableStructure": {
-    readonly owner: "document-operations";
-    readonly defaultSessionMutation: "pm-public-operations";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public table insertions beside a table with no paragraph on that side need a table insertion point.";
-  };
   readonly "publicOps.pendingParagraphMarkProperties": {
     readonly owner: "document-operations";
     readonly defaultSessionMutation: "pm-public-operations";
@@ -389,14 +381,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Unsupported public payloads refuse with a typed compiler capability gap.",
-  },
-  [CANONICAL_GAP.publicTableStructure]: {
-    owner: "document-operations",
-    defaultSessionMutation: "pm-public-operations",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Public table insertions beside a table with no paragraph on that side need a table insertion point.",
   },
   [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
     owner: "document-operations",

@@ -147,6 +147,38 @@ const PLACEMENT_BODIES = {
     ],
     anchors: ["10000001", "70000004", "70000005", "70000006"],
   },
+  "a table starting the body": {
+    xml: [
+      table([cell("80000001", "A1") + cell("80000002", "B1")], 2),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["80000001", "80000002", "10000002"],
+  },
+  "a table at the body's end": {
+    xml: [paragraph("10000001", "Before"), table([cell("80000003", "A1")], 1)],
+    anchors: ["10000001", "80000003"],
+  },
+  "two tables touching": {
+    xml: [
+      paragraph("10000001", "Before"),
+      table([cell("80000004", "A1")], 1),
+      table([cell("80000005", "X1")], 1),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["80000004", "80000005"],
+  },
+  "a nested table": {
+    xml: [
+      table(
+        [
+          `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr>${table([cell("80000006", "N1")], 1)}${paragraph("80000007", "Outer")}</w:tc>`,
+        ],
+        1,
+      ),
+      paragraph("10000002", "After"),
+    ],
+    anchors: ["80000006", "80000007", "10000002"],
+  },
 } as const;
 
 const ALL_BODIES = { ...BODIES, ...MORE_BODIES, ...PLACEMENT_BODIES };
@@ -555,7 +587,7 @@ describe("table structure operations in the canonical session", () => {
         sameAsDefaultEngine(INSERTIONS),
       ),
       {
-        numRuns: 100,
+        numRuns: 160,
         id: "tables inserted beside paragraphs and tables in the canonical session give the default engine's package",
       },
     );

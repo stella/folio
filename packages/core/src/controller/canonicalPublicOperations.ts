@@ -696,9 +696,6 @@ type ResolveTableInsertionOptions = {
     reason: FolioAIEditSkipReason,
     message: string,
   ) => Result<never, CanonicalPublicOperationResolutionError>;
-  tableGap: (
-    message: string,
-  ) => Result<never, CanonicalPublicOperationResolutionError>;
 };
 
 /**
@@ -709,7 +706,7 @@ type ResolveTableInsertionOptions = {
  * it stands where no pending join reads that side: between the paragraph and
  * the block next to it, and after a container's last paragraph with the
  * empty paragraph the container ends with. From inside a table it goes
- * beside the outermost one, against the paragraph on that side of it.
+ * beside the outermost one, touching it.
  */
 const resolveTableInsertion = ({
   operation,
@@ -719,7 +716,6 @@ const resolveTableInsertion = ({
   noteReferences,
   refusal,
   skipAlike,
-  tableGap,
 }: ResolveTableInsertionOptions) => {
   const side = operation.position ?? "after";
   const { schema } = projection.doc.type;
@@ -780,21 +776,36 @@ const resolveTableInsertion = ({
   };
   const outer = findOutermostTableBoundary(projection.doc, paragraph.start - 1);
   if (outer !== null) {
-    // Beside the table: before the paragraph after it, or after the one
-    // before it, touching the table as the default engine's does.
-    const $edge = projection.doc.resolve(outer[side]);
-    const neighbour = side === "after" ? $edge.nodeAfter : $edge.nodeBefore;
-    const place =
-      neighbour?.type.name === "paragraph"
-        ? projection.paragraphStartingAt(
-            side === "after" ? outer.after : outer.before - neighbour.nodeSize,
-          )
-        : undefined;
-    if (place === undefined)
-      return tableGap(
-        "Canonical table insertion beside a table needs a paragraph on that side of it.",
-      );
-    return inserted(place, side === "after" ? "before" : "after", "none");
+    // Beside the outermost table, touching it, as the default engine puts
+    // it: addressed by a paragraph of that table's own.
+    const outerTable = projection.doc.nodeAt(outer.before);
+    const blockId =
+      outerTable === null
+        ? undefined
+        : tableBlockAddress(projection, {
+            table: outerTable,
+            tableStart: outer.before + 1,
+          });
+    if (blockId === undefined) return refusal("unsupportedBlock");
+    const intent: EditorIntent = {
+      type: "tableBlock",
+      operation: {
+        type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+        story,
+        blockId,
+        table,
+        side,
+        besideTable: true,
+      },
+    };
+    return Result.ok({
+      type: "plain" as const,
+      operation,
+      intents: [intent],
+      normalizations: [],
+      from: outer[side],
+      to: outer[side],
+    });
   }
   const { place } =
     besidePendingJoin({ side, paragraph, projection, noteReferences }) ??
@@ -2441,14 +2452,6 @@ export class CanonicalPublicOperations {
           message: message ?? `The operation was refused: ${reason}.`,
         }),
       );
-    const tableGap = (message: string) =>
-      Result.err(
-        new CanonicalPublicOperationResolutionError({
-          reason: "unsupportedBlock",
-          message,
-          gap: CANONICAL_GAP.publicTableStructure,
-        }),
-      );
     const skipAlike = (reason: FolioAIEditSkipReason, message: string) =>
       Result.err(
         new CanonicalPublicOperationResolutionError({
@@ -2560,7 +2563,6 @@ export class CanonicalPublicOperations {
         noteReferences,
         refusal,
         skipAlike,
-        tableGap,
       });
     if (isBlockInsertion(operation)) {
       const besideDeletion =

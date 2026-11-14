@@ -131,6 +131,7 @@ import {
   SPLIT_HALVES,
   type SplitHalf,
   type TableEditOp,
+  type TableInsertionPoint,
   type TableIntentOperation,
   type TextPosition,
 } from "./types";
@@ -190,6 +191,12 @@ export type TableBlockIntentOperation =
        * sides of it.
        */
       paragraphAfter?: "empty" | "none";
+      /**
+       * Beside the innermost table holding the anchor rather than beside the
+       * anchor, touching it, where no paragraph stands on that side of the
+       * table; no empty paragraph is written either side.
+       */
+      besideTable?: true;
     };
 
 /** Positions use canonical physical offsets, including retained deleted content. */
@@ -2449,8 +2456,10 @@ export const compileEditorIntent = (
     case "tableBlock": {
       if (intent.operation.type === DOCUMENT_OP_TYPES.INSERT_TABLE) {
         const { story, blockId, table } = intent.operation;
-        const separated = intent.operation.separated === true;
-        const trailing = intent.operation.paragraphAfter !== "none";
+        const besideTable = intent.operation.besideTable === true;
+        const separated = !besideTable && intent.operation.separated === true;
+        const trailing =
+          !besideTable && intent.operation.paragraphAfter !== "none";
         const fresh = freshParagraphIds({
           document,
           reserved: mode.reservedBlockIds,
@@ -2501,12 +2510,17 @@ export const compileEditorIntent = (
                   ...tracked,
                 },
               ];
+        let at: TableInsertionPoint;
+        if (besideTable)
+          at = { type: before ? "beforeTable" : "afterTable", blockId };
+        else
+          at = before
+            ? { type: "before", blockId: paragraphId ?? blockId }
+            : { type: "after", blockId };
         sequence.push({
           type: DOCUMENT_OP_TYPES.INSERT_TABLE,
           story,
-          at: before
-            ? { type: "before", blockId: paragraphId ?? blockId }
-            : { type: "after", blockId },
+          at,
           table: { ...table, rows },
           ...tracked,
         });
