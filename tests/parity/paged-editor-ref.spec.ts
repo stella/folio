@@ -31,9 +31,12 @@ forEachAdapter(
     expect(edges?.last).toBeGreaterThanOrEqual(1);
     expect(edges?.last).toBeLessThanOrEqual(totalPages);
 
-    const unknown = await page.evaluate(
-      () => window.__folioParity?.getUnknownPositionPage() ?? "no bridge",
-    );
+    const unknown = await page.evaluate(() => {
+      const bridge = window.__folioParity;
+      return bridge === undefined
+        ? "no bridge"
+        : bridge.getUnknownPositionPage();
+    });
     expect(unknown).toBeNull();
   },
 );

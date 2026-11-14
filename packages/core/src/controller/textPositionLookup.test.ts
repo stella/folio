@@ -9,8 +9,17 @@ import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaI
 import { readModel } from "../types/documentModel";
 import { legacyEditorPositionAt } from "./textPositionLookup";
 
+/** A document from Markdown whose paragraphs carry ids, as a parsed DOCX's do. */
+const withParagraphIds = (markdown: string) => {
+  const document = fromMarkdown(markdown);
+  for (const [index, block] of document.package.document.content.entries())
+    if (block.type === "paragraph")
+      block.paraId = (index + 1).toString(16).toUpperCase().padStart(8, "0");
+  return document;
+};
+
 const openSession = (markdown: string) => {
-  const created = createCanonicalSession(fromMarkdown(markdown));
+  const created = createCanonicalSession(withParagraphIds(markdown));
   if (created.isErr()) throw created.error;
   return created.value;
 };
