@@ -65,7 +65,9 @@
         :display-mode="displayMode"
         :read-only="readOnly"
         :comments-sidebar-open="commentsSurface !== null"
-        :outline-drawer="panelLayout.outline === 'drawer'"
+        :outline-drawer="
+          panelLayout.outline === 'drawer' || panelLayout.outline === 'expanded'
+        "
         :outline-drawer-open="panelOverlay === 'outline'"
         :comment-count="openCommentThreadCount"
         :image-context="imageToolbarContext"
@@ -187,7 +189,9 @@
     >
       <DocumentOutline
         v-if="
-          panelLayout.outline === 'column' || panelLayout.outline === 'rail'
+          panelLayout.outline === 'column' ||
+          panelLayout.outline === 'rail' ||
+          panelLayout.outline === 'expanded'
         "
         :headings="visibleOutlineHeadings"
         :available="outlineHeadings.length > 1"
@@ -197,8 +201,10 @@
         :doc-size="editorView?.state.doc.content.size ?? 0"
         :active-id="activeHeadingId"
         :surface="panelLayout.outline"
+        :width="panelLayout.outlineTrackWidth"
         :expanded="panelOverlay === 'outline'"
         @expand="toggleOutlineOverlay"
+        @close="panelOverlay = 'none'"
         @navigate="handleOutlineNavigate"
       />
       <div
@@ -483,26 +489,6 @@
           />
         </div>
       </div>
-      <template v-if="panelOverlay === 'outline'">
-        <div
-          class="docx-editor-vue__panel-scrim"
-          data-testid="folio-panel-scrim"
-          aria-hidden="true"
-          @mousedown.prevent="panelOverlay = 'none'"
-        />
-        <DocumentOutline
-          :headings="visibleOutlineHeadings"
-          :available="outlineHeadings.length > 1"
-          :outline-depth="outlineDepth"
-          @outline-depth-change="handleOutlineDepthChange"
-          :get-scroll-container="() => editorScrollRef"
-          :doc-size="editorView?.state.doc.content.size ?? 0"
-          :active-id="activeHeadingId"
-          surface="drawer"
-          @close="panelOverlay = 'none'"
-          @navigate="handleOutlineNavigate"
-        />
-      </template>
       <div
         v-if="commentsSurface === 'drawer'"
         class="docx-editor-vue__panel-scrim"
@@ -572,8 +558,10 @@ import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
 import {
   computePanelLayout,
+  overlayAfterLayout,
   PANEL_METRICS,
   type PanelOverlay,
+  requestedOutline,
 } from "@stll/folio-core/panel-layout";
 import {
   extractSelectionState,
@@ -1452,14 +1440,20 @@ const widestPageWidthPx = computed(() => {
   for (const page of pages) widest = Math.max(widest, page.size.w);
   return widest * zoom.value;
 });
+// Opening the outline gives it a track of its own beside the page.
+const outlineRequest = computed(() =>
+  requestedOutline(
+    panelOverlay.value,
+    showOutline.value && outlineHeadings.value.length > 1
+      ? "available"
+      : "absent",
+  ),
+);
 const panelLayout = computed(() =>
   computePanelLayout({
     availableWidth: availablePanelWidth.value,
     pageWidth: widestPageWidthPx.value,
-    outline:
-      showOutline.value && outlineHeadings.value.length > 1
-        ? "available"
-        : "absent",
+    outline: outlineRequest.value,
     comments: showSidebar.value ? "open" : "closed",
   }),
 );
@@ -1547,10 +1541,7 @@ function toggleComments(): void {
     computePanelLayout({
       availableWidth: availablePanelWidth.value,
       pageWidth: widestPageWidthPx.value,
-      outline:
-        showOutline.value && outlineHeadings.value.length > 1
-          ? "available"
-          : "absent",
+      outline: outlineRequest.value,
       comments: "open",
     }).comments === "drawer"
   )
@@ -1567,15 +1558,9 @@ function handleOutlineNavigate({ id, pmPos }: HeadingInfo): void {
   outlineSidebar.handleOutlineNavigate(pmPos);
 }
 
+// An overlay closes if its panel is no longer available.
 watch(panelLayout, (next) => {
-  if (
-    panelOverlay.value === "outline" &&
-    next.outline !== "rail" &&
-    next.outline !== "drawer"
-  )
-    panelOverlay.value = "none";
-  if (panelOverlay.value === "comments" && next.comments !== "drawer")
-    panelOverlay.value = "none";
+  panelOverlay.value = overlayAfterLayout(panelOverlay.value, next);
 });
 watch(
   [() => commentLifecycle.isAddingComment.value, panelLayout],

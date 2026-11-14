@@ -9,9 +9,11 @@ import { useCallback, useLayoutEffect, useState } from "react";
 
 import {
   computePanelLayout,
+  overlayAfterLayout,
   type PanelLayout,
   type PanelLayoutInput,
   type PanelOverlay,
+  requestedOutline,
 } from "@stll/folio-core/panel-layout";
 
 type UsePanelLayoutOptions = Omit<PanelLayoutInput, "availableWidth"> & {
@@ -62,22 +64,16 @@ export const usePanelLayout = ({
     return () => observer.disconnect();
   }, [row, scrollContainer]);
 
-  const requestedOutline =
-    overlay === "outline" && outline !== "absent" ? "expanded" : outline;
+  const outlineRequest = requestedOutline(overlay, outline);
   const layout = computePanelLayout({
     availableWidth,
     pageWidth,
-    outline: requestedOutline,
+    outline: outlineRequest,
     comments,
   });
 
   // An overlay closes if its panel is no longer available.
-  const outlineDrawn = layout.outline !== "none" && layout.outline !== "column";
-  const commentsDrawn = layout.comments === "drawer";
-  if (
-    (overlay === "outline" && !outlineDrawn) ||
-    (overlay === "comments" && !commentsDrawn)
-  ) {
+  if (overlayAfterLayout(overlay, layout) !== overlay) {
     setOverlay("none");
   }
 
@@ -86,10 +82,10 @@ export const usePanelLayout = ({
       computePanelLayout({
         availableWidth,
         pageWidth,
-        outline: requestedOutline,
+        outline: outlineRequest,
         comments: "open",
       }),
-    [availableWidth, pageWidth, requestedOutline],
+    [availableWidth, pageWidth, outlineRequest],
   );
 
   return {

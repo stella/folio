@@ -1,7 +1,7 @@
 import { computed, nextTick, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
-export type OutlineSurface = "column" | "rail" | "drawer";
+export type OutlineSurface = "column" | "rail" | "expanded";
 
 type UseOutlineDrawerFocusOptions = {
   surface: MaybeRefOrGetter<OutlineSurface>;
@@ -18,7 +18,7 @@ export const useOutlineDrawerFocus = ({
   onClose,
 }: UseOutlineDrawerFocusOptions): void => {
   const isOpen = computed(
-    () => toValue(surface) === "drawer" && toValue(available),
+    () => toValue(surface) === "expanded" && toValue(available),
   );
 
   watch(

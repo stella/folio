@@ -8,7 +8,7 @@
     :data-folio-outline-surface="surface"
     data-testid="folio-outline"
     :style="{ width: surfaceWidth + 'px' }"
-    :tabindex="surface === 'drawer' ? -1 : undefined"
+    :tabindex="surface === 'expanded' ? -1 : undefined"
   >
     <button
       v-if="surface === 'rail'"
@@ -26,7 +26,7 @@
       <div class="folio-outline-heading-row">
         <span class="folio-outline-title">{{ t("editor.outlineTitle") }}</span>
         <button
-          v-if="surface === 'drawer'"
+          v-if="surface === 'expanded'"
           type="button"
           class="folio-outline-icon-button"
           :aria-label="t('common.closeDialog')"
@@ -82,7 +82,7 @@ import MaterialSymbol from "./ui/MaterialSymbol.vue";
 const SURFACE_WIDTH = {
   column: PANEL_METRICS.outlineColumnWidth,
   rail: PANEL_METRICS.outlineRailWidth,
-  drawer: PANEL_METRICS.drawerWidth,
+  expanded: PANEL_METRICS.outlineColumnWidth,
 } as const satisfies Record<OutlineSurface, number>;
 
 const props = withDefaults(
@@ -94,6 +94,8 @@ const props = withDefaults(
     docSize: number;
     activeId: string | null;
     surface: OutlineSurface;
+    /** The track the panel layout gives the surface; its default otherwise. */
+    width?: number;
     expanded?: boolean;
   }>(),
   { expanded: false },
@@ -126,7 +128,9 @@ const onDepthChange = (event: Event) => {
   }
   emit("outlineDepthChange", value === "3" ? 3 : 2);
 };
-const surfaceWidth = computed(() => SURFACE_WIDTH[props.surface]);
+const surfaceWidth = computed(
+  () => props.width ?? SURFACE_WIDTH[props.surface],
+);
 const items = computed<OutlineItem[]>(() =>
   props.headings.map((heading) => ({
     id: heading.id,
@@ -155,7 +159,7 @@ const handleJump = (id: string) => {
   const heading = props.headings.find((candidate) => candidate.id === id);
   if (!heading) return;
   emit("navigate", heading);
-  if (props.surface === "drawer") emit("close");
+  if (props.surface === "expanded") emit("close");
 };
 </script>
 
@@ -181,14 +185,14 @@ const handleJump = (id: string) => {
   padding-block: 4px 8px;
   border-inline-end: 1px solid var(--doc-border);
 }
-.folio-outline--drawer {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  z-index: 46;
-  max-width: calc(100% - 16px);
+/* The opened outline takes a track of its own beside the page. */
+.folio-outline--expanded {
+  flex: none;
   border-inline-end: 1px solid var(--doc-border);
-  box-shadow: 0 8px 28px var(--doc-shadow-md);
+  padding-block-end: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--document-panel-bottom-inset, 0px)
+  );
 }
 .folio-outline-header {
   display: flex;
@@ -262,7 +266,7 @@ const handleJump = (id: string) => {
   outline-offset: -2px;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .folio-outline--drawer {
+  .folio-outline--expanded {
     animation: folio-outline-fade-in 0.16s ease-out;
   }
 }
