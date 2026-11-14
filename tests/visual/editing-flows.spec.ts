@@ -14,7 +14,10 @@
 
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
+import { parseDocx } from "../../packages/core/src/docx/parser";
+import { createDocx } from "../../packages/core/src/docx/rezip";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 
 declare global {
@@ -26,8 +29,13 @@ const isMac = process.platform === "darwin";
 const MOD = isMac ? "Meta" : "Control";
 
 /** Mount a fixture and force the (deferred) editor view to materialise. */
-async function mountFixture(page: Page, fixture: string): Promise<void> {
-  await page.goto(`/?file=${encodeURIComponent(fixture)}`);
+async function mountFixture(
+  page: Page,
+  fixture: string,
+  session?: "legacy" | "canonical",
+): Promise<void> {
+  const engine = session === undefined ? "" : `session=${session}&`;
+  await page.goto(`/?${engine}file=${encodeURIComponent(fixture)}`);
   await page.waitForSelector('[data-testid="folio-editor"]', {
     timeout: 15_000,
   });
@@ -95,6 +103,49 @@ function paintedBodyContains(page: Page, text: string): Promise<boolean> {
         element.textContent?.includes(expected),
       ),
     text,
+  );
+}
+
+type BookmarkEndpoint = { type: "bookmarkStart" | "bookmarkEnd"; id: number };
+
+/** The one bookmark the Backspace spec opens with, as a balanced pair. */
+const BALANCED_BOOKMARK: BookmarkEndpoint[] = [
+  { type: "bookmarkStart", id: 707 },
+  { type: "bookmarkEnd", id: 707 },
+];
+
+/** Bookmark endpoints of body paragraphs, in document order. */
+function bookmarksOf(
+  blocks: Awaited<
+    ReturnType<typeof parseDocx>
+  >["package"]["document"]["content"],
+): BookmarkEndpoint[] {
+  return blocks.flatMap((block) =>
+    block.type === "paragraph"
+      ? block.content.flatMap((item) =>
+          item.type === "bookmarkStart" || item.type === "bookmarkEnd"
+            ? [{ type: item.type, id: item.id }]
+            : [],
+        )
+      : [],
+  );
+}
+
+/** Bookmark endpoints in the document the host reads. */
+function documentBookmarks(page: Page): Promise<BookmarkEndpoint[]> {
+  return page.evaluate(() =>
+    (
+      globalThis.__folioPlayground?.getEditorRef()?.getDocument()?.package
+        .document.content ?? []
+    ).flatMap((block) =>
+      block.type === "paragraph"
+        ? block.content.flatMap((item) =>
+            item.type === "bookmarkStart" || item.type === "bookmarkEnd"
+              ? [{ type: item.type, id: item.id }]
+              : [],
+          )
+        : [],
+    ),
   );
 }
 
@@ -423,70 +474,82 @@ test.describe("lists", () => {
   test("Backspace continues into text after exiting a style-numbered paragraph", async ({
     page,
   }) => {
-    await mountFixture(page, "sample.docx");
-    const marker = page.locator(".layout-list-marker").first();
-    await marker.click();
-    await page.keyboard.press("End");
-    await page.keyboard.press("Enter");
+    await mountFixture(page, "sample.docx", "canonical");
+    // The document holds a bookmark around the text of a style-numbered list
+    // item, as an opened package carries it.
     const inserted = "Synthetic paired deletion target";
-    await page.keyboard.type(inserted);
-
-    await page.evaluate((expected) => {
-      const view = globalThis.__folioPlayground
-        ?.getEditorRef()
-        ?.getEditorRef()
-        ?.getView();
-      if (!view) throw new Error("Editor view is unavailable");
-      const boundary = view.state.schema.nodes.bookmarkBoundary;
-      if (!boundary) throw new Error("Bookmark boundary node is unavailable");
-      let targetStart: number | null = null;
-      view.state.doc.descendants((node, position) => {
-        const matchIndex = node.text?.indexOf(expected) ?? -1;
-        if (matchIndex >= 0) {
-          targetStart = position + matchIndex;
-          return false;
-        }
-        return true;
-      });
-      if (targetStart === null)
-        throw new Error("Synthetic target is unavailable");
-      const targetEnd = targetStart + expected.length;
-      const transaction = view.state.tr
-        .insert(targetEnd, boundary.create({ type: "end", id: 707 }))
-        .insert(
-          targetStart,
-          boundary.create({ type: "start", id: 707, name: "synthetic-range" }),
-        );
-      view.dispatch(transaction);
-      view.focus();
-    }, inserted);
-
-    // One edit removes visible text and one invisible endpoint. Its partner
-    // must disappear atomically, and paint must consume the full transaction
-    // batch rather than only the initiating edit.
-    await page.evaluate(() => {
-      const view = globalThis.__folioPlayground
-        ?.getEditorRef()
-        ?.getEditorRef()
-        ?.getView();
-      if (!view) throw new Error("Editor view is unavailable");
-      let endPosition: number | null = null;
-      view.state.doc.descendants((node, position) => {
-        if (
-          node.type.name === "bookmarkBoundary" &&
-          node.attrs.type === "end"
-        ) {
-          endPosition = position;
-          return false;
-        }
-        return true;
-      });
-      if (endPosition === null)
-        throw new Error("Synthetic endpoint is unavailable");
-      view.dispatch(view.state.tr.delete(endPosition - 1, endPosition + 1));
-      view.focus();
+    const source = await parseDocx(
+      readFileSync(new URL("fixtures/sample.docx", import.meta.url)),
+      { preloadFonts: false, detectVariables: false },
+    );
+    const body = source.package.document.content;
+    const listItem = body.findIndex(
+      (block) =>
+        block.type === "paragraph" &&
+        block.formatting?.styleId === "ListBullet",
+    );
+    expect(listItem).toBeGreaterThanOrEqual(0);
+    body.splice(listItem + 1, 0, {
+      type: "paragraph",
+      formatting: { styleId: "ListBullet" },
+      content: [
+        { type: "bookmarkStart", id: 707, name: "synthetic-range" },
+        { type: "run", content: [{ type: "text", text: inserted }] },
+        { type: "bookmarkEnd", id: 707 },
+      ],
     });
-    await expect.poll(() => countNodes(page, "bookmarkBoundary")).toBe(0);
+    const bytes = [...new Uint8Array(await createDocx(source))];
+    await page.evaluate(async (array) => {
+      const ref = globalThis.__folioPlayground?.getEditorRef();
+      await ref?.loadDocumentBuffer(new Uint8Array(array));
+      ref?.ensureEditorView({ focus: true });
+    }, bytes);
+    await expect.poll(() => paintedBodyContains(page, inserted)).toBe(true);
+    expect(await documentBookmarks(page)).toEqual(BALANCED_BOOKMARK);
+
+    // One edit removes the last character and crosses the bookmark's end.
+    // The bookmark shrinks and stays one balanced pair, never an orphaned
+    // endpoint, and paint consumes the whole edit.
+    await page
+      .locator(".layout-paragraph", { hasText: inserted })
+      .first()
+      .click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Shift+ArrowLeft");
+    expect(
+      await page.evaluate(
+        () =>
+          globalThis.__folioPlayground?.getEditorRef()?.getSelectionText() ??
+          "",
+      ),
+    ).toBe(inserted.at(-1));
+    await page.keyboard.press("Backspace");
+    await expect.poll(() => documentBookmarks(page)).toEqual(BALANCED_BOOKMARK);
+
+    // The saved package and the package reopened from it keep the pair.
+    const saved = await page.evaluate(async () => {
+      const buffer = await globalThis.__folioPlayground?.getEditorRef()?.save();
+      return buffer ? [...new Uint8Array(buffer)] : null;
+    });
+    expect(saved).not.toBeNull();
+    const reparsed = await parseDocx(Uint8Array.from(saved ?? []), {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expect(bookmarksOf(reparsed.package.document.content)).toEqual(
+      BALANCED_BOOKMARK,
+    );
+    await page.evaluate(async (array) => {
+      const ref = globalThis.__folioPlayground?.getEditorRef();
+      await ref?.loadDocumentBuffer(new Uint8Array(array));
+      ref?.ensureEditorView({ focus: true });
+    }, saved ?? []);
+    await expect.poll(() => documentBookmarks(page)).toEqual(BALANCED_BOOKMARK);
+    await page
+      .locator(".layout-paragraph", { hasText: inserted.slice(0, -1) })
+      .first()
+      .click();
+    await page.keyboard.press("End");
     await expect
       .poll(async () => (await bodyText(page)).includes(inserted))
       .toBe(false);
