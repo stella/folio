@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "A dokumentum ezen része zárolva van.",
       "editing": "Szerkesztés",
       "editingDescription": "A dokumentum közvetlen szerkesztése",
+      "linkSuggestionUnavailable": "Ez a hivatkozásmódosítás nem követhető. Végezze el Szerkesztés módban, vagy helyezze a megjegyzést vagy a könyvjelzőt a hivatkozáson kívülre.",
       "outlineDepthAll": "Minden szint",
       "outlineDepthLabel": "Címsorok megjelenítése",
       "outlineDepthThree": "1–3. szint",

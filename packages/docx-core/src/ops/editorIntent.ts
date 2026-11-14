@@ -528,6 +528,20 @@ export const createEditorIntentIdAllocator = ({
         demand += 4 * (1 + span.ancestors.length);
     }
     if (incoming.length > 0) demand += 8;
+    // A suggested link change strikes the text it changes and inserts the
+    // changed copy after each stretch of it; a suggested contents list
+    // records every paragraph it inserts and the split it may make.
+    if (
+      intent.type === "setHyperlink" ||
+      intent.type === "removeHyperlink" ||
+      intent.type === "insertHyperlink"
+    )
+      demand = 2 * demand + 8;
+    if (intent.type === "generateTOC")
+      demand +=
+        8 +
+        (intent.headings.length + 1) *
+          (PARAGRAPH_REVISION_DEMAND + 4 * leafRevisionDemand(3));
     if (intent.type === "moveFragment") {
       const target = storyParagraphs(
         storyBody(document, intent.target.story),
@@ -1483,7 +1497,17 @@ export const compileEditorIntent = (
   const editedSeams: TextPosition[] = [];
   switch (intent.type) {
     case "generateTOC": {
-      const compiled = compileGenerateTOCIntent(document, intent, mode);
+      const compiled = compileGenerateTOCIntent(
+        document,
+        intent,
+        mode,
+        (source, part, partMode) =>
+          compileEditorIntent(source, {
+            intent: part,
+            mode: partMode,
+            ...(firstBlockId === undefined ? {} : { firstBlockId }),
+          }),
+      );
       if (compiled.isErr()) return compiled;
       ops = compiled.value.ops;
       selection = compiled.value.selection;
@@ -1495,10 +1519,11 @@ export const compileEditorIntent = (
       return compileHyperlinkIntent(document, {
         intent,
         mode,
-        compileEmptyReplacement: (source, { from, to }) =>
+        compileIntent: (source, part, partMode) =>
           compileEditorIntent(source, {
-            intent: { type: "replaceText", from, to, text: "" },
-            mode,
+            intent: part,
+            mode: partMode,
+            ...(firstBlockId === undefined ? {} : { firstBlockId }),
           }),
       });
     case "replaceFragment": {

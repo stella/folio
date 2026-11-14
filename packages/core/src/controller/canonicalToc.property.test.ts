@@ -4,6 +4,13 @@ import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { headingOutlineLevel } from "@stll/docx-core/model";
+import {
+  applyDocumentOp,
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  REVISION_DECISIONS,
+  type RevisionDecision,
+} from "@stll/docx-core/ops";
 
 import {
   assertProperty,
@@ -17,7 +24,6 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { schema, singletonManager } from "../prosemirror/schema";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document, Paragraph } from "../types/document";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 
@@ -296,43 +302,141 @@ test("generated TOC histories preserve anchors, canonical styles, fields, sectio
   );
 });
 
-test("TOC suggesting retains the named expected refusal without publishing headings or allocating ids", () => {
+/** Every revision id a document holds, wherever its record sits. */
+const revisionIds = (value: unknown, out = new Set<number>()): Set<number> => {
+  if (Array.isArray(value)) {
+    for (const item of value) revisionIds(item, out);
+    return out;
+  }
+  if (typeof value !== "object" || value === null) return out;
+  for (const [key, field] of Object.entries(value)) {
+    if (
+      key === "info" &&
+      typeof field === "object" &&
+      field !== null &&
+      "id" in field &&
+      typeof field.id === "number"
+    )
+      out.add(field.id);
+    revisionIds(field, out);
+  }
+  return out;
+};
+
+const resolvedAll = (document: Document, decision: RevisionDecision) => {
+  const ids = [...revisionIds(document.package.document)];
+  if (ids.length === 0) return document;
+  return applyDocumentOp(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: ids,
+    decision,
+  }).unwrap().document;
+};
+
+/** Each block's text, as a reader sees it: links, fields' results and tabs. */
+const blockTexts = (document: Document): string[] => {
+  const text = (items: readonly unknown[]): string =>
+    items
+      .map((item): string => {
+        if (typeof item !== "object" || item === null || !("type" in item))
+          return "";
+        switch (item.type) {
+          case "run":
+            return "content" in item && Array.isArray(item.content)
+              ? item.content
+                  .map((part: { type: string; text?: string }) => {
+                    if (part.type === "text") return part.text ?? "";
+                    return part.type === "tab" ? "\t" : "";
+                  })
+                  .join("")
+              : "";
+          case "hyperlink":
+            return "children" in item && Array.isArray(item.children)
+              ? text(item.children)
+              : "";
+          case "insertion":
+          case "deletion":
+            return "content" in item && Array.isArray(item.content)
+              ? text(item.content)
+              : "";
+          case "complexField":
+            return "fieldResult" in item && Array.isArray(item.fieldResult)
+              ? text(item.fieldResult)
+              : "";
+          default:
+            return "";
+        }
+      })
+      .join("");
+  return document.package.document.content.map((block) =>
+    block.type === "paragraph" ? text(block.content) : block.type,
+  );
+};
+
+test("a suggested TOC records what it inserts and resolves to the direct edit or the original", () => {
   assertProperty(
     fc.property(
       fc.integer({ min: 0, max: 8 }),
       fc.boolean(),
       (level, localized) => {
-        const session = createCanonicalSession(
-          fixture(level, localized, 12240),
-        ).unwrap();
-        session.setMode({ type: "suggesting", author: "Reviewer" });
-        const state = EditorState.create({
-          schema,
-          doc: session.projection.doc,
-        });
-        const before = session.document;
-        const command = singletonManager.requireCommand("generateTOC")({
-          title: "Contents",
-        });
-        const prepared = prepareCanonicalCommands(
-          session,
-          state,
-          getCanonicalCommandIntents(command, state) ?? [],
-        );
-        expect(prepared.isErr()).toBe(true);
-        if (prepared.isOk())
-          return panic("Expected TOC refusal stopped reproducing");
-        expect(prepared.error.ground.gap).toBe(
-          CANONICAL_GAP.trackedHyperlinkResolution,
-        );
-        expect(session.document).toBe(before);
-        expect(session.version).toBe(0);
-        expect(session.canUndo).toBe(false);
+        const generated = (suggesting: boolean) => {
+          const session = createCanonicalSession(
+            fixture(level, localized, 12240),
+          ).unwrap();
+          if (suggesting)
+            session.setMode({ type: "suggesting", author: "Reviewer" });
+          const state = EditorState.create({
+            schema,
+            doc: session.projection.doc,
+          });
+          const before = session.document;
+          const command = singletonManager.requireCommand("generateTOC")({
+            title: "Contents",
+          });
+          const prepared = prepareCanonicalCommands(
+            session,
+            state,
+            getCanonicalCommandIntents(command, state) ?? [],
+          ).unwrap();
+          const after = publishCanonicalProjection({
+            session,
+            state,
+            commit: prepared,
+          }).unwrap().state;
+          return { session, before, state: after };
+        };
+        const direct = generated(false);
+        const tracked = generated(true);
+        expect(revisionIds(tracked.session.document).size).toBeGreaterThan(0);
+        expect(
+          blockTexts(
+            resolvedAll(tracked.session.document, REVISION_DECISIONS.ACCEPT),
+          ),
+        ).toEqual(blockTexts(direct.session.document));
+        expect(
+          blockTexts(
+            resolvedAll(tracked.session.document, REVISION_DECISIONS.REJECT),
+          ),
+        ).toEqual(blockTexts(tracked.before));
+        const suggested = tracked.session.document;
+        const undone = publishCanonicalProjection({
+          session: tracked.session,
+          state: tracked.state,
+          commit: tracked.session.prepareUndo(tracked.state).unwrap(),
+        }).unwrap().state;
+        expect(tracked.session.document).toStrictEqual(tracked.before);
+        publishCanonicalProjection({
+          session: tracked.session,
+          state: undone,
+          commit: tracked.session.prepareRedo(undone).unwrap(),
+        }).unwrap();
+        expect(tracked.session.document).toStrictEqual(suggested);
       },
     ),
     {
       numRuns: 18,
-      id: "TOC suggesting retains the named expected refusal without publishing headings or allocating ids",
+      id: "a suggested TOC records what it inserts and resolves to the direct edit or the original",
     },
   );
 });
