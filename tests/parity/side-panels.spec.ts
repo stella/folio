@@ -28,6 +28,7 @@ import {
   type AdapterFixture,
   ensureLiveView,
   forEachAdapter,
+  openCanonicalEditor,
   openEditor,
 } from "./parity-fixture";
 
@@ -38,6 +39,7 @@ const loadDocument = async (
   adapter: AdapterFixture,
   review: PanelLayoutReview,
   sections: PanelLayoutSections = "portrait",
+  open: typeof openEditor = openEditor,
 ) => {
   const bytes = await buildPanelLayoutDocument(review, sections);
   await page.route("**/fixtures/panel-layout.docx", (route) =>
@@ -47,34 +49,90 @@ const loadDocument = async (
       body: Buffer.from(bytes),
     }),
   );
-  await openEditor(page, adapter, "panel-layout.docx");
+  await open(page, adapter, "panel-layout.docx");
   await page.evaluate(() => document.fonts.ready);
   await ensureLiveView(page);
   await waitForPanels(page, review);
 };
 
-for (const { width, review, expected } of PANEL_LAYOUT_CASES) {
-  forEachAdapter(
-    `${String(width)}px, review ${review}: ${expected.tier} tier`,
-    async (adapter, { page }) => {
-      await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-      await loadDocument(page, adapter, review);
-
-      expect(await readPanelState(page)).toEqual(expected);
-      await expectPanelsDoNotOverlap(page, expected);
-      if (review !== "none") {
-        await expect(page.getByTestId("toolbar-comments-count")).toHaveText(
-          "1",
-        );
+// Diagnostic: the overflow over the next frames and what sticks out.
+const readOverflowFrames = (page: Page) =>
+  page.evaluate(async () => {
+    const scroll = document.querySelector<HTMLElement>("[data-folio-scroll]");
+    if (!scroll) return { missing: true };
+    const frame = () =>
+      new Promise<number>((resolve) => requestAnimationFrame(resolve));
+    const describe = (element: Element) => {
+      const box = element.getBoundingClientRect();
+      return `${element.tagName}.${String(element.className).slice(0, 60)}[${String(Math.round(box.left))},${String(Math.round(box.right))} w${String(Math.round(box.width))}]`;
+    };
+    const contributors = () => {
+      const edge = scroll.getBoundingClientRect().left + scroll.clientWidth + 1;
+      const out: string[] = [];
+      for (const element of scroll.querySelectorAll("*")) {
+        if (element.getBoundingClientRect().right <= edge) continue;
+        const parent = element.parentElement;
+        if (
+          parent &&
+          parent !== scroll &&
+          parent.getBoundingClientRect().right > edge
+        )
+          continue;
+        out.push(describe(element));
+        if (out.length >= 8) break;
       }
+      return out;
+    };
+    const frames: number[] = [];
+    let first: string[] | null = null;
+    for (let index = 0; index < 40; index += 1) {
+      const overflow = scroll.scrollWidth - scroll.clientWidth;
+      frames.push(overflow);
+      if (overflow > 1 && first === null) first = contributors();
+      await frame();
+    }
+    return {
+      frames,
+      first,
+      scroll: describe(scroll),
+      client: scroll.clientWidth,
+      hasVerticalScrollbar: scroll.offsetWidth - scroll.clientWidth,
+    };
+  });
 
-      await expectPanelDrawers(page, expected);
-      const afterDismissal = afterPanelDrawersDismissed(expected);
-      expect(await readPanelState(page)).toEqual(afterDismissal);
-      await expectPanelsDoNotOverlap(page, afterDismissal);
-    },
-  );
-}
+for (const [engine, open] of [
+  ["", openEditor],
+  [" on canonical", openCanonicalEditor],
+] as const)
+  for (const { width, review, expected } of PANEL_LAYOUT_CASES) {
+    forEachAdapter(
+      `${String(width)}px, review ${review}: ${expected.tier} tier${engine}`,
+      async (adapter, { page }) => {
+        await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
+        await loadDocument(page, adapter, review, "portrait", open);
+
+        expect(await readPanelState(page)).toEqual(expected);
+        if (expected.tier !== "narrow") {
+          const frames = await readOverflowFrames(page);
+          expect(
+            JSON.stringify(frames).includes('"first":null'),
+            `overflow frames ${JSON.stringify(frames)}`,
+          ).toBe(true);
+        }
+        await expectPanelsDoNotOverlap(page, expected);
+        if (review !== "none") {
+          await expect(page.getByTestId("toolbar-comments-count")).toHaveText(
+            "1",
+          );
+        }
+
+        await expectPanelDrawers(page, expected);
+        const afterDismissal = afterPanelDrawersDismissed(expected);
+        expect(await readPanelState(page)).toEqual(afterDismissal);
+        await expectPanelsDoNotOverlap(page, afterDismissal);
+      },
+    );
+  }
 
 forEachAdapter(
   "tracked changes alone leave comments closed",
