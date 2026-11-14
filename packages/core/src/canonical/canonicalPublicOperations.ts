@@ -2185,15 +2185,16 @@ export class CanonicalPublicOperations {
       ? selection
       : session.prepareOps(state, ops, selection.value);
     if (prepared.isErr()) {
+      // A batch that changes nothing is a no-op, not a capability gap.
+      const noChange = prepared.error.reason === "noChange";
       for (const { id } of appliedById.values()) {
-        refusals.set(id, {
-          gap: CANONICAL_GAP.publicUnsupportedInline,
-        });
+        if (!noChange)
+          refusals.set(id, {
+            gap: CANONICAL_GAP.publicUnsupportedInline,
+          });
         skip(
           id,
-          prepared.error.reason === "noChange"
-            ? "noopOperation"
-            : "unsupportedBlock",
+          noChange ? "noopOperation" : "unsupportedBlock",
           prepared.error.message,
         );
       }
@@ -2646,13 +2647,10 @@ export class CanonicalPublicOperations {
         text = operation.type === "replaceRange" ? operation.replace : "";
         break;
       case "replaceBlock":
-        if (
-          operation.styleId !== undefined ||
-          operation.preserveFormatting === false
-        )
+        if (operation.preserveFormatting === false)
           return refusal(
             "unsupportedBlock",
-            "Canonical replacement paragraph properties are unavailable.",
+            "Canonical replacements that drop the paragraph's formatting are unavailable.",
           );
         text = operation.text;
         break;
@@ -2732,11 +2730,25 @@ export class CanonicalPublicOperations {
         from: range.from,
         to: range.to,
       });
+    // A replacement that names a style the paragraph does not have restyles
+    // it, as the default engine does, even when its words stay the same.
+    const restyle =
+      operation.type === "replaceBlock" &&
+      operation.styleId !== undefined &&
+      operation.styleId !== (paragraph.source.formatting?.styleId ?? null)
+        ? statedPropertiesIntents({
+            story,
+            blockId: paragraph.blockId,
+            properties: { styleId: operation.styleId },
+            mintList,
+          })
+        : [];
     if (
       resolvedComment.type === "plain" &&
       operation.type !== "splitBlock" &&
       operation.type !== "formatRange" &&
       operation.type !== "mergeBlockWithNext" &&
+      restyle.length === 0 &&
       clean.text.slice(start, end) === text
     )
       return refusal("noopOperation");
@@ -2938,6 +2950,7 @@ export class CanonicalPublicOperations {
             : { runPropsPatch: intent.runPropsPatch }),
         });
       }
+      intents.push(...restyle);
     } else if (
       operation.type === "mergeBlockWithNext" &&
       intent.type === "joinParagraphs"
