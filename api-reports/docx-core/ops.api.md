@@ -218,6 +218,7 @@ export type CommentState = {
         blockId: string;
         content: readonly ParagraphContent[];
     }[];
+    boundaries?: readonly CommentBoundaryAnchor[];
 };
 
 // @public
