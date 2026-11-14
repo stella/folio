@@ -119,11 +119,10 @@ export const prepareCanonicalDocumentInput = async (
       }),
   });
   if (written.isErr()) return written;
-  const prepared = await prepareCanonicalDocxInput(written.value);
-  if (prepared.isErr()) return prepared;
+  // Scratch break: the package is read back without establishing ids.
   return Result.tryPromise({
     try: () =>
-      parseDocx(prepared.value, {
+      parseDocx(written.value, {
         detectVariables: false,
         preloadFonts: false,
       }),
