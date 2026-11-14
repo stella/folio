@@ -157,7 +157,9 @@ describe("formatting a selection that holds a field on the session", () => {
   test("every selection over the paragraph formats the fields as the legacy editor does, after save and reopen", async () => {
     for (let from = 0; from < 8; from++) {
       for (let to = from + 1; to <= 8; to++) {
-        const { session, state } = formatOnSession("editing", from, to);
+        const { before, state } = formatOnSession("editing", from, to);
+        // Break: the session's document as it was, fields unformatted.
+        const session = { document: before };
         let legacy = state;
         toggleBold(state, (transaction) => {
           legacy = state.apply(transaction);
