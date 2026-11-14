@@ -21,6 +21,7 @@ import type {
   SetContentControlContentInput,
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
+import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import type { CanonicalHistoryEffect } from "@stll/folio-core/controller/canonicalSession";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
@@ -331,8 +332,9 @@ export type DocxEditorProps = {
   /**
    * Controlled comments array. When provided, the editor reads comment thread
    * metadata from this prop and emits every change through `onCommentsChange`.
-   * Use with collaboration backends (Yjs, etc.) so comment threads sync across
-   * peers; PM carries range markers, thread metadata lives outside the doc.
+   * In a canonical room the comments are operations of the room's journal:
+   * the editor reports them through `onCommentsChange` and never reads this
+   * prop back.
    */
   comments?: Comment[];
   /** Fires whenever the comments array changes (controlled and uncontrolled). */
@@ -360,7 +362,11 @@ export type DocxEditorProps = {
    * host, collaboration, and built-in plugins.
    */
   plugins?: readonly Plugin[] | undefined;
-  /** Yjs-backed collaboration owner. Experimental and opt-in. */
+  /**
+   * Edit together with other editors. With the canonical session, the
+   * canonical room the session joins; with the legacy session, the Yjs
+   * fragment it edits. Experimental and opt-in.
+   */
   collaboration?: DocxEditorCollaboration | undefined;
   /**
    * Fires with the current anonymization match list every time
@@ -445,7 +451,11 @@ export type DocxEditorProps = {
 
 export type { FolioSelectiveSaveFlags, TripwireResult };
 
-export type DocxEditorCollaboration = {
+export type DocxEditorCollaboration =
+  CanonicalRoomCollaboration | DocxEditorYjsCollaboration;
+
+/** A Yjs fragment the legacy session edits, and the plugins that bind it. */
+export type DocxEditorYjsCollaboration = {
   awareness?:
     | {
         clientID: number;
@@ -458,6 +468,8 @@ export type DocxEditorCollaboration = {
   plugins?: Plugin[] | undefined;
   shouldSeed?: boolean | undefined;
   yXmlFragment: XmlFragment;
+  /** A canonical room is reached through `connect`; a Yjs fragment has none. */
+  connect?: never;
 };
 
 export type DocxEditorApplyDocumentOperationsOptions = {

@@ -546,6 +546,7 @@ import {
 } from "vue";
 
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import { isCanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
@@ -1322,6 +1323,9 @@ const commentManagement = useCommentManagement({
   getDocument,
   author: () => props.author,
   commentsProp: () => props.comments,
+  commentsFromRoom: () =>
+    props.collaboration !== undefined &&
+    isCanonicalRoomCollaboration(props.collaboration),
   canonicalTick: stateTick,
   onCommentsChange: (next) => {
     props.onCommentsChange?.(next);
