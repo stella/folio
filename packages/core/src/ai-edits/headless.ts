@@ -326,10 +326,11 @@ export type FolioDocxReviewerOptions = {
    * story, their undo, comment replies and resolution, the resolution of
    * tracked changes and the save run on it as the canonical editor runs
    * them, and resolved views are read from a second session resolved to
-   * the view. Suggestions, table geometry staging and comparison are not on
-   * the session yet: they throw a `CanonicalSessionError` whose ground is
-   * the `publicOps.headlessSession` gap, and never fall back to the legacy
-   * engine.
+   * the view; suggested batches stage on it and its suggestions resolve
+   * through its suggestion intent. Table geometry staging and comparison
+   * are not on the session yet: they throw a `CanonicalSessionError` whose
+   * ground is the `publicOps.headlessSession` gap, and never fall back to
+   * the legacy engine.
    */
   session?: HeadlessReviewerSession;
 };
@@ -1884,11 +1885,9 @@ export class FolioDocxReviewer {
 
   /**
    * What the session cannot resolve yet refuses before anything changes:
-   * final section property changes and pending suggestions.
+   * final section property changes.
    */
   private requireSessionReview(action: string): void {
-    if (getSuggestions(this.state).length > 0)
-      throw canonicalReviewerRefusal(`${action} beside pending suggestions`);
     if (
       (this.currentFinalSectionProperties()?.propertyChanges?.length ?? 0) > 0
     )
@@ -1906,9 +1905,17 @@ export class FolioDocxReviewer {
     let count = 0;
     for (const handle of this.listStoryHandlesInternal()) {
       if (handle.type === "main") continue;
-      const doc = this.readSecondaryStoryDoc(handle);
-      if (!doc) continue;
-      const changes = getTrackedChangesFromDoc(doc);
+      const state = this.getEditableStoryState(handle);
+      if (!state) continue;
+      const { doc } = state;
+      if (resolution === "reject" && getSuggestions(state).length > 0)
+        throw canonicalReviewerRefusal(
+          "reject a suggestion in headers, footers or notes",
+        );
+      // Accepting every change leaves pending suggestions staged.
+      const changes = getTrackedChangesFromDoc(doc).filter(
+        ({ id }) => suggestionIdOfRevision(state, id) === null,
+      );
       if (changes.length === 0) continue;
       count += changes.length;
       ops.push({
@@ -1921,12 +1928,6 @@ export class FolioDocxReviewer {
       });
     }
     return { ops, count };
-  }
-
-  /** A batch the session cannot take yet refuses whole, before anything changes. */
-  private requireSessionBatch(batch: FolioDocumentOperationBatch): void {
-    if (batch.mode === "suggested")
-      throw canonicalReviewerRefusal("stage suggested operations");
   }
 
   /** A story's snapshot as the compiler resolves operations against it. */
@@ -1943,33 +1944,56 @@ export class FolioDocxReviewer {
     return snapshot;
   }
 
-  /** Apply a batch through the editor's canonical public operation compiler. */
+  /**
+   * Apply a batch through the editor's canonical public operation compiler.
+   * A suggested batch is recorded for {@link exportPendingSuggestions} as on
+   * the legacy engine; the session holds its revisions and comments.
+   */
   private applyDocumentOperationsOnSession({
     operations,
     story,
     batch,
     snapshot,
+    author,
     revisionStamp,
     wordDiff,
     tableTemplates,
     replacementBackground,
     undefinedReferences,
-  }: Omit<
-    ApplyDocumentOperationsInternalOptions,
-    "createUndoEntry" | "author" | "restagesSuggestions"
-  > & { operations: CanonicalPublicOperations }): FolioDocumentOperationResult {
-    this.requireSessionBatch(batch);
-    return operations.apply({
-      snapshot: snapshot ?? this.snapshotOnSession(story),
+    restagesSuggestions,
+  }: Omit<ApplyDocumentOperationsInternalOptions, "createUndoEntry"> & {
+    operations: CanonicalPublicOperations;
+  }): FolioDocumentOperationResult {
+    const sourceSnapshot = snapshot ?? this.snapshotOnSession(story);
+    const operationAuthor = author ?? this.author;
+    const activeBefore = this.activeSuggestionIds();
+    const result = operations.apply({
+      snapshot: sourceSnapshot,
       batch,
       story: story.type === "main" ? "main" : story,
-      author: this.author,
+      author: operationAuthor,
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
       undefinedReferences,
+      ...(restagesSuggestions === true
+        ? { restagesSuggestions }
+        : { pendingSuggestionIds: activeBefore }),
     });
+    if (batch.mode === "suggested") {
+      const activeSuggestionIds = this.activeSuggestionIds();
+      for (const id of activeBefore) activeSuggestionIds.add(id);
+      this.pendingSuggestions.recordApplied({
+        snapshot: sourceSnapshot,
+        story,
+        operations: batch.operations,
+        applied: result.applied,
+        author: operationAuthor,
+        activeSuggestionIds,
+      });
+    }
+    return result;
   }
 
   /**
@@ -2011,6 +2035,15 @@ export class FolioDocxReviewer {
     const active = new Set(
       getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
     );
+    if (this.engine.type === "canonical") {
+      for (const handle of this.listStoryHandlesInternal()) {
+        if (handle.type === "main") continue;
+        const state = this.getEditableStoryState(handle);
+        for (const { suggestionId } of state ? getSuggestions(state) : [])
+          active.add(suggestionId);
+      }
+      return active;
+    }
     for (const entry of this.secondaryStoryStates.values()) {
       for (const { suggestionId } of getSuggestions(entry.state))
         active.add(suggestionId);
@@ -2036,7 +2069,6 @@ export class FolioDocxReviewer {
   loadPendingSuggestions(
     records: readonly unknown[],
   ): FolioPendingSuggestionLoadResult[] {
-    this.requireLegacyEngine("restage pending suggestions");
     return this.pendingSuggestions.loadPendingSuggestions({
       records,
       snapshotForStory: (story) => this.snapshotStory(story),
@@ -2047,7 +2079,7 @@ export class FolioDocxReviewer {
           : null;
       },
       apply: (record, snapshot) => {
-        const result = this.applyDocumentOperationsInternal({
+        const restage = {
           undefinedReferences: "refuse",
           restagesSuggestions: true,
           story: record.story,
@@ -2058,20 +2090,23 @@ export class FolioDocxReviewer {
           },
           snapshot,
           author: record.author,
-          createUndoEntry: false,
-        });
+        } satisfies Omit<
+          ApplyDocumentOperationsInternalOptions,
+          "createUndoEntry"
+        >;
+        const result =
+          this.engine.type === "canonical"
+            ? this.applyDocumentOperationsOnSession({
+                ...restage,
+                operations: this.engine.operations,
+              })
+            : this.applyDocumentOperationsInternal({
+                ...restage,
+                createUndoEntry: false,
+              });
         return { applied: result.applied, skipped: result.skipped };
       },
-      activeSuggestionIds: () => {
-        const active = new Set(
-          getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
-        );
-        for (const entry of this.secondaryStoryStates.values()) {
-          for (const { suggestionId } of getSuggestions(entry.state))
-            active.add(suggestionId);
-        }
-        return active;
-      },
+      activeSuggestionIds: () => this.activeSuggestionIds(),
     });
   }
 
@@ -3309,7 +3344,13 @@ export class FolioDocxReviewer {
     suggestionId: string,
     options?: { author?: string },
   ): boolean {
-    this.requireLegacyEngine("accept a suggestion");
+    if (this.engine.type === "canonical")
+      return this.resolveSuggestionOnSession(
+        this.engine.session,
+        suggestionId,
+        "accept",
+        options?.author ?? this.author,
+      );
     return this.resolveWithSectionReferenceHistory(() => {
       let accepted = false;
       for (const handle of this.listStoryHandlesInternal()) {
@@ -3336,7 +3377,13 @@ export class FolioDocxReviewer {
 
   /** Remove one pending suggestion without applying it. */
   rejectSuggestion(suggestionId: string): boolean {
-    this.requireLegacyEngine("reject a suggestion");
+    if (this.engine.type === "canonical")
+      return this.resolveSuggestionOnSession(
+        this.engine.session,
+        suggestionId,
+        "reject",
+        this.author,
+      );
     return this.resolveWithSectionReferenceHistory(() => {
       let rejected = false;
       for (const handle of this.listStoryHandlesInternal()) {
@@ -3394,9 +3441,20 @@ export class FolioDocxReviewer {
   ): boolean {
     if (this.engine.type !== "canonical")
       return panic("Only a canonical reviewer resolves on the session");
+    const { session } = this.engine;
     const id = revisionIdOf(target);
-    if (suggestionIdOfRevision(this.state, id) !== null)
-      throw canonicalReviewerRefusal(`${resolution} a pending suggestion`);
+    // A suggested change is rejected whole; accepting it first adopts it as
+    // an ordinary tracked change, then accepts that change.
+    const suggestionId = suggestionIdOfRevision(this.state, id);
+    if (suggestionId !== null) {
+      const adopted = this.resolveSuggestionOnSession(
+        session,
+        suggestionId,
+        resolution,
+        this.author,
+      );
+      if (!adopted || resolution === "reject") return adopted;
+    }
     if (
       this.currentFinalSectionProperties()?.propertyChanges?.some(
         ({ info }) => info.id === id,
@@ -3406,9 +3464,50 @@ export class FolioDocxReviewer {
         `${resolution} a final section properties change`,
       );
     return this.resolveOnSession(
-      this.engine.session.prepareResolve(this.state, {
+      session.prepareResolve(this.state, {
         revisionIds: [id],
         resolution,
+      }),
+    ).resolved;
+  }
+
+  /**
+   * One pending suggestion through the session's suggestion intent: rejected
+   * with the comments it proposes, or adopted as ordinary tracked changes by
+   * `author`. The session resolves suggestions in the body; one staged in a
+   * header, footer or note refuses.
+   */
+  private resolveSuggestionOnSession(
+    session: CanonicalSession,
+    suggestionId: string,
+    resolution: "accept" | "reject",
+    author: string,
+  ): boolean {
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (handle.type === "main") continue;
+      const state = this.getEditableStoryState(handle);
+      if (
+        state &&
+        getSuggestions(state).some(
+          (entry) => entry.suggestionId === suggestionId,
+        )
+      )
+        throw canonicalReviewerRefusal(
+          `${resolution} a suggestion in headers, footers or notes`,
+        );
+    }
+    if (
+      !getSuggestions(this.state).some(
+        (entry) => entry.suggestionId === suggestionId,
+      )
+    )
+      return false;
+    return this.resolveOnSession(
+      session.prepareSuggestion(this.state, {
+        suggestionId,
+        resolution,
+        author,
+        date: new Date().toISOString(),
       }),
     ).resolved;
   }
@@ -3423,12 +3522,29 @@ export class FolioDocxReviewer {
     resolution: "accept" | "reject",
   ): FolioReviewResolution {
     this.requireSessionReview(`${resolution} every change`);
-    const before = this.state;
-    const changes = getTrackedChangesFromDoc(before.doc);
-    // Headers, footers and notes resolve in the same commit as the body.
+    // Rejecting every change rejects every pending suggestion first, each
+    // with the comments it proposes; accepting leaves them staged.
     const stories = this.storyResolutions(resolution);
+    let rejectedSuggested = 0;
+    if (resolution === "reject")
+      for (const { suggestionId } of getSuggestions(this.state)) {
+        const before = getTrackedChangesFromDoc(this.state.doc).length;
+        this.resolveSuggestionOnSession(
+          session,
+          suggestionId,
+          "reject",
+          this.author,
+        );
+        rejectedSuggested +=
+          before - getTrackedChangesFromDoc(this.state.doc).length;
+      }
+    const before = this.state;
+    const changes = getTrackedChangesFromDoc(before.doc).filter(
+      ({ id }) => suggestionIdOfRevision(before, id) === null,
+    );
+    // Headers, footers and notes resolve in the same commit as the body.
     if (changes.length === 0 && stories.count === 0)
-      return { resolved: 0, skipped: [] };
+      return { resolved: rejectedSuggested, skipped: [] };
     const outcome = this.resolveOnSession(
       session.prepareResolve(before, {
         revisionIds: changes.map(({ id }) => id),
@@ -3437,7 +3553,7 @@ export class FolioDocxReviewer {
       }),
     );
     if (!outcome.resolved && outcome.reason === "noChange")
-      return { resolved: 0, skipped: [] };
+      return { resolved: rejectedSuggested, skipped: [] };
     const held = new Set(
       outcome.resolved ? outcome.lockHeld : changes.map(({ id }) => id),
     );
@@ -3458,7 +3574,8 @@ export class FolioDocxReviewer {
     });
     const storiesResolved = outcome.resolved ? stories.count : 0;
     return {
-      resolved: changes.length - skipped.length + storiesResolved,
+      resolved:
+        rejectedSuggested + changes.length - skipped.length + storiesResolved,
       skipped,
     };
   }
