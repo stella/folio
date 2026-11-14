@@ -1602,6 +1602,7 @@ const writeActions = ({
     at: LivePoint,
     content: DeepReadonly<ParagraphContent>,
     revision: RevisionStamp,
+    recordsEdit = true,
   ): boolean => {
     const picture = insertedPictureOf(content);
     let inserted = content;
@@ -1623,7 +1624,7 @@ const writeActions = ({
     const newIds = freshIds(op);
     if (refusal !== undefined) return false;
     if (!emit(newIds === undefined ? op : { ...op, newIds })) return false;
-    record(at, { offset: at.offset, deleted: 0, inserted: 1 });
+    if (recordsEdit) record(at, { offset: at.offset, deleted: 0, inserted: 1 });
     return true;
   };
   /** Remove `[from, to)`: the comparison's own insertion goes, anything else is marked deleted. */
@@ -1631,6 +1632,7 @@ const writeActions = ({
     from: LivePoint,
     to: LivePoint,
     disposition: AtomActionDisposition,
+    recordsEdit = true,
   ): boolean => {
     switch (disposition) {
       case "inserted": {
@@ -1640,11 +1642,12 @@ const writeActions = ({
           to: position(to),
         };
         if (!emit(op)) return false;
-        record(from, {
-          offset: from.offset,
-          deleted: to.offset - from.offset,
-          inserted: 0,
-        });
+        if (recordsEdit)
+          record(from, {
+            offset: from.offset,
+            deleted: to.offset - from.offset,
+            inserted: 0,
+          });
         return true;
       }
       case "retained": {
@@ -1713,18 +1716,31 @@ const writeActions = ({
         if (from.paraId !== to.paraId || from.offset >= to.offset)
           return { status: "unalignable" };
         // The reference takes the place of the marker inside the insertion
-        // that wrote it, alike in author and date.
+        // that wrote it, alike in author and date. Later points map over
+        // the two as over one replacement of the marker.
         written =
-          insert(from, action.content, {
-            id: nextRevisionId++,
-            author: action.insertion.author,
-            date: action.insertion.date ?? revisionStamp.date,
-          }) &&
+          insert(
+            from,
+            action.content,
+            {
+              id: nextRevisionId++,
+              author: action.insertion.author,
+              date: action.insertion.date ?? revisionStamp.date,
+            },
+            false,
+          ) &&
           remove(
             { ...from, offset: from.offset + 1, zeroWidthBefore: 0 },
             { ...to, offset: to.offset + 1 },
             "inserted",
+            false,
           );
+        if (written)
+          record(from, {
+            offset: from.offset,
+            deleted: to.offset - from.offset,
+            inserted: 1,
+          });
         break;
       }
       case "delete": {

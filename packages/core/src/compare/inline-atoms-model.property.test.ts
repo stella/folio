@@ -612,6 +612,14 @@ const FIXED_PAIRS: readonly { name: string; base: Body; target: Body }[] = [
     ],
   },
   {
+    name: "a page break goes before a reference restored at the same point",
+    base: [[{ kind: "pageBreak" }, { kind: "footnote", id: 10 }]],
+    target: [
+      [{ kind: "pageBreak" }, { kind: "footnote", id: 10 }],
+      [{ kind: "pageBreak" }, { kind: "footnote", id: 10 }],
+    ],
+  },
+  {
     name: "a field joins a merged paragraph",
     base: [
       [{ kind: "text", text: "Count: " }],
