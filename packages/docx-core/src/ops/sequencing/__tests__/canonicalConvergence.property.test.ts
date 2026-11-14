@@ -892,13 +892,13 @@ const sameParagraphScenarioArbitrary = scenarioArbitrary(
 );
 
 /**
- * Suggesting and direct typing, erases and replacements in one paragraph,
- * mostly suggesting, with lost answers submitted again. A format at a
- * tracked change's edge is pinned (`formatAcrossSuggestedErase`).
+ * Suggesting and direct typing, erases, replacements and formats in one
+ * paragraph, mostly suggesting, with lost answers submitted again. A format
+ * at a tracked change's edge is pinned (`formatAcrossSuggestedErase`).
  */
 const trackedScenarioArbitrary = scenarioArbitrary(
   focusedSeeds(
-    ["type", "type", "erase", "erase", "replace", "tab"],
+    ["type", "type", "erase", "erase", "replace", "tab", "format"],
     fc.constantFrom(true, true, false),
   ),
   true,
