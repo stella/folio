@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Node as PMNode } from "prosemirror-model";
@@ -12,7 +13,13 @@ import type { EditorState } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { serializeCanonicalSave } from "../docx/canonicalSave";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import {
   acceptAIEditRevision,
   rejectAIEditRevision,
@@ -22,6 +29,7 @@ import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { markupViewNotes } from "../prosemirror/markupViewNotes";
 import {
   createNoteReferenceFollower,
+  heldUnreferencedNotes,
   noteReferencesRestored,
   restoreNotes,
   withoutUnreferencedNotes,
@@ -184,7 +192,10 @@ describe("a note goes with its reference", () => {
     const model = fromProseDoc(accepted.doc, document, {
       stylesheetSource: { type: "package" },
     });
-    const saved = withoutUnreferencedNotes(model);
+    const saved = withoutUnreferencedNotes(
+      model,
+      heldUnreferencedNotes(document),
+    );
     expect(noteState(saved, 1)).toBeNull();
     expect(saved.package.footnotes?.length).toBe(
       (model.package.footnotes?.length ?? 0) - 1,
@@ -194,6 +205,7 @@ describe("a note goes with its reference", () => {
         fromProseDoc(state.doc, document, {
           stylesheetSource: { type: "package" },
         }),
+        heldUnreferencedNotes(document),
       ),
     ).toEqual(
       fromProseDoc(state.doc, document, {
@@ -218,7 +230,8 @@ describe("a note goes with its reference", () => {
       { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z", content: [] },
     ];
     expect(
-      withoutUnreferencedNotes(model).package.document.comments,
+      withoutUnreferencedNotes(model, heldUnreferencedNotes(document)).package
+        .document.comments,
     ).toBeUndefined();
   });
 
@@ -488,5 +501,136 @@ describe("an edit operation that deletes a note reference", () => {
   test("direct, the note goes with its reference", async () => {
     const { reviewer } = await deleteNotedParagraph("direct");
     expect(noteState(await saved(reviewer), 1)).toBeNull();
+  });
+});
+
+/**
+ * A save never takes what the package held: a note nothing refers to in the
+ * opened package, the comments in it and every part survive, in the
+ * canonical session as in the editors' save sweep. Only a note an edit left
+ * without its reference goes (above).
+ */
+describe("a save keeps the notes the package held without a reference", () => {
+  const note = (id: number, text: string, commented: boolean) =>
+    `<w:footnote w:id="${id}"><w:p>${commented ? `<w:commentRangeStart w:id="${id}"/>` : ""}<w:r><w:t>${text}</w:t></w:r>${commented ? `<w:commentRangeEnd w:id="${id}"/>` : ""}</w:p></w:footnote>`;
+  const notesFixture = (
+    notes: readonly { referenced: boolean; commented: boolean }[],
+  ): Fixture => ({
+    body: `<w:p w14:paraId="10000001"><w:r><w:t>Body text.</w:t></w:r>${notes
+      .flatMap(({ referenced }, index) =>
+        referenced
+          ? [`<w:r><w:footnoteReference w:id="${index + 1}"/></w:r>`]
+          : [],
+      )
+      .join("")}</w:p>`,
+    footnotes: notes
+      .map(({ commented }, index) =>
+        note(index + 1, `Note ${index + 1}.`, commented),
+      )
+      .join(""),
+  });
+  const footnoteIds = (document: Document) =>
+    (document.package.footnotes ?? []).map(({ id }) => id).toSorted();
+  const partNames = async (bytes: ArrayBuffer | Uint8Array) =>
+    (await ZipArchive.read(bytes)).paths().toSorted();
+
+  test(
+    "every note, comment anchor and part survives a canonical save and the editors' sweep",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(
+          fc.array(
+            fc.record({ referenced: fc.boolean(), commented: fc.boolean() }),
+            { minLength: 1, maxLength: 4 },
+          ),
+          async (notes) => {
+            const bytes = await packageOf(notesFixture(notes));
+            const document = await parseShapeDocument(bytes);
+            // The editors' sweep, with what the opened package held.
+            expect(
+              withoutUnreferencedNotes(
+                document,
+                heldUnreferencedNotes(document),
+              ),
+            ).toBe(document);
+            // The snapshot a canonical session hands its save, with what the
+            // opened package held.
+            const opened = await parseShapeDocument(
+              (await prepareCanonicalDocxInput(bytes)).unwrap(),
+            );
+            const saved = await serializeCanonicalSave({
+              snapshot: {
+                document: opened,
+                version: 0,
+                changedBlockIds: [],
+                structure: "stable",
+                heldUnreferencedNotes: heldUnreferencedNotes(opened),
+              },
+            });
+            const reopened = await parseShapeDocument(
+              new Uint8Array(saved.buffer),
+            );
+            expect(footnoteIds(reopened)).toEqual(footnoteIds(document));
+            expect(
+              (reopened.package.document.comments ?? []).map(({ id }) => id),
+            ).toEqual(
+              (document.package.document.comments ?? []).map(({ id }) => id),
+            );
+            const missing = new Set(await partNames(bytes));
+            for (const part of await partNames(saved.buffer))
+              missing.delete(part);
+            expect([...missing]).toEqual([]);
+          },
+        ),
+        {
+          numRuns: 40,
+          id: "every note, comment anchor and part survives a canonical save and the editors' sweep",
+        },
+      );
+    },
+    propertyTestTimeout(60_000),
+  );
+});
+
+describe("a full canonical save writes the notes no edit touched as the package held them", () => {
+  test("untyped separator-shaped notes nothing refers to survive a full repack unchanged", async () => {
+    // Some packages carry their separators without a `w:type`: the model reads
+    // them as ordinary notes it cannot spell, held without a reference.
+    const typed = await packageOf({
+      body: '<w:p w14:paraId="10000001"><w:r><w:t>Body text.</w:t></w:r></w:p>',
+    });
+    const zip = await ZipArchive.read(typed);
+    const footnotesXml = (await zip.entry("word/footnotes.xml")?.text()) ?? "";
+    const untypedXml = footnotesXml
+      .replace(' w:type="separator"', "")
+      .replace(' w:type="continuationSeparator"', "");
+    expect(untypedXml).not.toContain("w:type=");
+    zip.set("word/footnotes.xml", untypedXml);
+    const bytes = await zip.generate({ compression: "store" });
+    const opened = await parseShapeDocument(
+      (await prepareCanonicalDocxInput(bytes)).unwrap(),
+    );
+    const saved = await serializeCanonicalSave({
+      snapshot: {
+        document: opened,
+        version: 0,
+        changedBlockIds: [],
+        // A structural change takes the full repack path.
+        structure: "changed",
+        heldUnreferencedNotes: heldUnreferencedNotes(opened),
+      },
+    });
+    const written =
+      (await (
+        await ZipArchive.read(saved.buffer)
+      )
+        .entry("word/footnotes.xml")
+        ?.text()) ?? "";
+    expect(written).toContain("<w:separator/>");
+    expect(written).toContain("<w:continuationSeparator/>");
+    const reopened = await parseShapeDocument(new Uint8Array(saved.buffer));
+    const ids = (document: Document) =>
+      (document.package.footnotes ?? []).map(({ id }) => id).toSorted();
+    expect(ids(reopened)).toEqual(ids(opened));
   });
 });

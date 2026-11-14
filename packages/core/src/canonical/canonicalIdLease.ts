@@ -78,6 +78,20 @@ export class CanonicalIdLease {
     return { type: "allowed", census, ids };
   }
 
+  /**
+   * The ids another actor's sequenced edit introduces. The authority checked
+   * them against that actor's lease, so they are taken as they come; once
+   * published they are held like this session's own.
+   */
+  admit(after: Document): {
+    type: "allowed";
+    census: LeasedIdCensus;
+    ids: readonly LeasedId[];
+  } {
+    const census = leasedIdCensus(after);
+    return { type: "allowed", census, ids: introducedIds(this.census, census) };
+  }
+
   /** Record a published commit: its ids are held, the lease moves past them. */
   commit(census: LeasedIdCensus, ids: readonly LeasedId[]): void {
     this.census = census;
