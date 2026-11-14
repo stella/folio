@@ -847,14 +847,36 @@ export const PACKAGE_OP_CASES = {
   }),
   setTable: (args: CaseArgs): GeneratedCase =>
     inverseCase(args, PACKAGE_OP_CASES.setTableGrid(args).op, "setTable"),
-  // A checkbox control added before the story's blocks, then toggled.
+  // An inline checkbox control added to the story's first paragraph, then
+  // toggled: the story's block structure and section view stay as they were.
   setContentControl: (args: CaseArgs): GeneratedCase => {
-    const held = freshParagraph(args);
+    const target = targetFor(args);
     const expected = {
       sdtType: "checkbox",
       id: 1_000_000 + (args.seed.fresh % 1_000_000),
       checked: args.seed.inherit,
     } as const;
+    const withControl: Paragraph = {
+      ...target,
+      content: [
+        ...target.content,
+        {
+          type: "inlineSdt",
+          properties: expected,
+          content: [
+            {
+              type: "run",
+              content: [
+                {
+                  type: "text",
+                  text: args.seed.text === "" ? "x" : args.seed.text,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
     const body = storyBody(args.document, args.story);
     return {
       document: replaceStoryBody({
@@ -862,17 +884,16 @@ export const PACKAGE_OP_CASES = {
         story: args.story,
         body: {
           ...body,
-          content: [
-            { type: "blockSdt", properties: expected, content: [held] },
-            ...body.content,
-          ],
+          content: body.content.map((block) =>
+            block === target ? withControl : block,
+          ),
         },
       }),
       op: {
         type: "setContentControl",
         story: args.story,
         controlId: expected.id,
-        blockIds: [held.paraId ?? panic("A fresh paragraph has an id.")],
+        blockIds: [target.paraId ?? panic("A target paragraph has an id.")],
         expected,
         properties: { ...expected, checked: !expected.checked },
       },
