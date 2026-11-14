@@ -15,6 +15,7 @@ import type { EditorView } from "prosemirror-view";
 
 import type { DocumentOp, FormattingPatch, OpStory } from "@stll/docx-core/ops";
 
+import type { CanonicalPublicOperationOptions } from "../canonical/canonicalPublicOperations";
 import type { CanonicalSessionMode } from "../canonical/canonicalSession";
 import type {
   FolioDocumentOperationResult,
@@ -33,7 +34,6 @@ import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
-import type { CanonicalPublicOperationOptions } from "./canonicalPublicOperations";
 
 type CanonicalStoryHistoryOptions = {
   view: EditorView;

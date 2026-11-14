@@ -46,7 +46,13 @@ import {
   sameStory,
 } from "@stll/docx-core/ops";
 
+import {
+  canonicalCommentBody,
+  type CanonicalCommentCommand,
+  compileCanonicalComments,
+} from "../canonical/canonicalComments";
 import { createCanonicalSectionPropertiesOperation } from "../canonical/canonicalOperations";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import { restoreCanonicalSelection } from "../canonical/canonicalSelection";
 import {
   type CanonicalCommit,
@@ -128,13 +134,7 @@ import {
 } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
-import {
-  canonicalCommentBody,
-  type CanonicalCommentCommand,
-  compileCanonicalComments,
-} from "./canonicalComments";
 import { createCanonicalInputBoundary } from "./canonicalInput";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 import {
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,
