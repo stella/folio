@@ -236,11 +236,13 @@ test(
           comment: comment(3, "00000013"),
           anchor: { kind: "reply", parentId: 1 },
         });
-        expect(anchorsOf(replied.document, 3).map(({ type }) => type)).toEqual([
-          "commentRangeStart",
-          "commentRangeEnd",
-          "commentReference",
-        ]);
+        // Each marker follows the owner's of its kind, so an owner whose end
+        // stands after its reference gives a reply the same order.
+        expect(
+          anchorsOf(replied.document, 3)
+            .map(({ type }) => type)
+            .toSorted(),
+        ).toEqual(["commentRangeEnd", "commentRangeStart", "commentReference"]);
         expect(
           anchorsOf(replied.document, 3).some(
             ({ betweenBlocks }) => betweenBlocks,
