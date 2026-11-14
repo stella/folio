@@ -3,6 +3,7 @@ import fc from "fast-check";
 
 import type { FolioAIBlock } from "../../packages/core/src/ai-edits/types";
 import type { FolioDocumentOperation } from "../../packages/core/src/document-operations";
+import type { BlockContent } from "../../packages/docx-core/src/model/document";
 
 /** What the operation is built from: one draw per choice it makes. */
 export type OperationDraw = {
@@ -50,6 +51,38 @@ type OperationForOptions = {
    * block without words then names no operation), or only those with words.
    */
   replaceIn?: "everyBlock" | "blocksWithWords";
+  /** Only blocks with these ids, e.g. {@link bodyBlockIds}; every block by default. */
+  among?: ReadonlySet<string>;
+};
+
+/**
+ * The paragraphs of a block list, those in its tables and content controls
+ * included, by paragraph id: the blocks a body operation targets. A text
+ * box's paragraphs belong to its shape, not to the list.
+ */
+export const bodyBlockIds = (content: readonly BlockContent[]): Set<string> => {
+  const ids = new Set<string>();
+  const visit = (blocks: readonly BlockContent[]): void => {
+    for (const block of blocks) {
+      switch (block.type) {
+        case "paragraph":
+          if (block.paraId !== undefined) ids.add(block.paraId);
+          break;
+        case "table":
+          for (const row of block.rows)
+            for (const cell of row.cells) visit(cell.content);
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          visit(block.content);
+          break;
+        default:
+          break;
+      }
+    }
+  };
+  visit(content);
+  return ids;
 };
 
 const wordsOf = (text: string): string[] =>
@@ -59,11 +92,13 @@ const wordsOf = (text: string): string[] =>
 export const operationFor = (
   reviewer: { getContent: () => FolioAIBlock[] },
   draw: OperationDraw,
-  { replaceIn = "everyBlock" }: OperationForOptions = {},
+  { replaceIn = "everyBlock", among }: OperationForOptions = {},
 ): FolioDocumentOperation | null => {
   const read = reviewer
     .getContent()
-    .filter((block) => block.kind !== "diagnostic");
+    .filter(
+      (block) => block.kind !== "diagnostic" && (among?.has(block.id) ?? true),
+    );
   const blocks =
     draw.kind === "replaceInBlock" && replaceIn === "blocksWithWords"
       ? read.filter((block) => wordsOf(block.text).length > 0)

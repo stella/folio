@@ -1,10 +1,9 @@
 /**
  * A canonical headless reviewer edits and resolves through its session.
  *
- * Each case draws a body with review marks of every shape (or, less often, a
- * document a reviewer lists every story of) and one operation to stage,
- * built from the blocks a reader sees, then holds the reviewer's edits to
- * three laws:
+ * Each case draws a body with review marks of every shape and one operation
+ * to stage on a body paragraph, built from the blocks a reader sees, then
+ * holds the reviewer's edits to three laws:
  *
  * - rejecting every change after the operation in tracked mode gives what
  *   rejecting every change gives without it;
@@ -23,6 +22,7 @@ import path from "node:path";
 
 import { bodyReviewerDocumentArbitrary } from "../../../../test/generators/reviewerDocumentArbitraries";
 import {
+  bodyBlockIds,
   type OperationDraw,
   operationFor,
   stagingDrawArbitrary,
@@ -182,6 +182,7 @@ const editLaws = async (
   }
   const operation = operationFor(base, draw, {
     replaceIn: "blocksWithWords",
+    among: bodyBlockIds(base.toDocument().package.document.content),
   });
   if (operation === null) return "noOperation";
 
@@ -298,8 +299,15 @@ describe("a canonical reviewer edits and resolves through its session", () => {
       const tally = new Map<EditOutcome, number>();
       const refusals: Refusals = new Map();
       await checkCoverageSample(generatedEdits(tally, refusals), COVERAGE_RUNS);
-      // The tally and the refusals behind it are in the failure, so a
-      // shortfall names its causes.
+      // What still refuses is measured on every run, and the tally and the
+      // refusals behind it are in a failure, so a shortfall names its causes.
+      console.info(
+        "edit coverage:",
+        JSON.stringify({
+          tally: Object.fromEntries(tally),
+          refusals: Object.fromEntries(refusals),
+        }),
+      );
       expect({
         reached: (tally.get("edited") ?? 0) >= COVERAGE_RUNS / 3,
         tally: Object.fromEntries(tally),
