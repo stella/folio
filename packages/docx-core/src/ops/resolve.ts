@@ -1662,7 +1662,6 @@ const resolveList = (
           pairedComments: resolution.pairedComments,
           relocated: resolution.relocated,
           revisionDate: node.info.date ?? "",
-          leavesPending: (revisionId) => !resolution.ids.has(revisionId),
         });
         appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are

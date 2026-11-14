@@ -575,10 +575,7 @@ const layerKey = (layer: TrackedRevisionAncestor): string =>
  * The revision marks a boundary carries where `removed` stood: of each of
  * its revision marks, the layers outside the outermost one this resolution
  * takes content out by, less those it resolves. A revision nested inside
- * removed content goes with that content, as the engine's wrappers do, except
- * a pending deletion the resolution leaves: rejecting the content around it
- * says nothing about the deletion, so the boundary stays inside it, pending,
- * as the engine's `removedContentBoundaries` keeps it.
+ * removed content goes with that content, as the engine's wrappers do.
  */
 const landingMarks = (removed: PMNode, selection: RevisionSelection): Mark[] =>
   removed.marks.flatMap((mark) => {
@@ -589,18 +586,8 @@ const landingMarks = (removed: PMNode, selection: RevisionSelection): Mark[] =>
         selection.resolves(layer.revisionId) &&
         revisionLayerRemovesContent(layer, selection.mode),
     );
-    const pendingDeletions =
-      cut === -1 || selection.mode !== "reject"
-        ? []
-        : path
-            .slice(cut + 1)
-            .filter(
-              (layer) =>
-                layer.type === "deletion" &&
-                !selection.resolves(layer.revisionId),
-            );
     const standing = new Set(
-      [...(cut === -1 ? path : path.slice(0, cut)), ...pendingDeletions]
+      (cut === -1 ? path : path.slice(0, cut))
         .filter((layer) => !selection.resolves(layer.revisionId))
         .map(layerKey),
     );
