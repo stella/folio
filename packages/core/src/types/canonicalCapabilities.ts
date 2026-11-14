@@ -223,7 +223,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Public column insertions, cell merges and splits, signature tables and tables beside a table need canonical table descriptors.";
+    readonly summary: "Public signature tables and tables beside a table need canonical table descriptors.";
   };
   readonly "publicOps.pendingParagraphMarkProperties": {
     readonly owner: "document-operations";
@@ -382,7 +382,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Public column insertions, cell merges and splits, signature tables and tables beside a table need canonical table descriptors.",
+      "Public signature tables and tables beside a table need canonical table descriptors.",
   },
   [CANONICAL_GAP.publicPendingParagraphMarkProperties]: {
     owner: "document-operations",

@@ -445,7 +445,7 @@ export const reconcileTableGridAfterColumnInsertion = ({
 };
 
 /** The width a column inserted at `insertedColumn` takes: its left neighbour's, when the grid is known. */
-const insertedColumnWidth = (
+export const insertedColumnWidth = (
   table: PMNode,
   insertedColumn: number,
 ): number | undefined => {
