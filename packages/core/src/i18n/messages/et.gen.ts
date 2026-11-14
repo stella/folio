@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "See dokumendi osa on lukustatud.",
       "editing": "Redigeerimine",
       "editingDescription": "Redigeerige dokumenti otse",
+      "linkSuggestionUnavailable": "Seda lingi muudatust ei saa jälitada. Tehke see redigeerimisrežiimis või viige kommentaar või järjehoidja lingist välja.",
       "outlineDepthAll": "Kõik tasemed",
       "outlineDepthLabel": "Kuva pealkirju",
       "outlineDepthThree": "Tasemed 1–3",

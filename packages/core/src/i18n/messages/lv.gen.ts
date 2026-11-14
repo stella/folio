@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "Šī dokumenta daļa ir bloķēta.",
       "editing": "Rediģēšana",
       "editingDescription": "Rediģējiet dokumentu tieši",
+      "linkSuggestionUnavailable": "Šīs saites izmaiņas nevar reģistrēt. Veiciet tās rediģēšanas režīmā vai pārvietojiet komentāru vai grāmatzīmi ārpus saites.",
       "outlineDepthAll": "Visi līmeņi",
       "outlineDepthLabel": "Rādīt virsrakstus",
       "outlineDepthThree": "1.–3. līmenis",

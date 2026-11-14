@@ -1,4 +1,4 @@
-import { expect, setDefaultTimeout, test } from "bun:test";
+import { expect, mock, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { checkCoverageSample } from "../../../../test/property-coverage";
@@ -20,6 +20,7 @@ import {
   type RoomPeer,
   settle,
 } from "./__tests__/canonicalRoomPeers";
+import * as presence from "./canonicalPresence";
 import { restoreCanonicalRoomAuthority } from "./canonicalRoomAuthority";
 import { toWireJson } from "./canonicalRoomWire";
 import {
@@ -422,11 +423,37 @@ const UNDO_AFTER_REMOTE: readonly Command[] = [
   { type: "local", peer: 1, kind: "undo", seed: 0 },
 ];
 
+/**
+ * One tab types in its paragraph and undoes it; its two presence states
+ * (the caret after the typing, then back before it) reach another tab in
+ * the other order before that tab's controller follows the room. The tab
+ * must hand the controller the later state, not the one that came last.
+ */
+const PRESENCE_REORDERED: readonly Command[] = [
+  ...deliveries(4),
+  { type: "deliver", seed: 8_216_240 },
+  { type: "local", peer: 0, kind: "type", seed: 0 },
+  { type: "local", peer: 0, kind: "undo", seed: 0 },
+  { type: "deliver", seed: 1_279_568 },
+  { type: "deliver", seed: 0 },
+  { type: "deliver", seed: 595_962_972 },
+  { type: "local", peer: 1, kind: "type", seed: 0 },
+  { type: "local", peer: 1, kind: "type", seed: 0 },
+  { type: "kill" },
+  { type: "local", peer: 0, kind: "undo", seed: 0 },
+  { type: "deliver", seed: 0 },
+  { type: "repeat", seed: 0 },
+  { type: "deliver", seed: 0 },
+  { type: "local", peer: 0, kind: "undo", seed: 0 },
+  { type: "deliver", seed: 0 },
+];
+
 const EXAMPLES: [number, boolean, Command[]][] = [
   [3, false, [...HANDOFF_AFTER_SEQUENCED]],
   [3, false, [...TWO_HANDOFFS]],
   [4, true, [...LATE_JOIN_AFTER_HANDOFF]],
   [3, false, [...UNDO_AFTER_REMOTE]],
+  [3, false, [...PRESENCE_REORDERED]],
 ];
 
 const emptyCoverage = (): TabCoverage => ({
@@ -479,6 +506,37 @@ test("the property catches a new leader that starts before replaying the journal
     propertyConfig({ numRuns: 30, endOnFailure: true, examples: EXAMPLES }),
   );
   expect(result.failed).toBe(true);
+});
+
+test("the property catches a tab that keeps the presence state that came last", async () => {
+  // The test-only break: no presence state parses, so a tab keeps whatever
+  // reached it last from each sender.
+  const original = { ...presence };
+  mock.module("./canonicalPresence", () => ({
+    ...original,
+    parseCanonicalPresence: () => undefined,
+  }));
+  try {
+    const result = await fc.check(
+      law(undefined, emptyCoverage()),
+      propertyConfig({
+        numRuns: 1,
+        examples: [[3, false, [...PRESENCE_REORDERED]]],
+        reporter: () => undefined,
+      }),
+    );
+    expect(result.failed).toBe(true);
+  } finally {
+    mock.module("./canonicalPresence", () => original);
+  }
+  const restored = await fc.check(
+    law(undefined, emptyCoverage()),
+    propertyConfig({
+      numRuns: 1,
+      examples: [[3, false, [...PRESENCE_REORDERED]]],
+    }),
+  );
+  expect(restored.failed).toBe(false);
 });
 
 test("a leader with no journal does not lead", async () => {

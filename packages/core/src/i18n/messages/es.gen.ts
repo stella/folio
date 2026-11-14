@@ -345,6 +345,7 @@ export const messages: FolioMessages = {
       "contentLocked": "Esta parte del documento está bloqueada.",
       "editing": "Edición",
       "editingDescription": "Editar el documento directamente",
+      "linkSuggestionUnavailable": "Este cambio de vínculo no se puede controlar. Hazlo en modo Edición o mueve el comentario o el marcador fuera del vínculo.",
       "outlineDepthAll": "Todos los niveles",
       "outlineDepthLabel": "Mostrar encabezados",
       "outlineDepthThree": "Niveles 1–3",
