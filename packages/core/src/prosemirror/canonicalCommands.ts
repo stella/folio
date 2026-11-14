@@ -49,6 +49,8 @@ export type CanonicalTableEdit = WithoutTableTarget<
 
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
+  /** The command changes the selection alone and runs as it is. */
+  | { type: "selection" }
   | {
       type: "formatTable";
       targets: readonly CanonicalTableFormatTarget[];

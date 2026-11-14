@@ -989,6 +989,16 @@ export const createHiddenEditorManager = (
     // and probe behavior; dispatchTransaction still refuses raw document edits.
     // canonical-gap: command-descriptors
     if (intents === undefined) return undefined;
+    // A selection change touches no content: the command runs as it is.
+    if (
+      intents.length > 0 &&
+      intents.every((intent) => intent.type === "selection")
+    )
+      return command(
+        view.state,
+        (transaction) => view?.dispatch(transaction),
+        view,
+      );
     syncCanonicalMode();
     editorSession.session.breakUndoGroup();
     if (
