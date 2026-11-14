@@ -467,6 +467,15 @@ export const deleteBlocks = ({
     directBlocks = [survivor];
   const direct = applyOps(document, [replacement(directBlocks)]);
   if (direct.isErr()) return refuse(direct.error.reason, direct.error.message);
+  // A paragraph the direct deletion writes back is modified exactly when it
+  // is not the block it replaces: the survivor, or the paragraph after the
+  // deletion once it holds the boundaries the deleted paragraphs kept.
+  const replaced = new Map(
+    replacement([]).expected.map((block) => [idKey(block.paraId ?? ""), block]),
+  );
+  const directModified = directBlocks
+    .filter((block) => replaced.get(idKey(block.paraId ?? "")) !== block)
+    .map(({ paraId }) => paraId ?? "");
   if (op.revision === undefined) {
     let edit = direct.value;
     let retiredTouched: readonly string[] = [];
@@ -505,12 +514,7 @@ export const deleteBlocks = ({
     return Result.ok({
       ...edit,
       touched: {
-        modified: [
-          ...new Set([
-            ...retiredTouched,
-            ...(terminal ? [last.paragraph.paraId ?? ""] : []),
-          ]),
-        ],
+        modified: [...new Set([...retiredTouched, ...directModified])],
         inserted: [],
         removed: affected
           .filter((paragraph) => !terminal || paragraph !== last.paragraph)
