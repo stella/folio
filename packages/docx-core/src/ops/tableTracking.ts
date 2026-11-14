@@ -200,7 +200,7 @@ export const trackTableRows = ({
   let missingFinalParagraph = false;
   for (const row of rows) {
     for (const cell of row.cells) {
-      if (survivingCells.has(cell)) {
+      if (survivingCells.has(cell) && kind === WRAP_KINDS.INSERTION) {
         for (const { paragraph } of storyParagraphs({ content: cell.content }))
           surviving.add(paragraph);
         continue;
