@@ -182,3 +182,37 @@ test(
   },
   propertyTestTimeout(30_000),
 );
+
+test("the removal law catches the previous rules", async () => {
+  // The previous removal: the cancellation whatever the style says.
+  const opened = await fixture(STYLES.heading.styleId);
+  const session = createCanonicalSession(opened).unwrap();
+  let state = EditorState.create({ schema, doc: session.projection.doc });
+  state = state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, 1)),
+  );
+  state = run(session, state, { type: "toggleList", kind: "bullet" });
+  const at = session.projection.inputAddressAt(1).unwrap();
+  state = publishCanonicalProjection({
+    session,
+    state,
+    commit: session
+      .prepareIntent(state, {
+        type: "formatParagraph",
+        at,
+        patch: { numPr: { kind: "none" } },
+      })
+      .unwrap(),
+  }).unwrap().state;
+  expect(first(session.document).listRendering).toBeUndefined();
+  expect(first(session.document).formatting?.numPr).not.toEqual(
+    first(opened).formatting?.numPr,
+  );
+  // The previous membership: only a paragraph's own numbering.
+  const styled = first(
+    createCanonicalSession(await fixture(STYLES.numbered.styleId)).unwrap()
+      .document,
+  );
+  expect(styled.formatting?.numPr?.kind === "reference").toBe(false);
+  expect(isCanonicalListParagraph(styled)).toBe(true);
+});
