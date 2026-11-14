@@ -1721,10 +1721,7 @@ export class FolioDocxReviewer {
       state: EditorState.create({
         schema,
         doc: session.projection.doc,
-        plugins: createHeadlessPlugins(
-          document.package.styles,
-          document.package.numbering,
-        ),
+        plugins: createHeadlessPlugins(document.package.styles, undefined),
       }),
       author: options.author ?? "AI",
       engine: { type: "canonical", session },
