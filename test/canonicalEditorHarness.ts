@@ -153,6 +153,8 @@ export const createCanonicalEditorHarness = (
     onTransaction: () => {
       acceptedTransactions += 1;
     },
+    onCanonicalCompositionLayout: () => {},
+    getEmbeddedFontFamilyMap: () => undefined,
     onSelectionChange: () => {},
     onKeyDown: () => false,
     onReadOnlyEditAttempt: () => {},

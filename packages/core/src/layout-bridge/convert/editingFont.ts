@@ -16,7 +16,11 @@ import {
   type FontAlternates,
 } from "../../fonts/fontAlternates";
 import type { Theme } from "../../types/document";
-import type { DeepReadonly, ReadonlyDocument } from "../../types/documentModel";
+import {
+  type DeepReadonly,
+  readModel,
+  type ReadonlyDocument,
+} from "../../types/documentModel";
 import { resolveFontFamily } from "../../utils/fontResolver";
 import { extractRunFormatting } from "./runMarkFormatting";
 
@@ -32,7 +36,8 @@ export const editingFontContextOf = (
   document: ReadonlyDocument | null,
   embeddedFontFamilyMap: ReadonlyMap<string, string> | undefined,
 ): EditingFontContext => {
-  const fontTable = document?.package.fontTable;
+  // The font builders only read the table.
+  const fontTable = document && readModel(document).package.fontTable;
   return {
     theme: document?.package.theme,
     fontAlternates: buildFontAlternates(fontTable),
