@@ -470,7 +470,7 @@ const insertBesideTable = ({
       reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
       message: "The table's block list ends without a paragraph.",
     });
-  const tableIndex = index + (at.type === "afterTable" ? 1 : 0);
+  const tableIndex = index + (at.type === "beforeTable" ? 1 : 0);
   const anchor: ParagraphLocation = {
     list,
     index: carrierIndex,
