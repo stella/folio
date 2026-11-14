@@ -105,6 +105,7 @@ import {
   getDocumentSourceBaseline,
   getDocumentSourceStyles,
 } from "./headerFooterVerbatim";
+import { readPackageForSave } from "./mainDocumentPart";
 import { assertValidFolioDocumentModel } from "./modelValidation";
 import { isNewDataUrlDrawing } from "./newImage";
 import {
@@ -1707,7 +1708,7 @@ const loadParsedZipSource = async (
     return cached;
   }
 
-  const zip = await ZipArchive.read(buffer);
+  const zip = await readPackageForSave(buffer);
   removeUnsafeEntries(zip);
   const [documentXml, corePropertiesXml] = await Promise.all([
     zip
@@ -1950,7 +1951,7 @@ async function repackDocxWithSectionEndpointRemoval({
   );
 
   // Load the original ZIP
-  const originalZip = await ZipArchive.read(doc.originalBuffer);
+  const originalZip = await readPackageForSave(doc.originalBuffer);
   const [originalDocumentXml, originalCorePropertiesXml] = await Promise.all([
     originalZip
       .entry("word/document.xml")
@@ -2426,7 +2427,7 @@ export async function updateDocumentXml(
   const { compressionLevel = 6 } = options;
 
   // Load original ZIP
-  const zip = await ZipArchive.read(originalBuffer);
+  const zip = await readPackageForSave(originalBuffer);
 
   // Update document.xml
   zip.set("word/document.xml", newDocumentXml, { level: compressionLevel });
@@ -2454,7 +2455,7 @@ export async function updateXmlFile(
 ): Promise<ArrayBuffer> {
   const { compressionLevel = 6 } = options;
 
-  const zip = await ZipArchive.read(originalBuffer);
+  const zip = await readPackageForSave(originalBuffer);
 
   zip.set(path, content, { level: compressionLevel });
 
@@ -2476,7 +2477,7 @@ export async function updateMultipleFiles(
   updates: Map<string, string | ArrayBuffer>,
   options: RepackOptions = {},
 ): Promise<ArrayBuffer> {
-  const zip = await ZipArchive.read(originalBuffer);
+  const zip = await readPackageForSave(originalBuffer);
   return applyUpdatesToZip(zip, updates, options);
 }
 
@@ -2531,7 +2532,7 @@ export async function addRelationship(
     targetMode?: "External" | "Internal";
   },
 ): Promise<{ buffer: ArrayBuffer; rId: string }> {
-  const zip = await ZipArchive.read(originalBuffer);
+  const zip = await readPackageForSave(originalBuffer);
 
   // Read existing relationships
   const relsPath = "word/_rels/document.xml.rels";
@@ -2575,7 +2576,7 @@ export async function addMedia(
   data: ArrayBuffer,
   mimeType: string,
 ): Promise<{ buffer: ArrayBuffer; rId: string; path: string }> {
-  const zip = await ZipArchive.read(originalBuffer);
+  const zip = await readPackageForSave(originalBuffer);
 
   // Determine media path
   const mediaPath = `word/media/${filename}`;
@@ -2614,7 +2615,7 @@ export async function addMedia(
         `${extensionElement}</Types>`,
       );
 
-      const finalZip = await ZipArchive.read(relResult.buffer);
+      const finalZip = await readPackageForSave(relResult.buffer);
       finalZip.set("[Content_Types].xml", updatedContentTypes);
 
       return {

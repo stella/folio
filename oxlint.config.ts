@@ -129,6 +129,7 @@ export default library({
     "./.oxlint-plugins/folio-painted-text.ts",
     "./.oxlint-plugins/folio-geometry-owners.ts",
     "./.oxlint-plugins/folio-verbatim-capture.ts",
+    "./.oxlint-plugins/folio-save-package.ts",
     "./.oxlint-plugins/folio-ref-mirrors.ts",
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
     "./.oxlint-plugins/folio-model-types.ts",
@@ -299,6 +300,21 @@ export default library({
       ],
       rules: {
         "folio-verbatim-capture/no-direct-element-to-xml": "error",
+      },
+    },
+    {
+      // `docx/mainDocumentPart` owns where the main document sits in a package
+      // a save writes over. The fixtures verify this custom rule; repo-wide
+      // lint ignores their deliberate violation.
+      files: [
+        "packages/core/src/docx/rezip.ts",
+        "packages/core/src/docx/selectiveSave.ts",
+        "packages/core/src/docx/canonicalSave.ts",
+        "packages/core/src/docx/canonicalStoryRepack.ts",
+        "test/__fixtures__/save-package.*.ts",
+      ],
+      rules: {
+        "folio-save-package/read-through-owner": "error",
       },
     },
     {

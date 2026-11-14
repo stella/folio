@@ -1,5 +1,7 @@
+import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 
+import { ZipArchive } from "@stll/docx-core/zip";
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
@@ -787,6 +789,52 @@ describe("corpus operation invariants", () => {
       status: "evaluated",
       failures: [],
     });
+    expect(await runOpLocalityInvariant(input)).toMatchObject({
+      status: "evaluated",
+      failures: [],
+    });
+  });
+
+  test("operation locality reads the main document part from the saved package", async () => {
+    const standard = await ZipArchive.read(
+      await buildBodySequenceDocx([
+        { kind: "paragraph", text: "First paragraph." },
+        { kind: "paragraph", text: "Final paragraph." },
+      ]),
+    );
+    const read = async (path: string) =>
+      (await standard.entry(path)?.text()) ??
+      panic(`The fixture has no ${path}`);
+    const [main, relationships, packageRelationships, contentTypes] =
+      await Promise.all([
+        read("word/document.xml"),
+        read("word/_rels/document.xml.rels"),
+        read("_rels/.rels"),
+        read("[Content_Types].xml"),
+      ]);
+    standard.delete("word/document.xml");
+    standard.delete("word/_rels/document.xml.rels");
+    standard.set("word/document2.xml", main);
+    standard.set("word/_rels/document2.xml.rels", relationships);
+    standard.set(
+      "_rels/.rels",
+      packageRelationships.replace(
+        /Target="\/?word\/document\.xml"/u,
+        'Target="word/document2.xml"',
+      ),
+    );
+    standard.set(
+      "[Content_Types].xml",
+      contentTypes.replace(
+        'PartName="/word/document.xml"',
+        'PartName="/word/document2.xml"',
+      ),
+    );
+    const buffer = (await standard.generate()).slice().buffer;
+    const input = {
+      ...(await inputFor(buffer)),
+      documentPart: "word/document2.xml",
+    };
     expect(await runOpLocalityInvariant(input)).toMatchObject({
       status: "evaluated",
       failures: [],
