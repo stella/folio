@@ -252,8 +252,8 @@ const holdsMark = (document: Document, story: OpStory, blockId: string) =>
 /**
  * Where a selection end may go over the peer's edit. The note's own mark is
  * a zero-width child at offset 0 of its paragraph, so an end and an insertion
- * or split both at that offset are ordered by which side of the mark each
- * stands on, which the paragraph model does not track: either side is right.
+ * both at that offset are ordered by which side of the mark each stands on,
+ * which the paragraph model does not track: either side is right.
  */
 const candidates = (
   place: Place,
@@ -263,25 +263,13 @@ const candidates = (
   story: OpStory,
 ): Place[] => {
   const ahead = moved(place, edit, before, after, story);
-  const at =
-    edit.type === "insert" || edit.type === "split" ? edit.at : undefined;
-  if (
-    at === undefined ||
-    at.blockId !== place.blockId ||
-    at.offset !== 0 ||
-    place.offset !== 0 ||
-    !holdsMark(before, story, place.blockId)
-  )
-    return [ahead];
-  // Past the inserted text, or at the start of the split's second half.
-  const past: Place =
-    edit.type === "insert"
-      ? { ...place, offset: edit.text.length }
-      : {
-          ...moved({ ...place, offset: 1 }, edit, before, after, story),
-          offset: 0,
-        };
-  return [ahead, past];
+  return edit.type === "insert" &&
+    edit.at.blockId === place.blockId &&
+    edit.at.offset === 0 &&
+    place.offset === 0 &&
+    holdsMark(before, story, place.blockId)
+    ? [ahead, { ...place, offset: edit.text.length }]
+    : [ahead];
 };
 
 type Step =
@@ -342,7 +330,12 @@ const peerEdit = (
         : undefined;
     }
     case 2:
-      return { type: "split", at, blockId: freshId() };
+      // A split at the note's own mark decides which half keeps the mark by
+      // the side it names, which the model does not track; the mark stays at
+      // the start of its paragraph.
+      return at.offset === 0 && holdsMark(document, story, at.blockId)
+        ? undefined
+        : { type: "split", at, blockId: freshId() };
     default: {
       const paragraphs = editable(document, story);
       const index = paragraphs.findIndex(
