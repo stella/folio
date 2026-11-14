@@ -281,7 +281,7 @@ test("every range intent handles AllSelection and restores exact undo redo", () 
   );
 });
 
-test("generated hyperlink command histories preserve targets, bookmarks, probes and exact inverse", async () => {
+test("generated hyperlink command histories, made directly and suggested, preserve targets, bookmarks, probes and exact inverse", async () => {
   await assertProperty(
     fc.asyncProperty(
       fc.boolean(),
@@ -368,7 +368,7 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
               )
                 panic(prepared.error.message);
               expect(["refused", "noChange"]).toContain(prepared.error.reason);
-              if (mode.type === "suggesting" && intents.length > 0) {
+              if (prepared.error.reason === "refused") {
                 expect(prepared.error.ground.gap).toBe(
                   CANONICAL_GAP.trackedHyperlinkResolution,
                 );
@@ -384,7 +384,9 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
               commit: prepared.value,
             }).unwrap().state;
             expect(state.doc.eq(session.projection.doc)).toBe(true);
-            if (name !== "insertHyperlink")
+            // A suggestion inserts each changed copy after the struck text,
+            // so only an edit made directly leaves the selection in place.
+            if (name !== "insertHyperlink" && mode.type === "editing")
               expect(state.selection.toJSON()).toEqual(beforeSelection);
             history.push({
               before,
@@ -393,9 +395,7 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
               afterSelection: state.selection.toJSON(),
             });
           }
-          if (mode.type === "editing")
-            expect(history.length).toBeGreaterThan(0);
-          else expect(history).toEqual([]);
+          expect(history.length).toBeGreaterThan(0);
           expect([...exercised].sort()).toEqual(Object.keys(factories).sort());
           expect(
             authored(await parseDocx(await createDocx(session.document))),
@@ -424,7 +424,7 @@ test("generated hyperlink command histories preserve targets, bookmarks, probes 
     ),
     {
       numRuns: 15,
-      id: "generated hyperlink command histories preserve targets, bookmarks, probes and exact inverse",
+      id: "generated hyperlink command histories, made directly and suggested, preserve targets, bookmarks, probes and exact inverse",
     },
   );
 });

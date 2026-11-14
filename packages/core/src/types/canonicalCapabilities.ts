@@ -118,7 +118,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Hyperlink and TOC suggestions and edits intersecting review identities require serializable wrapper review provenance.";
+    readonly summary: "Link edits cutting a content control or unmodelled markup; suggestions leaving a link piece only markers or copying a note.";
   };
   readonly "tracked-table-structure": {
     readonly owner: "controller";
@@ -272,7 +272,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Hyperlink and TOC suggestions and edits intersecting review identities require serializable wrapper review provenance.",
+      "Link edits cutting a content control or unmodelled markup; suggestions leaving a link piece only markers or copying a note.",
   },
   [CANONICAL_GAP.trackedTableStructure]: {
     owner: "controller",

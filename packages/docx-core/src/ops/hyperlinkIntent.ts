@@ -10,6 +10,7 @@ import type {
   TrackedRunChange,
 } from "../model/document";
 import { applyDocumentOps } from "./apply";
+import { type CompileIntent, nextCompoundMode } from "./compoundIntent";
 import type { EditorIntentMode } from "./editorIntent";
 import { structurallyEqual } from "./equality";
 import { resolveGap } from "./gaps";
@@ -21,8 +22,14 @@ import {
   packageIdentityKeys,
   reservedIdentityKeysIn,
 } from "./ids";
-import { asParagraphContent, partitionContent } from "./leaves";
-import { isTrackedChild, paragraphLength } from "./offsets";
+import {
+  asParagraphContent,
+  type Gap,
+  type InlineNode,
+  leafSpans,
+  partitionContent,
+} from "./leaves";
+import { contentWidth, isTrackedChild, paragraphLength } from "./offsets";
 import { selectedParagraphRuns } from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, type TextPosition } from "./types";
@@ -275,23 +282,266 @@ const freshenedParagraphs = (
 type CompileHyperlinkIntentOptions = {
   intent: HyperlinkEditorIntent;
   mode: EditorIntentMode;
-  compileEmptyReplacement: (
-    document: Document,
-    range: Pick<HyperlinkEditorIntent, "from" | "to">,
-  ) => Result<
-    { ops: DocumentOp[]; selection: TextPosition },
-    DocumentOpRefusal
-  >;
+  compileIntent: CompileIntent;
+};
+
+/** Run content that names a record of its own, which a copy would duplicate. */
+const IDENTIFIED_RUN_CONTENT: ReadonlySet<string> = new Set([
+  "footnoteRef",
+  "endnoteRef",
+  "drawing",
+  "shape",
+  "preservedXml",
+]);
+
+/**
+ * The copy states a run's formatting as it now is; a pending formatting
+ * change stays on the struck original.
+ */
+const withoutPropertyChanges = (run: Run): Run => {
+  if (run.propertyChanges === undefined) return run;
+  const { propertyChanges: _changes, ...rest } = run;
+  return rest;
+};
+
+/** A change's own content in place of the change: the copy is the suggester's. */
+const withoutTrackedWrappers = (
+  items: readonly ParagraphContent[],
+): ParagraphContent[] =>
+  items.flatMap((item): ParagraphContent[] => {
+    switch (item.type) {
+      case "insertion":
+      case "moveTo":
+        return withoutTrackedWrappers(item.content);
+      case "hyperlink":
+        return [
+          {
+            ...item,
+            children: item.children.map((child) =>
+              child.type === "run" ? withoutPropertyChanges(child) : child,
+            ),
+          },
+        ];
+      case "run":
+        return [withoutPropertyChanges(item)];
+      default:
+        return [item];
+    }
+  });
+
+/**
+ * Whether striking `segments` would leave a piece of a link holding only
+ * zero-width markers. A tracked change cannot sit inside a link, so striking
+ * part of one cuts it there and then; accepting would leave that piece a link
+ * around no text, where the edit made directly leaves the bare markers.
+ */
+const leavesMarkerOnlyLinkPiece = (
+  paragraph: Paragraph,
+  segments: readonly LinkSegment[],
+): boolean => {
+  const pieces = new Map<InlineNode, string>();
+  for (const { ancestors, before, after } of leafSpans(paragraph.content)) {
+    // A link holds no link, so a leaf has at most one around it.
+    const link = ancestors.find(({ type }) => type === "hyperlink");
+    if (link === undefined) continue;
+    let token = "z";
+    if (after.offset > before.offset) {
+      // A text leaf the selection cuts keeps text on the side it is cut.
+      const struck = segments.find(
+        ({ start, end }) =>
+          start.offset < after.offset && end.offset > before.offset,
+      );
+      token =
+        struck === undefined
+          ? "u"
+          : `${before.offset < struck.start.offset ? "u" : ""}s${
+              after.offset > struck.end.offset ? "u" : ""
+            }`;
+    }
+    pieces.set(link, (pieces.get(link) ?? "") + token);
+  }
+  return [...pieces.values()].some(
+    (tokens) =>
+      tokens.includes("s") &&
+      tokens
+        .split("s")
+        .some((piece) => piece.includes("z") && !piece.includes("u")),
+  );
+};
+
+type LinkSegment = { start: Gap; end: Gap; context: readonly InlineNode[] };
+
+/**
+ * The stretches of a paragraph's selected content a link edit changes, each
+ * inside one tracked change (or none) and holding no zero-width marker: the
+ * text a suggestion strikes and copies. Content already on its way out stays
+ * as it is: accepting removes it, and rejecting brings back what it was.
+ */
+const linkSegments = (
+  intent: Exclude<HyperlinkEditorIntent, { type: "insertHyperlink" }>,
+  paragraph: Paragraph,
+  start: Gap,
+  end: Gap,
+): LinkSegment[] => {
+  const segments: LinkSegment[] = [];
+  let open: LinkSegment | undefined;
+  const close = () => {
+    if (open !== undefined) segments.push(open);
+    open = undefined;
+  };
+  for (const span of leafSpans(paragraph.content)) {
+    const { ancestors, before, after } = span;
+    const linked = ancestors.some(({ type }) => type === "hyperlink");
+    const changes =
+      linked ||
+      (intent.type === "setHyperlink" &&
+        ancestors.some(({ type }) => type === "run") &&
+        ancestors.every(
+          ({ type }) =>
+            type === "run" || type === "insertion" || type === "moveTo",
+        ));
+    if (
+      after.offset <= start.offset ||
+      before.offset >= end.offset ||
+      after.offset === before.offset ||
+      !changes ||
+      ancestors.some(({ type }) => type === "deletion" || type === "moveFrom")
+    ) {
+      close();
+      continue;
+    }
+    const context = ancestors.filter(
+      ({ type }) => type === "insertion" || type === "moveTo",
+    );
+    // Text the selection's ends fall inside is cut there.
+    const from = before.offset < start.offset ? start : before;
+    const to = after.offset > end.offset ? end : after;
+    if (
+      open !== undefined &&
+      open.end.offset === from.offset &&
+      open.context.length === context.length &&
+      open.context.every((wrapper, index) => wrapper === context[index])
+    ) {
+      open.end = to;
+      continue;
+    }
+    close();
+    open = { start: from, end: to, context };
+  }
+  close();
+  return segments;
+};
+
+/**
+ * A suggested link change. The file records no change of a link, so each
+ * stretch of changed text is struck and its changed copy inserted after it,
+ * as a paste over it would be: rejecting brings the text back as it was, and
+ * accepting leaves what the edit made directly leaves.
+ */
+const compileTrackedLinkEdit = (
+  document: Document,
+  {
+    intent,
+    mode,
+    compileIntent,
+    pieces,
+  }: {
+    intent: Exclude<HyperlinkEditorIntent, { type: "insertHyperlink" }>;
+    mode: EditorIntentMode;
+    compileIntent: CompileIntent;
+    pieces: readonly { paragraph: Paragraph; start: Gap; end: Gap }[];
+  },
+): Result<
+  { ops: DocumentOp[]; selection: TextPosition },
+  DocumentOpRefusal
+> => {
+  const steps: {
+    blockId: string;
+    start: Gap;
+    end: Gap;
+    copy: ParagraphContent[];
+  }[] = [];
+  for (const { paragraph, start, end } of pieces) {
+    const blockId = paragraph.paraId ?? "";
+    const segments = linkSegments(intent, paragraph, start, end);
+    if (leavesMarkerOnlyLinkPiece(paragraph, segments))
+      return refuse(
+        "A link suggestion cannot strike text beside a marker inside the same link.",
+      );
+    for (const segment of segments) {
+      const [, slice = []] = partitionContent(paragraph.content, [
+        segment.start,
+        segment.end,
+      ]);
+      const own = withoutTrackedWrappers(asParagraphContent(slice));
+      const children = linkedChildren(own, intent);
+      const copy =
+        intent.type === "setHyperlink"
+          ? wrapLinkedChildren(intent, children)
+          : children;
+      if (
+        identityKeysIn(copy).length > 0 ||
+        copy.some(({ type }) => type === "preservedInline") ||
+        leafSpans(copy).some(({ node }) =>
+          IDENTIFIED_RUN_CONTENT.has(node.type),
+        )
+      )
+        return refuse(
+          "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",
+        );
+      steps.push({ blockId, start: segment.start, end: segment.end, copy });
+    }
+  }
+  const ops: DocumentOp[] = [];
+  let current = document;
+  let stepMode = mode;
+  let previous: Document | undefined;
+  // Last first, so the positions of the stretches before stay as they were.
+  for (const step of steps.toReversed()) {
+    if (previous !== undefined) {
+      const next = nextCompoundMode(stepMode, previous, current);
+      if (next.isErr()) return Result.err(next.error);
+      stepMode = next.value;
+    }
+    const position = (gap: Gap): TextPosition => ({
+      story: intent.from.story,
+      blockId: step.blockId,
+      offset: gap.offset,
+      zeroWidthBefore: gap.zeroWidthBefore,
+    });
+    const compiled = compileIntent(
+      current,
+      {
+        type: "replaceFragment",
+        from: position(step.start),
+        to: position(step.end),
+        paragraphs: [{ type: "paragraph", content: step.copy }],
+        openStart: 1,
+        openEnd: 1,
+      },
+      stepMode,
+    );
+    if (compiled.isErr()) return Result.err(compiled.error);
+    const applied = applyDocumentOps(current, compiled.value.ops);
+    if (applied.isErr()) return Result.err(applied.error);
+    previous = current;
+    current = applied.value.document;
+    ops.push(...compiled.value.ops);
+  }
+  // The copies in the last paragraph all stand before the selection's end.
+  const inserted = steps
+    .filter(({ blockId }) => idKey(blockId) === idKey(intent.to.blockId))
+    .reduce((width, { copy }) => width + contentWidth(copy), 0);
+  return Result.ok({
+    ops,
+    selection: { ...intent.to, offset: intent.to.offset + inserted },
+  });
 };
 
 /** Wrapper edits compile to exact-inverse content ops, never to a projection snapshot. */
 export const compileHyperlinkIntent = (
   document: Document,
-  {
-    intent: sourceIntent,
-    mode,
-    compileEmptyReplacement,
-  }: CompileHyperlinkIntentOptions,
+  { intent: sourceIntent, mode, compileIntent }: CompileHyperlinkIntentOptions,
 ): Result<
   { ops: DocumentOp[]; selection: TextPosition },
   DocumentOpRefusal
@@ -359,17 +609,13 @@ export const compileHyperlinkIntent = (
       paragraph,
       from,
       to,
+      start,
+      end,
       before: asParagraphContent(before),
       middle: asParagraphContent(middle),
       after: asParagraphContent(after),
     });
   }
-  // Applying or removing a link compiles to direct content operations, which
-  // have no tracked form; refuse before any operation is published.
-  if (mode.type === "suggesting")
-    return refuse(
-      "Hyperlink suggestions require serializable wrapper review provenance.",
-    );
   if (intent.type === "insertHyperlink") {
     if (intent.text === "")
       return refuse(
@@ -381,10 +627,25 @@ export const compileHyperlinkIntent = (
         { type: "run", content: [{ type: "text", text: intent.text }] },
       ]),
     ];
-    const deletion = compileEmptyReplacement(document, {
-      from: intent.from,
-      to: intent.to,
-    });
+    // A suggested link is a tracked paste of it over the selection.
+    if (mode.type === "suggesting")
+      return compileIntent(
+        document,
+        {
+          type: "replaceFragment",
+          from: intent.from,
+          to: intent.to,
+          paragraphs: [{ type: "paragraph", content }],
+          openStart: 1,
+          openEnd: 1,
+        },
+        mode,
+      );
+    const deletion = compileIntent(
+      document,
+      { type: "replaceText", from: intent.from, to: intent.to, text: "" },
+      mode,
+    );
     if (deletion.isErr()) return deletion;
     const applied = applyDocumentOps(document, deletion.value.ops);
     if (applied.isErr()) return Result.err(applied.error);
@@ -426,6 +687,13 @@ export const compileHyperlinkIntent = (
       },
     });
   }
+  if (mode.type === "suggesting")
+    return compileTrackedLinkEdit(document, {
+      intent,
+      mode,
+      compileIntent,
+      pieces: pieces.filter(({ from, to }) => from.offset !== to.offset),
+    });
   const edited: { paragraph: Paragraph; content: ParagraphContent[] }[] = [];
   for (const piece of pieces) {
     if (piece.from.offset === piece.to.offset) continue;

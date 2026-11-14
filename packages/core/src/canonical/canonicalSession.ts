@@ -2381,22 +2381,6 @@ class CanonicalSession {
       edits.push(imported.value);
     }
     for (const intent of intents) {
-      if (
-        this.mode.type === "suggesting" &&
-        (intent.type === "setHyperlink" ||
-          intent.type === "removeHyperlink" ||
-          intent.type === "insertHyperlink" ||
-          intent.type === "generateTOC")
-      ) {
-        return Result.err(
-          new CanonicalSessionError({
-            ground: { gap: CANONICAL_GAP.trackedHyperlinkResolution },
-            reason: "refused",
-            message:
-              "Hyperlink and TOC suggestions require serializable wrapper review provenance.",
-          }),
-        );
-      }
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
@@ -2414,7 +2398,27 @@ class CanonicalSession {
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
-      if (intent.type === "generateTOC") {
+      if (
+        this.mode.type === "suggesting" &&
+        (intent.type === "setHyperlink" || intent.type === "removeHyperlink")
+      ) {
+        // The struck text keeps its place and each changed copy follows it,
+        // so the selection runs from its start to the end of the last copy.
+        postSelection = {
+          type: "text",
+          anchor: intent.from,
+          head: compiled.value.selection,
+        };
+      } else if (
+        this.mode.type === "suggesting" &&
+        intent.type === "generateTOC"
+      ) {
+        postSelection = {
+          type: "text",
+          anchor: compiled.value.selection,
+          head: compiled.value.selection,
+        };
+      } else if (intent.type === "generateTOC") {
         const mapping = {
           at: intent.at,
           after: compiled.value.selection,
