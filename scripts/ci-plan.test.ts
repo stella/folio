@@ -738,6 +738,8 @@ describe("CI plan", () => {
     expect(env["FOLIO_FUZZ_EXPLORATION_DIR"]).toBe(
       "${{ github.workspace }}/test-results/fuzz-exploration",
     );
+    // The change's own property files fail on generated cases.
+    expect(env["FOLIO_FUZZ_EXPLORATION_BASE"]).toBe(EXPLORATION_BASE);
     const exploration = uploads.find(
       (step) =>
         isRecord(step["with"]) &&
@@ -1541,6 +1543,9 @@ describe("CI plan", () => {
   });
 });
 
+const EXPLORATION_BASE =
+  "${{ (github.event_name == 'pull_request' && github.event.pull_request.base.sha) || (github.event_name == 'merge_group' && github.event.merge_group.base_sha) || '' }}";
+
 // Checked-in proptest regressions block; generated cases report on pull
 // requests and merge groups (scripts/rust-property-exploration.ts).
 test("the kernel job splits proptest regressions from exploration", () => {
@@ -1565,6 +1570,10 @@ test("the kernel job splits proptest regressions from exploration", () => {
     "bun scripts/rust-property-exploration.ts --package stella-docx-kernel",
   );
   expect(String(exploration?.["run"])).not.toContain("|| true");
+  expect(job["env"]["FOLIO_FUZZ_EXPLORATION_BASE"]).toBe(EXPLORATION_BASE);
+  expect(String(exploration?.["run"])).toContain(
+    '--base "$FOLIO_FUZZ_EXPLORATION_BASE"',
+  );
   expect(exploration?.["continue-on-error"]).toBeUndefined();
   // A finding appends to a regressions file, which would dirty the package.
   expect(index("Rust property exploration")).toBeGreaterThan(
