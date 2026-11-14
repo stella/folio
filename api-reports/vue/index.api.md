@@ -4,9 +4,6 @@
 
 ```ts
 
-import { AcceptAutocompleteResult } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { acceptAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { acceptAutocompleteWord } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { AIBarStatus } from '@stll/folio-core/ai-suggestions/types';
 import { AIChatMode } from '@stll/folio-core/ai-suggestions/types';
 import { AICitation } from '@stll/folio-core/ai-suggestions/types';
@@ -19,24 +16,14 @@ import { AISuggestionPreset } from '@stll/folio-core/ai-suggestions/types';
 import { AISuggestionSeverity } from '@stll/folio-core/ai-suggestions/types';
 import { AISuggestionStatus } from '@stll/folio-core/ai-suggestions/types';
 import { App } from 'vue';
-import { appendAutocompleteToken } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { applyFolioAIEditOperations } from '@stll/folio-core/ai-edits';
 import { ApplyResult } from '@stll/folio-core/ai-suggestions/apply';
 import { applySuggestions } from '@stll/folio-core/ai-suggestions/apply';
-import { autocompleteSuggestionKey } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { autocompleteSuggestionPlugin } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { AutocompleteSuggestionPluginOptions } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { AutocompleteSuggestionState } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { AutocompleteSuggestionStatus } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { AutocompleteTriggerCheck } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { AutocompleteTriggerOptions } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { AutocompleteTriggerSkipReason } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { buildPositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import { CanonicalHistoryDrop } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalHistoryEffect } from '@stll/folio-core/canonical/canonicalSession';
 import { CanonicalRoomCollaboration } from '@stll/folio-core/controller/canonicalRoomEditor';
-import { clearAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ColorValue } from '@stll/folio-core/types/document';
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
@@ -56,7 +43,6 @@ import { createStellaStyleSet } from '@stll/folio-core/style-sets/stellaStyle';
 import { CSSProperties } from 'vue';
 import { DeepReadonly } from '@stll/folio-core/types/documentModel';
 import { DEFAULT_AI_SUGGESTION_PRESETS } from '@stll/folio-core/ai-suggestions/types';
-import { DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { DefineComponent } from 'vue';
 import { deriveBlockId } from '@stll/folio-core/types/block-id';
 import { DeriveBlockIdInput } from '@stll/folio-core/types/block-id';
@@ -85,7 +71,6 @@ import { ExtractPropTypes } from 'vue';
 import { FindMatch } from '@stll/folio-core/utils/findReplace';
 import { FindOptions } from '@stll/folio-core/utils/findReplace';
 import { FindResult } from '@stll/folio-core/utils/findReplace';
-import { finishAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { FolioAIBlock } from '@stll/folio-core/ai-edits';
 import { FolioAIBlockAnchor } from '@stll/folio-core/ai-edits';
 import { FolioAIBlockKind } from '@stll/folio-core/ai-edits';
@@ -103,6 +88,8 @@ import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { FolioAISignatureParty } from '@stll/folio-core/ai-edits';
 import { FolioAnonymizationMatch } from '@stll/folio-core/controller/anonymizationHighlights';
 import { FolioAnonymizationTerm } from '@stll/folio-core/controller/anonymizationHighlights';
+import { FolioAutocompleteApi } from '@stll/folio-core/controller/autocompleteSuggestion';
+import { FolioAutocompleteState } from '@stll/folio-core/controller/autocompleteSuggestion';
 import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentNavigationTarget } from '@stll/folio-core/ai-edits';
@@ -119,7 +106,6 @@ import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments'
 import { FolioUndefinedReferencePolicy } from '@stll/folio-core/ai-edits';
 import { FootnoteProperties } from '@stll/folio-core/types/content';
 import { fromMarkdown } from '@stll/folio-core/markdown';
-import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { getDocumentWatermark } from '@stll/folio-core/watermark';
 import { getFolioCaretViewportRect } from '@stll/folio-core/paged-layout/selectionViewportRect';
 import { getFolioParaIdFromBlockId } from '@stll/folio-core/types/block-id';
@@ -177,8 +163,6 @@ import { setDocumentWatermark } from '@stll/folio-core/watermark';
 import { setFocusedSuggestionMeta } from '@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations';
 import { setTemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { ShallowRef } from 'vue';
-import { shouldTriggerAutocomplete } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
-import { startAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { STELLA_STYLE_SET_NAME } from '@stll/folio-core/style-sets/stellaStyle';
 import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
 import { SuggestionKind } from '@stll/folio-core/prosemirror/commands/comments';
@@ -190,6 +174,7 @@ import { TemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/temp
 import { templateSlashMenuKey } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
+import { TextPosition } from '@stll/folio-core/controller/folioEditor';
 import { TextWatermark } from '@stll/folio-core/watermark';
 import { Theme } from '@stll/folio-core/types/document';
 import { toMarkdown } from '@stll/folio-core/markdown';
@@ -201,12 +186,6 @@ import { VNodeChild } from 'vue';
 import { Watermark } from '@stll/folio-core/watermark';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 import { XmlFragment } from 'yjs';
-
-export { AcceptAutocompleteResult }
-
-export { acceptAutocompleteSuggestion }
-
-export { acceptAutocompleteWord }
 
 export { AIBarStatus }
 
@@ -229,8 +208,6 @@ export { AISuggestionPreset }
 export { AISuggestionSeverity }
 
 export { AISuggestionStatus }
-
-export { appendAutocompleteToken }
 
 export { applyFolioAIEditOperations }
 
@@ -256,27 +233,9 @@ export type AutocompleteCaretRect = {
     maxWidth?: number | undefined;
 };
 
-export { autocompleteSuggestionKey }
-
-export { autocompleteSuggestionPlugin }
-
-export { AutocompleteSuggestionPluginOptions }
-
-export { AutocompleteSuggestionState }
-
-export { AutocompleteSuggestionStatus }
-
-export { AutocompleteTriggerCheck }
-
-export { AutocompleteTriggerOptions }
-
-export { AutocompleteTriggerSkipReason }
-
 export { BlockRect }
 
 export { buildPositionalText }
-
-export { clearAutocompleteSuggestion }
 
 export { clearTemplateSlashMenu }
 
@@ -312,8 +271,6 @@ export { createStellaStyleDocumentPreset }
 export { createStellaStyleSet }
 
 export { DEFAULT_AI_SUGGESTION_PRESETS }
-
-export { DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES }
 
 // @public
 export const defaultColorMode: ColorMode;
@@ -440,6 +397,7 @@ export type DocxEditorProps = {
     onEditorViewReady?: (view: EditorView | null) => void;
     collaboration?: DocxEditorCollaboration | undefined;
     anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
+    onAutocompleteChange?: ((state: FolioAutocompleteState) => void) | undefined;
     onAnonymizationMatchesChange?: (matches: readonly FolioAnonymizationMatch[]) => void;
     onAnonymizationTermClick?: ((canonical: string, label: string) => void) | undefined;
     selectedAnonymizationCanonical?: string | null | undefined;
@@ -527,6 +485,8 @@ export type DocxEditorRef = {
     getSelectionText: () => string;
     getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
+    getPositionPage: (position: TextPosition) => number | null;
+    autocomplete: FolioAutocompleteApi;
     getAnonymizationMatches: () => readonly FolioAnonymizationMatch[];
     getBlockRect: (blockId: string) => BlockRect | null;
     getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
@@ -592,8 +552,6 @@ export const FindReplaceDialog: typeof __VLS_export_4;
 
 export { FindResult }
 
-export { finishAutocompleteSuggestion }
-
 export { FolioAIBlock }
 
 export { FolioAIBlockAnchor }
@@ -627,6 +585,10 @@ export { FolioAISignatureParty }
 export { FolioAnonymizationMatch }
 
 export { FolioAnonymizationTerm }
+
+export { FolioAutocompleteApi }
+
+export { FolioAutocompleteState }
 
 export { FolioBlockId }
 
@@ -707,8 +669,6 @@ export type FormattingBarProps = {
 };
 
 export { fromMarkdown }
-
-export { getAutocompleteSuggestion }
 
 export { getDocumentWatermark }
 
@@ -853,12 +813,8 @@ export { setFocusedSuggestionMeta }
 
 export { setTemplatePreviewValues }
 
-export { shouldTriggerAutocomplete }
-
 // @public (undocumented)
 export const SplitCellDialog: typeof __VLS_export_14;
-
-export { startAutocompleteSuggestion }
 
 export { STELLA_STYLE_SET_NAME }
 
