@@ -154,6 +154,30 @@ describe("formatting a selection that holds a field on the session", () => {
     expect(fieldResults(await reopened(session.document))).toEqual(expected);
   });
 
+  test("every selection over the paragraph formats the fields as the legacy editor does, after save and reopen", async () => {
+    for (let from = 0; from < 8; from++) {
+      for (let to = from + 1; to <= 8; to++) {
+        const { session, state } = formatOnSession("editing", from, to);
+        let legacy = state;
+        toggleBold(state, (transaction) => {
+          legacy = state.apply(transaction);
+        });
+        const legacyDocument: Document = {
+          package: { document: { content: proseDocToBlocks(legacy.doc) } },
+        };
+        expect({
+          from,
+          to,
+          fields: fieldResults(await reopened(session.document)),
+        }).toEqual({
+          from,
+          to,
+          fields: fieldResults(await reopened(legacyDocument)),
+        });
+      }
+    }
+  });
+
   test("a selection ending at a field's end reaches it; one ending at its start does not", () => {
     expect(
       fieldResults(formatOnSession("editing", 1, 3).session.document),
