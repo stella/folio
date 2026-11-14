@@ -9,7 +9,7 @@
     class="docx-horizontal-ruler"
     :style="containerStyle"
     role="slider"
-    aria-label="Horizontal ruler"
+    :aria-label="t('ruler.horizontal')"
     :aria-valuemin="0"
     :aria-valuemax="pageWidthTwips"
   >
@@ -50,6 +50,9 @@
     <div
       v-if="showFirstLineIndent"
       class="docx-ruler-indent"
+      role="slider"
+      :aria-label="t('ruler.firstLineIndent')"
+      aria-orientation="horizontal"
       :style="
         indentContainerStyle(
           'down',
@@ -70,6 +73,9 @@
     <div
       v-if="editable"
       class="docx-ruler-indent"
+      role="slider"
+      :aria-label="t('ruler.leftIndent')"
+      aria-orientation="horizontal"
       :style="
         indentContainerStyle('up', leftIndentPosPx, dragging === 'leftIndent')
       "
@@ -84,6 +90,9 @@
     <div
       v-if="editable"
       class="docx-ruler-indent"
+      role="slider"
+      :aria-label="t('ruler.rightIndent')"
+      aria-orientation="horizontal"
       :style="
         indentContainerStyle(
           'down',
@@ -131,6 +140,8 @@ import type {
 import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import { pixelsToTwips, twipsToPixels } from "@stll/folio-core/utils/units";
 
+import { useTranslation } from "../../i18n";
+
 type MarkerType =
   | "leftMargin"
   | "rightMargin"
@@ -171,6 +182,8 @@ const emit = defineEmits<{
   (e: "indent-right-change", twips: number): void;
   (e: "tab-stop-remove", twips: number): void;
 }>();
+
+const { t } = useTranslation();
 
 // Mirror React HorizontalRuler.tsx:50-63
 const DEFAULT_PAGE_WIDTH_TWIPS = 12240;

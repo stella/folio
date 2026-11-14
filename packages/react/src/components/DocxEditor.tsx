@@ -113,15 +113,11 @@ import {
   getTableContext,
   increaseIndent,
   increaseListLevel,
-  removeTabStop,
   restartNumbering,
   setAlignment,
   setFontFamily,
   setFontSize,
   setHighlight,
-  setIndentFirstLine,
-  setIndentLeft,
-  setIndentRight,
   setLineSpacing,
   setLtr,
   setNumberingValue,
@@ -176,6 +172,10 @@ import {
   CLIPBOARD_READ_ERROR_EVENT,
   pastePlainTextSlice,
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
+import {
+  applyRulerParagraphEdit,
+  type RulerParagraphEdit,
+} from "@stll/folio-core/prosemirror/commands/rulerParagraph";
 import {
   clearPendingComment,
   commentIdsNamedIn,
@@ -3783,42 +3783,29 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       (twips: number) => handlePageSetupApply({ marginBottom: twips }),
       [handlePageSetupApply],
     );
-    const handleIndentLeftChange = useCallback(
-      (twips: number) => {
+    const applyRulerEdit = useCallback(
+      (edit: RulerParagraphEdit) => {
         const view = getActiveEditorView();
         if (!view) return;
-        setIndentLeft(twips)(view.state, view.dispatch);
+        applyRulerParagraphEdit(view, edit);
       },
       [getActiveEditorView],
+    );
+    const handleIndentLeftChange = useCallback(
+      (twips: number) => applyRulerEdit({ type: "indentLeft", twips }),
+      [applyRulerEdit],
     );
     const handleIndentRightChange = useCallback(
-      (twips: number) => {
-        const view = getActiveEditorView();
-        if (!view) return;
-        setIndentRight(twips)(view.state, view.dispatch);
-      },
-      [getActiveEditorView],
+      (twips: number) => applyRulerEdit({ type: "indentRight", twips }),
+      [applyRulerEdit],
     );
     const handleFirstLineIndentChange = useCallback(
-      (twips: number) => {
-        const view = getActiveEditorView();
-        if (!view) return;
-        // Negative twips encode a hanging indent.
-        if (twips < 0) {
-          setIndentFirstLine(-twips, true)(view.state, view.dispatch);
-        } else {
-          setIndentFirstLine(twips, false)(view.state, view.dispatch);
-        }
-      },
-      [getActiveEditorView],
+      (twips: number) => applyRulerEdit({ type: "indentFirstLine", twips }),
+      [applyRulerEdit],
     );
     const handleTabStopRemove = useCallback(
-      (positionTwips: number) => {
-        const view = getActiveEditorView();
-        if (!view) return;
-        removeTabStop(positionTwips)(view.state, view.dispatch);
-      },
-      [getActiveEditorView],
+      (position: number) => applyRulerEdit({ type: "removeTabStop", position }),
+      [applyRulerEdit],
     );
 
     const serializeCurrentDocx = useCallback(
