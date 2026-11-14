@@ -81,12 +81,12 @@ import {
  *
  *  6. Bounded runs. Inside a Bun test that states its budget (the test's
  *     timeout argument or the file's `setDefaultTimeout`, see
- *     test/property-budget.ts), every run, shrinking included, stops at
- *     `RUN_BUDGET_SHARE` of that budget, counted from the test's first run.
- *     A failure found by then is reported with the counterexample shrunk so
- *     far, before Bun's own timeout, and nothing keeps running into the next
- *     test. A run stopped before all its planned cases ran fails and says
- *     how many ran.
+ *     test/property-budget.ts), counted from the test's first run, shrinking
+ *     stops at `SHRINK_BUDGET_SHARE` of that budget and every run at
+ *     `RUN_BUDGET_SHARE`. A failure is then reported with the counterexample
+ *     shrunk so far, before Bun's own timeout, and nothing keeps running into
+ *     the next test. A run stopped before all its planned cases ran fails and
+ *     says how many ran.
  */
 
 const SEED_ENV = "PROPERTY_TEST_SEED";
@@ -412,17 +412,28 @@ const errorText = (error: unknown): string => {
 // ---------------------------------------------------------------------------
 
 /**
- * Share of a test's stated budget its property runs may use, counted from the
- * test's first run. An async case in flight is cut at that moment, so the rest
- * covers the test's own setup and the report; a run whose setup took longer
- * still stops by then instead of running on into later tests.
+ * Shares of a test's stated budget, counted from the test's first run. Once a
+ * case has failed, shrinking stops at the first, so the failure is reported
+ * well before Bun's own timeout. A run that has found nothing stops at the
+ * second, after the case in flight: close to the budget, so a property that
+ * merely runs long fails only where it would have timed out, and never keeps
+ * running into later tests.
  */
-const RUN_BUDGET_SHARE = 0.9;
+const SHRINK_BUDGET_SHARE = 0.9;
+/**
+ * Elapsed real time in milliseconds, from a clock fake timers do not move: a
+ * property that advances a fake clock must not spend its own time budget.
+ */
+const realNow = (): number =>
+  typeof Bun === "undefined" ? performance.now() : Bun.nanoseconds() / 1e6;
+const RUN_BUDGET_SHARE = 0.95;
 
 type RunBudget = {
   /** The budget the test states, in milliseconds. */
   budgetMs: number;
   startedAt: number;
+  /** When shrinking a found failure stops. */
+  shrinkDeadline: number;
   /** When every run of this test must have stopped. */
   deadline: number;
 };
@@ -453,7 +464,7 @@ if (process.versions["bun"] !== undefined) {
 const runBudget = (): RunBudget | undefined => {
   const test = statedTestBudget(outsideFrames());
   if (test?.budgetMs === undefined) return undefined;
-  const now = Date.now();
+  const now = realNow();
   const running = runningTests.get(test.key);
   // A test that outlived its budget has ended (Bun timed it out), so a later
   // run of the same definition is a new test with a deadline of its own.
@@ -472,6 +483,7 @@ const runBudget = (): RunBudget | undefined => {
   const budget = {
     budgetMs: test.budgetMs,
     startedAt: now,
+    shrinkDeadline: now + Math.floor(test.budgetMs * SHRINK_BUDGET_SHARE),
     deadline: now + Math.floor(test.budgetMs * RUN_BUDGET_SHARE),
   };
   runningTests.set(test.key, budget);
@@ -480,15 +492,52 @@ const runBudget = (): RunBudget | undefined => {
 
 /** Time left before `budget`'s deadline; at least 1 ms so fast-check stops at once. */
 const remainingMs = (budget: RunBudget): number =>
-  Math.max(1, budget.deadline - Date.now());
+  Math.max(1, budget.deadline - realNow());
 
 /** Each configuration's budget, refreshed into its limit when its run starts. */
 const configBudgets = new WeakMap<object, RunBudget>();
 
-const budgetText = (budget: RunBudget | undefined): string =>
+const budgetText = (budget: RunBudget | undefined, share: number): string =>
   budget === undefined
     ? "its time limit"
-    : `${String(Math.round(RUN_BUDGET_SHARE * 100))}% of the test's ${String(budget.budgetMs)} ms budget`;
+    : `${String(Math.round(share * 100))}% of the test's ${String(budget.budgetMs)} ms budget`;
+
+/**
+ * `property`, stopped as fast-check's own time limit stops a run, on the real
+ * clock: before any further case once `budget`'s deadline has passed, and
+ * before any further shrink once a case has failed and its shrink deadline
+ * has passed. A case already running finishes first.
+ */
+const shrinkBounded = <Ts>(
+  property: fc.IRawProperty<Ts>,
+  budget: RunBudget,
+): fc.IRawProperty<Ts> => {
+  let failed = false;
+  const seen = (
+    outcome: fc.PreconditionFailure | fc.PropertyFailure | null,
+  ) => {
+    if (outcome !== null && !(outcome instanceof fc.PreconditionFailure))
+      failed = true;
+    return outcome;
+  };
+  const bounded: fc.IRawProperty<Ts> = {
+    isAsync: () => property.isAsync(),
+    generate: (mrng, runId) => property.generate(mrng, runId),
+    shrink: (value) => property.shrink(value),
+    runBeforeEach: () => property.runBeforeEach(),
+    runAfterEach: () => property.runAfterEach(),
+    run: (value) => {
+      const now = realNow();
+      if (now >= budget.deadline || (failed && now >= budget.shrinkDeadline)) {
+        const stop = new fc.PreconditionFailure(true);
+        return property.isAsync() ? Promise.resolve(stop) : stop;
+      }
+      const outcome = property.run(value);
+      return outcome instanceof Promise ? outcome.then(seen) : seen(outcome);
+    },
+  };
+  return bounded;
+};
 
 /**
  * A reporter that throws what fast-check would, plus the replay line and, for
@@ -512,7 +561,7 @@ const replayReporter =
     if (details.interrupted && details.counterexample === null) {
       // Fewer cases than planned is not a pass: the property never saw the rest.
       throw new Error(
-        `${identity.key ?? identity.title ?? "Property"} ran ${String(details.numRuns)} of ${String(details.runConfiguration.numRuns)} planned cases before stopping at ${budgetText(budget)}; every planned case must run: raise the test's stated budget or lower numRuns.`,
+        `${identity.key ?? identity.title ?? "Property"} ran ${String(details.numRuns)} of ${String(details.runConfiguration.numRuns)} planned cases before stopping at ${budgetText(budget, RUN_BUDGET_SHARE)}; every planned case must run: raise the test's stated budget or lower numRuns.`,
       );
     }
     if (health.status === "infrastructure") {
@@ -564,7 +613,7 @@ const replayReporter =
     const lines = [fc.defaultReportMessage(details) ?? "Property failed", ""];
     if (details.interrupted) {
       lines.push(
-        `Shrinking stopped at ${budgetText(budget)}: the counterexample is the smallest found so far, and the replay below reproduces it.`,
+        `Shrinking stopped at ${budgetText(budget, SHRINK_BUDGET_SHARE)}: the counterexample is the smallest found so far, and the replay below reproduces it.`,
       );
     }
     if (pinned !== undefined) {
@@ -943,26 +992,36 @@ export function assertPinnedProperty<Ts>(
   return runConfiguredProperty(property, replays);
 }
 
+const withoutTimeLimit = <Ts>(config: fc.Parameters<Ts>): fc.Parameters<Ts> => {
+  const copy = { ...config };
+  Reflect.deleteProperty(copy, "interruptAfterTimeLimit");
+  return copy;
+};
+
 const runConfiguredProperty = <Ts>(
   property: fc.IRawProperty<Ts>,
   configs: readonly fc.Parameters<Ts>[],
 ): Promise<void> | void => {
   // Configurations are built before the first run; each limit counts from its own start.
-  const started = (config: fc.Parameters<Ts>): fc.Parameters<Ts> => {
+  const started = (
+    config: fc.Parameters<Ts>,
+  ): [fc.IRawProperty<Ts>, fc.Parameters<Ts>] => {
     reportFuzzHealth({ status: "started", completed: 0 });
     const budget = configBudgets.get(config);
+    // fast-check's own limit reads a clock fake timers may move; the wrapper
+    // keeps the budget on the real one.
     return budget === undefined
-      ? config
-      : { ...config, interruptAfterTimeLimit: remainingMs(budget) };
+      ? [property, config]
+      : [shrinkBounded(property, budget), withoutTimeLimit(config)];
   };
   if (property.isAsync()) {
     return (async () => {
       for (const config of configs) {
-        await fc.assert(property, started(config));
+        await fc.assert(...started(config));
       }
     })();
   }
   for (const config of configs) {
-    fc.assert(property, started(config));
+    fc.assert(...started(config));
   }
 };

@@ -214,7 +214,7 @@ describe("report mode", () => {
     const lines = logged(() => {
       assertProperty(
         fc.property(fc.nat(), (value) => {
-          expect({ value: value < 10 ? value : "too large" }).toEqual({
+          expect({ value: value < 10 ? 0 : "too large" }).toEqual({
             value: 0,
           });
         }),

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import fc from "fast-check";
 
 /**
@@ -63,7 +63,7 @@ const rejection = async (run: Promise<void>): Promise<Error> => {
 
 // Module-level so each test states its budget once, in its timeout argument.
 const ENDLESS_BUDGET_MS = propertyTestTimeout(2_000);
-const SHORT_BUDGET_MS = propertyTestTimeout(1_000);
+const SHORT_BUDGET_MS = propertyTestTimeout(2_000);
 
 describe("property run budgets", () => {
   test(
@@ -101,6 +101,26 @@ describe("property run budgets", () => {
   });
 
   test(
+    "a property that moves a fake clock keeps its real-time budget",
+    () => {
+      jest.useFakeTimers();
+      try {
+        // An hour of fake time per case: a budget on the faked clock would
+        // stop this run after its first case.
+        assertProperty(
+          fc.property(fc.nat(), () => {
+            jest.advanceTimersByTime(3_600_000);
+          }),
+          { id: "fake clock", numRuns: 50 },
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    },
+    propertyTestTimeout(2_000),
+  );
+
+  test(
     "a run stopped before its planned cases fails and says how many ran",
     async () => {
       const budgetMs = SHORT_BUDGET_MS;
@@ -112,12 +132,13 @@ describe("property run budgets", () => {
           { id: "too many cases for the budget", numRuns: 100_000 },
         ),
       );
+      // Stopped short of the test's own timeout, so the count is the failure.
       expect(failure.message).toMatch(
         new RegExp(
-          `too many cases for the budget ran \\d+ of \\d+ planned cases before stopping at 90% of the test's ${String(budgetMs)} ms budget`,
+          `too many cases for the budget ran \\d+ of \\d+ planned cases before stopping at 95% of the test's ${String(budgetMs)} ms budget`,
         ),
       );
     },
-    propertyTestTimeout(1_000),
+    propertyTestTimeout(2_000),
   );
 });
