@@ -17,6 +17,10 @@ import {
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
+import {
   assignDocumentParagraphPropertySourceContract,
   cloneDocumentWithParagraphPropertySources,
   getParagraphPropertySourceToken,
@@ -28,10 +32,6 @@ import { listRenderingAttrPatch } from "../prosemirror/listRenderingAttrs";
 import { schema } from "../prosemirror/schema";
 import type { Document } from "../types/document";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 setDefaultTimeout(propertyTestTimeout(180_000));
 

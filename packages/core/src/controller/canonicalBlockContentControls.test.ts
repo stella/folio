@@ -3,6 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import {
+  type CanonicalCommit,
+  type CanonicalSession,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
@@ -10,12 +16,6 @@ import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
-import {
-  type CanonicalCommit,
-  type CanonicalSession,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 
 const paragraph = (paraId: string, text: string): Paragraph => ({
   type: "paragraph",

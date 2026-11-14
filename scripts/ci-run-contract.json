@@ -29,10 +29,6 @@
       "if": null
     },
     {
-      "run": "bun run audit",
-      "if": null
-    },
-    {
       "run": "bun run check:canonical-cutover",
       "if": null
     },

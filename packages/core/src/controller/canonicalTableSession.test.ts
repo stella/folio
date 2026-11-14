@@ -4,11 +4,11 @@ import { createCanonicalEditorHarness } from "../../../../test/canonicalEditorHa
 import { assertExactModel } from "../../../../test/exactModel";
 import { shapeArrayBuffer } from "../__tests__/documentShapes";
 import { parseShapeDocument } from "../__tests__/editorHarness";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import * as conversion from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
-import { createCanonicalSession } from "./canonicalSession";
 
 const tableFixture = async (story: "main" | "header" | "footer") => {
   const parsed = await parseShapeDocument(

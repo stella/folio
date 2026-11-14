@@ -46,6 +46,16 @@ import {
   sameStory,
 } from "@stll/docx-core/ops";
 
+import { createCanonicalSectionPropertiesOperation } from "../canonical/canonicalOperations";
+import { restoreCanonicalSelection } from "../canonical/canonicalSelection";
+import {
+  type CanonicalCommit,
+  type CanonicalHistoryEffect,
+  type CanonicalSession,
+  type CanonicalSessionMode,
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import {
   type HiddenEditorStateReason,
   recordHiddenEditorPhase,
@@ -124,17 +134,7 @@ import {
   compileCanonicalComments,
 } from "./canonicalComments";
 import { createCanonicalInputBoundary } from "./canonicalInput";
-import { createCanonicalSectionPropertiesOperation } from "./canonicalOperations";
 import { CanonicalPublicOperations } from "./canonicalPublicOperations";
-import { restoreCanonicalSelection } from "./canonicalSelection";
-import {
-  type CanonicalCommit,
-  type CanonicalHistoryEffect,
-  type CanonicalSession,
-  type CanonicalSessionMode,
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 import {
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,

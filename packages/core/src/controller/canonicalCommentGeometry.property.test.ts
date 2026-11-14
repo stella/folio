@@ -15,6 +15,11 @@ import {
 } from "../../../../test/property-testing";
 import { documentShape, shapeArrayBuffer } from "../__tests__/documentShapes";
 import { parseShapeDocument, placeSelection } from "../__tests__/editorHarness";
+import { projectCanonicalInline } from "../canonical/canonicalInlineProjection";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { createDocx } from "../docx/rezip";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -25,11 +30,6 @@ import type {
   ParagraphContent,
   RunContent,
 } from "../types/document";
-import { projectCanonicalInline } from "./canonicalInlineProjection";
-import {
-  createCanonicalSession,
-  publishCanonicalProjection,
-} from "./canonicalSession";
 import { prepareCanonicalCommands } from "./canonicalStructure";
 
 setDefaultTimeout(propertyTestTimeout(30_000));

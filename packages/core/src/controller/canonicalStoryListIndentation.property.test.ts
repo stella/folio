@@ -20,11 +20,11 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import type { Document, Paragraph } from "../types/document";
-import { createCanonicalSession } from "./canonicalSession";
 
 type Item = {
   numbering: "direct" | "style";

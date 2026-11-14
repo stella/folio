@@ -2,17 +2,17 @@ import { panic } from "better-result";
 import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import {
+  type CanonicalCommit,
+  type CanonicalSession,
+  createCanonicalSession,
+} from "../canonical/canonicalSession";
 import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
 import type { BlockContent, Document, Paragraph } from "../types/document";
-import {
-  type CanonicalCommit,
-  type CanonicalSession,
-  createCanonicalSession,
-} from "./canonicalSession";
 
 const paragraph = (paraId: string, text: string): Paragraph => ({
   type: "paragraph",

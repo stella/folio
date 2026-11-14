@@ -5,9 +5,9 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import { createCanonicalSession } from "../canonical/canonicalSession";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document, ParagraphContent, RunContent } from "../types/document";
-import { createCanonicalSession } from "./canonicalSession";
 
 const omittedLeaves = [
   { type: "instrText", text: "PAGE" },

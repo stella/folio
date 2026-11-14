@@ -7,8 +7,6 @@ import {
   assertProperty,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import { schema } from "../prosemirror/schema";
-import type { Document } from "../types/document";
 import {
   type CanonicalCommit,
   type CanonicalHistoryEffect,
@@ -17,7 +15,9 @@ import {
   CanonicalSessionError,
   createCanonicalSession,
   publishCanonicalProjection,
-} from "./canonicalSession";
+} from "../canonical/canonicalSession";
+import { schema } from "../prosemirror/schema";
+import type { Document } from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
