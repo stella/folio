@@ -134,7 +134,12 @@ export const cloneIncomingCopyBoundaries = (
     const out: InlineNode[] = [];
     for (const node of current) {
       const key = copyOriginBoundaryKey(node);
-      if (key !== undefined && (held.has(key) || copiedRange(node))) {
+      if (
+        key !== undefined &&
+        existingBoundaryKeys.has(key) &&
+        copiedRange !== undefined &&
+        held !== undefined
+      ) {
         const copy = { ...node };
         copiedBoundaries.add(copy);
         out.push(copy);

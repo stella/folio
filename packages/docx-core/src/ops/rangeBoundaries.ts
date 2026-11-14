@@ -805,11 +805,15 @@ export const planWellFormedRanges = (
   const dropped = new Set<number>();
   for (const group of copies.values()) {
     if (group.length < 2) continue;
-    if (group.some((member) => occurrences[member]?.copiesMarked === true))
-      continue;
     const kept = group.filter((member) => occurrences[member]?.kept === true);
-    const held = group.some((member) => occurrences[member]?.kept === false);
-    const survivor = held ? undefined : kept.at(0);
+    const held = group.some((member) => {
+      const occurrence = occurrences[member];
+      return occurrence?.kept === false && !occurrence.copied;
+    });
+    const survivor = held
+      ? undefined
+      : (kept.find((member) => occurrences[member]?.copied === false) ??
+        kept.at(0));
     for (const member of kept) if (member !== survivor) dropped.add(member);
   }
   const ownedCopies = occurrences.flatMap(({ kept, copied }, index) =>
