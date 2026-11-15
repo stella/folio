@@ -210,13 +210,10 @@ export {
   setActiveCitationMeta,
   type AICitationRange,
 } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
-export {
-  anonymizationDecorationsKey,
-  getAnonymizationMatches,
-  setAnonymizationTermsMeta,
-  type AnonymizationMatch,
-  type AnonymizationTerm,
-} from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
+export type {
+  FolioAnonymizationMatch,
+  FolioAnonymizationTerm,
+} from "@stll/folio-core/controller/anonymizationHighlights";
 export {
   getTemplateDirectives,
   scanDirectives,

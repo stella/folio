@@ -15,6 +15,7 @@ import type {
 import { equalForStaleness, structurallyEqual } from "../equality";
 import { compareGaps, partitionContent } from "../leaves";
 import {
+  type CommentAnchor,
   DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -337,6 +338,38 @@ const EDITS = {
   }),
 } satisfies Record<string, (story: OpStory) => DocumentOp>;
 
+const comment = (anchor: CommentAnchor): DocumentOp => ({
+  type: DOCUMENT_OP_TYPES.CREATE_COMMENT,
+  comment: {
+    id: 7,
+    author: "Reviewer",
+    date: "2026-01-02T00:00:00.000Z",
+    content: [
+      { type: "paragraph", paraId: "00000C01", content: [run([text("Note")])] },
+    ],
+  },
+  anchor,
+  newIds: { revision: [], control: [] },
+});
+
+// The span is "world", from 6 to 11.
+const COMMENTS = {
+  "a range comment before the span": (story) =>
+    comment({
+      kind: "range",
+      from: position(story, 0),
+      to: position(story, 3),
+    }),
+  "a point comment after the span": (story) =>
+    comment({ kind: "point", at: position(story, 14) }),
+  "a range comment around the span": (story) =>
+    comment({
+      kind: "range",
+      from: position(story, 2),
+      to: position(story, 14),
+    }),
+} satisfies Record<string, (story: OpStory) => DocumentOp>;
+
 describe("a paragraph restoration and an edit of its paragraph", () => {
   for (const [placeName, place] of Object.entries(PLACES))
     for (const [editName, edit] of Object.entries(EDITS))
@@ -355,6 +388,67 @@ describe("a paragraph restoration and an edit of its paragraph", () => {
           return;
         expect(equalForStaleness(restoredFirst, editedFirst)).toBe(true);
       });
+
+  for (const placeName of ["main", "tableCell"] as const)
+    for (const [commentName, created] of Object.entries(COMMENTS))
+      test(`${commentName} passes it in either order (${placeName})`, () => {
+        const place = PLACES[placeName];
+        const base = place.document(before);
+        const restore = restoration(place.story);
+        const change = batchOf("comment", created(place.story));
+        const restoredFirst = inOrder(base, restore, change);
+        const commentedFirst = inOrder(base, change, restore);
+        expect(typeof restoredFirst).not.toBe("string");
+        expect(typeof commentedFirst).not.toBe("string");
+        if (
+          typeof restoredFirst === "string" ||
+          typeof commentedFirst === "string"
+        )
+          return;
+        expect(equalForStaleness(restoredFirst, commentedFirst)).toBe(true);
+      });
+
+  test("a comment ending inside the span conflicts with it in either order", () => {
+    const base = PLACES.main.document(before);
+    const restore = restoration(OP_STORIES.MAIN);
+    const created = batchOf(
+      "comment",
+      comment({
+        kind: "range",
+        from: position(OP_STORIES.MAIN, 2),
+        to: position(OP_STORIES.MAIN, 8),
+      }),
+    );
+    const message =
+      "A concurrent edit reached the content a restoration changes.";
+    expect(inOrder(base, restore, created)).toBe(message);
+    expect(inOrder(base, created, restore)).toBe(message);
+  });
+
+  test("a restore transform that passes no comment is caught", () => {
+    // The test-only break: a comment anchored in a restored paragraph meets
+    // it by the block footprint alone, as before comments passed the span.
+    const original = { ...restoreTransformModule };
+    mock.module("./restoreTransform", () => ({
+      ...original,
+      transformRestorePair: (op: DocumentOp, over: DocumentOp) =>
+        [op, over].some(({ type }) => type === DOCUMENT_OP_TYPES.CREATE_COMMENT)
+          ? undefined
+          : original.transformRestorePair(op, over),
+    }));
+    try {
+      const base = PLACES.main.document(before);
+      const created = batchOf(
+        "comment",
+        COMMENTS["a range comment before the span"](OP_STORIES.MAIN),
+      );
+      expect(inOrder(base, created, restoration(OP_STORIES.MAIN))).toBe(
+        "A concurrent operation changed a paragraph this operation addresses.",
+      );
+    } finally {
+      mock.module("./restoreTransform", () => original);
+    }
+  });
 
   test("typing inside the span conflicts with it in either order", () => {
     const base = PLACES.main.document(before);
