@@ -51,6 +51,7 @@ import { structurallyEqual } from "./equality";
 import { canonicalDeferredGroups, deferredGroupKey } from "./identity";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "./ids";
 import { joinParagraphSeam } from "./inline";
+import { withJoinAtLeast } from "./keptJoins";
 import {
   alikeDepth,
   asParagraphContent,
@@ -1627,6 +1628,8 @@ const resolveList = (
   };
   /** Seams a removed revision recorded between the source pieces around it. */
   const removalSeams = new Set<number>();
+  /** Seams a kept revision's own joins recorded at its edges. */
+  const keptJoinSeams = new Set<number>();
   /** Those of them a removed insertion or move destination recorded. */
   const addedRemovalSeams = new Set<number>();
   const recordSourceSeam = (index: number, depth: number): void => {
@@ -1795,6 +1798,7 @@ const resolveList = (
         plainSeams.add(out.length);
       else {
         recordSourceSeam(out.length, node.resolutionJoins.before);
+        if (node.resolutionJoins.before > 0) keptJoinSeams.add(out.length);
         if (
           node.resolutionJoins.before > 0 &&
           node.resolutionJoins.keptFrom !== undefined
@@ -1840,6 +1844,7 @@ const resolveList = (
         plainSeams.add(out.length);
       else {
         recordSourceSeam(out.length, node.resolutionJoins.after);
+        if (node.resolutionJoins.after > 0) keptJoinSeams.add(out.length);
         if (
           node.resolutionJoins.after > 0 &&
           node.resolutionJoins.keptFrom !== undefined
@@ -2365,6 +2370,37 @@ const resolveList = (
       while (leftEnd >= 0 && blocking(leftEnd)) leftEnd -= 1;
       let rightStart = seam;
       while (rightStart < out.length && blocking(rightStart)) rightStart += 1;
+      // A kept revision's join that meets a pending insertion made inside
+      // the record it cut is that insertion's join on the facing side too:
+      // accepting the insertion later joins its content with the piece, as
+      // accepting both at once does, and rejecting it joins the pieces beyond
+      // it, as the seam deferred below does. A rejection's seam between
+      // pieces still pending passes to them the same way, whether or not
+      // pieces stand beyond them: boundaries it kept standing at the seam
+      // go with the join, which later places them inside the record.
+      const handedOver = new Set<number>();
+      if (
+        (keptJoinSeams.has(recorded) && standingKept === 0) ||
+        removalSeams.has(recorded)
+      ) {
+        const keptFrom = standingKept > 0 ? kept?.keptFrom : undefined;
+        const facing = (index: number, side: "before" | "after"): void => {
+          const occurrence = out[index];
+          if (occurrence === undefined)
+            panic("A blocking insertion stands in the list.");
+          const node = withJoinAtLeast(
+            occurrence.node,
+            side,
+            exactDepth,
+            keptFrom,
+          );
+          if (node === occurrence.node) return;
+          out[index] = occurrenceOf(node, occurrence);
+          handedOver.add(index);
+        };
+        if (leftEnd !== keptEnd) facing(keptEnd, "after");
+        if (rightStart !== seam) facing(seam, "before");
+      }
       // A piece the seam joins can still be held in a pending deletion or
       // move source at its edge: it stands only once that is rejected, and
       // goes if it is accepted, so the seam waits on it too.
@@ -2459,6 +2495,9 @@ const resolveList = (
         }
         continue;
       }
+      // With no piece beyond the pending insertions to defer on, nothing
+      // joins now: the insertion facing the kept piece holds its join.
+      if (handedOver.size > 0) continue;
     }
     // Later independent edits may make a recorded seam non-alike. Join
     // only the recorded depth and matching fields, preserving those edits.
