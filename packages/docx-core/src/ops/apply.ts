@@ -1791,7 +1791,7 @@ const trackSplit = ({
             formatting: made.formatting,
             stamp,
           })
-        : paragraphPropertyChange(stampInfo(stamp), paragraph),
+        : paragraphPropertyChange(stampInfo(stamp), paragraph, made.formatting),
     ];
   }
   return undefined;
