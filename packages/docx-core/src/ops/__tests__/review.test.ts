@@ -6,7 +6,7 @@
  * that silently dropped a mark).
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 import type {
   BlockContent,
@@ -23,6 +23,7 @@ import {
 } from "../apply";
 import { isCommentExhausted } from "../comments";
 import { contractViolation, normalizeForOps } from "../contract";
+import * as leavesModule from "../leaves";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
@@ -1866,6 +1867,107 @@ describe("whole-document revision rejection", () => {
     expect(remaining.rows[0]?.cells[0]?.content[0]).toBe(follower);
     expect(result.touched.modified).not.toContain("00000003");
     expect(result.document.package.footnotes).toBeUndefined();
+  });
+});
+
+describe("a note referenced from inside a field's result", () => {
+  const referenceField = (id: number): ParagraphContent => ({
+    type: "simpleField",
+    instruction: "PAGE",
+    fieldType: "PAGE",
+    content: [{ type: "run", content: [{ type: "footnoteRef", id }] }],
+  });
+  const withNote = (content: ParagraphContent[]): Document => ({
+    package: {
+      document: {
+        content: [
+          paragraph("00000001", [run("Body.")]),
+          paragraph("00000002", content),
+          paragraph("00000003", [run("After.")]),
+        ],
+      },
+      footnotes: [
+        {
+          type: "footnote",
+          id: 37,
+          content: [paragraph("7FFFFFF1", [run("Note text.")])],
+        },
+      ],
+    },
+  });
+  const resolveAll = (
+    document: Document,
+    revisionIds: number[],
+    decision: RevisionDecision,
+  ): Document =>
+    applied(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds,
+      decision,
+    }).document;
+
+  test("goes with the field when rejecting the insertion removes it", () => {
+    const document = withNote([
+      run("See "),
+      {
+        type: "insertion",
+        info: { id: 91, author: "A" },
+        content: [referenceField(37)],
+      },
+    ]);
+    const result = resolveAll(document, [91], REVISION_DECISIONS.REJECT);
+    expect(result.package.footnotes).toBeUndefined();
+  });
+
+  test("goes with the field when accepting the deletion removes it", () => {
+    const document = withNote([
+      run("See "),
+      {
+        type: "deletion",
+        info: { id: 92, author: "A" },
+        content: [referenceField(37)],
+      },
+    ]);
+    const result = resolveAll(document, [92], REVISION_DECISIONS.ACCEPT);
+    expect(result.package.footnotes ?? []).toEqual([]);
+  });
+
+  test("stays while a field's result elsewhere still references it", () => {
+    const document = withNote([
+      referenceField(37),
+      {
+        type: "insertion",
+        info: { id: 93, author: "A" },
+        content: [{ type: "run", content: [{ type: "footnoteRef", id: 37 }] }],
+      },
+    ]);
+    const result = resolveAll(document, [93], REVISION_DECISIONS.REJECT);
+    expect(result.package.footnotes?.map(({ id }) => id)).toEqual([37]);
+  });
+
+  test("a walk that keeps fields whole keeps the note", () => {
+    // The test-only break: note references are read as a field's atom, so
+    // the reference inside the removed field's result is never seen.
+    const original = { ...leavesModule };
+    mock.module("../leaves", () => ({
+      ...original,
+      nestedRecords: original.childNodes,
+    }));
+    try {
+      const document = withNote([
+        run("See "),
+        {
+          type: "insertion",
+          info: { id: 91, author: "A" },
+          content: [referenceField(37)],
+        },
+      ]);
+      const result = resolveAll(document, [91], REVISION_DECISIONS.REJECT);
+      expect(result.package.footnotes?.map(({ id }) => id)).toEqual([37]);
+    } finally {
+      mock.module("../leaves", () => original);
+    }
   });
 });
 
