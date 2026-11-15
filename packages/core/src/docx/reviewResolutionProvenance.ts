@@ -45,6 +45,7 @@ const JOIN_FIELDS = {
   plainSides: true,
   retainedEnclosing: true,
   keptFrom: true,
+  keptCount: true,
 } as const satisfies Record<RecordField<ResolutionJoins>, true>;
 type EnclosingHandoff = NonNullable<
   ResolutionJoins["retainedEnclosing"]
@@ -81,6 +82,7 @@ const DEFERRED_REMOVAL_FIELDS = {
   depth: true,
   blockers: true,
   keptFrom: true,
+  keptCount: true,
   edge: true,
 } as const satisfies Record<RecordField<DeferredRemoval>, true>;
 
@@ -137,6 +139,18 @@ const enclosingHandoffs = (
     );
   });
 
+/** A count of kept boundaries, with the date they were kept from. */
+const validKeptCount = (value: Record<string, unknown>): boolean => {
+  if (!Object.hasOwn(value, "keptCount")) return true;
+  const count = value["keptCount"];
+  return (
+    Object.hasOwn(value, "keptFrom") &&
+    natural(count) &&
+    count >= 1 &&
+    count <= MAX_REVISION_ID
+  );
+};
+
 const deferredRemoval = (value: unknown): value is DeferredRemoval => {
   if (
     !record(value) ||
@@ -150,6 +164,7 @@ const deferredRemoval = (value: unknown): value is DeferredRemoval => {
   return (
     (!Object.hasOwn(value, "keptFrom") ||
       typeof value["keptFrom"] === "string") &&
+    validKeptCount(value) &&
     (!Object.hasOwn(value, "edge") ||
       value["edge"] === "start" ||
       value["edge"] === "end") &&
@@ -175,8 +190,8 @@ const deferredRemovals = (
     !value.every(deferredRemoval)
   )
     return false;
-  const groups = value.map(({ depth, blockers, keptFrom, edge }) =>
-    JSON.stringify({ depth, blockers, keptFrom, edge }),
+  const groups = value.map(({ depth, blockers, keptFrom, keptCount, edge }) =>
+    JSON.stringify({ depth, blockers, keptFrom, keptCount, edge }),
   );
   return new Set(groups).size === groups.length;
 };
@@ -189,6 +204,7 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   natural(value["remove"]) &&
   (!Object.hasOwn(value, "keptFrom") ||
     typeof value["keptFrom"] === "string") &&
+  validKeptCount(value) &&
   (!Object.hasOwn(value, "acceptance") ||
     (typeof value["acceptance"] === "string" &&
       Object.hasOwn(ACCEPTANCE_POLICIES, value["acceptance"]))) &&
