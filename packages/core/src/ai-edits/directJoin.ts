@@ -12,3 +12,15 @@ import { SPLIT_HALVES, type SplitHalf } from "@stll/docx-core/ops";
 
 /** The half of a direct join whose identity the joined paragraph keeps. */
 export const directJoinSurvivor = (): SplitHalf => SPLIT_HALVES.SECOND;
+
+/**
+ * The paragraphs of a direct join that an operation of the same batch can no
+ * longer name once the join has run: the one whose id it retires, and the
+ * one it keeps, whose text and offsets it rewrites. Whichever survives, a
+ * batch runs every operation that names either before the join, as the same
+ * operations one at a time in the batch's order do.
+ */
+export const directJoinTakes = <Block>(
+  first: Block,
+  second: Block,
+): readonly Block[] => [first, second];

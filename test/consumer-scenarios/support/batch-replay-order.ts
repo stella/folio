@@ -345,13 +345,16 @@ export const sequentialGroups = ({
     const id = blockIdOf(operation);
     if (operation.type === "deleteBlock") {
       const row = preRows.find((candidate) => candidate.id === id);
-      return row === undefined ||
-        deletionRemovesBlock({
-          endsContainer: finalBlocks.has(id) && !appendedAfter(id),
-          carrier: breakCarrierOf(row).type,
-        })
-        ? [id]
-        : [];
+      if (row === undefined) return [id];
+      const endsContainer = finalBlocks.has(id) && !appendedAfter(id);
+      const carrier = breakCarrierOf(row);
+      if (!deletionRemovesBlock({ endsContainer, carrier: carrier.type }))
+        return [];
+      // Applied directly, a container's final paragraph joins the paragraph
+      // the batch keeps before it, which then goes by the deleted one's id.
+      return mode === "direct" && endsContainer && carrier.type === "kept"
+        ? [carrier.paragraph.id, id]
+        : [id];
     }
     // Removing a table row or table takes its anchor with it.
     if (operation.type === "deleteTableRow" || operation.type === "deleteTable")
@@ -360,7 +363,10 @@ export const sequentialGroups = ({
     const index = preRows.findIndex((row) => row.id === id);
     const row = preRows.at(index);
     const next = preRows.at(index + 1);
-    return row !== undefined && sameContainerRows(row, next) ? [next.id] : [];
+    if (row === undefined || !sameContainerRows(row, next)) return [];
+    // Applied directly, the join retires one paragraph's id and rewrites the
+    // other; tracked, both stay until the merge is accepted.
+    return mode === "direct" ? [row.id, next.id] : [next.id];
   };
   const reordered = orderAddressingBeforeRemoval(groups, (group) => ({
     addresses: group.flatMap((operation) =>

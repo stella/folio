@@ -199,7 +199,7 @@ import {
   type CleanBlockText,
   resolveCleanTextRange,
 } from "./clean-text";
-import { directJoinSurvivor } from "./directJoin";
+import { directJoinSurvivor, directJoinTakes } from "./directJoin";
 import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
@@ -5796,11 +5796,6 @@ const applyFolioAIEditOperationsInternal = ({
   const deletedFinalParagraphs: DeletedFinalParagraph[] = [];
   /** Container-ending paragraphs a direct `deleteBlock` took: see `withSettledDirectFinalDeletions`. */
   const directFinalDeletions: DirectFinalDeletion[] = [];
-  // The paragraph id each direct join of the batch retired, and the id of the
-  // paragraph it joined into. The joined paragraph takes the later
-  // paragraph's identity at once, so a later operation of the batch finds
-  // the blocks one at a time would.
-  const retiredParaIds = new Map<string, string>();
   const mergedPropertyTargets: BatchParagraphPosition[] = [];
   const deferredNoopFinalDeletions = new Set<string>();
   const ownsSharedRevisionIdCursor =
@@ -5922,9 +5917,14 @@ const applyFolioAIEditOperationsInternal = ({
     const doc = view.state.doc;
     if (item.operation.type === "mergeBlockWithNext") {
       const next = paragraphJoinAfter(doc, item.blockTo);
+      if (!next) return { addresses: [item.blockFrom], removes: [] };
+      // Tracked, both paragraphs stay until the merge is accepted; directly,
+      // the join retires one id and rewrites the other paragraph.
       return {
         addresses: [item.blockFrom],
-        removes: next ? [next.nextPosition] : [],
+        removes: producesTrackedChanges
+          ? [next.nextPosition]
+          : directJoinTakes(item.blockFrom, next.nextPosition),
       };
     }
     // Removing a table row or table takes its blocks with it: it names its
@@ -5970,12 +5970,23 @@ const applyFolioAIEditOperationsInternal = ({
           (other.operation.type === "insertTable" &&
             other.operation.position !== "before")),
     );
+    const endsContainer =
+      !appended && paragraphEndsItsContainer(at, item.blockNode.type.name);
+    const carrier = finalBreakCarrier(before);
     const removes = deletionRemovesBlock({
-      endsContainer:
-        !appended && paragraphEndsItsContainer(at, item.blockNode.type.name),
-      carrier: finalBreakCarrier(before).type,
+      endsContainer,
+      carrier: carrier.type,
     });
-    return { addresses: [], removes: removes ? [item.blockFrom] : [] };
+    if (!removes) return { addresses: [], removes: [] };
+    // Applied directly, a container's final paragraph joins the paragraph the
+    // batch keeps before it, which then goes by the deleted one's id.
+    return {
+      addresses: [],
+      removes:
+        !producesTrackedChanges && endsContainer && carrier.type === "kept"
+          ? directJoinTakes(carrier.paragraph, item.blockFrom)
+          : [item.blockFrom],
+    };
   };
   const groupRuns = (items: readonly ResolvedOperation[]) =>
     groupInsertionRuns(
@@ -6227,23 +6238,6 @@ const applyFolioAIEditOperationsInternal = ({
       !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(item.operation.type)
     ) {
       skipped.push({ id: item.operation.id, reason: "unsupportedMode" });
-      continue;
-    }
-
-    // A paragraph an earlier direct join of the batch retired no longer
-    // exists, as it would not for the operation applied one at a time.
-    const namedParaId =
-      "blockId" in item.operation
-        ? getFolioParaIdFromBlockId(item.operation.blockId)
-        : null;
-    const retiredInto =
-      namedParaId === null ? undefined : retiredParaIds.get(namedParaId);
-    if (retiredInto !== undefined) {
-      skipped.push({
-        id: item.operation.id,
-        reason: "missingBlock",
-        message: `${item.operation.blockId} no longer exists: an earlier operation of the batch joined it into paragraph ${retiredInto}.`,
-      });
       continue;
     }
 
@@ -8150,11 +8144,6 @@ const applyFolioAIEditOperationsInternal = ({
       ...(suggestionId !== null && { suggestionId }),
       ...(joinedParagraphs !== undefined && { joined: joinedParagraphs }),
     });
-    if (joinedParagraphs !== undefined)
-      retiredParaIds.set(
-        joinedParagraphs.retiredBlockId,
-        joinedParagraphs.blockId,
-      );
   }
 
   if (withSettledDirectFinalDeletions(tr, directFinalDeletions)) {
