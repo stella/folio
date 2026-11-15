@@ -352,10 +352,7 @@ const insertedParagraphProperties = (
       anchorParagraph?.directIndentation,
     ),
     numbering: paragraph.statedNumbering,
-  } satisfies {
-    [Key in keyof FolioAIBlockParagraphProperties]-?:
-      FolioAIBlockParagraphProperties[Key] | undefined;
-  };
+  } satisfies Record<keyof FolioAIBlockParagraphProperties, unknown>;
   const properties: FolioAIBlockParagraphProperties = {
     numbering: stated.numbering,
   };
