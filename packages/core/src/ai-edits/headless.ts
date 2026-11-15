@@ -54,7 +54,10 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
-import { serializeCanonicalSave } from "../docx/canonicalSave";
+import {
+  CanonicalSaveRepackRefusedError,
+  serializeCanonicalSave,
+} from "../docx/canonicalSave";
 import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { removeCommentMarkers } from "../docx/commentAnchorIndex";
 import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
@@ -4126,16 +4129,22 @@ export class FolioDocxReviewer {
     repackPolicy: "allow" | "refuse",
   ): Promise<FolioReviewerSaveResult> {
     const snapshot = session.captureSaveSnapshot();
-    const saved = await serializeCanonicalSave({ snapshot });
-    if (saved.path === "selective")
-      return { type: "selective", buffer: saved.buffer };
     const reason =
       snapshot.structure === "changed"
         ? "structuralChange"
         : "selectiveDeclined";
-    return repackPolicy === "refuse"
-      ? { type: "repackRefused", reason }
-      : { type: "full-repack", reason, buffer: saved.buffer };
+    // A refused repack is decided before one is built.
+    let saved: Awaited<ReturnType<typeof serializeCanonicalSave>>;
+    try {
+      saved = await serializeCanonicalSave({ snapshot, repack: repackPolicy });
+    } catch (error) {
+      if (CanonicalSaveRepackRefusedError.is(error))
+        return { type: "repackRefused", reason };
+      throw error;
+    }
+    if (saved.path === "selective")
+      return { type: "selective", buffer: saved.buffer };
+    return { type: "full-repack", reason, buffer: saved.buffer };
   }
 
   private async assertResolvedStoriesSerialized(
