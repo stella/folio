@@ -73,8 +73,11 @@ type BlockRecord = {
   input: BlockContent;
   /** Normalizing it returns it unchanged and records no inverse. */
   settled: boolean;
-  /** The snapshot registration normalizing left for the paragraph. */
-  snapshotToken: object | undefined;
+  /**
+   * The snapshot registration normalizing left for each paragraph the block
+   * is or holds, in document order.
+   */
+  snapshotTokens: readonly (object | undefined)[];
   /**
    * What normalizing it changed in the counters: one step per paragraph it
    * holds, in document order, none for a block holding no counted paragraph.
@@ -86,31 +89,60 @@ type BlockRecord = {
 
 const CHECKPOINT_SPACING = 32;
 
-/** The record of `input`, whose kept facts are fixed from now on. */
+/**
+ * The paragraphs `block` is or holds, in document order: a content
+ * control's, a custom XML wrapper's and a table's at any depth.
+ */
+const paragraphsIn = (block: BlockContent): Paragraph[] => {
+  switch (block.type) {
+    case "paragraph":
+      return [block];
+    case "blockSdt":
+    case "blockCustomXml":
+      return block.content.flatMap(paragraphsIn);
+    case "table":
+      return block.rows.flatMap((row) =>
+        row.cells.flatMap((cell) => cell.content.flatMap(paragraphsIn)),
+      );
+    default:
+      return [];
+  }
+};
+
+/** The record of `input`, whose paragraphs' kept facts are fixed from now on. */
 const recordOf = (
   input: BlockContent,
   settled: boolean,
   steps: readonly ListCounterStep[],
   before: ListCounterSnapshot | undefined,
 ): BlockRecord => {
-  if (input.type !== "paragraph")
-    return { input, settled, snapshotToken: undefined, steps, before };
-  sealParagraphFacts(input);
+  const paragraphs = paragraphsIn(input);
+  for (const paragraph of paragraphs) sealParagraphFacts(paragraph);
   return {
     input,
     settled,
-    snapshotToken: paragraphPropertySnapshotToken(input),
+    snapshotTokens: paragraphs.map(paragraphPropertySnapshotToken),
     steps,
     before,
   };
 };
 
-/** Whether normalizing `block` again would leave it, its facts and its registration as they are. */
-const stillSettled = (block: BlockContent, record: BlockRecord): boolean =>
-  record.settled &&
-  block === record.input &&
-  (block.type !== "paragraph" ||
-    paragraphPropertySnapshotToken(block) === record.snapshotToken);
+/**
+ * Whether normalizing `block` again would leave it, its paragraphs' facts
+ * and their registrations as they are.
+ */
+const stillSettled = (block: BlockContent, record: BlockRecord): boolean => {
+  if (!record.settled || block !== record.input) return false;
+  const paragraphs = paragraphsIn(block);
+  return (
+    paragraphs.length === record.snapshotTokens.length &&
+    paragraphs.every(
+      (paragraph, index) =>
+        paragraphPropertySnapshotToken(paragraph) ===
+        record.snapshotTokens[index],
+    )
+  );
+};
 
 const storyKey = (story: OpStory): string => {
   if (story === OP_STORIES.MAIN) return story;

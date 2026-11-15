@@ -5,6 +5,12 @@
       "path": "2:1:0:0:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "note": "A content control whose paragraph normalized is reused as the story holds it after an edit beside it.",
       "date": "2026-11-15"
+    },
+    {
+      "seed": 1153128887,
+      "path": "55:4:3:5:7:7:11:11:14:17:17:20:20:20:20:23:23:26:27:27:27:22:22:22:22:22:22:22:27:26:26:30:30:30:30:28:28:28:28:28:28",
+      "note": "A content control is reused only while every paragraph it holds keeps the registration it was left with.",
+      "date": "2026-11-15"
     }
   ]
 }
