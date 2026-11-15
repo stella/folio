@@ -163,15 +163,16 @@ unchanged when it addresses none of those paragraphs, and is refused with
 `blockConflict` when it does, with one exception: a paragraph restoration
 (`replaceInline`, and each anchor paragraph of `restoreCommentState`) and a
 positional edit of that paragraph (typing, an inline insertion, a split or
-join of inline records, a deletion or a format within it) meet by the
-restoration's span (`restoreTransform.ts`). The span is the stretch between
-the longest common prefix and the longest common suffix of the content the
-restoration expects and the content it gives, compared leaf by leaf (a
-character of run text, or a whole leaf) with the records holding each leaf,
+join of inline records, a deletion or a format within it, or a new comment
+anchored in it) meet by the restoration's span (`restoreTransform.ts`). The
+span is the stretch between the longest common prefix and the longest common
+suffix of the content the restoration expects and the content it gives,
+compared leaf by leaf (a character of run text, or a whole leaf) with the records holding each leaf,
 their own fields and where they begin and end: a change of a record's own
 fields alone spans that record's leaves, and a change of record boundaries
 alone is an empty span at the boundary. An edit reaching into the span is
-refused with `blockConflict`. Any other edit passes: rebased over the
+refused with `blockConflict`; a comment's anchor reaches into it when one of
+its ends lies strictly inside it. Any other edit passes: rebased over the
 restoration, its positions after the span move by the width the span
 changes; the restoration rebased over the edit states the paragraph the
 edit leaves, before and after it, applying the edit to that paragraph alone,
