@@ -555,7 +555,13 @@ const commutes = (
       effects: placed.value.effects,
     };
   }
-  return equalForStaleness(document, result);
+  const same = equalForStaleness(document, result);
+  if (!same)
+    // oxlint-disable-next-line no-console
+    console.log(
+      `DIAG DIVERGE ${batch.opId} (${describeOps(batch.ops)}) over [${tail.map((remote) => `${remote.opId} (${describeOps(remote.ops)})`).join("; ")}] at ${String(differenceAt(document, result, "document")).slice(0, 2500)} OPS ${JSON.stringify(batch.ops).slice(0, 2500)} TAIL ${JSON.stringify(tail.map((remote) => remote.ops)).slice(0, 4000)}`,
+    );
+  return same;
 };
 
 const simulate = (peers: number, steps: readonly Step[]): Outcome => {
@@ -1489,6 +1495,103 @@ const PINNED: readonly Scenario[] = [
 ];
 
 describe("canonical sequencing", () => {
+  test(
+    "DIAG scenarios",
+    async () => {
+      const scenarios: Scenario[] = [
+        [
+          4,
+          [
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "insertParagraph", a: 55691, b: 0, suggest: true },
+            },
+            {
+              type: "edit",
+              peer: 1,
+              seed: { kind: "insertParagraph", a: 13475, b: 0, suggest: false },
+            },
+            { type: "deliver", seed: 0 },
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "type", a: 0, b: 0, suggest: false },
+            },
+            { type: "undo", peer: 0 },
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "type", a: 0, b: 0, suggest: false },
+            },
+            { type: "deliver", seed: 0 },
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "type", a: 0, b: 0, suggest: false },
+            },
+            { type: "deliver", seed: 0 },
+          ],
+        ],
+        [
+          4,
+          [
+            {
+              type: "edit",
+              peer: 2,
+              seed: { kind: "pointComment", a: 0, b: 0, suggest: false },
+            },
+            { type: "submit", peer: 2 },
+            { type: "undo", peer: 2 },
+            { type: "deliver", seed: 39383 },
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "type", a: 0, b: 0, suggest: false },
+            },
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "type", a: 0, b: 0, suggest: false },
+            },
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "type", a: 0, b: 0, suggest: false },
+            },
+            {
+              type: "edit",
+              peer: 0,
+              seed: { kind: "type", a: 0, b: 0, suggest: false },
+            },
+            {
+              type: "edit",
+              peer: 1,
+              seed: { kind: "resources", a: 0, b: 0, suggest: false },
+            },
+            { type: "submit", peer: 2 },
+            { type: "deliver", seed: 0 },
+            { type: "submit", peer: 0 },
+          ],
+        ],
+      ];
+      for (const [index, scenario] of scenarios.entries()) {
+        const result = await fc.check(
+          convergence(),
+          propertyConfig({
+            numRuns: 1,
+            examples: [[scenario]],
+            reporter: () => undefined,
+          }),
+        );
+        // oxlint-disable-next-line no-console
+        console.log(
+          `DIAG ${String(index)} failed=${String(result.failed)} ${String(result.errorInstance).slice(0, 3000)}`,
+        );
+      }
+    },
+    propertyTestTimeout(60_000),
+  );
   test("a format inside a concurrent direct erase leaves one run in either order", () => {
     const outcome = simulate(...formatInsideErase);
     expect(outcome.rejected).toEqual([]);
