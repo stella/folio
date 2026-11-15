@@ -40,6 +40,7 @@ import type * as Yjs from "yjs";
 
 import {
   type CreateCommentOp,
+  documentStories,
   freshCommentId,
   OP_STORIES,
   type OpStory,
@@ -144,8 +145,17 @@ import {
   type ReadonlyDocument,
 } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
+import {
+  type AnonymizationStorySource,
+  createAnonymizationHighlights,
+  type FolioAnonymizationTerm,
+  NO_ANONYMIZATION_TERMS,
+} from "./anonymizationHighlights";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
-import { createCanonicalInputBoundary } from "./canonicalInput";
+import {
+  createCanonicalInputBoundary,
+  unclassifiedMutationMessage,
+} from "./canonicalInput";
 import {
   type CanonicalRoomCollaboration,
   type CanonicalRoomEditor,
@@ -158,6 +168,7 @@ import {
   prepareCanonicalCommands,
 } from "./canonicalStructure";
 import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
+import { legacyTextAddressAt } from "./legacyTextAddress";
 import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
 
 const CanonicalSessionRefusalErrorBase: TaggedErrorClass<"CanonicalSessionRefusalError"> =
@@ -593,6 +604,8 @@ export type HiddenEditorManagerDeps = {
   getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
   getExperimentalSession?: () => "canonical" | undefined;
+  /** The terms the host wants highlighted; none when unset. */
+  getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[];
   /**
    * Who answers the undo and redo keys in a canonical session; the editor's
    * when unset. With `"host"`, the keys change nothing in any story's view and
@@ -1485,7 +1498,7 @@ export const createHiddenEditorManager = (
         if (editorSession.type === "canonical" && transaction.docChanged) {
           if (input.acceptComposition(view, transaction)) return;
           if (!input.commitNativeProposal(view, transaction)) {
-            input.refuseNativeMutation(view);
+            input.refuseNativeMutation(view, transaction);
           }
           // PM's DOM observer dirties the view before dispatching a native
           // proposal. Repaint from the committed state even on refusal.
@@ -1519,7 +1532,10 @@ export const createHiddenEditorManager = (
           !applied.state.doc.eq(view.state.doc)
         ) {
           refuse(
-            "A plugin attempted an unclassified canonical document mutation.",
+            unclassifiedMutationMessage(
+              applied.transactions,
+              "A plugin attempted an unclassified canonical document mutation.",
+            ),
           );
           return;
         }
@@ -2059,6 +2075,39 @@ export const createHiddenEditorManager = (
       CANONICAL_GAP.authorityRouting,
     );
 
+  // Highlights read the stories as the editor shows them: a canonical
+  // session's projection of each story, otherwise the body's editor document.
+  const anonymization = createAnonymizationHighlights();
+  const anonymizationSources = (): AnonymizationStorySource[] => {
+    if (editorSession.type === "canonical") {
+      const session = editorSession.session;
+      return documentStories(readModel(session.document)).flatMap((story) => {
+        const projected =
+          story === OP_STORIES.MAIN
+            ? session.projection
+            : session.projectStory(story).unwrapOr(null);
+        if (projected === null) return [];
+        return [
+          {
+            story,
+            doc: projected.doc,
+            addressAt: (position: number) =>
+              projected.addressAt(position).unwrapOr(null),
+          },
+        ];
+      });
+    }
+    if (!view) return [];
+    const doc = view.state.doc;
+    return [
+      {
+        story: OP_STORIES.MAIN,
+        doc,
+        addressAt: (position) => legacyTextAddressAt(doc, position),
+      },
+    ];
+  };
+
   const api = createHiddenEditorApi({
     getView: () => view,
     getDocumentContext: () =>
@@ -2097,6 +2146,11 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical"
         ? editorSession.session.document
         : null,
+    getAnonymizationHighlights: () =>
+      anonymization.read(
+        deps.getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,
+        anonymizationSources,
+      ),
     canonicalEditorPositionAt: (position) => {
       if (editorSession.type !== "canonical") return undefined;
       // Pending composition text is painted but not yet in the projection.

@@ -8,8 +8,8 @@
  * and map string offsets back to PM doc positions, so callers can
  * scan block-joined text and recover precise PM ranges.
  *
- * Used by the doc-scan plugins (anonymization terms, template
- * directives) that paint overlays on the visible paged canvas.
+ * Used by the doc scans (anonymization terms, template directives)
+ * that paint overlays on the visible paged canvas.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -32,48 +32,61 @@ export const collectBlockChunks = (doc: PMNode): TextChunk[][] => {
   const blocks: TextChunk[][] = [];
   doc.descendants((node, pos) => {
     if (node.isTextblock) {
-      let chunks: TextChunk[] = [];
-      const flushSegment = (): void => {
-        if (chunks.length === 0) {
-          return;
-        }
-        blocks.push(chunks);
-        chunks = [];
-      };
-      node.descendants((child, offset) => {
-        if (child.type.name === "pageBreakRun") {
-          flushSegment();
-          return false;
-        }
-        if (child.isText && child.text !== undefined) {
-          // pos is the textblock's PM position; +1 accounts for the
-          // textblock's opening token, +offset is the position of
-          // this text node inside the textblock.
-          const start = pos + 1 + offset;
-          chunks.push({
-            text: child.text,
-            start,
-            end: start + child.text.length,
-          });
-          return false;
-        }
-        if (child.isLeaf && child.textContent) {
-          const start = pos + 1 + offset;
-          chunks.push({
-            text: child.textContent,
-            start,
-            end: start + child.nodeSize,
-          });
-          return false;
-        }
-        return true;
-      });
-      flushSegment();
+      blocks.push(...collectTextblockChunks(node, pos));
       return false;
     }
     return true;
   });
   return blocks;
+};
+
+/**
+ * One textblock's chunks, grouped per uninterrupted scan segment, for a
+ * textblock that sits at `pos`.
+ */
+export const collectTextblockChunks = (
+  node: PMNode,
+  pos: number,
+): TextChunk[][] => {
+  const segments: TextChunk[][] = [];
+  let chunks: TextChunk[] = [];
+  const flushSegment = (): void => {
+    if (chunks.length === 0) {
+      return;
+    }
+    segments.push(chunks);
+    chunks = [];
+  };
+  node.descendants((child, offset) => {
+    if (child.type.name === "pageBreakRun") {
+      flushSegment();
+      return false;
+    }
+    if (child.isText && child.text !== undefined) {
+      // pos is the textblock's PM position; +1 accounts for the
+      // textblock's opening token, +offset is the position of
+      // this text node inside the textblock.
+      const start = pos + 1 + offset;
+      chunks.push({
+        text: child.text,
+        start,
+        end: start + child.text.length,
+      });
+      return false;
+    }
+    if (child.isLeaf && child.textContent) {
+      const start = pos + 1 + offset;
+      chunks.push({
+        text: child.textContent,
+        start,
+        end: start + child.nodeSize,
+      });
+      return false;
+    }
+    return true;
+  });
+  flushSegment();
+  return segments;
 };
 
 /** Map a joined-string offset back to its PM doc position. */
