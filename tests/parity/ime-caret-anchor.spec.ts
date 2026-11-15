@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 
-import { cjkCompositionDocx } from "../support/cjkCompositionFixture";
+import { cjkCompositionDocx } from "./cjkCompositionFixture";
 import {
   ensureLiveView,
   expect,
@@ -238,7 +238,7 @@ forEachAdapter(
     const body = await cjkCompositionDocx();
     await page.route("**/fixtures/cjk-composition.docx", (route) =>
       route.fulfill({
-        body,
+        body: Buffer.from(body),
         contentType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       }),

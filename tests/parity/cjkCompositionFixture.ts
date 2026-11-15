@@ -6,7 +6,7 @@
  * The paragraph's run names Arial for Latin text (folio's bundled Arimo) and
  * "Kana Embedded" for East Asian text. The embedded face is the kana subset
  * of Noto Sans JP from fontsource (SIL Open Font License 1.1, see
- * fonts/noto-sans-jp-LICENSE.txt), renamed for the document. All text is
+ * tests/support/fonts/noto-sans-jp-LICENSE.txt), renamed for the document. All text is
  * synthetic.
  */
 import { readFile } from "node:fs/promises";
@@ -14,8 +14,12 @@ import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { generateDocxFixture } from "../support/validatedDocxFixture";
+
 const FONT_PATH = path.join(
   import.meta.dirname,
+  "..",
+  "support",
   "fonts",
   "noto-sans-jp-kana-400-normal.woff2",
 );
@@ -83,7 +87,7 @@ const DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   </w:body>
 </w:document>`;
 
-export const cjkCompositionDocx = async (): Promise<Buffer> => {
+export const cjkCompositionDocx = async (): Promise<Uint8Array> => {
   const zip = new ZipArchive();
   zip.set("[Content_Types].xml", CONTENT_TYPES);
   zip.set("_rels/.rels", PACKAGE_RELS);
@@ -96,5 +100,5 @@ export const cjkCompositionDocx = async (): Promise<Buffer> => {
     "word/fonts/kana-embedded.woff2",
     new Uint8Array(await readFile(FONT_PATH)),
   );
-  return Buffer.from(await zip.generate());
+  return generateDocxFixture(zip, "cjk-composition");
 };
