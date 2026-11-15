@@ -1,6 +1,6 @@
 /** Moving one text position across one foreign operation. */
 import { paragraphIdsIn } from "../ids";
-import { leafSpans } from "../leaves";
+import { compareGaps, leafSpans } from "../leaves";
 import { contentWidth } from "../offsets";
 import {
   DOCUMENT_OP_TYPES,
@@ -136,7 +136,11 @@ export const mapPoint = (
     if (
       offset === over.from.offset &&
       effect?.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
-      effect.keptMark
+      effect.keptMark !== undefined &&
+      compareGaps(
+        { offset: point.offset, zeroWidthBefore: point.zeroWidthBefore ?? 0 },
+        effect.keptMark,
+      ) > 0
     )
       return {
         ...point,

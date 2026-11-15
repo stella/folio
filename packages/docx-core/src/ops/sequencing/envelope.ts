@@ -105,9 +105,10 @@ export type SequencedOpEffect =
       type: "deleteRange";
       /**
        * A direct deletion whose range held its note's own reference mark,
-       * which it keeps: points it closes up to its start land after the mark.
+       * which it keeps: the gap before the mark. A point after the mark that
+       * the deletion closes up to its start lands after the mark.
        */
-      keptMark?: true;
+      keptMark?: Gap;
     }
   | {
       type: "setRunProps";
@@ -915,7 +916,9 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
           case "deleteRange":
             return object({
               type: literal("deleteRange"),
-              keptMark: optional(literal(true)),
+              keptMark: optional(
+                object({ offset: natural, zeroWidthBefore: natural }),
+              ),
             })(effect);
           case "setRunProps":
             return object({

@@ -377,34 +377,39 @@ describe("a direct format inside a concurrent direct deletion", () => {
       LEAVES.noteMarker,
       { type: "text", text: "ab" },
     ];
-    const outcomes = [undefined, DOCUMENT_OP_TYPES.DELETE_RANGE].map(
-      (forget) => {
-        const { story, document: base } = placeOf(content);
-        const deletion = batchOf("deletion", {
-          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-          from: position(story, { offset: 0, zeroWidthBefore: 0 }),
-          to: position(story, { offset: 5, zeroWidthBefore: 0 }),
-        });
-        const typing = batchOf("typing", {
-          type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-          at: position(story, { offset: 5, zeroWidthBefore: 0 }),
-          text: "XY",
-          runProps: "inherit",
-        });
-        const deletionFirst = inOrder(base, deletion, typing, forget);
-        const typingFirst = inOrder(base, typing, deletion, forget);
-        if (!("document" in deletionFirst)) return deletionFirst.refused;
-        if (!("document" in typingFirst)) return typingFirst.refused;
-        return equalForStaleness(deletionFirst.document, typingFirst.document)
-          ? true
-          : {
-              deletionFirst: deletionFirst.document.package.footnotes,
-              typingFirst: typingFirst.document.package.footnotes,
-            };
-      },
-    );
+    const leavesOf = (document: Document): string[] =>
+      leafSpans(
+        document.package.footnotes
+          ?.at(0)
+          ?.content.flatMap((block) =>
+            block.type === "paragraph" ? block.content : [],
+          ) ?? [],
+      ).map(({ node }) => (node.type === "text" ? node.text : node.type));
+    const orders = [undefined, DOCUMENT_OP_TYPES.DELETE_RANGE].map((forget) => {
+      const { story, document: base } = placeOf(content);
+      const deletion = batchOf("deletion", {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: position(story, { offset: 0, zeroWidthBefore: 0 }),
+        to: position(story, { offset: 5, zeroWidthBefore: 0 }),
+      });
+      const typing = batchOf("typing", {
+        type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+        at: position(story, { offset: 5, zeroWidthBefore: 0 }),
+        text: "XY",
+        runProps: "inherit",
+      });
+      return [
+        inOrder(base, deletion, typing, forget),
+        inOrder(base, typing, deletion, forget),
+      ].map((outcome) =>
+        "document" in outcome ? leavesOf(outcome.document) : outcome.refused,
+      );
+    });
+    expect(orders[0]).toEqual([
+      ["noteMarker", "XY"],
+      ["noteMarker", "XY"],
+    ]);
     // The test-only break: a deletion recording no kept mark is caught.
-    expect(outcomes[0]).toBe(true);
-    expect(outcomes[1]).not.toBe(true);
+    expect(orders[1]?.[0]).toEqual(["XY", "noteMarker"]);
   });
 });
