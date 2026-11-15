@@ -88,8 +88,8 @@ const open = (buffer: ArrayBuffer) =>
 
 const twips = fc.integer({ min: 0, max: 1440 });
 
-const propertiesArbitrary: fc.Arbitrary<FolioAIBlockParagraphProperties> =
-  fc.record(
+const propertiesArbitrary: fc.Arbitrary<FolioAIBlockParagraphProperties> = fc
+  .record(
     {
       spacing: fc.option(
         fc.record(
@@ -120,7 +120,9 @@ const propertiesArbitrary: fc.Arbitrary<FolioAIBlockParagraphProperties> =
       }),
     },
     { requiredKeys: [] },
-  );
+  )
+  // An operation states at least one property; an empty set is no request.
+  .filter((properties) => Object.keys(properties).length > 0);
 
 type Draw = {
   kind: "set" | "split" | "merge";
