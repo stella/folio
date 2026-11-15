@@ -1001,6 +1001,8 @@ test.each(CANONICAL_SAVE_SEEDS)(
           await canonicalSaveParagraphXml(bytes, paraId),
         );
       }
+      // A paragraph untouched since the last save keeps that save's bytes.
+      let previousSave: ArrayBuffer = bytes;
       for (const [index, operations] of canonicalSaveSequence(seed).entries()) {
         const before = adapter.getDocument();
         expect(api.applyCanonicalOperations(operations)).toBe(true);
@@ -1029,10 +1031,10 @@ test.each(CANONICAL_SAVE_SEEDS)(
           messages: [],
           omitted: 0,
         });
-        for (const [paraId, originalXml] of baselineParagraphs) {
+        for (const paraId of baselineParagraphs.keys()) {
           if (!changedIds.has(paraId))
             expect(await canonicalSaveParagraphXml(savedBytes, paraId)).toBe(
-              originalXml,
+              await canonicalSaveParagraphXml(previousSave, paraId),
             );
         }
         expect(api.undo()).toBe(true);
@@ -1062,12 +1064,13 @@ test.each(CANONICAL_SAVE_SEEDS)(
             }),
           ),
         ).toEqual({ messages: [], omitted: 0 });
-        for (const [paraId, originalXml] of baselineParagraphs) {
+        for (const paraId of baselineParagraphs.keys()) {
           if (!changedIds.has(paraId))
             expect(await canonicalSaveParagraphXml(repeated, paraId)).toBe(
-              originalXml,
+              await canonicalSaveParagraphXml(savedBytes, paraId),
             );
         }
+        previousSave = savedBytes;
       }
       const captured =
         api.captureCanonicalSave() ?? panic("Expected save snapshot");

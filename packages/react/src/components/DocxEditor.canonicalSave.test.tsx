@@ -1323,6 +1323,8 @@ test.each(CANONICAL_SAVE_SEEDS)(
         );
       }
       await act(async () => {
+        // A paragraph untouched since the last save keeps that save's bytes.
+        let previousSave: ArrayBuffer = bytes;
         for (const [index, operations] of canonicalSaveSequence(
           seed,
         ).entries()) {
@@ -1363,10 +1365,10 @@ test.each(CANONICAL_SAVE_SEEDS)(
             messages: [],
             omitted: 0,
           });
-          for (const [paraId, originalXml] of baselineParagraphs) {
+          for (const paraId of baselineParagraphs.keys()) {
             if (!changedIds.has(paraId))
               expect(await canonicalSaveParagraphXml(saved, paraId)).toBe(
-                originalXml,
+                await canonicalSaveParagraphXml(previousSave, paraId),
               );
           }
           // Saving is not a history boundary: the same canonical journal remains reversible.
@@ -1398,12 +1400,13 @@ test.each(CANONICAL_SAVE_SEEDS)(
               }),
             ),
           ).toEqual({ messages: [], omitted: 0 });
-          for (const [paraId, originalXml] of baselineParagraphs) {
+          for (const paraId of baselineParagraphs.keys()) {
             if (!changedIds.has(paraId))
               expect(await canonicalSaveParagraphXml(repeated, paraId)).toBe(
-                originalXml,
+                await canonicalSaveParagraphXml(saved, paraId),
               );
           }
+          previousSave = saved;
         }
       });
       await act(async () => {
