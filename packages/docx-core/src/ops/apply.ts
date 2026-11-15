@@ -1579,16 +1579,6 @@ const withParagraphFormatting = (
   } else {
     next.formatting = finalized;
   }
-  // A pending property change that records the properties the paragraph
-  // has keeps recording them, a direct edit's included.
-  if (next.propertyChanges !== undefined)
-    next.propertyChanges = next.propertyChanges.map((change) => {
-      if (change.currentFormatting === undefined) return change;
-      const refreshed = { ...change };
-      if (finalized === undefined) delete refreshed.currentFormatting;
-      else refreshed.currentFormatting = finalized;
-      return refreshed;
-    });
   return next;
 };
 
