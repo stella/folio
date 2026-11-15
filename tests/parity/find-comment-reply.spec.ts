@@ -3,7 +3,7 @@ import {
   COMMENT_SEARCH_REPLY_LENGTHS,
   REPLY_SEARCH_TARGET,
 } from "../support/commentSearchDocument";
-import { expect, forEachAdapter, openEditor } from "./parity-fixture";
+import { expect, forEachAdapter, openCanonicalEditor } from "./parity-fixture";
 
 for (const replyLength of COMMENT_SEARCH_REPLY_LENGTHS) {
   forEachAdapter(
@@ -17,7 +17,7 @@ for (const replyLength of COMMENT_SEARCH_REPLY_LENGTHS) {
           body: Buffer.from(bytes),
         }),
       );
-      await openEditor(page, adapter, "comment-search.docx");
+      await openCanonicalEditor(page, adapter, "comment-search.docx");
       const reply = page.locator('[data-find-comment-id="3"]');
       await expect(reply).toBeAttached();
       await expect(page.locator('[data-find-comment-id="2"]')).toHaveCount(0);

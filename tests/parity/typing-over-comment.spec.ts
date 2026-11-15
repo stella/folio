@@ -62,7 +62,7 @@ const load = async (page: Page, bytes: number[]): Promise<void> => {
 };
 
 const open = async (page: Page, adapter: AdapterFixture): Promise<void> => {
-  await page.goto(adapter.baseUrl);
+  await page.goto(`${adapter.baseUrl}/?session=canonical`);
   await expect
     .poll(() => page.evaluate(() => window.__folioParity !== undefined), {
       timeout: 30_000,

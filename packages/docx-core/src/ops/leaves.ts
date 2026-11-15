@@ -18,7 +18,14 @@
 
 import { panic } from "better-result";
 
-import type { ParagraphContent, RunContent } from "../model/document";
+import type {
+  ComplexField,
+  ParagraphContent,
+  Run,
+  RunContent,
+  RunPropertyChange,
+  SimpleField,
+} from "../model/document";
 import { structurallyEqual } from "./equality";
 import {
   childrenOf,
@@ -181,6 +188,94 @@ const narrowNodes = <Node extends InlineNode>(
 export const asParagraphContent = (
   nodes: readonly InlineNode[],
 ): ParagraphContent[] => narrowNodes(nodes, isParagraphContent);
+
+type Field = SimpleField | ComplexField;
+type SimpleFieldContent = SimpleField["content"][number];
+
+const SIMPLE_FIELD_CONTENT_TYPES = new Set<InlineNode["type"]>([
+  "run",
+  "hyperlink",
+  "inlineWrapper",
+  "preservedInline",
+  "insertion",
+  "deletion",
+  "moveFrom",
+  "moveTo",
+] satisfies SimpleFieldContent["type"][]);
+
+const isSimpleFieldContent = (node: InlineNode): node is SimpleFieldContent =>
+  SIMPLE_FIELD_CONTENT_TYPES.has(node.type);
+
+const isRun = (node: InlineNode): node is Run => node.type === "run";
+
+/**
+ * The records of a field's displayed result: the runs that show it, which
+ * carry its run properties. The instruction is not among them. `undefined`
+ * for anything but a field.
+ */
+export const fieldResultOf = (
+  node: InlineNode,
+): readonly InlineNode[] | undefined => {
+  switch (node.type) {
+    case "simpleField":
+      return node.content;
+    case "complexField":
+      return node.fieldResult;
+    default:
+      return undefined;
+  }
+};
+
+/** The same field showing another result. */
+export const withFieldResult = (
+  field: Field,
+  result: readonly InlineNode[],
+): Field =>
+  field.type === "simpleField"
+    ? { ...field, content: narrowNodes(result, isSimpleFieldContent) }
+    : { ...field, fieldResult: narrowNodes(result, isRun) };
+
+/**
+ * The records nested in a record that carry ids of their own: a run's or
+ * container's children, and a field's result, whose runs a run patch over the
+ * field reaches and records its changes on. Walks that keep ids unique take
+ * this, not {@link childNodes}, which keeps a field one unit.
+ */
+export const nestedRecords = (
+  node: InlineNode,
+): readonly InlineNode[] | undefined => childNodes(node) ?? fieldResultOf(node);
+
+/** The same record holding other {@link nestedRecords}. */
+export const withNestedRecords = (
+  node: InlineNode,
+  children: readonly InlineNode[],
+): InlineNode =>
+  node.type === "simpleField" || node.type === "complexField"
+    ? withFieldResult(node, children)
+    : rebuildNode(node, children);
+
+/**
+ * The run property changes a record carries: a run's own, and a field's on
+ * the runs of its result, where a run patch over the field records them. The
+ * walks that list and resolve revisions take these; tracked changes inside a
+ * field's result are left to the field.
+ */
+export const ownRunPropertyChanges = (
+  node: InlineNode,
+): readonly RunPropertyChange[] => {
+  if (node.type === "run") return node.propertyChanges ?? [];
+  const result = fieldResultOf(node);
+  if (result === undefined) return [];
+  const out: RunPropertyChange[] = [];
+  const visit = (nodes: readonly InlineNode[]): void => {
+    for (const child of nodes) {
+      if (child.type === "run") out.push(...(child.propertyChanges ?? []));
+      else visit(childNodes(child) ?? []);
+    }
+  };
+  visit(result);
+  return out;
+};
 
 /** The same run or container holding other children. */
 export const rebuildNode = (
@@ -606,17 +701,16 @@ const advance = (node: InlineNode, cursor: Cursor): void => {
   }
 };
 
-/**
- * Every run in document order with its gaps, runs inside hyperlinks, tracked
- * changes, content controls and wrappers included; runs inside a field are
- * part of the field's one unit and are not listed.
- */
-export const runGaps = (items: readonly InlineNode[]): NodeGaps[] => {
+/** The records of a paragraph a walk lists with their gaps, in document order. */
+const recordGaps = (
+  items: readonly InlineNode[],
+  lists: (node: InlineNode) => boolean,
+): NodeGaps[] => {
   const out: NodeGaps[] = [];
   const cursor = startCursor();
   const walk = (list: readonly InlineNode[]): void => {
     for (const node of list) {
-      if (node.type === "run") {
+      if (lists(node)) {
         const before = {
           offset: cursor.position,
           zeroWidthBefore: cursor.zeroWidthSeen,
@@ -642,6 +736,21 @@ export const runGaps = (items: readonly InlineNode[]): NodeGaps[] => {
   walk(items);
   return out;
 };
+
+/**
+ * Every run in document order with its gaps, runs inside hyperlinks, tracked
+ * changes, content controls and wrappers included; runs inside a field are
+ * part of the field's one unit and are not listed.
+ */
+export const runGaps = (items: readonly InlineNode[]): NodeGaps[] =>
+  recordGaps(items, (node) => node.type === "run");
+
+/** As {@link runGaps}, with every field listed as the one unit it is. */
+export const runAndFieldGaps = (items: readonly InlineNode[]): NodeGaps[] =>
+  recordGaps(
+    items,
+    (node) => node.type === "run" || fieldResultOf(node) !== undefined,
+  );
 
 /**
  * How many levels the record ending `left` and the one starting `right` merge

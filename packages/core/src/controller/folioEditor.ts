@@ -7,6 +7,9 @@
 import { panic } from "better-result";
 import type { EditorState } from "prosemirror-state";
 
+import type { TextPosition } from "@stll/docx-core/ops";
+
+import { findPageNumberAtEditorPosition } from "../layout-engine/pmPageIndex";
 import type { Layout } from "../layout-engine/types";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
@@ -28,6 +31,12 @@ export type FolioEditorDeps = {
 };
 
 export { FOLIO_DOCX_SERIALIZATION_MODE } from "../types/docxSerialization";
+/** The public text position: story, paragraph id and offset. */
+export {
+  OP_STORIES,
+  type OpStory,
+  type TextPosition,
+} from "@stll/docx-core/ops";
 export type {
   FolioDocxSerializationMode,
   FolioGetDocxOptions,
@@ -53,6 +62,11 @@ export type FolioEditor = HiddenEditorApi & {
   loadDocument: FolioEditorDocumentIO["loadDocument"];
   loadDocx: FolioEditorDocumentIO["loadDocx"];
   getLayout: () => Layout | null;
+  /**
+   * The 1-based rendered page that shows a text position, in the current
+   * layout; null before layout or when the position names no paragraph.
+   */
+  getPositionPage: (position: TextPosition) => number | null;
   /** Re-run layout for the current editor state (no-op if there is no view). */
   relayout: () => void;
   on: FolioEditorEmitter["on"];
@@ -168,7 +182,17 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
 
     scrollToSelection: () => deps.getEditorApi()?.scrollToSelection(),
 
+    editorPositionAt: (position) =>
+      deps.getEditorApi()?.editorPositionAt(position) ?? null,
+
     getLayout: () => deps.getLayout(),
+
+    getPositionPage: (position) => {
+      const layout = deps.getLayout();
+      const at = deps.getEditorApi()?.editorPositionAt(position) ?? null;
+      if (layout === null || at === null) return null;
+      return findPageNumberAtEditorPosition(layout, at);
+    },
 
     relayout: () => {
       const state = deps.getEditorApi()?.getState();
