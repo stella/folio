@@ -27,6 +27,10 @@ import { type Page, test } from "@playwright/test";
  * - `FOLIO_MEASURE_MODE`: `editing` (default) or `suggesting`.
  * - `FOLIO_MEASURE_PROFILE=1`: also write a CPU profile of a typing burst and
  *   of one more open for each test, which the numbers above never include.
+ *
+ * A second set types on the canonical session with term highlighting
+ * (anonymization terms) off and on, on two long documents, React host only;
+ * it skips, with a note in its JSON file, on a build without highlighting.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
@@ -36,7 +40,12 @@ import { FIXTURES } from "../../benchmarks/fixtures";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { fromMarkdown } from "../../packages/core/src/markdown/fromMarkdown";
 import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
-import { contract, numberedList, tables } from "../support/generatedDocuments";
+import {
+  contract,
+  numberedList,
+  plainParagraphs,
+  tables,
+} from "../support/generatedDocuments";
 
 const WARM_KEYS = 5;
 const MEASURED_KEYS = Number(process.env["FOLIO_MEASURE_KEYS"] ?? 300);
@@ -170,9 +179,14 @@ type OpenSample = {
   loadResolvedMs: number;
   layouts: number;
   pages: number;
+  pageElements: number;
 };
 
-/** Hand the editor the bytes and time the first page and the full layout. */
+/**
+ * Hand the editor the bytes and time the first page and the full layout. The
+ * first page counts as painted at the end of the first task after the first
+ * frame whose first page shows text other than the document it replaced.
+ */
 const openOnce = (page: Page, base64: string) =>
   page.evaluate(
     async ({ data, quietMs, timeoutMs }): Promise<OpenSample> => {
@@ -181,52 +195,30 @@ const openOnce = (page: Page, base64: string) =>
       if (!ref || !recorder)
         throw new TypeError("The playground editor is not ready.");
       const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+      const firstPageText = () =>
+        document.querySelector(".layout-page-content")?.textContent?.trim() ??
+        "";
+      const before = firstPageText();
       const completesBefore = recorder.layoutCompletes;
-      const afterNextFrame = (resolve: (at: number) => void) =>
-        requestAnimationFrame(() => {
-          const channel = new MessageChannel();
-          channel.port1.onmessage = () => resolve(performance.now());
-          channel.port2.postMessage(undefined);
-        });
-      // The first text the painter puts on a page after the bytes arrive.
-      let observer: MutationObserver | undefined;
-      const firstPage = new Promise<number>((resolve) => {
-        const onPage = (node: Node) =>
-          (node instanceof Element ? node : node.parentElement)?.closest(
-            ".layout-page-content",
-          ) !== null && (node.textContent ?? "").trim() !== "";
-        observer = new MutationObserver((records) => {
-          for (const record of records) {
-            const nodes =
-              record.type === "characterData"
-                ? [record.target]
-                : [...record.addedNodes];
-            if (nodes.some(onPage)) {
-              observer?.disconnect();
-              afterNextFrame(resolve);
-              return;
-            }
-          }
-        });
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          characterData: true,
-        });
-      });
       const start = performance.now();
+      const deadline = start + timeoutMs;
+      const firstPage = new Promise<number | null>((resolve) => {
+        const frame = () => {
+          const text = firstPageText();
+          if (text !== "" && text !== before) {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = () => resolve(performance.now());
+            channel.port2.postMessage(undefined);
+          } else if (performance.now() > deadline) resolve(null);
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      });
       await ref.loadDocumentBuffer(bytes);
       const loadResolvedAt = performance.now();
       // The default engine creates its editor view on first use.
       ref.ensureEditorView();
-      const deadline = start + timeoutMs;
-      const firstPageAt = await Promise.race([
-        firstPage,
-        new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), timeoutMs),
-        ),
-      ]);
-      observer?.disconnect();
+      const firstPageAt = await firstPage;
       const laidOutAt = await new Promise<number | null>((resolve) => {
         const check = () => {
           const now = performance.now();
@@ -246,10 +238,18 @@ const openOnce = (page: Page, base64: string) =>
         loadResolvedMs: loadResolvedAt - start,
         layouts: recorder.layoutCompletes - completesBefore,
         pages: ref.getTotalPages(),
+        pageElements: document.querySelectorAll(".layout-page").length,
       };
     },
     { data: base64, quietMs: QUIET_MS, timeoutMs: STEP_TIMEOUT_MS },
   );
+
+/** A fresh page on the playground's own small document, laid out. */
+const freshPage = async (page: Page, url: string) => {
+  await page.goto(url);
+  await page.waitForSelector(".layout-page");
+  await waitForQuiet(page, QUIET_MS);
+};
 
 /**
  * Put the caret three characters into the middle paragraph with text, on a
@@ -269,7 +269,13 @@ const caretInMiddle = async (page: Page) => {
     const middle = positions[Math.floor(positions.length / 2)];
     if (middle === undefined) throw new TypeError("No paragraph to type in.");
     // A host may find a paragraph to scroll to only on a page it has painted.
-    const pageNumber = ref.getEditorRef()?.getPageNumberForPmPos(middle + 3);
+    const paraId: unknown = view.state.doc.nodeAt(middle)?.attrs["paraId"];
+    const pageNumber =
+      typeof paraId === "string"
+        ? ref
+            .getEditor()
+            ?.getPositionPage({ story: "main", blockId: paraId, offset: 3 })
+        : null;
     if (pageNumber !== undefined && pageNumber !== null)
       ref.scrollToPage(pageNumber);
     return { middle, count: positions.length };
@@ -299,6 +305,39 @@ const readRecorder = (page: Page) =>
       measuredBlocks: recorder.measuredBlocks,
     };
   });
+
+/** Type `count` keys at a person's pace. */
+const typeKeys = async (page: Page, count: number) => {
+  for (let key = 0; key < count; key += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- keys are typed one after another
+    await page.keyboard.press("x");
+    // oxlint-disable-next-line no-await-in-loop -- a person's pause between keys
+    await page.waitForTimeout(PAUSE_MS);
+  }
+};
+
+/** Per-key latency of the measured keys, typed in the middle paragraph. */
+const measureTyping = async (page: Page) => {
+  const caret = await caretInMiddle(page);
+  await typeKeys(page, WARM_KEYS);
+  await waitForQuiet(page, 500);
+  const before = await readRecorder(page);
+  await typeKeys(page, MEASURED_KEYS);
+  await waitForQuiet(page, 500);
+  const after = await readRecorder(page);
+  const frames = await page.evaluate(
+    (from) => globalThis.__engineMeasure?.frames.slice(from) ?? [],
+    before.frames,
+  );
+  return {
+    ...caret,
+    keys: frames.length,
+    frameMs: frames,
+    layoutsPerKey: (after.layouts - before.layouts) / MEASURED_KEYS,
+    measuredBlocksPerKey:
+      (after.measuredBlocks - before.measuredBlocks) / MEASURED_KEYS,
+  };
+};
 
 type SaveSample = {
   ms: number;
@@ -412,56 +451,25 @@ for (const host of HOSTS) {
         };
         const query = new URLSearchParams({ mode: MODE });
         if (engine === "canonical") query.set("session", "canonical");
+        const url = `${host.origin}/?${query.toString()}`;
         await page.addInitScript(installRecorder);
-        await page.goto(`${host.origin}/?${query.toString()}`);
-        await page.waitForSelector(".layout-page");
-        await waitForQuiet(page, QUIET_MS);
+        // Each open on a fresh page, as a person opens a file; the document
+        // stays open for the typing and saving that follow.
         await step("open", async () => {
           for (let sample = 0; sample < OPEN_SAMPLES; sample += 1) {
+            // oxlint-disable-next-line no-await-in-loop -- opens are timed one after another
+            await freshPage(page, url);
             // oxlint-disable-next-line no-await-in-loop -- opens are timed one after another
             result.open.push(await openOnce(page, base64));
           }
         });
         if (errors.length === 0)
           await step("typing", async () => {
-            Object.assign(result.typing, await caretInMiddle(page));
-            for (let key = 0; key < WARM_KEYS; key += 1) {
-              // oxlint-disable-next-line no-await-in-loop -- keys are typed one after another
-              await page.keyboard.press("x");
-              // oxlint-disable-next-line no-await-in-loop -- a person's pause between keys
-              await page.waitForTimeout(PAUSE_MS);
-            }
-            await waitForQuiet(page, 500);
-            const before = await readRecorder(page);
-            for (let key = 0; key < MEASURED_KEYS; key += 1) {
-              // oxlint-disable-next-line no-await-in-loop -- keys are typed one after another
-              await page.keyboard.press("x");
-              // oxlint-disable-next-line no-await-in-loop -- a person's pause between keys
-              await page.waitForTimeout(PAUSE_MS);
-            }
-            await waitForQuiet(page, 500);
-            const after = await readRecorder(page);
-            const frames = await page.evaluate(
-              (from) => globalThis.__engineMeasure?.frames.slice(from) ?? [],
-              before.frames,
-            );
-            result.typing.keys = frames.length;
-            result.typing.frameMs = frames;
-            result.typing.layoutsPerKey =
-              (after.layouts - before.layouts) / MEASURED_KEYS;
-            result.typing.measuredBlocksPerKey =
-              (after.measuredBlocks - before.measuredBlocks) / MEASURED_KEYS;
+            Object.assign(result.typing, await measureTyping(page));
             await profiled(
               page,
               PROFILE ? `${name}-typing.cpuprofile` : null,
-              async () => {
-                for (let key = 0; key < PROFILED_KEYS; key += 1) {
-                  // oxlint-disable-next-line no-await-in-loop -- keys are typed one after another
-                  await page.keyboard.press("x");
-                  // oxlint-disable-next-line no-await-in-loop -- a person's pause between keys
-                  await page.waitForTimeout(PAUSE_MS);
-                }
-              },
+              () => typeKeys(page, PROFILED_KEYS),
             );
           });
         // Each round: a text edit, Enter, a text edit, each saved in the
@@ -489,6 +497,7 @@ for (const host of HOSTS) {
           });
         if (PROFILE && errors.length === 0)
           await step("profiled open", async () => {
+            await freshPage(page, url);
             await profiled(page, `${name}-open.cpuprofile`, () =>
               openOnce(page, base64),
             );
@@ -520,3 +529,85 @@ for (const host of HOSTS) {
     }
   }
 }
+
+const TERM_DOCUMENTS = [
+  {
+    id: "paragraphs",
+    label: "plain paragraphs, 1,500 (generated)",
+    bytes: generated(() => plainParagraphs(1500)),
+  },
+  {
+    id: "contract-100",
+    label: "contract, 100 articles (generated)",
+    bytes: generated(() => contract(100)),
+  },
+];
+
+/** Highlight the first word's terms; false when the build cannot. */
+const highlightTerms = (page: Page) =>
+  page.evaluate(async () => {
+    const bridge: unknown = Reflect.get(globalThis, "__folioParity");
+    const anonymize =
+      typeof bridge === "object" && bridge !== null
+        ? Reflect.get(bridge, "anonymizeFirstWord")
+        : undefined;
+    if (typeof anonymize !== "function") return false;
+    await anonymize.call(bridge);
+    return true;
+  });
+
+if (hostFilter === null || hostFilter.has("react"))
+  for (const measured of TERM_DOCUMENTS) {
+    if (documentFilter && !documentFilter.has(measured.id)) continue;
+    for (const terms of ["off", "on"] as const) {
+      test(`typing with term highlighting ${terms}: ${measured.label}, canonical engine, react host`, async ({
+        page,
+      }) => {
+        test.setTimeout(900_000);
+        const bytes = await measured.bytes();
+        const query = new URLSearchParams({ mode: MODE, session: "canonical" });
+        await page.addInitScript(installRecorder);
+        await freshPage(page, `/?${query.toString()}`);
+        const open = await openOnce(
+          page,
+          Buffer.from(bytes).toString("base64"),
+        );
+        let skipped: string | null = null;
+        if (terms === "on") {
+          if (await highlightTerms(page)) await waitForQuiet(page, QUIET_MS);
+          else skipped = "this build has no term highlighting to turn on";
+        }
+        const typing = skipped === null ? await measureTyping(page) : null;
+        mkdirSync(OUT_DIRECTORY, { recursive: true });
+        writeFileSync(
+          join(
+            OUT_DIRECTORY,
+            `react-${measured.id}-canonical-terms-${terms}.json`,
+          ),
+          `${JSON.stringify(
+            {
+              host: "react",
+              engine: "canonical",
+              variant: { terms },
+              document: {
+                id: measured.id,
+                label: measured.label,
+                bytes: bytes.byteLength,
+              },
+              mode: MODE,
+              runner: {
+                cpu: cpus()[0]?.model ?? "unknown",
+                cores: cpus().length,
+              },
+              open: [open],
+              typing,
+              skipped,
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        test.skip(skipped !== null, skipped ?? "");
+      });
+    }
+  }

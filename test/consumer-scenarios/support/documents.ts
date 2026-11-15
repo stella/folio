@@ -169,11 +169,44 @@ const saveFixture = async (
   return bytes;
 };
 
+type ReviewerEngine = NonNullable<
+  NonNullable<Parameters<typeof FolioDocxReviewer.fromBuffer>[1]>["session"]
+>;
+
+/**
+ * The engine scenarios open reviewers on: `FOLIO_SCENARIO_ENGINE`, `legacy`
+ * when unset. A scenario file that replays on the canonical session sets it
+ * before it opens anything; each scenario file runs in its own process.
+ */
+export const scenarioEngine = (): ReviewerEngine => {
+  const raw = process.env["FOLIO_SCENARIO_ENGINE"];
+  if (raw === undefined || raw === "" || raw === "legacy") return "legacy";
+  if (raw === "canonical") return "canonical";
+  throw new Error(`Invalid FOLIO_SCENARIO_ENGINE: ${raw}`);
+};
+
+/**
+ * The reviewer a fixture is built with: always the legacy engine, so a
+ * fixture's bytes, and the block ids flows pin in them, do not depend on the
+ * engine a scenario runs on.
+ */
+const openFixtureBuilder = (
+  bytes: Uint8Array,
+  author = AUTHOR,
+): Promise<Reviewer> =>
+  FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), {
+    author,
+    session: "legacy",
+  });
+
 export const openReviewer = (
   bytes: Uint8Array,
   author = AUTHOR,
 ): Promise<Reviewer> =>
-  FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), { author });
+  FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), {
+    author,
+    session: scenarioEngine(),
+  });
 
 export const decimalLevel = (
   ilvl: number,
@@ -411,7 +444,7 @@ export const notesDocument = (): Promise<Uint8Array> => {
 /** Open comments, a reply and a resolved thread, saved through the reviewer. */
 export const commentDocument = async (): Promise<Uint8Array> => {
   const base = await plainDocument();
-  const reviewer = await openReviewer(base);
+  const reviewer = await openFixtureBuilder(base);
   applyOrThrow(reviewer, {
     mode: "direct",
     operations: [
@@ -454,7 +487,7 @@ export const commentDocument = async (): Promise<Uint8Array> => {
 /** Pending tracked insertions, deletions and a replaced word. */
 export const trackedChangesDocument = async (): Promise<Uint8Array> => {
   const base = await listDocument();
-  const reviewer = await openReviewer(base, "Earlier Reviewer");
+  const reviewer = await openFixtureBuilder(base, "Earlier Reviewer");
   applyOrThrow(reviewer, {
     mode: "tracked-changes",
     operations: [

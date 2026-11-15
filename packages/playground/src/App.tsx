@@ -196,6 +196,7 @@ function buildParityBridge(
       view.dispatch(view.state.tr.addMark(from, to, boldType.create()));
       return view.state.doc.rangeHasMark(from, to, boldType);
     },
+    openReplace: () => getRef()?.openReplace(),
     selectFirstWord: () => {
       const editor = getRef()?.getEditor();
       const view = editor?.getView();

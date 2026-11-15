@@ -42,6 +42,7 @@ export const INSTALL_SCOPES = {
     roots: [
       "tsrs",
       "typescript",
+      "oxc-parser",
       "better-result",
       "bun-types",
       "@types/node",

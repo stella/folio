@@ -40,6 +40,11 @@ type CompositionOptions = {
     compositionPhase?: "correction";
   }) => void;
   refuse: (reason: string, ground?: CanonicalRefusalGround) => void;
+  /**
+   * The view shows provisional composition text, or the baseline again, that
+   * no commit published: it needs a layout pass but changes no document.
+   */
+  shown?: () => void;
 };
 
 type CompositionCompletionEvidence = "provisional" | "explicitFinal";
@@ -262,6 +267,10 @@ export const createCanonicalComposition = (
   const clearTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
+  };
+  const show = (view: EditorView, shown: EditorState) => {
+    view.updateState(shown);
+    options.shown?.();
   };
   const selectedText = (
     baseline: EditorState,
@@ -720,11 +729,11 @@ export const createCanonicalComposition = (
         return true;
       }
       if (state.type === "refused") {
-        view.updateState(state.baseline);
+        show(view, state.baseline);
         return true;
       }
       if (restarted) {
-        view.updateState(state.baseline);
+        show(view, state.baseline);
         return true;
       }
       if (
@@ -737,7 +746,7 @@ export const createCanonicalComposition = (
       authorizedNativeState = null;
       const applied = applyNative(view, transaction);
       if (applied.isErr()) {
-        view.updateState(state.baseline);
+        show(view, state.baseline);
         state = {
           type: "refused",
           baseline: state.baseline,
@@ -750,7 +759,7 @@ export const createCanonicalComposition = (
       }
       // Validate the entire proposal against one plain replacement, including plugin output.
       if (!replacement(state.baseline, applied.value.state)) {
-        view.updateState(state.baseline);
+        show(view, state.baseline);
         state = {
           type: "refused",
           baseline: state.baseline,
@@ -765,7 +774,7 @@ export const createCanonicalComposition = (
         return true;
       }
       acceptedUpdate = true;
-      view.updateState(applied.value.state);
+      show(view, applied.value.state);
       return true;
     },
   };

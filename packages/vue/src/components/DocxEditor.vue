@@ -445,6 +445,7 @@
               "
               :pages-container="pagesRef"
               :page-width-px="pageWidthPx"
+              :column-start="panelLayout.commentsColumnStart"
               :zoom="zoom"
               :active-item-id="activeSidebarItem"
               @close="dismissComments"

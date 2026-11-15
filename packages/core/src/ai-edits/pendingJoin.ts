@@ -7,12 +7,17 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import type { FolioDocumentOperation } from "../document-operations";
 import { endOfParagraphWithItsTextBoxes } from "../prosemirror/anchoredTextBoxes";
 import { paragraphJoinAfter } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { paragraphLeftAfter } from "../prosemirror/paragraphPropertyCarry";
+import { runInCellPending } from "../prosemirror/tableRunIn";
+import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
+import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { buildCleanBlockText } from "./clean-text";
 import type { NoteReferenceLabels } from "./note-references";
+import type { FolioAIEditSkippedOperation } from "./types";
 
 /** A paragraph mark that is a pending deletion, or a relocation's source. */
 export const isDeletedPPrMark = (value: unknown): boolean =>
@@ -229,4 +234,113 @@ export const pendingJoinBounds = (
     before: first,
     after: endOfParagraphWithItsTextBoxes(options.doc, last),
   };
+};
+
+/** A refusal both engines give beside a pending paragraph mark deletion. */
+export type PendingRefusal = Omit<FolioAIEditSkippedOperation, "id">;
+
+/** An insertion a pending join would run into the words before it or a table after it. */
+export const PENDING_JOIN_INSERTION_REFUSAL: PendingRefusal = {
+  reason: "pendingParagraphMarkDeletion",
+  message:
+    "Accepting the pending paragraph mark deletion before this place would run the paragraph together with the words before it or the table after it. Resolve that change first, or insert elsewhere.",
+};
+
+/** A property edit on a paragraph whose mark is pending deletion. */
+export const PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL: PendingRefusal = {
+  reason: "pendingParagraphMarkDeletion",
+  canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
+  message:
+    "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
+};
+
+/** Whether every inline the paragraph holds, anchors aside, is pending deletion. */
+export const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
+  let whollyDeleted = true;
+  paragraph.descendants((node) => {
+    if (!whollyDeleted) {
+      return false;
+    }
+    if (!node.isInline || isZeroWidthAnchor(node)) {
+      return true;
+    }
+    whollyDeleted = node.marks.some((mark) => mark.type.name === "deletion");
+    return false;
+  });
+  return whollyDeleted;
+};
+
+/**
+ * Whether the join a pending mark deletion makes stops at a table after the
+ * paragraph, so a block placed there would run into it.
+ */
+export const joinStopsAtTableAfter = (
+  options: PendingJoinBoundsOptions,
+): boolean => {
+  if (!joinRunsWordsInto(options)) return false;
+  const $place = options.doc.resolve(options.paragraphPos);
+  for (let index = $place.index(); index < $place.parent.childCount; index++) {
+    const next = $place.parent.child(index);
+    if (next.type.name === "paragraph") return false;
+    if (next.type.spec["tableRole"] === "table") {
+      const before = $place.nodeBefore;
+      return (
+        !runInCellPending(next) ||
+        (before !== null && holdsOnlyDeletedContent(before))
+      );
+    }
+  }
+  return false;
+};
+
+/** A paragraph that goes whole once its pending deletions are accepted. */
+export const PENDING_WHOLE_PARAGRAPH_REFUSAL: PendingRefusal = {
+  reason: "pendingDeletion",
+};
+
+/** What an operation that places no block asks of the paragraph it names. */
+export type PendingMarkEdit = "paragraphProperties" | "wholeText" | "inline";
+
+/** What an operation of this type asks of the paragraph it names. */
+export const pendingMarkEditOf = (
+  type: FolioDocumentOperation["type"],
+): PendingMarkEdit => {
+  if (type === "setBlockParagraphProperties") return "paragraphProperties";
+  if (type === "replaceBlock") return "wholeText";
+  return "inline";
+};
+
+export type PendingMarkEditOptions = {
+  edit: PendingMarkEdit;
+  doc: PMNode;
+  paragraphPos: number;
+  paragraph: PMNode;
+  /** The paragraph's accepted reading. */
+  cleanText: string;
+};
+
+/**
+ * The refusal an operation that places no block meets on a paragraph whose
+ * mark is pending deletion, by the rules the default engine applies: its
+ * properties wait for the change to be resolved, and so does a replacement of
+ * a paragraph that goes whole; inline edits apply.
+ */
+export const pendingMarkEditRefusal = ({
+  edit,
+  doc,
+  paragraphPos,
+  paragraph,
+  cleanText,
+}: PendingMarkEditOptions): PendingRefusal | undefined => {
+  if (
+    edit === "paragraphProperties" &&
+    isDeletedPPrMark(paragraph.attrs["pPrMark"])
+  )
+    return PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL;
+  if (
+    edit === "wholeText" &&
+    isPendingDeletion(doc, paragraphPos, paragraph, cleanText)
+  )
+    return PENDING_WHOLE_PARAGRAPH_REFUSAL;
+  return undefined;
 };

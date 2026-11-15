@@ -92,6 +92,8 @@ type CanonicalInputOptions = {
   breakUndoGroup?: () => void;
   beginComposition?: () => boolean;
   endComposition?: () => void;
+  /** A composition's provisional text changed what the view shows. */
+  compositionShown?: () => void;
   pastePlainText?: (view: EditorView) => void;
   cut?: (view: EditorView, event: ClipboardEvent) => boolean;
   undo: () => boolean;
@@ -160,6 +162,7 @@ export const createCanonicalInputBoundary = (
     end: () => options.endComposition?.(),
     replace: options.replace,
     refuse: options.refuse,
+    shown: () => options.compositionShown?.(),
   });
   let proposal: NativeProposal = { type: "idle" };
   let authorizedInput: { view: EditorView; state: EditorState } | null = null;
