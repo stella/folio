@@ -854,6 +854,9 @@ export type InsertTextOp = {
 export const introducedIds: (before: LeasedIdCensus, after: LeasedIdCensus) => LeasedId[];
 
 // @public
+export const inverseMeetingDocument: (document: Document_2, inverse: readonly DocumentOp[]) => readonly DocumentOp[];
+
+// @public
 export const isCommentAnchorCarrierType: (type: string) => boolean;
 
 // @public
