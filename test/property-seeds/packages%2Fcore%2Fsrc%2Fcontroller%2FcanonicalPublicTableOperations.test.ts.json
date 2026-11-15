@@ -24,5 +24,42 @@
       "note": "Deleting the row a vertical merge starts, addressed through another cell of that row, puts the caret in the merged cell the next row takes over.",
       "date": "2026-11-14"
     }
+  ],
+  "cell merges, splits and column changes in the canonical session give the default engine's package": [
+    {
+      "seed": 681634695,
+      "path": "70:1:1",
+      "note": "A suggested column deletion through a cell spanning two columns is skipped alike in both engines.",
+      "date": "2026-11-14"
+    },
+    {
+      "seed": -443064766,
+      "path": "83:2",
+      "note": "A suggested column deletion addressed through the cell spanning two columns is skipped alike in both engines.",
+      "date": "2026-11-15"
+    },
+    {
+      "seed": 1946076727,
+      "path": "10:1",
+      "note": "A suggested column deletion on a table with a cell spanning two columns gives the default engine's package or is skipped alike.",
+      "date": "2026-11-15"
+    },
+    {
+      "seed": -685065398,
+      "note": "Suggested column deletions on a table with a cell spanning two columns give the default engine's package or are skipped alike.",
+      "date": "2026-11-15"
+    },
+    {
+      "seed": 1185652300,
+      "path": "12",
+      "note": "A suggested empty column inserted through a cell spanning both its sides is skipped alike in both engines, since no suggestion widens a cell.",
+      "date": "2026-11-15"
+    },
+    {
+      "seed": 316960823,
+      "path": "39:3",
+      "note": "A suggested split of a cell spanning two columns is skipped alike in both engines; a direct split still applies.",
+      "date": "2026-11-15"
+    }
   ]
 }
