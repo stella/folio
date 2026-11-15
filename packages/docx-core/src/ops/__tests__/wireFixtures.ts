@@ -4,6 +4,7 @@ import path from "node:path";
 import type {
   Document,
   Paragraph,
+  SdtProperties,
   Table,
   TableRow,
 } from "../../model/document";
@@ -892,6 +893,85 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   out.push(toOpEnvelope(trackedSplitOp));
   for (const inverse of trackedSplitResult.value.inverse)
     out.push(toOpEnvelope(inverse));
+
+  // A block-level dropdown and an inline checkbox, each set by its id.
+  const dropdown: SdtProperties = {
+    sdtType: "dropdown",
+    id: 801,
+    tag: "state",
+    listItems: [
+      { displayText: "California", value: "ca" },
+      { displayText: "New York", value: "ny" },
+    ],
+    dropdownLastValue: "ca",
+  };
+  const checkbox: SdtProperties = {
+    sdtType: "checkbox",
+    id: 802,
+    checked: false,
+  };
+  let controls: Document = {
+    package: {
+      document: {
+        content: [
+          {
+            type: "blockSdt",
+            properties: dropdown,
+            content: [
+              {
+                type: "paragraph",
+                paraId: "00000801",
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "California" }],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: "paragraph",
+            paraId: "00000802",
+            content: [
+              {
+                type: "inlineSdt",
+                properties: checkbox,
+                content: [
+                  { type: "run", content: [{ type: "text", text: "\u2610" }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const controlOps: DocumentOp[] = [
+    {
+      type: DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL,
+      story: OP_STORIES.MAIN,
+      controlId: 801,
+      blockIds: ["00000801"],
+      expected: dropdown,
+      properties: { ...dropdown, dropdownLastValue: "ny" },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL,
+      story: OP_STORIES.MAIN,
+      controlId: 802,
+      blockIds: ["00000802"],
+      expected: checkbox,
+      properties: { ...checkbox, checked: true },
+    },
+  ];
+  for (const op of controlOps) {
+    const result = applyDocumentOp(controls, op);
+    if (result.isErr()) throw result.error;
+    out.push(toOpEnvelope(op));
+    for (const inverse of result.value.inverse) out.push(toOpEnvelope(inverse));
+    controls = result.value.document;
+  }
 
   return out;
 };

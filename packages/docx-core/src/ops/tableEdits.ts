@@ -390,13 +390,6 @@ const columnEdit = ({
       ? freshCells({ document, op, ids: op.newBlockIds, count: boundaryRows })
       : Result.ok(empty);
   if (fresh.isErr()) return Result.err(fresh.error);
-  if (op.revision !== undefined && table.columnWidths === undefined) {
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Tracked column edits require an explicit previous grid.",
-    });
-  }
   // A suggested deletion keeps the grid while it is pending: the deleted
   // cells stay in their columns, and accepting removes them with their grid
   // entries.
@@ -615,9 +608,14 @@ const columnEdit = ({
   ) {
     next.formatting = {
       ...table.formatting,
+      // A grid the file states no widths for is recorded as its columns,
+      // each without a measure, as the file states them.
       gridChange: {
         id: gridStamp.id,
-        columnWidths: [...(table.columnWidths ?? [])],
+        columnWidths:
+          table.columnWidths === undefined
+            ? Array.from({ length: grid.width }, () => undefined)
+            : [...table.columnWidths],
       },
     };
     next.propertyChanges = [
