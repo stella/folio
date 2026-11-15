@@ -355,7 +355,7 @@ test("accepting a copied insertion removes only its owner ordinal", () => {
   ).toEqual([undefined, undefined]);
 });
 
-test("removing a paragraph drops copied owners before hoisting its boundaries", () => {
+test("removing a paragraph before a table runs its boundaries into the first cell with the insertion that owns their copies", () => {
   const document: Document = {
     package: {
       document: {
@@ -414,12 +414,15 @@ test("removing a paragraph drops copied owners before hoisting its boundaries", 
 
   if (result.isErr()) throw result.error;
   const blocks = result.value.document.package.document.content;
-  expect(blocks.map((block) => block.type)).toEqual([
-    "bookmarkStart",
-    "bookmarkEnd",
-    "table",
-    "paragraph",
-  ]);
+  expect(blocks.map((block) => block.type)).toEqual(["table", "paragraph"]);
+  // The pending insertion still owns the copied boundary, so it goes along.
+  const [removed] = document.package.document.content;
+  const [table] = blocks;
+  expect(
+    table?.type === "table" &&
+      table.rows[0]?.cells[0]?.content[0]?.type === "paragraph" &&
+      table.rows[0].cells[0].content[0].content,
+  ).toEqual(removed?.type === "paragraph" && removed.content);
 });
 
 test("nested tracked copies retain each distinct added-ancestor ordinal", () => {

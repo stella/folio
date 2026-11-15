@@ -903,8 +903,7 @@ function resolveChangeUnguarded(
           needsFollowingCommentHost:
             follows === "table" &&
             preceding?.type.name !== "paragraph" &&
-            retainedBoundaries.blocks.length === 0 &&
-            retainedBoundaries.comments.length > 0,
+            retainedBoundaries.length > 0,
           removedSectionProperties:
             op.markWasAdded && sectionProperties != null,
           precedingSectionOwner,
@@ -952,19 +951,13 @@ function resolveChangeUnguarded(
           // paragraph-mark rule decides whether the preceding mark inherits
           // them, as it does for a join.
           //
-          // What the paragraph held that is no content stays where it was
-          // (the engine's `paragraphRemains`): before a table, bookmarks and
-          // moves stand in its place and comment anchors go to the paragraph
-          // before it; ending its container, where only a paragraph stands
-          // last, all of them go there. With no paragraph there to take
-          // them, the paragraph stays.
+          // What the paragraph held that is no content goes to the
+          // paragraph before it (the engine's `paragraphRemains`), as
+          // deleting it directly leaves it. With no paragraph there to take
+          // it, the paragraph stays.
           const remains =
             outcome.kind === "remove" ? paragraphRemainsOf(paragraph) : null;
-          const between = follows === "table" ? (remains?.blocks ?? []) : [];
-          const toPrevious =
-            follows === "table"
-              ? (remains?.comments ?? [])
-              : (remains?.inline ?? []);
+          const toPrevious = remains ?? [];
           if (
             remains !== null &&
             (toPrevious.length === 0 || preceding?.type.name === "paragraph")
@@ -980,7 +973,7 @@ function resolveChangeUnguarded(
               );
             }
             countRemovedSectionEndpoint(paragraph);
-            tr.replaceWith(mappedPos, mappedPos + paragraph.nodeSize, between);
+            tr.delete(mappedPos, mappedPos + paragraph.nodeSize);
             if (toPrevious.length > 0) tr.insert(mappedPos - 1, toPrevious);
             continue;
           }

@@ -707,9 +707,8 @@ const resolveStructure = ({
       ),
       followingHasSectionProperties: chain !== null && ownsSection(chain.node),
     });
-    // A paragraph that goes leaves its range boundaries where it was; its
-    // comment anchors go to the paragraph before it, and with none there to
-    // take them it stays.
+    // A paragraph that goes leaves its range boundaries and comment anchors
+    // to the paragraph before it, and with none there to take them it stays.
     const removes =
       marker &&
       !paragraphContentOf(paragraph) &&
@@ -717,11 +716,9 @@ const resolveStructure = ({
       joins &&
       index + reversed.length + 1 > 1;
     const remains = removes ? paragraphRemainsOf(paragraph) : undefined;
-    // Before a table, bookmarks and moves stand in the paragraph's place; a
-    // container ends with a paragraph, so ending it every boundary goes back.
-    const between = follows === "table" ? (remains?.blocks ?? []) : [];
-    const toPrevious =
-      follows === "table" ? (remains?.comments ?? []) : (remains?.inline ?? []);
+    // Every boundary goes back to the paragraph before it, as deleting the
+    // paragraph directly leaves it.
+    const toPrevious = remains ?? [];
     const commentHost = entries[index - 1]?.node;
     if (
       remains !== undefined &&
@@ -757,10 +754,8 @@ const resolveStructure = ({
       context.replacements.push({
         from: entry.position,
         to: entry.position + entry.original.nodeSize,
-        slice: new Slice(Fragment.fromArray(between), 0, 0),
+        slice: Slice.empty,
       });
-      // The children are collected last to first.
-      for (const block of between.toReversed()) reversed.push(block);
       removedEndpoint(paragraph, context);
       continue;
     }
