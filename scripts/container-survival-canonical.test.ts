@@ -17,8 +17,8 @@ import {
   type Node,
   type SourceFile,
   SyntaxKind,
-} from "tsrs/unstable/ast";
-import { API } from "tsrs/unstable/async";
+} from "tsrs/ast";
+import { API } from "tsrs/async";
 
 import { allSubjects } from "./container-survival-census";
 import {
