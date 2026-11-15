@@ -9,6 +9,7 @@
 
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { EditorState, TextSelection } from "prosemirror-state";
 
 import {
   applyDocumentOp,
@@ -25,16 +26,24 @@ import {
 
 import {
   assertProperty,
+  propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+} from "../canonical/canonicalSession";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
+import type { CanonicalCommandIntent } from "../prosemirror/canonicalCommands";
+import { schema } from "../prosemirror/schema";
 import type {
   Document,
   Hyperlink,
   ParagraphContent,
   Run,
 } from "../types/document";
+import { prepareCanonicalCommands } from "./canonicalStructure";
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
@@ -43,6 +52,7 @@ const DATE = "2026-01-01T00:00:00Z";
 const TYPED_REFUSALS = [
   "A link suggestion cannot strike text beside a marker inside the same link.",
   "A link suggestion cannot copy content that names a record of its own, such as a drawing or a note reference.",
+  "A link suggestion cannot copy text inside a content control or a direction or smart tag wrapper.",
 ];
 
 type Piece =
@@ -54,7 +64,10 @@ type Piece =
       marker: "none" | "start" | "middle" | "end";
     }
   | { kind: "bookmark" }
-  | { kind: "insertion" | "deletion"; text: string; linked: boolean };
+  | { kind: "insertion" | "deletion"; text: string; linked: boolean }
+  | { kind: "math" }
+  | { kind: "move" }
+  | { kind: "control" | "bidi"; text: string; linked: boolean };
 
 const pieceArbitrary: fc.Arbitrary<Piece> = fc.oneof(
   fc.record({
@@ -73,6 +86,12 @@ const pieceArbitrary: fc.Arbitrary<Piece> = fc.oneof(
   fc.record({
     kind: fc.constantFrom("insertion" as const, "deletion" as const),
     text: fc.constantFrom("pq", "r"),
+    linked: fc.boolean(),
+  }),
+  fc.record({ kind: fc.constantFrom("math" as const, "move" as const) }),
+  fc.record({
+    kind: fc.constantFrom("control" as const, "bidi" as const),
+    text: fc.constantFrom("gh", "k"),
     linked: fc.boolean(),
   }),
 );
@@ -145,6 +164,55 @@ const documentOf = (pieces: readonly Piece[]): Document => {
           ],
         });
         break;
+      case "math":
+        content.push({
+          type: "mathEquation",
+          display: "inline",
+          ommlXml:
+            '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:r><m:t>x</m:t></m:r></m:oMath>',
+          plainText: "x",
+        });
+        break;
+      case "move": {
+        const id = bookmark++;
+        content.push(
+          {
+            type: "moveFromRangeStart",
+            id,
+            name: `move${String(id)}`,
+            author: "Other",
+            date: DATE,
+          },
+          { type: "moveFromRangeEnd", id },
+        );
+        break;
+      }
+      case "control":
+      case "bidi": {
+        const inner: ParagraphContent = piece.linked
+          ? {
+              type: "hyperlink",
+              href: "https://c.example/",
+              children: [textRun(piece.text)],
+            }
+          : textRun(piece.text);
+        content.push(
+          piece.kind === "control"
+            ? {
+                type: "inlineSdt",
+                properties: { sdtType: "richText", id: revision++ },
+                content: [inner],
+              }
+            : {
+                type: "inlineWrapper",
+                kind: "bidi",
+                control: "embedding",
+                direction: "rtl",
+                content: [inner],
+              },
+        );
+        break;
+      }
       default: {
         const unreachable: never = piece;
         return unreachable;
@@ -173,6 +241,14 @@ const physicalLength = (pieces: readonly Piece[]): number => {
         length += piece.texts.join("").length;
         break;
       case "bookmark":
+      case "move":
+        break;
+      case "math":
+        length += 1;
+        break;
+      case "control":
+      case "bidi":
+        length += piece.text.length;
         break;
       default: {
         const unreachable: never = piece;
@@ -227,7 +303,16 @@ type Token =
       color: string | undefined;
       styleId: string | undefined;
     }
-  | { marker: "bookmarkStart" | "bookmarkEnd"; id: number }
+  | {
+      marker:
+        | "bookmarkStart"
+        | "bookmarkEnd"
+        | "moveFromRangeStart"
+        | "moveFromRangeEnd";
+      id: number;
+    }
+  | { math: string | undefined; link: string | undefined }
+  | { container: "inlineSdt" | "inlineWrapper"; edge: "start" | "end" }
   | { emptyLink: string | undefined };
 
 /**
@@ -266,7 +351,18 @@ const authored = (document: Document): Token[] => {
           break;
         case "bookmarkStart":
         case "bookmarkEnd":
+        case "moveFromRangeStart":
+        case "moveFromRangeEnd":
           tokens.push({ marker: item.type, id: item.id });
+          break;
+        case "mathEquation":
+          tokens.push({ math: item.plainText, link });
+          break;
+        case "inlineSdt":
+        case "inlineWrapper":
+          tokens.push({ container: item.type, edge: "start" });
+          walk(item.content, link, change);
+          tokens.push({ container: item.type, edge: "end" });
           break;
         default:
           throw new TypeError(`Unexpected ${item.type} in a link fixture.`);
@@ -450,4 +546,130 @@ test("suggested link removal and setting over plain and linked text record the c
         await checkLinkEdit(documentOf(pieces), intentOf(type, 0, length)),
       ).toBeUndefined();
   }
+});
+
+/**
+ * One link command through the canonical session, published, undone and
+ * redone. `distort` stands in for a publish: it may move the selection the
+ * publish shows, so the check can show it notices a history that does not
+ * give that selection back.
+ */
+const checkLinkHistory = (
+  pieces: readonly Piece[],
+  type: "setHyperlink" | "removeHyperlink" | "insertHyperlink",
+  left: number,
+  right: number,
+  distort: (state: EditorState) => EditorState,
+) => {
+  for (const mode of [
+    { type: "editing" },
+    { type: "suggesting", author: "Suggester" },
+  ] as const) {
+    const opened = createCanonicalSession(documentOf(pieces));
+    if (opened.isErr()) return;
+    const session = opened.value;
+    session.setMode(mode);
+    let state = EditorState.create({ schema, doc: session.projection.doc });
+    const paragraph = session.projection.paragraph(PARA_ID);
+    if (paragraph === undefined) return;
+    const boundaries = [0];
+    let offset = 0;
+    for (const character of paragraph.text) {
+      offset += character.length;
+      boundaries.push(offset);
+    }
+    const position = (index: number) =>
+      session.projection
+        .positionAt({
+          story: OP_STORIES.MAIN,
+          blockId: PARA_ID,
+          offset: boundaries[index % boundaries.length] ?? 0,
+        })
+        .unwrap();
+    state = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, position(left), position(right)),
+      ),
+    );
+    const before = state.selection.toJSON();
+    const range = { from: state.selection.from, to: state.selection.to };
+    const href = "https://n.example/";
+    const intents: Record<typeof type, CanonicalCommandIntent> = {
+      insertHyperlink: { type: "insertHyperlink", ...range, text: "New", href },
+      setHyperlink: { type: "setHyperlink", ...range, href },
+      removeHyperlink: { type: "removeHyperlink", ...range },
+    };
+    const intent = intents[type];
+    session.breakUndoGroup();
+    const prepared = prepareCanonicalCommands(session, state, [intent]);
+    if (prepared.isErr()) continue;
+    state = distort(
+      publishCanonicalProjection({
+        session,
+        state,
+        commit: prepared.value,
+      }).unwrap().state,
+    );
+    const after = state.selection.toJSON();
+    // What the publish shows is where its own address places it.
+    const shown = session.projection.selectionAt(state).unwrap();
+    expect([
+      session.projection.positionAt(shown.anchor).unwrap(),
+      session.projection.positionAt(shown.head).unwrap(),
+    ]).toEqual([state.selection.anchor, state.selection.head]);
+    state = publishCanonicalProjection({
+      session,
+      state,
+      commit: session.prepareUndo(state).unwrap(),
+    }).unwrap().state;
+    expect(state.selection.toJSON()).toEqual(before);
+    state = publishCanonicalProjection({
+      session,
+      state,
+      commit: session.prepareRedo(state).unwrap(),
+    }).unwrap().state;
+    expect(state.selection.toJSON()).toEqual(after);
+  }
+};
+
+const linkHistoryArbitrary = fc.tuple(
+  fc.array(pieceArbitrary, { minLength: 1, maxLength: 6 }),
+  fc.constantFrom(
+    "setHyperlink" as const,
+    "removeHyperlink" as const,
+    "insertHyperlink" as const,
+  ),
+  fc.nat(),
+  fc.nat(),
+);
+
+test("undo and redo of a link edit show the selections its publish showed, direct and suggested", () => {
+  assertProperty(
+    fc.property(linkHistoryArbitrary, ([pieces, type, left, right]) =>
+      checkLinkHistory(pieces, type, left, right, (state) => state),
+    ),
+    {
+      numRuns: 120,
+      id: "undo and redo of a link edit show the selections its publish showed, direct and suggested",
+    },
+  );
+});
+
+test("the link history check notices a publish whose selection history does not give back", () => {
+  // Moves the shown selection to another place its address names.
+  const moved = (state: EditorState) => {
+    const target = Math.min(state.selection.head + 1, state.doc.content.size);
+    return target === state.selection.head
+      ? state
+      : state.apply(
+          state.tr.setSelection(TextSelection.near(state.doc.resolve(target))),
+        );
+  };
+  const outcome = fc.check(
+    fc.property(linkHistoryArbitrary, ([pieces, type, left, right]) =>
+      checkLinkHistory(pieces, type, left, right, moved),
+    ),
+    propertyConfig({ numRuns: 120 }),
+  );
+  expect(outcome.failed).toBe(true);
 });

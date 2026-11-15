@@ -1,7 +1,7 @@
 import { test } from "@playwright/test";
 
 import type { FindNotificationBridge } from "../../packages/playground-vue/src/findNotificationBridge";
-import { expect, openEditor, VUE_ADAPTER } from "./parity-fixture";
+import { expect, openCanonicalEditor, VUE_ADAPTER } from "./parity-fixture";
 
 declare global {
   var __folioVueFindNotifications: FindNotificationBridge | undefined;
@@ -12,7 +12,7 @@ declare global {
 test("find result listener receives one notification per update [vue]", async ({
   page,
 }) => {
-  await openEditor(page, VUE_ADAPTER);
+  await openCanonicalEditor(page, VUE_ADAPTER);
   const updates = await page.evaluate(() => {
     const bridge = globalThis.__folioVueFindNotifications;
     if (!bridge) throw new TypeError("Missing Vue find notification bridge");

@@ -271,14 +271,18 @@ const openFootnote = async (page: Page) => {
   return editor;
 };
 
-/** Open the header's editor in `page`; returns its ProseMirror. */
+/**
+ * Open the header's editor in `page`; returns its ProseMirror once it has
+ * focus. The editor takes focus over the frames after it opens, so a key
+ * pressed before then reaches another editor.
+ */
 const openHeader = async (page: Page, rId: string) => {
   const painted = page.locator(".layout-page-header").first();
   await expect(painted).toBeVisible({ timeout: JOIN_TIMEOUT });
   await painted.dblclick();
   await expect(page.locator(".hf-inline-editor")).toBeVisible();
   const editor = page.locator(`[data-hf-r-id="${rId}"] .ProseMirror`);
-  await expect(editor).toBeAttached();
+  await expect(editor).toBeFocused();
   return editor;
 };
 

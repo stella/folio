@@ -11,7 +11,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 import type { AdapterFixture } from "./parity-fixture";
 
@@ -68,7 +68,7 @@ const openScrollFixture = async (
   // scrollIntoView accidentally propagating to ancestors of the editor root.
   await page.setViewportSize({ width: 1280, height: 600 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await openEditor(
+  await openCanonicalEditor(
     page,
     adapter,
     `scroll-root.docx${readyScroll ? "&readyScroll=500" : ""}`,
@@ -235,7 +235,7 @@ test("host scroll in Vue ready event survives the next paint [vue]", async ({
     }),
   );
   await page.setViewportSize({ width: 1280, height: 600 });
-  await openEditor(page, adapter, "scroll-root.docx&readyEventScroll");
+  await openCanonicalEditor(page, adapter, "scroll-root.docx&readyEventScroll");
   await ensureLiveView(page);
   const before = await page.evaluate(() =>
     window.__folioScrollParity?.readReady(),

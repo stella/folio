@@ -2,13 +2,13 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 forEachAdapter(
   "document operations: committed batch can be undone",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
     expect(

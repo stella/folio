@@ -69,15 +69,20 @@ test(
                 to: state.selection.to,
                 text,
               };
-              const commit = (
-                prepareCanonicalAutoformat(session, state, input) ??
-                session.prepareReplace(state, { ...input, semantic: "typing" })
-              ).unwrap();
               state = publishCanonicalProjection({
                 session,
                 state,
-                commit,
+                commit: session
+                  .prepareReplace(state, { ...input, semantic: "typing" })
+                  .unwrap(),
               }).unwrap().state;
+              const rule = prepareCanonicalAutoformat(session, state, input);
+              if (rule !== undefined)
+                state = publishCanonicalProjection({
+                  session,
+                  state,
+                  commit: rule.unwrap(),
+                }).unwrap().state;
             }
             const { ids } = getTrackedChangeStatsFromDoc(
               toProseDoc(session.document),

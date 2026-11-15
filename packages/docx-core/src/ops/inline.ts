@@ -9,6 +9,7 @@
 import { panic } from "better-result";
 
 import type {
+  ComplexField,
   ParagraphContent,
   Run,
   RunContent,
@@ -18,13 +19,15 @@ import type {
 import { structurallyEqual } from "./equality";
 import {
   asParagraphContent,
+  fieldResultOf,
   type Gap,
   type InlineNode,
   isParagraphContent,
   mergeLists,
   partitionContent,
-  runGaps,
+  runAndFieldGaps,
   spanningRecords,
+  withFieldResult,
   zeroWidthLeavesAt,
 } from "./leaves";
 import {
@@ -579,8 +582,50 @@ type PatchRunsInOptions = {
   patch: RunPropsPatch;
   whenEmpty: EmptyPropertySet | undefined;
   prior: Map<Run, TextFormatting | undefined>;
+  /** Result-less fields the patch changed, with their formatting before it. */
+  priorFields: Map<ComplexField, TextFormatting | undefined>;
   decorate: RunDecoration | undefined;
   boundaries: ReadonlyMap<Run, readonly RunBoundaryJoin[]>;
+};
+
+/**
+ * Whether a run property patch reaches a run inside its range: one with
+ * units, or one holding a note's own reference mark, which takes no offset but
+ * shows the note's number in the run's properties.
+ */
+const patchReaches = (run: Run): boolean =>
+  runWidth(run) > 0 ||
+  run.content.some((content) => content.type === "noteMarker");
+
+/**
+ * A field inside a patch's range: the runs of its displayed result take the
+ * patch, its instruction keeps its own. A complex field without a result
+ * shows its own formatting, which only a direct patch changes: a tracked one
+ * has no run to record the change on.
+ */
+const patchFieldIn = (
+  field: Extract<InlineNode, { type: "simpleField" | "complexField" }>,
+  options: Omit<PatchRunsInOptions, "nodes">,
+): InlineNode => {
+  const result = fieldResultOf(field) ?? [];
+  if (field.type === "complexField" && result.length === 0) {
+    if (options.decorate !== undefined) return field;
+    const formatting = patchedSet(
+      field.formatting,
+      options.patch,
+      options.whenEmpty,
+    );
+    if (sameRunFormatting(formatting, field.formatting)) return field;
+    const next: ComplexField = { ...field };
+    if (formatting === undefined) delete next.formatting;
+    else next.formatting = formatting;
+    options.priorFields.set(next, field.formatting);
+    return next;
+  }
+  const next = patchRunsIn({ ...options, nodes: result });
+  return next.every((child, index) => child === result[index])
+    ? field
+    : withFieldResult(field, next);
 };
 
 const patchRunsIn = ({
@@ -588,15 +633,29 @@ const patchRunsIn = ({
   patch,
   whenEmpty,
   prior,
+  priorFields,
   decorate,
   boundaries,
 }: PatchRunsInOptions): InlineNode[] => {
   const out: InlineNode[] = [];
   for (const node of nodes) {
+    if (node.type === "simpleField" || node.type === "complexField") {
+      out.push(
+        patchFieldIn(node, {
+          patch,
+          whenEmpty,
+          prior,
+          priorFields,
+          decorate,
+          boundaries,
+        }),
+      );
+      continue;
+    }
     if (node.type === "run") {
       const formatting = patchedSet(node.formatting, patch, whenEmpty);
       if (
-        runWidth(node) === 0 ||
+        !patchReaches(node) ||
         sameRunFormatting(formatting, node.formatting)
       ) {
         out.push(node);
@@ -621,6 +680,7 @@ const patchRunsIn = ({
         patch,
         whenEmpty,
         prior,
+        priorFields,
         decorate,
         boundaries,
       });
@@ -633,10 +693,16 @@ const patchRunsIn = ({
   return out;
 };
 
+/** The runs a patch over these records reaches: the walk {@link patchRunsIn} takes. */
 const collectRuns = (nodes: readonly InlineNode[], out: Run[]): void => {
   for (const node of nodes) {
     if (node.type === "run") {
-      if (runWidth(node) > 0) out.push(node);
+      if (patchReaches(node)) out.push(node);
+      continue;
+    }
+    const result = fieldResultOf(node);
+    if (result !== undefined) {
+      collectRuns(result, out);
       continue;
     }
     if (isParagraphContent(node) && isInlineContainer(node)) {
@@ -657,6 +723,56 @@ export const runsBetween = (
   return out;
 };
 
+/** What restores one run or field a patch went over. */
+type RestoredValues =
+  | "untouched"
+  | "inexpressible"
+  | { restore: RunPropsPatch; spelling: EmptyPropertySet };
+
+const restoredValuesOf = (
+  previous: TextFormatting | undefined,
+  patch: RunPropsPatch,
+): RestoredValues => ({
+  restore: priorValues(previous, patch),
+  spelling: emptySetSpelling(previous),
+});
+
+/**
+ * The values that give a run or field back what a patch replaced: a field's
+ * when every run of its result changed from the same values, `inexpressible`
+ * when they did not, as one patch over its unit reaches them all.
+ */
+const restoredValues = ({
+  node,
+  patch,
+  prior,
+  priorFields,
+}: {
+  node: InlineNode;
+  patch: RunPropsPatch;
+  prior: ReadonlyMap<Run, TextFormatting | undefined>;
+  priorFields: ReadonlyMap<ComplexField, TextFormatting | undefined>;
+}): RestoredValues => {
+  if (node.type === "run")
+    return prior.has(node)
+      ? restoredValuesOf(prior.get(node), patch)
+      : "untouched";
+  if (node.type === "complexField" && priorFields.has(node))
+    return restoredValuesOf(priorFields.get(node), patch);
+  const reached: Run[] = [];
+  collectRuns(fieldResultOf(node) ?? [], reached);
+  const changed = reached.filter((run) => prior.has(run));
+  if (changed.length === 0) return "untouched";
+  if (changed.length < reached.length) return "inexpressible";
+  const [first, ...rest] = changed.map((run) =>
+    restoredValuesOf(prior.get(run), patch),
+  );
+  if (first === undefined) return "untouched";
+  return rest.every((values) => structurallyEqual(values, first))
+    ? first
+    : "inexpressible";
+};
+
 /** A patch over a stretch of runs, the shape of a `setRunProps` operation. */
 export type RunPatchSpan = {
   from: Gap;
@@ -675,6 +791,11 @@ export type RunPatchSpan = {
  * patch left alone ends a stretch, so a restoring patch never reaches it.
  *
  * `decorate` adds to each changed run what a tracked patch records on it.
+ *
+ * A field in the range takes the patch on the runs of its result. Its one
+ * unit restores as one stretch only when the patch changed all of those runs
+ * from the same values; otherwise `restoring` is `undefined`, and only the
+ * paragraph as it was restores it.
  */
 export const patchRunsBetween = (
   items: readonly ParagraphContent[],
@@ -683,10 +804,13 @@ export const patchRunsBetween = (
   patch: RunPropsPatch,
   whenEmpty: EmptyPropertySet | undefined,
   decorate?: RunDecoration,
-): { content: ParagraphContent[]; restoring: RunPatchSpan[] } | undefined => {
+):
+  | { content: ParagraphContent[]; restoring: RunPatchSpan[] | undefined }
+  | undefined => {
   const gaps = [from, to];
   const [before = [], middle = [], after = []] = partitionContent(items, gaps);
   const prior = new Map<Run, TextFormatting | undefined>();
+  const priorFields = new Map<ComplexField, TextFormatting | undefined>();
   const middleRuns: Run[] = [];
   collectRuns(middle, middleRuns);
   const cutsBefore = spanningRecords(items, gaps, 0, 1).some(
@@ -709,10 +833,11 @@ export const patchRunsBetween = (
     patch,
     whenEmpty,
     prior,
+    priorFields,
     decorate,
     boundaries,
   });
-  if (prior.size === 0) {
+  if (prior.size === 0 && priorFields.size === 0) {
     return undefined;
   }
   // A cut run the patch changed stays cut; containers and unchanged runs merge back.
@@ -733,15 +858,15 @@ export const patchRunsBetween = (
 
   const restoring: (RunPatchSpan & { key: string })[] = [];
   let stretchOpen = false;
-  for (const { node, before: start, after: end } of runGaps(content)) {
-    if (node.type !== "run") continue;
-    if (!prior.has(node)) {
-      if (runWidth(node) > 0) stretchOpen = false;
+  for (const { node, before: start, after: end } of runAndFieldGaps(content)) {
+    const values = restoredValues({ node, patch, prior, priorFields });
+    if (values === "inexpressible") return { content, restoring: undefined };
+    if (values === "untouched") {
+      if (isParagraphContent(node) && inlineWidth(node) > 0)
+        stretchOpen = false;
       continue;
     }
-    const previous = prior.get(node);
-    const restore = priorValues(previous, patch);
-    const spelling = emptySetSpelling(previous);
+    const { restore, spelling } = values;
     const key = JSON.stringify([restore, spelling]);
     const last = restoring.at(-1);
     if (stretchOpen && last !== undefined && last.key === key) {

@@ -151,20 +151,21 @@ test("canonical structural gestures and toolbar operations preserve each interme
     await select(page, 1, 3);
     await page.keyboard.press("Backspace");
     const beforeMarker = await snapshot(page);
-    await page.keyboard.type("-");
-    const beforeRule = await snapshot(page);
-    await page.keyboard.type(" ");
+    await page.keyboard.type("- ");
     const ruled = (await snapshot(page))?.document?.package.document.content.at(
       0,
     );
     expect(ruled?.type === "paragraph" && ruled.formatting?.numPr?.kind).toBe(
       "reference",
     );
+    // Backspace undoes the rule alone and gives back exactly what was typed.
     await page.keyboard.press("Backspace");
     const ruleUndone = await snapshot(page);
-    expect(ruleUndone?.document).toEqual(beforeRule?.document);
-    expect(ruleUndone?.selection).toEqual(beforeRule?.selection);
-    expect(ruleUndone?.text).toBe("-");
+    const unruled = ruleUndone?.document?.package.document.content.at(0);
+    expect(
+      unruled?.type === "paragraph" && unruled.formatting?.numPr?.kind,
+    ).not.toBe("reference");
+    expect(ruleUndone?.text).toBe("- ");
     await page.keyboard.press(`${MODIFIER}+z`);
     expect((await snapshot(page))?.document).toEqual(beforeMarker?.document);
     expect((await snapshot(page))?.selection).toEqual(beforeMarker?.selection);

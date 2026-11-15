@@ -2,7 +2,6 @@
 export const CANONICAL_GAP = {
   authorityRouting: "authority-routing",
   commands: "command-descriptors",
-  trackedHyperlinkResolution: "tracked-hyperlink-resolution",
   trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
   comments: "comment-model-edits",
@@ -122,12 +121,6 @@ export const CANONICAL_CAPABILITIES: {
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Commands without canonical descriptors retain PM probing and hit the dispatch boundary.";
-  };
-  readonly "tracked-hyperlink-resolution": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Link edits cutting a content control, a direction or smart tag wrapper, an equation or a move marker.";
   };
   readonly "tracked-table-structure": {
     readonly owner: "controller";
@@ -269,13 +262,6 @@ export const CANONICAL_CAPABILITIES: {
     adapters: ["react", "vue"],
     summary:
       "Commands without canonical descriptors retain PM probing and hit the dispatch boundary.",
-  },
-  [CANONICAL_GAP.trackedHyperlinkResolution]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Link edits cutting a content control, a direction or smart tag wrapper, an equation or a move marker.",
   },
   [CANONICAL_GAP.trackedTableStructure]: {
     owner: "controller",

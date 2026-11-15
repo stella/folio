@@ -344,29 +344,40 @@ async function caretAtParagraphStart(page: Page): Promise<void> {
 }
 
 test.describe("list autoformat", () => {
-  test("a marker typed at a paragraph start becomes a list item, and backspace undoes it", async ({
-    page,
-  }) => {
-    await mountFixture(page, "docx-editor-demo.docx");
-    await caretAtParagraphStart(page);
-    const before = await caretParagraph(page);
-    expect(before?.numPr).toBeNull();
+  for (const session of ["legacy", "canonical"] as const) {
+    for (const [marker, undo] of [
+      ["- ", "Backspace"],
+      ["1. ", "Backspace"],
+      // The canonical session keeps the typed marker as its own undo step.
+      ...(session === "canonical" ? [["- ", `${MOD}+z`] as const] : []),
+    ] as const) {
+      test(`${session}: "${marker}" typed at a paragraph start becomes a list item, and ${undo} gives back exactly what was typed`, async ({
+        page,
+      }) => {
+        await mountFixture(page, "docx-editor-demo.docx", session);
+        await caretAtParagraphStart(page);
+        const before = await caretParagraph(page);
+        expect(before?.numPr).toBeNull();
 
-    await page.keyboard.type("- ");
+        await page.keyboard.type(marker);
 
-    // A new list: whichever instance the document defines for it, at level 0.
-    await expect
-      .poll(async () => (await caretParagraph(page))?.numPr)
-      .toMatchObject({ kind: "reference", ilvl: 0 });
-    expect((await caretParagraph(page))?.text).toBe(before?.text);
+        // A new list: whichever instance the document defines, at level 0.
+        await expect
+          .poll(async () => (await caretParagraph(page))?.numPr)
+          .toMatchObject({ kind: "reference", ilvl: 0 });
+        expect((await caretParagraph(page))?.text).toBe(before?.text);
 
-    await page.keyboard.press("Backspace");
+        await page.keyboard.press(undo);
 
-    await expect
-      .poll(async () => (await caretParagraph(page))?.numPr)
-      .toBeNull();
-    expect((await caretParagraph(page))?.text).toBe(`- ${before?.text ?? ""}`);
-  });
+        await expect
+          .poll(async () => (await caretParagraph(page))?.numPr)
+          .toBeNull();
+        expect((await caretParagraph(page))?.text).toBe(
+          `${marker}${before?.text ?? ""}`,
+        );
+      });
+    }
+  }
 });
 
 test.describe("typing + undo", () => {

@@ -4,7 +4,9 @@ import { CellSelection } from "prosemirror-tables";
 
 import {
   headingOutlineLevel,
+  NO_PARAGRAPH_NUMBERING,
   paragraphNumberingReference,
+  resolveParagraphNumbering,
 } from "@stll/docx-core/model";
 import {
   DOCUMENT_OP_TYPES,
@@ -42,6 +44,7 @@ import {
   effectiveParagraphNumbering,
   paragraphNumberingSourcesFromBoundary,
 } from "../prosemirror/numberingAttr";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type {
   BlockContent,
@@ -120,6 +123,30 @@ const effectiveNumbering = (paragraph: Paragraph | undefined) =>
       numPrFromStyle: paragraph?.formatting?.numPrFromStyle,
     }),
   );
+
+/**
+ * The numbering that takes a paragraph out of its list. A paragraph whose
+ * style chain numbers it states the cancellation (`w:numId="0"`), since only
+ * that overrides the style; any other paragraph loses its own numbering, so it
+ * keeps no override it never had.
+ */
+const numberingRemoval = (session: CanonicalSession) => {
+  const styles = createStyleResolver(
+    readModel(session.document).package.styles,
+  );
+  return (paragraph: Paragraph): typeof NO_PARAGRAPH_NUMBERING | null =>
+    resolveParagraphNumbering(
+      styles.resolveParagraphStyle(paragraph.formatting?.styleId)
+        .paragraphFormatting?.numPr,
+    ).kind === "reference"
+      ? NO_PARAGRAPH_NUMBERING
+      : null;
+};
+
+/** Whether a paragraph is in a list, by numbering of its own or its style's. */
+export const isCanonicalListParagraph = (
+  paragraph: Paragraph | undefined,
+): boolean => effectiveNumbering(paragraph).kind === "reference";
 
 type ParagraphPosition = {
   container: readonly BlockContent[];
@@ -309,6 +336,17 @@ export const prepareCanonicalCommands = (
   state: EditorState,
   commands: readonly CanonicalCommandIntent[],
 ): Result<CanonicalCommit, CanonicalSessionError> => {
+  // A menu's text replacement is the session's own text input.
+  for (const command of commands) {
+    if (command.type !== "replaceText") continue;
+    if (commands.length !== 1)
+      return refuse("A text replacement must be prepared on its own.");
+    return session.prepareReplace(state, {
+      from: command.from,
+      to: command.to,
+      text: command.text,
+    });
+  }
   // A note reference or a table of contents goes at one caret; selected
   // cells have none.
   if (
@@ -564,6 +602,9 @@ export const prepareCanonicalCommands = (
         });
         break;
       }
+      case "selection":
+        // Run by the editor as it is; it changes no content.
+        break;
       case "insertBreak": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
@@ -583,6 +624,8 @@ export const prepareCanonicalCommands = (
       case "insertNote":
       case "deleteNote":
         return panic("Note commands are prepared before editor intents.");
+      case "replaceText":
+        return panic("Text replacements are prepared before editor intents.");
       case "formatRun": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
@@ -634,6 +677,7 @@ export const prepareCanonicalCommands = (
           );
           break;
         }
+        const removed = numberingRemoval(session);
         for (const paragraph of paragraphs)
           intents.push({
             type: "formatParagraph",
@@ -642,15 +686,14 @@ export const prepareCanonicalCommands = (
               blockId: paragraph.paraId ?? "",
               offset: 0,
             },
-            patch: { numPr: { kind: "none" } },
+            patch: { numPr: removed(paragraph) },
           });
         break;
       }
-      case "removeList":
-        {
-          const positions = paragraphPositions(session, paragraphs);
-          if (positions.isErr()) return positions;
-        }
+      case "removeList": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
+        const removed = numberingRemoval(session);
         for (const paragraph of paragraphs)
           intents.push({
             type: "formatParagraph",
@@ -659,14 +702,14 @@ export const prepareCanonicalCommands = (
               blockId: paragraph.paraId ?? "",
               offset: 0,
             },
-            patch: { numPr: { kind: "none" } },
+            patch: { numPr: removed(paragraph) },
           });
         break;
-      case "changeListLevel":
-        {
-          const positions = paragraphPositions(session, paragraphs);
-          if (positions.isErr()) return positions;
-        }
+      }
+      case "changeListLevel": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
+        const removed = numberingRemoval(session);
         for (const paragraph of paragraphs) {
           const numPr = effectiveNumbering(paragraph);
           if (numPr?.kind !== "reference") continue;
@@ -684,7 +727,7 @@ export const prepareCanonicalCommands = (
             at,
             patch: {
               numPr: (() => {
-                if (level < 0) return { kind: "none" } as const;
+                if (level < 0) return removed(paragraph);
                 if (
                   paragraph.formatting?.numPr?.kind !== "reference" &&
                   paragraph.formatting?.numPrFromStyle?.kind === "reference"
@@ -699,6 +742,7 @@ export const prepareCanonicalCommands = (
           });
         }
         break;
+      }
       case "restartNumbering":
       case "continueNumbering": {
         const positions = paragraphPositions(session, paragraphs);
@@ -809,16 +853,24 @@ export const prepareCanonicalCommands = (
   return session.prepareIntents(state, { intents });
 };
 
-type CanonicalAutoformatInput = { from: number; to: number; text: string };
+type CanonicalAutoformatTrigger = { from: number; to: number; text: string };
 
-/** Rules compile their replacement and paragraph change as one atomic edit. */
+/**
+ * The rule that `typed`, already committed as typed, completes at the caret of
+ * `state`: the marker's removal and the paragraph change as one atomic edit.
+ *
+ * The typed text is its own history step before the rule, so undoing the rule
+ * (or Backspace straight after it) gives back exactly what was typed, the
+ * trigger space included.
+ */
 export const prepareCanonicalAutoformat = (
   session: CanonicalSession,
   state: EditorState,
-  { from, to, text }: CanonicalAutoformatInput,
+  typed: CanonicalAutoformatTrigger,
 ): Result<CanonicalCommit, CanonicalSessionError> | undefined => {
-  if (text !== " " || from !== to) return undefined;
-  const at = session.projection.addressAt(from);
+  if (typed.text !== " " || typed.from !== typed.to) return undefined;
+  if (!state.selection.empty) return undefined;
+  const at = session.projection.addressAt(state.selection.head);
   if (at.isErr()) return undefined;
   const document = readModel(session.document);
   const logical = editorPositionAtPhysicalPosition(document, at.value);
@@ -833,7 +885,7 @@ export const prepareCanonicalAutoformat = (
   );
   if (group === undefined) panic("Autoformat lost its logical paragraph");
   const source = address.source;
-  const prefix = group.text.slice(0, logical.offset) + text;
+  const prefix = group.text.slice(0, logical.offset);
   const requests = listRequestsForMarker(prefix);
   const heading = /^(?<hashes>#{1,6}) $/u.exec(prefix)?.groups?.["hashes"];
   if (requests === null && heading === undefined) return undefined;

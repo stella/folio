@@ -46,7 +46,7 @@ import {
   rowsWithoutRow,
 } from "./tableRowRemoval";
 import { applyTableOp } from "./tables";
-import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
+import { permitsRestoredCellFinalMark, trackTableRows } from "./tableTracking";
 import {
   type DeleteRowOp,
   DOCUMENT_OP_TYPES,
@@ -193,7 +193,11 @@ const commitRows = ({
     if (
       mark !== undefined &&
       endsItsContainer(body, paragraphLocation) &&
-      !permitsCellFinalMark(body, paragraphLocation) &&
+      !permitsRestoredCellFinalMark({
+        body,
+        location: paragraphLocation,
+        opType: op.type,
+      }) &&
       !structurallyEqual(
         mark,
         originalParagraphs.get(idKey(paragraphLocation.paragraph.paraId ?? ""))

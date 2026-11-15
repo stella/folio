@@ -113,6 +113,20 @@ const accept = (
 };
 const select = (state: EditorState, from: number, to = from) =>
   state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
+/** Types the trigger space at the caret, as the editor commits it first. */
+const typeTrigger = (session: CanonicalSession, state: EditorState) => {
+  const typed = {
+    from: state.selection.head,
+    to: state.selection.head,
+    text: " ",
+  };
+  const next = accept(
+    session,
+    state,
+    session.prepareReplace(state, { ...typed, semantic: "typing" }).unwrap(),
+  );
+  return { state: next, typed };
+};
 
 test.each([
   ["toggle bullet", { type: "toggleList", kind: "bullet" } as const],
@@ -875,7 +889,7 @@ describe("canonical structural commands", () => {
     );
   });
 
-  test("marker rules atomically remove their marker, apply paragraph meaning and restore it on undo", async () => {
+  test("marker rules atomically remove their marker, apply paragraph meaning and restore exactly what was typed on undo", async () => {
     await assertProperty(
       fc.asyncProperty(
         autoformatMarkerArbitrary,
@@ -910,15 +924,19 @@ describe("canonical structural commands", () => {
           });
           state = select(state, marker.length + 1);
           const before = session.document;
+          const triggered = typeTrigger(session, state);
+          state = triggered.state;
+          const typedDocument = session.document;
           const selection = state.selection.toJSON();
-          const prepared = prepareCanonicalAutoformat(session, state, {
-            from: state.selection.head,
-            to: state.selection.head,
-            text: " ",
-          });
+          expect(texts(session)).toEqual([`${marker} `]);
+          const prepared = prepareCanonicalAutoformat(
+            session,
+            state,
+            triggered.typed,
+          );
           if (generated.type === "heading" && !styleAvailable) {
             expect(prepared).toBeUndefined();
-            expect(session.document).toStrictEqual(before);
+            expect(session.document).toStrictEqual(typedDocument);
             expect(state.selection.toJSON()).toEqual(selection);
             return;
           }
@@ -954,17 +972,22 @@ describe("canonical structural commands", () => {
               );
             }
           }
+          // Undoing the rule gives back exactly what was typed, the space too.
+          state = accept(session, state, session.prepareUndo(state).unwrap());
+          expect(session.document).toEqual(typedDocument);
+          expect(texts(session)).toEqual([`${marker} `]);
+          expect(state.selection.toJSON()).toEqual(selection);
           state = accept(session, state, session.prepareUndo(state).unwrap());
           expect(session.document).toEqual(before);
-          expect(state.selection.toJSON()).toEqual(selection);
           expect(session.canUndo).toBe(false);
+          state = accept(session, state, session.prepareRedo(state).unwrap());
           state = accept(session, state, session.prepareRedo(state).unwrap());
           expect(texts(session)).toEqual([""]);
         },
       ),
       {
         numRuns: 30,
-        id: "marker rules atomically remove their marker, apply paragraph meaning and restore it on undo",
+        id: "marker rules atomically remove their marker, apply paragraph meaning and restore exactly what was typed on undo",
       },
     );
   });
@@ -1029,12 +1052,11 @@ describe("canonical structural commands", () => {
       const session = createCanonicalSession(document).unwrap();
       let state = EditorState.create({ schema, doc: session.projection.doc });
       state = select(state, 3);
+      const triggered = typeTrigger(session, state);
+      state = triggered.state;
       const commit =
-        prepareCanonicalAutoformat(session, state, {
-          from: state.selection.head,
-          to: state.selection.head,
-          text: " ",
-        }) ?? panic("Declared marker was not recognized.");
+        prepareCanonicalAutoformat(session, state, triggered.typed) ??
+        panic("Declared marker was not recognized.");
       accept(session, state, commit.unwrap());
       const numPr = paragraphs(session).at(0)?.formatting?.numPr;
       if (numPr?.kind !== "reference") return panic("The marker made no list.");
@@ -1098,11 +1120,17 @@ describe("canonical structural commands", () => {
             session.document,
           );
           const initialSelection = state.selection.toJSON();
-          const prepared = prepareCanonicalAutoformat(session, state, {
+          const trigger = {
             from: state.selection.head,
             to: state.selection.head,
             text: " ",
-          });
+          };
+          apply(
+            session
+              .prepareReplace(state, { ...trigger, semantic: "typing" })
+              .unwrap(),
+          );
+          const prepared = prepareCanonicalAutoformat(session, state, trigger);
           apply(
             prepared?.unwrap() ?? panic("Numbered marker was not recognized."),
           );
@@ -1212,13 +1240,15 @@ describe("canonical structural commands", () => {
                 address.start + address.node.content.size,
               );
               state = select(state, logicalEnd);
+              const triggered = typeTrigger(session, state);
+              state = triggered.state;
               const before = structuredClone(session.document);
               const selection = state.selection.toJSON();
-              const prepared = prepareCanonicalAutoformat(session, state, {
-                from: state.selection.head,
-                to: state.selection.head,
-                text: " ",
-              });
+              const prepared = prepareCanonicalAutoformat(
+                session,
+                state,
+                triggered.typed,
+              );
               expect(prepared).toBeUndefined();
               expect(session.document).toStrictEqual(before);
               expect(state.selection.toJSON()).toStrictEqual(selection);
