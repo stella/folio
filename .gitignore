@@ -30,3 +30,6 @@ tests/visual/fixtures/parity-tmp-*
 benchmarks/compare/.local/
 engine-parity-out/
 engine-parity-ref/
+engine-measurements/
+rendering-output/
+structural-save-census/

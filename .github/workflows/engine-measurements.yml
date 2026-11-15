@@ -34,7 +34,7 @@ on:
       census:
         description: Count the documents a structural save would splice
         type: boolean
-        default: true
+        default: false
 
 concurrency:
   # A hand-started run checks one fixed commit: no push and no other
@@ -46,17 +46,14 @@ permissions: {}
 
 jobs:
   measure:
-    name: Measure (${{ matrix.host }} host)
+    name: Measure both engines
     if: inputs.measurements
-    # Both engines of a document run back to back on the same runner.
+    # One job on one runner: both engines of each document run back to back,
+    # so a slower stretch of the runner hits both, and the ratio holds.
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 180
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        host: [react, vue]
 
     steps:
       # persist-credentials: false: this job can be dispatched on any branch
@@ -74,84 +71,46 @@ jobs:
       - name: Install Playwright Chromium
         uses: ./.github/actions/playwright-deps
 
-      - name: Measure both engines
+      - name: Measure both engines on both hosts
         env:
-          FOLIO_MEASURE_HOSTS: ${{ matrix.host }}
           FOLIO_MEASURE_KEYS: ${{ inputs.keys }}
           FOLIO_MEASURE_MODE: ${{ inputs.mode }}
           FOLIO_MEASURE_PROFILE: ${{ inputs.profile && '1' || '0' }}
-          FOLIO_MEASURE_OUT: engine-measurements/${{ matrix.host }}
+          FOLIO_MEASURE_OUT: engine-measurements
           VITE_FOLIO_PLAYGROUND_SOURCEMAP: ${{ inputs.profile && '1' || '0' }}
-        run: bunx playwright test --project=engine-measurements --workers=1 --retries=0 --reporter=list --output="$FOLIO_MEASURE_OUT/playwright"
+        run: bunx playwright test --project=engine-measurements --workers=1 --retries=0 --reporter=list --output=engine-measurements/playwright
+
+      - name: Write the report
+        if: always()
+        run: |
+          bun scripts/engine-measurements-report.ts engine-measurements
+          cat engine-measurements/report.md >> "$GITHUB_STEP_SUMMARY"
 
       # The profiles name minified functions; the source maps name them back.
-      - name: Keep the source maps of the measured build
+      - name: Keep the source maps of the measured builds
         if: always() && inputs.profile
-        env:
-          HOST: ${{ matrix.host }}
         run: |
-          package=packages/playground
-          if [[ "$HOST" == "vue" ]]; then package=packages/playground-vue; fi
-          mkdir -p "engine-measurements/$HOST/sourcemaps"
-          cp "$package"/dist/assets/*.map "engine-measurements/$HOST/sourcemaps/" 2>/dev/null || true
+          for host in playground playground-vue; do
+            mkdir -p "engine-measurements/sourcemaps/$host"
+            cp "packages/$host"/dist/assets/*.map "engine-measurements/sourcemaps/$host/" 2>/dev/null || true
+          done
 
       - name: Upload measurements
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: engine-measurements-${{ matrix.host }}
-          path: engine-measurements/${{ matrix.host }}
-          retention-days: 30
-
-  report:
-    name: Report
-    needs: measure
-    if: always() && inputs.measurements
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: stella/.github/actions/setup-bun-cached@c6d66dfa2a5ad1f96a21b819fe456fecdd3d6f6d
-        with:
-          bun-version-file: "package.json"
-
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: engine-measurements-*
-          path: downloaded
-
-      - name: Write the report
-        run: |
-          mkdir -p engine-measurements-report
-          cp downloaded/*/*.json engine-measurements-report/ 2>/dev/null || true
-          bun scripts/engine-measurements-report.ts engine-measurements-report
-          cat engine-measurements-report/report.md >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload the report
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: engine-measurements-report
-          path: engine-measurements-report
+          name: engine-measurements
+          path: engine-measurements
           retention-days: 30
 
   rendering:
-    name: Rendering baselines (${{ matrix.engine }} engine)
+    name: Rendering baselines on both engines
     if: inputs.rendering
     # The checked-in baselines are macOS renders.
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        engine: [legacy, canonical]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -167,17 +126,23 @@ jobs:
       - name: Install Playwright Chromium
         uses: ./.github/actions/playwright-deps
 
-      - name: Render the fixtures
+      - name: Render the fixtures on the default engine
         env:
-          FOLIO_RENDERING_SESSION: ${{ matrix.engine }}
-        run: bunx playwright test --project=rendering --workers=1 --retries=0 --reporter=list --output="rendering-output/$FOLIO_RENDERING_SESSION"
+          FOLIO_RENDERING_SESSION: legacy
+        run: bunx playwright test --project=rendering --workers=1 --retries=0 --reporter=list --output=rendering-output/legacy
+
+      - name: Render the fixtures on the canonical session
+        if: always()
+        env:
+          FOLIO_RENDERING_SESSION: canonical
+        run: bunx playwright test --project=rendering --workers=1 --retries=0 --reporter=list --output=rendering-output/canonical
 
       - name: Upload renders and differences
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: rendering-${{ matrix.engine }}
-          path: rendering-output/${{ matrix.engine }}
+          name: rendering
+          path: rendering-output
           retention-days: 14
 
   census:
