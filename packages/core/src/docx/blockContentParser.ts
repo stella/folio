@@ -30,6 +30,7 @@ import {
 } from "./containerChildren";
 import {
   computeListMarker,
+  type ComputeListMarkerOptions,
   type PreviousListState,
 } from "./listMarkerComputation";
 import {
@@ -110,6 +111,28 @@ const BLOCK_CHILD_OWNERS = {
     child: "tcPr",
     reader: "tableParser#parseTableCell",
   }),
+};
+
+/**
+ * Count the paragraphs a table holds as the story's own, in document order:
+ * row by row, cell by cell, through nested tables, content controls and custom
+ * XML wrappers. Numbering continues through the cells rather than restarting
+ * in each, and the list normalization after an edit counts them the same way,
+ * so a numbered paragraph in a cell reads one marker wherever it is read.
+ */
+const countContainedListMarkers = (
+  blocks: readonly BlockContent[],
+  counters: ComputeListMarkerOptions,
+): void => {
+  for (const block of blocks) {
+    if (block.type === "paragraph") computeListMarker(block, counters);
+    else if (block.type === "table")
+      for (const row of block.rows)
+        for (const cell of row.cells)
+          countContainedListMarkers(cell.content, counters);
+    else if (block.type === "blockSdt" || block.type === "blockCustomXml")
+      countContainedListMarkers(block.content, counters);
+  }
 };
 
 export const parseBlockContent = (
@@ -367,6 +390,13 @@ export const BLOCK_CONTENT_HANDLERS: {
         }) ?? false;
       return hasUnmodeledTableContent ? CAPTURE : undefined;
     }
+    countContainedListMarkers([table], {
+      numbering,
+      listCounters: state.listCounters,
+      abstractCounters: state.abstractCounters,
+      restartedNumIds: state.restartedNumIds,
+      previousList: state.previousList,
+    });
     modelled.push(table);
     return undefined;
   },
