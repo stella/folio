@@ -210,20 +210,16 @@ const liveAndReopened = async (buffer: ArrayBuffer, draw: Draw) => {
     .snapshot()
     .blocks.find((candidate) => candidate.text === draw.target);
   if (block === undefined) throw new Error(`no block reads ${draw.target}`);
-  let applied = false;
-  try {
-    applied =
-      live.applyDocumentOperations(
-        {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          operations: [operationOf(draw, block.id)],
-          mode: draw.mode,
-        },
-        { undefinedReferences: "refuse" },
-      ).applied.length === 1;
-  } catch {
-    applied = false;
-  }
+  // A refusal comes back as a skipped operation; anything thrown fails the law.
+  const applied =
+    live.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        operations: [operationOf(draw, block.id)],
+        mode: draw.mode,
+      },
+      { undefinedReferences: "refuse" },
+    ).applied.length === 1;
   if (!applied) return null;
   const reopened = await open(await live.toBuffer());
   return {
