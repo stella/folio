@@ -317,8 +317,9 @@ const statedOrCleared = <Value>(
  * The paragraph properties an inserted block states. An insertion that says
  * nothing takes the properties of its anchor, which is whichever base block
  * happens to follow it, so whatever the anchor states and the revised block
- * does not is cleared: a list item keeps its numbering, and a plain paragraph
- * beside a list item stays plain.
+ * does not is cleared: a list item keeps its numbering, a plain paragraph
+ * beside a list item stays plain, and one before a heading that states its
+ * outline level is no heading.
  */
 const insertedParagraphProperties = (
   block: FolioAIBlock,
@@ -330,25 +331,41 @@ const insertedParagraphProperties = (
   }
   const anchorParagraph =
     anchor === undefined ? undefined : paragraphBlockOf(anchor);
-  const properties: FolioAIBlockParagraphProperties = {};
-  const styleId = statedOrCleared(paragraph.styleId, anchorParagraph?.styleId);
-  if (styleId !== undefined) properties.styleId = styleId;
-  const alignment = statedOrCleared(
-    paragraph.directAlignment,
-    anchorParagraph?.directAlignment,
-  );
-  if (alignment !== undefined) properties.alignment = alignment;
-  const spacing = statedOrCleared(
-    paragraph.directSpacing,
-    anchorParagraph?.directSpacing,
-  );
-  if (spacing !== undefined) properties.spacing = spacing;
-  const indentation = statedOrCleared(
-    paragraph.directIndentation,
-    anchorParagraph?.directIndentation,
-  );
-  if (indentation !== undefined) properties.indentation = indentation;
-  properties.numbering = paragraph.statedNumbering;
+  // Total over the properties an operation can set, so one added to the
+  // contract cannot be left to the anchor's.
+  const stated = {
+    styleId: statedOrCleared(paragraph.styleId, anchorParagraph?.styleId),
+    outlineLevel: statedOrCleared(
+      paragraph.directOutlineLevel,
+      anchorParagraph?.directOutlineLevel,
+    ),
+    alignment: statedOrCleared(
+      paragraph.directAlignment,
+      anchorParagraph?.directAlignment,
+    ),
+    spacing: statedOrCleared(
+      paragraph.directSpacing,
+      anchorParagraph?.directSpacing,
+    ),
+    indentation: statedOrCleared(
+      paragraph.directIndentation,
+      anchorParagraph?.directIndentation,
+    ),
+    numbering: paragraph.statedNumbering,
+  } satisfies {
+    [Key in keyof FolioAIBlockParagraphProperties]-?:
+      FolioAIBlockParagraphProperties[Key] | undefined;
+  };
+  const properties: FolioAIBlockParagraphProperties = {
+    numbering: stated.numbering,
+  };
+  if (stated.styleId !== undefined) properties.styleId = stated.styleId;
+  if (stated.outlineLevel !== undefined)
+    properties.outlineLevel = stated.outlineLevel;
+  if (stated.alignment !== undefined) properties.alignment = stated.alignment;
+  if (stated.spacing !== undefined) properties.spacing = stated.spacing;
+  if (stated.indentation !== undefined)
+    properties.indentation = stated.indentation;
   return properties;
 };
 

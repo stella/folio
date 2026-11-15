@@ -1,19 +1,20 @@
 /**
  * A body paragraph rewritten into two body paragraphs with other wording,
  * the second keeping its id, right before a heading that states its outline
- * level itself. The comparison aligns them by content, so it writes the old
- * paragraph deleted and the two new ones inserted before the heading: the
- * inserted paragraphs are body text as written, and accepting the redline
- * gives the revised version.
+ * level itself. Each redline writer, the comparison and the block redline,
+ * writes the old paragraph deleted and the two new ones inserted before the
+ * heading: the inserted paragraphs are body text as written, and accepting
+ * the redline gives the revised version.
  */
 
 import { describe, expect, test } from "bun:test";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createDocx } from "../docx/rezip";
+import { generateRedlineDocx } from "../redline";
 import type { Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
-import { compareDocx, parseComparison, planComparison } from "./compare";
+import { compareDocx } from "./compare";
 
 const OPTIONS = {
   author: "compare",
@@ -83,52 +84,55 @@ const layoutOf = (reviewer: FolioDocxReviewer) =>
       : [],
   );
 
-describe("a paragraph rewritten into two before a heading stating its level", () => {
-  test("is written as body paragraphs and accepts to the revised version", async () => {
-    const before = await packageOf(BEFORE);
-    const after = await packageOf(AFTER);
-    const parsed = await parseComparison(before, after, OPTIONS);
-    if (parsed.isErr()) throw parsed.error;
-    const planned = planComparison(parsed.value);
-    if (planned.isErr()) throw planned.error;
-    const operations = planned.value.flatMap(({ plan }) => plan.operations);
-
+const WRITERS = {
+  comparison: async (before: ArrayBuffer, after: ArrayBuffer) => {
     const compared = await compareDocx(before, after, OPTIONS);
     if (compared.isErr()) throw compared.error;
-    const written = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
-    const layout = layoutOf(written);
-    // No paragraph holding only new words states an outline level or a
-    // style before any resolution: the revised paragraphs state neither.
-    expect({
-      operations,
-      layout,
-      inserted: layout.filter(
-        ({ pPrMark, formatting }) =>
-          pPrMark?.kind === "ins" &&
-          (formatting?.outlineLevel !== undefined ||
-            formatting?.styleId !== undefined),
-      ),
-    }).toMatchObject({ inserted: [] });
+    return compared.value.buffer;
+  },
+  redline: async (before: ArrayBuffer, after: ArrayBuffer) =>
+    (await generateRedlineDocx(before, after, { author: OPTIONS.author }))
+      .buffer,
+} as const;
 
-    written.acceptAll();
-    expect({
-      operations,
-      layout,
-      accepted: written
-        .getContent()
-        .map((block) =>
-          "kind" in block && "text" in block
-            ? `${String(block.kind)}: ${String(block.text)}`
-            : "other",
+describe("a paragraph rewritten into two before a heading stating its level", () => {
+  for (const [writer, write] of Object.entries(WRITERS)) {
+    test(`is written by the ${writer} as body paragraphs and accepts to the revised version`, async () => {
+      const written = await FolioDocxReviewer.fromBuffer(
+        await write(await packageOf(BEFORE), await packageOf(AFTER)),
+      );
+      const layout = layoutOf(written);
+      // No paragraph holding only new words states an outline level or a
+      // style before any resolution: the revised paragraphs state neither.
+      expect({
+        layout,
+        inserted: layout.filter(
+          ({ pPrMark, formatting }) =>
+            pPrMark?.kind === "ins" &&
+            (formatting?.outlineLevel !== undefined ||
+              formatting?.styleId !== undefined),
         ),
-    }).toMatchObject({
-      accepted: [
-        "paragraph: The Supplier delivers the goods.",
-        "paragraph: Buyer buyer warranty payment period.",
-        "paragraph: Notice warranty invoice notice buyer.",
-        "heading: Payment",
-        "paragraph: Closing paragraph.",
-      ],
+      }).toMatchObject({ inserted: [] });
+
+      written.acceptAll();
+      expect({
+        layout,
+        accepted: written
+          .getContent()
+          .map((block) =>
+            "kind" in block && "text" in block
+              ? `${String(block.kind)}: ${String(block.text)}`
+              : "other",
+          ),
+      }).toMatchObject({
+        accepted: [
+          "paragraph: The Supplier delivers the goods.",
+          "paragraph: Buyer buyer warranty payment period.",
+          "paragraph: Notice warranty invoice notice buyer.",
+          "heading: Payment",
+          "paragraph: Closing paragraph.",
+        ],
+      });
     });
-  });
+  }
 });
