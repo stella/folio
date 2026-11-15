@@ -13,7 +13,6 @@ import { ZipArchive } from "@stll/docx-core/zip";
 
 import type { FolioDocumentOperation } from "../document-operations";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
-import { canonicalReviewerSave } from "./__tests__/canonicalReviewerSave";
 import { FolioDocxReviewer } from "./headless";
 import * as pendingJoin from "./pendingJoin";
 import { hashFolioAIBlockText } from "./snapshot";
@@ -152,10 +151,7 @@ const open = (buffer: ArrayBuffer, session: HeadlessReviewerSession) =>
     session,
   });
 
-const save = (reviewer: FolioDocxReviewer, session: HeadlessReviewerSession) =>
-  session === "canonical"
-    ? canonicalReviewerSave(reviewer)
-    : reviewer.toBuffer();
+const save = (reviewer: FolioDocxReviewer) => reviewer.toBuffer();
 
 /** The words a saved body shows and the words it holds as deleted. */
 const savedWords = async (buffer: ArrayBuffer) => {
@@ -201,7 +197,7 @@ const runCase = async (
     skipped: result.skipped.map(({ reason }) => reason),
   };
   if (outcome.applied === 0) return { outcome };
-  const pendingSaved = await save(reviewer, session);
+  const pendingSaved = await save(reviewer);
   const accepted = (await apply()).reviewer;
   accepted.acceptAll();
   const rejected = (await apply()).reviewer;
@@ -210,9 +206,9 @@ const runCase = async (
   return {
     outcome,
     pending: await savedWords(pendingSaved),
-    reopened: await savedWords(await save(reopened, session)),
-    accepted: await savedWords(await save(accepted, session)),
-    rejected: await savedWords(await save(rejected, session)),
+    reopened: await savedWords(await save(reopened)),
+    accepted: await savedWords(await save(accepted)),
+    rejected: await savedWords(await save(rejected)),
   };
 };
 
