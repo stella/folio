@@ -2428,10 +2428,14 @@ export class CanonicalPublicOperations {
     // tracked, before it, the deletion finds it by identity there too, and
     // the inserted paragraph's own pending mark joins it. A move's halves do
     // the same, so no mark is left on the container's final paragraph.
+    // Directly, before a table or a content control with a paragraph before
+    // it, the paragraph goes whole, as the default engine removes it: the one
+    // before it stays itself and nothing joins.
     if (
       next !== undefined ||
       gainsFollower ||
-      (tracked && (after !== null || operation.moveId !== undefined))
+      (after !== null && (tracked || previous !== undefined)) ||
+      (tracked && operation.moveId !== undefined)
     ) {
       const intents: EditorIntent[] = [
         {
@@ -2481,16 +2485,14 @@ export class CanonicalPublicOperations {
       const cleared = own(paragraph.start, end);
       if (cleared.isErr()) return cleared;
       const intents: EditorIntent[] = [...cleared.value];
-      // Before a table or a content control the paragraph goes whole, as the
-      // default engine removes it: the one before it stays itself. Only a
-      // container's final paragraph joins the one before it.
+      // Only a container's final paragraph joins the one before it.
       if (previous !== undefined)
         intents.push({
           type: "joinParagraphs",
           story: projectionStory,
           blockId: previous.blockId,
           nextBlockId: paragraph.blockId,
-          survivor: after === null ? directJoinSurvivor() : "first",
+          survivor: directJoinSurvivor(),
         });
       if (intents.length === 0) return refusal("noopOperation");
       return Result.ok({
