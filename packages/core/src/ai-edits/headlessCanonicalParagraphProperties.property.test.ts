@@ -16,6 +16,7 @@ import fc from "fast-check";
 import * as docxModel from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyConfig,
@@ -253,13 +254,14 @@ describe("paragraph properties an operation sets", () => {
     "read the same live and after save and reopen",
     async () => {
       const buffer = await fixture();
-      const tally = { applied: 0 };
-      await assertProperty(law(buffer, tally), {
+      await assertProperty(law(buffer, { applied: 0 }), {
         id: "paragraph properties read the same live and reopened",
         numRuns: RUNS,
         examples: [[SPACED_MERGE]],
       });
-      // Most draws reach the law: the reviewer applies them.
+      // Most draws of a fixed sample reach the law: the reviewer applies them.
+      const tally = { applied: 0 };
+      await checkCoverageSample(law(buffer, tally), RUNS);
       expect(tally.applied).toBeGreaterThan(RUNS / 2);
     },
     propertyTestTimeout(120_000),
