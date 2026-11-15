@@ -4,7 +4,7 @@
 
 import { panic } from "better-result";
 
-import { expectFontFamilyMarkAttrs } from "../../attrs";
+import { editingFontFamily } from "../../../layout-bridge/convert/editingFont";
 import { canonicalRunFormatting } from "../../canonicalCommands";
 import { createMarkExtension } from "../create";
 import type {
@@ -52,18 +52,12 @@ export const FontFamilyExtension: (
       },
     ],
     toDOM(mark) {
-      const { ascii, hAnsi } = expectFontFamilyMarkAttrs(mark);
-      const fontName = ascii ?? hAnsi;
-      if (!fontName) {
-        return ["span", 0];
-      }
-      const quotedFont = fontName.includes(" ") ? `"${fontName}"` : fontName;
-      // "Noto Sans Arabic" catches Arabic glyphs the Latin font lacks.
-      return [
-        "span",
-        { style: `font-family: ${quotedFont}, "Noto Sans Arabic", sans-serif` },
-        0,
-      ];
+      // Without an editor's font context; the hidden editor's mark view
+      // resolves the same mark with its document's context.
+      const fontFamily = editingFontFamily(mark, {});
+      return fontFamily === null
+        ? ["span", 0]
+        : ["span", { style: `font-family: ${fontFamily}` }, 0];
     },
   },
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
