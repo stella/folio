@@ -152,7 +152,10 @@ import {
   NO_ANONYMIZATION_TERMS,
 } from "./anonymizationHighlights";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
-import { createCanonicalInputBoundary } from "./canonicalInput";
+import {
+  createCanonicalInputBoundary,
+  unclassifiedMutationMessage,
+} from "./canonicalInput";
 import {
   type CanonicalRoomCollaboration,
   type CanonicalRoomEditor,
@@ -1495,7 +1498,7 @@ export const createHiddenEditorManager = (
         if (editorSession.type === "canonical" && transaction.docChanged) {
           if (input.acceptComposition(view, transaction)) return;
           if (!input.commitNativeProposal(view, transaction)) {
-            input.refuseNativeMutation(view);
+            input.refuseNativeMutation(view, transaction);
           }
           // PM's DOM observer dirties the view before dispatching a native
           // proposal. Repaint from the committed state even on refusal.
@@ -1529,7 +1532,10 @@ export const createHiddenEditorManager = (
           !applied.state.doc.eq(view.state.doc)
         ) {
           refuse(
-            "A plugin attempted an unclassified canonical document mutation.",
+            unclassifiedMutationMessage(
+              applied.transactions,
+              "A plugin attempted an unclassified canonical document mutation.",
+            ),
           );
           return;
         }
