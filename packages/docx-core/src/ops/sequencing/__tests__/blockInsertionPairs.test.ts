@@ -103,14 +103,14 @@ describe("a direct and a tracked paragraph insertion after the last paragraph", 
     ]);
   });
 
-  test("with the direct paragraph formatted unlike the anchor, the orders differ only in the former formatting the tracked paragraph records", () => {
+  test("with the direct paragraph formatted unlike the anchor, the tracked paragraph records the former formatting of the mark's holder when it applied", () => {
     // A known limit, kept as a documented rule: the tracked paragraph that
     // takes the former mark records its property change against the
     // formatting of the paragraph that held that mark when it applied, the
     // anchor or the direct paragraph. Restating it in the other order would
-    // take the id the tracked insertion allocated, which the direct
-    // insertion does not carry, so the two orders record different former
-    // formatting.
+    // take a revision id the tracked insertion allocated, which the direct
+    // insertion does not carry, so only the order with the direct
+    // paragraph first records the change.
     const formatted = batchOf("direct", {
       type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
       story: "main",
@@ -121,20 +121,20 @@ describe("a direct and a tracked paragraph insertion after the last paragraph", 
     });
     const directFirst = inOrder(formatted, tracked);
     const trackedFirst = inOrder(tracked, formatted);
-    const withoutPropertyChanges = (document: Document) =>
-      document.package.document.content.map((block) =>
-        Object.fromEntries(
-          Object.entries(block).filter(([key]) => key !== "propertyChanges"),
-        ),
-      );
+    const recorded = (document: Document) => {
+      const last = document.package.document.content.at(-1);
+      return last?.type === "paragraph" ? last.propertyChanges : null;
+    };
     expect(summary(trackedFirst)).toEqual(summary(directFirst));
-    expect(
-      equalForStaleness(
-        withoutPropertyChanges(trackedFirst),
-        withoutPropertyChanges(directFirst),
-      ),
-    ).toBe(true);
-    expect(equalForStaleness(trackedFirst, directFirst)).toBe(false);
+    // The anchor held the mark, formatted as the tracked paragraph is.
+    expect(recorded(trackedFirst)).toBeUndefined();
+    // The direct paragraph held it, formatted unlike the tracked one.
+    expect(recorded(directFirst)).toEqual([
+      expect.objectContaining({
+        type: "paragraphPropertyChange",
+        previousFormatting: { keepNext: true },
+      }),
+    ]);
   });
 
   test("a rebase that keeps the later insertion at the anchor is caught", () => {
