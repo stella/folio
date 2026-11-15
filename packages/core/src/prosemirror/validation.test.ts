@@ -89,18 +89,6 @@ describe("ProseMirror document validation", () => {
 
   test.each([
     {
-      name: "lone start",
-      content: [
-        schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
-      ],
-      message: 'Bookmark "one" (id 1) has no matching end boundary',
-    },
-    {
-      name: "lone end",
-      content: [schema.node("bookmarkBoundary", { type: "end", id: 1 })],
-      message: "Bookmark id 1 has no open start boundary",
-    },
-    {
       name: "duplicate starts",
       content: [
         schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
@@ -114,6 +102,15 @@ describe("ProseMirror document validation", () => {
       ],
       message: 'Bookmark "duplicate" (id 1) has more than one start boundary',
     },
+    {
+      name: "duplicate ends",
+      content: [
+        schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
+        schema.node("bookmarkBoundary", { type: "end", id: 1 }),
+        schema.node("bookmarkBoundary", { type: "end", id: 1 }),
+      ],
+      message: "Bookmark id 1 has more than one end boundary",
+    },
   ])("rejects $name bookmark boundaries", ({ content, message }) => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, content),
@@ -123,6 +120,56 @@ describe("ProseMirror document validation", () => {
 
     expect(result.valid).toBe(false);
     expectIssueContaining(result, message);
+  });
+
+  test.each([
+    {
+      name: "a lone start",
+      content: [
+        schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
+        schema.text("body"),
+      ],
+    },
+    {
+      name: "a lone end",
+      content: [
+        schema.text("body"),
+        schema.node("bookmarkBoundary", { type: "end", id: 1 }),
+      ],
+    },
+    {
+      name: "an end before its start",
+      content: [
+        schema.node("bookmarkBoundary", { type: "end", id: 1 }),
+        schema.text("body"),
+        schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
+      ],
+    },
+  ])("accepts $name, as a source may hold it", ({ content }) => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, content),
+    ]);
+
+    expect(validateProseMirrorDocument(doc)).toEqual({
+      valid: true,
+      issues: [],
+    });
+  });
+
+  test("accepts a lone start between blocks", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("body")]),
+      schema.node("blockBookmarkBoundary", {
+        type: "start",
+        id: 90,
+        name: "_GoBack",
+      }),
+    ]);
+
+    expect(validateProseMirrorDocument(doc)).toEqual({
+      valid: true,
+      issues: [],
+    });
   });
 
   test("tolerates one id repeated across paragraph bookmark attrs", () => {
@@ -154,7 +201,12 @@ describe("ProseMirror document validation", () => {
         schema.node("bookmarkBoundary", {
           type: "start",
           id: 4,
-          name: "unclosed",
+          name: "first",
+        }),
+        schema.node("bookmarkBoundary", {
+          type: "start",
+          id: 4,
+          name: "repeated",
         }),
         schema.text("body"),
       ]),
@@ -162,7 +214,7 @@ describe("ProseMirror document validation", () => {
 
     expectIssueContaining(
       validateProseMirrorDocument(doc),
-      'Bookmark "unclosed" (id 4) has no matching end boundary (paragraph B0000001)',
+      'Bookmark "repeated" (id 4) has more than one start boundary (paragraph B0000001)',
     );
   });
 

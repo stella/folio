@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
-import ts from "typescript";
 
+import {
+  createLineIndex,
+  type Node,
+  parseSourceModule,
+  walkAst,
+} from "../scripts/lib/oxc-ast";
 import { propertyTestTimeout } from "./property-timeout";
 
 /**
@@ -31,95 +36,100 @@ type FileBudgets = {
 
 const TEST_CALLEES = new Set(["test", "it"]);
 
-const rootName = (expression: ts.Expression): string | undefined => {
-  if (ts.isIdentifier(expression)) return expression.text;
-  if (ts.isPropertyAccessExpression(expression))
+const rootName = (expression: Node): string | undefined => {
+  if (expression.type === "Identifier") return expression.name;
+  if (expression.type === "MemberExpression" && !expression.computed)
+    return rootName(expression.object);
+  if (expression.type === "CallExpression") return rootName(expression.callee);
+  if (expression.type === "ChainExpression")
     return rootName(expression.expression);
-  if (ts.isCallExpression(expression)) return rootName(expression.expression);
   return undefined;
 };
 
 const readBudgets = (file: string, text: string): FileBudgets => {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
-  const constants = new Map<string, ts.Expression[]>();
-  const collect = (node: ts.Node): void => {
+  const { program } = parseSourceModule(file, text);
+  const constants = new Map<string, Node[]>();
+  walkAst(program, (node, ancestors) => {
+    const list = ancestors.at(-1);
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer !== undefined &&
-      ts.isVariableDeclarationList(node.parent) &&
-      (node.parent.flags & ts.NodeFlags.Const) !== 0
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
+      node.init &&
+      list?.type === "VariableDeclaration" &&
+      // `await using` carries TypeScript's const flag too.
+      (list.kind === "const" || list.kind === "await using")
     ) {
-      const existing = constants.get(node.name.text);
-      if (existing) existing.push(node.initializer);
-      else constants.set(node.name.text, [node.initializer]);
+      const existing = constants.get(node.id.name);
+      if (existing) existing.push(node.init);
+      else constants.set(node.id.name, [node.init]);
     }
-    ts.forEachChild(node, collect);
-  };
-  collect(source);
+  });
 
   const evaluate = (
-    expression: ts.Expression,
+    expression: Node,
     resolving: ReadonlySet<string> = new Set(),
   ): number | undefined => {
-    if (ts.isNumericLiteral(expression)) return Number(expression.text);
-    if (ts.isParenthesizedExpression(expression))
+    if (expression.type === "Literal") {
+      const { value } = expression;
+      return typeof value === "number" ? value : undefined;
+    }
+    if (expression.type === "ParenthesizedExpression")
       return evaluate(expression.expression, resolving);
-    if (
-      ts.isPrefixUnaryExpression(expression) &&
-      expression.operator === ts.SyntaxKind.PlusToken
-    )
-      return evaluate(expression.operand, resolving);
-    if (ts.isBinaryExpression(expression)) {
+    if (expression.type === "UnaryExpression" && expression.operator === "+")
+      return evaluate(expression.argument, resolving);
+    if (expression.type === "BinaryExpression") {
       const left = evaluate(expression.left, resolving);
       const right = evaluate(expression.right, resolving);
       if (left === undefined || right === undefined) return undefined;
-      switch (expression.operatorToken.kind) {
-        case ts.SyntaxKind.PlusToken:
+      switch (expression.operator) {
+        case "+":
           return left + right;
-        case ts.SyntaxKind.AsteriskToken:
+        case "*":
           return left * right;
         default:
           return undefined;
       }
     }
-    if (ts.isIdentifier(expression)) {
-      const definitions = constants.get(expression.text);
+    if (expression.type === "Identifier") {
+      const definitions = constants.get(expression.name);
       const definition =
         definitions?.length === 1 ? definitions.at(0) : undefined;
-      if (definition === undefined || resolving.has(expression.text))
+      if (definition === undefined || resolving.has(expression.name))
         return undefined;
-      return evaluate(definition, new Set([...resolving, expression.text]));
+      return evaluate(definition, new Set([...resolving, expression.name]));
     }
     if (
-      ts.isCallExpression(expression) &&
-      ts.isIdentifier(expression.expression) &&
-      expression.expression.text === "propertyTestTimeout" &&
+      expression.type === "CallExpression" &&
+      expression.callee.type === "Identifier" &&
+      expression.callee.name === "propertyTestTimeout" &&
       expression.arguments.length === 1
     ) {
-      const base = evaluate(
-        expression.arguments[0] as ts.Expression,
-        resolving,
-      );
+      const argument = expression.arguments.at(0);
+      const base =
+        argument === undefined ? undefined : evaluate(argument, resolving);
       return base === undefined || !Number.isFinite(base) || base <= 0
         ? undefined
         : propertyTestTimeout(base);
     }
-    if (ts.isObjectLiteralExpression(expression)) {
+    if (expression.type === "ObjectExpression") {
       const timeout = expression.properties.find(
-        (property): property is ts.PropertyAssignment =>
-          ts.isPropertyAssignment(property) &&
-          ts.isIdentifier(property.name) &&
-          property.name.text === "timeout",
+        (property) =>
+          property.type === "Property" &&
+          property.kind === "init" &&
+          !property.method &&
+          !property.shorthand &&
+          !property.computed &&
+          property.key.type === "Identifier" &&
+          property.key.name === "timeout",
       );
-      return timeout === undefined
-        ? undefined
-        : evaluate(timeout.initializer, resolving);
+      return timeout?.type === "Property"
+        ? evaluate(timeout.value, resolving)
+        : undefined;
     }
     return undefined;
   };
   const timeoutOf = (
-    expression: ts.Expression | undefined,
+    expression: Node | undefined,
   ): number | "unknown" | undefined => {
     if (expression === undefined) return undefined;
     const value = evaluate(expression);
@@ -127,37 +137,35 @@ const readBudgets = (file: string, text: string): FileBudgets => {
       ? value
       : "unknown";
   };
-  const lineOf = (position: number): number =>
-    source.getLineAndCharacterOfPosition(position).line + 1;
+  const lineIndex = createLineIndex(text);
+  const lineOf = (offset: number): number => lineIndex(offset).line + 1;
 
   let defaultTimeout: FileBudgets["defaultTimeout"];
-  for (const statement of source.statements) {
+  for (const statement of program.body) {
     if (
-      ts.isExpressionStatement(statement) &&
-      ts.isCallExpression(statement.expression) &&
-      ts.isIdentifier(statement.expression.expression) &&
-      statement.expression.expression.text === "setDefaultTimeout"
+      statement.type === "ExpressionStatement" &&
+      statement.expression.type === "CallExpression" &&
+      statement.expression.callee.type === "Identifier" &&
+      statement.expression.callee.name === "setDefaultTimeout"
     )
       defaultTimeout = timeoutOf(statement.expression.arguments.at(0));
   }
   const tests: TestSpan[] = [];
-  const visit = (node: ts.Node): void => {
+  walkAst(program, (node) => {
     if (
-      ts.isCallExpression(node) &&
-      TEST_CALLEES.has(rootName(node.expression) ?? "") &&
+      node.type === "CallExpression" &&
+      TEST_CALLEES.has(rootName(node.callee) ?? "") &&
       node.arguments.length >= 2
     )
       tests.push({
-        startLine: lineOf(node.getStart(source)),
-        endLine: lineOf(node.getEnd()),
+        startLine: lineOf(node.start),
+        endLine: lineOf(node.end),
         timeout:
           node.arguments.length >= 3
             ? timeoutOf(node.arguments.at(-1))
             : undefined,
       });
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
+  });
   return { defaultTimeout, tests };
 };
 

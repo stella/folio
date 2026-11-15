@@ -18,6 +18,13 @@ import path from "node:path";
 const __dirname = import.meta.dirname;
 const FIXTURES_DIR = path.join(__dirname, "fixtures");
 
+// `FOLIO_RENDERING_SESSION=canonical` renders every fixture on the canonical
+// session instead of the default engine, against the same baselines.
+const SESSION_QUERY =
+  process.env["FOLIO_RENDERING_SESSION"] === "canonical"
+    ? "&session=canonical"
+    : "";
+
 // Auto-discover all .docx files in the fixtures directory
 const fixtures = fs
   .readdirSync(FIXTURES_DIR)
@@ -28,7 +35,7 @@ for (const fixture of fixtures) {
   test.describe(fixture, () => {
     test(`renders correctly`, async ({ page }) => {
       // Load the fixture via query param
-      await page.goto(`/?file=${encodeURIComponent(fixture)}`);
+      await page.goto(`/?file=${encodeURIComponent(fixture)}${SESSION_QUERY}`);
 
       // Wait for the editor to finish rendering
       // The editor sets data-testid="folio-editor" on the root element
