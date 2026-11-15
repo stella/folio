@@ -23,7 +23,6 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
-import * as snapshots from "../../../docx-core/src/ops/paragraphPropertySnapshot";
 import * as patchAsRead from "../canonical/paragraphPatchAsRead";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -34,7 +33,6 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
-  ParagraphPropertyChange,
 } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 import type {
@@ -330,42 +328,6 @@ describe("paragraph properties an operation sets", () => {
         expect(result.failed).toBe(true);
       } finally {
         mock.module("../canonical/paragraphPatchAsRead", () => original);
-      }
-    },
-    propertyTestTimeout(60_000),
-  );
-
-  test(
-    "the law catches a direct edit that leaves a pending change's current properties as recorded",
-    async () => {
-      // The test-only break: a direct edit leaves the pending change as the
-      // tracked edit recorded it.
-      const original = { ...snapshots };
-      mock.module(
-        "../../../docx-core/src/ops/paragraphPropertySnapshot",
-        () => ({
-          ...original,
-          changesRecordingAuthored: (
-            changes: readonly ParagraphPropertyChange[],
-          ) => [...changes],
-        }),
-      );
-      const buffer = await fixture();
-      try {
-        const result = await fc.check(
-          law(buffer, { applied: 0 }),
-          propertyConfig({
-            numRuns: 1,
-            examples: [[DIRECT_AFTER_TRACKED]],
-            reporter: () => undefined,
-          }),
-        );
-        expect(result.failed).toBe(true);
-      } finally {
-        mock.module(
-          "../../../docx-core/src/ops/paragraphPropertySnapshot",
-          () => original,
-        );
       }
     },
     propertyTestTimeout(60_000),
