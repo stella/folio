@@ -237,19 +237,14 @@ describe("a paragraph whose mark is pending deletion", () => {
           expect(legacy.refusals).toEqual([]);
           expect(canonical.refusals).toEqual([]);
           expect(canonical.skipped).toEqual(legacy.skipped);
-          // A property edit waits for the pending deletion; a replacement of
-          // the paragraph's text and style is an edit both engines take
-          // (`pendingMarkEditRefusal`).
-          if (
-            resolution === "pending" &&
-            operation.type === "setBlockParagraphProperties"
-          ) {
+          // A property edit waits for the pending deletion, and so does a
+          // replacement that restyles the paragraph: it edits the paragraph's
+          // properties as well (`pendingMarkEditRefusal`).
+          if (resolution === "pending") {
             expect(legacy.skipped).toEqual(["pendingParagraphMarkDeletion"]);
             return;
           }
-          if (resolution !== "pending") expect(legacy.skipped).toEqual([]);
-          // Both engines skipped it alike (above): nothing else to compare.
-          else if (legacy.skipped.length > 0) return;
+          expect(legacy.skipped).toEqual([]);
           expect(await outcomes(canonical.bytes)).toEqual(
             await outcomes(legacy.bytes),
           );
