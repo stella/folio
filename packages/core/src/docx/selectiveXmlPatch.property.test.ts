@@ -232,11 +232,12 @@ describe("buildPatchedDocumentXml property invariants", () => {
           buildPatchedDocumentXml(original, serialized, changed),
         ).toBeNull();
 
-        const structural = buildStructuralDocumentPatch({
+        const result = buildStructuralDocumentPatch({
           originalXml: original,
           serializedXml: serialized,
           changedIds: changed,
         });
+        const structural = result.type === "patched" ? result.xml : null;
         expect(structural).not.toBeNull();
         expect(structural).toContain(
           `xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"`,
@@ -266,8 +267,8 @@ describe("buildPatchedDocumentXml property invariants", () => {
             originalXml: original,
             serializedXml: serialized,
             changedIds: changed,
-          }),
-        ).not.toBeNull();
+          }).type,
+        ).toBe("patched");
       }),
       {
         numRuns: 20,
@@ -333,8 +334,8 @@ describe("buildPatchedDocumentXml property invariants", () => {
               originalXml: original,
               serializedXml: serialized,
               changedIds: new Set(["A0000001"]),
-            }),
-          ).not.toBeNull();
+            }).type,
+          ).toBe("patched");
         },
       ),
       {

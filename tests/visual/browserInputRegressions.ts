@@ -2,6 +2,7 @@ import {
   BROWSER_PASTE_PAYLOADS,
   type BrowserInputTrace,
 } from "./browserInputTrace";
+import type { WordDeletionDirection } from "./wordDeletion";
 
 export const PINNED_BROWSER_INPUT_TAG = "@pinned-browser-input";
 
@@ -1418,9 +1419,130 @@ export const CANONICAL_REPLAY_OF_DEFAULT_FINDING_4CFD6DADC63EEB36 = {
   },
 } satisfies CanonicalRegression;
 
+/**
+ * A canonical trace that commits other text than the default editor by
+ * design: the canonical session is the authority, and `reason` says why. The
+ * named block commits what the platform convention gives; every other block,
+ * and every change outside the block, what the default editor commits.
+ */
+export type CanonicalDesignedDifference = {
+  reason: "Deletion by word and by line follows the platform convention.";
+  /** The block's index in the document. */
+  block: number;
+  /** The block's text before the trace, checked against the document. */
+  text: string;
+  /** Where the trace's keys leave the caret in `text`. */
+  caret: number;
+  /** The word deletions the keys make, in order. */
+  deletions: readonly WordDeletionDirection[];
+};
+
+const WORD_DELETION_DIFFERENCE = (
+  difference: Omit<CanonicalDesignedDifference, "reason">,
+): CanonicalDesignedDifference => ({
+  reason: "Deletion by word and by line follows the platform convention.",
+  ...difference,
+});
+
+/**
+ * Word deletion with Ctrl+Backspace and Ctrl+Delete on the canonical session:
+ * inside a word, across runs, at a paragraph's edges (where it joins as the
+ * plain key does), beside bookmarks, in lists and in table cells. Where the
+ * default editor deletes one character, the trace names the difference.
+ */
+const CANONICAL_WORD_DELETION_TRACES = (
+  [
+    ["plain-markdown", ["ControlOrMeta+Home", "End", "Control+Backspace"]],
+    [
+      "plain-markdown",
+      ["ControlOrMeta+Home", "ArrowRight", "ArrowRight", "Control+Delete"],
+      WORD_DELETION_DIFFERENCE({
+        block: 0,
+        text: "Intro paragraph.",
+        caret: 2,
+        deletions: ["forward"],
+      }),
+    ],
+    [
+      "plain-markdown",
+      ["ControlOrMeta+Home", "ArrowDown", "Home", "Control+Backspace"],
+    ],
+    ["plain-markdown", ["ControlOrMeta+Home", "End", "Control+Delete"]],
+    [
+      "fields-links-bookmarks",
+      ["ControlOrMeta+Home", "End", "Control+Backspace", "Control+Backspace"],
+      WORD_DELETION_DIFFERENCE({
+        block: 0,
+        text: "Bookmarked heading text",
+        caret: 23,
+        deletions: ["backward", "backward"],
+      }),
+    ],
+    ["rtl-cjk", ["ControlOrMeta+Home", "End", "Control+Backspace"]],
+    [
+      "mixed-lists",
+      ["ControlOrMeta+Home", "ArrowDown", "End", "Control+Backspace"],
+      WORD_DELETION_DIFFERENCE({
+        block: 1,
+        text: "Alpha",
+        caret: 5,
+        deletions: ["backward"],
+      }),
+    ],
+    [
+      "tables",
+      ["ControlOrMeta+Home", "ArrowDown", "End", "Control+Backspace"],
+      WORD_DELETION_DIFFERENCE({
+        block: 1,
+        text: "Merged A1",
+        caret: 9,
+        deletions: ["backward"],
+      }),
+    ],
+    [
+      "tables",
+      ["ControlOrMeta+Home", "ArrowDown", "Home", "Control+Delete"],
+      WORD_DELETION_DIFFERENCE({
+        block: 1,
+        text: "Merged A1",
+        caret: 0,
+        deletions: ["forward"],
+      }),
+    ],
+  ] as const satisfies readonly (
+    | readonly [BrowserInputTrace["shape"], readonly string[]]
+    | readonly [
+        BrowserInputTrace["shape"],
+        readonly string[],
+        CanonicalDesignedDifference,
+      ]
+  )[]
+).map((entry, index) => {
+  const [shape, keys] = entry;
+  const designedDifference = entry.length === 3 ? entry[2] : undefined;
+  return {
+    authority: "canonical",
+    seed: 0,
+    path: `word-deletion-${shape}-${String(index)}`,
+    fingerprint: "canonical-word-deletion",
+    comparesWithDefaultEditor: true,
+    ...(designedDifference === undefined ? {} : { designedDifference }),
+    trace: { shape, actions: [{ kind: "keys", keys: [...keys] }] },
+  } satisfies {
+    authority: "canonical";
+    seed: number;
+    path: string;
+    fingerprint: string;
+    comparesWithDefaultEditor: true;
+    designedDifference?: CanonicalDesignedDifference;
+    trace: BrowserInputTrace;
+  };
+});
+
 export const BROWSER_INPUT_REGRESSIONS = [
   ...BROWSER_INVISIBLE_MARKER_TRACES,
   ...BROWSER_MODIFIED_BACKSPACE_TRACES,
+  ...CANONICAL_WORD_DELETION_TRACES,
   ...BROWSER_KEY_OVER_SELECTION_TRACES,
   BROWSER_NOTES_SEED_197,
   BROWSER_LIST_SEED_47,

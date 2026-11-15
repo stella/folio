@@ -14,7 +14,6 @@ import { isBlockBoundaryNode } from "../prosemirror/keptRangeBoundaries";
 import { paragraphLeftAfter } from "../prosemirror/paragraphPropertyCarry";
 import { runInCellPending } from "../prosemirror/tableRunIn";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import { buildCleanBlockText } from "./clean-text";
 import type { NoteReferenceLabels } from "./note-references";
 import type { FolioAIEditSkippedOperation } from "./types";
@@ -246,10 +245,15 @@ export const PENDING_JOIN_INSERTION_REFUSAL: PendingRefusal = {
     "Accepting the pending paragraph mark deletion before this place would run the paragraph together with the words before it or the table after it. Resolve that change first, or insert elsewhere.",
 };
 
-/** A property edit on a paragraph whose mark is pending deletion. */
+/**
+ * A public operation that edits a paragraph's properties waits while the
+ * paragraph's mark is pending deletion, in both engines: accepting the
+ * deletion gives the joined paragraph the next paragraph's properties, so
+ * the edit would not survive it. A merge carries its own result's properties
+ * (`mergedParagraphProperties`). The refusal is the rule, not a gap.
+ */
 export const PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL: PendingRefusal = {
   reason: "pendingParagraphMarkDeletion",
-  canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
   message:
     "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
 };
