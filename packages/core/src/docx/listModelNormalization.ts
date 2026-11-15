@@ -12,6 +12,7 @@ import {
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,
   replaceStoryBody,
+  storyBody,
   withBodyContent,
   withParagraphRenderings,
 } from "@stll/docx-core/ops";
@@ -438,6 +439,42 @@ export class ListNormalizationCache {
     this.normalized.set(key, normalized);
     return replaced;
   }
+
+  /**
+   * Keep each replaced block of `story` as the block the normalized story
+   * holds in its place. A container whose paragraphs normalized is rebuilt
+   * where the document holds it; the record names that block, so the next
+   * normalization reuses it.
+   */
+  held(
+    story: OpStory,
+    blocks: readonly BlockContent[],
+    replaced: readonly (readonly [number, BlockContent])[],
+  ): void {
+    const key = storyKey(story);
+    const records = this.runs.get(key);
+    if (records === undefined) return;
+    let next: BlockRecord[] | undefined;
+    for (const [index, output] of replaced) {
+      const block = blocks[index];
+      const record = records[index];
+      if (
+        block === undefined ||
+        block === output ||
+        record === undefined ||
+        record.input !== output
+      )
+        continue;
+      next ??= [...records];
+      next[index] = recordOf(
+        block,
+        record.settled,
+        record.steps,
+        record.before,
+      );
+    }
+    if (next !== undefined) this.runs.set(key, next);
+  }
 }
 
 type ListNormalizationOptions = {
@@ -856,7 +893,11 @@ export const normalizeListModelRendering = (
   // Each story's renderings replace its paragraphs in place: a document known
   // to meet the operations contract still does.
   let normalized = document;
-  for (const { story, body } of stories)
-    normalized = withReplaced(normalized, story, body, replacedIn(body, story));
+  for (const { story, body } of stories) {
+    const replaced = replacedIn(body, story);
+    normalized = withReplaced(normalized, story, body, replaced);
+    if (cache !== undefined && replaced.length > 0)
+      cache.held(story, storyBody(normalized, story).content, replaced);
+  }
   return { document: normalized, inverse };
 };

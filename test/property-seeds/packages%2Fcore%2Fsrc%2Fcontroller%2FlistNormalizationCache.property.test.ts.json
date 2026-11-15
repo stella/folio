@@ -1,0 +1,10 @@
+{
+  "list normalization cache equals full normalization over generated list stories": [
+    {
+      "seed": 1178211071,
+      "path": "2:1:0:0:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "A content control whose paragraph normalized is reused as the story holds it after an edit beside it.",
+      "date": "2026-11-15"
+    }
+  ]
+}
