@@ -1,17 +1,27 @@
 /**
  * Which paragraph a direct join of two paragraphs leaves.
  *
- * A join removes the earlier paragraph's mark, and the joined paragraph ends
- * with the later one's. Accepting the same join tracked keeps the paragraph
- * whose mark remains, so a direct `mergeBlockWithNext`, and a direct
+ * The joined paragraph is the one whose mark remains, as accepting the same
+ * join tracked keeps it. A direct `mergeBlockWithNext`, and a direct
  * `deleteBlock` of a container's final paragraph that a paragraph precedes,
- * leave the later paragraph's identity too: both engines read this one rule.
+ * remove the earlier paragraph's mark and end the joined paragraph with the
+ * later one's: they leave the later paragraph's identity. A paragraph deleted
+ * directly before a table or a content control, with a paragraph before it,
+ * takes its own mark with it: no later mark remains, and the earlier
+ * paragraph keeps its identity. Both engines read this one rule.
  */
 
 import { SPLIT_HALVES, type SplitHalf } from "@stll/docx-core/ops";
 
-/** The half of a direct join whose identity the joined paragraph keeps. */
-export const directJoinSurvivor = (): SplitHalf => SPLIT_HALVES.SECOND;
+/**
+ * The half of a direct join whose identity the joined paragraph keeps: the
+ * later one, unless the later paragraph's mark goes with it.
+ */
+export const directJoinSurvivor = (
+  { laterMarkRemains }: { laterMarkRemains: boolean } = {
+    laterMarkRemains: true,
+  },
+): SplitHalf => (laterMarkRemains ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST);
 
 /**
  * The paragraphs of a direct join that an operation of the same batch can no

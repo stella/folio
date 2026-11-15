@@ -598,11 +598,28 @@ const batchAgainstOneAtATime = async ({
   }
 
   const oracle = await initializedSession();
+  // One at a time, a caller names a paragraph an earlier direct join retired
+  // by the id of the paragraph it joined into, as that join reported it.
+  const joinedInto = new Map<string, string>();
+  const standingId = (id: string): string => {
+    let current = id;
+    for (let step = 0; step < joinedInto.size; step++) {
+      const next = joinedInto.get(current);
+      if (next === undefined) break;
+      current = next;
+    }
+    return current;
+  };
   const materializeAll = (
     entries: readonly { operation: GeneratedOperation; index: number }[],
   ) =>
     entries.flatMap(({ operation, index }) => {
-      const materialized = materialize(oracle, blockIds, operation, index);
+      const materialized = materialize(
+        oracle,
+        blockIds.map(standingId),
+        operation,
+        index,
+      );
       if (materialized === null) {
         report(`op${String(index)} no longer resolves one at a time`);
         return [];
@@ -615,8 +632,10 @@ const batchAgainstOneAtATime = async ({
     }
     // An operation the ones before it already carried out has nothing left
     // to do; the documents are compared below either way.
-    for (const { id, reason } of oracle.apply(mode, operationsToApply)
-      .skipped) {
+    const alone = oracle.apply(mode, operationsToApply);
+    for (const { joined } of alone.applied)
+      if (joined) joinedInto.set(joined.retiredBlockId, joined.blockId);
+    for (const { id, reason } of alone.skipped) {
       if (reason !== "noopOperation") {
         report(`${id} skipped one at a time as ${reason}`);
       }

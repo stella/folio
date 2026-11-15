@@ -276,8 +276,13 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
   return { type: "plain", operation } as const;
 };
 
-/** The two paragraphs a direct operation's intents join, if they join two. */
+/**
+ * The two paragraphs a direct operation's intents join, if one paragraph's
+ * content ends up in another: a deletion that keeps the paragraph before it
+ * leaves nothing of the deleted paragraph there, and joins nothing.
+ */
 const joinedParagraphsOf = (
+  operationType: FolioDocumentOperation["type"],
   intents: readonly EditorIntent[],
 ): FolioAIEditJoinedParagraphs | undefined => {
   const join = intents.find(
@@ -285,6 +290,8 @@ const joinedParagraphsOf = (
       intent.type === "joinParagraphs",
   );
   if (join === undefined) return undefined;
+  if (operationType === "deleteBlock" && join.survivor === "first")
+    return undefined;
   return join.survivor === "first"
     ? { blockId: join.blockId, retiredBlockId: join.nextBlockId }
     : { blockId: join.nextBlockId, retiredBlockId: join.blockId };
@@ -2216,7 +2223,9 @@ export class CanonicalPublicOperations {
       const revisionIds = compiled.value.revisions;
       const revisionId = revisionIds.at(0);
       const joined =
-        batch.mode === "direct" ? joinedParagraphsOf(intents) : undefined;
+        batch.mode === "direct"
+          ? joinedParagraphsOf(operation.type, intents)
+          : undefined;
       appliedById.set(operation.id, {
         id: operation.id,
         ...(commentId === undefined ? {} : { commentId }),
@@ -2428,14 +2437,10 @@ export class CanonicalPublicOperations {
     // tracked, before it, the deletion finds it by identity there too, and
     // the inserted paragraph's own pending mark joins it. A move's halves do
     // the same, so no mark is left on the container's final paragraph.
-    // Directly, before a table or a content control with a paragraph before
-    // it, the paragraph goes whole, as the default engine removes it: the one
-    // before it stays itself and nothing joins.
     if (
       next !== undefined ||
       gainsFollower ||
-      (after !== null && (tracked || previous !== undefined)) ||
-      (tracked && operation.moveId !== undefined)
+      (tracked && (after !== null || operation.moveId !== undefined))
     ) {
       const intents: EditorIntent[] = [
         {
@@ -2485,14 +2490,16 @@ export class CanonicalPublicOperations {
       const cleared = own(paragraph.start, end);
       if (cleared.isErr()) return cleared;
       const intents: EditorIntent[] = [...cleared.value];
-      // Only a container's final paragraph joins the one before it.
+      // The paragraph before it takes over: before a table or a content
+      // control the deleted paragraph's mark goes with it, and the one before
+      // it keeps its identity (`directJoinSurvivor`).
       if (previous !== undefined)
         intents.push({
           type: "joinParagraphs",
           story: projectionStory,
           blockId: previous.blockId,
           nextBlockId: paragraph.blockId,
-          survivor: directJoinSurvivor(),
+          survivor: directJoinSurvivor({ laterMarkRemains: after === null }),
         });
       if (intents.length === 0) return refusal("noopOperation");
       return Result.ok({

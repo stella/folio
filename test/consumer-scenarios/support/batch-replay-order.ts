@@ -345,16 +345,13 @@ export const sequentialGroups = ({
     const id = blockIdOf(operation);
     if (operation.type === "deleteBlock") {
       const row = preRows.find((candidate) => candidate.id === id);
-      if (row === undefined) return [id];
-      const endsContainer = finalBlocks.has(id) && !appendedAfter(id);
-      const carrier = breakCarrierOf(row);
-      if (!deletionRemovesBlock({ endsContainer, carrier: carrier.type }))
-        return [];
-      // Applied directly, a container's final paragraph joins the paragraph
-      // the batch keeps before it, which then goes by the deleted one's id.
-      return mode === "direct" && endsContainer && carrier.type === "kept"
-        ? [carrier.paragraph.id, id]
-        : [id];
+      return row === undefined ||
+        deletionRemovesBlock({
+          endsContainer: finalBlocks.has(id) && !appendedAfter(id),
+          carrier: breakCarrierOf(row).type,
+        })
+        ? [id]
+        : [];
     }
     // Removing a table row or table takes its anchor with it.
     if (operation.type === "deleteTableRow" || operation.type === "deleteTable")
@@ -368,11 +365,22 @@ export const sequentialGroups = ({
     // other; tracked, both stay until the merge is accepted.
     return mode === "direct" ? [row.id, next.id] : [next.id];
   };
+  // A paragraph inserted before one a direct merge joins away goes into the
+  // gap the join keeps, after the join, as the engine runs it.
+  const directlyJoinedAway = new Set(
+    mode === "direct"
+      ? applied
+          .filter(({ type }) => type === "mergeBlockWithNext")
+          .map(blockIdOf)
+      : [],
+  );
   const reordered = orderAddressingBeforeRemoval(groups, (group) => ({
     addresses: group.flatMap((operation) =>
       operation.type === "deleteBlock" ||
       operation.type === "deleteTableRow" ||
-      operation.type === "deleteTable"
+      operation.type === "deleteTable" ||
+      (operation.type === "insertBeforeBlock" &&
+        directlyJoinedAway.has(blockIdOf(operation)))
         ? []
         : [blockIdOf(operation)],
     ),

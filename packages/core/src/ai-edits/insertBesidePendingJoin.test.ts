@@ -81,14 +81,26 @@ const edit = async ({ mode, batched, merged, insertion }: EditOptions) => {
     separator: " ",
     ...(properties !== undefined && { mergedParagraphProperties: properties }),
   };
-  const insert = insertion(heading.id);
-  const batches = batched ? [[merge, insert]] : [[merge], [insert]];
-  for (const operations of batches) {
-    const { skipped } = reviewer.applyOperations(operations, {
+  const applies = (operations: FolioDocumentOperation[]) => {
+    const { applied, skipped } = reviewer.applyOperations(operations, {
       mode,
       atomic: true,
     });
     expect(skipped).toEqual([]);
+    return applied;
+  };
+  if (batched) applies([merge, insertion(heading.id)]);
+  else {
+    // A later batch names the joined paragraph as it now stands: applied
+    // directly, the join keeps the later paragraph's id.
+    const joined = applies([merge]).find(
+      (entry) => entry.joined !== undefined,
+    )?.joined;
+    applies([
+      insertion(
+        joined?.retiredBlockId === heading.id ? joined.blockId : heading.id,
+      ),
+    ]);
   }
   if (mode !== "direct") reviewer.acceptAll();
   const reopened = await FolioDocxReviewer.fromBuffer(

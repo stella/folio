@@ -5912,6 +5912,14 @@ const applyFolioAIEditOperationsInternal = ({
       item.operation.type === "deleteBlock" ? [item.blockFrom] : [],
     ),
   );
+  // Paragraphs a direct merge of the batch joins into the next one.
+  const directlyJoinedAway = new Set(
+    producesTrackedChanges
+      ? []
+      : executableResolved.flatMap((item) =>
+          item.operation.type === "mergeBlockWithNext" ? [item.blockFrom] : [],
+        ),
+  );
   // Blocks by their position before the batch.
   const blockAccess = (item: ResolvedOperation): BatchBlockAccess<number> => {
     const doc = view.state.doc;
@@ -5945,6 +5953,15 @@ const applyFolioAIEditOperationsInternal = ({
     ) {
       return { addresses: [], removes: [] };
     }
+    // A paragraph inserted before one a direct merge joins away goes into
+    // the gap before the joined paragraph, which the join keeps: it names
+    // no content the join changes, so it need not run first.
+    if (
+      item.operation.type === "insertBeforeBlock" &&
+      directlyJoinedAway.has(item.blockFrom)
+    ) {
+      return { addresses: [], removes: [] };
+    }
     if (item.operation.type !== "deleteBlock") {
       return { addresses: [item.blockFrom], removes: [] };
     }
@@ -5970,23 +5987,12 @@ const applyFolioAIEditOperationsInternal = ({
           (other.operation.type === "insertTable" &&
             other.operation.position !== "before")),
     );
-    const endsContainer =
-      !appended && paragraphEndsItsContainer(at, item.blockNode.type.name);
-    const carrier = finalBreakCarrier(before);
     const removes = deletionRemovesBlock({
-      endsContainer,
-      carrier: carrier.type,
+      endsContainer:
+        !appended && paragraphEndsItsContainer(at, item.blockNode.type.name),
+      carrier: finalBreakCarrier(before).type,
     });
-    if (!removes) return { addresses: [], removes: [] };
-    // Applied directly, a container's final paragraph joins the paragraph the
-    // batch keeps before it, which then goes by the deleted one's id.
-    return {
-      addresses: [],
-      removes:
-        !producesTrackedChanges && endsContainer && carrier.type === "kept"
-          ? directJoinTakes(carrier.paragraph, item.blockFrom)
-          : [item.blockFrom],
-    };
+    return { addresses: [], removes: removes ? [item.blockFrom] : [] };
   };
   const groupRuns = (items: readonly ResolvedOperation[]) =>
     groupInsertionRuns(
