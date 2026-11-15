@@ -5708,7 +5708,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             pageWidth={
               commentsPageWidth ? Math.round(commentsPageWidth / 15) : 816
             }
-            editorContainerRef={scrollContainerRef}
+            columnStart={panelLayout.commentsColumnStart}
+            scrollContainer={scrollContainer}
             onCommentClick={handleCommentClick}
             onCommentResolve={handleCommentResolve}
             onCommentDelete={handleCommentDelete}
@@ -5741,6 +5742,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       isAddingComment,
       commentsSurface,
       dismissCommentsDrawer,
+      panelLayout.commentsColumnStart,
+      scrollContainer,
       visibleComments,
     ]);
     const getActiveHfView = useCallback(
