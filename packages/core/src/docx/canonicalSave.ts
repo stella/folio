@@ -10,13 +10,20 @@ import {
 
 import { withoutUnreferencedNotes } from "../prosemirror/noteReferenceReview";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
-import type { CanonicalSaveSnapshot } from "../types/canonicalSave";
+import type {
+  CanonicalSaveSnapshot,
+  CanonicalSaveSnapshotBaseline,
+} from "../types/canonicalSave";
+import type { HeaderFooter } from "../types/document";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioGetDocxOptions,
 } from "../types/docxSerialization";
 import { repackWithCanonicalStoryRemovals } from "./canonicalStoryRepack";
-import { getDocumentSourceBaseline } from "./headerFooterVerbatim";
+import {
+  copyHeaderFooterBaselineHandles,
+  getDocumentSourceBaseline,
+} from "./headerFooterVerbatim";
 import type { SaveDiagnostic } from "./saveDiagnostics";
 import type { FolioSelectiveSaveFlags } from "./selectiveSaveFlags";
 import { resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
@@ -50,6 +57,56 @@ type SerializeCanonicalSaveOptions = {
 };
 
 /** Model and change signals come from one committed snapshot, never from PM. */
+/**
+ * `document` saved against `baseline`: its buffer, its body capture, and the
+ * verbatim source of each header and footer, so an edit since the baseline's
+ * save is judged against what that save wrote.
+ */
+const withSaveBaseline = (
+  document: Document,
+  { buffer, document: baseline }: CanonicalSaveSnapshotBaseline,
+): Document => {
+  const rebaseParts = (
+    parts: Map<string, HeaderFooter> | undefined,
+    sources: Map<string, HeaderFooter> | undefined,
+  ) =>
+    parts === undefined
+      ? undefined
+      : new Map(
+          [...parts].map(([rId, part]) => {
+            const rebased: HeaderFooter = { ...part };
+            delete rebased.verbatimXml;
+            delete rebased.verbatimFingerprint;
+            const source = sources?.get(rId);
+            if (source?.verbatimXml !== undefined)
+              rebased.verbatimXml = source.verbatimXml;
+            if (source?.verbatimFingerprint !== undefined)
+              rebased.verbatimFingerprint = source.verbatimFingerprint;
+            return [rId, rebased];
+          }),
+        );
+  const headers = rebaseParts(
+    document.package.headers,
+    baseline.package.headers,
+  );
+  const footers = rebaseParts(
+    document.package.footers,
+    baseline.package.footers,
+  );
+  const rebased: Document = {
+    ...document,
+    originalBuffer: buffer,
+    package: {
+      ...document.package,
+      document: { ...document.package.document },
+      ...(headers === undefined ? {} : { headers }),
+      ...(footers === undefined ? {} : { footers }),
+    },
+  };
+  copyHeaderFooterBaselineHandles(rebased, baseline);
+  return rebased;
+};
+
 export const serializeCanonicalSave = async ({
   snapshot,
   repack: repackPolicy = "allow",
@@ -87,7 +144,13 @@ export const serializeCanonicalSave = async ({
     for (const id of packageParagraphIds(snapshot.document.package))
       if (!kept.has(idKey(id))) heldBack.add(idKey(id));
   }
-  const baseline = document.originalBuffer;
+  // The package the session last saved, when it has one, is what this save
+  // patches; the result still carries the session's own document.
+  const written =
+    snapshot.saveBaseline === undefined
+      ? document
+      : withSaveBaseline(document, snapshot.saveBaseline);
+  const baseline = written.originalBuffer;
   const flags = resolveSelectiveSaveFlags(featureFlags);
   const diagnostics: SaveDiagnostic[] = [];
   const onDiagnostic = (diagnostic: SaveDiagnostic) => {
@@ -106,7 +169,7 @@ export const serializeCanonicalSave = async ({
   let selectiveBuffer: ArrayBuffer | null = null;
   if (baseline && (useSelective || flags.selectiveSaveTripwire)) {
     const { attemptSelectiveSave } = await import("./selectiveSave");
-    selectiveBuffer = await attemptSelectiveSave(document, baseline, {
+    selectiveBuffer = await attemptSelectiveSave(written, baseline, {
       bodyAuthority: "canonical",
       changedParaIds: new Set(
         snapshot.changedBlockIds.filter((id) => !heldBack.has(idKey(id))),
@@ -142,22 +205,22 @@ export const serializeCanonicalSave = async ({
       )
         changedNoteParaIds.add(paragraph.paraId);
   const repack = () => {
-    if (baseline && getDocumentSourceBaseline(document).type === "missing")
+    if (baseline && getDocumentSourceBaseline(written).type === "missing")
       onDiagnostic({
         type: "sourceReplayUnavailable",
         part: "word/document.xml",
       });
     return baseline
       ? repackWithCanonicalStoryRemovals({
-          document,
+          document: written,
           repack: () =>
-            repackDocx(document, {
+            repackDocx(written, {
               onDiagnostic,
               bodyAuthority: "canonical",
               changedNoteParaIds,
             }),
         })
-      : createDocx(document, { onDiagnostic, bodyAuthority: "canonical" });
+      : createDocx(written, { onDiagnostic, bodyAuthority: "canonical" });
   };
   let buffer = useSelective ? selectiveBuffer : null;
   let fullBuffer: ArrayBuffer | null = null;
