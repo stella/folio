@@ -76,6 +76,25 @@ const numberingStateOf = (document: Document): NumberingPartState => {
     : { type: "definitions", value: numbering };
 };
 
+/**
+ * A definition list with one more entry: where the list a creation restores
+ * holds it, else before the first entry of a greater id, so concurrent
+ * creations leave one order whichever applies first.
+ */
+const placedById = <Entry>(
+  list: readonly Entry[],
+  entry: Entry,
+  idOf: (each: Entry) => number,
+  restored: readonly Entry[] | undefined,
+): Entry[] => {
+  const id = idOf(entry);
+  const captured = restored?.findIndex((each) => idOf(each) === id) ?? -1;
+  let at = list.findIndex((each) => idOf(each) > id);
+  if (at === -1) at = list.length;
+  if (captured !== -1) at = Math.min(captured, list.length);
+  return [...list.slice(0, at), entry, ...list.slice(at)];
+};
+
 const withNumberingState = (
   document: Document,
   state: NumberingPartState,
@@ -197,13 +216,25 @@ const applyCreateNumberingInstance = (
       `Abstract numbering id ${op.num.abstractNumId} does not exist.`,
     );
   }
+  const restored =
+    op.restore?.type === "definitions" ? op.restore.value : undefined;
   const nextNumbering = {
     ...numbering,
     abstractNums:
       op.abstractNum === undefined
         ? numbering.abstractNums
-        : [...numbering.abstractNums, op.abstractNum],
-    nums: [...numbering.nums, op.num],
+        : placedById(
+            numbering.abstractNums,
+            op.abstractNum,
+            ({ abstractNumId }) => abstractNumId,
+            restored?.abstractNums,
+          ),
+    nums: placedById(
+      numbering.nums,
+      op.num,
+      ({ numId }) => numId,
+      restored?.nums,
+    ),
   };
   const next = {
     ...document,

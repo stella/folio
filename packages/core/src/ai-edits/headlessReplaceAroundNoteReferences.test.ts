@@ -14,7 +14,6 @@ import { fromMarkdown } from "../markdown";
 import { createDocx, ensureParaIds } from "../server";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import type { Endnote, Footnote, Paragraph } from "../types/document";
-import { canonicalReviewerSave } from "./__tests__/canonicalReviewerSave";
 import { FolioDocxReviewer } from "./headless";
 import * as noteReferences from "./note-references";
 import type { FolioAIEditApplyMode } from "./types";
@@ -114,10 +113,7 @@ const open = (buffer: ArrayBuffer, session: HeadlessReviewerSession) =>
     session,
   });
 
-const save = (reviewer: FolioDocxReviewer, session: HeadlessReviewerSession) =>
-  session === "canonical"
-    ? canonicalReviewerSave(reviewer)
-    : reviewer.toBuffer();
+const save = (reviewer: FolioDocxReviewer) => reviewer.toBuffer();
 
 /** The references and the words of the saved body. */
 const savedBody = async (buffer: ArrayBuffer) => {
@@ -164,7 +160,7 @@ const runCase = async (
     skipped: result.skipped.map((skip) => skip.reason),
   };
   const pendingText = firstBlockText(reviewer);
-  const pendingSaved = await save(reviewer, session);
+  const pendingSaved = await save(reviewer);
   const pending = await savedBody(pendingSaved);
   const reopened = await open(pendingSaved, session);
   const reads = {
@@ -191,8 +187,8 @@ const runCase = async (
     outcome,
     reads: {
       ...reads,
-      accepted: await savedBody(await save(accepted, session)),
-      rejected: await savedBody(await save(rejected, session)),
+      accepted: await savedBody(await save(accepted)),
+      rejected: await savedBody(await save(rejected)),
     },
   };
 };
