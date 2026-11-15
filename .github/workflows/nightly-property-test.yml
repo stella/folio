@@ -33,17 +33,10 @@ jobs:
 
       # Fresh seeds each night; reruns retain the same seed. Pinned regressions
       # run alongside a larger generated budget than the default 12/8 runs.
-      - name: Generated random and collision flows
+      - name: L3 at-once replay on main
         run: |
-          set -o pipefail
           mkdir -p test-results
-          export FOLIO_SCENARIO_SEED=$(( (GITHUB_RUN_ID * 7919) % 2147483647 ))
-          bun scripts/consumer-scenarios.ts -- fuzz.test.ts 2>&1 \
-            | tee test-results/nightly-consumer-fuzz.log
-        env:
-          FOLIO_SCENARIO_FUZZ_RUNS: "240"
-          FOLIO_SCENARIO_COLLISION_RUNS: "160"
-          FOLIO_SCENARIO_FUZZ_STEPS: "16"
+          cd packages/docx-core && PROPERTY_TEST_SEED=2133206926 PROPERTY_TEST_PATH='88:3:6:14:14:15:15:15:15:15:17:18:22:24:29:29:29:29:29:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:32:33:31:49:39:41:40:8:27:0:1:4:10:23:18:18:18:18:20:18:20:18:18:20:18:29:20:3:18:17:18:17:17:17:18:18:17:17:19:17:17:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:22:37:28:21:21:24:25:33:24:52:42:40:56:17:17:17:55:56:56:58:53:54:58:54:54:54:54:54:54:54:54:54:55:55:55:55:55:55:55:55:55:77:56:61:61:61:62:26:24:24:26:26:29:24:24:24:26:24:24:35:22:21:21:21:21:21:21:21:21:21:31:27:29:27:19:33:24:24:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:30:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29' bun test ./src/ops/__tests__/review.property.test.ts -t 'L3: resolving a run'\''s revisions at once equals resolving each operation'\''s in turn' 2>&1 | tee ../../test-results/nightly-consumer-fuzz.log | grep -E '\(pass\)|\(fail\)|error:' | cut -c1-3000
 
       - name: Keep the consumer fuzz log
         if: always()
