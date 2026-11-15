@@ -240,7 +240,32 @@ export const expectPanelsDoNotOverlap = async (
         element = element.parentElement
       )
         chain.push(describe(element));
+      // The page and every box between it and the scroll port, with what
+      // centres it: width, client width, left, transform, min width, flex.
+      const pageChain: Record<string, unknown>[] = [];
+      for (
+        let element: Element | null = document.querySelector(".layout-page");
+        element && element !== scroll.parentElement && pageChain.length < 14;
+        element = element.parentElement
+      ) {
+        const style = getComputedStyle(element);
+        const html = element instanceof HTMLElement ? element : null;
+        pageChain.push({
+          ...describe(element),
+          clientWidth: html?.clientWidth,
+          offsetLeft: html?.offsetLeft,
+          inlineLeft: html?.style.left,
+          inlineWidth: html?.style.width,
+          cssLeft: style.left,
+          cssWidth: style.width,
+          transform: style.transform,
+          flex: `${style.flexGrow} ${style.flexShrink} ${style.flexBasis}`,
+          overflowX: style.overflowX,
+          justify: style.justifyContent,
+        });
+      }
       return {
+        pageChain,
         url: location.href,
         innerWidth: window.innerWidth,
         clientWidth: scroll.clientWidth,
