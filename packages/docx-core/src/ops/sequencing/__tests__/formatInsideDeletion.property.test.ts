@@ -187,6 +187,11 @@ const scenario = fc
   .map(([left, right]): RunContent[] =>
     left.concat([{ type: "text", text: "fgh" }], right),
   )
+  // A note holds one automatic reference mark.
+  .filter(
+    (content) =>
+      content.filter(({ type }) => type === "noteMarker").length <= 1,
+  )
   .chain((content) => {
     const gaps = gapsOf(content);
     return fc
@@ -358,20 +363,36 @@ describe("a direct format inside a concurrent direct deletion", () => {
     propertyTestTimeout(30_000),
   );
 
-  test(
-    "a deletion that records no kept note mark is caught",
-    () => {
-      const result = fc.check(
-        rejoined(DOCUMENT_OP_TYPES.DELETE_RANGE),
-        // The break is a counterexample on purpose: report nothing.
-        propertyConfig({
-          numRuns: 1,
-          examples: EXAMPLES,
-          reporter: () => undefined,
-        }),
-      );
-      expect(result.failed).toBe(true);
-    },
-    propertyTestTimeout(30_000),
-  );
+  test("typing after a deletion that keeps a note's mark lands after the mark in either order", () => {
+    // The deletion of 0..5 keeps the note's mark at 3; the typing at 5 is
+    // after it in the typing order, and must be after it in the other.
+    const content: RunContent[] = [
+      { type: "text", text: "fgh" },
+      LEAVES.noteMarker,
+      { type: "text", text: "ab" },
+    ];
+    const outcomes = [undefined, DOCUMENT_OP_TYPES.DELETE_RANGE].map(
+      (forget) => {
+        const { story, document: base } = placeOf(content);
+        const deletion = batchOf("deletion", {
+          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+          from: position(story, { offset: 0, zeroWidthBefore: 0 }),
+          to: position(story, { offset: 5, zeroWidthBefore: 0 }),
+        });
+        const typing = batchOf("typing", {
+          type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+          at: position(story, { offset: 5, zeroWidthBefore: 0 }),
+          text: "XY",
+          runProps: "inherit",
+        });
+        const deletionFirst = inOrder(base, deletion, typing, forget);
+        const typingFirst = inOrder(base, typing, deletion, forget);
+        return "document" in deletionFirst && "document" in typingFirst
+          ? equalForStaleness(deletionFirst.document, typingFirst.document)
+          : undefined;
+      },
+    );
+    // The test-only break: a deletion recording no kept mark is caught.
+    expect(outcomes).toEqual([true, false]);
+  });
 });
