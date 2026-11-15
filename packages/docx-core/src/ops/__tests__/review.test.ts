@@ -6,7 +6,7 @@
  * that silently dropped a mark).
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 import type {
   BlockContent,
@@ -23,6 +23,7 @@ import {
 } from "../apply";
 import { isCommentExhausted } from "../comments";
 import { contractViolation, normalizeForOps } from "../contract";
+import * as leavesModule from "../leaves";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
@@ -1943,6 +1944,30 @@ describe("a note referenced from inside a field's result", () => {
     ]);
     const result = resolveAll(document, [93], REVISION_DECISIONS.REJECT);
     expect(result.package.footnotes?.map(({ id }) => id)).toEqual([37]);
+  });
+
+  test("a walk that keeps fields whole keeps the note", () => {
+    // The test-only break: note references are read as a field's atom, so
+    // the reference inside the removed field's result is never seen.
+    const original = { ...leavesModule };
+    mock.module("../leaves", () => ({
+      ...original,
+      nestedRecords: original.childNodes,
+    }));
+    try {
+      const document = withNote([
+        run("See "),
+        {
+          type: "insertion",
+          info: { id: 91, author: "A" },
+          content: [referenceField(37)],
+        },
+      ]);
+      const result = resolveAll(document, [91], REVISION_DECISIONS.REJECT);
+      expect(result.package.footnotes?.map(({ id }) => id)).toEqual([37]);
+    } finally {
+      mock.module("../leaves", () => original);
+    }
   });
 });
 
