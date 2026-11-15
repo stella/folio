@@ -21,6 +21,12 @@
       "path": "7:1:2:2:2:2:6:6:6:13:13:10:12:12:9:9:9:9:9:9:9:10:10:10:11:13:12:12:13:12:12:12:12:12:12:12:12:12:12:12:12:13:12:12:12:12:12:12:12:12:12:12:12:12:14:14",
       "note": "A revision decision pending behind a dropped batch meets a concurrent suggesting edit",
       "date": "2026-11-15"
+    },
+    {
+      "seed": -984200208,
+      "path": "12:2:3:4:7:7:10:10:7:6:5:5:5:5:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:5:21:21:21:21:21:21:21:21",
+      "note": "Typing inside text whose acceptance is rejected, dropped with the rejected decision",
+      "date": "2026-11-15"
     }
   ]
 }

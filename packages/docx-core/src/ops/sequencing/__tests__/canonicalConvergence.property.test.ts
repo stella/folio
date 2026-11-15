@@ -876,11 +876,20 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     // a value's names do not show, so the check covers answers where every
     // batch involved edits by position only. Declared: a decision refused
     // against a concurrent tracked edit, whose records may continue a
-    // decided revision in a paragraph the decision names by id alone.
+    // decided revision in a paragraph the decision names by id alone, and
+    // any answer a decision causes, remote or rejected: the paragraphs its
+    // revisions sit in are its footprint, which its ids do not show.
+    const causeOps =
+      event.type === "broadcast"
+        ? event.batch.ops
+        : (peer.client.notices.at(noticed)?.ops ?? []);
     const remotePositional =
       event.type === "broadcast"
         ? event.batch.ops.every((op) => !isBlockScoped(op))
         : true;
+    const causedByDecision = causeOps.some(
+      ({ type }) => type === DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    );
     const cause = new Set(
       dependenciesIn(
         event.type === "broadcast"
@@ -905,6 +914,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       if (
         index > 0 &&
         remotePositional &&
+        !causedByDecision &&
         ahead.every(({ positional }) => positional) &&
         notice.ops.every((op) => !isBlockScoped(op)) &&
         notice.reason.message !== TRACKED_CONTINUATION_REFUSAL &&
