@@ -108,6 +108,7 @@ import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { REVISION_MARK_NAMES } from "../prosemirror/keptRangeBoundaries";
 import {
   adoptNativeSelection,
+  createNativeNavigationPlugin,
   createNativeSelectionRefreshPlugin,
   isCompositionKeyDown,
 } from "../prosemirror/nativeSelection";
@@ -863,6 +864,7 @@ export const createHiddenEditorManager = (
         // pending changes come from the session's own history.
         createParagraphChangeTrackerPlugin(),
         createNativeSelectionRefreshPlugin(),
+        createNativeNavigationPlugin(),
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? document.package.styles,
         ),

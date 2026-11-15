@@ -12,6 +12,7 @@ import { Schema } from "prosemirror-model";
 import type { MarkSpec, NodeSpec } from "prosemirror-model";
 import type { Plugin as PMPlugin } from "prosemirror-state";
 
+import { createNativeNavigationPlugin } from "../nativeSelection";
 import {
   areTransactionInvariantsEnabled,
   createTransactionInvariantPlugin,
@@ -92,7 +93,8 @@ export class ExtensionManager {
     }
 
     // Build final plugin array:
-    // Every editor runtime owns text input at the DOM/model boundary. Install
+    // Every editor runtime owns text input, and the caret a navigation key
+    // moves, at the DOM/model boundary. Install
     // this centrally so body, header/footer, and note views share the policy.
     // Extension plugins and merged keymaps retain their relative priority.
     // The invariant check runs last so it sees what every other plugin's
@@ -100,6 +102,7 @@ export class ExtensionManager {
     // build sets `globalThis.__folioTransactionInvariants`.
     this.plugins = [
       createTextInputPlugin(),
+      createNativeNavigationPlugin(),
       ...allPlugins,
       ...allKeyboardShortcuts.map((shortcuts) => keymap(shortcuts)),
       ...(areTransactionInvariantsEnabled()
