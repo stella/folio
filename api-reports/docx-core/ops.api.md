@@ -421,7 +421,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 12;
+export const DOCUMENT_OP_SCHEMA_VERSION = 13;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -859,6 +859,9 @@ export type InsertTextOp = {
 
 // @public
 export const introducedIds: (before: LeasedIdCensus, after: LeasedIdCensus) => LeasedId[];
+
+// @public
+export const inverseMeetingDocument: (document: Document_2, inverse: readonly DocumentOp[]) => readonly DocumentOp[];
 
 // @public
 export const isCommentAnchorCarrierType: (type: string) => boolean;

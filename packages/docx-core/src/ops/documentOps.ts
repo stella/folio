@@ -63,6 +63,7 @@ export {
   applyDocumentOpEnvelope,
   applyDocumentOp,
   applyDocumentOps,
+  inverseMeetingDocument,
   type AppliedDocumentOp,
 } from "./apply";
 export {

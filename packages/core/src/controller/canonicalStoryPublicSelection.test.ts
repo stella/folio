@@ -45,7 +45,8 @@ test("a public operation on an open header keeps its editor's caret", () => {
       notes.sync();
       parts.sync();
     },
-    onCanonicalCompositionEnd: () => {},
+    onCanonicalCompositionLayout: () => {},
+    getEmbeddedFontFamilyMap: () => undefined,
     onSelectionChange: () => {},
     onKeyDown: () => false,
     onCopy: () => {},
@@ -157,7 +158,8 @@ test("a list a public operation starts reaches the body editor's numbering", () 
     getReadOnly: () => false,
     getDocumentIdentity: () => "public-new-list-numbering",
     onTransaction: () => {},
-    onCanonicalCompositionEnd: () => {},
+    onCanonicalCompositionLayout: () => {},
+    getEmbeddedFontFamilyMap: () => undefined,
     onSelectionChange: () => {},
     onKeyDown: () => false,
     onCopy: () => {},
@@ -231,7 +233,8 @@ test("a list a public operation starts in an open header reaches that editor's n
       notes.sync();
       parts.sync();
     },
-    onCanonicalCompositionEnd: () => {},
+    onCanonicalCompositionLayout: () => {},
+    getEmbeddedFontFamilyMap: () => undefined,
     onSelectionChange: () => {},
     onKeyDown: () => false,
     onCopy: () => {},

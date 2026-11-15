@@ -1269,7 +1269,6 @@
   "packages/core/src/utils/mergeDocumentContent.test.ts": 31,
   "packages/core/src/utils/outlineHeadings.property.test.ts": 8,
   "packages/core/src/utils/paragraphFormattingMerge.test.ts": 1,
-  "packages/core/src/utils/replaceText.test.ts": 17,
   "packages/core/src/utils/sanitizeImageSrc.test.ts": 1,
   "packages/core/src/utils/scriptSegments.test.ts": 2,
   "packages/core/src/utils/sliceText.property.test.ts": 7,

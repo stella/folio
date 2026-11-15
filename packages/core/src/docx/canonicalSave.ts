@@ -33,8 +33,18 @@ export class CanonicalSaveDiagnosticError extends CanonicalSaveDiagnosticErrorBa
   diagnostic: SaveDiagnostic;
 }> {}
 
+const CanonicalSaveRepackRefusedErrorBase: TaggedErrorClass<"CanonicalSaveRepackRefusedError"> =
+  TaggedError("CanonicalSaveRepackRefusedError");
+
+/** A save allowed only to patch the loaded package found that it needs a repack. */
+export class CanonicalSaveRepackRefusedError extends CanonicalSaveRepackRefusedErrorBase<{
+  message: string;
+}> {}
+
 type SerializeCanonicalSaveOptions = {
   snapshot: CanonicalSaveSnapshot;
+  /** `"refuse"`: throw {@link CanonicalSaveRepackRefusedError} rather than build a repack. */
+  repack?: "allow" | "refuse" | undefined;
   options?: FolioGetDocxOptions | undefined;
   featureFlags?: FolioSelectiveSaveFlags | undefined;
 };
@@ -42,10 +52,13 @@ type SerializeCanonicalSaveOptions = {
 /** Model and change signals come from one committed snapshot, never from PM. */
 export const serializeCanonicalSave = async ({
   snapshot,
+  repack: repackPolicy = "allow",
   options,
   featureFlags,
 }: SerializeCanonicalSaveOptions): Promise<{
   buffer: ArrayBuffer;
+  /** Whether the buffer is the selective patch of the baseline or a repack. */
+  path: "selective" | "full-repack";
   document: Document;
   version: number;
   diagnostics: SaveDiagnostic[];
@@ -106,6 +119,10 @@ export const serializeCanonicalSave = async ({
     if (useSelective && !selectiveBuffer)
       onDiagnostic({ type: "selectiveSaveRefused", part: "word/document.xml" });
   }
+  if (repackPolicy === "refuse" && !(useSelective && selectiveBuffer))
+    throw new CanonicalSaveRepackRefusedError({
+      message: "The save needs a repack of the package, which was refused.",
+    });
   // Which note paragraphs changed is the session's journal, as for the body,
   // never a diff of the notes' re-serialization: a note the session never
   // touched (one the package held without a reference, say) is written as the
@@ -167,6 +184,7 @@ export const serializeCanonicalSave = async ({
   for (const diagnostic of diagnostics) options?.onDiagnostic?.(diagnostic);
   return {
     buffer,
+    path: fullBuffer === buffer ? "full-repack" : "selective",
     document,
     version: snapshot.version,
     diagnostics,
