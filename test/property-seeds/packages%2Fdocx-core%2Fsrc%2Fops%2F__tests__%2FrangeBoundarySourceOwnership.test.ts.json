@@ -1,0 +1,18 @@
+{
+  "directional source edges preserve separately floated bookmarks through interior rejections": [
+    {
+      "seed": 379694724,
+      "path": "0",
+      "note": "Bookmarks a rejection kept go inside the record their source owner names, though the record beyond is unlike it.",
+      "date": "2026-11-14"
+    }
+  ],
+  "source occurrence ownership stays distinct when authored containers reuse the same immutable object": [
+    {
+      "seed": 672030360,
+      "path": "0",
+      "note": "A bookmark end kept beside a link goes inside it as its source owner says.",
+      "date": "2026-11-14"
+    }
+  ]
+}

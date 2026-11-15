@@ -1,5 +1,5 @@
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
-import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
+import type { ZipArchive, ZipEntry } from "@stll/docx-core/zip";
 /**
  * Selective Save Module
  *
@@ -22,6 +22,7 @@ import {
 } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { detectDocxConformanceClass } from "./conformance";
+import { readPackageForSave } from "./mainDocumentPart";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
 import { normalizeImportedNumericIds } from "./numericIdNormalization";
@@ -489,7 +490,7 @@ export async function attemptSelectiveSave(
   const commentPlan = planCommentParts(comments);
 
   try {
-    const zip = await ZipArchive.read(originalBuffer);
+    const zip = await readPackageForSave(originalBuffer);
     if (await hasUnmaterializedHyperlinkBindings(doc, zip)) return null;
 
     // The selective path overlays a handful of parts on top of the ORIGINAL

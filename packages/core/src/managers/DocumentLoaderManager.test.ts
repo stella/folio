@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
-import { normalizeForOps, validateOpsDocument } from "@stll/docx-core/ops";
+import {
+  normalizeForOps,
+  packageParagraphIds,
+  validateOpsDocument,
+} from "@stll/docx-core/ops";
 
-import { CanonicalDocxInputError } from "../docx/canonicalSessionInput";
+import {
+  CanonicalDocxInputError,
+  prepareCanonicalDocumentInput,
+  prepareCanonicalDocxInput,
+} from "../docx/canonicalSessionInput";
+import { getParagraphText } from "../docx/paragraphParser";
+import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import type { Document } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -59,6 +69,16 @@ const makeCallbacks = (): {
     },
   };
   return { callbacks, recorded };
+};
+
+/** Settles once the load in flight has committed or failed. */
+const waitForLoad = async (recorded: Recorded): Promise<void> => {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const last = recorded.loadStates.at(-1);
+    if (last !== undefined && last.status !== "loading") return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("The load did not settle.");
 };
 
 describe("DocumentLoaderManager", () => {
@@ -118,6 +138,61 @@ describe("DocumentLoaderManager", () => {
     if (!loaded) return;
     expect(validateOpsDocument(normalizeForOps(loaded)).isOk()).toBe(true);
     expect(loaded.package.document.content.at(0)?.type).toBe("paragraph");
+  });
+
+  test("a canonical parsed-document load opens a model without paragraph ids with the ids its package gets", async () => {
+    const { callbacks, recorded } = makeCallbacks();
+    callbacks.getExperimentalSession = () => "canonical";
+    const model = createEmptyDocument({ initialText: "Plain text" });
+    const paragraph = model.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("No paragraph");
+    delete paragraph.paraId;
+    const manager = new DocumentLoaderManager(callbacks);
+    manager.loadParsedDocument(model);
+    expect(recorded.loadStates).toEqual([{ status: "loading" }]);
+    await waitForLoad(recorded);
+    expect(recorded.errors).toEqual([]);
+    const loaded = recorded.history.state;
+    if (!loaded) throw new Error("Nothing loaded");
+    expect(validateOpsDocument(normalizeForOps(loaded)).isOk()).toBe(true);
+    const direct = await parseDocx(
+      (await prepareCanonicalDocxInput(await createDocx(model))).unwrap(),
+      { detectVariables: false, preloadFonts: false },
+    );
+    expect(packageParagraphIds(loaded.package)).toEqual(
+      packageParagraphIds(direct.package),
+    );
+    expect(recorded.identities).toHaveLength(1);
+  });
+
+  test("a canonical parsed-document load of a model with unique paragraph ids lands at once, as it is", () => {
+    const { callbacks, recorded } = makeCallbacks();
+    callbacks.getExperimentalSession = () => "canonical";
+    const model = createEmptyDocument({ initialText: "Plain text" });
+    new DocumentLoaderManager(callbacks).loadParsedDocument(model);
+    expect(recorded.history.state).toBe(model);
+  });
+
+  test("a buffer load supersedes a canonical parsed-document load still establishing ids", async () => {
+    const { callbacks, recorded } = makeCallbacks();
+    callbacks.getExperimentalSession = () => "canonical";
+    const model = createEmptyDocument({ initialText: "Model" });
+    const paragraph = model.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("No paragraph");
+    delete paragraph.paraId;
+    const manager = new DocumentLoaderManager(callbacks);
+    manager.loadParsedDocument(model);
+    await manager.loadBuffer(
+      await createDocx(createEmptyDocument({ initialText: "Bytes" })),
+    );
+    // The superseded preparation has finished by the time this one has.
+    await prepareCanonicalDocumentInput(model);
+    expect(recorded.identities).toHaveLength(1);
+    const loaded = recorded.history.state;
+    const first = loaded?.package.document.content.at(0);
+    expect(first?.type === "paragraph" && getParagraphText(first)).toBe(
+      "Bytes",
+    );
   });
 
   test("every parsed-document load lands with a fresh identity in the same commit as history", () => {

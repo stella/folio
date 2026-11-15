@@ -412,13 +412,13 @@ export function extractRunFormatting(
       }
 
       case "comment": {
-        const commentId = expectCommentMarkAttrs(mark).commentId;
-        if (commentId) {
-          if (!formatting.commentIds) {
-            formatting.commentIds = [];
-          }
-          formatting.commentIds.push(commentId);
+        // `w:id="0"` is a real comment: the first one a package numbers, and
+        // the first one an editing session creates in a document without any.
+        const { commentId } = expectCommentMarkAttrs(mark);
+        if (!formatting.commentIds) {
+          formatting.commentIds = [];
         }
+        formatting.commentIds.push(commentId);
         break;
       }
 

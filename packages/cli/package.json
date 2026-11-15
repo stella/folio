@@ -49,18 +49,18 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
-    "@stll/agent-input": "0.3.0",
+    "@stll/agent-input": "0.4.2",
     "@stll/docx-core": "workspace:^",
     "@stll/folio-agents": "workspace:^",
     "@stll/folio-core": "workspace:^",
     "@stll/folio-fonts": "workspace:^",
-    "@stll/fuzzy-search": "1.4.0",
+    "@stll/fuzzy-search": "1.4.2",
     "@stll/utf8-boundaries": "workspace:*",
     "better-result": "3.0.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.4.0",
-    "playwright-core": "1.64.1"
+    "playwright-core": "1.65.0"
   },
   "peerDependencies": {
     "playwright-core": ">=1.50.0",

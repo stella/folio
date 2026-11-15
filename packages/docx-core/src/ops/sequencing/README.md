@@ -55,7 +55,14 @@ inline record splits and joins, direct deletions, run and paragraph
 formatting, paragraph splits and joins, anchored paragraph insertion and
 repeated revision decisions. Overlapping revision decisions with opposite
 outcomes reject. Text inherited at a paragraph's start takes the run after
-it, so a concurrent format from the start covers it in either order.
+it, so a concurrent format from the start covers it in either order. A
+direct format lying inside a concurrent direct deletion cut records that the
+deletion, applied first, would have left whole: the sequenced format records
+the records it cut at both of its ends, a run and the text it lay inside, by
+their gaps before it (`cutRecords` in its effect). The deletion rebased over
+the format joins the pieces of each that reaches past both of its ends again,
+with one seam join at its point that many levels deep, which is the depth
+the deletion merges at in the other order.
 
 ## Inline insertions
 

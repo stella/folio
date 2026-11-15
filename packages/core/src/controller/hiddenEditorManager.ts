@@ -154,6 +154,7 @@ import {
   remoteSelectionColor,
 } from "./canonicalRoomEditor";
 import {
+  isCanonicalListParagraph,
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,
 } from "./canonicalStructure";
@@ -999,6 +1000,16 @@ export const createHiddenEditorManager = (
     // and probe behavior; dispatchTransaction still refuses raw document edits.
     // canonical-gap: command-descriptors
     if (intents === undefined) return undefined;
+    // A selection change touches no content: the command runs as it is.
+    if (
+      intents.length > 0 &&
+      intents.every((intent) => intent.type === "selection")
+    )
+      return command(
+        view.state,
+        (transaction) => view?.dispatch(transaction),
+        view,
+      );
     syncCanonicalMode();
     editorSession.session.breakUndoGroup();
     if (
@@ -1146,7 +1157,7 @@ export const createHiddenEditorManager = (
             selection.value.head.blockId,
           )?.source;
           prepared =
-            source?.formatting?.numPr?.kind === "reference" &&
+            isCanonicalListParagraph(source) &&
             state.selection.$from.parent.content.size === 0
               ? prepareCanonicalCommands(session, state, [
                   { type: "removeList" },
@@ -1167,7 +1178,8 @@ export const createHiddenEditorManager = (
           const paragraph = session.projection.paragraph(
             selection.value.head.blockId,
           )?.source;
-          if (paragraph?.formatting?.numPr?.kind === "reference") {
+          // A paragraph its style numbers leaves the list as one of its own.
+          if (isCanonicalListParagraph(paragraph)) {
             prepared = prepareCanonicalCommands(session, state, [
               { type: "removeList" },
             ]);
@@ -1286,6 +1298,8 @@ export const createHiddenEditorManager = (
         deps.onReadOnlyEditAttempt();
         return true;
       }
+      // The host hears of a cut the editor takes, as on the legacy engine.
+      deps.onCut?.();
       if (editorSession.type !== "canonical" || pmView.state.selection.empty)
         return true;
       if (event.clipboardData === null) {
@@ -1638,9 +1652,15 @@ export const createHiddenEditorManager = (
             ? input.handleDOMEvents.input(pmView)
             : false,
         paste: (pmView, event) => {
-          if (editorSession.type === "canonical" && !deps.getReadOnly())
-            return input.handleDOMEvents.paste(pmView, event);
-          return createHiddenEditorClipboardHandlers(deps).paste(pmView, event);
+          if (editorSession.type !== "canonical" || deps.getReadOnly())
+            return createHiddenEditorClipboardHandlers(deps).paste(
+              pmView,
+              event,
+            );
+          const refused = input.handleDOMEvents.paste(pmView, event);
+          // The host hears of a paste the editor takes, as on the legacy engine.
+          if (!refused) deps.onPaste?.();
+          return refused;
         },
         cut: (pmView, event) =>
           editorSession.type === "canonical"
@@ -2083,6 +2103,13 @@ export const createHiddenEditorManager = (
         deps.getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,
         anonymizationSources,
       ),
+    canonicalEditorPositionAt: (position) => {
+      if (editorSession.type !== "canonical") return undefined;
+      // Pending composition text is painted but not yet in the projection.
+      if (editorSession.session.isComposing) return null;
+      const shown = editorSession.session.projection.positionAt(position);
+      return shown.isOk() ? shown.value : null;
+    },
     setCanonicalMode: (mode) => {
       if (editorSession.type !== "canonical") return false;
       modeOverride = mode;

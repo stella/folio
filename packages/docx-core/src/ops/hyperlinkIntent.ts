@@ -29,14 +29,11 @@ import {
   leafSpans,
   partitionContent,
 } from "./leaves";
-import {
-  contentWidth,
-  isTrackedChild,
-  paragraphLength,
-  withChildren,
-} from "./offsets";
+import { isTrackedChild, paragraphLength, withChildren } from "./offsets";
+import { findStoryParagraph } from "./paragraphLocator";
 import { selectedParagraphRuns } from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import { findStoryBody } from "./stories";
 import { DOCUMENT_OP_TYPES, type DocumentOp, type TextPosition } from "./types";
 
 export type HyperlinkEditorIntent =
@@ -400,13 +397,19 @@ const linkSegments = (
   for (const span of leafSpans(paragraph.content)) {
     const { ancestors, before, after } = span;
     const linked = ancestors.some(({ type }) => type === "hyperlink");
+    // Setting a link changes text in a run, also inside a content control
+    // or wrapper, as the direct edit links it there.
     const changes =
       linked ||
       (intent.type === "setHyperlink" &&
         ancestors.some(({ type }) => type === "run") &&
         ancestors.every(
           ({ type }) =>
-            type === "run" || type === "insertion" || type === "moveTo",
+            type === "run" ||
+            type === "insertion" ||
+            type === "moveTo" ||
+            type === "inlineSdt" ||
+            type === "inlineWrapper",
         ));
     if (
       after.offset <= start.offset ||
@@ -550,13 +553,25 @@ const compileTrackedLinkEdit = (
     current = applied.value.document;
     ops.push(...compiled.value.ops);
   }
-  // The copies in the last paragraph all stand before the selection's end.
-  const inserted = steps
-    .filter(({ blockId }) => idKey(blockId) === idKey(intent.to.blockId))
-    .reduce((width, { copy }) => width + contentWidth(copy), 0);
+  // The copies in the last paragraph all stand before the selection's end,
+  // so it moves by what that paragraph grew. A stretch this author already
+  // suggested inserting changes in place, adding no copy.
+  const lengthIn = (version: Document) => {
+    const body = findStoryBody(version, intent.to.story);
+    const located =
+      body === undefined
+        ? undefined
+        : findStoryParagraph(body, intent.to.blockId);
+    return located === undefined
+      ? panic("A link suggestion lost the paragraph its selection ends in.")
+      : paragraphLength(located.paragraph);
+  };
   return Result.ok({
     ops,
-    selection: { ...intent.to, offset: intent.to.offset + inserted },
+    selection: {
+      ...intent.to,
+      offset: intent.to.offset + lengthIn(current) - lengthIn(document),
+    },
   });
 };
 
