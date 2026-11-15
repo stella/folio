@@ -14,8 +14,6 @@ import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-import { generateDocxFixture } from "../support/validatedDocxFixture";
-
 const FONT_PATH = path.join(
   import.meta.dirname,
   "..",
@@ -100,5 +98,5 @@ export const cjkCompositionDocx = async (): Promise<Uint8Array> => {
     "word/fonts/kana-embedded.woff2",
     new Uint8Array(await readFile(FONT_PATH)),
   );
-  return generateDocxFixture(zip, "cjk-composition");
+  return zip.generate();
 };
