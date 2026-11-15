@@ -1680,8 +1680,8 @@ export type FolioDocumentOperationStory = "main" | {
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
-// @public (undocumented)
-export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged";
+// @public
+export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged" | "storyUnavailable" | "inverseRefused" | "documentNotEditable";
 
 // @public
 export type FolioDocumentOperationUndoHandle = {
@@ -1697,6 +1697,7 @@ export type FolioDocumentOperationUndoResult = {
     status: "rejected";
     undoHandle: FolioDocumentOperationUndoHandle;
     reason: FolioDocumentOperationUndoFailureReason;
+    message?: string;
 };
 
 // @public (undocumented)
