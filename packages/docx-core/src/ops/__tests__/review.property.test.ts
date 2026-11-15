@@ -813,6 +813,112 @@ const JOIN_MEETS_PENDING_INSERTION = {
 };
 
 /**
+ * The pinned counterexample of {@link atOnceLaw} where a deletion's seam
+ * meets a pending insertion of new content with a piece of the record it cut
+ * beyond it.
+ */
+const REMOVAL_SEAM_BESIDE_NEW_CONTENT = {
+  seed: 2133206926,
+  path: "88:3:6:14:14:15:15:15:15:15:17:18:22:24:29:29:29:29:29:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:32:33:31:49:39:41:40:8:27:0:1:4:10:23:18:18:18:18:20:18:20:18:18:20:18:29:20:3:18:17:18:17:17:17:18:18:17:17:19:17:17:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:22:37:28:21:21:24:25:33:24:52:42:40:56:17:17:17:55:56:56:58:53:54:58:54:54:54:54:54:54:54:54:54:55:55:55:55:55:55:55:55:55:77:56:61:61:61:62:26:24:24:26:26:29:24:24:24:26:24:24:35:22:21:21:21:21:21:21:21:21:21:31:27:29:27:19:33:24:24:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:30:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29:29",
+};
+
+/**
+ * Resolving a run's revisions at once leaves the document resolving each
+ * operation's in turn does, and rejecting them gives the document back.
+ */
+const atOnceLaw = (tally: Tally) =>
+  fc.property(
+    reviewDocumentArbitrary,
+    fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
+    (document, seeds: OpSeed[]) => {
+      let current = document;
+      const stamps: RevisionStamp[] = [];
+      const kinds: DocumentOpType[] = [];
+      let keptEarlier = false;
+      for (const [index, seed] of seeds.entries()) {
+        const op = trackedOpFor(current, seed, index);
+        const applied = applyDocumentOp(current, op);
+        if (applied.isErr()) continue;
+        const stamp = stampOf(op);
+        if (stamp === undefined) continue;
+        keptEarlier ||= keptEarlierChange(
+          current,
+          op,
+          new Set(stampedIds(current, stamps)),
+        );
+        kinds.push(kindOf(op));
+        stamps.push(stamp);
+        current = applied.value.document;
+      }
+      // An operation's revisions: every record carrying its stamp, pieces later
+      // operations cut from them included.
+      const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
+      const all = perOp.flat();
+      if (all.length === 0) return;
+      // A kind counts once its revisions reach the checks below.
+      for (const [index, ids] of perOp.entries())
+        if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
+      // The run's own revisions: at once, and one operation's at a time.
+      const rejectedAtOnce = resolved(current, all, REVISION_DECISIONS.REJECT);
+      const rejectedInTurn = resolvedInTurn(
+        current,
+        perOp.toReversed(),
+        REVISION_DECISIONS.REJECT,
+      );
+      assertExactModel(
+        projected(rejectedAtOnce, "π′"),
+        projected(rejectedInTurn, "π′"),
+      );
+      expectSettledDeferredSeams(rejectedAtOnce);
+      expectSettledDeferredSeams(rejectedInTurn);
+      // A split at a paragraph's end is given back under the new paragraph's id.
+      if (!keptEarlier) {
+        expectRejectedTo({
+          rejected: rejectedAtOnce,
+          tracked: current,
+          ids: all,
+          expected: document,
+          projection: "π′",
+        });
+      }
+      // Every revision (A*, J*): the run's in turn first, or all at once.
+      const acceptedInTurn = resolvedInTurn(
+        current,
+        perOp,
+        REVISION_DECISIONS.ACCEPT,
+      );
+      const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
+      const turnAccepted = resolvedAll(
+        acceptedInTurn,
+        REVISION_DECISIONS.ACCEPT,
+      );
+      expectSettledDeferredSeams(acceptedInTurn);
+      if (allAccepted !== undefined && turnAccepted !== undefined) {
+        count(tally, "A*");
+        expectSettledDeferredSeams(allAccepted);
+        expectSettledDeferredSeams(turnAccepted);
+        assertExactModel(
+          projected(allAccepted, "π′"),
+          projected(turnAccepted, "π′"),
+        );
+      }
+      const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
+      const originalRejected = resolvedAll(document, REVISION_DECISIONS.REJECT);
+      if (allRejected !== undefined && originalRejected !== undefined) {
+        count(tally, "J*");
+        expectSettledDeferredSeams(allRejected);
+        expectRejectedTo({
+          rejected: allRejected,
+          tracked: current,
+          ids: all,
+          expected: originalRejected,
+          projection: "π′",
+        });
+      }
+    },
+  );
+
+/**
  * Resolving a run's accepted and rejected revisions as two batches, in
  * either order, leaves the document resolving each operation's in turn does.
  */
@@ -1302,110 +1408,12 @@ describe("tracked operations and their resolution", () => {
   });
 
   test("L3: resolving a run's revisions at once equals resolving each operation's in turn", () => {
-    const law = (tally: Tally) =>
-      fc.property(
-        reviewDocumentArbitrary,
-        fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
-        (document, seeds: OpSeed[]) => {
-          let current = document;
-          const stamps: RevisionStamp[] = [];
-          const kinds: DocumentOpType[] = [];
-          let keptEarlier = false;
-          for (const [index, seed] of seeds.entries()) {
-            const op = trackedOpFor(current, seed, index);
-            const applied = applyDocumentOp(current, op);
-            if (applied.isErr()) continue;
-            const stamp = stampOf(op);
-            if (stamp === undefined) continue;
-            keptEarlier ||= keptEarlierChange(
-              current,
-              op,
-              new Set(stampedIds(current, stamps)),
-            );
-            kinds.push(kindOf(op));
-            stamps.push(stamp);
-            current = applied.value.document;
-          }
-          // An operation's revisions: every record carrying its stamp, pieces later
-          // operations cut from them included.
-          const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
-          const all = perOp.flat();
-          if (all.length === 0) return;
-          // A kind counts once its revisions reach the checks below.
-          for (const [index, ids] of perOp.entries())
-            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
-          // The run's own revisions: at once, and one operation's at a time.
-          const rejectedAtOnce = resolved(
-            current,
-            all,
-            REVISION_DECISIONS.REJECT,
-          );
-          const rejectedInTurn = resolvedInTurn(
-            current,
-            perOp.toReversed(),
-            REVISION_DECISIONS.REJECT,
-          );
-          assertExactModel(
-            projected(rejectedAtOnce, "π′"),
-            projected(rejectedInTurn, "π′"),
-          );
-          expectSettledDeferredSeams(rejectedAtOnce);
-          expectSettledDeferredSeams(rejectedInTurn);
-          // A split at a paragraph's end is given back under the new paragraph's id.
-          if (!keptEarlier) {
-            expectRejectedTo({
-              rejected: rejectedAtOnce,
-              tracked: current,
-              ids: all,
-              expected: document,
-              projection: "π′",
-            });
-          }
-          // Every revision (A*, J*): the run's in turn first, or all at once.
-          const acceptedInTurn = resolvedInTurn(
-            current,
-            perOp,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
-          const turnAccepted = resolvedAll(
-            acceptedInTurn,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          expectSettledDeferredSeams(acceptedInTurn);
-          if (allAccepted !== undefined && turnAccepted !== undefined) {
-            count(tally, "A*");
-            expectSettledDeferredSeams(allAccepted);
-            expectSettledDeferredSeams(turnAccepted);
-            assertExactModel(
-              projected(allAccepted, "π′"),
-              projected(turnAccepted, "π′"),
-            );
-          }
-          const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
-          const originalRejected = resolvedAll(
-            document,
-            REVISION_DECISIONS.REJECT,
-          );
-          if (allRejected !== undefined && originalRejected !== undefined) {
-            count(tally, "J*");
-            expectSettledDeferredSeams(allRejected);
-            expectRejectedTo({
-              rejected: allRejected,
-              tracked: current,
-              ids: all,
-              expected: originalRejected,
-              projection: "π′",
-            });
-          }
-        },
-      );
-    assertProperty(law(new Map()), {
+    assertProperty(atOnceLaw(new Map()), {
       numRuns: NUM_RUNS / 5,
       id: "L3: resolving a run's revisions at once equals resolving each operation's in turn",
     });
     const tally: Tally = new Map();
-    checkCoverageSample(law(tally), RUN_COVERAGE_RUNS, {
+    checkCoverageSample(atOnceLaw(tally), RUN_COVERAGE_RUNS, {
       map: ([document, seeds], index) => [document, runInTurn(seeds, index)],
     });
     expectEveryKindChecked(tally);
@@ -1509,6 +1517,34 @@ describe("tracked operations and their resolution", () => {
       mock.module("../keptJoins", () => original);
     }
   });
+
+  test("L3: a deletion's seam handed to new content beside it fails the pinned at-once seed", () => {
+    // The test-only break: a deletion's seam passes to the pending insertion
+    // of new content beside it though a piece of the record it cut stands
+    // beyond, so accepting the insertion afterwards joins its content with
+    // the piece, which accepting everything at once keeps apart.
+    const original = { ...keptJoinsModule };
+    mock.module("../keptJoins", () => ({
+      ...original,
+      seamHandsOver: () => true,
+    }));
+    try {
+      const result = fc.check(
+        atOnceLaw(new Map()),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          ...REMOVAL_SEAM_BESIDE_NEW_CONTENT,
+          numRuns: 1,
+          endOnFailure: true,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    } finally {
+      mock.module("../keptJoins", () => original);
+    }
+  });
+
   test("L4: tracked operations and resolutions are undone exactly by their inverses", () => {
     const law = (tally: Tally) =>
       fc.property(
