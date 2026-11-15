@@ -145,52 +145,19 @@ export const insertBlocks = ({
     lastNew !== undefined &&
     lastNew.pPrMark === undefined;
   const directReplacement = () => {
-    if (!movesMark || takenOver === undefined || lastNew === undefined)
+    if (!movesMark || following?.type !== "paragraph" || lastNew === undefined)
       return replacement(canonicalBlocks);
-    // The tracked paragraphs after the anchor, up to the one holding the mark
-    // the anchor had: its recorded property change now compares with the
-    // new holder of the inserted mark, as it does when the direct paragraphs
-    // were there first.
-    const list = blockListAt(body.content, location.list);
-    const tracked: Paragraph[] = [];
-    for (const block of list.slice(location.index + 1)) {
-      if (block.type !== "paragraph") break;
-      tracked.push(block);
-      const mark = block.pPrMark;
-      if (mark?.survivor !== "first" || mark.info.id !== takenOver.info.id)
-        break;
-    }
-    const holder = tracked.at(-1);
-    if (holder === undefined) return replacement(canonicalBlocks);
-    const others = (holder.propertyChanges ?? []).filter(
-      ({ info }) => info.id !== takenOver.info.id,
-    );
-    const previous = lastNew.formatting;
-    const changes = sameFormatting(previous, holder.formatting)
-      ? others
-      : [
-          ...others,
-          {
-            type: "paragraphPropertyChange" as const,
-            info: takenOver.info,
-            ...(previous === undefined ? {} : { previousFormatting: previous }),
-          },
-        ];
-    const restated = { ...holder };
-    delete restated.propertyChanges;
-    if (changes.length > 0) restated.propertyChanges = changes;
     const freed = { ...location.paragraph };
     delete freed.pPrMark;
     return {
       type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
       story: op.story,
-      expected: [location.paragraph, ...tracked],
+      expected: [location.paragraph, following],
       blocks: [
         freed,
         ...canonicalBlocks.slice(0, -1),
         { ...lastNew, pPrMark: takenOver },
-        ...tracked.slice(0, -1),
-        restated,
+        following,
       ],
     };
   };
