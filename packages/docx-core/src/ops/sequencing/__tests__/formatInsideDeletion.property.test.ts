@@ -132,12 +132,28 @@ const batchOf = (opId: string, op: DocumentOp): DocumentBatch => ({
   ops: [op],
 });
 
-/** `first` sequenced, then `second` rebased over it, or the step refused. */
 /** The effect a test-only break records nothing in. */
 type Forgotten =
   | typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS
-  | typeof DOCUMENT_OP_TYPES.DELETE_RANGE;
+  | typeof DOCUMENT_OP_TYPES.DELETE_RANGE
+  | "keptMarkOfCut";
 
+const forgetting = (
+  effect: NonNullable<SequencedBatch["effects"]>[number],
+  forget: Forgotten | undefined,
+): NonNullable<SequencedBatch["effects"]>[number] => {
+  if (forget === "keptMarkOfCut")
+    return effect.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS &&
+      effect.cutRecords !== undefined
+      ? {
+          ...effect,
+          cutRecords: effect.cutRecords.map(({ from, to }) => ({ from, to })),
+        }
+      : effect;
+  return effect.type === forget ? { type: forget } : effect;
+};
+
+/** `first` sequenced, then `second` rebased over it, or the step refused. */
 const inOrder = (
   base: Document,
   first: DocumentBatch,
@@ -151,9 +167,7 @@ const inOrder = (
     ...first,
     revision: 1,
     // The test-only breaks: an effect that records less than it does.
-    effects: applied.value.effects.map((effect) =>
-      effect.type === forget ? { type: forget } : effect,
-    ),
+    effects: applied.value.effects.map((effect) => forgetting(effect, forget)),
   };
   const rebased = transformBatch(second, [sequenced]);
   if (rebased.isErr())
@@ -270,6 +284,40 @@ const EXAMPLES: [Scenario][] = [
       deleteTo: { offset: 5, zeroWidthBefore: 0 },
     },
   ],
+  // A deletion to the run's end keeps the note's mark after the format:
+  // the run's pieces meet at the deletion's point.
+  [
+    {
+      content: [
+        LEAVES.text,
+        { type: "text", text: "ab" },
+        { type: "text", text: "ab" },
+        { type: "text", text: "fgh" },
+        LEAVES.break,
+        LEAVES.endnoteRef,
+        LEAVES.noteMarker,
+        LEAVES.shape,
+      ],
+      deleteFrom: { offset: 1, zeroWidthBefore: 0 },
+      formatFrom: { offset: 1, zeroWidthBefore: 0 },
+      formatTo: { offset: 3, zeroWidthBefore: 0 },
+      deleteTo: { offset: 11, zeroWidthBefore: 0 },
+    },
+  ],
+  // The kept mark stands before the format: the pieces meet after it.
+  [
+    {
+      content: [
+        { type: "text", text: "ab" },
+        LEAVES.noteMarker,
+        { type: "text", text: "cde" },
+      ],
+      deleteFrom: { offset: 1, zeroWidthBefore: 0 },
+      formatFrom: { offset: 3, zeroWidthBefore: 0 },
+      formatTo: { offset: 4, zeroWidthBefore: 0 },
+      deleteTo: { offset: 4, zeroWidthBefore: 0 },
+    },
+  ],
   // A format and a deletion of all the text, a note's mark right after it.
   [
     {
@@ -369,6 +417,23 @@ describe("a direct format inside a concurrent direct deletion", () => {
     propertyTestTimeout(30_000),
   );
 
+  test(
+    "a format whose cut records name no kept note mark is caught",
+    () => {
+      const result = fc.check(
+        rejoined("keptMarkOfCut"),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          numRuns: 1,
+          examples: EXAMPLES,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    },
+    propertyTestTimeout(30_000),
+  );
+
   test("typing after a deletion that keeps a note's mark lands after the mark in either order", () => {
     // The deletion of 0..5 keeps the note's mark at 3; the typing at 5 is
     // after it in the typing order, and must be after it in the other.
@@ -390,31 +455,53 @@ describe("a direct format inside a concurrent direct deletion", () => {
             block.type === "paragraph" ? block.content : [],
           ) ?? [],
       ).map(({ node }) => (node.type === "text" ? node.text : node.type));
-    const orders = [undefined, DOCUMENT_OP_TYPES.DELETE_RANGE].map((forget) => {
-      const { story, document: base } = placeOf(content);
-      const deletion = batchOf("deletion", {
-        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-        from: position(story, { offset: 0, zeroWidthBefore: 0 }),
-        to: position(story, { offset: 5, zeroWidthBefore: 0 }),
-      });
-      const typing = batchOf("typing", {
-        type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-        at: position(story, { offset: 5, zeroWidthBefore: 0 }),
-        text: "XY",
-        runProps: "inherit",
-      });
-      return [
-        inOrder(base, deletion, typing, forget),
-        inOrder(base, typing, deletion, forget),
+    const { story, document: base } = placeOf(content);
+    const deletion = batchOf("deletion", {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: position(story, { offset: 0, zeroWidthBefore: 0 }),
+      to: position(story, { offset: 5, zeroWidthBefore: 0 }),
+    });
+    const typing = batchOf("typing", {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: position(story, { offset: 5, zeroWidthBefore: 0 }),
+      text: "XY",
+      runProps: "inherit",
+    });
+    expect(
+      [
+        inOrder(base, deletion, typing, undefined),
+        inOrder(base, typing, deletion, undefined),
       ].map((outcome) =>
         "document" in outcome ? leavesOf(outcome.document) : outcome.refused,
-      );
-    });
-    expect(orders[0]).toEqual([
+      ),
+    ).toEqual([
       ["noteMarker", "XY"],
       ["noteMarker", "XY"],
     ]);
-    // The test-only break: a deletion recording no kept mark is caught.
-    expect(orders[1]?.[0]).toEqual(["XY", "noteMarker"]);
+    // The typing rebased over the deletion names the gap after the mark;
+    // the test-only break, a deletion recording no kept mark, names the
+    // gap before it.
+    const rebasedAt = (forget: Forgotten | undefined) => {
+      const applied = applyBatch(base, deletion.ops);
+      if (applied.isErr()) throw new Error(applied.error.message);
+      const rebased = transformBatch(typing, [
+        {
+          ...deletion,
+          revision: 1,
+          effects: applied.value.effects.map((effect) =>
+            forgetting(effect, forget),
+          ),
+        },
+      ]);
+      if (rebased.isErr()) throw new Error(rebased.error.message);
+      const [op] = rebased.value.ops;
+      return op?.type === DOCUMENT_OP_TYPES.INSERT_TEXT ? op.at : op;
+    };
+    expect(rebasedAt(undefined)).toEqual(
+      position(story, { offset: 0, zeroWidthBefore: 1 }),
+    );
+    expect(rebasedAt(DOCUMENT_OP_TYPES.DELETE_RANGE)).toEqual(
+      position(story, { offset: 0, zeroWidthBefore: 0 }),
+    );
   });
 });

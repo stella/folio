@@ -117,9 +117,11 @@ export type SequencedOpEffect =
        * first, by the gaps before their first leaf and after their last one
        * before the format: a run, and the text the range lay inside. Where
        * a concurrent deletion holds the format's range and reaches past
-       * neither end of such a record, the deletion keeps it one record.
+       * neither end of such a record, the deletion keeps it one record. In a
+       * note, `keptMark` is the gap before the note's own reference mark a
+       * record holds, which a direct deletion keeps as well.
        */
-      cutRecords?: readonly { from: Gap; to: Gap }[];
+      cutRecords?: readonly { from: Gap; to: Gap; keptMark?: Gap }[];
     }
   | {
       type: "touchedBlocks";
@@ -928,6 +930,9 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
                   object({
                     from: object({ offset: natural, zeroWidthBefore: natural }),
                     to: object({ offset: natural, zeroWidthBefore: natural }),
+                    keptMark: optional(
+                      object({ offset: natural, zeroWidthBefore: natural }),
+                    ),
                   }),
                 ),
               ),

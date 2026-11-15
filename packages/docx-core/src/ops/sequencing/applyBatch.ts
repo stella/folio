@@ -78,7 +78,7 @@ const cutRecords = (
   before: Document,
   after: Document,
   op: SetRunPropsOp,
-): { from: Gap; to: Gap }[] | undefined => {
+): { from: Gap; to: Gap; keptMark?: Gap }[] | undefined => {
   if (
     op.revision !== undefined ||
     op.expected !== undefined ||
@@ -101,6 +101,11 @@ const cutRecords = (
   );
   if (cut.length === 0) return undefined;
   const leaves = leafSpans(original.content);
+  const { story } = op.from;
+  const noteKind =
+    story !== "main" && (story.kind === "footnote" || story.kind === "endnote")
+      ? story.kind
+      : undefined;
   return cut.map((record) => {
     const held = leaves.filter(
       ({ node, ancestors }) => node === record || ancestors.includes(record),
@@ -109,7 +114,13 @@ const cutRecords = (
     const last = held.at(-1);
     if (first === undefined || last === undefined)
       return panic("A record holding leaves on both sides holds a leaf.");
-    return { from: first.before, to: last.after };
+    // The note's own mark, which a direct deletion keeps (see `keptMark`).
+    const mark = held.find(
+      ({ node }) => node.type === "noteMarker" && node.kind === noteKind,
+    );
+    return mark === undefined
+      ? { from: first.before, to: last.after }
+      : { from: first.before, to: last.after, keptMark: mark.before };
   });
 };
 
