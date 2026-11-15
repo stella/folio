@@ -80,7 +80,7 @@ const redline = (): Promise<ArrayBuffer> => {
         name: "heading 2",
         basedOn: "Normal",
         pPr: {
-          outlineLevel: 1,
+          outlineLevel: { kind: "heading", level: 1 },
           numPr: { kind: "reference", numId: 5, ilvl: 0 },
         },
       },

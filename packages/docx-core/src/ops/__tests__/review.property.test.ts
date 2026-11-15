@@ -1311,9 +1311,11 @@ describe("tracked operations and their resolution", () => {
           const stamps: RevisionStamp[] = [];
           const kinds: DocumentOpType[] = [];
           let keptEarlier = false;
+          const dbg: Record<string, unknown> = { ops: [] };
           for (const [index, seed] of seeds.entries()) {
             const op = trackedOpFor(current, seed, index);
             const applied = applyDocumentOp(current, op);
+            (dbg["ops"] as unknown[]).push({ op, ok: applied.isOk() });
             if (applied.isErr()) continue;
             const stamp = stampOf(op);
             if (stamp === undefined) continue;
@@ -1331,72 +1333,87 @@ describe("tracked operations and their resolution", () => {
           const perOp = stamps.map((stamp) => stampedIds(current, [stamp]));
           const all = perOp.flat();
           if (all.length === 0) return;
-          // A kind counts once its revisions reach the checks below.
-          for (const [index, ids] of perOp.entries())
-            if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
-          // The run's own revisions: at once, and one operation's at a time.
-          const rejectedAtOnce = resolved(
-            current,
-            all,
-            REVISION_DECISIONS.REJECT,
-          );
-          const rejectedInTurn = resolvedInTurn(
-            current,
-            perOp.toReversed(),
-            REVISION_DECISIONS.REJECT,
-          );
-          assertExactModel(
-            projected(rejectedAtOnce, "π′"),
-            projected(rejectedInTurn, "π′"),
-          );
-          expectSettledDeferredSeams(rejectedAtOnce);
-          expectSettledDeferredSeams(rejectedInTurn);
-          // A split at a paragraph's end is given back under the new paragraph's id.
-          if (!keptEarlier) {
-            expectRejectedTo({
-              rejected: rejectedAtOnce,
-              tracked: current,
-              ids: all,
-              expected: document,
-              projection: "π′",
-            });
-          }
-          // Every revision (A*, J*): the run's in turn first, or all at once.
-          const acceptedInTurn = resolvedInTurn(
-            current,
-            perOp,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
-          const turnAccepted = resolvedAll(
-            acceptedInTurn,
-            REVISION_DECISIONS.ACCEPT,
-          );
-          expectSettledDeferredSeams(acceptedInTurn);
-          if (allAccepted !== undefined && turnAccepted !== undefined) {
-            count(tally, "A*");
-            expectSettledDeferredSeams(allAccepted);
-            expectSettledDeferredSeams(turnAccepted);
-            assertExactModel(
-              projected(allAccepted, "π′"),
-              projected(turnAccepted, "π′"),
+          dbg["current"] = current.package.document.content;
+          dbg["perOp"] = perOp;
+          try {
+            // A kind counts once its revisions reach the checks below.
+            for (const [index, ids] of perOp.entries())
+              if (ids.length > 0) count(tally, kinds[index] ?? "unknown");
+            // The run's own revisions: at once, and one operation's at a time.
+            const rejectedAtOnce = resolved(
+              current,
+              all,
+              REVISION_DECISIONS.REJECT,
             );
-          }
-          const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
-          const originalRejected = resolvedAll(
-            document,
-            REVISION_DECISIONS.REJECT,
-          );
-          if (allRejected !== undefined && originalRejected !== undefined) {
-            count(tally, "J*");
-            expectSettledDeferredSeams(allRejected);
-            expectRejectedTo({
-              rejected: allRejected,
-              tracked: current,
-              ids: all,
-              expected: originalRejected,
-              projection: "π′",
-            });
+            dbg["rejectedAtOnce"] = rejectedAtOnce?.package.document.content;
+            const rejectedInTurn = resolvedInTurn(
+              current,
+              perOp.toReversed(),
+              REVISION_DECISIONS.REJECT,
+            );
+            dbg["rejectedInTurn"] = rejectedInTurn?.package.document.content;
+            assertExactModel(
+              projected(rejectedAtOnce, "π′"),
+              projected(rejectedInTurn, "π′"),
+            );
+            expectSettledDeferredSeams(rejectedAtOnce);
+            expectSettledDeferredSeams(rejectedInTurn);
+            // A split at a paragraph's end is given back under the new paragraph's id.
+            if (!keptEarlier) {
+              expectRejectedTo({
+                rejected: rejectedAtOnce,
+                tracked: current,
+                ids: all,
+                expected: document,
+                projection: "π′",
+              });
+            }
+            // Every revision (A*, J*): the run's in turn first, or all at once.
+            const acceptedInTurn = resolvedInTurn(
+              current,
+              perOp,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            dbg["acceptedInTurn"] = acceptedInTurn?.package.document.content;
+            const allAccepted = resolvedAll(current, REVISION_DECISIONS.ACCEPT);
+            dbg["allAccepted"] = allAccepted?.package.document.content;
+            const turnAccepted = resolvedAll(
+              acceptedInTurn,
+              REVISION_DECISIONS.ACCEPT,
+            );
+            dbg["turnAccepted"] = turnAccepted?.package.document.content;
+            expectSettledDeferredSeams(acceptedInTurn);
+            if (allAccepted !== undefined && turnAccepted !== undefined) {
+              count(tally, "A*");
+              expectSettledDeferredSeams(allAccepted);
+              expectSettledDeferredSeams(turnAccepted);
+              assertExactModel(
+                projected(allAccepted, "π′"),
+                projected(turnAccepted, "π′"),
+              );
+            }
+            const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
+            dbg["allRejected"] = allRejected?.package.document.content;
+            const originalRejected = resolvedAll(
+              document,
+              REVISION_DECISIONS.REJECT,
+            );
+            dbg["originalRejected"] =
+              originalRejected?.package.document.content;
+            if (allRejected !== undefined && originalRejected !== undefined) {
+              count(tally, "J*");
+              expectSettledDeferredSeams(allRejected);
+              expectRejectedTo({
+                rejected: allRejected,
+                tracked: current,
+                ids: all,
+                expected: originalRejected,
+                projection: "π′",
+              });
+            }
+          } catch (error) {
+            console.log("L3E2 " + JSON.stringify(dbg));
+            throw error;
           }
         },
       );
