@@ -350,8 +350,8 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
  * hyperlink holding one: accepting it removes every comment anchor it holds,
  * as deleting the range directly does. A transparent wrapper holding one is
  * still refused, as a bare anchor is. A deletion of whole paragraphs leaves
- * the bare anchors standing outside it (`commentAnchorsStand`): they are no
- * content of the paragraphs, and accepting it hands them to the nearest
+ * the bare comment range anchors standing outside it (`commentAnchorsStand`):
+ * they are no content of the paragraphs, and accepting it hands them to the nearest
  * paragraph that stays, as deleting the paragraphs directly does. A
  * deletion recording no joins takes in no record holding one: accepting it
  * keeps the anchors of comment ranges that continue past it, which removing
@@ -361,7 +361,9 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
  */
 const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
   if (isCommentAnchor(node)) {
-    return state.commentAnchorsStand ? "skip" : "refuse";
+    return state.commentAnchorsStand && node.type !== "commentReference"
+      ? "skip"
+      : "refuse";
   }
   if (state.kind === WRAP_KINDS.DELETION) {
     if (isRemovedRevisionNode(node)) return "skip";
@@ -418,7 +420,7 @@ type WrapState = {
   /** Whether the wrap recorded anything: a wrapper created, or merged into a neighbour. */
   recorded: boolean;
   refusal: DocumentOpRefusalReason | undefined;
-  /** Whether bare comment anchors stand outside the deletion, as whole paragraphs leave them. */
+  /** Whether bare comment range anchors stand outside the deletion, as whole paragraphs leave them. */
   commentAnchorsStand: boolean;
 };
 
@@ -832,8 +834,9 @@ export type WrapOptions = {
   resolutionJoin?: number;
   copiedBoundaries?: ReadonlySet<InlineNode>;
   /**
-   * `"stand"`: a deletion of whole paragraphs leaves the bare comment
-   * anchors it meets standing outside it, instead of being refused.
+   * `"stand"`: a deletion of whole paragraphs leaves the bare comment range
+   * anchors it meets standing outside it, instead of being refused. A
+   * comment reference is content and is still refused.
    */
   commentAnchors?: "stand";
 };

@@ -59,7 +59,7 @@ import {
  * One paragraph's content as its tracked deletion leaves it: every leaf
  * wrapped in a deletion stamped `stamp`, split around the range boundaries
  * directly in it ({@link withBoundariesOutsideDeletion}), with the boundaries
- * that stand outside, the bare comment anchors the deletion leaves standing
+ * that stand outside, the bare comment range anchors the deletion leaves standing
  * among them, in document order. Deleting directly keeps exactly those, so
  * accepting the tracked deletion and deleting directly leave the same
  * document.
@@ -104,7 +104,7 @@ const deletedContent = (
 /**
  * The boundaries of `nodes` a deletion of their paragraph leaves standing,
  * in document order: those split out of its records (`split`) and the bare
- * comment anchors it never took in. What a deletion stamped by the same
+ * comment range anchors it never took in. What a deletion stamped by the same
  * revision (`created`) or an earlier one holds goes with it.
  */
 const standingIn = (
@@ -113,7 +113,11 @@ const standingIn = (
   created: (node: InlineNode) => boolean,
 ): InlineNode[] =>
   nodes.flatMap((node): InlineNode[] => {
-    if (split.has(node) || isCommentAnchor(node)) return [node];
+    if (
+      split.has(node) ||
+      (isCommentAnchor(node) && node.type !== "commentReference")
+    )
+      return [node];
     if (created(node) || isRemovedRevisionNode(node)) return [];
     return standingIn(childNodes(node) ?? [], split, created);
   });
