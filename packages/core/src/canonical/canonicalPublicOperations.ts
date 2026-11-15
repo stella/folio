@@ -2304,14 +2304,21 @@ export class CanonicalPublicOperations {
       return {
         status: "rejected",
         undoHandle: handle,
-        reason: "documentChanged",
+        reason: "storyUnavailable",
       };
     const prepared = session.prepareUndo(state, entry.story);
-    if (prepared.isErr() || !this.options.publish(prepared.value))
+    if (prepared.isErr())
       return {
         status: "rejected",
         undoHandle: handle,
-        reason: "documentChanged",
+        reason: "inverseRefused",
+        message: prepared.error.message,
+      };
+    if (!this.options.publish(prepared.value))
+      return {
+        status: "rejected",
+        undoHandle: handle,
+        reason: "documentNotEditable",
       };
     this.handles.pop();
     // Undo advances the version while exposing the preceding unchanged journal group.
