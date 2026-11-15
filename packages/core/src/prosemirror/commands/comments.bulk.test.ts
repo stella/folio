@@ -918,7 +918,8 @@ describe("headless bulk revision state", () => {
     const cell = resolved.doc.child(0).child(0).child(0).child(0);
     const kept: string[] = [];
     cell.forEach((child) => kept.push(child.type.name));
-    expect(kept).toEqual(["moveRangeBoundary", "moveRangeBoundary", "text"]);
+    // The move range holds nothing once accepted: it stays as one anchor.
+    expect(kept).toEqual(["rangeAnchor", "text"]);
   });
 
   test.each(["accept", "reject"] as const)(
