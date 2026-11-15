@@ -91,6 +91,10 @@ import type {
   FolioAIParagraphIndentation,
   FolioAIParagraphSpacing,
 } from "../ai-edits/types";
+import {
+  findUndefinedOperationReference,
+  styleDefinitionLookup,
+} from "../ai-edits/undefinedReferences";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
 import {
@@ -114,6 +118,7 @@ import {
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { insertedColumnWidth } from "../prosemirror/tableGridMutation";
 import {
   CANONICAL_GAP,
@@ -1589,6 +1594,27 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
     const resolved: ResolvedOperation[] = [];
+    // Read once, at the first operation that reaches the check: a batch the
+    // session refuses as a whole reads no document.
+    let definedReferences:
+      | {
+          styles: ReturnType<typeof styleDefinitionLookup>;
+          numberingInstanceIds: ReadonlySet<number>;
+        }
+      | undefined;
+    const references = () => {
+      if (definedReferences !== undefined) return definedReferences;
+      const model = readModel(session.document);
+      definedReferences = {
+        styles: styleDefinitionLookup(
+          createStyleResolver(model.package.styles),
+        ),
+        numberingInstanceIds: new Set(
+          model.package.numbering?.nums.map(({ numId }) => numId) ?? [],
+        ),
+      };
+      return definedReferences;
+    };
     const mintList = createBatchListMinter(() => readModel(session.document));
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
@@ -1708,6 +1734,21 @@ export class CanonicalPublicOperations {
           operation.id,
           "unsupportedBlock",
           "This canonical compiler does not support the supplied execution options.",
+        );
+        continue;
+      }
+      // The same reference check the default engine runs, in the same
+      // place: before the operation compiles.
+      const undefinedReference = findUndefinedOperationReference({
+        operation,
+        ...references(),
+        undefinedReferences: "refuse",
+      });
+      if (undefinedReference !== undefined) {
+        skip(
+          operation.id,
+          undefinedReference.reason,
+          undefinedReference.message,
         );
         continue;
       }
@@ -2158,15 +2199,16 @@ export class CanonicalPublicOperations {
       ? selection
       : session.prepareOps(state, ops, selection.value);
     if (prepared.isErr()) {
+      // A batch that changes nothing is a no-op, not a capability gap.
+      const noChange = prepared.error.reason === "noChange";
       for (const { id } of appliedById.values()) {
-        refusals.set(id, {
-          gap: CANONICAL_GAP.publicUnsupportedInline,
-        });
+        if (!noChange)
+          refusals.set(id, {
+            gap: CANONICAL_GAP.publicUnsupportedInline,
+          });
         skip(
           id,
-          prepared.error.reason === "noChange"
-            ? "noopOperation"
-            : "unsupportedBlock",
+          noChange ? "noopOperation" : "unsupportedBlock",
           prepared.error.message,
         );
       }
@@ -2619,13 +2661,10 @@ export class CanonicalPublicOperations {
         text = operation.type === "replaceRange" ? operation.replace : "";
         break;
       case "replaceBlock":
-        if (
-          operation.styleId !== undefined ||
-          operation.preserveFormatting === false
-        )
+        if (operation.preserveFormatting === false)
           return refusal(
             "unsupportedBlock",
-            "Canonical replacement paragraph properties are unavailable.",
+            "Canonical replacements that drop the paragraph's formatting are unavailable.",
           );
         text = operation.text;
         break;
@@ -2705,11 +2744,25 @@ export class CanonicalPublicOperations {
         from: range.from,
         to: range.to,
       });
+    // A replacement that names a style the paragraph does not have restyles
+    // it, as the default engine does, even when its words stay the same.
+    const restyle =
+      operation.type === "replaceBlock" &&
+      operation.styleId !== undefined &&
+      operation.styleId !== (paragraph.source.formatting?.styleId ?? null)
+        ? statedPropertiesIntents({
+            story,
+            blockId: paragraph.blockId,
+            properties: { styleId: operation.styleId },
+            mintList,
+          })
+        : [];
     if (
       resolvedComment.type === "plain" &&
       operation.type !== "splitBlock" &&
       operation.type !== "formatRange" &&
       operation.type !== "mergeBlockWithNext" &&
+      restyle.length === 0 &&
       clean.text.slice(start, end) === text
     )
       return refusal("noopOperation");
@@ -2911,6 +2964,7 @@ export class CanonicalPublicOperations {
             : { runPropsPatch: intent.runPropsPatch }),
         });
       }
+      intents.push(...restyle);
     } else if (
       operation.type === "mergeBlockWithNext" &&
       intent.type === "joinParagraphs"
