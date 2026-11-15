@@ -1119,9 +1119,10 @@ describe("toMarkdown — clean preset for skills", () => {
     expect(out).toBe("x[^c1]\n\n## Comments\n[^c1]: A: see link");
   });
 
-  const delMark = (): Paragraph["pPrMark"] => ({
+  // Each record carries its own revision id, as a package's records do.
+  const delMark = (id = 1): Paragraph["pPrMark"] => ({
     kind: "del",
-    info: { id: 1, author: "A" },
+    info: { id, author: "A" },
   });
 
   test("a deleted paragraph mark merges into the next paragraph on accept", () => {
@@ -1205,7 +1206,7 @@ describe("toMarkdown — clean preset for skills", () => {
     const b: Paragraph = {
       type: "paragraph",
       content: [run("B")],
-      pPrMark: delMark(),
+      pPrMark: delMark(2),
     };
     expect(md([a, b, para([run("C")])], clean)).toBe("ABC");
   });
