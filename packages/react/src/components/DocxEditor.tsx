@@ -64,6 +64,7 @@ import {
   resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import { NO_ANONYMIZATION_HIGHLIGHTS } from "@stll/folio-core/controller/anonymizationHighlights";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
 import { isCanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
@@ -85,6 +86,7 @@ import {
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
+import { findPageNumberAtEditorPosition } from "@stll/folio-core/layout-engine/pmPageIndex";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
 import {
   DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
@@ -176,6 +178,7 @@ import {
   CLIPBOARD_READ_ERROR_EVENT,
   pastePlainTextSlice,
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
+import { replaceRangeText } from "@stll/folio-core/prosemirror/commands/replaceRangeText";
 import {
   clearPendingComment,
   commentIdsNamedIn,
@@ -205,11 +208,9 @@ import { projectMarkupView } from "@stll/folio-core/prosemirror/markupViewProjec
 import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
-  deleteSelectionAsSuggestion,
   setSuggestionMode,
   suggestionModeKey,
 } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
@@ -628,6 +629,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       onEditorViewReady,
       onCanonicalHistory,
       onCanonicalHistoryDrop,
+      anonymizationTerms,
       onAnonymizationMatchesChange,
       onAnonymizationTermClick,
       selectedAnonymizationCanonical = null,
@@ -943,21 +945,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       () => createAICitationDecorationsPlugin(),
       [],
     );
-    // Workspace anonymization-term highlights. Always installed;
-    // renders nothing until the host pushes a term list via
-    // `setAnonymizationTermsMeta`.
-    // Keep plugin identity stable while publishing host callbacks after commit.
-    const [anonymizationCallback] = useState(() =>
-      createCallbackSlot(onAnonymizationMatchesChange),
-    );
-    useLayoutEffect(() => {
-      anonymizationCallback.commit(onAnonymizationMatchesChange);
-    });
-    const [anonymizationDecorationsPlugin] = useState(() =>
-      createAnonymizationDecorationsPlugin({
-        onMatchesChange: anonymizationCallback.invoke,
-      }),
-    );
     // Inline autocomplete. Always installed and idle by default;
     // becomes active only when the host pushes a `start` meta via
     // {@link startAutocompleteSuggestion}. The keymap option lets
@@ -1008,7 +995,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
-        anonymizationDecorationsPlugin,
         ...(showTemplateDirectives
           ? [templateDirectivesPlugin, templateSlashMenu]
           : []),
@@ -1021,7 +1007,6 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         suggestionPlugin,
         aiSuggestionPlugin,
         aiCitationPlugin,
-        anonymizationDecorationsPlugin,
         showTemplateDirectives,
         templateDirectivesPlugin,
         templateSlashMenu,
@@ -2123,10 +2108,14 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
         commentsRef,
       ],
     );
-    const getFindEditorState = useCallback(() => {
+    const getFindEditorView = useCallback(() => {
       pagedEditorRef.current?.ensureView({ focus: false });
-      return pagedEditorRef.current?.getView()?.state ?? null;
+      return pagedEditorRef.current?.getView() ?? null;
     }, []);
+    const getFindEditorState = useCallback(
+      () => getFindEditorView()?.state ?? null,
+      [getFindEditorView],
+    );
     const getFindBodyDoc = useCallback(
       () => getFindEditorState()?.doc,
       [getFindEditorState],
@@ -2140,7 +2129,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       if (readOnlyReason) onReadonlyEditAttempt?.(readOnlyReason);
     }, [readOnlyReason, onReadonlyEditAttempt]);
 
-    // Find/Replace handlers (depends on handleDocumentChange)
+    // Find/Replace handlers
     const {
       currentSearch: currentFindSearch,
       resetFindResult,
@@ -2156,8 +2145,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       documentState: history.state,
       getDocumentState: buildCurrentDocument,
       getEditorState: getFindEditorState,
+      getEditorView: getFindEditorView,
       containerRef,
-      handleDocumentChange,
       findReplace,
       selectMatch: selectFindMatch,
       getBodyDoc: getFindBodyDoc,
@@ -3468,9 +3457,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             const { from, to } = view.state.selection;
             const text = view.state.doc.textBetween(from, to, "\n");
             void navigator.clipboard.writeText(text).catch(() => undefined);
-            if (!deleteSelectionAsSuggestion(view.state, view.dispatch)) {
-              view.dispatch(view.state.tr.deleteSelection());
-            }
+            executeEditorCommand(
+              view,
+              replaceRangeText({ from, to, text: "" }),
+            );
             onCut?.();
             break;
           }
@@ -3516,8 +3506,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             } catch {
               try {
                 const text = await navigator.clipboard.readText();
-                if (text) {
-                  view.dispatch(view.state.tr.insertText(text));
+                if (text && !view.isDestroyed) {
+                  pastePlainTextSlice(
+                    view,
+                    buildPlainTextSlice(text, view.state.schema),
+                  );
                   onPaste?.();
                 }
               } catch {
@@ -3547,9 +3540,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             break;
           case "delete": {
             const { from, to } = view.state.selection;
-            if (from !== to) {
-              view.dispatch(view.state.tr.deleteRange(from, to));
-            }
+            if (from !== to)
+              executeEditorCommand(
+                view,
+                replaceRangeText({ from, to, text: "" }),
+              );
             break;
           }
           case "selectAll":
@@ -4770,13 +4765,19 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   doc: view.state.doc,
                   snapshot,
                 });
-          if (range === null) {
+          const layout =
+            pagedEditorRef.current?.getEditor()?.getLayout() ?? null;
+          if (range === null || layout === null) {
             return null;
           }
-          return (
-            pagedEditorRef.current?.getPageNumberForPmPos(range.from) ?? null
-          );
+          return findPageNumberAtEditorPosition(layout, range.from);
         },
+        getPositionPage: (position) =>
+          pagedEditorRef.current?.getEditor()?.getPositionPage(position) ??
+          null,
+        getAnonymizationMatches: () =>
+          pagedEditorRef.current?.getEditor()?.getAnonymizationHighlights()
+            .matches ?? NO_ANONYMIZATION_HIGHLIGHTS.matches,
         getBlockRect: (blockId) =>
           pagedEditorRef.current?.getBlockRect(blockId) ?? null,
         getBlockRects: (blockIds) =>
@@ -5694,7 +5695,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             pageWidth={
               commentsPageWidth ? Math.round(commentsPageWidth / 15) : 816
             }
-            editorContainerRef={scrollContainerRef}
+            columnStart={panelLayout.commentsColumnStart}
+            scrollContainer={scrollContainer}
             onCommentClick={handleCommentClick}
             onCommentResolve={handleCommentResolve}
             onCommentDelete={handleCommentDelete}
@@ -5727,6 +5729,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       isAddingComment,
       commentsSurface,
       dismissCommentsDrawer,
+      panelLayout.commentsColumnStart,
+      scrollContainer,
       visibleComments,
     ]);
     const getActiveHfView = useCallback(
@@ -6350,6 +6354,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                             onContextMenu={handleContextMenu}
                             pageEndGutter={panelLayout.commentsGutter}
                             anchorPositionMode="comments"
+                            anonymizationTerms={anonymizationTerms}
+                            onAnonymizationMatchesChange={
+                              onAnonymizationMatchesChange
+                            }
                             onAnonymizationTermClick={onAnonymizationTermClick}
                             selectedAnonymizationCanonical={
                               selectedAnonymizationCanonical

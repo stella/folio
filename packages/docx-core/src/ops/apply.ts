@@ -25,6 +25,7 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { applyCommentOp } from "./comments";
+import { setContentControl } from "./contentControls";
 /**
  * Apply a document operation and record its exact inverse.
  *
@@ -128,10 +129,11 @@ import {
   type InlineNode,
   isEmptyRecord,
   leafSpans,
-  rebuildNode,
+  nestedRecords,
   recordsBetween,
   spanningRecords,
   textsIn,
+  withNestedRecords,
   zeroWidthLeavesAt,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
@@ -173,7 +175,11 @@ import {
 } from "./review";
 import { setRevisionInfo } from "./revisionInfo";
 import { documentStories, findStoryBody, sameStory } from "./stories";
-import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
+import {
+  applyStoryLifecycle,
+  captureStoryParts,
+  storyLifecycleEdit,
+} from "./storyLifecycle";
 import { tableEditBoundaryRefusal } from "./tableEditBoundary";
 import { applyTableEdit } from "./tableEdits";
 import { applyRowOp } from "./tableRows";
@@ -1415,15 +1421,15 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           priorIdentities.set(changed, prior);
           return changed;
         }
-        const children = childNodes(node);
+        const children = nestedRecords(node);
         if (children === undefined) return node;
-        const priorChildren = childNodes(original);
+        const priorChildren = nestedRecords(original);
         if (priorChildren === undefined)
           panic("Freshening removed a run patch's child list.");
         const next = appendChanges(priorChildren, children);
         return next.every((child, childIndex) => child === children[childIndex])
           ? node
-          : rebuildNode(node, next);
+          : withNestedRecords(node, next);
       });
     };
     const sourceFresh = freshened.value.at(0);
@@ -1437,10 +1443,10 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     ): InlineNode[] =>
       nodes.map((node) => {
         const prior = priorIdentities.get(node) ?? node;
-        const children = childNodes(prior);
+        const children = nestedRecords(prior);
         return children === undefined
           ? prior
-          : rebuildNode(prior, restorePriorIdentities(children));
+          : withNestedRecords(prior, restorePriorIdentities(children));
       });
     const rebound =
       rebindRetainedIdentities({
@@ -1508,6 +1514,9 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     return unchanged(document);
   }
 
+  // A field whose result runs the patch changed from different values has no
+  // one patch over its unit that restores them; the paragraph as it was does.
+  const restorable = patched === undefined || patched.restoring !== undefined;
   const restoring = patched?.restoring ?? [];
   const inverse: SetRunPropsOp[] = restoring.map((span) => ({
     type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
@@ -1547,12 +1556,14 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     );
   return Result.ok({
     document: replaced.value,
-    inverse: cutHasResolutionProvenance({
-      content: paragraph.content,
-      gaps: [from, to],
-    })
-      ? [contentRestoring(story, result, paragraph)]
-      : inverse,
+    inverse:
+      !restorable ||
+      cutHasResolutionProvenance({
+        content: paragraph.content,
+        gaps: [from, to],
+      })
+        ? [contentRestoring(story, result, paragraph)]
+        : inverse,
     touched: touchedBetween([paragraph], [result]),
   });
 };
@@ -2896,6 +2907,8 @@ const dispatchCore = (document: Document, op: DocumentOp): Applied => {
       return applyRowOp(document, op);
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
       return applyPackageResourcesOp(document, op);
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
+      return setContentControl(document, op);
     case DOCUMENT_OP_TYPES.INSERT_COLUMN:
     case DOCUMENT_OP_TYPES.DELETE_COLUMN:
     case DOCUMENT_OP_TYPES.MERGE_CELLS:
@@ -2992,6 +3005,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return undefined;
     default: {
       const unreachable: never = op;
@@ -3186,6 +3200,41 @@ export const applyDocumentOpEnvelope = (
       ),
     );
   return applyDocumentOp(document, envelope.op);
+};
+
+/**
+ * An inverse whose whole-part restores expect the parts they meet when the
+ * inverse runs, in order, on `document`.
+ *
+ * A restore records the parts its operation left, and refuses as stale when
+ * the document it meets holds other ones. A caller that changes the document
+ * after an operation (a derivation over the whole document, such as list
+ * rendering) and puts its own inverse first rebases the restores onto that
+ * document, so undo meets exactly what each restore expects. The inverse is
+ * returned as it is when it holds no restore, or when it does not apply.
+ */
+export const inverseMeetingDocument = (
+  document: Document,
+  inverse: readonly DocumentOp[],
+): readonly DocumentOp[] => {
+  if (!inverse.some((op) => op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS))
+    return inverse;
+  let current = document;
+  const rebased: DocumentOp[] = [];
+  for (const op of inverse) {
+    const next =
+      op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS
+        ? {
+            ...op,
+            expected: cloneModel(captureStoryParts(current, op.expected)),
+          }
+        : op;
+    const applied = applyDocumentOp(current, next);
+    if (applied.isErr()) return inverse;
+    current = applied.value.document;
+    rebased.push(next);
+  }
+  return rebased;
 };
 
 /**

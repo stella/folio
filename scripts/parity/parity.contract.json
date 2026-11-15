@@ -4,6 +4,7 @@
   "props": {
     "paired": [
       "anonymizationSelectionSeq",
+      "anonymizationTerms",
       "author",
       "autoOpenReviewSidebar",
       "className",
@@ -120,6 +121,7 @@
       "findPrevious",
       "focus",
       "getCommentAnchors",
+      "getAnonymizationMatches",
       "getBlockRect",
       "getBlockRects",
       "getContentControls",
@@ -129,6 +131,7 @@
       "getEditorRef",
       "getFindResult",
       "getPageText",
+      "getPositionPage",
       "getSelectionText",
       "getReadOnlyReason",
       "getScrollRoot",
@@ -193,7 +196,6 @@
       "getLayout",
       "getBlockRect",
       "getBlockRects",
-      "getPageNumberForPmPos",
       "getScrollRoot",
       "getState",
       "getView",

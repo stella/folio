@@ -47,6 +47,11 @@ import type {
   CanonicalHistoryEffect,
 } from "@stll/folio-core/canonical/canonicalSession";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import {
+  type FolioAnonymizationMatch,
+  type FolioAnonymizationTerm,
+  NO_ANONYMIZATION_HIGHLIGHTS,
+} from "@stll/folio-core/controller/anonymizationHighlights";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
@@ -93,10 +98,7 @@ import {
   getCaretPositionFromDom,
   getSelectionRectsFromDom,
 } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
-import {
-  findBodyPmAnchor,
-  findBodyPmSpans,
-} from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
+import { findBodyPmAnchor } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import {
   clickToPositionInHfSlot,
   findHfSlotForTarget,
@@ -107,7 +109,6 @@ import {
   syncImeCaretAnchor,
 } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
-import { measurePaintedSpanRange } from "@stll/folio-core/layout-bridge/dom/textStreamDom";
 import { clickToPosition } from "@stll/folio-core/layout-bridge/engine/clickToPosition";
 import {
   getPageTop,
@@ -144,10 +145,7 @@ import {
   LayoutPainter,
   releaseDisplayPageResources,
 } from "@stll/folio-core/layout-painter";
-import {
-  findPageShellForPmPos,
-  PAINTER_PAINTED_EVENT,
-} from "@stll/folio-core/layout-painter/renderPage";
+import { PAINTER_PAINTED_EVENT } from "@stll/folio-core/layout-painter/renderPage";
 import type {
   FootnoteRenderItem,
   HeaderFooterContent,
@@ -210,8 +208,6 @@ import {
   type NoteReferenceFollower,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { aiSuggestionDecorationsKey } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import { anonymizationDecorationsKey } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import { autocompleteSuggestionKey } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import type { AutocompleteSuggestionState } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
@@ -261,7 +257,6 @@ import {
 import { resolveEffectiveSectionProperties } from "@stll/folio-core/utils/headerFooter";
 import {
   hasPaintedStart,
-  PAINTED_START_SELECTOR,
   readPaintedStart,
   readPaintedTableStart,
 } from "@stll/folio-core/utils/paintedPositions";
@@ -499,6 +494,14 @@ export type PagedEditorProps = {
   /** Which mark anchors should be mapped for sidebars/margin markers. */
   anchorPositionMode?: "comments" | "comments-and-revisions";
   /**
+   * Terms to highlight wherever they occur in the shown text. Highlights
+   * are view state: they never change the document or its history.
+   */
+  anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
+  /** Called with every occurrence each time the set of occurrences changes. */
+  onAnonymizationMatchesChange?:
+    ((matches: readonly FolioAnonymizationMatch[]) => void) | undefined;
+  /**
    * Called when the user clicks an anonymization highlight in
    * the rendered document. Receives the canonical surface form
    * and label slug; the host wires this to the sidebar bridge.
@@ -587,10 +590,6 @@ export type PagedEditorRef = {
    * The overlay is cleared automatically on the next doc-changing transaction.
    */
   setPassageHighlight: (range: { from: number; to: number } | null) => void;
-  /** Resolve the page number (1-indexed) that contains the given PM position,
-   *  or null if no layout is available yet. Works for unrendered pages too via
-   *  the page shell map. */
-  getPageNumberForPmPos: (pmPos: number) => number | null;
   /** Painted geometry for one AI-snapshot block. */
   getBlockRect: (blockId: string) => BlockRect | null;
   /** Painted geometry for many AI-snapshot blocks in one layout read. */
@@ -759,20 +758,6 @@ const replayDeferredKeyDown = (
   eventInit: KeyboardEventInit,
 ) => {
   view.dom.dispatchEvent(new KeyboardEvent("keydown", eventInit));
-};
-
-/**
- * Get the zero-based page index for a node by climbing to its
- * `.layout-page` ancestor and reading `data-page-number`. Returns
- * 0 if no ancestor is found.
- */
-const getPageIndex = (el: Element): number => {
-  const pageEl = closestHtmlElement(el, ".layout-page");
-  if (!pageEl) {
-    return 0;
-  }
-  const raw = pageEl.dataset["pageNumber"];
-  return raw ? Number(raw) - 1 : 0;
 };
 
 // =============================================================================
@@ -1645,6 +1630,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       onError,
       anchorPositionMode = "comments-and-revisions",
       onAnonymizationTermClick,
+      anonymizationTerms,
+      onAnonymizationMatchesChange,
       selectedAnonymizationCanonical = null,
       anonymizationSelectionSeq,
     } = props;
@@ -1843,10 +1830,16 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const [anonymizationRectGroups, setAnonymizationRectGroups] = useEqualState<
       AnonymizationRectGroup[]
     >([]);
-    // Plain ref to the latest match list so the recompute effect
-    // doesn't depend on a state setter callback that would trigger
-    // its own re-run.
-    const anonymizationMatchesRef = useRef<readonly AnonymizationMatch[]>([]);
+    // The match list last reported to the host, so it hears of a change once.
+    const anonymizationMatchesRef = useRef<readonly FolioAnonymizationMatch[]>(
+      NO_ANONYMIZATION_HIGHLIGHTS.matches,
+    );
+    const onAnonymizationMatchesChangeRef = useRef(
+      onAnonymizationMatchesChange,
+    );
+    useLayoutEffect(() => {
+      onAnonymizationMatchesChangeRef.current = onAnonymizationMatchesChange;
+    });
     const [anonymizationOverlayRequestGate] = useState(createLatestRequestGate);
     // Autocomplete (inline ghost-text) overlay state. Mirrors the
     // anonymization pattern: a ref tracks the latest plugin
@@ -3043,135 +3036,51 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       };
     }, [runtime]);
 
-    // Project anonymization match ranges onto container-space
-    // rectangles. Mirrors the SelectionOverlay flow: prefer real
-    // DOM rects from the painted page spans (correct for indents,
-    // tabs, justified text, line wraps) and fall back to the
-    // layout-coord projection only when the DOM spans aren't
-    // mounted yet (initial paint, off-screen pages). The hidden
-    // ProseMirror's spans are not used — they sit at -9999px and
-    // would yield bogus coordinates.
+    // Read the highlights the editor derives from the shown text of every
+    // story, tell the host when the occurrences changed, and project them
+    // onto container-space rectangles: painted spans of each match's story,
+    // and the layout for body text whose spans are not painted yet.
     const updateAnonymizationOverlay = useCallback(() => {
       const isCurrentRequest = anonymizationOverlayRequestGate.begin();
-      const matches = anonymizationMatchesRef.current;
-      if (matches.length === 0) {
-        setAnonymizationRectGroups([]);
-        return;
+      // Without terms nothing is read: the host's list arrives through the
+      // hidden editor, and a new list gives this callback a new identity.
+      const highlights =
+        anonymizationTerms === undefined
+          ? NO_ANONYMIZATION_HIGHLIGHTS
+          : folioEditor.getAnonymizationHighlights();
+      if (highlights.matches !== anonymizationMatchesRef.current) {
+        anonymizationMatchesRef.current = highlights.matches;
+        onAnonymizationMatchesChangeRef.current?.(highlights.matches);
       }
       const pagesContainer = pagesContainerRef.current;
-      if (!pagesContainer) {
+      if (highlights.shown.length === 0 || !pagesContainer) {
         setAnonymizationRectGroups([]);
         return;
       }
-      const overlay = pagesContainer.parentElement?.querySelector(
-        '[data-testid="selection-overlay"]',
-      );
-      const firstPage = pagesContainer.querySelector(".layout-page");
-      if (!overlay || !firstPage) {
-        setAnonymizationRectGroups([]);
-        return;
-      }
-      const overlayRect = overlay.getBoundingClientRect();
-      const pageRect = firstPage.getBoundingClientRect();
-      const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
-      const pageOffsetY = (pageRect.top - overlayRect.top) / zoom;
-      const pmSpans = findBodyPmSpans(pagesContainer);
-      const layoutFallbackMatches: AnonymizationMatch[] = [];
-
-      const rectsForMatch = (
-        match: AnonymizationMatch,
-        from: number,
-        to: number,
-      ): AnonymizationRectGroup["rects"] => {
-        const domRects: AnonymizationRectGroup["rects"] = [];
-        for (const spanEl of pmSpans) {
-          const measurement = measurePaintedSpanRange(spanEl, from, to);
-          if (measurement.type === "outside") continue;
-          const pageIndex = getPageIndex(spanEl);
-          const measuredRects =
-            measurement.type === "element"
-              ? [measurement.rect]
-              : measurement.rects;
-          for (const rect of measuredRects) {
-            domRects.push({
-              x: (rect.left - overlayRect.left) / zoom,
-              y: (rect.top - overlayRect.top) / zoom,
-              width: rect.width / zoom,
-              height: rect.height / zoom,
-              pageIndex,
-            });
-          }
-        }
-        if (domRects.length > 0) {
-          return domRects;
-        }
-        if (!layout || blocks.length === 0) {
-          return [];
-        }
-        layoutFallbackMatches.push(match);
-        return [];
-      };
-
-      const groups: AnonymizationRectGroup[] = [];
-      for (const match of matches) {
-        const rects = rectsForMatch(match, match.from, match.to);
-        if (rects.length > 0) {
-          groups.push({
-            rects,
-            label: match.label,
-            canonical: match.canonical,
-          });
-        }
-      }
-      setAnonymizationRectGroups(groups);
-
-      if (
-        layoutFallbackMatches.length === 0 ||
-        !layout ||
-        blocks.length === 0
-      ) {
-        return;
-      }
-
-      void loadSelectionGeometry().then(
-        ({ selectionToRects }) => {
-          if (!isCurrentRequest()) {
-            return undefined;
-          }
-
-          const fallbackGroups: AnonymizationRectGroup[] = [];
-          for (const match of layoutFallbackMatches) {
-            const rects = selectionToRects(
-              layout,
-              blocks,
-              measures,
-              match.from,
-              match.to,
-            ).map((rect) => ({
-              height: rect.height,
-              pageIndex: rect.pageIndex,
-              width: rect.width,
-              x: rect.x + pageOffsetX,
-              y: rect.y + pageOffsetY,
-            }));
-            if (rects.length > 0) {
-              fallbackGroups.push({
-                rects,
-                label: match.label,
-                canonical: match.canonical,
-              });
-            }
-          }
-
-          if (fallbackGroups.length > 0 && isCurrentRequest()) {
-            setAnonymizationRectGroups([...groups, ...fallbackGroups]);
-          }
+      void projectRangesToRects(highlights.shown, {
+        pagesContainer,
+        zoom,
+        layout,
+        blocks,
+        measures,
+      }).then(
+        (projected) => {
+          if (!isCurrentRequest()) return undefined;
+          setAnonymizationRectGroups(
+            projected.map(({ range, rects }) => ({
+              rects,
+              label: range.label,
+              canonical: range.canonical,
+            })),
+          );
           return undefined;
         },
         () => undefined,
       );
     }, [
       anonymizationOverlayRequestGate,
+      anonymizationTerms,
+      folioEditor,
       layout,
       blocks,
       measures,
@@ -3491,19 +3400,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           noteFollower.noteBase(before);
         }
 
-        // Keep the anonymization match list mirrored in a ref so the
-        // overlay recompute reads the latest set without depending on
-        // a state setter inside its useCallback closure. We pull off
-        // the plugin's state on every transaction; if the matches
-        // identity changes (term meta or doc edit), schedule a paint.
-        const nextMatches =
-          anonymizationDecorationsKey.getState(newState)?.matches ?? [];
-        const matchesChanged = nextMatches !== anonymizationMatchesRef.current;
-        anonymizationMatchesRef.current = nextMatches;
-        if (matchesChanged) {
-          updateAnonymizationOverlay();
-        }
-
         // Same pattern for the inline autocomplete suggestion: keep
         // the ref in sync with every transaction, repaint the
         // ghost-text overlay when the suggestion changes (token
@@ -3626,7 +3522,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         hideSelectionOverlayDuringInput,
         setPassageHighlightRects,
         updateSelectionOverlay,
-        updateAnonymizationOverlay,
         updateAutocompleteOverlay,
         updateDirectivesOverlay,
         updateAISuggestionsOverlay,
@@ -3635,6 +3530,24 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         noteFollower,
       ],
       // NOTE: onDocumentChange removed from dependencies - accessed via ref to prevent infinite loops
+    );
+
+    /**
+     * Lay out what the hidden view shows while a canonical composition grows
+     * or after it ends, as an edit would, without reporting a document change:
+     * the composition reaches the host once it commits.
+     */
+    const layoutCanonicalComposition = useCallback(() => {
+      syncCoordinator.incrementStateSeq();
+      const state = hiddenPMRef.current?.getState();
+      if (state) hideSelectionOverlayDuringInput(state);
+      scheduleLayout();
+      syncCoordinator.requestRender();
+    }, [syncCoordinator, hideSelectionOverlayDuringInput, scheduleLayout]);
+
+    const readEmbeddedFontFamilyMap = useCallback(
+      () => layoutSessionRef.current.embeddedFontFamilyMap,
+      [],
     );
 
     /**
@@ -5979,8 +5892,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         hiddenPMRef.current?.getView()?.state ?? readPrecomputedInitialState();
       if (!initialState) return undefined;
       precomputedInitialDocumentRef.current = document;
-      anonymizationMatchesRef.current =
-        anonymizationDecorationsKey.getState(initialState)?.matches ?? [];
       directivesRef.current =
         templateDirectivesKey.getState(initialState)?.ranges ?? [];
 
@@ -6039,8 +5950,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const handleEditorViewReady = useCallback(
       (view: EditorView) => {
         onEditorViewReadyRef.current?.(view);
-        anonymizationMatchesRef.current =
-          anonymizationDecorationsKey.getState(view.state)?.matches ?? [];
         const initialSuggestion = autocompleteSuggestionKey.getState(
           view.state,
         )?.suggestion;
@@ -6310,6 +6219,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           // scoped family instead of the raw DOCX name — which is never
           // registered on `document.fonts` (see `fonts/embeddedFonts.ts`).
           layoutSessionRef.current.embeddedFontFamilyMap = new Map(familyMap);
+          hiddenPMRef.current?.refreshFonts();
           const view = hiddenPMRef.current?.getView();
           if (!view) {
             return undefined;
@@ -6610,66 +6520,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         scrollToPage: scrollToPageImpl,
         scrollToParaId: scrollToParaIdImpl,
         setPassageHighlight: setPassageHighlightImpl,
-        getPageNumberForPmPos(pmPos) {
-          const container = pagesContainerRef.current;
-          if (!container) {
-            return null;
-          }
-          // Fast path: virtualised docs keep a pm-to-shell map.
-          const hit = findPageShellForPmPos(container, pmPos);
-          if (hit) {
-            const raw = hit.element.dataset["pageNumber"];
-            const parsed = raw === undefined ? Number.NaN : Number(raw);
-            if (Number.isFinite(parsed)) {
-              return parsed;
-            }
-          }
-          // Fallback for non-virtualised docs (< 8 pages): every page is in the
-          // DOM eagerly, so scan shells and find the one whose pm range covers
-          // the target.
-          const shells =
-            container.querySelectorAll<HTMLElement>("[data-page-number]");
-          let bestNumber: number | null = null;
-          let bestStart = Number.NEGATIVE_INFINITY;
-          for (const shell of shells) {
-            const anchors = shell.querySelectorAll<HTMLElement>(
-              PAINTED_START_SELECTOR,
-            );
-            if (anchors.length === 0) {
-              continue;
-            }
-            let pageStart = Number.POSITIVE_INFINITY;
-            let pageEnd = Number.NEGATIVE_INFINITY;
-            for (const el of anchors) {
-              const pm = readPaintedStart(el) ?? Number.NaN;
-              if (!Number.isFinite(pm)) {
-                continue;
-              }
-              if (pm < pageStart) {
-                pageStart = pm;
-              }
-              if (pm > pageEnd) {
-                pageEnd = pm;
-              }
-            }
-            if (pageStart === Number.POSITIVE_INFINITY) {
-              continue;
-            }
-            const raw = shell.dataset["pageNumber"];
-            const parsed = raw === undefined ? Number.NaN : Number(raw);
-            if (!Number.isFinite(parsed)) {
-              continue;
-            }
-            if (pageStart <= pmPos && pmPos <= pageEnd) {
-              return parsed;
-            }
-            if (pageStart <= pmPos && pageStart > bestStart) {
-              bestStart = pageStart;
-              bestNumber = parsed;
-            }
-          }
-          return bestNumber;
-        },
         getBlockRect(blockId) {
           const state = folioEditor.getState();
           const pagesContainer = pagesContainerRef.current;
@@ -6889,6 +6739,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         {/* Hidden ProseMirror for keyboard input */}
         <HiddenProseMirror
           ref={hiddenPMRef}
+          anonymizationTerms={anonymizationTerms}
           document={document}
           documentIdentity={documentIdentity}
           {...(!usesCanonicalSession(
@@ -6909,7 +6760,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           getPrecomputedInitialState={readPrecomputedInitialState}
           readOnly={readOnly}
           onTransaction={handleTransaction}
-          onCanonicalCompositionEnd={scheduleLayout}
+          onCanonicalCompositionLayout={layoutCanonicalComposition}
+          getEmbeddedFontFamilyMap={readEmbeddedFontFamilyMap}
           onSelectionChange={handleSelectionChange}
           onRemoteSelectionsChange={setRemoteSelections}
           onEditorViewReady={handleEditorViewReady}

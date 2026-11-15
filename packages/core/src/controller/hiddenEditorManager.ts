@@ -21,7 +21,7 @@ import {
   Plugin as PMPlugin,
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
-import type { DirectEditorProps } from "prosemirror-view";
+import type { DirectEditorProps, MarkViewConstructor } from "prosemirror-view";
 import { EditorView } from "prosemirror-view";
 import type * as YProseMirror from "y-prosemirror";
 import type { Doc as YDoc, XmlFragment } from "yjs";
@@ -40,6 +40,7 @@ import type * as Yjs from "yjs";
 
 import {
   type CreateCommentOp,
+  documentStories,
   freshCommentId,
   OP_STORIES,
   type OpStory,
@@ -64,6 +65,11 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
+import {
+  type EditingFontContext,
+  editingFontContextOf,
+  editingFontFamily,
+} from "../layout-bridge/convert/editingFont";
 import {
   type HiddenEditorStateReason,
   recordHiddenEditorPhase,
@@ -103,6 +109,7 @@ import { HyperlinkRemovalRefusal } from "../prosemirror/hyperlinkRemoval";
 import { REVISION_MARK_NAMES } from "../prosemirror/keptRangeBoundaries";
 import {
   adoptNativeSelection,
+  createNativeNavigationPlugin,
   createNativeSelectionRefreshPlugin,
   isCompositionKeyDown,
 } from "../prosemirror/nativeSelection";
@@ -138,6 +145,12 @@ import {
   type ReadonlyDocument,
 } from "../types/documentModel";
 import type { RemoteSelection } from "../types/remote-selection";
+import {
+  type AnonymizationStorySource,
+  createAnonymizationHighlights,
+  type FolioAnonymizationTerm,
+  NO_ANONYMIZATION_TERMS,
+} from "./anonymizationHighlights";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
 import {
   createCanonicalInputBoundary,
@@ -150,10 +163,12 @@ import {
   remoteSelectionColor,
 } from "./canonicalRoomEditor";
 import {
+  isCanonicalListParagraph,
   prepareCanonicalAutoformat,
   prepareCanonicalCommands,
 } from "./canonicalStructure";
 import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
+import { legacyTextAddressAt } from "./legacyTextAddress";
 import { handleReadOnlySelectionKeyDown } from "./readOnlySelection";
 
 const CanonicalSessionRefusalErrorBase: TaggedErrorClass<"CanonicalSessionRefusalError"> =
@@ -589,6 +604,8 @@ export type HiddenEditorManagerDeps = {
   getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
   getExperimentalSession?: () => "canonical" | undefined;
+  /** The terms the host wants highlighted; none when unset. */
+  getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[];
   /**
    * Who answers the undo and redo keys in a canonical session; the editor's
    * when unset. With `"host"`, the keys change nothing in any story's view and
@@ -623,11 +640,19 @@ export type HiddenEditorManagerDeps = {
   getDocumentContext: () => ReadonlyDocument | null;
   onTransaction: (update: HiddenEditorTransactionUpdate) => void;
   /**
-   * A canonical composition ended. A layout pass reads the live view, so one
-   * that ran during the composition painted provisional text that only a new
-   * pass can replace, and a cancellation publishes no commit that would ask.
+   * A canonical composition changed what the view shows without a document
+   * change: its provisional text grew or shrank, or it ended. A layout pass
+   * reads the live view, so the painted text and caret follow the composition
+   * as it grows, and the pass after it ends replaces the provisional text.
+   * Nothing reaches the host's change callbacks, the history or a room until
+   * the composition commits.
    */
-  onCanonicalCompositionEnd: () => void;
+  onCanonicalCompositionLayout: () => void;
+  /**
+   * The embedded-font families the painter resolves runs with, so the view
+   * draws text with the faces painted text uses.
+   */
+  getEmbeddedFontFamilyMap: () => ReadonlyMap<string, string> | undefined;
   onSelectionChange: (state: EditorState) => void;
   onKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
   onCopy?: () => void;
@@ -682,6 +707,8 @@ export const createHiddenEditorClipboardHandlers = (
 export type HiddenEditorManager = {
   /** Whether the canonical owner still holds a provisional composition. */
   isCanonicalComposing: () => boolean;
+  /** Draw the view's text again with the painter's current font context. */
+  refreshFonts: () => void;
   /** Request the view (sets the requested flag, then attempts creation). */
   ensureView: () => void;
   /** Re-attempt a previously-requested-but-deferred creation (no-op otherwise). */
@@ -724,6 +751,24 @@ export const createHiddenEditorManager = (
     },
   };
   let view: EditorView | null = null;
+  /** The font context the view's font runs resolve with; see `refreshFonts`. */
+  let editingFonts: EditingFontContext = {};
+  const editingMarkViews = (
+    document: ReadonlyDocument | null,
+  ): Record<string, MarkViewConstructor> => {
+    editingFonts = editingFontContextOf(
+      document,
+      deps.getEmbeddedFontFamilyMap(),
+    );
+    return {
+      fontFamily: (mark, editorView) => {
+        const dom = editorView.dom.ownerDocument.createElement("span");
+        const fontFamily = editingFontFamily(mark, editingFonts);
+        if (fontFamily !== null) dom.style.fontFamily = fontFamily;
+        return { dom };
+      },
+    };
+  };
   let releaseCommandOwner: (() => void) | undefined;
   let editorSession: EditorSession = { type: "prosemirror" };
   let canonicalSessionEpoch = 0;
@@ -832,6 +877,7 @@ export const createHiddenEditorManager = (
         // pending changes come from the session's own history.
         createParagraphChangeTrackerPlugin(),
         createNativeSelectionRefreshPlugin(),
+        createNativeNavigationPlugin(),
         createDocumentStyleContextPlugin(
           deps.getStyles() ?? document.package.styles,
         ),
@@ -992,6 +1038,16 @@ export const createHiddenEditorManager = (
     // and probe behavior; dispatchTransaction still refuses raw document edits.
     // canonical-gap: command-descriptors
     if (intents === undefined) return undefined;
+    // A selection change touches no content: the command runs as it is.
+    if (
+      intents.length > 0 &&
+      intents.every((intent) => intent.type === "selection")
+    )
+      return command(
+        view.state,
+        (transaction) => view?.dispatch(transaction),
+        view,
+      );
     syncCanonicalMode();
     editorSession.session.breakUndoGroup();
     if (
@@ -1139,7 +1195,7 @@ export const createHiddenEditorManager = (
             selection.value.head.blockId,
           )?.source;
           prepared =
-            source?.formatting?.numPr?.kind === "reference" &&
+            isCanonicalListParagraph(source) &&
             state.selection.$from.parent.content.size === 0
               ? prepareCanonicalCommands(session, state, [
                   { type: "removeList" },
@@ -1160,7 +1216,8 @@ export const createHiddenEditorManager = (
           const paragraph = session.projection.paragraph(
             selection.value.head.blockId,
           )?.source;
-          if (paragraph?.formatting?.numPr?.kind === "reference") {
+          // A paragraph its style numbers leaves the list as one of its own.
+          if (isCanonicalListParagraph(paragraph)) {
             prepared = prepareCanonicalCommands(session, state, [
               { type: "removeList" },
             ]);
@@ -1240,6 +1297,10 @@ export const createHiddenEditorManager = (
     "command" | "structure"
   >;
   const canonicalInputLifecycle = {
+    compositionShown: () => {
+      if (editorSession.type === "canonical")
+        deps.onCanonicalCompositionLayout();
+    },
     breakUndoGroup: () => {
       if (editorSession.type === "canonical")
         editorSession.session.breakUndoGroup();
@@ -1257,7 +1318,7 @@ export const createHiddenEditorManager = (
     endComposition: () => {
       if (editorSession.type !== "canonical") return;
       editorSession.session.endComposition();
-      deps.onCanonicalCompositionEnd();
+      deps.onCanonicalCompositionLayout();
       room?.flush();
     },
   };
@@ -1279,6 +1340,8 @@ export const createHiddenEditorManager = (
         deps.onReadOnlyEditAttempt();
         return true;
       }
+      // The host hears of a cut the editor takes, as on the legacy engine.
+      deps.onCut?.();
       if (editorSession.type !== "canonical" || pmView.state.selection.empty)
         return true;
       if (event.clipboardData === null) {
@@ -1412,6 +1475,9 @@ export const createHiddenEditorManager = (
     const editorProps: DirectEditorProps = {
       state: initialState,
       attributes: HIDDEN_EDITOR_ATTRIBUTES,
+      // Text the browser draws itself, such as an IME composition, takes the
+      // faces the painter draws the run with.
+      markViews: editingMarkViews(document),
       editable: () => !deps.getReadOnly() && editorSession.type !== "refused",
       dispatchTransaction: (transaction: Transaction) => {
         if (!view || isDestroying) {
@@ -1634,9 +1700,15 @@ export const createHiddenEditorManager = (
             ? input.handleDOMEvents.input(pmView)
             : false,
         paste: (pmView, event) => {
-          if (editorSession.type === "canonical" && !deps.getReadOnly())
-            return input.handleDOMEvents.paste(pmView, event);
-          return createHiddenEditorClipboardHandlers(deps).paste(pmView, event);
+          if (editorSession.type !== "canonical" || deps.getReadOnly())
+            return createHiddenEditorClipboardHandlers(deps).paste(
+              pmView,
+              event,
+            );
+          const refused = input.handleDOMEvents.paste(pmView, event);
+          // The host hears of a paste the editor takes, as on the legacy engine.
+          if (!refused) deps.onPaste?.();
+          return refused;
         },
         cut: (pmView, event) =>
           editorSession.type === "canonical"
@@ -2003,6 +2075,39 @@ export const createHiddenEditorManager = (
       CANONICAL_GAP.authorityRouting,
     );
 
+  // Highlights read the stories as the editor shows them: a canonical
+  // session's projection of each story, otherwise the body's editor document.
+  const anonymization = createAnonymizationHighlights();
+  const anonymizationSources = (): AnonymizationStorySource[] => {
+    if (editorSession.type === "canonical") {
+      const session = editorSession.session;
+      return documentStories(readModel(session.document)).flatMap((story) => {
+        const projected =
+          story === OP_STORIES.MAIN
+            ? session.projection
+            : session.projectStory(story).unwrapOr(null);
+        if (projected === null) return [];
+        return [
+          {
+            story,
+            doc: projected.doc,
+            addressAt: (position: number) =>
+              projected.addressAt(position).unwrapOr(null),
+          },
+        ];
+      });
+    }
+    if (!view) return [];
+    const doc = view.state.doc;
+    return [
+      {
+        story: OP_STORIES.MAIN,
+        doc,
+        addressAt: (position) => legacyTextAddressAt(doc, position),
+      },
+    ];
+  };
+
   const api = createHiddenEditorApi({
     getView: () => view,
     getDocumentContext: () =>
@@ -2041,6 +2146,18 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical"
         ? editorSession.session.document
         : null,
+    getAnonymizationHighlights: () =>
+      anonymization.read(
+        deps.getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,
+        anonymizationSources,
+      ),
+    canonicalEditorPositionAt: (position) => {
+      if (editorSession.type !== "canonical") return undefined;
+      // Pending composition text is painted but not yet in the projection.
+      if (editorSession.session.isComposing) return null;
+      const shown = editorSession.session.projection.positionAt(position);
+      return shown.isOk() ? shown.value : null;
+    },
     setCanonicalMode: (mode) => {
       if (editorSession.type !== "canonical") return false;
       modeOverride = mode;
@@ -2385,5 +2502,14 @@ export const createHiddenEditorManager = (
         : null,
     isCanonicalComposing: () =>
       editorSession.type === "canonical" && editorSession.session.isComposing,
+    refreshFonts: () => {
+      const markViews = editingMarkViews(deps.getDocument());
+      // A redraw would replace the text a composition is drawing into; runs
+      // drawn after it ends take the new context.
+      if (!view || view.isDestroyed || view.composing) return;
+      // ProseMirror rebuilds its views only when the node views it is given
+      // change, and then redraws the runs whose constructor changed.
+      view.setProps({ nodeViews: {}, markViews });
+    },
   };
 };

@@ -65,6 +65,11 @@ export const setRevisionInfo = (
   let disagreeing: number | undefined;
   const modified = new Set<string>();
   const rebuilt = new WeakMap<object, unknown>();
+  // Rebuilt values whose every change lies in paragraphs already declared
+  // modified. Any other change belongs to the nearest record holding
+  // paragraphs: a row's tracked deletion, a cell's or a table's property
+  // change is written with the paragraphs that row, cell or table holds.
+  const declared = new WeakSet<object>();
   const rebuild = (value: unknown): unknown => {
     if (typeof value !== "object" || value === null) return value;
     const known = rebuilt.get(value);
@@ -72,10 +77,20 @@ export const setRevisionInfo = (
     let out: unknown = value;
     if (Array.isArray(value)) {
       const items = value.map(rebuild);
-      if (items.some((item, index) => item !== value[index])) out = items;
+      if (items.some((item, index) => item !== value[index])) {
+        out = items;
+        if (
+          items.every(
+            (item, index) =>
+              item === value[index] ||
+              (typeof item === "object" && item !== null && declared.has(item)),
+          )
+        )
+          declared.add(items);
+      }
     } else if (isRecord(value)) {
       let changed = false;
-      let ownInfoChanged = false;
+      let undeclared = false;
       const entries: [string, unknown][] = [];
       for (const [key, field] of Object.entries(value)) {
         const info = key === "info" ? revisionInfoOf(field) : undefined;
@@ -88,8 +103,15 @@ export const setRevisionInfo = (
             disagreeing ??= info.id;
           previous.set(info.id, info);
           next = structurallyEqual(info, replacement) ? field : replacement;
-          if (next !== field) ownInfoChanged = true;
-        } else next = rebuild(field);
+          if (next !== field) undeclared = true;
+        } else {
+          next = rebuild(field);
+          if (
+            next !== field &&
+            !(typeof next === "object" && next !== null && declared.has(next))
+          )
+            undeclared = true;
+        }
         if (next !== field) changed = true;
         entries.push([key, next]);
       }
@@ -103,11 +125,18 @@ export const setRevisionInfo = (
         if (
           value["type"] === "paragraph" &&
           typeof value["paraId"] === "string"
-        )
+        ) {
           modified.add(value["paraId"]);
-        // A row's or cell's own revision is written with the paragraphs it
-        // holds.
-        else if (ownInfoChanged) paragraphIdsIn(value, modified);
+          declared.add(copy);
+        } else if (!undeclared) declared.add(copy);
+        else {
+          const held = new Set<string>();
+          paragraphIdsIn(value, held);
+          if (held.size > 0) {
+            for (const id of held) modified.add(id);
+            declared.add(copy);
+          }
+        }
       }
     }
     rebuilt.set(value, out);

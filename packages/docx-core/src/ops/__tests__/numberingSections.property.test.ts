@@ -685,3 +685,114 @@ test("endpoint property states preserve exact omitted and undefined keys through
     propertyConfig({ numRuns: 10 }),
   );
 });
+
+/** Numbering with instances and definitions in a sampled order. */
+const unorderedNumbering = fc
+  .uniqueArray(fc.integer({ min: 1, max: 40 }), { minLength: 1, maxLength: 5 })
+  .map((ids) => ({
+    abstractNums: ids.map((abstractNumId) => ({
+      abstractNumId,
+      levels: [{ ilvl: 0, numFmt: "decimal" as const, lvlText: "%1." }],
+    })),
+    nums: ids.map((id) => ({ numId: id, abstractNumId: id })),
+  }));
+
+const numberedDocument = (
+  numbering: Document["package"]["numbering"],
+): Document => ({ ...base, package: { ...base.package, numbering } });
+
+const creation = (id: number): DocumentOp => ({
+  type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
+  num: { numId: id, abstractNumId: id },
+  abstractNum: {
+    abstractNumId: id,
+    levels: [{ ilvl: 0, numFmt: "decimal" as const, lvlText: "%1." }],
+  },
+});
+
+/**
+ * Two creations applied in either order leave one numbering part;
+ * `appending` is the test-only break, which moves each created entry to the
+ * end of its list as an appending creation would.
+ */
+const concurrentCreations = (appending: boolean) =>
+  fc.property(
+    unorderedNumbering,
+    fc.uniqueArray(fc.integer({ min: 41, max: 80 }), {
+      minLength: 2,
+      maxLength: 2,
+    }),
+    (numbering, [first = 41, second = 42]) => {
+      const create = (document: Document, id: number): Document => {
+        const applied = applyDocumentOp(document, creation(id));
+        if (applied.isErr()) throw applied.error;
+        const created = applied.value.document;
+        const part = created.package.numbering;
+        if (!appending || part === undefined) return created;
+        const last = <Entry>(
+          list: readonly Entry[],
+          is: (each: Entry) => boolean,
+        ) => list.filter((each) => !is(each)).concat(list.filter(is));
+        return numberedDocument({
+          ...part,
+          nums: last(part.nums, ({ numId }) => numId === id),
+          abstractNums: last(
+            part.abstractNums,
+            ({ abstractNumId }) => abstractNumId === id,
+          ),
+        });
+      };
+      const start = numberedDocument(numbering);
+      expect(create(create(start, first), second).package.numbering).toEqual(
+        create(create(start, second), first).package.numbering,
+      );
+    },
+  );
+
+test(
+  "concurrent numbering creations leave one order whichever applies first",
+  () => {
+    fc.assert(concurrentCreations(false), propertyConfig());
+  },
+  propertyTestTimeout(30_000),
+);
+
+test(
+  "appending numbering creations are caught",
+  () => {
+    const result = fc.check(
+      concurrentCreations(true),
+      // The break is a counterexample on purpose: report nothing.
+      propertyConfig({ numRuns: 1, reporter: () => undefined }),
+    );
+    expect(result.failed).toBe(true);
+  },
+  propertyTestTimeout(30_000),
+);
+
+test("undoing the deletion of a numbering instance puts it back where it was", () => {
+  fc.assert(
+    fc.property(unorderedNumbering, fc.nat(), (numbering, pick) => {
+      const removed = numbering.nums[pick % numbering.nums.length];
+      const abstractNum = numbering.abstractNums.find(
+        ({ abstractNumId }) => abstractNumId === removed?.abstractNumId,
+      );
+      if (removed === undefined || abstractNum === undefined)
+        throw new Error("The sampled instance is there.");
+      const start = numberedDocument(numbering);
+      const deleted = applyDocumentOp(start, {
+        type: DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE,
+        num: removed,
+        abstractNum,
+      });
+      if (deleted.isErr()) throw deleted.error;
+      const undone = applyDocumentOps(
+        deleted.value.document,
+        deleted.value.inverse,
+      );
+      if (undone.isErr()) throw undone.error;
+      expect(undone.value.document).toStrictEqual(start);
+    }),
+    propertyConfig(),
+  );
+});

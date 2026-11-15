@@ -1,0 +1,10 @@
+{
+  "a suggested link change resolves to the direct edit or the original, saved or not": [
+    {
+      "seed": -525169527,
+      "path": "28:2:1:1:1:1:2:1:1:27:1:2",
+      "note": "Setting a link on text inside a content control: the suggestion meets the typed refusal for copying text inside a container instead of changing nothing.",
+      "date": "2026-11-14"
+    }
+  ]
+}

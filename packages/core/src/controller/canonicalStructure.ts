@@ -4,7 +4,9 @@ import { CellSelection } from "prosemirror-tables";
 
 import {
   headingOutlineLevel,
+  NO_PARAGRAPH_NUMBERING,
   paragraphNumberingReference,
+  resolveParagraphNumbering,
 } from "@stll/docx-core/model";
 import {
   DOCUMENT_OP_TYPES,
@@ -42,6 +44,7 @@ import {
   effectiveParagraphNumbering,
   paragraphNumberingSourcesFromBoundary,
 } from "../prosemirror/numberingAttr";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type {
   BlockContent,
@@ -51,6 +54,7 @@ import type {
 } from "../types/document";
 import { readModel } from "../types/documentModel";
 import { collectHeadings } from "../utils/headingCollector";
+import { prepareContentControlValue } from "./canonicalContentControlValue";
 
 const DEFAULT_TOC_PAGE_WIDTH_TWIPS = 12240;
 const DEFAULT_TOC_MARGIN_TWIPS = 1440;
@@ -120,6 +124,30 @@ const effectiveNumbering = (paragraph: Paragraph | undefined) =>
       numPrFromStyle: paragraph?.formatting?.numPrFromStyle,
     }),
   );
+
+/**
+ * The numbering that takes a paragraph out of its list. A paragraph whose
+ * style chain numbers it states the cancellation (`w:numId="0"`), since only
+ * that overrides the style; any other paragraph loses its own numbering, so it
+ * keeps no override it never had.
+ */
+const numberingRemoval = (session: CanonicalSession) => {
+  const styles = createStyleResolver(
+    readModel(session.document).package.styles,
+  );
+  return (paragraph: Paragraph): typeof NO_PARAGRAPH_NUMBERING | null =>
+    resolveParagraphNumbering(
+      styles.resolveParagraphStyle(paragraph.formatting?.styleId)
+        .paragraphFormatting?.numPr,
+    ).kind === "reference"
+      ? NO_PARAGRAPH_NUMBERING
+      : null;
+};
+
+/** Whether a paragraph is in a list, by numbering of its own or its style's. */
+export const isCanonicalListParagraph = (
+  paragraph: Paragraph | undefined,
+): boolean => effectiveNumbering(paragraph).kind === "reference";
 
 type ParagraphPosition = {
   container: readonly BlockContent[];
@@ -303,12 +331,56 @@ const numberingIntent = (
   };
 };
 
+type TextReplacementCommand = Extract<
+  CanonicalCommandIntent,
+  { type: "replaceText" }
+>;
+
 /** Toolbar meanings enter the same operation journal as native input. */
 export const prepareCanonicalCommands = (
   session: CanonicalSession,
   state: EditorState,
   commands: readonly CanonicalCommandIntent[],
 ): Result<CanonicalCommit, CanonicalSessionError> => {
+  // A text replacement is the session's own text input; several ranges,
+  // the last first, are one replacement.
+  const replacements = commands.filter(
+    (command): command is TextReplacementCommand =>
+      command.type === "replaceText",
+  );
+  if (replacements.length > 0) {
+    if (replacements.length !== commands.length)
+      return refuse("A text replacement must be prepared on its own.");
+    const [only] = replacements;
+    if (only !== undefined && replacements.length === 1)
+      return session.prepareReplace(state, {
+        from: only.from,
+        to: only.to,
+        text: only.text,
+      });
+    const intents: EditorIntent[] = [];
+    for (const replacement of replacements) {
+      // The replaced text's own edges, as a selection typed over names them.
+      const edges = session.projection.rangeEdgesAt(
+        replacement.from,
+        replacement.to,
+      );
+      const from = session.projection.inputAddressAt(
+        replacement.from,
+        edges.start,
+      );
+      if (from.isErr()) return from;
+      const to = session.projection.inputAddressAt(replacement.to, edges.end);
+      if (to.isErr()) return to;
+      intents.push({
+        type: "replaceText",
+        from: from.value,
+        to: to.value,
+        text: replacement.text,
+      });
+    }
+    return session.prepareIntents(state, { intents });
+  }
   // A note reference or a table of contents goes at one caret; selected
   // cells have none.
   if (
@@ -322,6 +394,20 @@ export const prepareCanonicalCommands = (
   )
     return refuse(CELL_SELECTION_PLACEMENT_REFUSAL);
   const intents: EditorIntent[] = [];
+  const valueCommands = commands.filter(
+    (
+      command,
+    ): command is Extract<
+      CanonicalCommandIntent,
+      { type: "setContentControlValue" }
+    > => command.type === "setContentControlValue",
+  );
+  if (valueCommands.length > 0) {
+    const [valueCommand] = valueCommands;
+    if (valueCommand === undefined || commands.length !== 1)
+      return refuse("A content control's value must be set on its own.");
+    return prepareContentControlValue(session, state, valueCommand);
+  }
   const sectionCommands = commands.filter(
     (command) =>
       command.type === "setSectionBreak" ||
@@ -564,6 +650,9 @@ export const prepareCanonicalCommands = (
         });
         break;
       }
+      case "selection":
+        // Run by the editor as it is; it changes no content.
+        break;
       case "insertBreak": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
@@ -583,6 +672,10 @@ export const prepareCanonicalCommands = (
       case "insertNote":
       case "deleteNote":
         return panic("Note commands are prepared before editor intents.");
+      case "setContentControlValue":
+        return panic("Control values are prepared before editor intents.");
+      case "replaceText":
+        return panic("Text replacements are prepared before editor intents.");
       case "formatRun": {
         const from = session.projection.addressAt(command.from);
         if (from.isErr()) return from;
@@ -634,6 +727,7 @@ export const prepareCanonicalCommands = (
           );
           break;
         }
+        const removed = numberingRemoval(session);
         for (const paragraph of paragraphs)
           intents.push({
             type: "formatParagraph",
@@ -642,15 +736,14 @@ export const prepareCanonicalCommands = (
               blockId: paragraph.paraId ?? "",
               offset: 0,
             },
-            patch: { numPr: { kind: "none" } },
+            patch: { numPr: removed(paragraph) },
           });
         break;
       }
-      case "removeList":
-        {
-          const positions = paragraphPositions(session, paragraphs);
-          if (positions.isErr()) return positions;
-        }
+      case "removeList": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
+        const removed = numberingRemoval(session);
         for (const paragraph of paragraphs)
           intents.push({
             type: "formatParagraph",
@@ -659,14 +752,14 @@ export const prepareCanonicalCommands = (
               blockId: paragraph.paraId ?? "",
               offset: 0,
             },
-            patch: { numPr: { kind: "none" } },
+            patch: { numPr: removed(paragraph) },
           });
         break;
-      case "changeListLevel":
-        {
-          const positions = paragraphPositions(session, paragraphs);
-          if (positions.isErr()) return positions;
-        }
+      }
+      case "changeListLevel": {
+        const positions = paragraphPositions(session, paragraphs);
+        if (positions.isErr()) return positions;
+        const removed = numberingRemoval(session);
         for (const paragraph of paragraphs) {
           const numPr = effectiveNumbering(paragraph);
           if (numPr?.kind !== "reference") continue;
@@ -684,7 +777,7 @@ export const prepareCanonicalCommands = (
             at,
             patch: {
               numPr: (() => {
-                if (level < 0) return { kind: "none" } as const;
+                if (level < 0) return removed(paragraph);
                 if (
                   paragraph.formatting?.numPr?.kind !== "reference" &&
                   paragraph.formatting?.numPrFromStyle?.kind === "reference"
@@ -699,6 +792,7 @@ export const prepareCanonicalCommands = (
           });
         }
         break;
+      }
       case "restartNumbering":
       case "continueNumbering": {
         const positions = paragraphPositions(session, paragraphs);

@@ -33,6 +33,10 @@ import type {
   CanonicalHistoryEffect,
 } from "@stll/folio-core/canonical/canonicalSession";
 import {
+  type FolioAnonymizationTerm,
+  NO_ANONYMIZATION_TERMS,
+} from "@stll/folio-core/controller/anonymizationHighlights";
+import {
   type CanonicalRoomCollaboration,
   isCanonicalRoomCollaboration,
 } from "@stll/folio-core/controller/canonicalRoomEditor";
@@ -89,7 +93,11 @@ import {
   CanonicalSaveDiagnosticError,
   serializeCanonicalSave,
 } from "@stll/folio-core/docx/canonicalSave";
-import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
+import {
+  holdsUniqueParagraphIds,
+  prepareCanonicalDocumentInput,
+  prepareCanonicalDocxInput,
+} from "@stll/folio-core/docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { parseDocx } from "@stll/folio-core/docx/parser";
@@ -144,8 +152,6 @@ import {
   heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
-import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
@@ -435,15 +441,8 @@ export type UseDocxEditorOptions = {
   collaboration?: MaybeRefOrGetter<
     UseDocxEditorCollaboration | CanonicalRoomCollaboration | undefined
   >;
-  /**
-   * Fires with the anonymization decoration plugin's current match list on
-   * mount, term push, and every doc edit. The anonymization plugin is always
-   * installed (inert until terms are pushed via `setAnonymizationTermsMeta`),
-   * mirroring the React adapter.
-   */
-  onAnonymizationMatchesChange?: (
-    matches: readonly AnonymizationMatch[],
-  ) => void;
+  /** The terms the editor highlights in the shown text; none when unset. */
+  getAnonymizationTerms?: () => readonly FolioAnonymizationTerm[] | undefined;
   /**
    * Install the template-directive + slash-menu plugins so `{{...}}` markers are
    * scanned and the `/` trigger is active. Reactive: toggling reconfigures the
@@ -622,7 +621,7 @@ export function useDocxEditor(
     onCanonicalHistory,
     onCanonicalHistoryDrop,
     collaboration,
-    onAnonymizationMatchesChange,
+    getAnonymizationTerms,
     showTemplateDirectives,
     onSlashMenuChange,
     onSlashMenuKeyAction,
@@ -742,12 +741,6 @@ export function useDocxEditor(
   // Tab, Mod+ArrowRight, and Escape consume an active suggestion first.
   const autocompletePlugin = autocompleteSuggestionPlugin({ keymap: true });
 
-  // Anonymization-term highlights. Always installed (inert until the host pushes
-  // terms via `setAnonymizationTermsMeta`), matching React. The callback is read
-  // through the stable closure below so the plugin identity never changes.
-  const anonymizationPlugin = createAnonymizationDecorationsPlugin({
-    onMatchesChange: (matches) => onAnonymizationMatchesChange?.(matches),
-  });
   // Template-directive scan + slash-menu trigger. Installed only when
   // `showTemplateDirectives` is on (see `buildExternalPlugins` /
   // `syncTemplatePlugins`). Preview plugin is inert until values are pushed.
@@ -771,7 +764,6 @@ export function useDocxEditor(
       suggestionPlugin,
       ...externalPlugins,
       ...(yjsCollaboration()?.plugins ?? []),
-      anonymizationPlugin,
       ...(templatePluginsEnabled()
         ? [templateDirectivesPlugin, templateSlashMenu]
         : []),
@@ -1099,6 +1091,8 @@ export function useDocxEditor(
     getStyles: readModelStyles,
     getExtensionManager: () => extensionManager,
     getExternalPlugins: buildExternalPlugins,
+    getAnonymizationTerms: () =>
+      getAnonymizationTerms?.() ?? NO_ANONYMIZATION_TERMS,
     getCollaboration: yjsCollaboration,
     getCollaborationModules: () => collaborationModules.value,
     getCanonicalRoom: canonicalRoom,
@@ -1116,7 +1110,8 @@ export function useDocxEditor(
     getDocumentIdentity: () => String(loadSequence),
     getDocumentContext: () => docModel.value,
     onTransaction: handleTransaction,
-    onCanonicalCompositionEnd: () => scheduler.schedule(),
+    onCanonicalCompositionLayout: layoutCanonicalComposition,
+    getEmbeddedFontFamilyMap: () => session.embeddedFontFamilyMap,
     onSelectionChange: (state) => {
       editorState.value = state;
       onSelectionUpdate?.(state);
@@ -1241,6 +1236,19 @@ export function useDocxEditor(
       scheduler.schedule();
       scheduleDocumentChangeNotification();
     }
+    syncCoordinator.requestRender();
+  }
+
+  /**
+   * Lay out what the hidden view shows while a canonical composition grows or
+   * after it ends, as an edit would, without reporting a document change: the
+   * composition reaches the host once it commits.
+   */
+  function layoutCanonicalComposition(): void {
+    const view = editorView.value;
+    if (view) editorState.value = view.state;
+    syncCoordinator.incrementStateSeq();
+    scheduler.schedule();
     syncCoordinator.requestRender();
   }
 
@@ -1475,7 +1483,11 @@ export function useDocxEditor(
 
   // ---- Public loading API -------------------------------------------------
 
+  // A load started later supersedes one still preparing its document.
+  let loadGeneration = 0;
+
   async function loadBuffer(buffer: DocxInput): Promise<void> {
+    loadGeneration += 1;
     parseError.value = null;
     isReady.value = false;
     try {
@@ -1497,11 +1509,37 @@ export function useDocxEditor(
   }
 
   function loadDocument(doc: Document): void {
+    const generation = (loadGeneration += 1);
     parseError.value = null;
     // A host's document may hold reactive proxies; the model is its raw
     // data, which the copies the host is handed can clone.
+    const raw = rawDocument(doc);
+    if (!isCanonicalSession() || holdsUniqueParagraphIds(raw)) {
+      commitLoadedDocument(raw);
+      return;
+    }
+    // A canonical session opens the model with the paragraph ids the byte
+    // path establishes for it.
+    void loadCanonicalDocument(raw, generation);
+  }
+
+  async function loadCanonicalDocument(
+    doc: Document,
+    generation: number,
+  ): Promise<void> {
+    const prepared = await prepareCanonicalDocumentInput(doc);
+    if (generation !== loadGeneration) return;
+    if (prepared.isErr()) {
+      parseError.value = prepared.error.message;
+      onError?.(prepared.error);
+      return;
+    }
+    commitLoadedDocument(prepared.value);
+  }
+
+  function commitLoadedDocument(doc: Document): void {
     heldNotes = heldUnreferencedNotes(doc);
-    docModel.value = rawDocument(doc);
+    docModel.value = doc;
     noteFollower.reset();
     remountForNewDocument();
   }
@@ -1814,11 +1852,9 @@ export function useDocxEditor(
     setEmbeddedFontFamilies: (
       families: ReadonlyMap<string, string> | null,
     ): void => {
-      if (families) {
-        session.embeddedFontFamilyMap = new Map(families);
-        return;
-      }
-      delete session.embeddedFontFamilyMap;
+      if (families) session.embeddedFontFamilyMap = new Map(families);
+      else delete session.embeddedFontFamilyMap;
+      manager.refreshFonts();
     },
     editor,
     editorView,

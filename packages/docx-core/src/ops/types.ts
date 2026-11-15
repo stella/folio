@@ -41,6 +41,7 @@ import type {
   ParagraphMarkChange,
   ParagraphPropertyChange,
   RecordField,
+  SdtProperties,
   Section,
   SectionProperties,
   Table,
@@ -93,6 +94,10 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 12 adds `setContentControl`, which sets a block-level content
+ * control's properties by its id.
+ * Version 11 records, as a sequenced format's effect, the run a direct
+ * format cut (`setRunProps` effect).
  * Version 9 adds exact, JSON-safe package resource replacement for clipboard imports.
  * Version 8 adds semantic table edits and exact whole-table restoration.
  * Version 7 adds lossless own-undefined operation snapshot presence and
@@ -115,7 +120,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 10;
+export const DOCUMENT_OP_SCHEMA_VERSION = 13;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -305,6 +310,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   readonly DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance";
   readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
   readonly SET_PACKAGE_RESOURCES: "setPackageResources";
+  readonly SET_CONTENT_CONTROL: "setContentControl";
 }> = Object.freeze({
   CREATE_COMMENT: "createComment",
   UPDATE_COMMENT_CONTENT: "updateCommentContent",
@@ -352,6 +358,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
   DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance",
   SET_SECTION_ENDPOINT: "setSectionEndpoint",
   SET_PACKAGE_RESOURCES: "setPackageResources",
+  SET_CONTENT_CONTROL: "setContentControl",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -917,6 +924,25 @@ export type PackageResourceMapChange<Value> = {
   entries: readonly PackageResourceEntryChange<Value>[];
 };
 
+/**
+ * Set one content control's properties exactly: its value (`w:lastValue`,
+ * `w14:checked`, `w:fullDate`), placeholder state and binding. The control is
+ * addressed by its `w:sdtPr/w:id`, block-level or inline, in one story.
+ * `expected` is what its properties are now and `properties` what they become;
+ * the inverse swaps the two. The control's id and type do not change, and its
+ * content is edited by the text operations. `blockIds` names the paragraphs
+ * the control holds (block-level) or sits in (inline), in document order: the
+ * blocks a concurrent change conflicts with.
+ */
+export type SetContentControlOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL;
+  story: OpStory;
+  controlId: number;
+  blockIds: readonly string[];
+  expected: SdtProperties;
+  properties: SdtProperties;
+};
+
 /** Replace merged definitions and change keyed package entries, refusing stale package data. */
 export type SetPackageResourcesOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
@@ -1177,6 +1203,26 @@ export type DeleteCommentOp = {
   id: number;
   scope: "thread" | "reply";
 };
+/**
+ * A comment range marker standing between blocks rather than in a paragraph,
+ * addressed by the nearest block of its own block list that holds a
+ * paragraph: the nearest such block after it, or before it when none follows.
+ */
+export type CommentBoundaryAnchor = {
+  story: OpStory;
+  /** That block's first paragraph after the marker, or its last before it. */
+  blockId: string;
+  /** How many block lists that paragraph's own list lies below the marker's. */
+  depth: number;
+  /** Whether the marker stands before or after that block. */
+  side: "before" | "after";
+  /** How many blocks, other markers of the same comments aside, stand between the two. */
+  gap: number;
+  node: Extract<
+    BlockContent,
+    { type: "commentRangeStart" } | { type: "commentRangeEnd" }
+  >;
+};
 /** Exact owned comment records and the paragraph fragments containing their anchors. */
 export type CommentState = {
   relationshipPresence: "absent" | "undefined" | "present";
@@ -1192,6 +1238,12 @@ export type CommentState = {
     blockId: string;
     content: readonly ParagraphContent[];
   }[];
+  /**
+   * The owned markers standing between blocks, in document order; absent
+   * when there are none. Each one's addressing paragraph is also one of
+   * `anchors`, so an edit to it conflicts with the restoration.
+   */
+  boundaries?: readonly CommentBoundaryAnchor[];
 };
 export type RestoreCommentStateOp = {
   type: typeof DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE;
@@ -1246,6 +1298,7 @@ export type DocumentOp = (
   | DeleteNumberingInstanceOp
   | SetSectionEndpointOp
   | SetPackageResourcesOp
+  | SetContentControlOp
 ) & {
   /** Own undefined fields recorded by the operation capture boundary. */
   undefinedFields?: readonly (readonly string[])[];

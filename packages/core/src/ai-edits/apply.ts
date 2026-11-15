@@ -37,7 +37,6 @@ import {
   type NumberingIdsInUse,
 } from "../docx/numberingIds";
 import type { NumberingMap } from "../docx/numberingParser";
-import { isNumberingReference } from "../docx/numberingReference";
 import { formattingEquals } from "../docx/runConsolidator";
 import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
 import {
@@ -179,18 +178,12 @@ import {
   removeRowsWithoutCellsAfterBatch,
   type RowsEmptiedInBatch,
 } from "../prosemirror/tableGridMutation";
-import {
-  paragraphGoes,
-  runInCellPending,
-  tableGoes,
-} from "../prosemirror/tableRunIn";
+import { paragraphGoes, tableGoes } from "../prosemirror/tableRunIn";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type {
   ParagraphFormatting,
   RunPropertyChange,
-  Style,
   TextFormatting,
 } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
@@ -235,13 +228,14 @@ import {
   segmentsAroundNoteReferences,
 } from "./note-references";
 import {
+  holdsOnlyDeletedContent,
   isDeletedPPrMark,
   isPendingDeletion,
-  joinRunsWordsInto,
+  joinStopsAtTableAfter,
+  PENDING_JOIN_INSERTION_REFUSAL,
+  PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
   pendingJoinBounds,
-  type PendingJoinBoundsOptions,
 } from "./pendingJoin";
-import { classifyResourceReference } from "./referenceClassification";
 import {
   getFolioDocumentOperationRemovedBlockIds,
   getTrackedFolioDocumentOperationCarrierBlockId,
@@ -309,6 +303,10 @@ import type {
   FolioAISignatureParty,
 } from "./types";
 import {
+  findUndefinedOperationReference,
+  type FolioUndefinedReferencePolicy,
+} from "./undefinedReferences";
+import {
   createWordDiffSession,
   type WordDiffGranularity,
   wordDiffSessionFromOptions,
@@ -317,12 +315,6 @@ import {
 type FolioAIBlockParagraphProperties =
   RequestParagraphProperties<FolioContentStatedNumbering>;
 type StagedOperation = FolioAIStagedEditOperation;
-type StagedOperationNumbering = NonNullable<
-  Extract<
-    StagedOperation,
-    { type: "insertAfterBlock" | "insertBeforeBlock" }
-  >["numbering"]
->;
 
 /**
  * The only editor surface the apply logic touches: a current `state`
@@ -517,7 +509,7 @@ export type FolioReplacementBackground = "clear" | "keep";
  * boundary clears destination style collisions with warnings before application.
  * The parser already normalizes undefined source numbering to none.
  */
-export type FolioUndefinedReferencePolicy = "refuse" | "keep";
+export type { FolioUndefinedReferencePolicy };
 
 /**
  * An apply result plus where the batch left the revision-id counter.
@@ -3068,23 +3060,6 @@ const insertionFormattingAnchor = ({
  * runs into it, so a paragraph right after the words can take their break and
  * stand; so can one with a paragraph going whole between it and the table.
  */
-const joinStopsAtTableAfter = (options: PendingJoinBoundsOptions): boolean => {
-  if (!joinRunsWordsInto(options)) return false;
-  const $place = options.doc.resolve(options.paragraphPos);
-  for (let index = $place.index(); index < $place.parent.childCount; index++) {
-    const next = $place.parent.child(index);
-    if (next.type.name === "paragraph") return false;
-    if (next.type.spec["tableRole"] === "table") {
-      const before = $place.nodeBefore;
-      return (
-        !runInCellPending(next) ||
-        (before !== null && holdsOnlyDeletedContent(before))
-      );
-    }
-  }
-  return false;
-};
-
 type InsertionAtOptions = {
   item: ResolvedOperation;
   tr: Transaction;
@@ -3218,19 +3193,6 @@ const isInsertedPPrMark = (value: unknown): boolean =>
 const isSuggestedParagraphInsert = (paragraph: PMNode): boolean =>
   typeof paragraph.attrs["_suggestedInsert"] === "object" &&
   paragraph.attrs["_suggestedInsert"] !== null;
-
-const pendingJoinInsertionRefusal = {
-  reason: "pendingParagraphMarkDeletion",
-  message:
-    "Accepting the pending paragraph mark deletion before this place would run the paragraph together with the words before it or the table after it. Resolve that change first, or insert elsewhere.",
-} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
-
-const pendingParagraphMarkPropertyRefusal = {
-  reason: "pendingParagraphMarkDeletion",
-  canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
-  message:
-    "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
-} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
 
 /** Whether every piece of the paragraph's content is pending inserted text. */
 const holdsOnlyInsertedContent = (
@@ -3458,20 +3420,6 @@ const addedOrDeletedBreakRevisionId = (value: unknown): number | null => {
 };
 
 /** Whether every piece of the paragraph's content is pending deleted text (or it has none). */
-const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
-  let whollyDeleted = true;
-  paragraph.descendants((node) => {
-    if (!whollyDeleted) {
-      return false;
-    }
-    if (!node.isInline || isZeroWidthAnchor(node)) {
-      return true;
-    }
-    whollyDeleted = node.marks.some((mark) => mark.type.name === "deletion");
-    return false;
-  });
-  return whollyDeleted;
-};
 
 /**
  * Where the paragraph at `position` runs on into the next paragraph when its
@@ -5497,35 +5445,17 @@ const applyFolioAIEditOperationsInternal = ({
       skipped.push({ id: operation.id, reason: "unsupportedBlock" });
       continue;
     }
-    const undefinedStyle = findUndefinedParagraphStyleReference({
+    const undefinedReference = findUndefinedOperationReference({
       operation,
-      definitions: styleDefinitions,
+      styles: styleDefinitions,
+      numberingInstanceIds,
       undefinedReferences,
     });
-    if (undefinedStyle !== undefined) {
+    if (undefinedReference !== undefined) {
       skipped.push({
         id: operation.id,
-        reason: "missingStyle",
-        message: describeUndefinedParagraphStyle(
-          undefinedStyle,
-          styleDefinitions,
-        ),
-      });
-      continue;
-    }
-    const undefinedNumbering = findUndefinedNumberingReference({
-      operation,
-      instanceIds: numberingInstanceIds,
-      undefinedReferences,
-    });
-    if (undefinedNumbering !== undefined) {
-      skipped.push({
-        id: operation.id,
-        reason: "missingNumbering",
-        message: describeUndefinedNumbering(
-          undefinedNumbering,
-          numberingInstanceIds,
-        ),
+        reason: undefinedReference.reason,
+        message: undefinedReference.message,
       });
       continue;
     }
@@ -6464,7 +6394,7 @@ const applyFolioAIEditOperationsInternal = ({
         ) {
           skipped.push({
             id: item.operation.id,
-            ...pendingParagraphMarkPropertyRefusal,
+            ...PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
           });
           continue;
         }
@@ -7513,7 +7443,7 @@ const applyFolioAIEditOperationsInternal = ({
         if (isDeletedPPrMark(liveBlock.attrs["pPrMark"])) {
           skipped.push({
             id: item.operation.id,
-            ...pendingParagraphMarkPropertyRefusal,
+            ...PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
           });
           continue;
         }
@@ -10079,7 +10009,7 @@ const resolveOperationTarget = ({
     if (
       joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences })
     ) {
-      return { type: "skip", ...pendingJoinInsertionRefusal };
+      return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
     }
     const insertFrom = placed.from;
     const splitParagraphs =
@@ -10416,7 +10346,7 @@ const resolveOperationTarget = ({
 
   if (operation.type === "setBlockParagraphProperties") {
     if (isDeletedPPrMark(blockNode.attrs["pPrMark"])) {
-      return { type: "skip", ...pendingParagraphMarkPropertyRefusal };
+      return { type: "skip", ...PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL };
     }
     return {
       type: "resolved",
@@ -10522,7 +10452,7 @@ const resolveOperationTarget = ({
       operation.styleId !== undefined &&
       operation.styleId !== (expectParagraphAttrs(blockNode).styleId ?? null);
     if (replaceChangesStyle && isDeletedPPrMark(blockNode.attrs["pPrMark"])) {
-      return { type: "skip", ...pendingParagraphMarkPropertyRefusal };
+      return { type: "skip", ...PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL };
     }
     // Field results have atomic text spans that the replacement planner can
     // preserve or replace whole. Other structural boundaries need their own edit.
@@ -10727,227 +10657,6 @@ const getOperationCommentText = (
   operation: StagedOperation,
 ): string | undefined =>
   "comment" in operation ? operation.comment?.text : undefined;
-
-type UndefinedParagraphStyleReference = {
-  path: string;
-  styleId: string;
-  /** The type of the definition the id names, when it names one of another type. */
-  definedAs: Style["type"] | undefined;
-};
-
-type StyleDefinitionLookup = ReturnType<typeof getDocumentStyleDefinitions>;
-
-/**
- * Every paragraph style an operation names, with the field that names it.
- * `null` clears the style and names none; an omitted one keeps the style the
- * paragraph or its anchor already carries, which the document holds by
- * construction.
- */
-const operationParagraphStyleReferences = (
-  operation: StagedOperation,
-): { path: string; styleId: string | null | undefined }[] => {
-  switch (operation.type) {
-    case "insertAfterBlock":
-    case "insertBeforeBlock":
-    case "replaceBlock":
-      return [{ path: "styleId", styleId: operation.styleId }];
-    case "setBlockParagraphProperties":
-      return [
-        { path: "properties.styleId", styleId: operation.properties.styleId },
-      ];
-    case "splitBlock":
-      return [
-        {
-          path: "firstParagraphProperties.styleId",
-          styleId: operation.firstParagraphProperties?.styleId,
-        },
-        {
-          path: "secondParagraphProperties.styleId",
-          styleId: operation.secondParagraphProperties?.styleId,
-        },
-      ];
-    case "mergeBlockWithNext":
-      return [
-        {
-          path: "mergedParagraphProperties.styleId",
-          styleId: operation.mergedParagraphProperties?.styleId,
-        },
-      ];
-    default:
-      return [];
-  }
-};
-
-type FindUndefinedParagraphStyleReferenceOptions = {
-  operation: StagedOperation;
-  definitions: StyleDefinitionLookup;
-  undefinedReferences: FolioUndefinedReferencePolicy;
-};
-
-/**
- * Explicit editing requests refuse unavailable paragraph styles before apply.
- * Source-preserving imports keep their references verbatim; closure import
- * validates every defined resource separately. A state without the styles
- * plugin cannot classify a reference and checks nothing.
- */
-const findUndefinedParagraphStyleReference = ({
-  operation,
-  definitions,
-  undefinedReferences,
-}: FindUndefinedParagraphStyleReferenceOptions):
-  UndefinedParagraphStyleReference | undefined => {
-  if (definitions === null) {
-    return undefined;
-  }
-  for (const { path, styleId } of operationParagraphStyleReferences(
-    operation,
-  )) {
-    if (styleId === null || styleId === undefined) {
-      continue;
-    }
-    const reference = classifyResourceReference({
-      kind: "style",
-      id: styleId,
-      sourceDefines: (id) => definitions.get(id) !== undefined,
-      destinationDefines: (id) => definitions.get(id) !== undefined,
-    });
-    if (undefinedReferences === "keep") continue;
-    if (reference !== "sourceDefined") {
-      return { path, styleId, definedAs: undefined };
-    }
-    const definition =
-      definitions.get(styleId) ??
-      panic("A classified style lost its definition");
-    if (definition.type !== "paragraph") {
-      return { path, styleId, definedAs: definition.type };
-    }
-  }
-  return undefined;
-};
-
-const MAX_LISTED_PARAGRAPH_STYLES = 12;
-
-const describeUndefinedParagraphStyle = (
-  { path, styleId, definedAs }: UndefinedParagraphStyleReference,
-  definitions: StyleDefinitionLookup,
-): string => {
-  const defined = (definitions?.paragraphStyles() ?? []).map(
-    (style) => style.styleId,
-  );
-  let available = "it defines no visible paragraph styles";
-  if (defined.length > 0) {
-    const listed = defined.slice(0, MAX_LISTED_PARAGRAPH_STYLES).join(", ");
-    available = `its paragraph styles include ${listed}${defined.length > MAX_LISTED_PARAGRAPH_STYLES ? ", …" : ""}`;
-  }
-  const names =
-    definedAs === undefined
-      ? "names no style in this document"
-      : `names a ${definedAs} style, not a paragraph style`;
-  return `${path} "${styleId}" ${names} (${available}).`;
-};
-
-type UndefinedNumberingReference = { path: string; numId: number };
-
-/** The `w:num` id a stated numbering names, when it names one. */
-const statedNumberingInstance = (
-  numbering: StagedOperationNumbering | undefined,
-): number | undefined =>
-  numbering?.kind === "reference" && isNumberingReference(numbering.numId)
-    ? numbering.numId
-    : undefined;
-
-/**
- * Every numbering instance an operation names, with the field that names it.
- * Only reference variants name an instance; inheritance, cancellation and level-only do not.
- */
-const operationNumberingReferences = (
-  operation: StagedOperation,
-): { path: string; numbering: StagedOperationNumbering | undefined }[] => {
-  switch (operation.type) {
-    case "insertAfterBlock":
-    case "insertBeforeBlock":
-      return [{ path: "numbering", numbering: operation.numbering }];
-    case "setBlockParagraphProperties":
-      return [
-        {
-          path: "properties.numbering",
-          numbering: operation.properties.numbering,
-        },
-      ];
-    case "splitBlock":
-      return [
-        {
-          path: "firstParagraphProperties.numbering",
-          numbering: operation.firstParagraphProperties?.numbering,
-        },
-        {
-          path: "secondParagraphProperties.numbering",
-          numbering: operation.secondParagraphProperties?.numbering,
-        },
-      ];
-    case "mergeBlockWithNext":
-      return [
-        {
-          path: "mergedParagraphProperties.numbering",
-          numbering: operation.mergedParagraphProperties?.numbering,
-        },
-      ];
-    default:
-      return [];
-  }
-};
-
-/**
- * The first numbering instance the operation names that the document does not
- * define, subject to the operation's undefined-reference policy. `null` instance
- * ids (a state without the numbering plugin) cannot say what is defined, and
- * check nothing.
- */
-type FindUndefinedNumberingReferenceOptions = {
-  operation: StagedOperation;
-  instanceIds: ReadonlySet<number> | null;
-  undefinedReferences: FolioUndefinedReferencePolicy;
-};
-
-const findUndefinedNumberingReference = ({
-  operation,
-  instanceIds,
-  undefinedReferences,
-}: FindUndefinedNumberingReferenceOptions):
-  UndefinedNumberingReference | undefined => {
-  if (instanceIds === null) {
-    return undefined;
-  }
-  for (const { path, numbering } of operationNumberingReferences(operation)) {
-    const numId = statedNumberingInstance(numbering);
-    if (numId === undefined) continue;
-    const reference = classifyResourceReference({
-      kind: "numbering",
-      id: numId,
-      sourceDefines: (id) => instanceIds.has(id),
-      destinationDefines: (id) => instanceIds.has(id),
-    });
-    if (undefinedReferences !== "keep" && reference !== "sourceDefined") {
-      return { path, numId };
-    }
-  }
-  return undefined;
-};
-
-const MAX_LISTED_NUMBERING_INSTANCES = 12;
-
-const describeUndefinedNumbering = (
-  { path, numId }: UndefinedNumberingReference,
-  instanceIds: ReadonlySet<number> | null,
-): string => {
-  const defined = [...(instanceIds ?? [])].sort((left, right) => left - right);
-  let available = "it defines none";
-  if (defined.length > 0) {
-    const listed = defined.slice(0, MAX_LISTED_NUMBERING_INSTANCES).join(", ");
-    available = `it defines ${listed}${defined.length > MAX_LISTED_NUMBERING_INSTANCES ? ", …" : ""}`;
-  }
-  return `${path}.numId ${String(numId)} names no numbering instance in this document (${available}).`;
-};
 
 const getOperationQuote = (operation: StagedOperation): string | undefined => {
   if (operation.type === "replaceInBlock") {

@@ -1,5 +1,5 @@
 import { setDocumentBodyComments } from "@stll/docx-core/model";
-import { survivingComments } from "@stll/docx-core/ops";
+import { survivingComments, withBodyContent } from "@stll/docx-core/ops";
 
 import type {
   BlockContent,
@@ -16,6 +16,11 @@ import type {
   TableRow,
 } from "../types/document";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
+import {
+  withDirectRunsRewritten,
+  withInlineContentRewritten,
+  withRunTextBoxBlocksRewritten,
+} from "./paragraphTraversal";
 
 type CommentMarker = Extract<
   ParagraphContent,
@@ -154,11 +159,10 @@ const withoutOrphanDocumentBodyMarkers = (
   if (!content && !comments) {
     return null;
   }
-  return {
-    ...document,
-    ...(content ? { content } : {}),
-    ...(comments ? { comments } : {}),
-  };
+  // The section view holds the same blocks as `content`: derive it again so
+  // it does not keep the markers this pass removed from the body.
+  const body = content ? withBodyContent(document, content) : document;
+  return comments ? { ...body, comments } : body;
 };
 
 // Comment bodies are paragraph stories of their own; a dangling
@@ -388,20 +392,51 @@ const withoutOrphanParagraphMarkers = (
   paragraph: Paragraph,
   validCommentIds: ReadonlySet<number>,
 ): Paragraph => {
+  const content = withoutOrphanInlineMarkers(
+    paragraph.content,
+    validCommentIds,
+  );
+  if (content === paragraph.content) {
+    return paragraph;
+  }
+  return cloneParagraphWithPropertySource(paragraph, { content });
+};
+
+/**
+ * Inline content without the markers of comments the save no longer holds, at
+ * every depth a marker can sit: inside a content control, hyperlink, field,
+ * tracked or moved run wrapper, bidi or tag wrapper, and inside the text box
+ * of a shape in a run. The walk descends through the same owner the model
+ * validator's view is read through, so a marker the validator would find is
+ * never left behind. The same array comes back when nothing is removed.
+ */
+const withoutOrphanInlineMarkers = <Item extends ParagraphContent>(
+  content: Item[],
+  validCommentIds: ReadonlySet<number>,
+): Item[] => {
   let changed = false;
-  const content: ParagraphContent[] = [];
-  for (const item of paragraph.content) {
+  const next: Item[] = [];
+  for (const item of content) {
     if (isCommentMarker(item) && !validCommentIds.has(item.id)) {
       changed = true;
       continue;
     }
-    content.push(item);
+    const nested = withInlineContentRewritten(item, (children) =>
+      withoutOrphanInlineMarkers(children, validCommentIds),
+    );
+    const rewritten = withDirectRunsRewritten(nested, (run) =>
+      withRunTextBoxBlocksRewritten(
+        run,
+        (blocks) =>
+          withoutOrphanBlockMarkers(blocks, validCommentIds) ?? blocks,
+      ),
+    );
+    if (rewritten !== item) {
+      changed = true;
+    }
+    next.push(rewritten);
   }
-
-  if (!changed) {
-    return paragraph;
-  }
-  return cloneParagraphWithPropertySource(paragraph, { content });
+  return changed ? next : content;
 };
 
 const isCommentMarker = (content: ParagraphContent): content is CommentMarker =>

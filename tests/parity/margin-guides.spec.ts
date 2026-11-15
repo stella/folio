@@ -4,6 +4,7 @@ forEachAdapter(
   "paints the configured page margin guides",
   async (adapter, { page }) => {
     const query = new URLSearchParams({
+      session: "canonical",
       file: "sample.docx",
       marginGuides: "1",
       marginGuideColor: "rgb(12, 34, 56)",

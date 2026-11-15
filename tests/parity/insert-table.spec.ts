@@ -2,7 +2,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 // Both adapters route Insert > Table through the same core `insertTableInView`
@@ -12,7 +12,7 @@ import {
 forEachAdapter(
   "insert: adds a table node through the bridge",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
     const before = await page.evaluate(

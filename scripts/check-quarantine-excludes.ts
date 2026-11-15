@@ -73,12 +73,12 @@ const readExcludes = (bunfig: string): Set<string> =>
     ),
   );
 
-type TemporaryExclude = {
+export type TemporaryExclude = {
   name: string;
   expiresAt: string;
 };
 
-type TemporaryExcludesResult = {
+export type TemporaryExcludesResult = {
   entries: TemporaryExclude[];
   errors: string[];
 };
@@ -126,7 +126,10 @@ const parseTemporaryExcludeLine = (line: string): ParsedTemporaryExclude => {
   return { kind: "entry", name, expiresAt };
 };
 
-const readTemporaryExcludes = (bunfig: string): TemporaryExcludesResult => {
+/** The `# quarantine-expires:` entries of a bunfig, and the lines that fail to parse. */
+export const readTemporaryExcludes = (
+  bunfig: string,
+): TemporaryExcludesResult => {
   const entries: TemporaryExclude[] = [];
   const errors: string[] = [];
 

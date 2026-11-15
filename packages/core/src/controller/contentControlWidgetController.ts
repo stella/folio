@@ -10,6 +10,7 @@
 
 import type { EditorView } from "prosemirror-view";
 
+import { ContentControlLockedError } from "../content-controls/errors";
 import { Subscribable } from "../managers/Subscribable";
 import {
   CONTENT_CONTROL_WIDGET_EVENT_NAME,
@@ -49,6 +50,17 @@ export type ContentControlWidgetControllerOptions = {
     | ((event: Extract<ContentControlWidgetEvent, { kind: "refused" }>) => void)
     | undefined;
 };
+
+/**
+ * The catalog message a refused widget shows: a lock says the control is
+ * locked; a type or binding refusal says the change can't be made here.
+ */
+export const contentControlRefusalMessageKey = (
+  event: Extract<ContentControlWidgetEvent, { kind: "refused" }>,
+): "editor.contentLocked" | "editor.changeUnavailable" =>
+  event.error instanceof ContentControlLockedError
+    ? "editor.contentLocked"
+    : "editor.changeUnavailable";
 
 const CLOSED_SNAPSHOT: ContentControlWidgetSnapshot = { status: "closed" };
 const PICKER_GAP_PX = 4;

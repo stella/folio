@@ -115,7 +115,7 @@ const savedRows = async (page: Page) => {
   expect(saved).not.toBeNull();
   const zip = await ZipArchive.read(Uint8Array.from(saved ?? []).buffer);
   const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
-  return [...xml.matchAll(/<w:tr[ >].*?<\/w:tr>/gsu)].map(([row]) => {
+  return [...xml.matchAll(/<w:tr(?:\/>|[ >].*?<\/w:tr>)/gsu)].map(([row]) => {
     let column = Number(/<w:gridBefore w:val="(\d+)"/u.exec(row)?.[1] ?? 0);
     const cells: Record<string, number> = {};
     for (const [cell] of row.matchAll(/<w:tc>.*?<\/w:tc>/gsu)) {
@@ -127,6 +127,18 @@ const savedRows = async (page: Page) => {
     }
     return cells;
   });
+};
+
+/** The number of cells a saved row holds, counting from the end with a negative index. */
+const savedCellCount = async (page: Page, index: number) => {
+  const saved = await page.evaluate(async () => {
+    const buffer = await globalThis.__folioPlayground?.getEditorRef()?.save();
+    return buffer ? Array.from(new Uint8Array(buffer)) : null;
+  });
+  const zip = await ZipArchive.read(Uint8Array.from(saved ?? []).buffer);
+  const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
+  const rows = [...xml.matchAll(/<w:tr(?:\/>|[ >].*?<\/w:tr>)/gsu)];
+  return (rows.at(index)?.[0].match(/<w:tc[ >]/gu) ?? []).length;
 };
 
 const columnsOf = (rows: readonly Row[]): Record<string, number> =>
@@ -243,29 +255,35 @@ test.describe("a table row with no cells", () => {
   for (const [name, properties] of [
     ["nothing", ""],
     ["a declared gridAfter", '<w:gridAfter w:val="3"/>'],
-  ] as const) {
-    test(`opens and paints its neighbours with ${name}`, async ({ page }) => {
-      const rows = SHAPES["short rows"] ?? [];
-      await page.goto("/");
-      const zip = await ZipArchive.read(await documentWith(rows));
-      const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
-      zip.set(
-        "word/document.xml",
-        xml.replace(
-          "</w:tbl>",
-          `<w:tr>${properties ? `<w:trPr>${properties}</w:trPr>` : ""}</w:tr></w:tbl>`,
-        ),
-      );
-      await page.locator("#file-input").setInputFiles({
-        name: "no-cells.docx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        buffer: Buffer.from(await zip.generate()),
+  ] as const)
+    for (const session of ["default", "canonical"] as const)
+      test(`opens and paints its neighbours with ${name} (${session} session)`, async ({
+        page,
+      }) => {
+        const rows = SHAPES["short rows"] ?? [];
+        await page.goto(session === "canonical" ? "/?session=canonical" : "/");
+        const zip = await ZipArchive.read(await documentWith(rows));
+        const xml = (await zip.entry("word/document.xml")?.text()) ?? "";
+        zip.set(
+          "word/document.xml",
+          xml.replace(
+            "</w:tbl>",
+            `<w:tr>${properties ? `<w:trPr>${properties}</w:trPr>` : ""}</w:tr></w:tbl>`,
+          ),
+        );
+        await page.locator("#file-input").setInputFiles({
+          name: "no-cells.docx",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          buffer: Buffer.from(await zip.generate()),
+        });
+        const first = page.locator(".layout-page").first();
+        await expect(first).toContainText("TAIL");
+        await expect(first).toContainText("FFF");
+        const saved = await savedRows(page);
+        expect(saved).toHaveLength(rows.length + 1);
+        // The row saves as the file states it, with no cell it never had.
+        expect(saved.at(-1)).toEqual({});
+        expect(await savedCellCount(page, -1)).toBe(0);
       });
-      const first = page.locator(".layout-page").first();
-      await expect(first).toContainText("TAIL");
-      await expect(first).toContainText("FFF");
-      expect(await savedRows(page)).toHaveLength(rows.length + 1);
-    });
-  }
 });
