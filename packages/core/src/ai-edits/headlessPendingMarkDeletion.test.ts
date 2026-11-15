@@ -96,6 +96,8 @@ const CASES: readonly Case[] = [
       id: "op",
       type: "formatRange",
       range: {
+        type: "textRange",
+        story: "main",
         blockId: joined,
         startOffset: 0,
         endOffset: 5,

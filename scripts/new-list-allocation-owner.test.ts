@@ -105,5 +105,10 @@ test("deferred new lists are allocated only at will-apply boundaries", async () 
     "unsupportedMode",
     "noopOperation",
   ] as const;
-  for (const reason of refusalReasons) expect(source).toContain(reason);
+  // The pending paragraph mark refusals live in the module both engines share.
+  const shared = await Bun.file(
+    path.join(root, "ai-edits/pendingJoin.ts"),
+  ).text();
+  for (const reason of refusalReasons)
+    expect(`${source}\n${shared}`).toContain(reason);
 });

@@ -2590,12 +2590,11 @@ export class CanonicalPublicOperations {
         new CanonicalPublicOperationResolutionError({
           reason: pendingRefusal.reason,
           message:
-            "message" in pendingRefusal
-              ? pendingRefusal.message
-              : `The operation was refused: ${pendingRefusal.reason}.`,
-          ...("canonicalRefusal" in pendingRefusal
-            ? { gap: pendingRefusal.canonicalRefusal.gap }
-            : {}),
+            pendingRefusal.message ??
+            `The operation was refused: ${pendingRefusal.reason}.`,
+          ...(pendingRefusal.canonicalRefusal === undefined
+            ? {}
+            : { gap: pendingRefusal.canonicalRefusal.gap }),
         }),
       );
     const hash = hashFolioAIBlockContent(clean.text);

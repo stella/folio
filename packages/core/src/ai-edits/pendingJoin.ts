@@ -236,20 +236,23 @@ export const pendingJoinBounds = (
   };
 };
 
+/** A refusal both engines give beside a pending paragraph mark deletion. */
+export type PendingRefusal = Omit<FolioAIEditSkippedOperation, "id">;
+
 /** An insertion a pending join would run into the words before it or a table after it. */
-export const PENDING_JOIN_INSERTION_REFUSAL = {
+export const PENDING_JOIN_INSERTION_REFUSAL: PendingRefusal = {
   reason: "pendingParagraphMarkDeletion",
   message:
     "Accepting the pending paragraph mark deletion before this place would run the paragraph together with the words before it or the table after it. Resolve that change first, or insert elsewhere.",
-} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
+};
 
 /** A property edit on a paragraph whose mark is pending deletion. */
-export const PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL = {
+export const PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL: PendingRefusal = {
   reason: "pendingParagraphMarkDeletion",
   canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
   message:
     "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
-} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
+};
 
 /** Whether every inline the paragraph holds, anchors aside, is pending deletion. */
 export const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
@@ -291,9 +294,9 @@ export const joinStopsAtTableAfter = (
 };
 
 /** A paragraph that goes whole once its pending deletions are accepted. */
-export const PENDING_WHOLE_PARAGRAPH_REFUSAL = {
+export const PENDING_WHOLE_PARAGRAPH_REFUSAL: PendingRefusal = {
   reason: "pendingDeletion",
-} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
+};
 
 /** What an operation that places no block asks of the paragraph it names. */
 export type PendingMarkEdit = "paragraphProperties" | "wholeText" | "inline";
@@ -328,10 +331,7 @@ export const pendingMarkEditRefusal = ({
   paragraphPos,
   paragraph,
   cleanText,
-}: PendingMarkEditOptions):
-  | typeof PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL
-  | typeof PENDING_WHOLE_PARAGRAPH_REFUSAL
-  | undefined => {
+}: PendingMarkEditOptions): PendingRefusal | undefined => {
   if (
     edit === "paragraphProperties" &&
     isDeletedPPrMark(paragraph.attrs["pPrMark"])
