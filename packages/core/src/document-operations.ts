@@ -2391,9 +2391,27 @@ export const getFolioDocumentOperationReceiptsForStory = ({
     if (!appliedOperation) {
       return;
     }
-    const affected: FolioDocumentOperationAffectedTarget[] = [
-      getPrimaryAffectedTarget(operation, story),
-    ];
+    // A join reports the paragraph that holds the joined text and the one
+    // whose id it retired, so no caller is left holding an id that names no
+    // block.
+    const { joined } = appliedOperation;
+    const affected: FolioDocumentOperationAffectedTarget[] =
+      joined === undefined
+        ? [getPrimaryAffectedTarget(operation, story)]
+        : [
+            {
+              type: "block",
+              story,
+              blockId: joined.blockId,
+              effect: "updated",
+            },
+            {
+              type: "block",
+              story,
+              blockId: joined.retiredBlockId,
+              effect: "deleted",
+            },
+          ];
     if (appliedOperation.commentId !== undefined) {
       affected.push({ type: "comment", commentId: appliedOperation.commentId });
     }

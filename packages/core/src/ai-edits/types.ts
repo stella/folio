@@ -771,6 +771,22 @@ export type FolioAIEditAppliedOperation = {
    * `rejectSuggestion` / `scrollToSuggestion` to resolve the whole suggestion.
    */
   suggestionId?: string;
+  /**
+   * Set when the operation, applied directly, joined two paragraphs: a
+   * `mergeBlockWithNext`, or a `deleteBlock` of a container's final paragraph
+   * that a paragraph precedes. The joined paragraph is the one whose mark
+   * remains, the later one, as accepting the same edit tracked leaves it:
+   * `blockId` holds the joined text, and `retiredBlockId` names no block.
+   */
+  joined?: FolioAIEditJoinedParagraphs;
+};
+
+/** Two paragraphs a direct operation joined, by the ids they had. */
+export type FolioAIEditJoinedParagraphs = {
+  /** The paragraph that holds the joined text. */
+  blockId: string;
+  /** The paragraph whose mark the join removed; its id names no block. */
+  retiredBlockId: string;
 };
 
 export type FolioAIEditSkippedOperation = {

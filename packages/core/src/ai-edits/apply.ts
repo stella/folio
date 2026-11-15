@@ -29,6 +29,7 @@ import {
   groupInsertionRuns,
   orderAddressingBeforeRemoval,
   orderBatchOperations,
+  SPLIT_HALVES,
 } from "@stll/docx-core/ops";
 
 import type { FolioContentStatedNumbering } from "../compare/content-types";
@@ -198,6 +199,7 @@ import {
   type CleanBlockText,
   resolveCleanTextRange,
 } from "./clean-text";
+import { directJoinSurvivor } from "./directJoin";
 import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
@@ -293,6 +295,7 @@ import type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
+  FolioAIEditJoinedParagraphs,
   FolioAIEditNormalization,
   FolioAIEditOperation as RequestedEditOperation,
   FolioAIEditSkippedOperation,
@@ -3994,6 +3997,41 @@ const paragraphPropertyRevisionTargets = ({
   return targets;
 };
 
+const IDENTITY_ATTRS = ["paraId", "textId"] as const;
+
+/** A paragraph a direct join left, at `position` once `mappedFrom` steps had run. */
+type IdentityTransfer = BatchParagraphPosition & { source: PMNode };
+
+/**
+ * `tr` with the paragraph at `position` carrying `source`'s identity: a direct
+ * join keeps the paragraph whose mark remains, as accepting the same join
+ * tracked does, and that is the later paragraph.
+ */
+const withIdentityOf = (
+  tr: Transaction,
+  position: number,
+  source: PMNode,
+): Transaction => {
+  if (tr.doc.nodeAt(position)?.type !== source.type) return tr;
+  let next = tr;
+  for (const name of IDENTITY_ATTRS)
+    if (next.doc.nodeAt(position)?.attrs[name] !== source.attrs[name])
+      next = next.setNodeAttribute(position, name, source.attrs[name] ?? null);
+  return next;
+};
+
+/** The paragraphs a direct join of `retired` into `survivor` reports, by id. */
+const joinedIdentities = (
+  retired: PMNode,
+  survivor: PMNode,
+): FolioAIEditJoinedParagraphs | undefined => {
+  const retiredBlockId: unknown = retired.attrs["paraId"];
+  const blockId: unknown = survivor.attrs["paraId"];
+  return typeof retiredBlockId === "string" && typeof blockId === "string"
+    ? { blockId, retiredBlockId }
+    : undefined;
+};
+
 /**
  * A container-ending paragraph a direct `deleteBlock` took: removed, where a
  * paragraph preceded it when the deletion ran (`position` is then where it
@@ -4062,10 +4100,27 @@ const withSettledDirectFinalDeletions = (
   for (const edit of edits.toSorted((left, right) => right.at - left.at)) {
     if (edit.kind === "restored") {
       const { paragraph } = edit;
-      tr.insert(
-        edit.at,
-        paragraph.type.create(paragraph.attrs, null, paragraph.marks),
-      );
+      // The paragraph before it took its identity when they joined; ending
+      // the container again, it comes back without one.
+      const paraId: unknown = paragraph.attrs["paraId"];
+      let taken = false;
+      if (typeof paraId === "string")
+        tr.doc.descendants((node) => {
+          if (taken || node.isInline) return false;
+          if (node.attrs["paraId"] === paraId) taken = true;
+          return !taken;
+        });
+      const attrs = taken
+        ? Object.fromEntries(
+            Object.entries(paragraph.attrs).map(([name, value]) => [
+              name,
+              (IDENTITY_ATTRS as readonly string[]).includes(name)
+                ? null
+                : value,
+            ]),
+          )
+        : paragraph.attrs;
+      tr.insert(edit.at, paragraph.type.create(attrs, null, paragraph.marks));
       changed = true;
       continue;
     }
@@ -5744,6 +5799,10 @@ const applyFolioAIEditOperationsInternal = ({
   const deletedFinalParagraphs: DeletedFinalParagraph[] = [];
   /** Container-ending paragraphs a direct `deleteBlock` took: see `withSettledDirectFinalDeletions`. */
   const directFinalDeletions: DirectFinalDeletion[] = [];
+  // Paragraphs a direct join leaves, to take the later paragraph's identity
+  // once the batch is finished: an operation the batch runs after the join
+  // still finds the earlier paragraph by the id it named.
+  const identityTransfers: IdentityTransfer[] = [];
   const mergedPropertyTargets: BatchParagraphPosition[] = [];
   const deferredNoopFinalDeletions = new Set<string>();
   const ownsSharedRevisionIdCursor =
@@ -6152,6 +6211,8 @@ const applyFolioAIEditOperationsInternal = ({
     // but the doc was untouched.
     const stepsBefore = tr.steps.length;
     let appliedRevisionIds: number[] = [];
+    // Set when the operation, applied directly, joined two paragraphs.
+    let joinedParagraphs: FolioAIEditJoinedParagraphs | undefined;
     // Set when a text replacement wrote one formatting over a stretch that
     // carried several; reported once the operation is known to apply.
     let unifiedFormatting = false;
@@ -6970,6 +7031,26 @@ const applyFolioAIEditOperationsInternal = ({
           tr = leavesAParagraph
             ? removeParagraph(tr, item.blockFrom, item.blockTo)
             : emptyParagraph(tr, item.blockFrom, item.blockTo);
+          // The paragraph before a container's final one takes over ending
+          // the container: the two join, and the joined paragraph is the one
+          // whose mark remains, the final one, as accepting the tracked
+          // deletion leaves it. It keeps its own properties.
+          const preceding = at.nodeBefore;
+          if (
+            endsItsContainer &&
+            leavesAParagraph &&
+            deletedNode &&
+            preceding?.type.name === item.blockNode.type.name
+          ) {
+            if (directJoinSurvivor() === SPLIT_HALVES.SECOND) {
+              identityTransfers.push({
+                position: item.blockFrom - preceding.nodeSize,
+                mappedFrom: tr.mapping.maps.length,
+                source: deletedNode,
+              });
+              joinedParagraphs = joinedIdentities(preceding, deletedNode);
+            } else joinedParagraphs = joinedIdentities(deletedNode, preceding);
+          }
           // What precedes it is settled only once the batch is: see
           // `withSettledDirectFinalDeletions`.
           if (endsItsContainer && deletedNode) {
@@ -7737,6 +7818,16 @@ const applyFolioAIEditOperationsInternal = ({
               : null;
           if (joined && second) {
             tr = tr.setNodeAttribute(blockFrom, "pPrMark", endingMark ?? null);
+            // The joined paragraph is the one whose mark remains, the second,
+            // as accepting the same merge tracked leaves it.
+            if (directJoinSurvivor() === SPLIT_HALVES.SECOND) {
+              identityTransfers.push({
+                position: blockFrom,
+                mappedFrom: tr.mapping.maps.length,
+                source: second,
+              });
+              joinedParagraphs = joinedIdentities(joined, second);
+            } else joinedParagraphs = joinedIdentities(second, joined);
           }
           if (joined && sectionPropertiesOf(joined) !== secondSection) {
             tr = tr.setNodeAttribute(
@@ -8046,9 +8137,16 @@ const applyFolioAIEditOperationsInternal = ({
         revisionIds: appliedRevisionIds,
       }),
       ...(suggestionId !== null && { suggestionId }),
+      ...(joinedParagraphs !== undefined && { joined: joinedParagraphs }),
     });
   }
 
+  for (const transfer of identityTransfers) {
+    const mapped = tr.mapping
+      .slice(transfer.mappedFrom)
+      .mapResult(transfer.position, 1);
+    if (!mapped.deleted) tr = withIdentityOf(tr, mapped.pos, transfer.source);
+  }
   if (withSettledDirectFinalDeletions(tr, directFinalDeletions)) {
     markStructuralChange(tr);
   }

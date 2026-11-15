@@ -50,6 +50,7 @@ import {
   buildCleanBlockText,
   resolveCleanTextRange,
 } from "../ai-edits/clean-text";
+import { directJoinSurvivor } from "../ai-edits/directJoin";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
   createBatchListMinter,
@@ -92,6 +93,7 @@ import {
 } from "../ai-edits/table-targets";
 import type {
   FolioAIBlockParagraphProperties,
+  FolioAIEditJoinedParagraphs,
   FolioAIEditNormalization,
   FolioAIEditSkippedOperation,
   FolioAIEditSkipReason,
@@ -272,6 +274,20 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
     >;
   }
   return { type: "plain", operation } as const;
+};
+
+/** The two paragraphs a direct operation's intents join, if they join two. */
+const joinedParagraphsOf = (
+  intents: readonly EditorIntent[],
+): FolioAIEditJoinedParagraphs | undefined => {
+  const join = intents.find(
+    (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
+      intent.type === "joinParagraphs",
+  );
+  if (join === undefined) return undefined;
+  return join.survivor === "first"
+    ? { blockId: join.blockId, retiredBlockId: join.nextBlockId }
+    : { blockId: join.nextBlockId, retiredBlockId: join.blockId };
 };
 
 const SPACING_FIELDS = [
@@ -2199,9 +2215,12 @@ export class CanonicalPublicOperations {
       );
       const revisionIds = compiled.value.revisions;
       const revisionId = revisionIds.at(0);
+      const joined =
+        batch.mode === "direct" ? joinedParagraphsOf(intents) : undefined;
       appliedById.set(operation.id, {
         id: operation.id,
         ...(commentId === undefined ? {} : { commentId }),
+        ...(joined === undefined ? {} : { joined }),
         ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
         ...(suggestionId === undefined ? {} : { suggestionId }),
       });
@@ -2433,8 +2452,10 @@ export class CanonicalPublicOperations {
     }
     let range: { from: number; to: number } | undefined;
     // Removed directly, a paragraph no paragraph follows loses its words and
-    // then joins the paragraph before it, which keeps its own identity and
-    // properties; with none before it, it only loses its words.
+    // then joins the paragraph before it, whose properties it keeps; the
+    // joined paragraph is the one whose mark remains, this one, as accepting
+    // the tracked deletion leaves it. With none before it, it only loses its
+    // words.
     if (!tracked) {
       const own = (
         from: number,
@@ -2466,7 +2487,7 @@ export class CanonicalPublicOperations {
           story: projectionStory,
           blockId: previous.blockId,
           nextBlockId: paragraph.blockId,
-          survivor: "first",
+          survivor: directJoinSurvivor(),
         });
       if (intents.length === 0) return refusal("noopOperation");
       return Result.ok({
@@ -2913,14 +2934,14 @@ export class CanonicalPublicOperations {
       case "mergeBlockWithNext": {
         const next = projection.value.nextParagraphInContainer(blockId);
         if (next === undefined) return refusal("missingBlock");
-        // The merged paragraph keeps the first one's identity, as the
-        // default engine's merge does.
+        // The merged paragraph is the one whose mark remains, the second,
+        // as accepting the tracked merge leaves it.
         intent = {
           type: "joinParagraphs",
           story,
           blockId,
           nextBlockId: next.blockId,
-          survivor: "first",
+          survivor: directJoinSurvivor(),
         };
         break;
       }
