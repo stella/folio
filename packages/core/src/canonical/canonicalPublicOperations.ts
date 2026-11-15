@@ -64,7 +64,11 @@ import {
 import {
   isDeletedPPrMark,
   joinsIn,
+  joinStopsAtTableAfter,
+  PENDING_JOIN_INSERTION_REFUSAL,
   pendingJoinParagraphs,
+  pendingMarkEditOf,
+  pendingMarkEditRefusal,
 } from "../ai-edits/pendingJoin";
 import {
   collectNoteReferenceLabels,
@@ -509,16 +513,17 @@ type BesidePendingJoinOptions = {
  * the paragraph the join leaves, which the joined paragraph has. The batch's
  * other operations do not move it: a split of the paragraph the join leaves
  * puts the block after both halves, as one put after that paragraph goes.
- * Undefined beside a paragraph whose own break is pending removal where no
- * join reads it: after it, when the join leaves no paragraph with words for
- * the block to follow; before it, when the paragraph goes whole.
+ * Beside a paragraph whose own break is pending removal where no join reads
+ * it (after it, when the join leaves no paragraph with words for the block to
+ * follow; before it, when the paragraph goes whole), the block goes beside
+ * the paragraph itself.
  */
 const besidePendingJoin = ({
   side,
   paragraph,
   projection,
   noteReferences,
-}: BesidePendingJoinOptions): BesidePendingJoin | undefined => {
+}: BesidePendingJoinOptions): BesidePendingJoin => {
   const options = {
     doc: projection.doc,
     paragraphPos: paragraph.start - 1,
@@ -527,11 +532,13 @@ const besidePendingJoin = ({
   const join = pendingJoinParagraphs(options);
   const breakGoes = isDeletedPPrMark(paragraph.node.attrs["pPrMark"]);
   const after = side === "after";
+  // Where no join reads the paragraph, the block goes beside the paragraph
+  // itself, as the default engine places it.
   if (
     breakGoes &&
     (after ? join.last === options.paragraphPos : !joinsIn(options))
   )
-    return undefined;
+    return besideAsItStands(paragraph);
   const at = (position: number) =>
     position === options.paragraphPos
       ? paragraph
@@ -739,7 +746,6 @@ const resolveTableInsertion = ({
     projection,
     noteReferences,
   });
-  if (placed === undefined) return refusal("pendingDeletion");
   const { place } = placed;
   const $place = projection.doc.resolve(place.start - 1);
   const neighbour = $place.parent.maybeChild(
@@ -2578,20 +2584,34 @@ export class CanonicalPublicOperations {
             "The canonical session holds no address in this paragraph, such as one in a text box.",
           )
         : refusal("missingBlock");
-    // A block beside a paragraph whose break is pending removal is placed
-    // by the join it is part of (`besidePendingJoin`); any other operation
-    // on it waits for that change to be resolved.
-    if (
-      (paragraph.source.pPrMark?.kind === "del" ||
-        paragraph.source.pPrMark?.kind === "moveFrom") &&
-      !placesBlock(operation)
-    )
-      return refusal("pendingDeletion");
     const noteReferences = collectNoteReferenceLabels(state.doc);
     const clean = buildCleanBlockText(paragraph.node, paragraph.start - 1, {
       fieldResults: "text",
       noteReferences,
     });
+    // A paragraph whose break is pending removal takes the edits the default
+    // engine takes there, and refuses what it refuses, for the same reason
+    // (`pendingMarkEditRefusal`). A block beside it is placed by the join it
+    // is part of (`besidePendingJoin`).
+    const pendingRefusal = pendingMarkEditRefusal({
+      edit: pendingMarkEditOf(operation.type),
+      doc: state.doc,
+      paragraphPos: paragraph.start - 1,
+      paragraph: paragraph.node,
+      cleanText: clean.text,
+    });
+    if (pendingRefusal !== undefined)
+      return Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason: pendingRefusal.reason,
+          message:
+            pendingRefusal.message ??
+            `The operation was refused: ${pendingRefusal.reason}.`,
+          ...(pendingRefusal.canonicalRefusal === undefined
+            ? {}
+            : { gap: pendingRefusal.canonicalRefusal.gap }),
+        }),
+      );
     const hash = hashFolioAIBlockContent(clean.text);
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
@@ -2646,7 +2666,23 @@ export class CanonicalPublicOperations {
             projection: projection.value,
             noteReferences,
           });
-      if (placed === undefined) return refusal("pendingDeletion");
+      // A block the join would run into the words before it, or into a
+      // table after it, waits for the join to be resolved.
+      const gap =
+        insertion.type === "insertAfterBlock"
+          ? placed.place.start - 1 + placed.place.node.nodeSize
+          : placed.place.start - 1;
+      if (
+        joinStopsAtTableAfter({
+          doc: projection.value.doc,
+          paragraphPos: gap,
+          noteReferences,
+        })
+      )
+        return refusal(
+          PENDING_JOIN_INSERTION_REFUSAL.reason,
+          PENDING_JOIN_INSERTION_REFUSAL.message,
+        );
       const inserted = resolveBlockInsertion({
         operation: insertion,
         paragraph: placed.place,
