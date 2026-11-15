@@ -1,0 +1,1693 @@
+{
+ "package": {
+  "document": {
+   "content": [
+    {
+     "type": "table",
+     "columnWidths": [
+      2400,
+      2400
+     ],
+     "rows": [
+      {
+       "type": "tableRow",
+       "cells": [
+        {
+         "type": "tableCell",
+         "content": [
+          {
+           "type": "paragraph",
+           "content": [
+            {
+             "type": "run",
+             "content": [
+              {
+               "type": "text",
+               "text": "b"
+              },
+              {
+               "type": "text",
+               "text": "b😀"
+              }
+             ],
+             "formatting": {
+              "bold": false,
+              "italic": false,
+              "styleId": "Emphasis",
+              "preserved": {
+               "children": [
+                {
+                 "index": 38,
+                 "xml": "<w:webHidden/>"
+                }
+               ]
+              }
+             },
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidDel",
+               "value": "00A1B2C3"
+              }
+             ]
+            },
+            {
+             "type": "run",
+             "content": [
+              {
+               "type": "text",
+               "text": "éa😀 "
+              },
+              {
+               "type": "footnoteRef",
+               "id": 2
+              }
+             ],
+             "formatting": {
+              "bold": false,
+              "italic": false,
+              "styleId": "Emphasis",
+              "preserved": {
+               "children": [
+                {
+                 "index": 38,
+                 "xml": "<w:webHidden/>"
+                }
+               ]
+              }
+             },
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidDel",
+               "value": "00A1B2C3"
+              }
+             ]
+            },
+            {
+             "type": "run",
+             "content": [
+              {
+               "type": "text",
+               "text": "ßß ß"
+              }
+             ],
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidRPr",
+               "value": "00FF0011"
+              },
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidDel",
+               "value": "00A1B2C3"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "runPropertyChange",
+               "info": {
+                "id": 1,
+                "author": "A",
+                "date": "2026-01-02T03:04:05Z",
+                "rsid": "00C0FFEE"
+               },
+               "previousFormatting": {
+                "italic": true
+               }
+              }
+             ]
+            }
+           ],
+           "textId": "77777777",
+           "propertyChanges": [
+            {
+             "type": "paragraphPropertyChange",
+             "info": {
+              "id": 2,
+              "author": "B",
+              "date": "2026-01-02T03:04:05Z"
+             },
+             "previousFormatting": {
+              "alignment": "end"
+             }
+            }
+           ],
+           "pPrMark": {
+            "kind": "moveFrom",
+            "info": {
+             "id": 3,
+             "author": "B",
+             "date": "2026-01-02T03:04:05Z"
+            }
+           },
+           "renderedPageBreakBefore": true,
+           "listRendering": {
+            "marker": "1.",
+            "level": 0,
+            "numId": 1,
+            "isBullet": false
+           },
+           "paraId": "00000001"
+          },
+          {
+           "type": "paragraph",
+           "content": [
+            {
+             "type": "hyperlink",
+             "rId": "rId9",
+             "href": "https://example.org",
+             "children": [
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "text",
+                 "text": " bß"
+                },
+                {
+                 "type": "text",
+                 "text": "ééb😀a"
+                },
+                {
+                 "type": "text",
+                 "text": "a"
+                }
+               ],
+               "formatting": {
+                "italic": true,
+                "fontSize": 22,
+                "styleId": "Emphasis"
+               },
+               "preservedAttributes": [
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidR",
+                 "value": "00A1B2C3"
+                }
+               ],
+               "propertyChanges": [
+                {
+                 "type": "runPropertyChange",
+                 "info": {
+                  "id": 4,
+                  "author": "A",
+                  "rsid": "00C0FFEE"
+                 },
+                 "previousFormatting": {
+                  "italic": true
+                 }
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "type": "run",
+             "content": [
+              {
+               "type": "text",
+               "text": "a"
+              },
+              {
+               "type": "text",
+               "text": "é😀ß"
+              }
+             ],
+             "formatting": {
+              "bold": false,
+              "italic": false,
+              "preserved": {
+               "children": [
+                {
+                 "index": 38,
+                 "xml": "<w:webHidden/>"
+                }
+               ]
+              }
+             },
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidDel",
+               "value": "00A1B2C3"
+              },
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidR",
+               "value": "00FF0011"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "runPropertyChange",
+               "info": {
+                "id": 6,
+                "author": "B",
+                "rsid": "00C0FFEE"
+               },
+               "previousFormatting": {
+                "italic": true
+               }
+              }
+             ]
+            }
+           ],
+           "textId": "77777777",
+           "preservedAttributes": [
+            {
+             "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+             "name": "rsidRPr",
+             "value": "00FF0011"
+            },
+            {
+             "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+             "name": "rsidR",
+             "value": "00FF0011"
+            }
+           ],
+           "propertyChanges": [
+            {
+             "type": "paragraphPropertyChange",
+             "info": {
+              "id": 7,
+              "author": "A",
+              "date": "2026-01-02T03:04:05Z"
+             },
+             "previousFormatting": {
+              "alignment": "end"
+             }
+            }
+           ],
+           "listRendering": {
+            "marker": "1.",
+            "level": 0,
+            "numId": 1,
+            "isBullet": false
+           },
+           "paraId": "00000002"
+          }
+         ]
+        },
+        {
+         "type": "tableCell",
+         "content": [
+          {
+           "type": "paragraph",
+           "content": [],
+           "textId": "77777777",
+           "preservedAttributes": [
+            {
+             "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+             "name": "rsidRPr",
+             "value": "00A1B2C3"
+            },
+            {
+             "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+             "name": "rsidR",
+             "value": "00A1B2C3"
+            }
+           ],
+           "propertyChanges": [
+            {
+             "type": "paragraphPropertyChange",
+             "info": {
+              "id": 9,
+              "author": "A",
+              "date": "2026-01-02T03:04:05Z"
+             },
+             "previousFormatting": {
+              "alignment": "end"
+             }
+            }
+           ],
+           "pPrMark": {
+            "kind": "moveFrom",
+            "info": {
+             "id": 10,
+             "author": "A",
+             "date": "2026-01-02T03:04:05Z"
+            }
+           },
+           "renderedPageBreakBefore": true,
+           "listRendering": {
+            "marker": "1.",
+            "level": 0,
+            "numId": 1,
+            "isBullet": false
+           },
+           "formatting": {
+            "alignment": "end",
+            "spaceBefore": 104,
+            "keepNext": false,
+            "styleId": "Heading1",
+            "runProperties": {
+             "italic": false,
+             "fontSize": 17,
+             "styleId": "Emphasis"
+            },
+            "preserved": {
+             "children": [
+              {
+               "index": 3,
+               "xml": "<w:suppressOverlap/>"
+              }
+             ]
+            },
+            "numPr": {
+             "kind": "reference",
+             "numId": 1,
+             "ilvl": 0
+            }
+           },
+           "paraId": "00000003"
+          },
+          {
+           "type": "paragraph",
+           "content": [
+            {
+             "type": "hyperlink",
+             "rId": "rId9",
+             "href": "https://example.org",
+             "children": []
+            },
+            {
+             "type": "run",
+             "content": [
+              {
+               "type": "text",
+               "text": "ébb"
+              }
+             ],
+             "formatting": {
+              "bold": false,
+              "italic": true,
+              "fontSize": 19,
+              "preserved": {
+               "children": [
+                {
+                 "index": 38,
+                 "xml": "<w:webHidden/>"
+                }
+               ]
+              }
+             },
+             "propertyChanges": [
+              {
+               "type": "runPropertyChange",
+               "info": {
+                "id": 11,
+                "author": "B",
+                "date": "2026-01-02T03:04:05Z",
+                "rsid": "00C0FFEE"
+               },
+               "previousFormatting": {
+                "italic": true
+               }
+              }
+             ]
+            }
+           ],
+           "preservedAttributes": [
+            {
+             "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+             "name": "rsidRPr",
+             "value": "00FF0011"
+            }
+           ],
+           "propertyChanges": [
+            {
+             "type": "paragraphPropertyChange",
+             "info": {
+              "id": 12,
+              "author": "B",
+              "date": "2026-01-02T03:04:05Z"
+             },
+             "previousFormatting": {
+              "alignment": "end"
+             }
+            }
+           ],
+           "renderedPageBreakBefore": true,
+           "listRendering": {
+            "marker": "1.",
+            "level": 0,
+            "numId": 1,
+            "isBullet": false
+           },
+           "paraId": "00000004"
+          }
+         ]
+        }
+       ],
+       "preservedAttributes": [
+        {
+         "name": "rsidTr",
+         "value": "00ABCDEF"
+        }
+       ]
+      },
+      {
+       "type": "tableRow",
+       "cells": [
+        {
+         "type": "tableCell",
+         "content": [
+          {
+           "type": "paragraph",
+           "content": [
+            {
+             "type": "run",
+             "content": [
+              {
+               "type": "text",
+               "text": "b ß "
+              },
+              {
+               "type": "text",
+               "text": "ßa"
+              },
+              {
+               "type": "text",
+               "text": " "
+              }
+             ],
+             "formatting": {
+              "bold": true,
+              "italic": true,
+              "fontSize": 20,
+              "styleId": "Emphasis"
+             },
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidDel",
+               "value": "00A1B2C3"
+              },
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidRPr",
+               "value": "00FF0011"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "runPropertyChange",
+               "info": {
+                "id": 13,
+                "author": "B",
+                "date": "2026-01-02T03:04:05Z",
+                "rsid": "00C0FFEE"
+               },
+               "previousFormatting": {
+                "italic": true
+               }
+              }
+             ]
+            },
+            {
+             "type": "run",
+             "content": [
+              {
+               "type": "symbol",
+               "font": "Symbol",
+               "char": "F0B7"
+              },
+              {
+               "type": "text",
+               "text": " ß😀a😀"
+              },
+              {
+               "type": "text",
+               "text": "é"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "runPropertyChange",
+               "info": {
+                "id": 14,
+                "author": "B",
+                "date": "2026-01-02T03:04:05Z",
+                "rsid": "00C0FFEE"
+               },
+               "previousFormatting": {
+                "italic": true
+               }
+              }
+             ]
+            },
+            {
+             "type": "run",
+             "content": [
+              {
+               "type": "text",
+               "text": "a"
+              },
+              {
+               "type": "preservedXml",
+               "xml": "<w:ruby/>",
+               "text": "r"
+              }
+             ],
+             "formatting": {
+              "bold": false,
+              "fontSize": 27,
+              "styleId": "Emphasis",
+              "preserved": {
+               "children": [
+                {
+                 "index": 38,
+                 "xml": "<w:webHidden/>"
+                }
+               ]
+              }
+             },
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidDel",
+               "value": "00A1B2C3"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "runPropertyChange",
+               "info": {
+                "id": 15,
+                "author": "B",
+                "date": "2026-01-02T03:04:05Z",
+                "rsid": "00C0FFEE"
+               },
+               "previousFormatting": {
+                "italic": true
+               }
+              }
+             ]
+            },
+            {
+             "type": "run",
+             "content": [
+              {
+               "type": "text",
+               "text": "baa 😀"
+              },
+              {
+               "type": "text",
+               "text": "ß"
+              }
+             ],
+             "formatting": {
+              "italic": false,
+              "fontSize": 24,
+              "preserved": {
+               "children": [
+                {
+                 "index": 38,
+                 "xml": "<w:webHidden/>"
+                }
+               ]
+              }
+             },
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidDel",
+               "value": "00A1B2C3"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "runPropertyChange",
+               "info": {
+                "id": 16,
+                "author": "B",
+                "date": "2026-01-02T03:04:05Z",
+                "rsid": "00C0FFEE"
+               },
+               "previousFormatting": {
+                "italic": true
+               }
+              }
+             ]
+            }
+           ],
+           "textId": "77777777",
+           "preservedAttributes": [
+            {
+             "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+             "name": "rsidRPr",
+             "value": "00A1B2C3"
+            },
+            {
+             "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+             "name": "rsidRPr",
+             "value": "00FF0011"
+            }
+           ],
+           "propertyChanges": [
+            {
+             "type": "paragraphPropertyChange",
+             "info": {
+              "id": 18,
+              "author": "B"
+             },
+             "previousFormatting": {
+              "alignment": "end"
+             }
+            }
+           ],
+           "pPrMark": {
+            "kind": "del",
+            "info": {
+             "id": 19,
+             "author": "A"
+            }
+           },
+           "renderedPageBreakBefore": true,
+           "listRendering": {
+            "marker": "1.",
+            "level": 0,
+            "numId": 1,
+            "isBullet": false
+           },
+           "formatting": {
+            "alignment": "start",
+            "spaceBefore": 79,
+            "keepNext": false,
+            "styleId": "Heading1",
+            "runProperties": {
+             "bold": true,
+             "italic": true,
+             "fontSize": 23,
+             "styleId": "Emphasis",
+             "preserved": {
+              "children": [
+               {
+                "index": 38,
+                "xml": "<w:webHidden/>"
+               }
+              ]
+             }
+            },
+            "preserved": {
+             "children": [
+              {
+               "index": 3,
+               "xml": "<w:suppressOverlap/>"
+              }
+             ]
+            }
+           },
+           "paraId": "00000005"
+          },
+          {
+           "type": "paragraph",
+           "content": [],
+           "textId": "77777777",
+           "preservedAttributes": [
+            {
+             "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+             "name": "rsidR",
+             "value": "00FF0011"
+            }
+           ],
+           "propertyChanges": [
+            {
+             "type": "paragraphPropertyChange",
+             "info": {
+              "id": 20,
+              "author": "B",
+              "date": "2026-01-02T03:04:05Z"
+             },
+             "previousFormatting": {
+              "alignment": "end"
+             }
+            }
+           ],
+           "renderedPageBreakBefore": true,
+           "listRendering": {
+            "marker": "1.",
+            "level": 0,
+            "numId": 1,
+            "isBullet": false
+           },
+           "formatting": {
+            "alignment": "start",
+            "spaceBefore": 178,
+            "keepNext": false,
+            "styleId": "BodyText",
+            "preserved": {
+             "children": [
+              {
+               "index": 3,
+               "xml": "<w:suppressOverlap/>"
+              }
+             ]
+            },
+            "numPr": {
+             "kind": "reference",
+             "numId": 1,
+             "ilvl": 0
+            }
+           },
+           "paraId": "00000006"
+          }
+         ]
+        }
+       ],
+       "preservedAttributes": [
+        {
+         "name": "rsidTr",
+         "value": "00ABCDEF"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "paragraph",
+     "content": [],
+     "textId": "77777777",
+     "preservedAttributes": [
+      {
+       "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+       "name": "rsidDel",
+       "value": "00A1B2C3"
+      }
+     ],
+     "propertyChanges": [
+      {
+       "type": "paragraphPropertyChange",
+       "info": {
+        "id": 22,
+        "author": "A",
+        "date": "2026-01-02T03:04:05Z"
+       },
+       "previousFormatting": {
+        "alignment": "end"
+       }
+      }
+     ],
+     "pPrMark": {
+      "kind": "del",
+      "info": {
+       "id": 23,
+       "author": "B"
+      }
+     },
+     "renderedPageBreakBefore": true,
+     "listRendering": {
+      "marker": "1.",
+      "level": 0,
+      "numId": 1,
+      "isBullet": false
+     },
+     "paraId": "00000007"
+    },
+    {
+     "type": "preservedBlock",
+     "xml": "<w:altChunk/>"
+    }
+   ],
+   "sections": [
+    {
+     "properties": {
+      "pageWidth": 12240,
+      "pageHeight": 15840
+     },
+     "content": [
+      {
+       "type": "table",
+       "columnWidths": [
+        2400,
+        2400
+       ],
+       "rows": [
+        {
+         "type": "tableRow",
+         "cells": [
+          {
+           "type": "tableCell",
+           "content": [
+            {
+             "type": "paragraph",
+             "content": [
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "text",
+                 "text": "b"
+                },
+                {
+                 "type": "text",
+                 "text": "b😀"
+                }
+               ],
+               "formatting": {
+                "bold": false,
+                "italic": false,
+                "styleId": "Emphasis",
+                "preserved": {
+                 "children": [
+                  {
+                   "index": 38,
+                   "xml": "<w:webHidden/>"
+                  }
+                 ]
+                }
+               },
+               "preservedAttributes": [
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidDel",
+                 "value": "00A1B2C3"
+                }
+               ]
+              },
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "text",
+                 "text": "éa😀 "
+                },
+                {
+                 "type": "footnoteRef",
+                 "id": 2
+                }
+               ],
+               "formatting": {
+                "bold": false,
+                "italic": false,
+                "styleId": "Emphasis",
+                "preserved": {
+                 "children": [
+                  {
+                   "index": 38,
+                   "xml": "<w:webHidden/>"
+                  }
+                 ]
+                }
+               },
+               "preservedAttributes": [
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidDel",
+                 "value": "00A1B2C3"
+                }
+               ]
+              },
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "text",
+                 "text": "ßß ß"
+                }
+               ],
+               "preservedAttributes": [
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidRPr",
+                 "value": "00FF0011"
+                },
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidDel",
+                 "value": "00A1B2C3"
+                }
+               ],
+               "propertyChanges": [
+                {
+                 "type": "runPropertyChange",
+                 "info": {
+                  "id": 1,
+                  "author": "A",
+                  "date": "2026-01-02T03:04:05Z",
+                  "rsid": "00C0FFEE"
+                 },
+                 "previousFormatting": {
+                  "italic": true
+                 }
+                }
+               ]
+              }
+             ],
+             "textId": "77777777",
+             "propertyChanges": [
+              {
+               "type": "paragraphPropertyChange",
+               "info": {
+                "id": 2,
+                "author": "B",
+                "date": "2026-01-02T03:04:05Z"
+               },
+               "previousFormatting": {
+                "alignment": "end"
+               }
+              }
+             ],
+             "pPrMark": {
+              "kind": "moveFrom",
+              "info": {
+               "id": 3,
+               "author": "B",
+               "date": "2026-01-02T03:04:05Z"
+              }
+             },
+             "renderedPageBreakBefore": true,
+             "listRendering": {
+              "marker": "1.",
+              "level": 0,
+              "numId": 1,
+              "isBullet": false
+             },
+             "paraId": "00000001"
+            },
+            {
+             "type": "paragraph",
+             "content": [
+              {
+               "type": "hyperlink",
+               "rId": "rId9",
+               "href": "https://example.org",
+               "children": [
+                {
+                 "type": "run",
+                 "content": [
+                  {
+                   "type": "text",
+                   "text": " bß"
+                  },
+                  {
+                   "type": "text",
+                   "text": "ééb😀a"
+                  },
+                  {
+                   "type": "text",
+                   "text": "a"
+                  }
+                 ],
+                 "formatting": {
+                  "italic": true,
+                  "fontSize": 22,
+                  "styleId": "Emphasis"
+                 },
+                 "preservedAttributes": [
+                  {
+                   "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                   "name": "rsidR",
+                   "value": "00A1B2C3"
+                  }
+                 ],
+                 "propertyChanges": [
+                  {
+                   "type": "runPropertyChange",
+                   "info": {
+                    "id": 4,
+                    "author": "A",
+                    "rsid": "00C0FFEE"
+                   },
+                   "previousFormatting": {
+                    "italic": true
+                   }
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "text",
+                 "text": "a"
+                },
+                {
+                 "type": "text",
+                 "text": "é😀ß"
+                }
+               ],
+               "formatting": {
+                "bold": false,
+                "italic": false,
+                "preserved": {
+                 "children": [
+                  {
+                   "index": 38,
+                   "xml": "<w:webHidden/>"
+                  }
+                 ]
+                }
+               },
+               "preservedAttributes": [
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidDel",
+                 "value": "00A1B2C3"
+                },
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidR",
+                 "value": "00FF0011"
+                }
+               ],
+               "propertyChanges": [
+                {
+                 "type": "runPropertyChange",
+                 "info": {
+                  "id": 6,
+                  "author": "B",
+                  "rsid": "00C0FFEE"
+                 },
+                 "previousFormatting": {
+                  "italic": true
+                 }
+                }
+               ]
+              }
+             ],
+             "textId": "77777777",
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidRPr",
+               "value": "00FF0011"
+              },
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidR",
+               "value": "00FF0011"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "paragraphPropertyChange",
+               "info": {
+                "id": 7,
+                "author": "A",
+                "date": "2026-01-02T03:04:05Z"
+               },
+               "previousFormatting": {
+                "alignment": "end"
+               }
+              }
+             ],
+             "listRendering": {
+              "marker": "1.",
+              "level": 0,
+              "numId": 1,
+              "isBullet": false
+             },
+             "paraId": "00000002"
+            }
+           ]
+          },
+          {
+           "type": "tableCell",
+           "content": [
+            {
+             "type": "paragraph",
+             "content": [],
+             "textId": "77777777",
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidRPr",
+               "value": "00A1B2C3"
+              },
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidR",
+               "value": "00A1B2C3"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "paragraphPropertyChange",
+               "info": {
+                "id": 9,
+                "author": "A",
+                "date": "2026-01-02T03:04:05Z"
+               },
+               "previousFormatting": {
+                "alignment": "end"
+               }
+              }
+             ],
+             "pPrMark": {
+              "kind": "moveFrom",
+              "info": {
+               "id": 10,
+               "author": "A",
+               "date": "2026-01-02T03:04:05Z"
+              }
+             },
+             "renderedPageBreakBefore": true,
+             "listRendering": {
+              "marker": "1.",
+              "level": 0,
+              "numId": 1,
+              "isBullet": false
+             },
+             "formatting": {
+              "alignment": "end",
+              "spaceBefore": 104,
+              "keepNext": false,
+              "styleId": "Heading1",
+              "runProperties": {
+               "italic": false,
+               "fontSize": 17,
+               "styleId": "Emphasis"
+              },
+              "preserved": {
+               "children": [
+                {
+                 "index": 3,
+                 "xml": "<w:suppressOverlap/>"
+                }
+               ]
+              },
+              "numPr": {
+               "kind": "reference",
+               "numId": 1,
+               "ilvl": 0
+              }
+             },
+             "paraId": "00000003"
+            },
+            {
+             "type": "paragraph",
+             "content": [
+              {
+               "type": "hyperlink",
+               "rId": "rId9",
+               "href": "https://example.org",
+               "children": []
+              },
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "text",
+                 "text": "ébb"
+                }
+               ],
+               "formatting": {
+                "bold": false,
+                "italic": true,
+                "fontSize": 19,
+                "preserved": {
+                 "children": [
+                  {
+                   "index": 38,
+                   "xml": "<w:webHidden/>"
+                  }
+                 ]
+                }
+               },
+               "propertyChanges": [
+                {
+                 "type": "runPropertyChange",
+                 "info": {
+                  "id": 11,
+                  "author": "B",
+                  "date": "2026-01-02T03:04:05Z",
+                  "rsid": "00C0FFEE"
+                 },
+                 "previousFormatting": {
+                  "italic": true
+                 }
+                }
+               ]
+              }
+             ],
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidRPr",
+               "value": "00FF0011"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "paragraphPropertyChange",
+               "info": {
+                "id": 12,
+                "author": "B",
+                "date": "2026-01-02T03:04:05Z"
+               },
+               "previousFormatting": {
+                "alignment": "end"
+               }
+              }
+             ],
+             "renderedPageBreakBefore": true,
+             "listRendering": {
+              "marker": "1.",
+              "level": 0,
+              "numId": 1,
+              "isBullet": false
+             },
+             "paraId": "00000004"
+            }
+           ]
+          }
+         ],
+         "preservedAttributes": [
+          {
+           "name": "rsidTr",
+           "value": "00ABCDEF"
+          }
+         ]
+        },
+        {
+         "type": "tableRow",
+         "cells": [
+          {
+           "type": "tableCell",
+           "content": [
+            {
+             "type": "paragraph",
+             "content": [
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "text",
+                 "text": "b ß "
+                },
+                {
+                 "type": "text",
+                 "text": "ßa"
+                },
+                {
+                 "type": "text",
+                 "text": " "
+                }
+               ],
+               "formatting": {
+                "bold": true,
+                "italic": true,
+                "fontSize": 20,
+                "styleId": "Emphasis"
+               },
+               "preservedAttributes": [
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidDel",
+                 "value": "00A1B2C3"
+                },
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidRPr",
+                 "value": "00FF0011"
+                }
+               ],
+               "propertyChanges": [
+                {
+                 "type": "runPropertyChange",
+                 "info": {
+                  "id": 13,
+                  "author": "B",
+                  "date": "2026-01-02T03:04:05Z",
+                  "rsid": "00C0FFEE"
+                 },
+                 "previousFormatting": {
+                  "italic": true
+                 }
+                }
+               ]
+              },
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "symbol",
+                 "font": "Symbol",
+                 "char": "F0B7"
+                },
+                {
+                 "type": "text",
+                 "text": " ß😀a😀"
+                },
+                {
+                 "type": "text",
+                 "text": "é"
+                }
+               ],
+               "propertyChanges": [
+                {
+                 "type": "runPropertyChange",
+                 "info": {
+                  "id": 14,
+                  "author": "B",
+                  "date": "2026-01-02T03:04:05Z",
+                  "rsid": "00C0FFEE"
+                 },
+                 "previousFormatting": {
+                  "italic": true
+                 }
+                }
+               ]
+              },
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "text",
+                 "text": "a"
+                },
+                {
+                 "type": "preservedXml",
+                 "xml": "<w:ruby/>",
+                 "text": "r"
+                }
+               ],
+               "formatting": {
+                "bold": false,
+                "fontSize": 27,
+                "styleId": "Emphasis",
+                "preserved": {
+                 "children": [
+                  {
+                   "index": 38,
+                   "xml": "<w:webHidden/>"
+                  }
+                 ]
+                }
+               },
+               "preservedAttributes": [
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidDel",
+                 "value": "00A1B2C3"
+                }
+               ],
+               "propertyChanges": [
+                {
+                 "type": "runPropertyChange",
+                 "info": {
+                  "id": 15,
+                  "author": "B",
+                  "date": "2026-01-02T03:04:05Z",
+                  "rsid": "00C0FFEE"
+                 },
+                 "previousFormatting": {
+                  "italic": true
+                 }
+                }
+               ]
+              },
+              {
+               "type": "run",
+               "content": [
+                {
+                 "type": "text",
+                 "text": "baa 😀"
+                },
+                {
+                 "type": "text",
+                 "text": "ß"
+                }
+               ],
+               "formatting": {
+                "italic": false,
+                "fontSize": 24,
+                "preserved": {
+                 "children": [
+                  {
+                   "index": 38,
+                   "xml": "<w:webHidden/>"
+                  }
+                 ]
+                }
+               },
+               "preservedAttributes": [
+                {
+                 "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                 "name": "rsidDel",
+                 "value": "00A1B2C3"
+                }
+               ],
+               "propertyChanges": [
+                {
+                 "type": "runPropertyChange",
+                 "info": {
+                  "id": 16,
+                  "author": "B",
+                  "date": "2026-01-02T03:04:05Z",
+                  "rsid": "00C0FFEE"
+                 },
+                 "previousFormatting": {
+                  "italic": true
+                 }
+                }
+               ]
+              }
+             ],
+             "textId": "77777777",
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidRPr",
+               "value": "00A1B2C3"
+              },
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidRPr",
+               "value": "00FF0011"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "paragraphPropertyChange",
+               "info": {
+                "id": 18,
+                "author": "B"
+               },
+               "previousFormatting": {
+                "alignment": "end"
+               }
+              }
+             ],
+             "pPrMark": {
+              "kind": "del",
+              "info": {
+               "id": 19,
+               "author": "A"
+              }
+             },
+             "renderedPageBreakBefore": true,
+             "listRendering": {
+              "marker": "1.",
+              "level": 0,
+              "numId": 1,
+              "isBullet": false
+             },
+             "formatting": {
+              "alignment": "start",
+              "spaceBefore": 79,
+              "keepNext": false,
+              "styleId": "Heading1",
+              "runProperties": {
+               "bold": true,
+               "italic": true,
+               "fontSize": 23,
+               "styleId": "Emphasis",
+               "preserved": {
+                "children": [
+                 {
+                  "index": 38,
+                  "xml": "<w:webHidden/>"
+                 }
+                ]
+               }
+              },
+              "preserved": {
+               "children": [
+                {
+                 "index": 3,
+                 "xml": "<w:suppressOverlap/>"
+                }
+               ]
+              }
+             },
+             "paraId": "00000005"
+            },
+            {
+             "type": "paragraph",
+             "content": [],
+             "textId": "77777777",
+             "preservedAttributes": [
+              {
+               "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+               "name": "rsidR",
+               "value": "00FF0011"
+              }
+             ],
+             "propertyChanges": [
+              {
+               "type": "paragraphPropertyChange",
+               "info": {
+                "id": 20,
+                "author": "B",
+                "date": "2026-01-02T03:04:05Z"
+               },
+               "previousFormatting": {
+                "alignment": "end"
+               }
+              }
+             ],
+             "renderedPageBreakBefore": true,
+             "listRendering": {
+              "marker": "1.",
+              "level": 0,
+              "numId": 1,
+              "isBullet": false
+             },
+             "formatting": {
+              "alignment": "start",
+              "spaceBefore": 178,
+              "keepNext": false,
+              "styleId": "BodyText",
+              "preserved": {
+               "children": [
+                {
+                 "index": 3,
+                 "xml": "<w:suppressOverlap/>"
+                }
+               ]
+              },
+              "numPr": {
+               "kind": "reference",
+               "numId": 1,
+               "ilvl": 0
+              }
+             },
+             "paraId": "00000006"
+            }
+           ]
+          }
+         ],
+         "preservedAttributes": [
+          {
+           "name": "rsidTr",
+           "value": "00ABCDEF"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "type": "paragraph",
+       "content": [],
+       "textId": "77777777",
+       "preservedAttributes": [
+        {
+         "namespace": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+         "name": "rsidDel",
+         "value": "00A1B2C3"
+        }
+       ],
+       "propertyChanges": [
+        {
+         "type": "paragraphPropertyChange",
+         "info": {
+          "id": 22,
+          "author": "A",
+          "date": "2026-01-02T03:04:05Z"
+         },
+         "previousFormatting": {
+          "alignment": "end"
+         }
+        }
+       ],
+       "pPrMark": {
+        "kind": "del",
+        "info": {
+         "id": 23,
+         "author": "B"
+        }
+       },
+       "renderedPageBreakBefore": true,
+       "listRendering": {
+        "marker": "1.",
+        "level": 0,
+        "numId": 1,
+        "isBullet": false
+       },
+       "paraId": "00000007"
+      },
+      {
+       "type": "preservedBlock",
+       "xml": "<w:altChunk/>"
+      }
+     ]
+    }
+   ],
+   "finalSectionProperties": {
+    "pageWidth": 12240,
+    "pageHeight": 15840
+   },
+   "comments": [
+    {
+     "id": 7,
+     "author": "A",
+     "content": [
+      {
+       "type": "paragraph",
+       "paraId": "7FFFFFF0",
+       "content": []
+      }
+     ]
+    }
+   ]
+  },
+  "numbering": {
+   "abstractNums": [
+    {
+     "abstractNumId": 1,
+     "levels": [
+      {
+       "ilvl": 0,
+       "numFmt": "decimal",
+       "lvlText": "%1."
+      }
+     ]
+    }
+   ],
+   "nums": [
+    {
+     "numId": 1,
+     "abstractNumId": 1
+    }
+   ]
+  },
+  "footnotes": [
+   {
+    "type": "footnote",
+    "id": 2,
+    "content": [
+     {
+      "type": "paragraph",
+      "paraId": "7FFFFFF1",
+      "content": []
+     }
+    ]
+   }
+  ],
+  "settings": {
+   "defaultTabStop": 720
+  },
+  "properties": {
+   "title": "synthetic"
+  }
+ },
+ "warnings": [
+  "kept"
+ ]
+}
