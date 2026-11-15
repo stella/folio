@@ -57,7 +57,6 @@ import {
   childNodes,
   fieldResultOf,
   type InlineNode,
-  leafSpans,
   mergeAlike,
   mergeLists,
   ownRunPropertyChanges,
@@ -65,6 +64,7 @@ import {
   sameOwnFields,
   withFieldResult,
 } from "./leaves";
+import { noteReferenceSpans } from "./noteMarks";
 import {
   paragraphHoldsContent,
   paragraphHoldsContentOnceAccepted,
@@ -187,8 +187,7 @@ const removedNoteReferences = (
 ): NoteReference[] => {
   const references = new Map<string, NoteReference>();
   for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
-    for (const { node, ancestors } of leafSpans(paragraph.content)) {
-      if (node.type !== "footnoteRef" && node.type !== "endnoteRef") continue;
+    for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
       const revision = ancestors.find(
         (ancestor) =>
           isTrackedWrapper(ancestor) &&
@@ -213,9 +212,8 @@ const hasNoteReference = (
 ): boolean =>
   documentStories(document).some((story) =>
     storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
-      leafSpans(paragraph.content).some(
+      noteReferenceSpans(paragraph.content).some(
         ({ node }) =>
-          (node.type === "footnoteRef" || node.type === "endnoteRef") &&
           node.type ===
             (reference.kind === "footnote" ? "footnoteRef" : "endnoteRef") &&
           node.id === reference.id,
