@@ -256,6 +256,8 @@ export const createCanonicalEditorHarness = (
     get state() {
       return editorView.state;
     },
+    /** The body view, for callers that run editor commands as an adapter does. */
+    view: editorView,
     dispatch: (transaction: Transaction) => editorView.dispatch(transaction),
     execute,
     refusals,

@@ -39,6 +39,8 @@ export type FolioParityBridge = {
   boldFirstWord: () => boolean;
   /** Select the first word through the shared editor controller. */
   selectFirstWord: () => boolean;
+  /** Open the find panel with its replace row, through the public ref. */
+  openReplace: () => void;
   /** Count painted range-selection rectangles. */
   countSelectionRects: () => number;
   /** How many times the host's clipboard callback of this kind has fired. */
