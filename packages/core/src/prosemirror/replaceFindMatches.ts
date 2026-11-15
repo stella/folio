@@ -8,7 +8,6 @@
  * suggestion plugin tracks the same way as typing.
  */
 
-import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import {
@@ -16,35 +15,9 @@ import {
   type ReplaceAllSummary,
   replaceEligibility,
 } from "../utils/findReplace";
-import { withCanonicalCommand } from "./canonicalCommands";
+import { replaceRangesText } from "./commands/replaceRangeText";
 import { executeEditorCommand } from "./executeEditorCommand";
 import { resolveFindMatchRanges } from "./findReplaceSelection";
-
-type TextRange = { from: number; to: number };
-
-/**
- * Replace each body range with `text` in one step. Ranges run from the end of
- * the document backwards, so each replacement leaves the ones before it at
- * their positions.
- */
-const replaceTextRanges = (
-  ranges: readonly TextRange[],
-  text: string,
-): Command =>
-  withCanonicalCommand(
-    (state, dispatch) => {
-      if (ranges.length === 0) return false;
-      if (dispatch) {
-        const transaction = state.tr;
-        for (const { from, to } of ranges)
-          transaction.insertText(text, from, to);
-        dispatch(transaction.scrollIntoView());
-      }
-      return true;
-    },
-    () =>
-      ranges.map(({ from, to }) => ({ type: "replaceText", from, to, text })),
-  );
 
 /**
  * Replace `matches` with `text` through the body view's command owner. Only
@@ -73,7 +46,7 @@ export const replaceFindMatches = (
     skippedCount: matches.length - unchangedCount,
   };
   if (ranges.length === 0) return unwritten;
-  if (!executeEditorCommand(view, replaceTextRanges(ranges, text)))
+  if (!executeEditorCommand(view, replaceRangesText(ranges, text)))
     return unwritten;
   const replacedCount = ranges.length + unchangedCount;
   return { replacedCount, skippedCount: matches.length - replacedCount };
