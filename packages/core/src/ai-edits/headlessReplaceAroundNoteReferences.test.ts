@@ -77,7 +77,7 @@ const CASES: readonly Case[] = [
   {
     name: "the words before a reference only",
     find: "Term A[^1]",
-    replace: "Word A[^1]",
+    replace: "Item A[^1]",
     keeps: true,
   },
   {
