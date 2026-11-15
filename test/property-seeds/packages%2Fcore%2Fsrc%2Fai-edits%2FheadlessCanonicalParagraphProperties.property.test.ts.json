@@ -1,0 +1,10 @@
+{
+  "paragraph properties read the same live and reopened": [
+    {
+      "seed": -1651514852,
+      "path": "0:0:3:2",
+      "note": "A tracked spacing change records the paragraph's properties as current, as the reopened file reads them.",
+      "date": "2026-11-15"
+    }
+  ]
+}
