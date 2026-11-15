@@ -119,7 +119,10 @@ import {
 } from "../prosemirror/conversion/fromProseDoc";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import { insertedColumnWidth } from "../prosemirror/tableGridMutation";
+import {
+  insertedColumnWidth,
+  omittedSlotTakingColumn,
+} from "../prosemirror/tableGridMutation";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -829,6 +832,25 @@ const holdsOmittedSlot = (
 };
 
 /**
+ * Whether a column inserted at the grid index runs through a cell spanning
+ * both its sides, so that the cell would widen; a slot a row omits grows
+ * instead, as the default engine grows it.
+ */
+const columnInsertionWidensCell = (table: PMNode, columnIndex: number) => {
+  const map = TableMap.get(table);
+  if (columnIndex <= 0 || columnIndex >= map.width) return false;
+  for (let row = 0; row < map.height; row += 1) {
+    const index = row * map.width + columnIndex;
+    if (
+      omittedSlotTakingColumn(map, table, row, columnIndex) === null &&
+      map.map[index - 1] === map.map[index]
+    )
+      return true;
+  }
+  return false;
+};
+
+/**
  * Whether the rectangle is one column of one-cell rows, every cell below
  * the first holding nothing but empty paragraphs: the merge a suggestion
  * records, as merge state alone.
@@ -990,6 +1012,20 @@ const resolveTableStructure = ({
         left: cell.leftColumnIndex,
         right: cell.leftColumnIndex + 1,
       };
+      // A suggestion marks whole cells deleted; a cell spanning the column
+      // and another has no suggested form narrower than itself, in either
+      // engine.
+      if (
+        tracked &&
+        Array.from({ length: map.height }, (_, rowIndex) => {
+          const position = map.map[rowIndex * map.width + column.left];
+          return position === undefined ? null : row.table.nodeAt(position);
+        }).some((node) => Number(node?.attrs["colspan"] ?? 1) !== 1)
+      )
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested column deletion cannot narrow a cell that spans other columns.",
+        );
       // The table is addressed by a paragraph the deletion keeps, as the
       // editor's column deletion addresses it.
       const at = tableAnchor(
@@ -1038,6 +1074,17 @@ const resolveTableStructure = ({
         target: "column",
       });
       if (overflow !== null) return refusal("payloadDoesNotFit", overflow);
+      // A suggestion records new cells; a column through a cell spanning
+      // both its sides would widen that cell, which no suggestion records
+      // in either engine.
+      if (
+        tracked &&
+        columnInsertionWidensCell(row.table, insertion.columnIndex)
+      )
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested column cannot widen a cell that spans other columns.",
+        );
       const blockId = tableBlockAddress(projection, row);
       if (blockId === undefined) return refusal("unsupportedBlock");
       const intent: EditorIntent = {
@@ -1152,6 +1199,13 @@ const resolveTableStructure = ({
         return skipAlike(
           "noopOperation",
           "A one-row, one-column cell has nothing to split.",
+        );
+      // A suggested split gives a merge down its rows back; a cell spanning
+      // columns has no suggested split in either engine.
+      if (tracked && cell.rightColumnIndex - cell.leftColumnIndex !== 1)
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested split takes a cell merged down one column.",
         );
       // The cell is addressed by its own paragraph, the merge's first.
       return resolved(
