@@ -24,6 +24,7 @@ import {
 } from "./consumer-scenarios/support/failure-fingerprints";
 import { reportFuzzHealth } from "./consumer-scenarios/support/fuzz-health";
 import { classifyFuzzRun } from "./fuzz-health";
+import { statedTestBudget } from "./property-budget";
 import {
   EXPLORATION_DIR_ENV,
   type ExplorationContext,
@@ -77,6 +78,15 @@ import {
  *     to `FOLIO_FUZZ_EXPLORATION_DIR`, and passes. Pinned, caller and
  *     environment seeds, replay paths and `examples` still fail
  *     (test/property-exploration.ts).
+ *
+ *  6. Bounded runs. Inside a Bun test that states its budget (the test's
+ *     timeout argument or the file's `setDefaultTimeout`, see
+ *     test/property-budget.ts), counted from the test's first run, shrinking
+ *     stops at `SHRINK_BUDGET_SHARE` of that budget and every run at
+ *     `RUN_BUDGET_SHARE`. A failure is then reported with the counterexample
+ *     shrunk so far, before Bun's own timeout, and nothing keeps running into
+ *     the next test. A run stopped before all its planned cases ran fails and
+ *     says how many ran.
  */
 
 const SEED_ENV = "PROPERTY_TEST_SEED";
@@ -88,6 +98,9 @@ const FAST_CHECK_DEFAULT_NUM_RUNS = 100;
 
 /** Longest counterexample carried in the machine-readable failure line. */
 const MAX_REPORTED_COUNTEREXAMPLE = 4_000;
+
+/** Longest failure detail a reported (not failing) finding prints. */
+const MAX_REPORTED_FAILURE = 4_000;
 
 const SELF = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SELF), "..");
@@ -150,22 +163,31 @@ const parseFrame = (
   };
 };
 
+type Frame = { absolute: string; line: number };
+
+/** The stack frames outside this module, innermost first. */
+const outsideFrames = (): Frame[] => {
+  const limit = Error.stackTraceLimit;
+  Error.stackTraceLimit = 64;
+  const stack = new Error("call site").stack ?? "";
+  Error.stackTraceLimit = limit;
+  return stack
+    .split("\n")
+    .slice(1)
+    .map(parseFrame)
+    .filter(
+      (frame): frame is Frame => frame !== undefined && frame.absolute !== SELF,
+    );
+};
+
 /**
  * The test-file line that called into this module: the first frame outside it
  * that is a `*.test.ts(x)` file, else the first frame outside it.
  */
 const callSite = (): CallSite | undefined => {
-  const limit = Error.stackTraceLimit;
-  Error.stackTraceLimit = 64;
-  const stack = new Error("call site").stack ?? "";
-  Error.stackTraceLimit = limit;
-  const frames = stack
-    .split("\n")
-    .slice(1)
-    .map(parseFrame)
-    .filter((frame) => frame !== undefined && frame.absolute !== SELF);
+  const frames = outsideFrames();
   const frame =
-    frames.find((candidate) => /\.test\.tsx?$/.test(candidate!.absolute)) ??
+    frames.find((candidate) => /\.test\.tsx?$/.test(candidate.absolute)) ??
     frames[0];
   if (frame === undefined) {
     return undefined;
@@ -385,6 +407,151 @@ const errorText = (error: unknown): string => {
   return typeof error === "string" ? error : fc.stringify(error);
 };
 
+// ---------------------------------------------------------------------------
+// Run budgets
+// ---------------------------------------------------------------------------
+
+/**
+ * Shares of a test's stated budget, counted from the test's first run. Once a
+ * case has failed, shrinking stops at the first, so the failure is reported
+ * well before Bun's own timeout. A run that has found nothing stops at the
+ * second, after the case in flight: close to the budget, so a property that
+ * merely runs long fails only where it would have timed out, and never keeps
+ * running into later tests.
+ */
+const SHRINK_BUDGET_SHARE = 0.9;
+const RUN_BUDGET_SHARE = 0.95;
+
+type RunBudget = {
+  /** The budget the test states, in milliseconds. */
+  budgetMs: number;
+  /** Real time this test's runs have spent, in milliseconds. */
+  spentMs: number;
+  /** The clock reading the last count started from, and whether it was fake. */
+  mark: { at: number; fake: boolean };
+};
+
+/** Budgets of the tests running now, by test definition. */
+const runningTests = new Map<string, RunBudget>();
+
+type OnTestFinished = (callback: () => void) => void;
+
+/**
+ * Bun's `onTestFinished` and fake-timer state, loaded once this module is;
+ * absent outside Bun (the Playwright specs import this module too) and until
+ * the import settles, which is before any test runs.
+ */
+let onTestFinished: OnTestFinished | undefined;
+let fakeTimers: () => boolean = () => false;
+if (process.versions["bun"] !== undefined) {
+  void import("bun:test").then((bunTest) => {
+    onTestFinished = bunTest.onTestFinished;
+    fakeTimers = () => bunTest.jest.isFakeTimers();
+    return bunTest;
+  });
+}
+
+/**
+ * Real time `budget`'s test has spent so far. Fake timers move every clock a
+ * test can read, so a stretch that starts or ends under them is not counted:
+ * a property that drives a fake clock is left to Bun's own timeout.
+ */
+const spent = (budget: RunBudget): number => {
+  const mark = { at: Date.now(), fake: fakeTimers() };
+  if (!mark.fake && !budget.mark.fake)
+    budget.spentMs += Math.max(0, mark.at - budget.mark.at);
+  budget.mark = mark;
+  return budget.spentMs;
+};
+
+/**
+ * The budget of the Bun test this run belongs to, or `undefined` outside a
+ * running test or when the test states none. Every run of one test shares
+ * one budget, so pinned replays and several properties in a test add up.
+ */
+const runBudget = (): RunBudget | undefined => {
+  const test = statedTestBudget(outsideFrames());
+  if (test?.budgetMs === undefined) return undefined;
+  const running = runningTests.get(test.key);
+  // A test that outlived its budget has ended (Bun timed it out), so a later
+  // run of the same definition is a new test with a budget of its own.
+  if (running !== undefined && spent(running) <= running.budgetMs)
+    return running;
+  const register = onTestFinished;
+  if (register === undefined) return undefined;
+  try {
+    register(() => {
+      runningTests.delete(test.key);
+    });
+  } catch {
+    // Not inside a running Bun test (a property asserted while files load).
+    return undefined;
+  }
+  const budget = {
+    budgetMs: test.budgetMs,
+    spentMs: 0,
+    mark: { at: Date.now(), fake: fakeTimers() },
+  };
+  runningTests.set(test.key, budget);
+  return budget;
+};
+
+/**
+ * Time left before `budget`'s run share is spent, for fast-check's own limit
+ * on a configuration a caller asserts directly; at least 1 ms so fast-check
+ * stops at once.
+ */
+const remainingMs = (budget: RunBudget): number =>
+  Math.max(1, budget.budgetMs * RUN_BUDGET_SHARE - spent(budget));
+
+/** Each configuration's budget, refreshed into its limit when its run starts. */
+const configBudgets = new WeakMap<object, RunBudget>();
+
+const budgetText = (budget: RunBudget | undefined, share: number): string =>
+  budget === undefined
+    ? "its time limit"
+    : `${String(Math.round(share * 100))}% of the test's ${String(budget.budgetMs)} ms budget`;
+
+/**
+ * `property`, stopped as fast-check's own time limit stops a run, by the real
+ * time its test has spent: before any further case once the run share of
+ * `budget` is spent, and before any further shrink once a case has failed and
+ * the shrink share is spent. A case already running finishes first.
+ */
+const shrinkBounded = <Ts>(
+  property: fc.IRawProperty<Ts>,
+  budget: RunBudget,
+): fc.IRawProperty<Ts> => {
+  let failed = false;
+  const seen = (
+    outcome: fc.PreconditionFailure | fc.PropertyFailure | null,
+  ) => {
+    if (outcome !== null && !(outcome instanceof fc.PreconditionFailure))
+      failed = true;
+    return outcome;
+  };
+  const bounded: fc.IRawProperty<Ts> = {
+    isAsync: () => property.isAsync(),
+    generate: (mrng, runId) => property.generate(mrng, runId),
+    shrink: (value) => property.shrink(value),
+    runBeforeEach: () => property.runBeforeEach(),
+    runAfterEach: () => property.runAfterEach(),
+    run: (value) => {
+      const used = spent(budget);
+      if (
+        used >= budget.budgetMs * RUN_BUDGET_SHARE ||
+        (failed && used >= budget.budgetMs * SHRINK_BUDGET_SHARE)
+      ) {
+        const stop = new fc.PreconditionFailure(true);
+        return property.isAsync() ? Promise.resolve(stop) : stop;
+      }
+      const outcome = property.run(value);
+      return outcome instanceof Promise ? outcome.then(seen) : seen(outcome);
+    },
+  };
+  return bounded;
+};
+
 /**
  * A reporter that throws what fast-check would, plus the replay line and, for
  * a property with no pinned entry for this seed, the per-file seed entry
@@ -395,6 +562,7 @@ const replayReporter =
     identity: PropertyIdentity,
     pinned: PinnedSeed | undefined,
     exploration: ExplorationContext,
+    budget?: RunBudget,
   ) =>
   (details: fc.RunDetails<Ts>): void => {
     const registryFile = identity.site
@@ -402,6 +570,13 @@ const replayReporter =
       : PROPERTY_SEEDS_FILE;
     const health = classifyFuzzRun(details);
     reportFuzzHealth(health);
+    // Interrupted without a counterexample (fast-check marks it failed when no case passed).
+    if (details.interrupted && details.counterexample === null) {
+      // Fewer cases than planned is not a pass: the property never saw the rest.
+      throw new Error(
+        `${identity.key ?? identity.title ?? "Property"} ran ${String(details.numRuns)} of ${String(details.runConfiguration.numRuns)} planned cases before stopping at ${budgetText(budget, RUN_BUDGET_SHARE)}; every planned case must run: raise the test's stated budget or lower numRuns.`,
+      );
+    }
     if (health.status === "infrastructure") {
       throw new Error(`Fuzz infrastructure: ${health.detail}`);
     }
@@ -449,6 +624,11 @@ const replayReporter =
       ...(pinPath === undefined || pinPath === null ? {} : { path: pinPath }),
     };
     const lines = [fc.defaultReportMessage(details) ?? "Property failed", ""];
+    if (details.interrupted) {
+      lines.push(
+        `Shrinking stopped at ${budgetText(budget, SHRINK_BUDGET_SHARE)}: the counterexample is the smallest found so far, and the replay below reproduces it.`,
+      );
+    }
     if (pinned !== undefined) {
       lines.push(
         `Pinned regression seed ${String(pinned.seed)} from ${registryFile} failed again (${pinned.note}).`,
@@ -520,7 +700,15 @@ const replayReporter =
       console.error(
         `::warning title=Fuzz exploration finding::${identity.key ?? identity.title ?? "property"} failed on a generated case (reported, not failing this run). Replay: ${replay}`,
       );
-      console.error(lines.join("\n"));
+      // The failing path shows the cause (message, diff, refusal); a reported
+      // finding prints the same detail so its owner can read it without a replay.
+      console.error(
+        [
+          ...lines,
+          "",
+          `Failure: ${truncate(errorText(details.errorInstance), MAX_REPORTED_FAILURE)}`,
+        ].join("\n"),
+      );
       return;
     }
     throw new Error(lines.join("\n"), { cause: details.errorInstance });
@@ -613,21 +801,32 @@ const buildConfig = <Ts>(
   const own =
     params.reporter === undefined && params.asyncReporter === undefined;
   const expected = pinned?.expectedFailure;
+  // A caller's own limit stands; otherwise the test's stated budget bounds the run.
+  const budget =
+    params.interruptAfterTimeLimit === undefined ? runBudget() : undefined;
   const config: fc.Parameters<Ts> = {
     verbose: isCi(),
     ...params,
     ...(seed === undefined ? {} : { seed }),
     ...(replayPath === undefined ? {} : { path: replayPath }),
     ...(own
-      ? { reporter: replayReporter<Ts>(identity, pinned, exploration) }
+      ? { reporter: replayReporter<Ts>(identity, pinned, exploration, budget) }
       : {}),
     numRuns: Math.ceil(baseNumRuns * numRunsFactor()),
   };
+  if (budget !== undefined) {
+    configBudgets.set(config, budget);
+    // fast-check's own limit reads the clock fake timers move.
+    if (!fakeTimers()) config.interruptAfterTimeLimit = remainingMs(budget);
+    // A caller's reporter sees a stopped run as failed, never as a short pass.
+    if (!own) config.markInterruptAsFailure = true;
+  }
   if (expected !== undefined) {
     // A recorded counterexample is one exact replay, independent of the nightly
     // factor and caller reporters. The generated pass keeps its own configuration.
     Reflect.deleteProperty(config, "asyncReporter");
-    config.reporter = replayReporter<Ts>(identity, pinned, exploration);
+    Reflect.deleteProperty(config, "markInterruptAsFailure");
+    config.reporter = replayReporter<Ts>(identity, pinned, exploration, budget);
     config.numRuns = 1;
     config.endOnFailure = true;
   }
@@ -751,7 +950,12 @@ export function assertKnownProperty<Ts>(
   const { exploration } = runOf(params, identity, undefined);
   Reflect.deleteProperty(generated, "asyncReporter");
   generated.reporter = (details) => {
-    replayReporter<Ts>(identity, undefined, exploration)(details);
+    replayReporter<Ts>(
+      identity,
+      undefined,
+      exploration,
+      configBudgets.get(generated),
+    )(details);
     // Reported without failing: the search stopped at that case, so the
     // recorded causes it had not reached yet prove nothing.
     if (details.failed) return;
@@ -802,20 +1006,36 @@ export function assertPinnedProperty<Ts>(
   return runConfiguredProperty(property, replays);
 }
 
+const withoutTimeLimit = <Ts>(config: fc.Parameters<Ts>): fc.Parameters<Ts> => {
+  const copy = { ...config };
+  Reflect.deleteProperty(copy, "interruptAfterTimeLimit");
+  return copy;
+};
+
 const runConfiguredProperty = <Ts>(
   property: fc.IRawProperty<Ts>,
   configs: readonly fc.Parameters<Ts>[],
 ): Promise<void> | void => {
+  // Configurations are built before the first run; each limit counts from its own start.
+  const started = (
+    config: fc.Parameters<Ts>,
+  ): [fc.IRawProperty<Ts>, fc.Parameters<Ts>] => {
+    reportFuzzHealth({ status: "started", completed: 0 });
+    const budget = configBudgets.get(config);
+    // fast-check's own limit reads a clock fake timers may move; the wrapper
+    // keeps the budget on the real one.
+    return budget === undefined
+      ? [property, config]
+      : [shrinkBounded(property, budget), withoutTimeLimit(config)];
+  };
   if (property.isAsync()) {
     return (async () => {
       for (const config of configs) {
-        reportFuzzHealth({ status: "started", completed: 0 });
-        await fc.assert(property, config);
+        await fc.assert(...started(config));
       }
     })();
   }
   for (const config of configs) {
-    reportFuzzHealth({ status: "started", completed: 0 });
-    fc.assert(property, config);
+    fc.assert(...started(config));
   }
 };

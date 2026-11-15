@@ -59,9 +59,37 @@ const positionedBookmarksOf = (
   return attrs.ok ? (attrs.value._bookmarks ?? []) : [];
 };
 
-const collectInvalidBoundaries = (doc: PMNode): PositionedNode[] => {
+/** A boundary node to delete, by the id it names (none when malformed). */
+type InvalidBoundary = PositionedNode & { id: number | null };
+
+type BoundaryCensus = {
+  /** Every boundary node of an id that does not pair, and every malformed one. */
+  invalid: readonly InvalidBoundary[];
+  /**
+   * The ids that do not pair only because a partner is missing: at most one
+   * start and one end, and no paragraph bookmark of the same id. A repeated
+   * or colliding id is ambiguous, not lone, and is never kept.
+   */
+  unpairedIds: ReadonlySet<number>;
+};
+
+const censusByDoc = new WeakMap<PMNode, BoundaryCensus>();
+
+/**
+ * The census of a document, kept by the document: the state an edit starts
+ * from is the one the previous edit produced, so each document is walked once.
+ */
+const boundaryCensus = (doc: PMNode): BoundaryCensus => {
+  const cached = censusByDoc.get(doc);
+  if (cached !== undefined) return cached;
+  const census = collectInvalidBoundaries(doc);
+  censusByDoc.set(doc, census);
+  return census;
+};
+
+const collectInvalidBoundaries = (doc: PMNode): BoundaryCensus => {
   const boundaries: PositionedBoundary[] = [];
-  const malformedBoundaries: PositionedNode[] = [];
+  const malformedBoundaries: InvalidBoundary[] = [];
   const paragraphBookmarkIds = new Set<number>();
 
   doc.descendants((node, position) => {
@@ -93,7 +121,7 @@ const collectInvalidBoundaries = (doc: PMNode): PositionedNode[] => {
 
     const result = readBookmarkBoundaryAttrs(node);
     if (!result.ok) {
-      malformedBoundaries.push({ position, node });
+      malformedBoundaries.push({ position, node, id: null });
       return false;
     }
     const attrs = result.value;
@@ -106,16 +134,37 @@ const collectInvalidBoundaries = (doc: PMNode): PositionedNode[] => {
     boundaries,
     paragraphBookmarkIds,
   );
+  const counts = new Map<number, { starts: number; ends: number }>();
+  for (const { id, type } of boundaries) {
+    const count = counts.get(id) ?? { starts: 0, ends: 0 };
+    if (type === "start") count.starts += 1;
+    else count.ends += 1;
+    counts.set(id, count);
+  }
+  const unpairedIds = new Set<number>();
+  for (const id of invalidIds) {
+    const count = counts.get(id);
+    if (
+      count !== undefined &&
+      count.starts <= 1 &&
+      count.ends <= 1 &&
+      !paragraphBookmarkIds.has(id)
+    )
+      unpairedIds.add(id);
+  }
   // Only a boundary *node* can be deleted. A marker on a table or a row is an
   // attribute of a record the user is still editing, so an unpaired one is
   // reported by the pair's other half going, not by the container being cut.
-  return [
-    ...boundaries.filter(
-      ({ id, node }) =>
-        invalidIds.has(id) && BOUNDARY_NODE_NAMES.has(node.type.name),
-    ),
-    ...malformedBoundaries,
-  ];
+  return {
+    invalid: [
+      ...boundaries.filter(
+        ({ id, node }) =>
+          invalidIds.has(id) && BOUNDARY_NODE_NAMES.has(node.type.name),
+      ),
+      ...malformedBoundaries,
+    ],
+    unpairedIds,
+  };
 };
 
 export const BookmarkBoundaryExtension: (
@@ -153,12 +202,25 @@ export const BookmarkBoundaryExtension: (
   onSchemaReady: () => ({
     plugins: [
       new Plugin({
-        appendTransaction(transactions, _oldState, newState) {
+        appendTransaction(transactions, oldState, newState) {
           if (!transactions.some(({ docChanged }) => docChanged)) {
             return null;
           }
 
-          const invalidBoundaries = collectInvalidBoundaries(newState.doc);
+          const { invalid, unpairedIds } = boundaryCensus(newState.doc);
+          if (invalid.length === 0) {
+            return null;
+          }
+          // A bookmark the document already held without a partner before
+          // these edits is source content: a lone `_GoBack` start, or a start
+          // whose end the source never had. The edits did not break it, so
+          // the pass leaves it as it was read. Only a pair the edits broke,
+          // or a boundary they brought in alone, is removed.
+          const { unpairedIds: alreadyUnpaired } = boundaryCensus(oldState.doc);
+          const invalidBoundaries = invalid.filter(
+            ({ id }) =>
+              id === null || !unpairedIds.has(id) || !alreadyUnpaired.has(id),
+          );
           if (invalidBoundaries.length === 0) {
             return null;
           }
