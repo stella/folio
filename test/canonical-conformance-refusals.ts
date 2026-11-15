@@ -15,13 +15,6 @@ const REFUSAL_ROWS = {
     message:
       "A note or table of contents goes at a caret, not over selected cells.",
   },
-  // The fixture table's third row holds a nested table, which a suggested
-  // row change has no record for.
-  suggestedNestedTableRows: {
-    id: "suggested-nested-table-rows",
-    gap: CANONICAL_GAP.trackedTableStructure,
-    message: "A suggestion cannot yet record a row that holds a nested table.",
-  },
   // A suggested column deletion keeps its cells until accepted, so a cell
   // spanning the deleted column and another has no record of its narrowing.
   suggestedSpanningColumnDeletion: {
@@ -101,16 +94,9 @@ export const canonicalConformanceRefusalRows = (
     key.shape === "tables" &&
     key.mode === "suggesting" &&
     key.placement !== "document";
-  // Deleting the table records every row, the nested table's too.
-  if (key.operation === "command:deleteTable")
-    return inFixtureTable ? [REFUSAL_ROWS.suggestedNestedTableRows] : [];
+  // Deleting the table or its rows records every row, a nested table's too.
   // Across the focused cell and the next, the selection spans the merged
-  // block and reaches the row with the nested table; at a caret the row and
-  // column hold neither.
-  if (key.operation === "command:deleteRow")
-    return inFixtureTable && key.placement === "cross-paragraph"
-      ? [REFUSAL_ROWS.suggestedNestedTableRows]
-      : [];
+  // block; at a caret the column holds none.
   if (key.operation === "command:deleteColumn")
     return inFixtureTable && key.placement === "cross-paragraph"
       ? [REFUSAL_ROWS.suggestedSpanningColumnDeletion]

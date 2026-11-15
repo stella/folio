@@ -65,6 +65,7 @@ import {
   withCanonicalColumnInsertion,
   withCanonicalRowDeletion,
   withCanonicalRowInsertion,
+  withCanonicalSelectionCommand,
   withCanonicalTableAttributeCommand,
   withCanonicalTableDeletion,
   withCanonicalTableInsertion,
@@ -3295,9 +3296,9 @@ export const TablePluginExtension: (
           withCanonicalColumnInsertion(addColumnRight, "right"),
         deleteColumn: () => withCanonicalColumnDeletion(deleteColumn),
         deleteTable: () => withCanonicalTableDeletion(deleteTable),
-        selectTable: () => selectTable,
-        selectRow: () => selectRow,
-        selectColumn: () => selectColumn,
+        selectTable: () => withCanonicalSelectionCommand(selectTable),
+        selectRow: () => withCanonicalSelectionCommand(selectRow),
+        selectColumn: () => withCanonicalSelectionCommand(selectColumn),
         mergeCells: () =>
           withCanonicalCellMerge(preserveOmittedGridSlots(pmMergeCells)),
         splitCell: () =>

@@ -65,6 +65,7 @@ import {
   prepareOpDocument,
   sameOpModel,
   seedFromBytes,
+  serializedOpPackage,
   serializedOpParts,
   serializeOpDocument,
 } from "./op-sequences";
@@ -1020,7 +1021,10 @@ export const runOpLocalityInvariant = async (
         const document = await prepareOpDocument(input);
         const seed = seedFromBytes(input.bytes);
         const failures: string[] = [];
-        const control = await serializedOpParts(document);
+        // The saved package names its main document part; the source file's
+        // name for it is not what a save writes.
+        const { parts: control, documentPart } =
+          await serializedOpPackage(document);
         for (const salt of OP_SEQUENCE_SEEDS) {
           const sequence = generateOpSequence(document, seed ^ salt);
           failures.push(
@@ -1034,7 +1038,7 @@ export const runOpLocalityInvariant = async (
             sequence,
             control,
             edited,
-            documentPart: input.documentPart,
+            documentPart,
           });
           let classified = false;
           for (const step of sequence.steps) {
@@ -1050,7 +1054,7 @@ export const runOpLocalityInvariant = async (
               step,
               control: beforeParts,
               edited: editedParts,
-              documentPart: input.documentPart,
+              documentPart,
             });
             classified ||= stepFailures.length > 0;
             failures.push(...stepFailures);

@@ -2,7 +2,7 @@ import {
   ensureLiveView,
   expect,
   forEachAdapter,
-  openEditor,
+  openCanonicalEditor,
 } from "./parity-fixture";
 
 // Both adapters wire the comment lifecycle: a comment added through the
@@ -14,7 +14,7 @@ import {
 forEachAdapter(
   "comment: paints a comment anchor through the bridge",
   async (adapter, { page }) => {
-    await openEditor(page, adapter);
+    await openCanonicalEditor(page, adapter);
     await ensureLiveView(page);
 
     const before = await page.evaluate(

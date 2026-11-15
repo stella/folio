@@ -2,10 +2,13 @@
  * A package names its main document through the `officeDocument` relationship,
  * and nothing requires that name to be `word/document.xml`: some producers write
  * `word/document2.xml`. Every reader and writer here works at the standard path,
- * so a package opens with its main document moved there.
+ * so a package opens with its main document moved there, and every save reads
+ * the package it writes over through {@link readPackageForSave}, which moves it
+ * the same way. Which part a package names is answered by
+ * {@link mainDocumentPartPath} alone.
  */
 
-import type { ZipArchive } from "@stll/docx-core/zip";
+import { ZipArchive } from "@stll/docx-core/zip";
 
 import { resolvePackageRelationshipTarget } from "./packageParts";
 
@@ -40,6 +43,46 @@ const escapeForRegExp = (text: string): string =>
 const targetOf = (element: string): string | null =>
   /\bTarget\s*=\s*["']([^"']+)["']/u.exec(element)?.[1] ?? null;
 
+type DeclaredMainDocument = {
+  packagePath: string;
+  packageXml: string;
+  relationship: string;
+  /** The entry the relationship names, spelled as the archive spells it. */
+  part: string;
+};
+
+const declaredMainDocument = async (
+  zip: ZipArchive,
+): Promise<DeclaredMainDocument | undefined> => {
+  const packagePath = entryNamed(zip, PACKAGE_RELATIONSHIPS_PATH);
+  if (packagePath === undefined) return undefined;
+  const packageXml = await zip.entry(packagePath)?.text();
+  if (packageXml === undefined) return undefined;
+  const relationship = [
+    ...packageXml.matchAll(/<(?:\w+:)?Relationship\b[^>]*>/gu),
+  ]
+    .map(([element]) => element)
+    .find((element) => OFFICE_DOCUMENT_TYPE.test(element));
+  const target = relationship && targetOf(relationship);
+  if (!relationship || !target) return undefined;
+  const lowerPath = resolvePackageRelationshipTarget(
+    target,
+    PACKAGE_RELATIONSHIPS_PATH,
+  );
+  if (lowerPath === undefined) return undefined;
+  const part = entryNamed(zip, lowerPath);
+  if (part === undefined) return undefined;
+  return { packagePath, packageXml, relationship, part };
+};
+
+/**
+ * The part the package's `officeDocument` relationship names, as the archive
+ * spells it, or `undefined` when the package names no part it holds.
+ */
+export const mainDocumentPartPath = async (
+  zip: ZipArchive,
+): Promise<string | undefined> => (await declaredMainDocument(zip))?.part;
+
 /**
  * Moves the main document to the standard path. Returns whether it moved.
  * What is not a word processing main part, a theme package say, stays put.
@@ -47,27 +90,17 @@ const targetOf = (element: string): string | null =>
 export const moveMainDocumentToStandardPath = async (
   zip: ZipArchive,
 ): Promise<boolean> => {
-  const packagePath = entryNamed(zip, PACKAGE_RELATIONSHIPS_PATH);
   const contentTypesPath = entryNamed(zip, CONTENT_TYPES_PATH);
-  if (packagePath === undefined || contentTypesPath === undefined) return false;
-  const packageXml = await zip.entry(packagePath)?.text();
+  if (contentTypesPath === undefined) return false;
+  const declaredMain = await declaredMainDocument(zip);
+  if (
+    declaredMain === undefined ||
+    declaredMain.part.toLowerCase() === STANDARD_PATH
+  )
+    return false;
   const contentTypes = await zip.entry(contentTypesPath)?.text();
-  if (packageXml === undefined || contentTypes === undefined) return false;
-
-  const relationship = [
-    ...packageXml.matchAll(/<(?:\w+:)?Relationship\b[^>]*>/gu),
-  ]
-    .map(([element]) => element)
-    .find((element) => OFFICE_DOCUMENT_TYPE.test(element));
-  const target = relationship && targetOf(relationship);
-  if (!relationship || !target) return false;
-  const lowerPath = resolvePackageRelationshipTarget(
-    target,
-    PACKAGE_RELATIONSHIPS_PATH,
-  );
-  if (lowerPath === undefined || lowerPath === STANDARD_PATH) return false;
-  const part = entryNamed(zip, lowerPath);
-  if (part === undefined) return false;
+  if (contentTypes === undefined) return false;
+  const { packagePath, packageXml, relationship, part } = declaredMain;
 
   const override = new RegExp(
     String.raw`<(?:\w+:)?Override\b[^>]*PartName\s*=\s*["']/${escapeForRegExp(part)}["'][^>]*>`,
@@ -144,4 +177,18 @@ export const moveMainDocumentToStandardPath = async (
       ),
   );
   return true;
+};
+
+/**
+ * The package a save writes over, with its main document at the standard
+ * path. Every save entry that takes the bytes of an opened package reads them
+ * here, so bytes handed over as the producer wrote them save to one main part
+ * exactly as the bytes the reader kept do.
+ */
+export const readPackageForSave = async (
+  bytes: Uint8Array | ArrayBuffer,
+): Promise<ZipArchive> => {
+  const zip = await ZipArchive.read(bytes);
+  await moveMainDocumentToStandardPath(zip);
+  return zip;
 };
