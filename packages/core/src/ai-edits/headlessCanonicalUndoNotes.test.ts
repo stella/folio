@@ -5,15 +5,27 @@
  *
  * The replayed document numbers a paragraph whose insertion wraps a deleted
  * footnote reference and inline math; deleting that paragraph directly
- * removes the note with it, and undo restores both.
+ * removes the note with it, and undo restores both. A property draws where a
+ * paragraph's footnote reference stands (plain, inserted, deleted, deleted
+ * inside an insertion), whether math stands beside it and whether the
+ * paragraphs are numbered, applies a public operation to it directly or
+ * tracked, and undoes it: every read and the document are the ones before.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
+import fc from "fast-check";
+
+import * as documentOps from "@stll/docx-core/ops";
 
 import {
   bodyBlockIds,
   operationFor,
 } from "../../../../test/generators/reviewerOperationDraws";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
@@ -120,14 +132,18 @@ const reads = (reviewer: FolioDocxReviewer) => ({
   document: reviewer.toDocument(),
 });
 
-const applyAndUndo = async (operation: FolioDocumentOperation) => {
-  const reviewer = await open(await packaged(DOCUMENT));
+const applyAndUndo = async (
+  operation: FolioDocumentOperation,
+  document: Document = DOCUMENT,
+  mode: "direct" | "tracked-changes" = "direct",
+) => {
+  const reviewer = await open(await packaged(document));
   const before = reads(reviewer);
   const result = reviewer.applyDocumentOperations(
     {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       operations: [operation],
-      mode: "direct",
+      mode,
     },
     { undefinedReferences: "refuse" },
   );
@@ -152,4 +168,244 @@ describe("undo of a direct deletion of a paragraph holding a note reference", ()
     });
     expect(reads(reviewer)).toEqual(before);
   }, 60_000);
+});
+
+type Placement = "plain" | "inserted" | "deleted" | "deletedInsideInsertion";
+
+type Draw = {
+  placement: Placement;
+  math: boolean;
+  numbered: boolean;
+  mode: "direct" | "tracked-changes";
+  operation:
+    | "deleteBlock"
+    | "replaceBlock"
+    | "replaceInBlock"
+    | "insertAfterBlock"
+    | "insertBeforeBlock"
+    | "mergeBlockWithNext"
+    | "mergeIntoIt"
+    | "setBlockParagraphProperties";
+};
+
+const INSERTED = { id: 11, author: "A", date: "2026-01-02T03:04:05Z" };
+const DELETED = { id: 12, author: "B", date: "2026-01-02T03:04:05Z" };
+
+const textRun = (text: string) => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
+
+const referenceIn = (placement: Placement) => {
+  const reference = { type: "run", content: [{ type: "footnoteRef", id: 2 }] };
+  switch (placement) {
+    case "plain":
+      return reference;
+    case "inserted":
+      return { type: "insertion", info: INSERTED, content: [reference] };
+    case "deleted":
+      return { type: "deletion", info: DELETED, content: [reference] };
+    case "deletedInsideInsertion":
+      return {
+        type: "insertion",
+        info: INSERTED,
+        content: [{ type: "deletion", info: DELETED, content: [reference] }],
+      };
+    default: {
+      const unreachable: never = placement;
+      throw new Error(`Unknown placement ${String(unreachable)}`);
+    }
+  }
+};
+
+/** Three paragraphs; the middle one holds the note's reference. */
+const documentOf = (draw: Draw): Document => {
+  const formatting = draw.numbered ? { formatting: numbered } : {};
+  const body = [
+    {
+      type: "paragraph",
+      content: [textRun("Opening words")],
+      paraId: "00000001",
+      ...formatting,
+    },
+    {
+      type: "paragraph",
+      content: [
+        textRun("Noted words"),
+        referenceIn(draw.placement),
+        ...(draw.math
+          ? [{ type: "mathEquation", display: "inline", ommlXml: "<m:oMath/>" }]
+          : []),
+      ],
+      paraId: "00000002",
+      ...formatting,
+    },
+    {
+      type: "paragraph",
+      content: [textRun("Closing words")],
+      paraId: "00000003",
+      ...formatting,
+    },
+  ] as unknown as BlockContent[];
+  const base = DOCUMENT.package;
+  return {
+    ...DOCUMENT,
+    package: {
+      ...base,
+      document: {
+        ...base.document,
+        content: body,
+        sections: [{ properties: PAGE, content: body }],
+      },
+      footnotes: [
+        {
+          type: "footnote",
+          id: 2,
+          content: [
+            {
+              type: "paragraph",
+              paraId: "7FFFFFF1",
+              content: [textRun("The note")],
+            },
+          ],
+        },
+      ],
+    },
+  } as unknown as Document;
+};
+
+const operationOf = (
+  draw: Draw,
+  ids: { opening: string; noted: string },
+): FolioDocumentOperation => {
+  const blockId = ids.noted;
+  switch (draw.operation) {
+    case "deleteBlock":
+      return { id: "op", type: "deleteBlock", blockId };
+    case "replaceBlock":
+      return { id: "op", type: "replaceBlock", blockId, text: "Other words" };
+    case "replaceInBlock":
+      return {
+        id: "op",
+        type: "replaceInBlock",
+        blockId,
+        find: "Noted",
+        replace: "Marked",
+      };
+    case "insertAfterBlock":
+    case "insertBeforeBlock":
+      return { id: "op", type: draw.operation, blockId, text: "Inserted" };
+    case "mergeBlockWithNext":
+      return { id: "op", type: "mergeBlockWithNext", blockId };
+    case "mergeIntoIt":
+      return { id: "op", type: "mergeBlockWithNext", blockId: ids.opening };
+    case "setBlockParagraphProperties":
+      return {
+        id: "op",
+        type: "setBlockParagraphProperties",
+        blockId,
+        properties: { alignment: "center" },
+      };
+    default: {
+      const unreachable: never = draw.operation;
+      throw new Error(`Unknown operation ${String(unreachable)}`);
+    }
+  }
+};
+
+const drawArbitrary: fc.Arbitrary<Draw> = fc.record({
+  placement: fc.constantFrom<Placement>(
+    "plain",
+    "inserted",
+    "deleted",
+    "deletedInsideInsertion",
+  ),
+  math: fc.boolean(),
+  numbered: fc.boolean(),
+  mode: fc.constantFrom("direct" as const, "tracked-changes" as const),
+  operation: fc.constantFrom<Draw["operation"]>(
+    "deleteBlock",
+    "replaceBlock",
+    "replaceInBlock",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "mergeBlockWithNext",
+    "mergeIntoIt",
+    "setBlockParagraphProperties",
+  ),
+});
+
+/** The replayed shape: a numbered paragraph, deleted directly. */
+const REPLAYED: Draw = {
+  placement: "deletedInsideInsertion",
+  math: true,
+  numbered: true,
+  mode: "direct",
+  operation: "deleteBlock",
+};
+
+const undoLaw = fc.asyncProperty(drawArbitrary, async (draw) => {
+  const document = documentOf(draw);
+  const probe = await open(await packaged(document));
+  const blocks = probe.snapshot().blocks;
+  const opening = blocks.find((block) => block.text === "Opening words");
+  const noted = blocks.find((block) => block.text.startsWith("Noted words"));
+  if (opening === undefined || noted === undefined)
+    throw new Error("the drawn document's blocks are missing");
+  const { reviewer, before, result } = await applyAndUndo(
+    operationOf(draw, { opening: opening.id, noted: noted.id }),
+    document,
+    draw.mode,
+  );
+  // An operation the reviewer refuses leaves nothing to undo.
+  if (result.undoHandle === null) return;
+  expect(reviewer.undoDocumentOperations(result.undoHandle)).toEqual({
+    status: "undone",
+    undoHandle: result.undoHandle,
+  });
+  expect(reads(reviewer)).toEqual(before);
+});
+
+describe("undo of any public operation on a paragraph holding a note reference", () => {
+  test(
+    "gives back the document and every read",
+    async () => {
+      await assertProperty(undoLaw, {
+        id: "undo gives back a paragraph with a note reference",
+        numRuns: 40,
+        examples: [[REPLAYED]],
+      });
+    },
+    propertyTestTimeout(180_000),
+  );
+
+  test(
+    "the law catches a restore that expects the parts before list rendering",
+    async () => {
+      // The test-only break: the session keeps each restore's expectation
+      // as its operation recorded it, before list rendering ran.
+      const original = { ...documentOps };
+      mock.module("@stll/docx-core/ops", () => ({
+        ...original,
+        inverseMeetingDocument: (
+          _document: Parameters<typeof original.inverseMeetingDocument>[0],
+          inverse: Parameters<typeof original.inverseMeetingDocument>[1],
+        ) => inverse,
+      }));
+      try {
+        const result = await fc.check(
+          undoLaw,
+          propertyConfig({
+            numRuns: 1,
+            examples: [[REPLAYED]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+      } finally {
+        mock.module("@stll/docx-core/ops", () => original);
+      }
+    },
+    propertyTestTimeout(60_000),
+  );
 });

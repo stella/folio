@@ -41,6 +41,7 @@ import {
   freshLeasedIds,
   ID_LEASE_KINDS,
   type IdLease,
+  inverseMeetingDocument,
   normalizeForOps,
   OP_STORIES,
   type OpStory,
@@ -3342,7 +3343,12 @@ class CanonicalSession {
       this.caches.lists,
     );
     applied.value.document = normalized.document;
-    applied.value.inverse = normalized.inverse.concat(applied.value.inverse);
+    // Undo meets the normalized document: a restore of whole parts (notes
+    // an edit removed with their references) expects what it meets there.
+    applied.value.inverse = inverseMeetingDocument(
+      normalized.document,
+      normalized.inverse.concat(applied.value.inverse),
+    );
     // Judged on the result too: an edit may only introduce the ids its author leases.
     // Another actor's edit was judged against its own lease by the authority.
     const leaseJudgement =

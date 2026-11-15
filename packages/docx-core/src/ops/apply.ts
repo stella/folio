@@ -174,7 +174,11 @@ import {
 } from "./review";
 import { setRevisionInfo } from "./revisionInfo";
 import { documentStories, findStoryBody, sameStory } from "./stories";
-import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
+import {
+  applyStoryLifecycle,
+  captureStoryParts,
+  storyLifecycleEdit,
+} from "./storyLifecycle";
 import { tableEditBoundaryRefusal } from "./tableEditBoundary";
 import { applyTableEdit } from "./tableEdits";
 import { applyRowOp } from "./tableRows";
@@ -3199,6 +3203,41 @@ export const applyDocumentOpEnvelope = (
  * the document is unchanged. The inverse undoes the whole list, and
  * `revisions` lists each operation's in turn.
  */
+/**
+ * An inverse whose whole-part restores expect the parts they meet when the
+ * inverse runs, in order, on `document`.
+ *
+ * A restore records the parts its operation left, and refuses as stale when
+ * the document it meets holds other ones. A caller that changes the document
+ * after an operation (a derivation over the whole document, such as list
+ * rendering) and puts its own inverse first rebases the restores onto that
+ * document, so undo meets exactly what each restore expects. The inverse is
+ * returned as it is when it holds no restore, or when it does not apply.
+ */
+export const inverseMeetingDocument = (
+  document: Document,
+  inverse: readonly DocumentOp[],
+): readonly DocumentOp[] => {
+  if (!inverse.some((op) => op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS))
+    return inverse;
+  let current = document;
+  const rebased: DocumentOp[] = [];
+  for (const op of inverse) {
+    const next =
+      op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS
+        ? {
+            ...op,
+            expected: cloneModel(captureStoryParts(current, op.expected)),
+          }
+        : op;
+    const applied = applyDocumentOp(current, next);
+    if (applied.isErr()) return inverse;
+    current = applied.value.document;
+    rebased.push(next);
+  }
+  return rebased;
+};
+
 export const applyDocumentOps = (
   document: Document,
   ops: readonly DocumentOp[],
