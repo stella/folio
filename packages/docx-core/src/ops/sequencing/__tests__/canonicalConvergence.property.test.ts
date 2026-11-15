@@ -432,8 +432,17 @@ const describeOps = (ops: readonly DocumentOp[]): string =>
     .join(", ");
 
 // The tail batch a refused batch could not be rebased over, else the whole tail.
-const BLOCK_FOOTPRINT_REFUSAL =
-  "A concurrent operation changed a paragraph this operation addresses.";
+/**
+ * Refusals of a restoration and an edit of its paragraph other than by its
+ * span: the block footprint alone, or an edit the paragraph does not take
+ * alone.
+ */
+const notBySpan = (message: string): boolean =>
+  message ===
+    "A concurrent operation changed a paragraph this operation addresses." ||
+  message.startsWith(
+    "A restored paragraph does not take a concurrent edit alone",
+  );
 
 /** The paragraphs a restoration rewrites. */
 const restoredParagraphs = (op: DocumentOp) => {
@@ -651,12 +660,12 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           type === DOCUMENT_OP_TYPES.JOIN_INLINE,
       );
       const refusing = refusingOps(batch, tail);
-      if (result.reason.message === BLOCK_FOOTPRINT_REFUSAL)
+      if (notBySpan(result.reason.message))
         outcome.restoreRefusals.push(
           ...restorePairs(
             restoredOps(opsAtRefusal(batch, tail)),
             restoredOps(refusing),
-          ).map((pair) => `refused: ${pair}`),
+          ).map((pair) => `refused: ${pair}: ${result.reason.message}`),
         );
       // No declared tracked pair is refused: the authority's order decides.
       // An inverse keeps its preconditions, which refuse by their own rule,
@@ -755,12 +764,12 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     } else changes = peer.client.receiveReject(event.result);
     if (event.type === "broadcast")
       for (const notice of peer.client.notices.slice(noticesBefore))
-        if (notice.reason.message === BLOCK_FOOTPRINT_REFUSAL)
+        if (notBySpan(notice.reason.message))
           outcome.restoreRefusals.push(
             ...restorePairs(
               restoredOps(notice.ops),
               restoredOps(event.batch.ops),
-            ).map((pair) => `dropped: ${pair}`),
+            ).map((pair) => `dropped: ${pair}: ${notice.reason.message}`),
           );
     // Every change takes the peer's document exactly where the client is:
     // a rebased one is never trusted short of it.

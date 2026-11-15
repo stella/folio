@@ -307,7 +307,7 @@ const editedContent = (
   edit: ParagraphEdit,
   blockId: string,
   content: readonly ParagraphContent[],
-): readonly ParagraphContent[] | undefined => {
+): readonly ParagraphContent[] | string => {
   const document: Document = {
     package: {
       document: {
@@ -318,10 +318,12 @@ const editedContent = (
     },
   };
   const applied = applyDocumentOps(document, [inMainStory(edit)]);
-  if (applied.isErr()) return undefined;
-  return storyParagraphs(
-    storyBody(applied.value.document, OP_STORIES.MAIN),
-  ).find(({ paragraph }) => paragraph.paraId === blockId)?.paragraph.content;
+  if (applied.isErr()) return applied.error.message;
+  return (
+    storyParagraphs(storyBody(applied.value.document, OP_STORIES.MAIN)).find(
+      ({ paragraph }) => paragraph.paraId === blockId,
+    )?.paragraph.content ?? "The edit removed the paragraph."
+  );
 };
 
 const withRewrite = (
@@ -363,9 +365,10 @@ const spanConflict = (op: DocumentOp, over: DocumentOp) =>
   );
 
 /**
- * A restoration and a positional edit of one of its paragraphs. Undefined
- * for every other pair, and for one whose edit does not apply to the
- * paragraph alone, which the block footprint then decides.
+ * A restoration and a positional edit of one of its paragraphs: refused
+ * when the edit reaches into the span, or does not apply to the paragraph
+ * alone (the refusal names why). Undefined for every other pair, which the
+ * block footprint decides.
  */
 export const transformRestorePair = (
   op: DocumentOp,
@@ -386,6 +389,17 @@ export const transformRestorePair = (
   // A restoration rebased over an edit states what the edit leaves.
   const expected = editedContent(edit, rewrite.blockId, rewrite.expected);
   const content = editedContent(moved, rewrite.blockId, rewrite.content);
-  if (expected === undefined || content === undefined) return undefined;
+  for (const result of [expected, content])
+    if (typeof result === "string")
+      return Result.err(
+        new BatchRejection({
+          reason: BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
+          message: `A restored paragraph does not take a concurrent edit alone: ${result}`,
+          opType: op.type,
+          overType: over.type,
+        }),
+      );
+  if (typeof expected === "string" || typeof content === "string")
+    return undefined;
   return Result.ok([withRewrite(op, rewrite, expected, content)]);
 };
