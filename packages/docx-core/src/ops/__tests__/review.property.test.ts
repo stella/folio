@@ -932,9 +932,14 @@ const twoBatchesLaw = (tally: Tally) =>
       let current = document;
       const stamps: RevisionStamp[] = [];
       const kinds: DocumentOpType[] = [];
+      const dbg: Record<string, unknown> = {
+        ops: [],
+        doc: document.package.document.content,
+      };
       for (const [index, seed] of seeds.entries()) {
         const op = trackedOpFor(current, seed, index);
         const applied = applyDocumentOp(current, op);
+        (dbg["ops"] as unknown[]).push({ op, ok: applied.isOk() });
         if (applied.isErr()) continue;
         const stamp = stampOf(op);
         if (stamp === undefined) continue;
@@ -969,26 +974,65 @@ const twoBatchesLaw = (tally: Tally) =>
           (left, right) => left.key - right.key || left.index - right.index,
         )
         .map(({ group }) => group);
-      let oneByOne = current;
-      for (const { ids, decision } of order) {
-        oneByOne = resolved(oneByOne, ids, decision);
-        expectSettledDeferredSeams(oneByOne);
+      dbg["current"] = current.package.document.content;
+      dbg["perOp"] = perOp;
+      dbg["steps"] = [];
+      try {
+        let oneByOne = current;
+        for (const { ids, decision } of order) {
+          oneByOne = resolved(oneByOne, ids, decision);
+          (dbg["steps"] as unknown[]).push({
+            ids,
+            decision,
+            body: oneByOne.package.document.content,
+          });
+          expectSettledDeferredSeams(oneByOne);
+        }
+        const expected = projected(oneByOne, "π′");
+        const acceptedFirst = resolved(
+          resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
+          rejected,
+          REVISION_DECISIONS.REJECT,
+        );
+        dbg["acceptedFirst"] = acceptedFirst.package.document.content;
+        expectSettledDeferredSeams(acceptedFirst);
+        assertExactModel(projected(acceptedFirst, "π′"), expected);
+        const rejectedFirst = resolved(
+          resolved(current, rejected, REVISION_DECISIONS.REJECT),
+          accepted,
+          REVISION_DECISIONS.ACCEPT,
+        );
+        dbg["rejectedFirst"] = rejectedFirst.package.document.content;
+        expectSettledDeferredSeams(rejectedFirst);
+        assertExactModel(projected(rejectedFirst, "π′"), expected);
+      } catch (error) {
+        console.log("L3E3 " + JSON.stringify(dbg));
+        try {
+          console.log(
+            "L3E4 " +
+              JSON.stringify(
+                resolved(
+                  current,
+                  idsDecided(REVISION_DECISIONS.ACCEPT),
+                  REVISION_DECISIONS.ACCEPT,
+                ).package.document.content,
+              ),
+          );
+          console.log(
+            "L3E5 " +
+              JSON.stringify(
+                resolved(
+                  current,
+                  idsDecided(REVISION_DECISIONS.REJECT),
+                  REVISION_DECISIONS.REJECT,
+                ).package.document.content,
+              ),
+          );
+        } catch (inner) {
+          console.log("L3E6 " + String(inner));
+        }
+        throw error;
       }
-      const expected = projected(oneByOne, "π′");
-      const acceptedFirst = resolved(
-        resolved(current, accepted, REVISION_DECISIONS.ACCEPT),
-        rejected,
-        REVISION_DECISIONS.REJECT,
-      );
-      expectSettledDeferredSeams(acceptedFirst);
-      assertExactModel(projected(acceptedFirst, "π′"), expected);
-      const rejectedFirst = resolved(
-        resolved(current, rejected, REVISION_DECISIONS.REJECT),
-        accepted,
-        REVISION_DECISIONS.ACCEPT,
-      );
-      expectSettledDeferredSeams(rejectedFirst);
-      assertExactModel(projected(rejectedFirst, "π′"), expected);
     },
   );
 
