@@ -69,7 +69,13 @@ the records it cut at both of its ends, a run and the text it lay inside, by
 their gaps before it (`cutRecords` in its effect). The deletion rebased over
 the format joins the pieces of each that reaches past both of its ends again,
 with one seam join at its point that many levels deep, which is the depth
-the deletion merges at in the other order.
+the deletion merges at in the other order. A direct deletion keeps a note's
+own reference mark lying inside its range; the sequenced deletion records
+that (`keptMark` in its `deleteRange` effect), and a position it closes up to
+its start lands after the kept mark, as it does in the deleting order. A cut
+record holding that mark names it too (`keptMark` on the record): the mark
+keeps the record's piece on its side of the format, and when it stood before
+the format the pieces meet, and join, right after it.
 
 ## Inline insertions
 
