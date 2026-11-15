@@ -405,6 +405,12 @@ export const transformRestorePair = (
       : undefined;
   const span = restoredSpan(rewrite.expected, rewrite.content);
   const moved = editPast(edit, span);
+  // oxlint-disable-next-line typescript/no-explicit-any
+  if (moved === undefined && (globalThis as any).__DIAG_RESTORE === true)
+    // oxlint-disable-next-line no-console
+    console.log(
+      `DIAG SPAN ${op.type} over ${over.type} span=${JSON.stringify(span)} EDIT ${JSON.stringify(edit).slice(0, 2000)} EXPECTED ${JSON.stringify(rewrite.expected).slice(0, 2500)} CONTENT ${JSON.stringify(rewrite.content).slice(0, 2500)}`,
+    );
   if (moved === undefined) return spanConflict(op, over);
   // An edit rebased over a restoration moves past its span.
   if (opEdit !== undefined && overEdit === undefined) return Result.ok([moved]);
