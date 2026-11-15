@@ -197,6 +197,67 @@ export const expectPanelsDoNotOverlap = async (
   state: PanelState,
 ): Promise<void> => {
   const boxes = await readPanelBoxes(page);
+  if (state.tier === "wide") {
+    // Diagnostic: every element whose right edge passes the scroll port.
+    const report = await page.evaluate(() => {
+      const scroll = document.querySelector<HTMLElement>("[data-folio-scroll]");
+      if (!scroll) return { missing: true };
+      const port = scroll.getBoundingClientRect();
+      const edge = port.left + scroll.clientWidth;
+      const describe = (element: Element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          tag: element.tagName.toLowerCase(),
+          cls: String(element.getAttribute("class") ?? "").slice(0, 80),
+          testid: element.getAttribute("data-testid"),
+          data: [...element.attributes]
+            .filter((attribute) => attribute.name.startsWith("data-folio"))
+            .map((attribute) => `${attribute.name}=${attribute.value}`)
+            .join(" "),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+          position: style.position,
+          display: style.display,
+          margin: `${style.marginLeft}/${style.marginRight}`,
+          padding: `${style.paddingLeft}/${style.paddingRight}`,
+          minWidth: style.minWidth,
+        };
+      };
+      const over = [...scroll.querySelectorAll("*")]
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.right > edge + 1;
+        })
+        .map(describe)
+        .sort((a, b) => b.right - a.right)
+        .slice(0, 25);
+      const chain: ReturnType<typeof describe>[] = [];
+      for (
+        let element: Element | null = scroll;
+        element && chain.length < 6;
+        element = element.parentElement
+      )
+        chain.push(describe(element));
+      return {
+        url: location.href,
+        innerWidth: window.innerWidth,
+        clientWidth: scroll.clientWidth,
+        offsetWidth: scroll.offsetWidth,
+        scrollWidth: scroll.scrollWidth,
+        edge: Math.round(edge),
+        overflowY: getComputedStyle(scroll).overflowY,
+        scrollbarGutter: getComputedStyle(scroll).scrollbarGutter,
+        children: [...scroll.children].map(describe),
+        over,
+        chain,
+      };
+    });
+    console.log(
+      `FOLIO_WIDE_DIAG ${state.tier} ${JSON.stringify({ state, overflow: boxes.horizontalOverflow, report })}`,
+    );
+  }
   expect(boxes.pages.length).toBeGreaterThan(0);
   const ruler = page.getByTestId("folio-horizontal-ruler");
   if ((await ruler.count()) > 0) await expectOpaque(ruler, "the ruler");
