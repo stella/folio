@@ -1825,6 +1825,7 @@ const storyProjectionKey = (story: CanonicalSecondaryStory): string => {
 type CanonicalSaveBaseline = {
   version: number;
   blockIds: readonly string[];
+  buffer: ArrayBuffer;
   /** The saved package's buffer and source captures, without its model. */
   document: Document;
 };
@@ -1847,9 +1848,9 @@ const sameStoryParts = (left: ReadonlyDocument, right: ReadonlyDocument) =>
  * capture of its body, and its headers and footers with their verbatim
  * sources. The body content itself is not kept.
  */
-const saveBaselineOf = (saved: Document): Document => {
+const saveBaselineOf = (saved: Document, buffer: ArrayBuffer): Document => {
   const baseline: Document = {
-    originalBuffer: saved.originalBuffer,
+    originalBuffer: buffer,
     package: {
       document: { ...saved.package.document, content: [] },
       ...(saved.package.headers === undefined
@@ -1869,7 +1870,10 @@ const saveBaselineOf = (saved: Document): Document => {
  * verbatim source of each header and footer, so an edit since the baseline's
  * save is judged against what that save wrote.
  */
-const withSaveBaseline = (document: Document, baseline: Document): Document => {
+const withSaveBaseline = (
+  document: Document,
+  { buffer, document: baseline }: CanonicalSaveBaseline,
+): Document => {
   const rebaseParts = (
     parts: Map<string, HeaderFooter> | undefined,
     sources: Map<string, HeaderFooter> | undefined,
@@ -1899,7 +1903,7 @@ const withSaveBaseline = (document: Document, baseline: Document): Document => {
   );
   const rebased: Document = {
     ...document,
-    originalBuffer: baseline.originalBuffer,
+    originalBuffer: buffer,
     package: {
       ...document.package,
       document: { ...document.package.document },
@@ -2218,7 +2222,7 @@ class CanonicalSession {
       document:
         this.saveBaseline === null
           ? document
-          : withSaveBaseline(document, this.saveBaseline.document),
+          : withSaveBaseline(document, this.saveBaseline),
       version: this.currentVersion,
       changedBlockIds: [...this.saveTouched].filter((blockId) =>
         retainedBlockIdKeys.has(blockId.toUpperCase()),
@@ -2258,8 +2262,9 @@ class CanonicalSession {
     if (pending?.version !== version) return false;
     this.pendingSaveBaseline = null;
     const blockIds = packageParagraphIds(saved.package);
+    const buffer = saved.originalBuffer;
     if (
-      saved.originalBuffer === undefined ||
+      buffer === undefined ||
       getDocumentSourceBaseline(saved).type !== "captured" ||
       blockIds.length !== pending.blockIds.length ||
       blockIds.some(
@@ -2272,7 +2277,8 @@ class CanonicalSession {
     this.saveBaseline = {
       version,
       blockIds,
-      document: saveBaselineOf(saved),
+      buffer,
+      document: saveBaselineOf(saved, buffer),
     };
     this.saveTouched = pending.touched;
     this.saveStructure = pending.structure;

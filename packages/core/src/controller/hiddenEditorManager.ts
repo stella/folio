@@ -2129,11 +2129,13 @@ export const createHiddenEditorManager = (
       if (editorSession.type !== "canonical") return;
       const { session } = editorSession;
       canonicalSaved = { session, version };
-      if (saved === undefined || !session.beginSaveBaseline(version)) return;
-      // The saved package becomes the baseline later saves patch, read from a
-      // copy: the host owns the saved bytes and may hand them on. A package
-      // that does not read back keeps the previous baseline.
-      void parseDocx(saved.slice(0), { preloadFonts: false }).then(
+      // A patched package becomes the baseline later saves patch, read from a
+      // copy: the host owns the saved bytes and may hand them on. A full
+      // repack, or a package that does not read back, keeps the previous
+      // baseline, whose untouched bytes the repack replayed.
+      if (saved?.path !== "selective" || !session.beginSaveBaseline(version))
+        return;
+      void parseDocx(saved.buffer.slice(0), { preloadFonts: false }).then(
         (reopened) => session.completeSaveBaseline(version, reopened),
         () => false,
       );

@@ -60,6 +60,12 @@ type CanonicalStoryTextOptions = {
   >[0];
 };
 
+/** The package a canonical save wrote, and whether it patched its baseline. */
+export type CanonicalSavedPackage = {
+  buffer: ArrayBuffer;
+  path: "selective" | "full-repack";
+};
+
 export type HiddenEditorApi = {
   /** Request the off-screen EditorView (idempotent; creates it when possible). */
   ensureView: () => void;
@@ -88,7 +94,7 @@ export type HiddenEditorApi = {
    * Record that the host saved the canonical session at `version`. Given the
    * saved package, later saves patch that package instead of the opened one.
    */
-  markCanonicalSaved: (version: number, saved?: ArrayBuffer) => void;
+  markCanonicalSaved: (version: number, saved?: CanonicalSavedPackage) => void;
   /**
    * Whether the canonical session holds edits since it opened or was last
    * saved, from its own journal; null in the default session.

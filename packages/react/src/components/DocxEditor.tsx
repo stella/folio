@@ -3854,7 +3854,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               view.state.doc === editorState?.doc &&
               editor.isCanonicalSaveCurrent(snapshot.version)
             ) {
-              editor.markCanonicalSaved(snapshot.version, result.buffer);
+              editor.markCanonicalSaved(snapshot.version, result);
               // The VS Code host still reads its save strategy from this
               // tracker.
               view.dispatch(clearTrackedChanges(view.state));
