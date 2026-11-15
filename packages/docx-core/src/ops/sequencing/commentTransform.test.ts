@@ -369,11 +369,16 @@ test("two replies to one parent take the same places in either order", () => {
   const left = apply(apply(commented, first), second);
   const right = apply(apply(commented, second), first);
   expect(equalForStaleness(left, right)).toBe(true);
-  // A parent whose range ends between blocks takes no reply at all, so no
-  // reply's end marker has to find its place beside such a boundary.
+  // A parent whose range ends between blocks takes replies too: each reply's
+  // end goes at the end of the text before that boundary in thread order,
+  // so both orders still give one document.
   const between = endBetweenBlocks(commented);
-  expect(applyDocumentOps(between, first).isErr()).toBe(true);
-  expect(applyDocumentOps(between, second).isErr()).toBe(true);
+  expect(
+    equalForStaleness(
+      apply(apply(between, first), second),
+      apply(apply(between, second), first),
+    ),
+  ).toBe(true);
 });
 
 /** The document with each inline comment range end moved after its paragraph. */

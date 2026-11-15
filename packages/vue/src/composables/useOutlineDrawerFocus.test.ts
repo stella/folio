@@ -14,14 +14,14 @@ test("an available drawer focuses and closes with Escape when no headings surviv
   document.body.append(container);
   const state: {
     available?: Ref<boolean>;
-    surface?: Ref<"column" | "rail" | "drawer">;
+    surface?: Ref<"column" | "rail" | "expanded">;
     closeCount: number;
   } = { closeCount: 0 };
   const app = createApp(
     defineComponent({
       setup() {
         const available = ref(false);
-        const surface = ref<"column" | "rail" | "drawer">("drawer");
+        const surface = ref<"column" | "rail" | "expanded">("expanded");
         const navRef = ref<HTMLElement | null>(null);
         const headings: string[] = [];
         state.available = available;
@@ -38,7 +38,7 @@ test("an available drawer focuses and closes with Escape when no headings surviv
         return () =>
           h("div", [
             h("button", { id: "outline-trigger" }, "Outline"),
-            surface.value === "drawer" && available.value
+            surface.value === "expanded" && available.value
               ? h("nav", { ref: navRef }, [
                   headings.length >= 2 ? h("ol", { id: "headings" }) : null,
                   h("button", { id: "drawer-close" }, "Close"),
