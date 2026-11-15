@@ -12,6 +12,7 @@ import type { ZipArchive, ZipEntry } from "@stll/docx-core/zip";
 
 import { recordSelectiveSaveAttempt } from "../layout-engine/layoutInstrumentation";
 import type { Document } from "../types/document";
+import type { SelectiveSaveDecline } from "../types/selectiveSaveDecline";
 import { decodeText } from "../utils/textEncoding";
 import {
   type CommentExtendedInfo,
@@ -424,19 +425,28 @@ export async function attemptSelectiveSave(
   originalBuffer: ArrayBuffer,
   options: SelectiveSaveOptions,
 ): Promise<ArrayBuffer | null> {
-  const buffer = await writeChangedParts(doc, originalBuffer, options);
-  // Measurements read which save path a save took through this hook.
+  const report: SelectiveSaveReport = {};
+  const buffer = await writeChangedParts(doc, originalBuffer, options, report);
+  // Measurements read which save path a save took through this hook, and why
+  // a structural splice declined.
   recordSelectiveSaveAttempt({
     written: buffer !== null,
     structural: options.structuralChange,
+    ...(buffer === null && report.decline !== undefined
+      ? { decline: report.decline }
+      : {}),
   });
   return buffer;
 }
+
+/** What a selective write learned on the way, for the measurement hook. */
+type SelectiveSaveReport = { decline?: SelectiveSaveDecline };
 
 async function writeChangedParts(
   doc: Document,
   originalBuffer: ArrayBuffer,
   options: SelectiveSaveOptions,
+  report: SelectiveSaveReport,
 ): Promise<ArrayBuffer | null> {
   doc = withoutExhaustedComments(doc);
   const { changedParaIds, structuralChange, hasUntrackedChanges } = options;
@@ -636,17 +646,26 @@ async function writeChangedParts(
       }
 
       if (bodyChangedIds.size > 0 || structuralChange) {
-        const patchedDocXml = structuralChange
-          ? buildStructuralDocumentPatch({
-              originalXml: originalDocXml,
-              serializedXml: serializedDocXml,
-              changedIds: bodyChangedIds,
-            })
-          : buildPatchedDocumentXml(
-              originalDocXml,
-              serializedDocument,
-              bodyChangedIds,
-            );
+        let patchedDocXml: string | null;
+        if (structuralChange) {
+          const structural = buildStructuralDocumentPatch({
+            originalXml: originalDocXml,
+            serializedXml: serializedDocXml,
+            changedIds: bodyChangedIds,
+          });
+          if (structural.type === "declined")
+            report.decline = {
+              part: "word/document.xml",
+              reason: structural.reason,
+            };
+          patchedDocXml = structural.type === "patched" ? structural.xml : null;
+        } else {
+          patchedDocXml = buildPatchedDocumentXml(
+            originalDocXml,
+            serializedDocument,
+            bodyChangedIds,
+          );
+        }
         if (!patchedDocXml) {
           return null;
         }

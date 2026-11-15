@@ -139,9 +139,9 @@ test.each(["absent", "empty", "bold"] as const)(
       serializedXml: serializeDocument(suggested),
       changedIds: new Set([first.paraId, second.paraId, splitIds.newBlockId]),
     });
-    if (patched === null)
+    if (patched.type === "declined")
       panic("Expected structural save to handle the edit sequence");
-    zip.set("word/document.xml", patched);
+    zip.set("word/document.xml", patched.xml);
     const structuralSave = (await zip.generate({ compression: "store" }))
       .buffer;
     for (const saved of [fullSave, structuralSave]) {

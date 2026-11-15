@@ -1,7 +1,7 @@
 /** Conservative body-paragraph splices; source offsets never come from reserialization. */
+import type { StructuralSpliceDeclineReason } from "../types/selectiveSaveDecline";
 import { canonicalJson } from "../utils/canonicalJson";
 import { parseDocumentBody } from "./documentParser";
-import { parseMarkupRangeMarker } from "./markupRangeMarker";
 import { paraIdAttribute } from "./paraIdAttribute";
 import {
   spliceSupportsRootNamespaces,
@@ -10,6 +10,8 @@ import {
 } from "./selectiveXmlPatch";
 import { materializeReplayFragment } from "./storyBlockReplay";
 import {
+  findAttributeByNamespaceUri,
+  getAttribute,
   getChildElements,
   getLocalName,
   getNamespaceUri,
@@ -90,22 +92,36 @@ function* descendants(element: XmlElement): Generator<XmlElement> {
 }
 
 /**
- * Comment anchors a splice may carry: what the spliced body holds of them is
- * checked against the serialized body afterwards.
+ * Markers of ranges and fields that can open in one paragraph and close in
+ * another: bookmarks, comments, permissions, tracked moves and complex field
+ * characters. A splice keeps the source bytes of every untouched block and
+ * writes the serialized XML of the others, so it holds exactly when the
+ * spliced body places these markers where the serialized body does.
  */
-const COMMENT_ELEMENTS = new Set([
+const RANGE_MARKERS = new Set([
   "commentRangeStart",
   "commentRangeEnd",
   "commentReference",
-]);
-
-/** Cross-paragraph ranges require a wider edit contract than paragraph identity. */
-const RANGE_ELEMENTS = new Set([
   "bookmarkStart",
   "bookmarkEnd",
   "permStart",
   "permEnd",
   "fldChar",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
+]);
+/**
+ * Range markers the model keeps as body blocks between paragraphs. Each is a
+ * barrier like a table: kept as source bytes while the model's marker is
+ * unchanged.
+ */
+const BODY_MARKERS = new Set([
+  "bookmarkStart",
+  "bookmarkEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
   "moveFromRangeStart",
   "moveFromRangeEnd",
   "moveToRangeStart",
@@ -148,55 +164,124 @@ const paragraphIds = (root: XmlElement): Set<string> | null => {
   return ids;
 };
 
+/** Each body block by paragraph id, or by its position among the barriers. */
+const indexBlocks = (blocks: readonly BodyBlock[]) => {
+  let barrier = 0;
+  const indexed = new Map<string, BodyBlock>();
+  for (const block of blocks) {
+    const key = isWordElement(block.element, "p")
+      ? `p:${paraIdAttribute(block.element)?.toUpperCase()}`
+      : `barrier:${barrier++}`;
+    indexed.set(key, block);
+  }
+  return indexed;
+};
+const barrierOf = (key: string) =>
+  key.startsWith("barrier:") ? Number(key.slice("barrier:".length)) : -1;
+
+/**
+ * An attribute as the reader takes it: in a WordprocessingML namespace, else
+ * unprefixed, with a decimal number read as its value.
+ */
+const markerAttribute = (element: XmlElement, name: string): string => {
+  const value =
+    findAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, name)
+      ?.value ?? getAttribute(element, "w", name);
+  if (value === null) return "";
+  const trimmed = value.trim();
+  return /^-?\d+$/u.test(trimmed) ? String(Number(trimmed)) : value;
+};
+
+/** One range or field marker by kind and identity. */
+const rangeMarker = (element: XmlElement): string => {
+  const kind = getLocalName(element.name);
+  if (kind === "fldChar")
+    return `fldChar:${markerAttribute(element, "fldCharType")}`;
+  const name = markerAttribute(element, "name");
+  const id = markerAttribute(element, "id");
+  return name === "" ? `${kind}:${id}` : `${kind}:${id}:${name}`;
+};
+
+/** Each body block with the range and field markers it holds, in order. */
+const rangeMarkers = (blocks: readonly BodyBlock[]): string[][] =>
+  [...indexBlocks(blocks)].map(([key, { element }]) => {
+    const markers = [key];
+    for (const child of descendants(element))
+      if (
+        WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") &&
+        RANGE_MARKERS.has(getLocalName(child.name))
+      )
+        markers.push(rangeMarker(child));
+    return markers;
+  });
+
 type StructuralPatchOptions = {
   originalXml: string;
   serializedXml: string;
   changedIds: ReadonlySet<string>;
 };
 
+/** The spliced part, or why the splice declined and the save repacks. */
+export type StructuralPatchResult =
+  | { type: "patched"; xml: string }
+  | { type: "declined"; reason: StructuralSpliceDeclineReason };
+
+const decline = (
+  reason: StructuralSpliceDeclineReason,
+): StructuralPatchResult => ({ type: "declined", reason });
+
+const isBodyMarker = (element: XmlElement): boolean =>
+  WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
+  BODY_MARKERS.has(getLocalName(element.name));
+
 /**
  * Insert/delete direct body paragraphs between surviving paragraph/table anchors.
- * Tables are opaque barriers: their modeled content and order must stay identical.
- * Id-less sources need an explicit ensureParaIds ingest before structural editing.
+ * Tables and body-level range markers are opaque barriers: their modeled
+ * content and order must stay identical. Ranges and fields may cross the
+ * spliced paragraphs: the result must place their markers exactly where the
+ * serialized body does. Id-less sources need an explicit ensureParaIds ingest
+ * before structural editing.
  */
 export const buildStructuralDocumentPatch = ({
   originalXml,
   serializedXml,
   changedIds,
-}: StructuralPatchOptions): string | null => {
+}: StructuralPatchOptions): StructuralPatchResult => {
   const source = readBody(originalXml);
   const current = readBody(serializedXml);
-  if (!source || !current) return null;
-  // A range can start in one table and end in another, enclosing a body edit
-  // without placing either endpoint in an edited paragraph. Comment anchors
-  // are checked on the spliced body instead.
-  for (const root of [source.root, current.root]) {
-    for (const element of descendants(root)) {
-      if (
-        WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
-        RANGE_ELEMENTS.has(getLocalName(element.name))
-      )
-        return null;
-    }
-  }
+  if (!source || !current) return decline("structuralUnreadableBody");
   const allSourceIds = paragraphIds(source.root);
   const allCurrentIds = paragraphIds(current.root);
-  if (!allSourceIds || !allCurrentIds) return null;
+  if (!allSourceIds || !allCurrentIds) return decline("structuralParagraphIds");
   const changed = new Set([...changedIds].map((id) => id.toUpperCase()));
   for (const { element } of [...source.blocks, ...current.blocks]) {
     if (isWordElement(element, "p")) {
       const id = paraIdAttribute(element)?.toUpperCase();
-      if (!id) return null;
+      if (!id) return decline("structuralParagraphIds");
       const touched =
         changed.has(id) || !allSourceIds.has(id) || !allCurrentIds.has(id);
-      if (!paragraphIsSafe(element, touched)) return null;
+      if (!paragraphIsSafe(element, touched))
+        return decline("structuralDependentContent");
     } else if (
       !isWordElement(element, "tbl") &&
-      !isWordElement(element, "sectPr")
+      !isWordElement(element, "sectPr") &&
+      !isBodyMarker(element)
     ) {
-      return null;
+      return decline("structuralBodyBlock");
     }
   }
+  // Barriers are matched by position, so the source's must be the same
+  // elements as the serialized ones: a marker the reader dropped would shift
+  // every barrier after it.
+  const barrierNames = (blocks: readonly BodyBlock[]) =>
+    blocks
+      .filter(({ element }) => !isWordElement(element, "p"))
+      .map(({ element }) => getLocalName(element.name));
+  if (
+    canonicalJson(barrierNames(source.blocks)) !==
+    canonicalJson(barrierNames(current.blocks))
+  )
+    return decline("structuralBarrierChanged");
 
   // Compare both sides through the same parser, avoiding lexical differences
   // such as empty tags and attribute order. Unmodeled table bytes stay in source.
@@ -217,7 +302,7 @@ export const buildStructuralDocumentPatch = ({
         background: currentBody.background,
       })
   )
-    return null;
+    return decline("structuralBarrierChanged");
   // A table whose content changed is written whole from the serialized part;
   // every other table keeps its source bytes, including what the model does
   // not represent.
@@ -225,29 +310,17 @@ export const buildStructuralDocumentPatch = ({
   for (const [index, block] of sourceBarriers.entries()) {
     const next = currentBarriers[index];
     if (canonicalJson(block) === canonicalJson(next)) continue;
-    if (block.type !== "table" || next?.type !== "table") return null;
+    if (block.type !== "table" || next?.type !== "table")
+      return decline("structuralBarrierChanged");
     changedTables.add(index);
   }
 
-  const indexBlocks = (blocks: readonly BodyBlock[]) => {
-    let barrier = 0;
-    const indexed = new Map<string, BodyBlock>();
-    for (const block of blocks) {
-      const key = isWordElement(block.element, "p")
-        ? `p:${paraIdAttribute(block.element)?.toUpperCase()}`
-        : `barrier:${barrier++}`;
-      indexed.set(key, block);
-    }
-    return indexed;
-  };
-  const barrierOf = (key: string) =>
-    key.startsWith("barrier:") ? Number(key.slice("barrier:".length)) : -1;
   const before = indexBlocks(source.blocks);
   const after = indexBlocks(current.blocks);
   const survivingBefore = [...before.keys()].filter((key) => after.has(key));
   const survivingAfter = [...after.keys()].filter((key) => before.has(key));
   if (canonicalJson(survivingBefore) !== canonicalJson(survivingAfter))
-    return null;
+    return decline("structuralReorder");
 
   const fragmentFor = (block: BodyBlock) =>
     materializeReplayFragment({
@@ -266,9 +339,9 @@ export const buildStructuralDocumentPatch = ({
     const original = before.get(key);
     if (!original) {
       const id = paraIdAttribute(block.element)?.toUpperCase();
-      if (!id || allSourceIds.has(id)) return null;
+      if (!id || allSourceIds.has(id)) return decline("structuralReorder");
       const fragment = fragmentFor(block);
-      if (fragment === null) return null;
+      if (fragment === null) return decline("structuralFragment");
       pending.push(fragment);
       continue;
     }
@@ -277,7 +350,7 @@ export const buildStructuralDocumentPatch = ({
       (id !== undefined && changed.has(id)) || changedTables.has(barrierOf(key))
         ? fragmentFor(block)
         : originalXml.slice(original.start, original.end);
-    if (replacement === null) return null;
+    if (replacement === null) return decline("structuralFragment");
     if (
       pending.length > 0 ||
       replacement !== originalXml.slice(original.start, original.end)
@@ -305,30 +378,20 @@ export const buildStructuralDocumentPatch = ({
       serializedRoot: current.root,
     })
   )
-    return null;
+    return decline("structuralFragment");
   const patched = spliceXml(originalXml, splices);
-  if (patched === null) return null;
-  // Untouched paragraphs keep their source bytes, so the comment anchors in
-  // them are the source's. The splice holds only where those, with the ones
-  // the serialized paragraphs carry, are exactly the serialized body's, in
-  // order: no anchor dropped, duplicated or left behind.
+  if (patched === null) return decline("structuralSpliceRefused");
+  // Untouched blocks keep their source bytes, so the range and field markers
+  // in them are the source's. The splice holds only where those, with the
+  // ones the serialized blocks carry, are exactly the serialized body's, block
+  // by block and in order: no marker dropped, duplicated, left behind or
+  // moved to another block, so no range or field is split by the splice.
   const spliced = readBody(patched);
-  if (!spliced || commentAnchors(spliced.root) !== commentAnchors(current.root))
-    return null;
-  return patched;
-};
-
-/** The body's comment anchors in document order, each by kind and id. */
-const commentAnchors = (root: XmlElement): string => {
-  const anchors: string[] = [];
-  for (const element of descendants(root)) {
-    if (!WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? ""))
-      continue;
-    const name = getLocalName(element.name);
-    if (COMMENT_ELEMENTS.has(name))
-      // The id as the reader takes it, so the source and the serialized body
-      // are compared as the document reads.
-      anchors.push(`${name}:${parseMarkupRangeMarker(element).id}`);
-  }
-  return anchors.join(" ");
+  if (!spliced) return decline("structuralSpliceRefused");
+  if (
+    canonicalJson(rangeMarkers(spliced.blocks)) !==
+    canonicalJson(rangeMarkers(current.blocks))
+  )
+    return decline("structuralRangeSplit");
+  return { type: "patched", xml: patched };
 };
