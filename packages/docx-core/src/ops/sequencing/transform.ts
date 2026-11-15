@@ -70,6 +70,7 @@ export const operationStory = (op: DocumentOp): OpStory | undefined => {
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return op.story;
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
       return isAnchoredComment(op) ? anchorPoints(op)[0]?.story : undefined;
@@ -161,9 +162,12 @@ const gapOf = ({ offset, zeroWidthBefore }: TextPosition): Gap => ({
 /**
  * A direct deletion over a concurrent direct format lying inside it: in the
  * other order the records the format cut (`cutRecords`) were whole, and the
- * deletion kept each that reaches past both of its ends one record. So the
- * deletion joins their pieces again at its point, that many levels below
- * the records still running across it. Undefined for every other pair.
+ * deletion kept each that keeps a leaf on both sides of the format one
+ * record: a leaf past the deletion's end, or the note's own mark, which the
+ * deletion keeps. So the deletion joins their pieces again where they meet,
+ * at its point or right after a kept mark that stood before the format, that
+ * many levels below the records still running across it. Undefined for
+ * every other pair.
  */
 const rejoinedOverFormat = ({
   op,
@@ -191,14 +195,41 @@ const rejoinedOverFormat = ({
     compareGaps(to, gapOf(over.to)) < 0
   )
     return undefined;
-  const depth = effect.cutRecords.filter(
-    (record) =>
-      compareGaps(record.from, from) < 0 && compareGaps(to, record.to) < 0,
-  ).length;
+  const formatFrom = gapOf(over.from);
+  const formatTo = gapOf(over.to);
+  let depth = 0;
+  // The pieces meet after the note's own mark when the mark the deletion
+  // keeps stood before the format: it ends the first piece.
+  let afterMark = false;
+  for (const { from: start, to: end, keptMark } of effect.cutRecords) {
+    const kept =
+      keptMark !== undefined &&
+      compareGaps(from, keptMark) <= 0 &&
+      compareGaps(keptMark, to) < 0
+        ? keptMark
+        : undefined;
+    const markFirst =
+      kept !== undefined &&
+      compareGaps(
+        { offset: kept.offset, zeroWidthBefore: kept.zeroWidthBefore + 1 },
+        formatFrom,
+      ) <= 0;
+    const markLast = kept !== undefined && compareGaps(formatTo, kept) <= 0;
+    if (
+      (compareGaps(start, from) < 0 || markFirst) &&
+      (compareGaps(to, end) < 0 || markLast)
+    ) {
+      depth += 1;
+      afterMark ||= markFirst;
+    }
+  }
   if (depth === 0) return undefined;
+  const at = afterMark
+    ? { ...op.from, zeroWidthBefore: from.zeroWidthBefore + 1 }
+    : op.from;
   return Result.ok([
     op,
-    { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at: op.from, depth, ifAlike: true },
+    { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth, ifAlike: true },
   ]);
 };
 

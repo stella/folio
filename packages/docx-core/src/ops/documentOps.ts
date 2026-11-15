@@ -29,6 +29,7 @@ export {
  */
 
 export { storyParagraphs, withBodyContent } from "./blocks";
+export { blockControlHolding } from "./contentControls";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {
   type BoundaryOccurrence,
@@ -62,6 +63,7 @@ export {
   applyDocumentOpEnvelope,
   applyDocumentOp,
   applyDocumentOps,
+  inverseMeetingDocument,
   type AppliedDocumentOp,
 } from "./apply";
 export {
@@ -246,6 +248,7 @@ export {
   type RevisionDecision,
   type RevisionStamp,
   type RunPropsPatch,
+  type SetContentControlOp,
   type SetParagraphPropsOp,
   type SetParagraphReviewOp,
   type SetRunPropsOp,

@@ -48,3 +48,40 @@ export const replaceRangeText = ({
         ? []
         : [{ type: "replaceText", from, to, text }],
   );
+
+/**
+ * Replace several ranges with the same text in one step, as find and replace
+ * does. The ranges must not overlap and run from the end of the document
+ * backwards, so each replacement leaves the ones before it in place.
+ */
+export const replaceRangesText = (
+  ranges: readonly { from: number; to: number }[],
+  text: string,
+): Command => {
+  const [only] = ranges;
+  if (only !== undefined && ranges.length === 1)
+    return replaceRangeText({ ...only, text });
+  return withCanonicalCommand(
+    (state, dispatch) => {
+      if (
+        ranges.length === 0 ||
+        ranges.some(({ from, to }) => from > to || to > state.doc.content.size)
+      )
+        return false;
+      if (!dispatch) return true;
+      const transaction = state.tr;
+      for (const { from, to } of ranges)
+        if (text === "") transaction.delete(from, to);
+        else transaction.insertText(text, from, to);
+      dispatch(transaction);
+      return true;
+    },
+    () =>
+      ranges.map(({ from, to }) => ({
+        type: "replaceText" as const,
+        from,
+        to,
+        text,
+      })),
+  );
+};

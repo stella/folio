@@ -41,6 +41,7 @@ import {
   freshLeasedIds,
   ID_LEASE_KINDS,
   type IdLease,
+  inverseMeetingDocument,
   normalizeForOps,
   OP_STORIES,
   type OpStory,
@@ -279,6 +280,8 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     // A row's or cell's own revision sits outside every paragraph too.
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
+    // A block-level control's properties sit outside its paragraphs.
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return true;
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
@@ -3342,7 +3345,12 @@ class CanonicalSession {
       this.caches.lists,
     );
     applied.value.document = normalized.document;
-    applied.value.inverse = normalized.inverse.concat(applied.value.inverse);
+    // Undo meets the normalized document: a restore of whole parts (notes
+    // an edit removed with their references) expects what it meets there.
+    applied.value.inverse = inverseMeetingDocument(
+      normalized.document,
+      normalized.inverse.concat(applied.value.inverse),
+    );
     // Judged on the result too: an edit may only introduce the ids its author leases.
     // Another actor's edit was judged against its own lease by the authority.
     const leaseJudgement =

@@ -28,6 +28,13 @@ lengths carries it as `moves`, so positions still follow it. `transformPosition`
 moves a position across sequenced batches by paragraph id and offset, so an
 editor maps its selection and history without its own coordinates.
 
+A pending batch that does not rebase over a sequenced one, or that the
+authority rejected, is dropped with a notice; the pending batches after it
+rebase as if it had never been made, over its inverse first, so only a batch
+that edits what the dropped one put there is dropped with it. When a
+sequenced batch cannot be carried past a kept pending one, the later pending
+batches cross that one's inverse, the sequenced batch and its rebased self.
+
 `transformBatch` refuses operation pairs whose effects cannot be mapped safely.
 An inverse keeps its staleness preconditions: an invalid undo must be dropped,
 never applied by removing those preconditions. Supported story addresses derive
@@ -62,7 +69,13 @@ the records it cut at both of its ends, a run and the text it lay inside, by
 their gaps before it (`cutRecords` in its effect). The deletion rebased over
 the format joins the pieces of each that reaches past both of its ends again,
 with one seam join at its point that many levels deep, which is the depth
-the deletion merges at in the other order.
+the deletion merges at in the other order. A direct deletion keeps a note's
+own reference mark lying inside its range; the sequenced deletion records
+that (`keptMark` in its `deleteRange` effect), and a position it closes up to
+its start lands after the kept mark, as it does in the deleting order. A cut
+record holding that mark names it too (`keptMark` on the record): the mark
+keeps the record's piece on its side of the format, and when it stood before
+the format the pieces meet, and join, right after it.
 
 ## Inline insertions
 
@@ -153,7 +166,23 @@ writes; when it is sequenced, its effect records every paragraph it changed,
 inserted or removed (`touchedBlocks`), and for a table structure edit every
 paragraph of that table. A batch passes a concurrent block-scoped operation
 unchanged when it addresses none of those paragraphs, and is refused with
-`blockConflict` when it does. A table structure edit is refused with
+`blockConflict` when it does, with one exception: a paragraph restoration
+(`replaceInline`, and each anchor paragraph of `restoreCommentState`) and a
+positional edit of that paragraph (typing, an inline insertion, a split or
+join of inline records, a deletion or a format within it) meet by the
+restoration's span (`restoreTransform.ts`). The span is the stretch between
+the longest common prefix and the longest common suffix of the content the
+restoration expects and the content it gives, compared leaf by leaf (a
+character of run text, or a whole leaf) with the records holding each leaf,
+their own fields and where they begin and end: a change of a record's own
+fields alone spans that record's leaves, and a change of record boundaries
+alone is an empty span at the boundary. An edit reaching into the span is
+refused with `blockConflict`. Any other edit passes: rebased over the
+restoration, its positions after the span move by the width the span
+changes; the restoration rebased over the edit states the paragraph the
+edit leaves, before and after it, applying the edit to that paragraph alone,
+wherever the paragraph is (a table cell, a header or footer, a note). Both
+orders give the same paragraph by construction. A table structure edit is refused with
 `tableRequiresExclusiveEdit` only when the concurrent one restructured the
 same table; typing in that table's cells passes. Package parts
 (`EXCLUSIVE_PARTS`: numbering, styles, relationships, media, sections, headers
@@ -186,7 +215,8 @@ range: the apply contract makes a collapsed range a point comment, which the
 other order (a range comment whose text is then deleted) would not give. A
 reply, a deletion and a restoration find their anchors in the document they
 apply to; their effect records the paragraphs they changed, so a concurrent
-edit addressing one of those paragraphs refuses with `blockConflict`, and
+edit addressing one of those paragraphs refuses with `blockConflict` (a
+restoration meets a positional edit by its span instead, as above), and
 the comments they added or removed, replies of a deleted thread among them.
 
 Concurrent comment operations decide by the comments they use. Different
