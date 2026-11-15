@@ -128,10 +128,11 @@ import {
   type InlineNode,
   isEmptyRecord,
   leafSpans,
-  rebuildNode,
+  nestedRecords,
   recordsBetween,
   spanningRecords,
   textsIn,
+  withNestedRecords,
   zeroWidthLeavesAt,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
@@ -1415,15 +1416,15 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
           priorIdentities.set(changed, prior);
           return changed;
         }
-        const children = childNodes(node);
+        const children = nestedRecords(node);
         if (children === undefined) return node;
-        const priorChildren = childNodes(original);
+        const priorChildren = nestedRecords(original);
         if (priorChildren === undefined)
           panic("Freshening removed a run patch's child list.");
         const next = appendChanges(priorChildren, children);
         return next.every((child, childIndex) => child === children[childIndex])
           ? node
-          : rebuildNode(node, next);
+          : withNestedRecords(node, next);
       });
     };
     const sourceFresh = freshened.value.at(0);
@@ -1437,10 +1438,10 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     ): InlineNode[] =>
       nodes.map((node) => {
         const prior = priorIdentities.get(node) ?? node;
-        const children = childNodes(prior);
+        const children = nestedRecords(prior);
         return children === undefined
           ? prior
-          : rebuildNode(prior, restorePriorIdentities(children));
+          : withNestedRecords(prior, restorePriorIdentities(children));
       });
     const rebound =
       rebindRetainedIdentities({
@@ -1508,6 +1509,9 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     return unchanged(document);
   }
 
+  // A field whose result runs the patch changed from different values has no
+  // one patch over its unit that restores them; the paragraph as it was does.
+  const restorable = patched === undefined || patched.restoring !== undefined;
   const restoring = patched?.restoring ?? [];
   const inverse: SetRunPropsOp[] = restoring.map((span) => ({
     type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
@@ -1547,12 +1551,14 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     );
   return Result.ok({
     document: replaced.value,
-    inverse: cutHasResolutionProvenance({
-      content: paragraph.content,
-      gaps: [from, to],
-    })
-      ? [contentRestoring(story, result, paragraph)]
-      : inverse,
+    inverse:
+      !restorable ||
+      cutHasResolutionProvenance({
+        content: paragraph.content,
+        gaps: [from, to],
+      })
+        ? [contentRestoring(story, result, paragraph)]
+        : inverse,
     touched: touchedBetween([paragraph], [result]),
   });
 };
