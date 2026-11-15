@@ -3199,11 +3199,6 @@ export const applyDocumentOpEnvelope = (
 };
 
 /**
- * Apply operations in order, atomically: the first refusal is returned and
- * the document is unchanged. The inverse undoes the whole list, and
- * `revisions` lists each operation's in turn.
- */
-/**
  * An inverse whose whole-part restores expect the parts they meet when the
  * inverse runs, in order, on `document`.
  *
@@ -3238,6 +3233,11 @@ export const inverseMeetingDocument = (
   return rebased;
 };
 
+/**
+ * Apply operations in order, atomically: the first refusal is returned and
+ * the document is unchanged. The inverse undoes the whole list, and
+ * `revisions` lists each operation's in turn.
+ */
 export const applyDocumentOps = (
   document: Document,
   ops: readonly DocumentOp[],
