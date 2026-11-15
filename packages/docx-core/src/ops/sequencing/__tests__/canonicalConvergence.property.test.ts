@@ -869,8 +869,10 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     // with a pending batch before it: a dropped one, or a kept one the
     // remote batch may not carry past, when the batches after it cross its
     // inverse. Block-scoped operations depend on parts, tables and numbering
-    // a value's names do not show, so the check covers answers where every
-    // batch involved edits by position only.
+    // a value's names do not show, and a revision decision on the paragraphs
+    // holding its revisions, which it names by id alone; so the check covers
+    // answers where every batch involved edits by position only, and the
+    // dropped one names what it edits.
     const remotePositional =
       event.type === "broadcast"
         ? event.batch.ops.every((op) => !isBlockScoped(op))
@@ -900,7 +902,11 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
         index > 0 &&
         remotePositional &&
         ahead.every(({ positional }) => positional) &&
-        notice.ops.every((op) => !isBlockScoped(op)) &&
+        notice.ops.every(
+          (op) =>
+            !isBlockScoped(op) &&
+            op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        ) &&
         touched.length > 0 &&
         touched.every((id) => !cause.has(id) && !earlier.has(id))
       )

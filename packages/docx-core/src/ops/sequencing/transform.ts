@@ -206,8 +206,9 @@ const rejoinedOverFormat = ({
 /**
  * A revision decision over a concurrent direct positional edit: it decides
  * the same revisions after the edit, unless the edit cut a revision record
- * in two and gave its second half a new id, which one order decides and the
- * other does not. Undefined for every other pair.
+ * in two and gave its second half a new id, or is a tracked edit, whose
+ * records may continue a decided revision: one order decides those and the
+ * other does not, so the decision is refused. Undefined for every other pair.
  */
 const decisionOverEdit = (
   op: DocumentOp,
@@ -227,8 +228,14 @@ const decisionOverEdit = (
     default:
       return undefined;
   }
-  // A tracked edit records revisions of its own beside the decided ones.
-  if ("revision" in over && over.revision !== undefined) return undefined;
+  // A tracked edit records revisions of its own, which may continue a
+  // decided one: decided in one order and not in the other.
+  if ("revision" in over && over.revision !== undefined)
+    return refusal(
+      op,
+      over,
+      "A concurrent tracked edit may continue a revision this decision resolves.",
+    );
   if (
     "newIds" in over &&
     over.newIds?.revision !== undefined &&
