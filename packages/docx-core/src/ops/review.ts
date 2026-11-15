@@ -349,15 +349,19 @@ const holdsCommentAnchor = (node: InlineNode): boolean =>
  * which records its resolution joins, takes in a content control or
  * hyperlink holding one: accepting it removes every comment anchor it holds,
  * as deleting the range directly does. A transparent wrapper holding one is
- * still refused, as a bare anchor is. A deletion recording no joins, of a whole paragraph or row,
- * takes in none at any depth: accepting it keeps the anchors of comment
- * ranges that continue past it, which removing that content directly does
- * not keep where they were. An insertion may hold one inside a record it
- * takes in whole: rejecting keeps every boundary it held.
+ * still refused, as a bare anchor is. A deletion of whole paragraphs leaves
+ * the bare anchors standing outside it (`commentAnchorsStand`): they are no
+ * content of the paragraphs, and accepting it hands them to the nearest
+ * paragraph that stays, as deleting the paragraphs directly does. A
+ * deletion recording no joins takes in no record holding one: accepting it
+ * keeps the anchors of comment ranges that continue past it, which removing
+ * that content directly does not keep where they were. An insertion may
+ * hold one inside a record it takes in whole: rejecting keeps every
+ * boundary it held.
  */
 const coveredAction = (node: InlineNode, state: WrapState): CoveredAction => {
   if (isCommentAnchor(node)) {
-    return "refuse";
+    return state.commentAnchorsStand ? "skip" : "refuse";
   }
   if (state.kind === WRAP_KINDS.DELETION) {
     if (isRemovedRevisionNode(node)) return "skip";
@@ -414,6 +418,8 @@ type WrapState = {
   /** Whether the wrap recorded anything: a wrapper created, or merged into a neighbour. */
   recorded: boolean;
   refusal: DocumentOpRefusalReason | undefined;
+  /** Whether bare comment anchors stand outside the deletion, as whole paragraphs leave them. */
+  commentAnchorsStand: boolean;
 };
 
 /** Cut facts a deletion's merge can carry: the join depths at its edges and on removal. */
@@ -825,6 +831,11 @@ export type WrapOptions = {
   /** Exact top-level cut depth restored when this wrapper content is removed. */
   resolutionJoin?: number;
   copiedBoundaries?: ReadonlySet<InlineNode>;
+  /**
+   * `"stand"`: a deletion of whole paragraphs leaves the bare comment
+   * anchors it meets standing outside it, instead of being refused.
+   */
+  commentAnchors?: "stand";
 };
 
 export type WrapOutcome =
@@ -846,6 +857,7 @@ export const wrapTracked = ({
   resolutionJoin,
   acceptance,
   copiedBoundaries,
+  commentAnchors,
 }: WrapOptions): WrapOutcome => {
   const state: WrapState = {
     gaps: [from, to],
@@ -858,6 +870,7 @@ export const wrapTracked = ({
     copiedBoundaries: new Set(copiedBoundaries),
     recorded: false,
     refusal: undefined,
+    commentAnchorsStand: commentAnchors === "stand",
   };
   const content = wrapList(items, startCursor(), state);
   if (content === undefined) {

@@ -26,6 +26,7 @@ import type {
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import * as rangeBoundariesModule from "../rangeBoundaries";
 import { isBlockBoundary, rangeBoundariesIn } from "../rangeBoundaries";
+import * as reviewModule from "../review";
 import {
   type DeleteBlocksOp,
   DOCUMENT_OP_TYPES,
@@ -308,6 +309,14 @@ const checkCase = (sample: Case, exercised: Set<string>): void => {
 const law = (exercised: Set<string>) =>
   fc.property(caseArbitrary, (sample) => checkCase(sample, exercised));
 
+/** A comment range starting in a deleted paragraph and ending in the next. */
+const COMMENT_CONTINUING_AFTER: Case = {
+  prefix: 1,
+  selected: 1,
+  follower: "paragraph",
+  ranges: [{ family: "comment", from: 1, to: 2 }],
+};
+
 /** A bookmark pair in a paragraph deleted between a kept one and a table. */
 const BEFORE_TABLE: Case = {
   prefix: 1,
@@ -327,9 +336,7 @@ test("accepting a tracked deletion of whole paragraphs equals deleting them dire
     "paragraph:direct",
     "nothing:direct",
     "table:kept",
-    // A tracked paragraph deletion refuses a paragraph holding a comment
-    // anchor, so comment ranges reach the law only once it takes them in.
-    ...FAMILIES.filter((family) => family !== "comment").flatMap((family) =>
+    ...FAMILIES.flatMap((family) =>
       RELATIONS.map((relation) => `${family}:${relation}`),
     ),
   ];
@@ -400,5 +407,50 @@ test("leaving a deleted paragraph's bookmarks between blocks fails the case befo
     expect(() => checkCase(BEFORE_TABLE, new Set())).toThrow();
   } finally {
     mock.module("../rangeBoundaries", () => original);
+  }
+});
+
+test("accepting the deletion of a paragraph holding a comment's start hands the start to the paragraph before it", () => {
+  const exercised = new Set<string>();
+  checkCase(COMMENT_CONTINUING_AFTER, exercised);
+  expect(exercised.has("comment:continuing-after")).toBe(true);
+  const tracked = applyDocumentOp(
+    documentOf(COMMENT_CONTINUING_AFTER),
+    deletionOf(COMMENT_CONTINUING_AFTER),
+  ).unwrap();
+  const accepted = resolveAll(
+    tracked.document,
+    tracked.revisions,
+    REVISION_DECISIONS.ACCEPT,
+  );
+  expect(boundariesIn(accepted.document.package.document.content)).toEqual([
+    "commentRangeStart:10",
+    "commentRangeEnd:10",
+  ]);
+  expect(
+    accepted.document.package.document.comments?.map(({ id }) => id),
+  ).toEqual([10]);
+});
+
+test("refusing a paragraph holding a bare comment anchor leaves comment ranges out of the law", () => {
+  // The rule this file guards, broken on purpose: a tracked deletion of
+  // whole paragraphs refuses the bare comment anchors it meets instead of
+  // leaving them standing, so a comment range never reaches the law.
+  const original = { ...reviewModule };
+  mock.module("../review", () => ({
+    ...original,
+    wrapTracked: (
+      options: Parameters<typeof original.wrapTracked>[0],
+    ): ReturnType<typeof original.wrapTracked> => {
+      const { commentAnchors: _standing, ...refusing } = options;
+      return original.wrapTracked(refusing);
+    },
+  }));
+  try {
+    const exercised = new Set<string>();
+    checkCase(COMMENT_CONTINUING_AFTER, exercised);
+    expect(exercised.has("comment:continuing-after")).toBe(false);
+  } finally {
+    mock.module("../review", () => original);
   }
 });
