@@ -149,12 +149,19 @@ const runShape = async (
  */
 const pluginsChangingCanonicalCommits: string[] = [];
 const originalApplyTransaction = EditorState.prototype.applyTransaction;
+let tracing = false;
 const tracedApplyTransaction = function (
   this: EditorState,
   rootTr: Transaction,
 ) {
-  if (rootTr.getMeta(CANONICAL_PROJECTION_META) !== undefined) {
-    const next = this.apply(rootTr);
+  if (!tracing && rootTr.getMeta(CANONICAL_PROJECTION_META) !== undefined) {
+    tracing = true;
+    // The state the transaction alone gives, before any plugin appends.
+    const applyInner = Reflect.get(EditorState.prototype, "applyInner") as (
+      this: EditorState,
+      tr: Transaction,
+    ) => EditorState;
+    const next = applyInner.call(this, rootTr);
     for (const plugin of this.plugins) {
       const key = String(Reflect.get(plugin, "key"));
       if (plugin.spec.filterTransaction?.call(plugin, rootTr, this) === false)
@@ -170,6 +177,7 @@ const tracedApplyTransaction = function (
           `${key} appended ${JSON.stringify(appended.steps.map((step) => step.toJSON()))}`,
         );
     }
+    tracing = false;
   }
   return originalApplyTransaction.call(this, rootTr);
 };
