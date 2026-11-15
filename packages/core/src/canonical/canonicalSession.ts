@@ -105,7 +105,6 @@ import type {
   BlockContent,
   Comment,
   Document,
-  HeaderFooter,
   Paragraph,
   StyleDefinitions,
 } from "../types/document";
@@ -1865,56 +1864,6 @@ const saveBaselineOf = (saved: Document, buffer: ArrayBuffer): Document => {
   return baseline;
 };
 
-/**
- * `document` saved against `baseline`: its buffer, its body capture, and the
- * verbatim source of each header and footer, so an edit since the baseline's
- * save is judged against what that save wrote.
- */
-const withSaveBaseline = (
-  document: Document,
-  { buffer, document: baseline }: CanonicalSaveBaseline,
-): Document => {
-  const rebaseParts = (
-    parts: Map<string, HeaderFooter> | undefined,
-    sources: Map<string, HeaderFooter> | undefined,
-  ) =>
-    parts === undefined
-      ? undefined
-      : new Map(
-          [...parts].map(([rId, part]) => {
-            const rebased: HeaderFooter = { ...part };
-            delete rebased.verbatimXml;
-            delete rebased.verbatimFingerprint;
-            const source = sources?.get(rId);
-            if (source?.verbatimXml !== undefined)
-              rebased.verbatimXml = source.verbatimXml;
-            if (source?.verbatimFingerprint !== undefined)
-              rebased.verbatimFingerprint = source.verbatimFingerprint;
-            return [rId, rebased];
-          }),
-        );
-  const headers = rebaseParts(
-    document.package.headers,
-    baseline.package.headers,
-  );
-  const footers = rebaseParts(
-    document.package.footers,
-    baseline.package.footers,
-  );
-  const rebased: Document = {
-    ...document,
-    originalBuffer: buffer,
-    package: {
-      ...document.package,
-      document: { ...document.package.document },
-      ...(headers === undefined ? {} : { headers }),
-      ...(footers === undefined ? {} : { footers }),
-    },
-  };
-  copyHeaderFooterBaselineHandles(rebased, baseline);
-  return rebased;
-};
-
 /** Immutable model authority with a journal staged independently of the PM view. */
 class CanonicalSession {
   private currentDocument: Document;
@@ -2219,10 +2168,15 @@ class CanonicalSession {
       this.sourceRestores,
     );
     return {
-      document:
-        this.saveBaseline === null
-          ? document
-          : withSaveBaseline(document, this.saveBaseline),
+      document,
+      ...(this.saveBaseline === null
+        ? {}
+        : {
+            saveBaseline: {
+              buffer: this.saveBaseline.buffer,
+              document: this.saveBaseline.document,
+            },
+          }),
       version: this.currentVersion,
       changedBlockIds: [...this.saveTouched].filter((blockId) =>
         retainedBlockIdKeys.has(blockId.toUpperCase()),
