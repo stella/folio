@@ -60,7 +60,6 @@ test("removing a reference-only paragraph transfers its carrier to the previous 
     planParagraphBoundaryRemoval({
       blocks: [previous, removed, followingTable],
       index: 1,
-      place: "blocks",
     }),
   ).toEqual({
     type: "removed",
@@ -112,7 +111,6 @@ test.each([
     const plan = planParagraphBoundaryRemoval({
       blocks: [previous, removed, followingTable],
       index: 1,
-      place: "blocks",
     });
 
     expect(plan).toEqual({
@@ -151,7 +149,6 @@ test("an unhosted comment reference prevents removing its only paragraph", () =>
     planParagraphBoundaryRemoval({
       blocks: [onlyParagraph, followingTable],
       index: 0,
-      place: "blocks",
     }),
   ).toEqual({ type: "blocked" });
 });

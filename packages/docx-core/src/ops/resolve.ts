@@ -3083,8 +3083,7 @@ const joinOps = (
     needsFollowingCommentHost:
       next?.type === "table" &&
       previous?.type !== "paragraph" &&
-      remains.blocks.length === 0 &&
-      remains.comments.length > 0,
+      remains.length > 0,
     tableRemovalIsTrackable:
       next?.type !== "table" ||
       markBeforeTableResolves({ blocks, paragraph, table: next }),
@@ -3135,7 +3134,6 @@ const joinOps = (
       const removal = planParagraphBoundaryRemoval({
         blocks,
         index: location.index,
-        place: "blocks",
       });
       if (removal.type === "removed")
         return paragraphMarkPlan(
@@ -3206,7 +3204,6 @@ const joinOps = (
     const removal = planParagraphBoundaryRemoval({
       blocks,
       index: location.index,
-      place: "previous",
     });
     if (anchor !== undefined && removal.type === "removed") {
       const replacementBlocks = removal.blocks;

@@ -93,7 +93,7 @@ const acceptInEngine = (document: Document) => {
 };
 
 describe("editor and engine share one paragraph-content rule", () => {
-  test("a bookmark-only paragraph whose mark is accepted before a table leaves its bookmark ahead of the table in both", () => {
+  test("a bookmark-only paragraph whose mark is accepted before a table hands its bookmark to the table's first cell in both", () => {
     const document = documentWith([
       { type: "bookmarkStart", id: 1, name: "kept" },
       { type: "bookmarkEnd", id: 1 },
@@ -101,7 +101,7 @@ describe("editor and engine share one paragraph-content rule", () => {
     const editor = outcome(acceptInEditor(document));
     expect(editor).toEqual(outcome(acceptInEngine(document)));
     expect(editor).toEqual({
-      kinds: ["bookmarkStart", "bookmarkEnd", "table", "paragraph"],
+      kinds: ["table", "paragraph"],
       boundaries: ["bookmarkStart", "bookmarkEnd"],
     });
   });

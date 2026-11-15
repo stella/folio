@@ -1,5 +1,5 @@
 import type { Comment, DocumentBody } from "./content";
-import type { ParagraphFormatting } from "./formatting";
+import type { ParagraphFormatting, SpacingExplicit } from "./formatting";
 
 /** Set modeled comments while keeping an empty comments part out of the document model. */
 export const setDocumentBodyComments = (
@@ -11,6 +11,26 @@ export const setDocumentBodyComments = (
     return;
   }
   body.comments = comments;
+};
+
+/**
+ * The sides of `w:spacing` a paragraph's own properties state, as the parser
+ * reads them: a side is explicit exactly when the record holds its value.
+ *
+ * The one rule for the field. The parser marks a record it reads with it, and
+ * an operation that states a paragraph's spacing states the field with it, so
+ * a paragraph an edit changed has the field the saved file reopens to.
+ */
+export const paragraphSpacingExplicit = (
+  formatting: ParagraphFormatting,
+): SpacingExplicit | undefined => {
+  const before = formatting.spaceBefore !== undefined;
+  const after = formatting.spaceAfter !== undefined;
+  if (!before && !after) return undefined;
+  return {
+    ...(before ? { before: true } : {}),
+    ...(after ? { after: true } : {}),
+  };
 };
 
 /**

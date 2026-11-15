@@ -116,20 +116,17 @@ const edited = (
   });
 };
 
+/** A tracked paragraph property change: from `previous`, now `current`. */
 const change = (
   id: number,
   previous?: ParagraphFormatting,
-): ParagraphPropertyChange =>
-  previous === undefined
-    ? {
-        type: "paragraphPropertyChange",
-        info: { id, author: "Reviewer", date: DATE },
-      }
-    : {
-        type: "paragraphPropertyChange",
-        info: { id, author: "Reviewer", date: DATE },
-        previousFormatting: previous,
-      };
+  current?: ParagraphFormatting,
+): ParagraphPropertyChange => ({
+  type: "paragraphPropertyChange",
+  info: { id, author: "Reviewer", date: DATE },
+  ...(previous === undefined ? {} : { previousFormatting: previous }),
+  ...(current === undefined ? {} : { currentFormatting: current }),
+});
 
 const mark = (kind: "ins" | "del", id: number) => ({
   kind,
@@ -296,7 +293,7 @@ describe("Backspace at the start of a paragraph", () => {
         INTRO,
         { ...alpha, pPrMark: mark("del", 0) },
         paragraph("3B000003", [text("Bravo text.")], own, {
-          propertyChanges: [change(1, next)],
+          propertyChanges: [change(1, next, own)],
         }),
         TAIL,
       ]);
