@@ -1,5 +1,6 @@
 import { panic, Result } from "better-result";
 
+import { compareGaps, type Gap } from "../leaves";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -69,6 +70,7 @@ export const operationStory = (op: DocumentOp): OpStory | undefined => {
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return op.story;
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
       return isAnchoredComment(op) ? anchorPoints(op)[0]?.story : undefined;
@@ -152,6 +154,85 @@ type PairOptions = {
   effect: SequencedOpEffect | undefined;
   order: "before" | "after";
 };
+const gapOf = ({ offset, zeroWidthBefore }: TextPosition): Gap => ({
+  offset,
+  zeroWidthBefore: zeroWidthBefore ?? 0,
+});
+
+/**
+ * A direct deletion over a concurrent direct format lying inside it: in the
+ * other order the records the format cut (`cutRecords`) were whole, and the
+ * deletion kept each that keeps a leaf on both sides of the format one
+ * record: a leaf past the deletion's end, or the note's own mark, which the
+ * deletion keeps. So the deletion joins their pieces again where they meet,
+ * at its point or right after a kept mark that stood before the format, that
+ * many levels below the records still running across it. Undefined for
+ * every other pair.
+ */
+const rejoinedOverFormat = ({
+  op,
+  over,
+  effect,
+}: Pick<PairOptions, "op" | "over" | "effect">):
+  Result<readonly DocumentOp[], BatchRejection> | undefined => {
+  if (
+    op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE ||
+    op.revision !== undefined ||
+    op.expected !== undefined ||
+    op.join !== undefined ||
+    over.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS ||
+    effect?.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS ||
+    effect.cutRecords === undefined ||
+    !sameParagraph(op.from, op.to) ||
+    !sameParagraph(op.from, over.from) ||
+    !sameParagraph(over.from, over.to)
+  )
+    return undefined;
+  const from = gapOf(op.from);
+  const to = gapOf(op.to);
+  if (
+    compareGaps(gapOf(over.from), from) < 0 ||
+    compareGaps(to, gapOf(over.to)) < 0
+  )
+    return undefined;
+  const formatFrom = gapOf(over.from);
+  const formatTo = gapOf(over.to);
+  let depth = 0;
+  // The pieces meet after the note's own mark when the mark the deletion
+  // keeps stood before the format: it ends the first piece.
+  let afterMark = false;
+  for (const { from: start, to: end, keptMark } of effect.cutRecords) {
+    const kept =
+      keptMark !== undefined &&
+      compareGaps(from, keptMark) <= 0 &&
+      compareGaps(keptMark, to) < 0
+        ? keptMark
+        : undefined;
+    const markFirst =
+      kept !== undefined &&
+      compareGaps(
+        { offset: kept.offset, zeroWidthBefore: kept.zeroWidthBefore + 1 },
+        formatFrom,
+      ) <= 0;
+    const markLast = kept !== undefined && compareGaps(formatTo, kept) <= 0;
+    if (
+      (compareGaps(start, from) < 0 || markFirst) &&
+      (compareGaps(to, end) < 0 || markLast)
+    ) {
+      depth += 1;
+      afterMark ||= markFirst;
+    }
+  }
+  if (depth === 0) return undefined;
+  const at = afterMark
+    ? { ...op.from, zeroWidthBefore: from.zeroWidthBefore + 1 }
+    : op.from;
+  return Result.ok([
+    op,
+    { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth, ifAlike: true },
+  ]);
+};
+
 const transformRestoredOp = ({
   op,
   over,
@@ -188,6 +269,9 @@ const transformRestoredOp = ({
       "The operation targets a structurally changed block.",
     );
   }
+  // A direct deletion over a direct format inside it.
+  const rejoined = rejoinedOverFormat({ op, over, effect });
+  if (rejoined !== undefined) return rejoined;
   // Inline insertions, and inline record splits and joins.
   const inline = transformInlinePair({ op, over, effect, order });
   if (inline !== undefined) return inline;

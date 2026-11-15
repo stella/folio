@@ -41,6 +41,7 @@ import {
   freshLeasedIds,
   ID_LEASE_KINDS,
   type IdLease,
+  inverseMeetingDocument,
   normalizeForOps,
   OP_STORIES,
   type OpStory,
@@ -158,6 +159,9 @@ const refuse = (message: string) =>
       reason: "refused",
     }),
   );
+/** A refusal under the gap or rule it belongs to. */
+const refuseUnder = (ground: CanonicalRefusalGround, message: string) =>
+  Result.err(new CanonicalSessionError({ ground, message, reason: "refused" }));
 /** A change a content control's lock forbids: the document's rule, not a gap. */
 const lockRefusal = (violation: LockedControlViolation) =>
   Result.err(
@@ -179,7 +183,7 @@ const noChange = (message: string) =>
 /**
  * What the session says for an intent the compiler or the engine refused. A
  * change the engine cannot record belongs to the capability that would record
- * it: a link edit cutting markup folio does not model, and the tracked table records for a
+ * it: the tracked table records for a
  * suggested row, column or table change. Every other refusal is unclassified.
  */
 const intentRefusal = (
@@ -202,11 +206,6 @@ const intentRefusal = (
     return refuse(message);
   let gap: CanonicalGap;
   switch (intent.type) {
-    case "setHyperlink":
-    case "removeHyperlink":
-    case "insertHyperlink":
-      gap = CANONICAL_GAP.trackedHyperlinkResolution;
-      break;
     case "table":
     case "tableRow":
     case "tableBlock":
@@ -284,6 +283,8 @@ const operationChangesStructure = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     // A row's or cell's own revision sits outside every paragraph too.
     case DOCUMENT_OP_TYPES.SET_REVISION_INFO:
+    // A block-level control's properties sit outside its paragraphs.
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return true;
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
@@ -497,6 +498,16 @@ class CanonicalProjection {
   }
 
   /** The paragraph whose content holds `position`, its ends included. */
+  /** Whether `position` lies in a text box's content. */
+  private insideTextBox(position: number): boolean {
+    const resolved = this.doc.resolve(
+      Math.max(0, Math.min(position, this.doc.content.size)),
+    );
+    for (let depth = resolved.depth; depth > 0; depth -= 1)
+      if (resolved.node(depth).type.name === "textBox") return true;
+    return false;
+  }
+
   private paragraphAround(position: number): ParagraphAddress | undefined {
     // The last top-level node starting before the position.
     let low = 0;
@@ -540,7 +551,14 @@ class CanonicalProjection {
     position = canonicalContentPosition(this.doc, position);
     const paragraph = this.paragraphAround(position);
     if (paragraph === undefined)
-      return refuse("The input is outside a plain paragraph.");
+      return this.insideTextBox(position)
+        ? // A text box's paragraphs belong to its shape, not to the story:
+          // the same rule a public operation on one meets.
+          refuseUnder(
+            { gap: CANONICAL_GAP.publicUnsupportedInline },
+            "The canonical session holds no address in this paragraph, such as one in a text box.",
+          )
+        : refuse("The input is outside a plain paragraph.");
     const relative = position - paragraph.start;
     const offset = paragraph.boundaries.findIndex((gaps) =>
       gaps.some((gap) => gap.position === relative),
@@ -834,6 +852,62 @@ const holdsTextBox = (paragraph: Paragraph): boolean => {
       found = true;
   });
   return found;
+};
+
+/**
+ * The selection a publish shows, read back as addresses, with the
+ * transaction's text selection moved to exactly where those addresses place
+ * it. Undo and redo restore a selection by its addresses, so a publish must
+ * show the position its address gives back: one of several editor positions
+ * an address names (either side of a link's edge) becomes the one restoring
+ * gives, and a position no address names (inside a character, or where an
+ * unplaceable selection fell back) moves to the nearest one that has one.
+ */
+const placeShownSelection = (
+  transaction: Transaction,
+  projection: CanonicalProjection,
+): CanonicalSelection | undefined => {
+  const current = transaction.selection;
+  if (current instanceof TextSelection) {
+    const size = transaction.doc.content.size;
+    const nearestAddressable = (position: number): number | undefined => {
+      for (let distance = 0; distance <= size; distance += 1)
+        for (const candidate of [position - distance, position + distance])
+          if (
+            candidate >= 0 &&
+            candidate <= size &&
+            projection.addressAt(candidate).isOk()
+          )
+            return candidate;
+      return undefined;
+    };
+    const anchor = nearestAddressable(current.anchor);
+    const head = nearestAddressable(current.head);
+    if (anchor === undefined || head === undefined) return undefined;
+    const addressed = {
+      anchor: projection.addressAt(anchor).unwrap(),
+      head: projection.addressAt(head).unwrap(),
+    };
+    const placed = {
+      anchor: projection.positionAt(addressed.anchor),
+      head: projection.positionAt(addressed.head),
+    };
+    if (placed.anchor.isErr() || placed.head.isErr()) return undefined;
+    if (
+      placed.anchor.value !== current.anchor ||
+      placed.head.value !== current.head
+    )
+      transaction.setSelection(
+        TextSelection.create(
+          transaction.doc,
+          placed.anchor.value,
+          placed.head.value,
+        ),
+      );
+    return { type: "text", ...addressed };
+  }
+  const read = projection.selectionAt(transaction);
+  return read.isOk() ? read.value : undefined;
 };
 
 const structureRefusal = () =>
@@ -3291,7 +3365,12 @@ class CanonicalSession {
       this.caches.lists,
     );
     applied.value.document = normalized.document;
-    applied.value.inverse = normalized.inverse.concat(applied.value.inverse);
+    // Undo meets the normalized document: a restore of whole parts (notes
+    // an edit removed with their references) expects what it meets there.
+    applied.value.inverse = inverseMeetingDocument(
+      normalized.document,
+      normalized.inverse.concat(applied.value.inverse),
+    );
     // Judged on the result too: an edit may only introduce the ids its author leases.
     // Another actor's edit was judged against its own lease by the authority.
     const leaseJudgement =
@@ -3432,14 +3511,13 @@ class CanonicalSession {
           "Canonical history cannot restore the selected inline atom.",
         );
     }
-    // A position the projection cannot place falls back near the old caret,
-    // so history keeps the selection read back from what is shown.
-    const read =
-      sameStory(selection.anchor.story, projectedStory) &&
+    // History keeps what this publish shows, so the selection shown is one
+    // an address places exactly; see `placeShownSelection`.
+    const shown =
+      (sameStory(selection.anchor.story, projectedStory) &&
       sameStory(selection.head.story, projectedStory)
-        ? projected.value.selectionAt(transaction)
-        : undefined;
-    const shown = read !== undefined && read.isOk() ? read.value : selection;
+        ? placeShownSelection(transaction, projected.value)
+        : undefined) ?? selection;
     // The transaction now ends on a document equal to the projection.
     const held = projected.value.heldAs(transaction.doc);
     const heldBody =

@@ -31,6 +31,11 @@ import { join } from "node:path";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { fromMarkdown } from "../../packages/core/src/markdown/fromMarkdown";
 import { PLAYGROUND_HOSTS } from "../parity/playgroundHosts";
+import {
+  contract,
+  numberedList,
+  plainParagraphs,
+} from "../support/generatedDocuments";
 
 const WARM_KEYS = 5;
 const MEASURED_KEYS = Number(process.env["FOLIO_TYPING_LATENCY_KEYS"] ?? 30);
@@ -40,60 +45,6 @@ const MODE =
   process.env["FOLIO_TYPING_LATENCY_MODE"] === "editing"
     ? "editing"
     : "suggesting";
-
-const WORDS =
-  "the supplier shall deliver goods services under this agreement subject to terms conditions warranty liability indemnity confidential information party notice period".split(
-    " ",
-  );
-
-/** A contract of numbered articles, clauses, short lists and fee tables. */
-const contract = (articles: number): string => {
-  let seed = 7;
-  const random = () => {
-    seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
-    return seed / 2 ** 31;
-  };
-  const sentence = (length: number) =>
-    Array.from(
-      { length },
-      () => WORDS[Math.floor(random() * WORDS.length)] ?? "the",
-    ).join(" ");
-  const lines = ["# Services Agreement", ""];
-  for (let article = 1; article <= articles; article += 1) {
-    lines.push(`## ${article}. ${sentence(3)}`, "");
-    for (let clause = 1; clause <= 8; clause += 1) {
-      lines.push(
-        `${article}.${clause} **${sentence(2)}** ${sentence(40)}. ${sentence(25)}.`,
-        "",
-      );
-      if (clause % 3 === 0) {
-        for (let item = 1; item <= 4; item += 1)
-          lines.push(`${item}. ${sentence(18)};`);
-        lines.push("");
-      }
-    }
-    if (article % 10 === 0) {
-      lines.push("| Item | Fee | Term |", "|---|---|---|");
-      for (let row = 0; row < 12; row += 1)
-        lines.push(`| ${sentence(3)} | ${row * 100} | ${sentence(2)} |`);
-      lines.push("");
-    }
-  }
-  return lines.join("\n");
-};
-
-/** One numbered list of short items. */
-const numberedList = (items: number): string =>
-  Array.from({ length: items }, (_, index) => `1. Item ${index + 1}`).join(
-    "\n",
-  );
-
-/** Plain paragraphs only. */
-const plainParagraphs = (paragraphs: number): string =>
-  Array.from(
-    { length: paragraphs },
-    (_, index) => `Paragraph ${index + 1} holds a sentence of plain text.`,
-  ).join("\n\n");
 
 const DOCUMENTS = {
   "plain paragraphs, 1,500": () => plainParagraphs(1500),
@@ -140,15 +91,20 @@ const showMiddlePage = async (page: Page) => {
     const ref = globalThis.__folioPlayground?.getEditorRef();
     const view = ref?.getEditor()?.getView();
     if (!ref || !view) throw new TypeError("No editor view.");
-    const paragraphs: number[] = [];
-    view.state.doc.descendants((node, position) => {
+    const paragraphs: unknown[] = [];
+    view.state.doc.descendants((node) => {
       if (node.type.name === "paragraph" && node.textContent.length > 4)
-        paragraphs.push(position);
+        paragraphs.push(node.attrs["paraId"]);
       return true;
     });
     const middle = paragraphs[Math.floor(paragraphs.length / 2)];
-    if (middle === undefined) throw new TypeError("No paragraph to type in.");
-    const pageNumber = ref.getEditorRef()?.getPageNumberForPmPos(middle + 3);
+    if (typeof middle !== "string")
+      throw new TypeError("No paragraph with an id to type in.");
+    const pageNumber = ref.getPositionPage({
+      story: "main",
+      blockId: middle,
+      offset: 2,
+    });
     if (pageNumber === undefined || pageNumber === null)
       throw new TypeError("No page holds the paragraph.");
     ref.scrollToPage(pageNumber);

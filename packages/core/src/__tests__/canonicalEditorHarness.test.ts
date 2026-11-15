@@ -94,7 +94,7 @@ test.each(["editing", "suggesting"] as const)(
       expect(driver.history.canRedo()).toBe(false);
       driver.paste(PASTED_TABLE(driver.state.doc));
       expect(driver.refusals.at(-1)).toEqual({
-        gap: CANONICAL_GAP.dispatch,
+        gap: CANONICAL_GAP.trackedTableStructure,
         message:
           "Clipboard tables and embedded blocks require canonical table editing.",
         expectation: "declared",

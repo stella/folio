@@ -1,7 +1,8 @@
 /**
  * A public operation that edits the properties of a paragraph whose mark is
  * pending deletion waits for that change in both engines, under the same
- * reason and without naming a canonical gap; once the deletion is accepted
+ * reason and without naming a canonical gap; a replacement of its text and
+ * style meets the same rule in both engines; once the deletion is accepted
  * or rejected, both engines apply it and give the same package.
  */
 
@@ -22,6 +23,7 @@ import {
 } from "../ai-edits";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
 import {
   type CanonicalCommit,
   createCanonicalSession,
@@ -31,7 +33,6 @@ import { serializeCanonicalSave } from "../docx/canonicalSave";
 import { parseDocx } from "../docx/parser";
 import { createEmptyDocx } from "../docx/rezip";
 import { schema } from "../prosemirror/schema";
-import { CanonicalPublicOperations } from "./canonicalPublicOperations";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
@@ -236,11 +237,19 @@ describe("a paragraph whose mark is pending deletion", () => {
           expect(legacy.refusals).toEqual([]);
           expect(canonical.refusals).toEqual([]);
           expect(canonical.skipped).toEqual(legacy.skipped);
-          if (resolution === "pending") {
+          // A property edit waits for the pending deletion; a replacement of
+          // the paragraph's text and style is an edit both engines take
+          // (`pendingMarkEditRefusal`).
+          if (
+            resolution === "pending" &&
+            operation.type === "setBlockParagraphProperties"
+          ) {
             expect(legacy.skipped).toEqual(["pendingParagraphMarkDeletion"]);
             return;
           }
-          expect(legacy.skipped).toEqual([]);
+          if (resolution !== "pending") expect(legacy.skipped).toEqual([]);
+          // Both engines skipped it alike (above): nothing else to compare.
+          else if (legacy.skipped.length > 0) return;
           expect(await outcomes(canonical.bytes)).toEqual(
             await outcomes(legacy.bytes),
           );

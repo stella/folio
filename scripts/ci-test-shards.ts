@@ -12,6 +12,11 @@ import {
 import path from "node:path";
 
 import {
+  EXPLORATION_BASE_ENV,
+  EXPLORATION_ENV,
+  EXPLORATION_OWNED_ENV,
+} from "../test/property-exploration";
+import {
   PROPERTY_SEEDS_FILE,
   testFileForSeedFile,
 } from "../test/seed-registry";
@@ -55,6 +60,7 @@ export const junitFileTimings = (xml: string, cwd: string): TestTimings => {
 export const focusedTestFiles = focusedTests;
 const SOURCE_FILE = /^packages\/[^/]+\/src\/.*\.[cm]?[jt]sx?$/u;
 const CODE_FILE = /\.[cm]?[jt]sx?$/u;
+const TEST_FILE = /\.test\.[cm]?[jt]sx?$/u;
 const CODE_EXTENSIONS = [
   "",
   ".ts",
@@ -117,6 +123,34 @@ export const changedTestPaths = (
     .split("\0")
     .filter((file) => file !== "" && existsSync(path.join(repoRoot, file)));
 };
+
+/**
+ * The changed paths, plus the test file each changed pinned seed file pins. A
+ * seed file is read at runtime, not imported, so the module graph never
+ * reaches the test it pins: changing the seeds counts as changing that test.
+ */
+export const changedTestFiles = (
+  changedFiles: readonly string[],
+): Set<string> =>
+  new Set([
+    ...changedFiles,
+    ...changedFiles
+      .filter((file) => file.startsWith(`${PROPERTY_SEEDS_FILE}/`))
+      .map(testFileForSeedFile),
+  ]);
+
+/**
+ * The test files a change adds or changes itself (directly or through its
+ * pinned seeds). Their generated property failures fail a pull request or
+ * merge group run, while every other file's still only report
+ * (test/property-exploration.ts).
+ */
+export const explorationOwnedTestFiles = (
+  changedFiles: readonly string[],
+): string[] =>
+  [...changedTestFiles(changedFiles)]
+    .filter((file) => TEST_FILE.test(file))
+    .toSorted();
 
 type FastTestSuitesOptions = {
   suites: TestSuite[];
@@ -381,14 +415,7 @@ export const selectFastTestSuitesWithReason = ({
   repoRoot = REPO_ROOT,
   graph: suppliedGraph,
 }: FastTestSuitesOptions): FastSelection => {
-  // A pinned seed file is read at runtime, not imported, so the module graph
-  // never reaches the test it pins: the file itself selects that test.
-  const changed = new Set([
-    ...changedFiles,
-    ...changedFiles
-      .filter((file) => file.startsWith(`${PROPERTY_SEEDS_FILE}/`))
-      .map(testFileForSeedFile),
-  ]);
+  const changed = changedTestFiles(changedFiles);
   const discovered = new Set(suites.flatMap(({ files }) => files));
   const focused = new Set(
     focusedFiles.filter(
@@ -513,6 +540,30 @@ export const selectFastTestSuitesWithReason = ({
   };
 };
 
+/**
+ * The environment the shard's test processes run with. When generated
+ * property failures only report (pull requests and merge groups), it names
+ * the test files the change owns in EXPLORATION_OWNED_ENV, from the diff
+ * against EXPLORATION_BASE_ENV; a report run without that base fails, since
+ * it could not tell a change's own properties from everyone else's.
+ */
+export const explorationTestEnv = (
+  env: NodeJS.ProcessEnv,
+  changedPaths: (base: string) => string[] = changedTestPaths,
+): NodeJS.ProcessEnv => {
+  if (env[EXPLORATION_ENV] !== "report") return env;
+  const base = env[EXPLORATION_BASE_ENV];
+  if (base === undefined || base === "")
+    return panic(
+      `${EXPLORATION_ENV}=report needs ${EXPLORATION_BASE_ENV}, the commit the change is compared with`,
+    );
+  const owned = explorationOwnedTestFiles(changedPaths(base));
+  console.log(
+    `Exploration: ${String(owned.length)} test files this change adds or changes fail on generated cases${owned.length > 0 ? `: ${owned.join(", ")}` : ""}`,
+  );
+  return { ...env, [EXPLORATION_OWNED_ENV]: JSON.stringify(owned) };
+};
+
 export const selectFastTestSuites = (
   options: FastTestSuitesOptions,
 ): TestSuite[] => selectFastTestSuitesWithReason(options).suites;
@@ -547,6 +598,7 @@ if (import.meta.main) {
   if (!assigned) panic("Test shard unavailable");
   const base = process.env["CI_TEST_BASE"];
   const changedFiles = base ? changedTestPaths(base) : [];
+  const testEnv = explorationTestEnv(process.env);
   const fastSelection =
     depth === "fast"
       ? selectFastTestSuitesWithReason({ suites, changedFiles })
@@ -584,7 +636,12 @@ if (import.meta.main) {
         ...preloads.flatMap((preload) => ["--preload", preload]),
         ...selected.map((file) => `./${path.posix.relative(cwd, file)}`),
       ],
-      { cwd: path.join(REPO_ROOT, cwd), stdout: "inherit", stderr: "inherit" },
+      {
+        cwd: path.join(REPO_ROOT, cwd),
+        env: testEnv,
+        stdout: "inherit",
+        stderr: "inherit",
+      },
     );
     if (depth === "full" && existsSync(junitFile)) {
       Object.assign(

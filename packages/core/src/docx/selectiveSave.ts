@@ -1,5 +1,5 @@
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
-import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
+import type { ZipArchive, ZipEntry } from "@stll/docx-core/zip";
 /**
  * Selective Save Module
  *
@@ -10,6 +10,7 @@ import { ZipArchive, type ZipEntry } from "@stll/docx-core/zip";
  * Returns null on any failure, signaling the caller to fall back to full repack.
  */
 
+import { recordSelectiveSaveAttempt } from "../layout-engine/layoutInstrumentation";
 import type { Document } from "../types/document";
 import { decodeText } from "../utils/textEncoding";
 import {
@@ -22,6 +23,7 @@ import {
 } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { detectDocxConformanceClass } from "./conformance";
+import { readPackageForSave } from "./mainDocumentPart";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
 import { normalizeImportedNumericIds } from "./numericIdNormalization";
@@ -422,6 +424,20 @@ export async function attemptSelectiveSave(
   originalBuffer: ArrayBuffer,
   options: SelectiveSaveOptions,
 ): Promise<ArrayBuffer | null> {
+  const buffer = await writeChangedParts(doc, originalBuffer, options);
+  // Measurements read which save path a save took through this hook.
+  recordSelectiveSaveAttempt({
+    written: buffer !== null,
+    structural: options.structuralChange,
+  });
+  return buffer;
+}
+
+async function writeChangedParts(
+  doc: Document,
+  originalBuffer: ArrayBuffer,
+  options: SelectiveSaveOptions,
+): Promise<ArrayBuffer | null> {
   doc = withoutExhaustedComments(doc);
   const { changedParaIds, structuralChange, hasUntrackedChanges } = options;
   const maxBytes = options.maxBytes ?? DEFAULT_SELECTIVE_SAVE_MAX_BYTES;
@@ -489,7 +505,7 @@ export async function attemptSelectiveSave(
   const commentPlan = planCommentParts(comments);
 
   try {
-    const zip = await ZipArchive.read(originalBuffer);
+    const zip = await readPackageForSave(originalBuffer);
     if (await hasUnmaterializedHyperlinkBindings(doc, zip)) return null;
 
     // The selective path overlays a handful of parts on top of the ORIGINAL

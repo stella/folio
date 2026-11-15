@@ -358,6 +358,11 @@ describe("canonical cutover guard", () => {
         "const snapshot = editor.captureCanonicalSave(); serializeCanonicalSave({ snapshot });",
       ),
     ).toEqual([]);
+    expect(
+      failuresOf(
+        "const snapshot = session.captureSaveSnapshot(); serializeCanonicalSave({ snapshot });",
+      ),
+    ).toEqual([]);
   });
 
   test("documentation derives its ids and sites from the same ledger", () => {

@@ -1,7 +1,7 @@
-import { expect, forEachAdapter, openEditor } from "./parity-fixture";
+import { expect, forEachAdapter, openCanonicalEditor } from "./parity-fixture";
 
 forEachAdapter("smoke: save returns docx bytes", async (adapter, { page }) => {
-  await openEditor(page, adapter);
+  await openCanonicalEditor(page, adapter);
   const byteLength = await page.evaluate(
     () => window.__folioParity?.save() ?? 0,
   );

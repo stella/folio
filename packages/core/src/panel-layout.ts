@@ -73,6 +73,10 @@ export type PanelLayout = {
   outlineTrackWidth: number;
   /** Width reserved after the page inside the scroll viewport for the comments. */
   commentsGutter: number;
+  /** Scroll viewport width: the available width less the outline track. */
+  contentWidth: number;
+  /** Comments column start in the scroll viewport; null unless a column at a known width. */
+  commentsColumnStart: number | null;
   /** Smallest available width for each tier, for the same page and panels. */
   thresholds: { wide: number; medium: number };
 };
@@ -120,6 +124,43 @@ const tierFor = (
   return "wide";
 };
 
+/**
+ * Where the widest page ends inside the scroll content. Each adapter centres
+ * the page in the content with the comments gutter after it (React through
+ * its viewport extent, Vue through the pages viewport's padding), which puts
+ * the page's start at `max(0, (contentWidth - (pageWidth + gutter)) / 2)`.
+ */
+const pageEndInContent = ({
+  contentWidth,
+  pageWidth,
+  commentsGutter,
+}: {
+  contentWidth: number;
+  pageWidth: number;
+  commentsGutter: number;
+}): number =>
+  Math.max(0, (contentWidth - (pageWidth + commentsGutter)) / 2) + pageWidth;
+
+/** Space a comments column keeps from the edges of the surface it sits on. */
+const COMMENTS_COLUMN_INSET = 8;
+
+/**
+ * Where a comments column starts beside the page: a gap after the page's end
+ * edge, kept inside the surface it is positioned on. Both values are in that
+ * surface's CSS pixels.
+ */
+export const commentsColumnStart = (
+  pageEnd: number,
+  surfaceWidth: number,
+): number =>
+  Math.max(
+    COMMENTS_COLUMN_INSET,
+    Math.min(
+      pageEnd + PANEL_METRICS.commentsGap,
+      surfaceWidth - PANEL_METRICS.commentsWidth - COMMENTS_COLUMN_INSET,
+    ),
+  );
+
 /** Decide each panel's presentation for the width the editor has. */
 export const computePanelLayout = (input: PanelLayoutInput): PanelLayout => {
   const { availableWidth } = input;
@@ -141,24 +182,62 @@ export const computePanelLayout = (input: PanelLayoutInput): PanelLayout => {
       return "rail";
     return "drawer";
   })();
+  const outlineTrackWidth =
+    outline === "expanded"
+      ? Math.min(
+          PANEL_METRICS.outlineColumnWidth,
+          Math.max(
+            PANEL_METRICS.controlMinimumSize,
+            (availableWidth - commentsGutter) / 2,
+          ),
+        )
+      : OUTLINE_TRACK_WIDTH[outline];
+  const contentWidth = Math.max(0, availableWidth - outlineTrackWidth);
   return {
     tier: tierFor(outline, comments),
     outline,
     comments,
-    outlineTrackWidth:
-      outline === "expanded"
-        ? Math.min(
-            PANEL_METRICS.outlineColumnWidth,
-            Math.max(
-              PANEL_METRICS.controlMinimumSize,
-              (availableWidth - commentsGutter) / 2,
-            ),
-          )
-        : OUTLINE_TRACK_WIDTH[outline],
+    outlineTrackWidth,
     commentsGutter,
+    contentWidth,
+    commentsColumnStart:
+      comments === "column" && Number.isFinite(contentWidth)
+        ? commentsColumnStart(
+            pageEndInContent({
+              contentWidth,
+              pageWidth: input.pageWidth,
+              commentsGutter,
+            }),
+            contentWidth,
+          )
+        : null,
     thresholds,
   };
 };
 
 /** Which drawer is open over the page: at most one at a time. */
 export type PanelOverlay = "none" | "outline" | "comments";
+
+/**
+ * The outline presentation a layout is asked for: an opened outline takes a
+ * track of its own beside the page rather than a drawer over it.
+ */
+export const requestedOutline = (
+  overlay: PanelOverlay,
+  outline: PanelLayoutInput["outline"],
+): PanelLayoutInput["outline"] =>
+  overlay === "outline" && outline !== "absent" ? "expanded" : outline;
+
+/** An overlay stays open only while its panel is still opened by it. */
+export const overlayAfterLayout = (
+  overlay: PanelOverlay,
+  layout: Pick<PanelLayout, "outline" | "comments">,
+): PanelOverlay => {
+  if (
+    overlay === "outline" &&
+    (layout.outline === "none" || layout.outline === "column")
+  )
+    return "none";
+  if (overlay === "comments" && layout.comments !== "drawer") return "none";
+  return overlay;
+};

@@ -60,5 +60,7 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    // Measurement runs keep source maps, to read CPU profiles by source name.
+    sourcemap: process.env["VITE_FOLIO_PLAYGROUND_SOURCEMAP"] === "1",
   },
 });

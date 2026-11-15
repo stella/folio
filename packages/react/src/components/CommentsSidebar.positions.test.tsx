@@ -2,7 +2,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { act, createRef } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import { afterAll, expect, test } from "bun:test";
@@ -36,6 +36,8 @@ const comment = {
 } satisfies Comment;
 const comments = [comment];
 
+const ignoreCommentClick = () => {};
+
 const setRect = (element: HTMLElement, top: number) => {
   element.getBoundingClientRect = () => new DOMRect(0, top, 800, 100);
 };
@@ -59,8 +61,6 @@ const renderDrawer = async ({
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const editorContainerRef = createRef<HTMLDivElement>();
-  editorContainerRef.current = scrollElement;
   let selectedCommentId = activeCommentId ?? null;
   // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop -- created once per mounted test root and reused across every render
   const activateComment = (commentId: number | null) => {
@@ -76,7 +76,7 @@ const renderDrawer = async ({
       >
         <CommentsSidebar
           comments={threadComments}
-          editorContainerRef={editorContainerRef}
+          scrollContainer={scrollElement}
           anchorPositions={anchorPositions}
           activeCommentId={selectedCommentId}
           onCommentClick={activateComment}
@@ -271,5 +271,53 @@ test("mounting with an active comment expands its reply input and permits collap
     await act(async () => root.unmount());
     host.remove();
     scrollElement.remove();
+  }
+});
+
+test("the comments column watches the scroll container once it mounts", async () => {
+  // The column can mount before the scroll container it measures against.
+  const observed: Element[] = [];
+  const NativeResizeObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    observe(target: Element) {
+      observed.push(target);
+    }
+    unobserve() {}
+    disconnect() {}
+  };
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const render = (scrollContainer: HTMLDivElement | null) =>
+    root.render(
+      <IntlProvider
+        locale="en"
+        timeZone="UTC"
+        messages={getFolioMessages("en")}
+      >
+        <CommentsSidebar
+          comments={comments}
+          scrollContainer={scrollContainer}
+          anchorPositions={new Map()}
+          activeCommentId={null}
+          onCommentClick={ignoreCommentClick}
+          surface="column"
+        />
+      </IntlProvider>,
+    );
+  try {
+    await act(async () => render(null));
+    const scrollElement = document.createElement("div");
+    scrollElement.setAttribute("data-folio-scroll", "");
+    document.body.append(scrollElement);
+    expect(observed).not.toContain(scrollElement);
+    await act(async () => render(scrollElement));
+    // Its size moves the anchors, so the cards measure again when it changes.
+    expect(observed).toContain(scrollElement);
+    scrollElement.remove();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    globalThis.ResizeObserver = NativeResizeObserver;
   }
 });

@@ -65,7 +65,9 @@
         :display-mode="displayMode"
         :read-only="readOnly"
         :comments-sidebar-open="commentsSurface !== null"
-        :outline-drawer="panelLayout.outline === 'drawer'"
+        :outline-drawer="
+          panelLayout.outline === 'drawer' || panelLayout.outline === 'expanded'
+        "
         :outline-drawer-open="panelOverlay === 'outline'"
         :comment-count="openCommentThreadCount"
         :image-context="imageToolbarContext"
@@ -187,7 +189,9 @@
     >
       <DocumentOutline
         v-if="
-          panelLayout.outline === 'column' || panelLayout.outline === 'rail'
+          panelLayout.outline === 'column' ||
+          panelLayout.outline === 'rail' ||
+          panelLayout.outline === 'expanded'
         "
         :headings="visibleOutlineHeadings"
         :available="outlineHeadings.length > 1"
@@ -197,8 +201,10 @@
         :doc-size="editorView?.state.doc.content.size ?? 0"
         :active-id="activeHeadingId"
         :surface="panelLayout.outline"
+        :width="panelLayout.outlineTrackWidth"
         :expanded="panelOverlay === 'outline'"
         @expand="toggleOutlineOverlay"
+        @close="panelOverlay = 'none'"
         @navigate="handleOutlineNavigate"
       />
       <div
@@ -303,9 +309,11 @@
                 aria-hidden="true"
               >
                 <AnonymizationRectsOverlay
-                  :get-view="() => editorView"
+                  :get-highlights="readAnonymizationHighlights"
                   :get-pages-container="() => pagesRef"
                   :editor-state="editorState"
+                  :terms="props.anonymizationTerms"
+                  :on-matches-change="props.onAnonymizationMatchesChange"
                   :zoom="zoom"
                   :layout="layout"
                   :blocks="blocks"
@@ -439,6 +447,7 @@
               "
               :pages-container="pagesRef"
               :page-width-px="pageWidthPx"
+              :column-start="panelLayout.commentsColumnStart"
               :zoom="zoom"
               :active-item-id="activeSidebarItem"
               @close="dismissComments"
@@ -483,26 +492,6 @@
           />
         </div>
       </div>
-      <template v-if="panelOverlay === 'outline'">
-        <div
-          class="docx-editor-vue__panel-scrim"
-          data-testid="folio-panel-scrim"
-          aria-hidden="true"
-          @mousedown.prevent="panelOverlay = 'none'"
-        />
-        <DocumentOutline
-          :headings="visibleOutlineHeadings"
-          :available="outlineHeadings.length > 1"
-          :outline-depth="outlineDepth"
-          @outline-depth-change="handleOutlineDepthChange"
-          :get-scroll-container="() => editorScrollRef"
-          :doc-size="editorView?.state.doc.content.size ?? 0"
-          :active-id="activeHeadingId"
-          surface="drawer"
-          @close="panelOverlay = 'none'"
-          @navigate="handleOutlineNavigate"
-        />
-      </template>
       <div
         v-if="commentsSurface === 'drawer'"
         class="docx-editor-vue__panel-scrim"
@@ -528,6 +517,7 @@
     <ContentControlWidgetsOverlay
       :event-root="readOnly ? null : pagesRef"
       :view="editorView"
+      @refused="showRefusalNotice"
     />
   </div>
 </template>
@@ -572,8 +562,10 @@ import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
 import {
   computePanelLayout,
+  overlayAfterLayout,
   PANEL_METRICS,
   type PanelOverlay,
+  requestedOutline,
 } from "@stll/folio-core/panel-layout";
 import {
   extractSelectionState,
@@ -999,10 +991,9 @@ const {
   onCanonicalHistory: (effect) => props.onCanonicalHistory?.(effect),
   onCanonicalHistoryDrop: (drop) => props.onCanonicalHistoryDrop?.(drop),
   collaboration: () => props.collaboration,
-  // Anonymization highlights + template directives are driven by the overlay
-  // components below; these thread the plugin callbacks and the directive gate.
-  onAnonymizationMatchesChange: (matches) =>
-    props.onAnonymizationMatchesChange?.(matches),
+  // Template directives are driven by the overlay components below; this
+  // threads the directive gate. Highlights read the host's terms.
+  getAnonymizationTerms: () => props.anonymizationTerms,
   showTemplateDirectives: () => props.showTemplateDirectives,
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) =>
@@ -1037,6 +1028,8 @@ const {
     ? (result) => props.onSelectiveSaveTripwire?.(result)
     : undefined,
 });
+
+const readAnonymizationHighlights = () => editor.getAnonymizationHighlights();
 
 /**
  * The current document for this component's own readers: never a host copy,
@@ -1452,14 +1445,20 @@ const widestPageWidthPx = computed(() => {
   for (const page of pages) widest = Math.max(widest, page.size.w);
   return widest * zoom.value;
 });
+// Opening the outline gives it a track of its own beside the page.
+const outlineRequest = computed(() =>
+  requestedOutline(
+    panelOverlay.value,
+    showOutline.value && outlineHeadings.value.length > 1
+      ? "available"
+      : "absent",
+  ),
+);
 const panelLayout = computed(() =>
   computePanelLayout({
     availableWidth: availablePanelWidth.value,
     pageWidth: widestPageWidthPx.value,
-    outline:
-      showOutline.value && outlineHeadings.value.length > 1
-        ? "available"
-        : "absent",
+    outline: outlineRequest.value,
     comments: showSidebar.value ? "open" : "closed",
   }),
 );
@@ -1547,10 +1546,7 @@ function toggleComments(): void {
     computePanelLayout({
       availableWidth: availablePanelWidth.value,
       pageWidth: widestPageWidthPx.value,
-      outline:
-        showOutline.value && outlineHeadings.value.length > 1
-          ? "available"
-          : "absent",
+      outline: outlineRequest.value,
       comments: "open",
     }).comments === "drawer"
   )
@@ -1567,15 +1563,9 @@ function handleOutlineNavigate({ id, pmPos }: HeadingInfo): void {
   outlineSidebar.handleOutlineNavigate(pmPos);
 }
 
+// An overlay closes if its panel is no longer available.
 watch(panelLayout, (next) => {
-  if (
-    panelOverlay.value === "outline" &&
-    next.outline !== "rail" &&
-    next.outline !== "drawer"
-  )
-    panelOverlay.value = "none";
-  if (panelOverlay.value === "comments" && next.comments !== "drawer")
-    panelOverlay.value = "none";
+  panelOverlay.value = overlayAfterLayout(panelOverlay.value, next);
 });
 watch(
   [() => commentLifecycle.isAddingComment.value, panelLayout],

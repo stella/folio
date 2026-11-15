@@ -106,6 +106,11 @@ export {
 } from "./compare/verification";
 export { createDocx, type DocumentPropertiesOptions } from "./docx/rezip";
 export { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+export {
+  OP_STORIES,
+  type OpStory,
+  type TextPosition,
+} from "@stll/docx-core/ops";
 export type { Document, DocxConformanceClass } from "./types/document";
 export {
   inspectDocxCompatibility,
@@ -255,13 +260,10 @@ export {
   setActiveCitationMeta,
   type AICitationRange,
 } from "./prosemirror/plugins/aiCitationDecorations";
-export {
-  anonymizationDecorationsKey,
-  getAnonymizationMatches,
-  setAnonymizationTermsMeta,
-  type AnonymizationMatch,
-  type AnonymizationTerm,
-} from "./prosemirror/plugins/anonymizationDecorations";
+export type {
+  FolioAnonymizationMatch,
+  FolioAnonymizationTerm,
+} from "./types/anonymization";
 export {
   getTemplateDirectives,
   scanDirectives,

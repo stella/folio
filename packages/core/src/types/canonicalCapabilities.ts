@@ -2,7 +2,6 @@
 export const CANONICAL_GAP = {
   authorityRouting: "authority-routing",
   commands: "command-descriptors",
-  trackedHyperlinkResolution: "tracked-hyperlink-resolution",
   trackedTableStructure: "tracked-table-structure",
   storyContentProjection: "story-content-projection",
   comments: "comment-model-edits",
@@ -121,23 +120,17 @@ export const CANONICAL_CAPABILITIES: {
     readonly adapters: readonly ["react", "vue"];
     readonly summary: "Commands without canonical descriptors retain PM probing and hit the dispatch boundary.";
   };
-  readonly "tracked-hyperlink-resolution": {
-    readonly owner: "controller";
-    readonly kind: "refusal";
-    readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Link edits cutting a content control, a direction or smart tag wrapper, an equation or a move marker.";
-  };
   readonly "tracked-table-structure": {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express.";
+    readonly summary: "Suggested row, column and table changes refuse content the tracked table records cannot express; a pasted table refuses.";
   };
   readonly "story-content-projection": {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits.";
+    readonly summary: "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references, and compositions over such content refuse.";
   };
   readonly "comment-model-edits": {
     readonly owner: "adapters";
@@ -167,7 +160,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly owner: "controller";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unclassified native and plugin mutations are refused at the projection boundary.";
+    readonly summary: "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).";
   };
   readonly "pm-save-projection": {
     readonly owner: "controller";
@@ -224,7 +217,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-public-operations";
     readonly kind: "refusal";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap.";
+    readonly summary: "Unsupported public payloads refuse with a typed compiler capability gap, as does typing in a text box, whose paragraphs belong to its shape.";
   };
   readonly "publicOps.tableStructure": {
     readonly owner: "document-operations";
@@ -238,7 +231,7 @@ export const CANONICAL_CAPABILITIES: {
     readonly defaultSessionMutation: "pm-headless-reviewer";
     readonly kind: "mutation-source";
     readonly adapters: readonly ["react", "vue"];
-    readonly summary: "A canonical headless reviewer edits, resolves and undoes in the body; other stories, suggestions, comment edits and save refuse.";
+    readonly summary: "A canonical headless reviewer edits, resolves, undoes and saves the body; other stories, suggestions and comment edits refuse.";
   };
   readonly "pm-ai-snapshots": {
     readonly owner: "ai-edits";
@@ -261,26 +254,19 @@ export const CANONICAL_CAPABILITIES: {
     summary:
       "Commands without canonical descriptors retain PM probing and hit the dispatch boundary.",
   },
-  [CANONICAL_GAP.trackedHyperlinkResolution]: {
-    owner: "controller",
-    kind: "refusal",
-    adapters: ["react", "vue"],
-    summary:
-      "Link edits cutting a content control, a direction or smart tag wrapper, an equation or a move marker.",
-  },
   [CANONICAL_GAP.trackedTableStructure]: {
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Suggested row, column and table changes refuse content the tracked table records cannot express.",
+      "Suggested row, column and table changes refuse content the tracked table records cannot express; a pasted table refuses.",
   },
   [CANONICAL_GAP.storyContentProjection]: {
     owner: "controller",
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported inline, field and review content cannot be projected after canonical edits.",
+      "Unsupported inline, field and review content cannot be projected after canonical edits; pasted embedded blocks, comment and note references, and compositions over such content refuse.",
   },
   [CANONICAL_GAP.comments]: {
     owner: "adapters",
@@ -314,7 +300,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unclassified native and plugin mutations are refused at the projection boundary.",
+      "A host plugin or raw dispatch that changes the document is refused, naming the transaction's meta keys; hosts express edits as document operations (applyDocumentOperations).",
   },
   [CANONICAL_GAP.save]: {
     owner: "controller",
@@ -375,7 +361,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "refusal",
     adapters: ["react", "vue"],
     summary:
-      "Unsupported public payloads refuse with a typed compiler capability gap.",
+      "Unsupported public payloads refuse with a typed compiler capability gap, as does typing in a text box, whose paragraphs belong to its shape.",
   },
   [CANONICAL_GAP.publicTableStructure]: {
     owner: "document-operations",
@@ -391,7 +377,7 @@ export const CANONICAL_CAPABILITIES: {
     kind: "mutation-source",
     adapters: ["react", "vue"],
     summary:
-      "A canonical headless reviewer edits, resolves and undoes in the body; other stories, suggestions, comment edits and save refuse.",
+      "A canonical headless reviewer edits, resolves, undoes and saves the body; other stories, suggestions and comment edits refuse.",
   },
   [CANONICAL_GAP.aiSnapshots]: {
     owner: "ai-edits",

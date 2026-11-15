@@ -37,6 +37,10 @@ import type {
   CanonicalHistoryDrop,
   CanonicalHistoryEffect,
 } from "@stll/folio-core/canonical/canonicalSession";
+import {
+  type FolioAnonymizationTerm,
+  NO_ANONYMIZATION_TERMS,
+} from "@stll/folio-core/controller/anonymizationHighlights";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
@@ -108,12 +112,19 @@ export type HiddenProseMirrorProps = {
   readOnly?: boolean;
   /** Callback when document changes via transaction */
   onTransaction?: (update: HiddenEditorTransactionUpdate) => void;
-  /** Callback when a canonical composition ends */
-  onCanonicalCompositionEnd?: () => void;
+  /**
+   * A canonical composition changed what the view shows without a document
+   * change (its provisional text, or its end): lay the live view out again.
+   */
+  onCanonicalCompositionLayout?: () => void;
+  /** The embedded-font families the painter resolves runs with. */
+  getEmbeddedFontFamilyMap?: () => ReadonlyMap<string, string> | undefined;
   /** Callback when selection changes */
   onSelectionChange?: (state: EditorState) => void;
   /** External ProseMirror plugins */
   externalPlugins?: Plugin[];
+  /** Terms the editor highlights in the shown text. */
+  anonymizationTerms?: readonly FolioAnonymizationTerm[] | undefined;
   /** Yjs-backed collaboration document owner. */
   collaboration?: HiddenProseMirrorCollaboration | undefined;
   /** The canonical room the canonical session joins. */
@@ -151,6 +162,8 @@ export type HiddenProseMirrorProps = {
 export type HiddenProseMirrorRef = HiddenEditorApi & {
   /** Internal composition availability for deferred document notifications. */
   isCanonicalComposing: () => boolean;
+  /** Draw the view's text again with the painter's current font context. */
+  refreshFonts: () => void;
   /** The canonical session's own document, read without a copy. */
   readCanonicalDocument: () => ReadonlyDocument | null;
   /** Get the off-screen host element. */
@@ -218,9 +231,11 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     widthPx = 612, // Default Letter width at 72dpi
     readOnly = false,
     onTransaction,
-    onCanonicalCompositionEnd,
+    onCanonicalCompositionLayout,
+    getEmbeddedFontFamilyMap,
     onSelectionChange,
     externalPlugins = EMPTY_EXTERNAL_PLUGINS,
+    anonymizationTerms,
     collaboration,
     canonicalRoom,
     extensionManager,
@@ -270,6 +285,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   const stylesRef = useRef(styles);
   const extensionManagerRef = useRef(extensionManager);
   const externalPluginsRef = useRef(externalPlugins);
+  const anonymizationTermsRef = useRef(anonymizationTerms);
   const getPrecomputedInitialStateRef = useRef(getPrecomputedInitialState);
   const collaborationRef = useRef(collaboration);
   const canonicalRoomRef = useRef(canonicalRoom);
@@ -278,7 +294,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
   // Store callbacks in refs to avoid dependency array issues that cause infinite loops
   // when the parent component passes unstable callback references
   const onTransactionRef = useRef(onTransaction);
-  const onCanonicalCompositionEndRef = useRef(onCanonicalCompositionEnd);
+  const onCanonicalCompositionLayoutRef = useRef(onCanonicalCompositionLayout);
+  const getEmbeddedFontFamilyMapRef = useRef(getEmbeddedFontFamilyMap);
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onEditorViewReadyRef = useRef(onEditorViewReady);
   const onCanonicalHistoryRef = useRef(onCanonicalHistory);
@@ -308,9 +325,11 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
     stylesRef.current = styles;
     extensionManagerRef.current = extensionManager;
     externalPluginsRef.current = externalPlugins;
+    anonymizationTermsRef.current = anonymizationTerms;
     getPrecomputedInitialStateRef.current = getPrecomputedInitialState;
     onTransactionRef.current = onTransaction;
-    onCanonicalCompositionEndRef.current = onCanonicalCompositionEnd;
+    onCanonicalCompositionLayoutRef.current = onCanonicalCompositionLayout;
+    getEmbeddedFontFamilyMapRef.current = getEmbeddedFontFamilyMap;
     onSelectionChangeRef.current = onSelectionChange;
     onEditorViewReadyRef.current = onEditorViewReady;
     onCanonicalHistoryRef.current = onCanonicalHistory;
@@ -336,6 +355,8 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getStyles: () => stylesRef.current,
         getExtensionManager: () => extensionManagerRef.current,
         getExternalPlugins: () => externalPluginsRef.current,
+        getAnonymizationTerms: () =>
+          anonymizationTermsRef.current ?? NO_ANONYMIZATION_TERMS,
         getCollaboration: () => collaborationRef.current,
         getCollaborationModules: () => collaborationModulesRef.current,
         getCanonicalRoom: () => canonicalRoomRef.current,
@@ -355,8 +376,9 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,
         onTransaction: (update) => onTransactionRef.current?.(update),
-        onCanonicalCompositionEnd: () =>
-          onCanonicalCompositionEndRef.current?.(),
+        onCanonicalCompositionLayout: () =>
+          onCanonicalCompositionLayoutRef.current?.(),
+        getEmbeddedFontFamilyMap: () => getEmbeddedFontFamilyMapRef.current?.(),
         onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
         onKeyDown: (view, event) =>
           onKeyDownRef.current?.(view, event) ?? false,
@@ -457,6 +479,7 @@ export const HiddenProseMirror: ForwardRefExoticComponent<
       getHostElement: () => hostRef.current,
       isCanonicalComposing: () =>
         managerRef.current?.isCanonicalComposing() ?? false,
+      refreshFonts: () => managerRef.current?.refreshFonts(),
       readCanonicalDocument: () =>
         managerRef.current?.readCanonicalDocument() ?? null,
     }),

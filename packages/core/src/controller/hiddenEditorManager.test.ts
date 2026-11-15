@@ -29,6 +29,10 @@ import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import type { FolioDocumentOperationStory } from "../document-operations";
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
+import {
+  editingFontContextOf,
+  editingFontFamily,
+} from "../layout-bridge/convert/editingFont";
 import { withCanonicalCommand } from "../prosemirror/canonicalCommands";
 import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import { expectCommentRangeBoundaryAttrs } from "../prosemirror/commentRangeBoundaryAttrs";
@@ -71,7 +75,7 @@ const makeDeps = (
 ): { deps: HiddenEditorManagerDeps; spies: Record<string, Spy> } => {
   const spies: Record<string, Spy> = {
     onTransaction: { calls: 0 },
-    onCanonicalCompositionEnd: { calls: 0 },
+    onCanonicalCompositionLayout: { calls: 0 },
     onSelectionChange: { calls: 0 },
     onKeyDown: { calls: 0 },
     onCopy: { calls: 0 },
@@ -98,9 +102,10 @@ const makeDeps = (
     onTransaction: () => {
       spies["onTransaction"].calls += 1;
     },
-    onCanonicalCompositionEnd: () => {
-      spies["onCanonicalCompositionEnd"].calls += 1;
+    onCanonicalCompositionLayout: () => {
+      spies["onCanonicalCompositionLayout"].calls += 1;
     },
+    getEmbeddedFontFamilyMap: () => undefined,
     onSelectionChange: (_state: EditorState) => {
       spies["onSelectionChange"].calls += 1;
     },
@@ -523,6 +528,55 @@ describe("createHiddenEditorClipboardHandlers", () => {
     expect(prevented).toBe(2);
   });
 });
+
+for (const session of ["legacy", "canonical"] as const) {
+  for (const readOnly of [false, true]) {
+    test(`${session} ${readOnly ? "read-only" : "editable"} view tells the host of clipboard events as legacy does`, () => {
+      const releaseDom = acquireHarnessDom();
+      const host = document.createElement("div");
+      document.body.append(host);
+      const source = createEmptyDocument({ initialText: "Start" });
+      const paragraph = source.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+      paragraph.paraId = "12345678";
+      const { deps, spies } = makeDeps({
+        getHost: () => host,
+        getDocument: () => source,
+        getDocumentContext: () => source,
+        getExperimentalSession: () => session,
+        getReadOnly: () => readOnly,
+      });
+      const manager = createHiddenEditorManager(deps);
+      try {
+        manager.ensureView();
+        const view = manager.getView() ?? panic("Expected a body view");
+        manager.api.setSelection(1);
+        for (const kind of ["copy", "cut", "paste"] as const) {
+          const event = new Event(kind, { bubbles: true, cancelable: true });
+          // The pasted text the clipboard holds.
+          Object.defineProperty(event, "clipboardData", {
+            value: {
+              types: ["text/plain"],
+              files: [],
+              getData: (type: string) => (type === "text/plain" ? "x" : ""),
+            },
+          });
+          view.dom.dispatchEvent(event);
+        }
+        expect(spies["onCopy"].calls).toBe(1);
+        expect(spies["onCut"].calls).toBe(readOnly ? 0 : 1);
+        expect(spies["onPaste"].calls).toBe(readOnly ? 0 : 1);
+        expect(spies["onReadOnlyEditAttempt"].calls).toBe(readOnly ? 2 : 0);
+        // An editable view takes the paste; a read-only one refuses it.
+        expect(view.state.doc.textContent).toBe(readOnly ? "Start" : "xStart");
+      } finally {
+        manager.destroyView();
+        host.remove();
+        releaseDom();
+      }
+    });
+  }
+}
 
 test("canonical manager refuses transaction bypasses and shares one input journal", () => {
   GlobalRegistrator.register();
@@ -1104,7 +1158,7 @@ test.each(["body", "story"] as const)(
         manager.api.updateCanonicalInputLifecycle("endComposition");
         expect(manager.isCanonicalComposing()).toBe(false);
       }
-      expect(spies["onCanonicalCompositionEnd"]?.calls).toBe(1);
+      expect(spies["onCanonicalCompositionLayout"]?.calls).toBe(1);
       expect(manager.api.getCanonicalDocument()).toEqual(initial);
       expect(
         manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN),
@@ -1118,6 +1172,92 @@ test.each(["body", "story"] as const)(
     }
   },
 );
+
+test("canonical composition lays out its provisional text with the painter's fonts and reports no change until it commits", async () => {
+  const releaseDom = acquireHarnessDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Start" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+  paragraph.paraId = "12345678";
+  const run = paragraph.content.find((item) => item.type === "run");
+  if (run?.type !== "run") panic("Expected a run fixture");
+  run.formatting = { fontFamily: { ascii: "Calibri", eastAsia: "MS Gothic" } };
+  let embedded: ReadonlyMap<string, string> | undefined;
+  const { deps, spies } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    getEmbeddedFontFamilyMap: () => embedded,
+  });
+  const manager = createHiddenEditorManager(deps);
+  // The view's font run, against the stack the painter's owners resolve.
+  const expectFontRun = (view: EditorView, scoped: string | null) => {
+    const mark = view.state.schema.marks["fontFamily"]?.isInSet(
+      view.state.doc.firstChild?.firstChild?.marks ?? [],
+    );
+    if (!mark) panic("Expected a font run");
+    const expected = editingFontFamily(
+      mark,
+      editingFontContextOf(source, embedded),
+    );
+    if (expected === null) panic("Expected a resolved font stack");
+    const western = expected.indexOf("Calibri");
+    const eastAsia = expected.indexOf(scoped ?? "MS Gothic");
+    // The East Asian slot follows the Western one, the generic family last.
+    expect(western).toBeGreaterThanOrEqual(0);
+    expect(eastAsia).toBeGreaterThan(western);
+    expect(expected.endsWith("sans-serif")).toBe(true);
+    const probe = document.createElement("span");
+    probe.style.fontFamily = expected;
+    const span = view.dom.querySelector<HTMLElement>(
+      "span[style*='font-family']",
+    );
+    expect(span?.style.fontFamily).toBe(probe.style.fontFamily);
+  };
+  try {
+    manager.ensureView();
+    const view = manager.getView() ?? panic("Expected canonical view");
+    expectFontRun(view, null);
+    embedded = new Map([["MS Gothic", "folio-embedded-gothic"]]);
+    manager.refreshFonts();
+    expectFontRun(view, "folio-embedded-gothic");
+
+    manager.api.setSelection(1);
+    const committed = manager.readCanonicalDocument();
+    const transactionsBefore = spies["onTransaction"].calls;
+    view.dom.dispatchEvent(
+      new CompositionEvent("compositionstart", { bubbles: true }),
+    );
+    for (const text of ["\u3042", "\u3042\u3044"]) {
+      view.dispatch(
+        view.state.tr
+          .insertText(text, 1, view.state.selection.from)
+          .setMeta("composition", 1),
+      );
+      expect(view.state.doc.textContent).toBe(`${text}Start`);
+    }
+    // Each provisional step asks for layout and reports nothing else.
+    expect(spies["onCanonicalCompositionLayout"].calls).toBe(2);
+    expect(spies["onTransaction"].calls).toBe(transactionsBefore);
+    // The session holds the composition back from every snapshot.
+    expect(manager.isCanonicalComposing()).toBe(true);
+
+    view.dom.dispatchEvent(
+      new CompositionEvent("compositionend", { bubbles: true }),
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, 40));
+    expect(spies["onTransaction"].calls).toBeGreaterThan(transactionsBefore);
+    expect(manager.readCanonicalDocument()).not.toBe(committed);
+    expect(view.state.doc.textContent).toBe("\u3042\u3044Start");
+  } finally {
+    manager.destroyView();
+    host.remove();
+    releaseDom();
+  }
+});
 
 test("a refused canonical activation reports once per loaded document across retries", () => {
   GlobalRegistrator.register();
@@ -1759,15 +1899,22 @@ test(
   "canonical undescribed commands preserve non-document effects and refuse raw mutations",
   () => {
     GlobalRegistrator.register();
-    type Counts = { selection: number; probe: number; mutation: number };
+    type Counts = {
+      selection: number;
+      probe: number;
+      mutation: number;
+      pluginMutation: number;
+    };
     try {
       const law = (counts: Counts) =>
         fc.property(
           fc.record({
             text: fc.string({ minLength: 1, maxLength: 16 }),
             position: fc.nat(),
+            // A plugin's own meta key, as a host plugin sets it.
+            metaKey: fc.stringMatching(/^host[A-Za-z]{0,8}\$?$/u),
           }),
-          ({ text, position }) => {
+          ({ text, position, metaKey }) => {
             const host = document.createElement("div");
             document.body.append(host);
             const source = createEmptyDocument({ initialText: text });
@@ -1797,7 +1944,12 @@ test(
               if (!view) panic("Expected generated canonical view");
               const baseline = manager.api.getCanonicalDocument();
               const target = 1 + (position % (text.length + 1));
-              for (const kind of ["selection", "probe", "mutation"] as const) {
+              for (const kind of [
+                "selection",
+                "probe",
+                "mutation",
+                "pluginMutation",
+              ] as const) {
                 let calls = 0;
                 const command: Command = (state, dispatch) => {
                   calls++;
@@ -1814,8 +1966,19 @@ test(
                     case "mutation":
                       dispatch?.(state.tr.insertText("unclassified", target));
                       return true;
+                    case "pluginMutation":
+                      dispatch?.(
+                        state.tr
+                          .insertText("unclassified", target)
+                          .setMeta(metaKey, true),
+                      );
+                      return true;
                   }
                 };
+                // Each refused change is its own gesture, as a key starts one.
+                view.dom.dispatchEvent(
+                  new KeyboardEvent("keydown", { key: "Shift", bubbles: true }),
+                );
                 const beforeState = view.state;
                 const beforeRefusals = reasons.length;
                 expect(manager.api.executeCommand(command)).toBe(
@@ -1836,6 +1999,12 @@ test(
                   expect(reasons.slice(beforeRefusals)).toEqual([
                     "Unclassified native text is unavailable in this session.",
                   ]);
+                } else if (kind === "pluginMutation") {
+                  // The refusal names the plugin that made the change.
+                  expect(view.state).toBe(beforeState);
+                  expect(reasons.slice(beforeRefusals)).toEqual([
+                    `A transaction with meta ${metaKey} changed the document outside the session's operations; express the edit as document operations.`,
+                  ]);
                 } else {
                   expect(reasons).toHaveLength(beforeRefusals);
                   expect(view.state.selection.from).toBe(target);
@@ -1847,13 +2016,21 @@ test(
             }
           },
         );
-      assertProperty(law({ selection: 0, probe: 0, mutation: 0 }), {
-        id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
-      });
+      assertProperty(
+        law({ selection: 0, probe: 0, mutation: 0, pluginMutation: 0 }),
+        {
+          id: "canonical undescribed commands preserve non-document effects and refuse raw mutations",
+        },
+      );
       // Every case runs each kind of command; a few cases of a fixed sample
       // show it.
       const RUNS = 3;
-      const counts: Counts = { selection: 0, probe: 0, mutation: 0 };
+      const counts: Counts = {
+        selection: 0,
+        probe: 0,
+        mutation: 0,
+        pluginMutation: 0,
+      };
       checkCoverageSample(law(counts), RUNS);
       for (const count of Object.values(counts))
         expect(count).toBeGreaterThan(0);
@@ -1929,6 +2106,98 @@ test("canonical command execution reports descriptor refusals without mutation",
     manager.destroyView();
     host.remove();
     GlobalRegistrator.unregister();
+  }
+});
+
+test("selecting a table, a row or a column in a canonical session selects what the command selects alone", () => {
+  const releaseDom = acquireHarnessDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Before" });
+  const cell = (paraId: string, text: string) => ({
+    type: "tableCell" as const,
+    content: [
+      {
+        type: "paragraph" as const,
+        paraId,
+        content: [
+          { type: "run" as const, content: [{ type: "text" as const, text }] },
+        ],
+      },
+    ],
+  });
+  source.package.document.content.push(
+    {
+      type: "table",
+      columnWidths: [2000, 2000, 2000],
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            { ...cell("20000001", "A1"), formatting: { gridSpan: 2 } },
+            cell("20000002", "C1"),
+          ],
+        },
+        {
+          type: "tableRow",
+          cells: [
+            cell("20000003", "A2"),
+            cell("20000004", "B2"),
+            cell("20000005", "C2"),
+          ],
+        },
+      ],
+    },
+    { type: "paragraph", paraId: "10000002", content: [] },
+  );
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected a canonical view");
+    const baseline = manager.api.getCanonicalDocument();
+    let checked = 0;
+    view.state.doc.descendants((node, position) => {
+      if (node.type.name !== "paragraph") return true;
+      if (view.state.doc.resolve(position).parent.type.name === "doc")
+        return false;
+      for (const name of [
+        "selectTable",
+        "selectRow",
+        "selectColumn",
+      ] as const) {
+        view.dispatch(
+          view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, position + 1),
+          ),
+        );
+        const command = singletonManager.getCommand(name)?.();
+        if (command === undefined) return panic(`Missing ${name}`);
+        let alone: EditorState | undefined;
+        command(view.state, (transaction) => {
+          alone = view.state.apply(transaction);
+        });
+        if (alone === undefined) return panic(`${name} selects nothing`);
+        expect(manager.api.executeCommand(command)).toBe(true);
+        expect(view.state.selection.toJSON()).toEqual(alone.selection.toJSON());
+        expect(view.state.doc.eq(alone.doc)).toBe(true);
+        expect(manager.api.getCanonicalDocument()).toEqual(baseline);
+        expect(manager.api.canUndo()).toBe(false);
+        checked += 1;
+      }
+      return false;
+    });
+    expect(checked).toBe(15);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    releaseDom();
   }
 });
 

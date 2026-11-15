@@ -10,6 +10,7 @@ import type {
   TableRowIntentOperation,
 } from "@stll/docx-core/ops";
 
+import type { SetContentControlValueInput } from "../content-controls";
 import type {
   BlockContent,
   ColorValue,
@@ -49,6 +50,8 @@ export type CanonicalTableEdit = WithoutTableTarget<
 
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
+  /** The command changes the selection alone and runs as it is. */
+  | { type: "selection" }
   | {
       type: "formatTable";
       targets: readonly CanonicalTableFormatTarget[];
@@ -117,7 +120,14 @@ export type CanonicalCommandIntent =
       from: number;
       to: number;
       breakType: "page" | "textWrapping";
-    };
+    }
+  | {
+      /** A typed control's value: the block control whose open token is at `at`. */
+      type: "setContentControlValue";
+      at: number;
+      input: SetContentControlValueInput;
+    }
+  | { type: "replaceText"; from: number; to: number; text: string };
 
 type CanonicalCommandDescriptor = (
   state: EditorState,

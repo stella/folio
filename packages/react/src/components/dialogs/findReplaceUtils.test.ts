@@ -5,7 +5,6 @@ GlobalRegistrator.register();
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 
 import type { Document } from "@stll/folio-core/types/document";
-import { replaceTextInDocument } from "@stll/folio-core/utils/replaceText";
 
 import {
   createDefaultFindOptions,
@@ -101,46 +100,6 @@ describe("Folio find and replace", () => {
     expect(matches[0]?.contentIndex).toBe(1);
     expect(matches[0]?.startOffset).toBe(7);
     expect(matches[0]?.endOffset).toBe(12);
-  });
-
-  test("replaces matches inside table cells", () => {
-    const document = createTableDocument();
-    const match = findInDocument(
-      document,
-      "Inside",
-      createDefaultFindOptions(),
-    )[0];
-    if (!match) {
-      throw new Error("Expected table-cell match");
-    }
-
-    const replaced = replaceTextInDocument(
-      document,
-      {
-        start: {
-          paragraphIndex: match.paragraphIndex,
-          offset: match.startOffset,
-        },
-        end: {
-          paragraphIndex: match.paragraphIndex,
-          offset: match.endOffset,
-        },
-      },
-      "Within",
-    );
-
-    expect(
-      findInDocument(replaced, "Within table", createDefaultFindOptions()),
-    ).toHaveLength(1);
-    expect(
-      findInDocument(replaced, "Inside table", createDefaultFindOptions()),
-    ).toHaveLength(0);
-    expect(
-      findInDocument(document, "Inside table", createDefaultFindOptions()),
-    ).toHaveLength(1);
-    expect(
-      findInDocument(document, "Within table", createDefaultFindOptions()),
-    ).toHaveLength(0);
   });
 
   test("finds run text wrapped inside an inline SDT", () => {

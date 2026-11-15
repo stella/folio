@@ -29,6 +29,9 @@ import {
 } from "./ci-test-shard-plan";
 import {
   buildModuleGraph,
+  changedTestPaths,
+  explorationOwnedTestFiles,
+  explorationTestEnv,
   selectFastTestSuitesWithReason,
 } from "./ci-test-shards";
 
@@ -916,5 +919,93 @@ describe("measured test shard balancing", () => {
     expect(workflow).toContain('--graphql-request "$request"');
     expect(workflow).not.toContain("--arg contents");
     expect(workflow).not.toContain("< <(");
+  });
+});
+
+describe("the property files a change owns", () => {
+  const seedFile =
+    "test/property-seeds/packages%2Fapp%2Fsrc%2Fpinned.test.ts.json";
+
+  test("its own test files and the files its pinned seeds pin", () => {
+    expect(
+      explorationOwnedTestFiles([
+        "packages/app/src/added.test.ts",
+        "packages/app/src/code.ts",
+        "scripts/tool.test.tsx",
+        seedFile,
+      ]),
+    ).toEqual([
+      "packages/app/src/added.test.ts",
+      "packages/app/src/pinned.test.ts",
+      "scripts/tool.test.tsx",
+    ]);
+  });
+
+  test("report runs name them for the test processes; other runs are untouched", () => {
+    const bases: string[] = [];
+    const changed = (base: string) => {
+      bases.push(base);
+      return ["packages/app/src/added.test.ts", "packages/app/src/code.ts"];
+    };
+    const report = explorationTestEnv(
+      {
+        FOLIO_FUZZ_EXPLORATION: "report",
+        FOLIO_FUZZ_EXPLORATION_BASE: "b".repeat(40),
+      },
+      changed,
+    );
+    expect(bases).toEqual(["b".repeat(40)]);
+    expect(JSON.parse(String(report["FOLIO_FUZZ_EXPLORATION_OWNED"]))).toEqual([
+      "packages/app/src/added.test.ts",
+    ]);
+    const fail = { FOLIO_FUZZ_EXPLORATION: "fail" };
+    expect(explorationTestEnv(fail, changed)).toBe(fail);
+    expect(bases).toHaveLength(1);
+    // Without a base a report run cannot tell the change's files apart.
+    expect(() =>
+      explorationTestEnv({ FOLIO_FUZZ_EXPLORATION: "report" }, changed),
+    ).toThrow("FOLIO_FUZZ_EXPLORATION_BASE");
+  });
+
+  test("a branch that adds a property file owns it, and an untouched one is not owned", () => {
+    const root = fixture({
+      "packages/app/src/old.test.ts": "export {};\n",
+    });
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(
+        [
+          "git",
+          "-c",
+          "user.name=Fixture",
+          "-c",
+          "user.email=fixture@example.test",
+          "-c",
+          "commit.gpgsign=false",
+          ...args,
+        ],
+        { cwd: root },
+      );
+      if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+      return result.stdout.toString().trim();
+    };
+    const commit = (message: string) => {
+      git("add", ".");
+      git("commit", "--quiet", "-m", message);
+      return git("rev-parse", "HEAD");
+    };
+    git("init", "--quiet", "--initial-branch=main");
+    const base = commit("base");
+    writeFileSync(
+      path.join(root, "packages/app/src/new.test.ts"),
+      "export {};\n",
+    );
+    commit("change");
+    const env = explorationTestEnv(
+      { FOLIO_FUZZ_EXPLORATION: "report", FOLIO_FUZZ_EXPLORATION_BASE: base },
+      (from) => changedTestPaths(from, root),
+    );
+    expect(JSON.parse(String(env["FOLIO_FUZZ_EXPLORATION_OWNED"]))).toEqual([
+      "packages/app/src/new.test.ts",
+    ]);
   });
 });

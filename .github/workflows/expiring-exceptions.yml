@@ -1,0 +1,31 @@
+name: Expiring exceptions
+
+# The toolchain policy and the quarantine guard fail every run once a dated
+# exception expires. This names each one that expires within seven days, in
+# the job summary and as an annotation, while there is still time to renew or
+# remove it (scripts/expiring-exceptions.ts).
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  report:
+    name: Dated exceptions expiring within 7 days
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/bun
+        with:
+          package-json: "package.json"
+
+      - name: Report expiring exceptions
+        run: bun scripts/expiring-exceptions.ts --days 7

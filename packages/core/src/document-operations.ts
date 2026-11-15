@@ -2064,8 +2064,19 @@ export type FolioDocumentOperationUndoHandle = {
   id: string;
 };
 
+/**
+ * Why an undo was rejected: the handle is unknown or not the latest batch's,
+ * the document changed after the batch, the story the batch edited is not
+ * open, the session could not stage the batch's inverse, or the host did not
+ * take the undone document.
+ */
 export type FolioDocumentOperationUndoFailureReason =
-  "unknownHandle" | "notLatest" | "documentChanged";
+  | "unknownHandle"
+  | "notLatest"
+  | "documentChanged"
+  | "storyUnavailable"
+  | "inverseRefused"
+  | "documentNotEditable";
 
 export type FolioDocumentOperationUndoResult =
   | {
@@ -2076,6 +2087,8 @@ export type FolioDocumentOperationUndoResult =
       status: "rejected";
       undoHandle: FolioDocumentOperationUndoHandle;
       reason: FolioDocumentOperationUndoFailureReason;
+      /** What refused, when the session says (`inverseRefused`). */
+      message?: string;
     };
 
 /** One operation a host surface accepted into its own review queue rather than applying. */

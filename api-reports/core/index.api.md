@@ -11,12 +11,15 @@ import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { OP_STORIES } from '@stll/docx-core/ops';
+import { OpStory } from '@stll/docx-core/ops';
 import { ParagraphMarkChangeKind } from '@stll/docx-core/model';
 import { ParagraphNumberingOverride } from '@stll/docx-core/model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
 import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
+import { TextPosition } from '@stll/docx-core/ops';
 import { Transaction } from 'prosemirror-state';
 
 // @public (undocumented)
@@ -131,30 +134,6 @@ export type AISuggestionSeverity = "typo" | "style" | "substantive";
 
 // @public (undocumented)
 export type AISuggestionStatus = "pending" | "accepted" | "rejected" | "stale";
-
-// @public (undocumented)
-export const anonymizationDecorationsKey: Readonly<{
-    key: string;
-    createKey: () => PluginKey<AnonymizationDecorationState>;
-    owns: (plugin: Plugin_2<AnonymizationDecorationState>) => boolean;
-    get: (state: EditorState) => Plugin_2<AnonymizationDecorationState> | undefined;
-    getState: (state: EditorState) => AnonymizationDecorationState | undefined;
-}>;
-
-// @public (undocumented)
-export type AnonymizationMatch = {
-    from: number;
-    to: number;
-    label: string;
-    canonical: string;
-};
-
-// @public (undocumented)
-export type AnonymizationTerm = {
-    canonical: string;
-    label: string;
-    variants?: readonly string[];
-};
 
 // @public (undocumented)
 export const appendAutocompleteToken: (tr: Transaction, requestId: string, delta: string) => Transaction;
@@ -1306,6 +1285,21 @@ export type FolioAISignatureParty = {
 };
 
 // @public
+export type FolioAnonymizationMatch = {
+    start: TextPosition;
+    end: TextPosition;
+    label: string;
+    canonical: string;
+};
+
+// @public
+export type FolioAnonymizationTerm = {
+    canonical: string;
+    label: string;
+    variants?: readonly string[];
+};
+
+// @public
 export type FolioBlockId = string & {
     readonly __brand: "folio.blockId";
 };
@@ -1677,8 +1671,8 @@ export type FolioDocumentOperationStory = "main" | {
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
-// @public (undocumented)
-export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged";
+// @public
+export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged" | "storyUnavailable" | "inverseRefused" | "documentNotEditable";
 
 // @public
 export type FolioDocumentOperationUndoHandle = {
@@ -1694,6 +1688,7 @@ export type FolioDocumentOperationUndoResult = {
     status: "rejected";
     undoHandle: FolioDocumentOperationUndoHandle;
     reason: FolioDocumentOperationUndoFailureReason;
+    message?: string;
 };
 
 // @public (undocumented)
@@ -1728,9 +1723,6 @@ export class FolioYjsAttrSchemaVersionError extends FolioYjsAttrSchemaVersionErr
 
 // @public
 export function fromMarkdown(markdown: string): import__stll_docx_core_model.Document;
-
-// @public
-export const getAnonymizationMatches: (state: EditorState) => readonly AnonymizationMatch[];
 
 // @public (undocumented)
 export const getAutocompleteSuggestion: (state: EditorState) => AutocompleteSuggestionState;
@@ -1863,6 +1855,10 @@ export function mergeDocumentContent(target: import__stll_docx_core_model.Docume
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
 
+export { OP_STORIES }
+
+export { OpStory }
+
 // @public
 export type OutlineDepth = 2 | 3 | "all";
 
@@ -1927,15 +1923,6 @@ export function setAISuggestionsMeta(suggestions: AISuggestion[]): {
     payload: {
         type: typeof SET_META_2;
         suggestions: AISuggestion[];
-    };
-};
-
-// @public (undocumented)
-export const setAnonymizationTermsMeta: (terms: readonly AnonymizationTerm[]) => {
-    key: PluginKeyOwner<AnonymizationDecorationState>;
-    payload: {
-        type: typeof SET_META_3;
-        terms: readonly AnonymizationTerm[];
     };
 };
 
@@ -2013,6 +2000,8 @@ export type TemplateSlashMenuState = {
     to: number;
     query: string;
 };
+
+export { TextPosition }
 
 // @public
 export function toMarkdown(doc: import__stll_docx_core_model.Document, opts?: MarkdownOptions): string;

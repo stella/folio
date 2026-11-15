@@ -55,12 +55,20 @@ import {
   createBatchListMinter,
   type MintedList,
 } from "../ai-edits/newListNumbering";
-import type { NoteReferenceLabels } from "../ai-edits/note-references";
+import {
+  cutsIntoNoteReference,
+  type NoteReferenceLabels,
+  noteReferenceSpansWithin,
+  segmentsAroundNoteReferences,
+} from "../ai-edits/note-references";
 import {
   isDeletedPPrMark,
   joinsIn,
-  PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
+  joinStopsAtTableAfter,
+  PENDING_JOIN_INSERTION_REFUSAL,
   pendingJoinParagraphs,
+  pendingMarkEditOf,
+  pendingMarkEditRefusal,
 } from "../ai-edits/pendingJoin";
 import {
   collectNoteReferenceLabels,
@@ -92,6 +100,10 @@ import type {
   FolioAIParagraphIndentation,
   FolioAIParagraphSpacing,
 } from "../ai-edits/types";
+import {
+  findUndefinedOperationReference,
+  styleDefinitionLookup,
+} from "../ai-edits/undefinedReferences";
 import { wordDiffSessionFromOptions } from "../ai-edits/word-diff";
 import type { FolioContentStatedNumbering } from "../compare/content-types";
 import {
@@ -115,7 +127,11 @@ import {
   tableAttrsToFormatting,
 } from "../prosemirror/conversion/fromProseDoc";
 import { maxAnnotationIdInDoc } from "../prosemirror/plugins/revisionIds";
-import { insertedColumnWidth } from "../prosemirror/tableGridMutation";
+import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import {
+  insertedColumnWidth,
+  omittedSlotTakingColumn,
+} from "../prosemirror/tableGridMutation";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -489,16 +505,17 @@ type BesidePendingJoinOptions = {
  * the paragraph the join leaves, which the joined paragraph has. The batch's
  * other operations do not move it: a split of the paragraph the join leaves
  * puts the block after both halves, as one put after that paragraph goes.
- * Undefined beside a paragraph whose own break is pending removal where no
- * join reads it: after it, when the join leaves no paragraph with words for
- * the block to follow; before it, when the paragraph goes whole.
+ * Beside a paragraph whose own break is pending removal where no join reads
+ * it (after it, when the join leaves no paragraph with words for the block to
+ * follow; before it, when the paragraph goes whole), the block goes beside
+ * the paragraph itself.
  */
 const besidePendingJoin = ({
   side,
   paragraph,
   projection,
   noteReferences,
-}: BesidePendingJoinOptions): BesidePendingJoin | undefined => {
+}: BesidePendingJoinOptions): BesidePendingJoin => {
   const options = {
     doc: projection.doc,
     paragraphPos: paragraph.start - 1,
@@ -507,11 +524,13 @@ const besidePendingJoin = ({
   const join = pendingJoinParagraphs(options);
   const breakGoes = isDeletedPPrMark(paragraph.node.attrs["pPrMark"]);
   const after = side === "after";
+  // Where no join reads the paragraph, the block goes beside the paragraph
+  // itself, as the default engine places it.
   if (
     breakGoes &&
     (after ? join.last === options.paragraphPos : !joinsIn(options))
   )
-    return undefined;
+    return besideAsItStands(paragraph);
   const at = (position: number) =>
     position === options.paragraphPos
       ? paragraph
@@ -719,7 +738,6 @@ const resolveTableInsertion = ({
     projection,
     noteReferences,
   });
-  if (placed === undefined) return refusal("pendingDeletion");
   const { place } = placed;
   const $place = projection.doc.resolve(place.start - 1);
   const neighbour = $place.parent.maybeChild(
@@ -821,6 +839,25 @@ const holdsOmittedSlot = (
       const cell = offset === undefined ? null : table.nodeAt(offset);
       if (cell === null || cell.attrs["_omittedGridSlot"] != null) return true;
     }
+  return false;
+};
+
+/**
+ * Whether a column inserted at the grid index runs through a cell spanning
+ * both its sides, so that the cell would widen; a slot a row omits grows
+ * instead, as the default engine grows it.
+ */
+const columnInsertionWidensCell = (table: PMNode, columnIndex: number) => {
+  const map = TableMap.get(table);
+  if (columnIndex <= 0 || columnIndex >= map.width) return false;
+  for (let row = 0; row < map.height; row += 1) {
+    const index = row * map.width + columnIndex;
+    if (
+      omittedSlotTakingColumn(map, table, row, columnIndex) === null &&
+      map.map[index - 1] === map.map[index]
+    )
+      return true;
+  }
   return false;
 };
 
@@ -986,6 +1023,20 @@ const resolveTableStructure = ({
         left: cell.leftColumnIndex,
         right: cell.leftColumnIndex + 1,
       };
+      // A suggestion marks whole cells deleted; a cell spanning the column
+      // and another has no suggested form narrower than itself, in either
+      // engine.
+      if (
+        tracked &&
+        Array.from({ length: map.height }, (_, rowIndex) => {
+          const position = map.map[rowIndex * map.width + column.left];
+          return position === undefined ? null : row.table.nodeAt(position);
+        }).some((node) => Number(node?.attrs["colspan"] ?? 1) !== 1)
+      )
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested column deletion cannot narrow a cell that spans other columns.",
+        );
       // The table is addressed by a paragraph the deletion keeps, as the
       // editor's column deletion addresses it.
       const at = tableAnchor(
@@ -1034,6 +1085,17 @@ const resolveTableStructure = ({
         target: "column",
       });
       if (overflow !== null) return refusal("payloadDoesNotFit", overflow);
+      // A suggestion records new cells; a column through a cell spanning
+      // both its sides would widen that cell, which no suggestion records
+      // in either engine.
+      if (
+        tracked &&
+        columnInsertionWidensCell(row.table, insertion.columnIndex)
+      )
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested column cannot widen a cell that spans other columns.",
+        );
       const blockId = tableBlockAddress(projection, row);
       if (blockId === undefined) return refusal("unsupportedBlock");
       const intent: EditorIntent = {
@@ -1148,6 +1210,13 @@ const resolveTableStructure = ({
         return skipAlike(
           "noopOperation",
           "A one-row, one-column cell has nothing to split.",
+        );
+      // A suggested split gives a merge down its rows back; a cell spanning
+      // columns has no suggested split in either engine.
+      if (tracked && cell.rightColumnIndex - cell.leftColumnIndex !== 1)
+        return skipAlike(
+          "unsupportedBlock",
+          "A suggested split takes a cell merged down one column.",
         );
       // The cell is addressed by its own paragraph, the merge's first.
       return resolved(
@@ -1576,6 +1645,27 @@ export class CanonicalPublicOperations {
     const normalizations: FolioAIEditNormalization[] = [];
     const refusals = new Map<string, CanonicalPublicOperationRefusal>();
     const resolved: ResolvedOperation[] = [];
+    // Read once, at the first operation that reaches the check: a batch the
+    // session refuses as a whole reads no document.
+    let definedReferences:
+      | {
+          styles: ReturnType<typeof styleDefinitionLookup>;
+          numberingInstanceIds: ReadonlySet<number>;
+        }
+      | undefined;
+    const references = () => {
+      if (definedReferences !== undefined) return definedReferences;
+      const model = readModel(session.document);
+      definedReferences = {
+        styles: styleDefinitionLookup(
+          createStyleResolver(model.package.styles),
+        ),
+        numberingInstanceIds: new Set(
+          model.package.numbering?.nums.map(({ numId }) => numId) ?? [],
+        ),
+      };
+      return definedReferences;
+    };
     const mintList = createBatchListMinter(() => readModel(session.document));
     const { diff } = wordDiffSessionFromOptions(options.wordDiff);
     let nextRevisionId = options.revisionStamp?.idSeed ?? 1;
@@ -1695,6 +1785,21 @@ export class CanonicalPublicOperations {
           operation.id,
           "unsupportedBlock",
           "This canonical compiler does not support the supplied execution options.",
+        );
+        continue;
+      }
+      // The same reference check the default engine runs, in the same
+      // place: before the operation compiles.
+      const undefinedReference = findUndefinedOperationReference({
+        operation,
+        ...references(),
+        undefinedReferences: "refuse",
+      });
+      if (undefinedReference !== undefined) {
+        skip(
+          operation.id,
+          undefinedReference.reason,
+          undefinedReference.message,
         );
         continue;
       }
@@ -2145,15 +2250,16 @@ export class CanonicalPublicOperations {
       ? selection
       : session.prepareOps(state, ops, selection.value);
     if (prepared.isErr()) {
+      // A batch that changes nothing is a no-op, not a capability gap.
+      const noChange = prepared.error.reason === "noChange";
       for (const { id } of appliedById.values()) {
-        refusals.set(id, {
-          gap: CANONICAL_GAP.publicUnsupportedInline,
-        });
+        if (!noChange)
+          refusals.set(id, {
+            gap: CANONICAL_GAP.publicUnsupportedInline,
+          });
         skip(
           id,
-          prepared.error.reason === "noChange"
-            ? "noopOperation"
-            : "unsupportedBlock",
+          noChange ? "noopOperation" : "unsupportedBlock",
           prepared.error.message,
         );
       }
@@ -2204,14 +2310,21 @@ export class CanonicalPublicOperations {
       return {
         status: "rejected",
         undoHandle: handle,
-        reason: "documentChanged",
+        reason: "storyUnavailable",
       };
     const prepared = session.prepareUndo(state, entry.story);
-    if (prepared.isErr() || !this.options.publish(prepared.value))
+    if (prepared.isErr())
       return {
         status: "rejected",
         undoHandle: handle,
-        reason: "documentChanged",
+        reason: "inverseRefused",
+        message: prepared.error.message,
+      };
+    if (!this.options.publish(prepared.value))
+      return {
+        status: "rejected",
+        undoHandle: handle,
+        reason: "documentNotEditable",
       };
     this.handles.pop();
     // Undo advances the version while exposing the preceding unchanged journal group.
@@ -2468,29 +2581,29 @@ export class CanonicalPublicOperations {
       fieldResults: "text",
       noteReferences,
     });
-    // A block beside a paragraph whose break is pending removal is placed
-    // by the join it is part of (`besidePendingJoin`); any other operation
-    // on it waits for that change to be resolved. An edit of the paragraph's
-    // own properties says so, as the default engine does: accepting the
-    // deletion would give the joined paragraph the next one's properties.
-    if (
-      (paragraph.source.pPrMark?.kind === "del" ||
-        paragraph.source.pPrMark?.kind === "moveFrom") &&
-      !placesBlock(operation)
-    ) {
-      const editsProperties =
-        operation.type === "setBlockParagraphProperties" ||
-        (operation.type === "replaceBlock" &&
-          clean.text.length > 0 &&
-          operation.styleId !== undefined &&
-          operation.styleId !== (paragraph.source.formatting?.styleId ?? null));
-      return editsProperties
-        ? refusal(
-            PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL.reason,
-            PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL.message,
-          )
-        : refusal("pendingDeletion");
-    }
+    // A paragraph whose break is pending removal takes the edits the default
+    // engine takes there, and refuses what it refuses, for the same reason
+    // (`pendingMarkEditRefusal`). A block beside it is placed by the join it
+    // is part of (`besidePendingJoin`).
+    const pendingRefusal = pendingMarkEditRefusal({
+      edit: pendingMarkEditOf(operation.type),
+      doc: state.doc,
+      paragraphPos: paragraph.start - 1,
+      paragraph: paragraph.node,
+      cleanText: clean.text,
+    });
+    if (pendingRefusal !== undefined)
+      return Result.err(
+        new CanonicalPublicOperationResolutionError({
+          reason: pendingRefusal.reason,
+          message:
+            pendingRefusal.message ??
+            `The operation was refused: ${pendingRefusal.reason}.`,
+          ...(pendingRefusal.canonicalRefusal === undefined
+            ? {}
+            : { gap: pendingRefusal.canonicalRefusal.gap }),
+        }),
+      );
     const hash = hashFolioAIBlockContent(clean.text);
     if (operation.precondition && hash !== operation.precondition.blockTextHash)
       return refusal("preconditionFailed");
@@ -2545,7 +2658,23 @@ export class CanonicalPublicOperations {
             projection: projection.value,
             noteReferences,
           });
-      if (placed === undefined) return refusal("pendingDeletion");
+      // A block the join would run into the words before it, or into a
+      // table after it, waits for the join to be resolved.
+      const gap =
+        insertion.type === "insertAfterBlock"
+          ? placed.place.start - 1 + placed.place.node.nodeSize
+          : placed.place.start - 1;
+      if (
+        joinStopsAtTableAfter({
+          doc: projection.value.doc,
+          paragraphPos: gap,
+          noteReferences,
+        })
+      )
+        return refusal(
+          PENDING_JOIN_INSERTION_REFUSAL.reason,
+          PENDING_JOIN_INSERTION_REFUSAL.message,
+        );
       const inserted = resolveBlockInsertion({
         operation: insertion,
         paragraph: placed.place,
@@ -2620,13 +2749,10 @@ export class CanonicalPublicOperations {
         text = operation.type === "replaceRange" ? operation.replace : "";
         break;
       case "replaceBlock":
-        if (
-          operation.styleId !== undefined ||
-          operation.preserveFormatting === false
-        )
+        if (operation.preserveFormatting === false)
           return refusal(
             "unsupportedBlock",
-            "Canonical replacement paragraph properties are unavailable.",
+            "Canonical replacements that drop the paragraph's formatting are unavailable.",
           );
         text = operation.text;
         break;
@@ -2662,21 +2788,34 @@ export class CanonicalPublicOperations {
       )
     )
       return refusal("splitsCharacter");
+    // A note reference is not text: a replacement rewrites the prose around
+    // the references its range holds, each kept in place, as the shared
+    // segmentation pairs them. A range that cuts a reference, an operation
+    // that does not replace text, and a replacement that drops, moves or
+    // invents a reference are refused.
+    const replacesText =
+      operation.type === "replaceInBlock" ||
+      operation.type === "replaceRange" ||
+      operation.type === "replaceBlock";
+    const references = noteReferenceSpansWithin(clean, start, end);
     if (
-      clean.structuralBoundaries.some(
-        (boundary) =>
-          boundary.type === "noteReference" &&
-          start < boundary.offset + boundary.length &&
-          end > boundary.offset,
-      )
+      cutsIntoNoteReference(clean, start, end) ||
+      (references.length > 0 && !replacesText)
     )
       return refusal("protectedReference");
+    const segments = segmentsAroundNoteReferences(
+      clean.text.slice(start, end),
+      text,
+      references,
+    );
+    if (segments === null) return refusal("protectedReference");
+    const prose = segments.replacement.join("");
     if (stripInlineEmphasisMarkers(text) !== text)
       return refusal(
         "unsupportedBlock",
         "Canonical public emphasis replacements are unavailable.",
       );
-    if (/\[\^(?:e)?\d+\]/u.test(text) || /[\t\r\n]/u.test(text))
+    if (/\[\^(?:e)?\d+\]/u.test(prose) || /[\t\r\n]/u.test(prose))
       return refusal(
         "unsupportedBlock",
         "Canonical public replacements require plain text.",
@@ -2706,11 +2845,25 @@ export class CanonicalPublicOperations {
         from: range.from,
         to: range.to,
       });
+    // A replacement that names a style the paragraph does not have restyles
+    // it, as the default engine does, even when its words stay the same.
+    const restyle =
+      operation.type === "replaceBlock" &&
+      operation.styleId !== undefined &&
+      operation.styleId !== (paragraph.source.formatting?.styleId ?? null)
+        ? statedPropertiesIntents({
+            story,
+            blockId: paragraph.blockId,
+            properties: { styleId: operation.styleId },
+            mintList,
+          })
+        : [];
     if (
       resolvedComment.type === "plain" &&
       operation.type !== "splitBlock" &&
       operation.type !== "formatRange" &&
       operation.type !== "mergeBlockWithNext" &&
+      restyle.length === 0 &&
       clean.text.slice(start, end) === text
     )
       return refusal("noopOperation");
@@ -2823,32 +2976,39 @@ export class CanonicalPublicOperations {
     const intents: EditorIntent[] = [];
     const normalizations: FolioAIEditNormalization[] = [];
     if (intent.type === "replaceText") {
-      let offset = start;
-      let pending: { start: number; end: number; text: string } | null = null;
       const changes: { start: number; end: number; text: string }[] = [];
-      for (const segment of diff(clean.text.slice(start, end), text)) {
-        switch (segment.type) {
-          case "equal":
-            if (pending) changes.push(pending);
-            pending = null;
-            offset += segment.text.length;
-            break;
-          case "del":
-            pending ??= { start: offset, end: offset, text: "" };
-            offset += segment.text.length;
-            pending.end = offset;
-            break;
-          case "ins":
-            pending ??= { start: offset, end: offset, text: "" };
-            pending.text += segment.text;
-            break;
-          default: {
-            const unreachable: never = segment.type;
-            return panic(`Unknown replacement diff ${unreachable}`);
+      // Each piece of prose between kept references changes on its own, so
+      // no change reaches a reference.
+      for (const [index, piece] of segments.source.entries()) {
+        let offset = start + piece.offset;
+        let pending: { start: number; end: number; text: string } | null = null;
+        for (const segment of diff(
+          piece.text,
+          segments.replacement[index] ?? "",
+        )) {
+          switch (segment.type) {
+            case "equal":
+              if (pending) changes.push(pending);
+              pending = null;
+              offset += segment.text.length;
+              break;
+            case "del":
+              pending ??= { start: offset, end: offset, text: "" };
+              offset += segment.text.length;
+              pending.end = offset;
+              break;
+            case "ins":
+              pending ??= { start: offset, end: offset, text: "" };
+              pending.text += segment.text;
+              break;
+            default: {
+              const unreachable: never = segment.type;
+              return panic(`Unknown replacement diff ${unreachable}`);
+            }
           }
         }
+        if (pending) changes.push(pending);
       }
-      if (pending) changes.push(pending);
       for (const change of changes.toReversed()) {
         const gap = resolveCleanTextRange({
           cleanBlock: clean,
@@ -2912,6 +3072,7 @@ export class CanonicalPublicOperations {
             : { runPropsPatch: intent.runPropsPatch }),
         });
       }
+      intents.push(...restyle);
     } else if (
       operation.type === "mergeBlockWithNext" &&
       intent.type === "joinParagraphs"
