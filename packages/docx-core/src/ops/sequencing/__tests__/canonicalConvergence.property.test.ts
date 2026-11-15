@@ -1586,6 +1586,24 @@ const PINNED: readonly Scenario[] = [
 ];
 
 describe("canonical sequencing", () => {
+  test(
+    "DIAG restore over typing",
+    async () => {
+      const scenario = JSON.parse(
+        '[3,[{"type":"edit","peer":1,"seed":{"kind":"comment","a":0,"b":0,"suggest":false,"focus":true}},{"type":"edit","peer":2,"seed":{"kind":"erase","a":2,"b":0,"suggest":true,"focus":true}},{"type":"undo","peer":2},{"type":"edit","peer":0,"seed":{"kind":"type","a":2,"b":0,"suggest":false,"focus":true}},{"type":"edit","peer":0,"seed":{"kind":"type","a":0,"b":0,"suggest":false,"focus":true}},{"type":"edit","peer":0,"seed":{"kind":"type","a":0,"b":0,"suggest":false,"focus":true}},{"type":"edit","peer":0,"seed":{"kind":"type","a":0,"b":0,"suggest":false,"focus":true}},{"type":"edit","peer":0,"seed":{"kind":"type","a":0,"b":0,"suggest":false,"focus":true}},{"type":"edit","peer":0,"seed":{"kind":"type","a":0,"b":0,"suggest":false,"focus":true}},{"type":"edit","peer":0,"seed":{"kind":"type","a":0,"b":0,"suggest":false,"focus":true}},{"type":"edit","peer":0,"seed":{"kind":"type","a":0,"b":0,"suggest":false,"focus":true}}]]',
+      ) as Scenario;
+      // oxlint-disable-next-line typescript/no-explicit-any
+      (globalThis as any).__DIAG_RESTORE = true;
+      const outcome = simulate(...scenario);
+      // oxlint-disable-next-line typescript/no-explicit-any
+      (globalThis as any).__DIAG_RESTORE = false;
+      // oxlint-disable-next-line no-console
+      console.log(
+        `DIAG OUTCOME restoreRefusals=${JSON.stringify(outcome.restoreRefusals)} rejected=${JSON.stringify(outcome.rejected)}`,
+      );
+    },
+    propertyTestTimeout(60_000),
+  );
   test("a format inside a concurrent direct erase leaves one run in either order", () => {
     const outcome = simulate(...formatInsideErase);
     expect(outcome.rejected).toEqual([]);

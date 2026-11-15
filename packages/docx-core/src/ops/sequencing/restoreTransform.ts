@@ -1,3 +1,7 @@
+import { Result } from "better-result";
+
+import type { Document, ParagraphContent } from "../../model/document";
+import { applyDocumentOps } from "../apply";
 /**
  * Paragraph restorations against concurrent edits of the same paragraph.
  *
@@ -11,15 +15,17 @@
  * the contents the edit leaves on either side. An edit reaching into the
  * span conflicts with it.
  */
-
-import { Result } from "better-result";
-
-import type { Document, ParagraphContent } from "../../model/document";
-import { applyDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { structurallyEqual } from "../equality";
-import { idKey } from "../ids";
-import { compareGaps, type Gap, type InlineNode, leafSpans } from "../leaves";
+import { idKey, paragraphIdsIn as paragraphIdsInDiag } from "../ids";
+import {
+  compareGaps,
+  type Gap,
+  type InlineNode,
+  leafSpans,
+  leafSpans as leafSpansDiag,
+} from "../leaves";
+import { contentWidth as contentWidthDiag } from "../offsets";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -231,8 +237,16 @@ const paragraphEdit = (op: DocumentOp): ParagraphEdit | undefined => {
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
       return op;
-    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
-      return isInlineInsertion(op) ? op : undefined;
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT: {
+      const accepted = isInlineInsertion(op);
+      // oxlint-disable-next-line typescript/no-explicit-any
+      if (!accepted && (globalThis as any).__DIAG_RESTORE === true)
+        // oxlint-disable-next-line no-console
+        console.log(
+          `DIAG INSERT openStart=${String(op.slice.openStart)} openEnd=${String(op.slice.openEnd)} width=${String(contentWidthDiag(op.slice.content))} paragraphIds=${String(paragraphIdsInDiag(op.slice.content).length)} leaves=${JSON.stringify(leafSpansDiag(op.slice.content).map(({ node, before, after }) => [node.type, before.offset, after.offset]))} at=${JSON.stringify(op.at)} slice=${JSON.stringify(op.slice).slice(0, 3000)}`,
+        );
+      return accepted ? op : undefined;
+    }
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
       return sameParagraph(op.from, op.to) ? op : undefined;
