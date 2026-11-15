@@ -66,6 +66,8 @@ const PRODUCER_READERS = {
   "packages/core/src/docx/listMarkerComputation.ts::computeListMarker":
     "parser",
   "packages/core/src/docx/blockContentParser.ts::p": "parser",
+  "packages/core/src/docx/blockContentParser.ts::countContainedListMarkers":
+    "parser",
   "packages/core/src/docx/listModelNormalization.ts::normalizeBlock":
     "canonical",
   "packages/core/src/prosemirror/listLabels.ts::listLabelAttrsFromRendering":

@@ -467,10 +467,10 @@ type ObserveAdvance = (advance: ListCounterAdvance | null) => void;
 
 /**
  * The blocks a content control, a custom XML wrapper or a table cell holds,
- * each normalized as the story's own blocks are: the parser derives the list
- * rendering of every paragraph it reads, wherever the paragraph stands, so a
- * paragraph an edit numbers inside a container has the rendering the saved
- * file reopens to. The same array when no block changed.
+ * each normalized as the story's own blocks are and from the same counters:
+ * the parser counts every paragraph it reads, wherever the paragraph stands,
+ * so a paragraph an edit numbers inside a container has the rendering the
+ * saved file reopens to. The same array when no block changed.
  */
 const normalizeContainedBlocks = (
   blocks: readonly BlockContent[],
@@ -513,7 +513,8 @@ const normalizeBlock = (
       ? paragraph
       : { ...paragraph, content: [...content] };
   }
-  // A table's cells count their own.
+  // A table's paragraphs continue the story's lists too, in document order:
+  // row by row, cell by cell.
   if (paragraph.type === "table") {
     let rowsChanged = false;
     const rows = paragraph.rows.map((row) => {
@@ -522,8 +523,8 @@ const normalizeBlock = (
         const content = normalizeContainedBlocks(
           cell.content,
           inputs,
-          freshCounters(numbering),
-          () => {},
+          counters,
+          observe,
         );
         if (content === cell.content) return cell;
         cellsChanged = true;
