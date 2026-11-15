@@ -104,12 +104,13 @@ describe("a direct and a tracked paragraph insertion after the last paragraph", 
   });
 
   test("with the direct paragraph formatted unlike the anchor, the orders differ only in the former formatting the tracked paragraph records", () => {
-    // A known limit, kept as a documented rule: the tracked paragraph that takes the former mark
-    // records its property change against the formatting of the paragraph
-    // that held that mark when it applied, the anchor or the direct
-    // paragraph. Restating it in the other order would take the id the
-    // tracked insertion allocated, which the direct insertion does not
-    // carry, so the two orders record different former formatting.
+    // A known limit, kept as a documented rule: the tracked paragraph that
+    // takes the former mark records its property change against the
+    // formatting of the paragraph that held that mark when it applied, the
+    // anchor or the direct paragraph. Restating it in the other order would
+    // take the id the tracked insertion allocated, which the direct
+    // insertion does not carry, so the two orders record different former
+    // formatting.
     const formatted = batchOf("direct", {
       type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
       story: "main",
