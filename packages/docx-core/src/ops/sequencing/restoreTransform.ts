@@ -18,6 +18,7 @@ import type { Document, ParagraphContent } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { structurallyEqual } from "../equality";
+import { idKey } from "../ids";
 import { compareGaps, type Gap, type InlineNode, leafSpans } from "../leaves";
 import {
   DOCUMENT_OP_TYPES,
@@ -26,6 +27,7 @@ import {
   type OpStory,
   type TextPosition,
 } from "../types";
+import { sameStory } from "./address";
 import { BATCH_REJECTION_REASONS, BatchRejection } from "./envelope";
 import { isInlineInsertion, sameParagraph } from "./points";
 
@@ -201,6 +203,14 @@ const reaches = (
   compareGaps(gapOf(from), span.to) < 0 &&
   compareGaps(span.from, gapOf(to)) < 0;
 
+/** Whether two addresses name one paragraph, ids compared as the footprint compares them. */
+const oneParagraph = (
+  left: { story: OpStory; blockId: string },
+  right: { story: OpStory; blockId: string },
+): boolean =>
+  sameStory(left.story, right.story) &&
+  idKey(left.blockId) === idKey(right.blockId);
+
 /** The edits a restoration passes: they edit one paragraph by position. */
 type ParagraphEdit = Extract<
   DocumentOp,
@@ -261,7 +271,7 @@ type Rewrite = {
 
 const rewriteOf = (op: DocumentOp, at: TextPosition): Rewrite | undefined => {
   if (op.type === DOCUMENT_OP_TYPES.REPLACE_INLINE)
-    return sameParagraph(op, at)
+    return oneParagraph(op, at)
       ? {
           story: op.story,
           blockId: op.blockId,
@@ -271,9 +281,9 @@ const rewriteOf = (op: DocumentOp, at: TextPosition): Rewrite | undefined => {
       : undefined;
   if (op.type !== DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE) return undefined;
   const expected = op.expected.anchors.filter((anchor) =>
-    sameParagraph(anchor, at),
+    oneParagraph(anchor, at),
   );
-  const state = op.state.anchors.filter((anchor) => sameParagraph(anchor, at));
+  const state = op.state.anchors.filter((anchor) => oneParagraph(anchor, at));
   const [before] = expected;
   const [after] = state;
   return before === undefined ||
@@ -340,7 +350,7 @@ const withRewrite = (
     paragraph: readonly ParagraphContent[],
   ) =>
     anchors.map((anchor) =>
-      sameParagraph(anchor, rewrite)
+      oneParagraph(anchor, rewrite)
         ? { ...anchor, content: paragraph }
         : anchor,
     );
@@ -387,8 +397,9 @@ export const transformRestorePair = (
   // An edit rebased over a restoration moves past its span.
   if (opEdit !== undefined && overEdit === undefined) return Result.ok([moved]);
   // A restoration rebased over an edit states what the edit leaves.
-  const expected = editedContent(edit, rewrite.blockId, rewrite.expected);
-  const content = editedContent(moved, rewrite.blockId, rewrite.content);
+  const { blockId } = editedParagraph(edit);
+  const expected = editedContent(edit, blockId, rewrite.expected);
+  const content = editedContent(moved, blockId, rewrite.content);
   for (const result of [expected, content])
     if (typeof result === "string")
       return Result.err(

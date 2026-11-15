@@ -530,6 +530,22 @@ const editedAt = (op: DocumentOp) => {
   }
 };
 
+/** Whether a refusal names a restoration and a positional edit. */
+const namesRestorePair = (reason: {
+  opType?: string;
+  overType?: string;
+}): boolean => {
+  const restorations: readonly string[] = new Set([
+    DOCUMENT_OP_TYPES.REPLACE_INLINE,
+    DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+  ]);
+  const named = [reason.opType, reason.overType];
+  return (
+    named.some((type) => type !== undefined && restorations.has(type)) &&
+    named.some((type) => type !== undefined && !restorations.has(type))
+  );
+};
+
 /** A restoration and a positional edit of one of its paragraphs among two op lists. */
 const restorePairs = (
   mine: readonly DocumentOp[],
@@ -722,7 +738,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           type === DOCUMENT_OP_TYPES.JOIN_INLINE,
       );
       const refusing = refusingOps(batch, tail);
-      if (notBySpan(result.reason.message))
+      if (notBySpan(result.reason.message) && namesRestorePair(result.reason))
         outcome.restoreRefusals.push(
           ...restorePairs(
             restoredOps(opsAtRefusal(batch, tail)),
@@ -840,7 +856,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     } else changes = peer.client.receiveReject(event.result);
     if (event.type === "broadcast")
       for (const notice of peer.client.notices.slice(noticed))
-        if (notBySpan(notice.reason.message))
+        if (notBySpan(notice.reason.message) && namesRestorePair(notice.reason))
           outcome.restoreRefusals.push(
             ...restorePairs(
               restoredOps(notice.ops),
