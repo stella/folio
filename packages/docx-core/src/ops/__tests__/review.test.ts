@@ -1745,6 +1745,7 @@ test("tracked paragraph patches and joins keep one pending property review and i
       {
         ...pending,
         info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" },
+        currentFormatting: { styleId: "Heading1" },
       },
     ]);
     expect(survivor?.type === "paragraph" && survivor.formatting).toEqual({
