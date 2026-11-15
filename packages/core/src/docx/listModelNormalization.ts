@@ -12,6 +12,7 @@ import {
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,
   replaceStoryBody,
+  storyBody,
   withBodyContent,
   withParagraphRenderings,
 } from "@stll/docx-core/ops";
@@ -72,8 +73,11 @@ type BlockRecord = {
   input: BlockContent;
   /** Normalizing it returns it unchanged and records no inverse. */
   settled: boolean;
-  /** The snapshot registration normalizing left for the paragraph. */
-  snapshotToken: object | undefined;
+  /**
+   * The snapshot registration normalizing left for each paragraph the block
+   * is or holds, in document order.
+   */
+  snapshotTokens: readonly (object | undefined)[];
   /**
    * What normalizing it changed in the counters: one step per paragraph it
    * holds, in document order, none for a block holding no counted paragraph.
@@ -85,31 +89,60 @@ type BlockRecord = {
 
 const CHECKPOINT_SPACING = 32;
 
-/** The record of `input`, whose kept facts are fixed from now on. */
+/**
+ * The paragraphs `block` is or holds, in document order: a content
+ * control's, a custom XML wrapper's and a table's at any depth.
+ */
+const paragraphsIn = (block: BlockContent): Paragraph[] => {
+  switch (block.type) {
+    case "paragraph":
+      return [block];
+    case "blockSdt":
+    case "blockCustomXml":
+      return block.content.flatMap(paragraphsIn);
+    case "table":
+      return block.rows.flatMap((row) =>
+        row.cells.flatMap((cell) => cell.content.flatMap(paragraphsIn)),
+      );
+    default:
+      return [];
+  }
+};
+
+/** The record of `input`, whose paragraphs' kept facts are fixed from now on. */
 const recordOf = (
   input: BlockContent,
   settled: boolean,
   steps: readonly ListCounterStep[],
   before: ListCounterSnapshot | undefined,
 ): BlockRecord => {
-  if (input.type !== "paragraph")
-    return { input, settled, snapshotToken: undefined, steps, before };
-  sealParagraphFacts(input);
+  const paragraphs = paragraphsIn(input);
+  for (const paragraph of paragraphs) sealParagraphFacts(paragraph);
   return {
     input,
     settled,
-    snapshotToken: paragraphPropertySnapshotToken(input),
+    snapshotTokens: paragraphs.map(paragraphPropertySnapshotToken),
     steps,
     before,
   };
 };
 
-/** Whether normalizing `block` again would leave it, its facts and its registration as they are. */
-const stillSettled = (block: BlockContent, record: BlockRecord): boolean =>
-  record.settled &&
-  block === record.input &&
-  (block.type !== "paragraph" ||
-    paragraphPropertySnapshotToken(block) === record.snapshotToken);
+/**
+ * Whether normalizing `block` again would leave it, its paragraphs' facts
+ * and their registrations as they are.
+ */
+const stillSettled = (block: BlockContent, record: BlockRecord): boolean => {
+  if (!record.settled || block !== record.input) return false;
+  const paragraphs = paragraphsIn(block);
+  return (
+    paragraphs.length === record.snapshotTokens.length &&
+    paragraphs.every(
+      (paragraph, index) =>
+        paragraphPropertySnapshotToken(paragraph) ===
+        record.snapshotTokens[index],
+    )
+  );
+};
 
 const storyKey = (story: OpStory): string => {
   if (story === OP_STORIES.MAIN) return story;
@@ -438,6 +471,42 @@ export class ListNormalizationCache {
     this.normalized.set(key, normalized);
     return replaced;
   }
+
+  /**
+   * Keep each replaced block of `story` as the block the normalized story
+   * holds in its place. A container whose paragraphs normalized is rebuilt
+   * where the document holds it; the record names that block, so the next
+   * normalization reuses it.
+   */
+  held(
+    story: OpStory,
+    blocks: readonly BlockContent[],
+    replaced: readonly (readonly [number, BlockContent])[],
+  ): void {
+    const key = storyKey(story);
+    const records = this.runs.get(key);
+    if (records === undefined) return;
+    let next: BlockRecord[] | undefined;
+    for (const [index, output] of replaced) {
+      const block = blocks[index];
+      const record = records[index];
+      if (
+        block === undefined ||
+        block === output ||
+        record === undefined ||
+        record.input !== output
+      )
+        continue;
+      next ??= [...records];
+      next[index] = recordOf(
+        block,
+        record.settled,
+        record.steps,
+        record.before,
+      );
+    }
+    if (next !== undefined) this.runs.set(key, next);
+  }
 }
 
 type ListNormalizationOptions = {
@@ -466,37 +535,25 @@ type BlockNormalizationInputs = {
 type ObserveAdvance = (advance: ListCounterAdvance | null) => void;
 
 /**
- * Advance the counters through the paragraphs a content control or custom
- * XML wrapper holds, in document order, as the parser counts them: they
- * continue the story's lists, while a table's cells count their own. Their
- * renderings stay as they are; the counters are computed on copies.
+ * The blocks a content control, a custom XML wrapper or a table cell holds,
+ * each normalized as the story's own blocks are and from the same counters:
+ * the parser counts every paragraph it reads, wherever the paragraph stands,
+ * so a paragraph an edit numbers inside a container has the rendering the
+ * saved file reopens to. The same array when no block changed.
  */
-const advanceThroughContainer = (
+const normalizeContainedBlocks = (
   blocks: readonly BlockContent[],
+  inputs: BlockNormalizationInputs,
   counters: ComputeListMarkerOptions,
   observe: ObserveAdvance,
-): void => {
-  for (const block of blocks) {
-    if (block.type === "blockSdt" || block.type === "blockCustomXml") {
-      advanceThroughContainer(block.content, counters, observe);
-      continue;
-    }
-    if (block.type !== "paragraph") continue;
-    const rendering = block.listRendering;
-    observe(
-      computeListMarker(
-        rendering === undefined
-          ? block
-          : cloneParagraphWithPropertySource(block, {
-              listRendering: {
-                ...rendering,
-                marker: rendering.markerTemplate ?? rendering.marker,
-              },
-            }),
-        counters,
-      ),
-    );
-  }
+): readonly BlockContent[] => {
+  let changed = false;
+  const next = blocks.map((block) => {
+    const output = normalizeBlock(block, inputs, counters, observe);
+    if (output !== block) changed = true;
+    return output;
+  });
+  return changed ? next : blocks;
 };
 
 /**
@@ -506,14 +563,47 @@ const advanceThroughContainer = (
  */
 const normalizeBlock = (
   paragraph: BlockContent,
-  { styles, story, recordInverse }: BlockNormalizationInputs,
+  inputs: BlockNormalizationInputs,
   counters: ComputeListMarkerOptions,
   observe: ObserveAdvance,
 ): BlockContent => {
+  const { styles, story, recordInverse } = inputs;
   const { numbering } = counters;
+  // A content control's or a custom XML wrapper's paragraphs continue the
+  // story's lists.
   if (paragraph.type === "blockSdt" || paragraph.type === "blockCustomXml") {
-    advanceThroughContainer(paragraph.content, counters, observe);
-    return paragraph;
+    const content = normalizeContainedBlocks(
+      paragraph.content,
+      inputs,
+      counters,
+      observe,
+    );
+    return content === paragraph.content
+      ? paragraph
+      : { ...paragraph, content: [...content] };
+  }
+  // A table's paragraphs continue the story's lists too, in document order:
+  // row by row, cell by cell.
+  if (paragraph.type === "table") {
+    let rowsChanged = false;
+    const rows = paragraph.rows.map((row) => {
+      let cellsChanged = false;
+      const cells = row.cells.map((cell) => {
+        const content = normalizeContainedBlocks(
+          cell.content,
+          inputs,
+          counters,
+          observe,
+        );
+        if (content === cell.content) return cell;
+        cellsChanged = true;
+        return { ...cell, content: [...content] };
+      });
+      if (!cellsChanged) return row;
+      rowsChanged = true;
+      return { ...row, cells };
+    });
+    return rowsChanged ? { ...paragraph, rows } : paragraph;
   }
   if (paragraph.type !== "paragraph") return paragraph;
   registerParagraphPropertySnapshot({
@@ -689,6 +779,47 @@ const normalizeBlock = (
   return next;
 };
 
+/**
+ * Each paragraph of `block` that normalized to another one, and that one, at
+ * any depth: normalization replaces paragraphs and rebuilds only the
+ * containers that hold them, so the two trees have one shape.
+ */
+const renderedParagraphs = (
+  block: BlockContent,
+  output: BlockContent,
+): (readonly [Paragraph, Paragraph])[] => {
+  if (block === output) return [];
+  if (block.type === "paragraph" && output.type === "paragraph")
+    return [[block, output]];
+  const within = (
+    blocks: readonly BlockContent[],
+    outputs: readonly BlockContent[],
+  ): (readonly [Paragraph, Paragraph])[] =>
+    blocks.length === outputs.length
+      ? blocks.flatMap((child, index) => {
+          const rendered = outputs[index];
+          return rendered === undefined
+            ? []
+            : renderedParagraphs(child, rendered);
+        })
+      : panic("List normalization replaces only paragraphs.");
+  if (block.type === "table" && output.type === "table")
+    return block.rows.flatMap((row, rowIndex) =>
+      row.cells.flatMap((cell, cellIndex) => {
+        const renderedCell = output.rows[rowIndex]?.cells[cellIndex];
+        return renderedCell === undefined
+          ? panic("List normalization replaces only paragraphs.")
+          : within(cell.content, renderedCell.content);
+      }),
+    );
+  if (
+    (block.type === "blockSdt" && output.type === "blockSdt") ||
+    (block.type === "blockCustomXml" && output.type === "blockCustomXml")
+  )
+    return within(block.content, output.content);
+  return panic("List normalization replaces only paragraphs.");
+};
+
 export const normalizeListModelRendering = (
   document: Document,
   { inverse: inverseMode = "record", cache }: ListNormalizationOptions = {},
@@ -749,11 +880,13 @@ export const normalizeListModelRendering = (
     let byPlace = false;
     for (const [index, output] of replaced) {
       const block = body.content[index];
-      if (block?.type !== "paragraph" || output.type !== "paragraph")
+      if (block === undefined)
         return panic("List normalization replaces only paragraphs.");
-      const known = renderings.get(block);
-      if (known !== undefined && known !== output) byPlace = true;
-      renderings.set(block, output);
+      for (const [paragraph, rendered] of renderedParagraphs(block, output)) {
+        const known = renderings.get(paragraph);
+        if (known !== undefined && known !== rendered) byPlace = true;
+        renderings.set(paragraph, rendered);
+      }
     }
     const rendered = byPlace
       ? undefined
@@ -792,7 +925,11 @@ export const normalizeListModelRendering = (
   // Each story's renderings replace its paragraphs in place: a document known
   // to meet the operations contract still does.
   let normalized = document;
-  for (const { story, body } of stories)
-    normalized = withReplaced(normalized, story, body, replacedIn(body, story));
+  for (const { story, body } of stories) {
+    const replaced = replacedIn(body, story);
+    normalized = withReplaced(normalized, story, body, replaced);
+    if (cache !== undefined && replaced.length > 0)
+      cache.held(story, storyBody(normalized, story).content, replaced);
+  }
   return { document: normalized, inverse };
 };
