@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
+import { mainDocumentPartPath } from "@stll/folio-core/docx/mainDocumentPart";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { repackDocx } from "@stll/folio-core/docx/rezip";
 import { serializeDocument } from "@stll/folio-core/docx/serializer/documentSerializer";
@@ -76,16 +77,30 @@ export const sameOpModel = (left: unknown, right: unknown): boolean =>
 export const serializeOpDocument = (document: Document): string =>
   serializeDocument(document);
 
-/** ZIP metadata/compression is transport; compare all uncompressed part bytes. */
-export const serializedOpParts = async (
+/** A saved package's parts, and the main document part the package names. */
+export type SerializedOpPackage = {
+  parts: Map<string, Uint8Array>;
+  documentPart: string;
+};
+
+/**
+ * ZIP metadata/compression is transport; compare all uncompressed part bytes.
+ * Which part is the main document is read from the saved package itself: a
+ * save writes it where the package it saves names it, which need not be where
+ * the source file had it.
+ */
+export const serializedOpPackage = async (
   document: Document,
-): Promise<Map<string, Uint8Array>> => {
+): Promise<SerializedOpPackage> => {
   const saved = await repackDocx(document, {
     updateModifiedDate: false,
     onDiagnostic: ({ type, part }) => panic(`${type}: ${part}`),
   });
   const raw = await unzipDocx(saved, { extractAllXml: true });
-  return new Map(
+  const documentPart =
+    (await mainDocumentPartPath(raw.originalZip)) ??
+    panic("The saved package names no main document part");
+  const parts = new Map(
     await Promise.all(
       raw.originalZip
         .entries()
@@ -93,7 +108,13 @@ export const serializedOpParts = async (
         .map(async ([path, file]) => [path, await file.bytes()] as const),
     ),
   );
+  return { parts, documentPart };
 };
+
+export const serializedOpParts = async (
+  document: Document,
+): Promise<Map<string, Uint8Array>> =>
+  (await serializedOpPackage(document)).parts;
 
 export const seedFromBytes = (bytes: Uint8Array): number => {
   let hash = 2166136261;

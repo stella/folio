@@ -1437,36 +1437,37 @@ describe("convertHeaderFooterPmDocToContent", () => {
   });
 });
 
-test("header/footer comment visibility is view-only for live PM stories", () => {
-  const pmDoc = schema.node("doc", null, [
-    schema.node("paragraph", null, [
-      schema.text("review", [
-        schema.marks["comment"]!.create({ commentId: 7 }),
+// `0` is the first comment id a package or an editing session numbers.
+for (const commentId of [0, 7]) {
+  test(`header/footer comment ${String(commentId)} visibility is view-only for live PM stories`, () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("review", [schema.marks["comment"]!.create({ commentId })]),
       ]),
-    ]),
-  ]);
-  const authored = pmDoc.toJSON();
-  for (const showCommentHighlights of [true, false, true]) {
-    const content = convertHeaderFooterPmDocToContent(pmDoc, 400, metrics, {
-      measureBlocks: (blocks) =>
-        blocks.map(() => ({ kind: "paragraph", lines: [], totalHeight: 12 })),
-      showCommentHighlights,
-    });
-    const block = content?.blocks.at(0);
-    expect(block?.kind).toBe("paragraph");
-    if (block?.kind !== "paragraph") {
-      panic("Expected a paragraph block");
+    ]);
+    const authored = pmDoc.toJSON();
+    for (const showCommentHighlights of [true, false, true]) {
+      const content = convertHeaderFooterPmDocToContent(pmDoc, 400, metrics, {
+        measureBlocks: (blocks) =>
+          blocks.map(() => ({ kind: "paragraph", lines: [], totalHeight: 12 })),
+        showCommentHighlights,
+      });
+      const block = content?.blocks.at(0);
+      expect(block?.kind).toBe("paragraph");
+      if (block?.kind !== "paragraph") {
+        panic("Expected a paragraph block");
+      }
+      expect(block.runs.find((run) => run.kind === "text")).toMatchObject({
+        text: "review",
+      });
+      const run = block.runs.find((candidate) => candidate.kind === "text");
+      expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
+        showCommentHighlights ? [commentId] : undefined,
+      );
+      expect(pmDoc.toJSON()).toEqual(authored);
     }
-    expect(block.runs.find((run) => run.kind === "text")).toMatchObject({
-      text: "review",
-    });
-    const run = block.runs.find((candidate) => candidate.kind === "text");
-    expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
-      showCommentHighlights ? [7] : undefined,
-    );
-    expect(pmDoc.toJSON()).toEqual(authored);
-  }
-});
+  });
+}
 
 test("header/footer review projections match resolved stories and preserve authored sources", () => {
   const doc = schema.node("doc", null, [

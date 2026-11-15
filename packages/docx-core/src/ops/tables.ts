@@ -4,7 +4,6 @@ import { panic, Result } from "better-result";
 import type {
   BlockContent,
   Document,
-  DocumentBody,
   Paragraph,
   Table,
 } from "../model/document";
@@ -41,7 +40,7 @@ import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { stampInfo, WRAP_KINDS } from "./review";
 import { replaceStoryBody } from "./stories";
 import { locateTableRow } from "./tableLocation";
-import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
+import { permitsRestoredCellFinalMark, trackTableRows } from "./tableTracking";
 import {
   type DeleteTableOp,
   DOCUMENT_OP_TYPES,
@@ -104,26 +103,6 @@ const validStructure = (blocks: readonly BlockContent[]): boolean =>
       }
     }
   });
-
-/** Exact inverses may restore cell marks after independently resolved rows. */
-type StructuralCellMarkOptions = {
-  body: DocumentBody;
-  location: ParagraphLocation;
-  op: TableOp;
-};
-const permitsStructuralCellMark = ({
-  body,
-  location,
-  op,
-}: StructuralCellMarkOptions): boolean => {
-  if (permitsCellFinalMark(body, location)) return true;
-  const mark = location.paragraph.pPrMark;
-  return (
-    op.type === DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS &&
-    location.list.some((step) => step.kind === "tableCell") &&
-    (mark?.kind === "ins" || mark?.kind === "del")
-  );
-};
 
 type CommitBlocksOptions = {
   document: Document;
@@ -256,7 +235,7 @@ const commitBlocks = ({
       paragraph.pPrMark !== undefined &&
       beforeById.has(idKey(paragraph.paraId ?? "")) &&
       endsItsContainer(body, location) &&
-      !permitsStructuralCellMark({ body, location, op }) &&
+      !permitsRestoredCellFinalMark({ body, location, opType: op.type }) &&
       !structurallyEqual(
         paragraph.pPrMark,
         afterById.get(idKey(paragraph.paraId ?? ""))?.pPrMark,
@@ -373,7 +352,11 @@ const commitBlocks = ({
     if (
       paragraph.pPrMark !== undefined &&
       endsItsContainer(nextBody, location) &&
-      !permitsStructuralCellMark({ body: nextBody, location, op }) &&
+      !permitsRestoredCellFinalMark({
+        body: nextBody,
+        location,
+        opType: op.type,
+      }) &&
       !structurallyEqual(
         paragraph.pPrMark,
         previousParagraphs.get(idKey(paragraph.paraId ?? ""))?.pPrMark,
@@ -612,16 +595,36 @@ export const applyTableOp = (
               "Tracked table deletion does not support captured markup or table property revisions.",
           });
         }
+        // A row already suggested for deletion keeps its own suggestion; the
+        // table's deletion marks every other row.
+        const pending = location.table.rows.filter(
+          (row) => row.structuralChange?.type !== "tableRowDeletion",
+        );
+        if (pending.length === 0)
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+            message:
+              "Every row of the table is already suggested for deletion.",
+          });
         const tracked = trackTableRows({
           document,
           op,
-          rows: location.table.rows,
+          rows: pending,
           revision: op.revision,
           newIds: op.newIds,
           kind: WRAP_KINDS.DELETION,
         });
         if (tracked.isErr()) return Result.err(tracked.error);
-        blocks[location.index] = { ...location.table, rows: tracked.value };
+        const marked = [...tracked.value];
+        blocks[location.index] = {
+          ...location.table,
+          rows: location.table.rows.map((row) =>
+            row.structuralChange?.type === "tableRowDeletion"
+              ? row
+              : (marked.shift() ?? panic("A tracked deletion lost its row.")),
+          ),
+        };
       }
       return commitBlocks({ document, op, anchor, blocks });
     }

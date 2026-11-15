@@ -90,12 +90,6 @@ export type PagedEditorRef = {
    * The overlay is cleared automatically on the next doc-changing transaction.
    */
   setPassageHighlight: (range: { from: number; to: number } | null) => void;
-  /**
-   * Resolve the page number (1-indexed) that contains the given PM position, or
-   * null if no layout is available yet. Works for unrendered pages too via the
-   * page shell map.
-   */
-  getPageNumberForPmPos: (pmPos: number) => number | null;
   /** Painted geometry for one AI-snapshot block. */
   getBlockRect: (blockId: string) => BlockRect | null;
   /** Painted geometry for many AI-snapshot blocks in one layout read. */

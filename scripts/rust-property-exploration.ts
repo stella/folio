@@ -15,7 +15,10 @@
  *   bun scripts/rust-property-exploration.ts --package stella-docx-kernel \
  *     --crate crates/docx-kernel --records test-results/fuzz-exploration
  *
- * `--seed <u32>` replaces the commit seed.
+ * `--seed <u32>` replaces the commit seed. `--base <commit>` names the commit
+ * the change under CI is compared with: a finding in a property file the
+ * change adds or changes (or whose `.proptest-regressions` it changes) fails
+ * the run, as test/property-exploration.ts does for TypeScript properties.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -30,6 +33,7 @@ import {
   shellQuote,
   writeFailureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
+import { changedTestPaths } from "./ci-test-shards";
 
 const PROPERTY = /\bproptest!/u;
 
@@ -190,10 +194,63 @@ export const classifyRun = (
   return { findings, blocking };
 };
 
+/** A source's module path: `a::b` for src/a/b.rs or src/a/b/mod.rs, "" for src/lib.rs. */
+export const sourceModule = (file: string): string | null => {
+  const match = /^src\/(.+)\.rs$/u.exec(file);
+  if (match === null) return null;
+  const parts = (match[1] as string).split("/");
+  if (parts.at(-1) === "mod" || (parts.length === 1 && parts[0] === "lib"))
+    parts.pop();
+  return parts.join("::");
+};
+
+/**
+ * The crate source a finding's test is written in: its integration file, or
+ * the source whose module path is the longest prefix of the test's name.
+ */
+export const findingSourceFile = (
+  finding: Pick<ExplorationFinding, "source" | "test">,
+  sources: readonly string[],
+): string | null => {
+  if (finding.source.startsWith("tests/")) return finding.source;
+  let best: { file: string; depth: number } | null = null;
+  for (const file of sources) {
+    const module = sourceModule(file);
+    if (module === null) continue;
+    if (module !== "" && !finding.test.startsWith(`${module}::`)) continue;
+    const depth = module === "" ? 0 : module.split("::").length;
+    if (best === null || depth > best.depth) best = { file, depth };
+  }
+  return best?.file ?? null;
+};
+
+/**
+ * Whether a finding is in a property file the change adds or changes.
+ * `changed` and `sources` are crate-relative; a changed regressions file
+ * counts as a change to the source it pins.
+ */
+export const ownedFinding = (
+  finding: Pick<ExplorationFinding, "source" | "test">,
+  changed: readonly string[],
+  sources: readonly string[],
+): boolean => {
+  const owned = new Set(
+    changed.map((file) => file.replace(/\.proptest-regressions$/u, ".rs")),
+  );
+  const file = findingSourceFile(finding, sources);
+  return file !== null && owned.has(file);
+};
+
 /** The FOLIO_FAILURE marker of a finding. */
 export const findingMarker = (
   finding: ExplorationFinding,
-  options: { package: string; crate: string; seed: number },
+  options: {
+    package: string;
+    crate: string;
+    seed: number;
+    /** False for a finding that fails the run, which files as a regression. */
+    exploration?: boolean;
+  },
 ): FailureMarker => ({
   ...failureMarker({
     test: `${options.crate}/${finding.source}::${finding.test}`,
@@ -201,7 +258,7 @@ export const findingMarker = (
     repro: `PROPTEST_RNG_SEED=${String(options.seed)} cargo test -p ${options.package} ${finding.target.join(" ")} -- ${shellQuote(finding.test)} --exact`,
     failure: new Error(finding.reason),
   }),
-  exploration: true,
+  ...(options.exploration === false ? {} : { exploration: true as const }),
 });
 
 type Options = {
@@ -209,6 +266,7 @@ type Options = {
   crate: string;
   records: string | null;
   seed: number | null;
+  base: string | null;
 };
 
 const parseArgs = (argv: readonly string[]): Options => {
@@ -217,6 +275,7 @@ const parseArgs = (argv: readonly string[]): Options => {
     crate: "",
     records: null,
     seed: null,
+    base: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -224,7 +283,11 @@ const parseArgs = (argv: readonly string[]): Options => {
     if (arg === "--package") options.package = value();
     else if (arg === "--crate") options.crate = value();
     else if (arg === "--records") options.records = value() || null;
-    else if (arg === "--seed") {
+    else if (arg === "--base") {
+      options.base = value();
+      if (options.base === "")
+        throw new Error("--base needs the commit the change is compared with");
+    } else if (arg === "--seed") {
       const seed = Number(value());
       if (!Number.isSafeInteger(seed) || seed < 0)
         throw new Error("--seed must be a non-negative integer");
@@ -257,7 +320,8 @@ const main = async (): Promise<void> => {
     throw new Error(
       "No commit to derive the exploration seed from (give --seed)",
     );
-  const targets = propertyTargets(crateFiles(options.crate));
+  const files = crateFiles(options.crate);
+  const targets = propertyTargets(files);
   if (targets.length === 0) {
     console.log(`No proptest properties in ${options.crate}.`);
     return;
@@ -294,7 +358,27 @@ const main = async (): Promise<void> => {
     parseCargoTestOutput(output),
     exitCode,
   );
+  const prefix = `${options.crate.replace(/\/+$/u, "")}/`;
+  const changed =
+    options.base === null
+      ? []
+      : changedTestPaths(options.base)
+          .filter((file) => file.startsWith(prefix))
+          .map((file) => file.slice(prefix.length));
+  const sources = files.map(({ path: file }) => file);
   for (const finding of findings) {
+    if (ownedFinding(finding, changed, sources)) {
+      const marker = findingMarker(finding, {
+        ...options,
+        seed,
+        exploration: false,
+      });
+      logFailureMarker(marker);
+      blocking.push(
+        `${options.crate}/${finding.source}: ${finding.test} failed on a generated case, and this change adds or changes its property file. Replay: ${marker.repro}`,
+      );
+      continue;
+    }
     const marker = findingMarker(finding, { ...options, seed });
     logFailureMarker(marker);
     if (options.records !== null)

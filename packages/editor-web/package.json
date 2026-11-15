@@ -23,7 +23,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
     "@stll/docx-core": "workspace:*",
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "0.28.2"
