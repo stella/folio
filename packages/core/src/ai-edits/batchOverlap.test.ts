@@ -42,7 +42,6 @@ import { fromMarkdown } from "../markdown";
 import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
 import { resolveStateStory } from "../prosemirror/markupViewProjection";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { ParagraphFormatting } from "../types/document";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
@@ -543,9 +542,7 @@ const batchAgainstOneAtATime = async ({
       const mark: unknown =
         anchor && batch.state.doc.nodeAt(anchor.from)?.attrs["pPrMark"];
       expect(mark).toMatchObject({ kind: "del" });
-      expect(skipped.canonicalRefusal).toEqual({
-        gap: CANONICAL_GAP.publicPendingParagraphMarkProperties,
-      });
+      expect(skipped.canonicalRefusal).toBeUndefined();
       expect(
         result.issues.find((issue) => issue.operationId === id),
       ).toMatchObject({
