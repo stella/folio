@@ -109,7 +109,11 @@ type Recorder = {
   lastCompleteAt: number;
   layoutCompletes: number;
   measuredBlocks: number;
-  selectiveAttempts: { written: boolean; structural: boolean }[];
+  selectiveAttempts: {
+    written: boolean;
+    structural: boolean;
+    declined: string | null;
+  }[];
   frames: number[];
 };
 
@@ -142,8 +146,12 @@ const installRecorder = () => {
     onMeasureBlock: () => {
       recorder.measuredBlocks += 1;
     },
-    onSelectiveSaveAttempt: ({ written, structural }) => {
-      recorder.selectiveAttempts.push({ written, structural });
+    onSelectiveSaveAttempt: ({ written, structural, decline }) => {
+      recorder.selectiveAttempts.push({
+        written,
+        structural,
+        declined: decline?.reason ?? null,
+      });
     },
   };
   // Keydown to the end of the first task after the next frame: the edit and
@@ -345,6 +353,7 @@ type SaveSample = {
     | "selective text patch"
     | "structural splice"
     | "full repack: selective declined"
+    | `full repack: selective declined (${string})`
     | "full repack: selective not tried";
   bytes: number | null;
 };
@@ -367,7 +376,9 @@ const saveOnce = (page: Page, selective: boolean) =>
         attempt === undefined
           ? "full repack: selective not tried"
           : !attempt.written
-            ? "full repack: selective declined"
+            ? attempt.declined === null
+              ? "full repack: selective declined"
+              : `full repack: selective declined (${attempt.declined})`
             : attempt.structural
               ? "structural splice"
               : "selective text patch",

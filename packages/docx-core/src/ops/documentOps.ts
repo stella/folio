@@ -33,7 +33,6 @@ export { blockControlHolding } from "./contentControls";
 export { paragraphMarkOutcome } from "./blockDeletion";
 export {
   type BoundaryOccurrence,
-  paragraphRemains,
   planWellFormedRanges,
   type WellFormedRangePlan,
 } from "./rangeBoundaries";

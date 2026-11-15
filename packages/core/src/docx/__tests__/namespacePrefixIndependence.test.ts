@@ -301,12 +301,14 @@ describe("string-level XML patchers are prefix independent", () => {
           buildPatchedDocumentXml(canonicalDocXml, serialized, changed),
           buildPatchedDocumentXml(variantDocXml, serialized, changed),
         );
-        const structural = (originalXml: string) =>
-          buildStructuralDocumentPatch({
+        const structural = (originalXml: string) => {
+          const result = buildStructuralDocumentPatch({
             originalXml,
             serializedXml: serialized,
             changedIds: changed,
           });
+          return result.type === "patched" ? result.xml : null;
+        };
         sameOrRefused(
           "structuralSplice",
           variant,

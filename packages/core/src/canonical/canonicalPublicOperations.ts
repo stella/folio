@@ -2581,17 +2581,31 @@ export class CanonicalPublicOperations {
       fieldResults: "text",
       noteReferences,
     });
+    // A replacement that names a style the paragraph does not have restyles
+    // it, as the default engine does, even when its words stay the same.
+    const restyles =
+      operation.type === "replaceBlock" &&
+      operation.styleId !== undefined &&
+      operation.styleId !== (paragraph.source.formatting?.styleId ?? null);
     // A paragraph whose break is pending removal takes the edits the default
     // engine takes there, and refuses what it refuses, for the same reason
-    // (`pendingMarkEditRefusal`). A block beside it is placed by the join it
-    // is part of (`besidePendingJoin`).
-    const pendingRefusal = pendingMarkEditRefusal({
-      edit: pendingMarkEditOf(operation.type),
-      doc: state.doc,
-      paragraphPos: paragraph.start - 1,
-      paragraph: paragraph.node,
-      cleanText: clean.text,
-    });
+    // (`pendingMarkEditRefusal`): a restyling replacement edits the
+    // paragraph's properties as well, after its words. A block beside it is
+    // placed by the join it is part of (`besidePendingJoin`).
+    const pendingRefusal = [
+      pendingMarkEditOf(operation.type),
+      ...(restyles ? (["paragraphProperties"] as const) : []),
+    ]
+      .map((edit) =>
+        pendingMarkEditRefusal({
+          edit,
+          doc: state.doc,
+          paragraphPos: paragraph.start - 1,
+          paragraph: paragraph.node,
+          cleanText: clean.text,
+        }),
+      )
+      .find((refused) => refused !== undefined);
     if (pendingRefusal !== undefined)
       return Result.err(
         new CanonicalPublicOperationResolutionError({
@@ -2845,12 +2859,10 @@ export class CanonicalPublicOperations {
         from: range.from,
         to: range.to,
       });
-    // A replacement that names a style the paragraph does not have restyles
-    // it, as the default engine does, even when its words stay the same.
     const restyle =
+      restyles &&
       operation.type === "replaceBlock" &&
-      operation.styleId !== undefined &&
-      operation.styleId !== (paragraph.source.formatting?.styleId ?? null)
+      operation.styleId !== undefined
         ? statedPropertiesIntents({
             story,
             blockId: paragraph.blockId,

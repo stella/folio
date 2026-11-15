@@ -1648,6 +1648,30 @@ type PublishCanonicalProjectionOptions = {
   session: CanonicalSession;
 };
 
+/** A node's shape without its text, for a refusal that names a change. */
+const nodeShapeOf = (node: PMNode): string =>
+  JSON.stringify({
+    type: node.type.name,
+    attrs: node.attrs,
+    children: node.content.content.map((child) => ({
+      type: child.type.name,
+      marks: child.marks.map((mark) => mark.toJSON()),
+    })),
+  });
+
+/**
+ * Where an appended transaction moved the published document off the
+ * projection: the innermost node holding the first difference, by its type,
+ * attributes and children's marks, so the refusal carries no document text.
+ */
+const projectionChangeOf = (projected: PMNode, published: PMNode): string => {
+  const at = projected.content.findDiffStart(published.content);
+  if (at === null) return "a plugin appended a document change";
+  const expected = projected.resolve(Math.min(at, projected.content.size));
+  const actual = published.resolve(Math.min(at, published.content.size));
+  return `a plugin changed the ${expected.parent.type.name} in body block ${expected.index(0)} from ${nodeShapeOf(expected.parent)} to ${nodeShapeOf(actual.parent)}`;
+};
+
 /** The model publishes only after PM and every plugin accept its exact projection. */
 export const publishCanonicalProjection = ({
   state,
@@ -1675,8 +1699,11 @@ export const publishCanonicalProjection = ({
   });
   if (applied.isErr()) return applied;
   const staged = applied.value;
+  if (!staged.transactions.includes(commit.transaction))
+    return refuse(
+      "A plugin refused or changed the canonical projection: a plugin filtered the projection transaction.",
+    );
   if (
-    !staged.transactions.includes(commit.transaction) ||
     !staged.state.doc.eq(commit.projection.doc) ||
     staged.transactions.some(
       (transaction) =>
@@ -1684,7 +1711,9 @@ export const publishCanonicalProjection = ({
         !isCanonicalProjectionTransaction(transaction, session),
     )
   )
-    return refuse("A plugin refused or changed the canonical projection.");
+    return refuse(
+      `A plugin refused or changed the canonical projection: ${projectionChangeOf(commit.projection.doc, staged.state.doc)}.`,
+    );
   const published = commit.publish();
   if (published.isErr()) return published;
   return Result.ok(staged);
@@ -3826,5 +3855,40 @@ export const deletionRange = (
   );
   if (from === undefined || to === undefined)
     panic("Canonical deletion lost a grapheme boundary.");
+  return Result.ok({ from, to });
+};
+
+/**
+ * The deletion a browser measured (by word or by line) as the visible
+ * characters its range covers whole, in the caret's paragraph: from the first
+ * such character's start to the last one's end. Zero-width anchors at the
+ * range's edges stay, as they do beside a plain character deletion; an inline
+ * atom only partly covered stays; `null` when the range covers no visible
+ * character.
+ */
+export const measuredDeletionRange = (
+  state: EditorState,
+  measured: { from: number; to: number },
+): Result<{ from: number; to: number } | null, CanonicalSessionError> => {
+  const context = visibleDeletionContext(state);
+  if (context.isErr()) return context;
+  const { physicalStarts, physicalEnds } = context.value;
+  let from: number | undefined;
+  let to: number | undefined;
+  for (const [unit, start] of physicalStarts.entries()) {
+    const end = physicalEnds.at(unit);
+    if (end === undefined)
+      panic("Canonical deletion lost a visible character's end.");
+    if (start < measured.from || end > measured.to) continue;
+    from ??= start;
+    to = end;
+  }
+  if (from === undefined || to === undefined) return Result.ok(null);
+  let noteMarkers = 0;
+  state.doc.nodesBetween(from, to, (node) => {
+    if (node.type.name === "noteMarker") noteMarkers += 1;
+  });
+  if (noteMarkers > 0)
+    return refuse("Automatic note marks cannot be deleted as characters.");
   return Result.ok({ from, to });
 };
