@@ -57,9 +57,9 @@ import {
   childNodes,
   fieldResultOf,
   type InlineNode,
-  leafSpans,
   mergeAlike,
   mergeLists,
+  nestedRecords,
   ownRunPropertyChanges,
   rebuildNode,
   sameOwnFields,
@@ -178,6 +178,31 @@ type NoteReference = {
   added: boolean;
 };
 
+type NoteReferenceSpan = {
+  node: Extract<InlineNode, { type: "footnoteRef" | "endnoteRef" }>;
+  ancestors: readonly InlineNode[];
+};
+
+/**
+ * Every footnote and endnote reference in `nodes`, with the records holding
+ * it, outermost first. A field is one unit of text, but its result is
+ * content a reader sees and can hold a reference, so the walk enters it
+ * ({@link nestedRecords}), nested fields included. A field's instruction
+ * is not content and holds none.
+ */
+const noteReferenceSpans = (
+  nodes: readonly InlineNode[],
+  ancestors: readonly InlineNode[] = [],
+): NoteReferenceSpan[] =>
+  nodes.flatMap((node): NoteReferenceSpan[] => {
+    if (node.type === "footnoteRef" || node.type === "endnoteRef")
+      return [{ node, ancestors }];
+    const nested = nestedRecords(node);
+    return nested === undefined
+      ? []
+      : noteReferenceSpans(nested, [...ancestors, node]);
+  });
+
 /** Note bodies whose selected reference revision is removed by this decision. */
 const removedNoteReferences = (
   document: Document,
@@ -186,8 +211,7 @@ const removedNoteReferences = (
 ): NoteReference[] => {
   const references = new Map<string, NoteReference>();
   for (const { paragraph } of storyParagraphs(storyBody(document, op.story))) {
-    for (const { node, ancestors } of leafSpans(paragraph.content)) {
-      if (node.type !== "footnoteRef" && node.type !== "endnoteRef") continue;
+    for (const { node, ancestors } of noteReferenceSpans(paragraph.content)) {
       const revision = ancestors.find(
         (ancestor) =>
           isTrackedWrapper(ancestor) &&
@@ -212,9 +236,8 @@ const hasNoteReference = (
 ): boolean =>
   documentStories(document).some((story) =>
     storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
-      leafSpans(paragraph.content).some(
+      noteReferenceSpans(paragraph.content).some(
         ({ node }) =>
-          (node.type === "footnoteRef" || node.type === "endnoteRef") &&
           node.type ===
             (reference.kind === "footnote" ? "footnoteRef" : "endnoteRef") &&
           node.id === reference.id,
