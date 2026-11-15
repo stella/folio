@@ -133,11 +133,16 @@ const batchOf = (opId: string, op: DocumentOp): DocumentBatch => ({
 });
 
 /** `first` sequenced, then `second` rebased over it, or the step refused. */
+/** The effect a test-only break records nothing in. */
+type Forgotten =
+  | typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS
+  | typeof DOCUMENT_OP_TYPES.DELETE_RANGE;
+
 const inOrder = (
   base: Document,
   first: DocumentBatch,
   second: DocumentBatch,
-  forget: boolean,
+  forget: Forgotten | undefined,
 ): { document: Document } | { refused: string } => {
   const applied = applyBatch(base, first.ops);
   if (applied.isErr())
@@ -145,14 +150,10 @@ const inOrder = (
   const sequenced: SequencedBatch = {
     ...first,
     revision: 1,
-    // The test-only break: a format that records no cut records.
-    effects: forget
-      ? applied.value.effects.map((effect) =>
-          effect.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS
-            ? { type: DOCUMENT_OP_TYPES.SET_RUN_PROPS }
-            : effect,
-        )
-      : applied.value.effects,
+    // The test-only breaks: an effect that records less than it does.
+    effects: applied.value.effects.map((effect) =>
+      effect.type === forget ? { type: forget } : effect,
+    ),
   };
   const rebased = transformBatch(second, [sequenced]);
   if (rebased.isErr())
@@ -250,6 +251,20 @@ const EXAMPLES: [Scenario][] = [
       deleteTo: { offset: 5, zeroWidthBefore: 0 },
     },
   ],
+  // A format and a deletion over a note's own mark, which the deletion keeps.
+  [
+    {
+      content: [
+        { type: "text", text: "fgh" },
+        LEAVES.noteMarker,
+        { type: "text", text: "ab" },
+      ],
+      deleteFrom: { offset: 0, zeroWidthBefore: 0 },
+      formatFrom: { offset: 0, zeroWidthBefore: 0 },
+      formatTo: { offset: 5, zeroWidthBefore: 0 },
+      deleteTo: { offset: 5, zeroWidthBefore: 0 },
+    },
+  ],
   // A format and a deletion of all the text, a note's mark right after it.
   [
     {
@@ -262,7 +277,7 @@ const EXAMPLES: [Scenario][] = [
   ],
 ];
 
-const rejoined = (forget = false) =>
+const rejoined = (forget?: Forgotten) =>
   fc.property(
     scenario,
     ({ content, deleteFrom, formatFrom, formatTo, deleteTo }) => {
@@ -330,7 +345,24 @@ describe("a direct format inside a concurrent direct deletion", () => {
     "a format that records no cut records is caught",
     () => {
       const result = fc.check(
-        rejoined(true),
+        rejoined(DOCUMENT_OP_TYPES.SET_RUN_PROPS),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          numRuns: 1,
+          examples: EXAMPLES,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
+    "a deletion that records no kept note mark is caught",
+    () => {
+      const result = fc.check(
+        rejoined(DOCUMENT_OP_TYPES.DELETE_RANGE),
         // The break is a counterexample on purpose: report nothing.
         propertyConfig({
           numRuns: 1,

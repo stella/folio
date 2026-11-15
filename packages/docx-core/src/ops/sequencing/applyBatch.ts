@@ -4,10 +4,11 @@ import type { Document } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "../ids";
-import { type Gap, leafSpans, spanningRecords } from "../leaves";
+import { compareGaps, type Gap, leafSpans, spanningRecords } from "../leaves";
 import { paragraphLength } from "../offsets";
 import type { DocumentOpRefusal } from "../refusal";
 import {
+  type DeleteRangeOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type InsertContentOp,
@@ -112,6 +113,44 @@ const cutRecords = (
   });
 };
 
+/**
+ * Whether a direct deletion within one note paragraph holds that note's own
+ * reference mark, which the deletion keeps.
+ */
+const keptMark = (document: Document, op: DeleteRangeOp): boolean => {
+  const { story } = op.from;
+  if (
+    op.revision !== undefined ||
+    story === "main" ||
+    (story.kind !== "footnote" && story.kind !== "endnote") ||
+    idKey(op.from.blockId) !== idKey(op.to.blockId)
+  )
+    return false;
+  const paragraph = storyParagraphs(storyBody(document, story)).find(
+    ({ paragraph: candidate }) =>
+      candidate.paraId !== undefined &&
+      idKey(candidate.paraId) === idKey(op.from.blockId),
+  )?.paragraph;
+  if (paragraph === undefined) return false;
+  const [from, to] = [op.from, op.to].map(
+    ({ offset, zeroWidthBefore }): Gap => ({
+      offset,
+      zeroWidthBefore: zeroWidthBefore ?? 0,
+    }),
+  );
+  return (
+    from !== undefined &&
+    to !== undefined &&
+    leafSpans(paragraph.content).some(
+      ({ node, before, after }) =>
+        node.type === "noteMarker" &&
+        node.kind === story.kind &&
+        compareGaps(from, before) <= 0 &&
+        compareGaps(after, to) <= 0,
+    )
+  );
+};
+
 /** Capture position facts before each operation, including within an atomic batch. */
 export const applyBatch = (
   document: Document,
@@ -158,6 +197,11 @@ export const applyBatch = (
       effect = {
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
         cutIdentified: cutIdentified(current, applied.value.document, op),
+      };
+    } else if (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE) {
+      effect = {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        ...(keptMark(current, op) ? { keptMark: true } : {}),
       };
     } else if (op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
       const cut = cutRecords(current, applied.value.document, op);

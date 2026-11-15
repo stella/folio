@@ -102,6 +102,14 @@ export type SequencedOpEffect =
       cutIdentified: boolean;
     }
   | {
+      type: "deleteRange";
+      /**
+       * A direct deletion whose range held its note's own reference mark,
+       * which it keeps: points it closes up to its start land after the mark.
+       */
+      keptMark?: true;
+    }
+  | {
       type: "setRunProps";
       /**
        * The records a direct format cut at both of its ends, outermost
@@ -264,7 +272,7 @@ export const SEQUENCED_EFFECT_TYPES: Readonly<
   Record<DocumentOpType, SequencedOpEffect["type"]>
 > = Object.freeze({
   insertText: NO_SEQUENCED_EFFECT,
-  deleteRange: NO_SEQUENCED_EFFECT,
+  deleteRange: "deleteRange",
   setRunProps: "setRunProps",
   setParagraphProps: NO_SEQUENCED_EFFECT,
   insertBlocks: NO_SEQUENCED_EFFECT,
@@ -894,6 +902,11 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
             return object({
               type: literal("insertContent"),
               cutIdentified: boolean,
+            })(effect);
+          case "deleteRange":
+            return object({
+              type: literal("deleteRange"),
+              keptMark: optional(literal(true)),
             })(effect);
           case "setRunProps":
             return object({
