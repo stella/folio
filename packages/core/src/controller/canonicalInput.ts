@@ -7,6 +7,7 @@ import type { EditorView } from "prosemirror-view";
 import {
   deletionRange,
   isCanonicalJoinBoundary,
+  measuredDeletionRange,
 } from "../canonical/canonicalSession";
 import { textCaretOf } from "../prosemirror/nativeSelection";
 import {
@@ -450,21 +451,6 @@ export const createCanonicalInputBoundary = (
         return true;
       }
       const selection = view.state.selection;
-      // A word or line deletion from a caret inside text is the browser's to
-      // measure: its beforeinput names the range, which the session deletes.
-      // Over a selection, or at a paragraph edge, it deletes as the plain key
-      // does.
-      if (
-        (modifier || event.altKey) &&
-        selection.empty &&
-        !isCanonicalJoinBoundary(
-          view.state,
-          event.key === "Backspace" ? "backward" : "forward",
-        )
-      ) {
-        closeGroup();
-        return false;
-      }
       event.preventDefault();
       // Every cell of a table selected: the key deletes the table, as the
       // editor's own table keymap does.
@@ -513,10 +499,33 @@ export const createCanonicalInputBoundary = (
         // Mark native IME keys handled without preventing their browser default;
         // they must not fall through to PM or extension keyboard shortcuts.
         if (event.isComposing || event.keyCode === 229) return true;
-        if (!composition.active || event.key !== "Escape") return false;
-        event.preventDefault();
-        composition.cancel(view);
-        return true;
+        if (composition.active) {
+          if (event.key !== "Escape") return false;
+          event.preventDefault();
+          composition.cancel(view);
+          return true;
+        }
+        // A word or line deletion from a caret inside text is the browser's
+        // to measure: its beforeinput names the range, which the session
+        // deletes. It is taken here, before ProseMirror's own key handling,
+        // which would delete an inline node beside the caret natively. Over
+        // a selection, or at a paragraph edge, the modified key deletes or
+        // joins as the plain key does.
+        if (
+          (event.key === "Backspace" || event.key === "Delete") &&
+          (event.ctrlKey || event.metaKey || event.altKey) &&
+          !view.composing &&
+          view.state.selection.empty &&
+          !isCanonicalJoinBoundary(
+            view.state,
+            event.key === "Backspace" ? "backward" : "forward",
+          )
+        ) {
+          beginGesture();
+          closeGroup();
+          return true;
+        }
+        return false;
       },
       compositionstart: (view: EditorView) => {
         beginGesture();
@@ -729,23 +738,33 @@ export const createCanonicalInputBoundary = (
           return false;
         }
         if (WORD_AND_LINE_DELETIONS.has(event.inputType)) {
-          const range = browserTargetRange(view, event);
-          if (range === undefined)
+          const measured = browserTargetRange(view, event);
+          if (measured === undefined)
             return refuseEvent(
               event,
               "The browser named no range for this deletion.",
             );
-          event.preventDefault();
+          const range = measuredDeletionRange(view.state, measured);
+          if (range.isErr()) return refuseEvent(event, range.error.message);
           closeGroup();
-          if (range.from === range.to) return true;
-          options.replace({
-            ...range,
+          if (range.value === null) {
+            event.preventDefault();
+            return true;
+          }
+          const input = {
+            ...range.value,
             text: "",
             semantic: event.inputType.endsWith("Backward")
-              ? "deleteBackward"
-              : "deleteForward",
-          });
-          return true;
+              ? ("deleteBackward" as const)
+              : ("deleteForward" as const),
+          };
+          if (event.cancelable) {
+            event.preventDefault();
+            options.replace(input);
+            return true;
+          }
+          proposal = { type: "replacement", state: view.state, input };
+          return false;
         }
         if (
           event.inputType === "historyUndo" ||

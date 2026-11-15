@@ -44,6 +44,46 @@ type CanonicalReplacement = Parameters<
 
 const views: EditorView[] = [];
 
+/**
+ * Every deleting input type of the Input Events specification, and what the
+ * session does with it outside a composition: it deletes, or it refuses.
+ * None may reach the browser unhandled.
+ */
+const DELETING_INPUT_OUTCOMES = {
+  deleteContentBackward: "handled",
+  deleteContentForward: "handled",
+  deleteWordBackward: "handled",
+  deleteWordForward: "handled",
+  deleteSoftLineBackward: "handled",
+  deleteSoftLineForward: "handled",
+  deleteHardLineBackward: "handled",
+  deleteHardLineForward: "handled",
+  deleteEntireSoftLine: "handled",
+  deleteContent: "refused",
+  deleteByCut: "refused",
+  deleteByDrag: "refused",
+  deleteCompositionText: "refused",
+  deleteByComposition: "refused",
+} as const satisfies Record<string, "handled" | "refused">;
+
+/** A beforeinput whose browser target range covers the paragraph's text from `start` to `end`. */
+const measuredDeletionEvent = (
+  view: EditorView,
+  inputType: string,
+  cancelable: boolean,
+  start: number,
+  end: number,
+) => {
+  const text = view.dom.querySelector("p")?.firstChild;
+  if (!text) throw new Error("No text node");
+  const range = document.createRange();
+  range.setStart(text, start);
+  range.setEnd(text, end);
+  const event = new InputEvent("beforeinput", { inputType, cancelable });
+  Object.defineProperty(event, "getTargetRanges", { value: () => [range] });
+  return event;
+};
+
 const createRig = (from = 2, to = from) => {
   const inputs: CanonicalReplacement[] = [];
   const compositionTransitions: string[] = [];
@@ -366,8 +406,6 @@ describe("canonical input boundary", () => {
       { key: "Enter" },
       { key: "Enter", ctrlKey: true },
       { key: "Enter", metaKey: true },
-      { key: "Backspace", ctrlKey: true },
-      { key: "Delete", altKey: true },
     ];
     for (const [index, gesture] of gestures.entries()) {
       const event = new KeyboardEvent("keydown", {
@@ -481,36 +519,106 @@ describe("canonical input boundary", () => {
     "%s deletes the range the browser names",
     (inputType, semantic) => {
       const { boundary, view, inputs, refusals } = createRig(2);
-      // A modified key at a caret inside text is the browser's to measure.
-      expect(
-        boundary.handleKeyDown(
-          view,
-          new KeyboardEvent("keydown", { key: "Backspace", ctrlKey: true }),
-        ),
-      ).toBe(false);
-      const text = view.dom.querySelector("p")?.firstChild;
-      if (!text) throw new Error("No text node");
-      const range = document.createRange();
-      range.setStart(text, 0);
-      range.setEnd(text, 3);
-      const event = new InputEvent("beforeinput", {
-        inputType,
-        cancelable: true,
-      });
-      Object.defineProperty(event, "getTargetRanges", {
-        value: () => [range],
-      });
+      const event = measuredDeletionEvent(view, inputType, true, 0, 3);
       expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
       expect(event.defaultPrevented).toBe(true);
       expect(refusals).toEqual([]);
-      expect(inputs).toEqual([
-        {
-          from: view.posAtDOM(text, 0),
-          to: view.posAtDOM(text, 3),
-          text: "",
-          semantic,
-        },
-      ]);
+      expect(inputs).toEqual([{ from: 1, to: 4, text: "", semantic }]);
+    },
+  );
+
+  test.each([
+    { key: "Backspace", ctrlKey: true },
+    { key: "Delete", ctrlKey: true },
+    { key: "Backspace", altKey: true },
+    { key: "Delete", altKey: true },
+    { key: "Backspace", metaKey: true },
+    { key: "Delete", metaKey: true },
+  ])(
+    "a modified $key at a caret inside text is left to the browser before any key handling",
+    (gesture) => {
+      const { boundary, view, inputs, refusals, groupBoundaries } =
+        createRig(2);
+      const before = view.state;
+      const event = new KeyboardEvent("keydown", {
+        ...gesture,
+        cancelable: true,
+      });
+      // Taken before ProseMirror's own key handling, which would delete an
+      // inline node beside the caret natively, without preventing the
+      // browser's beforeinput that measures the deletion.
+      expect(boundary.handleDOMEvents.keydown(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(false);
+      expect(groupBoundaries).toHaveLength(1);
+      expect(inputs).toEqual([]);
+      expect(refusals).toEqual([]);
+      expect(view.state).toBe(before);
+    },
+  );
+
+  test.each([
+    { key: "Backspace", from: 1, to: 1 },
+    { key: "Delete", from: 5, to: 5 },
+    { key: "Backspace", from: 1, to: 4 },
+  ])(
+    "a modified $key at a paragraph edge or over a selection ($from to $to) deletes as the plain key",
+    ({ key, from, to }) => {
+      const { boundary, view } = createRig(from, to);
+      const event = new KeyboardEvent("keydown", {
+        key,
+        ctrlKey: true,
+        cancelable: true,
+      });
+      expect(boundary.handleDOMEvents.keydown(view, event)).toBe(false);
+      expect(boundary.handleKeyDown(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+    },
+  );
+
+  test.each(Object.entries(DELETING_INPUT_OUTCOMES))(
+    "%s is %s before the browser mutates",
+    (inputType, outcome) => {
+      // Forward over "😀" after the caret, otherwise over "A" before it.
+      const [start, end] = inputType.endsWith("Forward")
+        ? ([1, 3] as const)
+        : ([0, 1] as const);
+      const cancelable = createRig(2);
+      const before = cancelable.view.state;
+      const event = measuredDeletionEvent(
+        cancelable.view,
+        inputType,
+        true,
+        start,
+        end,
+      );
+      expect(
+        cancelable.boundary.handleDOMEvents.beforeinput(cancelable.view, event),
+      ).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+      expect(cancelable.view.state).toBe(before);
+      expect(cancelable.inputs).toHaveLength(outcome === "handled" ? 1 : 0);
+      expect(cancelable.refusals).toHaveLength(outcome === "refused" ? 1 : 0);
+      // A deletion the browser performs anyway becomes the one native
+      // proposal of the same range, or is refused.
+      const native = createRig(2);
+      const proposed = !native.boundary.handleDOMEvents.beforeinput(
+        native.view,
+        measuredDeletionEvent(native.view, inputType, false, start, end),
+      );
+      const [input] = cancelable.inputs;
+      if (outcome === "refused" || input === undefined) {
+        expect(proposed).toBe(false);
+        expect(native.refusals).toHaveLength(1);
+        return;
+      }
+      expect(native.refusals).toEqual([]);
+      if (proposed)
+        expect(
+          native.boundary.takeNativeProposal(
+            native.view.state,
+            native.view.state.tr.delete(input.from, input.to),
+          ),
+        ).toEqual(input);
     },
   );
 
@@ -1345,7 +1453,6 @@ describe("canonical input boundary", () => {
     { key: "Backspace", from: 1, ctrlKey: false },
     { key: "Delete", from: 5, ctrlKey: false },
     { key: "Backspace", from: 3, ctrlKey: false },
-    { key: "Backspace", from: 4, ctrlKey: true },
   ])(
     "unsafe deletion at $from is refused without an intent",
     ({ key, from, ctrlKey }) => {
