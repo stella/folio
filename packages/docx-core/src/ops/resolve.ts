@@ -55,12 +55,15 @@ import {
   alikeDepth,
   asParagraphContent,
   childNodes,
+  fieldResultOf,
   type InlineNode,
   leafSpans,
   mergeAlike,
   mergeLists,
+  ownRunPropertyChanges,
   rebuildNode,
   sameOwnFields,
+  withFieldResult,
 } from "./leaves";
 import {
   paragraphHoldsContent,
@@ -396,6 +399,41 @@ const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
     delete next.propertyChanges;
   }
   return next;
+};
+
+/** Records with the run property changes of their runs resolved, the same list when none is. */
+const resolveRunsIn = (
+  nodes: readonly InlineNode[],
+  resolution: Resolution,
+): readonly InlineNode[] => {
+  let changed = false;
+  const out = nodes.map((node) => {
+    let next: InlineNode = node;
+    if (node.type === "run") next = resolveRun(node, resolution);
+    else {
+      const children = childNodes(node);
+      const inner =
+        children === undefined ? children : resolveRunsIn(children, resolution);
+      if (inner !== children && inner !== undefined)
+        next = rebuildNode(node, inner);
+    }
+    if (next !== node) changed = true;
+    return next;
+  });
+  return changed ? out : nodes;
+};
+
+/**
+ * A field with the run property changes on the runs of its result resolved:
+ * a run property patch over the field records them there.
+ */
+const resolveFieldRuns = (
+  field: Extract<InlineNode, { type: "simpleField" | "complexField" }>,
+  resolution: Resolution,
+): InlineNode => {
+  const result = fieldResultOf(field) ?? [];
+  const next = resolveRunsIn(result, resolution);
+  return next === result ? field : withFieldResult(field, next);
 };
 
 /**
@@ -1861,7 +1899,12 @@ const resolveList = (
             }),
           });
     if (children === undefined || inner === undefined || !inner.changed) {
-      appendSource(recut(node), index);
+      const leaf =
+        node.type === "simpleField" || node.type === "complexField"
+          ? resolveFieldRuns(node, resolution)
+          : node;
+      if (leaf !== node) changed = true;
+      appendSource(recut(leaf), index);
       continue;
     }
     changed = true;
@@ -2157,14 +2200,28 @@ const resolveList = (
         source: kept.after,
         side: "after",
       });
-      // Only the two pieces of a record the removed content cut take the
-      // boundaries: a pending insertion beside the seam, or a piece still
-      // held in a pending deletion or move source, is no such piece, and the
+      // The records either side that own the cut take the boundaries, as
+      // their source owners say. Two never do: a pending insertion made
+      // after the revision they were kept from, which is no piece of what
+      // it cut, and any record while the other side is a pending deletion or
+      // move source, whose piece stands only once that is rejected. Then the
       // boundaries stand at the seam until its pieces meet.
+      const heldInRemoval = (node: InlineNode | undefined): boolean =>
+        node !== undefined &&
+        (node.type === "deletion" || node.type === "moveFrom") &&
+        !resolution.ids.has(node.info.id);
+      const laterInsertion = (node: InlineNode | undefined): boolean =>
+        node !== undefined &&
+        isTrackedWrapper(node) &&
+        isAddedRevision(node) &&
+        !resolution.ids.has(node.info.id) &&
+        kept.keptFrom !== undefined &&
+        (node.info.date ?? "") > kept.keptFrom;
       const piecesMeet =
-        before !== undefined &&
-        after !== undefined &&
-        sameOwnFields(before, after);
+        !heldInRemoval(before) &&
+        !heldInRemoval(after) &&
+        !laterInsertion(before) &&
+        !laterInsertion(after);
       const intoAfter =
         !piecesMeet || after === undefined || afterDepth === undefined
           ? undefined
@@ -2278,7 +2335,18 @@ const resolveList = (
         )
           return false;
         const piece = edge === "end" ? node.content.at(-1) : node.content.at(0);
-        return piece !== undefined && sameOwnFields(piece, other);
+        // Facing it, the other piece can be held in a pending removal too.
+        let facing: InlineNode | undefined = other;
+        if (
+          (other.type === "deletion" || other.type === "moveFrom") &&
+          !resolution.ids.has(other.info.id)
+        )
+          facing = edge === "end" ? other.content.at(0) : other.content.at(-1);
+        return (
+          piece !== undefined &&
+          facing !== undefined &&
+          sameOwnFields(piece, facing)
+        );
       };
       const leftHolder =
         leftEnd >= 0 && rightStart < out.length && holdsPiece(leftEnd, "end")
@@ -2520,10 +2588,7 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
   const visit = (nodes: readonly InlineNode[]): void => {
     for (const node of nodes) {
       if (isTrackedWrapper(node)) out.add(node.info.id);
-      if (node.type === "run") {
-        for (const change of node.propertyChanges ?? [])
-          out.add(change.info.id);
-      }
+      for (const change of ownRunPropertyChanges(node)) out.add(change.info.id);
       visit(childNodes(node) ?? []);
     }
   };

@@ -6,7 +6,7 @@
 #
 # Rust must match rust-toolchain.toml; the shared toolchain checker guards both.
 # wasm-bindgen comes from Cargo.lock through a build argument.
-FROM rust:1.99.1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8
+FROM rust:1.99.1-bookworm@sha256:e6f2cff35d0f309acf8433b4f05878ed77092602c5065cc81801177da0bb3a9c
 
 ARG WASM_BINDGEN_VERSION
 ARG BUN_VERSION
