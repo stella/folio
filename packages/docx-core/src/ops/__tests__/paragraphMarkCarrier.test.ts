@@ -133,7 +133,7 @@ test("rejecting an empty inserted final paragraph in a cell keeps the cell termi
   ]);
 });
 
-test("accepting a mark deletion before a table leaves the bookmark the paragraph held where it was", () => {
+test("accepting a mark deletion before a table hands the bookmark the paragraph held to its first cell", () => {
   const info = { id: 7, author: "Reviewer", date: "2026-10-19" };
   const paragraph: Paragraph = {
     type: "paragraph",
@@ -148,10 +148,32 @@ test("accepting a mark deletion before a table leaves the bookmark the paragraph
     package: { document: { content: [paragraph, table, finalParagraph] } },
   };
 
+  // No paragraph stands before it, so the table's first cell takes the
+  // bookmark, as it takes an unhosted comment anchor.
   expect(resolveAccepted(document).package.document.content).toEqual([
-    { type: "bookmarkStart", id: 1, name: "kept" },
-    { type: "bookmarkEnd", id: 1 },
-    table,
+    {
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000002",
+                  content: [
+                    { type: "bookmarkStart", id: 1, name: "kept" },
+                    { type: "bookmarkEnd", id: 1 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
     finalParagraph,
   ]);
 });
@@ -278,7 +300,7 @@ test("accepting a non-empty paragraph-mark deletion runs it into the first cell 
   ]);
 });
 
-test("rejecting a marker-only inline content control does not touch the following table", () => {
+test("rejecting a marker-only inline content control hands it to the following table's first cell and keeps the table's own fields", () => {
   const paragraph: Paragraph = {
     type: "paragraph",
     paraId: "00000001",
@@ -329,13 +351,33 @@ test("rejecting a marker-only inline content control does not touch the followin
   });
   if (result.isErr()) throw result.error;
 
-  // The bookmark the control's link held stays where the paragraph was.
+  // No paragraph stands before it, so the table's first cell takes what it
+  // held, and the table keeps its own fields.
+  const [control] = paragraph.content;
   expect(result.value.document.package.document.content).toEqual([
-    { type: "bookmarkStart", id: 1, name: "_Link" },
-    followingTable,
+    {
+      ...followingTable,
+      rows: [
+        {
+          ...followingTable.rows[0],
+          cells: [
+            {
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000002",
+                  content: [control],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
     finalParagraph,
   ]);
-  expect(result.value.touched.modified).not.toContain("00000002");
+  expect(result.value.touched.modified).toContain("00000002");
 });
 
 test("only atomic fields make marker-only inline containers paragraph content", () => {

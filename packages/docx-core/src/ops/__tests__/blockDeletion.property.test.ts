@@ -446,6 +446,7 @@ test("terminal deletion folds existing property reviews with stable identity and
               author: "Latest reviewer",
               date: "2026-02-03T04:05:06Z",
             },
+            currentFormatting: { alignment: previousAlignment },
           },
         ]);
         expectInverse(tracked, document);

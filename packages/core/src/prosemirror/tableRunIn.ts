@@ -173,11 +173,7 @@ export const runParagraphIntoTable = ({
     return null;
   const left = paragraphAfterContentRemoval(paragraph, everyChange);
   const remains = paragraphRemainsOf(left);
-  if (
-    !paragraphContentOf(left) &&
-    (remains.blocks.length > 0 || remains.comments.length === 0)
-  )
-    return null;
+  if (!paragraphContentOf(left) && remains.length === 0) return null;
   const tablePos = paragraphPos + paragraph.nodeSize;
   const target = runInTarget(tr.doc, tablePos, everyChange);
   if (!target) return null;
@@ -324,11 +320,7 @@ export const paragraphGoes = (
   );
   if (paragraphContentOf(left)) return false;
   const remains = paragraphRemainsOf(left);
-  return (
-    remains.blocks.length === 0 &&
-    remains.comments.length === 0 &&
-    remains.inline.length === 0
-  );
+  return remains.length === 0;
 };
 
 /**
@@ -383,8 +375,7 @@ export const runsIntoFollowingTable = ({
   }
   const remains = paragraphRemainsOf(paragraph);
   const holdsContent = paragraphContentOf(paragraph);
-  const needsCommentHost =
-    !holdsContent && remains.blocks.length === 0 && remains.comments.length > 0;
+  const needsCommentHost = !holdsContent && remains.length > 0;
   let hasPrecedingCommentHost = false;
   for (
     let previousIndex = needsCommentHost ? index - 1 : -1;
@@ -402,10 +393,6 @@ export const runsIntoFollowingTable = ({
     }
     const retained = paragraphAfterContentRemoval(previous, mode);
     if (paragraphContentOf(retained)) break;
-    if (paragraphRemainsOf(retained).blocks.length > 0) {
-      hasPrecedingCommentHost = true;
-      break;
-    }
   }
   return (
     paragraphMarkOutcome({
