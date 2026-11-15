@@ -32,17 +32,10 @@ export const withJoinAtLeast = (
   // belongs to and takes none.
   if (
     joins.acceptance !== undefined ||
-    joins.plainSides?.includes(side) === true
+    joins.plainSides?.includes(side) === true ||
+    joins[side] >= depth
   )
     return node;
-  // A join already as deep still takes the date of the boundaries the seam
-  // kept, so the later join places them inside the record it makes.
-  if (joins[side] >= depth)
-    return keptFrom === undefined || joins.keptFrom !== undefined
-      ? node
-      : Object.assign({}, node, {
-          resolutionJoins: Object.assign({}, joins, { keptFrom }),
-        });
   return Object.assign({}, node, {
     resolutionJoins: Object.assign(
       {},
@@ -56,23 +49,20 @@ export const withJoinAtLeast = (
 };
 
 /**
- * Whether a seam this resolution records hands its join to a pending
- * insertion facing it, whose own join on that side is `facingJoin`. A kept
- * revision's join always does: the insertion was made inside the record the
- * join belongs to. A removal's seam belongs to the pieces of the record its
- * content cut. An insertion joined to the seam's side holds such a piece,
- * made inside that record, and takes the seam. One joined to nothing there
- * is new content: with pieces of the record beyond the pending insertions on
- * both sides, the seam is deferred on it, so rejecting it joins the pieces
- * and accepting it keeps them apart, as resolving both at once does. Only
- * without pieces beyond both are the insertions facing the seam its pieces.
+ * Whether a seam this resolution records hands its join to the pending
+ * insertions facing it. A kept revision's join always does: the insertion
+ * was made inside the record the join belongs to. A removal's seam belongs
+ * to the pieces of the record its content cut. With pieces standing beyond
+ * the pending insertions on both sides, the insertions between are new
+ * content, no piece of that record: the seam is deferred on them, so
+ * rejecting them joins the pieces and accepting them keeps the pieces apart,
+ * as resolving both at once does. Only without pieces beyond both are the
+ * insertions facing the seam its pieces, and they take its join.
  */
 export const seamHandsOver = ({
   seam,
   piecesBeyond,
-  facingJoin,
 }: {
   seam: "keptJoin" | "removal";
   piecesBeyond: boolean;
-  facingJoin: number;
-}): boolean => seam === "keptJoin" || facingJoin > 0 || !piecesBeyond;
+}): boolean => seam === "keptJoin" || !piecesBeyond;
