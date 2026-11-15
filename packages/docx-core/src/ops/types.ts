@@ -117,7 +117,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 11;
+export const DOCUMENT_OP_SCHEMA_VERSION = 13;
 
 /**
  * The main story has a fixed address; other editable parts use their stable

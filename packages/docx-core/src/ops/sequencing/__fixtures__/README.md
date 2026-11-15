@@ -1,8 +1,10 @@
 # Sequencing wire fixtures
 
-`batches-v11.json` and `ops/__tests__/__fixtures__/ops-v11.json` pin the
-current schema: version 11 records a sequenced direct format's cut run as its
-effect, and its envelopes are otherwise those of version 10.
+`batches-v13.json` and `ops/__tests__/__fixtures__/ops-v13.json` pin the
+current schema: version 13 records a direct deletion's kept note mark as its
+effect, and its envelopes are otherwise those of version 11.
+`batches-v11.json` and `ops-v11.json` pin version 11, which records a
+sequenced direct format's cut records as its effect.
 
 `batches-v9.json` pins accepted sequencing envelopes. It pairs with
 `ops/__tests__/__fixtures__/ops-v9.json`, which includes clipboard package
