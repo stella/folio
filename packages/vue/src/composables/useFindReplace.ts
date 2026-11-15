@@ -16,10 +16,11 @@ import type {
   EditorReadOnlyReason,
 } from "@stll/folio-core/managers/EditorModeManager";
 import { FindReplaceManager } from "@stll/folio-core/managers/FindReplaceManager";
+import { findInDisplayedDocument } from "@stll/folio-core/prosemirror/findReplaceSelection";
 import {
-  findInDisplayedDocument,
-  resolveFindMatchRange,
-} from "@stll/folio-core/prosemirror/findReplaceSelection";
+  replaceFindMatch,
+  replaceFindMatches,
+} from "@stll/folio-core/prosemirror/replaceFindMatches";
 import type { Document } from "@stll/folio-core/types/document";
 import {
   createFindMatchView,
@@ -238,53 +239,27 @@ export function useFindReplace({
     return true;
   };
 
-  // Replacement remains an editing command on the main editor. Story results
-  // must never be interpreted as positions in the body document.
+  // Replacement is an editing command on the main editor, run through the
+  // same core owner as every adapter. Story results are never body positions.
   const replaceCurrent = (): boolean => {
     const view = editorView.value;
     if (!view || refuseReadonlyReplacement() || refreshStaleResults())
       return false;
     const match = currentMatch.value;
-    if (!canReplaceCurrent.value || !view || !match) return false;
-    if (match.text === replaceText.value) return true;
-    const range = resolveFindMatchRange(view.state.doc, match);
-    if (!range) return false;
-    view.dispatch(
-      view.state.tr.insertText(replaceText.value, range.from, range.to),
-    );
-    performSearch("refresh");
-    return true;
+    if (!canReplaceCurrent.value || !match) return false;
+    const before = view.state.doc;
+    const replaced = replaceFindMatch(view, match, replaceText.value);
+    if (view.state.doc !== before) performSearch("refresh");
+    return replaced;
   };
   const replaceAll = (): ReplaceAllSummary => {
     const view = editorView.value;
     const totalCount = matches.value.length;
     if (!view || refuseReadonlyReplacement() || refreshStaleResults())
       return { replacedCount: 0, skippedCount: totalCount };
-    const eligibleMatches = matches.value.filter(
-      (match) => replaceEligibility(match).status === "allowed",
-    );
-    const unchangedCount = eligibleMatches.filter(
-      (match) => match.text === replaceText.value,
-    ).length;
-    const ranges = eligibleMatches
-      .filter((match) => match.text !== replaceText.value)
-      .flatMap((match) => {
-        const range = resolveFindMatchRange(view.state.doc, match);
-        return range ? [range] : [];
-      })
-      .toSorted((a, b) => b.from - a.from);
-    const replacedCount = ranges.length + unchangedCount;
-    const summary = { replacedCount, skippedCount: totalCount - replacedCount };
-    if (!ranges.length) return summary;
-    let transaction = view.state.tr;
-    for (const range of ranges)
-      transaction = transaction.insertText(
-        replaceText.value,
-        range.from,
-        range.to,
-      );
-    view.dispatch(transaction);
-    performSearch();
+    const before = view.state.doc;
+    const summary = replaceFindMatches(view, matches.value, replaceText.value);
+    if (view.state.doc !== before) performSearch();
     return summary;
   };
 

@@ -331,22 +331,55 @@ const numberingIntent = (
   };
 };
 
+type TextReplacementCommand = Extract<
+  CanonicalCommandIntent,
+  { type: "replaceText" }
+>;
+
 /** Toolbar meanings enter the same operation journal as native input. */
 export const prepareCanonicalCommands = (
   session: CanonicalSession,
   state: EditorState,
   commands: readonly CanonicalCommandIntent[],
 ): Result<CanonicalCommit, CanonicalSessionError> => {
-  // A menu's text replacement is the session's own text input.
-  for (const command of commands) {
-    if (command.type !== "replaceText") continue;
-    if (commands.length !== 1)
+  // A text replacement is the session's own text input; several ranges,
+  // the last first, are one replacement.
+  const replacements = commands.filter(
+    (command): command is TextReplacementCommand =>
+      command.type === "replaceText",
+  );
+  if (replacements.length > 0) {
+    if (replacements.length !== commands.length)
       return refuse("A text replacement must be prepared on its own.");
-    return session.prepareReplace(state, {
-      from: command.from,
-      to: command.to,
-      text: command.text,
-    });
+    const [only] = replacements;
+    if (only !== undefined && replacements.length === 1)
+      return session.prepareReplace(state, {
+        from: only.from,
+        to: only.to,
+        text: only.text,
+      });
+    const intents: EditorIntent[] = [];
+    for (const replacement of replacements) {
+      // The replaced text's own edges, as a selection typed over names them.
+      const edges = session.projection.rangeEdgesAt(
+        replacement.from,
+        replacement.to,
+      );
+      const from = session.projection.inputAddressAt(
+        replacement.from,
+        edges.start,
+      );
+      if (from.isErr()) return from;
+      const to = session.projection.inputAddressAt(replacement.to, edges.end);
+      if (to.isErr()) return to;
+      intents.push({
+        type: "replaceText",
+        from: from.value,
+        to: to.value,
+        text: replacement.text,
+      });
+    }
+    return session.prepareIntents(state, { intents });
   }
   // A note reference or a table of contents goes at one caret; selected
   // cells have none.
