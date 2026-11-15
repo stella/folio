@@ -375,7 +375,9 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
   const { op, over, effect, order } = pair;
   if (isInlineInsertion(over)) {
     switch (op.type) {
+      // Paragraphs inserted beside a paragraph name it by id, not offset.
       case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+      case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
         return Result.ok([op]);
       case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
         // Content inserted at the start of the second paragraph meets the
@@ -416,7 +418,9 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
   }
   if (isInlineInsertion(op)) {
     switch (over.type) {
+      // Paragraphs inserted beside this one move no offset in it.
       case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+      case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
         return Result.ok([op]);
       case DOCUMENT_OP_TYPES.DELETE_RANGE:
       case DOCUMENT_OP_TYPES.SET_RUN_PROPS: {
@@ -487,7 +491,9 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
   if (isInlineCut(op)) {
     const seam = isSeamJoin(op);
     switch (over.type) {
+      // Paragraphs inserted beside this one move no offset in it.
       case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+      case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
         return Result.ok([op]);
       case DOCUMENT_OP_TYPES.INSERT_TEXT:
       case DOCUMENT_OP_TYPES.SPLIT_INLINE:
@@ -561,7 +567,9 @@ export const transformInlinePair = (pair: Pair): Transformed | undefined => {
   if (isInlineCut(over)) {
     const seam = isSeamJoin(over);
     switch (op.type) {
+      // Paragraphs inserted beside a paragraph name it by id, not offset.
       case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+      case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
         return Result.ok([op]);
       case DOCUMENT_OP_TYPES.INSERT_TEXT:
       case DOCUMENT_OP_TYPES.SPLIT_BLOCK:

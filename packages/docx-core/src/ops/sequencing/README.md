@@ -82,6 +82,11 @@ record holding that mark names it too (`keptMark` on the record): the mark
 keeps the record's piece on its side of the format, and when it stood before
 the format the pieces meet, and join, right after it.
 
+Anchored paragraph insertion names its anchor by id and moves no offset in
+it: typing, inline content insertions and inline record splits and joins in
+the anchor paragraph pass a concurrent insertion before or after it, direct
+or tracked, and the insertion passes them.
+
 ## Inline insertions
 
 Typing, an inserted atom and the inverse of a deletion that cut no record

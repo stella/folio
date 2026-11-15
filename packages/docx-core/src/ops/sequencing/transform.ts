@@ -373,6 +373,13 @@ const transformRestoredOp = ({
         op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS))
   )
     return Result.ok([op]);
+  // Paragraphs inserted beside a paragraph name it by id: text typed in it
+  // moves neither the anchor nor any offset the insertion leaves.
+  if (
+    op.type === DOCUMENT_OP_TYPES.INSERT_BLOCKS &&
+    over.type === DOCUMENT_OP_TYPES.INSERT_TEXT
+  )
+    return Result.ok([op]);
   if (
     op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
     (over.type === DOCUMENT_OP_TYPES.INSERT_TEXT ||
