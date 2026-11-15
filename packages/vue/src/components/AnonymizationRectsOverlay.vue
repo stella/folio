@@ -55,9 +55,15 @@
 
 <script setup lang="ts">
 import type { EditorState } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
+import {
+  type AnonymizationHighlightsView,
+  type FolioAnonymizationMatch,
+  type FolioAnonymizationTerm,
+  NO_ANONYMIZATION_HIGHLIGHTS,
+  slugAnonymizationLabel,
+} from "@stll/folio-core/controller/anonymizationHighlights";
 import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
 import type {
   FlowBlock,
@@ -66,11 +72,6 @@ import type {
 } from "@stll/folio-core/layout-engine/types";
 import { scrollEditorElementIntoView } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { projectRangesToRects } from "@stll/folio-core/paged-layout/rangeProjection";
-import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import {
-  getAnonymizationMatches,
-  slugAnonymizationLabel,
-} from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 
 /** One canonical's projected rectangles in overlay (post-zoom) pixel space. */
 type AnonymizationRectGroup = {
@@ -80,11 +81,15 @@ type AnonymizationRectGroup = {
 };
 
 const props = defineProps<{
-  getView: () => EditorView | null;
+  /** The editor's highlights, read from the shown text of every story. */
+  getHighlights: () => AnonymizationHighlightsView;
   getPagesContainer: () => HTMLElement | null;
-  /** Reactive editor state — changes on every transaction, including the
-   *  meta-only term push that a doc edit does not cover. */
+  /** Reactive editor state: changes on every body transaction. */
   editorState: EditorState | null;
+  /** The host's terms; a new list repaints. */
+  terms: readonly FolioAnonymizationTerm[] | undefined;
+  onMatchesChange?:
+    ((matches: readonly FolioAnonymizationMatch[]) => void) | undefined;
   zoom: number;
   layout: Layout | null;
   blocks: FlowBlock[];
@@ -110,21 +115,23 @@ function scheduleProject(): void {
   });
 }
 
+// The occurrences last reported to the host, so it hears of a change once.
+let reported: readonly FolioAnonymizationMatch[] =
+  NO_ANONYMIZATION_HIGHLIGHTS.matches;
+
 async function project(): Promise<void> {
   const isCurrentRequest = requestGate.begin();
-  const view = props.getView();
+  const highlights = props.getHighlights();
+  if (highlights.matches !== reported) {
+    reported = highlights.matches;
+    props.onMatchesChange?.(highlights.matches);
+  }
   const pagesContainer = props.getPagesContainer();
-  const state = props.editorState;
-  if (!view || !pagesContainer || !state) {
+  if (!pagesContainer || highlights.shown.length === 0) {
     groups.value = [];
     return;
   }
-  const matches = getAnonymizationMatches(state);
-  if (matches.length === 0) {
-    groups.value = [];
-    return;
-  }
-  const projected = await projectRangesToRects<AnonymizationMatch>(matches, {
+  const projected = await projectRangesToRects(highlights.shown, {
     pagesContainer,
     zoom: props.zoom,
     layout: props.layout,
@@ -150,6 +157,7 @@ async function project(): Promise<void> {
 watch(
   () => [
     props.editorState,
+    props.terms,
     props.zoom,
     props.layout,
     props.blocks,

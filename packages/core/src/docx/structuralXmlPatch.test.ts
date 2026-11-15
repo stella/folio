@@ -5,6 +5,18 @@ import { wellFormedXmlIssue } from "@stll/docx-core/xml";
 import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 import { getChildElements, parseXmlDocument } from "./xmlParser";
 
+type PatchOptions = Parameters<typeof buildStructuralDocumentPatch>[0];
+/** The spliced part, or null where the splice declined. */
+const splice = (options: PatchOptions): string | null => {
+  const result = buildStructuralDocumentPatch(options);
+  return result.type === "patched" ? result.xml : null;
+};
+/** Why the splice declined, or null where it spliced. */
+const declined = (options: PatchOptions) => {
+  const result = buildStructuralDocumentPatch(options);
+  return result.type === "declined" ? result.reason : null;
+};
+
 const wrap = (body: string, prefix = "w") =>
   `<${prefix}:document xmlns:${prefix}="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:id="http://schemas.microsoft.com/office/word/2010/wordml"><${prefix}:body>${body}</${prefix}:body></${prefix}:document>`;
 const paragraph = (id: number, text = `Paragraph ${id}`, prefix = "w") =>
@@ -27,7 +39,7 @@ test("all deletion subsets and insertion gaps retain surviving source bytes and 
     );
     for (let gap = 0; gap <= survivors.length; gap++) {
       const desired = survivors.toSpliced(gap, 0, 5, 6, 7);
-      const result = buildStructuralDocumentPatch({
+      const result = splice({
         originalXml: original,
         serializedXml: wrap(desired.map((id) => paragraph(id)).join("")),
         changedIds: new Set(),
@@ -49,7 +61,7 @@ test("resolves aliased source elements and quoted delimiters without touching so
     `${paragraph(1, "one", "doc")}<!-- <doc:p> fake -->${paragraph(2, "two", "doc")}`,
     "doc",
   );
-  const result = buildStructuralDocumentPatch({
+  const result = splice({
     originalXml: original,
     serializedXml: wrap(
       paragraph(1, "edited &gt; one") + paragraph(3) + paragraph(2),
@@ -67,7 +79,7 @@ test("resolves aliased source elements and quoted delimiters without touching so
 test("refuses moved, duplicate, missing, or reserved source identities", () => {
   for (const source of [paragraph(1) + paragraph(1), paragraph(0), "<w:p/>"]) {
     expect(
-      buildStructuralDocumentPatch({
+      splice({
         originalXml: wrap(source),
         serializedXml: wrap(paragraph(2)),
         changedIds: new Set(),
@@ -75,7 +87,7 @@ test("refuses moved, duplicate, missing, or reserved source identities", () => {
     ).toBeNull();
   }
   expect(
-    buildStructuralDocumentPatch({
+    splice({
       originalXml: wrap(paragraph(1) + paragraph(2)),
       serializedXml: wrap(paragraph(2) + paragraph(1)),
       changedIds: new Set(),
@@ -87,7 +99,7 @@ test("retains identical tables as barriers, writes an edited table whole, and re
   const table = `<w:tbl><w:tr><w:tc>${paragraph(9)}</w:tc></w:tr></w:tbl>`;
   const original = wrap(paragraph(1) + table + paragraph(2));
   const patch = (body: string) =>
-    buildStructuralDocumentPatch({
+    splice({
       originalXml: original,
       serializedXml: wrap(body),
       changedIds: new Set(),
@@ -110,26 +122,21 @@ test("retains identical tables as barriers, writes an edited table whole, and re
   expect(patch(paragraph(1) + table + paragraph(9))).toBeNull();
 });
 
-test("refuses range markers, relationship payloads, section endpoints and Strict splices", () => {
-  for (const element of [
-    "sectPr",
-    "bookmarkStart",
-    "drawing",
-    "footnoteReference",
-  ]) {
+test("refuses relationship payloads, section endpoints and Strict splices", () => {
+  for (const element of ["sectPr", "drawing", "footnoteReference"]) {
     const original = wrap(
       paragraph(1).replace("</w:p>", `<w:${element}/></w:p>`),
     );
     expect(
-      buildStructuralDocumentPatch({
+      declined({
         originalXml: original,
         serializedXml: wrap(paragraph(1) + paragraph(2)),
         changedIds: new Set(["00000001"]),
       }),
-    ).toBeNull();
+    ).toBe("structuralDependentContent");
   }
   expect(
-    buildStructuralDocumentPatch({
+    declined({
       originalXml: wrap(paragraph(1)).replace(
         "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
         "http://purl.oclc.org/ooxml/wordprocessingml/main",
@@ -137,13 +144,13 @@ test("refuses range markers, relationship payloads, section endpoints and Strict
       serializedXml: wrap(paragraph(1) + paragraph(2)),
       changedIds: new Set(),
     }),
-  ).toBeNull();
+  ).toBe("structuralUnreadableBody");
 });
 
 test("untouched image and section paragraphs remain verbatim beside inserted paragraphs", () => {
   for (const element of ["drawing", "sectPr"]) {
     const kept = paragraph(1).replace("</w:p>", `<w:${element}/></w:p>`);
-    const result = buildStructuralDocumentPatch({
+    const result = splice({
       originalXml: wrap(kept),
       serializedXml: wrap(kept + paragraph(2)),
       changedIds: new Set(["00000002"]),
@@ -153,18 +160,167 @@ test("untouched image and section paragraphs remain verbatim beside inserted par
   }
 });
 
-test("refuses bookmarks whose endpoints in separate tables enclose a body insertion", () => {
+test("splices a body insertion enclosed by a bookmark whose endpoints sit in separate tables", () => {
   const table = (id: number, marker: string) =>
     `<w:tbl><w:tr><w:tc>${paragraph(id).replace("</w:p>", marker + "</w:p>")}</w:tc></w:tr></w:tbl>`;
   const start = table(1, '<w:bookmarkStart w:id="1" w:name="b"/>');
   const end = table(2, '<w:bookmarkEnd w:id="1"/>');
+  const result = splice({
+    originalXml: wrap(start + end),
+    serializedXml: wrap(start + paragraph(3) + end),
+    changedIds: new Set(["00000003"]),
+  });
+  expect(result).toContain(start);
+  expect(result).toContain(end);
+  expect(result?.indexOf("Paragraph 3")).toBeGreaterThan(
+    result?.indexOf("bookmarkStart") ?? Number.POSITIVE_INFINITY,
+  );
+  expect(result?.indexOf("Paragraph 3")).toBeLessThan(
+    result?.indexOf("bookmarkEnd") ?? -1,
+  );
+});
+
+const marked = (id: number, before: string, after = "") =>
+  paragraph(id)
+    .replace("<w:r>", `${before}<w:r>`)
+    .replace("</w:p>", `${after}</w:p>`);
+const FIELD_BEGIN =
+  '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>';
+const FIELD_END = '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
+
+test("splices with a bookmark elsewhere, keeping its paragraphs as source bytes", () => {
+  // Bookmarks, a field, a permission range and a move range in paragraphs
+  // the edit does not touch: none of them is split by an insertion elsewhere.
+  const untouched = [
+    marked(
+      1,
+      '<w:bookmarkStart w:id="0" w:name="_Toc1"/>',
+      `${FIELD_BEGIN}<w:r><w:t>1</w:t></w:r>${FIELD_END}<w:bookmarkEnd w:id="0"/>`,
+    ),
+    marked(
+      2,
+      '<w:permStart w:id="4" w:edGrp="everyone"/>',
+      '<w:permEnd w:id="4"/>',
+    ),
+    marked(
+      4,
+      '<w:moveFromRangeStart w:id="5" w:name="move1" w:author="A" w:date="2026-01-01T00:00:00Z"/>',
+      '<w:moveFromRangeEnd w:id="5"/>',
+    ),
+  ];
+  // The previous check declined on any of these anywhere in the body; each
+  // is here, so restoring it fails every case below.
+  const source = wrap(untouched.join("<!-- kept -->"));
+  for (const kind of [
+    "bookmarkStart",
+    "bookmarkEnd",
+    "permStart",
+    "permEnd",
+    "fldChar",
+    "moveFromRangeStart",
+    "moveFromRangeEnd",
+  ])
+    expect(source).toContain(`<w:${kind} `);
+  for (let gap = 0; gap <= untouched.length; gap++) {
+    const desired = untouched.toSpliced(gap, 0, paragraph(3));
+    const result = splice({
+      originalXml: source,
+      serializedXml: wrap(desired.join("")),
+      changedIds: new Set(["00000003"]),
+    });
+    expect(result).not.toBeNull();
+    if (result === null) continue;
+    expect(wellFormedXmlIssue(result)).toBeNull();
+    for (const kept of untouched) expect(result).toContain(kept);
+    expect(result).toContain("Paragraph 3");
+  }
+});
+
+test("splices an insertion inside a range or field that crosses paragraphs", () => {
+  for (const [open, close] of [
+    ['<w:bookmarkStart w:id="1" w:name="b"/>', '<w:bookmarkEnd w:id="1"/>'],
+    ['<w:permStart w:id="2" w:ed="someone"/>', '<w:permEnd w:id="2"/>'],
+    [FIELD_BEGIN, FIELD_END],
+  ] as const) {
+    const first = marked(1, "", open);
+    const last = marked(2, close);
+    const inserted = splice({
+      originalXml: wrap(first + "<!-- kept -->" + last),
+      serializedXml: wrap(first + paragraph(3) + last),
+      changedIds: new Set(["00000003"]),
+    });
+    expect(inserted).toContain(`${first}<!-- kept -->`);
+    expect(inserted).toContain(last);
+    expect(ids(inserted ?? "")).toEqual(["00000001", "00000003", "00000002"]);
+    // A rewritten paragraph carries its end of the range as serialized.
+    const edited = last.replace("Paragraph 2", "edited");
+    const rewritten = splice({
+      originalXml: wrap(first + "<!-- kept -->" + last),
+      serializedXml: wrap(first + paragraph(3) + edited),
+      changedIds: new Set(["00000002", "00000003"]),
+    });
+    expect(rewritten).toContain(`${first}<!-- kept -->`);
+    expect(rewritten).toContain("edited");
+    expect(rewritten).not.toContain("Paragraph 2");
+    expect(ids(rewritten ?? "")).toEqual(["00000001", "00000003", "00000002"]);
+  }
+});
+
+test("declines, naming the split, where an untouched paragraph would keep a moved range or field end", () => {
+  for (const [open, close] of [
+    ['<w:bookmarkStart w:id="1" w:name="b"/>', '<w:bookmarkEnd w:id="1"/>'],
+    ['<w:permStart w:id="2" w:ed="someone"/>', '<w:permEnd w:id="2"/>'],
+    [
+      '<w:moveToRangeStart w:id="3" w:name="m" w:author="A" w:date="2026-01-01T00:00:00Z"/>',
+      '<w:moveToRangeEnd w:id="3"/>',
+    ],
+    [FIELD_BEGIN, FIELD_END],
+  ] as const) {
+    const first = marked(1, "", open);
+    // The serialized body moved the end into the new paragraph, but the
+    // paragraph that held it is not among the changed ones: its source bytes
+    // would keep a second end.
+    expect(
+      declined({
+        originalXml: wrap(first + marked(2, close)),
+        serializedXml: wrap(first + marked(3, close) + paragraph(2)),
+        changedIds: new Set(["00000003"]),
+      }),
+    ).toBe("structuralRangeSplit");
+    // A removed paragraph takes a range's only end with it while the start
+    // stays behind in an untouched one.
+    expect(
+      declined({
+        originalXml: wrap(first + marked(2, close)),
+        serializedXml: wrap(paragraph(1) + paragraph(3)),
+        changedIds: new Set(["00000003"]),
+      }),
+    ).toBe("structuralRangeSplit");
+  }
+});
+
+test("keeps body-level range markers as barriers", () => {
+  const start = '<w:bookmarkStart w:id="1" w:name="b"/>';
+  const end = '<w:bookmarkEnd w:id="1"/>';
+  const original = wrap(start + paragraph(1) + paragraph(2) + end);
+  const result = splice({
+    originalXml: original,
+    serializedXml: wrap(
+      start + paragraph(1) + paragraph(3) + paragraph(2) + end,
+    ),
+    changedIds: new Set(["00000003"]),
+  });
+  expect(result).toContain(start + paragraph(1));
+  expect(result).toContain(paragraph(2) + end);
+  expect(result).toContain("Paragraph 3");
+  // A marker the serialized body no longer holds is not kept from the source.
   expect(
-    buildStructuralDocumentPatch({
-      originalXml: wrap(start + end),
-      serializedXml: wrap(start + paragraph(3) + end),
+    declined({
+      originalXml: original,
+      serializedXml: wrap(paragraph(1) + paragraph(3) + paragraph(2)),
       changedIds: new Set(["00000003"]),
     }),
-  ).toBeNull();
+  ).toBe("structuralBarrierChanged");
 });
 
 test("splices beside comment anchors exactly when the result carries the serialized body's anchors", () => {
@@ -176,7 +332,7 @@ test("splices beside comment anchors exactly when the result carries the seriali
     '<w:commentRangeEnd w:id="7"/><w:r><w:commentReference w:id="7"/></w:r>',
   );
   const patch = (serialized: string, changed: readonly string[] = []) =>
-    buildStructuralDocumentPatch({
+    splice({
       originalXml: wrap(`${start}<!-- kept -->${end}`),
       serializedXml: wrap(serialized),
       changedIds: new Set(changed),
@@ -192,7 +348,7 @@ test("splices beside comment anchors exactly when the result carries the seriali
   const table = (body: string) =>
     `<w:tbl><w:tr><w:tc>${body}</w:tc></w:tr></w:tbl>`;
   expect(
-    buildStructuralDocumentPatch({
+    splice({
       originalXml: wrap(table(start) + table(end)),
       serializedXml: wrap(table(start) + paragraph(3) + table(end)),
       changedIds: new Set(["00000003"]),
@@ -220,7 +376,7 @@ test("structural splices preserve valid locally bound replay paragraphs at every
         );
       const serializedXml = wrap(desired.map(localParagraph).join(""));
       expect(wellFormedXmlIssue(serializedXml)).toBeNull();
-      const result = buildStructuralDocumentPatch({
+      const result = splice({
         originalXml: original,
         serializedXml,
         changedIds: new Set(["00000002"]),
@@ -245,7 +401,7 @@ test("reads a source comment anchor's unprefixed id as the reader does", () => {
   const end = anchored(2, '<w:commentRangeEnd id="7"/>');
   const serializedStart = anchored(1, '<w:commentRangeStart w:id="7"/>');
   const serializedEnd = anchored(2, '<w:commentRangeEnd w:id="7"/>');
-  const inserted = buildStructuralDocumentPatch({
+  const inserted = splice({
     originalXml: wrap(start + end),
     serializedXml: wrap(serializedStart + paragraph(3) + serializedEnd),
     changedIds: new Set(["00000003"]),

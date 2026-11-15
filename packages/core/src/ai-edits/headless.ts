@@ -172,6 +172,7 @@ import {
   withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
 import {
+  createDocumentStyleContextPlugin,
   createDocumentStylesPlugin,
   getDocumentStyleResolver,
   withDocumentStyles,
@@ -363,7 +364,9 @@ const canonicalReviewerState = (session: CanonicalSession): EditorState => {
     doc: session.projection.doc,
     plugins: [
       createDocumentNumberingPlugin(document.package.numbering),
-      createDocumentStylesPlugin(document.package.styles),
+      // The session's projection owns formatting: the style context gives
+      // the readers the resolver and appends no repair transaction.
+      createDocumentStyleContextPlugin(document.package.styles),
     ],
   });
 };

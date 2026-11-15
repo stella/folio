@@ -1,3 +1,4 @@
+import type { SelectiveSaveDecline } from "../types/selectiveSaveDecline";
 import type { FlowBlock } from "./types";
 
 export type LayoutRunReason =
@@ -50,12 +51,10 @@ export type LayoutInstrumentation = {
    * A save tried to write only the changed parts into the source package:
    * `written` says whether it did, or handed the save to the full repack, and
    * `structural` whether paragraphs were added, removed or reordered, which
-   * the selective path writes as a structural splice.
+   * the selective path writes as a structural splice. `decline` names why a
+   * structural splice declined, when it did.
    */
-  onSelectiveSaveAttempt?: (event: {
-    written: boolean;
-    structural: boolean;
-  }) => void;
+  onSelectiveSaveAttempt?: (event: SelectiveSaveAttempt) => void;
   onLayoutError?: (event: { message: string; reason: LayoutRunReason }) => void;
   onLayoutStart?: (event: { reason: LayoutRunReason }) => void;
   /**
@@ -147,10 +146,13 @@ export function recordLayoutComplete(reason: LayoutRunReason = "manual"): void {
   globalThis.__folioLayoutInstrumentation?.onLayoutComplete?.({ reason });
 }
 
-export function recordSelectiveSaveAttempt(event: {
+export type SelectiveSaveAttempt = {
   written: boolean;
   structural: boolean;
-}): void {
+  decline?: SelectiveSaveDecline;
+};
+
+export function recordSelectiveSaveAttempt(event: SelectiveSaveAttempt): void {
   globalThis.__folioLayoutInstrumentation?.onSelectiveSaveAttempt?.(event);
 }
 

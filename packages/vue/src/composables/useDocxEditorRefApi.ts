@@ -1115,6 +1115,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       return findPageNumberAtEditorPosition(currentLayout, range.from);
     },
     getPositionPage: (position) => opts.editor.getPositionPage(position),
+    getAnonymizationMatches: () =>
+      opts.editor.getAnonymizationHighlights().matches,
     getBlockRect,
     getBlockRects,
     getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),
