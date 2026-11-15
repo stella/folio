@@ -12,10 +12,14 @@ import { createPortal } from "react-dom";
 import type { EditorView } from "prosemirror-view";
 import { useTranslations } from "use-intl";
 
-import { ContentControlWidgetController } from "@stll/folio-core/controller/contentControlWidgetController";
+import {
+  contentControlRefusalMessageKey,
+  ContentControlWidgetController,
+} from "@stll/folio-core/controller/contentControlWidgetController";
 import type { ContentControlListItem } from "@stll/folio-core/controller/contentControlWidgetController";
 
 import { useFolioUI } from "../ui/folio-ui";
+import { toast } from "./toast";
 
 type FolioMenuItem = ReturnType<typeof useFolioUI>["Menu"]["Item"];
 
@@ -32,7 +36,14 @@ export function ContentControlWidgetsOverlay({
   const { Root: Menu, Item: MenuItem } = folioUI.Menu;
   const DatePickerPopover = folioUI.DatePickerPopover;
   const t = useTranslations("folio");
-  const controller = useMemo(() => new ContentControlWidgetController(), []);
+  // A refused widget says why, in the same notice as other refused edits.
+  const controller = useMemo(
+    () =>
+      new ContentControlWidgetController({
+        onRefused: (event) => toast(t(contentControlRefusalMessageKey(event))),
+      }),
+    [t],
+  );
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,

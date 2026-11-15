@@ -70,6 +70,7 @@ export const operationStory = (op: DocumentOp): OpStory | undefined => {
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CONTENT_CONTROL:
       return op.story;
     case DOCUMENT_OP_TYPES.CREATE_COMMENT:
       return isAnchoredComment(op) ? anchorPoints(op)[0]?.story : undefined;

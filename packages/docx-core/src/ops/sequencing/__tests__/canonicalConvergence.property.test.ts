@@ -131,6 +131,11 @@ type Outcome = {
   /** Refusals of a declared tracked pair kind: the bar is none. */
   trackedRefusals: string[];
   /**
+   * Restorations and positional edits of their paragraphs refused by the
+   * block footprint alone rather than by the restoration's span: none.
+   */
+  restoreRefusals: string[];
+  /**
    * Pending batches a client dropped that share no paragraph with the batch
    * that dropped them nor with a batch dropped before them in that answer.
    */
@@ -488,6 +493,79 @@ const describeOps = (ops: readonly DocumentOp[]): string =>
     .join(", ");
 
 // The tail batch a refused batch could not be rebased over, else the whole tail.
+/**
+ * Refusals of a restoration and an edit of its paragraph other than by its
+ * span: the block footprint alone, or an edit the paragraph does not take
+ * alone.
+ */
+const notBySpan = (message: string): boolean =>
+  message ===
+    "A concurrent operation changed a paragraph this operation addresses." ||
+  message.startsWith(
+    "A restored paragraph does not take a concurrent edit alone",
+  );
+
+/** The paragraphs a restoration rewrites. */
+const restoredParagraphs = (op: DocumentOp) => {
+  if (op.type === DOCUMENT_OP_TYPES.REPLACE_INLINE) return [op];
+  if (op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE)
+    return op.expected.anchors;
+  return [];
+};
+
+/** Where a positional edit of one paragraph edits. */
+const editedAt = (op: DocumentOp) => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
+      return op.at;
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+      return isInlineInsertion(op) ? op.at : undefined;
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+      return sameParagraph(op.from, op.to) ? op.from : undefined;
+    default:
+      return undefined;
+  }
+};
+
+/** Whether a refusal names a restoration and a positional edit. */
+const namesRestorePair = (reason: {
+  opType?: string;
+  overType?: string;
+}): boolean => {
+  const restorations: readonly string[] = new Set([
+    DOCUMENT_OP_TYPES.REPLACE_INLINE,
+    DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE,
+  ]);
+  const named = [reason.opType, reason.overType];
+  return (
+    named.some((type) => type !== undefined && restorations.has(type)) &&
+    named.some((type) => type !== undefined && !restorations.has(type))
+  );
+};
+
+/** A restoration and a positional edit of one of its paragraphs among two op lists. */
+const restorePairs = (
+  mine: readonly DocumentOp[],
+  theirs: readonly DocumentOp[],
+): string[] =>
+  [
+    ...mine.flatMap((op) => theirs.map((other) => [op, other] as const)),
+    ...theirs.flatMap((op) => mine.map((other) => [op, other] as const)),
+  ]
+    .filter(([restoration, edit]) => {
+      const at = editedAt(edit);
+      return (
+        at !== undefined &&
+        restoredParagraphs(restoration).some((paragraph) =>
+          sameParagraph(paragraph, at),
+        )
+      );
+    })
+    .map(([restoration, edit]) => `${restoration.type} and ${edit.type}`);
+
 const refusingOps = (
   batch: DocumentBatch,
   tail: readonly SequencedBatch[],
@@ -595,6 +673,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     identifiedTypingRefusals: [],
     trackedOrder: noTrackedOrder(),
     trackedRefusals: [],
+    restoreRefusals: [],
     independentDrops: [],
     replaced: noTally(),
     rebasedChanges: noTally(),
@@ -659,6 +738,13 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
           type === DOCUMENT_OP_TYPES.JOIN_INLINE,
       );
       const refusing = refusingOps(batch, tail);
+      if (notBySpan(result.reason.message) && namesRestorePair(result.reason))
+        outcome.restoreRefusals.push(
+          ...restorePairs(
+            restoredOps(opsAtRefusal(batch, tail)),
+            restoredOps(refusing),
+          ).map((pair) => `refused: ${pair}: ${result.reason.message}`),
+        );
       // No declared tracked pair is refused: the authority's order decides.
       // An inverse keeps its preconditions, which refuse by their own rule,
       // an insertion against a deletion's range is the typing and deletion
@@ -768,6 +854,15 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       peer.client.receiveAck(event.result);
       changes = [];
     } else changes = peer.client.receiveReject(event.result);
+    if (event.type === "broadcast")
+      for (const notice of peer.client.notices.slice(noticed))
+        if (notBySpan(notice.reason.message) && namesRestorePair(notice.reason))
+          outcome.restoreRefusals.push(
+            ...restorePairs(
+              restoredOps(notice.ops),
+              restoredOps(event.batch.ops),
+            ).map((pair) => `dropped: ${pair}: ${notice.reason.message}`),
+          );
     // The first batch an answer drops failed against the remote or rejected
     // batch itself. A later one depends on what dropped it: it shares a
     // paragraph or a tracked change with the remote or rejected batch, or
@@ -1093,6 +1188,8 @@ const convergence = (
     counts.resubmitted += outcome.resubmitted;
     // No declared tracked pair is refused.
     expect(outcome.trackedRefusals).toEqual([]);
+    // A restoration meets an edit of its paragraph by its span alone.
+    expect(outcome.restoreRefusals).toEqual([]);
     // A dropped batch takes with it only the batches that depend on it.
     expect(outcome.independentDrops).toEqual([]);
     // Every refusal is typed, and none is a wire, base or lease failure.
