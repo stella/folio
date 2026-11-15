@@ -13,10 +13,6 @@ import { IntlProvider } from "use-intl";
 
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import {
-  anonymizationDecorationsKey,
-  setAnonymizationTermsMeta,
-} from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
-import {
   clearTemplateSlashMenu,
   templateSlashMenuKey,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
@@ -290,12 +286,9 @@ test("stable editor plugins publish only the latest committed host callbacks", a
   const editor = createRef<DocxEditorRef>();
   const initialDocument = createEmptyDocument({ initialText: "Alice" });
   const callbacks = Array.from({ length: 3 }, () => {
-    const calls = { matches: 0, slash: 0, keys: 0 };
+    const calls = { slash: 0, keys: 0 };
     return {
       calls,
-      onAnonymizationMatchesChange: () => {
-        calls.matches += 1;
-      },
       onSlashMenuChange: () => {
         calls.slash += 1;
       },
@@ -321,9 +314,6 @@ test("stable editor plugins publish only the latest committed host callbacks", a
               document={initialDocument}
               showToolbar={false}
               showTemplateDirectives
-              onAnonymizationMatchesChange={
-                callback.onAnonymizationMatchesChange
-              }
               onSlashMenuChange={callback.onSlashMenuChange}
               onSlashMenuKeyAction={callback.onSlashMenuKeyAction}
             />
@@ -337,9 +327,6 @@ test("stable editor plugins publish only the latest committed host callbacks", a
         editor.current?.getEditor()?.getView() ??
         panic("The editor did not expose its body view");
       const plugins = view.state.plugins;
-      const anonymization =
-        anonymizationDecorationsKey.get(view.state) ??
-        panic("Missing anonymization plugin");
       const slash =
         templateSlashMenuKey.get(view.state) ?? panic("Missing slash plugin");
       if (initialPlugins) {
@@ -354,13 +341,8 @@ test("stable editor plugins publish only the latest committed host callbacks", a
         ]),
       );
       await act(async () => {
-        const { key, payload } = setAnonymizationTermsMeta([
-          { canonical: "Alice", label: "person" },
-        ]);
         view.dispatch(
-          view.state.tr
-            .setMeta(key, payload)
-            .setSelection(TextSelection.create(view.state.doc, 1)),
+          view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)),
         );
         slash.props.handleKeyDown?.call(
           slash,
@@ -373,10 +355,9 @@ test("stable editor plugins publish only the latest committed host callbacks", a
           new KeyboardEvent("keydown", { key: "ArrowDown" }),
         );
       });
-      expect(view.state.plugins).toContain(anonymization);
+      expect(view.state.plugins).toContain(slash);
       const baseline =
         before.get(callback) ?? panic("Missing callback baseline");
-      expect(callback.calls.matches).toBeGreaterThan(baseline.matches);
       expect(callback.calls.slash).toBeGreaterThan(baseline.slash);
       expect(callback.calls.keys).toBeGreaterThan(baseline.keys);
       for (const previous of callbacks) {

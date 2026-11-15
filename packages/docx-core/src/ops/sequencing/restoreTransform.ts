@@ -9,7 +9,9 @@
  * the span passes it: the edit's positions after the span move by the width
  * the restoration changes, and the restoration rebased over the edit states
  * the contents the edit leaves on either side. An edit reaching into the
- * span conflicts with it.
+ * span conflicts with it. A comment anchored in the paragraph is such an
+ * edit too: its anchor's ends are zero-width leaves at two gaps (one for a
+ * point), and it passes when neither lies strictly inside the span.
  */
 
 import { Result } from "better-result";
@@ -21,6 +23,8 @@ import { structurallyEqual } from "../equality";
 import { idKey } from "../ids";
 import { compareGaps, type Gap, type InlineNode, leafSpans } from "../leaves";
 import {
+  type CommentAnchor,
+  type CreateCommentOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   OP_STORIES,
@@ -211,19 +215,43 @@ const oneParagraph = (
   sameStory(left.story, right.story) &&
   idKey(left.blockId) === idKey(right.blockId);
 
+/** A comment whose anchor lies in one paragraph. */
+type ParagraphComment = CreateCommentOp & {
+  anchor: Extract<CommentAnchor, { kind: "range" | "point" }>;
+};
+
 /** The edits a restoration passes: they edit one paragraph by position. */
-type ParagraphEdit = Extract<
-  DocumentOp,
-  {
-    type:
-      | typeof DOCUMENT_OP_TYPES.INSERT_TEXT
-      | typeof DOCUMENT_OP_TYPES.INSERT_CONTENT
-      | typeof DOCUMENT_OP_TYPES.SPLIT_INLINE
-      | typeof DOCUMENT_OP_TYPES.JOIN_INLINE
-      | typeof DOCUMENT_OP_TYPES.DELETE_RANGE
-      | typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;
+type ParagraphEdit =
+  | Extract<
+      DocumentOp,
+      {
+        type:
+          | typeof DOCUMENT_OP_TYPES.INSERT_TEXT
+          | typeof DOCUMENT_OP_TYPES.INSERT_CONTENT
+          | typeof DOCUMENT_OP_TYPES.SPLIT_INLINE
+          | typeof DOCUMENT_OP_TYPES.JOIN_INLINE
+          | typeof DOCUMENT_OP_TYPES.DELETE_RANGE
+          | typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;
+      }
+    >
+  | ParagraphComment;
+
+const paragraphComment = (
+  op: CreateCommentOp,
+): ParagraphComment | undefined => {
+  const { anchor } = op;
+  switch (anchor.kind) {
+    case "point":
+      return { ...op, anchor };
+    case "range":
+      return sameParagraph(anchor.from, anchor.to)
+        ? { ...op, anchor }
+        : undefined;
+    case "reply":
+    case "revision":
+      return undefined;
   }
->;
+};
 
 const paragraphEdit = (op: DocumentOp): ParagraphEdit | undefined => {
   switch (op.type) {
@@ -236,19 +264,40 @@ const paragraphEdit = (op: DocumentOp): ParagraphEdit | undefined => {
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
       return sameParagraph(op.from, op.to) ? op : undefined;
+    case DOCUMENT_OP_TYPES.CREATE_COMMENT:
+      return paragraphComment(op);
     default:
       return undefined;
   }
 };
 
-const editedParagraph = (edit: ParagraphEdit): TextPosition =>
-  "at" in edit ? edit.at : edit.from;
+const editedParagraph = (edit: ParagraphEdit): TextPosition => {
+  if (edit.type !== DOCUMENT_OP_TYPES.CREATE_COMMENT)
+    return "at" in edit ? edit.at : edit.from;
+  return edit.anchor.kind === "point" ? edit.anchor.at : edit.anchor.from;
+};
 
 /** The edit's positions moved past the span; undefined when it reaches into it. */
 const editPast = (
   edit: ParagraphEdit,
   span: RestoredSpan,
 ): ParagraphEdit | undefined => {
+  if (edit.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
+    // Each end of the anchor is a gap of its own: one before the span and
+    // one after it leave the span inside the comment, unchanged.
+    const { anchor } = edit;
+    if (anchor.kind === "point") {
+      const at = pastSpan(anchor.at, span);
+      return at === undefined
+        ? undefined
+        : { ...edit, anchor: { ...anchor, at } };
+    }
+    const from = pastSpan(anchor.from, span);
+    const to = pastSpan(anchor.to, span);
+    return from === undefined || to === undefined
+      ? undefined
+      : { ...edit, anchor: { ...anchor, from, to } };
+  }
   if ("at" in edit) {
     const at = pastSpan(edit.at, span);
     return at === undefined ? undefined : { ...edit, at };
@@ -304,6 +353,15 @@ const inMainStory = (edit: ParagraphEdit): ParagraphEdit => {
     ...position,
     story: OP_STORIES.MAIN,
   });
+  if (edit.type === DOCUMENT_OP_TYPES.CREATE_COMMENT) {
+    const { anchor } = edit;
+    return anchor.kind === "point"
+      ? { ...edit, anchor: { ...anchor, at: main(anchor.at) } }
+      : {
+          ...edit,
+          anchor: { ...anchor, from: main(anchor.from), to: main(anchor.to) },
+        };
+  }
   return "at" in edit
     ? { ...edit, at: main(edit.at) }
     : { ...edit, from: main(edit.from), to: main(edit.to) };
