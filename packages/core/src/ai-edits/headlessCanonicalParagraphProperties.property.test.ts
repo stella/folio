@@ -13,7 +13,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import fc from "fast-check";
 
-import * as docxModel from "@stll/docx-core/model";
 import { ZipArchive } from "@stll/docx-core/zip";
 
 import { checkCoverageSample } from "../../../../test/property-coverage";
@@ -22,6 +21,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
+import * as patchAsRead from "../canonical/paragraphPatchAsRead";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperation,
@@ -32,9 +32,11 @@ import type {
   Paragraph,
   ParagraphFormatting,
 } from "../types/document";
-import { canonicalReviewerSave } from "./__tests__/canonicalReviewerSave";
 import { FolioDocxReviewer } from "./headless";
-import type { FolioAIBlockParagraphProperties } from "./types";
+import type {
+  FolioAIBlockParagraphProperties,
+  FolioAIParagraphIndentation,
+} from "./types";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -223,7 +225,7 @@ const liveAndReopened = async (buffer: ArrayBuffer, draw: Draw) => {
     applied = false;
   }
   if (!applied) return null;
-  const reopened = await open(await canonicalReviewerSave(live));
+  const reopened = await open(await live.toBuffer());
   return {
     live: paragraphsOf(live.toDocument()),
     reopened: paragraphsOf(reopened.toDocument()),
@@ -270,17 +272,15 @@ describe("paragraph properties an operation sets", () => {
   test(
     "the law catches an edit whose formatting is left as the operation stated it",
     async () => {
-      // The test-only break: the model boundary keeps a record as stated,
-      // without the fields the parser derives from what the save writes.
-      const original = { ...docxModel };
-      mock.module("@stll/docx-core/model", () => ({
+      // The test-only break: an operation's patch states the paragraph as
+      // the operation gave it, without the fields the parser derives from
+      // what the save writes.
+      const original = { ...patchAsRead };
+      mock.module("../canonical/paragraphPatchAsRead", () => ({
         ...original,
-        finalizeParagraphFormatting: (
-          formatting: ParagraphFormatting | undefined,
-        ) =>
-          original.isCanonicallyEmptyParagraphFormatting(formatting)
-            ? undefined
-            : formatting,
+        spacingSidesAsRead: () => undefined,
+        indentationAsRead: (indentation: FolioAIParagraphIndentation) =>
+          indentation,
       }));
       const buffer = await fixture();
       try {
@@ -294,7 +294,7 @@ describe("paragraph properties an operation sets", () => {
         );
         expect(result.failed).toBe(true);
       } finally {
-        mock.module("@stll/docx-core/model", () => original);
+        mock.module("../canonical/paragraphPatchAsRead", () => original);
       }
     },
     propertyTestTimeout(60_000),

@@ -13,7 +13,6 @@ import {
   CONTENT_CONTROL_LOCK,
   lockedControlMessage,
   paragraphNumberingReference,
-  paragraphSpacingExplicit,
   type Table,
 } from "@stll/docx-core/model";
 import {
@@ -150,6 +149,7 @@ import {
   type CanonicalProjection,
   type CanonicalSession,
 } from "./canonicalSession";
+import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
 type CanonicalPublicOperationRefusal = NonNullable<
   FolioAIEditSkippedOperation["canonicalRefusal"]
@@ -286,25 +286,6 @@ const INDENTATION_FIELDS = [
 ] as const satisfies readonly (keyof FolioAIParagraphIndentation)[];
 
 /**
- * `indentation` as the parser reads back the `w:ind` it saves to: the element
- * writes a first line or a hanging magnitude, and a hanging one reads as a
- * first line pulled out to the left, flagged hanging. A flag without a first
- * line writes nothing, and an unset flag is how the parser reads a first line.
- */
-const indentationAsRead = (
-  indentation: FolioAIParagraphIndentation,
-): FolioAIParagraphIndentation => {
-  const { indentFirstLine, hangingIndent, ...sides } = indentation;
-  if (indentFirstLine === undefined) return sides;
-  if (hangingIndent !== true) return { ...sides, indentFirstLine };
-  return {
-    ...sides,
-    indentFirstLine: indentFirstLine === 0 ? 0 : -Math.abs(indentFirstLine),
-    hangingIndent: true,
-  };
-};
-
-/**
  * The stated paragraph properties an operation writes: each given property
  * as it says, a spacing or indentation object as the whole direct child, so
  * an attribute it leaves out is removed, and `null` clears a property back
@@ -330,7 +311,7 @@ const statedParagraphPatch = (
     for (const field of SPACING_FIELDS)
       patch[field] = spacing === null ? null : (spacing[field] ?? null);
     patch["spacingExplicit"] =
-      spacing === null ? null : (paragraphSpacingExplicit(spacing) ?? null);
+      spacing === null ? null : (spacingSidesAsRead(spacing) ?? null);
   }
   if (indentation !== undefined) {
     const read = indentation === null ? null : indentationAsRead(indentation);
