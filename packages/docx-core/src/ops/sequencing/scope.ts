@@ -454,6 +454,12 @@ export const transformByFootprint = ({
     // A restoration passes an edit of its paragraph outside what it changes.
     const restored = transformRestorePair(op, over);
     if (restored !== undefined) return restored;
+    // oxlint-disable-next-line typescript/no-explicit-any
+    if ((globalThis as any).__DIAG_RESTORE === true)
+      // oxlint-disable-next-line no-console
+      console.log(
+        `DIAG REFUSE ${op.type} over ${over.type} mine=${JSON.stringify(mine.blocks)} theirs=${JSON.stringify(theirs.blocks)} touched=${JSON.stringify(touched ?? null)} OP ${JSON.stringify(op).slice(0, 2500)} OVER ${JSON.stringify(over).slice(0, 2500)}`,
+      );
     return refuse(
       BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
       "A concurrent operation changed a paragraph this operation addresses.",
