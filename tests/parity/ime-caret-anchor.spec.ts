@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 
+import { cjkCompositionDocx } from "../support/cjkCompositionFixture";
 import {
   ensureLiveView,
   expect,
@@ -234,6 +235,14 @@ forEachAdapter(
   async (adapter, { page }) => {
     // The run's East Asian slot names a face the document embeds, so the kana
     // draw with one face whatever fonts the machine has.
+    const body = await cjkCompositionDocx();
+    await page.route("**/fixtures/cjk-composition.docx", (route) =>
+      route.fulfill({
+        body,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      }),
+    );
     await openCanonicalEditor(page, adapter, "cjk-composition.docx");
     await ensureLiveView(page);
     await page

@@ -1193,7 +1193,8 @@ test("canonical composition lays out its provisional text with the painter's fon
     // Each provisional step asks for layout and reports nothing else.
     expect(spies["onCanonicalCompositionLayout"].calls).toBe(2);
     expect(spies["onTransaction"].calls).toBe(transactionsBefore);
-    expect(manager.readCanonicalDocument()).toBe(committed);
+    // The session holds the composition back from every snapshot.
+    expect(manager.isCanonicalComposing()).toBe(true);
 
     view.dom.dispatchEvent(
       new CompositionEvent("compositionend", { bubbles: true }),

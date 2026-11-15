@@ -1,31 +1,24 @@
-#!/usr/bin/env bun
-import { generateDocxFixture } from "../../support/validatedDocxFixture";
 /**
- * Build the synthetic DOCX an IME composition test types kana into, with the
- * run's East Asian slot naming a face the document embeds, so the kana draw
- * with the same face on every machine.
+ * The synthetic DOCX an IME composition test types kana into, with the run's
+ * East Asian slot naming a face the document embeds, so the kana draw with the
+ * same face on every machine.
  *
  * The paragraph's run names Arial for Latin text (folio's bundled Arimo) and
  * "Kana Embedded" for East Asian text. The embedded face is the kana subset
  * of Noto Sans JP from fontsource (SIL Open Font License 1.1, see
- * fonts/noto-sans-jp-LICENSE.txt), renamed for the document.
- *
- * All text is synthetic. Run: bun tests/visual/fixtures/build-cjk-composition.ts
+ * fonts/noto-sans-jp-LICENSE.txt), renamed for the document. All text is
+ * synthetic.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
-const OUTPUT_DIR = import.meta.dir;
-const OUTPUT_PATH = path.join(OUTPUT_DIR, "cjk-composition.docx");
 const FONT_PATH = path.join(
-  OUTPUT_DIR,
+  import.meta.dirname,
   "fonts",
   "noto-sans-jp-kana-400-normal.woff2",
 );
-/** Fixed so the fixture is byte-reproducible across rebuilds. */
-const FIXED_DATE = new Date("2026-01-01T00:00:00.000Z");
 
 const TEXT =
   "The Supplier shall deliver the goods to the premises of the Buyer within ten business days.";
@@ -90,23 +83,18 @@ const DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   </w:body>
 </w:document>`;
 
-const build = async (): Promise<void> => {
+export const cjkCompositionDocx = async (): Promise<Buffer> => {
   const zip = new ZipArchive();
-  const add = (filePath: string, contents: string | Uint8Array): void => {
-    zip.set(filePath, contents, { modified: FIXED_DATE });
-  };
-  add("[Content_Types].xml", CONTENT_TYPES);
-  add("_rels/.rels", PACKAGE_RELS);
-  add("word/_rels/document.xml.rels", DOCUMENT_RELS);
-  add("word/document.xml", DOCUMENT_XML);
-  add("word/styles.xml", STYLES_XML);
-  add("word/fontTable.xml", FONT_TABLE);
-  add("word/_rels/fontTable.xml.rels", FONT_TABLE_RELS);
-  add("word/fonts/kana-embedded.woff2", new Uint8Array(await readFile(FONT_PATH)));
-
-  const fixture = await generateDocxFixture(zip, "cjk-composition");
-  await Bun.write(OUTPUT_PATH, fixture);
-  console.log(`Wrote ${OUTPUT_PATH} (${fixture.byteLength} bytes)`);
+  zip.set("[Content_Types].xml", CONTENT_TYPES);
+  zip.set("_rels/.rels", PACKAGE_RELS);
+  zip.set("word/_rels/document.xml.rels", DOCUMENT_RELS);
+  zip.set("word/document.xml", DOCUMENT_XML);
+  zip.set("word/styles.xml", STYLES_XML);
+  zip.set("word/fontTable.xml", FONT_TABLE);
+  zip.set("word/_rels/fontTable.xml.rels", FONT_TABLE_RELS);
+  zip.set(
+    "word/fonts/kana-embedded.woff2",
+    new Uint8Array(await readFile(FONT_PATH)),
+  );
+  return Buffer.from(await zip.generate());
 };
-
-await build();
