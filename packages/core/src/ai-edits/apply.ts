@@ -178,14 +178,9 @@ import {
   removeRowsWithoutCellsAfterBatch,
   type RowsEmptiedInBatch,
 } from "../prosemirror/tableGridMutation";
-import {
-  paragraphGoes,
-  runInCellPending,
-  tableGoes,
-} from "../prosemirror/tableRunIn";
+import { paragraphGoes, tableGoes } from "../prosemirror/tableRunIn";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
-import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type {
   ParagraphFormatting,
   RunPropertyChange,
@@ -233,11 +228,13 @@ import {
   segmentsAroundNoteReferences,
 } from "./note-references";
 import {
+  holdsOnlyDeletedContent,
   isDeletedPPrMark,
   isPendingDeletion,
-  joinRunsWordsInto,
+  joinStopsAtTableAfter,
+  PENDING_JOIN_INSERTION_REFUSAL,
+  PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
   pendingJoinBounds,
-  type PendingJoinBoundsOptions,
 } from "./pendingJoin";
 import {
   getFolioDocumentOperationRemovedBlockIds,
@@ -3063,23 +3060,6 @@ const insertionFormattingAnchor = ({
  * runs into it, so a paragraph right after the words can take their break and
  * stand; so can one with a paragraph going whole between it and the table.
  */
-const joinStopsAtTableAfter = (options: PendingJoinBoundsOptions): boolean => {
-  if (!joinRunsWordsInto(options)) return false;
-  const $place = options.doc.resolve(options.paragraphPos);
-  for (let index = $place.index(); index < $place.parent.childCount; index++) {
-    const next = $place.parent.child(index);
-    if (next.type.name === "paragraph") return false;
-    if (next.type.spec["tableRole"] === "table") {
-      const before = $place.nodeBefore;
-      return (
-        !runInCellPending(next) ||
-        (before !== null && holdsOnlyDeletedContent(before))
-      );
-    }
-  }
-  return false;
-};
-
 type InsertionAtOptions = {
   item: ResolvedOperation;
   tr: Transaction;
@@ -3213,19 +3193,6 @@ const isInsertedPPrMark = (value: unknown): boolean =>
 const isSuggestedParagraphInsert = (paragraph: PMNode): boolean =>
   typeof paragraph.attrs["_suggestedInsert"] === "object" &&
   paragraph.attrs["_suggestedInsert"] !== null;
-
-const pendingJoinInsertionRefusal = {
-  reason: "pendingParagraphMarkDeletion",
-  message:
-    "Accepting the pending paragraph mark deletion before this place would run the paragraph together with the words before it or the table after it. Resolve that change first, or insert elsewhere.",
-} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
-
-const pendingParagraphMarkPropertyRefusal = {
-  reason: "pendingParagraphMarkDeletion",
-  canonicalRefusal: { gap: CANONICAL_GAP.publicPendingParagraphMarkProperties },
-  message:
-    "Resolve the pending paragraph mark deletion before editing its properties, or provide mergedParagraphProperties on the merge operation for atomic intent.",
-} as const satisfies Omit<FolioAIEditSkippedOperation, "id">;
 
 /** Whether every piece of the paragraph's content is pending inserted text. */
 const holdsOnlyInsertedContent = (
@@ -3453,20 +3420,6 @@ const addedOrDeletedBreakRevisionId = (value: unknown): number | null => {
 };
 
 /** Whether every piece of the paragraph's content is pending deleted text (or it has none). */
-const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
-  let whollyDeleted = true;
-  paragraph.descendants((node) => {
-    if (!whollyDeleted) {
-      return false;
-    }
-    if (!node.isInline || isZeroWidthAnchor(node)) {
-      return true;
-    }
-    whollyDeleted = node.marks.some((mark) => mark.type.name === "deletion");
-    return false;
-  });
-  return whollyDeleted;
-};
 
 /**
  * Where the paragraph at `position` runs on into the next paragraph when its
@@ -6441,7 +6394,7 @@ const applyFolioAIEditOperationsInternal = ({
         ) {
           skipped.push({
             id: item.operation.id,
-            ...pendingParagraphMarkPropertyRefusal,
+            ...PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
           });
           continue;
         }
@@ -7490,7 +7443,7 @@ const applyFolioAIEditOperationsInternal = ({
         if (isDeletedPPrMark(liveBlock.attrs["pPrMark"])) {
           skipped.push({
             id: item.operation.id,
-            ...pendingParagraphMarkPropertyRefusal,
+            ...PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL,
           });
           continue;
         }
@@ -10056,7 +10009,7 @@ const resolveOperationTarget = ({
     if (
       joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences })
     ) {
-      return { type: "skip", ...pendingJoinInsertionRefusal };
+      return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
     }
     const insertFrom = placed.from;
     const splitParagraphs =
@@ -10393,7 +10346,7 @@ const resolveOperationTarget = ({
 
   if (operation.type === "setBlockParagraphProperties") {
     if (isDeletedPPrMark(blockNode.attrs["pPrMark"])) {
-      return { type: "skip", ...pendingParagraphMarkPropertyRefusal };
+      return { type: "skip", ...PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL };
     }
     return {
       type: "resolved",
@@ -10499,7 +10452,7 @@ const resolveOperationTarget = ({
       operation.styleId !== undefined &&
       operation.styleId !== (expectParagraphAttrs(blockNode).styleId ?? null);
     if (replaceChangesStyle && isDeletedPPrMark(blockNode.attrs["pPrMark"])) {
-      return { type: "skip", ...pendingParagraphMarkPropertyRefusal };
+      return { type: "skip", ...PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL };
     }
     // Field results have atomic text spans that the replacement planner can
     // preserve or replace whole. Other structural boundaries need their own edit.
