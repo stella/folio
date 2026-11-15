@@ -36,12 +36,19 @@ const batchOf = (opId: string, op: DocumentOp): DocumentBatch => ({
   ops: [op],
 });
 
-const direct = batchOf("direct", {
-  type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
-  story: "main",
-  at: { type: "after", blockId: ANCHOR },
-  blocks: [paragraph("00001001", "Direct")],
-});
+/** The direct insertion, its paragraph formatted unlike the others or not. */
+const directOf = (formatted: boolean) =>
+  batchOf("direct", {
+    type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+    story: "main",
+    at: { type: "after", blockId: ANCHOR },
+    blocks: [
+      formatted
+        ? { ...paragraph("00001001", "Direct"), formatting: { keepNext: true } }
+        : paragraph("00001001", "Direct"),
+    ],
+  });
+const direct = directOf(false);
 
 const tracked = batchOf("tracked", {
   type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
@@ -88,6 +95,26 @@ const summary = (document: Document) =>
   );
 
 describe("a direct and a tracked paragraph insertion after the last paragraph", () => {
+  test("with the direct paragraph formatted unlike the others, the tracked one records its change against it in either order", () => {
+    const formatted = directOf(true);
+    const directFirst = inOrder(formatted, tracked);
+    const trackedFirst = inOrder(tracked, formatted);
+    const recorded = (document: Document) =>
+      document.package.document.content.map((block) =>
+        block.type === "paragraph" ? (block.propertyChanges ?? null) : null,
+      );
+    expect(recorded(trackedFirst)).toEqual(recorded(directFirst));
+    expect(equalForStaleness(trackedFirst, directFirst)).toBe(true);
+    // The tracked paragraph holds the last mark: its properties before were
+    // the direct paragraph's, the holder of the inserted mark.
+    expect(recorded(directFirst).at(-1)).toEqual([
+      expect.objectContaining({
+        type: "paragraphPropertyChange",
+        previousFormatting: { keepNext: true },
+      }),
+    ]);
+  });
+
   test("leave the same document in either order, the tracked paragraph last", () => {
     const directFirst = inOrder(direct, tracked);
     const trackedFirst = inOrder(tracked, direct);
