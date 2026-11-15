@@ -433,6 +433,35 @@ describe("attemptSelectiveSave", () => {
     expect(result).toBeNull();
   });
 
+  test("tells the instrumentation hook whether each attempt wrote the package", async () => {
+    const buffer = await loadFixture("example-with-image.docx");
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    const attempts: { written: boolean; structural: boolean }[] = [];
+    const previous = globalThis.__folioLayoutInstrumentation;
+    globalThis.__folioLayoutInstrumentation = {
+      onSelectiveSaveAttempt: (attempt) => attempts.push(attempt),
+    };
+    try {
+      const refused = await attemptSelectiveSave(doc, buffer, {
+        changedParaIds: new Set(["someId"]),
+        structuralChange: false,
+        hasUntrackedChanges: true,
+      });
+      const written = await attemptSelectiveSave(doc, buffer, {
+        changedParaIds: new Set(),
+        structuralChange: false,
+        hasUntrackedChanges: false,
+      });
+      expect([refused === null, written === null]).toEqual([true, false]);
+      expect(attempts).toEqual([
+        { written: false, structural: false },
+        { written: true, structural: false },
+      ]);
+    } finally {
+      globalThis.__folioLayoutInstrumentation = previous;
+    }
+  });
+
   test("returns valid buffer when no content changes (still updates metadata)", async () => {
     const buffer = await loadFixture("example-with-image.docx");
     const doc = await parseDocx(buffer, { preloadFonts: false });
