@@ -38,6 +38,10 @@ import type { CanonicalSectionPropertiesResult } from "../types/canonicalSection
 import type { Comment } from "../types/content";
 import type { Document, SectionProperties } from "../types/document";
 import { readModel, type ReadonlyDocument } from "../types/documentModel";
+import {
+  type AnonymizationHighlightsView,
+  NO_ANONYMIZATION_HIGHLIGHTS,
+} from "./anonymizationHighlights";
 import type { createCanonicalInputBoundary } from "./canonicalInput";
 import { legacyEditorPositionAt } from "./textPositionLookup";
 
@@ -176,6 +180,11 @@ export type HiddenEditorApi = {
    * there. Layout and painted pages are addressed by this position.
    */
   editorPositionAt: (position: TextPosition) => number | null;
+  /**
+   * Where the host's anonymization terms occur in every story the editor
+   * shows, read from the current text; nothing before the editor exists.
+   */
+  getAnonymizationHighlights: () => AnonymizationHighlightsView;
 };
 
 export type HiddenEditorApiDeps = {
@@ -191,6 +200,7 @@ export type HiddenEditorApiDeps = {
   canonicalEditorPositionAt?: (
     position: TextPosition,
   ) => number | null | undefined;
+  getAnonymizationHighlights?: () => AnonymizationHighlightsView;
   captureCanonicalSave?: HiddenEditorApi["captureCanonicalSave"];
   isCanonicalSaveCurrent?: HiddenEditorApi["isCanonicalSaveCurrent"];
   markCanonicalSaved?: HiddenEditorApi["markCanonicalSaved"];
@@ -320,6 +330,9 @@ export const createHiddenEditorApi = (
         ? legacyEditorPositionAt(view.state.doc, position)
         : canonical;
     },
+
+    getAnonymizationHighlights: () =>
+      deps.getAnonymizationHighlights?.() ?? NO_ANONYMIZATION_HIGHLIGHTS,
 
     getDocument: () => {
       const canonical = deps.getCanonicalDocument?.();
