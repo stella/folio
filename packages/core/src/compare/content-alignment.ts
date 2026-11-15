@@ -347,6 +347,82 @@ const prepareAlignmentBlocks = <Block extends FolioContentBlockIdentity>({
   return { base: prepare(baseBlocks), revised: prepare(revisedBlocks) };
 };
 
+/**
+ * The prepared blocks with each stable id the content does not agree with
+ * read as no id at all. An id is a hint for pairing, never proof: a join
+ * leaves the surviving paragraph mark's id on a paragraph that holds other
+ * words, so two paragraphs one id names pair by it only when their wording
+ * is alike by the measure a gap pairs blocks with. Otherwise both are left
+ * to the content alignment, as paragraphs without an id are. Blocks outside
+ * the paragraph family, and a pair the work budget can no longer measure,
+ * keep the id's word.
+ */
+const withContentAgreeingIds = <Block extends FolioContentBlockIdentity>(
+  prepared: {
+    base: readonly PreparedAlignmentBlock<Block>[];
+    revised: readonly PreparedAlignmentBlock<Block>[];
+  },
+  workSession: FolioContentAlignmentWorkSession,
+): {
+  base: readonly PreparedAlignmentBlock<Block>[];
+  revised: readonly PreparedAlignmentBlock<Block>[];
+} => {
+  const baseById = uniqueStableBlocks(prepared.base);
+  const revisedById = uniqueStableBlocks(prepared.revised);
+  const untrusted = new Set<string>();
+  for (const [id, baseBlock] of baseById) {
+    const revisedBlock = revisedById.get(id);
+    if (
+      baseBlock === null ||
+      revisedBlock === undefined ||
+      revisedBlock === null
+    )
+      continue;
+    const { block: base } = baseBlock;
+    const { block: revised } = revisedBlock;
+    if (
+      base.text === revised.text ||
+      !Object.hasOwn(PARAGRAPH_MARK_KIND_FAMILY, base.kind) ||
+      !Object.hasOwn(PARAGRAPH_MARK_KIND_FAMILY, revised.kind)
+    )
+      continue;
+    const similarity = gapBlockSimilarity(
+      gapBlockTokens(base.text),
+      gapBlockTokens(revised.text),
+      workSession,
+    );
+    if (
+      similarity.status === "measured" &&
+      similarity.value < GAP_PAIR_SIMILARITY_THRESHOLD
+    )
+      untrusted.add(id);
+  }
+  if (untrusted.size === 0) return prepared;
+  // Each side's copy of an untrusted id becomes an id no block shares, so no
+  // pass pairs or separates blocks by it.
+  const released = (
+    blocks: readonly PreparedAlignmentBlock<Block>[],
+    side: "base" | "revised",
+  ) =>
+    blocks.map((block) =>
+      block.pairingFacts.idStability === "stable" &&
+      untrusted.has(block.pairingFacts.id)
+        ? {
+            ...block,
+            pairingFacts: {
+              ...block.pairingFacts,
+              id: `${side}\u0000${block.pairingFacts.id}`,
+              idStability: "positional" as const,
+            },
+          }
+        : block,
+    );
+  return {
+    base: released(prepared.base, "base"),
+    revised: released(prepared.revised, "revised"),
+  };
+};
+
 type BlocksCanPairOptions = {
   base: BlockPairingFacts;
   revised: BlockPairingFacts;
@@ -1003,11 +1079,14 @@ const alignFolioContentBlocksInScope = <
   const idStability = options.idStability ?? folioContentIdStability;
   const workSession =
     options.workSession ?? createFolioContentAlignmentWorkSession();
-  const prepared = prepareAlignmentBlocks({
-    baseBlocks,
-    revisedBlocks,
-    idStability,
-  });
+  const prepared = withContentAgreeingIds(
+    prepareAlignmentBlocks({
+      baseBlocks,
+      revisedBlocks,
+      idStability,
+    }),
+    workSession,
+  );
   const canPair = (
     baseBlock: PreparedAlignmentBlock<Block>,
     revisedBlock: PreparedAlignmentBlock<Block>,
