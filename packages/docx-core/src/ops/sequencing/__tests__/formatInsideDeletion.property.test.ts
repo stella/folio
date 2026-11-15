@@ -330,6 +330,12 @@ const EXAMPLES: [Scenario][] = [
   ],
 ];
 
+// The examples in a note, where a deletion keeps the note's own mark: a run
+// of the break covers each of them.
+const NOTE_EXAMPLES = EXAMPLES.filter(([{ content }]) =>
+  content.some(({ type }) => type === "noteMarker"),
+);
+
 const rejoined = (forget?: Forgotten) =>
   fc.property(
     scenario,
@@ -424,8 +430,8 @@ describe("a direct format inside a concurrent direct deletion", () => {
         rejoined("keptMarkOfCut"),
         // The break is a counterexample on purpose: report nothing.
         propertyConfig({
-          numRuns: 1,
-          examples: EXAMPLES,
+          numRuns: NOTE_EXAMPLES.length,
+          examples: NOTE_EXAMPLES,
           reporter: () => undefined,
         }),
       );
