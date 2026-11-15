@@ -73,13 +73,9 @@ export type PanelLayout = {
   outlineTrackWidth: number;
   /** Width reserved after the page inside the scroll viewport for the comments. */
   commentsGutter: number;
-  /** Width of the scroll viewport's content: the available width less the outline track. */
+  /** Scroll viewport width: the available width less the outline track. */
   contentWidth: number;
-  /**
-   * Where the comments column starts in the scroll content, from these
-   * numbers rather than a measured page, so it follows every layout change
-   * the page follows. Null unless the comments are a column at a known width.
-   */
+  /** Comments column start in the scroll viewport; null unless a column at a known width. */
   commentsColumnStart: number | null;
   /** Smallest available width for each tier, for the same page and panels. */
   thresholds: { wide: number; medium: number };
@@ -134,7 +130,7 @@ const tierFor = (
  * its viewport extent, Vue through the pages viewport's padding), which puts
  * the page's start at `max(0, (contentWidth - (pageWidth + gutter)) / 2)`.
  */
-export const pageEndInContent = ({
+const pageEndInContent = ({
   contentWidth,
   pageWidth,
   commentsGutter,

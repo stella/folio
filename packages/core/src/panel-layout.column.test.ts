@@ -3,7 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   commentsColumnStart,
   computePanelLayout,
-  pageEndInContent,
   PANEL_METRICS,
   type PanelLayout,
   type PanelLayoutInput,
@@ -29,11 +28,10 @@ const columnStartFrom = (
 ): number | null => {
   if (source === "layout") return layout.commentsColumnStart;
   if (layout.comments !== "column") return null;
-  const pageEnd = pageEndInContent({
-    contentWidth: input.availableWidth,
-    pageWidth: input.pageWidth,
-    commentsGutter: layout.commentsGutter,
-  });
+  // The page's end edge as it sat while the scroll content was the whole row.
+  const pageEnd =
+    (input.availableWidth - layout.commentsGutter - input.pageWidth) / 2 +
+    input.pageWidth;
   return commentsColumnStart(pageEnd, input.availableWidth);
 };
 
