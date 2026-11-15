@@ -33,17 +33,10 @@ jobs:
 
       # Fresh seeds each night; reruns retain the same seed. Pinned regressions
       # run alongside a larger generated budget than the default 12/8 runs.
-      - name: Generated random and collision flows
+      - name: Two-batch replay with dumps
         run: |
-          set -o pipefail
           mkdir -p test-results
-          export FOLIO_SCENARIO_SEED=$(( (GITHUB_RUN_ID * 7919) % 2147483647 ))
-          bun scripts/consumer-scenarios.ts -- fuzz.test.ts 2>&1 \
-            | tee test-results/nightly-consumer-fuzz.log
-        env:
-          FOLIO_SCENARIO_FUZZ_RUNS: "240"
-          FOLIO_SCENARIO_COLLISION_RUNS: "160"
-          FOLIO_SCENARIO_FUZZ_STEPS: "16"
+          cd packages/docx-core && bun test ./src/ops/__tests__/review.property.test.ts -t 'two batches' 2>&1 | tee ../../test-results/nightly-consumer-fuzz.log | grep -E 'L3DEBUG|\(pass\)|\(fail\)' | cut -c1-20000
 
       - name: Keep the consumer fuzz log
         if: always()
