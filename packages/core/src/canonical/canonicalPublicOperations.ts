@@ -3133,12 +3133,15 @@ export class CanonicalPublicOperations {
         });
       }
       intents.push(intent);
-      // The merged paragraph's properties: on the first paragraph a direct
-      // join keeps, on the second, whose mark a tracked join leaves.
+      // The merged paragraph's properties: on the paragraph the join leaves,
+      // the second, whose mark remains, unless a direct join keeps the first.
       intents.push(
         ...statedPropertiesIntents({
           story,
-          blockId: tracked ? intent.nextBlockId : intent.blockId,
+          blockId:
+            !tracked && intent.survivor === "first"
+              ? intent.blockId
+              : intent.nextBlockId,
           properties: operation.mergedParagraphProperties,
           mintList,
         }),

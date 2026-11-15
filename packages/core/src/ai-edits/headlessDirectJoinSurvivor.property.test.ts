@@ -154,7 +154,7 @@ const applied = (
   const { story, text } = draw.target;
   const block = reviewer
     .snapshotStory(story)
-    ?.blocks.find((candidate) => candidate.text.trim() === text);
+    ?.blocks.find((candidate) => candidate.text.includes(text));
   if (block === undefined) throw new Error(`no block reads ${text}`);
   try {
     const result = reviewer.applyDocumentOperationsToStory({

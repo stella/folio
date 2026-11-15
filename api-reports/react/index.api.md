@@ -90,6 +90,7 @@ import { FolioAIComment } from '@stll/folio-core/ai-edits';
 import { FolioAIEditAppliedOperation } from '@stll/folio-core/ai-edits';
 import { FolioAIEditApplyMode } from '@stll/folio-core/ai-edits';
 import { FolioAIEditApplyResult } from '@stll/folio-core/ai-edits';
+import { FolioAIEditJoinedParagraphs } from '@stll/folio-core/ai-edits';
 import { FolioAIEditOperation } from '@stll/folio-core/ai-edits';
 import { FolioAIEditReviewMeta } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSeverity } from '@stll/folio-core/ai-edits';
@@ -626,6 +627,8 @@ export { FolioAIEditAppliedOperation }
 export { FolioAIEditApplyMode }
 
 export { FolioAIEditApplyResult }
+
+export { FolioAIEditJoinedParagraphs }
 
 export { FolioAIEditOperation }
 

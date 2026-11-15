@@ -884,6 +884,7 @@ export type FolioAIEditAppliedOperation = {
     revisionId?: number;
     revisionIds?: readonly number[];
     suggestionId?: string;
+    joined?: FolioAIEditJoinedParagraphs;
 };
 
 // @public
@@ -899,6 +900,12 @@ export type FolioAIEditApplyResult = {
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
     normalizations?: FolioAIEditNormalization[];
+};
+
+// @public
+export type FolioAIEditJoinedParagraphs = {
+    blockId: string;
+    retiredBlockId: string;
 };
 
 // @public
