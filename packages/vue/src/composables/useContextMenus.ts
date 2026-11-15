@@ -32,6 +32,11 @@ import {
   listNumberingMenuState,
   NO_LIST_NUMBERING_MENU,
 } from "@stll/folio-core/prosemirror";
+import {
+  buildPlainTextSlice,
+  pastePlainTextSlice,
+} from "@stll/folio-core/prosemirror/commands/pastePlainText";
+import { replaceRangeText } from "@stll/folio-core/prosemirror/commands/replaceRangeText";
 import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { readPaintedStart } from "@stll/folio-core/utils/paintedPositions";
@@ -366,8 +371,17 @@ export function useContextMenus(
           const pos = opts.selectedImage.value.pmPos;
           copyImageToClipboard(view, pos);
           const node = view.state.doc.nodeAt(pos);
-          if (node) {
-            view.dispatch(view.state.tr.delete(pos, pos + node.nodeSize));
+          if (
+            node &&
+            executeEditorCommand(
+              view,
+              replaceRangeText({
+                from: pos,
+                to: pos + node.nodeSize,
+                text: "",
+              }),
+            )
+          ) {
             opts.selectedImage.value = null;
             opts.onCut?.();
           }
@@ -399,8 +413,12 @@ export function useContextMenus(
         navigator.clipboard
           .readText()
           .then((text) => {
-            if (text) {
-              view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+            // The read is async: the editor may have gone while it ran.
+            if (text && !view.isDestroyed) {
+              pastePlainTextSlice(
+                view,
+                buildPlainTextSlice(text, view.state.schema),
+              );
               opts.onPaste?.();
             }
             return undefined;
@@ -412,7 +430,8 @@ export function useContextMenus(
         break;
       case "delete": {
         const { from, to } = view.state.selection;
-        if (from !== to) view.dispatch(view.state.tr.delete(from, to));
+        if (from !== to)
+          executeEditorCommand(view, replaceRangeText({ from, to, text: "" }));
         break;
       }
       case "selectAll": {
@@ -438,10 +457,18 @@ export function useContextMenus(
         if (opts.selectedImage.value) {
           const pos = opts.selectedImage.value.pmPos;
           const node = view.state.doc.nodeAt(pos);
-          if (node) {
-            view.dispatch(view.state.tr.delete(pos, pos + node.nodeSize));
+          if (
+            node &&
+            executeEditorCommand(
+              view,
+              replaceRangeText({
+                from: pos,
+                to: pos + node.nodeSize,
+                text: "",
+              }),
+            )
+          )
             opts.selectedImage.value = null;
-          }
         }
         break;
       }

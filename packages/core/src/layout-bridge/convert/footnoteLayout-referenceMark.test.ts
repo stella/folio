@@ -137,24 +137,27 @@ for (const kind of ["footnote", "endnote"] as const) {
   }
 }
 
-test("note-story conversion hides comments without changing authored content", () => {
-  const footnote = footnoteFromParagraphXml(
-    `<w:p><w:commentRangeStart w:id="7"/><w:r><w:t>review</w:t></w:r><w:commentRangeEnd w:id="7"/></w:p>`,
-  );
-  const authored = JSON.stringify(footnote.content);
-  for (const showCommentHighlights of [true, false, true]) {
-    const { flowBlocks } = convertNoteStoryToFlowBlocks(footnote.content, {
-      showCommentHighlights,
-    });
-    const run = firstParagraphRuns(flowBlocks).find(
-      (candidate) => candidate.kind === "text",
+// `0` is the first comment id a package or an editing session numbers.
+for (const commentId of [0, 7]) {
+  test(`note-story conversion hides comment ${String(commentId)} without changing authored content`, () => {
+    const footnote = footnoteFromParagraphXml(
+      `<w:p><w:commentRangeStart w:id="${String(commentId)}"/><w:r><w:t>review</w:t></w:r><w:commentRangeEnd w:id="${String(commentId)}"/></w:p>`,
     );
-    expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
-      showCommentHighlights ? [7] : undefined,
-    );
-    expect(JSON.stringify(footnote.content)).toBe(authored);
-  }
-});
+    const authored = JSON.stringify(footnote.content);
+    for (const showCommentHighlights of [true, false, true]) {
+      const { flowBlocks } = convertNoteStoryToFlowBlocks(footnote.content, {
+        showCommentHighlights,
+      });
+      const run = firstParagraphRuns(flowBlocks).find(
+        (candidate) => candidate.kind === "text",
+      );
+      expect(run?.kind === "text" ? run.commentIds : undefined).toEqual(
+        showCommentHighlights ? [commentId] : undefined,
+      );
+      expect(JSON.stringify(footnote.content)).toBe(authored);
+    }
+  });
+}
 
 for (const kind of ["footnote", "endnote"] as const) {
   for (const markupView of ["no-markup", "original"] as const) {
