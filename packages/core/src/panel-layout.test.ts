@@ -217,7 +217,7 @@ describe("commentsColumnStart", () => {
   test("starts a gap after the page and stays on its surface", () => {
     const { commentsGap, commentsWidth } = PANEL_METRICS;
     // Room beside the page: the column follows the page's end edge.
-    expect(commentsColumnStart(1006, 1244)).toBe(1006 + commentsGap);
+    expect(commentsColumnStart(900, 1244)).toBe(900 + commentsGap);
     // A page ending near the surface's edge: the column stays on it.
     expect(commentsColumnStart(1100, 1244)).toBe(1244 - commentsWidth - 8);
     // A surface narrower than the column: it keeps its start inset.
