@@ -50,7 +50,12 @@ const NAMESPACE = /\sxmlns(?::([\w.-]+))?\s*=\s*["']([^"']*)["']/gu;
 
 type Scan =
   | { readable: false; reason: string }
-  | { readable: true; reasons: string[]; otherBodyBlocks: string[] };
+  | {
+      readable: true;
+      paragraphs: number;
+      reasons: string[];
+      otherBodyBlocks: string[];
+    };
 
 /** The static reasons a structural splice of this main part declines. */
 const scanMainPart = (xml: string): Scan => {
@@ -60,6 +65,7 @@ const scanMainPart = (xml: string): Scan => {
   const reasons = new Set<string>();
   const otherBodyBlocks = new Set<string>();
   const paraIds = new Set<string>();
+  let paragraphs = 0;
   let depth = 0;
   let bodyDepth: number | null = null;
   for (const match of xml.matchAll(TAG)) {
@@ -78,6 +84,7 @@ const scanMainPart = (xml: string): Scan => {
       else if (bodyDepth === depth && !BODY_BLOCKS.has(local))
         otherBodyBlocks.add(local);
       if (local === "p") {
+        paragraphs += 1;
         const id = PARA_ID.exec(attributes)?.[1];
         if (id === undefined || !/^[0-9a-f]{8}$/iu.test(id) || /^0+$/u.test(id))
           reasons.add("paragraph without a valid paraId");
@@ -94,6 +101,7 @@ const scanMainPart = (xml: string): Scan => {
     reasons.add("body block other than a paragraph or table");
   return {
     readable: true,
+    paragraphs,
     reasons: [...reasons].toSorted(),
     otherBodyBlocks: [...otherBodyBlocks].toSorted(),
   };
@@ -198,7 +206,7 @@ for (const set of ["checked-in", "public corpus"]) {
     "",
     `- Would decline: ${String(declining.length)} (${percent(declining.length)}); could splice: ${String(readable.length - declining.length)} (${percent(readable.length - declining.length)}).`,
     `- Declining only for paraIds (a host that stamps ids at ingest avoids these): ${String(onlyParaIds)}.`,
-    `- Unreadable: ${String(inSet.length - readable.length)}.`,
+    `- Unreadable: ${String(inSet.length - readable.length)}; readable with no paragraph found by the scan: ${String(readable.filter((result) => result.paragraphs === 0).length)}.`,
     "",
     "| Reason | Files | Share of readable |",
     "|---|---:|---:|",

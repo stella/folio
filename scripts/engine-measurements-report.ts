@@ -37,6 +37,14 @@ type Measurement = {
   };
   errors: string[];
 };
+/** Canonical typing with term highlighting off or on: typing only. */
+type TermMeasurement = {
+  host: string;
+  variant: { terms: "off" | "on" };
+  document: { id: string; label: string; bytes: number };
+  typing: Measurement["typing"] | null;
+  skipped: string | null;
+};
 
 const ENGINES = ["legacy", "canonical"] as const;
 
@@ -96,9 +104,15 @@ const directory = process.argv[2];
 if (directory === undefined)
   throw new TypeError("Usage: engine-measurements-report.ts <dir>");
 
-const measurements: Measurement[] = readdirSync(directory)
+const entries: unknown[] = readdirSync(directory)
   .filter((file) => file.endsWith(".json") && file !== "report.json")
   .map((file) => JSON.parse(readFileSync(join(directory, file), "utf8")));
+const isTerms = (entry: unknown): entry is TermMeasurement =>
+  typeof entry === "object" && entry !== null && "variant" in entry;
+const termMeasurements = entries.filter(isTerms);
+const measurements = entries.filter(
+  (entry): entry is Measurement => !isTerms(entry),
+);
 
 const hosts = [...new Set(measurements.map((entry) => entry.host))].toSorted();
 const documents = [
@@ -271,8 +285,55 @@ const absent = rows.flatMap((row) =>
 if (errors.length > 0 || absent.length > 0)
   lines.push("## Steps that did not run", "", ...errors, ...absent, "");
 
+const termDocuments = [
+  ...new Map(
+    termMeasurements.map((entry) => [entry.document.id, entry.document]),
+  ).values(),
+];
+const termRows = termDocuments.map((document) => {
+  const typing = (terms: "off" | "on") => {
+    const entry = termMeasurements.find(
+      (candidate) =>
+        candidate.document.id === document.id &&
+        candidate.variant.terms === terms,
+    );
+    return {
+      medianMs: entry?.typing ? median(entry.typing.frameMs) : null,
+      p95Ms: entry?.typing ? percentile(entry.typing.frameMs, 0.95) : null,
+      skipped: entry?.skipped ?? (entry ? null : "no measurement"),
+    };
+  };
+  return { document, off: typing("off"), on: typing("on") };
+});
+if (termRows.length > 0)
+  lines.push(
+    "## Canonical typing with term highlighting off and on (react host)",
+    "",
+    table(
+      [
+        "Document",
+        "Off median",
+        "Off p95",
+        "On median",
+        "On p95",
+        "Ratio on / off median",
+        "Note",
+      ],
+      termRows.map(({ document, off, on }) => [
+        document.label,
+        ms(off.medianMs),
+        ms(off.p95Ms),
+        ms(on.medianMs),
+        ms(on.p95Ms),
+        ratio(on.medianMs, off.medianMs),
+        on.skipped ?? off.skipped ?? "",
+      ]),
+    ),
+    "",
+  );
+
 writeFileSync(
   join(directory, "report.json"),
-  `${JSON.stringify(rows, null, 2)}\n`,
+  `${JSON.stringify({ rows, termRows }, null, 2)}\n`,
 );
 writeFileSync(join(directory, "report.md"), `${lines.join("\n")}\n`);
