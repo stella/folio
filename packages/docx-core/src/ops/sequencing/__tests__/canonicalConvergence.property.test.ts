@@ -58,6 +58,7 @@ import { isInlineInsertion, sameParagraph } from "../points";
 import { isBlockScoped } from "../scope";
 import { type BatchSubmission, createSequencer } from "../sequencer";
 import * as trackedTransform from "../trackedTransform";
+import * as transformModule from "../transform";
 import { transformBatch } from "../transform";
 import {
   canonicalBase,
@@ -129,6 +130,11 @@ type Outcome = {
   trackedOrder: Record<trackedTransform.TrackedOrderPair, number>;
   /** Refusals of a declared tracked pair kind: the bar is none. */
   trackedRefusals: string[];
+  /**
+   * Pending batches a client dropped that share no paragraph with the batch
+   * that dropped them nor with a batch dropped before them in that answer.
+   */
+  independentDrops: string[];
   /** Changes a peer with pending batches got as a replacement, by the pair kinds they met. */
   replaced: Tally;
   /** Changes a peer with pending batches got rebased, by the pair kinds they met. */
@@ -221,6 +227,61 @@ const insertionAgainstDeletion = (
 const cutsRecordsExactly = (op: DocumentOp): boolean =>
   op.type === DOCUMENT_OP_TYPES.SPLIT_INLINE ||
   (op.type === DOCUMENT_OP_TYPES.JOIN_INLINE && op.ifAlike !== true);
+
+const REVISION_RECORDS = new Set([
+  "insertion",
+  "deletion",
+  "moveFrom",
+  "moveTo",
+]);
+
+/**
+ * What a value depends on, anywhere in it: the paragraphs it names
+ * (positions, block ids, the blocks an effect records) and the tracked
+ * changes it names or holds (a decision's revisions, a stamp, a wrapper).
+ * Undefined names none.
+ */
+const dependenciesIn = (value: unknown): string[] => {
+  const ids = new Set<string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    const type: unknown = Reflect.get(node, "type");
+    const id: unknown = Reflect.get(node, "id");
+    if (
+      typeof type === "string" &&
+      REVISION_RECORDS.has(type) &&
+      typeof id === "number"
+    )
+      ids.add(`revision ${String(id)}`);
+    for (const [key, child] of Object.entries(node)) {
+      if (/blockId$/iu.test(key) && typeof child === "string") {
+        ids.add(child.toUpperCase());
+      } else if (key === "blockIds" && Array.isArray(child)) {
+        for (const block of child)
+          if (typeof block === "string") ids.add(block.toUpperCase());
+      } else if (key === "revisionIds" && Array.isArray(child)) {
+        for (const revision of child)
+          if (typeof revision === "number")
+            ids.add(`revision ${String(revision)}`);
+      } else if (
+        key === "revision" &&
+        typeof child === "object" &&
+        child !== null &&
+        typeof Reflect.get(child, "id") === "number"
+      ) {
+        ids.add(`revision ${String(Reflect.get(child, "id"))}`);
+      } else {
+        visit(child);
+      }
+    }
+  };
+  visit(value);
+  return [...ids];
+};
 
 // An inverse whose preconditions or joins pin the range it restores.
 const holdsPreconditions = (op: DocumentOp): boolean => {
@@ -534,6 +595,7 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     identifiedTypingRefusals: [],
     trackedOrder: noTrackedOrder(),
     trackedRefusals: [],
+    independentDrops: [],
     replaced: noTally(),
     rebasedChanges: noTally(),
     resubmitted: 0,
@@ -602,8 +664,17 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       // an insertion against a deletion's range is the typing and deletion
       // class, and a hard inline split or join (rejoining or cutting a
       // record exactly) the record cutting class, each with rules of its own.
-      for (const op of restoredOps(opsAtRefusal(batch, tail)))
-        for (const other of restoredOps(refusing)) {
+      // The refusal names operation types only: when an excluded operation
+      // of a named type is among them, it may be the one refused.
+      const atRefusal = restoredOps(opsAtRefusal(batch, tail));
+      const remoteOps = restoredOps(refusing);
+      const excluded = (op: DocumentOp): boolean =>
+        holdsPreconditions(op) || cutsRecordsExactly(op);
+      const ambiguous = [...atRefusal, ...remoteOps].some(
+        (op) => (op.type === opType || op.type === overType) && excluded(op),
+      );
+      for (const op of ambiguous ? [] : atRefusal)
+        for (const other of remoteOps) {
           const kind = trackedTransform.trackedOrderPair(op, other);
           const named =
             (op.type === opType && other.type === overType) ||
@@ -682,6 +753,12 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     if (event === undefined || peer === undefined) return;
     const before = peer.client.document;
     const pending = peer.client.pending.flatMap(({ ops }) => ops);
+    const queued = peer.client.pending.map(({ opId, ops }) => ({
+      opId,
+      dependencies: dependenciesIn(ops),
+      positional: ops.every((op) => !isBlockScoped(op)),
+    }));
+    const noticed = peer.client.notices.length;
     let changes: readonly ClientDocumentChange[];
     if (event.type === "broadcast") {
       const received = peer.client.receiveBroadcast(event.batch);
@@ -691,20 +768,68 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       peer.client.receiveAck(event.result);
       changes = [];
     } else changes = peer.client.receiveReject(event.result);
+    // The first batch an answer drops failed against the remote or rejected
+    // batch itself. A later one depends on what dropped it: it shares a
+    // paragraph or a tracked change with the remote or rejected batch, or
+    // with a pending batch before it: a dropped one, or a kept one the
+    // remote batch may not carry past, when the batches after it cross its
+    // inverse. Block-scoped operations depend on parts, tables and numbering
+    // a value's names do not show, so the check covers answers where every
+    // batch involved edits by position only.
+    const remotePositional =
+      event.type === "broadcast"
+        ? event.batch.ops.every((op) => !isBlockScoped(op))
+        : true;
+    const cause = new Set(
+      dependenciesIn(
+        event.type === "broadcast"
+          ? event.batch
+          : peer.client.notices.at(noticed)?.ops,
+      ),
+    );
+    for (const [index, notice] of peer.client.notices
+      .slice(noticed)
+      .entries()) {
+      const touched = dependenciesIn(notice.ops);
+      const ahead = queued.slice(
+        0,
+        Math.max(
+          0,
+          queued.findIndex(({ opId }) => opId === notice.opId),
+        ),
+      );
+      const earlier = new Set(
+        ahead.flatMap(({ dependencies }) => dependencies),
+      );
+      if (
+        index > 0 &&
+        remotePositional &&
+        ahead.every(({ positional }) => positional) &&
+        notice.ops.every((op) => !isBlockScoped(op)) &&
+        touched.length > 0 &&
+        touched.every((id) => !cause.has(id) && !earlier.has(id))
+      )
+        outcome.independentDrops.push(
+          `${notice.opId} (${describeOps(notice.ops)}) dropped by ${event.type === "broadcast" ? describeOps(event.batch.ops) : "a rejection"}: ${notice.reason.message}`,
+        );
+      for (const id of touched) cause.add(id);
+    }
     // Every change takes the peer's document exactly where the client is:
     // a rebased one is never trusted short of it.
     let document = before;
     for (const change of changes) {
-      const applied = applyBatch(document, change.batch.ops);
-      if (applied.isErr()) throw applied.error;
-      document = applied.value.document;
+      // An answer may bring several revisions: each change, and its
+      // moves, apply where the one before it left the document.
       if (change.type === "replaced" && change.moves !== undefined) {
-        const moved = applyBatch(before, change.moves.ops);
+        const moved = applyBatch(document, change.moves.ops);
         if (moved.isErr())
           throw new Error(
             `A replacement's moves do not apply where it does: ${moved.error.message}`,
           );
       }
+      const applied = applyBatch(document, change.batch.ops);
+      if (applied.isErr()) throw applied.error;
+      document = applied.value.document;
     }
     if (!equalForStaleness(document, peer.client.document))
       throw new Error(
@@ -828,9 +953,9 @@ const stepArbitrary = (
   };
   return fc.oneof(
     editStep,
+    ...(undo ? [undoStep] : []),
     submitStep,
     deliverStep,
-    ...(undo ? [undoStep] : []),
     ...(reconnect ? [reconnectStep] : []),
   );
 };
@@ -968,6 +1093,8 @@ const convergence = (
     counts.resubmitted += outcome.resubmitted;
     // No declared tracked pair is refused.
     expect(outcome.trackedRefusals).toEqual([]);
+    // A dropped batch takes with it only the batches that depend on it.
+    expect(outcome.independentDrops).toEqual([]);
     // Every refusal is typed, and none is a wire, base or lease failure.
     expect(outcome.rejected.filter((reason) => FORBIDDEN.has(reason))).toEqual(
       [],
@@ -1266,6 +1393,25 @@ const trackedPending: Scenario = [
 ];
 
 /**
+ * Peer 1 suggests erasing 5..8 of the first paragraph, sequenced first,
+ * while peer 0 types at 6, inside it (refused: an insertion inside
+ * tracked-deleted content), and then in the third paragraph. Peer 0 hears
+ * of the erase with both batches pending: the typing inside it is dropped,
+ * the other is not.
+ */
+const independentAfterDropped: Scenario = [
+  3,
+  [
+    suggestedErase(1, { a: 5, b: 2 }),
+    { type: "submit", peer: 1 },
+    focused(0, { kind: "type", a: 6, b: 0 }),
+    edit(0, { kind: "type", a: 2, b: 0 }),
+    { type: "deliver", seed: 1 },
+    ...drain(24),
+  ],
+];
+
+/**
  * A direct format of 10..12 in the first paragraph's one run while another
  * peer erases 9..12 directly: the format cut the run, and the erase rebased
  * over it joins the run's pieces again, so both orders leave one run.
@@ -1288,6 +1434,45 @@ const formatInsideErase: Scenario = [
   ],
 ];
 
+/**
+ * Peer 1 replaces directly, rejoining a run exactly beside the replacement
+ * peer 0 suggests at the same place: the exact join is refused by its own
+ * class, which the tracked pair check must not count.
+ */
+const exactJoinBesideSuggestedReplace: Scenario = [
+  3,
+  [
+    { type: "undo", peer: 0 },
+    { type: "deliver", seed: 0 },
+    focused(1, { kind: "replace", a: 24, b: 0 }),
+    suggested(0, { kind: "replace", a: 23, b: 8551 }),
+    suggested(0, { kind: "type", a: 0, b: 0 }),
+    { type: "submit", peer: 0 },
+    { type: "reconnect", peer: 0 },
+    { type: "deliver", seed: 0 },
+  ],
+];
+
+/**
+ * Suggested replacements and typing from four peers, so that one answer
+ * brings a peer several revisions with a replacement among them: its moves
+ * apply where the change before it left the document.
+ */
+const replacementAmongRevisions: Scenario = [
+  4,
+  [
+    suggested(2, { kind: "replace", a: 24, b: 99370 }),
+    suggested(1, { kind: "type", a: 0, b: 33211 }),
+    suggested(3, { kind: "replace", a: 24, b: 99370 }),
+    { type: "deliver", seed: 0 },
+    suggested(0, { kind: "type", a: 0, b: 0 }),
+    { type: "deliver", seed: 0 },
+    suggested(0, { kind: "type", a: 0, b: 0 }),
+    suggested(0, { kind: "type", a: 0, b: 0 }),
+    { type: "undo", peer: 0 },
+  ],
+];
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -1299,6 +1484,7 @@ const PINNED: readonly Scenario[] = [
   formatAcrossSuggestedErase,
   undoAgainstRepeatedDecision,
   trackedPending,
+  independentAfterDropped,
   formatInsideErase,
 ];
 
@@ -1424,7 +1610,11 @@ describe("canonical sequencing", () => {
       await assertProperty(convergence(noCounts(), trackedScenarioArbitrary), {
         numRuns: NUM_RUNS,
         id: "canonical sequencing tracked pairs",
-        examples: [[trackedPending]],
+        examples: [
+          [trackedPending],
+          [exactJoinBesideSuggestedReplace],
+          [replacementAmongRevisions],
+        ],
       });
       const counts = noCounts();
       await checkCoverageSample(
@@ -1447,6 +1637,58 @@ describe("canonical sequencing", () => {
     },
     propertyTestTimeout(180_000),
   );
+
+  test(
+    "a client that drops every batch after a dropped one is caught",
+    async () => {
+      // The test-only break: no pending batch rebases over its own actor's
+      // batch, which only a dropped batch's inverse is, so a drop takes
+      // every later pending batch with it.
+      const original = { ...transformModule };
+      mock.module("../transform", () => ({
+        ...original,
+        transformBatch: (
+          ...args: Parameters<typeof original.transformBatch>
+        ) => {
+          const [batch, over] = args;
+          return over.some(({ actor }) => actor === batch.actor)
+            ? Result.err(
+                new envelope.BatchRejection({
+                  reason: BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+                  message: "Break: no rebase over an own batch.",
+                }),
+              )
+            : original.transformBatch(...args);
+        },
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: 1,
+            examples: [[independentAfterDropped]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+      } finally {
+        mock.module("../transform", () => original);
+      }
+    },
+    propertyTestTimeout(60_000),
+  );
+
+  test("a pending batch dropped while rebasing takes only the batches that depend on it", () => {
+    const outcome = simulate(...independentAfterDropped);
+    // The typing inside the suggested erase is dropped; the typing in
+    // another paragraph after it is rebased as if it had never been made.
+    expect(outcome.dropped).toEqual(["edit-11"]);
+    expect(outcome.sequenced).toContain("edit-12");
+    expect(outcome.independentDrops).toEqual([]);
+    for (const document of outcome.documents)
+      expect(equalForStaleness(document, outcome.authority)).toBe(true);
+  });
 
   test("an undo that puts back a change a concurrent peer decided is refused", () => {
     const outcome = simulate(...undoAgainstRepeatedDecision);
