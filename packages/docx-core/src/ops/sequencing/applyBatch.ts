@@ -4,10 +4,11 @@ import type { Document } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { IDENTITY_SPACES, identityKeysIn, idKey, slotKey } from "../ids";
-import { type Gap, leafSpans, spanningRecords } from "../leaves";
+import { compareGaps, type Gap, leafSpans, spanningRecords } from "../leaves";
 import { paragraphLength } from "../offsets";
 import type { DocumentOpRefusal } from "../refusal";
 import {
+  type DeleteRangeOp,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type InsertContentOp,
@@ -77,7 +78,7 @@ const cutRecords = (
   before: Document,
   after: Document,
   op: SetRunPropsOp,
-): { from: Gap; to: Gap }[] | undefined => {
+): { from: Gap; to: Gap; keptMark?: Gap }[] | undefined => {
   if (
     op.revision !== undefined ||
     op.expected !== undefined ||
@@ -100,6 +101,11 @@ const cutRecords = (
   );
   if (cut.length === 0) return undefined;
   const leaves = leafSpans(original.content);
+  const { story } = op.from;
+  const noteKind =
+    story !== "main" && (story.kind === "footnote" || story.kind === "endnote")
+      ? story.kind
+      : undefined;
   return cut.map((record) => {
     const held = leaves.filter(
       ({ node, ancestors }) => node === record || ancestors.includes(record),
@@ -108,8 +114,50 @@ const cutRecords = (
     const last = held.at(-1);
     if (first === undefined || last === undefined)
       return panic("A record holding leaves on both sides holds a leaf.");
-    return { from: first.before, to: last.after };
+    // The note's own mark, which a direct deletion keeps (see `keptMark`).
+    const mark = held.find(
+      ({ node }) => node.type === "noteMarker" && node.kind === noteKind,
+    );
+    return mark === undefined
+      ? { from: first.before, to: last.after }
+      : { from: first.before, to: last.after, keptMark: mark.before };
   });
+};
+
+/**
+ * The gap before the note's own reference mark a direct deletion within
+ * one note paragraph holds, which the deletion keeps; undefined for any
+ * other deletion.
+ */
+const keptMark = (document: Document, op: DeleteRangeOp): Gap | undefined => {
+  const { story } = op.from;
+  if (
+    op.revision !== undefined ||
+    story === "main" ||
+    (story.kind !== "footnote" && story.kind !== "endnote") ||
+    idKey(op.from.blockId) !== idKey(op.to.blockId)
+  )
+    return undefined;
+  const paragraph = storyParagraphs(storyBody(document, story)).find(
+    ({ paragraph: candidate }) =>
+      candidate.paraId !== undefined &&
+      idKey(candidate.paraId) === idKey(op.from.blockId),
+  )?.paragraph;
+  if (paragraph === undefined) return undefined;
+  const [from, to] = [op.from, op.to].map(
+    ({ offset, zeroWidthBefore }): Gap => ({
+      offset,
+      zeroWidthBefore: zeroWidthBefore ?? 0,
+    }),
+  );
+  if (from === undefined || to === undefined) return undefined;
+  return leafSpans(paragraph.content).find(
+    ({ node, before, after }) =>
+      node.type === "noteMarker" &&
+      node.kind === story.kind &&
+      compareGaps(from, before) <= 0 &&
+      compareGaps(after, to) <= 0,
+  )?.before;
 };
 
 /** Capture position facts before each operation, including within an atomic batch. */
@@ -158,6 +206,12 @@ export const applyBatch = (
       effect = {
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
         cutIdentified: cutIdentified(current, applied.value.document, op),
+      };
+    } else if (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE) {
+      const mark = keptMark(current, op);
+      effect = {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        ...(mark === undefined ? {} : { keptMark: mark }),
       };
     } else if (op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
       const cut = cutRecords(current, applied.value.document, op);

@@ -192,7 +192,9 @@ const propertyTable = ({
     gridSnapshot !== undefined &&
     ids.has(gridSnapshot.id) &&
     reject &&
-    gridSnapshot.columnWidths.some((width) => width === undefined)
+    gridSnapshot.columnWidths.some((width) => width === undefined) &&
+    // A grid stating no widths at all restores as one.
+    gridSnapshot.columnWidths.some((width) => width !== undefined)
   ) {
     return Result.err("unsupported");
   }
@@ -237,12 +239,11 @@ const propertyTable = ({
       }
     }
     if (reject) {
-      next = {
-        ...next,
-        columnWidths: gridSnapshot.columnWidths.flatMap((width) =>
-          width === undefined ? [] : [width],
-        ),
-      };
+      const columnWidths = gridSnapshot.columnWidths.flatMap((width) =>
+        width === undefined ? [] : [width],
+      );
+      next = { ...next, columnWidths };
+      if (columnWidths.length === 0) delete next.columnWidths;
     }
   }
   return Result.ok(next);
