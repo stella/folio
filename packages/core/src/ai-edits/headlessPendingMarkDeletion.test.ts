@@ -21,17 +21,18 @@ import type { FolioAIEditApplyMode } from "./types";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const DELETED_MARK =
-  '<w:pPr><w:rPr><w:del w:id="1" w:author="Author" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>';
+/** A paragraph mark pending deletion, as revision `id`. */
+const deletedMark = (id: number): string =>
+  `<w:pPr><w:rPr><w:del w:id="${String(id)}" w:author="Author" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>`;
 
 const paragraph = (text: string, properties = ""): string =>
   `<w:p>${properties}${text === "" ? "" : `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`}</w:p>`;
 
 /** A joined pair, a blank paragraph that goes whole, and a closing one. */
 const BODY =
-  paragraph("First words here", DELETED_MARK) +
+  paragraph("First words here", deletedMark(1)) +
   paragraph("Second words") +
-  paragraph("", DELETED_MARK) +
+  paragraph("", deletedMark(2)) +
   paragraph("Closing words");
 
 const fixture = async (): Promise<ArrayBuffer> => {

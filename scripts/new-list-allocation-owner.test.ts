@@ -83,7 +83,7 @@ test("deferred new lists are allocated only at will-apply boundaries", async () 
   };
   allocationAfter(
     "setBlockParagraphProperties",
-    "pendingParagraphMarkPropertyRefusal",
+    "PENDING_PARAGRAPH_MARK_PROPERTY_REFUSAL",
     "splitBlock",
   );
   allocationAfter(
