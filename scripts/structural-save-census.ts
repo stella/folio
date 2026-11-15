@@ -111,7 +111,13 @@ const mainPartPath = async (zip: ZipArchive): Promise<string> => {
   const rels = await zip.entry("_rels/.rels")?.text();
   const target = rels
     ?.match(/<Relationship\b[^>]*>/gu)
-    ?.find((relationship) => relationship.includes("/officeDocument"))
+    // The officeDocument relationship type itself, not the others whose
+    // type URIs start with the same namespace (extended properties).
+    ?.find((relationship) =>
+      /\sType\s*=\s*["'][^"']*\/relationships\/officeDocument["']/u.test(
+        relationship,
+      ),
+    )
     ?.match(/\sTarget\s*=\s*["']([^"']*)["']/u)?.[1];
   return target === undefined
     ? "word/document.xml"
