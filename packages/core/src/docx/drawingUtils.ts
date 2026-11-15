@@ -374,9 +374,10 @@ const LINE_END_TYPES = [
 function parseLineEnd(
   element: XmlElement,
 ): NonNullable<ShapeOutline["headEnd"]> {
+  // An absent or unknown `@type` stays absent: the model states only what the
+  // source authored, so a save never writes the schema default back.
   const authoredType = getAttribute(element, null, "type");
-  const type =
-    LINE_END_TYPES.find((allowed) => allowed === authoredType) ?? "none";
+  const type = LINE_END_TYPES.find((allowed) => allowed === authoredType);
 
   const authoredWidth = getAttribute(element, null, "w");
   const authoredLength = getAttribute(element, null, "len");
@@ -392,7 +393,7 @@ function parseLineEnd(
       : undefined;
 
   return {
-    type,
+    ...(type !== undefined ? { type } : {}),
     ...(width !== undefined ? { width } : {}),
     ...(length !== undefined ? { length } : {}),
   };
