@@ -168,11 +168,12 @@ stay exported for validation-only paths.
   paragraph. Reject that deletion first, or insert a new block next to it.
 - A paragraph whose mark alone is pending deletion (a tracked change joins it
   to the next paragraph) keeps its properties until that change is resolved:
-  `setBlockParagraphProperties`, or a `replaceBlock` that changes its style,
-  skips (`pendingParagraphMarkDeletion`), since accepting the join gives the
-  joined paragraph the next paragraph's properties. Resolve that change
-  first, or state the joined paragraph's properties with
-  `mergedParagraphProperties` on the `mergeBlockWithNext` that joins them.
+  `setBlockParagraphProperties` skips (`pendingParagraphMarkDeletion`), since
+  accepting the join gives the joined paragraph the next paragraph's
+  properties. Resolve that change first, or state the joined paragraph's
+  properties with `mergedParagraphProperties` on the `mergeBlockWithNext`
+  that joins them. A `replaceBlock` there skips (`pendingDeletion`) only when
+  the paragraph's words are all pending deletion.
 - Successful mutations return input-ordered `receipts`. Use their typed
   `affected` targets to identify updated blocks, stable ranges, insertions,
   and created comments without inferring effects from document text.
