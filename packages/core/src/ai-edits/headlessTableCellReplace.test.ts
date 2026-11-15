@@ -7,9 +7,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { EditorState, type Transaction } from "prosemirror-state";
 
 import { ZipArchive } from "@stll/docx-core/zip";
 
+import { CANONICAL_PROJECTION_META } from "../canonical/canonicalSession";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import { canonicalReviewerSave } from "./__tests__/canonicalReviewerSave";
 import { FolioDocxReviewer } from "./headless";
@@ -141,6 +143,37 @@ const runShape = async (
   };
 };
 
+/**
+ * Diagnostic: the plugins that refuse or change a transaction the canonical
+ * session publishes, each tried alone on the transaction.
+ */
+const pluginsChangingCanonicalCommits: string[] = [];
+const originalApplyTransaction = EditorState.prototype.applyTransaction;
+const tracedApplyTransaction = function (
+  this: EditorState,
+  rootTr: Transaction,
+) {
+  if (rootTr.getMeta(CANONICAL_PROJECTION_META) !== undefined) {
+    const next = this.apply(rootTr);
+    for (const plugin of this.plugins) {
+      const key = String(Reflect.get(plugin, "key"));
+      if (plugin.spec.filterTransaction?.call(plugin, rootTr, this) === false)
+        pluginsChangingCanonicalCommits.push(`${key} filtered`);
+      const appended = plugin.spec.appendTransaction?.call(
+        plugin,
+        [rootTr],
+        this,
+        next,
+      );
+      if (appended?.docChanged === true)
+        pluginsChangingCanonicalCommits.push(
+          `${key} appended ${JSON.stringify(appended.steps.map((step) => step.toJSON()))}`,
+        );
+    }
+  }
+  return originalApplyTransaction.call(this, rootTr);
+};
+
 const PLACES: readonly Place[] = ["body", "table cell"];
 const MODES: readonly FolioAIEditApplyMode[] = ["direct", "tracked-changes"];
 
@@ -151,7 +184,13 @@ describe("a replacement in a paragraph", () => {
         test(`${mode}, ${place}: ${shape.name}`, async () => {
           const buffer = await fixture(shape, place);
           const legacy = await runShape(buffer, "legacy", shape, mode);
+          pluginsChangingCanonicalCommits.length = 0;
+          EditorState.prototype.applyTransaction = tracedApplyTransaction;
           const canonical = await runShape(buffer, "canonical", shape, mode);
-          expect(canonical).toEqual(legacy);
+          EditorState.prototype.applyTransaction = originalApplyTransaction;
+          expect({
+            ...canonical,
+            plugins: [...pluginsChangingCanonicalCommits],
+          }).toEqual({ ...legacy, plugins: [] });
         }, 60_000);
 });
