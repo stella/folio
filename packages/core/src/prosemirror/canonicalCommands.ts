@@ -49,6 +49,8 @@ export type CanonicalTableEdit = WithoutTableTarget<
 
 /** Command meaning before canonical positions are resolved by the session. */
 export type CanonicalCommandIntent =
+  /** The command changes the selection alone and runs as it is. */
+  | { type: "selection" }
   | {
       type: "formatTable";
       targets: readonly CanonicalTableFormatTarget[];
@@ -117,7 +119,8 @@ export type CanonicalCommandIntent =
       from: number;
       to: number;
       breakType: "page" | "textWrapping";
-    };
+    }
+  | { type: "replaceText"; from: number; to: number; text: string };
 
 type CanonicalCommandDescriptor = (
   state: EditorState,

@@ -7,8 +7,11 @@ import {
   classifyRun,
   explorationSeed,
   findingMarker,
+  findingSourceFile,
+  ownedFinding,
   parseCargoTestOutput,
   propertyTargets,
+  sourceModule,
 } from "./rust-property-exploration";
 
 const lib = `     Running unittests src/lib.rs (target/debug/deps/stella_docx_kernel-1a2b)
@@ -179,4 +182,66 @@ test("a finding's marker and record reach the filer marked exploration", () => {
   expect(findingMarker(finding, { ...OPTIONS, seed: 7 }).fingerprint).toBe(
     marker.fingerprint,
   );
+});
+
+describe("findings in property files the change owns", () => {
+  const sources = [
+    "src/lib.rs",
+    "src/semantic.rs",
+    "src/semantic/runs/mod.rs",
+    "tests/property_styles.rs",
+  ];
+
+  test("a source's module path", () => {
+    expect(sourceModule("src/lib.rs")).toBe("");
+    expect(sourceModule("src/semantic.rs")).toBe("semantic");
+    expect(sourceModule("src/semantic/runs/mod.rs")).toBe("semantic::runs");
+    expect(sourceModule("tests/property_styles.rs")).toBeNull();
+  });
+
+  test("a test belongs to the deepest source whose module prefixes it", () => {
+    const at = (name: string) =>
+      findingSourceFile({ source: "src/lib.rs", test: name }, sources);
+    expect(at("semantic::runs::tests::split")).toBe("src/semantic/runs/mod.rs");
+    expect(at("semantic::tests::prefixes")).toBe("src/semantic.rs");
+    expect(at("tests::root")).toBe("src/lib.rs");
+    expect(
+      findingSourceFile(
+        { source: "tests/property_styles.rs", test: "toggles_cancel" },
+        sources,
+      ),
+    ).toBe("tests/property_styles.rs");
+  });
+
+  test("only a changed property file or its regressions make a finding fail", () => {
+    const finding = { source: "src/lib.rs", test: "semantic::tests::prefixes" };
+    expect(ownedFinding(finding, ["src/semantic.rs"], sources)).toBe(true);
+    expect(
+      ownedFinding(finding, ["src/semantic.proptest-regressions"], sources),
+    ).toBe(true);
+    // A new module declared in lib.rs leaves the other modules' findings reporting.
+    expect(ownedFinding(finding, ["src/lib.rs"], sources)).toBe(false);
+    expect(
+      ownedFinding(
+        { source: "tests/property_styles.rs", test: "toggles_cancel" },
+        ["tests/property_styles.rs"],
+        sources,
+      ),
+    ).toBe(true);
+    expect(ownedFinding(finding, [], sources)).toBe(false);
+  });
+
+  test("an owned finding's marker files as a regression", () => {
+    const marker = findingMarker(
+      {
+        target: ["--lib"],
+        source: "src/lib.rs",
+        test: "a::b",
+        reason: "x",
+        pin: null,
+      },
+      { ...OPTIONS, exploration: false },
+    );
+    expect(marker.exploration).toBeUndefined();
+  });
 });

@@ -1,5 +1,9 @@
 # Sequencing wire fixtures
 
+`batches-v11.json` and `ops/__tests__/__fixtures__/ops-v11.json` pin the
+current schema: version 11 records a sequenced direct format's cut run as its
+effect, and its envelopes are otherwise those of version 10.
+
 `batches-v9.json` pins accepted sequencing envelopes. It pairs with
 `ops/__tests__/__fixtures__/ops-v9.json`, which includes clipboard package
 resources alongside the schema-8 semantic table operations. The shipped
