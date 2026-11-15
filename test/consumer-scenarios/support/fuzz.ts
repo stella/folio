@@ -327,14 +327,21 @@ const isOperation = (value: unknown): value is Operation =>
   typeof value.type === "string" &&
   (!("id" in value) || typeof value.id === "string" || value.id === undefined);
 
+/**
+ * Ids for a `suggest_changes` request's operations, unique within the flow:
+ * the reviewer remembers every id it applied, and an id resent with a
+ * different operation refuses the whole call, so ids that restart per call
+ * would refuse every later request on the same reviewer.
+ */
 const identifySuggestedOperations = (
   input: unknown,
+  step: number,
 ): AppliedOperation[] | null => {
   if (!Array.isArray(input)) return null;
   const candidates: unknown[] = input;
   if (!candidates.every(isOperation)) return null;
   return candidates.map((operation, index) =>
-    identifyOperation(operation, `s-${index + 1}`),
+    identifyOperation(operation, `s${step}-${index + 1}`),
   );
 };
 
@@ -359,7 +366,7 @@ const suggestChecked = async (
   args: { operations: unknown },
   entry: string,
 ): Promise<number> => {
-  const asked = identifySuggestedOperations(args.operations);
+  const asked = identifySuggestedOperations(args.operations, flow.log.length);
   const operations = asked ?? args.operations;
   const done = record(
     flow,

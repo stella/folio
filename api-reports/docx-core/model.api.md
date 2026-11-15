@@ -1751,12 +1751,12 @@ export type ShapeOutline = WritableRecord & {
     cap?: "flat" | "round" | "square";
     join?: "bevel" | "miter" | "round";
     headEnd?: WritableRecord & {
-        type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
+        type?: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
         width?: "sm" | "med" | "lg";
         length?: "sm" | "med" | "lg";
     };
     tailEnd?: WritableRecord & {
-        type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
+        type?: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
         width?: "sm" | "med" | "lg";
         length?: "sm" | "med" | "lg";
     };
