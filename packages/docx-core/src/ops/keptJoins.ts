@@ -64,3 +64,25 @@ export const withJoinAtLeast = (
     ),
   });
 };
+
+/**
+ * Whether a seam this resolution records hands its join to a pending
+ * insertion facing it, whose own join on that side is `facingJoin`. A kept
+ * revision's join always does: the insertion was made inside the record the
+ * join belongs to. A removal's seam belongs to the pieces of the record its
+ * content cut. An insertion joined to the seam's side holds such a piece,
+ * made inside that record, and takes the seam. One joined to nothing there
+ * is new content: with pieces of the record beyond the pending insertions on
+ * both sides, the seam is deferred on it, so rejecting it joins the pieces
+ * and accepting it keeps them apart, as resolving both at once does. Only
+ * without pieces beyond both are the insertions facing the seam its pieces.
+ */
+export const seamHandsOver = ({
+  seam,
+  piecesBeyond,
+  facingJoin,
+}: {
+  seam: "keptJoin" | "removal";
+  piecesBeyond: boolean;
+  facingJoin: number;
+}): boolean => seam === "keptJoin" || facingJoin > 0 || !piecesBeyond;
