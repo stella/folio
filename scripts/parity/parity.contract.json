@@ -4,6 +4,7 @@
   "props": {
     "paired": [
       "anonymizationSelectionSeq",
+      "anonymizationTerms",
       "author",
       "autoOpenReviewSidebar",
       "className",
@@ -120,6 +121,7 @@
       "findPrevious",
       "focus",
       "getCommentAnchors",
+      "getAnonymizationMatches",
       "getBlockRect",
       "getBlockRects",
       "getContentControls",
