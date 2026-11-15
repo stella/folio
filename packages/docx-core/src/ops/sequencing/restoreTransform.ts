@@ -390,7 +390,19 @@ export const transformRestorePair = (
   if (edit === undefined) return undefined;
   const restoration = overEdit === undefined ? over : op;
   const rewrite = rewriteOf(restoration, editedParagraph(edit));
-  if (rewrite === undefined) return undefined;
+  if (rewrite === undefined)
+    return restoration.type === DOCUMENT_OP_TYPES.REPLACE_INLINE ||
+      restoration.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE
+      ? Result.err(
+          new BatchRejection({
+            reason: BATCH_REJECTION_REASONS.BLOCK_CONFLICT,
+            message:
+              "A restored paragraph does not take a concurrent edit alone: the restoration states no content for it.",
+            opType: op.type,
+            overType: over.type,
+          }),
+        )
+      : undefined;
   const span = restoredSpan(rewrite.expected, rewrite.content);
   const moved = editPast(edit, span);
   if (moved === undefined) return spanConflict(op, over);
