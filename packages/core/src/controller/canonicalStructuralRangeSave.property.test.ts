@@ -285,8 +285,13 @@ const partBytes = async (buffer: ArrayBuffer) => {
   return parts;
 };
 
-/** Each bookmark and permission id opens once and closes once after it. */
-const balancedRanges = (xml: string): boolean => {
+/**
+ * The bookmark and permission ids whose range is not one start followed by
+ * one end. The model decides which ranges an edit keeps whole; the splice
+ * must not unbalance one the full repack writes whole.
+ */
+const unbalancedRanges = (xml: string): string[] => {
+  const unbalanced: string[] = [];
   for (const kind of ["bookmark", "perm"] as const) {
     const opens = [
       ...xml.matchAll(new RegExp(`<w:${kind}Start\\b[^>]*w:id="(\\d+)"`, "gu")),
@@ -298,11 +303,15 @@ const balancedRanges = (xml: string): boolean => {
     for (const id of ids) {
       const starts = opens.filter((match) => match[1] === id);
       const ends = closes.filter((match) => match[1] === id);
-      if (starts.length !== 1 || ends.length !== 1) return false;
-      if ((starts[0]?.index ?? 0) > (ends[0]?.index ?? 0)) return false;
+      if (
+        starts.length !== 1 ||
+        ends.length !== 1 ||
+        (starts[0]?.index ?? 0) > (ends[0]?.index ?? 0)
+      )
+        unbalanced.push(`${kind}:${String(id)}`);
     }
   }
-  return true;
+  return unbalanced.toSorted();
 };
 
 const documentPart = async (buffer: ArrayBuffer) =>
@@ -359,7 +368,9 @@ test(
               await validateDocxPackage(new Uint8Array(saved.buffer)),
             ).toEqual({ valid: true });
             const savedXml = await documentPart(saved.buffer);
-            expect(balancedRanges(savedXml)).toBe(true);
+            expect(unbalancedRanges(savedXml)).toEqual(
+              unbalancedRanges(await documentPart(full.buffer)),
+            );
             const reopened = await parseDocx(saved.buffer, {
               preloadFonts: false,
             });
@@ -404,6 +415,17 @@ test(
         id: "structural saves of documents with bookmarks, fields, comments, moves and permissions splice to the session's document",
         numRuns: 25,
         examples: [
+          [
+            {
+              paragraphs: 3,
+              ranges: [{ kind: "permission", from: 0, to: 1 }],
+              fields: [],
+              move: null,
+              table: false,
+              bodyBookmark: false,
+            },
+            [{ kind: "delete", at: 0 }],
+          ],
           [
             {
               paragraphs: 4,
