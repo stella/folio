@@ -32,6 +32,7 @@ export type {
 export {
   finalizeParagraphFormatting,
   isCanonicallyEmptyParagraphFormatting,
+  paragraphSpacingExplicit,
   setDocumentBodyComments,
 } from "./canonical";
 

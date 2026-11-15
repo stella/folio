@@ -153,6 +153,7 @@ import {
   type CanonicalProjection,
   type CanonicalSession,
 } from "./canonicalSession";
+import { indentationAsRead, spacingSidesAsRead } from "./paragraphPatchAsRead";
 
 type CanonicalPublicOperationRefusal = NonNullable<
   FolioAIEditSkippedOperation["canonicalRefusal"]
@@ -292,7 +293,9 @@ const INDENTATION_FIELDS = [
  * The stated paragraph properties an operation writes: each given property
  * as it says, a spacing or indentation object as the whole direct child, so
  * an attribute it leaves out is removed, and `null` clears a property back
- * to what the style gives.
+ * to what the style gives. The patch states the paragraph as the parser reads
+ * the saved file back: the spacing sides the paragraph states are marked
+ * explicit by the parser's own rule, and an indentation is held as read.
  */
 const statedParagraphPatch = (
   properties: FolioAIBlockParagraphProperties,
@@ -308,12 +311,17 @@ const statedParagraphPatch = (
   if (numbering !== undefined && numbering.kind !== "newList")
     patch["numPr"] = numbering.kind === "inherit" ? null : numbering;
   const { spacing, indentation } = properties;
-  if (spacing !== undefined)
+  if (spacing !== undefined) {
     for (const field of SPACING_FIELDS)
       patch[field] = spacing === null ? null : (spacing[field] ?? null);
-  if (indentation !== undefined)
+    patch["spacingExplicit"] =
+      spacing === null ? null : (spacingSidesAsRead(spacing) ?? null);
+  }
+  if (indentation !== undefined) {
+    const read = indentation === null ? null : indentationAsRead(indentation);
     for (const field of INDENTATION_FIELDS)
-      patch[field] = indentation === null ? null : (indentation[field] ?? null);
+      patch[field] = read === null ? null : (read[field] ?? null);
+  }
   // Every key is a ParagraphFormatting field set to its value or null.
   return patch as ParagraphPropsPatch;
 };

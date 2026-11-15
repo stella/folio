@@ -795,6 +795,8 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
         type: "paragraphPropertyChange",
         info: { id: 1, author: "Reviewer", date: DATE },
         previousFormatting: { styleId: "Heading1" },
+        currentFormatting:
+          first?.type === "paragraph" ? first.formatting : undefined,
       },
     ]);
     expect(
@@ -936,6 +938,7 @@ describe("C9: Enter and Delete record paragraph marks", () => {
             type: "paragraphPropertyChange",
             info: { id: 2, author: "Reviewer", date: DATE },
             previousFormatting: { alignment: "end" },
+            currentFormatting: { styleId: "Heading1" },
           },
         ],
       },
@@ -1070,6 +1073,11 @@ describe("C6: a tracked split's new paragraph has exactly the direct split's fie
           type: "paragraphPropertyChange",
           info: { id: 1, author: "Reviewer", date: DATE },
           previousFormatting: { styleId: "Heading1", spaceBefore: 120 },
+          // The properties it now has, the direct split's.
+          currentFormatting:
+            directFirst?.type === "paragraph"
+              ? directFirst.formatting
+              : undefined,
         },
       ],
       pPrMark: {
@@ -1716,6 +1724,8 @@ test("tracked paragraph patches and joins keep one pending property review and i
           {
             ...pending,
             info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" },
+            currentFormatting:
+              patched?.type === "paragraph" ? patched.formatting : undefined,
           },
         ]);
       }
@@ -1735,6 +1745,7 @@ test("tracked paragraph patches and joins keep one pending property review and i
       {
         ...pending,
         info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" },
+        currentFormatting: { styleId: "Heading1" },
       },
     ]);
     expect(survivor?.type === "paragraph" && survivor.formatting).toEqual({
@@ -1777,6 +1788,8 @@ test("a new first split half records its own review without moving the surviving
       type: "paragraphPropertyChange",
       info: { id: 1, author: "Reviewer", date: DATE },
       previousFormatting: { alignment: "center" },
+      currentFormatting:
+        first?.type === "paragraph" ? first.formatting : undefined,
     },
   ]);
   expect(second?.type === "paragraph" && second.propertyChanges).toEqual([
