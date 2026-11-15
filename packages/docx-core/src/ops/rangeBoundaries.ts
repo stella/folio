@@ -16,9 +16,12 @@
  * (see `isCommentExhausted`); its boundaries go with it.
  *
  * A paragraph that goes whole takes none of its boundaries with it
- * ({@link paragraphRemains}): bookmarks and move ranges stand between blocks
- * where it was, and comment anchors, which only a paragraph holds, go to the
- * nearest paragraph that stays.
+ * ({@link paragraphRemains}): its bookmarks, move ranges and comment anchors
+ * go to the nearest paragraph that stays, as deleting the paragraph directly
+ * leaves them. A paragraph after it joins them in at its start; with none,
+ * the paragraph before it takes them at its end. No boundary is left
+ * standing between blocks, where no edit could say which paragraph it
+ * changed.
  */
 
 import { panic } from "better-result";
@@ -438,39 +441,20 @@ export const insertsInvertedRange = ({
 };
 
 /**
- * What a paragraph that goes whole leaves where it was: every bookmark and
- * move range boundary it holds, at any depth, as blocks in its place, and its
- * comment anchors for the nearest paragraph that stays to take. When a
- * comment needs that host, every carrier travels there together in source
- * order. A comment with both anchors there becomes a point there, so the
- * comment and its anchor survive the paragraph.
+ * What a paragraph that goes whole leaves for the nearest paragraph that
+ * stays: every bookmark, move range boundary and comment anchor it holds, at
+ * any depth, in source order. They travel together, so every range keeps
+ * its order, and a comment with both anchors there becomes a point there,
+ * so the comment and its anchor survive the paragraph.
  */
 export const paragraphRemains = (
   content: readonly InlineNode[],
-): {
-  all: (Boundary | CommentAnchor)[];
-  blocks: BlockBoundary[];
-  comments: CommentAnchor[];
-  placement: "blocks" | "previous";
-} => {
-  const detached = rejectCopyOriginAncestorsInNodes(content, 0);
-  const carriers = paragraphBoundaryCarriersIn(detached);
-  const comments = carriers.filter(isCommentAnchor);
-  return {
-    all: carriers,
-    blocks: carriers.filter(
-      (carrier): carrier is BlockBoundary =>
-        isBoundary(carrier) && !isCommentAnchor(carrier),
-    ),
-    comments,
-    placement: comments.length > 0 ? "previous" : "blocks",
-  };
-};
+): (Boundary | CommentAnchor)[] =>
+  paragraphBoundaryCarriersIn(rejectCopyOriginAncestorsInNodes(content, 0));
 
 type ParagraphBoundaryRemovalOptions = {
   blocks: readonly BlockContent[];
   index: number;
-  place: "blocks" | "previous";
 };
 
 type ParagraphBoundaryRemovalPlan =
@@ -484,32 +468,26 @@ type ParagraphBoundaryRemovalPlan =
       }[];
     };
 
+/**
+ * `blocks` without the paragraph at `index`, which no paragraph follows to
+ * join, and the paragraph before it holding what it leaves
+ * ({@link paragraphRemains}) at its end. Blocked when it leaves anything and
+ * no paragraph stands before it: the paragraph then stays.
+ */
 export const planParagraphBoundaryRemoval = ({
   blocks,
   index,
-  place,
 }: ParagraphBoundaryRemovalOptions): ParagraphBoundaryRemovalPlan => {
   const paragraph = blocks[index];
   if (paragraph?.type !== "paragraph")
     return panic("Only a paragraph leaves its range boundaries.");
-  const {
-    all,
-    blocks: boundaries,
-    placement,
-  } = paragraphRemains(paragraph.content);
-  const destination = place === "previous" ? place : placement;
-  const between = destination === "blocks" ? boundaries : [];
-  const toPrevious = destination === "previous" ? all : [];
-  const remaining = [
-    ...blocks.slice(0, index),
-    ...between,
-    ...blocks.slice(index + 1),
-  ];
-  if (toPrevious.length === 0)
+  const carriers = paragraphRemains(paragraph.content);
+  const remaining = [...blocks.slice(0, index), ...blocks.slice(index + 1)];
+  if (carriers.length === 0)
     return { type: "removed", blocks: remaining, effects: [] };
   const host = remaining[index - 1];
   if (host?.type !== "paragraph") return { type: "blocked" };
-  remaining[index - 1] = { ...host, content: [...host.content, ...toPrevious] };
+  remaining[index - 1] = { ...host, content: [...host.content, ...carriers] };
   return {
     type: "removed",
     blocks: remaining,

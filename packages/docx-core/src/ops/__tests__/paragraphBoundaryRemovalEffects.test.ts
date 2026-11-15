@@ -144,12 +144,7 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
                 : payload,
           } satisfies Paragraph;
           const prefix = PREFIXES[fixture.prefix];
-          const hasCommentCarrier = payload.some(
-            (node) => node.type === "commentRangeEnd",
-          );
-          const placedInPrevious =
-            payload.length > 0 &&
-            (fixture.context === "terminal" || hasCommentCarrier);
+          const placedInPrevious = payload.length > 0;
           const blocks: BlockContent[] = [
             ...prefix,
             retired,
@@ -160,7 +155,6 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
           const plan = planParagraphBoundaryRemoval({
             blocks,
             index: prefix.length,
-            place: fixture.context === "before-table" ? "blocks" : "previous",
           });
           expect(blocks.at(prefix.length)).toBe(retired);
           if (plan.type === "blocked") {
@@ -169,10 +163,6 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
           }
           expect(fixture.expected).not.toBe("blocked");
           expect(plan.blocks).not.toContain(retired);
-          const between =
-            fixture.context === "before-table" && !hasCommentCarrier
-              ? payload
-              : [];
           expect(
             retainedCarriersIn(plan.blocks, new Set<object>(payload)),
           ).toEqual(payload);
@@ -181,7 +171,7 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
               (block) =>
                 block.type === "bookmarkEnd" || block.type === "moveToRangeEnd",
             ),
-          ).toEqual(between);
+          ).toEqual([]);
           if (!placedInPrevious) {
             expect(fixture.expected).toBe("none");
             expect(plan.effects).toEqual([]);
@@ -198,10 +188,7 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
             content: [...host.content, ...payload],
           });
           for (const block of plan.blocks.slice(1))
-            expect(
-              blocks.includes(block) ||
-                between.some((boundary) => boundary === block),
-            ).toBe(true);
+            expect(blocks.includes(block)).toBe(true);
         }
       },
     );
@@ -214,7 +201,7 @@ test("paragraph removal plans declare exactly the retained-boundary receiver acr
   expect([...exercised].sort()).toEqual(Object.keys(REMOVAL_CASES).sort());
 });
 
-test("bookmark-only paragraph carriers remain between blocks", () => {
+test("bookmark-only paragraph carriers go to the paragraph before it", () => {
   const bookmarkStart = {
     type: "bookmarkStart",
     id: 15,
@@ -231,13 +218,16 @@ test("bookmark-only paragraph carriers remain between blocks", () => {
   const plan = planParagraphBoundaryRemoval({
     blocks,
     index: 1,
-    place: "blocks",
   });
 
+  const receiver = {
+    ...host,
+    content: [...host.content, bookmarkStart, bookmarkEnd],
+  };
   expect(plan).toEqual({
     type: "removed",
-    blocks: [host, bookmarkStart, bookmarkEnd, table, finalParagraph],
-    effects: [],
+    blocks: [receiver, table, finalParagraph],
+    effects: [{ type: "retained-range-boundaries", receiver: host }],
   });
   expect(
     retainedCarriersIn(
@@ -292,7 +282,6 @@ test.each(["anchor-only", "tracked-material"] as const)(
     const plan = planParagraphBoundaryRemoval({
       blocks: source.package.document.content,
       index: 1,
-      place: "blocks",
     });
     if (plan.type === "blocked")
       throw new TypeError("The fixture has its preceding anchor receiver.");

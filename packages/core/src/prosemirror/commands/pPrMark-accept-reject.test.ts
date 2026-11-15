@@ -48,12 +48,6 @@ const schema = new Schema({
       atom: true,
       attrs: BOOKMARK_ATTRS,
     },
-    // Where a bookmark stands between blocks once its paragraph is gone.
-    blockBookmarkBoundary: {
-      group: "block",
-      atom: true,
-      attrs: BOOKMARK_ATTRS,
-    },
     textBoxAnchor: { inline: true, group: "inline", atom: true },
     commentReference: {
       inline: true,
@@ -323,9 +317,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
     });
     const view = dispatcher(state);
     expect(
-      paragraphRemainsOf(view.state.doc.child(1)).comments.map(
-        ({ type }) => type.name,
-      ),
+      paragraphRemainsOf(view.state.doc.child(1)).map(({ type }) => type.name),
     ).toEqual(["commentReference"]);
 
     rejectAllChanges()(view.state, view.dispatch);
@@ -452,16 +444,17 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
   // Whether an emptied paragraph stays is the engine's one paragraph-content
   // rule, the same in the editor: a cached page break is not content, so the
-  // paragraph goes; a bookmark boundary is a position, so the paragraph goes
-  // and leaves it where it was (this table takes no run-in); a text box anchor
-  // stands for its drawing, so the paragraph keeps it instead of orphaning the
-  // box.
+  // paragraph goes; a bookmark boundary is a position, which the nearest
+  // paragraph that stays takes, and with none before it and a table that
+  // takes no run-in after it, the paragraph stays holding it; a text box
+  // anchor stands for its drawing, so the paragraph keeps it instead of
+  // orphaning the box.
   for (const [anchor, attrs, blocks] of [
     ["renderedPageBreak", null, ["table", "paragraph"]],
     [
       "bookmarkBoundary",
       { type: "start", id: 1, name: "kept" },
-      ["blockBookmarkBoundary", "table", "paragraph"],
+      ["paragraph", "table", "paragraph"],
     ],
     ["textBoxAnchor", null, ["paragraph", "table", "paragraph"]],
   ] as const) {

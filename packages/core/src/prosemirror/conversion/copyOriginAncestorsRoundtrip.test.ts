@@ -350,7 +350,7 @@ test("rejecting a named inner owner drops a multiply-owned copy", async () => {
   expect(output).not.toContain("copyOriginAncestors");
 });
 
-test("paragraph-boundary hoisting drops copied owners in both destinations", async () => {
+test("paragraph-boundary hoisting drops copied owners", async () => {
   const parsed = await parseDocx(await documentWithNestedCopiedBoundaries(), {
     preloadFonts: false,
   });
@@ -361,12 +361,9 @@ test("paragraph-boundary hoisting drops copied owners in both destinations", asy
       .filter((node) => node.attrs["type"] === "start")
       .map((node) => node.attrs["name"]);
 
-  expect(starts(remains.blocks)).toEqual(["original"]);
-  expect(starts(remains.inline)).toEqual(["original"]);
+  expect(starts(remains)).toEqual(["original"]);
   expect(
-    [...remains.blocks, ...remains.inline].every(
-      (node) => node.attrs["copyOriginAncestors"] == null,
-    ),
+    remains.every((node) => node.attrs["copyOriginAncestors"] == null),
   ).toBe(true);
 });
 
@@ -451,13 +448,11 @@ test("paragraph-mark removal normalizes copied empty move boundaries", async () 
   ]);
   expect(removedNodes).toEqual(["drop", "rangeAnchor"]);
   const remains = paragraphRemainsOf(projected.child(0));
-  for (const nodes of [remains.blocks, remains.inline]) {
-    const boundaries = nodes.flatMap(rangeBoundaryItemsOf);
-    expect(boundaries).toHaveLength(2);
-    expect(
-      boundaries.every((boundary) => !("copyOriginAncestors" in boundary)),
-    ).toBe(true);
-  }
+  const boundaries = remains.flatMap(rangeBoundaryItemsOf);
+  expect(boundaries).toHaveLength(2);
+  expect(
+    boundaries.every((boundary) => !("copyOriginAncestors" in boundary)),
+  ).toBe(true);
 });
 
 test("native suggestion paste cleanup keeps the standing bookmark end on rejection", () => {
