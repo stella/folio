@@ -81,11 +81,18 @@ const storyTexts = (document: Document): string[][] => [
   ].map(({ content }) => collectBlockTexts(content)),
 ];
 
-type Outcome = "agreed" | "acceptRefused";
+type Outcome = "agreed" | "sessionRefused" | "acceptRefused";
 
 const acceptedViewLaws = async (buffer: ArrayBuffer): Promise<Outcome> => {
-  const reviewer = await open(buffer);
-  const document = reviewer.toDocument();
+  let reviewer: FolioDocxReviewer;
+  let document: Document;
+  try {
+    reviewer = await open(buffer);
+    document = reviewer.toDocument();
+  } catch (error) {
+    if (CanonicalSessionError.is(error)) return "sessionRefused";
+    throw error;
+  }
   const read = toMarkdownResult(document, CLEAN);
   const texts = storyTexts(document);
   try {

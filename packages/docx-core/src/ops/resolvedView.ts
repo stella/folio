@@ -8,7 +8,7 @@
 
 import type { Document } from "../model/document";
 import { applyDocumentOps } from "./apply";
-import { IDENTITY_SPACES, identityKeysIn } from "./ids";
+import { IDENTITY_SPACES, identityKeysIn, packageParagraphIds } from "./ids";
 import { documentStories, findStoryBody } from "./stories";
 import {
   DOCUMENT_OP_TYPES,
@@ -16,6 +16,7 @@ import {
   type RevisionDecision,
 } from "./types";
 
+/** A document with its changes resolved one way, and what could not be. */
 export type ResolvedDocumentView = {
   document: Document;
   /**
@@ -42,6 +43,100 @@ const storyRevisionIds = (document: Document, story: OpStory): number[] => {
   ];
 };
 
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  Object.getPrototypeOf(value) === Object.prototype;
+
+/**
+ * `value` with `edit` applied to every plain record, bottom up, copying only
+ * what changes. A record reached twice (a section's view of the body shares
+ * the body's paragraphs) maps to one copy.
+ */
+const mapRecords = (
+  value: unknown,
+  edit: (record: Record<string, unknown>) => Record<string, unknown>,
+  seen: Map<object, unknown> = new Map(),
+): unknown => {
+  if (typeof value !== "object" || value === null) return value;
+  const known = seen.get(value);
+  if (known !== undefined) return known;
+  let out: unknown = value;
+  if (Array.isArray(value)) {
+    const items = value.map((item) => mapRecords(item, edit, seen));
+    if (items.some((item, index) => item !== value[index])) out = items;
+  } else if (value instanceof Map) {
+    const entries = [...value.entries()].map(
+      ([key, item]) => [key, mapRecords(item, edit, seen)] as const,
+    );
+    if (entries.some(([key, item]) => item !== value.get(key)))
+      out = new Map(entries);
+  } else if (isPlainRecord(value)) {
+    let record = value;
+    for (const [key, item] of Object.entries(value)) {
+      const mapped = mapRecords(item, edit, seen);
+      if (mapped === item) continue;
+      if (record === value) record = { ...value };
+      record[key] = mapped;
+    }
+    out = edit(record);
+  }
+  seen.set(value, out);
+  return out;
+};
+
+/**
+ * `document` with an id on every paragraph, which resolution addresses
+ * paragraphs by, and the ids it minted: the view leaves them off again.
+ */
+const withParagraphIds = (
+  document: Document,
+): { document: Document; minted: ReadonlySet<string> } => {
+  const taken = new Set(packageParagraphIds(document.package));
+  const minted = new Set<string>();
+  let next = 0x10000000;
+  const fresh = (): string => {
+    let id = next.toString(16).toUpperCase();
+    while (taken.has(id)) {
+      next += 1;
+      id = next.toString(16).toUpperCase();
+    }
+    next += 1;
+    minted.add(id);
+    return id;
+  };
+  const pkg = mapRecords(document.package, (record) =>
+    record["type"] === "paragraph" && typeof record["paraId"] !== "string"
+      ? { ...record, paraId: fresh() }
+      : record,
+  ) as Document["package"];
+  return {
+    document:
+      pkg === document.package ? document : { ...document, package: pkg },
+    minted,
+  };
+};
+
+const withoutParagraphIds = (
+  document: Document,
+  minted: ReadonlySet<string>,
+): Document => {
+  if (minted.size === 0) return document;
+  const pkg = mapRecords(document.package, (record) => {
+    const id = record["paraId"];
+    if (
+      record["type"] !== "paragraph" ||
+      typeof id !== "string" ||
+      !minted.has(id)
+    )
+      return record;
+    return Object.fromEntries(
+      Object.entries(record).filter(([key]) => key !== "paraId"),
+    );
+  }) as Document["package"];
+  return pkg === document.package ? document : { ...document, package: pkg };
+};
+
 /**
  * `document` with every revision resolved by `decision`, story by story. A
  * story the resolution of an earlier one removed (a note whose every
@@ -51,9 +146,13 @@ export const resolvedDocumentView = (
   document: Document,
   decision: RevisionDecision,
 ): ResolvedDocumentView => {
-  let current = document;
+  const stories = documentStories(document);
+  if (stories.every((story) => storyRevisionIds(document, story).length === 0))
+    return { document, unresolved: [] };
+  const identified = withParagraphIds(document);
+  let current = identified.document;
   const unresolved: OpStory[] = [];
-  for (const story of documentStories(document)) {
+  for (const story of stories) {
     const revisionIds = storyRevisionIds(current, story);
     if (revisionIds.length === 0) continue;
     const resolved = applyDocumentOps(current, [
@@ -67,5 +166,8 @@ export const resolvedDocumentView = (
     if (resolved.isErr()) unresolved.push(story);
     else current = resolved.value.document;
   }
-  return { document: current, unresolved };
+  return {
+    document: withoutParagraphIds(current, identified.minted),
+    unresolved,
+  };
 };
