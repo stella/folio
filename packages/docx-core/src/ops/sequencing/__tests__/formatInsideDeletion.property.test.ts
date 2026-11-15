@@ -327,8 +327,14 @@ const rejoined = (forget?: Forgotten) =>
         equalForStaleness(formatFirst.document, deletionFirst.document)
           ? undefined
           : {
-              formatFirst: formatFirst.document.package.document.content,
-              deletionFirst: deletionFirst.document.package.document.content,
+              formatFirst: [
+                formatFirst.document.package.document.content,
+                formatFirst.document.package.footnotes,
+              ],
+              deletionFirst: [
+                deletionFirst.document.package.document.content,
+                deletionFirst.document.package.footnotes,
+              ],
             },
       ).toBeUndefined();
     },
@@ -387,12 +393,18 @@ describe("a direct format inside a concurrent direct deletion", () => {
         });
         const deletionFirst = inOrder(base, deletion, typing, forget);
         const typingFirst = inOrder(base, typing, deletion, forget);
-        return "document" in deletionFirst && "document" in typingFirst
-          ? equalForStaleness(deletionFirst.document, typingFirst.document)
-          : undefined;
+        if (!("document" in deletionFirst)) return deletionFirst.refused;
+        if (!("document" in typingFirst)) return typingFirst.refused;
+        return equalForStaleness(deletionFirst.document, typingFirst.document)
+          ? true
+          : {
+              deletionFirst: deletionFirst.document.package.footnotes,
+              typingFirst: typingFirst.document.package.footnotes,
+            };
       },
     );
     // The test-only break: a deletion recording no kept mark is caught.
-    expect(outcomes).toEqual([true, false]);
+    expect(outcomes[0]).toBe(true);
+    expect(outcomes[1]).not.toBe(true);
   });
 });
