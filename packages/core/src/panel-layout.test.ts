@@ -10,8 +10,10 @@ import {
   type CommentsPresentation,
   computePanelLayout,
   type OutlinePresentation,
+  overlayAfterLayout,
   PANEL_METRICS,
   type PanelLayoutInput,
+  requestedOutline,
 } from "./panel-layout";
 
 setDefaultTimeout(propertyTestTimeout(5_000));
@@ -175,5 +177,37 @@ describe("computePanelLayout", () => {
       }),
       propertyConfig(),
     );
+  });
+});
+
+describe("an opened outline", () => {
+  test("takes its own track at every width, and closes once a column fits it", () => {
+    for (const availableWidth of [480, 800, 1100, 1500, 2400]) {
+      const layout = computePanelLayout({
+        availableWidth,
+        pageWidth: 816,
+        outline: requestedOutline("outline", "available"),
+        comments: "open",
+      });
+      expect(layout.outline).toBe("expanded");
+      expect(layout.outlineTrackWidth).toBeGreaterThanOrEqual(
+        PANEL_METRICS.controlMinimumSize,
+      );
+      expect(overlayAfterLayout("outline", layout)).toBe("outline");
+    }
+    expect(requestedOutline("outline", "absent")).toBe("absent");
+    expect(requestedOutline("comments", "available")).toBe("available");
+    expect(
+      overlayAfterLayout("outline", { outline: "column", comments: "hidden" }),
+    ).toBe("none");
+    expect(
+      overlayAfterLayout("outline", { outline: "none", comments: "hidden" }),
+    ).toBe("none");
+    expect(
+      overlayAfterLayout("comments", { outline: "rail", comments: "column" }),
+    ).toBe("none");
+    expect(
+      overlayAfterLayout("comments", { outline: "rail", comments: "drawer" }),
+    ).toBe("comments");
   });
 });

@@ -85,6 +85,7 @@ import {
 import { withHostCommentThreads } from "@stll/folio-core/docx/hostCommentThreads";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
+import { findPageNumberAtEditorPosition } from "@stll/folio-core/layout-engine/pmPageIndex";
 import type { Layout } from "@stll/folio-core/layout-engine/types";
 import {
   DEFAULT_KEYBOARD_SHORTCUT_SCOPE,
@@ -176,6 +177,7 @@ import {
   CLIPBOARD_READ_ERROR_EVENT,
   pastePlainTextSlice,
 } from "@stll/folio-core/prosemirror/commands/pastePlainText";
+import { replaceRangeText } from "@stll/folio-core/prosemirror/commands/replaceRangeText";
 import {
   clearPendingComment,
   commentIdsNamedIn,
@@ -209,7 +211,6 @@ import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirr
 import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
-  deleteSelectionAsSuggestion,
   setSuggestionMode,
   suggestionModeKey,
 } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
@@ -3472,9 +3473,10 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             const { from, to } = view.state.selection;
             const text = view.state.doc.textBetween(from, to, "\n");
             void navigator.clipboard.writeText(text).catch(() => undefined);
-            if (!deleteSelectionAsSuggestion(view.state, view.dispatch)) {
-              view.dispatch(view.state.tr.deleteSelection());
-            }
+            executeEditorCommand(
+              view,
+              replaceRangeText({ from, to, text: "" }),
+            );
             onCut?.();
             break;
           }
@@ -3520,8 +3522,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             } catch {
               try {
                 const text = await navigator.clipboard.readText();
-                if (text) {
-                  view.dispatch(view.state.tr.insertText(text));
+                if (text && !view.isDestroyed) {
+                  pastePlainTextSlice(
+                    view,
+                    buildPlainTextSlice(text, view.state.schema),
+                  );
                   onPaste?.();
                 }
               } catch {
@@ -3551,9 +3556,11 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             break;
           case "delete": {
             const { from, to } = view.state.selection;
-            if (from !== to) {
-              view.dispatch(view.state.tr.deleteRange(from, to));
-            }
+            if (from !== to)
+              executeEditorCommand(
+                view,
+                replaceRangeText({ from, to, text: "" }),
+              );
             break;
           }
           case "selectAll":
@@ -4774,13 +4781,16 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                   doc: view.state.doc,
                   snapshot,
                 });
-          if (range === null) {
+          const layout =
+            pagedEditorRef.current?.getEditor()?.getLayout() ?? null;
+          if (range === null || layout === null) {
             return null;
           }
-          return (
-            pagedEditorRef.current?.getPageNumberForPmPos(range.from) ?? null
-          );
+          return findPageNumberAtEditorPosition(layout, range.from);
         },
+        getPositionPage: (position) =>
+          pagedEditorRef.current?.getEditor()?.getPositionPage(position) ??
+          null,
         getBlockRect: (blockId) =>
           pagedEditorRef.current?.getBlockRect(blockId) ?? null,
         getBlockRects: (blockIds) =>

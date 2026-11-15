@@ -1,0 +1,16 @@
+{
+  "restyles the paragraph in both engines alike, pending, accepted and rejected": [
+    {
+      "seed": 905168447,
+      "path": "1:3:2:3:3:3:3:3:3:3:2:3:3:3",
+      "note": "A blank paragraph given no words and its own style: neither engine changes it.",
+      "date": "2026-11-14"
+    },
+    {
+      "seed": -1340318819,
+      "path": "22:1:1:2:2:2:2:2:3:4:4:4",
+      "note": "New words over a joined paragraph of mixed formatting: each engine's word diff places them; words and style compared.",
+      "date": "2026-11-14"
+    }
+  ]
+}
