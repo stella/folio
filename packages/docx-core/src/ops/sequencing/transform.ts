@@ -203,6 +203,45 @@ const rejoinedOverFormat = ({
   ]);
 };
 
+/**
+ * A revision decision over a concurrent direct positional edit: it decides
+ * the same revisions after the edit, unless the edit cut a revision record
+ * in two and gave its second half a new id, which one order decides and the
+ * other does not. Undefined for every other pair.
+ */
+const decisionOverEdit = (
+  op: DocumentOp,
+  over: DocumentOp,
+): Result<readonly DocumentOp[], BatchRejection> | undefined => {
+  if (op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION) return undefined;
+  switch (over.type) {
+    case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
+      break;
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+      if (!isInlineInsertion(over)) return undefined;
+      break;
+    default:
+      return undefined;
+  }
+  // A tracked edit records revisions of its own beside the decided ones.
+  if ("revision" in over && over.revision !== undefined) return undefined;
+  if (
+    "newIds" in over &&
+    over.newIds?.revision !== undefined &&
+    over.newIds.revision.length > 0
+  )
+    return refusal(
+      op,
+      over,
+      "A concurrent edit cut a revision record this decision resolves.",
+    );
+  return Result.ok([op]);
+};
+
 const transformRestoredOp = ({
   op,
   over,
@@ -221,6 +260,9 @@ const transformRestoredOp = ({
     );
   if (!sameStory(story, overStory)) return Result.ok([op]);
   if (independent(op, over)) return Result.ok([op]);
+  // A decision names its revisions, not positions.
+  const decided = decisionOverEdit(op, over);
+  if (decided !== undefined) return decided;
   // A range or point comment moves like text; text moves past its reference.
   if (isAnchoredComment(op))
     return moveCommentAnchor({ op, over, effect, order });

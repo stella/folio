@@ -1570,6 +1570,28 @@ const replacementAmongRevisions: Scenario = [
   ],
 ];
 
+/**
+ * Peer 1 types, decides a revision, and types again, while peer 0 types
+ * and undoes twice and is sequenced first: peer 1's typing is refused, and
+ * its decision, which edits no text, still rebases over the typing's
+ * inverse and is sequenced.
+ */
+const decisionAfterRejectedTyping: Scenario = [
+  4,
+  [
+    edit(1, { kind: "type", a: 0, b: 0 }),
+    edit(1, { kind: "decide", a: 0, b: 0 }),
+    edit(1, { kind: "type", a: 0, b: 0 }),
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "undo", peer: 0 },
+    edit(0, { kind: "type", a: 0, b: 0 }),
+    { type: "undo", peer: 0 },
+    { type: "submit", peer: 0 },
+    { type: "deliver", seed: 0 },
+    { type: "deliver", seed: 42832 },
+  ],
+];
+
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -1583,6 +1605,7 @@ const PINNED: readonly Scenario[] = [
   trackedPending,
   independentAfterDropped,
   formatInsideErase,
+  decisionAfterRejectedTyping,
 ];
 
 describe("canonical sequencing", () => {
@@ -1765,6 +1788,49 @@ describe("canonical sequencing", () => {
           propertyConfig({
             numRuns: 1,
             examples: [[independentAfterDropped]],
+            reporter: () => undefined,
+          }),
+        );
+        expect(result.failed).toBe(true);
+      } finally {
+        mock.module("../transform", () => original);
+      }
+    },
+    propertyTestTimeout(60_000),
+  );
+
+  test(
+    "a decision survives the rejection of unrelated typing before it",
+    async () => {
+      const outcome = simulate(...decisionAfterRejectedTyping);
+      expect(outcome.independentDrops).toEqual([]);
+      // The test-only break: decisions do not rebase over a direct edit.
+      const original = { ...transformModule };
+      mock.module("../transform", () => ({
+        ...original,
+        transformBatch: (
+          ...args: Parameters<typeof original.transformBatch>
+        ) => {
+          const [batch, over] = args;
+          return batch.ops.some(
+            ({ type }) => type === DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          ) && over.some(({ ops }) => ops.some((op) => !isBlockScoped(op)))
+            ? Result.err(
+                new envelope.BatchRejection({
+                  reason: BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
+                  message: "Break: no decision over a direct edit.",
+                }),
+              )
+            : original.transformBatch(...args);
+        },
+      }));
+      try {
+        const result = await fc.check(
+          convergence(),
+          // The break is a counterexample on purpose: report nothing.
+          propertyConfig({
+            numRuns: 1,
+            examples: [[decisionAfterRejectedTyping]],
             reporter: () => undefined,
           }),
         );

@@ -61,7 +61,11 @@ The position transform rebases text insertions, inline content insertions,
 inline record splits and joins, direct deletions, run and paragraph
 formatting, paragraph splits and joins, anchored paragraph insertion and
 repeated revision decisions. Overlapping revision decisions with opposite
-outcomes reject. Text inherited at a paragraph's start takes the run after
+outcomes reject. A revision decision names its revisions, not positions: it
+passes a concurrent direct positional edit (typing, an inline insertion, a
+deletion, a format, an inline record split or join) unchanged, and is
+refused only when that edit cut a revision record in two and gave its
+second half a new id. Text inherited at a paragraph's start takes the run after
 it, so a concurrent format from the start covers it in either order. A
 direct format lying inside a concurrent direct deletion cut records that the
 deletion, applied first, would have left whole: the sequenced format records
