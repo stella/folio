@@ -12,7 +12,10 @@
  * import it.
  */
 
-import { outlineLevelFromStatedValue } from "@stll/docx-core/model";
+import {
+  outlineLevelFromStatedValue,
+  paragraphSpacingExplicit,
+} from "@stll/docx-core/model";
 
 import type { ParagraphFormatting, TabStop, Theme } from "../types/document";
 import type { DeepReadonly } from "../types/documentModel";
@@ -498,14 +501,8 @@ const readParagraphSpacing = (
     formatting.lineSpacing = line;
   }
 
-  const spacingExplicit: { before?: boolean; after?: boolean } = {};
-  if (before !== undefined) {
-    spacingExplicit.before = true;
-  }
-  if (after !== undefined) {
-    spacingExplicit.after = true;
-  }
-  if (spacingExplicit.before || spacingExplicit.after) {
+  const spacingExplicit = paragraphSpacingExplicit(formatting);
+  if (spacingExplicit !== undefined) {
     formatting.spacingExplicit = spacingExplicit;
   }
 

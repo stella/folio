@@ -221,10 +221,15 @@ export const withMarkFormatting = (
   return { ...paragraphPropertiesOf(properties), ...markFormatting };
 };
 
-/** A tracked paragraph property change from the paragraph's authored properties. */
+/**
+ * A tracked paragraph property change from the paragraph's authored
+ * properties, recording `formatting` as the properties it now has, as a
+ * reopened file reads them from the paragraph's own `w:pPr`.
+ */
 export const paragraphPropertyChange = (
   info: TrackedChangeInfo,
   paragraph: Paragraph,
+  formatting: ParagraphFormatting | undefined,
 ): ParagraphPropertyChange => {
   const change: ParagraphPropertyChange = {
     type: "paragraphPropertyChange",
@@ -236,6 +241,7 @@ export const paragraphPropertyChange = (
   if (recorded !== undefined) {
     change.previousFormatting = recorded;
   }
+  if (formatting !== undefined) change.currentFormatting = formatting;
   return change;
 };
 
@@ -253,18 +259,16 @@ export const foldedParagraphPropertyChange = ({
 }: FoldParagraphPropertyChangeOptions): ParagraphPropertyChange => {
   const existing = paragraph.propertyChanges?.at(0);
   if (existing === undefined)
-    return paragraphPropertyChange(stampInfo(stamp), paragraph);
+    return paragraphPropertyChange(stampInfo(stamp), paragraph, formatting);
   const info = { ...existing.info, ...stampInfo(stamp), id: existing.info.id };
   if (stamp.initials === undefined) delete info.initials;
   if (stamp.suggestionId === undefined) delete info.suggestionId;
   // A companion date belongs to the previous attribution, not the new stamp.
   delete info.utcDate;
   const change = { ...existing, info };
-  // Parsed reviews carry this derived convenience field; keep it tied to live properties.
-  if (existing.currentFormatting !== undefined) {
-    if (formatting === undefined) delete change.currentFormatting;
-    else change.currentFormatting = formatting;
-  }
+  // The properties the paragraph now has, as a reopened file reads them.
+  if (formatting === undefined) delete change.currentFormatting;
+  else change.currentFormatting = formatting;
   return change;
 };
 
