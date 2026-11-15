@@ -877,7 +877,7 @@ describe("headless bulk revision resolution isolation", () => {
 });
 
 describe("headless bulk revision state", () => {
-  test("accepting a deleted move-only paragraph with no paragraph before it keeps the paragraph holding its move range boundaries", () => {
+  test("accepting a deleted move-only paragraph with no paragraph before it hands its move range boundaries to the table's first cell", () => {
     const deletedMove = schema.node(
       "paragraph",
       { pPrMark: paragraphMark("del", 50) },
@@ -913,11 +913,12 @@ describe("headless bulk revision state", () => {
 
     const children: string[] = [];
     resolved.doc.forEach((child) => children.push(child.type.name));
-    expect(children).toEqual(["paragraph", "table"]);
+    expect(children).toEqual(["table"]);
     expect(resolved.doc.textContent).toBe("stable");
+    const cell = resolved.doc.child(0).child(0).child(0).child(0);
     const kept: string[] = [];
-    resolved.doc.child(0).forEach((child) => kept.push(child.type.name));
-    expect(kept).toEqual(["moveRangeBoundary", "moveRangeBoundary"]);
+    cell.forEach((child) => kept.push(child.type.name));
+    expect(kept).toEqual(["moveRangeBoundary", "moveRangeBoundary", "text"]);
   });
 
   test.each(["accept", "reject"] as const)(

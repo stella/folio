@@ -19,7 +19,8 @@
  * ({@link paragraphRemains}): its bookmarks, move ranges and comment anchors
  * go to the nearest paragraph that stays, as deleting the paragraph directly
  * leaves them. A paragraph after it joins them in at its start; with none,
- * the paragraph before it takes them at its end. No boundary is left
+ * the paragraph before it takes them at its end, and with none there either,
+ * a table after it runs them into its first cell. No boundary is left
  * standing between blocks, where no edit could say which paragraph it
  * changed.
  */

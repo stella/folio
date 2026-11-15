@@ -367,18 +367,30 @@ test("paragraph-boundary hoisting drops copied owners", async () => {
   ).toBe(true);
 });
 
-test.each(["before-table", "terminal"] as const)(
-  "selective paragraph-mark removal drops copies hoisted %s",
-  async (destination) => {
-    const { output } = await resolvedDocument(
-      await documentWithParagraphMarkBoundary(destination),
-      rejectAIEditRevision(70),
-    );
+test("selective paragraph-mark removal drops copies hoisted to the paragraph before", async () => {
+  const { output } = await resolvedDocument(
+    await documentWithParagraphMarkBoundary("terminal"),
+    rejectAIEditRevision(70),
+  );
 
-    expect(output).not.toContain('w:name="copied"');
-    expect(output).toContain('w:name="original"');
-  },
-);
+  expect(output).not.toContain('w:name="copied"');
+  expect(output).toContain('w:name="original"');
+});
+
+test("selective paragraph-mark removal before a table runs the copies' owner into the first cell", async () => {
+  // No paragraph stands before it: the table's first cell takes what it
+  // held, the pending insertion that owns the copy included.
+  const { output } = await resolvedDocument(
+    await documentWithParagraphMarkBoundary("before-table"),
+    rejectAIEditRevision(70),
+  );
+
+  expect(output).toContain('w:name="copied"');
+  expect(output).toContain('w:name="original"');
+  expect(output.indexOf("<w:tc>")).toBeLessThan(
+    output.indexOf('w:name="original"'),
+  );
+});
 
 test("rejecting an empty copied move range keeps its standing counterpart", async () => {
   const { output } = await resolvedDocument(

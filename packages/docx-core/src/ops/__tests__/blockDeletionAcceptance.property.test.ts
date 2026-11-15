@@ -82,10 +82,8 @@ const endOf = (family: Family, id: number): ParagraphContent[] => {
     case "bookmark":
       return [{ type: "bookmarkEnd", id }];
     case "comment":
-      return [
-        { type: "commentRangeEnd", id },
-        { type: "commentReference", id },
-      ];
+      // A tracked paragraph deletion takes in no comment reference.
+      return [{ type: "commentRangeEnd", id }];
     case "move":
       return [{ type: "moveFromRangeEnd", id }];
   }
@@ -329,7 +327,9 @@ test("accepting a tracked deletion of whole paragraphs equals deleting them dire
     "paragraph:direct",
     "nothing:direct",
     "table:kept",
-    ...FAMILIES.flatMap((family) =>
+    // A tracked paragraph deletion refuses a paragraph holding a comment
+    // anchor, so comment ranges reach the law only once it takes them in.
+    ...FAMILIES.filter((family) => family !== "comment").flatMap((family) =>
       RELATIONS.map((relation) => `${family}:${relation}`),
     ),
   ];
