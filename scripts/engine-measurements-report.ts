@@ -22,6 +22,7 @@ type Measurement = {
     firstPageMs: number | null;
     laidOutMs: number | null;
     pages: number;
+    pageElements?: number;
   }[];
   typing: {
     keys: number;
@@ -80,7 +81,10 @@ const summarize = (measurement: Measurement) => {
       laidOutMs: median(
         numbers(measurement.open.map((sample) => sample.laidOutMs)),
       ),
-      pages: measurement.open.at(-1)?.pages ?? null,
+      pages:
+        measurement.open.at(-1)?.pageElements ??
+        measurement.open.at(-1)?.pages ??
+        null,
     },
     save: {
       textMs: median(measurement.save.text.map((sample) => sample.ms)),

@@ -269,7 +269,13 @@ const caretInMiddle = async (page: Page) => {
     const middle = positions[Math.floor(positions.length / 2)];
     if (middle === undefined) throw new TypeError("No paragraph to type in.");
     // A host may find a paragraph to scroll to only on a page it has painted.
-    const pageNumber = ref.getEditorRef()?.getPageNumberForPmPos(middle + 3);
+    const paraId: unknown = view.state.doc.nodeAt(middle)?.attrs["paraId"];
+    const pageNumber =
+      typeof paraId === "string"
+        ? ref
+            .getEditor()
+            ?.getPositionPage({ story: "main", blockId: paraId, offset: 3 })
+        : null;
     if (pageNumber !== undefined && pageNumber !== null)
       ref.scrollToPage(pageNumber);
     return { middle, count: positions.length };
