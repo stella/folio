@@ -186,3 +186,23 @@ export const overlayAfterLayout = (
   if (overlay === "comments" && layout.comments !== "drawer") return "none";
   return overlay;
 };
+
+/** Space a comments column keeps from the edges of the surface it sits on. */
+const COMMENTS_COLUMN_INSET = 8;
+
+/**
+ * Where a comments column starts beside the page: a gap after the page's end
+ * edge, kept inside the surface it is positioned on. Both values are in that
+ * surface's CSS pixels.
+ */
+export const commentsColumnStart = (
+  pageEnd: number,
+  surfaceWidth: number,
+): number =>
+  Math.max(
+    COMMENTS_COLUMN_INSET,
+    Math.min(
+      pageEnd + PANEL_METRICS.commentsGap,
+      surfaceWidth - PANEL_METRICS.commentsWidth - COMMENTS_COLUMN_INSET,
+    ),
+  );

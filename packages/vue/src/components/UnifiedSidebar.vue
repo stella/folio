@@ -114,7 +114,10 @@ import {
   watch,
 } from "vue";
 
-import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
+import {
+  commentsColumnStart,
+  PANEL_METRICS,
+} from "@stll/folio-core/panel-layout";
 import {
   commentAnchorSelector,
   indexCommentAnchors,
@@ -400,15 +403,10 @@ function updatePanelGeometry() {
     measuredLeft.value = null;
     return;
   }
-  const rawLeft =
-    page.getBoundingClientRect().right -
-    parentRect.left +
-    PANEL_METRICS.commentsGap;
-  const maxVisibleLeft = Math.max(
-    8,
-    parent.clientWidth - PANEL_METRICS.commentsWidth - 8,
+  measuredLeft.value = commentsColumnStart(
+    page.getBoundingClientRect().right - parentRect.left,
+    parent.clientWidth,
   );
-  measuredLeft.value = Math.max(8, Math.min(rawLeft, maxVisibleLeft));
 }
 
 const drawerInnerStyle = computed<CSSProperties>(() => ({

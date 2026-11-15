@@ -22,7 +22,10 @@ import { CheckIcon, MoreVerticalIcon } from "lucide-react";
 import { useLocale, useTranslations } from "use-intl";
 
 import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
-import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
+import {
+  commentsColumnStart,
+  PANEL_METRICS,
+} from "@stll/folio-core/panel-layout";
 import { commentAnchorSelector } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment } from "@stll/folio-core/types/content";
 import {
@@ -131,8 +134,11 @@ export type CommentsSidebarProps = {
   addCommentYPosition?: number | null;
   /** Page width in pixels — used to position sidebar next to page edge */
   pageWidth?: number;
-  /** Ref to the editor scroll container for DOM position queries */
-  editorContainerRef?: React.RefObject<HTMLDivElement | null>;
+  /**
+   * The editor's scroll container, for DOM position queries. An element, not
+   * a ref: the column measures again, and watches its size, once it mounts.
+   */
+  scrollContainer?: HTMLDivElement | null;
   /** Pre-computed Y positions from layout engine (keys: "comment-{id}") */
   anchorPositions?: Map<string, number>;
   /**
@@ -222,7 +228,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   isAddingComment = false,
   addCommentYPosition = null,
   pageWidth = 816,
-  editorContainerRef,
+  scrollContainer,
   anchorPositions,
   surface = "column",
   onDismiss,
@@ -263,7 +269,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   });
 
   const updateSidebarLeft = useCallback(() => {
-    const scrollEl = editorContainerRef?.current;
+    const scrollEl = scrollContainer;
     const sidebarEl = sidebarRef.current;
     const pageEl = scrollEl ? queryHtmlElement(scrollEl, ".layout-page") : null;
     const offsetParentRaw = sidebarEl?.offsetParent;
@@ -308,13 +314,10 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       return;
     }
     const pageRect = pageEl.getBoundingClientRect();
-    const rawLeft = parentX(pageRect.right) + PANEL_METRICS.commentsGap;
-    const maxVisibleLeft = Math.max(
-      8,
-      offsetParent.clientWidth - SIDEBAR_WIDTH - 8,
+    setMeasuredLeft(
+      commentsColumnStart(parentX(pageRect.right), offsetParent.clientWidth),
     );
-    setMeasuredLeft(Math.max(8, Math.min(rawLeft, maxVisibleLeft)));
-  }, [editorContainerRef, isDrawer]);
+  }, [scrollContainer, isDrawer]);
 
   const measureSidebarCommit = useEffectEvent(
     (
@@ -334,7 +337,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   }, [updateSidebarLeft, pageWidth, isAddingComment, comments.length]);
 
   useEffect(() => {
-    const scrollEl = editorContainerRef?.current;
+    const scrollEl = scrollContainer;
     if (!scrollEl) {
       return;
     }
@@ -351,7 +354,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       scrollEl.removeEventListener("scroll", handleScroll);
       window.removeEventListener("resize", handleScroll);
     };
-  }, [editorContainerRef, updateSidebarLeft]);
+  }, [scrollContainer, updateSidebarLeft]);
 
   const visibleComments = useMemo(
     () =>
@@ -391,7 +394,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   // Find Y positions for comment/change anchors.
   // Prefer rendered anchors; layout positions cover virtualized pages.
   const updateCardPositions = useCallback(() => {
-    const container = editorContainerRef?.current;
+    const container = scrollContainer;
     if (!container) {
       return;
     }
@@ -504,7 +507,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
   }, [
     visibleComments,
-    editorContainerRef,
+    scrollContainer,
     isAddingComment,
     addCommentYPosition,
     anchorPositions,
@@ -513,7 +516,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
 
   // Listen for clicks on comment/change elements in the document body → expand the sidebar card
   useEffect(() => {
-    const container = editorContainerRef?.current;
+    const container = scrollContainer;
     if (!container) {
       return;
     }
@@ -550,13 +553,13 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
 
     container.addEventListener("click", handleDocClick);
     return () => container.removeEventListener("click", handleDocClick);
-  }, [editorContainerRef, onCommentClick]);
+  }, [scrollContainer, onCommentClick]);
 
   // Update positions on mount, resize, and when comments/changes list changes.
   // We do NOT use a MutationObserver — it caused feedback loops because the sidebar
   // cards (which have data-comment-id) live inside the same scroll container.
   useEffect(() => {
-    const container = editorContainerRef?.current;
+    const container = scrollContainer;
     if (!container) {
       return;
     }
@@ -579,13 +582,13 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       clearTimeout(timerFull);
       resizeObserver.disconnect();
     };
-  }, [updateCardPositions, editorContainerRef]);
+  }, [updateCardPositions, scrollContainer]);
 
   // Keep sidebar cards aligned while scrolling. This matters when page
   // virtualization swaps rendered anchors, and the map equality guard above
   // keeps the common precomputed-anchor path from rerendering on every tick.
   useEffect(() => {
-    const container = editorContainerRef?.current;
+    const container = scrollContainer;
     if (!container) {
       return;
     }
@@ -608,7 +611,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       }
       container.removeEventListener("scroll", scheduleUpdate);
     };
-  }, [editorContainerRef, updateCardPositions]);
+  }, [scrollContainer, updateCardPositions]);
 
   // Recalculate positions after a card expand/collapse or add-comment toggle.
   const measureCardsCommit = useEffectEvent(
@@ -682,7 +685,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   // A drawer lists its cards rather than pinning them beside their text, so
   // opening one scrolls the document to the text it is about.
   const revealAnchor = (cardId: string) => {
-    const scrollEl = editorContainerRef?.current;
+    const scrollEl = scrollContainer;
     const anchorY =
       lastKnownCardPositionsRef.current.get(cardId) ??
       anchorPositions?.get(cardId);
