@@ -1550,6 +1550,7 @@ export function useDocxEditor(
     buffer: ArrayBuffer;
     document: Document;
     version?: number;
+    path?: "selective" | "full-repack";
   };
 
   async function serializeCurrentDocx(
@@ -1713,6 +1714,12 @@ export function useDocxEditor(
       (result.version === undefined ||
         manager.api.isCanonicalSaveCurrent(result.version))
     ) {
+      // The saved package becomes the canonical session's save baseline.
+      if (result.version !== undefined && result.path !== undefined)
+        manager.api.markCanonicalSaved(result.version, {
+          buffer: result.buffer,
+          path: result.path,
+        });
       docModel.value = result.document;
       syncSecondaryStoryEditors();
       isDirty.value = false;

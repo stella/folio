@@ -919,6 +919,16 @@ const atOnceLaw = (tally: Tally) =>
   );
 
 /**
+ * The pinned counterexample of {@link twoBatchesLaw} where a link is
+ * rejected while text inserted inside it is pending: the link's kept
+ * boundary goes into the piece the accepted text keeps, in any order.
+ */
+const KEPT_BOUNDARY_INTO_INSERTED_PIECE = {
+  seed: 1119828939,
+  path: "60:12:10:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:22:26:14:22:22:22:31:26:22:22:22:1:31:31:31:31:31:31:31:31:31:31:31:31:31:31:38:37:39:43:44:45:46:46:46:46:46:48:47:47:50:50:26:20:24:37:36:38:44:46:51:52:52:52:52:61:61:62:62:62:62:63:63:3:60:60:60:67:14:39:50:51:18:49:49:16:25:35:23:32:32:32:32:33:32:35:32:33:32:32:32:33:32:33:33:33:33:32:32:34:32:32:33:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:37:52:38:34:37:37:37:38:37:37:37:43:19:29:32:29:19:15:23:18:22:18:25:27:36:21:26:26:26:26:26:26:26:26:26:26:26:26:26:26:21:26:25:25:25:25:25:26:26:26:26:26:26:26:26:28:26",
+};
+
+/**
  * Resolving a run's accepted and rejected revisions as two batches, in
  * either order, leaves the document resolving each operation's in turn does.
  */
@@ -1534,6 +1544,45 @@ describe("tracked operations and their resolution", () => {
         // The break is a counterexample on purpose: report nothing.
         propertyConfig({
           ...REMOVAL_SEAM_BESIDE_NEW_CONTENT,
+          numRuns: 1,
+          endOnFailure: true,
+          reporter: () => undefined,
+        }),
+      );
+      expect(result.failed).toBe(true);
+    } finally {
+      mock.module("../keptJoins", () => original);
+    }
+  });
+
+  test("L3: a removal's kept boundaries left off a piece already joined as deep fail the pinned two-batch seed", () => {
+    // The test-only break: a pending insertion facing a removal's seam,
+    // whose join on that side is already as deep, takes nothing from it, so
+    // the boundary the removal kept stays out of the insertion's piece when
+    // the insertion is accepted afterwards.
+    const original = { ...keptJoinsModule };
+    mock.module("../keptJoins", () => ({
+      ...original,
+      withJoinAtLeast: (
+        ...[node, side, depth, kept]: Parameters<
+          typeof original.withJoinAtLeast
+        >
+      ) =>
+        original.withJoinAtLeast(
+          node,
+          side,
+          depth,
+          isTrackedWrapper(node) && (node.resolutionJoins?.[side] ?? 0) >= depth
+            ? undefined
+            : kept,
+        ),
+    }));
+    try {
+      const result = fc.check(
+        twoBatchesLaw(new Map()),
+        // The break is a counterexample on purpose: report nothing.
+        propertyConfig({
+          ...KEPT_BOUNDARY_INTO_INSERTED_PIECE,
           numRuns: 1,
           endOnFailure: true,
           reporter: () => undefined,

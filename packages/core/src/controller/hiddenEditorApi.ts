@@ -60,6 +60,12 @@ type CanonicalStoryTextOptions = {
   >[0];
 };
 
+/** The package a canonical save wrote, and whether it patched its baseline. */
+export type CanonicalSavedPackage = {
+  buffer: ArrayBuffer;
+  path: "selective" | "full-repack";
+};
+
 export type HiddenEditorApi = {
   /** Request the off-screen EditorView (idempotent; creates it when possible). */
   ensureView: () => void;
@@ -84,8 +90,11 @@ export type HiddenEditorApi = {
   captureCanonicalSave: () => CanonicalSaveSnapshot | null;
   /** A save cannot acknowledge newer edits or an unfinished composition. */
   isCanonicalSaveCurrent: (version: number) => boolean;
-  /** Record that the host saved the canonical session at `version`. */
-  markCanonicalSaved: (version: number) => void;
+  /**
+   * Record that the host saved the canonical session at `version`. Given the
+   * saved package, later saves patch that package instead of the opened one.
+   */
+  markCanonicalSaved: (version: number, saved?: CanonicalSavedPackage) => void;
   /**
    * Whether the canonical session holds edits since it opened or was last
    * saved, from its own journal; null in the default session.
@@ -309,8 +318,8 @@ export const createHiddenEditorApi = (
     captureCanonicalSave: () => deps.captureCanonicalSave?.() ?? null,
     isCanonicalSaveCurrent: (version) =>
       deps.isCanonicalSaveCurrent?.(version) ?? false,
-    markCanonicalSaved: (version) => {
-      deps.markCanonicalSaved?.(version);
+    markCanonicalSaved: (version, saved) => {
+      deps.markCanonicalSaved?.(version, saved);
     },
     hasCanonicalPendingChanges: () =>
       deps.hasCanonicalPendingChanges?.() ?? null,

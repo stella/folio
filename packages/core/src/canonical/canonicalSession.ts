@@ -68,6 +68,10 @@ import {
   paragraphCommentMarkers,
   visitCommentMarkerItems,
 } from "../docx/commentAnchorIndex";
+import {
+  copyHeaderFooterBaselineHandles,
+  getDocumentSourceBaseline,
+} from "../docx/headerFooterVerbatim";
 import { ListNormalizationCache } from "../docx/listModelNormalization";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 import { visitInlineContentSlots } from "../docx/paragraphTraversal";
@@ -105,6 +109,7 @@ import type {
   StyleDefinitions,
 } from "../types/document";
 import type { DeepReadonly, ReadonlyDocument } from "../types/documentModel";
+import { canonicalJson } from "../utils/canonicalJson";
 import { CanonicalIdLease } from "./canonicalIdLease";
 import {
   canonicalNativeCells,
@@ -1816,14 +1821,65 @@ const storyProjectionKey = (story: CanonicalSecondaryStory): string => {
   }
 };
 
+type CanonicalSaveBaseline = {
+  version: number;
+  blockIds: readonly string[];
+  buffer: ArrayBuffer;
+  /** The saved package's buffer and source captures, without its model. */
+  document: Document;
+};
+type PendingSaveBaseline = {
+  version: number;
+  blockIds: readonly string[];
+  touched: Set<string>;
+  structure: CanonicalSaveSnapshot["structure"];
+};
+
+const sameStoryParts = (left: ReadonlyDocument, right: ReadonlyDocument) =>
+  (["headers", "footers"] as const).every(
+    (kind) =>
+      canonicalJson([...(left.package[kind]?.keys() ?? [])].toSorted()) ===
+      canonicalJson([...(right.package[kind]?.keys() ?? [])].toSorted()),
+  );
+
+/**
+ * What a save baseline keeps of the parsed saved package: its buffer, the
+ * capture of its body, and its headers and footers with their verbatim
+ * sources. The body content itself is not kept.
+ */
+const saveBaselineOf = (saved: Document, buffer: ArrayBuffer): Document => {
+  const baseline: Document = {
+    originalBuffer: buffer,
+    package: {
+      document: { ...saved.package.document, content: [] },
+      ...(saved.package.headers === undefined
+        ? {}
+        : { headers: saved.package.headers }),
+      ...(saved.package.footers === undefined
+        ? {}
+        : { footers: saved.package.footers }),
+    },
+  };
+  copyHeaderFooterBaselineHandles(baseline, saved);
+  return baseline;
+};
+
 /** Immutable model authority with a journal staged independently of the PM view. */
 class CanonicalSession {
   private currentDocument: Document;
   private currentProjection: CanonicalProjection;
   private readonly sourceBlockIds: ReadonlySet<string>;
   private currentVersion = 0;
-  private readonly saveTouched = new Set<string>();
+  private saveTouched = new Set<string>();
   private saveStructure: CanonicalSaveSnapshot["structure"] = "stable";
+  /**
+   * The package a save wrote, parsed, once it is the baseline later saves
+   * patch against: `saveTouched` and `saveStructure` then count from its
+   * version. Holding only the latest releases every earlier one.
+   */
+  private saveBaseline: CanonicalSaveBaseline | null = null;
+  /** A save whose package is being read to become the baseline. */
+  private pendingSaveBaseline: PendingSaveBaseline | null = null;
   private readonly allocateIntentIds = createEditorIntentIdAllocator();
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly allocatedBlockIds = new Set<string>();
@@ -2103,14 +2159,24 @@ class CanonicalSession {
     const retainedBlockIdKeys = new Set(
       [
         ...this.sourceBlockIds,
+        ...(this.saveBaseline?.blockIds ?? []),
         ...packageParagraphIds(this.currentDocument.package),
       ].map((blockId) => blockId.toUpperCase()),
     );
+    const document = withUneditedSourceRestored(
+      cloneDocumentWithParagraphPropertySources(this.currentDocument),
+      this.sourceRestores,
+    );
     return {
-      document: withUneditedSourceRestored(
-        cloneDocumentWithParagraphPropertySources(this.currentDocument),
-        this.sourceRestores,
-      ),
+      document,
+      ...(this.saveBaseline === null
+        ? {}
+        : {
+            saveBaseline: {
+              buffer: this.saveBaseline.buffer,
+              document: this.saveBaseline.document,
+            },
+          }),
       version: this.currentVersion,
       changedBlockIds: [...this.saveTouched].filter((blockId) =>
         retainedBlockIdKeys.has(blockId.toUpperCase()),
@@ -2118,6 +2184,59 @@ class CanonicalSession {
       structure: this.saveStructure,
       heldUnreferencedNotes: this.heldUnreferencedNotes,
     };
+  }
+
+  /**
+   * Start making the package saved at `version` the baseline later saves
+   * patch against. Edits from now on are counted from that version too, so
+   * {@link completeSaveBaseline} can swap the counts without losing one.
+   * Refused unless `version` is the current one.
+   */
+  beginSaveBaseline(version: number): boolean {
+    if (this.isComposing || version !== this.currentVersion) return false;
+    this.pendingSaveBaseline = {
+      version,
+      blockIds: packageParagraphIds(this.currentDocument.package),
+      touched: new Set(),
+      structure: "stable",
+    };
+    return true;
+  }
+
+  /**
+   * Make `saved`, the package written at `version` as parsed, the baseline:
+   * later saves patch it and count changes from that version, and an undo
+   * past it counts as a change like any other edit. Declined, keeping the
+   * previous baseline and its counts, when a later save started, or when
+   * `saved` does not hold the body paragraphs the session held at `version`
+   * in the same order, or the same headers and footers.
+   */
+  completeSaveBaseline(version: number, saved: Document): boolean {
+    const pending = this.pendingSaveBaseline;
+    if (pending?.version !== version) return false;
+    this.pendingSaveBaseline = null;
+    const blockIds = packageParagraphIds(saved.package);
+    const buffer = saved.originalBuffer;
+    if (
+      buffer === undefined ||
+      getDocumentSourceBaseline(saved).type !== "captured" ||
+      blockIds.length !== pending.blockIds.length ||
+      blockIds.some(
+        (blockId, index) =>
+          blockId.toUpperCase() !== pending.blockIds[index]?.toUpperCase(),
+      ) ||
+      !sameStoryParts(saved, this.currentDocument)
+    )
+      return false;
+    this.saveBaseline = {
+      version,
+      blockIds,
+      buffer,
+      document: saveBaselineOf(saved, buffer),
+    };
+    this.saveTouched = pending.touched;
+    this.saveStructure = pending.structure;
+    return true;
   }
 
   get projection(): CanonicalProjection {
@@ -3626,14 +3745,19 @@ class CanonicalSession {
         this.currentProjection = heldBody;
         if (leaseJudgement?.type === "allowed")
           this.leased?.commit(leaseJudgement.census, leaseJudgement.ids);
-        // Save changes are cumulative against originalBuffer, including undo/redo.
-        // They are published with the model, never with a staged projection.
+        // Save changes are cumulative against the save baseline, including
+        // undo/redo, and against a pending one from its version on. They are
+        // published with the model, never with a staged projection.
+        const pending = this.pendingSaveBaseline;
         for (const ids of [
           applied.value.touched.modified,
           applied.value.touched.inserted,
           applied.value.touched.removed,
         ]) {
-          for (const id of ids) this.saveTouched.add(id);
+          for (const id of ids) {
+            this.saveTouched.add(id);
+            pending?.touched.add(id);
+          }
         }
         // Comment operations touch only the comments part and keep the paragraph
         // splice path; every other operation that inserts or removes blocks, or
@@ -3647,8 +3771,10 @@ class CanonicalSession {
           (bodyOps.length > 0 &&
             (applied.value.touched.inserted.length > 0 ||
               applied.value.touched.removed.length > 0))
-        )
+        ) {
           this.saveStructure = "changed";
+          if (pending) pending.structure = "changed";
+        }
         this.currentVersion = baseVersion + 1;
         onPublish(applied.value.inverse, this.currentVersion, shown);
         const committed: CanonicalCommittedBatch = {

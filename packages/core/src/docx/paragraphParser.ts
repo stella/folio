@@ -88,9 +88,7 @@ import {
   parseMoveBookmarkMarker,
 } from "./markupRangeMarker";
 import {
-  counterFormatOf,
-  markerAlignmentForLevel,
-  markerFormattingFromLevel,
+  computeListRendering,
   numberingLevelHasMarkerSlot,
 } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
@@ -2730,61 +2728,13 @@ export function parseParagraph(
     if (resolvedNumbering.kind === "reference") {
       const { numId, ilvl } = resolvedNumbering;
       const level = numbering.getLevel(numId, ilvl);
-      if (level) {
-        const levelNumFmts: NonNullable<
-          typeof paragraph.listRendering
-        >["levelNumFmts"] = [];
-        const levelStarts: number[] = [];
-        for (let levelIndex = 0; levelIndex <= ilvl; levelIndex += 1) {
-          const listLevel = numbering.getLevel(numId, levelIndex);
-          levelNumFmts.push(
-            level.isLgl || !listLevel ? "decimal" : counterFormatOf(listLevel),
-          );
-          levelStarts.push(listLevel?.start ?? 1);
-        }
-        const listRendering: NonNullable<typeof paragraph.listRendering> = {
-          level: ilvl,
-          numId,
-          marker: level.lvlText,
-          markerTemplate: level.lvlText,
-          isBullet: level.numFmt === "bullet",
-          levelNumFmts,
-          levelStarts,
-        };
-        const instance = numbering.getInstance(numId);
-        const overrideForLevel = instance?.levelOverrides?.find(
-          (override) => override.ilvl === ilvl,
-        );
-        if (instance?.abstractNumId !== undefined) {
-          listRendering.abstractNumId = instance.abstractNumId;
-        }
-        if (overrideForLevel?.startOverride !== undefined) {
-          listRendering.startOverride = overrideForLevel.startOverride;
-        }
-        if (level.isLgl) {
-          listRendering.isLegal = true;
-        }
-        listRendering.numFmt = level.isLgl ? "decimal" : counterFormatOf(level);
-        if (level.rPr?.hidden) {
-          listRendering.markerHidden = true;
-        }
-        const markerFormatting = markerFormattingFromLevel(level.rPr);
-        if (markerFormatting) {
-          listRendering.markerFormatting = markerFormatting;
-        }
-        if (level.rPr?.allCaps) {
-          listRendering.markerAllCaps = true;
-        }
-        const markerAlignment = markerAlignmentForLevel(level.lvlJc);
-        if (markerAlignment !== undefined) {
-          listRendering.markerAlignment = markerAlignment;
-        }
-        if (level.suffix) {
-          listRendering.markerSuffix = level.suffix;
-        }
-        if (level.pPr?.tabs?.length) {
-          listRendering.levelTabs = level.pPr.tabs;
-        }
+      // The definition's part of the rendering comes from the one derivation
+      // an edit's normalization uses too, so a paragraph an edit numbers has
+      // the rendering this parse gives it.
+      const listRendering = level
+        ? computeListRendering({ numId, ilvl }, numbering)
+        : null;
+      if (level && listRendering !== null) {
         // Count inline LISTNUM (default-list) complex fields this paragraph
         // carries. Word advances the counter at `ilvl + 1` for each, so a
         // later sibling at that depth picks up the next letter. We also

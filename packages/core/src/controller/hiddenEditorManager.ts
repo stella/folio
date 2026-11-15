@@ -65,6 +65,7 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
 } from "../canonical/canonicalSession";
+import { parseDocx } from "../docx/parser";
 import {
   type EditingFontContext,
   editingFontContextOf,
@@ -2124,9 +2125,20 @@ export const createHiddenEditorManager = (
       editorSession.type === "canonical" &&
       !editorSession.session.isComposing &&
       editorSession.session.version === version,
-    markCanonicalSaved: (version) => {
-      if (editorSession.type === "canonical")
-        canonicalSaved = { session: editorSession.session, version };
+    markCanonicalSaved: (version, saved) => {
+      if (editorSession.type !== "canonical") return;
+      const { session } = editorSession;
+      canonicalSaved = { session, version };
+      // A patched package becomes the baseline later saves patch, read from a
+      // copy: the host owns the saved bytes and may hand them on. A full
+      // repack, or a package that does not read back, keeps the previous
+      // baseline, whose untouched bytes the repack replayed.
+      if (saved?.path !== "selective" || !session.beginSaveBaseline(version))
+        return;
+      void parseDocx(saved.buffer.slice(0), { preloadFonts: false }).then(
+        (reopened) => session.completeSaveBaseline(version, reopened),
+        () => false,
+      );
     },
     // The session's journal is the one source: any committed version other
     // than the one last saved (or opened) is a pending change, in any story.

@@ -3845,8 +3845,8 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
                 );
             }
             tripwireResult = result.tripwireResult;
-            // Keep the parsed baseline: canonical touched ids are cumulative
-            // against it. The session's journal records what was saved.
+            // The saved package becomes the session's save baseline: later
+            // saves patch it and count changes from this version.
             if (
               view &&
               pagedEditorRef.current?.getEditor() === editor &&
@@ -3854,7 +3854,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
               view.state.doc === editorState?.doc &&
               editor.isCanonicalSaveCurrent(snapshot.version)
             ) {
-              editor.markCanonicalSaved(snapshot.version);
+              editor.markCanonicalSaved(snapshot.version, result);
               // The VS Code host still reads its save strategy from this
               // tracker.
               view.dispatch(clearTrackedChanges(view.state));

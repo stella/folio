@@ -6,6 +6,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   compareDocxVersions,
@@ -29,7 +30,7 @@ import {
   randomOperation,
 } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
-import { resolvedText } from "../support/review.ts";
+import { bodyLayout, resolvedText, writtenLayout } from "../support/review.ts";
 
 /** The fixture with its own pending changes accepted: the text both sides compare. */
 const settled = async (bytes: Uint8Array): Promise<Uint8Array> => {
@@ -95,10 +96,14 @@ describe("compare round trips", () => {
         `${name} redline saved`,
       );
 
+      const accepted = await resolvedText(redlineBytes, "accept");
+      const revised = await resolvedText(after, "accept");
       assert.deepEqual(
-        await resolvedText(redlineBytes, "accept"),
-        await resolvedText(after, "accept"),
-        `${name}: accepting the redline does not give the revised version`,
+        accepted,
+        revised,
+        isDeepStrictEqual(accepted, revised)
+          ? undefined
+          : `${name}: accepting the redline does not give the revised version.\nOriginal:\n${await bodyLayout(before)}\nRevised:\n${await bodyLayout(after)}\nRedline, ${await writtenLayout(redlineBytes)}`,
       );
       assert.deepEqual(
         await resolvedText(redlineBytes, "reject"),
