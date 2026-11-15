@@ -2441,20 +2441,17 @@ const resolveList = (
       // the record it cut is that insertion's join on the facing side too:
       // accepting the insertion later joins its content with the piece, as
       // accepting both at once does, and rejecting it joins the pieces beyond
-      // it, as the seam deferred below does. A removal's seam passes to
-      // pending insertions only where they are the pieces it joins, with no
-      // piece beyond them to defer on (see {@link seamHandsOver}):
+      // it, as the seam deferred below does. A removal's seam passes to a
+      // pending insertion facing it only where that insertion is a piece of
+      // the record the removed content cut (see {@link seamHandsOver}):
       // boundaries it kept standing at the seam go with the join, which
-      // later places them inside the record.
+      // later places them inside the record, even to an insertion whose join
+      // there is already as deep, made inside that record.
       const handedOver = new Set<number>();
       const piecesBeyond = leftEnd >= 0 && rightStart < out.length;
-      if (
-        (keptJoinSeams.has(recorded) &&
-          standingKept === 0 &&
-          seamHandsOver({ seam: "keptJoin", piecesBeyond })) ||
-        (removalSeams.has(recorded) &&
-          seamHandsOver({ seam: "removal", piecesBeyond }))
-      ) {
+      const keptJoinHandsOver =
+        keptJoinSeams.has(recorded) && standingKept === 0;
+      if (keptJoinHandsOver || removalSeams.has(recorded)) {
         const keptAt =
           standingKept > 0 && kept?.keptFrom !== undefined
             ? { from: kept.keptFrom, count: standingKept }
@@ -2463,6 +2460,17 @@ const resolveList = (
           const occurrence = out[index];
           if (occurrence === undefined)
             panic("A blocking insertion stands in the list.");
+          const facingJoin = isTrackedWrapper(occurrence.node)
+            ? (occurrence.node.resolutionJoins?.[side] ?? 0)
+            : 0;
+          if (
+            !seamHandsOver({
+              seam: keptJoinHandsOver ? "keptJoin" : "removal",
+              piecesBeyond,
+              facingJoin,
+            })
+          )
+            return;
           const node = withJoinAtLeast(
             occurrence.node,
             side,
