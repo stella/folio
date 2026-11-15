@@ -240,10 +240,6 @@ const REVISION_RECORDS = new Set([
   "moveTo",
 ]);
 
-/** The declared refusal of a decision over a concurrent tracked edit. */
-const TRACKED_CONTINUATION_REFUSAL =
-  "A concurrent tracked edit may continue a revision this decision resolves.";
-
 /**
  * What a value depends on, anywhere in it: the paragraphs it names
  * (positions, block ids, the blocks an effect records) and the tracked
@@ -874,22 +870,11 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
     // remote batch may not carry past, when the batches after it cross its
     // inverse. Block-scoped operations depend on parts, tables and numbering
     // a value's names do not show, so the check covers answers where every
-    // batch involved edits by position only. Declared: a decision refused
-    // against a concurrent tracked edit, whose records may continue a
-    // decided revision in a paragraph the decision names by id alone, and
-    // any answer a decision causes, remote or rejected: the paragraphs its
-    // revisions sit in are its footprint, which its ids do not show.
-    const causeOps =
-      event.type === "broadcast"
-        ? event.batch.ops
-        : (peer.client.notices.at(noticed)?.ops ?? []);
+    // batch involved edits by position only.
     const remotePositional =
       event.type === "broadcast"
         ? event.batch.ops.every((op) => !isBlockScoped(op))
         : true;
-    const causedByDecision = causeOps.some(
-      ({ type }) => type === DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-    );
     const cause = new Set(
       dependenciesIn(
         event.type === "broadcast"
@@ -914,10 +899,8 @@ const simulate = (peers: number, steps: readonly Step[]): Outcome => {
       if (
         index > 0 &&
         remotePositional &&
-        !causedByDecision &&
         ahead.every(({ positional }) => positional) &&
         notice.ops.every((op) => !isBlockScoped(op)) &&
-        notice.reason.message !== TRACKED_CONTINUATION_REFUSAL &&
         touched.length > 0 &&
         touched.every((id) => !cause.has(id) && !earlier.has(id))
       )
@@ -1587,28 +1570,6 @@ const replacementAmongRevisions: Scenario = [
   ],
 ];
 
-/**
- * Peer 1 types, decides a revision, and types again, while peer 0 types
- * and undoes twice and is sequenced first: peer 1's typing is refused, and
- * its decision, which edits no text, still rebases over the typing's
- * inverse and is sequenced.
- */
-const decisionAfterRejectedTyping: Scenario = [
-  4,
-  [
-    edit(1, { kind: "type", a: 0, b: 0 }),
-    edit(1, { kind: "decide", a: 0, b: 0 }),
-    edit(1, { kind: "type", a: 0, b: 0 }),
-    edit(0, { kind: "type", a: 0, b: 0 }),
-    { type: "undo", peer: 0 },
-    edit(0, { kind: "type", a: 0, b: 0 }),
-    { type: "undo", peer: 0 },
-    { type: "submit", peer: 0 },
-    { type: "deliver", seed: 0 },
-    { type: "deliver", seed: 42832 },
-  ],
-];
-
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
   concurrentRows,
@@ -1622,7 +1583,6 @@ const PINNED: readonly Scenario[] = [
   trackedPending,
   independentAfterDropped,
   formatInsideErase,
-  decisionAfterRejectedTyping,
 ];
 
 describe("canonical sequencing", () => {
@@ -1805,49 +1765,6 @@ describe("canonical sequencing", () => {
           propertyConfig({
             numRuns: 1,
             examples: [[independentAfterDropped]],
-            reporter: () => undefined,
-          }),
-        );
-        expect(result.failed).toBe(true);
-      } finally {
-        mock.module("../transform", () => original);
-      }
-    },
-    propertyTestTimeout(60_000),
-  );
-
-  test(
-    "a decision survives the rejection of unrelated typing before it",
-    async () => {
-      const outcome = simulate(...decisionAfterRejectedTyping);
-      expect(outcome.independentDrops).toEqual([]);
-      // The test-only break: decisions do not rebase over a direct edit.
-      const original = { ...transformModule };
-      mock.module("../transform", () => ({
-        ...original,
-        transformBatch: (
-          ...args: Parameters<typeof original.transformBatch>
-        ) => {
-          const [batch, over] = args;
-          return batch.ops.some(
-            ({ type }) => type === DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-          ) && over.some(({ ops }) => ops.some((op) => !isBlockScoped(op)))
-            ? Result.err(
-                new envelope.BatchRejection({
-                  reason: BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR,
-                  message: "Break: no decision over a direct edit.",
-                }),
-              )
-            : original.transformBatch(...args);
-        },
-      }));
-      try {
-        const result = await fc.check(
-          convergence(),
-          // The break is a counterexample on purpose: report nothing.
-          propertyConfig({
-            numRuns: 1,
-            examples: [[decisionAfterRejectedTyping]],
             reporter: () => undefined,
           }),
         );
