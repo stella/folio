@@ -1932,6 +1932,46 @@
             711
           ]
         }
+      },
+      {
+        "type": "setContentControl",
+        "story": "main",
+        "controlId": 801,
+        "blockIds": [
+          "00000801"
+        ],
+        "expected": {
+          "sdtType": "dropdown",
+          "id": 801,
+          "tag": "state",
+          "listItems": [
+            {
+              "displayText": "California",
+              "value": "ca"
+            },
+            {
+              "displayText": "New York",
+              "value": "ny"
+            }
+          ],
+          "dropdownLastValue": "ca"
+        },
+        "properties": {
+          "sdtType": "dropdown",
+          "id": 801,
+          "tag": "state",
+          "listItems": [
+            {
+              "displayText": "California",
+              "value": "ca"
+            },
+            {
+              "displayText": "New York",
+              "value": "ny"
+            }
+          ],
+          "dropdownLastValue": "ny"
+        }
       }
     ]
   },
