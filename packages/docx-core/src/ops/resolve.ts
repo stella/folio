@@ -2329,14 +2329,26 @@ const resolveList = (
       // the record it cut is that insertion's join on the facing side too:
       // accepting the insertion later joins its content with the piece, as
       // accepting both at once does, and rejecting it joins the pieces beyond
-      // it, as the seam deferred below does.
+      // it, as the seam deferred below does. A rejection's seam between
+      // pieces still pending passes to them the same way, whether or not
+      // pieces stand beyond them: boundaries it kept standing at the seam
+      // go with the join, which later places them inside the record.
       const handedOver = new Set<number>();
-      if (keptJoinSeams.has(recorded) && standingKept === 0) {
+      if (
+        (keptJoinSeams.has(recorded) && standingKept === 0) ||
+        removalSeams.has(recorded)
+      ) {
+        const keptFrom = standingKept > 0 ? kept?.keptFrom : undefined;
         const facing = (index: number, side: "before" | "after"): void => {
           const occurrence = out[index];
           if (occurrence === undefined)
             panic("A blocking insertion stands in the list.");
-          const node = withJoinAtLeast(occurrence.node, side, exactDepth);
+          const node = withJoinAtLeast(
+            occurrence.node,
+            side,
+            exactDepth,
+            keptFrom,
+          );
           if (node === occurrence.node) return;
           out[index] = occurrenceOf(node, occurrence);
           handedOver.add(index);
