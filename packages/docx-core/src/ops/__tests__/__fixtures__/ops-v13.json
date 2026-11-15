@@ -2479,6 +2479,10 @@
         "propertyChanges": [
           {
             "type": "paragraphPropertyChange",
+            "currentFormatting": {
+              "alignment": "center",
+              "keepNext": true
+            },
             "info": {
               "id": 68,
               "author": "Reviewer",
@@ -2598,6 +2602,9 @@
         "propertyChanges": [
           {
             "type": "paragraphPropertyChange",
+            "currentFormatting": {
+              "alignment": "center"
+            },
             "info": {
               "id": 68,
               "author": "Reviewer",
@@ -2618,6 +2625,10 @@
         "propertyChanges": [
           {
             "type": "paragraphPropertyChange",
+            "currentFormatting": {
+              "alignment": "center",
+              "keepNext": true
+            },
             "info": {
               "id": 68,
               "author": "Reviewer",
@@ -2659,6 +2670,9 @@
         "propertyChanges": [
           {
             "type": "paragraphPropertyChange",
+            "currentFormatting": {
+              "alignment": "center"
+            },
             "info": {
               "id": 68,
               "author": "Reviewer",
@@ -7209,6 +7223,9 @@
         "propertyChanges": [
           {
             "type": "paragraphPropertyChange",
+            "currentFormatting": {
+              "alignment": "center"
+            },
             "info": {
               "id": 252,
               "author": "Reviewer",
