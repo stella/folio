@@ -22,11 +22,20 @@ export const withJoinAtLeast = (
 ): InlineNode => {
   if (!isTrackedWrapper(node) || node.resolutionJoins === undefined)
     return panic("A blocking insertion is a pending change with joins.");
-  if (node.resolutionJoins[side] >= depth) return node;
+  const joins = node.resolutionJoins;
+  // Inserted text whose acceptance joins only plain runs, or that meets
+  // accepted new content on that side, is no piece of the record the join
+  // belongs to and takes none.
+  if (
+    joins.acceptance !== undefined ||
+    joins.plainSides?.includes(side) === true ||
+    joins[side] >= depth
+  )
+    return node;
   return Object.assign({}, node, {
     resolutionJoins: Object.assign(
       {},
-      node.resolutionJoins,
+      joins,
       side === "before" ? { before: depth } : { after: depth },
     ),
   });

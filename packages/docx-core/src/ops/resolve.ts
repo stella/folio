@@ -2287,15 +2287,16 @@ const resolveList = (
       // accepting the insertion later joins its content with the piece, as
       // accepting both at once does, and rejecting it joins the pieces beyond
       // it, as the seam deferred below does.
+      const handedOver = new Set<number>();
       if (keptJoinSeams.has(recorded) && standingKept === 0) {
         const facing = (index: number, side: "before" | "after"): void => {
           const occurrence = out[index];
           if (occurrence === undefined)
             panic("A blocking insertion stands in the list.");
-          out[index] = occurrenceOf(
-            withJoinAtLeast(occurrence.node, side, exactDepth),
-            occurrence,
-          );
+          const node = withJoinAtLeast(occurrence.node, side, exactDepth);
+          if (node === occurrence.node) return;
+          out[index] = occurrenceOf(node, occurrence);
+          handedOver.add(index);
         };
         if (leftEnd !== keptEnd) facing(keptEnd, "after");
         if (rightStart !== seam) facing(seam, "before");
@@ -2394,6 +2395,9 @@ const resolveList = (
         }
         continue;
       }
+      // With no piece beyond the pending insertions to defer on, nothing
+      // joins now: the insertion facing the kept piece holds its join.
+      if (handedOver.size > 0) continue;
     }
     // Later independent edits may make a recorded seam non-alike. Join
     // only the recorded depth and matching fields, preserving those edits.
