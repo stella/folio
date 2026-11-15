@@ -2481,13 +2481,16 @@ export class CanonicalPublicOperations {
       const cleared = own(paragraph.start, end);
       if (cleared.isErr()) return cleared;
       const intents: EditorIntent[] = [...cleared.value];
+      // Before a table or a content control the paragraph goes whole, as the
+      // default engine removes it: the one before it stays itself. Only a
+      // container's final paragraph joins the one before it.
       if (previous !== undefined)
         intents.push({
           type: "joinParagraphs",
           story: projectionStory,
           blockId: previous.blockId,
           nextBlockId: paragraph.blockId,
-          survivor: directJoinSurvivor(),
+          survivor: after === null ? directJoinSurvivor() : "first",
         });
       if (intents.length === 0) return refusal("noopOperation");
       return Result.ok({

@@ -3999,9 +3999,6 @@ const paragraphPropertyRevisionTargets = ({
 
 const IDENTITY_ATTRS = ["paraId", "textId"] as const;
 
-/** A paragraph a direct join left, at `position` once `mappedFrom` steps had run. */
-type IdentityTransfer = BatchParagraphPosition & { source: PMNode };
-
 /**
  * `tr` with the paragraph at `position` carrying `source`'s identity: a direct
  * join keeps the paragraph whose mark remains, as accepting the same join
@@ -5799,10 +5796,11 @@ const applyFolioAIEditOperationsInternal = ({
   const deletedFinalParagraphs: DeletedFinalParagraph[] = [];
   /** Container-ending paragraphs a direct `deleteBlock` took: see `withSettledDirectFinalDeletions`. */
   const directFinalDeletions: DirectFinalDeletion[] = [];
-  // Paragraphs a direct join leaves, to take the later paragraph's identity
-  // once the batch is finished: an operation the batch runs after the join
-  // still finds the earlier paragraph by the id it named.
-  const identityTransfers: IdentityTransfer[] = [];
+  // The paragraph id each direct join of the batch retired, and the id of the
+  // paragraph it joined into. The joined paragraph takes the later
+  // paragraph's identity at once, so a later operation of the batch finds
+  // the blocks one at a time would.
+  const retiredParaIds = new Map<string, string>();
   const mergedPropertyTargets: BatchParagraphPosition[] = [];
   const deferredNoopFinalDeletions = new Set<string>();
   const ownsSharedRevisionIdCursor =
@@ -6229,6 +6227,23 @@ const applyFolioAIEditOperationsInternal = ({
       !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(item.operation.type)
     ) {
       skipped.push({ id: item.operation.id, reason: "unsupportedMode" });
+      continue;
+    }
+
+    // A paragraph an earlier direct join of the batch retired no longer
+    // exists, as it would not for the operation applied one at a time.
+    const namedParaId =
+      "blockId" in item.operation
+        ? getFolioParaIdFromBlockId(item.operation.blockId)
+        : null;
+    const retiredInto =
+      namedParaId === null ? undefined : retiredParaIds.get(namedParaId);
+    if (retiredInto !== undefined) {
+      skipped.push({
+        id: item.operation.id,
+        reason: "missingBlock",
+        message: `${item.operation.blockId} no longer exists: an earlier operation of the batch joined it into paragraph ${retiredInto}.`,
+      });
       continue;
     }
 
@@ -7043,11 +7058,11 @@ const applyFolioAIEditOperationsInternal = ({
             preceding?.type.name === item.blockNode.type.name
           ) {
             if (directJoinSurvivor() === SPLIT_HALVES.SECOND) {
-              identityTransfers.push({
-                position: item.blockFrom - preceding.nodeSize,
-                mappedFrom: tr.mapping.maps.length,
-                source: deletedNode,
-              });
+              tr = withIdentityOf(
+                tr,
+                item.blockFrom - preceding.nodeSize,
+                deletedNode,
+              );
               joinedParagraphs = joinedIdentities(preceding, deletedNode);
             } else joinedParagraphs = joinedIdentities(deletedNode, preceding);
           }
@@ -7821,11 +7836,7 @@ const applyFolioAIEditOperationsInternal = ({
             // The joined paragraph is the one whose mark remains, the second,
             // as accepting the same merge tracked leaves it.
             if (directJoinSurvivor() === SPLIT_HALVES.SECOND) {
-              identityTransfers.push({
-                position: blockFrom,
-                mappedFrom: tr.mapping.maps.length,
-                source: second,
-              });
+              tr = withIdentityOf(tr, blockFrom, second);
               joinedParagraphs = joinedIdentities(joined, second);
             } else joinedParagraphs = joinedIdentities(second, joined);
           }
@@ -8139,14 +8150,13 @@ const applyFolioAIEditOperationsInternal = ({
       ...(suggestionId !== null && { suggestionId }),
       ...(joinedParagraphs !== undefined && { joined: joinedParagraphs }),
     });
+    if (joinedParagraphs !== undefined)
+      retiredParaIds.set(
+        joinedParagraphs.retiredBlockId,
+        joinedParagraphs.blockId,
+      );
   }
 
-  for (const transfer of identityTransfers) {
-    const mapped = tr.mapping
-      .slice(transfer.mappedFrom)
-      .mapResult(transfer.position, 1);
-    if (!mapped.deleted) tr = withIdentityOf(tr, mapped.pos, transfer.source);
-  }
   if (withSettledDirectFinalDeletions(tr, directFinalDeletions)) {
     markStructuralChange(tr);
   }
