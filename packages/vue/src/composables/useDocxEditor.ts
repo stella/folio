@@ -1723,6 +1723,9 @@ export function useDocxEditor(
       (result.version === undefined ||
         manager.api.isCanonicalSaveCurrent(result.version))
     ) {
+      // The saved package becomes the canonical session's save baseline.
+      if (result.version !== undefined)
+        manager.api.markCanonicalSaved(result.version, result.buffer);
       docModel.value = result.document;
       syncSecondaryStoryEditors();
       isDirty.value = false;

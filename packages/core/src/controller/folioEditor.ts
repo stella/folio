@@ -123,8 +123,8 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
     },
     isCanonicalSaveCurrent: (version) =>
       deps.getEditorApi()?.isCanonicalSaveCurrent(version) ?? false,
-    markCanonicalSaved: (version) => {
-      deps.getEditorApi()?.markCanonicalSaved(version);
+    markCanonicalSaved: (version, saved) => {
+      deps.getEditorApi()?.markCanonicalSaved(version, saved);
     },
     hasCanonicalPendingChanges: () =>
       deps.getEditorApi()?.hasCanonicalPendingChanges() ?? null,
