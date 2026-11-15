@@ -110,10 +110,17 @@ const countersBeforeEach = (normalized: Document): string[] => {
   };
   const sorted = <T extends readonly [number, unknown]>(entries: Iterable<T>) =>
     [...entries].toSorted(([left], [right]) => left - right);
-  // Paragraphs a content control holds continue the story's lists.
+  // Paragraphs a content control or a table holds continue the story's
+  // lists, a table's row by row and cell by cell.
   const advance = (block: BlockContent): void => {
     if (block.type === "blockSdt" || block.type === "blockCustomXml") {
       for (const child of block.content) advance(child);
+      return;
+    }
+    if (block.type === "table") {
+      for (const row of block.rows)
+        for (const cell of row.cells)
+          for (const child of cell.content) advance(child);
       return;
     }
     if (block.type !== "paragraph") return;

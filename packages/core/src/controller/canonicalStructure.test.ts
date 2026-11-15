@@ -38,7 +38,7 @@ import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { collectPairedBookmarkIds } from "../prosemirror/conversion/toProseDoc";
 import { directionToAuthoredBidi } from "../prosemirror/paragraphDirection";
 import { schema, singletonManager } from "../prosemirror/schema";
-import type { Document } from "../types/document";
+import type { BlockContent, Document } from "../types/document";
 import {
   TAB_LEADER_VALUES,
   TAB_STOP_ALIGNMENT_VALUES,
@@ -194,10 +194,18 @@ test.each([
       state,
       commit: prepareCanonicalCommands(session, state, [command]).unwrap(),
     }).unwrap().state;
-    expect([
-      session.document.package.document.content.at(0),
-      session.document.package.document.content.at(2),
-    ]).toStrictEqual(bodyBefore);
+    // Numbering continues through the table's cells, so the list paragraph
+    // after the table may count on; nothing else of the body changes.
+    const withoutMarker = (block: BlockContent | undefined) =>
+      block?.type === "paragraph" && block.listRendering !== undefined
+        ? { ...block, listRendering: { ...block.listRendering, marker: "" } }
+        : block;
+    expect(
+      [
+        session.document.package.document.content.at(0),
+        session.document.package.document.content.at(2),
+      ].map(withoutMarker),
+    ).toStrictEqual(bodyBefore.map(withoutMarker));
     const changedTable = session.document.package.document.content.at(1);
     const changed =
       changedTable?.type === "table"
