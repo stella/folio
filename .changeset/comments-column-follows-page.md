@@ -4,4 +4,4 @@
 "@stll/folio-vue": patch
 ---
 
-The React comments column measures its place beside the page again once the editor's scroll container mounts, and follows it as that container resizes, so the column no longer stays where the page was before the outline took its track. React and Vue place the column with one shared rule, `commentsColumnStart`.
+The comments column is placed from the panel layout's numbers (the scroll area's width after the outline track, the widest page and the comments gutter) instead of a measured page, in React and Vue alike, so it stays a gap after the page whenever the outline takes or gives back its track. `computePanelLayout` returns the column start as `commentsColumnStart`, through the shared `pageEndInContent` and `commentsColumnStart` rules. The React column also watches the editor's scroll container once that container mounts.

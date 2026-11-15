@@ -22,16 +22,10 @@ import { CheckIcon, MoreVerticalIcon } from "lucide-react";
 import { useLocale, useTranslations } from "use-intl";
 
 import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
-import {
-  commentsColumnStart,
-  PANEL_METRICS,
-} from "@stll/folio-core/panel-layout";
+import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 import { commentAnchorSelector } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment } from "@stll/folio-core/types/content";
-import {
-  closestHtmlElement,
-  queryHtmlElement,
-} from "@stll/folio-core/utils/domGuards";
+import { closestHtmlElement } from "@stll/folio-core/utils/domGuards";
 import { getFindParagraphText } from "@stll/folio-core/utils/findReplace";
 import { sliceText } from "@stll/folio-core/utils/sliceText";
 
@@ -135,6 +129,11 @@ export type CommentsSidebarProps = {
   /** Page width in pixels — used to position sidebar next to page edge */
   pageWidth?: number;
   /**
+   * Where the column starts in the scroll content, from the panel layout's
+   * numbers; null until the layout knows its width.
+   */
+  columnStart?: number | null;
+  /**
    * The editor's scroll container, for DOM position queries. An element, not
    * a ref: the column measures again, and watches its size, once it mounts.
    */
@@ -228,6 +227,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   isAddingComment = false,
   addCommentYPosition = null,
   pageWidth = 816,
+  columnStart = null,
   scrollContainer,
   anchorPositions,
   surface = "column",
@@ -268,15 +268,16 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     initial: "container",
   });
 
+  // A column's start is computed from the layout (columnStart); only a
+  // drawer, pinned to the visible viewport, is measured.
   const updateSidebarLeft = useCallback(() => {
     const scrollEl = scrollContainer;
     const sidebarEl = sidebarRef.current;
-    const pageEl = scrollEl ? queryHtmlElement(scrollEl, ".layout-page") : null;
     const offsetParentRaw = sidebarEl?.offsetParent;
     const offsetParent =
       offsetParentRaw instanceof HTMLElement ? offsetParentRaw : null;
 
-    if (!scrollEl || !pageEl || !offsetParent) {
+    if (!isDrawer || !scrollEl || !offsetParent) {
       setMeasuredLeft(null);
       return;
     }
@@ -289,34 +290,27 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       : 1;
     const parentX = (viewportX: number) =>
       (viewportX - parentRect.left) / parentScale;
-    if (isDrawer) {
-      // Pinned to the end edge of the visible viewport, whatever the scroll,
-      // and reaching up over the sticky ruler to the top of the scroll content.
-      const scrollRect = scrollEl.getBoundingClientRect();
-      const top = -Math.round(
-        (parentRect.top - scrollRect.top) / parentScale + scrollEl.scrollTop,
-      );
-      const width = Math.min(
-        PANEL_METRICS.drawerWidth,
-        scrollEl.clientWidth - 16,
-      );
-      const height = scrollEl.clientHeight;
-      const scrollScale = scrollEl.offsetWidth
-        ? scrollRect.width / scrollEl.offsetWidth
-        : parentScale;
-      const viewportEnd = scrollRect.left + scrollEl.clientWidth * scrollScale;
-      setDrawerBox((box) =>
-        box.top === top && box.width === width && box.height === height
-          ? box
-          : { top, width, height },
-      );
-      setMeasuredLeft(parentX(viewportEnd) - width);
-      return;
-    }
-    const pageRect = pageEl.getBoundingClientRect();
-    setMeasuredLeft(
-      commentsColumnStart(parentX(pageRect.right), offsetParent.clientWidth),
+    // Pinned to the end edge of the visible viewport, whatever the scroll,
+    // and reaching up over the sticky ruler to the top of the scroll content.
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const top = -Math.round(
+      (parentRect.top - scrollRect.top) / parentScale + scrollEl.scrollTop,
     );
+    const width = Math.min(
+      PANEL_METRICS.drawerWidth,
+      scrollEl.clientWidth - 16,
+    );
+    const height = scrollEl.clientHeight;
+    const scrollScale = scrollEl.offsetWidth
+      ? scrollRect.width / scrollEl.offsetWidth
+      : parentScale;
+    const viewportEnd = scrollRect.left + scrollEl.clientWidth * scrollScale;
+    setDrawerBox((box) =>
+      box.top === top && box.width === width && box.height === height
+        ? box
+        : { top, width, height },
+    );
+    setMeasuredLeft(parentX(viewportEnd) - width);
   }, [scrollContainer, isDrawer]);
 
   const measureSidebarCommit = useEffectEvent(
@@ -1157,7 +1151,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
         position: "absolute",
         top: isDrawer ? drawerBox.top : topOffset,
         left:
-          measuredLeft ??
+          (isDrawer ? measuredLeft : columnStart) ??
           `calc(50% - 120px + ${pageWidth / 2 + PANEL_METRICS.commentsGap}px)`,
         bottom: 0,
         width: isDrawer ? drawerBox.width : SIDEBAR_WIDTH,

@@ -5704,6 +5704,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
             pageWidth={
               commentsPageWidth ? Math.round(commentsPageWidth / 15) : 816
             }
+            columnStart={panelLayout.commentsColumnStart}
             scrollContainer={scrollContainer}
             onCommentClick={handleCommentClick}
             onCommentResolve={handleCommentResolve}
@@ -5737,6 +5738,7 @@ const DocxEditorComponent = forwardRef<DocxEditorRef, DocxEditorProps>(
       isAddingComment,
       commentsSurface,
       dismissCommentsDrawer,
+      panelLayout.commentsColumnStart,
       scrollContainer,
       visibleComments,
     ]);

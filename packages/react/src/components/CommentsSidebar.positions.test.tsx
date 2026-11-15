@@ -312,7 +312,7 @@ test("the comments column watches the scroll container once it mounts", async ()
     document.body.append(scrollElement);
     expect(observed).not.toContain(scrollElement);
     await act(async () => render(scrollElement));
-    // Its size moves the page, so the column measures again when it changes.
+    // Its size moves the anchors, so the cards measure again when it changes.
     expect(observed).toContain(scrollElement);
     scrollElement.remove();
   } finally {
