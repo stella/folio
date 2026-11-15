@@ -129,8 +129,40 @@ export const insertBlocks = ({
     delete canonical.formatting;
     return canonical;
   });
+  // A direct insertion after a paragraph whose inserted mark a tracked
+  // insertion after it took over (rejecting the mark keeps this paragraph)
+  // goes in before that break: the new last paragraph takes the inserted
+  // mark, so the break stays right before the tracked paragraphs, and the
+  // anchor's mark is its own again. Concurrent insertions after one
+  // paragraph then leave the same document in either order.
+  const takenOver = location.paragraph.pPrMark;
+  const lastNew = canonicalBlocks.at(-1);
+  const movesMark =
+    op.revision === undefined &&
+    op.at.type === "after" &&
+    following?.type === "paragraph" &&
+    takenOver?.survivor === "first" &&
+    lastNew !== undefined &&
+    lastNew.pPrMark === undefined;
+  const directReplacement = () => {
+    if (!movesMark || following?.type !== "paragraph" || lastNew === undefined)
+      return replacement(canonicalBlocks);
+    const freed = { ...location.paragraph };
+    delete freed.pPrMark;
+    return {
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: op.story,
+      expected: [location.paragraph, following],
+      blocks: [
+        freed,
+        ...canonicalBlocks.slice(0, -1),
+        { ...lastNew, pPrMark: takenOver },
+        following,
+      ],
+    };
+  };
   // Validate incoming identities and model records before creating any review records.
-  const direct = applyOps(document, [replacement(canonicalBlocks)]);
+  const direct = applyOps(document, [directReplacement()]);
   if (direct.isErr())
     return Result.err(
       new DocumentOpRefusal({
@@ -159,7 +191,7 @@ export const insertBlocks = ({
   const touched = {
     // The anchor's mark becomes the inserted one when it takes over.
     modified:
-      takesOverMark && location.paragraph.paraId !== undefined
+      (takesOverMark || movesMark) && location.paragraph.paraId !== undefined
         ? [location.paragraph.paraId]
         : [],
     inserted: op.blocks.flatMap(({ paraId }) =>

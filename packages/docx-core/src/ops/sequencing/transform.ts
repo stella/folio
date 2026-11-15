@@ -393,8 +393,17 @@ const transformRestoredOp = ({
   ) {
     if (op.at.type !== over.at.type || op.at.blockId !== over.at.blockId)
       return refusal(op, over, "Overlapping block insertion identities.");
-    if ((order === "before") === (op.at.type === "after"))
-      return Result.ok([op]);
+    // After one paragraph a direct insertion goes before a tracked one in
+    // either order: a tracked insertion after a paragraph that ends its list
+    // takes over that paragraph's mark, and a direct one after it goes in
+    // before that break, so both orders leave the tracked paragraphs last.
+    const directFirst =
+      op.at.type === "after" &&
+      (op.revision === undefined) !== (over.revision === undefined);
+    const stays = directFirst
+      ? op.revision === undefined
+      : (order === "before") === (op.at.type === "after");
+    if (stays) return Result.ok([op]);
     const anchor =
       op.at.type === "after" ? over.blocks.at(-1) : over.blocks.at(0);
     if (!anchor?.paraId)
