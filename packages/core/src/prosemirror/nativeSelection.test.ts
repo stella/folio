@@ -3,7 +3,8 @@
  * text before the editor's caret, set again by the editor, so an input
  * method composes into the run the caret follows. That holds for a caret
  * set between updates, by focus or a click, and for one with no text beside
- * it, before an anchor at a paragraph's start.
+ * it, before an anchor at a paragraph's start. A caret a navigation key moves
+ * stays where the browser put it, also just after the editor takes focus.
  */
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
@@ -11,7 +12,10 @@ import { EditorState, type Plugin, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
 import { acquireHarnessDom } from "../../../../test/harnessDom";
-import { createNativeSelectionRefreshPlugin } from "./nativeSelection";
+import {
+  createNativeNavigationPlugin,
+  createNativeSelectionRefreshPlugin,
+} from "./nativeSelection";
 
 const schema = new Schema({
   nodes: {
@@ -161,4 +165,63 @@ test("a caret with no text beside it, before an anchor, is set again where it is
   expect(native.getRangeAt(0)).not.toBe(held);
   expect(native.anchorNode).toBe(paragraph);
   expect(native.anchorOffset).toBe(0);
+});
+
+/**
+ * One paragraph with the caret at its end, focused the way a click on the
+ * painted page focuses an editor: with no click in the editor itself.
+ */
+const navigationRig = (plugins: readonly Plugin[]) => {
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, schema.text("Header seed")),
+  ]);
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const view = new EditorView(mount, {
+    state: EditorState.create({
+      doc,
+      plugins: [...plugins],
+      selection: TextSelection.atEnd(doc),
+    }),
+  });
+  views.push(view);
+  view.focus();
+  const text = view.dom.firstElementChild?.firstChild;
+  if (!text || text.nodeType !== text.TEXT_NODE)
+    throw new TypeError("The rig needs the paragraph's text.");
+  return { view, text };
+};
+
+/**
+ * Home as the browser runs it: the key, the caret it moves, the move's report
+ * and the key's release.
+ */
+const pressHome = (view: EditorView, text: Node) => {
+  const native = document.getSelection();
+  if (!native) throw new TypeError("The rig needs a selection.");
+  view.dom.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Home", bubbles: true }),
+  );
+  native.collapse(text, 0);
+  document.dispatchEvent(new Event("selectionchange"));
+  view.dom.dispatchEvent(
+    new KeyboardEvent("keyup", { key: "Home", bubbles: true }),
+  );
+  return native;
+};
+
+test("Home pressed just after the editor takes focus puts the caret at the start", () => {
+  const { view, text } = navigationRig([createNativeNavigationPlugin()]);
+  const native = pressHome(view, text);
+  expect(view.state.selection.from).toBe(1);
+  expect(native.anchorNode).toBe(text);
+  expect(native.anchorOffset).toBe(0);
+});
+
+test("without the plugin ProseMirror reads that Home as a focus reset and undoes it", () => {
+  const { view, text } = navigationRig([]);
+  const native = pressHome(view, text);
+  expect(view.state.selection.from).toBe(12);
+  expect(native.anchorNode).toBe(text);
+  expect(native.anchorOffset).toBe(11);
 });

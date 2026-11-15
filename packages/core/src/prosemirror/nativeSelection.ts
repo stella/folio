@@ -47,6 +47,53 @@ export const adoptNativeSelection = (view: EditorView): void => {
 export const isCompositionKeyDown = (event: KeyboardEvent): boolean =>
   event.isComposing || event.key === "Process";
 
+/** Keys whose caret move the browser makes itself. */
+const NAVIGATION_KEY = /^(?:Arrow|Home$|End$|Page)/u;
+
+/**
+ * Takes the caret a navigation key moved into the editor state when the
+ * browser reports the move, before ProseMirror reads it.
+ *
+ * ProseMirror reads a caret that arrives at the start of the document within
+ * 200 ms of the editor taking focus, with no click in the editor, as the
+ * browser resetting the selection on focus, and puts its own selection back.
+ * These editors take focus from a click on the painted page, never in the
+ * editor, so Home pressed just after a header, footer or note opens would be
+ * undone. A capturing listener on the window hears `selectionchange` before
+ * the editor's own listener on the document, and the editor then reads the
+ * caret it already holds.
+ */
+export const createNativeNavigationPlugin = (): Plugin =>
+  new Plugin({
+    view: (view) => {
+      const owner = view.dom.ownerDocument;
+      const global = owner.defaultView;
+      let navigating = false;
+      const keydown = (event: KeyboardEvent) => {
+        navigating =
+          !isCompositionKeyDown(event) && NAVIGATION_KEY.test(event.key);
+      };
+      const settle = () => {
+        navigating = false;
+      };
+      const follow = () => {
+        if (navigating && view.hasFocus()) adoptNativeSelection(view);
+      };
+      view.dom.addEventListener("keydown", keydown);
+      view.dom.addEventListener("keyup", settle);
+      view.dom.addEventListener("blur", settle);
+      global?.addEventListener("selectionchange", follow, true);
+      return {
+        destroy: () => {
+          view.dom.removeEventListener("keydown", keydown);
+          view.dom.removeEventListener("keyup", settle);
+          view.dom.removeEventListener("blur", settle);
+          global?.removeEventListener("selectionchange", follow, true);
+        },
+      };
+    },
+  });
+
 const nativeRange = (view: EditorView): Range | null => {
   const native = view.dom.ownerDocument.getSelection();
   return native !== null && native.rangeCount > 0 ? native.getRangeAt(0) : null;
