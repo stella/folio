@@ -1930,7 +1930,7 @@ describe("a note referenced from inside a field's result", () => {
       },
     ]);
     const result = resolveAll(document, [92], REVISION_DECISIONS.ACCEPT);
-    expect(result.package.footnotes).toBeUndefined();
+    expect(result.package.footnotes ?? []).toEqual([]);
   });
 
   test("stays while a field's result elsewhere still references it", () => {

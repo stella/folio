@@ -59,12 +59,12 @@ import {
   type InlineNode,
   mergeAlike,
   mergeLists,
-  nestedRecords,
   ownRunPropertyChanges,
   rebuildNode,
   sameOwnFields,
   withFieldResult,
 } from "./leaves";
+import { noteReferenceSpans } from "./noteMarks";
 import {
   paragraphHoldsContent,
   paragraphHoldsContentOnceAccepted,
@@ -177,31 +177,6 @@ type NoteReference = {
   id: number;
   added: boolean;
 };
-
-type NoteReferenceSpan = {
-  node: Extract<InlineNode, { type: "footnoteRef" | "endnoteRef" }>;
-  ancestors: readonly InlineNode[];
-};
-
-/**
- * Every footnote and endnote reference in `nodes`, with the records holding
- * it, outermost first. A field is one unit of text, but its result is
- * content a reader sees and can hold a reference, so the walk enters it
- * ({@link nestedRecords}), nested fields included. A field's instruction
- * is not content and holds none.
- */
-const noteReferenceSpans = (
-  nodes: readonly InlineNode[],
-  ancestors: readonly InlineNode[] = [],
-): NoteReferenceSpan[] =>
-  nodes.flatMap((node): NoteReferenceSpan[] => {
-    if (node.type === "footnoteRef" || node.type === "endnoteRef")
-      return [{ node, ancestors }];
-    const nested = nestedRecords(node);
-    return nested === undefined
-      ? []
-      : noteReferenceSpans(nested, [...ancestors, node]);
-  });
 
 /** Note bodies whose selected reference revision is removed by this decision. */
 const removedNoteReferences = (
