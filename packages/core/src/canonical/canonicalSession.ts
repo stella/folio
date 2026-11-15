@@ -3828,3 +3828,38 @@ export const deletionRange = (
     panic("Canonical deletion lost a grapheme boundary.");
   return Result.ok({ from, to });
 };
+
+/**
+ * The deletion a browser measured (by word or by line) as the visible
+ * characters its range covers whole, in the caret's paragraph: from the first
+ * such character's start to the last one's end. Zero-width anchors at the
+ * range's edges stay, as they do beside a plain character deletion; an inline
+ * atom only partly covered stays; `null` when the range covers no visible
+ * character.
+ */
+export const measuredDeletionRange = (
+  state: EditorState,
+  measured: { from: number; to: number },
+): Result<{ from: number; to: number } | null, CanonicalSessionError> => {
+  const context = visibleDeletionContext(state);
+  if (context.isErr()) return context;
+  const { physicalStarts, physicalEnds } = context.value;
+  let from: number | undefined;
+  let to: number | undefined;
+  for (const [unit, start] of physicalStarts.entries()) {
+    const end = physicalEnds.at(unit);
+    if (end === undefined)
+      panic("Canonical deletion lost a visible character's end.");
+    if (start < measured.from || end > measured.to) continue;
+    from ??= start;
+    to = end;
+  }
+  if (from === undefined || to === undefined) return Result.ok(null);
+  let noteMarkers = 0;
+  state.doc.nodesBetween(from, to, (node) => {
+    if (node.type.name === "noteMarker") noteMarkers += 1;
+  });
+  if (noteMarkers > 0)
+    return refuse("Automatic note marks cannot be deleted as characters.");
+  return Result.ok({ from, to });
+};
