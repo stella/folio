@@ -304,7 +304,7 @@ for (const kind of kinds)
           },
         ),
         {
-          id: `automatic note mark resolution preserves source ownership ${kind} ${decision}`,
+          id: "automatic note mark resolution preserves source ownership",
           numRuns: 50,
         },
       );
