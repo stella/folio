@@ -6,12 +6,12 @@ import { finalizeParagraphFormatting } from "@stll/docx-core/model";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
-  EMPTY_PROPERTY_SETS,
   OP_STORIES,
   type OpStory,
   paragraphPropertySnapshotToken,
   registerParagraphPropertySnapshot,
   replaceStoryBody,
+  reviewFieldsOf,
   storyBody,
   withBodyContent,
   withParagraphRenderings,
@@ -634,24 +634,6 @@ const normalizeBlock = (
     next.formatting = { ...formatting };
     delete next.formatting.numPrFromStyle;
   }
-  // Derived provenance still belongs to exact inverse preconditions.
-  if (
-    canonicalJson(next.formatting?.numPrFromStyle) !==
-    canonicalJson(formatting?.numPrFromStyle)
-  ) {
-    recordInverse(() => ({
-      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-      story,
-      blockId:
-        paragraph.paraId ??
-        panic("List normalization requires paragraph identities."),
-      patch: { numPrFromStyle: formatting?.numPrFromStyle ?? null },
-      whenEmpty:
-        formatting === undefined
-          ? EMPTY_PROPERTY_SETS.OMIT
-          : EMPTY_PROPERTY_SETS.KEEP,
-    }));
-  }
   const numPr = effectiveParagraphNumberingReference(
     paragraphNumberingSourcesFromBoundary({
       numPr: next.formatting?.numPr,
@@ -701,32 +683,6 @@ const normalizeBlock = (
     inherited:
       paragraphIndentationFromFormatting(inheritance._resolvedFormatting) ?? {},
   });
-  // Structural inverse preconditions capture the fields before rendering
-  // normalization; undo its effective indentation before those inverses.
-  if (
-    canonicalJson(paragraphIndentationFromFormatting(next.formatting)) !==
-    canonicalJson(paragraphIndentationFromFormatting(formatting))
-  ) {
-    recordInverse(() => ({
-      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
-      story,
-      blockId:
-        paragraph.paraId ??
-        panic(
-          "Canonical numbering normalization requires paragraph identities.",
-        ),
-      patch: {
-        indentLeft: formatting?.indentLeft ?? null,
-        indentRight: formatting?.indentRight ?? null,
-        indentFirstLine: formatting?.indentFirstLine ?? null,
-        hangingIndent: formatting?.hangingIndent ?? null,
-      },
-      whenEmpty:
-        formatting === undefined
-          ? EMPTY_PROPERTY_SETS.OMIT
-          : EMPTY_PROPERTY_SETS.KEEP,
-    }));
-  }
   if (rendering === null) delete next.listRendering;
   else {
     const fields = foldListNumberFields(
@@ -768,6 +724,20 @@ const normalizeBlock = (
   });
   const finalizedFormatting = finalizeParagraphFormatting(next.formatting);
   if (finalizedFormatting === undefined) delete next.formatting;
+  // Derived formatting must restore pending review records unchanged; a
+  // direct property patch would record the restored indentation as authored.
+  if (canonicalJson(next.formatting) !== canonicalJson(formatting))
+    recordInverse(() => ({
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+      story,
+      blockId:
+        paragraph.paraId ??
+        panic(
+          "Canonical numbering normalization requires paragraph identities.",
+        ),
+      expected: reviewFieldsOf(next),
+      review: reviewFieldsOf(paragraph),
+    }));
   if (
     finalizeParagraphFormatting(formatting) === formatting &&
     sameParagraphIndentationProjection({ left: next, right: paragraph }) &&
