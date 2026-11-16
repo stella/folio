@@ -200,7 +200,9 @@ same table; typing in that table's cells passes. Package parts
 and footers, notes, settings, revision metadata and comments) conflict when
 one operation writes a part both name, by entry where the operation names one
 (a numbering instance, a relationship id, a note, a comment): `partConflict`,
-with the part. A comment operation that may add or remove the comment part
+with the part. Notes added concurrently name different notes and pass: a
+new note takes its place in its note list before the first note of a
+greater id, so the list is the same whichever is added first. A comment operation that may add or remove the comment part
 relationships writes the whole relationships part. A revision decision reads
 the revisions it resolves, and a paragraph replacement, inline replacement,
 paragraph review or container replacement writes every revision its new
