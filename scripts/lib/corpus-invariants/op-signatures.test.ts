@@ -6,6 +6,7 @@ import type {
   Document,
   Paragraph,
 } from "../../../packages/docx-core/src/model/document";
+import { captureSectionViewState } from "../../../packages/docx-core/src/ops/blocks";
 import {
   applyDocumentOp,
   DOCUMENT_OP_TYPES,
@@ -341,6 +342,95 @@ test("body-field and section-field ownership cannot conceal paragraph edits in t
     };
     expect(localityStepFailures(corrupted)).toContain(
       `${step.op.type} changed records outside its declared story and section fields`,
+    );
+  }
+});
+
+test("complete section views own the document part while canonical endpoint fields stay protected", () => {
+  const before: Document = fixture();
+  const first = before.package.document.content.at(0);
+  if (first?.type !== "paragraph")
+    throw new Error("Missing main fixture paragraph");
+  first.sectionProperties = { pageWidth: 12000 };
+  before.package.document.finalSectionProperties = { pageWidth: 13000 };
+  before.package.document.sections = [
+    {
+      properties: first.sectionProperties,
+      content: before.package.document.content,
+    },
+  ];
+  const step = stepFor(
+    {
+      type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+      expected: {
+        sectionView: captureSectionViewState(before.package.document),
+      },
+      parts: { sectionView: { type: "omitted" } },
+    },
+    before,
+  );
+  expect(localityStepFailures(step)).toEqual([]);
+  const control = parts();
+  const edited = new Map(control);
+  edited.set("custom/main.xml", bytes("restored section view"));
+  expect(
+    serializedLocalityStepFailures({
+      step,
+      control,
+      edited,
+      documentPart: "custom/main.xml",
+    }),
+  ).toEqual([]);
+  edited.set("stories/header3.xml", bytes("unowned header"));
+  expect(
+    serializedLocalityStepFailures({
+      step,
+      control,
+      edited,
+      documentPart: "custom/main.xml",
+    }),
+  ).toEqual([
+    "restoreStoryParts changed unrelated serialized part: stories/header3.xml",
+  ]);
+  for (const field of [
+    "paragraphEndpoint",
+    "finalEndpoint",
+    "paragraphContent",
+    "packageProperties",
+  ] as const) {
+    const changed = structuredClone(step.edit.document);
+    const target = changed.package.document.content.at(0);
+    if (target?.type !== "paragraph")
+      throw new Error("Missing main fixture paragraph");
+    switch (field) {
+      case "paragraphEndpoint":
+        target.sectionProperties = { pageWidth: 14000 };
+        break;
+      case "finalEndpoint":
+        changed.package.document.finalSectionProperties = { pageWidth: 14000 };
+        break;
+      case "paragraphContent":
+        target.content = [
+          { type: "run", content: [{ type: "text", text: "unowned" }] },
+        ];
+        break;
+      case "packageProperties":
+        changed.package.properties = { title: "unowned" };
+        break;
+    }
+    const failures = localityStepFailures({
+      ...step,
+      edit: {
+        ...step.edit,
+        document: changed,
+        touched: { modified: ["00000001"], inserted: [], removed: [] },
+      },
+    });
+    expect(failures).toContain(
+      "restoreStoryParts changed records outside its declared story and section fields",
+    );
+    expect(failures).not.toContain(
+      "restoreStoryParts declared a touched block outside its addressed story",
     );
   }
 });

@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 10: text, formatting and review edits on
+ * Document operations: text, formatting and review edits on
  * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -94,6 +94,8 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 14 restores section-view topology in story lifecycle inverses.
+ * Older envelopes receive an unsupportedSchema refusal.
  * Version 12 adds `setContentControl`, which sets a block-level content
  * control's properties by its id.
  * Version 11 records, as a sequenced format's effect, the run a direct
@@ -120,7 +122,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 13;
+export const DOCUMENT_OP_SCHEMA_VERSION = 14;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -1046,7 +1048,7 @@ export type SetSectionPropsOp = {
   patch: FormattingPatch<SectionProperties>;
 };
 /** JSON-safe lifecycle deltas: omitted fields are unowned, null restores absence. */
-export type StoryParts = {
+type StoryPartFields = {
   /** Owned fields whose source explicitly had an undefined own property. */
   undefinedFields?: readonly (
     | {
@@ -1057,7 +1059,7 @@ export type StoryParts = {
         target: "package";
         keys: readonly (keyof Omit<
           StoryParts,
-          "body" | "sections" | "undefinedFields"
+          "body" | "sections" | "sectionView" | "undefinedFields"
         >)[];
       }
     | {
@@ -1076,19 +1078,28 @@ export type StoryParts = {
       ? DocumentBody[Key]
       : Exclude<DocumentBody[Key], undefined> | null;
   };
-  /** Section contents remain derived from the body's content and are never duplicated. */
-  sections?: readonly {
-    index: number;
-    properties?: Section["properties"];
-    headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
-    footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
-  }[];
   headers?: readonly (readonly [string, HeaderFooter])[] | null;
   footers?: readonly (readonly [string, HeaderFooter])[] | null;
   footnotes?: readonly Footnote[] | null;
   endnotes?: readonly Endnote[] | null;
   settings?: DocumentSettings | null;
 };
+/** Section contents stay derived; a complete view and narrow metadata never overlap. */
+export type StoryParts = StoryPartFields &
+  (
+    | {
+        sectionView?: never;
+        sections?: readonly {
+          index: number;
+          properties?: Section["properties"];
+          headers?:
+            readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+          footers?:
+            readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+        }[];
+      }
+    | { sectionView: SectionViewState; sections?: never }
+  );
 /** Exact stale-checked lifecycle inverse; unrelated package parts stay untouched. */
 export type RestoreStoryPartsOp = {
   type: typeof DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS;

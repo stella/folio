@@ -712,6 +712,19 @@ export const envelopes = (): DocumentOpEnvelope[] => {
       parts: undefinedParts,
     }),
   );
+  for (const sectionView of [
+    { type: "omitted" },
+    { type: "undefined" },
+    captureSectionViewState(undefinedLifecycle.package.document),
+  ] as const) {
+    out.push(
+      toOpEnvelope({
+        type: DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+        expected: { sectionView },
+        parts: { sectionView },
+      }),
+    );
+  }
   // Semantic table fixtures are independent: no earlier review or geometry constrains a later case.
   const editTable: Table = {
     type: "table",
