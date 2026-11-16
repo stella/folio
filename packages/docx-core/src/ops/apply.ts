@@ -138,7 +138,11 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { cloneModel } from "./modelClone";
-import { noteContentWithAutomaticMark, removedNoteStories } from "./noteMarks";
+import {
+  automaticNoteMarkRuns,
+  noteContentWithAutomaticMark,
+  removedNoteStories,
+} from "./noteMarks";
 import { applyNumberingSectionOp } from "./numberingSections";
 import { paragraphLength } from "./offsets";
 import { applyPackageResourcesOp } from "./packageResources";
@@ -2634,13 +2638,12 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
       ({ node }) => node.type === "noteMarker" && node.kind === noteKind,
     )
   ) {
-    const carrier = paragraph.content.find((node) =>
-      leafSpans([node]).some(
-        ({ node: leaf }) =>
-          leaf.type === "noteMarker" && leaf.kind === noteKind,
+    const markers = automaticNoteMarkRuns(paragraph.content).filter((run) =>
+      run.content.some(
+        (node) => node.type === "noteMarker" && node.kind === noteKind,
       ),
     );
-    if (carrier !== undefined) content = [carrier, ...content];
+    content = [...markers, ...content];
   }
   if (holdsEmptyRecord(content)) {
     return refuse(

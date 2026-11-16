@@ -72,7 +72,7 @@ import {
   sameOwnFields,
   withFieldResult,
 } from "./leaves";
-import { noteReferenceSpans } from "./noteMarks";
+import { automaticNoteMarkRuns, noteReferenceSpans } from "./noteMarks";
 import {
   paragraphHoldsContent,
   paragraphHoldsContentOnceAccepted,
@@ -1844,6 +1844,10 @@ const resolveList = ({
           leavesPending: (revisionId) => !resolution.ids.has(revisionId),
           keptPaths: resolution.keptDeletionPaths,
           path: [...path, index],
+          keepAutomaticMark: (run) =>
+            automaticNoteMarkRuns([run]).map((mark) =>
+              resolveRun(mark, resolution),
+            ),
         });
         appendUnowned(kept);
         // Kept boundaries float at the seam until the pieces either side are
