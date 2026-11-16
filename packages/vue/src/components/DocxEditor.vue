@@ -349,6 +349,8 @@
                   :editor-state="editorState"
                   :zoom="zoom"
                   :sync-coordinator="syncCoordinator"
+                  :suggestion="autocompleteSuggestion"
+                  :editor-position-at="editor.editorPositionAt"
                 />
                 <DecorationLayer
                   :get-view="() => editorView"
@@ -579,6 +581,7 @@ import { commentIdsNamedIn } from "@stll/folio-core/prosemirror/commentRecords";
 import { executeEditorCommand } from "@stll/folio-core/prosemirror/executeEditorCommand";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
+import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -936,6 +939,10 @@ useKeyboardShortcuts({
 const savedComments = () =>
   commentManagement.comments.value.map((comment) => toRaw(comment));
 
+const autocompleteSuggestion = shallowRef<FolioAutocompleteState>({
+  status: "idle",
+});
+
 const {
   editor,
   editorView,
@@ -969,6 +976,10 @@ const {
   reLayout,
   setEmbeddedFontFamilies,
 } = useDocxEditor({
+  onAutocompleteChange: (state) => {
+    autocompleteSuggestion.value = state;
+    props.onAutocompleteChange?.(state);
+  },
   // Read at save time; comment management is set up below.
   comments: () => savedComments(),
   hiddenContainer: hiddenPmRef,

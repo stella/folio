@@ -66,7 +66,13 @@ export const pastePlainTextSlice = (view: EditorView, slice: Slice): void => {
   if (suggesting?.active && handleSuggestionPaste(view, slice, suggesting)) {
     return;
   }
-  view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+  view.dispatch(
+    view.state.tr
+      .replaceSelection(slice)
+      .scrollIntoView()
+      .setMeta("paste", true)
+      .setMeta("uiEvent", "paste"),
+  );
 };
 
 /**

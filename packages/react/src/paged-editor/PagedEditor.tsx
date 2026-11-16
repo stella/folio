@@ -52,6 +52,10 @@ import {
   type FolioAnonymizationTerm,
   NO_ANONYMIZATION_HIGHLIGHTS,
 } from "@stll/folio-core/controller/anonymizationHighlights";
+import {
+  type FolioAutocompleteState,
+  IDLE_AUTOCOMPLETE,
+} from "@stll/folio-core/controller/autocompleteSuggestion";
 import { afterCanonicalCompositionSettles } from "@stll/folio-core/controller/canonicalInputTimer";
 import type { CanonicalRoomCollaboration } from "@stll/folio-core/controller/canonicalRoomEditor";
 import { DOCUMENT_CHANGE_NOTIFY_DELAY_MS } from "@stll/folio-core/controller/documentChangeNotification";
@@ -208,8 +212,6 @@ import {
   type NoteReferenceFollower,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { aiSuggestionDecorationsKey } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
-import { autocompleteSuggestionKey } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
-import type { AutocompleteSuggestionState } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { templateDirectivesKey } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import type { DirectiveRange } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
@@ -501,6 +503,8 @@ export type PagedEditorProps = {
   /** Called with every occurrence each time the set of occurrences changes. */
   onAnonymizationMatchesChange?:
     ((matches: readonly FolioAnonymizationMatch[]) => void) | undefined;
+  /** Called with the inline suggestion each time it changes. */
+  onAutocompleteChange?: ((state: FolioAutocompleteState) => void) | undefined;
   /**
    * Called when the user clicks an anonymization highlight in
    * the rendered document. Receives the canonical surface form
@@ -1630,6 +1634,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       onError,
       anchorPositionMode = "comments-and-revisions",
       onAnonymizationTermClick,
+      onAutocompleteChange,
       anonymizationTerms,
       onAnonymizationMatchesChange,
       selectedAnonymizationCanonical = null,
@@ -1841,16 +1846,29 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       onAnonymizationMatchesChangeRef.current = onAnonymizationMatchesChange;
     });
     const [anonymizationOverlayRequestGate] = useState(createLatestRequestGate);
-    // Autocomplete (inline ghost-text) overlay state. Mirrors the
-    // anonymization pattern: a ref tracks the latest plugin
-    // suggestion, a derived caret-rect lives in state and drives
-    // the overlay. The plugin sits in the hidden editor; the
-    // visible ghost is painted on the paged canvas.
-    const autocompleteSuggestionRef = useRef<AutocompleteSuggestionState>({
-      status: "idle",
-      anchor: null,
-      text: "",
-      requestId: null,
+    // Autocomplete (inline ghost-text) overlay state: a ref tracks the
+    // latest suggestion of the editor's owner, a derived caret-rect lives in
+    // state and drives the overlay painted on the paged canvas.
+    const autocompleteSuggestionRef =
+      useRef<FolioAutocompleteState>(IDLE_AUTOCOMPLETE);
+    const onAutocompleteChangeRef = useRef(onAutocompleteChange);
+    const lastAutocompleteNotificationRef =
+      useRef<FolioAutocompleteState>(IDLE_AUTOCOMPLETE);
+    const notifyAutocompleteChange = useCallback(
+      (state: FolioAutocompleteState) => {
+        const notify = onAutocompleteChangeRef.current;
+        if (
+          notify === undefined ||
+          state === lastAutocompleteNotificationRef.current
+        )
+          return;
+        lastAutocompleteNotificationRef.current = state;
+        notify(state);
+      },
+      [],
+    );
+    useLayoutEffect(() => {
+      onAutocompleteChangeRef.current = onAutocompleteChange;
     });
     const [autocompleteOverlayRequestGate] = useState(createLatestRequestGate);
     const [autocompleteCaret, setAutocompleteCaret] =
@@ -3111,7 +3129,11 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       if (!layout || blocks.length === 0) {
         return;
       }
-      const anchor = current.anchor;
+      const anchor = hiddenPMRef.current?.autocomplete.editorAnchor() ?? null;
+      if (anchor === null) {
+        setAutocompleteCaret(null);
+        return;
+      }
       // Caret geometry is in the lazily-loaded selection-geometry chunk (kept out
       // of the initial Folio bundle), so resolve it the same way the selection
       // and anchor-position overlays do.
@@ -3400,18 +3422,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
           noteFollower.noteBase(before);
         }
 
-        // Same pattern for the inline autocomplete suggestion: keep
-        // the ref in sync with every transaction, repaint the
-        // ghost-text overlay when the suggestion changes (token
-        // arrival, accept, dismiss, doc-edit invalidation).
-        const nextSuggestion =
-          autocompleteSuggestionKey.getState(newState)?.suggestion ??
-          autocompleteSuggestionRef.current;
-        if (nextSuggestion !== autocompleteSuggestionRef.current) {
-          autocompleteSuggestionRef.current = nextSuggestion;
-          updateAutocompleteOverlay();
-        }
-
         const nextDirectives =
           templateDirectivesKey.getState(newState)?.ranges ?? [];
         if (nextDirectives !== directivesRef.current) {
@@ -3522,7 +3532,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         hideSelectionOverlayDuringInput,
         setPassageHighlightRects,
         updateSelectionOverlay,
-        updateAutocompleteOverlay,
         updateDirectivesOverlay,
         updateAISuggestionsOverlay,
         passageHighlightOverlayRequestGate,
@@ -5950,12 +5959,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     const handleEditorViewReady = useCallback(
       (view: EditorView) => {
         onEditorViewReadyRef.current?.(view);
-        const initialSuggestion = autocompleteSuggestionKey.getState(
-          view.state,
-        )?.suggestion;
-        if (initialSuggestion !== undefined) {
-          autocompleteSuggestionRef.current = initialSuggestion;
-        }
+        const suggestion = folioEditor.autocomplete.get();
+        autocompleteSuggestionRef.current = suggestion;
+        notifyAutocompleteChange(suggestion);
         updateAutocompleteOverlay();
         directivesRef.current =
           templateDirectivesKey.getState(view.state)?.ranges ?? [];
@@ -6065,7 +6071,9 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         updateDirectivesOverlay,
         updateAISuggestionsOverlay,
         document,
+        folioEditor,
         updateAutocompleteOverlay,
+        notifyAutocompleteChange,
         readOnly,
         refreshBodyImeCaretAnchor,
         markupView,
@@ -6157,6 +6165,26 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     useEffect(() => {
       updateAutocompleteOverlay();
     }, [updateAutocompleteOverlay]);
+
+    // Follow the stable manager, replaying any suggestion started before binding.
+    useEffect(() => {
+      const owner = hiddenPMRef.current?.autocomplete;
+      if (owner === undefined) return;
+      const changed = (state: FolioAutocompleteState) => {
+        autocompleteSuggestionRef.current = state;
+        notifyAutocompleteChange(state);
+        updateAutocompleteOverlay();
+      };
+      const off = owner.subscribe(changed);
+      changed(owner.get());
+      return off;
+    }, [notifyAutocompleteChange, updateAutocompleteOverlay]);
+    useEffect(() => {
+      if (onAutocompleteChange !== undefined)
+        notifyAutocompleteChange(
+          hiddenPMRef.current?.autocomplete.get() ?? IDLE_AUTOCOMPLETE,
+        );
+    }, [onAutocompleteChange, notifyAutocompleteChange]);
 
     // Re-layout when a face loads that the committed layout measured without:
     // a `unicode-range` subset fetched once painted text first needed it, or
@@ -6815,11 +6843,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
                 via the ref; renders nothing until a range is set. */}
             <PassageHighlightOverlay rects={passageHighlightRects} />
 
-            {/* Inline autocomplete ghost-text + "stella" caret. The
-              ProseMirror autocomplete plugin lives in the hidden
-              editor; this overlay paints its state on top of the
-              paged canvas at container coords from
-              {@link getCaretPosition}. */}
+            {/* The hidden editor owns the autocomplete state; paint it
+              over the paged canvas at the anchor's container coordinates. */}
             <AutocompleteCaretOverlay
               caret={autocompleteCaret}
               text={autocompleteText}

@@ -29,6 +29,7 @@ import { FindOptions } from '@stll/folio-core/utils/findReplace';
 import { FindResult } from '@stll/folio-core/utils/findReplace';
 import { FlowBlock } from '@stll/folio-core/layout-engine/types';
 import { FolioAnonymizationTerm } from '@stll/folio-core/controller/anonymizationHighlights';
+import { FolioAutocompleteState } from '@stll/folio-core/types/autocomplete';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
@@ -165,6 +166,7 @@ export type UseDocxEditorOptions = {
     showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;
     onSlashMenuChange?: (state: TemplateSlashMenuState) => void;
     onSlashMenuKeyAction?: (action: TemplateSlashMenuKeyAction) => boolean;
+    onAutocompleteChange?: (state: FolioAutocompleteState) => void;
     onChange?: (doc: Document_2) => void;
     onError?: (error: Error) => void;
     onSelectionUpdate?: (state: EditorState) => void;

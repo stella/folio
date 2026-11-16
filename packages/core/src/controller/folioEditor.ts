@@ -11,13 +11,18 @@ import type { TextPosition } from "@stll/docx-core/ops";
 
 import { findPageNumberAtEditorPosition } from "../layout-engine/pmPageIndex";
 import type { Layout } from "../layout-engine/types";
+import type { FolioAutocompleteApi } from "../types/autocomplete";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import type { FolioGetDocxOptions } from "../types/docxSerialization";
 import type { DocxInput } from "../utils/docxInput";
 import { NO_ANONYMIZATION_HIGHLIGHTS } from "./anonymizationHighlights";
 import type { FolioEditorEmitter } from "./folioEditorEvents";
-import type { HiddenEditorApi } from "./hiddenEditorApi";
+import {
+  delegateAutocomplete,
+  type HiddenEditorApi,
+  NO_AUTOCOMPLETE,
+} from "./hiddenEditorApi";
 import type { LayoutRunOptions } from "./layoutRunOptions";
 
 export type FolioEditorDeps = {
@@ -58,7 +63,8 @@ export type FolioEditorDocumentIO = {
 
 // The headless controller surface (Seam 6). The HiddenEditorApi methods plus
 // layout access and event subscription.
-export type FolioEditor = HiddenEditorApi & {
+export type FolioEditor = Omit<HiddenEditorApi, "autocomplete"> & {
+  autocomplete: FolioAutocompleteApi;
   getDocx: FolioEditorDocumentIO["getDocx"];
   loadDocument: FolioEditorDocumentIO["loadDocument"];
   loadDocx: FolioEditorDocumentIO["loadDocx"];
@@ -188,6 +194,11 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
     getAnonymizationHighlights: () =>
       deps.getEditorApi()?.getAnonymizationHighlights() ??
       NO_ANONYMIZATION_HIGHLIGHTS,
+
+    // The editor API is read on every call: it can be replaced.
+    autocomplete: delegateAutocomplete(
+      () => deps.getEditorApi()?.autocomplete ?? NO_AUTOCOMPLETE,
+    ),
 
     getLayout: () => deps.getLayout(),
 

@@ -1162,7 +1162,7 @@
   "packages/core/src/prosemirror/pluginKeyOwner.test.ts": 1038,
   "packages/core/src/prosemirror/plugins/aiSuggestionDecorations.test.ts": 2,
   "packages/core/src/controller/anonymizationHighlights.test.ts": 6,
-  "packages/core/src/prosemirror/plugins/autocompleteSuggestion.test.ts": 7,
+  "packages/core/src/controller/autocompleteSuggestion.test.ts": 7,
   "packages/core/src/prosemirror/plugins/cellSelectionSuggestionMode.test.ts": 38,
   "packages/core/src/prosemirror/plugins/contentControlWidgets.test.ts": 6,
   "packages/core/src/prosemirror/plugins/documentNumbering.test.ts": 68,

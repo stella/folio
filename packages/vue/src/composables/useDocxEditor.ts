@@ -152,7 +152,6 @@ import {
   heldUnreferencedNotes,
   withoutUnreferencedNotes,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
-import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
   setSuggestionMode,
@@ -168,6 +167,7 @@ import type {
   TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -454,6 +454,8 @@ export type UseDocxEditorOptions = {
   onSlashMenuChange?: (state: TemplateSlashMenuState) => void;
   /** Resolves a navigation/commit key while the slash menu is open. */
   onSlashMenuKeyAction?: (action: TemplateSlashMenuKeyAction) => boolean;
+  /** Called after each change of the inline suggestion, including view teardown. */
+  onAutocompleteChange?: (state: FolioAutocompleteState) => void;
   /** Callback on document change (debounced PM → Document model conversion). */
   onChange?: (doc: Document) => void;
   /** Callback on parse / layout / lifecycle error. */
@@ -736,11 +738,6 @@ export function useDocxEditor(
   // manager installs it on every (re)created state.
   const suggestionPlugin = createSuggestionModePlugin(false);
   const notePlugins = [suggestionPlugin];
-  // Inline autocomplete is always installed and inert until a host dispatches
-  // start/token/finish metadata. Keep its keymap ahead of extension keymaps so
-  // Tab, Mod+ArrowRight, and Escape consume an active suggestion first.
-  const autocompletePlugin = autocompleteSuggestionPlugin({ keymap: true });
-
   // Template-directive scan + slash-menu trigger. Installed only when
   // `showTemplateDirectives` is on (see `buildExternalPlugins` /
   // `syncTemplatePlugins`). Preview plugin is inert until values are pushed.
@@ -760,7 +757,6 @@ export function useDocxEditor(
   // decorations. The template directive/slash-menu pair remains feature-gated.
   function buildExternalPlugins(): Plugin[] {
     return [
-      autocompletePlugin,
       suggestionPlugin,
       ...externalPlugins,
       ...(yjsCollaboration()?.plugins ?? []),
@@ -1135,6 +1131,10 @@ export function useDocxEditor(
       remoteSelections.value = selections;
     },
   });
+
+  const offAutocomplete = manager.api.autocomplete.subscribe((state) =>
+    options.onAutocompleteChange?.(state),
+  );
 
   const publishRemoteSelections = (): void => {
     const awareness = yjsCollaboration()?.awareness;
@@ -1853,7 +1853,10 @@ export function useDocxEditor(
     isReady.value = false;
   }
 
-  onScopeDispose(destroy);
+  onScopeDispose(() => {
+    destroy();
+    offAutocomplete();
+  });
 
   return {
     setEmbeddedFontFamilies: (
