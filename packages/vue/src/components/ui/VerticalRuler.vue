@@ -7,9 +7,8 @@
   <div
     class="docx-vertical-ruler"
     :style="containerStyle"
-    role="slider"
-    aria-label="Vertical ruler"
-    aria-orientation="vertical"
+    role="group"
+    :aria-label="t('ruler.vertical')"
   >
     <!-- Tick marks -->
     <div class="docx-vertical-ruler__ticks">
@@ -35,6 +34,14 @@
       :style="markerStyle(topMarginPx)"
       @mousedown.prevent="startDrag('topMargin', $event)"
       @mouseenter="hovered = 'topMargin'"
+      v-bind="controls.topMargin.attributes"
+      :aria-label="
+        controls.topMargin.attributes.role ? t('ruler.topMargin') : undefined
+      "
+      :aria-orientation="
+        controls.topMargin.attributes.role ? 'vertical' : undefined
+      "
+      @keydown="controls.topMargin.onKeyDown"
       @mouseleave="hovered = null"
     >
       <div :style="triangleStyle('topMargin')" />
@@ -47,6 +54,16 @@
       :style="markerStyle(pageHeightPx - bottomMarginPx)"
       @mousedown.prevent="startDrag('bottomMargin', $event)"
       @mouseenter="hovered = 'bottomMargin'"
+      v-bind="controls.bottomMargin.attributes"
+      :aria-label="
+        controls.bottomMargin.attributes.role
+          ? t('ruler.bottomMargin')
+          : undefined
+      "
+      :aria-orientation="
+        controls.bottomMargin.attributes.role ? 'vertical' : undefined
+      "
+      @keydown="controls.bottomMargin.onKeyDown"
       @mouseleave="hovered = null"
     >
       <div :style="triangleStyle('bottomMargin')" />
@@ -59,7 +76,14 @@ import { computed, type CSSProperties, onBeforeUnmount, ref } from "vue";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
 import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
+import {
+  clampRulerValue,
+  createRulerControl,
+  getVerticalRulerBounds,
+} from "@stll/folio-core/utils/rulerControl";
 import { pixelsToTwips, twipsToPixels } from "@stll/folio-core/utils/units";
+
+import { useTranslation } from "../../i18n";
 
 type MarkerType = "topMargin" | "bottomMargin";
 
@@ -72,6 +96,8 @@ const props = withDefaults(
   }>(),
   { zoom: 1, editable: true, unit: "inch" },
 );
+
+const { t } = useTranslation();
 
 const emit = defineEmits<{
   (e: "top-margin-change", twips: number): void;
@@ -118,6 +144,33 @@ const containerStyle = computed<CSSProperties>(() => ({
   overflow: "visible",
   userSelect: "none",
   cursor: dragging.value ? "ns-resize" : "default",
+}));
+
+const bounds = computed(() =>
+  getVerticalRulerBounds({
+    pageHeight: pageHeightTwips.value,
+    topMargin: topMarginTwips.value,
+    bottomMargin: bottomMarginTwips.value,
+  }),
+);
+
+const controls = computed(() => ({
+  topMargin: createRulerControl({
+    value: topMarginTwips.value,
+    ...bounds.value.topMargin,
+    unit: props.unit,
+    onChange: props.editable
+      ? (value) => emit("top-margin-change", value)
+      : undefined,
+  }),
+  bottomMargin: createRulerControl({
+    value: bottomMarginTwips.value,
+    ...bounds.value.bottomMargin,
+    unit: props.unit,
+    onChange: props.editable
+      ? (value) => emit("bottom-margin-change", value)
+      : undefined,
+  }),
 }));
 
 // Mirror generateVerticalTicks() from React VerticalRuler.tsx.
@@ -219,13 +272,10 @@ function handleMove(e: MouseEvent) {
   if (!dragging.value) return;
   const dy = e.clientY - dragStartY;
   const dTwips = px2tw(dragging.value === "topMargin" ? dy : -dy);
-  const max =
-    pageHeightTwips.value -
-    (dragging.value === "topMargin"
-      ? bottomMarginTwips.value
-      : topMarginTwips.value) -
-    720;
-  const value = Math.round(Math.max(0, Math.min(dragStartValue + dTwips, max)));
+  const value = clampRulerValue(
+    dragStartValue + dTwips,
+    bounds.value[dragging.value],
+  );
   if (dragging.value === "topMargin") emit("top-margin-change", value);
   else emit("bottom-margin-change", value);
 }

@@ -28,6 +28,11 @@ import type {
 } from "@stll/folio-core/types/document";
 import type { DeepReadonly } from "@stll/folio-core/types/documentModel";
 import {
+  clampRulerValue,
+  createRulerControl,
+  getHorizontalRulerBounds,
+} from "@stll/folio-core/utils/rulerControl";
+import {
   formatPx,
   pixelsToTwips,
   twipsToPixels,
@@ -136,7 +141,46 @@ export function HorizontalRuler({
   const pageWidthTwips = sectionProps?.pageWidth ?? DEFAULT_PAGE_WIDTH_TWIPS;
   const leftMarginTwips = sectionProps?.marginLeft ?? DEFAULT_MARGIN_TWIPS;
   const rightMarginTwips = sectionProps?.marginRight ?? DEFAULT_MARGIN_TWIPS;
-  const contentTwips = pageWidthTwips - leftMarginTwips - rightMarginTwips;
+  const bounds = getHorizontalRulerBounds({
+    pageWidth: pageWidthTwips,
+    leftMargin: leftMarginTwips,
+    rightMargin: rightMarginTwips,
+    leftIndent: indentLeft,
+    rightIndent: indentRight,
+  });
+
+  const controls = {
+    leftMargin: createRulerControl({
+      value: leftMarginTwips,
+      ...bounds.leftMargin,
+      unit,
+      onChange: editable ? onLeftMarginChange : undefined,
+    }),
+    rightMargin: createRulerControl({
+      value: rightMarginTwips,
+      ...bounds.rightMargin,
+      unit,
+      onChange: editable ? onRightMarginChange : undefined,
+    }),
+    firstLineIndent: createRulerControl({
+      value: hangingIndent ? -firstLineIndent : firstLineIndent,
+      ...bounds.firstLineIndent,
+      unit,
+      onChange: editable ? onFirstLineIndentChange : undefined,
+    }),
+    leftIndent: createRulerControl({
+      value: indentLeft,
+      ...bounds.leftIndent,
+      unit,
+      onChange: editable ? onIndentLeftChange : undefined,
+    }),
+    rightIndent: createRulerControl({
+      value: indentRight,
+      ...bounds.rightIndent,
+      unit,
+      onChange: editable ? onIndentRightChange : undefined,
+    }),
+  };
 
   // Pixel conversions
   const pageWidthPx = twipsToPixels(pageWidthTwips) * zoom;
@@ -165,7 +209,7 @@ export function HorizontalRuler({
     pageWidthTwips,
     leftMarginTwips,
     rightMarginTwips,
-    contentTwips,
+    bounds,
     indentLeft,
     indentRight,
     onLeftMarginChange,
@@ -199,42 +243,37 @@ export function HorizontalRuler({
     const positionTwips = pixelsToTwips(x / params.zoom);
 
     if (params.dragging === "leftMargin") {
-      const maxMargin = params.pageWidthTwips - params.rightMarginTwips - 720;
-      const rounded = Math.round(
-        Math.max(0, Math.min(positionTwips, maxMargin)),
-      );
+      const rounded = clampRulerValue(positionTwips, params.bounds.leftMargin);
       setDragValue(rounded);
       params.onLeftMarginChange?.(rounded);
     } else if (params.dragging === "rightMargin") {
       const fromRight = params.pageWidthTwips - positionTwips;
-      const maxMargin = params.pageWidthTwips - params.leftMarginTwips - 720;
-      const rounded = Math.round(Math.max(0, Math.min(fromRight, maxMargin)));
+      const rounded = clampRulerValue(fromRight, params.bounds.rightMargin);
       setDragValue(rounded);
       params.onRightMarginChange?.(rounded);
     } else if (params.dragging === "firstLineIndent") {
       const base = params.leftMarginTwips + params.indentLeft;
       const indentFromBase = positionTwips - base;
-      const maxIndent =
-        params.contentTwips - params.indentLeft - params.indentRight - 720;
-      const rounded = Math.round(
-        Math.max(-params.indentLeft, Math.min(indentFromBase, maxIndent)),
+      const rounded = clampRulerValue(
+        indentFromBase,
+        params.bounds.firstLineIndent,
       );
       setDragValue(rounded);
       params.onFirstLineIndentChange?.(rounded);
     } else if (params.dragging === "leftIndent") {
       const indentFromMargin = positionTwips - params.leftMarginTwips;
-      const maxIndent = params.contentTwips - params.indentRight - 720;
-      const rounded = Math.round(
-        Math.max(0, Math.min(indentFromMargin, maxIndent)),
+      const rounded = clampRulerValue(
+        indentFromMargin,
+        params.bounds.leftIndent,
       );
       setDragValue(rounded);
       params.onIndentLeftChange?.(rounded);
     } else if (params.dragging === "rightIndent") {
       const rightEdge = params.pageWidthTwips - params.rightMarginTwips;
       const indentFromRight = rightEdge - positionTwips;
-      const maxIndent = params.contentTwips - params.indentLeft - 720;
-      const rounded = Math.round(
-        Math.max(0, Math.min(indentFromRight, maxIndent)),
+      const rounded = clampRulerValue(
+        indentFromRight,
+        params.bounds.rightIndent,
       );
       setDragValue(rounded);
       params.onIndentRightChange?.(rounded);
@@ -278,13 +317,21 @@ export function HorizontalRuler({
         cursor: dragging ? "ew-resize" : "default",
         ...style,
       }}
-      role="slider"
+      role="group"
       aria-label={t("ruler.horizontal")}
-      aria-valuemin={0}
-      aria-valuemax={pageWidthTwips}
     >
       {/* Gray margin zones — click & drag anywhere in the gray area to adjust margin */}
       <div
+        {...controls.leftMargin.attributes}
+        aria-label={
+          controls.leftMargin.attributes.role
+            ? `${t("dialogs.pageSetup.margins")}: ${t("dialogs.pageSetup.left")}`
+            : undefined
+        }
+        aria-orientation={
+          controls.leftMargin.attributes.role ? "horizontal" : undefined
+        }
+        onKeyDown={controls.leftMargin.onKeyDown}
         style={{
           position: "absolute",
           top: 0,
@@ -303,6 +350,16 @@ export function HorizontalRuler({
         }
       />
       <div
+        {...controls.rightMargin.attributes}
+        aria-label={
+          controls.rightMargin.attributes.role
+            ? `${t("dialogs.pageSetup.margins")}: ${t("dialogs.pageSetup.right")}`
+            : undefined
+        }
+        aria-orientation={
+          controls.rightMargin.attributes.role ? "horizontal" : undefined
+        }
+        onKeyDown={controls.rightMargin.onKeyDown}
         style={{
           position: "absolute",
           top: 0,
@@ -339,6 +396,7 @@ export function HorizontalRuler({
           isDragging={dragging === "firstLineIndent"}
           isHovered={hoveredMarker === "firstLineIndent"}
           marker="firstLineIndent"
+          control={controls.firstLineIndent}
           onDragStart={handleDragStart}
           onHoverChange={setHoveredMarker}
           label={t("ruler.firstLineIndent")}
@@ -354,6 +412,7 @@ export function HorizontalRuler({
           isDragging={dragging === "leftIndent"}
           isHovered={hoveredMarker === "leftIndent"}
           marker="leftIndent"
+          control={controls.leftIndent}
           onDragStart={handleDragStart}
           onHoverChange={setHoveredMarker}
           label={t("ruler.leftIndent")}
@@ -369,6 +428,7 @@ export function HorizontalRuler({
           isDragging={dragging === "rightIndent"}
           isHovered={hoveredMarker === "rightIndent"}
           marker="rightIndent"
+          control={controls.rightIndent}
           onDragStart={handleDragStart}
           onHoverChange={setHoveredMarker}
           label={t("ruler.rightIndent")}
@@ -456,6 +516,7 @@ type IndentTriangleProps = {
   onDragStart: (event: React.MouseEvent, marker: MarkerType) => void;
   onHoverChange: (marker: MarkerType | null) => void;
   label: string;
+  control: ReturnType<typeof createRulerControl>;
 };
 
 function IndentTriangle({
@@ -468,6 +529,7 @@ function IndentTriangle({
   onDragStart,
   onHoverChange,
   label,
+  control,
 }: IndentTriangleProps): React.ReactElement {
   const color = resolveIndentColor(isDragging, isHovered);
   const triHeight = Math.round(TRI_SIZE * 1.6);
@@ -526,10 +588,10 @@ function IndentTriangle({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseDown={handleMouseDown}
-      role="slider"
-      aria-label={label}
-      aria-orientation="horizontal"
-      tabIndex={editable ? 0 : -1}
+      {...control.attributes}
+      onKeyDown={control.onKeyDown}
+      aria-label={control.attributes.role ? label : undefined}
+      aria-orientation={control.attributes.role ? "horizontal" : undefined}
     >
       <div style={triangleStyle} />
     </div>
