@@ -1,8 +1,11 @@
 /** Automatic note marks survive resolution without restoring removed revision payload. */
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { assertProperty } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type {
   Document,
   Paragraph,
@@ -17,6 +20,8 @@ import { automaticNoteMarkRuns } from "../noteMarks";
 import { isTrackedWrapper, type TrackedWrapper } from "../review";
 import { storyBody } from "../stories";
 import { DOCUMENT_OP_TYPES, type DocumentOp, type NoteStory } from "../types";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const DATE = "2026-01-02T03:04:05Z";
 const NOTE_ID = "10000011";
