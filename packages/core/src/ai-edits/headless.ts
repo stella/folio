@@ -34,6 +34,7 @@ import {
   compileCanonicalComments,
 } from "../canonical/canonicalComments";
 import { CanonicalPublicOperations } from "../canonical/canonicalPublicOperations";
+import { canonicalRevisionLocks } from "../canonical/canonicalRevisionLocks";
 import {
   type CanonicalCommit,
   type CanonicalSession,
@@ -2013,8 +2014,12 @@ export class FolioDocxReviewer {
   private storyResolutions(resolution: "accept" | "reject"): {
     ops: DocumentOp[];
     count: number;
+    skipped: FolioReviewResolutionSkip[];
+    stagedIds: number[];
   } {
     const ops: DocumentOp[] = [];
+    const skipped: FolioReviewResolutionSkip[] = [];
+    const stagedIds: number[] = [];
     let count = 0;
     for (const handle of this.listStoryHandlesInternal()) {
       if (handle.type === "main") continue;
@@ -2030,17 +2035,41 @@ export class FolioDocxReviewer {
         ({ id }) => suggestionIdOfRevision(state, id) === null,
       );
       if (changes.length === 0) continue;
-      count += changes.length;
-      ops.push({
-        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-        story: canonicalOpStory(handle),
-        revisionIds: changes.flatMap(({ id }) =>
+      const story = canonicalOpStory(handle);
+      const locks = canonicalRevisionLocks({
+        document: this.baseDocument,
+        story,
+        groups: changes.map(({ id }) =>
           getTrackedChangeGroupIdsFromDoc(doc, id),
         ),
         decision: resolution,
       });
+      const held = new Map(
+        locks.held.flatMap(({ ids, violation }) =>
+          ids.map((id) => [id, violation] as const),
+        ),
+      );
+      for (const { id } of changes) {
+        const violation = held.get(id);
+        if (violation === undefined) stagedIds.push(id);
+        else
+          skipped.push({
+            id,
+            reason: CONTENT_CONTROL_LOCK,
+            message: lockedControlMessage(violation),
+          });
+      }
+      const unlocked = changes.filter(({ id }) => !held.has(id));
+      count += unlocked.length;
+      if (unlocked.length > 0)
+        ops.push({
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story,
+          revisionIds: locks.unlocked.flat(),
+          decision: resolution,
+        });
     }
-    return { ops, count };
+    return { ops, count, skipped, stagedIds };
   }
 
   /** A story's snapshot as the compiler resolves operations against it. */
@@ -3683,40 +3712,68 @@ export class FolioDocxReviewer {
     const changes = getTrackedChangesFromDoc(before.doc).filter(
       ({ id }) => suggestionIdOfRevision(before, id) === null,
     );
+    const locks = canonicalRevisionLocks({
+      document: this.baseDocument,
+      story: OP_STORIES.MAIN,
+      groups: changes.map(({ id }) =>
+        getTrackedChangeGroupIdsFromDoc(before.doc, id),
+      ),
+      decision: resolution,
+    });
+    const held = new Map(
+      locks.held.flatMap(({ ids, violation }) =>
+        ids.map((id) => [id, violation] as const),
+      ),
+    );
+    const skipped = [...stories.skipped];
+    for (const { id } of changes) {
+      const violation = held.get(id);
+      if (violation !== undefined)
+        skipped.push({
+          id,
+          reason: CONTENT_CONTROL_LOCK,
+          message: lockedControlMessage(violation),
+        });
+    }
+    const unlocked = changes.filter(({ id }) => !held.has(id));
     // Headers, footers and notes resolve in the same commit as the body.
-    if (changes.length === 0 && stories.count === 0)
-      return { resolved: rejectedSuggested, skipped: [] };
+    if (unlocked.length === 0 && stories.count === 0)
+      return { resolved: rejectedSuggested, skipped };
     const outcome = this.resolveOnSession(
       session.prepareResolve(before, {
-        revisionIds: changes.map(({ id }) => id),
+        revisionIds: locks.unlocked.flat(),
         resolution,
         before: stories.ops,
       }),
     );
-    if (!outcome.resolved && outcome.reason === "noChange")
-      return { resolved: rejectedSuggested, skipped: [] };
-    const held = new Set(
-      outcome.resolved ? outcome.lockHeld : changes.map(({ id }) => id),
-    );
-    const violations = lockHeldChanges(before, resolution);
-    const skipped = changes.flatMap(({ id }) => {
-      if (!held.has(id)) return [];
-      const violation = violations.get(id);
-      return [
-        {
+    if (!outcome.resolved) {
+      if (outcome.reason === "noChange")
+        return { resolved: rejectedSuggested, skipped };
+      skipped.push(
+        ...[...unlocked.map(({ id }) => id), ...stories.stagedIds].map(
+          (id) =>
+            ({
+              id,
+              reason: CONTENT_CONTROL_LOCK,
+              message: `Resolving change ${String(id)} changes a locked content control.`,
+            }) as const,
+        ),
+      );
+      return { resolved: rejectedSuggested, skipped };
+    }
+    const additionalHeld = new Set(outcome.lockHeld);
+    for (const { id } of unlocked)
+      if (additionalHeld.has(id))
+        skipped.push({
           id,
           reason: CONTENT_CONTROL_LOCK,
-          message:
-            violation === undefined
-              ? `Resolving change ${String(id)} changes a locked content control.`
-              : lockedControlMessage(violation),
-        },
-      ];
-    });
-    const storiesResolved = outcome.resolved ? stories.count : 0;
+          message: `Resolving change ${String(id)} changes a locked content control.`,
+        });
     return {
       resolved:
-        rejectedSuggested + changes.length - skipped.length + storiesResolved,
+        rejectedSuggested +
+        unlocked.filter(({ id }) => !additionalHeld.has(id)).length +
+        stories.count,
       skipped,
     };
   }
@@ -4144,8 +4201,13 @@ export class FolioDocxReviewer {
       author: this.author,
       engine: { type: "canonical", session: created.value },
     });
-    if (view === "final") copy.acceptAll();
-    else copy.rejectAll();
+    const resolution = view === "final" ? copy.acceptAll() : copy.rejectAll();
+    if (resolution.skipped.length > 0)
+      throw new CanonicalSessionError({
+        reason: "refused",
+        ground: { rule: CANONICAL_RULE.contentControlLock },
+        message: `A locked content control prevents the ${view} view.`,
+      });
     return copy;
   }
 
@@ -4178,6 +4240,21 @@ export class FolioDocxReviewer {
       getTrackedChangeGroupIdsFromDoc(state.doc, id),
     );
     if (ids.length === 0) return true;
+    const locks = canonicalRevisionLocks({
+      document: this.baseDocument,
+      story: canonicalOpStory(story),
+      groups: getTrackedChangesFromDoc(state.doc).map(({ id }) =>
+        getTrackedChangeGroupIdsFromDoc(state.doc, id),
+      ),
+      decision: resolution,
+    });
+    const firstHeld = locks.held.at(0);
+    if (firstHeld !== undefined)
+      throw new CanonicalSessionError({
+        reason: "refused",
+        ground: { rule: CANONICAL_RULE.contentControlLock },
+        message: lockedControlMessage(firstHeld.violation),
+      });
     const outcome = this.resolveOnSession(
       story.type === "main"
         ? session.prepareResolve(this.state, { revisionIds: ids, resolution })
@@ -4194,8 +4271,19 @@ export class FolioDocxReviewer {
             ],
           }),
     );
-    // A lock holds every change: the story cannot reach the view.
-    return outcome.resolved || outcome.reason === "noChange";
+    if (
+      (outcome.resolved && outcome.lockHeld.length > 0) ||
+      (!outcome.resolved && outcome.reason === "lockHeld")
+    )
+      throw new CanonicalSessionError({
+        reason: "refused",
+        ground: { rule: CANONICAL_RULE.contentControlLock },
+        message: `A locked content control prevents the ${view} story view.`,
+      });
+    const remaining = this.getEditableStoryState(story);
+    return (
+      remaining === null || getTrackedChangesFromDoc(remaining.doc).length === 0
+    );
   }
 
   /** The current document model with edits merged back in. */

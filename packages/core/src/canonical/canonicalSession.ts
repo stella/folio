@@ -137,6 +137,7 @@ import {
   type StoryProjectionFacts,
 } from "./canonicalProjectionBlocks";
 import { rebaseHistorySteps, remoteSelection } from "./canonicalRemoteHistory";
+import { canonicalRevisionLocks } from "./canonicalRevisionLocks";
 import {
   changedWindow,
   unsupportedEditReason,
@@ -2975,21 +2976,17 @@ class CanonicalSession {
     // hyperlink carries several ids, and resolving fewer leaves part pending.
     const changes = getTrackedChangeGroupsForIds(state.doc, revisionIds);
     // A change whose resolution breaks a lock stays pending; the rest resolve.
-    let firstHeld: LockedControlViolation | null = null;
-    const heldChanges = changes.filter((ids) => {
-      const alone = applyDocumentOps(this.currentDocument, resolve(ids));
-      if (alone.isErr()) return false;
-      const violation = lockViolationBetween(
-        this.currentDocument,
-        alone.value.document,
-      );
-      firstHeld ??= violation;
-      return violation !== null;
+    const locks = canonicalRevisionLocks({
+      document: this.currentDocument,
+      story: OP_STORIES.MAIN,
+      groups: changes,
+      decision: resolution,
     });
-    if (firstHeld !== null && heldChanges.length === changes.length)
-      return lockRefusal(firstHeld);
-    const lockHeld = heldChanges.flat();
-    const resolved = changes.filter((ids) => !heldChanges.includes(ids)).flat();
+    const firstHeld = locks.held.at(0);
+    if (firstHeld !== undefined && locks.held.length === changes.length)
+      return lockRefusal(firstHeld.violation);
+    const lockHeld = locks.held.flatMap(({ ids }) => ids);
+    const resolved = locks.unlocked.flat();
     const ops = [
       ...before,
       ...(resolved.length === 0 ? [] : resolve(resolved)),
