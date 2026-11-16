@@ -180,7 +180,17 @@ document as a `replaced` change, so its undo and redo history is dropped,
 and its positions move over the change's `moves`. They are the only pairs
 the transform accepts without commuting. Tracked changes apart from every
 concurrent cut commute, and so does a direct deletion strictly inside a
-tracked one.
+tracked one that supplies no additional revision ids.
+
+A direct deletion overlapping a tracked deletion with a nonempty revision
+id pool refuses in both orders. Removing an earlier newly tracked fragment
+can shift the remaining supplied ids onto different source content when
+the tracked deletion replays. The pool records allocation order, not each
+fragment's source identity: an optimistic review decision must not silently
+resolve a different fragment after replay. This conservative boundary also
+covers edge-reaching, equal and covering ranges; extra unused supplied ids
+still witness the risk. Disjoint and merely touching ranges are unchanged.
+Ranges crossing paragraphs already refuse as invalid sequencing operations.
 
 ## Block-scoped operations
 

@@ -32,6 +32,7 @@ import {
   sameParagraph,
 } from "./points";
 import { transformByFootprint } from "./scope";
+import { fragmentedDeletionOverlap } from "./trackedTransform";
 
 type TransformOptions = { order?: "before" | "after" };
 
@@ -325,6 +326,12 @@ const transformRestoredOp = ({
   // A direct deletion over a direct format inside it.
   const rejoined = rejoinedOverFormat({ op, over, effect });
   if (rejoined !== undefined) return rejoined;
+  if (fragmentedDeletionOverlap(op, over))
+    return refusal(
+      op,
+      over,
+      "Overlapping a potentially fragmented tracked deletion requires source-bound revision identities.",
+    );
   // Inline insertions, and inline record splits and joins.
   const inline = transformInlinePair({ op, over, effect, order });
   if (inline !== undefined) return inline;
