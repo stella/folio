@@ -1792,7 +1792,7 @@ const decisionAfterCommentRefusesTyping = [
 ] satisfies Scenario;
 
 // Original saved case 822202994; each edit still comes from the canonical producer.
-const bufferedHeaderConflicts: Scenario = [
+const bufferedHeaderConflicts = [
   3,
   [
     edit(0, { kind: "type", a: 0, b: 0 }),
@@ -1806,10 +1806,10 @@ const bufferedHeaderConflicts: Scenario = [
     { type: "submit", peer: 0 },
     { type: "submit", peer: 0 },
   ],
-];
+] satisfies Scenario;
 
 // Original saved case -1347331987; each edit still comes from the canonical producer.
-const commentUndoOverPasteSplit: Scenario = [
+const commentUndoOverPasteSplit = [
   4,
   [
     edit(1, { kind: "deleteParagraph", a: 0, b: 12 }),
@@ -1825,10 +1825,10 @@ const commentUndoOverPasteSplit: Scenario = [
     { type: "undo", peer: 0 },
     { type: "submit", peer: 0 },
   ],
-];
+] satisfies Scenario;
 
 // Original saved case -34335464; each edit still comes from the canonical producer.
-const bufferedSectionConflicts: Scenario = [
+const bufferedSectionConflicts = [
   4,
   [
     edit(0, { kind: "type", a: 0, b: 0 }),
@@ -1843,7 +1843,7 @@ const bufferedSectionConflicts: Scenario = [
     edit(0, { kind: "type", a: 43354, b: 0 }),
     edit(1, { kind: "insertColumn", a: 0, b: 0 }),
   ],
-];
+] satisfies Scenario;
 
 /** The pinned scenarios, which the fixed coverage sample starts with. */
 const PINNED: readonly Scenario[] = [
