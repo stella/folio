@@ -11,6 +11,7 @@ import type { TextPosition } from "@stll/docx-core/ops";
 
 import { findPageNumberAtEditorPosition } from "../layout-engine/pmPageIndex";
 import type { Layout } from "../layout-engine/types";
+import type { FolioAutocompleteApi } from "../types/autocomplete";
 import { CANONICAL_GAP } from "../types/canonicalCapabilities";
 import type { Document } from "../types/document";
 import type { FolioGetDocxOptions } from "../types/docxSerialization";
@@ -62,7 +63,8 @@ export type FolioEditorDocumentIO = {
 
 // The headless controller surface (Seam 6). The HiddenEditorApi methods plus
 // layout access and event subscription.
-export type FolioEditor = HiddenEditorApi & {
+export type FolioEditor = Omit<HiddenEditorApi, "autocomplete"> & {
+  autocomplete: FolioAutocompleteApi;
   getDocx: FolioEditorDocumentIO["getDocx"];
   loadDocument: FolioEditorDocumentIO["loadDocument"];
   loadDocx: FolioEditorDocumentIO["loadDocx"];

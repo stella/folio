@@ -73,8 +73,8 @@ export const NO_AUTOCOMPLETE: HiddenEditorAutocomplete = Object.freeze({
 
 /** An autocomplete that reads the one `current` gives on every call. */
 export const delegateAutocomplete = (
-  current: () => HiddenEditorAutocomplete,
-): HiddenEditorAutocomplete => ({
+  current: () => FolioAutocompleteApi,
+): FolioAutocompleteApi => ({
   start: (options) => current().start(options),
   append: (requestId, delta) => current().append(requestId, delta),
   finish: (requestId) => current().finish(requestId),
@@ -82,8 +82,6 @@ export const delegateAutocomplete = (
   accept: (scope) => current().accept(scope),
   get: () => current().get(),
   canTrigger: () => current().canTrigger(),
-  editorAnchor: () => current().editorAnchor(),
-  subscribe: (listener) => current().subscribe(listener),
 });
 
 type CanonicalStoryHistoryOptions = {

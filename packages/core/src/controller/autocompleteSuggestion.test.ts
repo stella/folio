@@ -127,18 +127,23 @@ describe("autocomplete suggestion edits", () => {
 
   test("typing its next characters at the anchor consumes them", () => {
     const owner = shown();
-    owner.noteEdit({ type: "typed", at: at(5), text: "next " });
+    owner.noteEdit({ type: "typed", at: at(5), after: at(10), text: "next " });
     expect(owner.get()).toMatchObject({ anchor: at(10), text: "words here" });
-    owner.noteEdit({ type: "typed", at: at(10), text: "words here" });
+    owner.noteEdit({
+      type: "typed",
+      at: at(10),
+      after: at(20),
+      text: "words here",
+    });
     expect(owner.get()).toBe(IDLE_AUTOCOMPLETE);
   });
 
   test("typing anything else, or elsewhere, dismisses it", () => {
     const other = shown();
-    other.noteEdit({ type: "typed", at: at(5), text: "x" });
+    other.noteEdit({ type: "typed", at: at(5), after: at(6), text: "x" });
     expect(other.get()).toBe(IDLE_AUTOCOMPLETE);
     const elsewhere = shown();
-    elsewhere.noteEdit({ type: "typed", at: at(2), text: "n" });
+    elsewhere.noteEdit({ type: "typed", at: at(2), after: at(3), text: "n" });
     expect(elsewhere.get()).toBe(IDLE_AUTOCOMPLETE);
     const structural = shown();
     structural.noteEdit({ type: "other" });
@@ -190,6 +195,7 @@ describe("autocomplete suggestion edits", () => {
     expect(legacyAutocompleteEdit(state.tr.insertText("!", 6))).toEqual({
       type: "typed",
       at: at(5),
+      after: at(6),
       text: "!",
     });
     expect(legacyAutocompleteEdit(state.tr.delete(1, 2))).toEqual({
@@ -215,9 +221,7 @@ describe("autocomplete suggestion in a canonical session", () => {
     let state = EditorState.create({ doc: session.projection.doc });
     const owner = createAutocompleteSuggestion();
     session.onCommitted((batch) =>
-      owner.noteEdit(
-        classifyAutocompleteEdit({ ops: batch.ops, origin: batch.origin }),
-      ),
+      owner.noteEdit(classifyAutocompleteEdit(batch)),
     );
     const [firstId] = readModel(
       session.document,
@@ -230,7 +234,12 @@ describe("autocomplete suggestion in a canonical session", () => {
     const typeAt = (offset: number, text: string) => {
       const position = session.projection.positionAt(first(offset)).unwrap();
       const commit = session
-        .prepareReplace(state, { from: position, to: position, text })
+        .prepareReplace(state, {
+          from: position,
+          to: position,
+          text,
+          semantic: "typing",
+        })
         .unwrap();
       state = state.apply(commit.transaction);
       expect(commit.publish().isOk()).toBe(true);

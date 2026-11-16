@@ -404,3 +404,23 @@ describe("createFolioEditor", () => {
     expect(at(40)).toBeNull();
   });
 });
+
+test("autocomplete delegates only public methods across editor API replacement", () => {
+  let current: HiddenEditorApi | null = null;
+  const editor = createFolioEditor({
+    getEditorApi: () => current,
+    getLayout: () => null,
+    runLayout: () => {},
+    emitter: createFolioEditorEmitter(),
+  });
+  const autocomplete = editor.autocomplete;
+  expect(autocomplete.start()).toBeNull();
+  expect("subscribe" in autocomplete).toBe(false);
+  expect("editorAnchor" in autocomplete).toBe(false);
+  for (const requestId of ["first", "replacement"]) {
+    const { api } = createFakeApi();
+    api.autocomplete = { ...NO_AUTOCOMPLETE, start: () => requestId };
+    current = api;
+    expect(autocomplete.start()).toBe(requestId);
+  }
+});

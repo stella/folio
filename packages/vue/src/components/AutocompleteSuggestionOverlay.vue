@@ -10,8 +10,8 @@
 import type { EditorState } from "prosemirror-state";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
+import type { TextPosition } from "@stll/docx-core/ops";
 import type { FolioAutocompleteState } from "@stll/folio-core/controller/autocompleteSuggestion";
-import type { HiddenEditorAutocomplete } from "@stll/folio-core/controller/hiddenEditorApi";
 import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
 
@@ -32,15 +32,14 @@ const props = defineProps<{
   zoom: number;
   syncCoordinator: LayoutSelectionGate;
   /** The editor's suggestion. */
-  autocomplete: HiddenEditorAutocomplete;
-  onChange?: ((state: FolioAutocompleteState) => void) | undefined;
+  suggestion: FolioAutocompleteState;
+  editorPositionAt: (position: TextPosition) => number | null;
 }>();
 
 const projection = ref<AutocompleteProjection | null>(null);
 const renderEpoch = ref(0);
 let rafId: number | null = null;
 let unsubscribeRender: (() => void) | null = null;
-let unsubscribeSuggestion: (() => void) | null = null;
 
 type ResolveMaxWidthOptions = {
   pagesContainer: HTMLElement;
@@ -85,8 +84,11 @@ const syncProjection = (): void => {
     return;
   }
 
-  const suggestion = props.autocomplete.get();
-  const anchor = props.autocomplete.editorAnchor();
+  const suggestion = props.suggestion;
+  const anchor =
+    suggestion.status === "idle"
+      ? null
+      : props.editorPositionAt(suggestion.anchor);
   if (
     suggestion.status === "idle" ||
     suggestion.text.length === 0 ||
@@ -136,10 +138,6 @@ onMounted(() => {
   unsubscribeRender = props.syncCoordinator.onRender(() => {
     renderEpoch.value += 1;
   });
-  unsubscribeSuggestion = props.autocomplete.subscribe((state) => {
-    props.onChange?.(state);
-    scheduleSync();
-  });
   scheduleSync();
 });
 
@@ -149,11 +147,10 @@ onBeforeUnmount(() => {
     rafId = null;
   }
   unsubscribeRender?.();
-  unsubscribeSuggestion?.();
 });
 
 watch(
-  () => [props.editorState, props.zoom, renderEpoch.value],
+  () => [props.suggestion, props.editorState, props.zoom, renderEpoch.value],
   () => scheduleSync(),
 );
 </script>

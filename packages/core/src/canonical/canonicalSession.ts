@@ -82,6 +82,10 @@ import { visitInlineContentSlots } from "../docx/paragraphTraversal";
 import { isCellMergeContinuation } from "../docx/tableParser";
 import { calculateRowSpans } from "../docx/verticalMergeProjection";
 import {
+  type CanonicalTyping,
+  recordCanonicalTyping,
+} from "../internal/canonicalTyping";
+import {
   canonicalCellSelectionRanges,
   canonicalContentPosition,
   canonicalSelectionRange,
@@ -1729,6 +1733,7 @@ export const publishCanonicalProjection = ({
 };
 
 type StageOptions = {
+  typing?: CanonicalTyping;
   state: EditorState;
   ops: readonly DocumentOp[];
   selection: CanonicalSelection;
@@ -2545,6 +2550,9 @@ class CanonicalSession {
       selection: postSelection,
       origin: "input",
       history: joins ? "joined" : "opened",
+      ...(semantic === "typing" && inputFrom === inputTo && text.length > 0
+        ? { typing: { at: start.value, after: caret, text } }
+        : {}),
       // The compiler's own application of exactly these ops, when it made one.
       ...(compiled.value.applied === undefined
         ? {}
@@ -3485,6 +3493,7 @@ class CanonicalSession {
     story = OP_STORIES.MAIN,
     previousProjection,
     opId,
+    typing,
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const previous =
       previousProjection === undefined
@@ -3818,6 +3827,7 @@ class CanonicalSession {
           version: this.currentVersion,
           origin,
         };
+        if (typing !== undefined) recordCanonicalTyping(committed, typing);
         for (const listener of this.committedListeners) listener(committed);
         return Result.ok(undefined);
       },

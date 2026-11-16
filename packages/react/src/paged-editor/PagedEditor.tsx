@@ -3114,7 +3114,7 @@ export const PagedEditor: React.ForwardRefExoticComponent<
       if (!layout || blocks.length === 0) {
         return;
       }
-      const anchor = folioEditor.autocomplete.editorAnchor();
+      const anchor = hiddenPMRef.current?.autocomplete.editorAnchor() ?? null;
       if (anchor === null) {
         setAutocompleteCaret(null);
         return;
@@ -3180,7 +3180,6 @@ export const PagedEditor: React.ForwardRefExoticComponent<
         () => undefined,
       );
     }, [
-      folioEditor,
       autocompleteOverlayRequestGate,
       layout,
       blocks,
@@ -6152,12 +6151,12 @@ export const PagedEditor: React.ForwardRefExoticComponent<
     // Follow the editor's suggestion: tell the host and repaint the ghost.
     useEffect(
       () =>
-        folioEditor.autocomplete.subscribe((state) => {
+        hiddenPMRef.current?.autocomplete.subscribe((state) => {
           autocompleteSuggestionRef.current = state;
           onAutocompleteChangeRef.current?.(state);
           updateAutocompleteOverlay();
         }),
-      [folioEditor, updateAutocompleteOverlay],
+      [updateAutocompleteOverlay],
     );
 
     // Re-layout when a face loads that the committed layout measured without:
@@ -6817,11 +6816,8 @@ export const PagedEditor: React.ForwardRefExoticComponent<
                 via the ref; renders nothing until a range is set. */}
             <PassageHighlightOverlay rects={passageHighlightRects} />
 
-            {/* Inline autocomplete ghost-text + "stella" caret. The
-              ProseMirror autocomplete plugin lives in the hidden
-              editor; this overlay paints its state on top of the
-              paged canvas at container coords from
-              {@link getCaretPosition}. */}
+            {/* The hidden editor owns the autocomplete state; paint it
+              over the paged canvas at the anchor's container coordinates. */}
             <AutocompleteCaretOverlay
               caret={autocompleteCaret}
               text={autocompleteText}

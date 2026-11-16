@@ -16,14 +16,15 @@ import { ReplaceStep } from "prosemirror-transform";
 
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
-  DOCUMENT_OP_TYPES,
   type DocumentOp,
   sameStory,
   type TextPosition,
   transformPosition,
 } from "@stll/docx-core/ops";
 
-import type { CanonicalOrigin } from "../canonical/canonicalSession";
+import type { CanonicalCommittedBatch } from "../canonical/canonicalSession";
+import { canonicalTypingOf } from "../internal/canonicalTyping";
+import { Subscribable } from "../managers/Subscribable";
 import type { FolioAutocompleteState } from "../types/autocomplete";
 import { legacyTextAddressAt } from "./legacyTextAddress";
 
@@ -40,7 +41,7 @@ export const IDLE_AUTOCOMPLETE: FolioAutocompleteState = Object.freeze({
 /** What an edit that changed the document means for the suggestion. */
 export type AutocompleteEdit =
   /** The person inserted `text` at `at`, and nothing else. */
-  | { type: "typed"; at: TextPosition; text: string }
+  | { type: "typed"; at: TextPosition; after: TextPosition; text: string }
   /** Another actor's edit, which moves text positions. */
   | { type: "moved"; ops: readonly DocumentOp[] }
   /** Any other edit. */
@@ -61,20 +62,16 @@ export type AutocompleteSuggestion = {
   subscribe: (listener: (state: FolioAutocompleteState) => void) => () => void;
 };
 
-/** A canonical commit: the person's single insertion, a peer's edit, or anything else. */
-export const classifyAutocompleteEdit = ({
-  ops,
-  origin,
-}: {
-  ops: readonly DocumentOp[];
-  origin: CanonicalOrigin;
-}): AutocompleteEdit => {
-  if (origin === "remote") return { type: "moved", ops };
-  if (origin !== "input") return { type: "other" };
-  const [op, ...rest] = ops;
-  return op?.type === DOCUMENT_OP_TYPES.INSERT_TEXT && rest.length === 0
-    ? { type: "typed", at: op.at, text: op.text }
-    : { type: "other" };
+/** A canonical commit: authoritative typing, a peer's edit, or anything else. */
+export const classifyAutocompleteEdit = (
+  batch: CanonicalCommittedBatch,
+): AutocompleteEdit => {
+  if (batch.origin === "remote") return { type: "moved", ops: batch.ops };
+  if (batch.origin !== "input") return { type: "other" };
+  const typing = canonicalTypingOf(batch);
+  return typing === undefined
+    ? { type: "other" }
+    : { type: "typed", ...typing };
 };
 
 /**
@@ -99,7 +96,10 @@ export const legacyAutocompleteEdit = (
     else plain = false;
   });
   const at = legacyTextAddressAt(transaction.before, step.from);
-  return plain && at !== null ? { type: "typed", at, text } : { type: "other" };
+  const after = legacyTextAddressAt(transaction.doc, step.from + text.length);
+  return plain && at !== null && after !== null
+    ? { type: "typed", at, after, text }
+    : { type: "other" };
 };
 
 /** The text a word-wise accept takes: up to and including the next word and one space after it. */
@@ -108,27 +108,37 @@ export const nextAutocompleteWord = (text: string): string => {
   return match === null ? text : match[0];
 };
 
+class AutocompleteStore extends Subscribable<FolioAutocompleteState> {
+  update = (next: FolioAutocompleteState): void => {
+    if (next !== this.getSnapshot()) this.setSnapshot(next);
+  };
+}
+
 /** The suggestion owner of one editor. */
 export const createAutocompleteSuggestion = (): AutocompleteSuggestion => {
-  let state: FolioAutocompleteState = IDLE_AUTOCOMPLETE;
-  const listeners = new Set<(next: FolioAutocompleteState) => void>();
-  const set = (next: FolioAutocompleteState): void => {
-    if (next === state) return;
-    state = next;
-    for (const listener of listeners) listener(next);
+  const store = new AutocompleteStore(IDLE_AUTOCOMPLETE);
+  const set = store.update;
+  const active = (requestId: string) => {
+    const current = store.getSnapshot();
+    return current.status !== "idle" && current.requestId === requestId
+      ? current
+      : null;
   };
-  const active = (requestId: string) =>
-    state.status !== "idle" && state.requestId === requestId ? state : null;
 
   return {
-    get: () => state,
+    get: store.getSnapshot,
     start: (anchor, requestId) =>
       set({ status: "streaming", requestId, anchor, text: "" }),
     append: (requestId, delta) => {
       const current = active(requestId);
       if (current === null) return false;
       if (delta.length > 0)
-        set({ ...current, status: "streaming", text: current.text + delta });
+        set({
+          status: "streaming",
+          requestId: current.requestId,
+          anchor: current.anchor,
+          text: current.text + delta,
+        });
       return true;
     },
     finish: (requestId) => {
@@ -137,20 +147,27 @@ export const createAutocompleteSuggestion = (): AutocompleteSuggestion => {
       set(
         current.text.length === 0
           ? IDLE_AUTOCOMPLETE
-          : { ...current, status: "shown" },
+          : {
+              status: "shown",
+              requestId: current.requestId,
+              anchor: current.anchor,
+              text: current.text,
+            },
       );
       return true;
     },
     clear: () => set(IDLE_AUTOCOMPLETE),
     noteEdit: (edit) => {
-      if (state.status === "idle") return;
-      const current = state;
+      const current = store.getSnapshot();
+      if (current.status === "idle") return;
       switch (edit.type) {
         case "typed": {
           const atAnchor =
             sameStory(edit.at.story, current.anchor.story) &&
             edit.at.blockId === current.anchor.blockId &&
-            edit.at.offset === current.anchor.offset;
+            edit.at.offset === current.anchor.offset &&
+            (edit.at.zeroWidthBefore ?? 0) ===
+              (current.anchor.zeroWidthBefore ?? 0);
           if (
             !atAnchor ||
             edit.text.length === 0 ||
@@ -165,11 +182,7 @@ export const createAutocompleteSuggestion = (): AutocompleteSuggestion => {
               ? IDLE_AUTOCOMPLETE
               : {
                   ...current,
-                  anchor: {
-                    story: current.anchor.story,
-                    blockId: current.anchor.blockId,
-                    offset: current.anchor.offset + edit.text.length,
-                  },
+                  anchor: edit.after,
                   text: rest,
                 },
           );
@@ -206,12 +219,8 @@ export const createAutocompleteSuggestion = (): AutocompleteSuggestion => {
         }
       }
     },
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: (listener) =>
+      store.subscribe(() => listener(store.getSnapshot())),
   };
 };
 

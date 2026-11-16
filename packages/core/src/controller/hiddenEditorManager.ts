@@ -4,6 +4,7 @@ import {
   TaggedError,
   type TaggedErrorClass,
 } from "better-result";
+import { closeHistory } from "prosemirror-history";
 import {
   DOMParser as PMDOMParser,
   DOMSerializer,
@@ -820,6 +821,9 @@ export const createHiddenEditorManager = (
     room = undefined;
   };
   const seedSession = (document: ReadonlyDocument | null): boolean => {
+    autocomplete.clear();
+    offAutocompleteEdits();
+    offAutocompleteEdits = () => {};
     leaveRoom();
     const canonicalRoom = deps.getCanonicalRoom?.();
     if (
@@ -868,12 +872,8 @@ export const createHiddenEditorManager = (
     offHistoryDrop = result.value.onHistoryDrop((drop) =>
       deps.onCanonicalHistoryDrop?.(drop),
     );
-    autocomplete.clear();
-    offAutocompleteEdits();
     offAutocompleteEdits = result.value.onCommitted((batch) =>
-      autocomplete.noteEdit(
-        classifyAutocompleteEdit({ ops: batch.ops, origin: batch.origin }),
-      ),
+      autocomplete.noteEdit(classifyAutocompleteEdit(batch)),
     );
     canonicalSessionEpoch += 1;
     modeOverride = null;
@@ -1009,15 +1009,29 @@ export const createHiddenEditorManager = (
     return Result.ok(undefined);
   };
 
+  const autocompletePositionAt = (position: TextPosition): number | null => {
+    if (!view || isDestroying) return null;
+    switch (editorSession.type) {
+      case "canonical":
+        return editorSession.session.projection
+          .positionAt(position)
+          .unwrapOr(null);
+      case "prosemirror":
+        return legacyEditorPositionAt(view.state.doc, position);
+      case "refused":
+        return null;
+      default: {
+        const unreachable: never = editorSession;
+        return unreachable;
+      }
+    }
+  };
   /** Where the suggestion's anchor shows in the body's editor document. */
   const autocompleteEditorAnchor = (): number | null => {
     const current = autocomplete.get();
-    if (current.status === "idle" || !view) return null;
-    if (editorSession.type === "canonical")
-      return editorSession.session.projection
-        .positionAt(current.anchor)
-        .unwrapOr(null);
-    return legacyEditorPositionAt(view.state.doc, current.anchor);
+    return current.status === "idle"
+      ? null
+      : autocompletePositionAt(current.anchor);
   };
   /** The caret as a body text position. */
   const caretTextPosition = (): TextPosition | null => {
@@ -1048,7 +1062,7 @@ export const createHiddenEditorManager = (
         from: at,
         to: at,
         text,
-        semantic: "replacement",
+        semantic: "typing",
       });
       if (prepared.isErr()) {
         if (prepared.error.reason !== "noChange")
@@ -1060,12 +1074,13 @@ export const createHiddenEditorManager = (
       return published;
     }
     if (editorSession.type === "refused") return false;
-    const transaction = view.state.tr.insertText(text, at);
+    const transaction = closeHistory(view.state.tr).insertText(text, at);
     view.dispatch(
       transaction.setSelection(
         TextSelection.create(transaction.doc, at + text.length),
       ),
     );
+    view.dispatch(closeHistory(view.state.tr));
     return true;
   };
   let autocompleteRequests = 0;
@@ -1073,10 +1088,17 @@ export const createHiddenEditorManager = (
     start: (options) => {
       const anchor = options?.at ?? caretTextPosition();
       if (anchor === null || !view) return null;
+      const position = autocompletePositionAt(anchor);
+      if (position === null) return null;
+      const resolved =
+        editorSession.type === "canonical"
+          ? editorSession.session.projection.addressAt(position).unwrapOr(null)
+          : legacyTextAddressAt(view.state.doc, position);
+      if (resolved === null) return null;
       autocompleteRequests += 1;
       const requestId =
         options?.requestId ?? `autocomplete-${String(autocompleteRequests)}`;
-      autocomplete.start(anchor, requestId);
+      autocomplete.start(resolved, requestId);
       return requestId;
     },
     append: (requestId, delta) => autocomplete.append(requestId, delta),
@@ -1936,6 +1958,9 @@ export const createHiddenEditorManager = (
   const destroyView = (): void => {
     if (view && !isDestroying) {
       isDestroying = true;
+      autocomplete.clear();
+      offAutocompleteEdits();
+      offAutocompleteEdits = () => {};
 
       deps.onEditorViewDestroy();
       leaveRoom();

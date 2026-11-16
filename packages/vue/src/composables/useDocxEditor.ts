@@ -167,6 +167,7 @@ import type {
   TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import type { FolioAutocompleteState } from "@stll/folio-core/types/autocomplete";
 import {
   CANONICAL_GAP,
   type CanonicalGap,
@@ -453,6 +454,8 @@ export type UseDocxEditorOptions = {
   onSlashMenuChange?: (state: TemplateSlashMenuState) => void;
   /** Resolves a navigation/commit key while the slash menu is open. */
   onSlashMenuKeyAction?: (action: TemplateSlashMenuKeyAction) => boolean;
+  /** Called after each change of the inline suggestion, including view teardown. */
+  onAutocompleteChange?: (state: FolioAutocompleteState) => void;
   /** Callback on document change (debounced PM → Document model conversion). */
   onChange?: (doc: Document) => void;
   /** Callback on parse / layout / lifecycle error. */
@@ -1128,6 +1131,11 @@ export function useDocxEditor(
       remoteSelections.value = selections;
     },
   });
+
+  const offAutocomplete = manager.api.autocomplete.subscribe((state) =>
+    options.onAutocompleteChange?.(state),
+  );
+  onScopeDispose(offAutocomplete);
 
   const publishRemoteSelections = (): void => {
     const awareness = yjsCollaboration()?.awareness;
