@@ -1687,7 +1687,7 @@ const {
   handleFirstLineIndentChange,
   handleTabStopRemove,
 } = usePageSetupControls({
-  editorView,
+  editorView: activeEditorView,
   getDocument,
   readOnly,
   stateTick,

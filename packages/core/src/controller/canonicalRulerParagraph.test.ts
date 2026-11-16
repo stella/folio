@@ -6,12 +6,21 @@ import {
   rulerParagraphCommand,
   type RulerParagraphEdit,
 } from "../prosemirror/commands/rulerParagraph";
-import type { CanonicalGap } from "../types/canonicalCapabilities";
-import type { Document, ParagraphFormatting } from "../types/document";
+import {
+  CANONICAL_GAP,
+  type CanonicalGap,
+} from "../types/canonicalCapabilities";
+import type {
+  Document,
+  Paragraph,
+  ParagraphFormatting,
+} from "../types/document";
+import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
 import {
   createHiddenEditorManager,
   type HiddenEditorManagerDeps,
 } from "./hiddenEditorManager";
+import { createNoteEditorManager } from "./noteEditorManager";
 
 /** One paragraph with a left tab stop at one inch. */
 const source = (): Document => ({
@@ -51,7 +60,7 @@ const deps = (
     getDocumentIdentity: () => "ruler-fixture",
     getDocumentContext: () => document,
     onTransaction: () => undefined,
-    onCanonicalCompositionEnd: () => undefined,
+    onCanonicalCompositionLayout: () => undefined,
     onSelectionChange: () => undefined,
     onKeyDown: () => false,
     onReadOnlyEditAttempt: () => undefined,
@@ -94,6 +103,103 @@ const edited = (edit: RulerParagraphEdit, run: Run) => {
 };
 
 describe("ruler paragraph edits in a canonical session", () => {
+  test.each(["header", "footer", "footnote", "endnote"] as const)(
+    "%s ruler edits refuse without changing the story or body",
+    (kind) => {
+      const releaseDom = acquireHarnessDom();
+      const bodyHost = document.createElement("div");
+      const storyHost = document.createElement("div");
+      document.body.append(bodyHost, storyHost);
+      const documentSource = source();
+      const storyContent = (paraId: string): Paragraph[] => [
+        {
+          type: "paragraph",
+          paraId,
+          formatting: { tabs: [{ position: 1440, alignment: "left" }] },
+          content: [
+            { type: "run", content: [{ type: "text", text: "Story" }] },
+          ],
+        },
+      ];
+      documentSource.package.headers = new Map([
+        [
+          "rIdHeader",
+          {
+            type: "header",
+            hdrFtrType: "default",
+            content: storyContent("23456789"),
+          },
+        ],
+      ]);
+      documentSource.package.footers = new Map([
+        [
+          "rIdFooter",
+          {
+            type: "footer",
+            hdrFtrType: "default",
+            content: storyContent("34567890"),
+          },
+        ],
+      ]);
+      documentSource.package.footnotes = [
+        { type: "footnote", id: 1, content: storyContent("45678901") },
+      ];
+      documentSource.package.endnotes = [
+        { type: "endnote", id: 1, content: storyContent("56789012") },
+      ];
+      const refused: (CanonicalGap | undefined)[] = [];
+      const manager = createHiddenEditorManager(
+        deps(bodyHost, documentSource, refused),
+      );
+      const storyDeps = {
+        getHost: () => storyHost,
+        getDocument: () => documentSource,
+        getCanonicalApi: () => manager.api,
+        readCanonicalDocument: () => manager.readCanonicalDocument(),
+        getExperimentalSession: () => "canonical" as const,
+        getStyles: () => null,
+        getTheme: () => null,
+        onSessionRefusal: deps(bodyHost, documentSource, refused)
+          .onSessionRefusal,
+      };
+      const parts = createHeaderFooterEditorManager(storyDeps);
+      const notes = createNoteEditorManager(storyDeps);
+      try {
+        manager.ensureView();
+        parts.sync();
+        const view =
+          kind === "header" || kind === "footer"
+            ? parts.getView(kind === "header" ? "rIdHeader" : "rIdFooter")
+            : notes.activate({ kind, noteId: 1 });
+        if (!view) throw new Error("The canonical story view did not mount.");
+        expect(view.state.doc.textContent).toBe("Story");
+        const before = manager.api.getCanonicalDocument();
+        const projectedBefore = view.state.doc;
+        const edits = [
+          { type: "indentLeft", twips: 720 },
+          { type: "indentRight", twips: 360 },
+          { type: "indentFirstLine", twips: -240 },
+          { type: "removeTabStop", position: 1440 },
+        ] as const satisfies readonly RulerParagraphEdit[];
+        for (const edit of edits) {
+          applyRulerParagraphEdit(view, edit);
+          expect(view.state.doc.eq(projectedBefore)).toBe(true);
+          expect(manager.api.getCanonicalDocument()).toEqual(before);
+          expect(manager.api.canUndo()).toBe(false);
+        }
+        // The native input boundary reports a refusal once until the next gesture.
+        expect(refused).toEqual([CANONICAL_GAP.dispatch]);
+      } finally {
+        parts.destroy();
+        notes.destroy();
+        manager.destroyView();
+        bodyHost.remove();
+        storyHost.remove();
+        releaseDom();
+      }
+    },
+  );
+
   test("indents and tab stop removal are journalled paragraph formatting", () => {
     const left = edited({ type: "indentLeft", twips: 720 }, "owner");
     expect(left.formatting?.indentLeft).toBe(720);

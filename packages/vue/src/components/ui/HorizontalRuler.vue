@@ -50,9 +50,7 @@
     <div
       v-if="showFirstLineIndent"
       class="docx-ruler-indent"
-      role="slider"
       :aria-label="t('ruler.firstLineIndent')"
-      aria-orientation="horizontal"
       :style="
         indentContainerStyle(
           'down',
@@ -73,9 +71,7 @@
     <div
       v-if="editable"
       class="docx-ruler-indent"
-      role="slider"
       :aria-label="t('ruler.leftIndent')"
-      aria-orientation="horizontal"
       :style="
         indentContainerStyle('up', leftIndentPosPx, dragging === 'leftIndent')
       "
@@ -90,9 +86,7 @@
     <div
       v-if="editable"
       class="docx-ruler-indent"
-      role="slider"
       :aria-label="t('ruler.rightIndent')"
-      aria-orientation="horizontal"
       :style="
         indentContainerStyle(
           'down',

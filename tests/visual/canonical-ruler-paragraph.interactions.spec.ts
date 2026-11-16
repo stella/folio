@@ -25,7 +25,7 @@ const source = async (): Promise<number[]> => {
   const zip = new ZipArchive();
   zip.set(
     "[Content_Types].xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>`,
   );
   zip.set(
     "_rels/.rels",
@@ -33,7 +33,15 @@ const source = async (): Promise<number[]> => {
   );
   zip.set(
     "word/document.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}" xmlns:r="${R}"><w:body><w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="${TAB_POSITION_TWIPS}"/></w:tabs></w:pPr><w:r><w:t xml:space="preserve">Alpha Beta Gamma</w:t></w:r></w:p><w:p><w:r><w:t>TAIL</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:left="${LEFT_MARGIN_TWIPS}" w:right="1440" w:top="1440" w:bottom="1440"/></w:sectPr></w:body></w:document>`,
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}" xmlns:r="${R}"><w:body><w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="${TAB_POSITION_TWIPS}"/></w:tabs></w:pPr><w:r><w:t xml:space="preserve">Alpha Beta Gamma</w:t></w:r></w:p><w:p><w:r><w:t>TAIL</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:left="${LEFT_MARGIN_TWIPS}" w:right="1440" w:top="1440" w:bottom="1440"/></w:sectPr></w:body></w:document>`,
+  );
+  zip.set(
+    "word/_rels/document.xml.rels",
+    `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdHeader" Type="${R}/header" Target="header1.xml"/></Relationships>`,
+  );
+  zip.set(
+    "word/header1.xml",
+    `<?xml version="1.0" encoding="UTF-8"?><w:hdr xmlns:w="${W}"><w:p><w:r><w:t>Header</w:t></w:r></w:p></w:hdr>`,
   );
   return [...new Uint8Array(await zip.generate())];
 };
@@ -88,11 +96,30 @@ const drag = async (page: Page, marker: Locator, dx: number) => {
 
 for (const adapter of adapters) {
   test.describe(`${adapter.name} canonical ruler paragraph edits`, () => {
+    test("a header ruler edit does not change the body paragraph", async ({
+      page,
+    }) => {
+      await open(page, adapter.port);
+      const bodyProperties = await savedFirstParagraphProperties(page);
+      await page.locator(".layout-page-header").first().dblclick();
+      const editor = page.locator('[data-hf-r-id="rIdHeader"] .ProseMirror');
+      await expect(editor).toBeFocused();
+      await drag(
+        page,
+        ruler(page).getByLabel("Left indent", { exact: true }),
+        48,
+      );
+      // Secondary canonical stories refuse unclassified formatting. In
+      // particular, the body paragraph must not receive the header's edit.
+      expect(await savedFirstParagraphProperties(page)).toBe(bodyProperties);
+      await expect(editor).toHaveText("Header");
+    });
+
     test("dragging the left indent indents the paragraph", async ({ page }) => {
       await open(page, adapter.port);
       await drag(
         page,
-        ruler(page).getByRole("slider", { name: "Left indent" }),
+        ruler(page).getByLabel("Left indent", { exact: true }),
         48,
       );
       await expect.poll(() => savedIndent(page, "left")).toBeGreaterThan(0);
@@ -104,7 +131,7 @@ for (const adapter of adapters) {
       await open(page, adapter.port);
       await drag(
         page,
-        ruler(page).getByRole("slider", { name: "Right indent" }),
+        ruler(page).getByLabel("Right indent", { exact: true }),
         -48,
       );
       await expect.poll(() => savedIndent(page, "right")).toBeGreaterThan(0);
@@ -130,7 +157,7 @@ for (const adapter of adapters) {
                 .boundingBox(),
               tab.boundingBox(),
               ruler(page)
-                .getByRole("slider", { name: "Left indent" })
+                .getByLabel("Left indent", { exact: true })
                 .boundingBox(),
             ]);
             if (!rulerBox || !tabBox || !leftIndentBox) return null;
