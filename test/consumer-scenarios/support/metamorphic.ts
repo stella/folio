@@ -65,6 +65,7 @@ import type { Finding } from "./known-issues.ts";
 import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Mode } from "./operations.ts";
 import { resolvedState, type Row } from "./oracle.ts";
+import { createParagraphIdentityRemapping } from "./paragraph-identity.ts";
 import { createRandom, type Random } from "./random.ts";
 import { type Relation, RELATIONS } from "./relation-contract.ts";
 import { assertReviewRoundTrip } from "./review-comparison.ts";
@@ -474,17 +475,31 @@ const rebase = (
  * `operation`, made against `preRows`, restated against `rows`: the same
  * block, the same words. Null when what it names is no longer there.
  */
-export const restate = (
-  operation: AnyOperation,
-  preRows: readonly Row[],
-  rows: readonly Row[],
-  textHashOf: (blockId: string) => string | undefined,
-): AnyOperation | null => {
-  const blockId = blockIdOf(operation);
-  const pre = preRows.find((row) => row.id === blockId);
+type RestateOptions = {
+  operation: AnyOperation;
+  preRows: readonly Row[];
+  rows: readonly Row[];
+  textHashOf: (blockId: string) => string | undefined;
+  paragraphIdentities?: ReturnType<typeof createParagraphIdentityRemapping>;
+};
+export const restate = ({
+  operation,
+  preRows,
+  rows,
+  textHashOf,
+  paragraphIdentities,
+}: RestateOptions): AnyOperation | null => {
+  const originalBlockId = blockIdOf(operation);
+  const blockId =
+    paragraphIdentities?.resolve(
+      originalBlockId,
+      new Set(rows.map(({ id }) => id)),
+    ) ?? originalBlockId;
+  const pre = preRows.find((row) => row.id === originalBlockId);
   const now = rows.find((row) => row.id === blockId);
   if (!pre || !now) return null;
   const restated: AnyOperation = { ...operation };
+  if (operation["blockId"] !== undefined) restated["blockId"] = blockId;
   const precondition = operation["precondition"] as
     { blockTextHash?: string } | undefined;
   if (precondition?.blockTextHash !== undefined) {
@@ -625,11 +640,24 @@ const startedListName = (ordinal: number): number => -(ordinal + 1);
  * list, and how it renders, is the outcome. An id a block from before the
  * edits still states as it did then is the document's own and stays.
  */
-const nameStartedLists = (
-  rows: readonly Row[],
-  preRows: readonly Row[],
-): Row[] => {
-  const before = new Map(preRows.map((row) => [row.id, listIdsOf(row)]));
+type NameStartedListsOptions = {
+  rows: readonly Row[];
+  preRows: readonly Row[];
+  paragraphIdentities: ReturnType<typeof createParagraphIdentityRemapping>;
+};
+const nameStartedLists = ({
+  rows,
+  preRows,
+  paragraphIdentities,
+}: NameStartedListsOptions): Row[] => {
+  const liveIds = new Set(rows.map(({ id }) => id));
+  const before = new Map<string, number[]>();
+  for (const row of preRows) {
+    const id = paragraphIdentities.resolve(row.id, liveIds);
+    const ids = before.get(id) ?? [];
+    ids.push(...listIdsOf(row));
+    before.set(id, ids);
+  }
   const kept = new Set(
     rows.flatMap((row) =>
       listIdsOf(row).filter((numId) => before.get(row.id)?.includes(numId)),
@@ -667,6 +695,7 @@ type OutcomeViewOptions = {
   story: Story;
   /** The rows before the batch, whose list ids stay the document's own. */
   preRows: readonly Row[];
+  paragraphIdentities: ReturnType<typeof createParagraphIdentityRemapping>;
 };
 
 /** What a batch left, as `batchSequential` compares it in `mode`: started lists by name. */
@@ -675,13 +704,18 @@ const outcomeView = async ({
   mode,
   story,
   preRows,
+  paragraphIdentities,
 }: OutcomeViewOptions) => {
   const view = (state: {
     rows: readonly Row[];
     comments: readonly Comment[];
   }) =>
     settledView({
-      rows: nameStartedLists(state.rows, preRows),
+      rows: nameStartedLists({
+        rows: state.rows,
+        preRows,
+        paragraphIdentities,
+      }),
       comments: state.comments,
     });
   if (mode === "suggested")
@@ -968,7 +1002,11 @@ const shadowProblems = async (
           );
           return withoutHeldComments(
             settledView({
-              rows: nameStartedLists(state.rows, []),
+              rows: nameStartedLists({
+                rows: state.rows,
+                preRows: [],
+                paragraphIdentities: createParagraphIdentityRemapping(),
+              }),
               comments: state.comments,
             }),
             shadows.heldComments,
@@ -1251,6 +1289,11 @@ export const startRelations = async ({
             batch: operations,
           });
     const again = applyToCopy(copy, structuredClone(batch));
+    const batchParagraphIdentities = createParagraphIdentityRemapping();
+    batchParagraphIdentities.record({
+      applied: again.applied,
+      mode: batchMode,
+    });
     const applied = operationsOf(batch).filter((operation) =>
       appliedIds(again).has(operation.id),
     );
@@ -1266,6 +1309,7 @@ export const startRelations = async ({
             mode: batchMode,
             story,
             preRows,
+            paragraphIdentities: batchParagraphIdentities,
           })
         : null;
 
@@ -1297,6 +1341,7 @@ export const startRelations = async ({
       return;
     }
     const oneByOne = cloneReviewer(pre);
+    const paragraphIdentities = createParagraphIdentityRemapping();
     const listsBefore = definedListIds(pre);
     const problems: string[] = [];
     for (const group of sequentialGroups({
@@ -1316,7 +1361,7 @@ export const startRelations = async ({
       const textHashOf = (blockId: string) =>
         snapshot.anchors[blockId]?.textHash;
       const restated = group.map((operation) =>
-        restate(operation, preRows, rows, textHashOf),
+        restate({ operation, preRows, rows, textHashOf, paragraphIdentities }),
       );
       if (restated.some((operation) => operation === null)) {
         skipped(
@@ -1347,6 +1392,7 @@ export const startRelations = async ({
         oneByOne,
         batchOf(batch, batchMode, restated as AnyOperation[]),
       );
+      paragraphIdentities.record({ applied: alone.applied, mode: batchMode });
       for (const { id, reason } of alone.skipped) {
         if (reason !== "noopOperation")
           problems.push(`${id} refused one at a time: ${reason}`);
@@ -1357,6 +1403,7 @@ export const startRelations = async ({
       mode: batchMode,
       story,
       preRows,
+      paragraphIdentities,
     });
     if (problems.length === 0) {
       problems.push(

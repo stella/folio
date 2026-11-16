@@ -95,6 +95,7 @@ import { FolioAIEditAppliedOperation } from '@stll/folio-core/ai-edits';
 import { FolioAIEditApplyMode } from '@stll/folio-core/ai-edits';
 import { FolioAIEditApplyResult } from '@stll/folio-core/ai-edits';
 import { FolioAIEditOperation } from '@stll/folio-core/ai-edits';
+import { FolioAIEditParagraphIdentity } from '@stll/folio-core/ai-edits';
 import { FolioAIEditReviewMeta } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSeverity } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSkippedOperation } from '@stll/folio-core/ai-edits';
@@ -613,6 +614,8 @@ export { FolioAIEditApplyMode }
 export { FolioAIEditApplyResult }
 
 export { FolioAIEditOperation }
+
+export { FolioAIEditParagraphIdentity }
 
 export { FolioAIEditReviewMeta }
 

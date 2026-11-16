@@ -176,6 +176,7 @@ export {
   type FolioAIBlockPreviewRun,
   type FolioAIComment,
   type FolioAIEditAppliedOperation,
+  type FolioAIEditParagraphIdentity,
   type FolioAIEditApplyMode,
   type FolioAIEditApplyResult,
   type FolioAIEditOperation,

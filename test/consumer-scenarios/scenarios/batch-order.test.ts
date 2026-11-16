@@ -158,7 +158,7 @@ test("pinned adjacent insertion, merge and replacement batches replay from pre-b
   }
 });
 
-test("insertions separated by a merge stay in separate replay runs in every input order", async () => {
+test("overlapping insertions and merges replay their applied set in every input order", async () => {
   for (const order of ORDERS) {
     const fixture = await packDocument(
       fromMarkdown("Alpha.\n\nBravo.\n\nCharlie."),
@@ -194,27 +194,43 @@ test("insertions separated by a merge stay in separate replay runs in every inpu
       mode: "direct" as const,
       operations: ordered,
     };
-    const allGroups = sequentialGroups({
-      applied: ordered,
-      preRows: rows,
-      mode: "direct",
-    });
-    if (order === ORDERS[0]) {
-      assert.deepEqual(
-        allGroups.map((group) => group.map(({ id }) => id)),
-        [["insert-b"], ["merge"], ["insert-a"]],
-      );
-    }
     const result = batch.applyDocumentOperations(request, {
       undefinedReferences: "refuse",
     });
     const appliedIds = new Set(result.applied.map(({ id }) => id));
     const applied = ordered.filter(({ id }) => appliedIds.has(id));
-    for (const group of sequentialGroups({
+    // Same-anchor insertion and merge claims overlap. Replay only the
+    // operations the real batch accepted, accounting for every request.
+    assert.deepEqual(
+      [...result.applied, ...result.skipped].map(({ id }) => id).toSorted(),
+      ordered.map(({ id }) => id).toSorted(),
+    );
+    assert.ok(
+      result.skipped.every(({ reason }) => reason === "overlappingOperation"),
+    );
+    const groups = sequentialGroups({
       applied,
       preRows: rows,
       mode: "direct",
-    })) {
+    });
+    assert.deepEqual(
+      groups
+        .flat()
+        .map(({ id }) => id)
+        .toSorted(),
+      [...appliedIds].toSorted(),
+    );
+    if (order === ORDERS[0]) {
+      assert.deepEqual(
+        result.skipped.map(({ id }) => id),
+        ["merge"],
+      );
+      assert.deepEqual(
+        groups.map((group) => group.map(({ id }) => id)),
+        [["insert-a", "insert-b"]],
+      );
+    }
+    for (const group of groups) {
       const replayed = sequential.applyDocumentOperations(
         { ...request, operations: group as FolioDocumentOperation[] },
         { undefinedReferences: "refuse" },
@@ -237,14 +253,27 @@ test("restate refuses replaceBlock forms whose formatting semantics cannot becom
   const textHashOf = () => undefined;
 
   assert.equal(
-    restate({ ...base, styleId: "Heading1" }, preRows, rows, textHashOf),
+    restate({
+      operation: { ...base, styleId: "Heading1" },
+      preRows,
+      rows,
+      textHashOf,
+    }),
     null,
   );
   assert.equal(
-    restate({ ...base, preserveFormatting: false }, preRows, rows, textHashOf),
+    restate({
+      operation: { ...base, preserveFormatting: false },
+      preRows,
+      rows,
+      textHashOf,
+    }),
     null,
   );
-  assert.equal(restate(base, preRows, rows, textHashOf)?.type, "replaceRange");
+  assert.equal(
+    restate({ operation: base, preRows, rows, textHashOf })?.type,
+    "replaceRange",
+  );
 });
 
 test("the batch comparator defines one total order", () => {

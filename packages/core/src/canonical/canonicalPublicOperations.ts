@@ -50,6 +50,7 @@ import {
   buildCleanBlockText,
   resolveCleanTextRange,
 } from "../ai-edits/clean-text";
+import { directJoinSurvivor } from "../ai-edits/directJoin";
 import { stripInlineEmphasisMarkers } from "../ai-edits/inline-emphasis";
 import {
   createBatchListMinter,
@@ -93,6 +94,7 @@ import {
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditNormalization,
+  FolioAIEditParagraphIdentity,
   FolioAIEditSkippedOperation,
   FolioAIEditSkipReason,
   FolioAIListKind,
@@ -272,6 +274,35 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
     >;
   }
   return { type: "plain", operation } as const;
+};
+
+/**
+ * The two paragraphs a direct operation's intents join, if one paragraph's
+ * content ends up in another: a deletion that keeps the paragraph before it
+ * leaves nothing of the deleted paragraph there, and joins nothing.
+ */
+const joinedParagraphsOf = (
+  operationType: FolioDocumentOperation["type"],
+  intents: readonly EditorIntent[],
+): FolioAIEditParagraphIdentity | undefined => {
+  const join = intents.find(
+    (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
+      intent.type === "joinParagraphs",
+  );
+  if (join === undefined) return undefined;
+  if (operationType === "deleteBlock" && join.survivor === "first")
+    return undefined;
+  return join.survivor === "first"
+    ? {
+        type: "joined",
+        blockId: join.blockId,
+        retiredBlockId: join.nextBlockId,
+      }
+    : {
+        type: "joined",
+        blockId: join.nextBlockId,
+        retiredBlockId: join.blockId,
+      };
 };
 
 const SPACING_FIELDS = [
@@ -2199,9 +2230,14 @@ export class CanonicalPublicOperations {
       );
       const revisionIds = compiled.value.revisions;
       const revisionId = revisionIds.at(0);
+      const joined =
+        batch.mode === "direct"
+          ? joinedParagraphsOf(operation.type, intents)
+          : undefined;
       appliedById.set(operation.id, {
         id: operation.id,
         ...(commentId === undefined ? {} : { commentId }),
+        ...(joined === undefined ? {} : { paragraphIdentity: joined }),
         ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
         ...(suggestionId === undefined ? {} : { suggestionId }),
       });
@@ -2273,9 +2309,48 @@ export class CanonicalPublicOperations {
       }
       return result([], null);
     }
+    if (batch.mode === "direct") {
+      const finalBody = findStoryBody(prepared.value.document, story);
+      if (finalBody === undefined)
+        panic("A committed public operation lost its story.");
+      const finalIds = new Set(
+        storyParagraphs(finalBody).map(({ paragraph }) => paragraph.paraId),
+      );
+      for (const operation of batch.operations) {
+        const entry = appliedById.get(operation.id);
+        if (entry === undefined) continue;
+        const identity = entry.paragraphIdentity;
+        if (identity?.type === "joined") {
+          if (
+            finalIds.has(identity.retiredBlockId) &&
+            finalIds.has(identity.blockId)
+          )
+            entry.paragraphIdentity = {
+              type: "retained",
+              blockId: identity.blockId,
+            };
+          continue;
+        }
+        if (operation.type === "deleteBlock" && finalIds.has(operation.blockId))
+          entry.paragraphIdentity = {
+            type: "retained",
+            blockId: operation.blockId,
+          };
+      }
+    }
     const applied = batch.operations.flatMap(({ id }) => {
       const entry = appliedById.get(id);
-      return entry ? [batch.dryRun ? { id } : entry] : [];
+      if (entry === undefined) return [];
+      return [
+        batch.dryRun
+          ? {
+              id,
+              ...(entry.paragraphIdentity === undefined
+                ? {}
+                : { paragraphIdentity: entry.paragraphIdentity }),
+            }
+          : entry,
+      ];
     });
     if (batch.dryRun) return result(applied, null);
     if (!this.options.publish(prepared.value)) {
@@ -2433,8 +2508,10 @@ export class CanonicalPublicOperations {
     }
     let range: { from: number; to: number } | undefined;
     // Removed directly, a paragraph no paragraph follows loses its words and
-    // then joins the paragraph before it, which keeps its own identity and
-    // properties; with none before it, it only loses its words.
+    // then joins the paragraph before it, whose properties it keeps; the
+    // joined paragraph is the one whose mark remains, this one, as accepting
+    // the tracked deletion leaves it. With none before it, it only loses its
+    // words.
     if (!tracked) {
       const own = (
         from: number,
@@ -2460,13 +2537,16 @@ export class CanonicalPublicOperations {
       const cleared = own(paragraph.start, end);
       if (cleared.isErr()) return cleared;
       const intents: EditorIntent[] = [...cleared.value];
+      // The paragraph before it takes over: before a table or a content
+      // control the deleted paragraph's mark goes with it, and the one before
+      // it keeps its identity (`directJoinSurvivor`).
       if (previous !== undefined)
         intents.push({
           type: "joinParagraphs",
           story: projectionStory,
           blockId: previous.blockId,
           nextBlockId: paragraph.blockId,
-          survivor: "first",
+          survivor: directJoinSurvivor({ laterMarkRemains: after === null }),
         });
       if (intents.length === 0) return refusal("noopOperation");
       return Result.ok({
@@ -2669,9 +2749,16 @@ export class CanonicalPublicOperations {
         operation.type === "insertBeforeBlock" &&
         !followed &&
         besideDeletions.deleted.has(blockId);
-      const insertion: BlockInsertion = besideDeletion
-        ? { ...operation, type: "insertAfterBlock" }
-        : operation;
+      // A container's final mark remains on a paragraph inserted before it.
+      // Before a table or control, its own mark goes: insert after it first
+      // so the block deletion has a following paragraph to receive its text.
+      const after = state.doc.resolve(
+        paragraph.start - 1 + paragraph.node.nodeSize,
+      ).nodeAfter;
+      const insertion: BlockInsertion =
+        besideDeletion && after !== null
+          ? { ...operation, type: "insertAfterBlock" }
+          : operation;
       const placed = suggested
         ? besideAsItStands(paragraph)
         : besidePendingJoin({
@@ -2913,14 +3000,14 @@ export class CanonicalPublicOperations {
       case "mergeBlockWithNext": {
         const next = projection.value.nextParagraphInContainer(blockId);
         if (next === undefined) return refusal("missingBlock");
-        // The merged paragraph keeps the first one's identity, as the
-        // default engine's merge does.
+        // The merged paragraph is the one whose mark remains, the second,
+        // as accepting the tracked merge leaves it.
         intent = {
           type: "joinParagraphs",
           story,
           blockId,
           nextBlockId: next.blockId,
-          survivor: "first",
+          survivor: directJoinSurvivor(),
         };
         break;
       }
@@ -3112,12 +3199,15 @@ export class CanonicalPublicOperations {
         });
       }
       intents.push(intent);
-      // The merged paragraph's properties: on the first paragraph a direct
-      // join keeps, on the second, whose mark a tracked join leaves.
+      // The merged paragraph's properties: on the paragraph the join leaves,
+      // the second, whose mark remains, unless a direct join keeps the first.
       intents.push(
         ...statedPropertiesIntents({
           story,
-          blockId: tracked ? intent.nextBlockId : intent.blockId,
+          blockId:
+            !tracked && intent.survivor === "first"
+              ? intent.blockId
+              : intent.nextBlockId,
           properties: operation.mergedParagraphProperties,
           mintList,
         }),

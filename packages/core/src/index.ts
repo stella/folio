@@ -182,6 +182,7 @@ export {
   type FolioAIBlockStructuralBoundary,
   type FolioAIComment,
   type FolioAIEditAppliedOperation,
+  type FolioAIEditParagraphIdentity,
   type FolioAIEditApplyMode,
   type FolioAIEditApplyResult,
   type FolioAIEditNormalization,

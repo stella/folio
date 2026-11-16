@@ -2391,9 +2391,42 @@ export const getFolioDocumentOperationReceiptsForStory = ({
     if (!appliedOperation) {
       return;
     }
-    const affected: FolioDocumentOperationAffectedTarget[] = [
-      getPrimaryAffectedTarget(operation, story),
-    ];
+    const { paragraphIdentity } = appliedOperation;
+    const affected: FolioDocumentOperationAffectedTarget[] = [];
+    if (paragraphIdentity === undefined)
+      affected.push(getPrimaryAffectedTarget(operation, story));
+    else {
+      switch (paragraphIdentity.type) {
+        case "joined":
+          affected.push(
+            {
+              type: "block",
+              story,
+              blockId: paragraphIdentity.blockId,
+              effect: "updated",
+            },
+            {
+              type: "block",
+              story,
+              blockId: paragraphIdentity.retiredBlockId,
+              effect: "deleted",
+            },
+          );
+          break;
+        case "retained":
+          affected.push({
+            type: "block",
+            story,
+            blockId: paragraphIdentity.blockId,
+            effect: "updated",
+          });
+          break;
+        default: {
+          const unreachable: never = paragraphIdentity;
+          return unreachable;
+        }
+      }
+    }
     if (appliedOperation.commentId !== undefined) {
       affected.push({ type: "comment", commentId: appliedOperation.commentId });
     }
@@ -2839,7 +2872,10 @@ export const applyFolioDocumentOperationsInPackage = ({
     return {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       status: "previewed",
-      applied: previewResult.applied.map(({ id }) => ({ id })),
+      applied: previewResult.applied.map(({ id, paragraphIdentity }) => ({
+        id,
+        ...(paragraphIdentity === undefined ? {} : { paragraphIdentity }),
+      })),
       skipped: previewResult.skipped,
       issues: getFolioDocumentOperationIssues(
         parsedBatch.operations,
