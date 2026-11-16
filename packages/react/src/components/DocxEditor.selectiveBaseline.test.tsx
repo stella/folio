@@ -61,6 +61,7 @@ test.each(["settled", "overlapping"])(
             messages={getFolioMessages("en")}
           >
             <DocxEditor
+              experimentalSession="legacy"
               accessibleName="Document editor"
               ref={editor}
               documentBuffer={bytes}

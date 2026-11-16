@@ -13,7 +13,7 @@ declare global {
 }
 
 const SESSIONS = [
-  { name: "default", url: "/", canonical: false },
+  { name: "legacy", url: "/?session=legacy", canonical: false },
   { name: "canonical", url: "/?session=canonical", canonical: true },
 ] as const;
 
