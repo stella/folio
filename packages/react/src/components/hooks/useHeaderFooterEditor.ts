@@ -17,7 +17,7 @@ import {
   createCanonicalHeaderFooterOperation,
   removeCanonicalHeaderFooterOperations,
 } from "@stll/folio-core/canonical/canonicalOperations";
-import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
+import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
@@ -51,7 +51,10 @@ import type { UseHistoryReturn } from "../../hooks/useHistory";
 type UseHeaderFooterEditorParams = {
   history: UseHistoryReturn<ReadonlyDocument | null>;
   pushDocument: (document: ReadonlyDocument) => ReadonlyDocument;
-  getCanonicalApi?: () => HiddenEditorApi | null;
+  getCanonicalApi?: () => Pick<
+    FolioEditor,
+    "ensureView" | "getCanonicalDocument" | "applyCanonicalOperations"
+  > | null;
   experimentalSession?: "canonical";
   /**
    * Look up the persistent hidden HF EditorView for an rId. Returns null

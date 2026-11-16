@@ -4,6 +4,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 
 import { DOCUMENT_OP_TYPES, OP_STORIES } from "@stll/docx-core/ops";
 
+import { checkCoverageSample } from "../../../../test/property-coverage";
 import {
   assertProperty,
   propertyTestTimeout,
@@ -32,9 +33,8 @@ const word = fc
   .map((letters) => letters.join(""));
 
 test("only the exact published typing batch consumes a ghost across source carriers", () => {
-  const exercised = new Set<string>();
-  const seamCounts = new Set<number>();
-  assertProperty(
+  type TypingCoverage = { exercised: Set<string>; seamCounts: Set<number> };
+  const law = ({ exercised, seamCounts }: TypingCoverage) =>
     fc.property(word, word, (left, right) => {
       for (const kind of kinds)
         for (const suggesting of [false, true]) {
@@ -177,11 +177,18 @@ test("only the exact published typing batch consumes a ghost across source carri
             }
           }
         }
-    }),
-    { numRuns: 12, id: "autocomplete-typing-normalization" },
-  );
-  expect(exercised).toEqual(new Set(kinds));
-  expect(seamCounts).toEqual(new Set([0, 1, 2]));
+    });
+  assertProperty(law({ exercised: new Set(), seamCounts: new Set() }), {
+    numRuns: 12,
+    id: "autocomplete-typing-normalization",
+  });
+  const coverage = {
+    exercised: new Set<string>(),
+    seamCounts: new Set<number>(),
+  };
+  checkCoverageSample(law(coverage), 3);
+  expect(coverage.exercised).toEqual(new Set(kinds));
+  expect(coverage.seamCounts).toEqual(new Set([0, 1, 2]));
 });
 
 test("paste, replacement, ranged typing, undo and redo dismiss rather than consume", () => {
