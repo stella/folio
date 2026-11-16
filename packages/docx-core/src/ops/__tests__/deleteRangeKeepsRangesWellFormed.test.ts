@@ -329,7 +329,7 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
             },
           ),
           {
-            id: `balanced ${family} deletion source ownership`,
+            id: "balanced range deletion source ownership",
             numRuns: 30,
             examples: [
               ["start", 3],
