@@ -219,8 +219,7 @@ for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
         },
         { undefinedReferences: "refuse" },
       );
-    let undoHandle: string | null = null;
-    for (const quote of ["time", "The"]) {
+    const commentResults = ["time", "The"].map((quote) => {
       const result = reviewer.applyDocumentOperations(
         {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -238,9 +237,10 @@ for (const mode of ["direct", "tracked-changes", "suggested"] as const) {
         { undefinedReferences: "refuse" },
       );
       expect(result.applied).toHaveLength(1);
-      undoHandle = result.undoHandle;
-    }
-    if (undoHandle === null)
+      return result;
+    });
+    const undoHandle = commentResults.at(-1)?.undoHandle;
+    if (undoHandle === undefined || undoHandle === null)
       throw new Error("The comments have no undo handle");
     const before = {
       document: reviewer.toDocument(),
