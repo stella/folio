@@ -291,6 +291,7 @@ import {
   tableFromTemplate,
   type TableStructureRevision,
 } from "./table-template";
+import { supportsTableInsertionMode } from "./tableInsertionModes";
 import type {
   FolioAIBlockParagraphProperties as RequestParagraphProperties,
   FolioAIEditAppliedOperation,
@@ -2656,7 +2657,7 @@ type BuildSignatureTableNodeOptions = {
  * required node types — callers should surface the op as a skip
  * rather than crashing.
  */
-const buildSignatureTableNode = ({
+export const buildSignatureTableNode = ({
   schema,
   parties,
 }: BuildSignatureTableNodeOptions): PMNode | null => {
@@ -6744,18 +6745,6 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "insertSignatureTable": {
-        // Tracked-changes mode has no whole-table-insert primitive in OOXML, so
-        // it stays unsupported. Suggested mode CAN carry it: the whole table is
-        // flagged `_suggestedInsert` and stripped until accepted (accepting
-        // applies it directly — see acceptSuggestion).
-        if (mode === "tracked-changes") {
-          skipped.push({
-            id: item.operation.id,
-            reason: "unsupportedMode",
-          });
-          continue;
-        }
-
         const signatureTable = buildSignatureTableNode({
           schema: view.state.schema,
           parties: item.operation.parties,
@@ -10175,6 +10164,12 @@ const resolveOperationTarget = ({
   if (primaryBlock.type === "skip") {
     return primaryBlock;
   }
+  if (
+    (operation.type === "insertTable" ||
+      operation.type === "insertSignatureTable") &&
+    !supportsTableInsertionMode(operation.type, mode)
+  )
+    return { type: "skip", reason: "unsupportedMode" };
   const {
     blockNode,
     blockFrom,
@@ -10351,6 +10346,8 @@ const resolveOperationTarget = ({
     const placed = tableBoundary
       ? besideTable(tableBoundary[position], position)
       : beside(position);
+    if (joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences }))
+      return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
     return {
       type: "resolved",
       operation: {
@@ -10612,6 +10609,8 @@ const resolveOperationTarget = ({
     const placed = tableBoundary
       ? besideTable(tableBoundary[side], side)
       : beside(side);
+    if (joinStopsAtTableAfter({ doc, paragraphPos: placed.at, noteReferences }))
+      return { type: "skip", ...PENDING_JOIN_INSERTION_REFUSAL };
     return {
       type: "resolved",
       operation: {
