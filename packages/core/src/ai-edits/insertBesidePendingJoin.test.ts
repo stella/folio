@@ -94,11 +94,13 @@ const edit = async ({ mode, batched, merged, insertion }: EditOptions) => {
     // A later batch names the joined paragraph as it now stands: applied
     // directly, the join keeps the later paragraph's id.
     const joined = applies([merge]).find(
-      (entry) => entry.joined !== undefined,
-    )?.joined;
+      (entry) => entry.paragraphIdentity !== undefined,
+    )?.paragraphIdentity;
     applies([
       insertion(
-        joined?.retiredBlockId === heading.id ? joined.blockId : heading.id,
+        joined?.type === "joined" && joined.retiredBlockId === heading.id
+          ? joined.blockId
+          : heading.id,
       ),
     ]);
   }
@@ -211,6 +213,7 @@ describe("insertions on both sides of a pending join", () => {
       const reviewer = await open();
       const [heading, item] = reviewer.snapshot().blocks;
       if (!heading || !item) throw new Error("Missing fixture");
+      const joinedIds = new Map<string, string>();
       for (const operation of [
         { id: "delete", type: "deleteBlock", blockId: item.id },
         {
@@ -226,9 +229,20 @@ describe("insertions on both sides of a pending join", () => {
           text: "After.",
         },
       ] satisfies FolioDocumentOperation[]) {
-        expect(reviewer.applyOperations([operation], { mode }).skipped).toEqual(
-          [],
+        const result = reviewer.applyOperations(
+          [
+            {
+              ...operation,
+              blockId: joinedIds.get(operation.blockId) ?? operation.blockId,
+            },
+          ],
+          { mode },
         );
+        expect(result.skipped).toEqual([]);
+        for (const { paragraphIdentity: joined } of result.applied) {
+          if (joined?.type === "joined")
+            joinedIds.set(joined.retiredBlockId, joined.blockId);
+        }
       }
       if (mode !== "direct") reviewer.acceptAll();
       return reviewer.snapshot().blocks.map(({ text }) => text);
@@ -606,11 +620,21 @@ const fromEmptySource = async (
   );
   const [, empty, bravo] = reviewer.snapshot().blocks;
   if (!empty || !bravo) throw new Error("Missing fixture");
-  reviewer.applyOperations(
+  const merged = reviewer.applyOperations(
     [{ id: "merge", type: "mergeBlockWithNext", blockId: empty.id }],
     { mode },
   );
-  for (const batch of batches({ empty: empty.id, bravo: bravo.id })) {
+  const mergedParagraphs = merged.applied.find(
+    ({ paragraphIdentity }) => paragraphIdentity !== undefined,
+  )?.paragraphIdentity;
+  for (const batch of batches({
+    empty:
+      mergedParagraphs?.type === "joined" &&
+      mergedParagraphs.retiredBlockId === empty.id
+        ? mergedParagraphs.blockId
+        : empty.id,
+    bravo: bravo.id,
+  })) {
     expect(reviewer.applyOperations(batch, { mode }).skipped).toEqual([]);
   }
   if (mode !== "direct") reviewer.acceptAll();
@@ -942,6 +966,7 @@ describe("a table and a paragraph inserted before a deleted final paragraph", ()
     });
     const [, bravo, charlie] = reviewer.snapshot().blocks;
     if (!bravo || !charlie) throw new Error("Missing fixture");
+    const joinedIds = new Map<string, string>();
     for (const operations of [
       [{ id: "delete", type: "deleteBlock", blockId: charlie.id }],
       [
@@ -959,9 +984,19 @@ describe("a table and a paragraph inserted before a deleted final paragraph", ()
         },
       ],
     ] satisfies FolioDocumentOperation[][]) {
-      expect(reviewer.applyOperations(operations, { mode }).skipped).toEqual(
-        [],
+      const result = reviewer.applyOperations(
+        operations.map((operation) =>
+          Object.assign({}, operation, {
+            blockId: joinedIds.get(operation.blockId) ?? operation.blockId,
+          }),
+        ),
+        { mode },
       );
+      expect(result.skipped).toEqual([]);
+      for (const { paragraphIdentity: joined } of result.applied) {
+        if (joined?.type === "joined")
+          joinedIds.set(joined.retiredBlockId, joined.blockId);
+      }
     }
     return reviewer;
   };

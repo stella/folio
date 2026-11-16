@@ -27,6 +27,7 @@ import {
   type FolioDocumentOperation,
   type FolioDocumentOperationResult,
 } from "../document-operations";
+import { getParagraphPropertySourceToken } from "../docx/paragraphPropertySource";
 import type { HeadlessReviewerSession } from "../types/canonicalCapabilities";
 import * as directJoin from "./directJoin";
 import { type FolioDocumentStoryHandle, FolioDocxReviewer } from "./headless";
@@ -65,7 +66,7 @@ const NOTES =
   paragraphXml("Note two") +
   "</w:footnote>";
 
-const fixture = async (): Promise<ArrayBuffer> => {
+const fixture = async (body = BODY): Promise<ArrayBuffer> => {
   const zip = new ZipArchive();
   zip.set(
     "[Content_Types].xml",
@@ -89,7 +90,7 @@ const fixture = async (): Promise<ArrayBuffer> => {
   );
   zip.set(
     "word/document.xml",
-    `${HEAD}<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${BODY}<w:sectPr><w:headerReference w:type="default" r:id="rIdH"/></w:sectPr></w:body></w:document>`,
+    `${HEAD}<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${body}<w:sectPr><w:headerReference w:type="default" r:id="rIdH"/></w:sectPr></w:body></w:document>`,
   );
   const bytes = await zip.generate({ compression: "store" });
   return bytes.buffer.slice(
@@ -226,6 +227,206 @@ const MERGE_IN_BODY: Draw = {
 };
 
 describe("a join applied directly", () => {
+  test.each([false, true])(
+    "a split and join preserve identity and source ownership (join listed first: %s)",
+    async (joinFirst) => {
+      const reviewer = await open(
+        await fixture(
+          paragraphXml("First words") + paragraphXml("Second words"),
+        ),
+        "legacy",
+      );
+      const [first, second] = reviewer.snapshotStory(MAIN_STORY)?.blocks ?? [];
+      if (!first || !second) throw new Error("Missing split/join fixture.");
+      const firstModel = reviewer.toDocument().package.document.content.at(0);
+      if (firstModel?.type !== "paragraph")
+        throw new Error("Missing source paragraph.");
+      const firstToken = getParagraphPropertySourceToken(firstModel);
+      expect(firstToken).toBeDefined();
+      const split = {
+        id: "split",
+        type: "splitBlock",
+        blockId: second.id,
+        offset: 6,
+      } as const satisfies FolioDocumentOperation;
+      const merge = {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: first.id,
+        separator: " ",
+      } as const satisfies FolioDocumentOperation;
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "direct",
+          operations: joinFirst ? [merge, split] : [split, merge],
+        },
+        { undefinedReferences: "refuse" },
+      );
+      expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual(
+        joinFirst ? [{ id: "split", reason: "overlappingOperation" }] : [],
+      );
+      const [joined, sibling] =
+        reviewer.snapshotStory(MAIN_STORY)?.blocks ?? [];
+      expect(joined?.text).toBe(
+        joinFirst ? "First words Second words" : "First words Second",
+      );
+      expect(joined?.id).toBe(second.id);
+      if (joinFirst) expect(sibling).toBeUndefined();
+      else {
+        expect(sibling?.text).toBe(" words");
+        expect(sibling?.id).not.toBe(first.id);
+        expect(sibling?.id).not.toBe(second.id);
+      }
+      const paragraphs = reviewer
+        .toDocument()
+        .package.document.content.filter((block) => block.type === "paragraph");
+      const tokens = paragraphs.map(getParagraphPropertySourceToken);
+      expect(tokens.at(0)).toBe(firstToken);
+      expect(tokens.at(1)).toBeUndefined();
+      const remaining = new Set(
+        (reviewer.snapshotStory(MAIN_STORY)?.blocks ?? []).map(({ id }) => id),
+      );
+      expect(remaining.size).toBe(joinFirst ? 1 : 2);
+      for (const target of result.receipts.flatMap(
+        ({ affected }) => affected,
+      )) {
+        if (target.type === "block")
+          expect(remaining.has(target.blockId)).toBe(
+            target.effect !== "deleted",
+          );
+      }
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
+    "settles chained joins and final deletions after every pre-resolved batch target runs",
+    async () => {
+      const buffer = await fixture(
+        ["Lead", "First", "Second", "Third", "Last"]
+          .map((text) => paragraphXml(text))
+          .join(""),
+      );
+      const kinds = ["last", "third", "merge", "insert"] as const;
+      await assertProperty(
+        fc.asyncProperty(
+          fc.shuffledSubarray(kinds, {
+            minLength: kinds.length,
+            maxLength: kinds.length,
+          }),
+          async (order) => {
+            const direct = await open(buffer, "legacy");
+            const tracked = await open(buffer, "legacy");
+            const original = new Set(
+              blocksOf(direct)
+                .flat()
+                .map(({ id }) => id),
+            );
+            const lastId = direct
+              .snapshotStory(MAIN_STORY)
+              ?.blocks.find(({ text }) => text === "Last")?.id;
+            const operations = (reviewer: Reviewer) => {
+              const ids = new Map(
+                (reviewer.snapshotStory(MAIN_STORY)?.blocks ?? []).map(
+                  ({ id, text }) => [text, id],
+                ),
+              );
+              const idOf = (text: string) => {
+                const id = ids.get(text);
+                if (id === undefined)
+                  throw new Error(`Missing fixture paragraph: ${text}`);
+                return id;
+              };
+              const byKind = {
+                last: {
+                  id: "last",
+                  type: "deleteBlock",
+                  blockId: idOf("Last"),
+                },
+                third: {
+                  id: "third",
+                  type: "deleteBlock",
+                  blockId: idOf("Third"),
+                },
+                merge: {
+                  id: "merge",
+                  type: "mergeBlockWithNext",
+                  blockId: idOf("First"),
+                  separator: " ",
+                },
+                insert: {
+                  id: "insert",
+                  type: "insertBeforeBlock",
+                  blockId: idOf("Lead"),
+                  text: "Inserted",
+                },
+              } satisfies Record<
+                (typeof kinds)[number],
+                FolioDocumentOperation
+              >;
+              return order.map((kind) => byKind[kind]);
+            };
+            const result = direct.applyDocumentOperations(
+              {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                mode: "direct",
+                operations: operations(direct),
+              },
+              { undefinedReferences: "refuse" },
+            );
+            expect(result.skipped).toEqual([]);
+            expect(
+              tracked.applyDocumentOperations(
+                {
+                  version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                  mode: "tracked-changes",
+                  operations: operations(tracked),
+                },
+                { undefinedReferences: "refuse" },
+              ).skipped,
+            ).toEqual([]);
+            tracked.acceptAll();
+            const existingIdentities = (reviewer: Reviewer) =>
+              blocksOf(reviewer).map((blocks) =>
+                blocks.map(({ id, text }) => ({
+                  id: original.has(id) ? id : "new",
+                  text,
+                })),
+              );
+            expect(existingIdentities(direct)).toEqual(
+              existingIdentities(tracked),
+            );
+            expect(
+              direct
+                .snapshotStory(MAIN_STORY)
+                ?.blocks.find(({ text }) => text === "First Second")?.id,
+            ).toBe(lastId);
+            const remaining = new Set(
+              blocksOf(direct)
+                .flat()
+                .map(({ id }) => id),
+            );
+            for (const target of result.receipts.flatMap(
+              ({ affected }) => affected,
+            )) {
+              if (target.type === "block")
+                expect(remaining.has(target.blockId)).toBe(
+                  target.effect !== "deleted",
+                );
+            }
+          },
+        ),
+        {
+          seed: 20261116,
+          numRuns: 24,
+          id: "chained direct join identities settle after batch targets",
+        },
+      );
+    },
+    propertyTestTimeout(60_000),
+  );
+
   test(
     "leaves what the accepted suggestion leaves, ids included",
     async () => {

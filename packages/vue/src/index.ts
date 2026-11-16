@@ -191,7 +191,7 @@ export {
   type FolioAIBlockPreviewRun,
   type FolioAIComment,
   type FolioAIEditAppliedOperation,
-  type FolioAIEditJoinedParagraphs,
+  type FolioAIEditParagraphIdentity,
   type FolioAIEditApplyMode,
   type FolioAIEditApplyResult,
   type FolioAIEditOperation,

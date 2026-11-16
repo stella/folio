@@ -93,8 +93,8 @@ import {
 } from "../ai-edits/table-targets";
 import type {
   FolioAIBlockParagraphProperties,
-  FolioAIEditJoinedParagraphs,
   FolioAIEditNormalization,
+  FolioAIEditParagraphIdentity,
   FolioAIEditSkippedOperation,
   FolioAIEditSkipReason,
   FolioAIListKind,
@@ -284,7 +284,7 @@ const resolveComment = ({ operation, from, to }: ResolveCommentOptions) => {
 const joinedParagraphsOf = (
   operationType: FolioDocumentOperation["type"],
   intents: readonly EditorIntent[],
-): FolioAIEditJoinedParagraphs | undefined => {
+): FolioAIEditParagraphIdentity | undefined => {
   const join = intents.find(
     (intent): intent is Extract<EditorIntent, { type: "joinParagraphs" }> =>
       intent.type === "joinParagraphs",
@@ -293,8 +293,16 @@ const joinedParagraphsOf = (
   if (operationType === "deleteBlock" && join.survivor === "first")
     return undefined;
   return join.survivor === "first"
-    ? { blockId: join.blockId, retiredBlockId: join.nextBlockId }
-    : { blockId: join.nextBlockId, retiredBlockId: join.blockId };
+    ? {
+        type: "joined",
+        blockId: join.blockId,
+        retiredBlockId: join.nextBlockId,
+      }
+    : {
+        type: "joined",
+        blockId: join.nextBlockId,
+        retiredBlockId: join.blockId,
+      };
 };
 
 const SPACING_FIELDS = [
@@ -2229,7 +2237,7 @@ export class CanonicalPublicOperations {
       appliedById.set(operation.id, {
         id: operation.id,
         ...(commentId === undefined ? {} : { commentId }),
-        ...(joined === undefined ? {} : { joined }),
+        ...(joined === undefined ? {} : { paragraphIdentity: joined }),
         ...(revisionId === undefined ? {} : { revisionId, revisionIds }),
         ...(suggestionId === undefined ? {} : { suggestionId }),
       });
@@ -2301,9 +2309,48 @@ export class CanonicalPublicOperations {
       }
       return result([], null);
     }
+    if (batch.mode === "direct") {
+      const finalBody = findStoryBody(prepared.value.document, story);
+      if (finalBody === undefined)
+        panic("A committed public operation lost its story.");
+      const finalIds = new Set(
+        storyParagraphs(finalBody).map(({ paragraph }) => paragraph.paraId),
+      );
+      for (const operation of batch.operations) {
+        const entry = appliedById.get(operation.id);
+        if (entry === undefined) continue;
+        const identity = entry.paragraphIdentity;
+        if (identity?.type === "joined") {
+          if (
+            finalIds.has(identity.retiredBlockId) &&
+            finalIds.has(identity.blockId)
+          )
+            entry.paragraphIdentity = {
+              type: "retained",
+              blockId: identity.blockId,
+            };
+          continue;
+        }
+        if (operation.type === "deleteBlock" && finalIds.has(operation.blockId))
+          entry.paragraphIdentity = {
+            type: "retained",
+            blockId: operation.blockId,
+          };
+      }
+    }
     const applied = batch.operations.flatMap(({ id }) => {
       const entry = appliedById.get(id);
-      return entry ? [batch.dryRun ? { id } : entry] : [];
+      if (entry === undefined) return [];
+      return [
+        batch.dryRun
+          ? {
+              id,
+              ...(entry.paragraphIdentity === undefined
+                ? {}
+                : { paragraphIdentity: entry.paragraphIdentity }),
+            }
+          : entry,
+      ];
     });
     if (batch.dryRun) return result(applied, null);
     if (!this.options.publish(prepared.value)) {
@@ -2702,9 +2749,16 @@ export class CanonicalPublicOperations {
         operation.type === "insertBeforeBlock" &&
         !followed &&
         besideDeletions.deleted.has(blockId);
-      const insertion: BlockInsertion = besideDeletion
-        ? { ...operation, type: "insertAfterBlock" }
-        : operation;
+      // A container's final mark remains on a paragraph inserted before it.
+      // Before a table or control, its own mark goes: insert after it first
+      // so the block deletion has a following paragraph to receive its text.
+      const after = state.doc.resolve(
+        paragraph.start - 1 + paragraph.node.nodeSize,
+      ).nodeAfter;
+      const insertion: BlockInsertion =
+        besideDeletion && after !== null
+          ? { ...operation, type: "insertAfterBlock" }
+          : operation;
       const placed = suggested
         ? besideAsItStands(paragraph)
         : besidePendingJoin({

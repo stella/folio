@@ -633,8 +633,12 @@ const batchAgainstOneAtATime = async ({
     // An operation the ones before it already carried out has nothing left
     // to do; the documents are compared below either way.
     const alone = oracle.apply(mode, operationsToApply);
-    for (const { joined } of alone.applied)
-      if (joined) joinedInto.set(joined.retiredBlockId, joined.blockId);
+    for (const { paragraphIdentity } of alone.applied)
+      if (paragraphIdentity?.type === "joined")
+        joinedInto.set(
+          paragraphIdentity.retiredBlockId,
+          paragraphIdentity.blockId,
+        );
     for (const { id, reason } of alone.skipped) {
       if (reason !== "noopOperation") {
         report(`${id} skipped one at a time as ${reason}`);
