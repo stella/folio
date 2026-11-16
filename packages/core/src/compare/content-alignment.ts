@@ -612,11 +612,83 @@ const pairByStableId = <Block extends FolioContentBlockIdentity>({
   return longestIncreasingFolioContentPairs(candidates);
 };
 
+type StrongerRetiredCounterpartOptions<
+  Block extends FolioContentBlockIdentity,
+> = {
+  source: PreparedAlignmentBlock<Block>;
+  target: PreparedAlignmentBlock<Block>;
+  candidates: readonly PreparedAlignmentBlock<Block>[];
+  oppositeIds: ReadonlySet<string>;
+  canPair: (candidate: PreparedAlignmentBlock<Block>) => boolean;
+  tokens: (text: string) => GapBlockTokens;
+  workSession: FolioContentAlignmentWorkSession;
+};
+
+/** A persisted minted id yields only to one strictly stronger retired counterpart. */
+const hasStrongerRetiredCounterpart = <
+  Block extends FolioContentBlockIdentity,
+>({
+  source,
+  target,
+  candidates,
+  oppositeIds,
+  canPair,
+  tokens,
+  workSession,
+}: StrongerRetiredCounterpartOptions<Block>): boolean => {
+  if (source.block.text === target.block.text) return false;
+  // Token accounting alone does not bound scans of empty or incompatible blocks.
+  if (!claimFolioContentAlignmentCells(1, candidates.length, workSession))
+    return false;
+  const targetTokens = tokens(target.block.text);
+  const original = gapBlockSimilarity(
+    tokens(source.block.text),
+    targetTokens,
+    workSession,
+  );
+  if (original.status === "budget-exceeded") return false;
+  let best = original.value;
+  let strongest = 0;
+  for (const candidate of candidates) {
+    if (
+      candidate === source ||
+      oppositeIds.has(candidate.block.id) ||
+      !canPair(candidate)
+    )
+      continue;
+    const candidateTokens = tokens(candidate.block.text);
+    // The empty-paragraph fill score is eligibility, not competing wording evidence.
+    if (candidateTokens.total === 0 || targetTokens.total === 0) continue;
+    const measured = gapBlockSimilarity(
+      candidateTokens,
+      targetTokens,
+      workSession,
+    );
+    // Partial evidence cannot establish that the strongest counterpart is unique.
+    if (measured.status === "budget-exceeded") return false;
+    if (
+      measured.value < GAP_PAIR_SIMILARITY_THRESHOLD ||
+      measured.value <= original.value
+    )
+      continue;
+    if (measured.value > best) {
+      best = measured.value;
+      strongest = 1;
+    } else if (measured.value === best) {
+      strongest += 1;
+    }
+  }
+  return strongest === 1;
+};
+
 type PairByResidualIdContinuityOptions<
   Block extends FolioContentBlockIdentity,
 > = {
   baseBlocks: readonly PreparedAlignmentBlock<Block>[];
   revisedBlocks: readonly PreparedAlignmentBlock<Block>[];
+  baseIds: ReadonlySet<string>;
+  revisedIds: ReadonlySet<string>;
+  workSession: FolioContentAlignmentWorkSession;
   baseFrom: number;
   baseTo: number;
   revisedFrom: number;
@@ -639,6 +711,9 @@ type PairByResidualIdContinuityOptions<
 const pairByResidualIdContinuity = <Block extends FolioContentBlockIdentity>({
   baseBlocks,
   revisedBlocks,
+  baseIds,
+  revisedIds,
+  workSession,
   baseFrom,
   baseTo,
   revisedFrom,
@@ -678,6 +753,16 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlockIdentity>({
     from: revisedFrom,
     to: revisedTo,
   });
+  const tokenProfiles = new Map<string, GapBlockTokens>();
+  const tokens = (text: string) => {
+    const known = tokenProfiles.get(text);
+    if (known !== undefined) return known;
+    const profile = gapBlockTokens(text);
+    tokenProfiles.set(text, profile);
+    return profile;
+  };
+  const baseGap = baseBlocks.slice(baseFrom, baseTo);
+  const revisedGap = revisedBlocks.slice(revisedFrom, revisedTo);
   const candidates: FolioContentBlockPair[] = [];
   for (const [id, baseBlock] of baseBlocksById) {
     const revisedBlock = revisedBlocksById.get(id);
@@ -692,6 +777,27 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlockIdentity>({
     ) {
       continue;
     }
+    if (
+      hasStrongerRetiredCounterpart({
+        source: baseBlock,
+        target: revisedBlock,
+        candidates: baseGap,
+        oppositeIds: revisedIds,
+        canPair: (candidate) => canPair(candidate, revisedBlock),
+        tokens,
+        workSession,
+      }) ||
+      hasStrongerRetiredCounterpart({
+        source: revisedBlock,
+        target: baseBlock,
+        candidates: revisedGap,
+        oppositeIds: baseIds,
+        canPair: (candidate) => canPair(baseBlock, candidate),
+        tokens,
+        workSession,
+      })
+    )
+      continue;
     candidates.push({
       baseIndex: baseBlock.index,
       revisedIndex: revisedBlock.index,
@@ -1207,6 +1313,8 @@ const alignFolioContentBlocksInScope = <
       left.baseIndex - right.baseIndex ||
       left.revisedIndex - right.revisedIndex,
   );
+  const baseIds = new Set(baseBlocks.map(({ id }) => id));
+  const revisedIds = new Set(revisedBlocks.map(({ id }) => id));
   const continuityAnchors = pairsInAnchorGaps({
     baseLength: prepared.base.length,
     revisedLength: prepared.revised.length,
@@ -1215,6 +1323,9 @@ const alignFolioContentBlocksInScope = <
       pairByResidualIdContinuity({
         baseBlocks: prepared.base,
         revisedBlocks: prepared.revised,
+        baseIds,
+        revisedIds,
+        workSession,
         baseFrom,
         baseTo,
         revisedFrom,

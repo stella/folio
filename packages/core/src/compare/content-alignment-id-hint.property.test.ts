@@ -99,6 +99,143 @@ const similarBlocksOf = (story: Story, kind: string) => {
   };
 };
 
+test(
+  "a saved minted mark cannot outrank a more similar surviving paragraph",
+  () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 8 }), (sharedWords) => {
+        const shared = wordsOf(0, sharedWords);
+        for (const baseStability of ["stable", "positional"] as const) {
+          for (const revisedStability of ["stable", "positional"] as const) {
+            const base = [
+              {
+                id: "10000000",
+                kind: "paragraph",
+                text: `Original ${shared}`,
+                idStability: baseStability,
+              },
+              {
+                id: "10000001",
+                kind: "paragraph",
+                text: `${wordsOf(1, sharedWords * 3)} ${shared}`,
+                idStability: baseStability,
+              },
+            ] as const satisfies readonly FolioContentBlockIdentity[];
+            const revised = [
+              {
+                id: "10000001",
+                kind: "paragraph",
+                text: `Edited ${shared}`,
+                idStability: revisedStability,
+              },
+            ] as const satisfies readonly FolioContentBlockIdentity[];
+            const expected = [
+              { pair: [base[0].text, revised[0].text] },
+              { baseOnly: base[1].text },
+            ];
+            expect(eventsRead(alignFolioContentBlocks(base, revised))).toEqual(
+              expected,
+            );
+            expect(eventsRead(alignFolioContentBlocks(revised, base))).toEqual([
+              { pair: [revised[0].text, base[0].text] },
+              { revisedOnly: base[1].text },
+            ]);
+          }
+        }
+      }),
+      propertyConfig({ numRuns: 40 }),
+    );
+  },
+  propertyTestTimeout(60_000),
+);
+
+test("mixed identity continuity survives ambiguous, out-of-scope or unmeasured alternatives", () => {
+  const source = {
+    id: "10000001",
+    kind: "paragraph",
+    text: "retired longer wording paragraph",
+    idStability: "positional",
+  } as const;
+  const target = {
+    ...source,
+    text: "edited paragraph",
+    idStability: "stable",
+  } as const;
+  const stronger = { ...source, id: "10000000", text: "original paragraph" };
+  const cases = [
+    { alternatives: [{ ...stronger, text: "" }], budget: {} },
+    { alternatives: [{ ...stronger, text: "!!!" }], budget: {} },
+    { alternatives: [stronger, { ...stronger, id: "10000002" }], budget: {} },
+    {
+      alternatives: [
+        { ...stronger, containerPath: [{ kind: "control", id: "different" }] },
+      ],
+      budget: {},
+    },
+    { alternatives: [stronger], budget: { lcsCells: 0 } },
+    { alternatives: [stronger], budget: { structuralTokenLookups: 0 } },
+  ] as const satisfies readonly {
+    alternatives: readonly FolioContentBlockIdentity[];
+    budget: { lcsCells?: number; structuralTokenLookups?: number };
+  }[];
+  for (const { alternatives, budget } of cases) {
+    const base = [...alternatives, source];
+    for (const [before, after] of [
+      [base, [target]],
+      [[target], base],
+    ]) {
+      if (before === undefined || after === undefined)
+        throw new Error("Both alignment sides exist");
+      const pairs = alignFolioContentBlocks(before, after, {
+        workSession: createFolioContentAlignmentWorkSession(budget),
+      }).flatMap((event) =>
+        event.type === "pair"
+          ? [[event.baseBlock.id, event.revisedBlock.id]]
+          : [],
+      );
+      expect(pairs).toContainEqual([source.id, target.id]);
+    }
+  }
+});
+
+test("a stronger candidate keeps the edit that owns its id beyond the current gap", () => {
+  const competitor = {
+    id: "10000000",
+    kind: "paragraph",
+    text: "original paragraph",
+    idStability: "positional",
+  } as const;
+  const source = {
+    ...competitor,
+    id: "10000001",
+    text: "different extended wording paragraph",
+  };
+  const anchor = { ...competitor, id: "10000002", text: "An exact separator." };
+  const base = [competitor, source, anchor];
+  const revised = [
+    { ...source, text: "edited paragraph", idStability: "stable" as const },
+    { ...anchor, idStability: "stable" as const },
+    {
+      ...competitor,
+      text: "New distant content.",
+      idStability: "stable" as const,
+    },
+  ];
+  for (const [before, after] of [
+    [base, revised],
+    [revised, base],
+  ]) {
+    if (before === undefined || after === undefined)
+      throw new Error("Both alignment sides exist");
+    const pairs = alignFolioContentBlocks(before, after).flatMap((event) =>
+      event.type === "pair"
+        ? [[event.baseBlock.id, event.revisedBlock.id]]
+        : [],
+    );
+    expect(pairs).toContainEqual([source.id, source.id]);
+  }
+});
+
 describe("a paragraph id the content does not agree with", () => {
   test(
     "pairs a story with itself as if the ids were not there",
