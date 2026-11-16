@@ -51,6 +51,21 @@ export function Editor({ docx }: { docx: ArrayBuffer }) {
 The editor renders to the DOM; under SSR, load it from a client-only/dynamic
 import.
 
+## Editing engine
+
+The editor edits through the canonical session: each edit is a typed operation
+on the document model, and an edit the session cannot make yet is refused with
+a notice instead of being applied partly. `experimentalSession="legacy"` selects
+the previous ProseMirror-owned engine:
+
+```tsx
+<DocxEditor
+  accessibleName="Document editor"
+  documentBuffer={docx}
+  experimentalSession="legacy"
+/>
+```
+
 ## Read-only review views
 
 ```tsx

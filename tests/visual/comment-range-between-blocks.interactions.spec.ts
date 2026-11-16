@@ -89,7 +89,7 @@ for (const [placement, commented] of Object.entries(PLACEMENTS)) {
     test(`a comment opening ${placement} keeps its range, tracking ${tracking ? "on" : "off"}`, async ({
       page,
     }) => {
-      await page.goto("/");
+      await page.goto("/?session=legacy");
       await page.locator("#file-input").setInputFiles({
         name: "commented.docx",
         mimeType:

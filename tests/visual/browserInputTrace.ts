@@ -241,7 +241,7 @@ export const browserInputTraceArbitrary = (
 
 export type BrowserInputTraceConfig = {
   seeds: readonly number[];
-  /** Seeds through the default editor. A lane asks for these explicitly. */
+  /** Seeds through the legacy editor. A lane asks for these explicitly. */
   defaultEditorSeeds: readonly number[];
   runs: number;
 };

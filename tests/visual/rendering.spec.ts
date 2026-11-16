@@ -19,11 +19,11 @@ const __dirname = import.meta.dirname;
 const FIXTURES_DIR = path.join(__dirname, "fixtures");
 
 // `FOLIO_RENDERING_SESSION=canonical` renders every fixture on the canonical
-// session instead of the default engine, against the same baselines.
+// session instead of the legacy engine, against the same baselines.
 const SESSION_QUERY =
   process.env["FOLIO_RENDERING_SESSION"] === "canonical"
     ? "&session=canonical"
-    : "";
+    : "&session=legacy";
 
 // Auto-discover all .docx files in the fixtures directory
 const fixtures = fs

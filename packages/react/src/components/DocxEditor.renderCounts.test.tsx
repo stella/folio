@@ -62,8 +62,8 @@ const RENDER_BUDGET = { perOperation: 2, settled: 4, total: 30 };
 // Run this identical sequence on main and the change to compare committed
 // render counts. Duration is diagnostic: machine load makes timing unsuitable
 // as a correctness assertion. Initial mount and view initialization are excluded.
-for (const experimentalSession of [undefined, "canonical"] as const) {
-  test(`editor typing and selection render measurement (${experimentalSession ?? "default"})`, async () => {
+for (const experimentalSession of ["legacy", "canonical"] as const) {
+  test(`editor typing and selection render measurement (${experimentalSession})`, async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -74,12 +74,13 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
     const initialDocument = createEmptyDocument({ initialText: "Hello" });
     // Load package bytes explicitly, as in the canonical-save harness, so
     // the canonical source and body projection are ready before measuring.
-    const documentBuffer = experimentalSession
-      ? await createDocx(initialDocument)
-      : undefined;
+    const documentBuffer =
+      experimentalSession === "canonical"
+        ? await createDocx(initialDocument)
+        : undefined;
     const documentProps = documentBuffer
       ? { documentBuffer, experimentalSession }
-      : { document: initialDocument };
+      : { document: initialDocument, experimentalSession };
     const typing: number[] = [];
     const selection: number[] = [];
     try {
@@ -115,7 +116,7 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
         editor.current?.getEditor() ?? panic("The editor API did not mount");
       const getView = () =>
         api.getView() ?? panic("The editor did not create its body view");
-      if (experimentalSession) {
+      if (experimentalSession === "canonical") {
         await act(async () => {
           const view = getView();
           view.dispatch(
@@ -135,7 +136,7 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
         const before = commits.length;
         await act(async () => {
           const view = getView();
-          if (experimentalSession) {
+          if (experimentalSession === "canonical") {
             // Canonical mutations enter through DOM input ownership; direct
             // document transactions are refused by the canonical session.
             const event = new InputEvent("beforeinput", {
@@ -197,7 +198,7 @@ for (const experimentalSession of [undefined, "canonical"] as const) {
       console.info(
         "FOLIO_RENDER_MEASUREMENT",
         JSON.stringify({
-          session: experimentalSession ?? "default",
+          session: experimentalSession,
           typing,
           selection,
           commits: commits.length - startCommit,
