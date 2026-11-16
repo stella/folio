@@ -422,8 +422,8 @@ const drive = async (
       await page.keyboard.press(`${MODIFIER}+x`);
       return;
     case "dragCellDelete":
-      if (!(await selectTarget(page, "table")))
-        throw new Error("table fixture has no draggable cells");
+      // An earlier edit can remove the table, as for any selection drag.
+      fc.pre(await selectTarget(page, "table"));
       await page.keyboard.press("Delete");
       return;
     case "undo":
@@ -990,6 +990,43 @@ for (const [shape, target] of paintedDrags) {
     });
   }
 }
+
+test(
+  "table drags whose target was deleted are trace precondition failures",
+  { tag: PINNED_BROWSER_INPUT_TAG },
+  async ({ page }) => {
+    const source = await shapeArrayBuffer("tables");
+    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+    await load({
+      page,
+      bytes: source,
+      baseline,
+      suggesting: false,
+      authority: "prosemirror",
+    });
+    expect(await selectTarget(page, "table")).toBe(true);
+    // The saved seed 431 removes its table before attempting another drag.
+    await drive(page, { kind: "selectAll" });
+    await drive(page, { kind: "backspace" });
+    expect(await selectTarget(page, "table")).toBe(false);
+    const before = await liveBlocks(page);
+    const actions = [
+      { kind: "selectionDrag", target: "table" },
+      { kind: "dragCellDelete" },
+    ] as const satisfies readonly BrowserInputAction[];
+    for (const action of actions) {
+      const outcome = await drive(page, action).then(
+        () => ({ status: "applied" }) as const,
+        (error: unknown) => ({ status: "refused", error }) as const,
+      );
+      expect(outcome.status).toBe("refused");
+      if (outcome.status !== "refused")
+        throw new TypeError("A missing table cannot be dragged");
+      expect(fc.isPreconditionFailure(outcome.error)).toBe(true);
+      expect(await liveBlocks(page)).toEqual(before);
+    }
+  },
+);
 
 const config = parseBrowserInputTraceConfig(
   process.env,
