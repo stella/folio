@@ -1520,13 +1520,12 @@ const CANONICAL_WORD_DELETION_TRACES = (
 ).map((entry, index) => {
   const [shape, keys] = entry;
   const designedDifference = entry.length === 3 ? entry[2] : undefined;
-  return {
+  const regression = {
     authority: "canonical",
     seed: 0,
     path: `word-deletion-${shape}-${String(index)}`,
     fingerprint: "canonical-word-deletion",
     comparesWithDefaultEditor: true,
-    ...(designedDifference === undefined ? {} : { designedDifference }),
     trace: { shape, actions: [{ kind: "keys", keys: [...keys] }] },
   } satisfies {
     authority: "canonical";
@@ -1537,6 +1536,9 @@ const CANONICAL_WORD_DELETION_TRACES = (
     designedDifference?: CanonicalDesignedDifference;
     trace: BrowserInputTrace;
   };
+  return designedDifference === undefined
+    ? regression
+    : Object.assign(regression, { designedDifference });
 });
 
 /** The table was deleted before this drag; the trace has no next edit. */
