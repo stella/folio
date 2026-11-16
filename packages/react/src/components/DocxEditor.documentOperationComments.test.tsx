@@ -56,6 +56,7 @@ test.each(["accepted", "rejected"] as const)(
           messages={getFolioMessages("en")}
         >
           <DocxEditor
+            experimentalSession="legacy"
             accessibleName="Document editor"
             ref={editor}
             {...props}
