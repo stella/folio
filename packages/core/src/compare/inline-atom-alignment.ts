@@ -19,7 +19,7 @@ export type AlignableAtom = {
 };
 
 /** One block of a story, as alignment sees it. */
-export type AlignableBlock = {
+type AlignableBlock = {
   /** The block's kind: blocks of two kinds never align. */
   readonly blockType: string;
   readonly cleanText: string;
@@ -38,7 +38,7 @@ export const MISSING_NOTE_DETAIL =
 // Inline atom groups normally contain only a few zero-width carriers. Keep the
 // exact ordered match bounded so a hostile document cannot make comparison
 // quadratic; larger groups retain only stable unique anchors.
-export const MAX_INLINE_ATOM_LCS_CELLS = 16_384;
+const MAX_INLINE_ATOM_LCS_CELLS = 16_384;
 
 /** Whether two blocks read the same and agree on the atoms beside supported ones. */
 export const sameBlockTopology = (
@@ -229,7 +229,7 @@ export const matchingAtoms = ({
 };
 
 /** Where an unmatched revised atom goes: beside a matched reviewed atom of its offset. */
-export type InsertionAnchor = {
+type InsertionAnchor = {
   readonly liveIndex: number;
   readonly side: "before" | "after";
 };
