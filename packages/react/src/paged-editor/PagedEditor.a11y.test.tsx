@@ -48,6 +48,7 @@ test.each([
             messages={getFolioMessages("en")}
           >
             <PagedEditor
+              experimentalSession="legacy"
               accessibleName={accessibleName}
               document={null}
               documentIdentity="accessible-document"

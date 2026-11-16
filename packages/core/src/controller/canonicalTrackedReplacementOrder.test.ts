@@ -391,7 +391,7 @@ describe("a tracked replacement puts the struck text first", () => {
       expect(harness.refusals).toEqual([]);
       const saved = await saveCanonicalHarnessDocument(harness.snapshot());
       const actual = await readings(saved.bytes.slice().buffer);
-      // The default engine hands the comment to the typed words instead.
+      // The legacy engine hands the comment to the typed words instead.
       expect(actual.markup.at(0)?.content).toEqual(COMMENTED_REDLINE("XY"));
       expect(actual.accepted.comments).toEqual([]);
     } finally {

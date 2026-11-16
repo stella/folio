@@ -69,7 +69,7 @@ const project = (reviewer: FolioDocxReviewer) =>
   });
 
 const paste = async (page: Page, input: PasteCase, suggesting: boolean) => {
-  await page.goto("/?file=sample.docx");
+  await page.goto("/?session=legacy&file=sample.docx");
   await page.waitForSelector(".layout-page");
   await page.evaluate(() =>
     globalThis.__folioPlayground
@@ -229,7 +229,7 @@ test("native cut copies the selection and resolves like editing mode", async ({
   page,
 }) => {
   const run = async (suggesting: boolean) => {
-    await page.goto("/?file=sample.docx");
+    await page.goto("/?session=legacy&file=sample.docx");
     await page.waitForSelector(".layout-page");
     await page.evaluate(() =>
       globalThis.__folioPlayground
