@@ -63,12 +63,13 @@ const FAMILIES = {
   { start: ParagraphContent; end: ParagraphContent }
 >;
 
-const deleteIn = (
-  document: Document,
-  blockId: string,
-  from: number,
-  to: number,
-) => {
+type DeleteInOptions = {
+  document: Document;
+  blockId: string;
+  from: number;
+  to: number;
+};
+const deleteIn = ({ document, blockId, from, to }: DeleteInOptions) => {
   const applied = applyDocumentOp(document, {
     type: DOCUMENT_OP_TYPES.DELETE_RANGE,
     from: position(blockId, from),
@@ -78,11 +79,16 @@ const deleteIn = (
   return applied.value;
 };
 
-const nestedBoundary = (
-  node: ParagraphContent,
-  depth: number,
-  id: number,
-): ParagraphContent => {
+type NestedBoundaryOptions = {
+  node: ParagraphContent;
+  depth: number;
+  id: number;
+};
+const nestedBoundary = ({
+  node,
+  depth,
+  id,
+}: NestedBoundaryOptions): ParagraphContent => {
   let nested = node;
   for (let level = 0; level < depth; level++)
     nested = {
@@ -128,13 +134,13 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
       const document = documentOf(
         paragraph("00000001", [
           run("a"),
-          nestedBoundary(start, 1, 10),
+          nestedBoundary({ node: start, depth: 1, id: 10 }),
           run("b"),
-          nestedBoundary(end, 1, 20),
+          nestedBoundary({ node: end, depth: 1, id: 20 }),
           run("c"),
-          nestedBoundary(structuredClone(start), 1, 30),
+          nestedBoundary({ node: structuredClone(start), depth: 1, id: 30 }),
           run("d"),
-          nestedBoundary(end, 1, 40),
+          nestedBoundary({ node: end, depth: 1, id: 40 }),
           run("e"),
         ]),
       );
@@ -242,7 +248,12 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
           { id: 1, author: "A", content: [paragraph("7FFFFFF0", [])] },
         ];
       expect(validateDocumentModel(document).valid).toBe(true);
-      const result = deleteIn(document, "00000001", 0, 4);
+      const result = deleteIn({
+        document: document,
+        blockId: "00000001",
+        from: 0,
+        to: 4,
+      });
       expect(contentOf(result.document, 0)).toEqual([
         start,
         run("X"),
@@ -264,15 +275,20 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
               const document = documentOf(
                 paragraph("00000001", [
                   run("ab"),
-                  nestedBoundary(start, depth, 10),
+                  nestedBoundary({ node: start, depth: depth, id: 10 }),
                   run("cd"),
-                  nestedBoundary(end, depth, 20),
+                  nestedBoundary({ node: end, depth: depth, id: 20 }),
                   run("ef"),
                 ]),
               );
               const from = cut === "end" ? 3 : 1;
               const to = cut === "start" ? 3 : 5;
-              const direct = deleteIn(document, "00000001", from, to);
+              const direct = deleteIn({
+                document: document,
+                blockId: "00000001",
+                from: from,
+                to: to,
+              });
               const tracked = applyDocumentOp(document, {
                 type: DOCUMENT_OP_TYPES.DELETE_RANGE,
                 from: position("00000001", from),
@@ -340,7 +356,12 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
           run("e"),
         ]),
       );
-      const result = deleteIn(document, "00000001", 0, 3);
+      const result = deleteIn({
+        document: document,
+        blockId: "00000001",
+        from: 0,
+        to: 3,
+      });
       expect(contentOf(result.document, 0)).toEqual([
         start,
         run("d"),
@@ -362,7 +383,12 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
           run("e"),
         ]),
       );
-      const balancedSubset = deleteIn(ambiguous, "00000001", 1, 4);
+      const balancedSubset = deleteIn({
+        document: ambiguous,
+        blockId: "00000001",
+        from: 1,
+        to: 4,
+      });
       expect(contentOf(balancedSubset.document, 0)).toEqual([
         run("a"),
         start,
@@ -374,17 +400,22 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
       const nested = documentOf(
         paragraph("00000001", [
           run("a"),
-          nestedBoundary(start, 1, 10),
+          nestedBoundary({ node: start, depth: 1, id: 10 }),
           run("b"),
-          nestedBoundary(end, 1, 20),
+          nestedBoundary({ node: end, depth: 1, id: 20 }),
           run("c"),
-          nestedBoundary(structuredClone(start), 1, 30),
+          nestedBoundary({ node: structuredClone(start), depth: 1, id: 30 }),
           run("d"),
-          nestedBoundary(end, 1, 40),
+          nestedBoundary({ node: end, depth: 1, id: 40 }),
           run("e"),
         ]),
       );
-      const direct = deleteIn(nested, "00000001", 0, 3);
+      const direct = deleteIn({
+        document: nested,
+        blockId: "00000001",
+        from: 0,
+        to: 3,
+      });
       const tracked = applyDocumentOp(nested, {
         type: DOCUMENT_OP_TYPES.DELETE_RANGE,
         from: position("00000001", 0),
@@ -420,7 +451,12 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
       );
       const original = structuredClone(document);
 
-      const applied = deleteIn(document, "00000001", 3, 5);
+      const applied = deleteIn({
+        document: document,
+        blockId: "00000001",
+        from: 3,
+        to: 5,
+      });
 
       expect(contentOf(applied.document, 0)).toEqual([
         run("ab"),
@@ -448,7 +484,12 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
       );
       const original = structuredClone(document);
 
-      const applied = deleteIn(document, "00000001", 1, 3);
+      const applied = deleteIn({
+        document: document,
+        blockId: "00000001",
+        from: 1,
+        to: 3,
+      });
 
       expect(contentOf(applied.document, 0)).toEqual([
         run("a"),
@@ -465,7 +506,12 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
         paragraph("00000002", [run("x"), end]),
       );
 
-      const applied = deleteIn(document, "00000001", 1, 3);
+      const applied = deleteIn({
+        document: document,
+        blockId: "00000001",
+        from: 1,
+        to: 3,
+      });
 
       expect(contentOf(applied.document, 0)).toEqual([
         run("a"),
@@ -480,7 +526,12 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
         paragraph("00000001", [run("ab"), start, run("cd"), end, run("ef")]),
       );
 
-      const applied = deleteIn(document, "00000001", 1, 5);
+      const applied = deleteIn({
+        document: document,
+        blockId: "00000001",
+        from: 1,
+        to: 5,
+      });
 
       expect(contentOf(applied.document, 0)).toEqual([run("a"), run("f")]);
     });
@@ -492,7 +543,12 @@ describe("a direct deletion keeps comment and move ranges well formed", () => {
         paragraph("00000001", [run("ab"), end, run("cd"), start]),
       );
 
-      const applied = deleteIn(document, "00000001", 1, 3);
+      const applied = deleteIn({
+        document: document,
+        blockId: "00000001",
+        from: 1,
+        to: 3,
+      });
 
       expect(contentOf(applied.document, 0)).toEqual([
         run("a"),
