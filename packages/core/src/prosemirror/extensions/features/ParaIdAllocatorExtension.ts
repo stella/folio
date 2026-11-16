@@ -143,8 +143,8 @@ const isUsableParaId = (value: unknown): value is string =>
 
 /** Omitted grid cells render absent positions and own no package paragraphs. */
 const isOmittedGridCell = (node: PMNode): boolean =>
-  (node.type.spec.tableRole === "cell" ||
-    node.type.spec.tableRole === "header_cell") &&
+  (node.type.spec["tableRole"] === "cell" ||
+    node.type.spec["tableRole"] === "header_cell") &&
   (node.attrs["_omittedGridSlot"] === "before" ||
     node.attrs["_omittedGridSlot"] === "after");
 
