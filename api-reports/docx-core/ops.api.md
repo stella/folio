@@ -1504,16 +1504,21 @@ export const suggestionRevisionInfos: (document: Document_2, story: OpStory, sug
 export const survivingComments: (document: Document_2, projectedRootIds?: ReadonlySet<number>) => Comment_2[];
 
 // @public
-export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds" | "expected"> | {
+export type TableBlockIntentOperation = Omit<DeleteTableOp, "revision" | "newIds" | "expected"> | ({
     type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
     story: OpStory;
     blockId: string;
     table: Table;
     side?: "after" | "before";
+} & ({
+    anchor?: "paragraph";
     separated?: boolean;
     paragraphAfter?: "empty" | "none";
-    besideTable?: true;
-};
+} | {
+    anchor: "table";
+    separated?: never;
+    paragraphAfter?: never;
+}));
 
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;
