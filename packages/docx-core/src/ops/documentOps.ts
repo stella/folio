@@ -290,3 +290,5 @@ export {
   withoutCommentThreads,
   type CommentExhaustionInput,
 } from "./comments";
+
+export { planWholeParagraphReplacement } from "./wholeParagraphReplacement";

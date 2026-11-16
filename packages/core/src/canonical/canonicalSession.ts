@@ -47,6 +47,7 @@ import {
   type OpStory,
   packageParagraphIds,
   paragraphIdsIn,
+  planWholeParagraphReplacement,
   sameStory,
   suggestedCommentIds,
   suggestionRevisionInfos,
@@ -2466,11 +2467,35 @@ class CanonicalSession {
     const range = canonicalSelectionRange(state);
     const inputFrom = replacesStructuralSelection ? range.from : from;
     const inputTo = replacesStructuralSelection ? range.to : to;
+    const edges =
+      inputFrom === inputTo
+        ? { start: "caret" as const, end: "caret" as const }
+        : projection.rangeEdgesAt(inputFrom, inputTo);
+    // Typing goes on where the last edit left the caret: an editor position
+    // can stand for several source gaps between markers, and the edit's own
+    // caret names the one right after the text it wrote.
+    const editCaret = this.editCaretAt(projection, inputFrom);
+    const start =
+      inputFrom === inputTo && editCaret !== undefined
+        ? Result.ok(editCaret)
+        : projection.inputAddressAt(inputFrom, edges.start);
+    if (start.isErr()) return start;
+    const end =
+      inputFrom === inputTo && editCaret !== undefined
+        ? Result.ok(editCaret)
+        : projection.inputAddressAt(inputTo, edges.end);
+    if (end.isErr()) return end;
     if (inputFrom < inputTo && text !== "") {
-      const edges = projection.rangeEdgesAt(inputFrom, inputTo);
+      const retirement = planWholeParagraphReplacement({
+        document: this.currentDocument,
+        from: start.value,
+        to: end.value,
+      });
+      if (retirement.isErr()) return refuse(retirement.error.message);
       if (
         !preservesReplacementCommentAlignment({
           doc: state.doc,
+          retiredCommentIds: retirement.value?.commentIds,
           source: { from: inputFrom, to: inputTo },
           changes: [
             {
@@ -2490,24 +2515,6 @@ class CanonicalSession {
           "Canonical replacement cannot preserve the aligned comment ranges.",
         );
     }
-    const edges =
-      inputFrom === inputTo
-        ? { start: "caret" as const, end: "caret" as const }
-        : projection.rangeEdgesAt(inputFrom, inputTo);
-    // Typing goes on where the last edit left the caret: an editor position
-    // can stand for several source gaps between markers, and the edit's own
-    // caret names the one right after the text it wrote.
-    const editCaret = this.editCaretAt(projection, inputFrom);
-    const start =
-      inputFrom === inputTo && editCaret !== undefined
-        ? Result.ok(editCaret)
-        : projection.inputAddressAt(inputFrom, edges.start);
-    if (start.isErr()) return start;
-    const end =
-      inputFrom === inputTo && editCaret !== undefined
-        ? Result.ok(editCaret)
-        : projection.inputAddressAt(inputTo, edges.end);
-    if (end.isErr()) return end;
     const preSelection = projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     // Just inside a content control's edge, the editor position, not the

@@ -74,7 +74,10 @@ import type { Transaction } from "prosemirror-state";
 
 import { isCommentExhausted } from "@stll/docx-core/ops";
 
-import { isCommentAnchorCarrier } from "../ai-edits/comment-lifecycle";
+import {
+  commentAnchorIdsForNode,
+  isCommentAnchorCarrier,
+} from "../ai-edits/comment-lifecycle";
 import {
   expectParagraphAttrs,
   expectTableCellAttrs,
@@ -421,6 +424,7 @@ export const surveyAcceptedReplacedAnnotations = (
 type ReplacementCommentAlignmentOptions = {
   doc: PMNode;
   source: { from: number; to: number };
+  retiredCommentIds?: ReadonlySet<number> | undefined;
   changes: readonly {
     from: number;
     to: number;
@@ -441,6 +445,7 @@ export const preservesReplacementCommentAlignment = ({
   doc,
   source,
   changes,
+  retiredCommentIds,
 }: ReplacementCommentAlignmentOptions): boolean => {
   let previousEnd = source.from;
   for (const change of changes) {
@@ -464,7 +469,9 @@ export const preservesReplacementCommentAlignment = ({
       containers: "descend",
     });
     const comments = annotations.carried.filter(
-      (mark) => mark.type.name === "comment",
+      (mark) =>
+        mark.type.name === "comment" &&
+        !retiredCommentIds?.has(mark.attrs["commentId"]),
     );
     if (comments.some((mark) => mark.attrs["point"] === true)) return false;
     if (change.markers === "selected" && comments.length > 0) return false;
@@ -474,8 +481,11 @@ export const preservesReplacementCommentAlignment = ({
         isCommentAnchorCarrier(node) &&
         change.from < position &&
         position < change.to
-      )
-        internalCarrier = true;
+      ) {
+        const ids = commentAnchorIdsForNode(node);
+        if (ids.length === 0 || ids.some((id) => !retiredCommentIds?.has(id)))
+          internalCarrier = true;
+      }
       return !node.isLeaf && lendsMarks(node, "asAccepted");
     });
     if (internalCarrier) return false;

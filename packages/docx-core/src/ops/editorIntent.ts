@@ -32,6 +32,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
+import { isCommentExhausted } from "./comments";
 import { packageIdOccupancy } from "./editorIntentCensus";
 import { combineEdits } from "./edits";
 import { structurallyEqual } from "./equality";
@@ -136,6 +137,7 @@ import {
   type TableIntentOperation,
   type TextPosition,
 } from "./types";
+import { planWholeParagraphReplacement } from "./wholeParagraphReplacement";
 import { captureDocumentOp } from "./wire";
 
 type SplitParagraphIntent = {
@@ -3248,9 +3250,53 @@ export const compileEditorIntent = (
       if (deletes) {
         const deleted = applyDocumentOps(document, ops);
         if (deleted.isErr()) return Result.err(deleted.error);
+        let afterDeletion = deleted.value.document;
+        const retirement =
+          text === ""
+            ? Result.ok(null)
+            : planWholeParagraphReplacement({ document, from, to });
+        if (retirement.isErr()) return Result.err(retirement.error);
+        const ownership = retirement.value;
+        if (ownership !== null) {
+          const survivingIds = new Set(
+            storyParagraphs(storyBody(afterDeletion, from.story)).map(
+              ({ paragraph: survivor }) => idKey(survivor.paraId ?? ""),
+            ),
+          );
+          if (ownership.blockIds.some((id) => survivingIds.has(idKey(id))))
+            panic(
+              "Whole-host replacement must retire its selected source paragraphs.",
+            );
+          const expired = (document.package.document.comments ?? [])
+            .filter(
+              ({ id, parentId }) =>
+                parentId === undefined &&
+                ownership.commentIds.has(id) &&
+                !isCommentExhausted({ type: "document", document, id }) &&
+                isCommentExhausted({
+                  type: "document",
+                  document: afterDeletion,
+                  id,
+                }),
+            )
+            .map(
+              ({ id }) =>
+                ({
+                  type: DOCUMENT_OP_TYPES.DELETE_COMMENT,
+                  id,
+                  scope: "thread",
+                }) as const,
+            );
+          if (expired.length > 0) {
+            const cleaned = applyDocumentOps(afterDeletion, expired);
+            if (cleaned.isErr()) return Result.err(cleaned.error);
+            ops.push(...expired);
+            afterDeletion = cleaned.value.document;
+          }
+        }
         at = rangeEndAfterDeletion({
           before: document,
-          after: deleted.value.document,
+          after: afterDeletion,
           from,
           to,
         });
