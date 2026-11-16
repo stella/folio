@@ -229,6 +229,21 @@ test("a late locked story refuses projection without publishing any earlier pref
   setSystemTime(new Date(DATE));
   const observations = observeSessions();
   const reviewer = await fixture("lateLocked");
+  const access = getFolioDocxComparisonAccess(reviewer);
+  const previous = access.finalSectionProperties();
+  if (!previous) throw new TypeError("The source has its final section");
+  expect(
+    access.stageFinalSectionProperties({
+      previous,
+      target: {
+        ...previous,
+        pageWidth: 15840,
+        pageHeight: 12240,
+        orientation: "landscape",
+      },
+      revision: { idSeed: 9000, date: DATE },
+    }),
+  ).toBe(true);
   const initial = reads(reviewer);
   const block = reviewer
     .getContent()
@@ -427,4 +442,59 @@ for (const decision of ["accept", "reject"] as const)
               ?.changes,
           ).toEqual([]);
       unsubscribe();
+    });
+
+for (const decision of ["accept", "reject"] as const)
+  for (const scope of ["single", "all"] as const)
+    test(`final-section ${decision}/${scope} preserves held story content and reports held revisions`, async () => {
+      const reviewer = await fixture("lateLocked");
+      const lockedBefore = structuredClone(
+        reviewer.toDocument().package.endnotes,
+      );
+      const access = getFolioDocxComparisonAccess(reviewer);
+      const previous = access.finalSectionProperties();
+      if (!previous) throw new TypeError("The source has its final section");
+      const target = {
+        ...previous,
+        pageWidth: 15840,
+        pageHeight: 12240,
+        orientation: "landscape",
+      } as const;
+      expect(
+        access.stageFinalSectionProperties({
+          previous,
+          target,
+          revision: { idSeed: 9000, date: DATE },
+        }),
+      ).toBe(true);
+      if (scope === "single") {
+        expect(
+          decision === "accept"
+            ? reviewer.acceptChange(9000)
+            : reviewer.rejectChange(9000),
+        ).toBe(true);
+      } else {
+        const result =
+          decision === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
+        expect(result.resolved).toBe(5);
+        expect(
+          result.skipped.map(({ id, reason }) => ({ id, reason })),
+        ).toEqual([{ id: 104, reason: "contentControlLock" }]);
+      }
+      expect(access.finalSectionProperties()).toStrictEqual(
+        decision === "accept" ? target : previous,
+      );
+      expect(reviewer.toDocument().package.endnotes).toStrictEqual(
+        lockedBefore,
+      );
+      const reopened = await FolioDocxReviewer.fromBuffer(
+        await reviewer.toBuffer(),
+        { session: "canonical" },
+      );
+      expect(reopened.toDocument().package.endnotes).toStrictEqual(
+        lockedBefore,
+      );
+      expect(
+        getFolioDocxComparisonAccess(reopened).finalSectionProperties(),
+      ).toStrictEqual(decision === "accept" ? target : previous);
     });

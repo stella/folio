@@ -382,13 +382,21 @@ export const projectTableGeometry = (
  * not, the difference is left alone rather than written as a revision that
  * cannot be undone.
  */
-const propertyChangeFor = <TFormatting extends object>(
-  base: PMNode,
-  target: PMNode,
-  position: number,
-  scope: PropertyScope<TFormatting>,
-  anchorParaId: string | undefined,
-): PropertyChangeTarget | null => {
+type PropertyChangeOptions<TFormatting extends object> = {
+  base: PMNode;
+  target: PMNode;
+  position: number;
+  scope: PropertyScope<TFormatting>;
+  anchorParaId: string | undefined;
+};
+
+const propertyChangeFor = <TFormatting extends object>({
+  base,
+  target,
+  position,
+  scope,
+  anchorParaId,
+}: PropertyChangeOptions<TFormatting>): PropertyChangeTarget | null => {
   const live = scopedValues(base.attrs, scope.keys);
   const previousFormatting = scope.formattingOf(base);
   const targetFormatting = scope.formattingOf(target);
@@ -464,26 +472,12 @@ const planTableGeometry = ({
   const claimed = new Set<number>();
 
   const consider = <TFormatting extends object>(
-    base: PMNode,
-    target: PMNode,
-    position: number,
-    scope: PropertyScope<TFormatting>,
-    anchorParaId: string | undefined,
+    options: PropertyChangeOptions<TFormatting>,
   ): void => {
-    if (claimed.has(position)) {
-      return;
-    }
-    claimed.add(position);
-    const change = propertyChangeFor(
-      base,
-      target,
-      position,
-      scope,
-      anchorParaId,
-    );
-    if (change) {
-      targets.push(change);
-    }
+    if (claimed.has(options.position)) return;
+    claimed.add(options.position);
+    const change = propertyChangeFor(options);
+    if (change) targets.push(change);
   };
 
   for (const { base, target } of pairings) {
@@ -507,27 +501,27 @@ const planTableGeometry = ({
       continue;
     }
     const anchorParaId = cellAnchorParaId(baseCell);
-    consider(
-      baseTable.node,
-      targetTable,
-      baseTable.start,
-      GEOMETRY_SCOPES.tablePropertyChange,
+    consider({
+      base: baseTable.node,
+      target: targetTable,
+      position: baseTable.start,
+      scope: GEOMETRY_SCOPES.tablePropertyChange,
       anchorParaId,
-    );
-    consider(
-      baseRow,
-      targetRow,
-      rowPosition,
-      GEOMETRY_SCOPES.tableRowPropertyChange,
+    });
+    consider({
+      base: baseRow,
+      target: targetRow,
+      position: rowPosition,
+      scope: GEOMETRY_SCOPES.tableRowPropertyChange,
       anchorParaId,
-    );
-    consider(
-      baseCell,
-      targetCell,
-      cellPosition,
-      GEOMETRY_SCOPES.tableCellPropertyChange,
+    });
+    consider({
+      base: baseCell,
+      target: targetCell,
+      position: cellPosition,
+      scope: GEOMETRY_SCOPES.tableCellPropertyChange,
       anchorParaId,
-    );
+    });
   }
   return targets;
 };

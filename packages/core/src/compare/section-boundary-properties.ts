@@ -221,12 +221,12 @@ type MapTargetProperties = (args: {
  */
 type BoundarySource<Key> =
   | {
-      found: true;
+      status: "found";
       key: Key;
       sectionProperties: SectionProperties | undefined;
       pPrMark: ParagraphMarkChange | undefined;
     }
-  | { found: false; detail: string };
+  | { status: "missing"; detail: string };
 
 /** One section endpoint to stage, in document order. */
 type BoundaryUpdate<Key> = {
@@ -304,7 +304,8 @@ const planSectionBoundaryUpdates = <Key>({
       continue;
     }
     const source = sourceOf(reviewedParagraph);
-    if (!source.found) return { status: "unalignable", detail: source.detail };
+    if (source.status === "missing")
+      return { status: "unalignable", detail: source.detail };
     const currentProperties = source.sectionProperties;
     const marker = source.pPrMark;
     if (marker?.kind === "ins" && marker.info.id >= originalRevisionIdSeed) {
@@ -362,12 +363,19 @@ const planSectionBoundaryUpdates = <Key>({
  * An endpoint's section properties with the tracked change that stages
  * `update` on it, under revision `id`.
  */
-const stagedBoundaryProperties = (
-  update: BoundaryUpdate<unknown>,
-  id: number,
-  author: string,
-  date: string,
-): SectionProperties => {
+type StagedBoundaryPropertiesOptions = {
+  update: BoundaryUpdate<unknown>;
+  id: number;
+  author: string;
+  date: string;
+};
+
+const stagedBoundaryProperties = ({
+  update,
+  id,
+  author,
+  date,
+}: StagedBoundaryPropertiesOptions): SectionProperties => {
   const previousReferences =
     update.previous === undefined
       ? {}
@@ -438,7 +446,7 @@ export const stageSectionBoundaryProperties = ({
     "accept",
   );
   const inverse = reviewedState.mapping.invert();
-  const plan = planSectionBoundaryUpdates<number>({
+  const plan = planSectionBoundaryUpdates({
     accepted: reviewedState.state.doc,
     target,
     originalRevisionIdSeed,
@@ -447,13 +455,16 @@ export const stageSectionBoundaryProperties = ({
     sourceOf: (paragraph) => {
       const mapped = inverse.mapResult(paragraph.position, 1);
       if (mapped.deleted)
-        return { found: false, detail: "boundary has no source position" };
+        return { status: "missing", detail: "boundary has no source position" };
       const current = state.doc.nodeAt(mapped.pos);
       if (!current || current.type.name !== "paragraph")
-        return { found: false, detail: "mapped boundary is not a paragraph" };
+        return {
+          status: "missing",
+          detail: "mapped boundary is not a paragraph",
+        };
       const attrs = expectParagraphAttrs(current);
       return {
-        found: true,
+        status: "found",
         key: mapped.pos,
         sectionProperties: attrs._sectionProperties,
         pPrMark: attrs.pPrMark ?? undefined,
@@ -473,12 +484,12 @@ export const stageSectionBoundaryProperties = ({
     }
     transaction = transaction.setNodeMarkup(position, undefined, {
       ...node.attrs,
-      _sectionProperties: stagedBoundaryProperties(
+      _sectionProperties: stagedBoundaryProperties({
         update,
-        nextRevisionId++,
+        id: nextRevisionId++,
         author,
-        revisionStamp.date,
-      ),
+        date: revisionStamp.date,
+      }),
     });
   }
   return {
@@ -538,9 +549,11 @@ export const stageSectionBoundaryOperations = ({
   for (const block of document.package.document.content) {
     if (block.type !== "paragraph" || block.paraId === undefined) continue;
     const key = block.paraId.toUpperCase();
-    paragraphs.set(key, [...(paragraphs.get(key) ?? []), block]);
+    const existing = paragraphs.get(key);
+    if (existing) existing.push(block);
+    else paragraphs.set(key, [block]);
   }
-  const plan = planSectionBoundaryUpdates<{ paraId: string; order: number }>({
+  const plan = planSectionBoundaryUpdates({
     accepted: accepted(),
     target,
     originalRevisionIdSeed,
@@ -553,11 +566,14 @@ export const stageSectionBoundaryOperations = ({
           : (paragraphs.get(paragraph.paraId.toUpperCase()) ?? []);
       const [current] = found;
       if (current === undefined || current.paraId === undefined)
-        return { found: false, detail: "boundary has no source position" };
+        return { status: "missing", detail: "boundary has no source position" };
       if (found.length > 1)
-        return { found: false, detail: "boundary paragraph id is ambiguous" };
+        return {
+          status: "missing",
+          detail: "boundary paragraph id is ambiguous",
+        };
       return {
-        found: true,
+        status: "found",
         key: { paraId: current.paraId, order: paragraph.position },
         sectionProperties: current.sectionProperties,
         pPrMark: current.pPrMark,
@@ -573,12 +589,12 @@ export const stageSectionBoundaryOperations = ({
       endpoint: { type: "paragraph", blockId: update.key.paraId },
       properties: {
         type: "present",
-        value: stagedBoundaryProperties(
+        value: stagedBoundaryProperties({
           update,
-          nextRevisionId++,
+          id: nextRevisionId++,
           author,
-          revisionStamp.date,
-        ),
+          date: revisionStamp.date,
+        }),
       },
     }));
   return { status: "matched", operations, nextRevisionId };
