@@ -520,7 +520,7 @@ export type CommentExhaustionInput =
       survivingNonCarrierContent: boolean;
     };
 
-/** Whether a statically ranged comment currently covers no document content. */
+/** Whether a known range lost its content or a known point lost its anchor. */
 export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
   if (input.type === "coverage")
     return input.anchorKind === "range" && !input.survivingNonCarrierContent;
@@ -529,6 +529,8 @@ export const isCommentExhausted = (input: CommentExhaustionInput): boolean => {
     (entry) => entry.id === id,
   );
   if (comment === undefined || comment.parentId !== undefined) return false;
+  if (comment.anchorKind === "point")
+    return !anchorsIn(document).some(({ node }) => anchorId(node) === id);
   return isCommentExhausted({
     type: "coverage",
     anchorKind: comment.anchorKind,
@@ -941,6 +943,29 @@ export const reconcileDocumentPartRelationships = (
   document: Document,
 ): Document => reconcilePartRelationships(document, "document");
 
+/** Replies restore with their exhausted root, never as unrelated orphan threads. */
+const restoresExhaustedThreads = (
+  document: Document,
+  ids: ReadonlySet<number>,
+): boolean => {
+  const restoredComments = (document.package.document.comments ?? []).filter(
+    ({ id }) => ids.has(id),
+  );
+  const exhaustedRoots = new Set(
+    restoredComments
+      .filter(
+        ({ id, parentId }) =>
+          parentId === undefined &&
+          isCommentExhausted({ type: "document", document, id }),
+      )
+      .map(({ id }) => id),
+  );
+  return (
+    restoredComments.length > 0 &&
+    withoutCommentThreads(restoredComments, exhaustedRoots).length === 0
+  );
+};
+
 const edited = (
   before: Document,
   after: Document,
@@ -951,9 +976,7 @@ const edited = (
     after = reconcilePartRelationships(after, "comments");
   const restoresExhaustedState =
     op.type === DOCUMENT_OP_TYPES.RESTORE_COMMENT_STATE &&
-    [...ids].every((id) =>
-      isCommentExhausted({ type: "document", document: after, id }),
-    );
+    restoresExhaustedThreads(after, ids);
   const invalid = contractViolation(after);
   if (invalid && !restoresExhaustedState)
     return fail(op, invalid.message, invalid.reason);
