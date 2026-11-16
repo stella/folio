@@ -182,7 +182,7 @@ export type FolioAIEditAppliedOperation = {
     revisionId?: number;
     revisionIds?: readonly number[];
     suggestionId?: string;
-    joined?: FolioAIEditJoinedParagraphs;
+    paragraphIdentity?: FolioAIEditParagraphIdentity;
 };
 
 // @public
@@ -198,12 +198,6 @@ export type FolioAIEditApplyResult = {
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
     normalizations?: FolioAIEditNormalization[];
-};
-
-// @public
-export type FolioAIEditJoinedParagraphs = {
-    blockId: string;
-    retiredBlockId: string;
 };
 
 // @public
@@ -433,6 +427,16 @@ export type FolioAIEditOperation<Numbering = FolioAIListNumbering> = FolioAIEdit
     type: "splitTableCell";
     blockId: string;
 });
+
+// @public
+export type FolioAIEditParagraphIdentity = {
+    type: "joined";
+    blockId: string;
+    retiredBlockId: string;
+} | {
+    type: "retained";
+    blockId: string;
+};
 
 // @public (undocumented)
 export type FolioAIEditPrecondition = {
