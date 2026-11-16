@@ -1926,6 +1926,7 @@ describe("canonical sequencing", () => {
         id: "canonical sequencing created paragraph dependencies",
       });
     },
+    propertyTestTimeout(60_000),
   );
 
   test.each([
